@@ -1,0 +1,72 @@
+name: duka_pos
+description: Offline-first POS with M-Pesa payments and inventory management.
+publish_to: 'none'
+version: 1.0.0+1
+
+environment:
+  sdk: '>=3.0.0 <4.0.0'
+
+dependencies:
+  flutter:
+    sdk: flutter
+  cupertino_icons: ^1.0.6
+
+  # Local database (offline-first system of record)
+  sqflite: ^2.4.4
+  path_provider: ^2.1.1
+  path: ^1.8.3
+
+  # PIN hashing
+  crypto: ^3.0.7
+  cryptography: ^2.9.0
+
+  # Local network sync between tills (host/client)
+  shelf: ^1.4.1
+  shelf_router: ^1.1.4
+  multicast_dns: ^0.3.2+6
+  http: ^1.1.0
+
+  # Excel / CSV export-import (fully offline path)
+  excel: ^4.0.2
+  share_plus: ^13.3.0
+  file_picker: ^13.1.0
+
+  # Self-hosted Keycloak/OIDC authentication; mobile uses PKCE, no client secret
+  flutter_appauth: ^12.1.0
+  dio: ^5.4.0
+
+  # Google Sheets live sync (online path)
+  google_sign_in: ^6.1.6
+  googleapis: ^12.0.0
+  googleapis_auth: ^1.4.1
+  extension_google_sign_in_as_googleapis_auth: ^2.0.13
+
+  # State management
+  provider: ^6.1.1
+  shared_preferences: ^2.5.5
+
+  # Security: per-install random PIN salt, kept in the OS keystore/keychain
+  flutter_secure_storage: ^11.2.0
+
+  # Crash reporting (Sentry - no Firebase required)
+  sentry_flutter: ^8.14.2
+  
+  # Update checker (for sideloaded APKs)
+  package_info_plus: ^10.2.1
+  url_launcher: ^6.3.2
+
+  # Formatting
+  intl: ^0.18.1
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  flutter_lints: ^3.0.0
+  # Runs sqflite against a real SQLite engine on the test host (no device/emulator needed)
+  sqflite_common_ffi: ^2.3.0
+  # Mocking for tests
+  mockito: ^5.4.4
+  build_runner: ^2.4.8
+
+flutter:
+  uses-material-design: true
