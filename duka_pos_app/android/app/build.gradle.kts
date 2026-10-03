@@ -42,6 +42,23 @@ android {
         // flag during build.
         versionCode = flutter.versionCode
         versionName = flutter.versionName
+
+        // The AppAuth library's own manifest declares its callback activity with
+        // `android:scheme="${appAuthRedirectScheme}"`. The app must supply that
+        // placeholder or manifest merging fails outright:
+        //   :app:processDebugMainManifest — "requires a placeholder substitution
+        //   but no value for <appAuthRedirectScheme> is provided"
+        //
+        // It must be the scheme of OIDC_REDIRECT_URL (see lib/services/
+        // oidc_service.dart and the release workflow's OIDC_REDIRECT_URL secret),
+        // lowercase, and must match the redirect registered on the Keycloak
+        // client. The default below matches OIDC_REDIRECT_URL's own default.
+        //
+        // Overridable with -PappAuthRedirectScheme=... so changing the redirect
+        // scheme does not require editing this file, and so the release workflow
+        // can keep the two in step.
+        manifestPlaceholders["appAuthRedirectScheme"] =
+            providers.gradleProperty("appAuthRedirectScheme").getOrElse("dukapos")
     }
 
     signingConfigs {

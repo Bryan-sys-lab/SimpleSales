@@ -207,8 +207,8 @@ jobs:
           SENTRY_DSN: ${{ secrets.SENTRY_DSN }}
           BACKEND_URL: ${{ secrets.BACKEND_URL }}
           OIDC_ISSUER_URL: ${{ secrets.OIDC_ISSUER_URL }}
-          OIDC_CLIENT_ID: ${{ secrets.OIDC_CLIENT_ID }}
           OIDC_REDIRECT_URL: ${{ secrets.OIDC_REDIRECT_URL }}
+          OIDC_CLIENT_ID: ${{ secrets.OIDC_CLIENT_ID }}
           OIDC_API_SCOPE: ${{ secrets.OIDC_API_SCOPE }}
         run: |
           set -euo pipefail
@@ -244,8 +244,27 @@ jobs:
           add_define OIDC_REDIRECT_URL "$OIDC_REDIRECT_URL"
           add_define OIDC_API_SCOPE "$OIDC_API_SCOPE"
 
+          # The manifest placeholder and the dart-define have to agree on the
+          # scheme: AppAuth's manifest filters the callback on
+          # ${appAuthRedirectScheme} while OidcService passes OIDC_REDIRECT_URL
+          # to the authorization request. Deriving both from the one secret
+          # removes the drift where sign-in silently never returns to the app.
+          gradle_args=()
+          if [ -n "${OIDC_REDIRECT_URL}" ]; then
+            redirect_scheme="${OIDC_REDIRECT_URL%%:*}"
+            redirect_scheme="$(printf '%s' "$redirect_scheme" | tr '[:upper:]' '[:lower:]')"
+            if [ -z "$redirect_scheme" ]; then
+              echo "::error::Could not read a scheme out of OIDC_REDIRECT_URL='${OIDC_REDIRECT_URL}'."
+              exit 1
+            fi
+            echo "Callback scheme: ${redirect_scheme}"
+            gradle_args+=("--android-project-arg=appAuthRedirectScheme=${redirect_scheme}")
+          else
+            echo "::warning::OIDC_REDIRECT_URL is not set; the manifest keeps its built-in default scheme."
+          fi
+
           echo "dart-defines injected: ${#defines[@]}"
-          flutter build apk --release ${defines[@]+"${defines[@]}"}
+          flutter build apk --release ${gradle_args[@]+"${gradle_args[@]}"} ${defines[@]+"${defines[@]}"}
 
           test -f "$apk" || { echo "::error::Expected APK not found at $apk"; exit 1; }
 
