@@ -2,6 +2,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:sqflite_common_ffi/sqflite_ffi.dart';
 import 'package:duka_pos/db/database_helper.dart';
 import 'package:duka_pos/models/models.dart';
+import 'package:duka_pos/utils/money.dart';
 
 void main() {
   setUpAll(() {
@@ -74,8 +75,8 @@ void main() {
       final product = Product(
         name: 'Test Product',
         category: 'Wine',
-        costPrice: 500.0,
-        sellPrice: 750.0,
+        costPrice: Money.fromMajor(500.0),
+        sellPrice: Money.fromMajor(750.0),
         stockQty: 10,
         reorderLevel: 5,
         updatedAt: DateTime.now().toIso8601String(),
@@ -87,15 +88,15 @@ void main() {
       expect(products.length, equals(1));
       expect(products.first.name, equals('Test Product'));
       expect(products.first.stockQty, equals(10));
-      expect(products.first.sellPrice, equals(750.0));
+      expect(products.first.sellPrice.minorUnits, 75000);
     });
 
     test('Record cash sale and decrement stock', () async {
       final product = Product(
         name: 'AAA Test Wine',
         category: 'Wine',
-        costPrice: 500.0,
-        sellPrice: 750.0,
+        costPrice: Money.fromMajor(500.0),
+        sellPrice: Money.fromMajor(750.0),
         stockQty: 10,
         reorderLevel: 5,
         updatedAt: DateTime.now().toIso8601String(),
@@ -111,8 +112,8 @@ void main() {
             productId: productId,
             productName: 'AAA Test Wine',
             qty: 2,
-            unitPrice: 750.0,
-            unitCost: 500.0,
+            unitPrice: Money.fromMajor(750.0),
+            unitCost: Money.fromMajor(500.0),
           ),
         ],
         paymentMethod: 'cash',
@@ -126,16 +127,137 @@ void main() {
 
       final sales = await db.getSales();
       expect(sales.length, equals(1));
-      expect(sales.first.total, equals(1500.0));
-      expect(sales.first.profit, equals(500.0));
+      expect(sales.first.total.minorUnits, 150000);
+      expect(sales.first.profit.minorUnits, 50000);
+    });
+
+    // The guard that was changed to compare rounded amounts. These pin both
+    // halves: a real shortfall is still refused, and a customer paying exactly
+    // the figure on screen is no longer rejected because the float sum of the
+    // cart drifted a fraction of a cent above it.
+    group('Sale totals and tendered cash', () {
+      Future<int> productPriced(double price) => db.upsertProduct(Product(
+            name: 'AAA Priced $price',
+            category: 'Wine',
+            costPrice: Money.fromMajor(price),
+            sellPrice: Money.fromMajor(price),
+            stockQty: 100,
+            reorderLevel: 5,
+            updatedAt: DateTime.now().toIso8601String(),
+          ));
+
+      test('accepts a customer paying exactly the displayed total', () async {
+        // 0.92 + 0.99 is 1.9100000000000001 as a raw double sum.
+        final a = await productPriced(0.92);
+        final b = await productPriced(0.99);
+
+        final saleId = await db.recordSale(
+          staffName: 'Test Staff',
+          items: [
+            SaleItem(
+                saleId: 0,
+                productId: a,
+                productName: 'AAA Priced 0.92',
+                qty: 1,
+                unitPrice: Money.fromMajor(0.92),
+                unitCost: Money.fromMajor(0.92)),
+            SaleItem(
+                saleId: 0,
+                productId: b,
+                productName: 'AAA Priced 0.99',
+                qty: 1,
+                unitPrice: Money.fromMajor(0.99),
+                unitCost: Money.fromMajor(0.99)),
+          ],
+          paymentMethod: 'cash',
+          // Exactly what the cashier read off the screen.
+          amountTendered: Money.fromMajor(1.91),
+        );
+
+        expect(saleId, greaterThan(0));
+        final sale = (await db.getSales()).firstWhere((s) => s.id == saleId);
+        expect(sale.total.minorUnits, 191);
+        expect(sale.amountTendered.minorUnits, 191);
+        expect(sale.changeGiven.minorUnits, 0);
+      });
+
+      test('the recorded total equals the sum of the recorded lines', () async {
+        final a = await productPriced(12.5);
+        final b = await productPriced(0.1);
+        final c = await productPriced(33.33);
+        final d = await productPriced(7.77);
+
+        final saleId = await db.recordSale(
+          staffName: 'Test Staff',
+          items: [
+            SaleItem(
+                saleId: 0,
+                productId: a,
+                productName: 'A',
+                qty: 2,
+                unitPrice: Money.fromMajor(12.5),
+                unitCost: Money.fromMajor(5)),
+            SaleItem(
+                saleId: 0,
+                productId: b,
+                productName: 'B',
+                qty: 3,
+                unitPrice: Money.fromMajor(0.1),
+                unitCost: Money.fromMajor(0.05)),
+            SaleItem(
+                saleId: 0,
+                productId: c,
+                productName: 'C',
+                qty: 1,
+                unitPrice: Money.fromMajor(33.33),
+                unitCost: Money.fromMajor(20)),
+            SaleItem(
+                saleId: 0,
+                productId: d,
+                productName: 'D',
+                qty: 1,
+                unitPrice: Money.fromMajor(7.77),
+                unitCost: Money.fromMajor(4)),
+          ],
+          paymentMethod: 'cash',
+          amountTendered: Money.fromMajor(100),
+        );
+
+        final sale = (await db.getSales()).firstWhere((s) => s.id == saleId);
+        final lineSum = sumMoney(sale.items.map((it) => it.total));
+        expect(sale.total, lineSum,
+            reason: 'the identity an auditor checks a till against');
+        expect(sale.changeGiven, Money.fromMajor(100) - sale.total);
+      });
+
+      test('still refuses to sell for less than the total', () async {
+        final a = await productPriced(500);
+        await expectLater(
+          db.recordSale(
+            staffName: 'Test Staff',
+            items: [
+              SaleItem(
+                  saleId: 0,
+                  productId: a,
+                  productName: 'AAA Priced 500.0',
+                  qty: 1,
+                  unitPrice: Money.fromMajor(500),
+                  unitCost: Money.fromMajor(300)),
+            ],
+            paymentMethod: 'cash',
+            amountTendered: Money.fromMajor(499.99),
+          ),
+          throwsA(isA<StateError>()),
+        );
+      });
     });
 
     test('Prevent overselling', () async {
       final product = Product(
         name: 'AAA Limited Stock',
         category: 'Wine',
-        costPrice: 500.0,
-        sellPrice: 750.0,
+        costPrice: Money.fromMajor(500.0),
+        sellPrice: Money.fromMajor(750.0),
         stockQty: 2,
         reorderLevel: 5,
         updatedAt: DateTime.now().toIso8601String(),
@@ -152,8 +274,8 @@ void main() {
               productId: productId,
               productName: 'AAA Limited Stock',
               qty: 5,
-              unitPrice: 750.0,
-              unitCost: 500.0,
+              unitPrice: Money.fromMajor(750.0),
+              unitCost: Money.fromMajor(500.0),
             ),
           ],
         ),
@@ -169,8 +291,8 @@ void main() {
       final p1 = Product(
         name: 'Product A',
         category: 'Wine',
-        costPrice: 100.0,
-        sellPrice: 150.0,
+        costPrice: Money.fromMajor(100.0),
+        sellPrice: Money.fromMajor(150.0),
         stockQty: 10,
         reorderLevel: 5,
         updatedAt: DateTime.now().toIso8601String(),
@@ -179,8 +301,8 @@ void main() {
       final p2 = Product(
         name: 'Product B',
         category: 'Wine',
-        costPrice: 200.0,
-        sellPrice: 300.0,
+        costPrice: Money.fromMajor(200.0),
+        sellPrice: Money.fromMajor(300.0),
         stockQty: 2,
         reorderLevel: 5,
         updatedAt: DateTime.now().toIso8601String(),
@@ -198,16 +320,16 @@ void main() {
               productId: id1,
               productName: 'Product A',
               qty: 3,
-              unitPrice: 150.0,
-              unitCost: 100.0,
+              unitPrice: Money.fromMajor(150.0),
+              unitCost: Money.fromMajor(100.0),
             ),
             SaleItem(
               saleId: 0,
               productId: id2,
               productName: 'Product B',
               qty: 5,
-              unitPrice: 300.0,
-              unitCost: 200.0,
+              unitPrice: Money.fromMajor(300.0),
+              unitCost: Money.fromMajor(200.0),
             ),
           ],
         ),
@@ -226,8 +348,8 @@ void main() {
       final product = Product(
         name: 'AAA Test Product',
         category: 'Wine',
-        costPrice: 500.0,
-        sellPrice: 750.0,
+        costPrice: Money.fromMajor(500.0),
+        sellPrice: Money.fromMajor(750.0),
         stockQty: 10,
         reorderLevel: 5,
         updatedAt: DateTime.now().toIso8601String(),
@@ -266,8 +388,8 @@ void main() {
       final productId = await db.upsertProduct(Product(
         name: 'AAA Limited Stock',
         category: 'Wine',
-        costPrice: 100,
-        sellPrice: 150,
+        costPrice: Money.fromMajor(100),
+        sellPrice: Money.fromMajor(150),
         stockQty: 2,
         reorderLevel: 1,
         updatedAt: DateTime.now().toIso8601String(),
@@ -298,8 +420,8 @@ void main() {
               productId: 99999,
               productName: 'Missing product',
               qty: 1,
-              unitPrice: 100,
-              unitCost: 50,
+              unitPrice: Money.fromMajor(100),
+              unitCost: Money.fromMajor(50),
             )
           ],
         ),
@@ -332,8 +454,8 @@ void main() {
       final id = await db.upsertProduct(Product(
         name: 'AAA Portion Wine',
         category: 'Wine',
-        costPrice: 100,
-        sellPrice: 200,
+        costPrice: Money.fromMajor(100),
+        sellPrice: Money.fromMajor(200),
         stockQty: 4,
         reorderLevel: 1,
         bottleMl: 750,
@@ -348,8 +470,8 @@ void main() {
             productId: id,
             productName: 'AAA Portion Wine',
             qty: 1,
-            unitPrice: 200,
-            unitCost: 100,
+            unitPrice: Money.fromMajor(200),
+            unitCost: Money.fromMajor(100),
             portion: 'full',
             portionMl: 750,
           ),
@@ -358,8 +480,8 @@ void main() {
             productId: id,
             productName: 'AAA Portion Wine',
             qty: 1,
-            unitPrice: 100,
-            unitCost: 50,
+            unitPrice: Money.fromMajor(100),
+            unitCost: Money.fromMajor(50),
             portion: 'half',
             portionMl: 375,
           ),
@@ -380,8 +502,8 @@ void main() {
         id: 4242,
         name: 'Restored Product',
         category: 'General',
-        costPrice: 10,
-        sellPrice: 20,
+        costPrice: Money.fromMajor(10),
+        sellPrice: Money.fromMajor(20),
         stockQty: 5,
         reorderLevel: 2,
         updatedAt: DateTime.now().toIso8601String(),
@@ -398,8 +520,8 @@ void main() {
           Product(
             name: 'Batch A',
             category: 'General',
-            costPrice: 1,
-            sellPrice: 2,
+            costPrice: Money.fromMajor(1),
+            sellPrice: Money.fromMajor(2),
             stockQty: 1,
             reorderLevel: 1,
             updatedAt: DateTime.now().toIso8601String(),
@@ -409,8 +531,8 @@ void main() {
             // an invalid name length must not be persisted silently.
             name: 'B' * 500,
             category: 'General',
-            costPrice: 1,
-            sellPrice: 2,
+            costPrice: Money.fromMajor(1),
+            sellPrice: Money.fromMajor(2),
             stockQty: 1,
             reorderLevel: 1,
             updatedAt: DateTime.now().toIso8601String(),
@@ -429,8 +551,8 @@ void main() {
       final productId = await db.upsertProduct(Product(
         name: 'AAA Audit Wine',
         category: 'Wine',
-        costPrice: 50,
-        sellPrice: 100,
+        costPrice: Money.fromMajor(50),
+        sellPrice: Money.fromMajor(100),
         stockQty: 10,
         reorderLevel: 1,
         updatedAt: DateTime.now().toIso8601String(),
@@ -450,8 +572,8 @@ void main() {
             productId: productId,
             productName: 'AAA Audit Wine',
             qty: 1,
-            unitPrice: 100,
-            unitCost: 50,
+            unitPrice: Money.fromMajor(100),
+            unitCost: Money.fromMajor(50),
           )
         ],
       );
@@ -472,7 +594,7 @@ void main() {
     test('Pending M-Pesa payments block a second charge', () async {
       await db.recordPendingPayment(
         reference: 'DUKA-abc',
-        amount: 500,
+        amount: Money.fromMajor(500),
         cartJson: '[]',
         phoneNumber: '0712345678',
       );
@@ -550,7 +672,7 @@ void main() {
       );
       expect(product, isNotNull);
       expect(product!.name, 'White Wine');
-      expect(product.costPrice, 100);
+      expect(product.costPrice.minorUnits, 10000);
       expect(product.bottleMl, 750);
     });
 
@@ -568,8 +690,8 @@ void main() {
       final product = Product(
         name: 'Test',
         category: 'Wine',
-        costPrice: 500.0,
-        sellPrice: 750.0,
+        costPrice: Money.fromMajor(500.0),
+        sellPrice: Money.fromMajor(750.0),
         stockQty: 10,
         reorderLevel: 5,
         updatedAt: DateTime.now().toIso8601String(),
@@ -582,8 +704,8 @@ void main() {
       final product1 = Product(
         name: 'Low Stock',
         category: 'Wine',
-        costPrice: 500.0,
-        sellPrice: 750.0,
+        costPrice: Money.fromMajor(500.0),
+        sellPrice: Money.fromMajor(750.0),
         stockQty: 3,
         reorderLevel: 5,
         updatedAt: DateTime.now().toIso8601String(),
@@ -592,8 +714,8 @@ void main() {
       final product2 = Product(
         name: 'Good Stock',
         category: 'Wine',
-        costPrice: 500.0,
-        sellPrice: 750.0,
+        costPrice: Money.fromMajor(500.0),
+        sellPrice: Money.fromMajor(750.0),
         stockQty: 10,
         reorderLevel: 5,
         updatedAt: DateTime.now().toIso8601String(),

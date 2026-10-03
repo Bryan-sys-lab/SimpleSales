@@ -17,7 +17,13 @@ if (hasReleaseSigning) {
 android {
     namespace = "com.dukapos.duka_pos"
     compileSdk = flutter.compileSdkVersion
-    ndkVersion = "27.1.12297006"
+    // Flutter's recommended NDK for this SDK version, which is also what every
+    // plugin in the tree expects — `jni`, `sentry_flutter`, `sqflite_android` and
+    // nine others all pin this revision. Flutter's own diagnostic is to use the
+    // highest version asked for, since they are backward compatible; the earlier
+    // 27.1 pin made the build warn about a dozen plugins and still required a
+    // second NDK locally.
+    ndkVersion = "28.2.13676358"
 
     compileOptions {
         sourceCompatibility = JavaVersion.VERSION_17
@@ -36,6 +42,23 @@ android {
         // flag during build.
         versionCode = flutter.versionCode
         versionName = flutter.versionName
+
+        // The AppAuth library's own manifest declares its callback activity with
+        // `android:scheme="${appAuthRedirectScheme}"`. The app must supply that
+        // placeholder or manifest merging fails outright:
+        //   :app:processDebugMainManifest — "requires a placeholder substitution
+        //   but no value for <appAuthRedirectScheme> is provided"
+        //
+        // It must be the scheme of OIDC_REDIRECT_URL (see lib/services/
+        // oidc_service.dart and the release workflow's OIDC_REDIRECT_URL secret),
+        // lowercase, and must match the redirect registered on the Keycloak
+        // client. The default below matches OIDC_REDIRECT_URL's own default.
+        //
+        // Overridable with -PappAuthRedirectScheme=... so changing the redirect
+        // scheme does not require editing this file, and so the release workflow
+        // can keep the two in step.
+        manifestPlaceholders["appAuthRedirectScheme"] =
+            providers.gradleProperty("appAuthRedirectScheme").getOrElse("dukapos")
     }
 
     signingConfigs {

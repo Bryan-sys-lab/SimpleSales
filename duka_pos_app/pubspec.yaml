@@ -1,7 +1,14 @@
 name: duka_pos
 description: Offline-first POS with M-Pesa payments and inventory management.
 publish_to: 'none'
-version: 1.0.0+1
+# The build number must increase on every release: Android refuses to install a
+# build whose code is not higher than the installed one.
+#
+# 1.0.1 because schema v11 changes how money is stored (REAL shillings became
+# INTEGER minor units). A till upgrading in place runs the migration on first
+# launch, so the app must ship as a version the user can actually install over
+# the build they are testing with today.
+version: 1.0.1+3
 
 environment:
   sdk: '>=3.0.0 <4.0.0'
@@ -49,7 +56,11 @@ dependencies:
   flutter_secure_storage: ^11.2.0
 
   # Crash reporting (Sentry - no Firebase required)
-  sentry_flutter: ^8.14.2
+  # 8.x compiles Kotlin with language version 1.6, which the Kotlin 2.4 compiler
+  # this project pins rejects outright ("Language version 1.6 is no longer
+  # supported"), failing :sentry_flutter:compileDebugKotlin. 9.x is the line
+  # that supports Kotlin 2.x.
+  sentry_flutter: ^9.30.1
   
   # Update checker (for sideloaded APKs)
   package_info_plus: ^10.2.1

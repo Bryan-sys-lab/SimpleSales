@@ -48,14 +48,13 @@ class _HomeShellState extends State<HomeShell> {
   Widget build(BuildContext context) {
     final state = context.watch<AppState>();
     final isOwner = state.isAdmin;
-    final isCashier = state.currentRole == 'cashier';
 
     final tabs = <_Tab>[
       _Tab('Dashboard', Icons.dashboard_outlined, const DashboardScreen()),
       _Tab('Sell', Icons.point_of_sale_outlined, const SellScreen()),
-      if (!isCashier)
+      if (state.canManageStock)
         _Tab('Inventory', Icons.inventory_2_outlined, const InventoryScreen()),
-      if (!isCashier)
+      if (state.canManageStock)
         _Tab('Reports', Icons.bar_chart_outlined, const ReportsScreen()),
       if (isOwner)
         _Tab('Settings', Icons.settings_outlined, const SettingsScreen()),

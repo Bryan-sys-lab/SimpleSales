@@ -1,0 +1,24 @@
+# The backend lives on its own `backend` branch and is not part of `main`.
+# Its working-tree copy on this branch is a checkout leftover, not source.
+# (node_modules/.env/dist are covered by duka_pos_backend/.gitignore on the
+# backend branch itself.)
+/duka_pos_backend/
+
+# Local agent tooling and vendored third-party skills — machine-local only,
+# never part of the project source. Provenance lives in
+# .kilo/skills/ATTRIBUTION.md on disk.
+/.kilo/
+
+# OS / editor noise
+.DS_Store
+Thumbs.db
+*.swp
+
+# Signing material — defence in depth. duka_pos_app/android/.gitignore already
+# covers these; the rules are repeated at the repo root so a keystore generated
+# anywhere else in the tree (a scratch copy, a keytool run from the home
+# directory) is still refused by git. Losing this material is unrecoverable for
+# app updates: a new key means every shop device must reinstall and re-pair.
+*.jks
+*.keystore
+key.properties

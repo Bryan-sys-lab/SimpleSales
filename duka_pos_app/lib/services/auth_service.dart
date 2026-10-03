@@ -55,6 +55,14 @@ class AuthService {
   static const _legacySaltKey = 'duka_pos_pin_salt';
   static const _lockoutPrefix = 'duka_pin_lockout_v2_';
 
+  /// Storage key for the till-wide throttle.
+  ///
+  /// Intentionally outside the [_lockoutPrefix] namespace. A per-user key is
+  /// `$_lockoutPrefix<staff name>`, and a staff name is arbitrary user input,
+  /// so any key shaped like a name risks colliding with this one and letting a
+  /// shop's throttle double as one cashier's lockout record.
+  static const _tillThrottleKey = 'duka_till_pin_throttle_v2';
+
   /// High enough to make an offline attack on a 4-digit keyspace expensive,
   /// low enough that verifying a PIN stays imperceptible on a budget phone.
   static const int defaultIterations = 120000;
@@ -111,7 +119,12 @@ class AuthService {
           Pbkdf2Request(pin, salt, iterations, expected.length * 8));
       return _constantTimeEquals(derived, expected);
     }
-    return await _legacyHash(pin) == storedHash;
+    // Constant-time for the legacy path too. A plain `==` on the hex digest
+    // short-circuits on the first differing character, which leaks how much of
+    // a guess was correct; comparing the raw bytes keeps every legacy check as
+    // opaque as the PBKDF2 one.
+    return _constantTimeEquals(
+        utf8.encode(await _legacyHash(pin)), utf8.encode(storedHash));
   }
 
   /// Derives on a background isolate when one is available.
@@ -184,6 +197,24 @@ class AuthService {
   static Future<bool> isLockedOut(String userKey) async =>
       _isLockedOut(await _readLockout(userKey));
 
+  /// True when *any* sign-in attempt is currently refused, regardless of which
+  /// user was selected.
+  ///
+  /// Per-user lockout on its own is not a real defence on a shared till: the
+  /// PIN pad asks who is signing in *before* the PIN is entered, so an attacker
+  /// with physical access simply spreads attempts across the roster — five
+  /// tries each against Alice, then Bob, then Carol — and never trips any one
+  /// user's limit. With a 4-digit keyspace that turns a 10,000-value space
+  /// into a handful of tries per person per cycle, repeating indefinitely.
+  ///
+  /// This counts every failure no matter which user was chosen, so the whole
+  /// till throttles together.
+  static Future<bool> isTillLockedOut() async =>
+      _isLockedOut(await _readRecord(_tillThrottleKey));
+
+  static Future<Duration?> tillLockoutRemaining() async =>
+      _remaining(await _readRecord(_tillThrottleKey));
+
   static bool _isLockedOut(Map<String, dynamic>? record) {
     if (record == null) return false;
     final count = record['count'] as int? ?? 0;
@@ -194,8 +225,7 @@ class AuthService {
     return DateTime.now().difference(last) < window;
   }
 
-  static Future<Duration?> lockoutRemaining(String userKey) async {
-    final record = await _readLockout(userKey);
+  static Duration? _remaining(Map<String, dynamic>? record) {
     if (!_isLockedOut(record)) return null;
     final last = DateTime.tryParse(record!['last'] as String? ?? '');
     if (last == null) return null;
@@ -204,8 +234,19 @@ class AuthService {
     return remaining.isNegative ? null : remaining;
   }
 
+  static Future<Duration?> lockoutRemaining(String userKey) async =>
+      _remaining(await _readLockout(userKey));
+
+  /// Records one failed attempt against both [userKey] and the till as a whole.
+  /// Call sites only ever need this one method: forgetting the till-wide half
+  /// at a call site would silently reopen the bypass it exists to close.
   static Future<void> recordFailure(String userKey) async {
-    final record = (await _readLockout(userKey)) ??
+    await _registerFailure('$_lockoutPrefix$userKey');
+    await _registerFailure(_tillThrottleKey);
+  }
+
+  static Future<void> _registerFailure(String storageKey) async {
+    final record = (await _readRecord(storageKey)) ??
         <String, dynamic>{'count': 0, 'window': lockoutDuration.inSeconds};
     final count = (record['count'] as int) + 1;
     // Exponential backoff: 30s, 60s, 120s ... capped at 30 minutes, so a
@@ -215,17 +256,29 @@ class AuthService {
       lockoutDuration.inSeconds * pow(2, exponent).toInt(),
       maxLockoutDuration.inSeconds,
     );
-    await _writeLockout(userKey, {
+    await _writeRecord(storageKey, {
       'count': count,
       'window': windowSeconds,
       'last': DateTime.now().toIso8601String(),
     });
   }
 
-  static Future<void> recordSuccess(String userKey) => _clearLockout(userKey);
+  /// Clears both the user and the till counters.
+  ///
+  /// Clearing on success is safe against the bypass it guards: reaching this
+  /// path requires a PIN that already verified, and anyone holding a working PIN
+  /// has no reason to keep guessing. Without this, one mistyped PIN from a
+  /// legitimate cashier would eventually lock the whole shop out of its till.
+  static Future<void> recordSuccess(String userKey) async {
+    await _clearRecord('$_lockoutPrefix$userKey');
+    await _clearRecord(_tillThrottleKey);
+  }
 
-  static Future<Map<String, dynamic>?> _readLockout(String userKey) async {
-    final raw = await _storage.read(key: '$_lockoutPrefix$userKey');
+  static Future<Map<String, dynamic>?> _readLockout(String userKey) async =>
+      _readRecord('$_lockoutPrefix$userKey');
+
+  static Future<Map<String, dynamic>?> _readRecord(String storageKey) async {
+    final raw = await _storage.read(key: storageKey);
     if (raw == null) return null;
     try {
       final decoded = jsonDecode(raw);
@@ -235,10 +288,10 @@ class AuthService {
     }
   }
 
-  static Future<void> _writeLockout(
-          String userKey, Map<String, dynamic> value) =>
-      _storage.write(key: '$_lockoutPrefix$userKey', value: jsonEncode(value));
+  static Future<void> _writeRecord(
+          String storageKey, Map<String, dynamic> value) =>
+      _storage.write(key: storageKey, value: jsonEncode(value));
 
-  static Future<void> _clearLockout(String userKey) =>
-      _storage.delete(key: '$_lockoutPrefix$userKey');
+  static Future<void> _clearRecord(String storageKey) =>
+      _storage.delete(key: storageKey);
 }

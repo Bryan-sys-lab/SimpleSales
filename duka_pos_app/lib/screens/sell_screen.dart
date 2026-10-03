@@ -140,7 +140,7 @@ class _SellScreenState extends State<SellScreen> {
       builder: (ctx) => AlertDialog(
         title: const Text('Payment still unconfirmed'),
         content: Text(
-            'Reference $reference${amount is num ? ' for ${formatMoney(amount.toDouble())}' : ''} has not been confirmed by the provider. '
+            'Reference $reference${amount is num ? ' for ${formatMoney(Money.fromMajor(amount))}' : ''} has not been confirmed by the provider. '
             'Do not charge the customer again. Check again now, or record the sale later from Reports.'),
         actions: [
           TextButton(
@@ -184,8 +184,8 @@ class _SellScreenState extends State<SellScreen> {
           productId: (line['productId'] as num?)?.toInt() ?? 0,
           productName: line['productName'] as String? ?? '',
           qty: (line['qty'] as num?)?.toDouble() ?? 0,
-          unitPrice: (line['unitPrice'] as num?)?.toDouble() ?? 0,
-          unitCost: (line['unitCost'] as num?)?.toDouble() ?? 0,
+          unitPrice: Money.fromMinor((line['unitPrice'] as num?)?.toInt() ?? 0),
+          unitCost: Money.fromMinor((line['unitCost'] as num?)?.toInt() ?? 0),
           portion: line['portion'] as String? ?? 'full',
           portionMl: (line['portionMl'] as num?)?.toInt() ?? 0,
         ));
@@ -270,7 +270,7 @@ class _SellScreenState extends State<SellScreen> {
   }
 
   Widget _portionOption(BuildContext context, Product product, String portion,
-      String label, double price) {
+      String label, Money price) {
     final needed = product.fractionFor(portion);
     final available = product.stockQty - _cartUnitsFor(product);
     final canAdd = available >= needed;
@@ -301,7 +301,9 @@ class _SellScreenState extends State<SellScreen> {
     });
   }
 
-  double get _total => _cart.fold(0, (sum, item) => sum + item.total);
+  /// Summing integer cents, the same way [DatabaseHelper.recordSale] does, so the
+/// figure on screen is exactly the figure written to the ledger.
+Money get _total => sumMoney(_cart.map((item) => item.total));
 
   static const _offlinePaymentLabels = <String, String>{
     'cash': 'Cash',
@@ -313,7 +315,7 @@ class _SellScreenState extends State<SellScreen> {
   Future<void> _checkoutOffline() async {
     if (_cart.isEmpty || _processingPayment) return;
     final amountController =
-        TextEditingController(text: _total.toStringAsFixed(2));
+        TextEditingController(text: _total.asMajor.toStringAsFixed(2));
     final referenceController = TextEditingController();
     var method = 'cash';
     final result = await showDialog<Map<String, String>>(
@@ -370,11 +372,11 @@ class _SellScreenState extends State<SellScreen> {
                 child: const Text('Cancel')),
             FilledButton(
               onPressed: () {
-                final amount = double.tryParse(amountController.text.trim());
+                final typed = double.tryParse(amountController.text.trim());
+                final amount = typed == null ? null : Money.fromMajor(typed);
                 if (amount == null ||
-                    !amount.isFinite ||
                     amount < _total ||
-                    (method != 'cash' && (amount - _total).abs() > 0.01)) {
+                    (method != 'cash' && (amount - _total).minorUnits.abs() > 1)) {
                   ScaffoldMessenger.of(dialogContext).showSnackBar(SnackBar(
                     content: Text(method == 'cash'
                         ? 'Amount received must be at least ${formatMoney(_total)}.'
@@ -384,7 +386,7 @@ class _SellScreenState extends State<SellScreen> {
                 }
                 Navigator.pop(dialogContext, {
                   'method': method,
-                  'amount': amount.toString(),
+                  'amount': amount.minorUnits.toString(),
                   'reference': referenceController.text.trim(),
                 });
               },
@@ -399,7 +401,7 @@ class _SellScreenState extends State<SellScreen> {
     if (result == null || !mounted) return;
     await _checkout(
       result['method']!,
-      amountTendered: double.parse(result['amount']!),
+      amountTendered: Money.fromMinor(int.parse(result['amount']!)),
       paymentReference:
           result['reference']!.isEmpty ? null : result['reference'],
     );
@@ -407,7 +409,7 @@ class _SellScreenState extends State<SellScreen> {
 
   Future<void> _checkout(
     String paymentMethod, {
-    required double amountTendered,
+    required Money amountTendered,
     String? paymentReference,
   }) async {
     if (_cart.isEmpty || _processingPayment) return;
@@ -455,7 +457,7 @@ class _SellScreenState extends State<SellScreen> {
         _announceStatus('Sale recorded: ${formatMoney(_total)}');
         final change = amountTendered - _total;
         ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-          content: Text(change > 0.009
+          content: Text(!change.isNegative
               ? 'Sale recorded: ${formatMoney(_total)} · Change ${formatMoney(change)}'
               : 'Sale recorded: ${formatMoney(_total)}'),
         ));
@@ -603,8 +605,13 @@ class _SellScreenState extends State<SellScreen> {
                 'productId': c.product.id,
                 'productName': c.product.name,
                 'qty': c.qty,
-                'unitPrice': c.unitPrice,
-                'unitCost': c.unitCost,
+                // Minor units, not the Money object. jsonEncode throws on
+                // anything it cannot encode, so writing `c.unitPrice` here
+                // failed outright — and it failed *after* the payment had been
+                // initiated, which is the worst possible moment to lose the
+                // record of a sale whose money already moved.
+                'unitPrice': c.unitPrice.minorUnits,
+                'unitCost': c.unitCost.minorUnits,
                 'portion': c.portion,
                 'portionMl': c.product.mlFor(c.portion),
               })
@@ -1014,8 +1021,15 @@ class CartItem {
 
   double get fraction => product.fractionFor(portion);
   double get stockUnits => qty * fraction;
-  double get unitPrice => product.priceFor(portion);
-  double get unitCost => product.costPrice * fraction;
+
+  /// Money. A portion of a bottle is priced in whole cents and the portion of
+  /// the *cost* is scaled the same way, so profit on a half bottle is derived
+  /// from real amounts rather than from a float approximation of one.
+  Money get unitPrice => product.priceFor(portion);
+  Money get unitCost => product.costPrice.times(fraction);
   String get portionLabel => portion[0].toUpperCase() + portion.substring(1);
-  double get total => unitPrice * qty;
+
+  /// The one rounding point per line: [qty] is a quantity and may be fractional,
+  /// so the product is quantised here rather than at every intermediate step.
+  Money get total => unitPrice.times(qty);
 }
