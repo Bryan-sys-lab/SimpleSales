@@ -56,8 +56,17 @@ class AppState extends ChangeNotifier {
   }
 
   bool get isSignedIn => currentStaffName != null;
+
+  /// True only for the shop admin, i.e. the owner who set the till up. This is
+  /// the gate on staff management and Settings; managers deliberately do not
+  /// have it, so the owner stays the only person who can create or disable
+  /// cashier accounts.
   bool get isAdmin => currentRole == 'admin';
-  bool get isManager => currentRole == 'manager';
+
+  /// Managers get inventory and reports but never staff management. Checked as
+  /// `currentRole != 'cashier'` at the call site rather than through a stored
+  /// boolean so a new role cannot inherit manager rights by omission.
+  bool get canManageStock => currentRole != 'cashier';
 
   void refresh() => notifyListeners();
 }

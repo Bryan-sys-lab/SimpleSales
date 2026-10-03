@@ -8,7 +8,12 @@ import '../services/backend_service.dart';
 import '../services/workspace_service.dart';
 
 class OwnerSetupScreen extends StatefulWidget {
-  const OwnerSetupScreen({super.key});
+  /// Shown as a back affordance when this screen was entered from another one.
+  /// Null when it is the app's only entry point and there is nowhere to go back
+  /// to.
+  final VoidCallback? onCancel;
+
+  const OwnerSetupScreen({super.key, this.onCancel});
   @override
   State<OwnerSetupScreen> createState() => _OwnerSetupScreenState();
 }
@@ -97,6 +102,15 @@ class _OwnerSetupScreenState extends State<OwnerSetupScreen> {
                 mainAxisSize: MainAxisSize.min,
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
+                  if (widget.onCancel != null)
+                    Align(
+                      alignment: AlignmentDirectional.centerStart,
+                      child: TextButton.icon(
+                        onPressed: widget.onCancel,
+                        icon: const Icon(Icons.arrow_back),
+                        label: const Text('Back'),
+                      ),
+                    ),
                   Text('Set up your shop',
                       style: Theme.of(context).textTheme.headlineSmall),
                   const SizedBox(height: 6),

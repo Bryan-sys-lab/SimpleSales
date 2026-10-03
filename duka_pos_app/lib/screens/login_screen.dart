@@ -23,12 +23,21 @@ class _LoginScreenState extends State<LoginScreen> {
     _load();
   }
 
+  static const _ownerValue = '__owner__';
+
   Future<void> _load() async {
+    // Read before the await, never after it: context must not cross an async
+    // gap, and the owner cannot change while this screen is being built — the
+    // router only reaches the PIN pad once a shop exists.
+    final owner = context.read<AppState>().owner;
     final staff = await DatabaseHelper.instance.getStaff();
     if (!mounted) return;
     setState(() {
       _staff = staff;
-      _selected = '__owner__';
+      // Default to the owner only when there is one. A till whose shop record
+      // is missing must still render this screen without dereferencing null.
+      _selected =
+          owner != null ? _ownerValue : (staff.isEmpty ? null : staff.first.name);
     });
   }
 
@@ -48,6 +57,20 @@ class _LoginScreenState extends State<LoginScreen> {
     final state = context.read<AppState>();
     final userKey = _selected ?? '';
 
+    // Till-wide throttle first. Per-user lockout alone can be sidestepped by
+    // switching the selected user between attempts, so the whole till has to be
+    // able to refuse a sign-in regardless of who is picked.
+    if (await AuthService.isTillLockedOut()) {
+      final remaining = await AuthService.tillLockoutRemaining();
+      if (!mounted) return;
+      setState(() {
+        _error =
+            'Too many wrong PINs on this till. Try again in ${remaining?.inSeconds ?? 0}s.';
+        _pin = '';
+      });
+      return;
+    }
+
     if (await AuthService.isLockedOut(userKey)) {
       final remaining = await AuthService.lockoutRemaining(userKey);
       if (!mounted) return;
@@ -60,18 +83,19 @@ class _LoginScreenState extends State<LoginScreen> {
     }
 
     bool ok = false;
-    if (_selected == '__owner__') {
-      ok = await AuthService.verifyPin(_pin, state.owner!.pinHash);
+    final owner = state.owner;
+    if (_selected == _ownerValue && owner != null) {
+      ok = await AuthService.verifyPin(_pin, owner.pinHash);
       if (!mounted) return;
       if (ok) {
         await AuthService.recordSuccess(userKey);
         // Opportunistically re-derive a legacy weak hash on successful sign-in.
-        final hash = state.owner!.pinHash;
+        final hash = owner.pinHash;
         if (AuthService.needsUpgrade(hash)) {
           await DatabaseHelper.instance
               .updateOwnerPin(await AuthService.hashPin(_pin));
         }
-        state.signIn(state.owner!.name, asOwner: true);
+        state.signIn(owner.name, asOwner: true);
         return;
       }
     } else {
@@ -123,9 +147,10 @@ class _LoginScreenState extends State<LoginScreen> {
                   DropdownButtonFormField<String>(
                     initialValue: _selected,
                     items: [
-                      DropdownMenuItem(
-                          value: '__owner__',
-                          child: Text('${state.owner?.name} (Admin)')),
+                      if (state.owner != null)
+                        DropdownMenuItem(
+                            value: _ownerValue,
+                            child: Text('${state.owner!.name} (Admin)')),
                       ..._staff.map((s) => DropdownMenuItem(
                           value: s.name, child: Text('${s.name} (${s.role})'))),
                     ],

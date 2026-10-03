@@ -6,8 +6,9 @@ import 'package:sentry_flutter/sentry_flutter.dart';
 import 'package:sqflite/sqflite.dart';
 import 'package:sqflite_common_ffi_web/sqflite_ffi_web.dart';
 import 'services/app_state.dart';
+import 'services/app_stage.dart';
 import 'services/auto_sync_service.dart';
-import 'screens/owner_setup_screen.dart';
+import 'screens/get_started_screen.dart';
 import 'screens/login_screen.dart';
 import 'screens/home_shell.dart';
 import 'screens/onboarding_screen.dart';
@@ -88,9 +89,14 @@ class DukaPosApp extends StatelessWidget {
   }
 }
 
-/// Decides which of the three top-level screens to show:
-/// no owner yet -> setup; owner exists but nobody signed in -> lock screen;
-/// signed in -> the app itself.
+/// Decides which top-level screen to show.
+///
+/// The order is deliberate and is expressed by [resolveAppStage] rather than
+/// inline: a shop with no signed-in user always reaches the PIN pad, and the
+/// first-run walkthrough only ever appears for the admin after a successful
+/// sign-in. The walkthrough used to be checked first, which trapped every user
+/// — cashiers included — on the welcome screens of any till that had not
+/// dismissed it.
 class RootRouter extends StatefulWidget {
   const RootRouter({super.key});
   @override
@@ -134,18 +140,26 @@ class _RootRouterState extends State<RootRouter> {
 
   @override
   Widget build(BuildContext context) {
-    if (_loading) {
-      return const Scaffold(body: Center(child: CircularProgressIndicator()));
-    }
-    if (_dbFailed) return const _DatabaseErrorScreen();
     final state = context.watch<AppState>();
-    if (state.owner == null) return const OwnerSetupScreen();
-    if (!_onboardingComplete) {
-      return OnboardingScreen(
-          onComplete: () => setState(() => _onboardingComplete = true));
-    }
-    if (!state.isSignedIn) return const LoginScreen();
-    return const HomeShell();
+    final stage = resolveAppStage(
+      isLoading: _loading,
+      hasDatabaseFailure: _dbFailed,
+      hasShop: state.owner != null,
+      isSignedIn: state.isSignedIn,
+      isAdmin: state.isAdmin,
+      onboardingComplete: _onboardingComplete,
+    );
+
+    return switch (stage) {
+      AppStage.loading =>
+        const Scaffold(body: Center(child: CircularProgressIndicator())),
+      AppStage.databaseFailed => const _DatabaseErrorScreen(),
+      AppStage.getStarted => const GetStartedScreen(),
+      AppStage.locked => const LoginScreen(),
+      AppStage.onboarding => OnboardingScreen(
+          onComplete: () => setState(() => _onboardingComplete = true)),
+      AppStage.ready => const HomeShell(),
+    };
   }
 }
 
