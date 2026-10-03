@@ -17,6 +17,9 @@ if (hasReleaseSigning) {
 android {
     namespace = "com.dukapos.duka_pos"
     compileSdk = flutter.compileSdkVersion
+    // This is the NDK *this app* needs. It is not the only one a build may ask
+    // for: `path_provider_android` reaches `jni`, whose own module pins a newer
+    // NDK, so a machine without that second copy fails at :jni — not here.
     ndkVersion = "27.1.12297006"
 
     compileOptions {
