@@ -293,13 +293,16 @@ class _ProductEditorState extends State<_ProductEditor> {
       id: widget.existing?.id,
       name: name,
       category: category,
-      costPrice: cost,
-      sellPrice: price,
+      // Prices arrive from text fields, so they are whole shillings typed by a
+      // human and are quantised once here.
+      costPrice: Money.fromMajor(cost),
+      sellPrice: Money.fromMajor(price),
       stockQty: stock!,
       reorderLevel: reorder!,
       bottleMl: bottleMl!,
-      halfPrice: halfPrice,
-      quarterPrice: quarterPrice,
+      halfPrice: halfPrice == null ? null : Money.fromMajor(halfPrice),
+      quarterPrice:
+          quarterPrice == null ? null : Money.fromMajor(quarterPrice),
       exciseStampBatch: _stamp.text.trim(),
       updatedAt: DateTime.now().toIso8601String(),
       remoteId: widget.existing?.remoteId,

@@ -3,6 +3,7 @@ import 'package:flutter/foundation.dart';
 import 'package:path/path.dart';
 import 'package:sqflite/sqflite.dart';
 import '../models/models.dart';
+import '../utils/money.dart';
 
 /// Single source of truth for local storage. Every screen reads/writes
 /// through here rather than touching sqflite directly, so the schema only
@@ -46,7 +47,26 @@ class DatabaseHelper {
   /// shipped — always add a new one, even for a one-line fix — because a
   /// shop's phone may be several versions behind and needs every step run
   /// in order to land on the current schema without data loss.
-  static const _schemaVersion = 10;
+  static const _schemaVersion = 11;
+
+  /// Test-only: opens an existing database *file* at the current schema
+  /// version, running the real [_onUpgrade].
+  ///
+  /// [openInMemoryForTests] only ever calls [_onCreate], so it cannot exercise a
+  /// migration. This exists so a test can build a database at an older schema
+  /// with known rows, reopen it here, and assert the upgrade preserved the
+  /// data — which is the only way to prove a migration is safe for the tills
+  /// already in the field.
+  @visibleForTesting
+  static Future<Database> openExistingForUpgradeTests(String path) async {
+    return databaseFactory.openDatabase(
+      path,
+      options: OpenDatabaseOptions(
+        version: _schemaVersion,
+        onUpgrade: instance._onUpgrade,
+      ),
+    );
+  }
 
   Future<Database> _initDb() async {
     final dbPath = await getDatabasesPath();
@@ -147,7 +167,7 @@ class DatabaseHelper {
       await db.execute('''CREATE TABLE IF NOT EXISTS pending_payments (
         reference TEXT PRIMARY KEY,
         phone_number TEXT,
-        amount REAL NOT NULL,
+        amount INTEGER NOT NULL,
         cart_json TEXT NOT NULL,
         staff_name TEXT,
         staff_id INTEGER,
@@ -184,10 +204,172 @@ class DatabaseHelper {
         )
         WHERE staff_id IS NULL
           AND staff_name IN (
-            SELECT name FROM staff GROUP BY name HAVING COUNT(*) = 1
+SELECT name FROM staff GROUP BY name HAVING COUNT(*) = 1
           )
       ''');
     }
+    if (oldVersion < 11) {
+      await _migrateMoneyToMinorUnits(db);
+    }
+  }
+
+  /// v10 -> v11: money moves from REAL shillings to INTEGER minor units.
+  ///
+  /// Amounts are held as integer cents so that summing a cart is exact. See
+  /// utils/money.dart for the arithmetic this fixes.
+  ///
+  /// SQLite columns declared REAL have *affinity*, which silently converts an
+  /// inserted integer back to a float, so the money columns cannot be converted
+  /// in place: `UPDATE ... SET cost_price = 1999` on a REAL column stores
+  /// 1999.0 and buys nothing. Each affected table is therefore rebuilt.
+  ///
+  /// The rebuild copies through a temporary table and renames that into place.
+  /// Renaming the original would be simpler, but SQLite 3.25 and later rewrite
+  /// foreign-key clauses that mention the renamed table, which would silently
+  /// repoint `sale_items`' reference at the throwaway name. Copying into a
+  /// name nothing references leaves every FK clause untouched.
+  ///
+  /// `qty` and `stock_qty` are deliberately left REAL: they count bottles, not
+  /// shillings, and a half bottle is a real quantity.
+  Future<void> _migrateMoneyToMinorUnits(Database db) async {
+    // Recorded so an interrupted migration cannot leave a half-converted till.
+    // sqflite runs onUpgrade in a transaction, so this rolls back with the rest.
+    await db.execute('''
+      CREATE TABLE IF NOT EXISTS products_v11 (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        name TEXT NOT NULL,
+        category TEXT,
+        cost_price INTEGER NOT NULL,
+        sell_price INTEGER NOT NULL,
+        stock_qty REAL NOT NULL DEFAULT 0,
+        reorder_level INTEGER NOT NULL DEFAULT 5,
+        bottle_ml INTEGER NOT NULL DEFAULT 750,
+        half_price INTEGER,
+        quarter_price INTEGER,
+        excise_stamp_batch TEXT,
+        active INTEGER NOT NULL DEFAULT 1,
+        updated_at TEXT,
+        remote_id TEXT
+      )
+    ''');
+    await db.execute('''
+      INSERT INTO products_v11
+        (id, name, category, cost_price, sell_price, stock_qty, reorder_level,
+         bottle_ml, half_price, quarter_price, excise_stamp_batch, active,
+         updated_at, remote_id)
+      SELECT
+        id, name, category,
+        CAST(ROUND(cost_price * 100) AS INTEGER),
+        CAST(ROUND(sell_price * 100) AS INTEGER),
+        stock_qty, reorder_level, bottle_ml,
+        CAST(ROUND(half_price * 100) AS INTEGER),
+        CAST(ROUND(quarter_price * 100) AS INTEGER),
+        excise_stamp_batch, active, updated_at, remote_id
+      FROM products
+    ''');
+    await db.execute('DROP TABLE products');
+    await db.execute('ALTER TABLE products_v11 RENAME TO products');
+
+    // sales before sale_items, so the line table's foreign key resolves
+    // against the rebuilt parent.
+    await db.execute('''
+      CREATE TABLE sales_v11 (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        staff_name TEXT NOT NULL,
+        staff_id INTEGER,
+        total INTEGER NOT NULL,
+        profit INTEGER NOT NULL,
+        payment_method TEXT NOT NULL DEFAULT 'cash',
+        payment_reference TEXT,
+        amount_tendered INTEGER NOT NULL DEFAULT 0,
+        change_given INTEGER NOT NULL DEFAULT 0,
+        created_at TEXT NOT NULL
+      )
+    ''');
+    await db.execute('''
+      INSERT INTO sales_v11
+        (id, staff_name, staff_id, total, profit, payment_method,
+         payment_reference, amount_tendered, change_given, created_at)
+      SELECT
+        id, staff_name, staff_id,
+        CAST(ROUND(total * 100) AS INTEGER),
+        CAST(ROUND(profit * 100) AS INTEGER),
+        payment_method, payment_reference,
+        CAST(ROUND(amount_tendered * 100) AS INTEGER),
+        CAST(ROUND(change_given * 100) AS INTEGER),
+        created_at
+      FROM sales
+    ''');
+    await db.execute('DROP TABLE sales');
+    await db.execute('ALTER TABLE sales_v11 RENAME TO sales');
+
+    await db.execute('''
+      CREATE TABLE sale_items_v11 (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        sale_id INTEGER NOT NULL,
+        product_id INTEGER NOT NULL,
+        product_name TEXT NOT NULL,
+        qty REAL NOT NULL,
+        unit_price INTEGER NOT NULL,
+        unit_cost INTEGER NOT NULL,
+        portion TEXT NOT NULL DEFAULT 'full',
+        portion_ml INTEGER NOT NULL DEFAULT 0,
+        FOREIGN KEY (sale_id) REFERENCES sales (id)
+      )
+    ''');
+    await db.execute('''
+      INSERT INTO sale_items_v11
+        (id, sale_id, product_id, product_name, qty, unit_price, unit_cost,
+         portion, portion_ml)
+      SELECT
+        id, sale_id, product_id, product_name, qty,
+        CAST(ROUND(unit_price * 100) AS INTEGER),
+        CAST(ROUND(unit_cost * 100) AS INTEGER),
+        portion, portion_ml
+      FROM sale_items
+    ''');
+    await db.execute('DROP TABLE sale_items');
+    await db.execute('ALTER TABLE sale_items_v11 RENAME TO sale_items');
+
+    // Only present from v10, and only if some rows were queued.
+    final pending = await db.rawQuery(
+        "SELECT name FROM sqlite_master WHERE type='table' AND name='pending_payments'");
+    if (pending.isNotEmpty) {
+      await db.execute('''
+        CREATE TABLE pending_payments_v11 (
+          reference TEXT PRIMARY KEY,
+          phone_number TEXT,
+          amount INTEGER NOT NULL,
+          cart_json TEXT NOT NULL,
+          staff_name TEXT,
+          staff_id INTEGER,
+          created_at TEXT NOT NULL
+        )
+      ''');
+      await db.execute('''
+        INSERT INTO pending_payments_v11
+          (reference, phone_number, amount, cart_json, staff_name, staff_id, created_at)
+        SELECT
+          reference, phone_number,
+          CAST(ROUND(amount * 100) AS INTEGER),
+          cart_json, staff_name, staff_id, created_at
+        FROM pending_payments
+      ''');
+      await db.execute('DROP TABLE pending_payments');
+      await db.execute('ALTER TABLE pending_payments_v11 RENAME TO pending_payments');
+    }
+
+    // Indexes live on the dropped tables and do not survive the rebuild. The
+    // v10 block above notes this for upgraded installs; leaving them out here
+    // would permanently full-scan sales and sale_items on every report.
+    await db.execute(
+        'CREATE INDEX IF NOT EXISTS idx_sales_date ON sales (created_at)');
+    await db.execute(
+        'CREATE INDEX IF NOT EXISTS idx_sale_items_product ON sale_items (product_id)');
+    await db.execute(
+        'CREATE INDEX IF NOT EXISTS idx_sale_items_sale ON sale_items (sale_id)');
+    await db.execute(
+        'CREATE INDEX IF NOT EXISTS idx_sales_staff ON sales (staff_id)');
   }
 
   Future<void> _onCreate(Database db, int version) async {
@@ -216,13 +398,13 @@ class DatabaseHelper {
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         name TEXT NOT NULL,
         category TEXT,
-        cost_price REAL NOT NULL,
-        sell_price REAL NOT NULL,
+        cost_price INTEGER NOT NULL,
+        sell_price INTEGER NOT NULL,
         stock_qty REAL NOT NULL DEFAULT 0,
         reorder_level INTEGER NOT NULL DEFAULT 5,
         bottle_ml INTEGER NOT NULL DEFAULT 750,
-        half_price REAL,
-        quarter_price REAL,
+        half_price INTEGER,
+        quarter_price INTEGER,
         excise_stamp_batch TEXT,
         active INTEGER NOT NULL DEFAULT 1,
         updated_at TEXT,
@@ -234,12 +416,12 @@ class DatabaseHelper {
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         staff_name TEXT NOT NULL,
         staff_id INTEGER,
-        total REAL NOT NULL,
-        profit REAL NOT NULL,
+        total INTEGER NOT NULL,
+        profit INTEGER NOT NULL,
         payment_method TEXT NOT NULL DEFAULT 'cash',
         payment_reference TEXT,
-        amount_tendered REAL NOT NULL DEFAULT 0,
-        change_given REAL NOT NULL DEFAULT 0,
+        amount_tendered INTEGER NOT NULL DEFAULT 0,
+        change_given INTEGER NOT NULL DEFAULT 0,
         created_at TEXT NOT NULL
       )
     ''');
@@ -250,8 +432,8 @@ class DatabaseHelper {
         product_id INTEGER NOT NULL,
         product_name TEXT NOT NULL,
         qty REAL NOT NULL,
-        unit_price REAL NOT NULL,
-        unit_cost REAL NOT NULL,
+        unit_price INTEGER NOT NULL,
+        unit_cost INTEGER NOT NULL,
         portion TEXT NOT NULL DEFAULT 'full',
         portion_ml INTEGER NOT NULL DEFAULT 0,
         FOREIGN KEY (sale_id) REFERENCES sales (id)
@@ -459,7 +641,7 @@ class DatabaseHelper {
   /// the outcome is known.
   Future<void> recordPendingPayment({
     required String reference,
-    required double amount,
+    required Money amount,
     required String cartJson,
     String? phoneNumber,
     String? staffName,
@@ -470,7 +652,7 @@ class DatabaseHelper {
         {
           'reference': reference,
           'phone_number': phoneNumber,
-          'amount': amount,
+          'amount': amount.minorUnits,
           'cart_json': cartJson,
           'staff_name': staffName,
           'staff_id': staffId,
@@ -607,7 +789,7 @@ class DatabaseHelper {
     bool enforceStock = true,
     String paymentMethod = 'cash',
     String? paymentReference,
-    double? amountTendered,
+    Money? amountTendered,
     int? staffId,
   }) async {
     if (items.isEmpty) {
@@ -640,11 +822,20 @@ class DatabaseHelper {
           (requiredUnits[item.productId] ?? 0) + item.qty * portionFactor(item);
     }
     final db = await database;
-    final total = items.fold<double>(0, (a, it) => a + it.unitPrice * it.qty);
-    final profit = items.fold<double>(
-        0, (a, it) => a + (it.unitPrice - it.unitCost) * it.qty);
+    // Every amount is quantised as it is accumulated, so the stored total is
+    // exactly the sum of the stored line amounts and `change` is a real number
+    // of shillings rather than a floating-point artefact.
+    // Integer cents throughout: each line is scaled once (which rounds), and
+    // the sums below are exact integer additions. The recorded total is
+    // therefore always exactly the sum of the recorded line amounts.
+    final total = sumMoney(items.map((it) => it.unitPrice.times(it.qty)));
+    final profit = sumMoney(
+        items.map((it) => (it.unitPrice - it.unitCost).times(it.qty)));
     final paid = amountTendered ?? total;
-    if (!paid.isFinite || paid < total) {
+    if (paid.isNegative) {
+      throw StateError('Amount received cannot be less than the sale total');
+    }
+    if (paid < total) {
       throw StateError('Amount received cannot be less than the sale total');
     }
     final change = paid - total;
@@ -669,12 +860,12 @@ class DatabaseHelper {
       final saleId = await txn.insert('sales', {
         'staff_name': staffName,
         'staff_id': staffId,
-        'total': total,
-        'profit': profit,
+        'total': total.minorUnits,
+        'profit': profit.minorUnits,
         'payment_method': paymentMethod,
         'payment_reference': paymentReference,
-        'amount_tendered': paid,
-        'change_given': change,
+        'amount_tendered': paid.minorUnits,
+        'change_given': change.minorUnits,
         'created_at': now,
       });
       for (final it in items) {
@@ -684,8 +875,8 @@ class DatabaseHelper {
           'product_id': it.productId,
           'product_name': it.productName,
           'qty': it.qty,
-          'unit_price': it.unitPrice,
-          'unit_cost': it.unitCost,
+          'unit_price': it.unitPrice.minorUnits,
+          'unit_cost': it.unitCost.minorUnits,
           'portion': it.portion,
           'portion_ml': it.portionMl,
         });

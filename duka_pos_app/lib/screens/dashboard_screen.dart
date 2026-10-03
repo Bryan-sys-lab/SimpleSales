@@ -68,8 +68,9 @@ class _DashboardScreenState extends State<DashboardScreen> {
         ]),
       ));
     }
-    final total = _todaySales.fold<double>(0, (a, s) => a + s.total);
-    final profit = _todaySales.fold<double>(0, (a, s) => a + s.profit);
+    // Summing integer cents, so a day's takings reconcile exactly.
+    final total = sumMoney(_todaySales.map((s) => s.total));
+    final profit = sumMoney(_todaySales.map((s) => s.profit));
     final low = _products.where((p) => p.isLow).toList()
       ..sort((a, b) => a.stockQty.compareTo(b.stockQty));
 

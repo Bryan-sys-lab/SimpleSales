@@ -215,13 +215,16 @@ class BackendService {
           'remoteId': product.remoteId,
           'name': product.name,
           'category': product.category,
-          'costPrice': product.costPrice,
-          'sellPrice': product.sellPrice,
+          // Major units on the wire: the backend contract predates the move to
+          // integer cents and is expressed in shillings. Sending a Money object
+          // here would serialise as "Money(4050 minor units)".
+          'costPrice': product.costPrice.asMajor,
+          'sellPrice': product.sellPrice.asMajor,
           'stockQty': product.stockQty,
           'reorderLevel': product.reorderLevel,
           'bottleMl': product.bottleMl,
-          'halfPrice': product.halfPrice,
-          'quarterPrice': product.quarterPrice,
+          'halfPrice': product.halfPrice?.asMajor,
+          'quarterPrice': product.quarterPrice?.asMajor,
           'exciseStampBatch': product.exciseStampBatch,
           'active': product.active,
         }
@@ -257,13 +260,13 @@ class BackendService {
                 'remoteId': p.remoteId,
                 'name': p.name,
                 'category': p.category,
-                'costPrice': p.costPrice,
-                'sellPrice': p.sellPrice,
+                'costPrice': p.costPrice.asMajor,
+                'sellPrice': p.sellPrice.asMajor,
                 'stockQty': p.stockQty,
                 'reorderLevel': p.reorderLevel,
                 'bottleMl': p.bottleMl,
-                'halfPrice': p.halfPrice,
-                'quarterPrice': p.quarterPrice,
+                'halfPrice': p.halfPrice?.asMajor,
+                'quarterPrice': p.quarterPrice?.asMajor,
                 'exciseStampBatch': p.exciseStampBatch,
                 'active': p.active,
               })

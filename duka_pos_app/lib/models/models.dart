@@ -4,6 +4,8 @@
 /// one shape used everywhere avoids three slightly different versions drifting apart.
 library;
 
+import '../utils/money.dart';
+
 class Owner {
   final int id;
   final String name;
@@ -79,13 +81,13 @@ class Product {
   final int? id;
   final String name;
   final String category;
-  final double costPrice;
-  final double sellPrice;
+  final Money costPrice;
+  final Money sellPrice;
   final double stockQty;
   final int reorderLevel;
   final int bottleMl;
-  final double? halfPrice;
-  final double? quarterPrice;
+  final Money? halfPrice;
+  final Money? quarterPrice;
   final String exciseStampBatch;
   final bool active;
   final String updatedAt;
@@ -109,13 +111,26 @@ class Product {
     this.remoteId,
   });
 
-  double get marginPct =>
-      sellPrice == 0 ? 0 : ((sellPrice - costPrice) / sellPrice) * 100;
+  /// Computed from minor units so the ratio does not inherit float error from
+  /// the two prices. Percentages are for display, so the final division to a
+  /// double is expected and harmless.
+  double get marginPct => sellPrice.isZero
+      ? 0
+      : ((sellPrice.minorUnits - costPrice.minorUnits) /
+              sellPrice.minorUnits) *
+          100;
   bool get isLow => stockQty <= reorderLevel;
-  double priceFor(String portion) => portion == 'half'
-      ? (halfPrice ?? sellPrice / 2)
+
+  /// The price charged for one portion of a bottle.
+  ///
+  /// Derived portions divide money, so the split goes through [Money.times] and
+  /// is quantised once. An odd-cent price therefore rounds to the nearest cent
+  /// (half of KSh 10.01 is KSh 5.01) instead of leaking a fraction into the
+  /// cart that could never be charged.
+  Money priceFor(String portion) => portion == 'half'
+      ? (halfPrice ?? sellPrice.times(0.5))
       : portion == 'quarter'
-          ? (quarterPrice ?? sellPrice / 4)
+          ? (quarterPrice ?? sellPrice.times(0.25))
           : sellPrice;
   double fractionFor(String portion) => portion == 'half'
       ? 0.5
@@ -127,13 +142,13 @@ class Product {
   Product copyWith({
     String? name,
     String? category,
-    double? costPrice,
-    double? sellPrice,
+    Money? costPrice,
+    Money? sellPrice,
     double? stockQty,
     int? reorderLevel,
     int? bottleMl,
-    double? halfPrice,
-    double? quarterPrice,
+    Money? halfPrice,
+    Money? quarterPrice,
     String? exciseStampBatch,
     bool? active,
     String? remoteId,
@@ -159,13 +174,14 @@ class Product {
         if (id != null) 'id': id,
         'name': name,
         'category': category,
-        'cost_price': costPrice,
-        'sell_price': sellPrice,
+        // Amounts are persisted as integer cents, never as REAL shillings.
+        'cost_price': costPrice.minorUnits,
+        'sell_price': sellPrice.minorUnits,
         'stock_qty': stockQty,
         'reorder_level': reorderLevel,
         'bottle_ml': bottleMl,
-        'half_price': halfPrice,
-        'quarter_price': quarterPrice,
+        'half_price': halfPrice?.minorUnits,
+        'quarter_price': quarterPrice?.minorUnits,
         'excise_stamp_batch': exciseStampBatch,
         'active': active ? 1 : 0,
         'updated_at': updatedAt,
@@ -176,13 +192,17 @@ class Product {
         id: m['id'],
         name: m['name'],
         category: m['category'] ?? 'General',
-        costPrice: (m['cost_price'] as num).toDouble(),
-        sellPrice: (m['sell_price'] as num).toDouble(),
+        costPrice: Money.fromMinor((m['cost_price'] as num?)?.toInt() ?? 0),
+        sellPrice: Money.fromMinor((m['sell_price'] as num?)?.toInt() ?? 0),
         stockQty: (m['stock_qty'] as num).toDouble(),
         reorderLevel: m['reorder_level'],
         bottleMl: (m['bottle_ml'] as num?)?.toInt() ?? 750,
-        halfPrice: (m['half_price'] as num?)?.toDouble(),
-        quarterPrice: (m['quarter_price'] as num?)?.toDouble(),
+        halfPrice: (m['half_price'] as num?) == null
+            ? null
+            : Money.fromMinor((m['half_price'] as num).toInt()),
+        quarterPrice: (m['quarter_price'] as num?) == null
+            ? null
+            : Money.fromMinor((m['quarter_price'] as num).toInt()),
         exciseStampBatch: m['excise_stamp_batch'] ?? '',
         active: m['active'] == 1,
         updatedAt: m['updated_at'] ?? '',
@@ -204,18 +224,22 @@ class Product {
     'half_price',
     'quarter_price'
   ];
+  /// Emitted in whole shillings, not cents: this row is read and edited by
+  /// people in a spreadsheet, and a column of 4050 where a human expects 40.50
+  /// would be silently misread as a price. The internal representation stays
+  /// integer cents; the conversion happens only at this edge.
   List<dynamic> toSheetRow() => [
         id,
         name,
         category,
-        costPrice,
-        sellPrice,
+        costPrice.asMajor,
+        sellPrice.asMajor,
         stockQty,
         reorderLevel,
         exciseStampBatch,
         bottleMl,
-        halfPrice ?? '',
-        quarterPrice ?? ''
+        halfPrice?.asMajor ?? '',
+        quarterPrice?.asMajor ?? ''
       ];
 
   /// Shared product-row rules.
@@ -234,13 +258,13 @@ class Product {
   static String? validate({
     required String name,
     required String category,
-    required double costPrice,
-    required double sellPrice,
-    required double stockQty,
+    required num costPrice,
+    required num sellPrice,
+    required num stockQty,
     required int reorderLevel,
     required int bottleMl,
-    double? halfPrice,
-    double? quarterPrice,
+    num? halfPrice,
+    num? quarterPrice,
   }) {
     if (name.trim().isEmpty) return 'Enter a product name';
     if (name.trim().length > maxNameLength) {
@@ -249,10 +273,10 @@ class Product {
     if (category.trim().length > maxCategoryLength) {
       return 'Category must be $maxCategoryLength characters or fewer';
     }
-    if (!costPrice.isFinite || costPrice < 0) {
+    if (!Money.isValidMajor(costPrice)) {
       return 'Cost price must be a valid amount of 0 or more';
     }
-    if (!sellPrice.isFinite || sellPrice < 0) {
+    if (!Money.isValidMajor(sellPrice)) {
       return 'Selling price must be a valid amount of 0 or more';
     }
     if (!stockQty.isFinite || stockQty < 0) {
@@ -262,10 +286,10 @@ class Product {
     if (bottleMl < 1 || bottleMl > maxBottleMl) {
       return 'Bottle size must be between 1 and $maxBottleMl ml';
     }
-    if (halfPrice != null && (!halfPrice.isFinite || halfPrice < 0)) {
+    if (halfPrice != null && !Money.isValidMajor(halfPrice)) {
       return 'Half price must be a valid amount of 0 or more';
     }
-    if (quarterPrice != null && (!quarterPrice.isFinite || quarterPrice < 0)) {
+    if (quarterPrice != null && !Money.isValidMajor(quarterPrice)) {
       return 'Quarter price must be a valid amount of 0 or more';
     }
     return null;
@@ -317,13 +341,13 @@ class Product {
       id: row.isNotEmpty && parseId != null ? parseId(row[0]) : null,
       name: rawName,
       category: category,
-      costPrice: cost!,
-      sellPrice: price!,
+      costPrice: Money.fromMajor(cost!),
+      sellPrice: Money.fromMajor(price!),
       stockQty: stock!.toDouble(),
       reorderLevel: reorder!,
       bottleMl: bottleMl,
-      halfPrice: half,
-      quarterPrice: quarter,
+      halfPrice: half == null ? null : Money.fromMajor(half),
+      quarterPrice: quarter == null ? null : Money.fromMajor(quarter),
       exciseStampBatch: row.length > 7 ? (row[7]?.toString() ?? '') : '',
       updatedAt: DateTime.now().toIso8601String(),
     );
@@ -336,8 +360,12 @@ class SaleItem {
   final int productId;
   final String productName;
   final double qty;
-  final double unitPrice;
-  final double unitCost;
+
+  /// Price per whole unit, in integer cents. [qty] stays a double because it is
+  /// a quantity of bottles, not an amount of money; the two are multiplied
+  /// once, by [lineTotal], which rounds the result to a whole cent.
+  final Money unitPrice;
+  final Money unitCost;
   final String portion;
   final int portionMl;
 
@@ -359,11 +387,15 @@ class SaleItem {
         'product_id': productId,
         'product_name': productName,
         'qty': qty,
-        'unit_price': unitPrice,
-        'unit_cost': unitCost,
+        'unit_price': unitPrice.minorUnits,
+        'unit_cost': unitCost.minorUnits,
         'portion': portion,
         'portion_ml': portionMl,
       };
+
+  /// The line's amount: unit price scaled by quantity, quantised to whole
+  /// cents. A recorded sale total is the exact sum of these.
+  Money get total => unitPrice.times(qty);
 
   factory SaleItem.fromMap(Map<String, dynamic> m) => SaleItem(
         id: m['id'],
@@ -371,8 +403,8 @@ class SaleItem {
         productId: m['product_id'],
         productName: m['product_name'],
         qty: (m['qty'] as num).toDouble(),
-        unitPrice: (m['unit_price'] as num).toDouble(),
-        unitCost: (m['unit_cost'] as num).toDouble(),
+        unitPrice: Money.fromMinor((m['unit_price'] as num?)?.toInt() ?? 0),
+        unitCost: Money.fromMinor((m['unit_cost'] as num?)?.toInt() ?? 0),
         portion: m['portion'] ?? 'full',
         portionMl: (m['portion_ml'] as num?)?.toInt() ?? 0,
       );
@@ -381,13 +413,17 @@ class SaleItem {
 class Sale {
   final int? id;
   final String staffName;
-  final double total;
-  final double profit;
+
+  /// Integer cents throughout. [total] is stored as the exact sum of the line
+  /// amounts, so the ledger reconciles against the items by construction rather
+  /// than by luck.
+  final Money total;
+  final Money profit;
   final String createdAt;
   final String paymentMethod;
   final String? paymentReference;
-  final double amountTendered;
-  final double changeGiven;
+  final Money amountTendered;
+  final Money changeGiven;
   final List<SaleItem> items;
 
   Sale({
@@ -398,36 +434,40 @@ class Sale {
     required this.createdAt,
     this.paymentMethod = 'cash',
     this.paymentReference,
-    this.amountTendered = 0,
-    this.changeGiven = 0,
+    this.amountTendered = Money.zero,
+    this.changeGiven = Money.zero,
     this.items = const [],
   });
 
   Map<String, dynamic> toMap() => {
         if (id != null) 'id': id,
         'staff_name': staffName,
-        'total': total,
-        'profit': profit,
+        'total': total.minorUnits,
+        'profit': profit.minorUnits,
         'payment_method': paymentMethod,
         'payment_reference': paymentReference,
-        'amount_tendered': amountTendered,
-        'change_given': changeGiven,
+        'amount_tendered': amountTendered.minorUnits,
+        'change_given': changeGiven.minorUnits,
         'created_at': createdAt,
       };
 
-  factory Sale.fromMap(Map<String, dynamic> m) => Sale(
-        id: m['id'],
-        staffName: m['staff_name'],
-        total: (m['total'] as num).toDouble(),
-        profit: (m['profit'] as num).toDouble(),
-        createdAt: m['created_at'],
-        paymentMethod: m['payment_method'] ?? 'cash',
-        paymentReference: m['payment_reference'],
-        amountTendered: ((m['amount_tendered'] as num?)?.toDouble() ?? 0) == 0
-            ? (m['total'] as num).toDouble()
-            : (m['amount_tendered'] as num).toDouble(),
-        changeGiven: (m['change_given'] as num?)?.toDouble() ?? 0,
-      );
+  factory Sale.fromMap(Map<String, dynamic> m) {
+    final total = Money.fromMinor((m['total'] as num?)?.toInt() ?? 0);
+    // Pre-v11 rows recorded a REAL amount_tendered. A zero means "not recorded",
+    // not "customer paid nothing", and those rows fall back to the sale total.
+    final tendered = (m['amount_tendered'] as num?)?.toInt() ?? 0;
+    return Sale(
+      id: m['id'],
+      staffName: m['staff_name'],
+      total: total,
+      profit: Money.fromMinor((m['profit'] as num?)?.toInt() ?? 0),
+      createdAt: m['created_at'],
+      paymentMethod: m['payment_method'] ?? 'cash',
+      paymentReference: m['payment_reference'],
+      amountTendered: tendered == 0 ? total : Money.fromMinor(tendered),
+      changeGiven: Money.fromMinor((m['change_given'] as num?)?.toInt() ?? 0),
+    );
+  }
 
   static const sheetHeaders = [
     'id',
@@ -447,12 +487,12 @@ class Sale {
             createdAt,
             staffName,
             paymentMethod,
-            amountTendered,
-            changeGiven,
+            amountTendered.asMajor,
+            changeGiven.asMajor,
             it.productName,
             it.qty,
-            it.unitPrice,
-            it.qty * it.unitPrice
+            it.unitPrice.asMajor,
+            it.unitPrice.times(it.qty).asMajor
           ])
       .toList();
 }

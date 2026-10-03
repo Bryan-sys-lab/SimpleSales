@@ -5,6 +5,7 @@ import '../db/database_helper.dart';
 import '../models/models.dart';
 import '../services/app_state.dart';
 import '../services/excel_service.dart';
+import '../utils/money.dart';
 
 class ReportsScreen extends StatefulWidget {
   const ReportsScreen({super.key});
@@ -13,8 +14,6 @@ class ReportsScreen extends StatefulWidget {
 }
 
 class _ReportsScreenState extends State<ReportsScreen> {
-  final _money =
-      NumberFormat.currency(locale: 'en_KE', symbol: 'KSh ', decimalDigits: 0);
   final _excel = ExcelService();
   List<Sale> _sales = [];
   bool _loading = true;
@@ -60,8 +59,8 @@ class _ReportsScreenState extends State<ReportsScreen> {
             DateTime.parse(s.createdAt).month == today.month &&
             DateTime.parse(s.createdAt).year == today.year)
         .toList();
-    final total = mine.fold<double>(0, (a, s) => a + s.total);
-    final profit = mine.fold<double>(0, (a, s) => a + s.profit);
+    final total = sumMoney(mine.map((s) => s.total));
+    final profit = sumMoney(mine.map((s) => s.profit));
     if (!mounted) return;
     showDialog(
         context: context,
@@ -73,10 +72,10 @@ class _ReportsScreenState extends State<ReportsScreen> {
                   children: [
                     Text('Cashier: $staffName'),
                     Text('Transactions: ${mine.length}'),
-                    Text('Total sales: ${_money.format(total)}'),
-                    Text('Profit: ${_money.format(profit)}'),
+                    Text('Total sales: ${formatMoney(total)}'),
+                    Text('Profit: ${formatMoney(profit)}'),
                     const Divider(),
-                    Text('Cash expected in till: ${_money.format(total)}',
+                    Text('Cash expected in till: ${formatMoney(total)}',
                         style: const TextStyle(fontWeight: FontWeight.bold)),
                   ]),
               actions: [
@@ -106,16 +105,22 @@ class _ReportsScreenState extends State<ReportsScreen> {
         ]),
       ));
     }
-    final byStaff = <String, Map<String, double>>{};
+    final byStaff = <String, Map<String, Object>>{};
     for (final s in _sales) {
-      final m = byStaff.putIfAbsent(
-          s.staffName, () => {'n': 0, 'total': 0, 'profit': 0});
-      m['n'] = m['n']! + 1;
-      m['total'] = m['total']! + s.total;
-      m['profit'] = m['profit']! + s.profit;
+      final m = byStaff.putIfAbsent(s.staffName, () => {
+            'n': 0,
+            'total': Money.zero,
+            'profit': Money.zero,
+          });
+      m['n'] = (m['n']! as int) + 1;
+      // Money in the accumulator, not a raw double: per-staff takings then sum
+      // to the same figure as the day total, with no rounding to reconcile.
+      m['total'] = (m['total']! as Money) + s.total;
+      m['profit'] = (m['profit']! as Money) + s.profit;
     }
     final staffRows = byStaff.entries.toList()
-      ..sort((a, b) => b.value['total']!.compareTo(a.value['total']!));
+      ..sort((a, b) =>
+          (b.value['total']! as Money).compareTo(a.value['total']! as Money));
 
     return RefreshIndicator(
       onRefresh: _load,
@@ -144,8 +149,8 @@ class _ReportsScreenState extends State<ReportsScreen> {
                       .map((e) => ListTile(
                             title: Text(e.key),
                             subtitle:
-                                Text('${e.value['n']!.toInt()} transactions'),
-                            trailing: Text(_money.format(e.value['total']!)),
+                                Text('${e.value['n']! as int} transactions'),
+                            trailing: Text(formatMoney(e.value['total']! as Money)),
                           ))
                       .toList())),
           const SizedBox(height: 20),
@@ -157,9 +162,9 @@ class _ReportsScreenState extends State<ReportsScreen> {
                       .take(50)
                       .map((s) => ListTile(
                             title: Text(
-                                '${s.staffName} · ${_money.format(s.total)}'),
+                                '${s.staffName} · ${formatMoney(s.total)}'),
                             subtitle: Text(
-                                '${DateFormat('MMM d, h:mm a').format(DateTime.parse(s.createdAt))} · ${s.paymentMethod}${s.changeGiven > 0 ? ' · change ${_money.format(s.changeGiven)}' : ''}'),
+                                '${DateFormat('MMM d, h:mm a').format(DateTime.parse(s.createdAt))} · ${s.paymentMethod}${!s.changeGiven.isNegative ? ' · change ${formatMoney(s.changeGiven)}' : ''}'),
                           ))
                       .toList())),
         ],
