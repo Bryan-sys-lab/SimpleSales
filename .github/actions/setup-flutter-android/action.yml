@@ -26,7 +26,7 @@ runs:
     # AGP 9.1 / Gradle 9.3 require JDK 17+, matching the project's
     # sourceCompatibility/targetCompatibility of VERSION_17.
     - name: Set up JDK 17
-      uses: actions/setup-java@v4
+      uses: actions/setup-java@v5
       with:
         distribution: temurin
         java-version: '17'
@@ -74,11 +74,23 @@ runs:
         tar -xJf flutter_sdk.tar.xz -C ~/
         rm -f flutter_sdk.tar.xz
 
-    - name: Put Flutter on PATH and precache Android artifacts
+    # Two steps on purpose. $GITHUB_PATH is applied to *subsequent* steps, not
+    # the one that writes it, so putting the export and the first `flutter`
+    # invocation in one step fails with "flutter: command not found" (exit 127).
+    - name: Put Flutter on PATH
       shell: bash
       run: |
         set -euo pipefail
+        if [ ! -x "$HOME/flutter/bin/flutter" ]; then
+          echo "::error::Flutter was not found at $HOME/flutter/bin/flutter after extraction."
+          exit 1
+        fi
         echo "$HOME/flutter/bin" >> "$GITHUB_PATH"
+
+    - name: Verify Flutter and precache Android artifacts
+      shell: bash
+      run: |
+        set -euo pipefail
         flutter config --no-analytics
         flutter --version
         # Warms the Android engine artifacts into the cached SDK so the build
