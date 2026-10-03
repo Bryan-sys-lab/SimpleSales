@@ -76,7 +76,7 @@ jobs:
             echo "::error::Tag ${GITHUB_REF_NAME} does not match pubspec version ${pubspec_name}. Update pubspec.yaml or retag."
             exit 1
           fi
-          if ! [ "$pubspec_code" =~ ^[0-9]+$ ] || [ "$pubspec_code" -lt 1 ]; then
+          if ! [[ "$pubspec_code" =~ ^[0-9]+$ ]] || [ "$pubspec_code" -lt 1 ]; then
             echo "::error::pubspec build number '${pubspec_code}' is not a positive integer."
             exit 1
           fi
