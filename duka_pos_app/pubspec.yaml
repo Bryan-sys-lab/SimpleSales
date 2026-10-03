@@ -56,7 +56,11 @@ dependencies:
   flutter_secure_storage: ^11.2.0
 
   # Crash reporting (Sentry - no Firebase required)
-  sentry_flutter: ^8.14.2
+  # 8.x compiles Kotlin with language version 1.6, which the Kotlin 2.4 compiler
+  # this project pins rejects outright ("Language version 1.6 is no longer
+  # supported"), failing :sentry_flutter:compileDebugKotlin. 9.x is the line
+  # that supports Kotlin 2.x.
+  sentry_flutter: ^9.30.1
   
   # Update checker (for sideloaded APKs)
   package_info_plus: ^10.2.1

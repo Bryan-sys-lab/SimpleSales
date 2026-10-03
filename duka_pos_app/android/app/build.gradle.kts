@@ -17,10 +17,13 @@ if (hasReleaseSigning) {
 android {
     namespace = "com.dukapos.duka_pos"
     compileSdk = flutter.compileSdkVersion
-    // This is the NDK *this app* needs. It is not the only one a build may ask
-    // for: `path_provider_android` reaches `jni`, whose own module pins a newer
-    // NDK, so a machine without that second copy fails at :jni — not here.
-    ndkVersion = "27.1.12297006"
+    // Flutter's recommended NDK for this SDK version, which is also what every
+    // plugin in the tree expects — `jni`, `sentry_flutter`, `sqflite_android` and
+    // nine others all pin this revision. Flutter's own diagnostic is to use the
+    // highest version asked for, since they are backward compatible; the earlier
+    // 27.1 pin made the build warn about a dozen plugins and still required a
+    // second NDK locally.
+    ndkVersion = "28.2.13676358"
 
     compileOptions {
         sourceCompatibility = JavaVersion.VERSION_17
