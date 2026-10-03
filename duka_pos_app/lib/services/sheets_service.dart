@@ -83,73 +83,63 @@ class SheetsService {
                 .values ??
             const <List<dynamic>>[];
     if (values.length < 2) return 0;
-    var count = 0;
+    // Same shared parser/validator as the Excel importer and the product
+    // editor, and all rows are validated before anything is written.
+    final parsed = <Product>[];
     for (final row in values.skip(1)) {
-      if (row.length < 7 || row[1].toString().trim().isEmpty) continue;
-      final cost = double.tryParse(row[3].toString());
-      final price = double.tryParse(row[4].toString());
-      final stock = double.tryParse(row[5].toString());
-      final reorder = int.tryParse(row[6].toString());
-      final bottleMl =
-          row.length > 8 ? int.tryParse(row[8].toString()) ?? 750 : 750;
-      final half = row.length > 9 && row[9].toString().trim().isNotEmpty
-          ? double.tryParse(row[9].toString())
-          : null;
-      final quarter = row.length > 10 && row[10].toString().trim().isNotEmpty
-          ? double.tryParse(row[10].toString())
-          : null;
-      if (cost == null ||
-          price == null ||
-          stock == null ||
-          reorder == null ||
-          cost < 0 ||
-          price < 0 ||
-          stock < 0 ||
-          reorder < 0 ||
-          bottleMl < 1 ||
-          bottleMl > 10000) {
-        throw const FormatException(
-            'The sheet contains an invalid inventory row');
-      }
-      await _db.upsertProduct(Product(
-        id: int.tryParse(row[0].toString()),
-        name: row[1].toString().trim(),
-        category: row[2].toString().trim().isEmpty
-            ? 'General'
-            : row[2].toString().trim(),
-        costPrice: cost,
-        sellPrice: price,
-        stockQty: stock,
-        reorderLevel: reorder,
-        bottleMl: bottleMl,
-        halfPrice: half,
-        quarterPrice: quarter,
-        exciseStampBatch: row.length > 7 ? row[7].toString() : '',
-        updatedAt: DateTime.now().toIso8601String(),
-      ));
-      count++;
+      final product = Product.fromRow(
+        row,
+        parseId: (value) =>
+            value == null ? null : int.tryParse(value.toString()),
+      );
+      if (product != null) parsed.add(product);
     }
-    return count;
+    await _db.upsertProducts(parsed);
+    return parsed.length;
   }
 
-  /// Appends new sales since [since] to the Sales tab, rather than rewriting
+  /// Appends sales newer than [after] to the Sales tab, rather than rewriting
   /// the whole sheet every time — sales only ever get added, never edited,
   /// so an append-only log matches how the data actually behaves and is
   /// far cheaper to sync as the log grows over months.
-  Future<void> appendSales(String spreadsheetId, {DateTime? since}) async {
+  ///
+  /// The window is exclusive so a sale sitting exactly on the previous
+  /// high-water mark is appended once, not re-appended on every sync. Work is
+  /// drained in bounded batches: a single request carrying a shop's entire
+  /// backlog can exceed the Sheets append limits and fail the whole export.
+  ///
+  /// Returns the newest `created_at` actually written, so the caller can
+  /// advance its high-water mark to a value the sheet provably contains rather
+  /// than to wall-clock time. Returns null when nothing was appended.
+  Future<DateTime?> appendSales(String spreadsheetId,
+      {DateTime? after, int batchSize = 500}) async {
     final api = await _api();
     if (api == null) throw StateError('Not signed in to Google');
-    final sales = await _db.getSales(since: since);
-    if (sales.isEmpty) return;
-    final rows = <List<dynamic>>[];
-    for (final s in sales) {
-      rows.addAll(s.toSheetRows());
+    var cursor = after;
+    DateTime? newest;
+    while (true) {
+      final sales = await _db.getSales(after: cursor, limit: batchSize);
+      if (sales.isEmpty) return newest;
+      final rows = <List<dynamic>>[];
+      DateTime? batchNewest;
+      for (final s in sales) {
+        rows.addAll(s.toSheetRows());
+        final created = DateTime.tryParse(s.createdAt);
+        if (created != null && (batchNewest == null || created.isAfter(batchNewest))) {
+          batchNewest = created;
+        }
+      }
+      await api.spreadsheets.values.append(
+        sheets.ValueRange(values: rows),
+        spreadsheetId,
+        'Sales!A1',
+        valueInputOption: 'RAW',
+      );
+      newest = batchNewest;
+      // Rows come back newest-first, so a batch that did not fill up means the
+      // tail is drained and another pass would only re-read the last batch.
+      if (sales.length < batchSize || batchNewest == null) return newest;
+      cursor = batchNewest;
     }
-    await api.spreadsheets.values.append(
-      sheets.ValueRange(values: rows),
-      spreadsheetId,
-      'Sales!A1',
-      valueInputOption: 'RAW',
-    );
   }
 }

@@ -217,6 +217,117 @@ class Product {
         halfPrice ?? '',
         quarterPrice ?? ''
       ];
+
+  /// Shared product-row rules.
+  ///
+  /// This is the single source of truth for "is this a valid product row". The
+  /// editor, the Excel importer and the Google Sheets importer all go through
+  /// it, so the editor can never persist a row that the app's own backup format
+  /// would later reject (NaN costs poisoning profit, over-long names, negative
+  /// portion prices, fractional reorder levels).
+  static const maxNameLength = 120;
+  static const maxCategoryLength = 80;
+  static const maxBottleMl = 10000;
+
+  /// Validates an already-parsed product. Returns null when valid, otherwise a
+  /// human-readable reason suitable for display.
+  static String? validate({
+    required String name,
+    required String category,
+    required double costPrice,
+    required double sellPrice,
+    required double stockQty,
+    required int reorderLevel,
+    required int bottleMl,
+    double? halfPrice,
+    double? quarterPrice,
+  }) {
+    if (name.trim().isEmpty) return 'Enter a product name';
+    if (name.trim().length > maxNameLength) {
+      return 'Product name must be $maxNameLength characters or fewer';
+    }
+    if (category.trim().length > maxCategoryLength) {
+      return 'Category must be $maxCategoryLength characters or fewer';
+    }
+    if (!costPrice.isFinite || costPrice < 0) {
+      return 'Cost price must be a valid amount of 0 or more';
+    }
+    if (!sellPrice.isFinite || sellPrice < 0) {
+      return 'Selling price must be a valid amount of 0 or more';
+    }
+    if (!stockQty.isFinite || stockQty < 0) {
+      return 'Stock quantity must be 0 or more';
+    }
+    if (reorderLevel < 0) return 'Reorder level must be 0 or more';
+    if (bottleMl < 1 || bottleMl > maxBottleMl) {
+      return 'Bottle size must be between 1 and $maxBottleMl ml';
+    }
+    if (halfPrice != null && (!halfPrice.isFinite || halfPrice < 0)) {
+      return 'Half price must be a valid amount of 0 or more';
+    }
+    if (quarterPrice != null && (!quarterPrice.isFinite || quarterPrice < 0)) {
+      return 'Quarter price must be a valid amount of 0 or more';
+    }
+    return null;
+  }
+
+  /// Parses one exported/sheet row using [validate]. Returns null when the row
+  /// is blank or malformed so importers can skip/report consistently.
+  static Product? fromRow(
+    List<dynamic> row, {
+    int? Function(dynamic)? parseId,
+  }) {
+    if (row.length < 7) return null;
+    final rawName = (row.length > 1 ? row[1]?.toString() ?? '' : '').trim();
+    if (rawName.isEmpty) return null;
+
+    double? num_(int i) {
+      if (i >= row.length) return null;
+      final text = row[i]?.toString().trim() ?? '';
+      if (text.isEmpty) return null;
+      return double.tryParse(text);
+    }
+
+    final cost = num_(3);
+    final price = num_(4);
+    final stock = num_(5);
+    final reorder = num_(6)?.round();
+    final bottleMl = (num_(8) ?? 750).round();
+    final half = num_(9);
+    final quarter = num_(10);
+    final category =
+        ((row.length > 2 ? row[2]?.toString() ?? '' : '').trim()).isEmpty
+            ? 'General'
+            : row[2].toString().trim();
+
+    final problem = validate(
+      name: rawName,
+      category: category,
+      costPrice: cost ?? double.nan,
+      sellPrice: price ?? double.nan,
+      stockQty: stock ?? double.nan,
+      reorderLevel: reorder ?? -1,
+      bottleMl: bottleMl,
+      halfPrice: half,
+      quarterPrice: quarter,
+    );
+    if (problem != null) throw FormatException(problem);
+
+    return Product(
+      id: row.isNotEmpty && parseId != null ? parseId(row[0]) : null,
+      name: rawName,
+      category: category,
+      costPrice: cost!,
+      sellPrice: price!,
+      stockQty: stock!.toDouble(),
+      reorderLevel: reorder!,
+      bottleMl: bottleMl,
+      halfPrice: half,
+      quarterPrice: quarter,
+      exciseStampBatch: row.length > 7 ? (row[7]?.toString() ?? '') : '',
+      updatedAt: DateTime.now().toIso8601String(),
+    );
+  }
 }
 
 class SaleItem {

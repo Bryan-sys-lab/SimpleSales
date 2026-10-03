@@ -30,8 +30,11 @@ class _ReportsScreenState extends State<ReportsScreen> {
     try {
       final state = context.read<AppState>();
       final sales = await DatabaseHelper.instance.getSales(
-          staffName:
-              state.currentRole == 'cashier' ? state.currentStaffName : null);
+        staffName:
+            state.currentRole == 'cashier' ? state.currentStaffName : null,
+        // Reports aggregates per sale only; skip hydrating line items.
+        withItems: false,
+      );
       if (!mounted) return;
       setState(() {
         _sales = sales;

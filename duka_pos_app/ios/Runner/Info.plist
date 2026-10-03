@@ -66,5 +66,28 @@
 		<string>UIInterfaceOrientationLandscapeLeft</string>
 		<string>UIInterfaceOrientationLandscapeRight</string>
 	</array>
+	<!-- OIDC Authorization Code + PKCE redirect. Must exactly match the
+	     OIDC_REDIRECT_URL dart-define (dukapos://callback) and the redirect URI
+	     registered on the Keycloak client. Without this the browser hands the
+	     callback to the OS and the app can never receive it, which silently
+	     breaks shop linking and M-Pesa on iOS. -->
+	<key>CFBundleURLTypes</key>
+	<array>
+		<dict>
+			<key>CFBundleTypeRole</key>
+			<string>Editor</string>
+			<key>CFBundleURLName</key>
+			<string>com.dukapos.duka_pos.oidc</string>
+			<key>CFBundleURLSchemes</key>
+			<array>
+				<string>dukapos</string>
+			</array>
+		</dict>
+	</array>
+	<!-- flutter_appauth captures the callback in-app via the
+	     FlutterDeepLinkingEnabled forwardInvocation flag rather than
+	     AppDelegate, so no AppDelegate URL handling is required. -->
+	<key>FlutterDeepLinkingEnabled</key>
+	<true/>
 </dict>
 </plist>

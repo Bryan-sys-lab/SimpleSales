@@ -31,9 +31,12 @@ class _DashboardScreenState extends State<DashboardScreen> {
           .copyWith(hour: 0, minute: 0, second: 0, millisecond: 0);
       final state = context.read<AppState>();
       final sales = await DatabaseHelper.instance.getSales(
-          since: since,
-          staffName:
-              state.currentRole == 'cashier' ? state.currentStaffName : null);
+        since: since,
+        staffName:
+            state.currentRole == 'cashier' ? state.currentStaffName : null,
+        // Dashboard aggregates per sale only; skip hydrating line items.
+        withItems: false,
+      );
       final products = await DatabaseHelper.instance.getProducts();
       if (!mounted) return;
       setState(() {

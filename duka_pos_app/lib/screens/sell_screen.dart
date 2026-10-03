@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'dart:async';
+import 'dart:convert';
 import 'package:flutter/services.dart';
 import 'package:flutter/semantics.dart';
 import 'package:provider/provider.dart';
@@ -57,6 +58,172 @@ class _SellScreenState extends State<SellScreen> {
     }
   }
 
+  /// Bottle units already reserved in the cart for this product, across all
+  /// portions. Portion availability must subtract this, otherwise a cashier can
+  /// fill the cart with more product than exists and the sale only fails at
+  /// `recordSale` — after the customer has already paid.
+  double _cartUnitsFor(Product product) {
+    var total = 0.0;
+    for (final line in _cart) {
+      if (line.product.id == product.id) total += line.qty * line.fraction;
+    }
+    return total;
+  }
+
+  /// Offers a safe way out of an outstanding M-Pesa push.
+  ///
+  /// The guard must not be a dead end: a till that cannot reconcile is a till
+  /// that cannot take cash-equivalent payments. Re-querying the provider is the
+  /// only safe action — it never re-pushes, so it cannot double-charge. A
+  /// definitive FAILED clears the row; SUCCESS books the saved basket from the
+  /// durable `cart_json` snapshot; anything else keeps the block in place.
+  Future<void> _reconcileOutstandingPayment(
+      Map<String, dynamic> pending) async {
+    final reference = pending['reference'] as String? ?? '';
+    if (reference.isEmpty) {
+      await DatabaseHelper.instance.resolvePendingPayment(reference);
+      return;
+    }
+
+    final amount = pending['amount'];
+    _announceStatus('Checking payment $reference…');
+    // A reconcile is a status check, not a fresh purchase, so it gets a short
+    // budget and visible progress rather than the 90s the sale flow uses. The
+    // operator is told to try again if it is still unconfirmed.
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (ctx) => AlertDialog(
+        content: Row(
+          children: [
+            const SizedBox(
+                width: 24, height: 24, child: CircularProgressIndicator()),
+            const SizedBox(width: 16),
+            Expanded(
+                child:
+                    Text('Checking status of $reference with the provider…')),
+          ],
+        ),
+      ),
+    );
+    final outcome = await BackendService.pollPaymentStatus(
+        reference,
+        timeout: const Duration(seconds: 20));
+    if (!mounted) return;
+    Navigator.of(context, rootNavigator: true).pop();
+
+    if (outcome == PaymentOutcome.failed) {
+      // Definitively declined: the basket was never charged, so dropping the
+      // row is safe and unblocks the till.
+      await DatabaseHelper.instance.resolvePendingPayment(reference);
+      if (!mounted) return;
+      _announceStatus('Payment $reference was declined. You can retry.');
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+        content: Text('Reference $reference was declined. Safe to retry.'),
+      ));
+      return;
+    }
+
+    if (outcome == PaymentOutcome.success) {
+      final recorded = await _recordReconciledSale(pending);
+      if (!mounted) return;
+      if (recorded) {
+        setState(() => _cart.clear());
+        _loadProducts();
+      }
+      return;
+    }
+
+    _announceStatus('Payment $reference is still unconfirmed. Do not charge again.');
+    final checkAgain = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Payment still unconfirmed'),
+        content: Text(
+            'Reference $reference${amount is num ? ' for ${formatMoney(amount.toDouble())}' : ''} has not been confirmed by the provider. '
+            'Do not charge the customer again. Check again now, or record the sale later from Reports.'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: const Text('Later'),
+          ),
+          ElevatedButton(
+            onPressed: () => Navigator.pop(ctx, true),
+            child: const Text('Check again'),
+          ),
+        ],
+      ),
+    );
+    if (checkAgain == true && mounted) {
+      await _reconcileOutstandingPayment(pending);
+    }
+  }
+
+  /// Books the basket saved on an outstanding payment row.
+  ///
+  /// Uses the persisted `cart_json` rather than the live cart, because the
+  /// customer's basket belongs to the original push and must not be mutated by
+  /// whatever the cashier has typed since.
+  Future<bool> _recordReconciledSale(Map<String, dynamic> pending) async {
+    final reference = pending['reference'] as String? ?? '';
+    // The row is the only record that this payment still needs booking. If it
+    // has already gone — a concurrent reconcile, or the stale sweep — booking
+    // it here would write the same sale to the ledger a second time.
+    if (!await DatabaseHelper.instance.hasPendingPayment(reference)) {
+      _announceStatus('Reference $reference was already reconciled.');
+      return false;
+    }
+    try {
+      final decoded = jsonDecode(pending['cart_json'] as String? ?? '[]');
+      if (decoded is! List) return false;
+      final items = <SaleItem>[];
+      for (final line in decoded) {
+        if (line is! Map) continue;
+        items.add(SaleItem(
+          saleId: 0,
+          productId: (line['productId'] as num?)?.toInt() ?? 0,
+          productName: line['productName'] as String? ?? '',
+          qty: (line['qty'] as num?)?.toDouble() ?? 0,
+          unitPrice: (line['unitPrice'] as num?)?.toDouble() ?? 0,
+          unitCost: (line['unitCost'] as num?)?.toDouble() ?? 0,
+          portion: line['portion'] as String? ?? 'full',
+          portionMl: (line['portionMl'] as num?)?.toInt() ?? 0,
+        ));
+      }
+      if (items.isEmpty) return false;
+      await DatabaseHelper.instance.recordSale(
+        staffName: pending['staff_name'] as String? ?? 'Unknown',
+        staffId: (pending['staff_id'] as num?)?.toInt(),
+        items: items,
+        // The provider confirmed the money, so authoritative stock already
+        // moved server-side. Keep the local ledger consistent regardless of
+        // any cached drift.
+        enforceStock: false,
+        paymentMethod: 'mpesa',
+        paymentReference: reference,
+      );
+      await DatabaseHelper.instance.resolvePendingPayment(reference);
+      _announceStatus('Reconciled payment $reference and recorded the sale.');
+      if (!mounted) return true;
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+        content:
+            Text('Payment $reference was received. The sale is now recorded.'),
+      ));
+      return true;
+    } catch (_) {
+      // The row must survive: the money is confirmed but the local ledger is
+      // not, and dropping the row would lose the only copy of the basket.
+      _announceStatus('Payment $reference was received but needs manual repair.');
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+          content: Text(
+              'Payment $reference was received but could not be recorded locally. Keep this reference and contact support.'),
+        ));
+      }
+      return false;
+    }
+  }
+
   Future<void> _addToCart(Product product) async {
     final portion = await showModalBottomSheet<String>(
       context: context,
@@ -75,6 +242,20 @@ class _SellScreenState extends State<SellScreen> {
       ])),
     );
     if (portion == null || !mounted) return;
+    // Re-check after the sheet closes: the picker is async, so the cart or the
+    // loaded product list may have changed underneath it.
+    final current = _products.where((p) => p.id == product.id).firstOrNull;
+    if (current == null) return;
+    final needed = current.fractionFor(portion);
+    if (current.stockQty - _cartUnitsFor(current) < needed) {
+      _announceStatus(
+          'Not enough ${current.name} stock left for that serving.');
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+        content: Text(
+            'Not enough ${current.name} left. Adjust the cart before adding more.'),
+      ));
+      return;
+    }
     final existing =
         _cart.where((c) => c.product.id == product.id && c.portion == portion);
     if (existing.isNotEmpty) {
@@ -89,19 +270,23 @@ class _SellScreenState extends State<SellScreen> {
   }
 
   Widget _portionOption(BuildContext context, Product product, String portion,
-          String label, double price) =>
-      ListTile(
-        leading: const Icon(Icons.local_bar_outlined),
-        title: Text('$label · ${product.mlFor(portion)} ml'),
-        trailing: Text(formatMoney(price)),
-        enabled: product.stockQty >= product.fractionFor(portion),
-        subtitle: product.stockQty < product.fractionFor(portion)
-            ? const Text('Not enough bottle stock')
-            : null,
-        onTap: product.stockQty >= product.fractionFor(portion)
-            ? () => Navigator.pop(context, portion)
-            : null,
-      );
+      String label, double price) {
+    final needed = product.fractionFor(portion);
+    final available = product.stockQty - _cartUnitsFor(product);
+    final canAdd = available >= needed;
+    return ListTile(
+      leading: const Icon(Icons.local_bar_outlined),
+      title: Text('$label · ${product.mlFor(portion)} ml'),
+      trailing: Text(formatMoney(price)),
+      enabled: canAdd,
+      subtitle: !canAdd
+          ? Text(available <= 0
+              ? 'All stock for this product is already in the cart'
+              : 'Only $available of a bottle left')
+          : null,
+      onTap: canAdd ? () => Navigator.pop(context, portion) : null,
+    );
+  }
 
   void _updateQty(int index, double delta) {
     setState(() {
@@ -229,6 +414,17 @@ class _SellScreenState extends State<SellScreen> {
 
     final state = context.read<AppState>();
 
+    // Resolve the signed-in cashier once so the sale carries a stable
+    // `staff_id`. Ledger attribution is keyed on that id, not the display
+    // name, so cash sales must record it too or cashier deletion silently
+    // leaves the real name on the ledger.
+    int? staffId;
+    if (!state.isOwnerSession) {
+      final staff = await DatabaseHelper.instance.getStaff();
+      final match = staff.where((s) => s.name == state.currentStaffName);
+      staffId = match.isEmpty ? null : match.first.id;
+    }
+
     // Prevent double-submit
     setState(() => _processingPayment = true);
 
@@ -252,6 +448,7 @@ class _SellScreenState extends State<SellScreen> {
         paymentMethod: paymentMethod,
         paymentReference: paymentReference,
         amountTendered: amountTendered,
+        staffId: staffId,
       );
 
       if (mounted) {
@@ -371,6 +568,19 @@ class _SellScreenState extends State<SellScreen> {
             'Cashier profile is not linked yet. Sync staff and try again.');
       }
 
+      // A previous push for this basket may still be awaiting confirmation.
+      // Never issue a second STK push for an outstanding reference: that is the
+      // double-charge path. Sweep rows the provider will never confirm, then
+      // let the operator reconcile anything still outstanding.
+      await DatabaseHelper.instance.deleteStalePendingPayments();
+      final outstanding =
+          await DatabaseHelper.instance.getBlockingPendingPayments();
+      if (outstanding.isNotEmpty) {
+        if (!mounted) return;
+        await _reconcileOutstandingPayment(outstanding.first);
+        return;
+      }
+
       final reference = await BackendService.initiatePayment(
         items: _cart
             .map((c) => {
@@ -384,6 +594,28 @@ class _SellScreenState extends State<SellScreen> {
         staffName: state.currentStaffName ?? 'Unknown',
         staffProfileId: state.isOwnerSession ? null : cashierProfile!.remoteId,
         customerName: result['customer'],
+      );
+
+      // Durable record written BEFORE polling. If the poll times out the cart
+      // survives, and this row prevents the same basket being pushed again.
+      final cartJson = jsonEncode(_cart
+          .map((c) => {
+                'productId': c.product.id,
+                'productName': c.product.name,
+                'qty': c.qty,
+                'unitPrice': c.unitPrice,
+                'unitCost': c.unitCost,
+                'portion': c.portion,
+                'portionMl': c.product.mlFor(c.portion),
+              })
+          .toList());
+      await DatabaseHelper.instance.recordPendingPayment(
+        reference: reference,
+        amount: _total,
+        cartJson: cartJson,
+        phoneNumber: result['phone'],
+        staffName: state.currentStaffName,
+        staffId: state.isOwnerSession ? null : cashierProfile?.id,
       );
 
       // Show waiting dialog
@@ -436,7 +668,9 @@ class _SellScreenState extends State<SellScreen> {
               enforceStock: false,
               paymentMethod: 'mpesa',
               paymentReference: reference,
+              staffId: state.isOwnerSession ? null : cashierProfile?.id,
             );
+            await DatabaseHelper.instance.resolvePendingPayment(reference);
           } catch (_) {
             // Never imply the payment failed: the customer has already paid.
             // Clear the cart to prevent a second charge and surface the
@@ -461,14 +695,23 @@ class _SellScreenState extends State<SellScreen> {
           setState(() => _cart.clear());
           _loadProducts();
         } else {
+          // Only a definitive decline means the push can safely be retried, so
+          // only then does the guard row go. On a timeout the outcome is still
+          // unknown: the customer may already have paid, so the row must
+          // survive or the same basket can be charged twice.
+          if (outcome == PaymentOutcome.failed) {
+            await DatabaseHelper.instance.resolvePendingPayment(reference);
+          }
+          if (!mounted) return;
           _announceStatus(outcome == PaymentOutcome.failed
               ? 'M-Pesa payment failed.'
-              : 'M-Pesa payment timed out. Check payment status.');
+              : 'M-Pesa payment timed out. Do not charge again.');
           ScaffoldMessenger.of(context).showSnackBar(
             SnackBar(
                 content: Text(outcome == PaymentOutcome.failed
                     ? 'Payment failed - customer cancelled or insufficient funds'
-                    : 'Payment timed out - check status in reports')),
+                    : 'Payment timed out - do not charge again. '
+                        'Reference $reference is saved and will be reconciled before another payment.')),
           );
         }
       }

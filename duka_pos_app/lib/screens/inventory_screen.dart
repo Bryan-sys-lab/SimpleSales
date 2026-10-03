@@ -1,8 +1,11 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../db/database_helper.dart';
 import '../models/models.dart';
 import '../services/app_state.dart';
+import '../services/backend_service.dart';
 import '../utils/money.dart';
 import '../theme/app_theme.dart';
 
@@ -44,7 +47,19 @@ class _InventoryScreenState extends State<InventoryScreen> {
     final delta = int.tryParse(result['delta'] ?? '');
     if (delta == null || delta == 0) return;
     if (!mounted) return;
-    final staffName = context.read<AppState>().currentStaffName!;
+    final state = context.read<AppState>();
+    final staffName = state.currentStaffName!;
+    // Shrinkage is reviewed per cashier, and `deleteStaffWithTombstone`
+    // anonymises the ledger by `staff_id`. Recording only the display name
+    // leaves the removed cashier named on every adjustment they made.
+    int? staffId;
+    String? staffRemoteId;
+    if (!state.isOwnerSession) {
+      final staff = await DatabaseHelper.instance.getStaff();
+      final match = staff.where((s) => s.name == staffName);
+      staffId = match.isEmpty ? null : match.first.id;
+      staffRemoteId = match.isEmpty ? null : match.first.remoteId;
+    }
     try {
       await DatabaseHelper.instance.adjustStock(StockAdjustment(
         productId: p.id!,
@@ -53,8 +68,25 @@ class _InventoryScreenState extends State<InventoryScreen> {
         reason: result['reason'] ?? '',
         staffName: staffName,
         createdAt: DateTime.now().toIso8601String(),
-      ));
+      ), staffId: staffId);
       await _load();
+      // The server owns the authoritative stock count, so the correction has to
+      // be pushed as an adjustment rather than folded into the next catalogue
+      // sync. Reported, not silent: the local count is already correct, but the
+      // shop's other devices will not see this change until it lands.
+      if (mounted) {
+        final pushed = await BackendService.adjustStockOnBackend(
+          product: p,
+          delta: delta,
+          reason: result['reason'],
+          staffProfileId: staffRemoteId,
+        );
+        if (!pushed && mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+              content: Text(
+                  'Stock updated on this till. The online count will catch up on the next sync.')));
+        }
+      }
     } on StateError catch (error) {
       if (mounted) {
         final message = error.toString().contains('below zero')
@@ -204,10 +236,8 @@ class _ProductEditorState extends State<_ProductEditor> {
 
   Future<void> _save() async {
     final name = _name.text.trim();
-    if (name.isEmpty) {
-      setState(() => _error = 'Enter a product name');
-      return;
-    }
+    final category =
+        _category.text.trim().isEmpty ? 'General' : _category.text.trim();
 
     final cost = double.tryParse(_cost.text.trim());
     final price = double.tryParse(_price.text.trim());
@@ -221,33 +251,25 @@ class _ProductEditorState extends State<_ProductEditor> {
         ? null
         : double.tryParse(_quarterPrice.text.trim());
 
-    if (cost == null || cost < 0) {
-      setState(() => _error = 'Cost price must be a number, 0 or more');
+    // Single shared rule set, identical to the Excel and Sheets importers, so
+    // the editor cannot persist a row the app's own backup format rejects.
+    final problem = Product.validate(
+      name: name,
+      category: category,
+      costPrice: cost ?? double.nan,
+      sellPrice: price ?? double.nan,
+      stockQty: stock ?? double.nan,
+      reorderLevel: reorder ?? -1,
+      bottleMl: bottleMl ?? 0,
+      halfPrice: halfPrice,
+      quarterPrice: quarterPrice,
+    );
+    if (problem != null) {
+      setState(() => _error = problem);
       return;
     }
-    if (price == null || price < 0) {
-      setState(() => _error = 'Sell price must be a number, 0 or more');
-      return;
-    }
-    if (stock == null || !stock.isFinite || stock < 0) {
-      setState(() => _error = 'Stock quantity must be 0 or more');
-      return;
-    }
-    if (reorder == null || reorder < 0) {
-      setState(
-          () => _error = 'Reorder level must be a whole number, 0 or more');
-      return;
-    }
-    if (bottleMl == null || bottleMl < 1 || bottleMl > 10000) {
-      setState(() => _error = 'Bottle size must be between 1 and 10,000 ml');
-      return;
-    }
-    if (halfPrice != null && (!halfPrice.isFinite || halfPrice < 0) ||
-        quarterPrice != null && (!quarterPrice.isFinite || quarterPrice < 0)) {
-      setState(() => _error = 'Portion prices must be valid amounts');
-      return;
-    }
-    if (price < cost) {
+    // The shared validator has already rejected null/NaN for these fields.
+    if (price! < cost!) {
       final proceed = await showDialog<bool>(
           context: context,
           builder: (_) => AlertDialog(
@@ -270,13 +292,12 @@ class _ProductEditorState extends State<_ProductEditor> {
     final product = Product(
       id: widget.existing?.id,
       name: name,
-      category:
-          _category.text.trim().isEmpty ? 'General' : _category.text.trim(),
+      category: category,
       costPrice: cost,
       sellPrice: price,
-      stockQty: stock,
-      reorderLevel: reorder,
-      bottleMl: bottleMl,
+      stockQty: stock!,
+      reorderLevel: reorder!,
+      bottleMl: bottleMl!,
       halfPrice: halfPrice,
       quarterPrice: quarterPrice,
       exciseStampBatch: _stamp.text.trim(),
@@ -287,11 +308,31 @@ class _ProductEditorState extends State<_ProductEditor> {
       await DatabaseHelper.instance.upsertProduct(product);
       widget.onSaved();
       if (mounted) Navigator.pop(context);
+      // Push just this row to the backend after the editor closes. A price
+      // change left only on the till would let the next till — or the web
+      // report — keep selling at the old price until the next auto-sync, which
+      // is up to six hours away. Best effort: a failed push is retried by the
+      // next bulk sync, and must not turn a local save into an error.
+      unawaited(_pushProductInBackground(product));
     } catch (e) {
       if (mounted) {
         setState(() => _error =
             "Couldn't save — check the phone has storage space free, then try again.");
       }
+    }
+  }
+
+  /// Pushes the saved row to the backend, re-reading it so the local id and any
+  /// newly assigned remote id are included.
+  static Future<void> _pushProductInBackground(Product saved) async {
+    try {
+      if (saved.id == null) return;
+      final all = await DatabaseHelper.instance.getProducts(activeOnly: false);
+      final fresh = all.where((p) => p.id == saved.id).firstOrNull;
+      await BackendService.syncProductToBackend(fresh ?? saved);
+    } catch (_) {
+      // Offline, unlinked or the backend rejected it: the bulk auto-sync path
+      // will pick the change up. Never block the local save on the network.
     }
   }
 

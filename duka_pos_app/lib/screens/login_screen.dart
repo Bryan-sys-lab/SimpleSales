@@ -48,8 +48,9 @@ class _LoginScreenState extends State<LoginScreen> {
     final state = context.read<AppState>();
     final userKey = _selected ?? '';
 
-    if (AuthService.isLockedOut(userKey)) {
-      final remaining = AuthService.lockoutRemaining(userKey);
+    if (await AuthService.isLockedOut(userKey)) {
+      final remaining = await AuthService.lockoutRemaining(userKey);
+      if (!mounted) return;
       setState(() {
         _error =
             'Too many wrong PINs. Try again in ${remaining?.inSeconds ?? 0}s.';
@@ -63,26 +64,37 @@ class _LoginScreenState extends State<LoginScreen> {
       ok = await AuthService.verifyPin(_pin, state.owner!.pinHash);
       if (!mounted) return;
       if (ok) {
-        AuthService.recordSuccess(userKey);
+        await AuthService.recordSuccess(userKey);
+        // Opportunistically re-derive a legacy weak hash on successful sign-in.
+        final hash = state.owner!.pinHash;
+        if (AuthService.needsUpgrade(hash)) {
+          await DatabaseHelper.instance
+              .updateOwnerPin(await AuthService.hashPin(_pin));
+        }
         state.signIn(state.owner!.name, asOwner: true);
         return;
       }
     } else {
       final match = _staff.where((s) => s.name == _selected);
       if (match.isNotEmpty) {
-        ok = await AuthService.verifyPin(_pin, match.first.pinHash);
+        final staff = match.first;
+        ok = await AuthService.verifyPin(_pin, staff.pinHash);
         if (!mounted) return;
         if (ok) {
-          AuthService.recordSuccess(userKey);
-          state.signIn(match.first.name,
-              asOwner: false, role: match.first.role);
+          await AuthService.recordSuccess(userKey);
+          if (AuthService.needsUpgrade(staff.pinHash) && staff.id != null) {
+            await DatabaseHelper.instance
+                .updateStaffPin(staff.id!, await AuthService.hashPin(_pin));
+          }
+          state.signIn(staff.name, asOwner: false, role: staff.role);
           return;
         }
       }
     }
 
-    AuthService.recordFailure(userKey);
-    final lockedNow = AuthService.isLockedOut(userKey);
+    await AuthService.recordFailure(userKey);
+    final lockedNow = await AuthService.isLockedOut(userKey);
+    if (!mounted) return;
     setState(() {
       _error = lockedNow
           ? 'Too many wrong PINs. Locked for ${AuthService.lockoutDuration.inSeconds}s.'

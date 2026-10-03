@@ -2,6 +2,7 @@ import 'dart:async';
 import 'package:dio/dio.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../db/database_helper.dart';
+import '../models/models.dart';
 import 'oidc_service.dart';
 import 'workspace_service.dart';
 
@@ -165,6 +166,79 @@ class BackendService {
     });
   }
 
+  /// Pushes a stock correction to the backend.
+  ///
+  /// `/products/sync` no longer carries `stockQty` for existing rows because
+  /// the server is the authority there, so this is how a break, a delivery or a
+  /// count reaches it. Best effort: the local ledger is already updated, and a
+  /// failed push is surfaced rather than silently dropped.
+  static Future<bool> adjustStockOnBackend({
+    required Product product,
+    required int delta,
+    String? reason,
+    String? staffProfileId,
+  }) async {
+    await ensureInitialized();
+    final tid = await tenantId;
+    if (tid == null) return false;
+    final remoteId = product.remoteId;
+    if (remoteId == null) return false;
+    try {
+      await _dio.post('$backendUrl/products/stock-adjust', data: {
+        'product_id': remoteId,
+        'delta': delta,
+        if (reason != null && reason.isNotEmpty) 'reason': reason,
+        if (staffProfileId != null) 'staff_profile_id': staffProfileId,
+      });
+      return true;
+    } on DioException {
+      return false;
+    }
+  }
+
+  /// Syncs one product to the backend immediately after it is edited.
+  ///
+  /// The bulk path runs on the auto-sync timer, so a price or name change is
+  /// invisible to the backend for up to six hours — long enough for the shop to
+  /// sell at a stale price. Pushing the single edited row keeps the catalogue
+  /// current without re-sending the whole inventory.
+  static Future<void> syncProductToBackend(Product product) async {
+    await ensureInitialized();
+    final tid = await tenantId;
+    if (tid == null) return;
+    if (product.id == null) return;
+
+    final response = await _dio.post('$backendUrl/products/sync', data: {
+      'products': [
+        {
+          'id': product.id,
+          'remoteId': product.remoteId,
+          'name': product.name,
+          'category': product.category,
+          'costPrice': product.costPrice,
+          'sellPrice': product.sellPrice,
+          'stockQty': product.stockQty,
+          'reorderLevel': product.reorderLevel,
+          'bottleMl': product.bottleMl,
+          'halfPrice': product.halfPrice,
+          'quarterPrice': product.quarterPrice,
+          'exciseStampBatch': product.exciseStampBatch,
+          'active': product.active,
+        }
+      ],
+    });
+
+    final synced = response.data['synced'] as List?;
+    if (synced == null) return;
+    for (final item in synced) {
+      final remoteId = item['remoteId'];
+      // A newly created product has no remote id until the server assigns one.
+      if (remoteId is String && remoteId.isNotEmpty) {
+        await DatabaseHelper.instance.setProductRemoteId(product.id!, remoteId);
+      }
+    }
+  }
+
   /// Sync local products to backend (bulk upsert)
   static Future<void> syncProductsToBackend() async {
     await ensureInitialized();
@@ -196,19 +270,21 @@ class BackendService {
           .toList(),
     });
 
-    // Update local DB with remote IDs
+    // Update local DB with remote IDs in one transaction. This ran on the
+    // 5-minute auto-sync path, so a per-row write meant one implicit
+    // transaction and one fsync per product on every cycle.
     final synced = response.data['synced'] as List?;
-    if (synced != null) {
-      for (final item in synced) {
-        final localId = item['localId'];
-        final remoteId = item['remoteId'];
-        if (localId != null &&
-            remoteId != null &&
-            localId is int &&
-            remoteId is String) {
-          await DatabaseHelper.instance.setProductRemoteId(localId, remoteId);
-        }
+    if (synced == null) return;
+    final pairs = <int, String>{};
+    for (final item in synced) {
+      final localId = item['localId'];
+      final remoteId = item['remoteId'];
+      if (localId is int && remoteId is String && remoteId.isNotEmpty) {
+        pairs[localId] = remoteId;
       }
+    }
+    if (pairs.isNotEmpty) {
+      await DatabaseHelper.instance.setProductRemoteIds(pairs);
     }
   }
 

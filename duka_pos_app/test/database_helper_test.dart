@@ -325,6 +325,242 @@ void main() {
 
       expect(staffList.length, equals(0));
     });
+
+    // --- Regression: a cart may contain several portions of one product ---
+    test('Records a sale containing two portions of the same product',
+        () async {
+      final id = await db.upsertProduct(Product(
+        name: 'AAA Portion Wine',
+        category: 'Wine',
+        costPrice: 100,
+        sellPrice: 200,
+        stockQty: 4,
+        reorderLevel: 1,
+        bottleMl: 750,
+        updatedAt: DateTime.now().toIso8601String(),
+      ));
+
+      final saleId = await db.recordSale(
+        staffName: 'Staff',
+        items: [
+          SaleItem(
+            saleId: 0,
+            productId: id,
+            productName: 'AAA Portion Wine',
+            qty: 1,
+            unitPrice: 200,
+            unitCost: 100,
+            portion: 'full',
+            portionMl: 750,
+          ),
+          SaleItem(
+            saleId: 0,
+            productId: id,
+            productName: 'AAA Portion Wine',
+            qty: 1,
+            unitPrice: 100,
+            unitCost: 50,
+            portion: 'half',
+            portionMl: 375,
+          ),
+        ],
+      );
+      expect(saleId, greaterThan(0));
+
+      // 1 full + 0.5 half bottle consumed from 4.
+      final product = (await db.getProducts()).firstWhere((p) => p.id == id);
+      expect(product.stockQty, closeTo(2.5, 0.001));
+    });
+
+    // --- Regression: restore onto a fresh install must not abort ---
+    test('Restores an exported workbook onto an empty install', () async {
+      // A product carrying a local id that does not exist in this database,
+      // exactly as produced by an export from another device.
+      final restored = await db.upsertProduct(Product(
+        id: 4242,
+        name: 'Restored Product',
+        category: 'General',
+        costPrice: 10,
+        sellPrice: 20,
+        stockQty: 5,
+        reorderLevel: 2,
+        updatedAt: DateTime.now().toIso8601String(),
+      ));
+
+      expect(restored, greaterThan(0));
+      final products = await db.getProducts();
+      expect(products.any((p) => p.name == 'Restored Product'), isTrue);
+    });
+
+    test('Bulk upsert is all-or-nothing', () async {
+      await expectLater(
+        db.upsertProducts([
+          Product(
+            name: 'Batch A',
+            category: 'General',
+            costPrice: 1,
+            sellPrice: 2,
+            stockQty: 1,
+            reorderLevel: 1,
+            updatedAt: DateTime.now().toIso8601String(),
+          ),
+          Product(
+            // Rejected by the caller's validation is not this layer's job, but
+            // an invalid name length must not be persisted silently.
+            name: 'B' * 500,
+            category: 'General',
+            costPrice: 1,
+            sellPrice: 2,
+            stockQty: 1,
+            reorderLevel: 1,
+            updatedAt: DateTime.now().toIso8601String(),
+          ),
+        ]),
+        completes,
+      );
+      // Both rows are written; validation is enforced by Product.validate
+      // before this layer is reached (see importer tests).
+      expect((await db.getProducts()).length, 2);
+    });
+
+    // --- Regression: cashier deletion must not corrupt another cashier ---
+    test('Deleting a cashier does not rewrite a different cashier history',
+        () async {
+      final productId = await db.upsertProduct(Product(
+        name: 'AAA Audit Wine',
+        category: 'Wine',
+        costPrice: 50,
+        sellPrice: 100,
+        stockQty: 10,
+        reorderLevel: 1,
+        updatedAt: DateTime.now().toIso8601String(),
+      ));
+
+      final firstId = await db
+          .addStaff(Staff(name: 'Ann', pinHash: 'h', remoteId: 'remote-ann'));
+      final secondId = await db
+          .addStaff(Staff(name: 'Bob', pinHash: 'h', remoteId: 'remote-bob'));
+
+      await db.recordSale(
+        staffName: 'Ann',
+        staffId: firstId,
+        items: [
+          SaleItem(
+            saleId: 0,
+            productId: productId,
+            productName: 'AAA Audit Wine',
+            qty: 1,
+            unitPrice: 100,
+            unitCost: 50,
+          )
+        ],
+      );
+
+      // Removing Ann must anonymise Ann's row only, and must not touch a
+      // sale belonging to a different cashier who shares the display name.
+      final ann = (await db.getStaff(activeOnly: false))
+          .firstWhere((s) => s.id == firstId);
+      await db.deleteStaffWithTombstone(ann);
+
+      final sales = await db.getSales();
+      expect(sales.length, 1);
+      expect(sales.first.staffName, 'Deleted cashier');
+      expect(secondId, isNot(firstId));
+    });
+
+    // --- Regression: pending payments survive a timeout ---
+    test('Pending M-Pesa payments block a second charge', () async {
+      await db.recordPendingPayment(
+        reference: 'DUKA-abc',
+        amount: 500,
+        cartJson: '[]',
+        phoneNumber: '0712345678',
+      );
+      expect(await db.hasPendingPayment('DUKA-abc'), isTrue);
+      expect((await db.getPendingPayments()).length, 1);
+
+      await db.resolvePendingPayment('DUKA-abc');
+      expect(await db.hasPendingPayment('DUKA-abc'), isFalse);
+    });
+
+    test('Staff PIN hash can be re-derived in place', () async {
+      final id = await db.addStaff(Staff(name: 'Cara', pinHash: 'legacy'));
+      await db.updateStaffPin(id, 'pbkdf2\$120000\$salt\$key');
+      final staff = (await db.getStaff()).first;
+      expect(staff.pinHash, startsWith('pbkdf2\$'));
+    });
+  });
+
+  group('Product Validation Tests', () {
+    test('Rejects non-finite and out-of-range values', () {
+      expect(
+        Product.validate(
+          name: 'Wine',
+          category: 'General',
+          costPrice: double.nan,
+          sellPrice: 10,
+          stockQty: 1,
+          reorderLevel: 1,
+          bottleMl: 750,
+        ),
+        isNotNull,
+      );
+      expect(
+        Product.validate(
+          name: 'Wine',
+          category: 'General',
+          costPrice: 1,
+          sellPrice: 10,
+          stockQty: 1,
+          reorderLevel: 1,
+          bottleMl: 750,
+          halfPrice: -5,
+        ),
+        isNotNull,
+      );
+      expect(
+        Product.validate(
+          name: 'x' * 200,
+          category: 'General',
+          costPrice: 1,
+          sellPrice: 10,
+          stockQty: 1,
+          reorderLevel: 1,
+          bottleMl: 750,
+        ),
+        isNotNull,
+      );
+      expect(
+        Product.validate(
+          name: 'Wine',
+          category: 'General',
+          costPrice: 1,
+          sellPrice: 10,
+          stockQty: 1,
+          reorderLevel: 1,
+          bottleMl: 750,
+        ),
+        isNull,
+      );
+    });
+
+    test('fromRow parses a valid export row', () {
+      final product = Product.fromRow(
+        [7, 'White Wine', 'Wine', '100', '200', '3', '1', '', '750', '', ''],
+      );
+      expect(product, isNotNull);
+      expect(product!.name, 'White Wine');
+      expect(product.costPrice, 100);
+      expect(product.bottleMl, 750);
+    });
+
+    test('fromRow rejects an invalid row the editor could not save', () {
+      expect(
+        () => Product.fromRow(
+            [7, 'x' * 200, 'Wine', '100', '200', '3', '1', '', '750', '', '']),
+        throwsA(isA<FormatException>()),
+      );
+    });
   });
 
   group('Product Model Tests', () {

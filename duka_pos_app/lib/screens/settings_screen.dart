@@ -316,6 +316,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
         email: owner.email,
       );
       await state.loadOwner();
+      state.markIdentityLinked();
       if (!mounted) return;
       _err('Online identity linked. M-Pesa and analytics are now available.');
     } catch (_) {

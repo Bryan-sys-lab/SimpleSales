@@ -20,6 +20,43 @@ const backupReminderThreshold = Duration(hours: 30);
 /// "Import" dialog — this is how sync happens when there's no internet: the
 /// owner exports, transfers the file by USB/WhatsApp/SD card, and imports it
 /// on the other device or uploads it to Sheets manually later.
+/// Marker for the automatic backup job; kept trivial so it is cheap to send
+/// between the scheduler and this function.
+class InventoryBackupRequest {
+  const InventoryBackupRequest();
+}
+
+/// Builds and writes an encrypted inventory snapshot, returning the file path.
+///
+/// This must run on the **main** isolate. Reading the catalogue needs sqflite
+/// and writing the file needs path_provider, and neither plugin is registered
+/// inside a `compute` isolate — dispatching this function wholesale threw on
+/// every run and the caller's `catch` swallowed it, so automatic backups
+/// silently stopped happening. The genuinely CPU-bound part (AES-GCM over the
+/// workbook) is dispatched separately by [EncryptedBackupService.encryptToFile],
+/// so the expensive work still leaves the frame loop.
+///
+/// This is the scheduler-facing entry point and is a thin delegate:
+/// [ExcelService.saveAutomaticInventoryBackup] holds the single implementation,
+/// so a manual backup and an automatic one can never drift apart.
+Future<String> writeAutomaticInventoryBackup(
+    InventoryBackupRequest request) async {
+  final file = await ExcelService().saveAutomaticInventoryBackup();
+  return file.path;
+}
+
+/// Records when the last automatic backup was written, so the dashboard can
+/// prompt the owner before the snapshot is too old to be useful.
+Future<void> recordAutomaticBackupWritten(String path) async {
+  final prefs = await SharedPreferences.getInstance();
+  await prefs.setString(_lastBackupKey, DateTime.now().toIso8601String());
+  // The written file is recorded alongside the timestamp so the rotation step
+  // and the "last backup" prompt agree on which snapshot is current, and so a
+  // future reconciliation can tell a written-but-unrotated snapshot from one
+  // that was never produced.
+  await prefs.setString('${_lastBackupKey}_path', path);
+}
+
 class ExcelService {
   final _db = DatabaseHelper.instance;
 
@@ -97,8 +134,7 @@ class ExcelService {
         await workbook.readAsBytes(),
         prefix: 'duka-inventory');
     if (workbook.existsSync()) await workbook.delete();
-    final prefs = await SharedPreferences.getInstance();
-    await prefs.setString(_lastBackupKey, DateTime.now().toIso8601String());
+    await recordAutomaticBackupWritten(file.path);
     return file;
   }
 
@@ -153,67 +189,17 @@ class ExcelService {
     final sheet = book.tables.values.first;
     final imported = <Product>[];
     for (final row in sheet.rows.skip(1)) {
-      if (row.isEmpty || row.length < 7 || row[1]?.value == null) continue;
-      final idVal = row[0]?.value;
-      final name = row[1]!.value.toString().trim();
-      final category = row[2]?.value?.toString().trim() ?? 'General';
-      final cost = double.tryParse(row[3]?.value?.toString() ?? '');
-      final price = double.tryParse(row[4]?.value?.toString() ?? '');
-      final stock = double.tryParse(row[5]?.value?.toString() ?? '');
-      final reorder = int.tryParse(row[6]?.value?.toString() ?? '');
-      final bottleMl = row.length > 8
-          ? int.tryParse(row[8]?.value?.toString() ?? '') ?? 750
-          : 750;
-      final halfPrice =
-          row.length > 9 && (row[9]?.value?.toString() ?? '').trim().isNotEmpty
-              ? double.tryParse(row[9]!.value.toString())
-              : null;
-      final quarterPrice = row.length > 10 &&
-              (row[10]?.value?.toString() ?? '').trim().isNotEmpty
-          ? double.tryParse(row[10]!.value.toString())
-          : null;
-      if (name.isEmpty ||
-          name.length > 120 ||
-          category.length > 80 ||
-          cost == null ||
-          !cost.isFinite ||
-          cost < 0 ||
-          price == null ||
-          !price.isFinite ||
-          price < 0 ||
-          stock == null ||
-          !stock.isFinite ||
-          stock < 0 ||
-          reorder == null ||
-          reorder < 0 ||
-          bottleMl < 1 ||
-          bottleMl > 10000 ||
-          (halfPrice != null && (!halfPrice.isFinite || halfPrice < 0)) ||
-          (quarterPrice != null &&
-              (!quarterPrice.isFinite || quarterPrice < 0))) {
-        throw const FormatException(
-            'The workbook contains an invalid inventory row');
-      }
-      final product = Product(
-        id: idVal == null ? null : int.tryParse(idVal.toString()),
-        name: name,
-        category: category.isEmpty ? 'General' : category,
-        costPrice: cost,
-        sellPrice: price,
-        stockQty: stock.toDouble(),
-        reorderLevel: reorder,
-        bottleMl: bottleMl,
-        halfPrice: halfPrice,
-        quarterPrice: quarterPrice,
-        exciseStampBatch:
-            row.length > 7 ? (row[7]?.value?.toString() ?? '') : '',
-        updatedAt: DateTime.now().toIso8601String(),
+      if (row.isEmpty) continue;
+      // Single shared row parser/validator (Product.fromRow) so this importer,
+      // the Sheets importer and the product editor cannot drift apart.
+      final product = Product.fromRow(
+        row.map((cell) => cell?.value).toList(),
+        parseId: (value) =>
+            value == null ? null : int.tryParse(value.toString()),
       );
-      imported.add(product);
+      if (product != null) imported.add(product);
     }
-    for (final product in imported) {
-      await _db.upsertProduct(product);
-    }
+    await _db.upsertProducts(imported);
     return imported.length;
   }
 }

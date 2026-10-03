@@ -2,8 +2,21 @@ import 'dart:convert';
 import 'dart:io';
 import 'package:cryptography/cryptography.dart';
 import 'package:file_picker/file_picker.dart';
+import 'package:flutter/foundation.dart' show compute, immutable;
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:path_provider/path_provider.dart';
+
+/// Arguments for [buildEncryptedPayload]. Plain data only — this is what
+/// crosses the isolate boundary.
+///
+/// Declared at the top level because Dart has no nested classes, and because a
+/// `compute` payload has to be a type the sending isolate can construct.
+@immutable
+class EncryptRequest {
+  const EncryptRequest(this.keyBytes, this.clearBytes);
+  final List<int> keyBytes;
+  final List<int> clearBytes;
+}
 
 /// Encrypts exported backup bytes with AES-256-GCM. The per-install key is
 /// kept in the OS keystore/keychain, never in SharedPreferences or the file.
@@ -16,29 +29,50 @@ class EncryptedBackupService {
   static const _storage = FlutterSecureStorage();
   static final _cipher = AesGcm.with256bits();
 
-  static Future<SecretKey> _key() async {
+  /// Raw key bytes, read from or created in the OS keystore. Kept separate
+  /// from the cipher so the expensive step can be dispatched to another
+  /// isolate: every other part of this file needs a platform channel, and
+  /// those are not registered inside a `compute` isolate.
+  static Future<List<int>> _keyBytes() async {
     final existing = await _storage.read(key: _keyName);
     if (existing != null) {
-      return _cipher.newSecretKeyFromBytes(base64Url.decode(existing));
+      return base64Url.decode(existing);
     }
     final key = await _cipher.newSecretKey();
     final bytes = await key.extractBytes();
     await _storage.write(key: _keyName, value: base64UrlEncode(bytes));
-    return key;
+    return bytes;
   }
 
-  static Future<File> encryptToFile(List<int> clearBytes,
-      {String prefix = 'duka-backup'}) async {
-    final key = await _key();
-    final box = await _cipher.encrypt(clearBytes,
-        secretKey: key, nonce: _cipher.newNonce());
-    final payload = jsonEncode({
+  static Future<SecretKey> _key() async =>
+      _cipher.newSecretKeyFromBytes(await _keyBytes());
+
+  /// The CPU-bound half of [encryptToFile]: AES-256-GCM over a whole workbook.
+  ///
+  /// Top-level and plugin-free so it can run in a background isolate — this is
+  /// the part that would otherwise stall the till's frame loop during an
+  /// automatic backup. Reading the key and writing the result must happen on
+  /// the main isolate, where `flutter_secure_storage` and `path_provider` are
+  /// actually bound.
+  static Future<String> buildEncryptedPayload(EncryptRequest request) async {
+    final cipher = AesGcm.with256bits();
+    final key = await cipher.newSecretKeyFromBytes(request.keyBytes);
+    final box = await cipher.encrypt(request.clearBytes,
+        secretKey: key, nonce: cipher.newNonce());
+    return jsonEncode({
       'format': _format,
       'createdAt': DateTime.now().toUtc().toIso8601String(),
       'nonce': base64UrlEncode(box.nonce),
       'cipherText': base64UrlEncode(box.cipherText),
       'mac': base64UrlEncode(box.mac.bytes),
     });
+  }
+
+  static Future<File> encryptToFile(List<int> clearBytes,
+      {String prefix = 'duka-backup'}) async {
+    final keyBytes = await _keyBytes();
+    final payload =
+        await compute(buildEncryptedPayload, EncryptRequest(keyBytes, clearBytes));
     final dir = await getApplicationDocumentsDirectory();
     final file = File(
         '${dir.path}/$prefix-${DateTime.now().toIso8601String().substring(0, 10)}.duka');
@@ -78,7 +112,10 @@ class EncryptedBackupService {
   static Future<void> cryptographicEraseLocalBackups() async {
     await _storage.delete(key: _keyName);
     final dir = await getApplicationDocumentsDirectory();
-    for (final entity in dir.listSync()) {
+    // Async enumeration: `listSync` walks the whole directory synchronously
+    // and would stall the frame loop on a till with many retained backups.
+    final entities = await dir.list().toList();
+    for (final entity in entities) {
       if (entity is File && entity.path.endsWith('.duka')) {
         await entity.delete();
       }

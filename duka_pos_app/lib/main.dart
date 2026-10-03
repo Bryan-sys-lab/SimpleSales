@@ -3,6 +3,8 @@ import 'package:flutter/foundation.dart';
 import 'dart:ui';
 import 'package:provider/provider.dart';
 import 'package:sentry_flutter/sentry_flutter.dart';
+import 'package:sqflite/sqflite.dart';
+import 'package:sqflite_common_ffi_web/sqflite_ffi_web.dart';
 import 'services/app_state.dart';
 import 'services/auto_sync_service.dart';
 import 'screens/owner_setup_screen.dart';
@@ -21,6 +23,13 @@ const sentryDsn = String.fromEnvironment(
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
 
+  // The browser has no native sqflite plugin, so the default factory throws on
+  // the first database access. Point it at the IndexedDB-backed wasm build;
+  // native platforms keep their own factory.
+  if (kIsWeb) {
+    databaseFactory = databaseFactoryFfiWeb;
+  }
+
   FlutterError.onError = (details) {
     FlutterError.presentError(details);
     if (sentryDsn.isNotEmpty) {
@@ -28,25 +37,39 @@ Future<void> main() async {
     }
   };
   PlatformDispatcher.instance.onError = (error, stack) {
-    if (sentryDsn.isNotEmpty) Sentry.captureException(error, stackTrace: stack);
-    return true;
+    if (sentryDsn.isNotEmpty && _sentryReady) {
+      Sentry.captureException(error, stackTrace: stack);
+      return true;
+    }
+    // Without a working crash reporter, returning true would mark the error as
+    // handled and discard it silently. Log it so it is visible either way.
+    debugPrint('Unhandled error: $error\n$stack');
+    return false;
   };
 
-  // Initialize Sentry for crash reporting (if DSN provided)
+  // Initialize Sentry for crash reporting (if DSN provided). A malformed DSN
+  // must never prevent the app from starting, so init is guarded and the app
+  // always runs.
   if (sentryDsn.isNotEmpty) {
-    await SentryFlutter.init(
-      (options) {
-        options.dsn = sentryDsn;
-        options.tracesSampleRate = kReleaseMode ? 0.1 : 0.0;
-        options.environment = kReleaseMode ? 'production' : 'development';
-      },
-      appRunner: () => runApp(const DukaPosApp()),
-    );
-  } else {
-    // No Sentry DSN - run without crash reporting
-    runApp(const DukaPosApp());
+    try {
+      await SentryFlutter.init(
+        (options) {
+          options.dsn = sentryDsn;
+          options.tracesSampleRate = kReleaseMode ? 0.1 : 0.0;
+          options.environment = kReleaseMode ? 'production' : 'development';
+        },
+        appRunner: () => runApp(const DukaPosApp()),
+      );
+      _sentryReady = true;
+      return;
+    } catch (error) {
+      debugPrint('Crash reporting disabled (invalid SENTRY_DSN): $error');
+    }
   }
+  runApp(const DukaPosApp());
 }
+
+bool _sentryReady = false;
 
 class DukaPosApp extends StatelessWidget {
   const DukaPosApp({super.key});
