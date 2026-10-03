@@ -31,7 +31,19 @@
             </intent-filter>
         </activity>
         
-        <!-- OIDC/AppAuth callback for the public mobile client -->
+        <!-- OIDC/AppAuth callback for the public mobile client.
+
+             NOTE: a custom scheme is hijackable. Any other app on the handset
+             can register dukapos:// and be handed the authorization code
+             instead of this app, because Android resolves custom schemes by
+             asking which installed app claims it.
+
+             android:autoVerify is deliberately NOT set here: it is ignored for
+             non-http(s) schemes, so it would look like a fix while changing
+             nothing. The real mitigation is to move this callback to a verified
+             https App Link, which needs a domain this shop controls plus a
+             /.well-known/assetlinks.json naming this app's release certificate.
+             See .github/RELEASING.md ("OIDC callback verification"). -->
         <activity android:name="net.openid.appauth.RedirectUriReceiverActivity" android:exported="true">
             <intent-filter>
                 <action android:name="android.intent.action.VIEW" />

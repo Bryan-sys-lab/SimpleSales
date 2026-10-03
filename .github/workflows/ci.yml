@@ -1,0 +1,56 @@
+name: CI
+
+# Pull-request validation: catches broken Dart and broken Android builds before
+# anything reaches main. Release signing is never involved here.
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - 'duka_pos_app/**'
+      - '.github/workflows/ci.yml'
+      - '.github/actions/**'
+  push:
+    branches: [main]
+    paths:
+      - 'duka_pos_app/**'
+      - '.github/workflows/ci.yml'
+      - '.github/actions/**'
+  workflow_dispatch:
+
+# Cancel superseded runs so a rapid push-to-PR sequence does not burn minutes
+# of runner time on commits that are already obsolete.
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  validate:
+    name: Analyze, test, and build
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    defaults:
+      run:
+        working-directory: duka_pos_app
+
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v4
+
+      - name: Set up Flutter and Android SDK
+        uses: ./.github/actions/setup-flutter-android
+
+      - name: Analyze
+        run: flutter analyze --fatal-infos
+
+      - name: Run tests
+        run: flutter test --reporter expanded
+
+      # A debug APK build exercises the part of the pipeline that analyze and
+      # test cannot see: the Gradle configuration, AGP/manifest wiring, and the
+      # native toolchain. Release signing is skipped for a debug build, so no
+      # secret is required to run this job.
+      - name: Build debug APK (verifies the Android build still configures)
+        run: flutter build apk --debug

@@ -1,0 +1,372 @@
+name: Release
+
+# Produces the signed, distributable APK and attaches it to a GitHub Release.
+#
+# Trigger:
+#   git tag v1.4.0 && git push origin v1.4.0
+#
+# The version in the tag MUST equal the `version:` in duka_pos_app/pubspec.yaml.
+# That single check is what keeps the APK's own versionName/versionCode — which
+# Flutter reads from pubspec — from disagreeing with the release it is sold as.
+on:
+  push:
+    tags:
+      - 'v*'
+
+# Serialise releases: two tags pushed at once must not race to publish.
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+# Creating a GitHub Release requires write access; nothing else in this
+# workflow needs more than read.
+permissions:
+  contents: write
+
+jobs:
+  release:
+    name: Build signed APK and publish release
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    defaults:
+      run:
+        working-directory: duka_pos_app
+
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v4
+        with:
+          # Full history so the tag-on-main guard can walk ancestry.
+          fetch-depth: 0
+
+      - name: Set up Flutter and Android SDK
+        uses: ./.github/actions/setup-flutter-android
+
+      # A tag can point at any commit, including one that never passed CI or
+      # was never merged. Refuse to publish unreviewed code.
+      - name: Verify tag points at a commit on main
+        shell: bash
+        run: |
+          set -euo pipefail
+          git fetch --no-tags origin main
+          if ! git merge-base --is-ancestor "$GITHUB_SHA" origin/main; then
+            echo "::error::Tag ${GITHUB_REF_NAME} points at a commit that is not on main. Refusing to release."
+            exit 1
+          fi
+          echo "Tag ${GITHUB_REF_NAME} is on main."
+
+      # Guards against the most common release mistake: tagging v1.2.0 while
+      # pubspec still says 1.1.0. The APK would then ship under a version that
+      # disagrees with its own name, and Android would reject the install as a
+      # downgrade.
+      - name: Verify tag matches the pubspec version
+        id: version
+        shell: bash
+        run: |
+          set -euo pipefail
+          pubspec_line="$(awk '/^version:/{print $2; exit}' pubspec.yaml)"
+          pubspec_name="${pubspec_line%%+*}"
+          pubspec_code="${pubspec_line##*+}"
+          tag_version="${GITHUB_REF_NAME#v}"
+
+          echo "name=${pubspec_name}" >> "$GITHUB_OUTPUT"
+          echo "code=${pubspec_code}" >> "$GITHUB_OUTPUT"
+
+          if [ "$tag_version" != "$pubspec_name" ]; then
+            echo "::error::Tag ${GITHUB_REF_NAME} does not match pubspec version ${pubspec_name}. Update pubspec.yaml or retag."
+            exit 1
+          fi
+          if ! [ "$pubspec_code" =~ ^[0-9]+$ ] || [ "$pubspec_code" -lt 1 ]; then
+            echo "::error::pubspec build number '${pubspec_code}' is not a positive integer."
+            exit 1
+          fi
+          echo "Tag ${GITHUB_REF_NAME} matches pubspec ${pubspec_line}."
+
+      - name: Analyze
+        run: flutter analyze --fatal-infos
+
+      - name: Run tests
+        run: flutter test --reporter expanded
+
+      # The keystore is reconstructed only inside this ephemeral runner and is
+      # never committed. It is masked in logs, and the file is deleted before the
+      # release is published.
+      - name: Reconstruct the release keystore
+        shell: bash
+        env:
+          KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+          KEYSTORE_PASSWORD: ${{ secrets.KEYSTORE_PASSWORD }}
+          KEY_ALIAS: ${{ secrets.KEY_ALIAS }}
+          KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
+          KEYSTORE_FILE_NAME: duka-pos-release.jks
+        run: |
+          set -euo pipefail
+          for var in KEYSTORE_BASE64 KEYSTORE_PASSWORD KEY_ALIAS; do
+            if [ -z "${!var}" ]; then
+              echo "::error::Secret ${var} is not set. Add it under Settings > Secrets and variables > Actions."
+              exit 1
+            fi
+          done
+
+          # KEY_PASSWORD is optional and deliberately so. A keystore made with a
+          # plain `keytool -genkeypair` and no -keypass shares one password
+          # between the store and the key, and this project's key.properties has
+          # no keyPassword entry at all. Requiring it would block a release over
+          # a value that does not exist. When it is supplied it wins, so a
+          # keystore that does use a separate key password still works.
+          KEY_PASSWORD="${KEY_PASSWORD:-$KEYSTORE_PASSWORD}"
+
+          echo "$KEYSTORE_BASE64" | base64 --decode > "android/$KEYSTORE_FILE_NAME"
+
+          # Fail here rather than deep inside Gradle if the secret is corrupt or
+          # the passwords are wrong — the message is otherwise very opaque.
+          keytool -list -keystore "android/$KEYSTORE_FILE_NAME" \
+            -storepass "$KEYSTORE_PASSWORD" -alias "$KEY_ALIAS" > /dev/null
+
+          # Consumed by android/app/build.gradle.kts. storeFile is written as an
+          # absolute path because it is resolved with Project.file() from the
+          # :app module directory, and the workspace path is not known until run
+          # time. The file is gitignored, so it never enters the repository.
+          cat > android/key.properties <<EOF
+          storeFile=$GITHUB_WORKSPACE/duka_pos_app/android/$KEYSTORE_FILE_NAME
+          storePassword=$KEYSTORE_PASSWORD
+          keyAlias=$KEY_ALIAS
+          keyPassword=$KEY_PASSWORD
+          EOF
+          chmod 600 android/key.properties
+
+      # Compile-time configuration.
+      #
+      # The app is offline-first: a till records sales to its own database and
+      # needs no backend to take money. So an unset backend or issuer is a
+      # warning, not a failure — that build is a valid cash-only till, and
+      # refusing to ship it would mean no APK at all until the backend and
+      # Keycloak are deployed.
+      #
+      # A value that IS set is held to a stricter rule. Someone who typed a
+      # backend URL and got it wrong believes the build is wired up, and an
+      # http:// or localhost endpoint fails silently on the handset (Android
+      # blocks cleartext by default; there is no usesCleartextTraffic in the
+      # manifest). Failing here makes the cause visible instead.
+      - name: Validate release configuration
+        id: config
+        shell: bash
+        env:
+          SENTRY_DSN: ${{ secrets.SENTRY_DSN }}
+          BACKEND_URL: ${{ secrets.BACKEND_URL }}
+          OIDC_ISSUER_URL: ${{ secrets.OIDC_ISSUER_URL }}
+        run: |
+          set -euo pipefail
+
+          if [ -z "${SENTRY_DSN}" ]; then
+            echo "::warning::SENTRY_DSN is not set; this build ships without crash reporting."
+          fi
+
+          if [ -z "${BACKEND_URL}" ]; then
+            echo "::warning::BACKEND_URL is not set. This is an offline-only build: sales are recorded locally, but sync and M-Pesa will not work."
+          fi
+          if [ -z "${OIDC_ISSUER_URL}" ]; then
+            echo "::warning::OIDC_ISSUER_URL is not set. This is an offline-only build: staff sign in with their PIN, but online sign-in will not work."
+          fi
+
+          for url in "$BACKEND_URL" "$OIDC_ISSUER_URL"; do
+            [ -z "$url" ] && continue
+            if [[ ! "$url" =~ ^https://[^[:space:]]+$ ]]; then
+              echo "::error::'$url' must be an https:// URL. Cleartext and bare hosts are not accepted."
+              exit 1
+            fi
+            if [[ "$url" == *localhost* || "$url" == *127.0.0.1* ]]; then
+              echo "::error::'$url' points at the handset itself. Set the reachable backend address."
+              exit 1
+            fi
+          done
+
+          # A placeholder is https and non-local, so it survives the checks
+          # above — but it is still obviously not a real deployment.
+          if [[ "${OIDC_ISSUER_URL}" == *example.com* || "${OIDC_ISSUER_URL}" == *example.test* ]]; then
+            echo "::warning::OIDC_ISSUER_URL looks like a placeholder ('$OIDC_ISSUER_URL'). Online sign-in will not work."
+          fi
+
+          # Recorded so the published release is self-documenting about what
+          # this particular APK can and cannot do.
+          offline_only=false
+          if [ -z "${BACKEND_URL}" ] || [ -z "${OIDC_ISSUER_URL}" ]; then
+            offline_only=true
+          fi
+          echo "offline_only=${offline_only}" >> "$GITHUB_OUTPUT"
+
+          if [ "$offline_only" = true ]; then
+            echo "::warning::Releasing an OFFLINE-ONLY build. Set BACKEND_URL and OIDC_ISSUER_URL before you need M-Pesa or online sign-in."
+          else
+            echo "BACKEND_URL and OIDC_ISSUER_URL are set, https and non-local."
+          fi
+
+      - name: Build signed release APK
+        shell: bash
+        env:
+          SENTRY_DSN: ${{ secrets.SENTRY_DSN }}
+          BACKEND_URL: ${{ secrets.BACKEND_URL }}
+          OIDC_ISSUER_URL: ${{ secrets.OIDC_ISSUER_URL }}
+          OIDC_CLIENT_ID: ${{ secrets.OIDC_CLIENT_ID }}
+          OIDC_REDIRECT_URL: ${{ secrets.OIDC_REDIRECT_URL }}
+          OIDC_API_SCOPE: ${{ secrets.OIDC_API_SCOPE }}
+        run: |
+          set -euo pipefail
+          apk="build/app/outputs/flutter-apk/app-release.apk"
+
+          # A single universal APK, not --split-per-abi: it is sideloaded onto
+          # whatever ARM device a shop owns, so one file has to work everywhere.
+          #
+          # --obfuscate is deliberately NOT used. It would need its symbol maps
+          # uploaded to Sentry per build or every release crash report becomes
+          # unreadable; the app is not obfuscated to protect a local-only ledger.
+          # Only values that are actually set are injected.
+          #
+          # Passing an empty --dart-define is not the same as omitting it: it
+          # OVERRIDES the app's String.fromEnvironment defaultValue with an empty
+          # string, so an unset BACKEND_URL would ship as "" rather than falling
+          # back to the app's own placeholder. Omitting the flag lets the app's
+          # defaults stand, which keeps one source of truth for them — here and
+          # in backend_service.dart — instead of duplicating every default in two
+          # places.
+          defines=()
+          add_define() {
+            if [ -n "$2" ]; then
+              defines+=("--dart-define=$1=$2")
+            else
+              echo "::warning::$1 not injected; the app's built-in default applies."
+            fi
+          }
+          add_define SENTRY_DSN "$SENTRY_DSN"
+          add_define BACKEND_URL "$BACKEND_URL"
+          add_define OIDC_ISSUER_URL "$OIDC_ISSUER_URL"
+          add_define OIDC_CLIENT_ID "$OIDC_CLIENT_ID"
+          add_define OIDC_REDIRECT_URL "$OIDC_REDIRECT_URL"
+          add_define OIDC_API_SCOPE "$OIDC_API_SCOPE"
+
+          echo "dart-defines injected: ${#defines[@]}"
+          flutter build apk --release ${defines[@]+"${defines[@]}"}
+
+          test -f "$apk" || { echo "::error::Expected APK not found at $apk"; exit 1; }
+
+          # Hand the APK a release-shaped name before it leaves the workspace.
+          mv "$apk" "build/duka-pos-${GITHUB_REF_NAME}.apk"
+          ls -lh build/*.apk
+
+      # Proves the artefact is signed by a real key and reports which one, so a
+      # debug-signed or unsigned APK can never be published unnoticed.
+      - name: Verify the APK is signed by the release key
+        shell: bash
+        env:
+          EXPECTED_SIGNING_CERT_SHA256: ${{ vars.EXPECTED_SIGNING_CERT_SHA256 }}
+        run: |
+          set -euo pipefail
+          apk="build/duka-pos-${GITHUB_REF_NAME}.apk"
+
+          apksigner="$(ls -d "$ANDROID_HOME"/build-tools/*/apksigner | sort -V | tail -1)"
+          "$apksigner" verify --verbose --print-certs "$apk"
+
+          digest="$("$apksigner" verify --print-certs "$apk" \
+            | grep -iE '^Signer #1 certificate SHA-256 digest:' \
+            | head -1 | sed 's/.*digest: //')"
+
+          if [ -z "$digest" ]; then
+            echo "::error::Could not read a signer certificate digest from the APK."
+            exit 1
+          fi
+          echo "Signing certificate SHA-256: ${digest}"
+
+          # Optional: set this repository variable to make the check strict.
+          # Colons and case are normalised, so the value can be pasted with or
+          # without separators.
+          if [ -n "$EXPECTED_SIGNING_CERT_SHA256" ]; then
+            actual="$(tr -d ':' <<<"$digest" | tr '[:upper:]' '[:lower:]')"
+            expected="$(tr -d ':' <<<"$EXPECTED_SIGNING_CERT_SHA256" | tr '[:upper:]' '[:lower:]')"
+            if [ "$actual" != "$expected" ]; then
+              echo "::error::APK signer ${digest} does not match EXPECTED_SIGNING_CERT_SHA256 ${EXPECTED_SIGNING_CERT_SHA256}."
+              exit 1
+            fi
+            echo "Signing certificate matches the expected release key."
+          fi
+
+      # Confirms the binary itself reports the version it is being released as,
+      # closing the loop on the pubspec check above.
+      - name: Verify the APK reports the released version
+        shell: bash
+        run: |
+          set -euo pipefail
+          apk="build/duka-pos-${GITHUB_REF_NAME}.apk"
+          aapt2="$(ls -d "$ANDROID_HOME"/build-tools/*/aapt2 | sort -V | tail -1)"
+
+          badging="$("$aapt2" dump badging "$apk" | head -1)"
+          echo "$badging"
+
+          expected="${GITHUB_REF_NAME#v}"
+          actual_name="$(sed -n "s/.*versionName='\([^']*\)'.*/\1/p" <<<"$badging")"
+
+          if [ "$actual_name" != "$expected" ]; then
+            echo "::error::APK versionName '${actual_name}' does not match the tag version '${expected}'."
+            exit 1
+          fi
+          echo "APK reports version ${actual_name}."
+
+      - name: Remove signing material from the workspace
+        if: always()
+        shell: bash
+        run: |
+          rm -f android/key.properties android/duka-pos-release.jks
+          rm -f "$RUNNER_TEMP"/duka_pos_keystore.jks 2>/dev/null || true
+
+      - name: Upload APK as a workflow artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: duka-pos-${{ github.ref_name }}-apk
+          path: duka_pos_app/build/duka-pos-${{ github.ref_name }}.apk
+          if-no-files-found: error
+          retention-days: 30
+
+      - name: Create GitHub Release
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          apk="build/duka-pos-${GITHUB_REF_NAME}.apk"
+
+          {
+            echo "Duka POS ${GITHUB_REF_NAME}"
+            echo
+            echo "Signed release build (build \`${{ steps.version.outputs.code }}\`)."
+            echo
+            echo "Install on a shop device by enabling *Install unknown apps* for"
+            echo "your file manager, then opening the APK. An upgrade over an"
+            echo "existing install works because the build number increases."
+            echo
+            if [ "${{ steps.config.outputs.offline_only }}" = "true" ]; then
+              echo "> **Offline-only build.**"
+              echo ">"
+              echo "> This APK was built without \`BACKEND_URL\` and/or \`OIDC_ISSUER_URL\`, so it"
+              echo "> was compiled against the app's built-in placeholder endpoints."
+              echo ">"
+              echo "> - **Works:** cash sales, stock, reports, staff PIN sign-in, backups."
+              echo ">   Sales are recorded in the till's own database."
+              echo "> - **Does not work:** M-Pesa mobile money, catalogue sync, and online"
+              echo ">   sign-in. Do not sell to customers expecting change from M-Pesa on"
+              echo ">   this build."
+              echo ">"
+              echo "> Set the repository secrets \`BACKEND_URL\` and \`OIDC_ISSUER_URL\` and"
+              echo "> re-tag to publish a fully wired build."
+            else
+              echo "Backend and sign-in endpoints are configured in this build."
+            fi
+            echo
+            echo "**Verify the checksum before installing:**"
+            echo '```'
+            sha256sum "$apk"
+            echo '```'
+          } > release_notes.md
+
+          gh release create "${GITHUB_REF_NAME}" \
+            --title "Duka POS ${GITHUB_REF_NAME}" \
+            --notes-file release_notes.md \
+            "$apk"

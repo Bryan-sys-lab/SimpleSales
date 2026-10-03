@@ -1,0 +1,173 @@
+name: Setup Flutter (Android)
+description: >-
+  Installs the pinned Flutter SDK and prepares the Android SDK so that Gradle
+  can configure this project. Shared by the CI and release workflows so the
+  toolchain cannot drift between them.
+
+inputs:
+  flutter-version:
+    description: >-
+      Flutter SDK version to install. Keep in sync with the `revision` in
+      duka_pos_app/.metadata — that revision is what this version ships.
+    required: false
+    default: '3.47.5'
+  flutter-channel:
+    description: Flutter release channel to install from.
+    required: false
+    default: stable
+  app-dir:
+    description: Path to the Flutter app, relative to the repository root.
+    required: false
+    default: duka_pos_app
+
+runs:
+  using: composite
+  steps:
+    # AGP 9.1 / Gradle 9.3 require JDK 17+, matching the project's
+    # sourceCompatibility/targetCompatibility of VERSION_17.
+    - name: Set up JDK 17
+      uses: actions/setup-java@v4
+      with:
+        distribution: temurin
+        java-version: '17'
+
+    # The SDK is ~3 GB including precached Android engine artifacts, so it is
+    # cached by version. On a hit the download below is skipped entirely.
+    - name: Restore cached Flutter SDK
+      id: flutter-cache
+      uses: actions/cache@v4
+      with:
+        path: ~/flutter
+        key: flutter-sdk-${{ runner.os }}-${{ inputs.flutter-version }}-${{ inputs.flutter-channel }}
+
+    - name: Download and verify Flutter SDK
+      if: steps.flutter-cache.outputs.cache-hit != 'true'
+      shell: bash
+      run: |
+        set -euo pipefail
+        version='${{ inputs.flutter-version }}'
+        channel='${{ inputs.flutter-channel }}'
+
+        # Resolve the archive and its checksum from the official release
+        # manifest rather than trusting a hardcoded hash, so the download is
+        # verified against what Google publishes for this exact version.
+        manifest_url="https://storage.googleapis.com/flutter_infra_release/releases/releases_linux.json"
+        manifest="$(curl -fsSL --retry 3 "$manifest_url")"
+
+        archive="$(jq -r --arg v "$version" --arg c "$channel" \
+          '.releases[] | select(.version == $v and .channel == $c) | .archive' <<<"$manifest" | head -1)"
+        expected_sha="$(jq -r --arg v "$version" --arg c "$channel" \
+          '.releases[] | select(.version == $v and .channel == $c) | .sha256' <<<"$manifest" | head -1)"
+
+        if [ -z "$archive" ] || [ "$archive" = "null" ] || [ -z "$expected_sha" ] || [ "$expected_sha" = "null" ]; then
+          echo "::error::No published Flutter $channel $version archive found in the release manifest."
+          exit 1
+        fi
+
+        url="https://storage.googleapis.com/flutter_infra_release/releases/${archive}"
+        echo "Downloading $url"
+        curl -fsSL --retry 3 -o flutter_sdk.tar.xz "$url"
+
+        echo "${expected_sha}  flutter_sdk.tar.xz" | sha256sum --check --strict
+        # The archive's single top-level directory is `flutter/`, so this
+        # lands the SDK at ~/flutter, matching the cached path above.
+        tar -xJf flutter_sdk.tar.xz -C ~/
+        rm -f flutter_sdk.tar.xz
+
+    - name: Put Flutter on PATH and precache Android artifacts
+      shell: bash
+      run: |
+        set -euo pipefail
+        echo "$HOME/flutter/bin" >> "$GITHUB_PATH"
+        flutter config --no-analytics
+        flutter --version
+        # Warms the Android engine artifacts into the cached SDK so the build
+        # step does not re-download them on every run.
+        flutter precache --android
+
+    - name: Cache pub dependencies
+      uses: actions/cache@v4
+      with:
+        path: ~/.pub-cache
+        key: pub-${{ runner.os }}-${{ hashFiles(format('{0}/pubspec.lock', inputs.app-dir)) }}
+        restore-keys: |
+          pub-${{ runner.os }}-
+
+    - name: Cache Gradle
+      uses: actions/cache@v4
+      with:
+        path: |
+          ~/.gradle/caches
+          ~/.gradle/wrapper
+        key: gradle-${{ runner.os }}-${{ hashFiles(format('{0}/android/gradle/wrapper/gradle-wrapper.properties', inputs.app-dir), format('{0}/android/**/*.gradle.kts', inputs.app-dir), format('{0}/android/gradle.properties', inputs.app-dir)) }}
+        restore-keys: |
+          gradle-${{ runner.os }}-
+
+    - name: Resolve dependencies
+      shell: bash
+      # Absolute: a step-level working-directory would otherwise be resolved
+      # against the calling job's default (duka_pos_app), looking for
+      # duka_pos_app/duka_pos_app.
+      working-directory: ${{ github.workspace }}/${{ inputs.app-dir }}
+      run: flutter pub get
+
+    # AGP hard-fails at configure time on an unaccepted SDK licence, so accepting
+    # them is the one thing this step owes the build. The runner image's licence
+    # files are not sufficient on their own.
+    #
+    # Nothing else is installed here, and specifically no NDK. `path_provider_android`
+    # reaches the `jni` plugin, whose module takes its NDK version from the Flutter
+    # SDK rather than declaring a fixed one, so any version read out of the project
+    # files is correct only until a plugin or a Flutter upgrade moves it. An earlier
+    # revision of this action grepped `ndkVersion` out of app/build.gradle.kts and
+    # installed that, which failed *silently* the moment that literal changed and
+    # would have missed the second NDK the jni module asks for regardless.
+    #
+    # With consent recorded, AGP provisions whatever else is missing itself
+    # (android.builder.sdkDownload defaults to true) and the runner has the network
+    # to do it.
+    - name: Accept Android SDK licences
+      shell: bash
+      # Absolute: a step-level working-directory would otherwise be resolved
+      # against the calling job's default (duka_pos_app), looking for
+      # duka_pos_app/duka_pos_app.
+      working-directory: ${{ github.workspace }}/${{ inputs.app-dir }}
+      run: |
+        set -euo pipefail
+        sdkmanager_bin="sdkmanager"
+        if ! command -v sdkmanager >/dev/null 2>&1; then
+          sdkmanager_bin="$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager"
+        fi
+        if [ ! -x "$sdkmanager_bin" ]; then
+          echo "::error::sdkmanager not found at '$sdkmanager_bin'."
+          echo "::error::Licences cannot be accepted, so the Android build cannot be configured."
+          exit 1
+        fi
+
+        yes | "$sdkmanager_bin" --licenses > /dev/null 2>&1 || true
+
+        # Prove consent actually landed. Skipping this silently is the failure
+        # mode the removed NDK step used to have, and it otherwise surfaces much
+        # later as an opaque "CXX1101" or "SDK location not found" from Gradle.
+        if ! "$sdkmanager_bin" --licenses > /dev/null 2>&1; then
+          echo "::error::Android SDK licences still not accepted after 'yes | sdkmanager --licenses'."
+          exit 1
+        fi
+        echo "Android SDK licences accepted; AGP will provision any other missing component."
+
+    # android/settings.gradle.kts `require`s flutter.sdk in local.properties,
+    # so Gradle cannot even be configured without this file. It is gitignored
+    # (machine-specific absolute paths) and must be synthesised on the runner.
+    - name: Synthesise android/local.properties
+      shell: bash
+      # Absolute: a step-level working-directory would otherwise be resolved
+      # against the calling job's default (duka_pos_app), looking for
+      # duka_pos_app/duka_pos_app.
+      working-directory: ${{ github.workspace }}/${{ inputs.app-dir }}
+      run: |
+        set -euo pipefail
+        {
+          echo "sdk.dir=${ANDROID_HOME}"
+          echo "flutter.sdk=${HOME}/flutter"
+        } > android/local.properties
+        cat android/local.properties
