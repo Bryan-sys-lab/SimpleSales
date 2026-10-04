@@ -175,13 +175,35 @@ jobs:
           echo "code=${next}" >> "$GITHUB_OUTPUT"
           echo "already_tagged=false" >> "$GITHUB_OUTPUT"
 
+      # Pushed with a PAT, not the default GITHUB_TOKEN.
+      #
+      # GitHub does not start a workflow run for a push made with GITHUB_TOKEN —
+      # the recursion guard, which exists so a workflow cannot trigger itself.
+      # The consequence is specific and silent: auto-release.yml pushed v2.0.0+1,
+      # the tag is on the remote, it matches release.yml's `v*` filter, and
+      # release.yml never ran. The tag existed and nothing was released, and
+      # nothing in the logs said why.
+      #
+      # A fine-grained PAT scoped to this repository with `contents: write` is
+      # the documented way through it. There is deliberately no fallback to
+      # GITHUB_TOKEN: that fallback *is* the bug, and it would fail the same way
+      # while looking like it had worked.
       - name: Create and push the tag
         if: steps.plan.outputs.already_tagged == 'false'
         shell: bash
         env:
-          GH_TOKEN: ${{ github.token }}
+          GH_TOKEN: ${{ secrets.RELEASE_TAG_TOKEN }}
         run: |
           set -euo pipefail
+          if [ -z "$GH_TOKEN" ]; then
+            echo "::error::Secret RELEASE_TAG_TOKEN is not set."
+            echo "::error::The tag must be pushed by a credential GitHub will run workflows for."
+            echo "::error::The automatic GITHUB_TOKEN cannot be used: GitHub does not start a workflow"
+            echo "::error::for a push made with it, so release.yml would never fire."
+            echo "::error::Create a fine-grained PAT scoped to this repository with 'Contents: write'"
+            echo "::error::and add it under Settings > Secrets and variables > Actions."
+            exit 1
+          fi
           tag="${{ steps.plan.outputs.tag }}"
           sha="${{ github.event.workflow_run.head_sha }}"
 
