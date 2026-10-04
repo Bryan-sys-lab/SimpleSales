@@ -98,6 +98,57 @@ export const deletionSchema = z.object({
   reason: z.string().trim().max(240).optional(),
 }).strict();
 
-export function parseBody<T>(schema: z.ZodSchema<T>, body: unknown): T {
-  return schema.parse(body);
+/**
+ * One line on a tax invoice as the till sends it.
+ *
+ * `vat_amount` and `line_total` are integer minor units, matching the till's
+ * internal representation and the exact figures it printed on the customer's
+ * receipt. `line_total` is checked against `qty * unit_price` in
+ * services/etims.ts rather than here: `qty` is a decimal, so that check is
+ * arithmetic, and doing it in the same place that performs the rounding keeps
+ * the two from drifting.
+ */
+export const etimsInvoiceItemSchema = z.object({
+  name: z.string().trim().min(1).max(240),
+  qty: z.number().positive().max(10_000),
+  unit_price: z.number().int().min(0),
+  unit_cost: z.number().int().min(0),
+  portion: z.string().trim().max(16).default('full'),
+  portion_ml: z.number().int().min(0).max(100_000).default(0),
+  vat_amount: z.number().int().min(0),
+  line_total: z.number().int().min(0),
+});
+
+export const etimsReceiptSchema = z.object({
+  receipt_number: z.string().trim().min(3).max(64),
+  issued_at: z.string().min(10).max(40),
+  payment_method: z.string().trim().max(32).default('cash'),
+  payment_reference: z.string().trim().max(120).optional(),
+  total: z.number().int().min(0),
+  vat_rate_percent: z.number().int().min(0).max(100).default(16),
+  device_id: z.string().trim().max(120).optional(),
+  // Bounded at 500: comfortably the largest realistic single till upload, and a
+  // hard cap so one request cannot make the API hold an unbounded JSON body.
+  items: z.array(etimsInvoiceItemSchema).min(1).max(500),
+});
+
+export const etimsDeviceSchema = z.object({
+  tin: z.string().trim().regex(/^[A-Za-z0-9]{9,20}$/, 'A TIN is the taxpayer PIN exactly as KRA issued it'),
+  device_id: z.string().trim().min(4).max(120),
+  device_name: z.string().trim().max(120).optional(),
+});
+
+/**
+ * Parses `body` against `schema` and returns the schema's *output* type.
+ *
+ * Generic over the schema rather than over a bare type parameter. With
+ * `parseBody<T>(schema: z.ZodSchema<T>, ...)` a schema whose input and output
+ * differ — any schema using `.default()` — is not assignable, so TypeScript
+ * silently widened `T` and every `.default()`-ed field came back as
+ * `string | undefined`. That surfaced on the eTIMS receipt schema, where it
+ * turned `total` into an optional number the route then had to cast away.
+ * Inferring from `z.infer` keeps `.default()`'s guarantee intact.
+ */
+export function parseBody<S extends z.ZodTypeAny>(schema: S, body: unknown): z.infer<S> {
+  return schema.parse(body) as z.infer<S>;
 }

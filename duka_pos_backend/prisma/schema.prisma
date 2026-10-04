@@ -33,6 +33,9 @@ model Tenant {
   stockAdjustments StockAdjustment[]
   payments         Payment[]
   deletionLedgers  DeletionLedger[]
+  etimsDevice      EtimsDevice?
+  etimsReceipts    EtimsReceipt[]
+  etimsZReports    EtimsZReport[]
 
   @@map("tenants")
 }
@@ -179,4 +182,130 @@ model DeletionLedger {
 
   @@index([tenantId, subjectType, subjectId])
   @@map("deletion_ledger")
+}
+
+// ============================================================================
+// eTIMS (KRA electronic tax invoice)
+// ============================================================================
+
+/// A registered KRA eTIMS device for one shop.
+///
+/// One row per tenant. The credentials live here rather than in the environment
+/// because one deployment serves many shops, each with its own TIN and its own
+/// KRA account, and the OSCU signing key is issued per taxpayer. Keeping them
+/// in env would mean one shop's receipts filed under another's TIN.
+model EtimsDevice {
+  id        String @id @default(uuid())
+  tenantId  String @unique @map("tenant_id")
+  tin       String
+  deviceId  String @map("device_id")
+  deviceName String @default("") @map("device_name")
+  /// 'unregistered' | 'initialised' | 'active' | 'suspended'
+  status    String @default("unregistered")
+  /// Decrypted OSCU keys, base64. Never logged and never returned by an
+  /// endpoint. `access_key` is the signing key KRA issued for this taxpayer.
+  encryptionKey String? @map("encryption_key")
+  accessKey     String? @map("access_key")
+  /// The device serial KRA returns on initialisation. Required on re-init.
+  deviceSerial  String? @map("device_serial")
+  initialisedAt DateTime? @map("initialised_at")
+  lastError     String? @map("last_error")
+  createdAt     DateTime @default(now()) @map("created_at")
+  updatedAt     DateTime @updatedAt @map("updated_at")
+
+  tenant   Tenant        @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  receipts EtimsReceipt[]
+  zReports EtimsZReport[]
+
+  @@map("etims_devices")
+}
+
+/// One tax invoice, exactly as KRA saw it.
+///
+/// An immutable ledger rather than a cache. The amounts arrive from the till
+/// that actually took the money and are never recalculated here: a Z-report
+/// built from a re-derived total would not reconcile against the paperwork the
+/// customer was already handed.
+model EtimsReceipt {
+  id      String @id @default(uuid())
+  tenantId String @map("tenant_id")
+  deviceId String? @map("device_id")
+  /// The till's own receipt number (`<TILL>-000123`). Unique per tenant, both
+  /// because KRA rejects a duplicate submitted under the same device and number
+  /// and because the till retries an upload it believes failed.
+  receiptNumber String @map("receipt_number")
+  /// KRA's receipt number. Null until issued. Deliberately not derivable from
+  /// receiptNumber, so the two can disagree rather than one impersonating the
+  /// other on a document.
+  kraReceiptNumber String? @map("kra_receipt_number")
+  /// The payload submitted to KRA, verbatim. Kept because KRA's own rules
+  /// change, and a disputed invoice has to be reproducible exactly as sent.
+  payload          Json
+  /// Major-unit figures as Decimal, matching the rest of the catalogue so a
+  /// float can never enter a tax document. The till sends integer minor units;
+  /// routes/etims.ts converts at that boundary and nowhere else.
+  total            Decimal   @db.Decimal(14, 2)
+  vatTotal         Decimal   @db.Decimal(14, 2)
+  vatRatePercent   Int       @default(16) @map("vat_rate_percent")
+  itemCount        Int       @default(0) @map("item_count")
+  paymentMethod    String    @default("cash") @map("payment_method")
+  paymentReference String?   @map("payment_reference")
+  /// 'pending' | 'issued' | 'rejected'
+  status           String    @default("pending")
+  /// Why KRA refused it, verbatim. Surfaced to the owner, because a silent
+  /// refusal is an unissued tax invoice that nobody knows exists.
+  rejectionReason  String?   @map("rejection_reason")
+  issuedAt         DateTime? @map("issued_at")
+  createdAt        DateTime  @default(now()) @map("created_at")
+  updatedAt        DateTime  @updatedAt @map("updated_at")
+
+  tenant Tenant       @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  device EtimsDevice? @relation(fields: [deviceId], references: [id], onDelete: SetNull)
+
+  @@unique([tenantId, receiptNumber])
+  // KRA receipt numbers are globally unique, and this index is what makes the
+  // *public* verification page safe: it is looked up with no tenant filter,
+  // because the person following the QR is a customer with no account.
+  //
+  // `receipt_number` cannot carry this guarantee — it is only unique per shop,
+  // and "T1-000001" is a number several shops will independently reach.
+  @@unique([kraReceiptNumber])
+  @@index([tenantId, status])
+  @@map("etims_receipts")
+}
+
+/// The end-of-day summary KRA requires.
+///
+/// Cumulative, never reset: an absolute Z-number starting at 1 is what an
+/// auditor checks, and a per-day counter would let any day look like the shop's
+/// first.
+model EtimsZReport {
+  id          String   @id @default(uuid())
+  tenantId    String   @map("tenant_id")
+  deviceId    String?  @map("device_id")
+  /// Absolute and monotonically increasing per device. This is the Z-number.
+  zNumber     Int
+  /// Business date covered, UTC midnight.
+  businessDate DateTime @map("business_date")
+  invoiceCount Int      @default(0) @map("invoice_count")
+  total        Decimal  @db.Decimal(14, 2)
+  vatTotal     Decimal  @db.Decimal(14, 2)
+  /// Receipts the till recorded but KRA has not accepted. Reported on the
+  /// Z-report because the gap between the two is precisely what KRA reconciles,
+  /// and hiding it would make the report agree with itself while disagreeing
+  /// with the authority.
+  pendingCount  Int      @default(0) @map("pending_count")
+  rejectedCount Int      @default(0) @map("rejected_count")
+  status        String   @default("pending") // 'pending' | 'issued' | 'failed'
+  failureReason String?  @map("failure_reason")
+  rawResponse   Json?
+  createdAt     DateTime @default(now()) @map("created_at")
+  updatedAt     DateTime @updatedAt @map("updated_at")
+
+  tenant Tenant       @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  device EtimsDevice? @relation(fields: [deviceId], references: [id], onDelete: SetNull)
+
+  @@unique([tenantId, businessDate])
+  @@index([tenantId, zNumber])
+  @@map("etims_z_reports")
 }

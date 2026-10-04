@@ -101,6 +101,16 @@ Platform administration is separate from shop administration. Set `SYSTEM_ADMIN_
 - `POST /api/products/sync` - Bulk sync from app
 - `GET /api/products` - List all products
 
+### eTIMS (KRA electronic tax invoicing)
+- `POST /api/etims/device` - Register this shop's till with KRA and store its signing keys (owner only)
+- `POST /api/etims/receipts` - Issue a tax receipt for one recorded sale
+- `POST /api/etims/upload` - Upload every outstanding receipt, oldest first (admin/manager)
+- `GET /api/etims/status` - How much is outstanding, and whether the device is registered
+- `GET /api/etims/z-report` - The end-of-day report for a business date
+- `POST /api/etims/z-report` - File that report with KRA (owner only)
+- `GET /api/etims/receipts/:receiptNumber` - A receipt this shop filed
+- `GET /api/etims/verify/:receiptNumber` - **Public.** What the QR code on a customer's receipt points at
+
 ### Platform system administration
 - `GET /api/system/users` - Active users across all shops (system-admin allowlist only)
 - `GET /api/system/analytics` - Cross-tenant aggregate analytics and per-tenant payment breakdowns
@@ -161,6 +171,91 @@ railway up
 ### Option 3: DigitalOcean
 - Use Managed PostgreSQL
 - Deploy to App Platform
+
+## eTIMS design notes
+
+### What was implemented, and against what
+
+The integration is written to KRA's **OSCU** (Online Sales Control Unit)
+contract — the one KRA documents for a Trader Invoicing System that is always
+online. The previous version of this service was written against an invented
+REST shape and was wrong at the fundamentals; the corrections are listed below
+because each of them would have failed on the first live call.
+
+| | Was | Is |
+|---|---|---|
+| Base URL | `api.kra.go.ke/invoice/v1` | `etims-api.kra.go.ke/etims-api` (sandbox: `etims-api-sbx.kra.go.ke`) |
+| Auth | none; signed with the device key only | bearer token from `/auth/get-token`, plus the device signature |
+| Initialisation | `/init-device` | `/init-osdc-info` with `bhfId` + `dvcSrlNo` |
+| Filing | `/save-invoice` | `/save-sales-trns` with `salesTrnsItems[]` / `prdtDet[]` |
+| Tax | `taxRate: 16` | `taxTyCd: 'V'` |
+| Code lists | never called | `/select-code-list` after registration |
+| Receipt label | not sent | `rcptLabel` — `NS`/`NC`/`CS`/`CC`/`TS`/`TC`/`PS` |
+| Reprint | a second identical sale | filed as `COPY` / `CS` |
+
+**VSCU seam.** Everything KRA-specific is confined to `services/kra.ts`. The
+endpoints are named constants and the transport is one `callEndpoint`, so moving
+to VSCU — the bulk/offline variant, which is arguably the better fit for a till
+that loses signal — is a change to that map rather than a rewrite. The
+orchestration in `services/etims.ts` is written against the interface, not
+against OSCU.
+
+### Decisions worth knowing
+
+**Money crosses the wire as integer minor units and is stored as `DECIMAL`.**
+The till sends cents because that is what it stores and prints; this database
+holds `DECIMAL(14,2)` because KRA and the PayHero webhook both speak major
+units. The conversion happens once, in `services/etims.ts`, and `toMajor`
+**throws** on a fractional minor unit rather than rounding it — a tax invoice out
+by a hundred because something upstream sent a float is invisible in review and
+fatal at audit. Amounts leaving for KRA are strings, because KRA's schema is
+`Decimal`.
+
+**Reprints are COPY receipts.** KRA requires one original receipt and that
+reprints be watermarked "Copy". Filing a reprint as `NS` would be a second
+claimed original sale, so `labelForSubmission` maps it to `COPY`/`CS` and the
+till watermarks the paper to match.
+
+**A receipt row is written before the network call, and never deleted on
+failure.** A sale that exists only in the till's memory until KRA answers is a
+sale that can be lost. A `pending` row is evidence the invoice is outstanding; a
+missing row is indistinguishable from a sale that never happened.
+
+**Refusals and transport failures are opposites.** A KRA refusal is terminal, is
+recorded against the receipt with its reason, and stops the upload run — because
+a refusal is usually a stale clock, an uninitialised device or a bad TIN, and
+none of those improves for the next receipt. A network failure leaves the row
+`pending` and is retried. The run stops rather than carrying on precisely so the
+device's invoice sequence stays contiguous: KRA rejects a gap, so filing over one
+would turn a temporary outage into a permanent compliance gap.
+
+**The Z-report reports its own gaps.** `pending_count` counts receipts the shop
+recorded but KRA has not accepted. A Z-report that agreed with itself while
+disagreeing with the authority is worse than one that reports the discrepancy.
+
+### What is NOT implemented, and what is NOT verified
+
+**Nothing here has been exercised against KRA.** There are no sandbox
+credentials available, so:
+
+- the request *shape*, the endpoint names, the field names, the signing scheme
+  and the failure taxonomy are taken from KRA's OSCU specification and the
+  taxpayer portal documentation, and are implemented as written;
+- the **payload field names beyond those cited above** — in particular the exact
+  spelling of nested document keys — are inferred from KRA's published examples
+  rather than transcribed from the specification PDF, which is not
+  machine-readable;
+- the transport has no retry, no backoff and no connection pooling.
+
+`KRA_BASE_URL` must be set from the taxpayer's own KRA account, and
+`KRA_USERNAME` / `KRA_PASSWORD` supplied, before eTIMS is enabled for a live
+shop. **Run the sandbox flow end to end (`init-osdc-info` → `select-code-list` →
+`save-sales-trns` → `report`) before trusting a single live invoice.**
+
+Signing keys are stored per shop in `etims_devices` and are never returned by
+any endpoint — not filtered out of a response, but never *selected*. `GET
+/api/etims/status` runs on every settings visit from a mobile connection, and
+those keys sign every invoice the shop will ever file.
 
 ## Security
 

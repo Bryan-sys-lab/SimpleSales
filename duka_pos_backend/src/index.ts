@@ -13,6 +13,7 @@ import { prisma } from './lib/prisma';
 import { requestContext, log } from './lib/observability';
 import reportRoutes from './routes/report';
 import systemRoutes from './routes/system';
+import etimsRoutes, { publicEtimsRouter } from './routes/etims';
 
 dotenv.config();
 
@@ -48,12 +49,18 @@ app.post('/webhooks/payhero-callback', rateLimit({ windowMs: 60_000, limit: 30, 
 // not need a shop profile to inspect the platform.
 app.use('/api/system', systemAdminMiddleware, systemRoutes);
 
+// The public receipt-verification page sits *before* the auth layer on
+// purpose: the customer scanning the QR on their receipt has no account and
+// never will. Behind auth it would 401 the only person it is for.
+app.use('/api/etims/verify', publicEtimsRouter);
+
 // Protected routes (require OIDC JWT)
 app.use('/api', authMiddleware);
 app.use('/api/tenant', tenantRoutes);
 app.use('/api/payments', paymentRoutes);
 app.use('/api/products', productRoutes);
 app.use('/api/reports', reportRoutes);
+app.use('/api/etims', etimsRoutes);
 
 app.use((req, res) => res.status(404).json({ error: 'Not found', requestId: req.requestId }));
 app.use(errorHandler);
