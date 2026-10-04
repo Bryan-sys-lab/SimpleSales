@@ -54,7 +54,14 @@ class DatabaseHelper {
   /// shipped — always add a new one, even for a one-line fix — because a
   /// shop's phone may be several versions behind and needs every step run
   /// in order to land on the current schema without data loss.
-  static const _schemaVersion = 14;
+  static const _schemaVersion = 15;
+
+  /// Slack allowed when deciding whether a container has enough left for a sale.
+  ///
+  /// Sized to absorb the error in summing volume ratios, and to do nothing else.
+  /// A bottle holds at most [Product.maxBottleMl] millilitres, so this is under
+  /// a nanolitre at the largest size the app accepts.
+  static const double _volumeTolerance = 1e-9;
 
   /// Keys in `shop_settings`. Named rather than stringly-typed at every call
   /// site, because the backend reads the same names and a typo here is a silent
@@ -251,6 +258,97 @@ SELECT name FROM staff GROUP BY name HAVING COUNT(*) = 1
     if (oldVersion < 14) {
       await _createVariantsAndImportTables(db);
     }
+    if (oldVersion < 15) {
+      await _createShiftTables(db);
+      await _createShotCupsTable(db);
+      await _createCupSizeSuggestionsTable(db);
+    }
+  }
+
+  /// v14 -> v15: shifts, till counts, and reconciliations.
+  ///
+  /// Shifts are the unit of account for cash reconciliation: a cashier opens a
+  /// shift with a float, rings up sales, and closes it by counting the till.
+  ///
+  /// The `FOREIGN KEY ... ON DELETE CASCADE` clauses are declarative intent and
+  /// are **not** enforced — see the foreign-key note on this class. Deleting a
+  /// shift's children is the caller's job in Dart.
+  Future<void> _createShiftTables(Database db) async {
+    await db.execute('''CREATE TABLE IF NOT EXISTS shifts (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      staff_id INTEGER NOT NULL,
+      staff_name TEXT NOT NULL,
+      start_time TEXT NOT NULL,
+      end_time TEXT,
+      start_float INTEGER NOT NULL,
+      end_float INTEGER NOT NULL DEFAULT 0,
+      status TEXT NOT NULL DEFAULT 'open'
+    )''');
+    await db.execute(
+        'CREATE INDEX IF NOT EXISTS idx_shifts_staff ON shifts (staff_id)');
+    await db.execute(
+        'CREATE INDEX IF NOT EXISTS idx_shifts_status_time ON shifts (status, start_time)');
+
+    await db.execute('''CREATE TABLE IF NOT EXISTS till_counts (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      shift_id INTEGER NOT NULL,
+      denomination TEXT NOT NULL,
+      count INTEGER NOT NULL DEFAULT 0,
+      value INTEGER NOT NULL DEFAULT 0,
+      created_at TEXT NOT NULL,
+      FOREIGN KEY (shift_id) REFERENCES shifts (id) ON DELETE CASCADE
+    )''');
+    await db.execute(
+        'CREATE INDEX IF NOT EXISTS idx_till_counts_shift ON till_counts (shift_id)');
+
+    await db.execute('''CREATE TABLE IF NOT EXISTS reconciliations (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      shift_id INTEGER NOT NULL,
+      counted_cash INTEGER NOT NULL DEFAULT 0,
+      expected_cash INTEGER NOT NULL DEFAULT 0,
+      variance INTEGER NOT NULL DEFAULT 0,
+      recorded_at TEXT NOT NULL,
+      FOREIGN KEY (shift_id) REFERENCES shifts (id) ON DELETE CASCADE
+    )''');
+  }
+
+  /// v14 -> v15: fixed shot cup configurations.
+  ///
+  /// Any inventory product can be sold as a shot: the cup has a fixed capacity
+  /// and price, but the product link means the shop can change the spirit
+  /// behind the same cup without touching the cup configuration.
+  Future<void> _createShotCupsTable(Database db) async {
+    await db.execute('''CREATE TABLE IF NOT EXISTS shot_cups (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      product_id INTEGER NOT NULL,
+      product_name TEXT NOT NULL,
+      capacity_ml INTEGER NOT NULL DEFAULT 30,
+      price INTEGER NOT NULL DEFAULT 0,
+      label TEXT NOT NULL DEFAULT 'Shot',
+      active INTEGER NOT NULL DEFAULT 1,
+      updated_at TEXT NOT NULL,
+      FOREIGN KEY (product_id) REFERENCES products (id) ON DELETE CASCADE
+    )''');
+    await db.execute(
+        'CREATE INDEX IF NOT EXISTS idx_shot_cups_product ON shot_cups (product_id)');
+  }
+
+  /// v14 -> v15: user-entered cup size suggestions for beer/keg products.
+  ///
+  /// Stores the ml sizes a shop has used before so they appear as suggestions
+  /// when adding a new cup-sized variant, rather than re-typing "330", "500",
+  /// etc. on every product. `product_id` is nullable so a size used across
+  /// several products is remembered once and surfaces for any of them.
+  Future<void> _createCupSizeSuggestionsTable(Database db) async {
+    await db.execute('''CREATE TABLE IF NOT EXISTS cup_size_suggestions (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      product_id INTEGER,
+      size_ml INTEGER NOT NULL,
+      use_count INTEGER NOT NULL DEFAULT 1,
+      created_at TEXT NOT NULL
+    )''');
+    await db.execute('CREATE INDEX IF NOT EXISTS idx_cup_sizes_product '
+        'ON cup_size_suggestions (product_id)');
   }
 
   Future<void> _createTablesMissingFromOlderMigrations(Database db) async {
@@ -280,8 +378,7 @@ SELECT name FROM staff GROUP BY name HAVING COUNT(*) = 1
       staff_id INTEGER,
       created_at TEXT NOT NULL
     )''');
-    await db.execute(
-        'CREATE TABLE IF NOT EXISTS staff_deletion_tombstones (\n'
+    await db.execute('CREATE TABLE IF NOT EXISTS staff_deletion_tombstones (\n'
         '        staff_id INTEGER PRIMARY KEY,\n'
         '        remote_id TEXT,\n'
         '        deleted_at TEXT NOT NULL\n'
@@ -432,8 +529,8 @@ SELECT name FROM staff GROUP BY name HAVING COUNT(*) = 1
     // resolves to exactly one thing. Nullable `variant_id` is what makes that
     // safe: the primary key forbids the same code appearing twice, whichever
     // kind it is, so scanning can never find two candidates.
-    await db.execute(
-        'ALTER TABLE product_barcodes ADD COLUMN variant_id INTEGER');
+    await db
+        .execute('ALTER TABLE product_barcodes ADD COLUMN variant_id INTEGER');
 
     // --- Sale lines carry the variant --------------------------------------
     //
@@ -441,8 +538,7 @@ SELECT name FROM staff GROUP BY name HAVING COUNT(*) = 1
     // a "Dark 500ml" line must still say "Dark 500ml" after the owner renames
     // or deletes the variant, because the document the customer was handed
     // cannot change retroactively.
-    await db.execute(
-        'ALTER TABLE sale_items ADD COLUMN variant_id INTEGER');
+    await db.execute('ALTER TABLE sale_items ADD COLUMN variant_id INTEGER');
     await db.execute(
         "ALTER TABLE sale_items ADD COLUMN variant_name TEXT NOT NULL DEFAULT ''");
 
@@ -454,8 +550,7 @@ SELECT name FROM staff GROUP BY name HAVING COUNT(*) = 1
     // and reconcile them. Defaults to 1 so every pre-existing row is verified.
     await db.execute(
         'ALTER TABLE sales ADD COLUMN payment_verified INTEGER NOT NULL DEFAULT 1');
-    await db.execute(
-        'ALTER TABLE sales ADD COLUMN payment_confirmed_at TEXT');
+    await db.execute('ALTER TABLE sales ADD COLUMN payment_confirmed_at TEXT');
 
     // --- Import rows needing attention -------------------------------------
     await db.execute('''CREATE TABLE IF NOT EXISTS import_needs_attention (
@@ -627,7 +722,8 @@ SELECT name FROM staff GROUP BY name HAVING COUNT(*) = 1
         FROM pending_payments
       ''');
       await db.execute('DROP TABLE pending_payments');
-      await db.execute('ALTER TABLE pending_payments_v11 RENAME TO pending_payments');
+      await db.execute(
+          'ALTER TABLE pending_payments_v11 RENAME TO pending_payments');
     }
 
     // Indexes live on the dropped tables and do not survive the rebuild. The
@@ -756,6 +852,9 @@ SELECT name FROM staff GROUP BY name HAVING COUNT(*) = 1
     await _createBarcodesAndReceiptTables(db);
     await _createEtimsTables(db);
     await _createVariantsAndImportTables(db);
+    await _createShiftTables(db);
+    await _createShotCupsTable(db);
+    await _createCupSizeSuggestionsTable(db);
   }
 
   // ---------------- Owner ----------------
@@ -831,7 +930,8 @@ SELECT name FROM staff GROUP BY name HAVING COUNT(*) = 1
       // can reassign a row belonging to somebody else.
       for (final table in ['sales', 'stock_adjustments']) {
         await txn.rawUpdate(
-            'UPDATE $table SET staff_name = ? WHERE staff_id = ?', [deletedLabel, staff.id]);
+            'UPDATE $table SET staff_name = ? WHERE staff_id = ?',
+            [deletedLabel, staff.id]);
         if (originalName.isNotEmpty && originalName != deletedLabel) {
           final nameMatches = await txn.rawQuery(
               'SELECT COUNT(*) AS c FROM staff WHERE name = ?', [originalName]);
@@ -939,6 +1039,7 @@ SELECT name FROM staff GROUP BY name HAVING COUNT(*) = 1
     required int productId,
     required String barcode,
     String kind = BarcodeKind.supplier,
+
     /// Which variant this code identifies, or null for the product itself.
     ///
     /// Without this a variant could not be scanned at all: Dark and Regular
@@ -1023,8 +1124,8 @@ SELECT name FROM staff GROUP BY name HAVING COUNT(*) = 1
 
   /// Every variant in the catalogue, for export and for stock checks.
   Future<List<ProductVariant>> getAllVariants() async {
-    final rows =
-        await (await database).query('product_variants', orderBy: 'product_id, position, id');
+    final rows = await (await database)
+        .query('product_variants', orderBy: 'product_id, position, id');
     return rows.map(ProductVariant.fromMap).toList();
   }
 
@@ -1042,8 +1143,8 @@ SELECT name FROM staff GROUP BY name HAVING COUNT(*) = 1
   Future<int> upsertVariant(ProductVariant variant) async {
     final map = variant.toMap();
     if (variant.id == null) {
-      final id = await (await database)
-          .insert('product_variants', map..remove('id'));
+      final id =
+          await (await database).insert('product_variants', map..remove('id'));
       // Position defaults to "after the ones already there" so a newly added
       // variant lands at the bottom without the caller computing an index.
       return id;
@@ -1081,7 +1182,9 @@ SELECT name FROM staff GROUP BY name HAVING COUNT(*) = 1
     );
     if (rows.isEmpty) return null;
     final variantId = rows.first['_matched_variant'] as int?;
-    if (variantId == null) return (product: Product.fromMap(rows.first), variant: null);
+    if (variantId == null) {
+      return (product: Product.fromMap(rows.first), variant: null);
+    }
     final variant = await getVariantById(variantId);
     return (product: Product.fromMap(rows.first), variant: variant);
   }
@@ -1120,8 +1223,7 @@ SELECT name FROM staff GROUP BY name HAVING COUNT(*) = 1
   /// Adds a category if it is new, normalised. Returns the canonical name.
   Future<String> ensureCategory(String? raw) async {
     final name = CategoryName.normalise(raw);
-    if (name == CategoryName.general &&
-        (raw ?? '').trim().isEmpty) {
+    if (name == CategoryName.general && (raw ?? '').trim().isEmpty) {
       return name;
     }
     await (await database).insert(
@@ -1176,15 +1278,15 @@ SELECT name FROM staff GROUP BY name HAVING COUNT(*) = 1
 
   /// Marks a row as dealt with, so it leaves the list but stays auditable.
   Future<void> resolveImportProblem(int id) async {
-    await (await database).update('import_needs_attention',
-        {'resolved': 1}, where: 'id = ?', whereArgs: [id]);
+    await (await database).update('import_needs_attention', {'resolved': 1},
+        where: 'id = ?', whereArgs: [id]);
   }
 
   // ---------------- Shop settings ----------------
 
   Future<String?> getSetting(String key) async {
-    final rows = await (await database).query('shop_settings',
-        where: 'key = ?', whereArgs: [key], limit: 1);
+    final rows = await (await database)
+        .query('shop_settings', where: 'key = ?', whereArgs: [key], limit: 1);
     if (rows.isEmpty) return null;
     final value = rows.first['value'];
     return value is String ? value : value?.toString();
@@ -1234,9 +1336,8 @@ SELECT name FROM staff GROUP BY name HAVING COUNT(*) = 1
   /// `POS-000001`. The workspace key is already unique per till, which is the
   /// whole reason a separate database file exists per shop.
   static String defaultTillCode(String workspaceKey) {
-    final cleaned = workspaceKey
-        .replaceAll(RegExp(r'[^A-Za-z0-9]'), '')
-        .toUpperCase();
+    final cleaned =
+        workspaceKey.replaceAll(RegExp(r'[^A-Za-z0-9]'), '').toUpperCase();
     if (cleaned.isEmpty) return 'POS';
     return cleaned.substring(0, cleaned.length.clamp(1, 8));
   }
@@ -1543,6 +1644,7 @@ SELECT name FROM staff GROUP BY name HAVING COUNT(*) = 1
     Money? amountTendered,
     int? staffId,
     bool etimsPending = false,
+
     /// Whether the payment was confirmed by the provider.
     ///
     /// False only for an M-Pesa sale recorded while offline, where the customer
@@ -1571,16 +1673,9 @@ SELECT name FROM staff GROUP BY name HAVING COUNT(*) = 1
     // The cart is keyed on (product, portion), so a single bottle can appear as
     // several lines (e.g. one full + one half). Stock is therefore accumulated
     // per product before the availability check instead of rejecting repeats.
-    double portionFactor(SaleItem item) => item.portion == 'half'
-        ? 0.5
-        : item.portion == 'quarter'
-            ? 0.25
-            : 1.0;
-    final requiredUnits = <int, double>{};
-    for (final item in items) {
-      requiredUnits[item.productId] =
-          (requiredUnits[item.productId] ?? 0) + item.qty * portionFactor(item);
-    }
+    //
+    // The accumulation happens inside the transaction, below, because a measured
+    // pour is only a fraction once you know how big the container is.
     final db = await database;
     // Every amount is quantised as it is accumulated, so the stored total is
     // exactly the sum of the stored line amounts and `change` is a real number
@@ -1589,8 +1684,8 @@ SELECT name FROM staff GROUP BY name HAVING COUNT(*) = 1
     // the sums below are exact integer additions. The recorded total is
     // therefore always exactly the sum of the recorded line amounts.
     final total = sumMoney(items.map((it) => it.unitPrice.times(it.qty)));
-    final profit = sumMoney(
-        items.map((it) => (it.unitPrice - it.unitCost).times(it.qty)));
+    final profit =
+        sumMoney(items.map((it) => (it.unitPrice - it.unitCost).times(it.qty)));
     final paid = amountTendered ?? total;
     if (paid.isNegative) {
       throw StateError('Amount received cannot be less than the sale total');
@@ -1604,22 +1699,67 @@ SELECT name FROM staff GROUP BY name HAVING COUNT(*) = 1
     final tillCode = await getTillCode();
 
     return db.transaction<int>((txn) async {
+      // A line's fraction of its container. [containerMl] is the product's own
+      // bottle/keg size, which only a measured pour needs.
+      //
+      // A measured pour is capped at one whole container: a capacity typed
+      // larger than the bottle it is poured from is a mistake in the shop's
+      // configuration, and the least wrong answer to it is to empty that
+      // bottle rather than to drive stock negative.
+      double portionFactor(SaleItem item, double containerMl) {
+        if (item.portion == SalePortion.half) return 0.5;
+        if (item.portion == SalePortion.quarter) return 0.25;
+        if (item.portion == SalePortion.measured) {
+          if (item.portionMl <= 0 || containerMl <= 0) return 1.0;
+          final fraction = item.portionMl / containerMl;
+          return fraction > 1 ? 1.0 : fraction;
+        }
+        return 1.0;
+      }
+
+      // Read every product this sale touches once: its stock is needed for the
+      // availability check and its container size for the fraction.
       final stockByProduct = <int, double>{};
-      for (final entry in requiredUnits.entries) {
+      final containerMlByProduct = <int, double>{};
+      for (final productId in items.map((it) => it.productId).toSet()) {
         final current = await txn.query('products',
-            where: 'id = ?', whereArgs: [entry.key], limit: 1);
+            where: 'id = ?', whereArgs: [productId], limit: 1);
         if (current.isEmpty) {
-          final missing = items.firstWhere((it) => it.productId == entry.key);
+          final missing = items.firstWhere((it) => it.productId == productId);
           throw StateError('Product not found: ${missing.productName}');
         }
-        final available = (current.first['stock_qty'] as num).toDouble();
-        stockByProduct[entry.key] = available;
-        if (enforceStock && available < entry.value) {
-          final offending = items.firstWhere((it) => it.productId == entry.key);
-          throw StateError('Not enough stock for ${offending.productName}');
+        stockByProduct[productId] =
+            (current.first['stock_qty'] as num).toDouble();
+        containerMlByProduct[productId] =
+            (current.first['bottle_ml'] as num?)?.toDouble() ?? 0;
+      }
+
+      final requiredUnits = <int, double>{};
+      for (final item in items) {
+        requiredUnits[item.productId] = (requiredUnits[item.productId] ?? 0) +
+            item.qty *
+                portionFactor(item, containerMlByProduct[item.productId]!);
+      }
+      if (enforceStock) {
+        for (final entry in requiredUnits.entries) {
+          // Compared with a tolerance because these are volumes, and a
+          // measured pour is a ratio: 25 shots of 30 ml from a 750 ml bottle is
+          // exactly one bottle, but 25 x (30/750) evaluates to
+          // 1.0000000000000002 in binary floating point. Without the tolerance
+          // the twenty-fifth shot is refused as an oversell — a bar selling one
+          // bottle of shots cannot sell its last shot.
+          //
+          // The tolerance is far below a microlitre at any bottle size that
+          // exists, so it forgives the arithmetic error and nothing else.
+          if (stockByProduct[entry.key]! + _volumeTolerance < entry.value) {
+            final offending =
+                items.firstWhere((it) => it.productId == entry.key);
+            throw StateError('Not enough stock for ${offending.productName}');
+          }
         }
       }
-      final receiptNumber = await allocateReceiptNumber(txn, tillCode: tillCode);
+      final receiptNumber =
+          await allocateReceiptNumber(txn, tillCode: tillCode);
       final saleId = await txn.insert('sales', {
         'staff_name': staffName,
         'staff_id': staffId,
@@ -1635,15 +1775,13 @@ SELECT name FROM staff GROUP BY name HAVING COUNT(*) = 1
         // which [etimsPending] decides before the transaction opens. See
         // queuePendingEtims, which is written in the same transaction as the
         // sale itself so the two can never disagree.
-        'etims_status': etimsPending
-            ? EtimsStatus.pending
-            : EtimsStatus.notRequired,
+        'etims_status':
+            etimsPending ? EtimsStatus.pending : EtimsStatus.notRequired,
         'payment_verified': paymentVerified ? 1 : 0,
-        'payment_confirmed_at':
-            paymentVerified ? now : null,
+        'payment_confirmed_at': paymentVerified ? now : null,
       });
       for (final it in items) {
-        final fraction = portionFactor(it);
+        final fraction = portionFactor(it, containerMlByProduct[it.productId]!);
         await txn.insert('sale_items', {
           'sale_id': saleId,
           'product_id': it.productId,
@@ -1697,8 +1835,9 @@ SELECT name FROM staff GROUP BY name HAVING COUNT(*) = 1
               saleId: row['sale_id'] as int,
               receiptNumber: row['receipt_number'] as String,
               attempts: (row['attempts'] as int?) ?? 0,
-              createdAt: DateTime.tryParse(row['created_at'] as String? ?? '') ??
-                  DateTime.fromMillisecondsSinceEpoch(0),
+              createdAt:
+                  DateTime.tryParse(row['created_at'] as String? ?? '') ??
+                      DateTime.fromMillisecondsSinceEpoch(0),
               lastError: row['last_error'] as String?,
             ))
         .toList();
@@ -1772,8 +1911,8 @@ SELECT name FROM staff GROUP BY name HAVING COUNT(*) = 1
   /// answer for a stale id from another shop rather than an error.
   Future<Sale?> getSaleById(int id, {bool withItems = true}) async {
     final db = await database;
-    final rows = await db.query('sales',
-        where: 'id = ?', whereArgs: [id], limit: 1);
+    final rows =
+        await db.query('sales', where: 'id = ?', whereArgs: [id], limit: 1);
     if (rows.isEmpty) return null;
     final sale = Sale.fromMap(rows.first);
     if (!withItems) return sale;
@@ -1828,7 +1967,8 @@ SELECT name FROM staff GROUP BY name HAVING COUNT(*) = 1
   }
 
   Future<int> countSalesForReceipt() async {
-    final rows = await (await database).rawQuery('SELECT COUNT(*) AS c FROM sales');
+    final rows =
+        await (await database).rawQuery('SELECT COUNT(*) AS c FROM sales');
     return (rows.first['c'] as int?) ?? 0;
   }
 
@@ -1909,7 +2049,7 @@ SELECT name FROM staff GROUP BY name HAVING COUNT(*) = 1
             items: (itemsBySale[r['id']] ?? const <Map<String, dynamic>>[])
                 .map(SaleItem.fromMap)
                 .toList(),
-          )      ));
+          )));
     }
     return sales;
   }
@@ -1971,7 +2111,10 @@ SELECT name FROM staff GROUP BY name HAVING COUNT(*) = 1
       where.add('staff_id = ?');
       args.add(staffId);
     }
-    return (clause: where.isEmpty ? '' : 'WHERE ${where.join(' AND ')}', args: args);
+    return (
+      clause: where.isEmpty ? '' : 'WHERE ${where.join(' AND ')}',
+      args: args
+    );
   }
 
   /// The whole range reduced to one row: takings, profit, receipts, basket.
@@ -1990,7 +2133,8 @@ SELECT name FROM staff GROUP BY name HAVING COUNT(*) = 1
     DateTime? until,
     int? staffId,
   }) async {
-    final where = _salesRangeWhere(since: since, until: until, staffId: staffId);
+    final where =
+        _salesRangeWhere(since: since, until: until, staffId: staffId);
     final rows = await (await database).rawQuery('''
       SELECT
         CAST(COALESCE(SUM(total), 0) AS INTEGER) AS total_minor,
@@ -2076,7 +2220,9 @@ SELECT name FROM staff GROUP BY name HAVING COUNT(*) = 1
   }) async {
     final from = DateTime(day.year, day.month, day.day);
     final where = _salesRangeWhere(
-        since: from, until: from.add(const Duration(days: 1)), staffId: staffId);
+        since: from,
+        until: from.add(const Duration(days: 1)),
+        staffId: staffId);
     final rows = await (await database).rawQuery('''
       SELECT
         CAST(strftime('%H', created_at) AS INTEGER) AS hour,
@@ -2113,8 +2259,8 @@ SELECT name FROM staff GROUP BY name HAVING COUNT(*) = 1
   }) async {
     final from = DateTime(since.year, since.month, since.day);
     final today = DateTime.now();
-    final until =
-        DateTime(today.year, today.month, today.day).add(const Duration(days: 1));
+    final until = DateTime(today.year, today.month, today.day)
+        .add(const Duration(days: 1));
     final where = _salesRangeWhere(since: from, until: until, staffId: staffId);
     final rows = await (await database).rawQuery('''
       SELECT
@@ -2131,7 +2277,9 @@ SELECT name FROM staff GROUP BY name HAVING COUNT(*) = 1
       for (final row in rows) (row['day'] as String?) ?? '': row,
     };
     final buckets = <DateBucket>[];
-    for (var cursor = from; cursor.isBefore(until); cursor = cursor.add(const Duration(days: 1))) {
+    for (var cursor = from;
+        cursor.isBefore(until);
+        cursor = cursor.add(const Duration(days: 1))) {
       final key = '${cursor.year.toString().padLeft(4, '0')}-'
           '${cursor.month.toString().padLeft(2, '0')}-'
           '${cursor.day.toString().padLeft(2, '0')}';
@@ -2261,9 +2409,7 @@ SELECT name FROM staff GROUP BY name HAVING COUNT(*) = 1
       'SELECT * FROM sales WHERE payment_verified = 0 ORDER BY created_at DESC LIMIT ?',
       [limit],
     );
-    return [
-      for (final row in rows) (Sale.fromMap(row), row)
-    ];
+    return [for (final row in rows) (Sale.fromMap(row), row)];
   }
 
   /// All four attention counts, in one value.
@@ -2285,6 +2431,376 @@ SELECT name FROM staff GROUP BY name HAVING COUNT(*) = 1
       openImportProblems: results[2],
       unverifiedPayments: results[3],
     );
+  }
+
+  // ---------------- Shifts & Reconciliation ----------------
+  //
+  // A shift is the accountant's view of the till: it is opened with a known
+  // float, sales are attributed to it by time, and it is closed by counting the
+  // cash in the drawer and reconciling against what the sales ledger says
+  // should be there. Multishop scoping is by workspace key (one database file
+  // per shop), so there is no shop column — a shift belongs to whichever till
+  // holds its database.
+
+  /// Opens a new shift for [staffName] / [staffId] with the given starting float.
+  ///
+  /// Throws if an open shift already exists for this staff member, because allowing
+  /// two open shifts would make "which sales were on this shift" ambiguous.
+  Future<int> openShift({
+    required int staffId,
+    required String staffName,
+    required Money startFloat,
+  }) async {
+    final db = await database;
+    return db.transaction<int>((txn) async {
+      final existing = await txn.query('shifts',
+          where: 'staff_id = ? AND status = ?',
+          whereArgs: [staffId, 'open'],
+          limit: 1);
+      if (existing.isNotEmpty) {
+        throw StateError('A shift is already open for this staff member');
+      }
+      final now = DateTime.now().toIso8601String();
+      return txn.insert('shifts', {
+        'staff_id': staffId,
+        'staff_name': staffName,
+        'start_time': now,
+        'end_time': null,
+        'start_float': startFloat.minorUnits,
+        'end_float': 0,
+        'status': 'open',
+      });
+    });
+  }
+
+  /// The one open shift for [staffId], or null when none is open.
+  Future<Shift?> getOpenShift(int staffId) async {
+    final rows = await (await database).query('shifts',
+        where: 'staff_id = ? AND status = ?',
+        whereArgs: [staffId, 'open'],
+        orderBy: 'start_time DESC',
+        limit: 1);
+    if (rows.isEmpty) return null;
+    return Shift.fromMap(rows.first);
+  }
+
+  /// Every shift for a staff member, newest first.
+  Future<List<Shift>> getShifts({int? staffId, bool openOnly = false}) async {
+    final db = await database;
+    final where = <String>[];
+    final args = <dynamic>[];
+    if (staffId != null) {
+      where.add('staff_id = ?');
+      args.add(staffId);
+    }
+    if (openOnly) {
+      where.add("status = 'open'");
+    }
+    final rows = await db.query(
+      'shifts',
+      where: where.isEmpty ? null : where.join(' AND '),
+      whereArgs: args.isEmpty ? null : args,
+      orderBy: 'start_time DESC',
+    );
+    return rows.map(Shift.fromMap).toList();
+  }
+
+  /// The single open shift, or null when no one has an open shift.
+  ///
+  /// Used by the shell to know whether to prompt before opening a new shift.
+  Future<Shift?> getAnyOpenShift() async {
+    final rows = await (await database).query('shifts',
+        where: "status = 'open'", orderBy: 'start_time ASC', limit: 1);
+    if (rows.isEmpty) return null;
+    return Shift.fromMap(rows.first);
+  }
+
+  /// Records one denomination pile counted at the till.
+  Future<int> addTillCount({
+    required int shiftId,
+    required String denomination,
+    required int count,
+    required Money value,
+  }) async {
+    final now = DateTime.now().toIso8601String();
+    return (await database).insert('till_counts', {
+      'shift_id': shiftId,
+      'denomination': denomination,
+      'count': count,
+      'value': value.minorUnits,
+      'created_at': now,
+    });
+  }
+
+  /// All denomination counts for a shift, in entry order.
+  Future<List<TillCount>> getTillCounts(int shiftId) async {
+    final rows = await (await database).query('till_counts',
+        where: 'shift_id = ?', whereArgs: [shiftId], orderBy: 'id');
+    return rows.map(TillCount.fromMap).toList();
+  }
+
+  /// Discards the recorded piles for a shift, so a recount replaces the last one.
+  ///
+  /// `addTillCount` appends, which is right for an audit trail of attempts but
+  /// wrong for a cashier who counts the drawer twice — the two attempts would
+  /// add together and report roughly double the cash in the till. The close is
+  /// taken from the piles as they stand at that moment, so the piles are
+  /// cleared immediately before they are written again.
+  Future<void> clearTillCounts(int shiftId) async {
+    await (await database)
+        .delete('till_counts', where: 'shift_id = ?', whereArgs: [shiftId]);
+  }
+
+  /// Closes a shift and reconciles it.
+  ///
+  /// This is the single atomic close path: it sets the shift's end time and
+  /// status, writes the reconcilation row, and clamps [endFloat] to zero if
+  /// omitted. All three happen in one transaction so a crash mid-close cannot
+  /// leave a shift half-closed.
+  ///
+  /// [countedCash] is the physical count of the till. [expectedCash] is the
+  /// cash the sales ledger says should be there (start float + cash sales -
+  /// change - payouts). The variance is computed as the difference.
+  ///
+  /// Throws [StateError] if the shift is not open. A closed shift cannot be
+  /// reconciled again: the guard is on the UPDATE, and a second call would
+  /// otherwise write a reconciliation row for a shift that never moved, so the
+  /// ledger would show two different variances for one shift.
+  Future<int> reconcileShift({
+    required int shiftId,
+    required Money countedCash,
+    required Money expectedCash,
+    Money? endFloat,
+  }) async {
+    final db = await database;
+    return db.transaction<int>((txn) async {
+      final now = DateTime.now().toIso8601String();
+      final variance = countedCash - expectedCash;
+      // With no explicit float, what was counted stays in the drawer and
+      // becomes the next shift's float. Defaulting to zero would tell the next
+      // cashier the till came up empty when it did not.
+      final endFloatMinor = (endFloat ?? countedCash).minorUnits;
+
+      final closed = await txn.update(
+        'shifts',
+        {
+          'end_time': now,
+          'end_float': endFloatMinor,
+          'status': 'closed',
+        },
+        where: 'id = ? AND status = ?',
+        whereArgs: [shiftId, 'open'],
+      );
+      if (closed == 0) {
+        throw StateError('Shift $shiftId is not open and cannot be reconciled');
+      }
+
+      return txn.insert('reconciliations', {
+        'shift_id': shiftId,
+        'counted_cash': countedCash.minorUnits,
+        'expected_cash': expectedCash.minorUnits,
+        'variance': variance.minorUnits,
+        'recorded_at': now,
+      });
+    });
+  }
+
+  /// All reconciliations for a shift.
+  Future<List<Reconciliation>> getReconciliationsForShift(int shiftId) async {
+    final rows = await (await database).query('reconciliations',
+        where: 'shift_id = ?',
+        whereArgs: [shiftId],
+        orderBy: 'recorded_at DESC');
+    return rows.map(Reconciliation.fromMap).toList();
+  }
+
+  /// The cash the sales ledger says was rung up as cash during [shift]'s window.
+  ///
+  /// Scoped on **both** the window and [Shift.staffId]: a shared till can have
+  /// one person open the shift while another rings sales into the same drawer,
+  /// and counting those as this cashier's takings would hand them a variance
+  /// they did not cause. Sales that are not settled cash are excluded —
+  /// `payment_method = 'cash'` and `payment_verified = 1` — because an
+  /// unverified card or pending mobile-money row has not reached the drawer.
+  ///
+  /// Sums `sales.total`, which is already net of change given, so summing it is
+  /// exactly what left the drawer. The **starting float is not included**; use
+  /// [expectedTillBalance] for the figure a reconciliation compares against.
+  Future<Money> expectedCashForShift(Shift shift) async {
+    final since = DateTime.parse(shift.startTime);
+    final until = shift.endTime != null && shift.endTime!.isNotEmpty
+        ? DateTime.parse(shift.endTime!)
+        : DateTime.now();
+    final rows = await (await database).rawQuery(
+      '''SELECT COALESCE(SUM(total), 0) AS total_minor
+         FROM sales
+         WHERE staff_id = ?
+           AND created_at >= ?
+           AND created_at < ?
+           AND payment_method = 'cash'
+           AND payment_verified = 1''',
+      [shift.staffId, since.toIso8601String(), until.toIso8601String()],
+    );
+    final minor = (rows.first['total_minor'] as num?)?.toInt() ?? 0;
+    return Money.fromMinor(minor);
+  }
+
+  /// What the drawer should hold for [shift]: the float it opened with plus
+  /// the cash rung up since.
+  ///
+  /// This is the figure a physical count is compared against, so it is the one
+  /// the reconciliation screen uses. Composed here rather than at each call
+  /// site because forgetting the float is a mistake that produces a variance
+  /// exactly equal to the float — a large, confident-looking, entirely wrong
+  /// number.
+  Future<Money> expectedTillBalance(Shift shift) async {
+    final cash = await expectedCashForShift(shift);
+    return shift.startFloat + cash;
+  }
+
+  /// Totals the denomination piles recorded for a shift.
+  ///
+  /// The counted cash a reconciliation should use when a cashier counted by
+  /// denomination rather than typing one figure. Returns zero when no piles were
+  /// recorded, which is what an uncounted till should reconcile against rather
+  /// than a silent "expected" value.
+  Future<Money> countedCashFromTillCounts(int shiftId) async {
+    final counts = await getTillCounts(shiftId);
+    var total = Money.zero;
+    for (final c in counts) {
+      total = total + c.value;
+    }
+    return total;
+  }
+
+  // ---------------- Shot cups ----------------
+
+  /// Creates or updates a shot cup configuration.
+  ///
+  /// The product link is checked here rather than left to the foreign key,
+  /// which is not enforced on this connection (see the foreign-key note on this
+  /// class). Without the check a stale or zero [ShotCup.productId] stores a row
+  /// pointing at nothing, and the till then offers a shot that cannot be
+  /// priced or deducted — the sale would fail at the last step, with the
+  /// customer's money already in hand.
+  Future<int> upsertShotCup(ShotCup cup) async {
+    final db = await database;
+    if (cup.capacityMl <= 0) {
+      throw StateError('A shot cup needs a capacity greater than zero');
+    }
+    final exists = await db.query('products',
+        columns: ['id'], where: 'id = ?', whereArgs: [cup.productId], limit: 1);
+    if (exists.isEmpty) {
+      throw StateError(
+          'Shot cup product ${cup.productId} does not exist in the catalogue');
+    }
+    if (cup.id == null) {
+      return db.insert('shot_cups', cup.toMap()..remove('id'));
+    }
+    await db
+        .update('shot_cups', cup.toMap(), where: 'id = ?', whereArgs: [cup.id]);
+    return cup.id!;
+  }
+
+  /// Active shot cups, ordered by label then product name.
+  Future<List<ShotCup>> getShotCups({bool activeOnly = true}) async {
+    final rows = await (await database).query('shot_cups',
+        where: activeOnly ? 'active = 1' : null,
+        orderBy: 'label ASC, product_name ASC');
+    return rows.map(ShotCup.fromMap).toList();
+  }
+
+  /// The shot cup configured for [productId], or null.
+  Future<ShotCup?> getShotCupForProduct(int productId) async {
+    final rows = await (await database).query('shot_cups',
+        where: 'product_id = ? AND active = 1',
+        whereArgs: [productId],
+        limit: 1);
+    if (rows.isEmpty) return null;
+    return ShotCup.fromMap(rows.first);
+  }
+
+  /// Soft-deletes a shot cup.
+  Future<void> deleteShotCup(int id) async {
+    await (await database)
+        .update('shot_cups', {'active': 0}, where: 'id = ?', whereArgs: [id]);
+  }
+
+  // ---------------- Cup size suggestions ----------------
+
+  /// Records (or bumps the usage count of) a cup size the user entered.
+  ///
+  /// [productId] is nullable so a size used across several products is
+  /// remembered once and surfaces as a suggestion for any of them. If the same
+  /// size already exists for the same product (or the same null product), the
+  /// count is incremented; otherwise a new row is inserted.
+  ///
+  /// A global (null [productId]) row is matched with `IS NULL` rather than a
+  /// bound argument: sqflite refuses a null in `whereArgs` and will throw once
+  /// that stops being a warning, and the global bucket is the one a beer shop
+  /// actually reads. Read-then-write is wrapped in a transaction so two saves
+  /// of the same new size cannot both miss and insert a duplicate row.
+  Future<void> upsertCupSizeSuggestion({
+    int? productId,
+    required int sizeMl,
+  }) async {
+    if (sizeMl <= 0) return;
+    final db = await database;
+    final now = DateTime.now().toIso8601String();
+    final existingId = productId == null
+        ? (await db.rawQuery(
+            'SELECT id FROM cup_size_suggestions '
+            'WHERE product_id IS NULL AND size_ml = ? LIMIT 1',
+            [sizeMl],
+          ))
+            .map((r) => r['id'] as int)
+            .firstOrNull
+        : (await db.query(
+            'cup_size_suggestions',
+            columns: ['id', 'use_count'],
+            where: 'product_id = ? AND size_ml = ?',
+            whereArgs: [productId, sizeMl],
+            limit: 1,
+          ))
+            .map((r) => r['id'] as int)
+            .firstOrNull;
+
+    if (existingId == null) {
+      await db.insert('cup_size_suggestions', {
+        'product_id': productId,
+        'size_ml': sizeMl,
+        'use_count': 1,
+        'created_at': now,
+      });
+      return;
+    }
+    await db.rawUpdate(
+      'UPDATE cup_size_suggestions SET use_count = use_count + 1 WHERE id = ?',
+      [existingId],
+    );
+  }
+
+  /// All cup size suggestions, most-used first, then by size.
+  Future<List<CupSizeSuggestion>> getCupSizeSuggestions() async {
+    final rows = await (await database).query(
+      'cup_size_suggestions',
+      orderBy: 'use_count DESC, size_ml ASC',
+    );
+    return rows.map(CupSizeSuggestion.fromMap).toList();
+  }
+
+  /// Suggestions for a specific product, then any global (product_id IS NULL)
+  /// suggestions, most-used first.
+  Future<List<CupSizeSuggestion>> getCupSizeSuggestionsForProduct(
+    int productId,
+  ) async {
+    final rows = await (await database).rawQuery(
+      '''SELECT * FROM cup_size_suggestions
+         WHERE product_id = ? OR product_id IS NULL
+         ORDER BY use_count DESC, size_ml ASC''',
+      [productId],
+    );
+    return rows.map(CupSizeSuggestion.fromMap).toList();
   }
 }
 
@@ -2317,6 +2833,35 @@ class EtimsStatus {
   /// KRA refused it. The sale stands; the invoice does not, and the owner has
   /// to fix the underlying configuration.
   static const String rejected = 'rejected';
+}
+
+/// The named values `sale_items.portion` can hold.
+///
+/// A named class rather than bare strings because these three values are load
+/// bearing in `recordSale` — they are what turns a line into the fraction of a
+/// container it deducts from stock — and a typo in a string literal there is a
+/// silently wrong stock count rather than a compile error.
+class SalePortion {
+  const SalePortion._();
+
+  /// The whole container.
+  static const String full = 'full';
+
+  /// Half of it.
+  static const String half = 'half';
+
+  /// A quarter of it.
+  static const String quarter = 'quarter';
+
+  /// An exact pour described in millilitres, stored in `portion_ml`.
+  ///
+  /// A shot is 30 ml out of a 750 ml bottle. Neither `half` nor `quarter`
+  /// describes that, and rounding it to `full` deducts a whole bottle per shot —
+  /// so a bar selling 25 shots a bottle reads the bottle as empty after 25
+  /// rather than after one. The fraction is `portion_ml / bottle_ml`, which is
+  /// what makes a shot of a 200 ml bottle and a shot of a 750 ml bottle both
+  /// deduct correctly from their own container.
+  static const String measured = 'measured';
 }
 
 /// Why foreign keys are **not** enforced on this connection.

@@ -75,7 +75,8 @@ void main() {
         Money.fromMajor(33.33),
         Money.fromMajor(7.77),
       ];
-      expect(sumMoney(parts).minorUnits, parts.fold<int>(0, (sum, p) => sum + p.minorUnits));
+      expect(sumMoney(parts).minorUnits,
+          parts.fold<int>(0, (sum, p) => sum + p.minorUnits));
       expect(sumMoney(const []), Money.zero);
     });
   });
@@ -107,6 +108,27 @@ void main() {
       expect(Money.isValidMajor(-1), isFalse);
       expect(Money.isValidMajor(double.nan), isFalse);
       expect(Money.isValidMajor(double.infinity), isFalse);
+    });
+  });
+
+  group('abs', () {
+    test('a short balance states its magnitude without the sign', () {
+      // A till reconciliation has to say "KSh 400 short" rather than printing a
+      // signed number the cashier has to decode while serving a queue.
+      expect(Money.fromMajor(-400).abs, Money.fromMajor(400));
+    });
+
+    test('an over balance is already its own magnitude', () {
+      expect(Money.fromMajor(400).abs, Money.fromMajor(400));
+    });
+
+    test('zero is its own magnitude', () {
+      expect(Money.zero.abs, Money.zero);
+    });
+
+    test('the smallest representable amount survives', () {
+      // A one-cent short is a real variance a shop has to see, not an artefact.
+      expect(Money.fromMinor(-1).abs.minorUnits, 1);
     });
   });
 
@@ -234,7 +256,8 @@ void main() {
       expect(line['portionMl'], 350);
     });
 
-    test('encoding a Money object would throw, which is why it is not done', () {
+    test('encoding a Money object would throw, which is why it is not done',
+        () {
       // Pins the actual failure mode. If someone "simplifies" the snapshot back
       // to writing the Money object, this test fails with the encoder's error
       // rather than the crash surfacing in a shop.

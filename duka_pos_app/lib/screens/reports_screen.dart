@@ -9,6 +9,7 @@ import '../services/printer/printer_config.dart';
 import '../services/printer/printer_service.dart';
 import '../services/printer/receipt_printer.dart';
 import '../utils/money.dart';
+import 'shift_screen.dart';
 
 class ReportsScreen extends StatefulWidget {
   const ReportsScreen({super.key});
@@ -52,41 +53,21 @@ class _ReportsScreenState extends State<ReportsScreen> {
     }
   }
 
+  /// Opens the real shift and reconciliation view.
+  ///
+  /// Replaced what used to be a "shift summary" dialog here. That dialog
+  /// filtered sales by the cashier's *display name* in Dart, compared date parts
+  /// one at a time, and — worst — printed the day's sales total under the
+  /// heading "Cash expected in till". It ignored the opening float, every
+  /// non-cash payment, and change given, so the one number an owner would take
+  /// from it to judge a cashier was wrong. Now that shifts are recorded, the
+  /// figure comes from `expectedTillBalance` and the variance is the ledger's.
   Future<void> _showShiftSummary() async {
-    final staffName = context.read<AppState>().currentStaffName!;
-    final today = DateTime.now();
-    final mine = _sales
-        .where((s) =>
-            s.staffName == staffName &&
-            DateTime.parse(s.createdAt).day == today.day &&
-            DateTime.parse(s.createdAt).month == today.month &&
-            DateTime.parse(s.createdAt).year == today.year)
-        .toList();
-    final total = sumMoney(mine.map((s) => s.total));
-    final profit = sumMoney(mine.map((s) => s.profit));
-    if (!mounted) return;
-    showDialog(
-        context: context,
-        builder: (_) => AlertDialog(
-              title: const Text('Shift summary'),
-              content: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text('Cashier: $staffName'),
-                    Text('Transactions: ${mine.length}'),
-                    Text('Total sales: ${formatMoney(total)}'),
-                    Text('Profit: ${formatMoney(profit)}'),
-                    const Divider(),
-                    Text('Cash expected in till: ${formatMoney(total)}',
-                        style: const TextStyle(fontWeight: FontWeight.bold)),
-                  ]),
-              actions: [
-                TextButton(
-                    onPressed: () => Navigator.pop(context),
-                    child: const Text('Close'))
-              ],
-            ));
+    await Navigator.push(
+      context,
+      MaterialPageRoute<void>(builder: (_) => const ShiftScreen()),
+    );
+    if (mounted) await _load();
   }
 
   Future<void> _exportSales() async {
@@ -144,7 +125,8 @@ class _ReportsScreenState extends State<ReportsScreen> {
 
   void _toast(String message) {
     if (!mounted) return;
-    ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(message)));
+    ScaffoldMessenger.of(context)
+        .showSnackBar(SnackBar(content: Text(message)));
   }
 
   @override
@@ -163,11 +145,13 @@ class _ReportsScreenState extends State<ReportsScreen> {
     }
     final byStaff = <String, Map<String, Object>>{};
     for (final s in _sales) {
-      final m = byStaff.putIfAbsent(s.staffName, () => {
-            'n': 0,
-            'total': Money.zero,
-            'profit': Money.zero,
-          });
+      final m = byStaff.putIfAbsent(
+          s.staffName,
+          () => {
+                'n': 0,
+                'total': Money.zero,
+                'profit': Money.zero,
+              });
       m['n'] = (m['n']! as int) + 1;
       // Money in the accumulator, not a raw double: per-staff takings then sum
       // to the same figure as the day total, with no rounding to reconcile.
@@ -188,7 +172,7 @@ class _ReportsScreenState extends State<ReportsScreen> {
                 child: FilledButton.icon(
                     onPressed: _showShiftSummary,
                     icon: const Icon(Icons.receipt_long),
-                    label: const Text('My shift today'))),
+                    label: const Text('Shift & reconciliation'))),
             const SizedBox(width: 8),
             OutlinedButton.icon(
                 onPressed: _exportSales,
@@ -206,7 +190,8 @@ class _ReportsScreenState extends State<ReportsScreen> {
                             title: Text(e.key),
                             subtitle:
                                 Text('${e.value['n']! as int} transactions'),
-                            trailing: Text(formatMoney(e.value['total']! as Money)),
+                            trailing:
+                                Text(formatMoney(e.value['total']! as Money)),
                           ))
                       .toList())),
           const SizedBox(height: 20),

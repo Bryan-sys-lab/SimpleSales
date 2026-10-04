@@ -2,6 +2,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../services/app_state.dart';
+import '../widgets/sign_out_sheet.dart';
 import 'analytics_screen.dart';
 import 'dashboard_screen.dart';
 import 'sell_screen.dart';
@@ -34,11 +35,30 @@ enum HomeTab { dashboard, sell, inventory, analytics, reports, settings }
 class HomeShellTabs extends ChangeNotifier {
   HomeTab _current = HomeTab.dashboard;
 
+  /// Bumped whenever the catalogue changes — a product added, a variant
+  /// configured, a shot cup saved.
+  ///
+  /// The shell keeps its tabs alive in an `IndexedStack`, so the sell screen is
+  /// not rebuilt when the owner switches tabs and it would otherwise keep
+  /// selling yesterday's catalogue until the app restarted. Anything that writes
+  /// to the catalogue bumps this, and the sell screen reloads.
+  int _catalogueGeneration = 0;
+
+  int get catalogueGeneration => _catalogueGeneration;
+
   HomeTab get current => _current;
 
   void goTo(HomeTab tab) {
     if (_current == tab) return;
     _current = tab;
+    notifyListeners();
+  }
+
+  /// Says the catalogue changed. Separate from [goTo] because saving a product
+  /// does not necessarily move the user anywhere, and a reload should happen
+  /// whether or not they navigate afterwards.
+  void markCatalogueChanged() {
+    _catalogueGeneration++;
     notifyListeners();
   }
 }
@@ -51,6 +71,10 @@ class HomeShell extends StatefulWidget {
 
 class _HomeShellState extends State<HomeShell> {
   final HomeShellTabs _tabs = HomeShellTabs();
+
+  /// Survives the session, so a sign-out warned about a cart the sell screen
+  /// built and then left is still warned about it.
+  final CartLineCount _cartCount = CartLineCount();
   Timer? _idleTimer;
 
   @override
@@ -68,7 +92,14 @@ class _HomeShellState extends State<HomeShell> {
   void _resetIdleTimer() {
     _idleTimer?.cancel();
     _idleTimer = Timer(_idleTimeout, () {
-      if (mounted) context.read<AppState>().signOut();
+      if (!mounted) return;
+      // An idle sign-out is the same event as a deliberate one — same session
+      // ended, same tokens to clear — so it goes through `signOut` rather than
+      // a shortcut that would leave the online identity alive on the device.
+      // No sheet: asking someone to confirm a timeout would defeat it, and the
+      // till is secure again either way. The shift they left open is stated
+      // next time they sign in, on the dashboard.
+      context.read<AppState>().signOut();
     });
   }
 
@@ -78,15 +109,34 @@ class _HomeShellState extends State<HomeShell> {
     // disposed with the shell it drives.
     return ChangeNotifierProvider<HomeShellTabs>.value(
       value: _tabs,
-      child: Listener(
-        onPointerDown: (_) => _resetIdleTimer(),
-        behavior: HitTestBehavior.translucent,
-        child: Consumer<HomeShellTabs>(
-          builder: (context, tabController, _) =>
-              _scaffold(context, tabController),
+      // Above the tabs, not inside the sell screen: the sign-out sheet is shown
+      // by the shell's own app bar, and it has to read the cart count from a
+      // screen that may not be built — on the dashboard, with the sell tab
+      // never opened this session.
+      child: Provider<CartLineCount>.value(
+        value: _cartCount,
+        child: Listener(
+          onPointerDown: (_) => _resetIdleTimer(),
+          behavior: HitTestBehavior.translucent,
+          child: Consumer<HomeShellTabs>(
+            builder: (context, tabController, _) =>
+                _scaffold(context, tabController),
+          ),
         ),
       ),
     );
+  }
+
+  /// Ends the session, after saying what is still open.
+  ///
+  /// Confirmation lives here rather than in the sheet's caller so the deliberate
+  /// and the accidental paths cannot diverge.
+  Future<void> _signOut() async {
+    final confirmed = await confirmSignOut(context);
+    if (!confirmed || !mounted) return;
+    // `signOut` clears the local session first and tears the online one down in
+    // the background, so the PIN pad appears without waiting on the network.
+    context.read<AppState>().signOut();
   }
 
   Widget _scaffold(BuildContext context, HomeShellTabs tabController) {
@@ -127,10 +177,22 @@ class _HomeShellState extends State<HomeShell> {
         ),
         actions: [
           Padding(
+            padding: const EdgeInsets.only(right: 8),
+            child: IconButton(
+              tooltip: 'Sign out',
+              onPressed: _signOut,
+              icon: const Icon(Icons.logout),
+            ),
+          ),
+          Padding(
             padding: const EdgeInsets.only(right: 12),
             child: Center(
               child: TextButton.icon(
-                onPressed: () => state.signOut(),
+                // Tapping the name opens the same sheet rather than signing out
+                // straight away: the name is the easiest thing on the bar to hit
+                // by accident, and an accidental sign-out on a busy till is a
+                // customer waiting.
+                onPressed: _signOut,
                 icon: Icon(isOwner
                     ? Icons.workspace_premium_outlined
                     : Icons.person_outline),

@@ -12,6 +12,7 @@ import '../utils/money.dart';
 import '../widgets/backup_reminder_banner.dart';
 import '../widgets/chart.dart';
 import 'home_shell.dart';
+import 'shift_screen.dart';
 
 /// What a seller needs before they need anything else.
 ///
@@ -52,6 +53,14 @@ class _DashboardScreenState extends State<DashboardScreen> {
   /// are, because the number itself cannot.
   String _scopeLabel = 'the shop';
 
+  /// The signed-in person's open shift, and what the drawer should hold in it.
+  ///
+  /// Loaded here rather than read when the card is built, because the card needs
+  /// a number — the expected cash — that only the database can produce, and
+  /// building it inline would mean a query per rebuild.
+  Shift? _openShift;
+  Money _expectedTill = Money.zero;
+
   @override
   void initState() {
     super.initState();
@@ -83,14 +92,16 @@ class _DashboardScreenState extends State<DashboardScreen> {
         db.countLowStockProducts(),
         db.attentionSummary(),
         db.getProducts(),
+        appState.currentStaffId == null
+            ? Future.value(null)
+            : db.getOpenShift(appState.currentStaffId!),
       ]);
 
-      final low = (results[6] as List<Product>)
-          .where((p) => p.isLow)
-          .toList()
+      final low = (results[6] as List<Product>).where((p) => p.isLow).toList()
         // Out-of-stock first: it is the only entry here that stops a sale.
         ..sort((a, b) {
-          final byEmpty = (a.stockQty <= 0 ? 0 : 1).compareTo(b.stockQty <= 0 ? 0 : 1);
+          final byEmpty =
+              (a.stockQty <= 0 ? 0 : 1).compareTo(b.stockQty <= 0 ? 0 : 1);
           return byEmpty != 0 ? byEmpty : a.stockQty.compareTo(b.stockQty);
         });
 
@@ -103,10 +114,22 @@ class _DashboardScreenState extends State<DashboardScreen> {
         _lowStockCount = results[4] as int;
         _attention = results[5] as AttentionSummary;
         _lowStock = low;
-        _scopeLabel = ownOnly ? (appState.currentStaffName ?? 'you') : 'the shop';
+        _scopeLabel =
+            ownOnly ? (appState.currentStaffName ?? 'you') : 'the shop';
+        _openShift = results[7] as Shift?;
         _loading = false;
         _error = null;
       });
+      // Outside the setState so the expected figure does not arrive a frame
+      // later than the shift that produces it.
+      final shift = _openShift;
+      if (shift != null) {
+        final expected = await db.expectedTillBalance(shift);
+        if (!mounted) return;
+        setState(() => _expectedTill = expected);
+      } else {
+        _expectedTill = Money.zero;
+      }
     } catch (_) {
       if (!mounted) return;
       setState(() {
@@ -114,6 +137,16 @@ class _DashboardScreenState extends State<DashboardScreen> {
         _error = 'Couldn’t load today’s dashboard data.';
       });
     }
+  }
+
+  void _goToShift() async {
+    await Navigator.push(
+      context,
+      MaterialPageRoute<void>(builder: (_) => const ShiftScreen()),
+    );
+    // The shift may have been opened or closed on that screen, and the card's
+    // number is a figure from the ledger rather than a UI value.
+    if (mounted) await _load();
   }
 
   void _goToInventory() {
@@ -133,12 +166,13 @@ class _DashboardScreenState extends State<DashboardScreen> {
     try {
       final result = await EtimsService().flushPending();
       if (!mounted) return;
-      messenger.showSnackBar(SnackBar(content: Text(EtimsService.describeResult(result))));
+      messenger.showSnackBar(
+          SnackBar(content: Text(EtimsService.describeResult(result))));
       await _load();
     } catch (_) {
       messenger.showSnackBar(const SnackBar(
-          content:
-              Text('Could not reach KRA. The receipts stay queued and will go up on the next connection.')));
+          content: Text(
+              'Could not reach KRA. The receipts stay queued and will go up on the next connection.')));
     }
   }
 
@@ -171,6 +205,12 @@ class _DashboardScreenState extends State<DashboardScreen> {
             staffName: context.read<AppState>().currentStaffName,
             role: context.read<AppState>().currentRole,
             scopeLabel: _scopeLabel,
+          ),
+          const SizedBox(height: DukaSpacing.lg),
+          _ShiftCard(
+            shift: _openShift,
+            expected: _expectedTill,
+            onOpen: _goToShift,
           ),
           const SizedBox(height: DukaSpacing.lg),
           _KpiGrid(
@@ -296,7 +336,9 @@ class _KpiGrid extends StatelessWidget {
             child: _KpiTile(
               label: 'Profit today',
               value: formatMoney(totals.profit),
-              caption: totals.hasSales ? '${totals.marginPct.toStringAsFixed(0)}% margin' : null,
+              caption: totals.hasSales
+                  ? '${totals.marginPct.toStringAsFixed(0)}% margin'
+                  : null,
             ),
           ),
           SizedBox(
@@ -408,7 +450,9 @@ class _LowStockTile extends StatelessWidget {
             child: Row(
               children: [
                 Icon(
-                  warn ? Icons.production_quantity_limits : Icons.check_circle_outline,
+                  warn
+                      ? Icons.production_quantity_limits
+                      : Icons.check_circle_outline,
                   color: warn ? DukaColors.danger : DukaColors.success,
                 ),
                 const SizedBox(width: DukaSpacing.md),
@@ -439,6 +483,87 @@ class _LowStockTile extends StatelessWidget {
 /// that is always on screen. Each row names the consequence as well as the
 /// count, because "3" means nothing and "3 receipts KRA has not issued" means
 /// an unfiled tax invoice for money already taken.
+/// The signed-in person's shift, or the prompt to open one.
+///
+/// On the dashboard rather than behind a tab because a shift is the thing a
+/// cashier has to do before they can reconcile, and a screen they have to go
+/// looking for is a screen they will forget. The two states are given different
+/// words on purpose: "no shift open" is a missing first step, not an error.
+class _ShiftCard extends StatelessWidget {
+  const _ShiftCard({
+    required this.shift,
+    required this.expected,
+    required this.onOpen,
+  });
+
+  final Shift? shift;
+  final Money expected;
+  final VoidCallback onOpen;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final current = shift;
+    return Card(
+      child: InkWell(
+        onTap: onOpen,
+        child: Padding(
+          padding: const EdgeInsets.all(16),
+          child: current == null
+              ? Row(
+                  children: [
+                    Icon(Icons.play_circle_outline,
+                        color: theme.colorScheme.primary),
+                    const SizedBox(width: 12),
+                    const Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text('No shift open',
+                              style: TextStyle(fontWeight: FontWeight.w600)),
+                          SizedBox(height: 2),
+                          Text('Tap to count the cash you start with'),
+                        ],
+                      ),
+                    ),
+                    Icon(Icons.chevron_right, color: theme.colorScheme.outline),
+                  ],
+                )
+              : Semantics(
+                  label:
+                      'Shift open since ${current.startTime}. ${formatMoney(expected)} expected in the drawer.',
+                  excludeSemantics: true,
+                  child: Row(
+                    children: [
+                      Icon(Icons.check_circle_outline,
+                          color: theme.colorScheme.primary),
+                      const SizedBox(width: 12),
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text('Shift open',
+                                style: const TextStyle(
+                                    fontWeight: FontWeight.w600)),
+                            const SizedBox(height: 2),
+                            Text(
+                              '${formatMoney(expected)} expected in the drawer',
+                              style: theme.textTheme.bodySmall,
+                            ),
+                          ],
+                        ),
+                      ),
+                      Icon(Icons.chevron_right,
+                          color: theme.colorScheme.outline),
+                    ],
+                  ),
+                ),
+        ),
+      ),
+    );
+  }
+}
+
 class _AttentionSection extends StatelessWidget {
   const _AttentionSection({
     required this.summary,
@@ -471,7 +596,8 @@ class _AttentionSection extends StatelessWidget {
                 _AttentionRow(
                   icon: Icons.receipt_long_outlined,
                   tone: _AttentionTone.warning,
-                  title: '${summary.pendingEtims} receipt${_s(summary.pendingEtims)} waiting for KRA',
+                  title:
+                      '${summary.pendingEtims} receipt${_s(summary.pendingEtims)} waiting for KRA',
                   detail:
                       'Money taken, invoice not yet issued. They upload on their own once there is a connection.',
                   actionLabel: 'Retry now',
@@ -522,8 +648,7 @@ class _AttentionSection extends StatelessWidget {
   /// the dashboard.
   static Future<void> _showImportProblems(BuildContext context) async {
     final messenger = ScaffoldMessenger.of(context);
-    final rows =
-        await DatabaseHelper.instance.getImportProblems(limit: 20);
+    final rows = await DatabaseHelper.instance.getImportProblems(limit: 20);
     if (!context.mounted) return;
     await showDialog<void>(
       context: context,
@@ -532,7 +657,8 @@ class _AttentionSection extends StatelessWidget {
         content: rows.isEmpty
             ? const Text('Nothing outstanding.')
             : ConstrainedBox(
-                constraints: const BoxConstraints(maxWidth: 420, maxHeight: 420),
+                constraints:
+                    const BoxConstraints(maxWidth: 420, maxHeight: 420),
                 child: ListView(
                   shrinkWrap: true,
                   children: [
@@ -592,9 +718,8 @@ class _AttentionRow extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    final colour = tone == _AttentionTone.danger
-        ? DukaColors.danger
-        : DukaColors.warning;
+    final colour =
+        tone == _AttentionTone.danger ? DukaColors.danger : DukaColors.warning;
     return Padding(
       padding: const EdgeInsets.fromLTRB(
           DukaSpacing.md, DukaSpacing.md, DukaSpacing.sm, DukaSpacing.md),
@@ -705,14 +830,15 @@ class _NoSalesToday extends StatelessWidget {
           children: [
             Row(
               children: [
-                const Icon(Icons.hourglass_empty,
-                    color: DukaColors.mutedInk),
+                const Icon(Icons.hourglass_empty, color: DukaColors.mutedInk),
                 const SizedBox(width: DukaSpacing.sm),
                 Expanded(
                   child: Semantics(
                     header: true,
                     child: Text(
-                      hasEverSold ? 'No sales yet today' : 'No sales recorded yet',
+                      hasEverSold
+                          ? 'No sales yet today'
+                          : 'No sales recorded yet',
                       style: theme.textTheme.titleMedium,
                     ),
                   ),
@@ -805,7 +931,8 @@ class _LowStockRow extends StatelessWidget {
         : product.stockQty.toStringAsFixed(1);
     return ListTile(
       title: Text(product.name, style: theme.textTheme.bodyLarge),
-      subtitle: Text('Reorder at ${product.reorderLevel}', style: theme.textTheme.bodySmall),
+      subtitle: Text('Reorder at ${product.reorderLevel}',
+          style: theme.textTheme.bodySmall),
       trailing: Row(
         mainAxisSize: MainAxisSize.min,
         children: [

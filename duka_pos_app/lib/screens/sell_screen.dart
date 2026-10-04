@@ -12,6 +12,8 @@ import '../services/etims/etims_service.dart';
 import '../services/printer/printer_config.dart';
 import '../services/printer/receipt_printer.dart';
 import '../widgets/camera_scan_screen.dart';
+import '../widgets/sign_out_sheet.dart';
+import 'home_shell.dart';
 import '../widgets/variant_catalogue.dart';
 import '../models/models.dart';
 import '../db/database_helper.dart';
@@ -27,6 +29,9 @@ class SellScreen extends StatefulWidget {
 
 class _SellScreenState extends State<SellScreen> {
   final List<CartItem> _cart = [];
+
+  /// The shell's catalogue-change signal. Assigned in `initState`.
+  late final HomeShellTabs _shellTabs;
   final _searchController = TextEditingController();
   final _searchFocus = FocusNode();
   final _wedge = WedgeScannerBuffer();
@@ -43,6 +48,14 @@ class _SellScreenState extends State<SellScreen> {
   /// about every product it draws, and a query per grid cell is a grid that
   /// stutters exactly when the shop is busiest.
   VariantCatalogue _variants = VariantCatalogue.empty;
+
+  /// Fixed shot cups available at this till, for products still in the
+  /// catalogue.
+  ///
+  /// Loaded with the products rather than per tile, for the same reason: a shot
+  /// lookup per grid cell is a query per cell, and the till asks it about every
+  /// product it draws.
+  List<ShotCup> _shots = const [];
 
   String _searchQuery = '';
   bool _loading = true;
@@ -71,6 +84,10 @@ class _SellScreenState extends State<SellScreen> {
   @override
   void initState() {
     super.initState();
+    // The shell keeps this screen alive across tab switches, so it reloads when
+    // the catalogue is written to rather than only when it is first shown.
+    _shellTabs = context.read<HomeShellTabs>();
+    _shellTabs.addListener(_onShellChanged);
     _searchFocus.addListener(() {
       // The wedge buffer is disarmed while the search field holds focus, so a
       // human typing a product name can never be read as a scan. Tracked as
@@ -86,8 +103,18 @@ class _SellScreenState extends State<SellScreen> {
     _loadProducts();
   }
 
+  int _seenCatalogueGeneration = 0;
+
+  void _onShellChanged() {
+    final generation = _shellTabs.catalogueGeneration;
+    if (generation == _seenCatalogueGeneration) return;
+    _seenCatalogueGeneration = generation;
+    _loadProducts();
+  }
+
   @override
   void dispose() {
+    _shellTabs.removeListener(_onShellChanged);
     _searchController.dispose();
     _searchFocus.dispose();
     _wedgeFocus.dispose();
@@ -95,16 +122,28 @@ class _SellScreenState extends State<SellScreen> {
   }
 
   Future<void> _loadProducts() async {
-    final products = await DatabaseHelper.instance.getProducts();
+    final db = DatabaseHelper.instance;
+    final products = await db.getProducts();
     final catalogue = await VariantCatalogue.load();
+    // Cups whose spirit has been deleted or deactivated are dropped here rather
+    // than offered and then refused at the till: a shot the cashier can add to
+    // the cart but cannot check out is worse than one that is not listed.
+    final liveIds = products.where((p) => p.active).map((p) => p.id).toSet();
+    final cups = await db.getShotCups();
+    final shots = cups.where((c) => liveIds.contains(c.productId)).toList();
     if (mounted) {
       setState(() {
         _products = products.where((p) => p.active).toList();
         _variants = catalogue;
+        _shots = shots;
         _loading = false;
       });
     }
   }
+
+  /// The cups configured against [product], in the order they were set up.
+  List<ShotCup> _shotsFor(Product product) =>
+      _shots.where((c) => c.productId == product.id).toList();
 
   /// Bottle units already reserved in the cart for this product, across all
   /// portions. Portion availability must subtract this, otherwise a cashier can
@@ -168,8 +207,7 @@ class _SellScreenState extends State<SellScreen> {
         ),
       ),
     );
-    final outcome = await BackendService.pollPaymentStatus(
-        reference,
+    final outcome = await BackendService.pollPaymentStatus(reference,
         timeout: const Duration(seconds: 20));
     if (!mounted) return;
     Navigator.of(context, rootNavigator: true).pop();
@@ -196,7 +234,8 @@ class _SellScreenState extends State<SellScreen> {
       return;
     }
 
-    _announceStatus('Payment $reference is still unconfirmed. Do not charge again.');
+    _announceStatus(
+        'Payment $reference is still unconfirmed. Do not charge again.');
     final checkAgain = await showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
@@ -257,9 +296,8 @@ class _SellScreenState extends State<SellScreen> {
         ));
         final variantId = (line['variantId'] as num?)?.toInt();
         if (variantId != null) {
-          variantUnits[variantId] =
-              (variantUnits[variantId] ?? 0) +
-                  ((line['qty'] as num?)?.toDouble() ?? 0);
+          variantUnits[variantId] = (variantUnits[variantId] ?? 0) +
+              ((line['qty'] as num?)?.toDouble() ?? 0);
         }
       }
       if (items.isEmpty) return false;
@@ -293,7 +331,8 @@ class _SellScreenState extends State<SellScreen> {
     } catch (_) {
       // The row must survive: the money is confirmed but the local ledger is
       // not, and dropping the row would lose the only copy of the basket.
-      _announceStatus('Payment $reference was received but needs manual repair.');
+      _announceStatus(
+          'Payment $reference was received but needs manual repair.');
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(SnackBar(
           content: Text(
@@ -396,6 +435,7 @@ class _SellScreenState extends State<SellScreen> {
     _portionSheetOpen = true;
     final variants = _variants.of(product);
     final sellsAsVariants = _variants.sellsAsVariants(product);
+    final shots = _shotsFor(product);
     String? choice;
     try {
       choice = await showModalBottomSheet<String>(
@@ -432,15 +472,40 @@ class _SellScreenState extends State<SellScreen> {
             _portionOption(sheetContext, product, 'quarter', 'Quarter',
                 product.priceFor('quarter')),
           ],
+          // Shots sit under the portions rather than replacing them: a bar sells
+          // a whole bottle *and* shots of the same spirit, and a sheet that
+          // offered one or the other would hide half the shelf.
+          if (shots.isNotEmpty) ...[
+            const Divider(height: 24),
+            Padding(
+              padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
+              child:
+                  Text('Shots', style: Theme.of(context).textTheme.labelLarge),
+            ),
+            for (final cup in shots) _shotOption(sheetContext, product, cup),
+          ],
         ])),
       );
     } finally {
       _portionSheetOpen = false;
     }
     if (choice == null || !mounted) return;
+    if (choice.startsWith(_shotChoicePrefix)) {
+      final cupId = int.tryParse(choice.substring(_shotChoicePrefix.length));
+      final cup = _shots.where((c) => c.id == cupId).firstOrNull;
+      if (cup == null) {
+        // The cup was removed while the sheet was open. Say so rather than
+        // falling back to the whole bottle, which would charge full price for a
+        // shot.
+        _say('That shot cup is no longer available. Try again.');
+        return;
+      }
+      await _addToCartDirect(product, SalePortion.measured, shotCup: cup);
+      return;
+    }
     if (choice.startsWith(_variantChoicePrefix)) {
-      final variant =
-          _variants.byId(int.tryParse(choice.substring(_variantChoicePrefix.length)));
+      final variant = _variants
+          .byId(int.tryParse(choice.substring(_variantChoicePrefix.length)));
       if (variant == null) {
         // The variant was deleted while the sheet was open. Say so rather than
         // falling back to the parent.
@@ -468,7 +533,8 @@ class _SellScreenState extends State<SellScreen> {
   /// a screen reader and the snack bar for everyone looking at the cart.
   void _say(String message) {
     _announceStatus(message);
-    ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(message)));
+    ScaffoldMessenger.of(context)
+        .showSnackBar(SnackBar(content: Text(message)));
   }
 
   /// Adds one unit of [product] in [portion] with no modal in the way.
@@ -486,7 +552,7 @@ class _SellScreenState extends State<SellScreen> {
   /// Portion changes are made on the cart line afterwards, so a scanner never
   /// costs throughput — one scan is one tap, not a modal.
   Future<void> _addToCartDirect(Product product, String portion,
-      {ProductVariant? variant}) async {
+      {ProductVariant? variant, ShotCup? shotCup}) async {
     // Re-check against the loaded product rather than the caller's snapshot:
     // the tap and the resolution are separated by a frame, and stock moves.
     final current = _products.where((p) => p.id == product.id).firstOrNull;
@@ -515,15 +581,49 @@ class _SellScreenState extends State<SellScreen> {
       });
       return;
     }
+    if (shotCup != null) {
+      // A shot comes out of the parent bottle, so it is checked and reserved
+      // against the parent — not against a count of its own, which it has none
+      // of. The amount reserved is the poured volume as a fraction of the
+      // bottle, so twenty-five shots of a 750 ml spirit are one bottle.
+      final needed = shotCup.capacityMl <= 0 || current.bottleMl <= 0
+          ? 1.0
+          : (shotCup.capacityMl / current.bottleMl).clamp(0.0, 1.0);
+      final available = current.stockQty - _cartUnitsFor(current);
+      if (available < needed) {
+        _say('Not enough ${current.name} left for another shot. '
+            'Adjust the cart before adding more.');
+        return;
+      }
+      // Merges on the cup, not on the product: a 30 ml shot and a 45 ml shot of
+      // the same spirit are two lines at two prices, and combining them would
+      // charge the first one's price for both.
+      final existing = _cart.where((c) => c.shotCup?.id == shotCup.id);
+      setState(() {
+        if (existing.isNotEmpty) {
+          existing.first.qty++;
+        } else {
+          _cart.add(CartItem(
+            product: current,
+            portion: SalePortion.measured,
+            qty: 1,
+            shotCup: shotCup,
+          ));
+        }
+      });
+      return;
+    }
     final needed = current.fractionFor(portion);
     if (current.stockQty - _cartUnitsFor(current) < needed) {
       _say('Not enough ${current.name} left. '
           'Adjust the cart before adding more.');
       return;
     }
-    final existing = _cart
-        .where((c) => c.variant == null && c.product.id == current.id &&
-            c.portion == portion);
+    final existing = _cart.where((c) =>
+        c.variant == null &&
+        c.shotCup == null &&
+        c.product.id == current.id &&
+        c.portion == portion);
     setState(() {
       if (existing.isNotEmpty) {
         existing.first.qty++;
@@ -552,6 +652,36 @@ class _SellScreenState extends State<SellScreen> {
     );
   }
 
+  /// One shot cup in the portion sheet: a fixed capacity of [product] at the
+  /// cup's own price.
+  ///
+  /// How many are left is stated in bottles rather than in shots, because that is
+  /// what the stock figure is and what the next customer can actually be served.
+  /// A capacity larger than the bottle reads as one bottle available, which is
+  /// the honest answer to a cup that cannot be poured from what is in stock.
+  Widget _shotOption(BuildContext sheetContext, Product product, ShotCup cup) {
+    final verdict = shotAvailability(product, cup, product.stockQty);
+    return ListTile(
+      leading: Icon(verdict.canPour
+          ? Icons.local_drink_outlined
+          : Icons.warning_amber_outlined),
+      title: Text('${cup.label} · ${cup.capacityMl} ml'),
+      trailing: Text(formatMoney(cup.price)),
+      enabled: verdict.canPour,
+      // Each blocked reason names its own cause. "Not available" would leave a
+      // cashier guessing, and the causes need different fixes: add stock, count
+      // the drawer down, or change the cup.
+      subtitle: Text(verdict.reason),
+      onTap: verdict.canPour
+          ? () => Navigator.pop(sheetContext, '$_shotChoicePrefix${cup.id}')
+          : null,
+    );
+  }
+
+  /// Marker for a shot-cup choice in the sheet's result. See
+  /// [_variantChoicePrefix] for why this is a prefix rather than a second value.
+  static const String _shotChoicePrefix = 's:';
+
   /// One variant in the portion sheet, at its own price and from its own stock.
   ///
   /// The low-stock warning rides on the icon *and* the words, never on colour
@@ -561,8 +691,9 @@ class _SellScreenState extends State<SellScreen> {
     final available = variant.stockQty - _cartUnitsForVariant(variant);
     final canAdd = available >= 1;
     return ListTile(
-      leading: Icon(
-          variant.isLow ? Icons.warning_amber_outlined : Icons.local_bar_outlined),
+      leading: Icon(variant.isLow
+          ? Icons.warning_amber_outlined
+          : Icons.local_bar_outlined),
       title: Text(variant.label),
       trailing: Text(formatMoney(variant.sellPrice)),
       enabled: canAdd,
@@ -574,7 +705,8 @@ class _SellScreenState extends State<SellScreen> {
               ? '${_qtyLabel(variant.stockQty)} in stock · low'
               : '${_qtyLabel(variant.stockQty)} in stock')),
       onTap: canAdd
-          ? () => Navigator.pop(sheetContext, '$_variantChoicePrefix${variant.id}')
+          ? () =>
+              Navigator.pop(sheetContext, '$_variantChoicePrefix${variant.id}')
           : null,
     );
   }
@@ -593,8 +725,8 @@ class _SellScreenState extends State<SellScreen> {
   }
 
   /// Summing integer cents, the same way [DatabaseHelper.recordSale] does, so the
-/// figure on screen is exactly the figure written to the ledger.
-Money get _total => sumMoney(_cart.map((item) => item.total));
+  /// figure on screen is exactly the figure written to the ledger.
+  Money get _total => sumMoney(_cart.map((item) => item.total));
 
   static const _offlinePaymentLabels = <String, String>{
     'cash': 'Cash',
@@ -615,15 +747,14 @@ Money get _total => sumMoney(_cart.map((item) => item.total));
   SaleItem _saleItemFor(CartItem line) => SaleItem(
         saleId: 0,
         productId: line.product.id!,
-        productName: line.variant != null
-            ? foldedVariantName(line.product, line.variant!)
-            : line.product.name,
+        productName: line.foldedName,
         qty: line.qty,
         unitPrice: line.unitPrice,
         unitCost: line.unitCost,
         portion: line.portion,
         // A variant's own serving size, not a fraction of the parent's bottle:
-        // "Dark 500 ml" is 500ml however big the parent bottle is.
+        // "Dark 500 ml" is 500ml however big the parent bottle is. A shot's is
+        // its cup's fixed capacity, which is the same idea.
         portionMl: line.portionMl,
       );
 
@@ -720,7 +851,8 @@ Money get _total => sumMoney(_cart.map((item) => item.total));
                 final amount = typed == null ? null : Money.fromMajor(typed);
                 if (amount == null ||
                     amount < _total ||
-                    (method != 'cash' && (amount - _total).minorUnits.abs() > 1)) {
+                    (method != 'cash' &&
+                        (amount - _total).minorUnits.abs() > 1)) {
                   ScaffoldMessenger.of(dialogContext).showSnackBar(SnackBar(
                     content: Text(method == 'cash'
                         ? 'Amount received must be at least ${formatMoney(_total)}.'
@@ -867,7 +999,8 @@ Money get _total => sumMoney(_cart.map((item) => item.total));
     }
     _announceStatus('Sale recorded but the receipt did not print.');
     ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-      content: const Text('The sale is recorded, but the receipt did not print.'),
+      content:
+          const Text('The sale is recorded, but the receipt did not print.'),
       // No retry action when the operator has to change something first:
       // offering "Retry" against a refused Bluetooth permission just fails
       // again and teaches the owner that the button does not work.
@@ -908,9 +1041,8 @@ Money get _total => sumMoney(_cart.map((item) => item.total));
         staffName: state.currentStaffName ?? 'Unknown',
         items: items,
         paymentMethod: 'mpesa',
-        paymentReference: phoneNumber.trim().isEmpty
-            ? null
-            : 'offline-${phoneNumber.trim()}',
+        paymentReference:
+            phoneNumber.trim().isEmpty ? null : 'offline-${phoneNumber.trim()}',
         amountTendered: _total,
         paymentVerified: false,
         staffId: state.isOwnerSession ? null : state.currentStaffId,
@@ -925,12 +1057,14 @@ Money get _total => sumMoney(_cart.map((item) => item.total));
           'will show as unconfirmed until you check it against PayHero.',
         ),
       ));
-      unawaited(_afterSale(saleId, etimsEnabled: await EtimsService().isEnabledForSales()));
+      unawaited(_afterSale(saleId,
+          etimsEnabled: await EtimsService().isEnabledForSales()));
     } catch (error) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
-          content: Text("Couldn't record the sale. Nothing was charged — try again."),
+          content: Text(
+              "Couldn't record the sale. Nothing was charged — try again."),
         ),
       );
     }
@@ -1060,9 +1194,7 @@ Money get _total => sumMoney(_cart.map((item) => item.total));
                   'product_id': c.product.remoteId,
                   // The provider bills for a name, and a variant's name is the
                   // one the customer asked for.
-                  'product_name': c.variant != null
-                      ? foldedVariantName(c.product, c.variant!)
-                      : c.product.name,
+                  'product_name': c.foldedName,
                   'qty': c.qty,
                   'portion': c.portion,
                 })
@@ -1081,9 +1213,7 @@ Money get _total => sumMoney(_cart.map((item) => item.total));
                 // Already the folded variant name, so a sale booked days later
                 // from this snapshot prints and reports the same line the
                 // customer was charged for.
-                'productName': c.variant != null
-                    ? foldedVariantName(c.product, c.variant!)
-                    : c.product.name,
+                'productName': c.foldedName,
                 'variantId': c.variant?.id,
                 'qty': c.qty,
                 // Minor units, not the Money object. jsonEncode throws on
@@ -1134,11 +1264,11 @@ Money get _total => sumMoney(_cart.map((item) => item.total));
         Navigator.pop(context); // Close waiting dialog
 
         if (outcome == PaymentOutcome.success) {
-final state = context.read<AppState>();
-    // Resolved once, before the sale is written, so the queue decision and the
-    // post-sale flush cannot disagree about whether this sale owes KRA a
-    // receipt.
-    final etimsEnabled = await EtimsService().isEnabledForSales();
+          final state = context.read<AppState>();
+          // Resolved once, before the sale is written, so the queue decision and the
+          // post-sale flush cannot disagree about whether this sale owes KRA a
+          // receipt.
+          final etimsEnabled = await EtimsService().isEnabledForSales();
           final localItems = _cart.map(_saleItemFor).toList();
           try {
             final saleId = await DatabaseHelper.instance.recordSale(
@@ -1220,6 +1350,12 @@ final state = context.read<AppState>();
 
   @override
   Widget build(BuildContext context) {
+    // Published for the sign-out sheet, which warns about a part-built cart
+    // before ending the session. Safe to assign here: `CartLineCount` is a plain
+    // holder with no listeners, so this cannot notify anything mid-build, and
+    // reading it in the sheet's own `build` would be equally current.
+    context.read<CartLineCount>().set(_cart.length);
+
     final query = _searchQuery.trim().toLowerCase();
     final filteredProducts = _products
         .where((p) =>
@@ -1236,302 +1372,308 @@ final state = context.read<AppState>();
           onKeyEvent: _onKeyEvent,
           child: SafeArea(
             child: Flex(
-                direction: compact ? Axis.vertical : Axis.horizontal,
-                children: [
-              // Product catalog
-              Expanded(
-                flex: 3,
-                child: Column(
-                  children: [
-                    Padding(
-                      padding: const EdgeInsets.all(16),
-                      child: TextField(
-                        controller: _searchController,
-                        focusNode: _searchFocus,
-                        decoration: InputDecoration(
-                          hintText: 'Search products...',
-                          prefixIcon: const Icon(Icons.search),
-                          border: const OutlineInputBorder(),
-                          suffixIcon: _searchQuery.isEmpty
-                              ? null
-                              : IconButton(
-                                  tooltip: 'Clear product search',
-                                  icon: const Icon(Icons.clear),
-                                  onPressed: () {
-                                    _searchController.clear();
-                                    setState(() => _searchQuery = '');
-                                  },
-                                ),
+              direction: compact ? Axis.vertical : Axis.horizontal,
+              children: [
+                // Product catalog
+                Expanded(
+                  flex: 3,
+                  child: Column(
+                    children: [
+                      Padding(
+                        padding: const EdgeInsets.all(16),
+                        child: TextField(
+                          controller: _searchController,
+                          focusNode: _searchFocus,
+                          decoration: InputDecoration(
+                            hintText: 'Search products...',
+                            prefixIcon: const Icon(Icons.search),
+                            border: const OutlineInputBorder(),
+                            suffixIcon: _searchQuery.isEmpty
+                                ? null
+                                : IconButton(
+                                    tooltip: 'Clear product search',
+                                    icon: const Icon(Icons.clear),
+                                    onPressed: () {
+                                      _searchController.clear();
+                                      setState(() => _searchQuery = '');
+                                    },
+                                  ),
+                          ),
+                          onChanged: (v) => setState(() => _searchQuery = v),
                         ),
-                        onChanged: (v) => setState(() => _searchQuery = v),
                       ),
-                    ),
-                    // Camera scanning is an explicit action, never an automatic
-                    // one: a till with a wedge scanner needs nothing from the
-                    // camera, and a phone held over the counter should not open
-                    // a camera view on its own.
-                    Padding(
-                      padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
-                      child: Row(
-                        children: [
-                          Expanded(
-                            child: Semantics(
-                              button: true,
-                              label: 'Scan a barcode with the camera',
-                              hint:
-                                  'Adds one scanned product to the cart as a full bottle',
-                              child: OutlinedButton.icon(
-                                onPressed: _scanInFlight ? null : _scanWithCamera,
-                                icon: const Icon(Icons.qr_code_scanner),
-                                label: const Text('Scan barcode'),
+                      // Camera scanning is an explicit action, never an automatic
+                      // one: a till with a wedge scanner needs nothing from the
+                      // camera, and a phone held over the counter should not open
+                      // a camera view on its own.
+                      Padding(
+                        padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
+                        child: Row(
+                          children: [
+                            Expanded(
+                              child: Semantics(
+                                button: true,
+                                label: 'Scan a barcode with the camera',
+                                hint:
+                                    'Adds one scanned product to the cart as a full bottle',
+                                child: OutlinedButton.icon(
+                                  onPressed:
+                                      _scanInFlight ? null : _scanWithCamera,
+                                  icon: const Icon(Icons.qr_code_scanner),
+                                  label: const Text('Scan barcode'),
+                                ),
                               ),
                             ),
-                          ),
-                        ],
+                          ],
+                        ),
                       ),
-                    ),
-                    Expanded(
-                      child: _loading
-                          ? const Center(child: CircularProgressIndicator())
-                          : GridView.builder(
-                              padding: const EdgeInsets.all(8),
-                              gridDelegate:
-                                  SliverGridDelegateWithFixedCrossAxisCount(
-                                crossAxisCount:
-                                    constraints.maxWidth < 480 ? 2 : 3,
-                                childAspectRatio: 1.2,
-                                crossAxisSpacing: 8,
-                                mainAxisSpacing: 8,
-                              ),
-                              itemCount: filteredProducts.length,
-                              itemBuilder: (ctx, i) {
-                                final p = filteredProducts[i];
-                                final variants = _variants.of(p);
-                                final sellsAsVariants =
-                                    _variants.sellsAsVariants(p);
-                                final fromPrice =
-                                    sellsAsVariants && variants.isNotEmpty
-                                        ? _variants.cheapestVariant(p)!.sellPrice
-                                        : null;
-                                final matchingCart =
-                                    _cart.where((c) => c.product.id == p.id);
-                                final inCart = matchingCart.fold<double>(
-                                    0, (sum, item) => sum + item.stockUnits);
-                                final canTap = p.stockQty > 0 || sellsAsVariants;
+                      Expanded(
+                        child: _loading
+                            ? const Center(child: CircularProgressIndicator())
+                            : GridView.builder(
+                                padding: const EdgeInsets.all(8),
+                                gridDelegate:
+                                    SliverGridDelegateWithFixedCrossAxisCount(
+                                  crossAxisCount:
+                                      constraints.maxWidth < 480 ? 2 : 3,
+                                  childAspectRatio: 1.2,
+                                  crossAxisSpacing: 8,
+                                  mainAxisSpacing: 8,
+                                ),
+                                itemCount: filteredProducts.length,
+                                itemBuilder: (ctx, i) {
+                                  final p = filteredProducts[i];
+                                  final variants = _variants.of(p);
+                                  final sellsAsVariants =
+                                      _variants.sellsAsVariants(p);
+                                  final fromPrice = sellsAsVariants &&
+                                          variants.isNotEmpty
+                                      ? _variants.cheapestVariant(p)!.sellPrice
+                                      : null;
+                                  final matchingCart =
+                                      _cart.where((c) => c.product.id == p.id);
+                                  final inCart = matchingCart.fold<double>(
+                                      0, (sum, item) => sum + item.stockUnits);
+                                  final canTap =
+                                      p.stockQty > 0 || sellsAsVariants;
 
-                                return Semantics(
-                                  button: canTap,
-                                  label: sellsAsVariants
-                                      ? '${p.name}, from ${fromPrice == null ? '' : formatMoney(fromPrice)}, ${variants.length} variants, ${p.stockQty} in stock'
-                                      : '${p.name}, ${formatMoney(p.sellPrice)}, ${p.stockQty} in stock',
-                                  hint: !canTap
-                                      ? 'Out of stock'
-                                      : sellsAsVariants
-                                          ? 'Double tap to choose a variant'
-                                          : 'Double tap to add to cart',
-                                  child: Card(
-                                    child: InkWell(
-                                      onTap:
-                                          canTap ? () => _addToCart(p) : null,
-                                      child: Padding(
-                                        padding: const EdgeInsets.all(8),
-                                        child: Column(
-                                          mainAxisAlignment:
-                                              MainAxisAlignment.center,
-                                          children: [
-                                            Stack(
-                                              children: [
-                                                Text(
-                                                  p.name,
-                                                  textAlign: TextAlign.center,
-                                                  maxLines: 2,
-                                                  overflow:
-                                                      TextOverflow.ellipsis,
-                                                ),
-                                                if (inCart > 0)
-                                                  Positioned(
-                                                    right: 0,
-                                                    child: CircleAvatar(
-                                                      radius: 10,
-                                                      child: Text(inCart % 1 ==
-                                                              0
-                                                          ? '${inCart.toInt()}'
-                                                          : '$inCart'),
-                                                    ),
+                                  return Semantics(
+                                    button: canTap,
+                                    label: sellsAsVariants
+                                        ? '${p.name}, from ${fromPrice == null ? '' : formatMoney(fromPrice)}, ${variants.length} variants, ${p.stockQty} in stock'
+                                        : '${p.name}, ${formatMoney(p.sellPrice)}, ${p.stockQty} in stock',
+                                    hint: !canTap
+                                        ? 'Out of stock'
+                                        : sellsAsVariants
+                                            ? 'Double tap to choose a variant'
+                                            : 'Double tap to add to cart',
+                                    child: Card(
+                                      child: InkWell(
+                                        onTap:
+                                            canTap ? () => _addToCart(p) : null,
+                                        child: Padding(
+                                          padding: const EdgeInsets.all(8),
+                                          child: Column(
+                                            mainAxisAlignment:
+                                                MainAxisAlignment.center,
+                                            children: [
+                                              Stack(
+                                                children: [
+                                                  Text(
+                                                    p.name,
+                                                    textAlign: TextAlign.center,
+                                                    maxLines: 2,
+                                                    overflow:
+                                                        TextOverflow.ellipsis,
                                                   ),
-                                              ],
-                                            ),
-                                            const SizedBox(height: 4),
-                                            Text(
-                                              // A variant product has no single
-                                              // price to show, so the cheapest
-                                              // thing it can be sold as stands in
-                                              // for it. Printing the parent's
-                                              // price would price a Dark at the
-                                              // Kenyana Beer the owner set once.
-                                              sellsAsVariants
-                                                  ? (fromPrice == null
-                                                      ? 'No variants yet'
-                                                      : 'From ${formatMoney(fromPrice)}')
-                                                  : formatMoney(p.sellPrice),
-                                              style: const TextStyle(
-                                                  fontWeight: FontWeight.bold),
-                                            ),
-                                            Text(
-                                              '${p.stockQty} in stock',
-                                              style: TextStyle(
-                                                color: p.isLow
-                                                    ? Theme.of(context)
-                                                        .colorScheme
-                                                        .error
-                                                    : null,
+                                                  if (inCart > 0)
+                                                    Positioned(
+                                                      right: 0,
+                                                      child: CircleAvatar(
+                                                        radius: 10,
+                                                        child: Text(inCart %
+                                                                    1 ==
+                                                                0
+                                                            ? '${inCart.toInt()}'
+                                                            : '$inCart'),
+                                                      ),
+                                                    ),
+                                                ],
                                               ),
-                                            ),
-                                          ],
+                                              const SizedBox(height: 4),
+                                              Text(
+                                                // A variant product has no single
+                                                // price to show, so the cheapest
+                                                // thing it can be sold as stands in
+                                                // for it. Printing the parent's
+                                                // price would price a Dark at the
+                                                // Kenyana Beer the owner set once.
+                                                sellsAsVariants
+                                                    ? (fromPrice == null
+                                                        ? 'No variants yet'
+                                                        : 'From ${formatMoney(fromPrice)}')
+                                                    : formatMoney(p.sellPrice),
+                                                style: const TextStyle(
+                                                    fontWeight:
+                                                        FontWeight.bold),
+                                              ),
+                                              Text(
+                                                '${p.stockQty} in stock',
+                                                style: TextStyle(
+                                                  color: p.isLow
+                                                      ? Theme.of(context)
+                                                          .colorScheme
+                                                          .error
+                                                      : null,
+                                                ),
+                                              ),
+                                            ],
+                                          ),
                                         ),
                                       ),
                                     ),
-                                  ),
-                                );
-                              },
-                            ),
-                    ),
-                  ],
-                ),
-              ),
-
-              // Vertical divider
-              compact
-                  ? const Divider(height: 1)
-                  : const VerticalDivider(width: 1),
-
-              // Cart
-              Expanded(
-                flex: 2,
-                child: Column(
-                  children: [
-                    Container(
-                      padding: const EdgeInsets.all(16),
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.stretch,
-                        children: [
-                          if (_statusMessage != null)
-                            Semantics(
-                              liveRegion: true,
-                              container: true,
-                              label: _statusMessage,
-                              child: Padding(
-                                padding: const EdgeInsets.only(bottom: 8),
-                                child: Text(_statusMessage!,
-                                    style:
-                                        Theme.of(context).textTheme.bodySmall),
+                                  );
+                                },
                               ),
-                            ),
-                          Row(
-                            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                            children: [
+                      ),
+                    ],
+                  ),
+                ),
+
+                // Vertical divider
+                compact
+                    ? const Divider(height: 1)
+                    : const VerticalDivider(width: 1),
+
+                // Cart
+                Expanded(
+                  flex: 2,
+                  child: Column(
+                    children: [
+                      Container(
+                        padding: const EdgeInsets.all(16),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.stretch,
+                          children: [
+                            if (_statusMessage != null)
                               Semantics(
-                                  header: true,
-                                  child: Text('Cart',
+                                liveRegion: true,
+                                container: true,
+                                label: _statusMessage,
+                                child: Padding(
+                                  padding: const EdgeInsets.only(bottom: 8),
+                                  child: Text(_statusMessage!,
                                       style: Theme.of(context)
                                           .textTheme
-                                          .titleLarge!)),
-                              Text('${_cart.length} items'),
-                            ],
-                          ),
-                        ],
-                      ),
-                    ),
-                    Expanded(
-                      child: _cart.isEmpty
-                          ? const Center(child: Text('Tap products to add'))
-                          : ListView.builder(
-                              itemCount: _cart.length,
-                              itemBuilder: (ctx, i) {
-                                final item = _cart[i];
-                                return ListTile(
-                                  title: Text(item.cartTitle),
-                                  subtitle: Text(item.cartSubtitle),
-                                  trailing: Row(
-                                    mainAxisSize: MainAxisSize.min,
-                                    children: [
-                                      IconButton(
-                                        icon: const Icon(Icons.remove),
-                                        tooltip:
-                                            'Decrease ${item.label}',
-                                        onPressed: () => _updateQty(i, -1),
-                                      ),
-                                      Text(
-                                          '${item.qty % 1 == 0 ? item.qty.toInt() : item.qty}'),
-                                      IconButton(
-                                        icon: const Icon(Icons.add),
-                                        tooltip:
-                                            'Increase ${item.label}',
-                                        onPressed: () => _updateQty(i, 1),
-                                      ),
-                                      IconButton(
-                                        icon: const Icon(Icons.delete),
-                                        tooltip: 'Remove ${item.label}',
-                                        onPressed: () => _removeFromCart(i),
-                                      ),
-                                    ],
-                                  ),
-                                );
-                              },
+                                          .bodySmall),
+                                ),
+                              ),
+                            Row(
+                              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                              children: [
+                                Semantics(
+                                    header: true,
+                                    child: Text('Cart',
+                                        style: Theme.of(context)
+                                            .textTheme
+                                            .titleLarge!)),
+                                Text('${_cart.length} items'),
+                              ],
                             ),
-                    ),
-                    Container(
-                      padding: const EdgeInsets.all(16),
-                      child: Column(
-                        children: [
-                          Row(
-                            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                            children: [
-                              Text('Total:',
+                          ],
+                        ),
+                      ),
+                      Expanded(
+                        child: _cart.isEmpty
+                            ? const Center(child: Text('Tap products to add'))
+                            : ListView.builder(
+                                itemCount: _cart.length,
+                                itemBuilder: (ctx, i) {
+                                  final item = _cart[i];
+                                  return ListTile(
+                                    title: Text(item.cartTitle),
+                                    subtitle: Text(item.cartSubtitle),
+                                    trailing: Row(
+                                      mainAxisSize: MainAxisSize.min,
+                                      children: [
+                                        IconButton(
+                                          icon: const Icon(Icons.remove),
+                                          tooltip: 'Decrease ${item.label}',
+                                          onPressed: () => _updateQty(i, -1),
+                                        ),
+                                        Text(
+                                            '${item.qty % 1 == 0 ? item.qty.toInt() : item.qty}'),
+                                        IconButton(
+                                          icon: const Icon(Icons.add),
+                                          tooltip: 'Increase ${item.label}',
+                                          onPressed: () => _updateQty(i, 1),
+                                        ),
+                                        IconButton(
+                                          icon: const Icon(Icons.delete),
+                                          tooltip: 'Remove ${item.label}',
+                                          onPressed: () => _removeFromCart(i),
+                                        ),
+                                      ],
+                                    ),
+                                  );
+                                },
+                              ),
+                      ),
+                      Container(
+                        padding: const EdgeInsets.all(16),
+                        child: Column(
+                          children: [
+                            Row(
+                              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                              children: [
+                                Text('Total:',
+                                    style:
+                                        Theme.of(context).textTheme.titleLarge),
+                                Text(
+                                  formatMoney(_total),
                                   style:
-                                      Theme.of(context).textTheme.titleLarge),
-                              Text(
-                                formatMoney(_total),
-                                style:
-                                    Theme.of(context).textTheme.headlineSmall,
-                              ),
-                            ],
-                          ),
-                          const SizedBox(height: 16),
-                          Row(
-                            children: [
-                              Expanded(
-                                child: ElevatedButton.icon(
-                                  onPressed: _cart.isEmpty || _processingPayment
-                                      ? null
-                                      : _checkoutOffline,
-                                  icon: const Icon(Icons.payments),
-                                  label: const Text('Offline payment'),
+                                      Theme.of(context).textTheme.headlineSmall,
                                 ),
-                              ),
-                              const SizedBox(width: 8),
-                              Expanded(
-                                child: ElevatedButton.icon(
-                                  onPressed: _cart.isEmpty || _processingPayment
-                                      ? null
-                                      : _checkoutMpesa,
-                                  icon: const Icon(Icons.phone_iphone),
-                                  label: const Text('M-Pesa'),
-                                  style: ElevatedButton.styleFrom(
-                                    backgroundColor:
-                                        Theme.of(context).colorScheme.secondary,
+                              ],
+                            ),
+                            const SizedBox(height: 16),
+                            Row(
+                              children: [
+                                Expanded(
+                                  child: ElevatedButton.icon(
+                                    onPressed:
+                                        _cart.isEmpty || _processingPayment
+                                            ? null
+                                            : _checkoutOffline,
+                                    icon: const Icon(Icons.payments),
+                                    label: const Text('Offline payment'),
                                   ),
                                 ),
-                              ),
-                            ],
-                          ),
-                        ],
+                                const SizedBox(width: 8),
+                                Expanded(
+                                  child: ElevatedButton.icon(
+                                    onPressed:
+                                        _cart.isEmpty || _processingPayment
+                                            ? null
+                                            : _checkoutMpesa,
+                                    icon: const Icon(Icons.phone_iphone),
+                                    label: const Text('M-Pesa'),
+                                    style: ElevatedButton.styleFrom(
+                                      backgroundColor: Theme.of(context)
+                                          .colorScheme
+                                          .secondary,
+                                    ),
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ],
+                        ),
                       ),
-                    ),
-                  ],
+                    ],
+                  ),
                 ),
-              ),
-            ],
+              ],
             ),
           ),
         );
@@ -1550,6 +1692,52 @@ final state = context.read<AppState>();
 /// makes that failure unrepresentable, and this class is declared here rather
 /// than in `models.dart`, so it can grow a field without touching a file this
 /// feature does not own.
+/// Whether a shot can be poured right now, and what to say if it cannot.
+///
+/// Pure so the wording can be tested. A wrong message here is not cosmetic: the
+/// cashier reads it at speed and decides whether to go fix stock, count the
+/// drawer, or change the cup, and "not available" sends them to do none of those.
+///
+/// [available] is the bottle-units left *after* what the cart has already
+/// reserved, because a shot in the cart is a shot of the same spirit.
+({bool canPour, String reason}) shotAvailability(
+  Product product,
+  ShotCup cup,
+  double available,
+) {
+  final containerMl = product.bottleMl;
+  if (product.unit == ProductUnit.each) {
+    // Countable, so there is nothing to measure a pour against. A spirit
+    // switched to "each" after its cup was configured reaches here — the cup
+    // row still exists, and without this the till would cheerfully offer 25
+    // shots of something that has no volume.
+    return (
+      canPour: false,
+      reason: '${product.name} is counted, not measured, so it cannot be poured'
+    );
+  }
+  if (containerMl <= 0) {
+    return (
+      canPour: false,
+      reason: '${product.name} has no volume set, so it cannot be poured'
+    );
+  }
+  final perBottle = cup.capacityMl > 0
+      ? (containerMl / cup.capacityMl).floor()
+      : 0;
+  if (perBottle <= 0) {
+    return (
+      canPour: false,
+      reason: 'The cup is bigger than the $containerMl ml bottle'
+    );
+  }
+  final needed = cup.capacityMl / containerMl;
+  if (available < needed) {
+    return (canPour: false, reason: 'No ${product.name} left to pour');
+  }
+  return (canPour: true, reason: '$perBottle shots in the bottle');
+}
+
 class CartItem {
   final Product product;
   final String portion;
@@ -1559,6 +1747,16 @@ class CartItem {
   /// figure below switches to it rather than to a fraction of the parent.
   final ProductVariant? variant;
 
+  /// Set when this line is a shot poured from [product].
+  ///
+  /// A shot is neither of the other two cases. It is not a variant, because it
+  /// does not come with its own stock — it is poured out of the parent bottle.
+  /// It is not a portion, because "half" and "quarter" cannot describe 30 ml.
+  /// It carries a fixed capacity and its own price, so [portion] is
+  /// [SalePortion.measured] and the stock it consumes is that capacity as a
+  /// fraction of the parent's bottle.
+  final ShotCup? shotCup;
+
   double qty;
 
   CartItem({
@@ -1566,9 +1764,11 @@ class CartItem {
     required this.portion,
     required this.qty,
     this.variant,
+    this.shotCup,
   });
 
   bool get isVariant => variant != null;
+  bool get isShot => shotCup != null;
 
   /// Bottles this line consumes.
   ///
@@ -1576,16 +1776,52 @@ class CartItem {
   /// half a 750ml bottle to a shopkeeper, but it is one Dark to the ledger, and
   /// treating it as a fraction is how a variant gets charged for a portion it
   /// was never priced in.
-  double get fraction => isVariant ? 1 : product.fractionFor(portion);
+  ///
+  /// For a shot it is the poured volume as a fraction of the container, so
+  /// twenty-five 30 ml shots consume the 750 ml bottle they came from.
+  double get fraction {
+    if (isVariant) return 1;
+    final shot = shotCup;
+    if (shot != null) {
+      // Capped at one container for the same reason `recordSale` caps it: a
+      // capacity larger than the bottle is a configuration mistake, and
+      // emptying that bottle is the least wrong reading of it.
+      if (shot.capacityMl <= 0 || product.bottleMl <= 0) return 1;
+      final f = shot.capacityMl / product.bottleMl;
+      return f > 1 ? 1 : f;
+    }
+    return product.fractionFor(portion);
+  }
+
   double get stockUnits => qty * fraction;
 
-  /// The serving size this line was sold in: the variant's own, or the parent's
-  /// bottle size scaled by the portion.
-  int get portionMl => variant?.sizeMl ?? product.mlFor(portion);
+  /// The serving size this line was sold in: the variant's own, the shot cup's
+  /// fixed capacity, or the parent's bottle size scaled by the portion.
+  int get portionMl {
+    final shot = shotCup;
+    if (shot != null) return shot.capacityMl;
+    return variant?.sizeMl ?? product.mlFor(portion);
+  }
 
   /// "Dark 500 ml" for a variant, the product's name otherwise. What the cart
   /// line, the receipt and the stock-take list all agree on.
   String get label => variant?.label ?? product.name;
+
+  /// The name stored on the sale for this line.
+  ///
+  /// A variant or a shot is folded into the product's name rather than kept as
+  /// a reference to a row that can change: "AAA Vodka" alone does not say
+  /// whether the customer was served a 30 ml or a 45 ml shot, and after the cup
+  /// is reconfigured the ledger must still say which they got. It is also what
+  /// the M-Pesa snapshot stores, so a basket booked days later prints the same
+  /// line the customer was charged for.
+  String get foldedName {
+    final shot = shotCup;
+    if (shot != null) return '${product.name} · ${shot.label}';
+    final v = variant;
+    if (v != null) return foldedVariantName(product, v);
+    return product.name;
+  }
 
   /// How the owner reads a size or a quantity: no trailing `.0` on a whole
   /// number, and no "0 ml" on something countable.
@@ -1598,15 +1834,24 @@ class CartItem {
   /// the *cost* is scaled the same way, so profit on a half bottle is derived
   /// from real amounts rather than from a float approximation of one. A variant
   /// carries both prices outright, so no scaling happens at all.
-  Money get unitPrice => variant?.sellPrice ?? product.priceFor(portion);
-  Money get unitCost =>
-      variant?.costPrice ?? product.costPrice.times(fraction);
+  Money get unitPrice {
+    final shot = shotCup;
+    if (shot != null) return shot.price;
+    return variant?.sellPrice ?? product.priceFor(portion);
+  }
+
+  Money get unitCost => variant?.costPrice ?? product.costPrice.times(fraction);
   String get portionLabel => portion[0].toUpperCase() + portion.substring(1);
 
-  /// The title of the cart row: a variant names both the product and itself,
-  /// a portion only the product and which slice of it.
-  String get cartTitle =>
-      isVariant ? '${product.name} · ${variant!.label}' : '${product.name} · $portionLabel';
+  /// The title of the cart row: a variant names both the product and itself, a
+  /// shot names the spirit and the cup, a portion only the product and which
+  /// slice of it.
+  String get cartTitle {
+    if (isVariant) return '${product.name} · ${variant!.label}';
+    final shot = shotCup;
+    if (shot != null) return '${product.name} · ${shot.label}';
+    return '${product.name} · $portionLabel';
+  }
 
   /// The line under it: the size and the line amount, with the size left out
   /// entirely when there is no size to state.

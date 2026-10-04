@@ -494,6 +494,116 @@ void main() {
       expect(product.stockQty, closeTo(2.5, 0.001));
     });
 
+    test('A measured pour deducts its own volume, not a whole bottle',
+        () async {
+      // A 30 ml shot out of a 750 ml bottle. Recorded as 'full' it would empty
+      // the bottle after one shot, so the bar reads the bottle as gone after
+      // the first customer instead of after the twenty-fifth.
+      final id = await db.upsertProduct(Product(
+        name: 'AAA Vodka',
+        category: 'Spirits',
+        costPrice: Money.fromMajor(800),
+        sellPrice: Money.fromMajor(1500),
+        stockQty: 2,
+        reorderLevel: 1,
+        bottleMl: 750,
+        updatedAt: DateTime.now().toIso8601String(),
+      ));
+
+      await db.recordSale(
+        staffName: 'Staff',
+        items: [
+          SaleItem(
+            saleId: 0,
+            productId: id,
+            productName: 'AAA Vodka',
+            qty: 1,
+            unitPrice: Money.fromMajor(100),
+            // Cost of 30/750 of the bottle, which is what a shot costs to pour.
+            unitCost: Money.fromMajor(32),
+            portion: SalePortion.measured,
+            portionMl: 30,
+          ),
+        ],
+      );
+
+      final product = (await db.getProducts()).firstWhere((p) => p.id == id);
+      expect(product.stockQty, closeTo(2 - 30 / 750, 0.0001));
+    });
+
+    test('Shots accumulate against one bottle and refuse to oversell',
+        () async {
+      // 25 shots is a 750 ml bottle. Twenty-five lines must consume exactly one
+      // bottle, and the twenty-sixth must be refused rather than driving stock
+      // to zero and quietly selling an empty pour.
+      final id = await db.upsertProduct(Product(
+        name: 'AAA Tequila',
+        category: 'Spirits',
+        costPrice: Money.fromMajor(900),
+        sellPrice: Money.fromMajor(1800),
+        stockQty: 1,
+        reorderLevel: 1,
+        bottleMl: 750,
+        updatedAt: DateTime.now().toIso8601String(),
+      ));
+
+      SaleItem shot() => SaleItem(
+            saleId: 0,
+            productId: id,
+            productName: 'AAA Tequila',
+            qty: 1,
+            unitPrice: Money.fromMajor(120),
+            unitCost: Money.fromMajor(36),
+            portion: SalePortion.measured,
+            portionMl: 30,
+          );
+
+      await db.recordSale(staffName: 'Staff', items: List.filled(25, shot()));
+      expect((await db.getProducts()).firstWhere((p) => p.id == id).stockQty,
+          closeTo(0, 0.0001));
+
+      await expectLater(
+        db.recordSale(staffName: 'Staff', items: [shot()]),
+        throwsStateError,
+      );
+    });
+
+    test('A measured pour larger than its container is capped at one bottle',
+        () async {
+      // A capacity typed bigger than the bottle is a configuration mistake. The
+      // least wrong answer is to empty that bottle, not to drive stock
+      // negative — which the floor at zero would hide anyway.
+      final id = await db.upsertProduct(Product(
+        name: 'AAA Small Bottle Gin',
+        category: 'Spirits',
+        costPrice: Money.fromMajor(500),
+        sellPrice: Money.fromMajor(900),
+        stockQty: 2,
+        reorderLevel: 1,
+        bottleMl: 200,
+        updatedAt: DateTime.now().toIso8601String(),
+      ));
+
+      await db.recordSale(
+        staffName: 'Staff',
+        items: [
+          SaleItem(
+            saleId: 0,
+            productId: id,
+            productName: 'AAA Small Bottle Gin',
+            qty: 1,
+            unitPrice: Money.fromMajor(100),
+            unitCost: Money.fromMajor(50),
+            portion: SalePortion.measured,
+            portionMl: 1000,
+          ),
+        ],
+      );
+
+      expect((await db.getProducts()).firstWhere((p) => p.id == id).stockQty,
+          closeTo(1, 0.0001));
+    });
+
     // --- Regression: restore onto a fresh install must not abort ---
     test('Restores an exported workbook onto an empty install', () async {
       // A product carrying a local id that does not exist in this database,
@@ -728,6 +838,675 @@ void main() {
 
       expect(product1.isLow, isTrue);
       expect(product2.isLow, isFalse);
+    });
+  });
+
+  group('Shift & Reconciliation Tests', () {
+    late DatabaseHelper db;
+
+    setUp(() async {
+      DatabaseHelper.resetForTests();
+      db = await DatabaseHelper.openInMemoryForTests();
+    });
+
+    test('Open shift returns an id and creates an open shift', () async {
+      final id = await db.openShift(
+        staffId: 1,
+        staffName: 'Cashier',
+        startFloat: Money.fromMajor(5000),
+      );
+      expect(id, greaterThan(0));
+
+      final open = await db.getOpenShift(1);
+      expect(open, isNotNull);
+      expect(open!.staffName, 'Cashier');
+      expect(open.startFloat.minorUnits, 500000);
+      expect(open.status, 'open');
+      expect(open.endTime, isNull);
+    });
+
+    test('Cannot open two shifts for the same staff member', () async {
+      await db.openShift(
+        staffId: 1,
+        staffName: 'Cashier',
+        startFloat: Money.fromMajor(5000),
+      );
+      expect(
+        () => db.openShift(
+          staffId: 1,
+          staffName: 'Cashier',
+          startFloat: Money.fromMajor(5000),
+        ),
+        throwsA(isA<StateError>()),
+      );
+    });
+
+    test('Can open a shift when a different staff has one open', () async {
+      await db.openShift(
+        staffId: 1,
+        staffName: 'Cashier A',
+        startFloat: Money.fromMajor(5000),
+      );
+      final id = await db.openShift(
+        staffId: 2,
+        staffName: 'Cashier B',
+        startFloat: Money.fromMajor(3000),
+      );
+      expect(id, greaterThan(0));
+    });
+
+    test('getShifts returns open shift for staffId filter', () async {
+      await db.openShift(
+        staffId: 1,
+        staffName: 'Cashier A',
+        startFloat: Money.fromMajor(5000),
+      );
+      final shifts = await db.getShifts(staffId: 1);
+      expect(shifts.length, 1);
+      expect(shifts.first.status, 'open');
+    });
+
+    test('getAnyOpenShift returns null when no shift is open', () async {
+      expect(await db.getAnyOpenShift(), isNull);
+    });
+
+    test('getAnyOpenShift returns the open shift', () async {
+      await db.openShift(
+        staffId: 1,
+        staffName: 'Cashier',
+        startFloat: Money.fromMajor(5000),
+      );
+      final open = await db.getAnyOpenShift();
+      expect(open, isNotNull);
+      expect(open!.status, 'open');
+    });
+
+    test('Expected cash equals sum of cash sales during the shift', () async {
+      final productId = await db.upsertProduct(Product(
+        name: 'AAA Shift Wine',
+        category: 'Wine',
+        costPrice: Money.fromMajor(100),
+        sellPrice: Money.fromMajor(200),
+        stockQty: 100,
+        reorderLevel: 5,
+        updatedAt: DateTime.now().toIso8601String(),
+      ));
+
+      final shiftId = await db.openShift(
+        staffId: 1,
+        staffName: 'Cashier',
+        startFloat: Money.fromMajor(5000),
+      );
+      expect(shiftId, greaterThan(0));
+
+      await db.recordSale(
+        staffName: 'Cashier',
+        staffId: 1,
+        items: [
+          SaleItem(
+            saleId: 0,
+            productId: productId,
+            productName: 'AAA Shift Wine',
+            qty: 2,
+            unitPrice: Money.fromMajor(200),
+            unitCost: Money.fromMajor(100),
+          ),
+        ],
+      );
+
+      final shift = await db.getOpenShift(1);
+      assert(shift != null);
+
+      final expected = await db.expectedCashForShift(shift!);
+      expect(expected.minorUnits, 40000);
+
+      // The balance the drawer should hold is the float plus those takings,
+      // so a caller cannot forget the float and report it as a variance.
+      expect((await db.expectedTillBalance(shift)).minorUnits, 540000);
+    });
+
+    test('Expected cash ignores a sale from another cashier', () async {
+      final productId = await db.upsertProduct(Product(
+        name: 'AAA Shared Drawer Wine',
+        category: 'Wine',
+        costPrice: Money.fromMajor(100),
+        sellPrice: Money.fromMajor(200),
+        stockQty: 100,
+        reorderLevel: 5,
+        updatedAt: DateTime.now().toIso8601String(),
+      ));
+
+      await db.openShift(
+        staffId: 1,
+        staffName: 'Amina',
+        startFloat: Money.fromMajor(5000),
+      );
+
+      // A second person rings a cash sale into the same drawer.
+      await db.recordSale(
+        staffName: 'Brian',
+        staffId: 2,
+        items: [
+          SaleItem(
+            saleId: 0,
+            productId: productId,
+            productName: 'AAA Shared Drawer Wine',
+            qty: 1,
+            unitPrice: Money.fromMajor(200),
+            unitCost: Money.fromMajor(100),
+          ),
+        ],
+      );
+
+      final shift = await db.getOpenShift(1);
+      expect(shift, isNotNull);
+      expect((await db.expectedCashForShift(shift!)).minorUnits, 0);
+    });
+
+    test('Expected cash excludes non-cash payments', () async {
+      final productId = await db.upsertProduct(Product(
+        name: 'AAA Card Wine',
+        category: 'Wine',
+        costPrice: Money.fromMajor(100),
+        sellPrice: Money.fromMajor(200),
+        stockQty: 100,
+        reorderLevel: 5,
+        updatedAt: DateTime.now().toIso8601String(),
+      ));
+
+      await db.openShift(
+        staffId: 1,
+        staffName: 'Cashier',
+        startFloat: Money.fromMajor(5000),
+      );
+
+      await db.recordSale(
+        staffName: 'Cashier',
+        staffId: 1,
+        items: [
+          SaleItem(
+            saleId: 0,
+            productId: productId,
+            productName: 'AAA Card Wine',
+            qty: 1,
+            unitPrice: Money.fromMajor(200),
+            unitCost: Money.fromMajor(100),
+          ),
+        ],
+        paymentMethod: 'card',
+      );
+
+      final shift = await db.getOpenShift(1);
+      assert(shift != null);
+
+      final expected = await db.expectedCashForShift(shift!);
+      expect(expected.minorUnits, 0);
+    });
+
+    test('Add till count records a denomination pile', () async {
+      final shiftId = await db.openShift(
+        staffId: 1,
+        staffName: 'Cashier',
+        startFloat: Money.fromMajor(5000),
+      );
+
+      final countId = await db.addTillCount(
+        shiftId: shiftId,
+        denomination: 'KSh 100',
+        count: 5,
+        value: Money.fromMajor(500),
+      );
+      expect(countId, greaterThan(0));
+
+      final counts = await db.getTillCounts(shiftId);
+      expect(counts.length, 1);
+      expect(counts.first.denomination, 'KSh 100');
+      expect(counts.first.count, 5);
+      expect(counts.first.value.minorUnits, 50000);
+    });
+
+    test('Reconcile shift computes variance correctly', () async {
+      final productId = await db.upsertProduct(Product(
+        name: 'AAA Recon Wine',
+        category: 'Wine',
+        costPrice: Money.fromMajor(100),
+        sellPrice: Money.fromMajor(200),
+        stockQty: 100,
+        reorderLevel: 5,
+        updatedAt: DateTime.now().toIso8601String(),
+      ));
+
+      final shiftId = await db.openShift(
+        staffId: 1,
+        staffName: 'Cashier',
+        startFloat: Money.fromMajor(5000),
+      );
+
+      await db.recordSale(
+        staffName: 'Cashier',
+        staffId: 1,
+        items: [
+          SaleItem(
+            saleId: 0,
+            productId: productId,
+            productName: 'AAA Recon Wine',
+            qty: 3,
+            unitPrice: Money.fromMajor(200),
+            unitCost: Money.fromMajor(100),
+          ),
+        ],
+      );
+
+      final shift = await db.getOpenShift(1);
+      assert(shift != null);
+
+      final expected = await db.expectedCashForShift(shift!);
+      final expectedTotal = shift.startFloat + expected;
+
+      // Cashier counted 500 less than expected — a short variance.
+      final counted = expectedTotal - Money.fromMajor(500);
+
+      final reconId = await db.reconcileShift(
+        shiftId: shiftId,
+        countedCash: counted,
+        expectedCash: expectedTotal,
+      );
+      expect(reconId, greaterThan(0));
+
+      final recons = await db.getReconciliationsForShift(shiftId);
+      expect(recons.length, 1);
+      expect(recons.first.countedCash.minorUnits, counted.minorUnits);
+      expect(recons.first.expectedCash.minorUnits, expectedTotal.minorUnits);
+      expect(recons.first.variance.minorUnits, -50000);
+
+      // Shift should be closed now.
+      final closed = await db.getOpenShift(1);
+      expect(closed, isNull);
+
+      final shifts = await db.getShifts(staffId: 1, openOnly: true);
+      expect(shifts, isEmpty);
+    });
+
+    test('Reconcile shift with end float records it', () async {
+      final shiftId = await db.openShift(
+        staffId: 1,
+        staffName: 'Cashier',
+        startFloat: Money.fromMajor(5000),
+      );
+
+      await db.reconcileShift(
+        shiftId: shiftId,
+        countedCash: Money.fromMajor(6000),
+        expectedCash: Money.fromMajor(6000),
+        endFloat: Money.fromMajor(2000),
+      );
+
+      final shifts = await db.getShifts(staffId: 1);
+      expect(shifts.first.endFloat.minorUnits, 200000);
+      expect(shifts.first.status, 'closed');
+    });
+
+    test('Cannot reconcile an already-closed shift', () async {
+      final shiftId = await db.openShift(
+        staffId: 1,
+        staffName: 'Cashier',
+        startFloat: Money.fromMajor(5000),
+      );
+
+      await db.reconcileShift(
+        shiftId: shiftId,
+        countedCash: Money.fromMajor(6000),
+        expectedCash: Money.fromMajor(6000),
+      );
+
+      // A closed shift must refuse a second close rather than quietly record
+      // a second, different variance against it. Silently succeeding is the
+      // dangerous option: the caller walks away believing the till balanced
+      // when the ledger now shows two answers to one question.
+      expect(
+        () => db.reconcileShift(
+          shiftId: shiftId,
+          countedCash: Money.fromMajor(6000),
+          expectedCash: Money.fromMajor(5000),
+        ),
+        throwsStateError,
+      );
+
+      final recons = await db.getReconciliationsForShift(shiftId);
+      expect(recons.length, 1);
+      expect(recons.first.expectedCash.minorUnits, 600000);
+    });
+
+    test('A close with no explicit float keeps the counted cash in the drawer',
+        () async {
+      // What was counted stays in the till and becomes the next shift's float.
+      // Recording zero would tell the next cashier the drawer came up empty.
+      final shiftId = await db.openShift(
+        staffId: 1,
+        staffName: 'Cashier',
+        startFloat: Money.fromMajor(5000),
+      );
+      await db.reconcileShift(
+        shiftId: shiftId,
+        countedCash: Money.fromMajor(4321),
+        expectedCash: Money.fromMajor(4300),
+      );
+      final closed = (await db.getShifts(staffId: 1)).single;
+      expect(closed.endFloat.minorUnits, 432100);
+    });
+
+    test('Till counts total to the counted cash a reconciliation uses',
+        () async {
+      final shiftId = await db.openShift(
+        staffId: 1,
+        staffName: 'Cashier',
+        startFloat: Money.fromMajor(5000),
+      );
+      expect((await db.countedCashFromTillCounts(shiftId)).minorUnits, 0);
+
+      await db.addTillCount(
+        shiftId: shiftId,
+        denomination: 'KSh 1000',
+        count: 3,
+        value: Money.fromMajor(3000),
+      );
+      await db.addTillCount(
+        shiftId: shiftId,
+        denomination: 'KSh 500',
+        count: 4,
+        value: Money.fromMajor(2000),
+      );
+
+      expect((await db.countedCashFromTillCounts(shiftId)).minorUnits, 500000);
+    });
+
+    test('Re-counting the till replaces the piles instead of doubling them',
+        () async {
+      // A cashier who counts the drawer twice must not report double the cash.
+      final shiftId = await db.openShift(
+        staffId: 1,
+        staffName: 'Cashier',
+        startFloat: Money.fromMajor(5000),
+      );
+      for (final n in [3, 4]) {
+        await db.clearTillCounts(shiftId);
+        await db.addTillCount(
+          shiftId: shiftId,
+          denomination: 'KSh 500',
+          count: n,
+          value: Money.fromMajor(500 * n),
+        );
+      }
+
+      final counts = await db.getTillCounts(shiftId);
+      expect(counts.length, 1);
+      expect(counts.single.count, 4);
+      expect((await db.countedCashFromTillCounts(shiftId)).minorUnits, 200000);
+    });
+  });
+
+  group('Shot Cup Tests', () {
+    late DatabaseHelper db;
+
+    setUp(() async {
+      DatabaseHelper.resetForTests();
+      db = await DatabaseHelper.openInMemoryForTests();
+    });
+
+    test('Upsert creates a new shot cup', () async {
+      final productId = await db.upsertProduct(Product(
+        name: 'AAA Vodka',
+        category: 'Spirits',
+        costPrice: Money.fromMajor(500),
+        sellPrice: Money.fromMajor(1000),
+        stockQty: 10,
+        reorderLevel: 2,
+        bottleMl: 750,
+        updatedAt: DateTime.now().toIso8601String(),
+      ));
+
+      final id = await db.upsertShotCup(ShotCup(
+        productId: productId,
+        productName: 'AAA Vodka',
+        capacityMl: 30,
+        price: Money.fromMajor(150),
+        label: 'Shot',
+        updatedAt: DateTime.now().toIso8601String(),
+      ));
+      expect(id, greaterThan(0));
+
+      final cups = await db.getShotCups();
+      expect(cups.length, 1);
+      expect(cups.first.capacityMl, 30);
+      expect(cups.first.price.minorUnits, 15000);
+    });
+
+    test('Upsert updates an existing shot cup', () async {
+      final productId = await db.upsertProduct(Product(
+        name: 'AAA Gin',
+        category: 'Spirits',
+        costPrice: Money.fromMajor(500),
+        sellPrice: Money.fromMajor(1000),
+        stockQty: 10,
+        reorderLevel: 2,
+        bottleMl: 750,
+        updatedAt: DateTime.now().toIso8601String(),
+      ));
+
+      final id = await db.upsertShotCup(ShotCup(
+        productId: productId,
+        productName: 'AAA Gin',
+        capacityMl: 30,
+        price: Money.fromMajor(150),
+        label: 'Shot',
+        updatedAt: DateTime.now().toIso8601String(),
+      ));
+
+      final updated = await db.upsertShotCup(ShotCup(
+        id: id,
+        productId: productId,
+        productName: 'AAA Gin',
+        capacityMl: 25,
+        price: Money.fromMajor(125),
+        label: 'Shot',
+        updatedAt: DateTime.now().toIso8601String(),
+      ));
+      expect(updated, id);
+
+      final cup = await db.getShotCupForProduct(productId);
+      expect(cup, isNotNull);
+      expect(cup!.capacityMl, 25);
+      expect(cup.price.minorUnits, 12500);
+    });
+
+    test('Delete soft-deletes a shot cup', () async {
+      final productId = await db.upsertProduct(Product(
+        name: 'AAA Rum',
+        category: 'Spirits',
+        costPrice: Money.fromMajor(500),
+        sellPrice: Money.fromMajor(1000),
+        stockQty: 10,
+        reorderLevel: 2,
+        bottleMl: 750,
+        updatedAt: DateTime.now().toIso8601String(),
+      ));
+
+      final id = await db.upsertShotCup(ShotCup(
+        productId: productId,
+        productName: 'AAA Rum',
+        capacityMl: 30,
+        price: Money.fromMajor(150),
+        label: 'Shot',
+        updatedAt: DateTime.now().toIso8601String(),
+      ));
+
+      await db.deleteShotCup(id);
+
+      final active = await db.getShotCups();
+      expect(active, isEmpty);
+
+      final all = await db.getShotCups(activeOnly: false);
+      expect(all.length, 1);
+      expect(all.first.active, isFalse);
+    });
+
+    test('Get shot cup for product returns null when none exists', () async {
+      final productId = await db.upsertProduct(Product(
+        name: 'AAA Whiskey',
+        category: 'Spirits',
+        costPrice: Money.fromMajor(500),
+        sellPrice: Money.fromMajor(1000),
+        stockQty: 10,
+        reorderLevel: 2,
+        bottleMl: 750,
+        updatedAt: DateTime.now().toIso8601String(),
+      ));
+
+      expect(await db.getShotCupForProduct(productId), isNull);
+    });
+
+    test('A cup pointing at a drink that no longer exists is refused',
+        () async {
+      // Foreign keys are not enforced on this connection, so without this check
+      // a stale id stores happily and the till then offers a shot it cannot
+      // price or deduct — failing at the last step, with the customer's money
+      // already in hand.
+      await expectLater(
+        db.upsertShotCup(ShotCup(
+          productId: 9999,
+          productName: 'AAA Deleted Spirit',
+          capacityMl: 30,
+          price: Money.fromMajor(100),
+          updatedAt: DateTime.now().toIso8601String(),
+        )),
+        throwsStateError,
+      );
+      expect(await db.getShotCups(activeOnly: false), isEmpty);
+    });
+
+    test('A cup needs a capacity it is possible to pour', () async {
+      final productId = await db.upsertProduct(Product(
+        name: 'AAA Zero Vodka',
+        category: 'Spirits',
+        costPrice: Money.fromMajor(500),
+        sellPrice: Money.fromMajor(1000),
+        stockQty: 10,
+        reorderLevel: 2,
+        bottleMl: 750,
+        updatedAt: DateTime.now().toIso8601String(),
+      ));
+
+      await expectLater(
+        db.upsertShotCup(ShotCup(
+          productId: productId,
+          productName: 'AAA Zero Vodka',
+          capacityMl: 0,
+          price: Money.fromMajor(100),
+          updatedAt: DateTime.now().toIso8601String(),
+        )),
+        throwsStateError,
+      );
+    });
+
+    test('A cup price survives a save and reload unchanged', () async {
+      // Guards the money-affinity bug: a REAL price column would read 3000
+      // back as 30.00 and sell every shot at a hundredth of its price.
+      final productId = await db.upsertProduct(Product(
+        name: 'AAA Round Gin',
+        category: 'Spirits',
+        costPrice: Money.fromMajor(600),
+        sellPrice: Money.fromMajor(1200),
+        stockQty: 4,
+        reorderLevel: 2,
+        bottleMl: 750,
+        updatedAt: DateTime.now().toIso8601String(),
+      ));
+      final id = await db.upsertShotCup(ShotCup(
+        productId: productId,
+        productName: 'AAA Round Gin',
+        capacityMl: 30,
+        price: Money.fromMajor(300),
+        updatedAt: DateTime.now().toIso8601String(),
+      ));
+
+      final loaded = (await db.getShotCups()).singleWhere((c) => c.id == id);
+      expect(loaded.price.minorUnits, 30000);
+      expect(loaded.capacityMl, 30);
+      expect(loaded.productName, 'AAA Round Gin');
+    });
+  });
+
+  group('Cup Size Suggestions Tests', () {
+    late DatabaseHelper db;
+
+    setUp(() async {
+      DatabaseHelper.resetForTests();
+      db = await DatabaseHelper.openInMemoryForTests();
+    });
+
+    test('Insert a new cup size suggestion', () async {
+      await db.upsertCupSizeSuggestion(sizeMl: 330);
+
+      final suggestions = await db.getCupSizeSuggestions();
+      expect(suggestions.length, 1);
+      expect(suggestions.first.sizeMl, 330);
+      expect(suggestions.first.useCount, 1);
+      expect(suggestions.first.productId, isNull);
+    });
+
+    test('Increment use count for existing suggestion', () async {
+      await db.upsertCupSizeSuggestion(sizeMl: 330);
+      await db.upsertCupSizeSuggestion(sizeMl: 330);
+      await db.upsertCupSizeSuggestion(sizeMl: 330);
+
+      final suggestions = await db.getCupSizeSuggestions();
+      expect(suggestions.length, 1);
+      expect(suggestions.first.useCount, 3);
+    });
+
+    test('Order by use count descending, then size ascending', () async {
+      await db.upsertCupSizeSuggestion(sizeMl: 500);
+      await db.upsertCupSizeSuggestion(sizeMl: 330);
+      await db.upsertCupSizeSuggestion(sizeMl: 330);
+      await db.upsertCupSizeSuggestion(sizeMl: 660);
+      await db.upsertCupSizeSuggestion(sizeMl: 660);
+      await db.upsertCupSizeSuggestion(sizeMl: 660);
+
+      final suggestions = await db.getCupSizeSuggestions();
+      expect(suggestions.length, 3);
+      expect(suggestions[0].sizeMl, 660);
+      expect(suggestions[1].sizeMl, 330);
+      expect(suggestions[2].sizeMl, 500);
+    });
+
+    test('Suggestions scoped to product plus global', () async {
+      final productId = await db.upsertProduct(Product(
+        name: 'AAA Beer',
+        category: 'Beer',
+        costPrice: Money.fromMajor(100),
+        sellPrice: Money.fromMajor(200),
+        stockQty: 10,
+        reorderLevel: 2,
+        bottleMl: 750,
+        updatedAt: DateTime.now().toIso8601String(),
+      ));
+
+      await db.upsertCupSizeSuggestion(sizeMl: 500);
+      await db.upsertCupSizeSuggestion(productId: productId, sizeMl: 330);
+
+      final scoped = await db.getCupSizeSuggestionsForProduct(productId);
+      expect(scoped.length, 2);
+      expect(scoped.any((s) => s.sizeMl == 330 && s.productId == productId),
+          isTrue);
+      expect(scoped.any((s) => s.sizeMl == 500 && s.productId == null), isTrue);
+    });
+
+    test('Rejects non-positive sizes', () async {
+      await db.upsertCupSizeSuggestion(sizeMl: 0);
+      await db.upsertCupSizeSuggestion(sizeMl: -50);
+
+      final suggestions = await db.getCupSizeSuggestions();
+      expect(suggestions, isEmpty);
     });
   });
 }

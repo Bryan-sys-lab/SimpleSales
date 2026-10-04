@@ -9,6 +9,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
+import '../db/database_helper.dart';
 import '../models/models.dart';
 import '../services/barcode/barcode_service.dart';
 import '../utils/money.dart';
@@ -104,8 +105,7 @@ class VariantDraft {
 
   bool get isNew => id == null;
   bool get hasStoredBarcode => storedBarcode.trim().isNotEmpty;
-  bool get barcodeChanged =>
-      barcode.trim() != storedBarcode.trim();
+  bool get barcodeChanged => barcode.trim() != storedBarcode.trim();
 
   /// The size as the owner reads it, or empty for a countable variant.
   ///
@@ -168,15 +168,25 @@ class VariantDraft {
 
 /// Shows the variant form and returns the draft it produced, or null if the
 /// owner backed out.
+///
+/// [parentProductId] scopes which remembered cup sizes are offered. It is null
+/// when the parent product has never been written — a variant can be typed
+/// before its product row exists — and in that case the shop-wide sizes are
+/// offered instead, because those are the ones that generalise.
 Future<VariantDraft?> showVariantFormSheet(
   BuildContext context, {
   required VariantDraft seed,
   String? title,
+  int? parentProductId,
 }) =>
     showModalBottomSheet<VariantDraft>(
       context: context,
       isScrollControlled: true,
-      builder: (_) => VariantFormSheet(seed: seed, title: title),
+      builder: (_) => VariantFormSheet(
+        seed: seed,
+        title: title,
+        parentProductId: parentProductId,
+      ),
     );
 
 /// The variant form itself.
@@ -185,10 +195,18 @@ Future<VariantDraft?> showVariantFormSheet(
 /// fields and a keyboard, which is exactly the case `isScrollControlled` plus
 /// a viewInsets-aware scroll view exists for.
 class VariantFormSheet extends StatefulWidget {
-  const VariantFormSheet({super.key, required this.seed, this.title});
+  const VariantFormSheet({
+    super.key,
+    required this.seed,
+    this.title,
+    this.parentProductId,
+  });
 
   final VariantDraft seed;
   final String? title;
+
+  /// The product this variant belongs to, when it already has a row.
+  final int? parentProductId;
 
   @override
   State<VariantFormSheet> createState() => _VariantFormSheetState();
@@ -205,6 +223,22 @@ class _VariantFormSheetState extends State<VariantFormSheet> {
   late final TextEditingController _barcode;
   late ProductUnit _unit;
   String? _error;
+  bool _saving = false;
+
+  /// Cup sizes this shop has used before, most-used first.
+  ///
+  /// Shown as one-tap chips under the serving size so a beer shop stops
+  /// retyping "330" on every keg it sells. Loaded once on open rather than per
+  /// keystroke: this is a short list behind a database read, and a rebuild per
+  /// character would be visible on a cheap till.
+  List<CupSizeSuggestion> _suggestions = const [];
+
+  /// How many chips to offer.
+  ///
+  /// Bounded because a chip row that wraps to four lines pushes the save button
+  /// under the keyboard on a small phone. The most-used sizes are the ones worth
+  /// the space, and they are already sorted that way.
+  static const _maxSuggestions = 6;
 
   @override
   void initState() {
@@ -222,6 +256,17 @@ class _VariantFormSheetState extends State<VariantFormSheet> {
     _sku = TextEditingController(text: seed.sku);
     _barcode = TextEditingController(text: seed.barcode);
     _unit = seed.unit;
+    _loadSuggestions();
+  }
+
+  Future<void> _loadSuggestions() async {
+    final db = DatabaseHelper.instance;
+    final id = widget.parentProductId;
+    final loaded = id == null
+        ? await db.getCupSizeSuggestions()
+        : await db.getCupSizeSuggestionsForProduct(id);
+    if (!mounted) return;
+    setState(() => _suggestions = loaded);
   }
 
   @override
@@ -237,7 +282,41 @@ class _VariantFormSheetState extends State<VariantFormSheet> {
     super.dispose();
   }
 
-  void _submit() {
+  /// The size chips worth offering for the unit currently chosen.
+  ///
+  /// A countable variant has no size, so offering ml chips under it would be
+  /// offering an answer to a question nobody asked. Cups and litres get them.
+  List<CupSizeSuggestion> get _visibleSuggestions =>
+      _unit == ProductUnit.each ? const [] : _suggestions;
+
+  /// A remembered size as the owner reads it, using the same renderer the
+  /// serving-size field parses, so tapping a chip and typing it agree.
+  String _suggestionLabel(CupSizeSuggestion s) =>
+      Volume(s.sizeMl.toDouble()).display;
+
+  void _useSuggestion(CupSizeSuggestion s) {
+    final text = _suggestionLabel(s);
+    _size.text = text;
+    // Nothing else about the draft changes, and the field already shows the
+    // value, so no setState is needed to redraw it. The keyboard stays up.
+  }
+
+  Future<void> _submit() async {
+    // A double-tap on save would otherwise record the cup size twice, and the
+    // suggestion list is ranked by use count — so one impatient cashier would
+    // permanently float a size to the top of every shop's list.
+    if (_saving) return;
+    setState(() => _saving = true);
+    try {
+      await _submitDraft();
+    } finally {
+      // Only reached when validation or the write failed; a successful submit
+      // pops the sheet and this state object goes with it.
+      if (mounted) setState(() => _saving = false);
+    }
+  }
+
+  Future<void> _submitDraft() async {
     final name = _name.text.trim();
     if (name.isEmpty) {
       setState(() => _error = 'Give the variant a name, like Dark or Big cup');
@@ -322,6 +401,23 @@ class _VariantFormSheetState extends State<VariantFormSheet> {
       barcode = code;
     }
 
+    // The size is remembered before the sheet closes, not after: a suggestion
+    // list that only updates on the next open still works, but a save that
+    // fails to record means the size is offered once and then forgotten, which
+    // is how the list quietly stops being useful.
+    if (_unit != ProductUnit.each && sizeMl > 0) {
+      try {
+        await DatabaseHelper.instance.upsertCupSizeSuggestion(
+          productId: widget.parentProductId,
+          sizeMl: sizeMl,
+        );
+      } catch (_) {
+        // A missed suggestion is not worth blocking a save over. The size is
+        // already in the variant row, which is what the till sells.
+      }
+    }
+
+    if (!mounted) return;
     Navigator.pop(
       context,
       widget.seed.copyWith(
@@ -337,6 +433,45 @@ class _VariantFormSheetState extends State<VariantFormSheet> {
       ),
     );
   }
+
+  /// The serving-size field, shown only for a variant that has one.
+  Widget _sizeField() => TextField(
+        controller: _size,
+        textInputAction: TextInputAction.next,
+        decoration: InputDecoration(
+          labelText: 'Serving size',
+          hintText: _unit == ProductUnit.litre ? '0.5L' : '500ml',
+          helperText: 'Millilitres or litres — 500ml, 0.5L, 1.5 L.',
+        ),
+        keyboardType:
+            const TextInputType.numberWithOptions(decimal: true, signed: false),
+      );
+
+  /// One-tap chips for cup sizes this shop has used before.
+  ///
+  /// A chip is a `Semantics` button with the size as its label, so it reads as
+  /// "330 ml" rather than as an unlabelled box, and the whole row is announced
+  /// as the group it is. Wrapping rather than scrolling horizontally, because a
+  /// horizontally scrolled row hides the sizes the shop uses most — the ones at
+  /// the far end are the least used, so hiding them costs nothing.
+  Widget _suggestionChips(ThemeData theme) => Padding(
+        padding: const EdgeInsets.only(top: 8),
+        child: Semantics(
+          container: true,
+          label: 'Cup sizes you have used before',
+          child: Wrap(
+            spacing: 8,
+            runSpacing: 4,
+            children: [
+              for (final s in _visibleSuggestions.take(_maxSuggestions))
+                ActionChip(
+                  label: Text(_suggestionLabel(s)),
+                  onPressed: () => _useSuggestion(s),
+                ),
+            ],
+          ),
+        ),
+      );
 
   @override
   Widget build(BuildContext context) {
@@ -354,7 +489,8 @@ class _VariantFormSheetState extends State<VariantFormSheet> {
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
             Text(
-              widget.title ?? (widget.seed.isNew ? 'Add variant' : 'Edit variant'),
+              widget.title ??
+                  (widget.seed.isNew ? 'Add variant' : 'Edit variant'),
               style: theme.textTheme.titleLarge,
             ),
             const SizedBox(height: 12),
@@ -395,18 +531,10 @@ class _VariantFormSheetState extends State<VariantFormSheet> {
                   style: theme.textTheme.bodySmall,
                 ),
               )
-            else
-              TextField(
-                controller: _size,
-                textInputAction: TextInputAction.next,
-                decoration: InputDecoration(
-                  labelText: 'Serving size',
-                  hintText: _unit == ProductUnit.litre ? '0.5L' : '500ml',
-                  helperText: 'Millilitres or litres — 500ml, 0.5L, 1.5 L.',
-                ),
-                keyboardType: const TextInputType.numberWithOptions(
-                    decimal: true, signed: false),
-              ),
+            else ...[
+              _sizeField(),
+              if (_visibleSuggestions.isNotEmpty) _suggestionChips(theme),
+            ],
             Row(children: [
               Expanded(
                 child: TextField(
@@ -425,7 +553,8 @@ class _VariantFormSheetState extends State<VariantFormSheet> {
                   decoration: InputDecoration(
                     labelText: 'Cost price',
                     hintText: formatMoney(widget.seed.costPrice),
-                    helperText: 'Empty keeps ${formatMoney(widget.seed.costPrice)}',
+                    helperText:
+                        'Empty keeps ${formatMoney(widget.seed.costPrice)}',
                   ),
                 ),
               ),

@@ -53,6 +53,13 @@ class Money implements Comparable<Money> {
 
   Money operator -(Money other) => Money._(minorUnits - other.minorUnits);
 
+  /// The magnitude, with the sign dropped.
+  ///
+  /// For stating *which way* a difference ran without repeating the comparison:
+  /// a till reconciliation has to say "KSh 400 short" rather than printing a
+  /// signed number a cashier has to decode at speed.
+  Money get abs => minorUnits < 0 ? Money._(-minorUnits) : this;
+
   /// Scales by a quantity — a number of bottles, or a portion of one.
   ///
   /// This is the single point where a non-integer can enter the arithmetic, so
@@ -149,5 +156,6 @@ String formatMoney(Money amount) {
 ///
 /// Only for values that have not been migrated to [Money] yet. Every such use
 /// is a candidate for replacement, not a permanent API.
-@Deprecated('Pass a Money instead of a raw double. Use Money.fromMajor to convert.')
+@Deprecated(
+    'Pass a Money instead of a raw double. Use Money.fromMajor to convert.')
 String formatMoneyMajor(num amount) => formatMoney(Money.fromMajor(amount));

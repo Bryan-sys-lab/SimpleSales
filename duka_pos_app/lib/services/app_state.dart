@@ -1,6 +1,9 @@
+import 'dart:async';
+
 import 'package:flutter/foundation.dart';
 import '../models/models.dart';
 import '../db/database_helper.dart';
+import 'oidc_service.dart';
 import 'roles.dart';
 import 'workspace_service.dart';
 import 'backend_service.dart';
@@ -107,12 +110,59 @@ class AppState extends ChangeNotifier {
     notifyListeners();
   }
 
+  /// Ends the local session on this till.
+  ///
+  /// Synchronous and immediate, because the caller is a UI callback and the
+  /// person standing at the till needs the PIN pad now — waiting on a network
+  /// round trip to end a *local* session would be a worse answer than a good
+  /// one delivered late.
+  ///
+  /// Online sign-out is therefore started but not awaited: [tearDownOnlineSession]
+  /// clears the stored OIDC tokens and asks Keycloak to end its session. A till
+  /// that only ever works offline has nothing to tear down and this is a no-op.
+  ///
+  /// Deliberately does **not** touch the open shift or the till's float. A shift
+  /// belongs to the shop, not to the session: ending a session must not silently
+  /// close a shift with money still in the drawer. [openShiftId] is what lets a
+  /// caller warn about that case before it happens.
   void signOut() {
     currentStaffName = null;
     currentStaffId = null;
     isOwnerSession = false;
     _role = ShopRole.cashier;
     notifyListeners();
+    unawaited(tearDownOnlineSession());
+  }
+
+  /// Ends the Keycloak session and forgets the tokens.
+  ///
+  /// Split out from [signOut] so the network teardown can also be awaited
+  /// deliberately — by a "sign out everywhere" path, or a test — without making
+  /// the everyday local sign-out block on the network.
+  ///
+  /// Never throws. The local session is already gone by the time this runs, and a
+  /// failed end-session must not leave the app wedged signed-in-looking or
+  /// surface an error to someone who has already walked away from the till.
+  Future<void> tearDownOnlineSession() async {
+    try {
+      await OidcService.logout();
+    } catch (_) {
+      // Intentionally swallowed — see above.
+    }
+  }
+
+  /// The open shift belonging to the signed-in person, or null.
+  ///
+  /// Null when nobody is signed in, or when the signed-in person is an owner with
+  /// no roster row — an owner cannot hold a shift until they are on the roster,
+  /// which the shift screen offers to arrange.
+  ///
+  /// Read by the sign-out flow so it can say "you have an open shift" *before*
+  /// ending the session, which is the only moment the warning is actionable.
+  Future<Shift?> openShiftId() async {
+    final id = currentStaffId;
+    if (id == null) return null;
+    return DatabaseHelper.instance.getOpenShift(id);
   }
 
   bool get isSignedIn => currentStaffName != null;
@@ -142,8 +192,7 @@ class AppState extends ChangeNotifier {
   /// A cashier gets their own id, and `null` is never used to mean "unknown" —
   /// a cashier's queries must be narrow, so an unresolved cashier scopes to
   /// nobody rather than to everybody.
-  int? get analyticsStaffId =>
-      seesAllSales ? null : (currentStaffId ?? -1);
+  int? get analyticsStaffId => seesAllSales ? null : (currentStaffId ?? -1);
 
   void refresh() => notifyListeners();
 }

@@ -141,8 +141,7 @@ class Product {
   /// double is expected and harmless.
   double get marginPct => sellPrice.isZero
       ? 0
-      : ((sellPrice.minorUnits - costPrice.minorUnits) /
-              sellPrice.minorUnits) *
+      : ((sellPrice.minorUnits - costPrice.minorUnits) / sellPrice.minorUnits) *
           100;
   bool get isLow => stockQty <= reorderLevel;
 
@@ -299,8 +298,8 @@ class Product {
         // looking perfectly valid. The column name is historical; its unit is
         // the `unit` column beside it.
         unit == ProductUnit.litre
-            ? (bottleMl / millilitresPerLitre).toStringAsFixed(
-                bottleMl % millilitresPerLitre == 0 ? 0 : 3)
+            ? (bottleMl / millilitresPerLitre)
+                .toStringAsFixed(bottleMl % millilitresPerLitre == 0 ? 0 : 3)
             : bottleMl,
         halfPrice?.asMajor ?? '',
         quarterPrice?.asMajor ?? '',
@@ -831,10 +830,10 @@ class CategoryName {
         .split(' ')
         .where((word) => word.isNotEmpty)
         .map((word) {
-          if (_acronyms.contains(word.toUpperCase())) return word.toUpperCase();
-          if (word.length <= 2) return word.toUpperCase();
-          return word[0].toUpperCase() + word.substring(1);
-        });
+      if (_acronyms.contains(word.toUpperCase())) return word.toUpperCase();
+      if (word.length <= 2) return word.toUpperCase();
+      return word[0].toUpperCase() + word.substring(1);
+    });
     final joined = words.join(' ');
     return joined.isEmpty ? general : joined;
   }
@@ -877,6 +876,240 @@ class BarcodeKind {
         excise => 'Excise serial',
         _ => 'Supplier',
       };
+}
+
+/// A cashier's shift session.
+///
+/// A shift is the period a till is open under one person. It is the unit of
+/// account for reconciliation: a cashier opens a shift with a known float,
+/// rings up sales, and closes it by counting the till and recording the
+/// difference. Multishop tills scope shifts by workspace key, so each shop's
+/// shifts live in their own database file.
+class Shift {
+  final int? id;
+  final int staffId;
+  final String staffName;
+  final String startTime;
+  final String? endTime;
+  final Money startFloat;
+  final Money endFloat;
+
+  /// 'open' while the shift is live, 'closed' once reconciled.
+  final String status;
+
+  Shift({
+    this.id,
+    required this.staffId,
+    required this.staffName,
+    required this.startTime,
+    this.endTime,
+    required this.startFloat,
+    this.endFloat = Money.zero,
+    this.status = 'open',
+  });
+
+  Map<String, dynamic> toMap() => {
+        if (id != null) 'id': id,
+        'staff_id': staffId,
+        'staff_name': staffName,
+        'start_time': startTime,
+        'end_time': endTime,
+        'start_float': startFloat.minorUnits,
+        'end_float': endFloat.minorUnits,
+        'status': status,
+      };
+
+  factory Shift.fromMap(Map<String, dynamic> m) => Shift(
+        id: m['id'] as int?,
+        staffId: (m['staff_id'] as num?)?.toInt() ?? 0,
+        staffName: (m['staff_name'] as String?) ?? '',
+        startTime: (m['start_time'] as String?) ?? '',
+        endTime: m['end_time'] as String?,
+        startFloat: Money.fromMinor((m['start_float'] as num?)?.toInt() ?? 0),
+        endFloat: Money.fromMinor((m['end_float'] as num?)?.toInt() ?? 0),
+        status: (m['status'] as String?) ?? 'open',
+      );
+}
+
+/// One denomination counted during a till reconciliation.
+///
+/// A cashier counts physical cash into named piles — "five 100-shilling coins"
+/// — and the reconciliation totals those piles. Recording each pile keeps an
+/// auditable trail of *how* the till was counted, not just the sum.
+class TillCount {
+  final int? id;
+  final int shiftId;
+
+  /// A display label, e.g. "KSh 100", "KSh 50", "KSh 20".
+  final String denomination;
+  final int count;
+  final Money value;
+  final String createdAt;
+
+  TillCount({
+    this.id,
+    required this.shiftId,
+    required this.denomination,
+    required this.count,
+    required this.value,
+    required this.createdAt,
+  });
+
+  Map<String, dynamic> toMap() => {
+        if (id != null) 'id': id,
+        'shift_id': shiftId,
+        'denomination': denomination,
+        'count': count,
+        'value': value.minorUnits,
+        'created_at': createdAt,
+      };
+
+  factory TillCount.fromMap(Map<String, dynamic> m) => TillCount(
+        id: m['id'] as int?,
+        shiftId: (m['shift_id'] as num?)?.toInt() ?? 0,
+        denomination: (m['denomination'] as String?) ?? '',
+        count: (m['count'] as num?)?.toInt() ?? 0,
+        value: Money.fromMinor((m['value'] as num?)?.toInt() ?? 0),
+        createdAt: (m['created_at'] as String?) ?? '',
+      );
+}
+
+/// The result of closing a shift.
+///
+/// Stored separately from [Shift] because a shift can be closed and re-counted
+/// — the reconciliation is a discrete event that happens at the end of the
+/// shift, and an owner may want to see every reconciliation attempt.
+class Reconciliation {
+  final int? id;
+  final int shiftId;
+  final Money countedCash;
+  final Money expectedCash;
+  final Money variance;
+  final String recordedAt;
+
+  Reconciliation({
+    this.id,
+    required this.shiftId,
+    required this.countedCash,
+    required this.expectedCash,
+    required this.variance,
+    required this.recordedAt,
+  });
+
+  Map<String, dynamic> toMap() => {
+        if (id != null) 'id': id,
+        'shift_id': shiftId,
+        'counted_cash': countedCash.minorUnits,
+        'expected_cash': expectedCash.minorUnits,
+        'variance': variance.minorUnits,
+        'recorded_at': recordedAt,
+      };
+
+  factory Reconciliation.fromMap(Map<String, dynamic> m) => Reconciliation(
+        id: m['id'] as int?,
+        shiftId: (m['shift_id'] as num?)?.toInt() ?? 0,
+        countedCash: Money.fromMinor((m['counted_cash'] as num?)?.toInt() ?? 0),
+        expectedCash:
+            Money.fromMinor((m['expected_cash'] as num?)?.toInt() ?? 0),
+        variance: Money.fromMinor((m['variance'] as num?)?.toInt() ?? 0),
+        recordedAt: (m['recorded_at'] as String?) ?? '',
+      );
+}
+
+/// A fixed shot cup configuration.
+///
+/// Shots are sold in a standard cup size at a fixed price, but the underlying
+/// inventory product can be any drink — a spirit, a liqueur, a fortified wine.
+/// The linkage is by [productId] so the cup configuration can move with the
+/// product if it is renamed, and the cup keeps its own price so changing the
+/// product's sell price does not reprice every shot.
+class ShotCup {
+  final int? id;
+  final int productId;
+  final String productName;
+
+  /// The capacity of one shot cup, in millilitres.
+  final int capacityMl;
+
+  /// The price of one shot, in minor units.
+  final Money price;
+
+  /// Display name for the cup, e.g. "Shot".
+  final String label;
+  final bool active;
+  final String updatedAt;
+
+  ShotCup({
+    this.id,
+    required this.productId,
+    required this.productName,
+    required this.capacityMl,
+    required this.price,
+    this.label = 'Shot',
+    this.active = true,
+    required this.updatedAt,
+  });
+
+  Map<String, dynamic> toMap() => {
+        if (id != null) 'id': id,
+        'product_id': productId,
+        'product_name': productName,
+        'capacity_ml': capacityMl,
+        'price': price.minorUnits,
+        'label': label,
+        'active': active ? 1 : 0,
+        'updated_at': updatedAt,
+      };
+
+  factory ShotCup.fromMap(Map<String, dynamic> m) => ShotCup(
+        id: m['id'] as int?,
+        productId: (m['product_id'] as num?)?.toInt() ?? 0,
+        productName: (m['product_name'] as String?) ?? '',
+        capacityMl: (m['capacity_ml'] as num?)?.toInt() ?? 30,
+        price: Money.fromMinor((m['price'] as num?)?.toInt() ?? 0),
+        label: (m['label'] as String?) ?? 'Shot',
+        active: m['active'] == 1,
+        updatedAt: (m['updated_at'] as String?) ?? '',
+      );
+}
+
+/// A user-entered cup size suggestion for beer/keg products.
+///
+/// When a shop sells by the cup from a keg or tank, the cup sizes used are shop
+/// specific. This stores the sizes the user has entered so they appear as
+/// suggestions when adding a new cup size, rather than the shop re-typing "330",
+/// "500", "660" on every product.
+class CupSizeSuggestion {
+  final int? id;
+  final int? productId;
+  final int sizeMl;
+  final int useCount;
+  final String createdAt;
+
+  CupSizeSuggestion({
+    this.id,
+    this.productId,
+    required this.sizeMl,
+    this.useCount = 1,
+    required this.createdAt,
+  });
+
+  Map<String, dynamic> toMap() => {
+        if (id != null) 'id': id,
+        'product_id': productId,
+        'size_ml': sizeMl,
+        'use_count': useCount,
+        'created_at': createdAt,
+      };
+
+  factory CupSizeSuggestion.fromMap(Map<String, dynamic> m) =>
+      CupSizeSuggestion(
+        id: m['id'] as int?,
+        productId: m['product_id'] as int?,
+        sizeMl: (m['size_ml'] as num?)?.toInt() ?? 0,
+        useCount: (m['use_count'] as num?)?.toInt() ?? 0,
+        createdAt: (m['created_at'] as String?) ?? '',
+      );
 }
 
 class StockAdjustment {

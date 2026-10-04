@@ -12,6 +12,8 @@ import '../utils/money.dart';
 import '../utils/units.dart';
 import '../widgets/variant_catalogue.dart';
 import '../widgets/variant_form_sheet.dart';
+import 'home_shell.dart';
+import 'shot_cups_screen.dart';
 import '../theme/app_theme.dart';
 
 class InventoryScreen extends StatefulWidget {
@@ -88,14 +90,16 @@ class _InventoryScreenState extends State<InventoryScreen> {
       staffRemoteId = match.isEmpty ? null : match.first.remoteId;
     }
     try {
-      await DatabaseHelper.instance.adjustStock(StockAdjustment(
-        productId: p.id!,
-        productName: p.name,
-        delta: delta,
-        reason: result['reason'] ?? '',
-        staffName: staffName,
-        createdAt: DateTime.now().toIso8601String(),
-      ), staffId: staffId);
+      await DatabaseHelper.instance.adjustStock(
+          StockAdjustment(
+            productId: p.id!,
+            productName: p.name,
+            delta: delta,
+            reason: result['reason'] ?? '',
+            staffName: staffName,
+            createdAt: DateTime.now().toIso8601String(),
+          ),
+          staffId: staffId);
       await _load();
       // The server owns the authoritative stock count, so the correction has to
       // be pushed as an adjustment rather than folded into the next catalogue
@@ -142,8 +146,8 @@ class _InventoryScreenState extends State<InventoryScreen> {
     final variants = _variants.of(p);
     if (variants.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-        content: Text(
-            'Add ${p.name}\'s variants first — its stock is their total.'),
+        content:
+            Text('Add ${p.name}\'s variants first — its stock is their total.'),
       ));
       return;
     }
@@ -158,7 +162,9 @@ class _InventoryScreenState extends State<InventoryScreen> {
               child: ListTile(
                 contentPadding: EdgeInsets.zero,
                 leading: Icon(
-                  variant.isLow ? Icons.warning_amber_outlined : Icons.label_outline,
+                  variant.isLow
+                      ? Icons.warning_amber_outlined
+                      : Icons.label_outline,
                 ),
                 title: Text(variant.name),
                 subtitle: Text('${variant.stockQty} in stock'),
@@ -180,8 +186,8 @@ class _InventoryScreenState extends State<InventoryScreen> {
       await _load();
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-        content: Text(
-            '${chosen.label} is now ${chosen.stockQty + delta} in stock.'),
+        content:
+            Text('${chosen.label} is now ${chosen.stockQty + delta} in stock.'),
       ));
     } on StateError catch (error) {
       if (!mounted) return;
@@ -231,9 +237,31 @@ class _InventoryScreenState extends State<InventoryScreen> {
       body: RefreshIndicator(
         onRefresh: _load,
         child: ListView.builder(
-          itemCount: _products.length,
+          itemCount: _products.length + 1,
           itemBuilder: (_, i) {
-            final p = _products[i];
+            // Row zero is the shot-cup entry rather than a product: it is a way of selling
+            // what is already in the catalogue, not another line of it, and
+            // burying it under the first hundred sodas is how a bar never finds
+            // the feature that makes it a bar.
+            if (i == 0) {
+              return Semantics(
+                label:
+                    'Shot cups. Fixed-size shots of any drink in your inventory.',
+                child: ListTile(
+                  leading: const Icon(Icons.local_drink_outlined),
+                  title: const Text('Shot cups'),
+                  subtitle: const Text(
+                      'Sell fixed-size shots of any drink in your inventory'),
+                  trailing: const Icon(Icons.chevron_right),
+                  onTap: () => Navigator.push(
+                    context,
+                    MaterialPageRoute<void>(
+                        builder: (_) => const ShotCupsScreen()),
+                  ),
+                ),
+              );
+            }
+            final p = _products[i - 1];
             final variantCount = _variants.of(p).length;
             return Semantics(
               label:
@@ -247,8 +275,7 @@ class _InventoryScreenState extends State<InventoryScreen> {
                   // "Sold as variants" is the difference between one row and
                   // four at the till, so it is stated on the list rather than
                   // left to be discovered when a cashier cannot find Dark.
-                  if (_variants.tracks(p))
-                    'no variants yet',
+                  if (_variants.tracks(p)) 'no variants yet',
                   if (variantCount > 0)
                     '$variantCount variant${variantCount == 1 ? '' : 's'}',
                 ].join(' · ')),
@@ -345,6 +372,20 @@ class _ProductEditorState extends State<_ProductEditor> {
   /// three separate reads.
   bool _loadingMeta = true;
 
+  /// Volume sizes this shop has used before, most-used first.
+  ///
+  /// Offered as one-tap chips under the keg/tank size field. A bar selling
+  /// Tusker, a keg of.proto and a 50-litre tank types three different five-digit
+  /// numbers that are all the same shop remembering its own stock, and the chips
+  /// turn three remembered numbers into one remembered list.
+  ///
+  /// Read shop-wide rather than per product: a keg size is not a property of one
+  /// product, and the product being typed may not have a row yet.
+  List<CupSizeSuggestion> _sizeSuggestions = const [];
+
+  /// How many chips to offer before the row stops being scannable.
+  static const _maxSizeSuggestions = 6;
+
   @override
   void dispose() {
     _name.dispose();
@@ -385,7 +426,41 @@ class _ProductEditorState extends State<_ProductEditor> {
     _quarterPrice = TextEditingController(text: _editAmount(e?.quarterPrice));
     _barcode = TextEditingController();
     _loadMeta();
+    _loadSizeSuggestions();
   }
+
+  Future<void> _loadSizeSuggestions() async {
+    final loaded = await DatabaseHelper.instance.getCupSizeSuggestions();
+    if (!mounted) return;
+    setState(() => _sizeSuggestions = loaded);
+  }
+
+  /// The chips worth offering under the size field.
+  ///
+  /// Hidden for a countable product: "750 ml" next to a thing with no size is
+  /// a question nobody asked, and a countable product's field is a legacy
+  /// leftover that is ignored on save.
+  List<CupSizeSuggestion> get _visibleSizeSuggestions =>
+      _unit == ProductUnit.each ? const [] : _sizeSuggestions;
+
+  Widget _sizeSuggestionChips() => Padding(
+        padding: const EdgeInsets.only(top: 6),
+        child: Semantics(
+          container: true,
+          label: 'Sizes you have used before',
+          child: Wrap(
+            spacing: 8,
+            runSpacing: 4,
+            children: [
+              for (final s in _visibleSizeSuggestions.take(_maxSizeSuggestions))
+                ActionChip(
+                  label: Text(Volume(s.sizeMl.toDouble()).display),
+                  onPressed: () => _bottleMl.text = s.sizeMl.toString(),
+                ),
+            ],
+          ),
+        ),
+      );
 
   /// Reads everything about an existing product that the product row alone
   /// cannot tell us: its variants, its codes at both levels, and the two
@@ -480,8 +555,8 @@ class _ProductEditorState extends State<_ProductEditor> {
     // unsaved new product gets its codes after the save rather than before.
     final existing = widget.existing;
     if (existing?.id == null) {
-      setState(() => _error =
-          'Save the product first, then add its barcode(s).');
+      setState(
+          () => _error = 'Save the product first, then add its barcode(s).');
       return;
     }
     final added = await DatabaseHelper.instance.addBarcode(
@@ -495,8 +570,7 @@ class _ProductEditorState extends State<_ProductEditor> {
       // merely discouraged, so this is the one place a duplicate can surface —
       // and it names the product that already owns the code, which tells the
       // owner which product to remove it from.
-      final owner =
-          await DatabaseHelper.instance.getProductOwningBarcode(code);
+      final owner = await DatabaseHelper.instance.getProductOwningBarcode(code);
       if (!mounted) return;
       setState(() => _error = owner == null
           ? 'That barcode is already on another product.'
@@ -544,14 +618,17 @@ class _ProductEditorState extends State<_ProductEditor> {
       name: _name.text.trim().isEmpty
           ? (existing?.name ?? 'This product')
           : _name.text.trim(),
-      category: _category.text.trim().isEmpty ? 'General' : _category.text.trim(),
-      costPrice: Money.fromMajor(number(_cost.text, existing?.costPrice.asMajor ?? 0)),
-      sellPrice:
-          Money.fromMajor(number(_price.text, existing?.sellPrice.asMajor ?? 0)),
+      category:
+          _category.text.trim().isEmpty ? 'General' : _category.text.trim(),
+      costPrice:
+          Money.fromMajor(number(_cost.text, existing?.costPrice.asMajor ?? 0)),
+      sellPrice: Money.fromMajor(
+          number(_price.text, existing?.sellPrice.asMajor ?? 0)),
       stockQty: number(_stock.text, existing?.stockQty ?? 0),
       reorderLevel:
           int.tryParse(_reorder.text.trim()) ?? existing?.reorderLevel ?? 0,
-      bottleMl: int.tryParse(_bottleMl.text.trim()) ?? existing?.bottleMl ?? 750,
+      bottleMl:
+          int.tryParse(_bottleMl.text.trim()) ?? existing?.bottleMl ?? 750,
       unit: _unit,
       trackVariants: _trackVariants,
       active: existing?.active ?? true,
@@ -568,6 +645,9 @@ class _ProductEditorState extends State<_ProductEditor> {
         parentUnit: _unit,
         position: _drafts.length,
       ),
+      // Null while the product itself is still an unsaved draft, in which case
+      // the sheet offers the shop-wide cup sizes instead of this product's.
+      parentProductId: widget.existing?.id,
     );
     if (draft == null || !mounted) return;
     setState(() => _drafts.add(draft));
@@ -579,6 +659,7 @@ class _ProductEditorState extends State<_ProductEditor> {
       context,
       seed: existingDraft,
       title: 'Edit ${existingDraft.name}',
+      parentProductId: widget.existing?.id,
     );
     if (draft == null || !mounted) return;
     setState(() => _drafts[index] = draft);
@@ -642,7 +723,8 @@ class _ProductEditorState extends State<_ProductEditor> {
       // Keyed by identity, not by position: a `ValueKey` on the index would
       // make a removed row animate out of the wrong place once the list closes
       // the gap.
-      key: ValueKey('variant-${draft.id ?? 'new-${draft.name}-${draft.position}'}'),
+      key: ValueKey(
+          'variant-${draft.id ?? 'new-${draft.name}-${draft.position}'}'),
       direction: DismissDirection.endToStart,
       background: Container(
         alignment: Alignment.centerRight,
@@ -660,8 +742,7 @@ class _ProductEditorState extends State<_ProductEditor> {
       child: ListTile(
         contentPadding: EdgeInsets.zero,
         leading: CircleAvatar(
-          backgroundColor:
-              low ? DukaColors.surfaceWarm : DukaColors.surface,
+          backgroundColor: low ? DukaColors.surfaceWarm : DukaColors.surface,
           child: Text('${draft.stockQty}',
               style: TextStyle(
                   fontSize: 12,
@@ -706,8 +787,8 @@ class _ProductEditorState extends State<_ProductEditor> {
       final draft = _drafts[i];
       // Position follows the order on screen, so reordering is reordering and
       // the till offers Dark before Regular because the owner put it there.
-      final variantId =
-          await db.upsertVariant(draft.copyWith(position: i).toVariant(productId));
+      final variantId = await db
+          .upsertVariant(draft.copyWith(position: i).toVariant(productId));
       final code = draft.barcode.trim();
       if (draft.hasStoredBarcode && draft.barcodeChanged) {
         await db.removeBarcode(draft.storedBarcode);
@@ -738,6 +819,26 @@ class _ProductEditorState extends State<_ProductEditor> {
     }
   }
 
+  /// Remembers the size the owner just used, so the chips above the field
+  /// improve the next time they are opened.
+  ///
+  /// Recorded shop-wide rather than against this product: a keg size is a fact
+  /// about the shop's bottles, not about one line of the catalogue, and a shop
+  /// that pours the same tank behind two different drinks should see the size
+  /// offered for both.
+  ///
+  /// Failures here are swallowed deliberately. The size is already written to
+  /// the product row, which is what the till sells; losing a suggestion is not
+  /// worth failing a save the owner can see succeed.
+  Future<void> _rememberSize(int sizeMl) async {
+    if (sizeMl <= 0) return;
+    try {
+      await DatabaseHelper.instance.upsertCupSizeSuggestion(sizeMl: sizeMl);
+    } catch (_) {
+      // Intentionally ignored — see above.
+    }
+  }
+
   /// Reads an optional price field.
   ///
   /// The distinction that matters here is **empty** versus **unparseable**, and
@@ -755,7 +856,8 @@ class _ProductEditorState extends State<_ProductEditor> {
     if (text.isEmpty) return null;
     final parsed = double.tryParse(text);
     if (parsed == null) {
-      throw FormatException('$label must be a number, or empty if not sold in portions');
+      throw FormatException(
+          '$label must be a number, or empty if not sold in portions');
     }
     if (!Money.isValidMajor(parsed)) {
       throw FormatException('$label must be 0 or more');
@@ -879,6 +981,10 @@ class _ProductEditorState extends State<_ProductEditor> {
       // saving half of it would leave the till offering something the catalogue
       // does not have.
       await _saveVariants(productId);
+      await _rememberSize(_unit == ProductUnit.each ? 0 : (bottleMl ?? 0));
+      // The sell tab is kept alive in an IndexedStack and would otherwise keep
+      // selling the catalogue as it was before this save.
+      if (mounted) context.read<HomeShellTabs>().markCatalogueChanged();
       widget.onSaved();
       if (mounted) Navigator.pop(context);
       // Push just this row to the backend after the editor closes. A price
@@ -952,9 +1058,11 @@ class _ProductEditorState extends State<_ProductEditor> {
               ]),
               TextField(
                   controller: _bottleMl,
-                  decoration:
-                      const InputDecoration(labelText: 'Full bottle size (ml)'),
+                  decoration: const InputDecoration(
+                      labelText: 'Size (ml)',
+                      helperText: 'Bottle, keg or tank — 330, 500, 50000'),
                   keyboardType: TextInputType.number),
+              if (_visibleSizeSuggestions.isNotEmpty) _sizeSuggestionChips(),
               Row(children: [
                 Expanded(
                     child: TextField(
@@ -1010,8 +1118,7 @@ class _ProductEditorState extends State<_ProductEditor> {
                     : 'For Dark and Regular, or a big cup and a small cup, at different prices'),
               ),
               if (_trackVariants) ...[
-                Text('Variants',
-                    style: Theme.of(context).textTheme.titleSmall),
+                Text('Variants', style: Theme.of(context).textTheme.titleSmall),
                 const SizedBox(height: 4),
                 if (_loadingMeta)
                   const LinearProgressIndicator()
@@ -1049,7 +1156,8 @@ class _ProductEditorState extends State<_ProductEditor> {
               else if (_codes.isEmpty)
                 const Padding(
                   padding: EdgeInsets.symmetric(vertical: 4),
-                  child: Text('No barcodes yet — this product is sold by name only.',
+                  child: Text(
+                      'No barcodes yet — this product is sold by name only.',
                       style: TextStyle(fontSize: 13)),
                 )
               else
@@ -1085,11 +1193,11 @@ class _ProductEditorState extends State<_ProductEditor> {
                   child: TextField(
                     controller: _barcode,
                     decoration: const InputDecoration(
-                        labelText: 'Add a barcode',
-                        hintText: '6001234567892'),
+                        labelText: 'Add a barcode', hintText: '6001234567892'),
                     // Digits and letters only: what a scanner could emit.
                     inputFormatters: [
-                      FilteringTextInputFormatter.allow(RegExp(r'[A-Za-z0-9\-]')),
+                      FilteringTextInputFormatter.allow(
+                          RegExp(r'[A-Za-z0-9\-]')),
                     ],
                     textCapitalization: TextCapitalization.characters,
                     onSubmitted: (_) => _addBarcode(),

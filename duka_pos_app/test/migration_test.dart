@@ -20,7 +20,7 @@ import 'package:duka_pos/models/models.dart';
 /// still describes v10 after v11 has landed, and so it genuinely fails if the
 /// v10 shape is ever misremembered.
 Future<void> _createV10Database(
-    String path, {
+  String path, {
   List<Map<String, Object?>> products = const [],
   List<Map<String, Object?>> sales = const [],
   List<Map<String, Object?>> saleItems = const [],
@@ -177,8 +177,9 @@ void main() {
   }
 
   test('v10 amounts become exact integer cents', () async {
-    final db = await migrated(
-        products: [product(cost: 40.5, sell: 80.0, half: 40.0, quarter: 20.25)]);
+    final db = await migrated(products: [
+      product(cost: 40.5, sell: 80.0, half: 40.0, quarter: 20.25)
+    ]);
     final row = (await db.query('products')).first;
 
     expect(row['cost_price'], 4050);
@@ -321,11 +322,11 @@ void main() {
   });
 
   test('indexes are recreated and no temporary tables survive', () async {
-    final db = await migrated(
-        products: [product()], sales: [sale(total: 10.0)]);
+    final db =
+        await migrated(products: [product()], sales: [sale(total: 10.0)]);
 
-    final tables = await db.rawQuery(
-        "SELECT name FROM sqlite_master WHERE type='table'");
+    final tables =
+        await db.rawQuery("SELECT name FROM sqlite_master WHERE type='table'");
     final names = tables.map((t) => t['name'] as String).toList();
     expect(names.where((n) => n.endsWith('_v11')), isEmpty,
         reason: 'an interrupted migration would leave these behind');
@@ -335,9 +336,14 @@ void main() {
     final indexes = await db.rawQuery(
         "SELECT name FROM sqlite_master WHERE type='index' AND name LIKE 'idx_%'");
     final indexNames = indexes.map((i) => i['name'] as String).toSet();
-    expect(indexNames,
-        containsAll(['idx_sales_date', 'idx_sale_items_product',
-            'idx_sale_items_sale', 'idx_sales_staff']));
+    expect(
+        indexNames,
+        containsAll([
+          'idx_sales_date',
+          'idx_sale_items_product',
+          'idx_sale_items_sale',
+          'idx_sales_staff'
+        ]));
     await db.close();
   });
 
@@ -376,8 +382,7 @@ void main() {
 
   group('v11 -> v12: barcodes, shop settings and receipt numbering', () {
     test('product_barcodes refuses a duplicate code', () async {
-      final db = await migrated(
-          products: [product(cost: 45, sell: 80)]);
+      final db = await migrated(products: [product(cost: 45, sell: 80)]);
       final sodaId = (await db.query('products')).single['id'] as int;
 
       await db.insert('product_barcodes', {
@@ -404,8 +409,7 @@ void main() {
       // A TEXT primary key in SQLite permits NULL unless declared NOT NULL, and
       // a NULL barcode would match nothing but would also let a blank row exist
       // that reads back as a real "unknown product" answer.
-      final db = await migrated(
-          products: [product(cost: 45, sell: 80)]);
+      final db = await migrated(products: [product(cost: 45, sell: 80)]);
       final sodaId = (await db.query('products')).single['id'] as int;
       await expectLater(
         db.insert('product_barcodes',
@@ -428,17 +432,15 @@ void main() {
     test('shop_settings holds one row per key and replaces on rewrite',
         () async {
       final db = await migrated();
-      await db.insert(
-          'shop_settings', {'key': 'vat_rate_percent', 'value': '16'});
+      await db
+          .insert('shop_settings', {'key': 'vat_rate_percent', 'value': '16'});
       await db.insert('shop_settings', {'key': 'till_code', 'value': 'T1'});
-      expect(await db.query('shop_settings', orderBy: 'key'),
-          hasLength(2));
+      expect(await db.query('shop_settings', orderBy: 'key'), hasLength(2));
 
-      await db.insert('shop_settings',
-          {'key': 'till_code', 'value': 'T2'},
+      await db.insert('shop_settings', {'key': 'till_code', 'value': 'T2'},
           conflictAlgorithm: ConflictAlgorithm.replace);
-      final rows =
-          await db.query('shop_settings', where: 'key = ?', whereArgs: ['till_code']);
+      final rows = await db
+          .query('shop_settings', where: 'key = ?', whereArgs: ['till_code']);
       expect(rows, hasLength(1));
       expect(rows.single['value'], 'T2');
       await db.close();
@@ -457,9 +459,19 @@ void main() {
       final db = await migrated(
         products: [product(cost: 45, sell: 80)],
         sales: [
-          sale(id: 1, staff: 'Alice', total: 160.0, tendered: 200.0, change: 40.0),
+          sale(
+              id: 1,
+              staff: 'Alice',
+              total: 160.0,
+              tendered: 200.0,
+              change: 40.0),
           sale(id: 2, staff: 'Bob', total: 80.0, tendered: 80.0, change: 0.0),
-          sale(id: 3, staff: 'Carol', total: 240.0, tendered: 250.0, change: 10.0),
+          sale(
+              id: 3,
+              staff: 'Carol',
+              total: 240.0,
+              tendered: 250.0,
+              change: 10.0),
         ],
       );
       final sales = await db.query('sales');
@@ -515,7 +527,9 @@ void main() {
       // a wall of unreconciled KRA receipts. Defaulting to 'pending' would put
       // every sale the shop ever made into the outstanding queue.
       final db = await migrated(
-        sales: [sale(staff: 'Legacy', total: 80.0, tendered: 80.0, change: 0.0)],
+        sales: [
+          sale(staff: 'Legacy', total: 80.0, tendered: 80.0, change: 0.0)
+        ],
       );
       final row = (await db.query('sales')).single;
       expect(row['etims_status'], 'not_required');
@@ -577,7 +591,8 @@ void main() {
       // The variant owns its price and stock. That is the whole reason it
       // exists: Dark and Regular cannot share one price or one stock count.
       final row = (await db.query('product_variants',
-          where: 'id = ?', whereArgs: [variantId])).single;
+              where: 'id = ?', whereArgs: [variantId]))
+          .single;
       expect(row['sell_price'], 150);
       expect(row['stock_qty'], 20.0);
       expect(row['name'], 'Dark');
@@ -666,8 +681,7 @@ void main() {
         'portion_ml': 500,
         'variant_name': 'Dark',
       });
-      final item =
-          (await db.query('sale_items')).single;
+      final item = (await db.query('sale_items')).single;
       expect(item['variant_name'], 'Dark');
       await db.close();
     });
@@ -736,6 +750,276 @@ void main() {
       await fresh.close();
       expect(freshTables, migratedTables,
           reason: 'a new till and an upgraded one must not diverge');
+    });
+  });
+
+  group('v14 -> v15: shifts, till counts, shot cups, cup sizes', () {
+    /// Builds a file at schema v14 and opens it so the real v15 step runs.
+    ///
+    /// The v10 builder plus a literal replay of the v11..v14 steps, written out
+    /// rather than reused from production code, so this still describes v14
+    /// after v15 has landed. Only the tables and columns the v15 step can
+    /// disturb are carried across — `products` and `sales`, which is where the
+    /// money-rebuild and the unverified-payment column live.
+    Future<Database> migratedFromV14({
+      List<Map<String, Object?>> products = const [],
+      List<Map<String, Object?>> sales = const [],
+    }) async {
+      await _createV10Database(path, products: products, sales: sales);
+      final db = await databaseFactoryFfi.openDatabase(
+        path,
+        options: OpenDatabaseOptions(
+          version: 14,
+          onOpen: (db) async {
+            // v11: money becomes integer minor units.
+            //
+            // The declared type is rewritten by rebuilding each table from its
+            // own stored DDL, because SQLite cannot alter a column type and
+            // `CREATE TABLE ... AS SELECT` re-derives the type from the copied
+            // values, which would silently leave the column REAL. Only the
+            // money columns move: `stock_qty` and `qty` are counts and stay
+            // REAL.
+            const moneyColumns = <String, List<String>>{
+              'products': [
+                'cost_price',
+                'sell_price',
+                'half_price',
+                'quarter_price'
+              ],
+              'sales': ['total', 'profit', 'amount_tendered', 'change_given'],
+              'sale_items': ['unit_price', 'unit_cost'],
+            };
+            for (final entry in moneyColumns.entries) {
+              final table = entry.key;
+              final ddl = (await db.rawQuery(
+                      "SELECT sql FROM sqlite_master WHERE type='table' AND name=?",
+                      [table]))
+                  .first['sql'] as String;
+              var rebuilt = ddl;
+              for (final col in entry.value) {
+                rebuilt = rebuilt.replaceAll('$col REAL', '$col INTEGER');
+              }
+              final tmp = '${table}_moneyfix';
+              await db.execute(rebuilt.replaceFirst(
+                  'CREATE TABLE $table', 'CREATE TABLE $tmp'));
+
+              // v11 also rescales the stored values, not just the column
+              // type: 80.00 becomes 8000. Reading the type change without the
+              // rescale would leave a till holding shillings in a column
+              // labelled minor units — 100x out, and silently.
+              final cols = [
+                for (final row
+                    in await db.rawQuery('PRAGMA table_info($table)'))
+                  row['name'] as String
+              ];
+              final projections = <String>[
+                for (final col in cols)
+                  if (entry.value.contains(col) &&
+                      !cols.contains('${col}_minor'))
+                    'CAST(ROUND($col * 100) AS INTEGER)'
+                  else
+                    col
+              ];
+              await db.execute('INSERT INTO $tmp (${cols.join(', ')}) '
+                  'SELECT ${projections.join(', ')} FROM $table');
+              await db.execute('DROP TABLE $table');
+              await db.execute('ALTER TABLE $tmp RENAME TO $table');
+            }
+
+            // v12/v13/v14: columns and tables added after v10.
+            await db
+                .execute('ALTER TABLE sales ADD COLUMN receipt_number TEXT');
+            await db.execute('ALTER TABLE sales ADD COLUMN etims_status TEXT');
+            await db.execute(
+                'ALTER TABLE sales ADD COLUMN etims_receipt_number TEXT');
+            // v14: a payment that has not been confirmed by the provider.
+            await db.execute(
+                "ALTER TABLE sales ADD COLUMN payment_verified INTEGER NOT NULL DEFAULT 1");
+            await db.execute(
+                "ALTER TABLE products ADD COLUMN unit TEXT NOT NULL DEFAULT 'each'");
+            await db.execute(
+                'ALTER TABLE products ADD COLUMN track_variants INTEGER NOT NULL DEFAULT 0');
+            await db.execute(
+                'ALTER TABLE sale_items ADD COLUMN variant_id INTEGER');
+            await db
+                .execute('ALTER TABLE sale_items ADD COLUMN variant_name TEXT');
+            await db.execute('''CREATE TABLE IF NOT EXISTS product_barcodes (
+              barcode TEXT PRIMARY KEY NOT NULL,
+              product_id INTEGER NOT NULL,
+              kind TEXT NOT NULL DEFAULT 'supplier',
+              variant_id INTEGER
+            )''');
+            await db.execute('''CREATE TABLE IF NOT EXISTS shop_settings (
+              key TEXT PRIMARY KEY NOT NULL, value TEXT
+            )''');
+            await db.execute('''CREATE TABLE IF NOT EXISTS
+              receipt_counters (
+              key TEXT PRIMARY KEY NOT NULL, value INTEGER NOT NULL
+            )''');
+            await db.execute('''CREATE TABLE IF NOT EXISTS pending_etims (
+              sale_id INTEGER PRIMARY KEY,
+              receipt_number TEXT NOT NULL,
+              attempts INTEGER NOT NULL DEFAULT 0,
+              last_error TEXT,
+              created_at TEXT NOT NULL,
+              updated_at TEXT NOT NULL
+            )''');
+            await db.execute('''CREATE TABLE IF NOT EXISTS product_variants (
+              id INTEGER PRIMARY KEY AUTOINCREMENT,
+              product_id INTEGER NOT NULL,
+              name TEXT NOT NULL,
+              sku TEXT NOT NULL DEFAULT '',
+              unit TEXT NOT NULL DEFAULT 'each',
+              size_ml INTEGER NOT NULL DEFAULT 0,
+              sell_price INTEGER NOT NULL DEFAULT 0,
+              cost_price INTEGER NOT NULL DEFAULT 0,
+              stock_qty REAL NOT NULL DEFAULT 0,
+              reorder_level INTEGER NOT NULL DEFAULT 0,
+              position INTEGER NOT NULL DEFAULT 0,
+              active INTEGER NOT NULL DEFAULT 1
+            )''');
+            await db.execute('''CREATE TABLE IF NOT EXISTS
+              import_needs_attention (
+              id INTEGER PRIMARY KEY AUTOINCREMENT,
+              source TEXT NOT NULL,
+              sheet_name TEXT NOT NULL DEFAULT '',
+              row_number INTEGER NOT NULL DEFAULT 0,
+              raw_name TEXT NOT NULL DEFAULT '',
+              raw_row TEXT NOT NULL,
+              problem TEXT NOT NULL,
+              resolved INTEGER NOT NULL DEFAULT 0,
+              created_at TEXT NOT NULL
+            )''');
+            await db.execute('''CREATE TABLE IF NOT EXISTS categories (
+              name TEXT PRIMARY KEY NOT NULL, sort_order INTEGER NOT NULL DEFAULT 0
+            )''');
+          },
+        ),
+      );
+      await db.close();
+      return DatabaseHelper.openExistingForUpgradeTests(path);
+    }
+
+    Future<Database> upgraded({
+      List<Map<String, Object?>> products = const [],
+      List<Map<String, Object?>> sales = const [],
+    }) async =>
+        migratedFromV14(products: products, sales: sales);
+
+    test('all five tables appear, empty, on a till that had none', () async {
+      final db = await upgraded(
+          products: [product(cost: 40.0, sell: 80.0)], sales: [sale()]);
+
+      for (final table in const [
+        'shifts',
+        'till_counts',
+        'reconciliations',
+        'shot_cups',
+        'cup_size_suggestions'
+      ]) {
+        final rows = await db.query(table);
+        expect(rows, isEmpty,
+            reason: '$table must start empty on an existing install');
+      }
+      await db.close();
+    });
+
+    test('the pre-existing ledger is untouched by the upgrade', () async {
+      final db = await upgraded(
+          products: [product(cost: 40.0, sell: 80.0)],
+          sales: [sale(total: 160.0)]);
+
+      final productRow = (await db.query('products')).single;
+      // 80.00 at v10, still 8000 minor units after the v11 rebuild that a real
+      // till already made before it reached v15.
+      expect(productRow['sell_price'], 8000);
+
+      final saleRow = (await db.query('sales')).single;
+      expect(saleRow['total'], 16000);
+      expect(saleRow['payment_verified'], 1);
+      await db.close();
+    });
+
+    test('a shot price and a float are stored as integer minor units',
+        () async {
+      // The bug this guards: a REAL-affinity money column reads 3000 back as
+      // 30.00. It happened once already, to `pending_payments.amount`.
+      final db = await upgraded(products: [product(cost: 40.0, sell: 80.0)]);
+      final productId = (await db.query('products')).single['id'] as int;
+
+      await db.insert('shot_cups', {
+        'product_id': productId,
+        'product_name': 'AAA Vodka',
+        'capacity_ml': 30,
+        'price': 3000,
+        'label': 'Shot',
+        'active': 1,
+        'updated_at': '2026-02-01T09:00:00.000',
+      });
+      final cup = (await db.query('shot_cups')).single;
+      expect(cup['price'], 3000);
+      expect(cup['price'], isA<int>());
+
+      await db.insert('shifts', {
+        'staff_id': 1,
+        'staff_name': 'Amina',
+        'start_time': '2026-02-01T08:00:00.000',
+        'end_time': null,
+        'start_float': 500000,
+        'end_float': 0,
+        'status': 'open',
+      });
+      final shift = (await db.query('shifts')).single;
+      expect(shift['start_float'], 500000);
+      expect(shift['start_float'], isA<int>());
+      await db.close();
+    });
+
+    test('a shift, its counts and its reconciliation round-trip at full value',
+        () async {
+      final db = await upgraded();
+      final now = '2026-02-01T17:00:00.000';
+
+      final shiftId = await db.insert('shifts', {
+        'staff_id': 1,
+        'staff_name': 'Amina',
+        'start_time': '2026-02-01T08:00:00.000',
+        'start_float': 500000,
+        'status': 'open',
+      });
+      await db.insert('till_counts', {
+        'shift_id': shiftId,
+        'denomination': 'KSh 100',
+        'count': 42,
+        'value': 420000,
+        'created_at': now,
+      });
+      await db.insert('reconciliations', {
+        'shift_id': shiftId,
+        'counted_cash': 1100000,
+        'expected_cash': 1115000,
+        'variance': -15000,
+        'recorded_at': now,
+      });
+
+      final count = (await db.query('till_counts')).single;
+      final recon = (await db.query('reconciliations')).single;
+      expect(count['value'], 420000);
+      expect(recon['variance'], -15000);
+      expect(recon['variance'], isA<int>());
+      await db.close();
+    });
+
+    test('no scratch table is left behind', () async {
+      final db = await upgraded();
+      final names = [
+        for (final row in await db
+            .rawQuery("SELECT name FROM sqlite_master WHERE type='table'"))
+          row['name'] as String
+      ];
+      expect(names.where((n) => n.endsWith('_v15')), isEmpty);
+      expect(names.where((n) => n.contains('moneyfix')), isEmpty);
+      await db.close();
     });
   });
 }
