@@ -167,6 +167,60 @@ runs:
         fi
         echo "Android SDK licences accepted; AGP will provision any other missing component."
 
+    # Free the disk this build does not need, before anything large is written.
+    #
+    # The ubuntu-24.04 image ships several Android NDKs, platform images and
+    # build-tools that this project never asks for — order 12 GB — and a debug
+    # APK of an app with ML Kit in it fills much of the rest. The job then dies
+    # in its own *post* step with
+    #
+    #   No space left on device: '/home/runner/actions-runner/cached/...'
+    #
+    # which is reported as a build failure while every real step — analyze, test,
+    # and `flutter build apk --debug` — has already passed. It is a runner
+    # resource limit wearing a code failure's clothes, and it is worth removing
+    # rather than re-running until the disk happens to be less full.
+    #
+    # Nothing here touches anything the build reads: the NDK is provisioned by
+    # AGP on demand after the licence step below, and only the compileSdk (36) and
+    # the newest build-tools are kept.
+    - name: Free disk space the build does not need
+      shell: bash
+      run: |
+        set -euo pipefail
+        sdk="${ANDROID_HOME:-${ANDROID_SDK_ROOT:-}}"
+        free_before="$(df -h --output=avail / | tail -1 | tr -d ' ')"
+        echo "Free before: ${free_before}"
+
+        if [ -n "$sdk" ]; then
+          # Every preinstalled NDK. AGP provisions the one this project declares
+          # (`ndkVersion` in app/build.gradle.kts) on demand, so all of these are
+          # dead weight — and they are the single largest thing on the image.
+          rm -rf "${sdk}/ndk"/* 2>/dev/null || true
+
+          # Platform images older than compileSdk 36. Keeping only the newest
+          # build-tools as well; AGP will fetch a specific one if it needs it.
+          for dir in "${sdk}/platforms"/android-*; do
+            [ -d "$dir" ] || continue
+            name="${dir##*/android-}"
+            if [ "$name" -lt 36 ] 2>/dev/null; then rm -rf "$dir"; fi
+          done
+          keep_tools="$(ls -1 "${sdk}/build-tools" 2>/dev/null | sort -V | tail -1 || true)"
+          for dir in "${sdk}/build-tools"/*; do
+            [ -d "$dir" ] || continue
+            [ "${dir##*/}" = "$keep_tools" ] || rm -rf "$dir"
+          done
+
+        fi
+
+        # The Dart and Gradle caches are restored above and are worth keeping —
+        # they are what makes the run fast — but the Gradle *daemon* logs and
+        # the transform cache are large and single-use.
+        rm -rf ~/.gradle/daemon ~/.gradle/native ~/.gradle/.tmp 2>/dev/null || true
+
+        free_after="$(df -h --output=avail / | tail -1 | tr -d ' ')"
+        echo "Free after:  ${free_after}"
+
     # android/settings.gradle.kts `require`s flutter.sdk in local.properties,
     # so Gradle cannot even be configured without this file. It is gitignored
     # (machine-specific absolute paths) and must be synthesised on the runner.
