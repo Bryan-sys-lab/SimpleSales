@@ -2,19 +2,25 @@ name: CI
 
 # Pull-request validation: catches broken Dart and broken Android builds before
 # anything reaches main. Release signing is never involved here.
+#
+# `.github/**` rather than naming this file and the shared action, because the
+# narrower list was a trap: a commit that changed only `release.yml` or
+# `auto-release.yml` matched nothing, so no CI run happened — and
+# auto-release.yml is triggered by *this* workflow succeeding. A change to the
+# release pipeline was therefore the one kind of change that could not be
+# validated by it, and got through unvalidated for exactly that reason. Every
+# file that decides what ships is now covered by the check that gates shipping.
 on:
   pull_request:
     branches: [main]
     paths:
       - 'duka_pos_app/**'
-      - '.github/workflows/ci.yml'
-      - '.github/actions/**'
+      - '.github/**'
   push:
     branches: [main]
     paths:
       - 'duka_pos_app/**'
-      - '.github/workflows/ci.yml'
-      - '.github/actions/**'
+      - '.github/**'
   workflow_dispatch:
 
 # Cancel superseded runs so a rapid push-to-PR sequence does not burn minutes
