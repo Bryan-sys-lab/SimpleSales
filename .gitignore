@@ -1,8 +1,14 @@
-# The backend lives on its own `backend` branch and is not part of `main`.
-# Its working-tree copy on this branch is a checkout leftover, not source.
-# (node_modules/.env/dist are covered by duka_pos_backend/.gitignore on the
-# backend branch itself.)
-/duka_pos_backend/
+# The backend is NOT ignored on this branch.
+#
+# `main` carries a rule that ignores `/duka_pos_backend/` because on `main` the
+# directory is a stale checkout leftover rather than source. Merging `main` into
+# a backend branch brought that rule along, and it silently hid every *new*
+# backend file: tracked files kept showing as modified, so the breakage looked
+# like a clean working tree until something tried to commit.
+#
+# On this branch the backend IS the source. Its build output is excluded by
+# duka_pos_backend/.gitignore (node_modules, dist, .env, logs), which is the
+# right layer for it.
 
 # Local agent tooling and vendored third-party skills — machine-local only,
 # never part of the project source. Provenance lives in
