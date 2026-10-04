@@ -42,18 +42,19 @@ jobs:
       && github.event.workflow_run.event == 'push'
     runs-on: ubuntu-24.04
     timeout-minutes: 10
-    defaults:
-      run:
-        # pubspec.yaml lives here, not at the repository root. Without this the
-        # job runs at the root and the very first read fails with
-        #   awk: fatal: cannot open file `pubspec.yaml'
-        # which is what the first live run of this workflow did. Matched to
-        # release.yml so both read the same file from the same place.
-        #
-        # git is not path-sensitive about refs, so the tag creation below is
-        # unaffected by running from a subdirectory.
-        working-directory: duka_pos_app
 
+    # Deliberately no job-level `defaults.run.working-directory`, even though
+    # pubspec.yaml lives in duka_pos_app/ rather than at the root.
+    #
+    # Setting it fixes the read and breaks the job, because the working directory
+    # applies to *every* `run:` step including the ones before `actions/checkout`
+    # has created the repository. The first live run did exactly that: the
+    # workflow failed in its opening step — a block of `echo` lines — with the
+    # directory not found, having never reached the read it was meant to fix.
+    #
+    # So the one step that needs the subdirectory names the file outright. A
+    # single explicit path is also easier to keep correct than a cwd every step
+    # silently depends on.
     steps:
       - name: Explain what is about to happen
         run: |
@@ -96,7 +97,9 @@ jobs:
           # workflow does not decide that a commit is a new product version; it
           # only decides which build of the version the human already declared to
           # publish next.
-          line="$(awk '/^version:/{print $2; exit}' pubspec.yaml)"
+          # duka_pos_app/ spelled out because this job runs at the repository
+          # root — see the note on working-directory above.
+          line="$(awk '/^version:/{print $2; exit}' duka_pos_app/pubspec.yaml)"
           if [ -z "$line" ]; then
             echo "::error::Could not read 'version:' from pubspec.yaml."
             exit 1
