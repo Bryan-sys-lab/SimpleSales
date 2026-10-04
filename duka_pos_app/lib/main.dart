@@ -7,8 +7,11 @@ import 'package:sqflite/sqflite.dart';
 import 'package:sqflite_common_ffi_web/sqflite_ffi_web.dart';
 import 'services/app_state.dart';
 import 'services/app_stage.dart';
+import 'app_brand.dart';
 import 'services/auto_sync_service.dart';
-import 'screens/get_started_screen.dart';
+import 'screens/splash_screen.dart';
+import 'screens/welcome_chooser_screen.dart';
+import 'screens/owner_setup_screen.dart';
 import 'screens/login_screen.dart';
 import 'screens/home_shell.dart';
 import 'screens/onboarding_screen.dart';
@@ -80,7 +83,7 @@ class DukaPosApp extends StatelessWidget {
     return ChangeNotifierProvider(
       create: (_) => AppState(),
       child: MaterialApp(
-        title: 'Duka POS',
+        title: SimplePosBrand.appName,
         debugShowCheckedModeBanner: false,
         theme: buildDukaTheme(),
         home: const RootRouter(),
@@ -107,6 +110,12 @@ class _RootRouterState extends State<RootRouter> {
   bool _loading = true;
   bool _dbFailed = false;
   bool _onboardingComplete = false;
+
+  /// Which door the chooser offered. Held here because the router, not the
+  /// chooser, decides what comes next, and keeping it here is what lets
+  /// [resolveAppStage] stay a pure function that a test can drive with no
+  /// widget tree at all.
+  AppChooserIntent _intent = AppChooserIntent.signIn;
 
   @override
   void initState() {
@@ -141,6 +150,7 @@ class _RootRouterState extends State<RootRouter> {
   @override
   Widget build(BuildContext context) {
     final state = context.watch<AppState>();
+    final shopName = state.owner?.shopName ?? '';
     final stage = resolveAppStage(
       isLoading: _loading,
       hasDatabaseFailure: _dbFailed,
@@ -148,14 +158,25 @@ class _RootRouterState extends State<RootRouter> {
       isSignedIn: state.isSignedIn,
       isAdmin: state.isAdmin,
       onboardingComplete: _onboardingComplete,
+      chooserIntent: _intent,
     );
 
     return switch (stage) {
-      AppStage.loading =>
-        const Scaffold(body: Center(child: CircularProgressIndicator())),
+      AppStage.loading => const SplashScreen(),
       AppStage.databaseFailed => const _DatabaseErrorScreen(),
-      AppStage.getStarted => const GetStartedScreen(),
-      AppStage.locked => const LoginScreen(),
+      AppStage.chooser => WelcomeChooserScreen(
+          shopName: shopName,
+          hasShop: state.owner != null,
+          intent: _intent,
+        ),
+      AppStage.signingIn => const LoginScreen(),
+      AppStage.settingUp => OwnerSetupScreen(
+          isAdditionalShop: _intent == AppChooserIntent.addShop,
+          carryOverFrom: _intent == AppChooserIntent.addShop ? state.owner : null,
+          onCancel: _intent == AppChooserIntent.addShop
+              ? () => setState(() => _intent = AppChooserIntent.signIn)
+              : null,
+        ),
       AppStage.onboarding => OnboardingScreen(
           onComplete: () => setState(() => _onboardingComplete = true)),
       AppStage.ready => const HomeShell(),

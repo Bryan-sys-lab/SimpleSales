@@ -3,8 +3,16 @@
     <!-- Theme applied to the Android Window while the process is starting when the OS's Dark Mode setting is off -->
     <style name="LaunchTheme" parent="@android:style/Theme.Light.NoTitleBar">
         <!-- Show a splash screen on the activity. Automatically removed when
-             the Flutter engine draws its first frame -->
+             the Flutter engine draws its first frame.
+
+             The window background is the brand ink rather than white: it is on
+             screen from the launcher tap until the first Flutter frame, and the
+             icon is ink, so anything lighter flashes. NormalTheme below keeps
+             ?android:colorBackground on purpose — the Flutter canvas that
+             replaces this window is light, so an ink window there would trade a
+             white flash for an ink one. -->
         <item name="android:windowBackground">@drawable/launch_background</item>
+        <item name="android:colorBackground">@color/brand_ink</item>
     </style>
     <!-- Theme applied to the Android Window as soon as the process has started.
          This theme determines the color of the Android Window while your

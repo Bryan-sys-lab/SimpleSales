@@ -3,8 +3,14 @@
     <!-- Theme applied to the Android Window while the process is starting when the OS's Dark Mode setting is on -->
     <style name="LaunchTheme" parent="@android:style/Theme.Black.NoTitleBar">
         <!-- Show a splash screen on the activity. Automatically removed when
-             the Flutter engine draws its first frame -->
+             the Flutter engine draws its first frame.
+
+             Same ink as the light variant. The brand ink is already dark, so
+             dark mode needs no separate splash colour and must not drift away
+             from the light one: an icon that changes colour depending on the
+             handset's theme looks like two different apps. -->
         <item name="android:windowBackground">@drawable/launch_background</item>
+        <item name="android:colorBackground">@color/brand_ink</item>
     </style>
     <!-- Theme applied to the Android Window as soon as the process has started.
          This theme determines the color of the Android Window while your

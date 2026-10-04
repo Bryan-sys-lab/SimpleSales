@@ -52,7 +52,7 @@ void main() {
           isAdmin: true,
           onboardingComplete: false,
         ),
-        AppStage.getStarted,
+        AppStage.settingUp,
       );
     });
 
@@ -66,7 +66,7 @@ void main() {
           isAdmin: true,
           onboardingComplete: true,
         ),
-        AppStage.locked,
+        AppStage.signingIn,
       );
     });
 
@@ -83,7 +83,7 @@ void main() {
           isAdmin: true,
           onboardingComplete: false,
         ),
-        AppStage.locked,
+        AppStage.signingIn,
         reason: 'sign-in must outrank the optional walkthrough',
       );
     });
@@ -138,7 +138,7 @@ void main() {
       );
 
       expect(beforeSignOut, AppStage.onboarding);
-      expect(afterSignOut, AppStage.locked);
+      expect(afterSignOut, AppStage.signingIn);
     });
 
     // The walkthrough's copy is written to whoever set the shop up ("the email
@@ -170,7 +170,7 @@ void main() {
           isAdmin: false,
           onboardingComplete: false,
         ),
-        AppStage.locked,
+        AppStage.signingIn,
       );
     });
 

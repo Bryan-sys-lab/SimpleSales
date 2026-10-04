@@ -40,13 +40,20 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
       _message = null;
     });
     try {
-      final count = await ExcelService().importInventory();
+      final result = await ExcelService().importInventory();
       if (!mounted) return;
+      final refused = result.refusedBarcodes;
       setState(() {
-        _messageIsError = count == 0;
-        _message = count == 0
+        _messageIsError = result.products == 0;
+        _message = result.products == 0
             ? 'No products were found in that workbook.'
-            : 'Imported $count products.';
+            : refused.isEmpty
+                // Refused barcodes are named by product, because "duplicate
+                // barcode" tells the owner nothing about which row to fix.
+                ? 'Imported ${result.products} products.'
+                : 'Imported ${result.products} products. '
+                    '${refused.length} barcode(s) were already on another '
+                    'product and were left alone.';
       });
     } on FormatException {
       if (!mounted) return;

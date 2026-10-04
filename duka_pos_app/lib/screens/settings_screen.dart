@@ -1,17 +1,29 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../db/database_helper.dart';
+import '../utils/money.dart';
 import '../models/models.dart';
 import '../services/auth_service.dart';
 import '../services/sync_service.dart';
 import '../services/excel_service.dart';
 import '../services/app_state.dart';
+import '../services/roles.dart';
+import '../app_brand.dart';
+import 'package:package_info_plus/package_info_plus.dart';
 import '../services/backend_service.dart';
 import '../services/auto_sync_service.dart';
 import '../services/encrypted_backup_service.dart';
 import '../services/workspace_service.dart';
+import '../services/printer/printer_config.dart';
+import '../services/printer/printer_service.dart';
+import '../services/printer/receipt_builder.dart';
+import '../services/printer/esc_pos_printer.dart';
+import '../services/printer/esc_pos_encoder.dart';
 import '../theme/app_theme.dart';
+import 'tax_settings_screen.dart';
 
 class SettingsScreen extends StatefulWidget {
   const SettingsScreen({super.key});
@@ -27,10 +39,18 @@ class _SettingsScreenState extends State<SettingsScreen> {
   String? _syncStatus;
   bool _verifyingIdentity = false;
   bool _mpesaEnabled = false;
-  bool _etimsEnabled = false;
   bool _backendLinked = false;
   bool _automaticBackupSync = false;
   bool _savingToggle = false;
+  PrinterConfig _printer = const PrinterConfig();
+  int _vatRatePercent = kDefaultVatRatePercent;
+  String _tillCode = '';
+  String _tin = '';
+
+  /// Reference count, not a flag: pairing, test printing and the eTIMS upload
+  /// can all overlap, and a second boolean would let two of them each claim to
+  /// be the only busy one.
+  int _printerBusyCount = 0;
 
   @override
   void initState() {
@@ -41,16 +61,202 @@ class _SettingsScreenState extends State<SettingsScreen> {
   Future<void> _load() async {
     final staff = await DatabaseHelper.instance.getStaff();
     final prefs = await SharedPreferences.getInstance();
+    final db = DatabaseHelper.instance;
+    final printer = await PrinterConfig.load();
+    final tillCode = await db.getTillCode();
+    final vatRate = await db.getVatRatePercent();
+    final tin = (await db.getSetting(DatabaseHelper.settingTin)) ?? '';
     if (!mounted) return;
     setState(() {
       _staff = staff;
       _mpesaEnabled = prefs.getBool('mpesa_enabled_local') ?? false;
-      _etimsEnabled = prefs.getBool('etims_enabled_local') ?? false;
       _automaticBackupSync =
           prefs.getBool('automatic_backup_sync_enabled') ?? false;
+      _printer = printer;
+      _tillCode = tillCode;
+      _vatRatePercent = vatRate;
+      _tin = tin;
     });
     _backendLinked = await BackendService.isBackendLinked;
-    if (mounted) setState(() {});
+    if (!mounted) return;
+    setState(() {});
+  }
+
+  bool get _printerBusy => _printerBusyCount > 0;
+
+  void _setPrinterBusy(bool value) {
+    if (!mounted) return;
+    setState(() {
+      _printerBusyCount = value ? _printerBusyCount + 1 : _printerBusyCount - 1;
+      if (_printerBusyCount < 0) _printerBusyCount = 0;
+    });
+  }
+
+  /// Explains a printer failure in terms the owner can act on.
+  static String _printerMessage(PrinterFailure failure) => switch (failure) {
+        PrinterFailure.permissionDenied =>
+          'Duka POS needs permission to use Bluetooth. Allow it in Settings, then try again.',
+        PrinterFailure.permissionPermanentlyDenied =>
+          'Bluetooth permission was turned off for Duka POS. Open the phone\'s app settings and allow Bluetooth.',
+        PrinterFailure.notPaired =>
+          'That printer is not paired with this phone. Pair it from the phone\'s Bluetooth settings first.',
+        PrinterFailure.unavailable =>
+          'Bluetooth is switched off on this phone, or it has no Bluetooth.',
+        PrinterFailure.connectFailed =>
+          'Could not reach the printer. Check it is switched on and in range, then try again.',
+        PrinterFailure.printFailed =>
+          'The printer connection dropped. Check the printer is on, then print again.',
+        PrinterFailure.disabled => 'Printing is switched off.',
+      };
+
+  Future<void> _chooseAndPairPrinter() async {
+    final printer = EscPosPrinter();
+    _setPrinterBusy(true);
+    try {
+      if (!await printer.isAvailable()) {
+        // Not "no printers found" — the radio itself is unusable. Saying so
+        // saves the owner scanning a list that cannot ever be populated.
+        if (!await printer.hasPermission()) {
+          final granted = await printer.requestPermission();
+          if (!granted) {
+            final permanently = await printer.isPermissionPermanentlyDenied();
+            _err(_printerMessage(permanently
+                ? PrinterFailure.permissionPermanentlyDenied
+                : PrinterFailure.permissionDenied));
+            return;
+          }
+        }
+        if (!await printer.isAvailable()) {
+          _err(_printerMessage(PrinterFailure.unavailable));
+          return;
+        }
+      }
+
+      final devices = await printer.pairedDevices();
+      if (!mounted) return;
+      if (devices.isEmpty) {
+        _err('No Bluetooth printers are paired with this phone. Pair one from '
+            'the phone\'s Bluetooth settings, then come back.');
+        return;
+      }
+      final chosen = await showDialog<PrinterDevice>(
+        context: context,
+        builder: (dialogContext) => SimpleDialog(
+          title: const Text('Choose printer'),
+          children: [
+            for (final device in devices)
+              SimpleDialogOption(
+                onPressed: () => Navigator.pop(dialogContext, device),
+                child: ListTile(
+                  contentPadding: EdgeInsets.zero,
+                  leading: const Icon(Icons.print_outlined),
+                  title: Text(device.label),
+                  subtitle: Text(device.address),
+                  trailing: _printer.macAddress == device.address
+                      ? const Icon(Icons.check)
+                      : null,
+                ),
+              ),
+          ],
+        ),
+      );
+      if (chosen == null || !mounted) return;
+
+      final paired = await printer.pair(chosen.address);
+      if (!mounted) return;
+      if (!paired && !await printer.isPaired(chosen.address)) {
+        _err('Pairing was cancelled. Pair the printer from the phone\'s '
+            'Bluetooth settings, then try again.');
+        return;
+      }
+
+      await _savePrinter(_printer.copyWith(
+        macAddress: chosen.address,
+        // Turning the shop on here rather than making the owner find a second
+        // switch: a printer they just paired is a printer they want used.
+        enabled: true,
+      ));
+      if (!mounted) return;
+      _err('${chosen.label} paired.');
+    } on PrinterException catch (error) {
+      _err(_printerMessage(error.failure));
+    } finally {
+      _setPrinterBusy(false);
+    }
+  }
+
+  /// A synthetic receipt, so pairing can be verified before the next customer.
+  ///
+  /// Uses the real builder and encoder, so what comes out of the printer is
+  /// byte-identical to a real receipt — a test print that only says "OK" proves
+  /// the link works but tells the owner nothing about the paper width or the
+  /// font their till will use all day.
+  Future<void> _testPrint() async {
+    if (!_printer.isConfigured) {
+      _err('Pair a printer first.');
+      return;
+    }
+    final state = context.read<AppState>();
+    _setPrinterBusy(true);
+    try {
+      final now = DateTime.now();
+      final items = [
+        SaleItem(
+          saleId: 0,
+          productId: 0,
+          productName: 'Test item',
+          qty: 2,
+          unitPrice: Money.fromMajor(50),
+          unitCost: Money.fromMajor(20),
+        ),
+      ];
+      final receipt = ReceiptInput(
+        shopName: state.owner?.shopName ?? 'Duka POS',
+        receiptNumber: 'TEST-000000',
+        issuedAt: now,
+        cashierName: 'Printer test',
+        cashierRole: 'Test',
+        items: items,
+        total: Money.fromMajor(100),
+        amountTendered: Money.fromMajor(100),
+        changeGiven: Money.zero,
+      );
+      final bytes = const EscPosEncoder().encode(
+        const ReceiptBuilder(columnBudget: k58mmColumnBudget).build(receipt),
+        columnBudget: _printer.paperWidth.columnBudget,
+      );
+      final printer = EscPosPrinter();
+      await printer.connect(_printer.macAddress);
+      await printer.send(bytes);
+      if (!mounted) return;
+      _err('Test receipt sent.');
+    } on PrinterException catch (error) {
+      _err(_printerMessage(error.failure));
+    } finally {
+      _setPrinterBusy(false);
+    }
+  }
+
+  Future<void> _savePrinter(PrinterConfig config) async {
+    await config.save();
+    if (!mounted) return;
+    setState(() => _printer = config);
+  }
+
+  /// Opens the dedicated tax screen.
+  Future<void> _openTaxSettings() async {
+    if (!context.read<AppState>().isAdmin) {
+      _err('Only the shop admin can change tax settings.');
+      return;
+    }
+    if (!mounted) return;
+    await Navigator.of(context).push(
+      MaterialPageRoute<void>(builder: (_) => const TaxSettingsScreen()),
+    );
+    if (!mounted) return;
+    // The screen can change the rate, the till code and the TIN; Settings shows
+    // all three in its summary line, so re-read rather than guess.
+    await _load();
   }
 
   void _err(String msg) {
@@ -192,21 +398,6 @@ class _SettingsScreenState extends State<SettingsScreen> {
     } catch (e) {
       _err(
           "Couldn't update M-Pesa setting — check your connection and try again.");
-    } finally {
-      if (mounted) setState(() => _savingToggle = false);
-    }
-  }
-
-  Future<void> _toggleEtims(bool value) async {
-    setState(() => _savingToggle = true);
-    try {
-      if (_backendLinked) await BackendService.setEtimsEnabled(value);
-      final prefs = await SharedPreferences.getInstance();
-      await prefs.setBool('etims_enabled_local', value);
-      if (mounted) setState(() => _etimsEnabled = value);
-    } catch (e) {
-      _err(
-          "Couldn't update eTIMS setting — check your connection and try again.");
     } finally {
       if (mounted) setState(() => _savingToggle = false);
     }
@@ -420,7 +611,24 @@ class _SettingsScreenState extends State<SettingsScreen> {
     }
   }
 
+  /// Adds a second shop to this device and drops the admin straight into it.
+  ///
+  /// This used to register a workspace key, drop the tenant link and switch —
+  /// and then stop. The new workspace had no owner row, so the router resolved
+  /// it as "no shop on this device" and landed on the landing page asking for
+  /// an admin to be created again, which is exactly what it looks like from the
+  /// owner's side: the app forgot them.
+  ///
+  /// The fix is not a redirect, it is finishing the job. The new shop gets a
+  /// real owner row carrying the current admin's identity *and their existing PIN
+  /// hash*, so the same four digits work and no re-authentication is needed.
   Future<void> _addShopOnThisDevice() async {
+    final previous = context.read<AppState>().owner;
+    if (previous == null) {
+      _err('Sign in as the shop admin before adding another shop.');
+      return;
+    }
+
     final name = TextEditingController();
     final shop = await showDialog<String>(
         context: context,
@@ -428,6 +636,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
               title: const Text('Add another shop'),
               content: TextField(
                   controller: name,
+                  autofocus: true,
                   decoration: const InputDecoration(labelText: 'Shop name'),
                   autofillHints: const [AutofillHints.organizationName]),
               actions: [
@@ -440,12 +649,49 @@ class _SettingsScreenState extends State<SettingsScreen> {
               ],
             ));
     name.dispose();
-    if (shop == null || shop.isEmpty) return;
+    if (shop == null || shop.isEmpty || !mounted) return;
+
     final key = 'local-${DateTime.now().microsecondsSinceEpoch}';
     await WorkspaceService.register(workspaceKey: key, shopName: shop);
     await (await SharedPreferences.getInstance()).remove('tenant_id');
     if (!mounted) return;
+
+    // Point the app at the new shop *first*, so the owner row is written into
+    // the new shop's database rather than the one being left behind.
     await context.read<AppState>().switchWorkspace(key);
+    if (!mounted) return;
+
+    try {
+      await DatabaseHelper.instance.createOwner(Owner(
+        id: 1,
+        name: previous.name,
+        // Carried, not retyped. The same person, the same PIN, every shop on
+        // this device.
+        pinHash: previous.pinHash,
+        email: previous.email,
+        shopName: shop,
+        createdAt: DateTime.now().toIso8601String(),
+      ));
+    } catch (e) {
+      _err("Couldn't create the shop. Check the phone has storage free, then try again.");
+      return;
+    }
+
+    // Online identity provisioning is opportunistic, exactly as on first-run
+    // setup: the shop is fully usable offline and a later attempt can link it.
+    try {
+      await BackendService.linkShopToBackend(
+          shopName: shop, ownerName: previous.name, email: previous.email);
+    } catch (_) {
+      // Deliberately swallowed. Losing the signal must not lose the shop.
+    }
+
+    if (!mounted) return;
+    await context.read<AppState>().loadOwner();
+    if (!mounted) return;
+    await context.read<AppState>().signInAsOwner();
+    if (!mounted) return;
+    _err('$shop is ready. Your admin account and PIN carried across.');
   }
 
   @override
@@ -543,28 +789,99 @@ class _SettingsScreenState extends State<SettingsScreen> {
           ),
         ])),
         const SizedBox(height: 24),
-        Text('Tax compliance', style: Theme.of(context).textTheme.titleMedium),
+        Text('Receipt printer', style: Theme.of(context).textTheme.titleMedium),
         Card(
-            child: SwitchListTile(
-          secondary: const Icon(Icons.receipt_long_outlined),
-          title: const Text('eTIMS record-keeping'),
-          subtitle: Text(_etimsEnabled
-              ? 'Included — sales are flagged for eTIMS follow-up. This does NOT yet submit invoices to KRA — see the note below.'
-              : 'Excluded. Turn on only as a reminder flag; this app is not yet KRA-eTIMS certified.'),
-          value: _etimsEnabled,
-          onChanged: _savingToggle ? null : _toggleEtims,
-        )),
-        if (_etimsEnabled)
+            child: Column(children: [
+          const ListTile(
+            leading: Icon(Icons.print_outlined),
+            title: Text('Bluetooth thermal printer'),
+            subtitle: Text(
+                'Pair the printer from this phone\'s Bluetooth settings first, then pair it here.'),
+          ),
+          if (_printer.macAddress.trim().isNotEmpty)
+            ListTile(
+              dense: true,
+              leading: const Icon(Icons.bluetooth_connected, size: 20),
+              title: Text(_printer.macAddress,
+                  style: const TextStyle(fontFamily: 'monospace')),
+              subtitle: Text('${_printer.paperWidth.mm}mm roll'),
+              trailing: TextButton(
+                onPressed: _printerBusy ? null : _chooseAndPairPrinter,
+                child: const Text('Change'),
+              ),
+            ),
+          SwitchListTile(
+            secondary: const Icon(Icons.power_settings_new),
+            title: const Text('Printing enabled'),
+            subtitle: Text(_printer.isConfigured
+                ? (_printer.enabled
+                    ? 'This till can print receipts.'
+                    : 'Paired, but switched off. Reprints still work.')
+                : 'Pair a printer to turn printing on.'),
+            value: _printer.enabled,
+            onChanged: !_printer.isConfigured
+                ? null
+                : (value) => _savePrinter(_printer.copyWith(enabled: value)),
+          ),
+          SwitchListTile(
+            secondary: const Icon(Icons.receipt),
+            title: const Text('Print after every sale'),
+            subtitle: const Text(
+                'Off by default, so a shop that hands over change first chooses when the paper comes out.'),
+            value: _printer.printAfterSale,
+            onChanged: _printer.isConfigured
+                ? (value) =>
+                    _savePrinter(_printer.copyWith(printAfterSale: value))
+                : null,
+          ),
           Padding(
-            padding: const EdgeInsets.only(top: 8, left: 4, right: 4),
-            child: Text(
-              'Important: this toggle does not connect to KRA. If this shop is VAT-registered, real tax '
-              'invoices must currently be issued through KRA\'s own eTIMS app alongside this one — see the '
-              'go-live checklist for what a real integration would require.',
-              style: TextStyle(
-                  fontSize: 12, color: Theme.of(context).colorScheme.error),
+            padding: const EdgeInsets.fromLTRB(16, 0, 16, 12),
+            child: Row(
+              children: [
+                Expanded(
+                  child: OutlinedButton.icon(
+                    onPressed:
+                        _printerBusy ? null : _chooseAndPairPrinter,
+                    icon: _printerBusy
+                        ? const SizedBox(
+                            width: 16,
+                            height: 16,
+                            child: CircularProgressIndicator(strokeWidth: 2))
+                        : const Icon(Icons.bluetooth_searching),
+                    label: Text(_printer.macAddress.isEmpty
+                        ? 'Pair a printer'
+                        : 'Pair another'),
+                  ),
+                ),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: OutlinedButton.icon(
+                    onPressed: _printerBusy || !_printer.isConfigured
+                        ? null
+                        : _testPrint,
+                    icon: const Icon(Icons.play_arrow),
+                    label: const Text('Test print'),
+                  ),
+                ),
+              ],
             ),
           ),
+        ])),
+        const SizedBox(height: 24),
+        // Tax configuration is now one screen rather than three tiles and two
+        // dialogs. It was reachable only behind an edit chevron on a card
+        // titled "Tax and receipts", which is how a VAT-registered shop ended up
+        // issuing at the default rate without ever having seen the control.
+        ListTile(
+          leading: const Icon(Icons.percent),
+          title: const Text('Tax settings'),
+          subtitle: Text(
+            'VAT $_vatRatePercent%${_tin.isEmpty ? '' : ' · TIN $_tin'}'
+            ' · receipts numbered $_tillCode-000001',
+          ),
+          trailing: const Icon(Icons.chevron_right),
+          onTap: _openTaxSettings,
+        ),
         const SizedBox(height: 24),
         Text('Sync — Google Sheets & Excel',
             style: Theme.of(context).textTheme.titleMedium),
@@ -646,10 +963,16 @@ class _SettingsScreenState extends State<SettingsScreen> {
               OutlinedButton(
                   onPressed: () async {
                     try {
-                      final n = await _excel.importInventory();
+                      final result = await _excel.importInventory();
                       if (!context.mounted) return;
-                      ScaffoldMessenger.of(context).showSnackBar(
-                          SnackBar(content: Text('Imported $n products')));
+                      final refused = result.refusedBarcodes;
+                      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+                        content: Text(refused.isEmpty
+                            ? 'Imported ${result.products} products'
+                            : 'Imported ${result.products} products. '
+                                '${refused.length} barcode(s) were already on '
+                                'another product: ${refused.entries.map((e) => '${e.key} (${e.value})').join(', ')}'),
+                      ));
                     } on FormatException {
                       if (!context.mounted) return;
                       ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
@@ -671,6 +994,70 @@ class _SettingsScreenState extends State<SettingsScreen> {
                 label: const Text('Erase local encrypted backups')),
           ]),
         )),
+        const SizedBox(height: 32),
+        const _AboutFooter(),
+      ],
+    );
+  }
+}
+
+/// Version, build, and attribution.
+///
+/// Last in the list and deliberately quiet. A merchant opening Settings is
+/// usually looking for a control, not to read who built the app — but a till
+/// that is out of date is worth telling, so the build number is on screen where
+/// a support conversation can start from it.
+class _AboutFooter extends StatefulWidget {
+  const _AboutFooter();
+
+  @override
+  State<_AboutFooter> createState() => _AboutFooterState();
+}
+
+class _AboutFooterState extends State<_AboutFooter> {
+  String _version = '';
+
+  @override
+  void initState() {
+    super.initState();
+    _read();
+  }
+
+  Future<void> _read() async {
+    try {
+      final info = await PackageInfo.fromPlatform();
+      if (!mounted) return;
+      setState(() => _version = '${info.version}+${info.buildNumber}');
+    } catch (_) {
+      // A till with no Play Store services installed has no package info. The
+      // footer still renders; it just says less.
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      children: [
+        const SizedBox(height: 8),
+        Row(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Text(
+              SimplePosBrand.appName,
+              style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w600),
+            ),
+            if (_version.isNotEmpty)
+              Text(
+                '  v$_version',
+                style: const TextStyle(fontSize: 13, color: DukaColors.mutedInk),
+              ),
+          ],
+        ),
+        const SizedBox(height: 2),
+        Text(
+          SimplePosBrand.poweredByTag,
+          style: const TextStyle(fontSize: 12, color: DukaColors.mutedInk),
+        ),
       ],
     );
   }
@@ -709,11 +1096,25 @@ class _StaffDialogState extends State<_StaffDialog> {
               decoration: const InputDecoration(labelText: 'Name'),
               autofillHints: const [AutofillHints.name]),
           DropdownButtonFormField<String>(
-              initialValue: _role,
+              initialValue: ShopRole.parse(_role).wire,
               decoration: const InputDecoration(labelText: 'Role'),
-              items: const [
-                DropdownMenuItem(value: 'cashier', child: Text('Cashier')),
-                DropdownMenuItem(value: 'manager', child: Text('Manager')),
+              items: [
+                // Built from ShopRole.assignable rather than a literal list, so
+                // a role added there cannot be forgotten here. Admin is
+                // excluded from that list on purpose: the owner already holds it,
+                // and it sits below as a separate, clearly-labelled choice so
+                // handing over full admin rights is deliberate rather than a
+                // mis-tap between two adjacent dropdown entries.
+                ...ShopRole.assignable.map(
+                  (role) => DropdownMenuItem(
+                    value: role.wire,
+                    child: Text(role.label),
+                  ),
+                ),
+                DropdownMenuItem(
+                  value: ShopRole.admin.wire,
+                  child: Text('${ShopRole.admin.label} (full rights)'),
+                ),
               ],
               onChanged: (value) {
                 if (value != null) setState(() => _role = value);

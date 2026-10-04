@@ -5,6 +5,9 @@ import '../db/database_helper.dart';
 import '../models/models.dart';
 import '../services/app_state.dart';
 import '../services/excel_service.dart';
+import '../services/printer/printer_config.dart';
+import '../services/printer/printer_service.dart';
+import '../services/printer/receipt_printer.dart';
 import '../utils/money.dart';
 
 class ReportsScreen extends StatefulWidget {
@@ -91,6 +94,59 @@ class _ReportsScreenState extends State<ReportsScreen> {
     await _excel.shareFile(file);
   }
 
+  /// Reprints the receipt for a past sale.
+  ///
+  /// Goes through the same [ReceiptPrinter] as print-after-sale, rendering the
+  /// *stored* sale rather than anything live — so a reprint is byte-identical
+  /// to the original except for nothing at all. In particular it does not go
+  /// anywhere near `recordSale`: reprinting must never decrement stock, and the
+  /// only way to be sure of that is for the code path to have no way to.
+  Future<void> _reprint(Sale sale) async {
+    final id = sale.id;
+    if (id == null) return;
+    // Read identity before the first await: everything past this point is a
+    // printer round-trip, and the screen can be popped in between.
+    final state = context.read<AppState>();
+    final config = await PrinterConfig.load();
+    if (!mounted) return;
+    if (!config.isConfigured) {
+      _toast('Printing is switched off. Pair a printer in Settings first.');
+      return;
+    }
+    _toast('Sending receipt to the printer…');
+    final result = await ReceiptPrinter().printSale(
+      saleId: id,
+      shopName: state.owner?.shopName ?? 'Duka POS',
+      staffRole: state.isOwnerSession ? 'Owner' : state.currentRole,
+      config: config,
+      vatRatePercent: await DatabaseHelper.instance.getVatRatePercent(),
+    );
+    if (!mounted) return;
+    if (result.printed) {
+      _toast('Receipt reprinted.');
+      return;
+    }
+    if (result.outcome == PrintOutcome.disabled) {
+      _toast('Printing is switched off.');
+      return;
+    }
+    _toast('Could not print. ${_printerAdvice(result)}');
+  }
+
+  static String _printerAdvice(PrintResult result) => switch (result.failure) {
+        PrinterFailure.notPaired =>
+          'Pair the printer from this phone\'s Bluetooth settings.',
+        PrinterFailure.permissionDenied ||
+        PrinterFailure.permissionPermanentlyDenied =>
+          'Allow Bluetooth for Duka POS in the phone\'s app settings.',
+        _ => 'Check the printer is switched on and in range, then try again.',
+      };
+
+  void _toast(String message) {
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(message)));
+  }
+
   @override
   Widget build(BuildContext context) {
     if (_loading) return const Center(child: CircularProgressIndicator());
@@ -165,6 +221,15 @@ class _ReportsScreenState extends State<ReportsScreen> {
                                 '${s.staffName} · ${formatMoney(s.total)}'),
                             subtitle: Text(
                                 '${DateFormat('MMM d, h:mm a').format(DateTime.parse(s.createdAt))} · ${s.paymentMethod}${!s.changeGiven.isNegative ? ' · change ${formatMoney(s.changeGiven)}' : ''}'),
+                            trailing: Semantics(
+                              button: true,
+                              label: 'Reprint the receipt for this sale',
+                              child: IconButton(
+                                icon: const Icon(Icons.print_outlined),
+                                tooltip: 'Reprint receipt',
+                                onPressed: () => _reprint(s),
+                              ),
+                            ),
                           ))
                       .toList())),
         ],

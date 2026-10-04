@@ -1,0 +1,25 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Adaptive launcher icon (API 26+).
+
+     Three layers, because Android 8+ hands the launcher a stack to composite
+     rather than one bitmap:
+
+       background   a flat ink colour. It is what shows through wherever the
+                    foreground is transparent, so a launcher that masks to a
+                    circle, a squircle or a pill all get the same solid fill.
+       foreground   the mark, drawn inside the central 66/108 safe zone. The
+                    launcher may crop to any shape, so nothing that matters is
+                    allowed near the edges.
+       monochrome   the same mark as a flat silhouette with no interior detail.
+                    Android 13+ tints it to the user's wallpaper palette, which
+                    is why it is a separate file rather than a recolour of the
+                    foreground: the wine screen would be flattened into
+                    whatever colour the user picked and stop being a screen.
+
+     The <monochrome> tag is ignored below API 33, which is the intended
+     behaviour rather than a compatibility problem. -->
+<adaptive-icon xmlns:android="http://schemas.android.com/apk/res/android">
+    <background android:drawable="@color/ic_launcher_background" />
+    <foreground android:drawable="@mipmap/ic_launcher_foreground" />
+    <monochrome android:drawable="@mipmap/ic_launcher_monochrome" />
+</adaptive-icon>

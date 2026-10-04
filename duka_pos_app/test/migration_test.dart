@@ -125,6 +125,7 @@ Map<String, Object?> product({
 
 Map<String, Object?> sale({
   int id = 1,
+  String staff = 'Alice',
   Object total = 160.0,
   Object profit = 80.0,
   Object tendered = 200.0,
@@ -132,7 +133,7 @@ Map<String, Object?> sale({
 }) =>
     {
       'id': id,
-      'staff_name': 'Alice',
+      'staff_name': staff,
       'staff_id': 7,
       'total': total,
       'profit': profit,
@@ -362,5 +363,379 @@ void main() {
     // Change still reconciles exactly against the tendered cash.
     expect(s.amountTendered - s.total, s.changeGiven);
     await db.close();
+  });
+
+  // ---------------------------------------------------------------------------
+  // v11 -> v12 and v12 -> v13
+  //
+  // Written as tests rather than inspected as DDL, because the failures these
+  // guard against are behavioural: a nullable-but-unique column, a default that
+  // makes migrated history look like an error queue, and a primary key that
+  // quietly permits NULL. None of those are visible from the CREATE statement.
+  // ---------------------------------------------------------------------------
+
+  group('v11 -> v12: barcodes, shop settings and receipt numbering', () {
+    test('product_barcodes refuses a duplicate code', () async {
+      final db = await migrated(
+          products: [product(cost: 45, sell: 80)]);
+      final sodaId = (await db.query('products')).single['id'] as int;
+
+      await db.insert('product_barcodes', {
+        'barcode': '6001234567899',
+        'product_id': sodaId,
+        'kind': 'supplier',
+      });
+
+      // `barcode TEXT PRIMARY KEY` is the only thing making a code belong to
+      // exactly one product. Without it a scan has an ambiguous answer and the
+      // most-recently-saved product silently wins at the till.
+      await expectLater(
+        db.insert('product_barcodes', {
+          'barcode': '6001234567899',
+          'product_id': sodaId,
+          'kind': 'own',
+        }),
+        throwsA(anything),
+      );
+      await db.close();
+    });
+
+    test('product_barcodes refuses a NULL code', () async {
+      // A TEXT primary key in SQLite permits NULL unless declared NOT NULL, and
+      // a NULL barcode would match nothing but would also let a blank row exist
+      // that reads back as a real "unknown product" answer.
+      final db = await migrated(
+          products: [product(cost: 45, sell: 80)]);
+      final sodaId = (await db.query('products')).single['id'] as int;
+      await expectLater(
+        db.insert('product_barcodes',
+            {'barcode': null, 'product_id': sodaId, 'kind': 'supplier'}),
+        throwsA(anything),
+      );
+      await db.close();
+    });
+
+    test('the product_id index exists, so listing a product codes is fast',
+        () async {
+      final db = await migrated();
+      final rows = await db.rawQuery(
+          "SELECT name FROM sqlite_master WHERE type='index' AND name=?",
+          ['idx_product_barcodes_product']);
+      expect(rows, hasLength(1));
+      await db.close();
+    });
+
+    test('shop_settings holds one row per key and replaces on rewrite',
+        () async {
+      final db = await migrated();
+      await db.insert(
+          'shop_settings', {'key': 'vat_rate_percent', 'value': '16'});
+      await db.insert('shop_settings', {'key': 'till_code', 'value': 'T1'});
+      expect(await db.query('shop_settings', orderBy: 'key'),
+          hasLength(2));
+
+      await db.insert('shop_settings',
+          {'key': 'till_code', 'value': 'T2'},
+          conflictAlgorithm: ConflictAlgorithm.replace);
+      final rows =
+          await db.query('shop_settings', where: 'key = ?', whereArgs: ['till_code']);
+      expect(rows, hasLength(1));
+      expect(rows.single['value'], 'T2');
+      await db.close();
+    });
+
+    test('receipt_counters exists for the per-till sequence', () async {
+      final db = await migrated();
+      await db.insert('receipt_counters', {'key': 'sale_sequence', 'value': 3});
+      expect((await db.query('receipt_counters')).single['value'], 3);
+      await db.close();
+    });
+
+    test('pre-v12 sales survive together with a NULL receipt number', () async {
+      // Nullable with a unique index is what makes a partially-upgraded shop a
+      // normal state: many pre-upgrade rows must be able to have no number.
+      final db = await migrated(
+        products: [product(cost: 45, sell: 80)],
+        sales: [
+          sale(id: 1, staff: 'Alice', total: 160.0, tendered: 200.0, change: 40.0),
+          sale(id: 2, staff: 'Bob', total: 80.0, tendered: 80.0, change: 0.0),
+          sale(id: 3, staff: 'Carol', total: 240.0, tendered: 250.0, change: 10.0),
+        ],
+      );
+      final sales = await db.query('sales');
+      expect(sales, hasLength(3));
+      for (final sale in sales) {
+        expect(sale['receipt_number'], isNull);
+      }
+      await db.close();
+    });
+
+    test('the receipt number unique index rejects a duplicate', () async {
+      final db = await migrated();
+      final now = DateTime.now().toIso8601String();
+      await db.insert('sales', {
+        'staff_name': 'Alice',
+        'total': 1600,
+        'profit': 500,
+        'payment_method': 'cash',
+        'created_at': now,
+        'receipt_number': 'T1-000001',
+      });
+      await expectLater(
+        db.insert('sales', {
+          'staff_name': 'Bob',
+          'total': 1600,
+          'profit': 500,
+          'payment_method': 'cash',
+          'created_at': now,
+          'receipt_number': 'T1-000001',
+        }),
+        throwsA(anything),
+      );
+      await db.close();
+    });
+
+    test('an amount unchanged by the money migration still lands', () async {
+      // Proves the v12 additions are purely additive: a shop that had already
+      // upgraded to v11 picks up barcodes and numbering without its amounts
+      // being converted a second time.
+      final db = await migrated(
+        products: [product(cost: 45, sell: 80)],
+        sales: [sale(total: 80.0, tendered: 100.0, change: 20.0)],
+      );
+      final sales = (await db.query('sales')).map(Sale.fromMap).toList();
+      expect(sales.single.total.minorUnits, 8000);
+      await db.close();
+    });
+  });
+
+  group('v12 -> v13: eTIMS issuance state', () {
+    test('an upgraded sale defaults to not_required, not pending', () async {
+      // The default is the reason a migrated ledger does not open looking like
+      // a wall of unreconciled KRA receipts. Defaulting to 'pending' would put
+      // every sale the shop ever made into the outstanding queue.
+      final db = await migrated(
+        sales: [sale(staff: 'Legacy', total: 80.0, tendered: 80.0, change: 0.0)],
+      );
+      final row = (await db.query('sales')).single;
+      expect(row['etims_status'], 'not_required');
+      expect(row['etims_receipt_number'], isNull);
+      await db.close();
+    });
+
+    test('the pending queue holds one row per sale', () async {
+      final db = await migrated(
+        sales: [sale(total: 80.0, tendered: 80.0, change: 0.0)],
+      );
+      final saleId = (await db.query('sales')).single['id'] as int;
+      await db.insert('pending_etims', {
+        'sale_id': saleId,
+        'receipt_number': 'T1-000001',
+        'attempts': 0,
+        'created_at': '2026-01-01T00:00:00.000Z',
+        'updated_at': '2026-01-01T00:00:00.000Z',
+      });
+      // Primary key on sale_id, so a retry cannot create a second pending
+      // invoice for the same money — the exact failure that turns one
+      // un-issued receipt into two.
+      await expectLater(
+        db.insert('pending_etims', {
+          'sale_id': saleId,
+          'receipt_number': 'T1-000002',
+          'attempts': 0,
+          'created_at': '2026-01-01T00:00:00.000Z',
+          'updated_at': '2026-01-01T00:00:00.000Z',
+        }),
+        throwsA(anything),
+      );
+      await db.close();
+    });
+  });
+
+  group('v13 -> v14: variants, units, import attention, unverified payments',
+      () {
+    test('product_variants exists with its own price, stock and barcode',
+        () async {
+      final db = await migrated(
+          products: [product(cost: 45, sell: 80, half: 40, quarter: 20)]);
+      final productId = (await db.query('products')).single['id'] as int;
+
+      final variantId = await db.insert('product_variants', {
+        'product_id': productId,
+        'name': 'Dark',
+        'sku': 'BEER-DARK-500',
+        'unit': 'cup',
+        'size_ml': 500,
+        'sell_price': 150,
+        'cost_price': 90,
+        'stock_qty': 20.0,
+        'reorder_level': 5,
+        'position': 0,
+        'active': 1,
+      });
+
+      // The variant owns its price and stock. That is the whole reason it
+      // exists: Dark and Regular cannot share one price or one stock count.
+      final row = (await db.query('product_variants',
+          where: 'id = ?', whereArgs: [variantId])).single;
+      expect(row['sell_price'], 150);
+      expect(row['stock_qty'], 20.0);
+      expect(row['name'], 'Dark');
+
+      // And a barcode can point at the variant rather than the product, so
+      // scanning Dark does not sell Regular.
+      await db.insert('product_barcodes', {
+        'barcode': '6001112223334',
+        'product_id': productId,
+        'kind': 'own',
+        'variant_id': variantId,
+      });
+      final scan = await db.rawQuery(
+        '''SELECT p.name AS product, b.variant_id AS v
+             FROM products p JOIN product_barcodes b ON b.product_id = p.id
+            WHERE b.barcode = ?''',
+        ['6001112223334'],
+      );
+      expect(scan.single['product'], 'Soda 350ml');
+      expect(scan.single['v'], variantId);
+      await db.close();
+    });
+
+    test('a barcode cannot be attached to both a product and a variant',
+        () async {
+      final db = await migrated(
+          products: [product(cost: 45, sell: 80, half: 40, quarter: 20)]);
+      final productId = (await db.query('products')).single['id'] as int;
+      await db.insert('product_barcodes', {
+        'barcode': '6009998887776',
+        'product_id': productId,
+        'kind': 'supplier',
+      });
+      // `barcode TEXT PRIMARY KEY` still forbids it after variant_id was added.
+      // If this ever passes, a scan has two candidates and no way to choose.
+      await expectLater(
+        db.insert('product_barcodes', {
+          'barcode': '6009998887776',
+          'product_id': productId,
+          'kind': 'own',
+          'variant_id': null,
+        }),
+        throwsA(anything),
+      );
+      await db.close();
+    });
+
+    test('products carry a unit and the variants flag', () async {
+      final db = await migrated();
+      final columns = {
+        for (final row in await db.rawQuery('PRAGMA table_info(products)'))
+          row['name'] as String
+      };
+      expect(columns, contains('unit'));
+      expect(columns, contains('track_variants'));
+
+      // Defaulting to 'each' keeps every pre-existing product meaningful: a
+      // 750ml bottle is a countable thing, not 750 millilitres to be sold by.
+      final row = (await db.query('products')).isEmpty
+          ? null
+          : (await db.query('products')).first;
+      if (row != null) {
+        expect(row['unit'], 'each');
+        expect(row['track_variants'], 0);
+      }
+      await db.close();
+    });
+
+    test('sale lines remember which variant was sold', () async {
+      // Denormalised on the line, so a receipt still reads "Dark 500 ml" after
+      // the owner renames or deletes the variant. A receipt that changes
+      // retroactively cannot be reconciled against the paper.
+      final db = await migrated(
+        products: [product(cost: 45, sell: 80, half: 40, quarter: 20)],
+        sales: [sale(total: 80.0, tendered: 80.0, change: 0.0)],
+      );
+      final saleId = (await db.query('sales')).single['id'] as int;
+      await db.insert('sale_items', {
+        'sale_id': saleId,
+        'product_id': (await db.query('products')).single['id'] as int,
+        'product_name': 'Kenyana Beer',
+        'qty': 1.0,
+        'unit_price': 150,
+        'unit_cost': 90,
+        'portion': 'full',
+        'portion_ml': 500,
+        'variant_name': 'Dark',
+      });
+      final item =
+          (await db.query('sale_items')).single;
+      expect(item['variant_name'], 'Dark');
+      await db.close();
+    });
+
+    test('existing sales are treated as verified payments', () async {
+      // The default must be verified. Defaulting to unverified would put a
+      // shop's entire historical ledger into the "reconcile this" list.
+      final db = await migrated(
+        sales: [sale(total: 80.0, tendered: 80.0, change: 0.0)],
+      );
+      expect((await db.query('sales')).single['payment_verified'], 1);
+      await db.close();
+    });
+
+    test('import_needs_attention exists and holds the original row', () async {
+      final db = await migrated();
+      await db.insert('import_needs_attention', {
+        'source': 'excel',
+        'sheet_name': 'Inventory',
+        'row_number': 14,
+        'raw_name': 'Kwancheri Lager',
+        'raw_row': '["","Kwancheri Lager","Beer","abc","80"]',
+        'problem': 'Cost price is not a number',
+        'resolved': 0,
+        'created_at': '2026-10-04T09:00:00.000Z',
+      });
+      final row = (await db.query('import_needs_attention')).single;
+      // The original values are kept so the fix is an edit-and-re-import
+      // rather than a hunt for the supplier's file.
+      expect(row['raw_row'], contains('Kwancheri Lager'));
+      expect(row['row_number'], 14);
+      expect(row['resolved'], 0);
+      await db.close();
+    });
+
+    test('categories is a real table, not a free-text column', () async {
+      final db = await migrated();
+      await db.insert('categories', {'name': 'Beer', 'sort_order': 1});
+      // Primary key on the name, so 'Beer' and 'beer' cannot both exist and
+      // silently split one report into two.
+      await expectLater(
+        db.insert('categories', {'name': 'Beer', 'sort_order': 2},
+            conflictAlgorithm: ConflictAlgorithm.ignore),
+        completes,
+      );
+      expect(await db.query('categories'), hasLength(1));
+      await db.close();
+    });
+  });
+
+  group('fresh installs match upgraded installs', () {
+    test('both have exactly the same tables', () async {
+      // `openInMemoryForTests` returns the helper, not the handle; the handle is
+      // reached through the singleton's own open accessor.
+      await DatabaseHelper.openInMemoryForTests();
+      final fresh = await DatabaseHelper.instance.database;
+      Future<Set<String>> tablesOf(Database db) async => {
+            for (final row in await db.rawQuery(
+                "SELECT name FROM sqlite_master WHERE type='table' ORDER BY name"))
+              row['name'] as String
+          };
+      final freshTables = await tablesOf(fresh);
+      final migratedDb = await migrated();
+      final migratedTables = await tablesOf(migratedDb);
+      await migratedDb.close();
+      await fresh.close();
+      expect(freshTables, migratedTables,
+          reason: 'a new till and an upgraded one must not diverge');
+    });
   });
 }

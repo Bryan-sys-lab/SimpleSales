@@ -96,6 +96,39 @@ class Money implements Comparable<Money> {
 Money sumMoney(Iterable<Money> values) =>
     values.fold(Money.zero, (total, value) => total + value);
 
+/// The VAT *contained inside* a VAT-inclusive amount.
+///
+/// Prices in this app include VAT, so the tax is extracted, never added:
+/// `net = gross / (1 + rate)` and `vat = gross - net`. With money already in
+/// integer minor units and the rate in whole percent, `gross * rate / (100 +
+/// rate)` is exact rational arithmetic and the only rounding is the single
+/// quantisation to a whole cent.
+///
+/// Lives here, next to [sumMoney], rather than in the receipt builder: both the
+/// printed receipt and the eTIMS payload quote this figure, and two copies of
+/// one rounding rule is exactly how a printed VAT line and a filed VAT line
+/// come to differ by a cent.
+///
+/// A [ratePercent] of zero means exempt and yields zero, not a division by
+/// something derived from zero.
+Money vatComponentOf(Money vatInclusive, {required int ratePercent}) {
+  if (ratePercent == 0 || vatInclusive.minorUnits == 0) return Money.zero;
+  final numerator = vatInclusive.minorUnits * ratePercent;
+  final denominator = 100 + ratePercent;
+  if (numerator < 0) {
+    return Money.fromMinor(-_divideRoundHalfUp(-numerator, denominator));
+  }
+  return Money.fromMinor(_divideRoundHalfUp(numerator, denominator));
+}
+
+/// `numerator / denominator` rounded half up, in integers only.
+///
+/// `((n * 2) + d) ~/ (d * 2)` is `floor(n/d + 1/2)`, which is round-half-up for
+/// a non-negative ratio and needs no floating point to express.
+int _divideRoundHalfUp(int numerator, int denominator) {
+  return ((numerator * 2) + denominator) ~/ (denominator * 2);
+}
+
 /// Quantises a raw major-unit figure. Retained for the places that still hold a
 /// plain `double` mid-edit (spreadsheet cells, legacy columns during migration).
 double roundMoney(num amount) {

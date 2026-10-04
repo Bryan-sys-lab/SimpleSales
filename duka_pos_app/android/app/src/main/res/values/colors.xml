@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Brand colours that Android needs as resources.
+
+     These deliberately mirror DukaColors in lib/theme/app_theme.dart. The
+     platform side cannot read a Dart constant, so this is the one place the
+     value is duplicated: keep it in step with the theme, and re-run
+     assets/branding/generate_launcher_icon.py if you change it. -->
+<resources>
+    <!-- DukaColors.ink — near-black, warm. -->
+    <color name="brand_ink">#251A1D</color>
+
+    <!-- The adaptive icon's background layer. Matches the splash so the icon
+         and the startup window are the same colour and the app does not
+         visibly re-tint between them. -->
+    <color name="ic_launcher_background">#251A1D</color>
+</resources>

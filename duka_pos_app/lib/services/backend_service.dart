@@ -3,6 +3,7 @@ import 'package:dio/dio.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../db/database_helper.dart';
 import '../models/models.dart';
+import 'etims/etims_service.dart';
 import 'oidc_service.dart';
 import 'workspace_service.dart';
 
@@ -163,6 +164,103 @@ class BackendService {
 
     await _dio.patch('$backendUrl/tenant/settings', data: {
       'etimsEnabled': enabled,
+    });
+  }
+
+  // ---------------- eTIMS ----------------
+
+  /// Asks the backend to issue a KRA receipt for one sale.
+  ///
+  /// Called from the pending queue rather than from the checkout path, and that
+  /// placement is the whole design: the customer has already paid and the sale
+  /// is already committed, so a KRA outage here delays an invoice and nothing
+  /// else. Issuing inline would mean an unreachable tax authority can stop a
+  /// shop taking money.
+  ///
+  /// Amounts go over the wire as integer minor units, matching how they are
+  /// stored. The backend contract predates the move to minor units and speaks
+  /// major units for catalogue prices, so every figure here is converted
+  /// explicitly rather than relying on the wire shape — sending a `Money`
+  /// object would serialise as the text "Money(4050 minor units)".
+  static Future<EtimsIssueResult> issueEtimsReceipt(
+    Map<String, dynamic> payload, {
+    String? deviceId,
+  }) async {
+    await ensureInitialized();
+    final tid = await tenantId;
+    if (tid == null) {
+      // Not linked. This is a configuration problem, not a transient one, so
+      // it is surfaced as permanent and the till stops retrying it.
+      throw const EtimsRejectedException(
+          'This shop is not linked to the backend, so receipts cannot be issued.');
+    }
+
+    final response = await _dio.post(
+      '$backendUrl/etims/receipts',
+      data: {...payload, if (deviceId != null) 'device_id': deviceId},
+    );
+    final data = response.data as Map<String, dynamic>? ?? const {};
+    final receiptNumber = data['kra_receipt_number'];
+    if (receiptNumber is! String || receiptNumber.trim().isEmpty) {
+      throw StateError('The backend returned no KRA receipt number');
+    }
+    return EtimsIssueResult(
+      kraReceiptNumber: receiptNumber.trim(),
+      verificationUrl: data['verification_url'] as String?,
+      qrPayload: data['qr_payload'] as String?,
+      status: data['status'] as String?,
+    );
+  }
+
+  /// How many receipts are still waiting to be issued.
+  static Future<EtimsQueueStatus> getEtimsQueueStatus() async {
+    await ensureInitialized();
+    final response = await _dio.get('$backendUrl/etims/status');
+    final data = response.data as Map<String, dynamic>? ?? const {};
+    return EtimsQueueStatus(
+      configured: data['configured'] == true,
+      pending: (data['pending_upload'] as num?)?.toInt() ?? 0,
+      rejected: (data['rejected'] as num?)?.toInt() ?? 0,
+      deviceStatus: data['device_status'] as String?,
+      tin: data['tin'] as String?,
+    );
+  }
+
+  /// The Z-report for a day, as KRA requires it at close of trade.
+  ///
+  /// Generated server-side because it has to reconcile against the receipts
+  /// KRA has actually accepted, which the till cannot know.
+  static Future<Map<String, dynamic>> getEtimsZReport({
+    DateTime? date,
+  }) async {
+    await ensureInitialized();
+    final response = await _dio.get('$backendUrl/etims/z-report', queryParameters: {
+      if (date != null) 'date': _isoDate(date),
+    });
+    return (response.data as Map<String, dynamic>?) ?? const {};
+  }
+
+  static String _isoDate(DateTime value) =>
+      '${value.year.toString().padLeft(4, '0')}-'
+      '${value.month.toString().padLeft(2, '0')}-'
+      '${value.day.toString().padLeft(2, '0')}';
+
+  /// Pushes the till's TIN and device registration to the backend.
+  ///
+  /// The TIN is legally significant and is never accepted from a client without
+  /// the backend confirming it against KRA's registration.
+  static Future<void> registerEtimsDevice({
+    required String tin,
+    required String deviceId,
+    String? deviceName,
+  }) async {
+    await ensureInitialized();
+    final tid = await tenantId;
+    if (tid == null) throw StateError('Shop is not linked to backend');
+    await _dio.post('$backendUrl/etims/device', data: {
+      'tin': tin,
+      'device_id': deviceId,
+      if (deviceName != null && deviceName.isNotEmpty) 'device_name': deviceName,
     });
   }
 
@@ -395,3 +493,51 @@ class BackendService {
 }
 
 enum PaymentOutcome { success, failed, timedOut }
+
+/// What the backend returned for an issued tax receipt.
+class EtimsIssueResult {
+  const EtimsIssueResult({
+    required this.kraReceiptNumber,
+    this.verificationUrl,
+    this.qrPayload,
+    this.status,
+  });
+
+  /// KRA's own receipt number. This is the number an auditor asks for, and it
+  /// is *not* the till's own `receipt_number` — the two are deliberately
+  /// independent so a KRA-side gap cannot renumber what the customer was
+  /// already handed.
+  final String kraReceiptNumber;
+
+  /// The page a customer scans to verify the receipt against KRA.
+  final String? verificationUrl;
+
+  /// The exact string encoded in the receipt's QR code.
+  ///
+  /// Preferred over [verificationUrl] for the QR because KRA's verification
+  /// page expects specific parameters; encoding a URL built locally is how a
+  /// receipt ends up with a QR that scans to a 404.
+  final String? qrPayload;
+
+  final String? status;
+}
+
+/// The shop's eTIMS posture, for the settings screen.
+class EtimsQueueStatus {
+  const EtimsQueueStatus({
+    required this.configured,
+    required this.pending,
+    required this.rejected,
+    this.deviceStatus,
+    this.tin,
+  });
+
+  /// Whether the shop has a TIN and a registered device, without which no
+  /// receipt can be issued at all.
+  final bool configured;
+
+  final int pending;
+  final int rejected;
+  final String? deviceStatus;
+  final String? tin;
+}

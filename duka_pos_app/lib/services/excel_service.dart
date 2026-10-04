@@ -4,9 +4,14 @@ import 'package:path_provider/path_provider.dart';
 import 'package:share_plus/share_plus.dart';
 import 'package:file_picker/file_picker.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:flutter/foundation.dart';
 import '../db/database_helper.dart';
 import '../models/models.dart';
 import 'encrypted_backup_service.dart';
+import 'import_row_parser.dart';
+import 'inventory_importer.dart';
+
+export 'inventory_importer.dart' show InventoryImportResult;
 
 const _lastBackupKey = 'last_backup_at';
 
@@ -60,16 +65,65 @@ Future<void> recordAutomaticBackupWritten(String path) async {
 class ExcelService {
   final _db = DatabaseHelper.instance;
 
+  /// Tabs this importer knows how to read. Anything else in the workbook is
+  /// reported as skipped rather than silently ignored: a `Sales` tab the owner
+  /// expected to come in is worth saying out loud.
+  static const _readableSheetNames = {'inventory', 'barcodes', 'variants'};
+
+  /// Exports the catalogue.
+  ///
+  /// Writes three sheets: `Inventory`, one row per product carrying its *primary*
+  /// barcode; `Barcodes`, one row per additional code; and `Variants`, one row
+  /// per sellable version. One product can no longer hold all of its codes in a
+  /// single column, and inventing a delimiter-joined "primary|secondary|tertiary"
+  /// column would break every existing importer and any spreadsheet formula
+  /// reading the file.
   Future<File> exportInventory() async {
     final products = await _db.getProducts(activeOnly: false);
+    final barcodes = await _db.getAllBarcodes();
+    final variants = await _db.getAllVariants();
+
+    // A product's primary code is the first one it owns. Stable by insertion
+    // order so a re-export does not reshuffle which code is "primary".
+    final primaryByProduct = <int, String>{};
+    final extra = <ProductBarcode>[];
+    for (final code in barcodes) {
+      if (primaryByProduct.containsKey(code.productId)) {
+        extra.add(code);
+      } else {
+        primaryByProduct[code.productId] = code.barcode;
+      }
+    }
+
     final book = xl.Excel.createExcel();
-    final sheet = book['Inventory'];
+    final sheet = book[inventorySheetName];
     sheet.appendRow(
         Product.sheetHeaders.map((h) => xl.TextCellValue(h)).toList());
     for (final p in products) {
-      sheet.appendRow(p.toSheetRow().map(_cell).toList());
+      sheet.appendRow(p
+          .toSheetRow(barcode: primaryByProduct[p.id])
+          .map(_cell)
+          .toList());
     }
     book.delete('Sheet1');
+
+    // Always written, even when empty, so an export → edit → re-import cycle
+    // has a stable shape. Importing a workbook with no such sheet is still
+    // supported, so a file from an older version imports unchanged.
+    final barcodeSheet = book[barcodesSheetName];
+    barcodeSheet.appendRow(
+        ProductBarcode.sheetHeaders.map((h) => xl.TextCellValue(h)).toList());
+    for (final code in extra) {
+      barcodeSheet.appendRow(code.toMap().values.map(_cell).toList());
+    }
+
+    final variantSheet = book[variantsSheetName];
+    variantSheet.appendRow(
+        ProductVariant.sheetHeaders.map((h) => xl.TextCellValue(h)).toList());
+    for (final variant in variants) {
+      variantSheet.appendRow(variantSheetRow(variant).map(_cell).toList());
+    }
+
     return _save(book, 'duka-inventory');
   }
 
@@ -150,7 +204,7 @@ class ExcelService {
   Future<int> importEncryptedInventory() async {
     final bytes = await EncryptedBackupService.pickAndDecrypt();
     if (bytes == null) return 0;
-    return _importInventoryBytes(bytes);
+    return (await importInventoryBytes(bytes)).imported;
   }
 
   static Future<DateTime?> lastBackupTime() async {
@@ -169,37 +223,108 @@ class ExcelService {
   /// upserts every row. Existing products are matched by id when present,
   /// otherwise treated as new — lets the owner bulk-edit prices in Excel
   /// and re-import rather than editing 40 products one at a time on a phone.
-  Future<int> importInventory() async {
+  Future<InventoryImportResult> importInventory() async {
     final files = await FilePicker.pickFiles(
         type: FileType.custom, allowedExtensions: ['xlsx']);
-    if (files.isEmpty) return 0;
+    if (files.isEmpty) {
+      return const InventoryImportResult(imported: 0);
+    }
     final selected = files.single;
     final bytes = await selected.readAsBytes();
     if (bytes.isEmpty) {
       throw const FormatException('The selected workbook could not be read');
     }
-    return _importInventoryBytes(bytes);
+    return importInventoryBytes(bytes);
   }
 
-  Future<int> _importInventoryBytes(List<int> bytes) async {
-    final book = xl.Excel.decodeBytes(bytes);
+  /// The whole import, from the bytes of a workbook.
+  ///
+  /// Public so the tests can drive a real .xlsx through the real code path
+  /// rather than a stand-in: the bugs this fixes — the sheet found by position,
+  /// the unconditional `skip(1)`, the count that reported parses as imports —
+  /// only exist in the code between the bytes and the database, and a test that
+  /// mocks that away is testing nothing.
+  @visibleForTesting
+  Future<InventoryImportResult> importInventoryBytes(List<int> bytes) async {
+    final xl.Excel book;
+    try {
+      book = xl.Excel.decodeBytes(bytes);
+    } catch (_) {
+      // A .csv renamed to .xlsx lands here, and "could not be opened as a
+      // workbook" is actionable where the decoder's own error is not.
+      throw const FormatException(
+        'That file could not be opened as a workbook. Open it in Excel and use '
+        '"Save As" to save a new .xlsx, then import that.',
+      );
+    }
     if (book.tables.isEmpty) {
       throw const FormatException('The workbook has no worksheets');
     }
-    final sheet = book.tables.values.first;
-    final imported = <Product>[];
-    for (final row in sheet.rows.skip(1)) {
-      if (row.isEmpty) continue;
-      // Single shared row parser/validator (Product.fromRow) so this importer,
-      // the Sheets importer and the product editor cannot drift apart.
-      final product = Product.fromRow(
-        row.map((cell) => cell?.value).toList(),
-        parseId: (value) =>
-            value == null ? null : int.tryParse(value.toString()),
-      );
-      if (product != null) imported.add(product);
+
+    final sheetName = _inventorySheetName(book);
+    final layout = SheetLayout.fromRawRows(_rawRows(book.tables[sheetName]!));
+    final importer = InventoryImporter(_db);
+    return importer.apply(
+      source: 'excel',
+      sheetName: sheetName,
+      rows: layout.rows,
+      columns: layout.columns,
+      barcodes: readBarcodeRows(_rawRowsOf(book, barcodesSheetName)),
+      variants: readVariantRows(_rawRowsOf(book, variantsSheetName)),
+      skippedSheets: _skippedSheets(book),
+    );
+  }
+
+  /// The inventory tab's name, matched case-insensitively, falling back to the
+  /// first tab.
+  ///
+  /// The fallback matters: a supplier's single-sheet price list is still a
+  /// price list, and refusing it because the tab is called "Price List" would be
+  /// a worse answer than trying it.
+  /// The tab holding the inventory.
+  ///
+  /// Falls back to the first tab that actually *has rows*, not merely the first
+  /// tab. `xl.Excel.createExcel()` creates a default sheet called `Sheet1`, and
+  /// a supplier's file routinely leaves it empty alongside the real data — so
+  /// "the first tab" is usually an empty sheet, and reading it imported nothing
+  /// while reporting no error at all.
+  static String _inventorySheetName(xl.Excel book) {
+    for (final name in book.tables.keys) {
+      if (name.trim().toLowerCase() == inventorySheetName.toLowerCase()) return name;
     }
-    await _db.upsertProducts(imported);
-    return imported.length;
+    for (final name in book.tables.keys) {
+      if (_rawRows(book.tables[name]!).isNotEmpty) return name;
+    }
+    // Nothing but empty sheets. Take the first so the caller reports a count of
+    // zero against a named tab rather than crashing on a missing one.
+    return book.tables.keys.first;
+  }
+
+  /// Tabs this import did not read, by name.
+  /// Tabs present in the file that this importer did not read.
+  ///
+  /// Only *other* tabs count as skipped. The sheet it actually read is not a
+  /// skipped sheet however unusual its name, so a workbook whose data is on a
+  /// tab called "Price List" is not reported as having skipped its own data.
+  /// [skipEmptySheets] drops `Sheet1`-style defaults, which are absent from the
+  /// file the owner actually sees and would otherwise be listed as ignored
+  /// content they never knew was there.
+  List<String> _skippedSheets(xl.Excel book, {bool skipEmpty = true}) {
+    final read = _inventorySheetName(book).trim().toLowerCase();
+    return book.tables.keys
+        .where((name) => name.trim().toLowerCase() != read)
+        .where((name) => !_readableSheetNames.contains(name.trim().toLowerCase()))
+        .where((name) => !skipEmpty || _rawRows(book.tables[name]!).isNotEmpty)
+        .toList();
+  }
+
+  /// Cell values of a sheet, one list per row, blanks preserved as null.
+  static List<List<dynamic>> _rawRows(xl.Sheet sheet) =>
+      sheet.rows.map((row) => row.map((cell) => cell?.value).toList()).toList();
+
+  /// [rawRows] for an optional tab, or an empty list when it is absent.
+  static List<List<dynamic>> _rawRowsOf(xl.Excel book, String name) {
+    final sheet = book.tables[name];
+    return sheet == null ? const [] : _rawRows(sheet);
   }
 }

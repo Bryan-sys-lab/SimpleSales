@@ -15,6 +15,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:sqflite_common_ffi/sqflite_ffi.dart';
 
 import 'package:duka_pos/db/database_helper.dart';
+import 'package:duka_pos/app_brand.dart';
 import 'package:duka_pos/main.dart';
 import 'package:duka_pos/theme/app_theme.dart';
 
@@ -36,7 +37,7 @@ void main() {
     await tester.pumpWidget(const DukaPosApp());
 
     final app = tester.widget<MaterialApp>(find.byType(MaterialApp));
-    expect(app.title, 'Duka POS');
+    expect(app.title, SimplePosBrand.appName);
     expect(app.debugShowCheckedModeBanner, isFalse);
     // A theme regression (unreadable till, lost contrast) is a POS-blocking
     // bug, so pin the brand tokens rather than letting them change silently.

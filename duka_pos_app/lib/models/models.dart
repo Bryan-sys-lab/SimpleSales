@@ -4,7 +4,9 @@
 /// one shape used everywhere avoids three slightly different versions drifting apart.
 library;
 
+import '../services/import_row_parser.dart';
 import '../utils/money.dart';
+import '../utils/units.dart';
 
 class Owner {
   final int id;
@@ -86,6 +88,18 @@ class Product {
   final double stockQty;
   final int reorderLevel;
   final int bottleMl;
+
+  /// What this product is measured in. A countable bottle is [ProductUnit.each]
+  /// with a [bottleMl] size; something sold by the cup is [ProductUnit.cup] with
+  /// the same size field holding the cup's volume.
+  final ProductUnit unit;
+
+  /// Whether this product is sold as variants.
+  ///
+  /// Separate from "has variants" because the two mean different things to the
+  /// owner: "has none" is a statement about the catalogue, "has not added them
+  /// yet" is a prompt on the product itself.
+  final bool trackVariants;
   final Money? halfPrice;
   final Money? quarterPrice;
   final String exciseStampBatch;
@@ -93,6 +107,14 @@ class Product {
   final String updatedAt;
   final String?
       remoteId; // Supabase products.id, once synced — see backend_service.dart
+
+  /// The primary barcode, carried through a spreadsheet import only.
+  ///
+  /// Deliberately *not* persisted on this model: barcodes live in their own
+  /// table with their own API (see [ProductBarcode]), and a product carrying a
+  /// barcode field again is how the two start disagreeing. This is the
+  /// transient hand-off between "read a row" and "write the codes".
+  final String? primaryBarcode;
 
   Product({
     this.id,
@@ -103,12 +125,15 @@ class Product {
     required this.stockQty,
     required this.reorderLevel,
     this.bottleMl = 750,
+    this.unit = ProductUnit.each,
+    this.trackVariants = false,
     this.halfPrice,
     this.quarterPrice,
     this.exciseStampBatch = '',
     this.active = true,
     required this.updatedAt,
     this.remoteId,
+    this.primaryBarcode,
   });
 
   /// Computed from minor units so the ratio does not inherit float error from
@@ -180,6 +205,8 @@ class Product {
         'stock_qty': stockQty,
         'reorder_level': reorderLevel,
         'bottle_ml': bottleMl,
+        'unit': unit.wire,
+        'track_variants': trackVariants ? 1 : 0,
         'half_price': halfPrice?.minorUnits,
         'quarter_price': quarterPrice?.minorUnits,
         'excise_stamp_batch': exciseStampBatch,
@@ -197,6 +224,12 @@ class Product {
         stockQty: (m['stock_qty'] as num).toDouble(),
         reorderLevel: m['reorder_level'],
         bottleMl: (m['bottle_ml'] as num?)?.toInt() ?? 750,
+        // Both are read here as well as written in `toMap`. A field written but
+        // not read back round-trips as its default, which is how a keg imported
+        // as 50 litres came back out of the database as "each, 750 ml" with no
+        // error anywhere.
+        unit: ProductUnit.parse(m['unit'] as String?),
+        trackVariants: ((m['track_variants'] as num?)?.toInt() ?? 0) == 1,
         halfPrice: (m['half_price'] as num?) == null
             ? null
             : Money.fromMinor((m['half_price'] as num).toInt()),
@@ -211,6 +244,16 @@ class Product {
 
   /// Row order used for both Excel export and Google Sheets export, so the
   /// two stay identical and a file exported from one can be read by the other.
+  ///
+  /// Thirteen columns. The twelfth is `barcode` — the product's *primary* code,
+  /// which is what nearly every shop needs day to day. A product can hold
+  /// several codes, but it cannot hold them in one column, so any additional
+  /// codes live on the separate `Barcodes` sheet (see [ProductBarcode]).
+  ///
+  /// The thirteenth is `unit`, appended rather than inserted so that every
+  /// twelve-column workbook already in the field still reads by position. It
+  /// exists because `bottle_ml` alone cannot say whether a row's "750" means
+  /// 750 millilitres in a bottle or 750 litres in a tank.
   static const sheetHeaders = [
     'id',
     'name',
@@ -222,13 +265,25 @@ class Product {
     'excise_stamp_batch',
     'bottle_ml',
     'half_price',
-    'quarter_price'
+    'quarter_price',
+    'barcode',
+    'unit'
   ];
+
+  /// How many columns [sheetHeaders] has. Exported so the Sheets importer's
+  /// range constant cannot drift from the header list — the previous design
+  /// hardcoded `Inventory!A1:K` next to an eleven-column header, and a twelfth
+  /// column added later would have been silently dropped by Google Sheets.
+  static const sheetColumnCount = 13;
+
+  /// A1 range covering the whole Inventory sheet, header row included.
+  static const sheetRange = 'Inventory!A1:M';
+
   /// Emitted in whole shillings, not cents: this row is read and edited by
   /// people in a spreadsheet, and a column of 4050 where a human expects 40.50
   /// would be silently misread as a price. The internal representation stays
   /// integer cents; the conversion happens only at this edge.
-  List<dynamic> toSheetRow() => [
+  List<dynamic> toSheetRow({String? barcode}) => [
         id,
         name,
         category,
@@ -237,9 +292,20 @@ class Product {
         stockQty,
         reorderLevel,
         exciseStampBatch,
-        bottleMl,
+        // Emitted *in the row's declared unit*, which is what the importer
+        // reads it back as. Writing millilitres into a row that declares
+        // `litre` means a 50-litre keg exported as 50000 and re-imported as
+        // 50 000 litres — a thousand-fold error that survives the round trip
+        // looking perfectly valid. The column name is historical; its unit is
+        // the `unit` column beside it.
+        unit == ProductUnit.litre
+            ? (bottleMl / millilitresPerLitre).toStringAsFixed(
+                bottleMl % millilitresPerLitre == 0 ? 0 : 3)
+            : bottleMl,
         halfPrice?.asMajor ?? '',
-        quarterPrice?.asMajor ?? ''
+        quarterPrice?.asMajor ?? '',
+        barcode ?? '',
+        unit.wire,
       ];
 
   /// Shared product-row rules.
@@ -251,7 +317,24 @@ class Product {
   /// portion prices, fractional reorder levels).
   static const maxNameLength = 120;
   static const maxCategoryLength = 80;
-  static const maxBottleMl = 10000;
+
+  /// Millilitres in one litre. Named rather than inlined because the same
+  /// wrong constant — 100, from cents-per-shilling — is the natural mistake
+  /// when converting volumes in a codebase that is otherwise all about money.
+  static const int millilitresPerLitre = 1000;
+
+  /// Largest serving size, in millilitres.
+  ///
+  /// Was 10 000, which was the largest *bottle* anyone sells — and it silently
+  /// rejected every keg, tank and drum the moment volumes arrived. A 50-litre
+  /// keg is 50 000 ml, so a Kenyan shop that buys beer in tanks could not import
+  /// its own stock list at all. 200 000 ml admits a 200-litre drum and still
+  /// refuses the kind of number that means a mis-parsed cell.
+  static const maxBottleMl = 200000;
+
+  /// Smallest serving size. A millilitre is not a selling unit, but a zero is a
+  /// missing value, and the two must not be conflated.
+  static const minBottleMl = 1;
 
   /// Validates an already-parsed product. Returns null when valid, otherwise a
   /// human-readable reason suitable for display.
@@ -283,8 +366,9 @@ class Product {
       return 'Stock quantity must be 0 or more';
     }
     if (reorderLevel < 0) return 'Reorder level must be 0 or more';
-    if (bottleMl < 1 || bottleMl > maxBottleMl) {
-      return 'Bottle size must be between 1 and $maxBottleMl ml';
+    if (bottleMl < minBottleMl || bottleMl > maxBottleMl) {
+      return 'Size must be between $minBottleMl and $maxBottleMl ml '
+          '(a 50-litre keg is 50000)';
     }
     if (halfPrice != null && !Money.isValidMajor(halfPrice)) {
       return 'Half price must be a valid amount of 0 or more';
@@ -295,63 +379,25 @@ class Product {
     return null;
   }
 
-  /// Parses one exported/sheet row using [validate]. Returns null when the row
-  /// is blank or malformed so importers can skip/report consistently.
+  /// Parses one exported/sheet row, returning null when the row is blank,
+  /// malformed or missing a required value.
+  ///
+  /// Never throws. It delegates to [ImportRowParser], the shared parser both
+  /// importers use, and returns only its product. A caller that wants to know
+  /// *why* a row failed — which is every importer, because a dropped row has to
+  /// reach the owner's needs-attention list — calls
+  /// [ImportRowParser.parseProductRow] directly and reads [ParsedRow.problem].
+  ///
+  /// The previous version threw a [FormatException] on the first invalid row,
+  /// which aborted the entire workbook: one bad cell in row 2 cost the owner
+  /// all 40 products in the file.
   static Product? fromRow(
     List<dynamic> row, {
     int? Function(dynamic)? parseId,
-  }) {
-    if (row.length < 7) return null;
-    final rawName = (row.length > 1 ? row[1]?.toString() ?? '' : '').trim();
-    if (rawName.isEmpty) return null;
-
-    double? num_(int i) {
-      if (i >= row.length) return null;
-      final text = row[i]?.toString().trim() ?? '';
-      if (text.isEmpty) return null;
-      return double.tryParse(text);
-    }
-
-    final cost = num_(3);
-    final price = num_(4);
-    final stock = num_(5);
-    final reorder = num_(6)?.round();
-    final bottleMl = (num_(8) ?? 750).round();
-    final half = num_(9);
-    final quarter = num_(10);
-    final category =
-        ((row.length > 2 ? row[2]?.toString() ?? '' : '').trim()).isEmpty
-            ? 'General'
-            : row[2].toString().trim();
-
-    final problem = validate(
-      name: rawName,
-      category: category,
-      costPrice: cost ?? double.nan,
-      sellPrice: price ?? double.nan,
-      stockQty: stock ?? double.nan,
-      reorderLevel: reorder ?? -1,
-      bottleMl: bottleMl,
-      halfPrice: half,
-      quarterPrice: quarter,
-    );
-    if (problem != null) throw FormatException(problem);
-
-    return Product(
-      id: row.isNotEmpty && parseId != null ? parseId(row[0]) : null,
-      name: rawName,
-      category: category,
-      costPrice: Money.fromMajor(cost!),
-      sellPrice: Money.fromMajor(price!),
-      stockQty: stock!.toDouble(),
-      reorderLevel: reorder!,
-      bottleMl: bottleMl,
-      halfPrice: half == null ? null : Money.fromMajor(half),
-      quarterPrice: quarter == null ? null : Money.fromMajor(quarter),
-      exciseStampBatch: row.length > 7 ? (row[7]?.toString() ?? '') : '',
-      updatedAt: DateTime.now().toIso8601String(),
-    );
-  }
+    SheetColumns? columns,
+  }) =>
+      ImportRowParser.parseProductRow(row, parseId: parseId, columns: columns)
+          .product;
 }
 
 class SaleItem {
@@ -495,6 +541,342 @@ class Sale {
             it.unitPrice.times(it.qty).asMajor
           ])
       .toList();
+}
+
+/// One barcode a product answers to.
+///
+/// A product carries *several* of these: the supplier's EAN, a second
+/// distributor's, one the owner assigns, and eventually a barcoded excise
+/// serial. They live in their own table rather than a column on `products`
+/// because `barcode` is the table's primary key, which is the only thing that
+/// makes `getProductByBarcode` deterministic by construction: a code can only
+/// ever belong to one product, so "which product does this scan mean?" has no
+/// ambiguous answer to resolve and therefore no duplicate policy to invent.
+class ProductBarcode {
+  final String barcode;
+  final int productId;
+
+  /// Informational only — every kind scans identically. It exists so a
+  /// duplicate found during an import can be *explained* ("this is the
+  /// distributor's code for Coke") instead of just rejected.
+  final String kind;
+
+  const ProductBarcode({
+    required this.barcode,
+    required this.productId,
+    this.kind = BarcodeKind.supplier,
+  });
+
+  Map<String, dynamic> toMap() => {
+        'barcode': barcode,
+        'product_id': productId,
+        'kind': kind,
+      };
+
+  factory ProductBarcode.fromMap(Map<String, dynamic> m) => ProductBarcode(
+        barcode: m['barcode'] as String,
+        productId: m['product_id'] as int,
+        kind: (m['kind'] as String?) ?? BarcodeKind.supplier,
+      );
+
+  /// Row order for the optional `Barcodes` sheet. Kept beside [Product] so the
+  /// export and import shapes cannot drift.
+  static const List<String> sheetHeaders = ['product_id', 'barcode', 'kind'];
+}
+
+/// One sellable version of a product.
+///
+/// Variants exist because "Kenyana Beer" is not one thing to a shop: it is dark
+/// and regular, and it is sold as a big cup and a small cup, and those four
+/// combinations have four different prices and four different stock counts.
+/// Modelling that as four products means the shared cost, category and supplier
+/// are copied four times and drift apart; modelling it as one product means
+/// they cannot be told apart at the till.
+///
+/// A variant owns its own price, stock and barcode. Those three are the whole
+/// reason it exists: everything else (category, cost basis, excise batch) is
+/// inherited from the parent.
+class ProductVariant {
+  final int? id;
+  final int productId;
+
+  /// What the seller calls it. "Dark", "Regular", "Big cup", "Small cup".
+  final String name;
+
+  /// Optional stock-keeping code. Unique within the product when present.
+  final String sku;
+
+  final ProductUnit unit;
+
+  /// Serving size in millilitres. 0 for a countable variant.
+  final int sizeMl;
+
+  final Money sellPrice;
+  final Money costPrice;
+  final double stockQty;
+  final int reorderLevel;
+
+  /// Display order. Explicit because "Dark before Regular" is a shop
+  /// preference, not alphabetical accident.
+  final int position;
+  final bool active;
+
+  const ProductVariant({
+    this.id,
+    required this.productId,
+    required this.name,
+    this.sku = '',
+    this.unit = ProductUnit.each,
+    this.sizeMl = 0,
+    required this.sellPrice,
+    this.costPrice = Money.zero,
+    this.stockQty = 0,
+    this.reorderLevel = 0,
+    this.position = 0,
+    this.active = true,
+  });
+
+  bool get isLow => stockQty <= reorderLevel;
+
+  /// How much this is worth at cost, for the dashboard's stock valuation.
+  Money get stockValue => costPrice.times(stockQty);
+
+  /// The label the till shows: "Dark 500 ml", or just "Dark".
+  String get label {
+    if (sizeMl <= 0) return name;
+    final unitText = Volume(sizeMl.toDouble()).display;
+    return '$name $unitText';
+  }
+
+  Map<String, dynamic> toMap() => {
+        if (id != null) 'id': id,
+        'product_id': productId,
+        'name': name,
+        'sku': sku,
+        'unit': unit.wire,
+        'size_ml': sizeMl,
+        'sell_price': sellPrice.minorUnits,
+        'cost_price': costPrice.minorUnits,
+        'stock_qty': stockQty,
+        'reorder_level': reorderLevel,
+        'position': position,
+        'active': active ? 1 : 0,
+      };
+
+  factory ProductVariant.fromMap(Map<String, dynamic> m) => ProductVariant(
+        id: m['id'] as int?,
+        productId: m['product_id'] as int,
+        name: (m['name'] as String? ?? '').trim(),
+        sku: (m['sku'] as String? ?? '').trim(),
+        unit: ProductUnit.parse(m['unit'] as String?),
+        sizeMl: (m['size_ml'] as num?)?.round() ?? 0,
+        sellPrice: Money.fromMinor((m['sell_price'] as num?)?.round() ?? 0),
+        costPrice: Money.fromMinor((m['cost_cost'] as num?)?.round() ??
+            (m['cost_price'] as num?)?.round() ??
+            0),
+        stockQty: ((m['stock_qty'] as num?) ?? 0).toDouble(),
+        reorderLevel: (m['reorder_level'] as num?)?.round() ?? 0,
+        position: (m['position'] as num?)?.round() ?? 0,
+        active: ((m['active'] as num?)?.toInt() ?? 1) == 1,
+      );
+
+  /// Row order for the optional `Variants` sheet. Beside the model so the
+  /// export and import shapes cannot drift apart, exactly as
+  /// [ProductBarcode.sheetHeaders] is.
+  static const List<String> sheetHeaders = [
+    'product_id',
+    'variant_id',
+    'name',
+    'sku',
+    'unit',
+    'size_ml',
+    'sell_price',
+    'cost_price',
+    'stock_qty',
+    'reorder_level',
+  ];
+
+  static const int sheetColumnCount = 10;
+}
+
+/// A row from an import that could not be written, kept for the owner to fix.
+///
+/// The alternative — dropping it, which is what every importer did — loses the
+/// row with no trace. Keeping the original values means the fix is a
+/// re-import of an edited row rather than a hunt for the supplier's workbook.
+class ImportNeedsAttention {
+  final int? id;
+
+  /// 'excel' | 'sheets' | 'backup'
+  final String source;
+  final String sheetName;
+
+  /// 1-based, as a spreadsheet shows it, so "row 4" means what the owner sees.
+  final int rowNumber;
+
+  final String rawName;
+
+  /// The original row, as JSON. Never interpreted again — kept so the owner can
+  /// see what was actually in their file.
+  final String rawRow;
+
+  /// One sentence, in the owner's language: what is wrong and what to do.
+  final String problem;
+
+  final bool resolved;
+  final DateTime createdAt;
+
+  const ImportNeedsAttention({
+    this.id,
+    required this.source,
+    this.sheetName = '',
+    required this.rowNumber,
+    this.rawName = '',
+    required this.rawRow,
+    required this.problem,
+    this.resolved = false,
+    required this.createdAt,
+  });
+
+  /// "Row 14 — Kwancheri Lager", for a list title.
+  String get label {
+    final name = rawName.trim().isEmpty ? '(no name)' : rawName.trim();
+    final where = rowNumber > 0 ? 'Row $rowNumber · $name' : name;
+    return where;
+  }
+
+  Map<String, dynamic> toMap() => {
+        if (id != null) 'id': id,
+        'source': source,
+        'sheet_name': sheetName,
+        'row_number': rowNumber,
+        'raw_name': rawName,
+        'raw_row': rawRow,
+        'problem': problem,
+        'resolved': resolved ? 1 : 0,
+        'created_at': createdAt.toIso8601String(),
+      };
+
+  factory ImportNeedsAttention.fromMap(Map<String, dynamic> m) =>
+      ImportNeedsAttention(
+        id: m['id'] as int?,
+        source: (m['source'] as String?) ?? 'excel',
+        sheetName: (m['sheet_name'] as String?) ?? '',
+        rowNumber: (m['row_number'] as num?)?.round() ?? 0,
+        rawName: (m['raw_name'] as String?) ?? '',
+        rawRow: (m['raw_row'] as String?) ?? '[]',
+        problem: (m['problem'] as String?) ?? 'Could not be imported',
+        resolved: ((m['resolved'] as num?)?.toInt() ?? 0) == 1,
+        createdAt: DateTime.tryParse(m['created_at'] as String? ?? '') ??
+            DateTime.fromMillisecondsSinceEpoch(0),
+      );
+}
+
+/// Category normalisation.
+///
+/// A real vocabulary rather than a free-text column, because three importers
+/// and the editor each defaulted to the literal string `'General'` and nothing
+/// reconciled spelling. A supplier file containing `Drinks`, `drinks` and
+/// `drinks ` produced three categories and three separate reports, which is
+/// worse than having no categories at all.
+class CategoryName {
+  const CategoryName._();
+
+  /// The fallback when a row genuinely has no category.
+  static const general = 'General';
+
+  /// Names a shop would recognise. Purely a seed list: the table is the source
+  /// of truth once populated, and an unknown name from an import is added to it
+  /// rather than being forced into one of these.
+  static const seeds = <String>[
+    general,
+    'Beer',
+    'Wines & Spirits',
+    'Soft Drinks',
+    'Water',
+    'Juice',
+    'Milk & Dairy',
+    'Groceries',
+    'Bakery',
+    'Produce',
+    'Meat & Fish',
+    'Household',
+    'Personal Care',
+    'Snacks',
+    'Cigarettes & Tobacco',
+    'Stationery',
+    'Other',
+  ];
+
+  /// Canonical form of a category from any source.
+  ///
+  /// Collapses whitespace and title-cases, so `  soft   drinks `, `Soft Drinks`
+  /// and `SOFT DRINKS` are one category. Acronyms are restored afterwards,
+  /// because title-casing would turn `eTIMS` into `Etims` and `PVC` into `Pvc`.
+  static String normalise(String? raw) {
+    final collapsed = (raw ?? '').replaceAll(RegExp(r'\s+'), ' ').trim();
+    if (collapsed.isEmpty) return general;
+
+    // "and" becomes "&" before anything else, so "wines and spirits" and the
+    // seeded "Wines & Spirits" are the same category. Without this a supplier's
+    // spreadsheet writes them as two, and the owner gets two half-empty
+    // categories and two reports that each look complete.
+    final ampersanded = collapsed.replaceAll(
+      RegExp(r'\s+and\s+', caseSensitive: false),
+      ' & ',
+    );
+
+    final words = ampersanded
+        .toLowerCase()
+        .split(' ')
+        .where((word) => word.isNotEmpty)
+        .map((word) {
+          if (_acronyms.contains(word.toUpperCase())) return word.toUpperCase();
+          if (word.length <= 2) return word.toUpperCase();
+          return word[0].toUpperCase() + word.substring(1);
+        });
+    final joined = words.join(' ');
+    return joined.isEmpty ? general : joined;
+  }
+
+  static const _acronyms = {'etims', 'mpesa', 'pvc', 'tvs', 'usb', 'sms'};
+}
+
+/// The recognised barcode kinds. A const class rather than an `enum` because
+/// the value is written straight to a TEXT column with no default and read back
+/// into a plain string, and an enum would invite a `.name` round-trip that the
+/// schema does not enforce.
+class BarcodeKind {
+  const BarcodeKind._();
+
+  /// The code a supplier printed on the product.
+  static const String supplier = 'supplier';
+
+  /// A code the shop owner assigned themselves.
+  static const String own = 'own';
+
+  /// A barcoded excise serial, tracked per stamp.
+  static const String excise = 'excise';
+
+  static const List<String> kinds = [supplier, own, excise];
+
+  /// Normalises free text from an import into a known kind.
+  ///
+  /// An unknown value becomes [supplier] rather than being rejected: the kind
+  /// is a label for explaining a duplicate, and refusing a whole import row
+  /// because a supplier's spreadsheet spelled it differently is a worse
+  /// outcome than an imprecise label.
+  static String parse(String? raw) {
+    final value = (raw ?? '').trim().toLowerCase();
+    return kinds.contains(value) ? value : supplier;
+  }
+
+  /// Human-readable label for the editor.
+  static String label(String kind) => switch (kind) {
+        own => 'Shop-assigned',
+        excise => 'Excise serial',
+        _ => 'Supplier',
+      };
 }
 
 class StockAdjustment {

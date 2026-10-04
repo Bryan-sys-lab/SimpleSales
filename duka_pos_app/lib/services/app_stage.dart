@@ -1,21 +1,30 @@
 /// Which top-level screen the app is showing.
 ///
-/// This is deliberately a pure function rather than a chain of `if` statements
-/// inside a widget: the rule that a cashier must always be able to reach the
-/// PIN pad is a security-relevant routing decision, and it needs to be
-/// assertable without booting an app or touching a database.
+/// Deliberately a pure function rather than a chain of `if` statements inside a
+/// widget: the rule that a cashier must always be able to reach the PIN pad is
+/// a security-relevant routing decision, and it needs to be assertable without
+/// booting an app or touching a database.
 enum AppStage {
-  /// Reading local state. Shows a progress indicator, never a blank frame.
+  /// Reading local state. The branded splash, never a blank frame.
   loading,
 
   /// The local database could not be opened. Offers restore/reinstall.
   databaseFailed,
 
-  /// No shop exists on this till yet. Offers till setup.
-  getStarted,
+  /// A shop exists on this till but nobody is signed in.
+  ///
+  /// This is the chooser: "Set up another shop" or "Sign in". It replaced a
+  /// flow where a till that had no shop went straight to owner setup, so a
+  /// cashier opening a brand-new device saw an admin's setup form — the screen
+  /// addressed to whoever is installing the app, on the screen every user is
+  /// forced through.
+  chooser,
 
-  /// A shop exists but nobody is signed in. The PIN pad.
-  locked,
+  /// Inside "sign in": the list of people and the PIN pad.
+  signingIn,
+
+  /// Inside "set up": creating the shop owner.
+  settingUp,
 
   /// Signed in, and this till has not yet seen the first-run walkthrough.
   onboarding,
@@ -26,9 +35,9 @@ enum AppStage {
 
 /// Resolves the current stage from the app's state.
 ///
-/// Two rules here are load-bearing:
+/// Three rules here are load-bearing:
 ///
-/// * [AppStage.locked] outranks [AppStage.onboarding]. The walkthrough is
+/// * [AppStage.signingIn] outranks [AppStage.onboarding]. The walkthrough is
 ///   guidance, not a gate. When it was checked first, a till whose walkthrough
 ///   had not been dismissed — a newly provisioned till, or one whose workspace
 ///   had been switched — stranded every user, cashier included, on the welcome
@@ -38,8 +47,13 @@ enum AppStage {
 /// * The walkthrough is admin-only. Its copy is addressed to whoever set the
 ///   shop up ("the email you entered", "add cashiers in Settings"), so showing
 ///   it to a cashier is both confusing and a small information leak about how
-///   the shop is configured. A cashier goes straight to the shop; the admin sees
+///   the shop is configured. A cashier goes straight to the shop; an admin sees
 ///   it once.
+///
+/// * [chooser] covers both "no shop yet" and "shop exists, nobody signed in".
+///   The chooser screen itself decides whether to offer shop setup, because that
+///   depends on whether a shop exists — a fact the router already knows but that
+///   is not part of the security-relevant ordering.
 AppStage resolveAppStage({
   required bool isLoading,
   required bool hasDatabaseFailure,
@@ -47,15 +61,44 @@ AppStage resolveAppStage({
   required bool isSignedIn,
   required bool isAdmin,
   required bool onboardingComplete,
+  AppChooserIntent chooserIntent = AppChooserIntent.signIn,
 }) {
   if (isLoading) return AppStage.loading;
   if (hasDatabaseFailure) return AppStage.databaseFailed;
 
-  // Without a shop there is no staff roster and no PIN hash to check against,
-  // so there is nothing to sign in to. This is till setup, not a login failure.
-  if (!hasShop) return AppStage.getStarted;
+  if (!isSignedIn) {
+    // No shop at all means there is nothing to sign in to — no roster, no PIN
+    // hash — so setup is the only honest destination.
+    if (!hasShop) return AppStage.settingUp;
+    switch (chooserIntent) {
+      case AppChooserIntent.signIn:
+        return AppStage.signingIn;
+      case AppChooserIntent.setUp:
+        return AppStage.settingUp;
+      case AppChooserIntent.addShop:
+        // Adding a *second* shop still needs a PIN for the new shop's owner
+        // unless one is carried across, so it reuses the setup screen.
+        return AppStage.settingUp;
+    }
+  }
 
-  if (!isSignedIn) return AppStage.locked;
   if (!onboardingComplete && isAdmin) return AppStage.onboarding;
   return AppStage.ready;
+}
+
+/// What the chooser is currently offering.
+///
+/// A field on the router rather than local state inside the chooser, because the
+/// router has to resolve which screen the chooser's choice leads to. Passing it
+/// as a parameter rather than reading it from a `ValueNotifier` inside a widget
+/// is what keeps [resolveAppStage] a pure function and therefore testable.
+enum AppChooserIntent {
+  /// "Sign in" — the default whenever a shop exists.
+  signIn,
+
+  /// "Set up this shop" — the owner creating the first account.
+  setUp,
+
+  /// "Add another shop" — from Settings, on a device that already has a shop.
+  addShop,
 }

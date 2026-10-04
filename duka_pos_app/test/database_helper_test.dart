@@ -676,11 +676,16 @@ void main() {
       expect(product.bottleMl, 750);
     });
 
-    test('fromRow rejects an invalid row the editor could not save', () {
+    test('fromRow returns null for a row the editor could not save', () {
+      // It used to *throw*, which aborted an entire import on the first bad
+      // cell — one unparseable price in row 2 cost the owner all 40 products.
+      // A null return lets the caller record the row as needing attention and
+      // carry on. Asserted here because the throwing behaviour is what the
+      // importers were written around.
       expect(
-        () => Product.fromRow(
+        Product.fromRow(
             [7, 'x' * 200, 'Wine', '100', '200', '3', '1', '', '750', '', '']),
-        throwsA(isA<FormatException>()),
+        isNull,
       );
     });
   });

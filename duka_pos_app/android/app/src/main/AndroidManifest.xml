@@ -1,15 +1,55 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android"
-    package="com.dukapos.duka_pos">
+    package="com.dukapos.simplepos">
     
     <uses-permission android:name="android.permission.INTERNET"/>
+
+    <!-- Camera barcode scanning (mobile_scanner / CameraX + ML Kit). Declared
+         maxSdkVersion-free because a till is expected to keep working on old
+         handsets; the runtime prompt is only ever raised when the owner
+         actually opens the scanner. -->
+    <uses-permission android:name="android.permission.CAMERA"/>
+    <!-- A camera is optional: a shop with a wedge scanner and no camera must
+         still install the app. -->
+    <uses-feature android:name="android.hardware.camera" android:required="false"/>
+    <uses-feature android:name="android.hardware.camera.autofocus" android:required="false"/>
+
+    <!-- Bluetooth thermal printing.
+         - BLUETOOTH_SCAN is what discovers paired printers on Android 12+.
+           `neverForLocation` is a promise that this app derives no location from
+           a Bluetooth result, which is true — it only reads a device address.
+         - BLUETOOTH_CONNECT is what opens the RFCOMM link, and on API 31+ it
+           is a *runtime* permission the owner has to grant.
+         - The legacy pair is capped at API 30 because it is silently ignored
+           above it, and declaring an ignored permission is noise.
+         - NFC is not requested: some receipt printers advertise NFC and a
+           blanket NFC permission on a till is a liability, not a feature. -->
+    <uses-permission android:name="android.permission.BLUETOOTH_SCAN"
+        android:usesPermissionFlags="neverForLocation"/>
+    <uses-permission android:name="android.permission.BLUETOOTH_CONNECT"/>
+    <uses-permission android:name="android.permission.BLUETOOTH"
+        android:maxSdkVersion="30"/>
+    <uses-permission android:name="android.permission.BLUETOOTH_ADMIN"
+        android:maxSdkVersion="30"/>
+    <uses-feature android:name="android.hardware.bluetooth" android:required="false"/>
     
     <application
-        android:label="Duka POS"
+        android:label="Simple POS"
         android:name="${applicationName}"
         android:icon="@mipmap/ic_launcher"
         android:allowBackup="false"
         android:fullBackupContent="false"
         android:dataExtractionRules="@xml/data_extraction_rules">
+
+        <!-- Package visibility, Android 11+.
+             Without this the Bluetooth discovery query returns an empty list
+             and a till with a perfectly good printer paired to it reports "no
+             printers found". This app only ever reads a bonded-device list, so
+             the query is for the local Bluetooth stack and nothing else. -->
+        <queries>
+            <intent>
+                <action android:name="android.bluetooth.device.action.BOND_STATE_CHANGED"/>
+            </intent>
+        </queries>
         
         <activity
             android:name=".MainActivity"

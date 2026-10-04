@@ -6,9 +6,17 @@ import 'package:flutter/semantics.dart';
 import 'package:provider/provider.dart';
 import '../services/app_state.dart';
 import '../services/backend_service.dart';
+import '../services/barcode/barcode_service.dart';
+import '../services/barcode/scan_input_service.dart';
+import '../services/etims/etims_service.dart';
+import '../services/printer/printer_config.dart';
+import '../services/printer/receipt_printer.dart';
+import '../widgets/camera_scan_screen.dart';
+import '../widgets/variant_catalogue.dart';
 import '../models/models.dart';
 import '../db/database_helper.dart';
 import '../utils/money.dart';
+import '../utils/units.dart';
 
 class SellScreen extends StatefulWidget {
   const SellScreen({super.key});
@@ -20,11 +28,35 @@ class SellScreen extends StatefulWidget {
 class _SellScreenState extends State<SellScreen> {
   final List<CartItem> _cart = [];
   final _searchController = TextEditingController();
+  final _searchFocus = FocusNode();
+  final _wedge = WedgeScannerBuffer();
+
+  /// Holds the screen-level key listener. Not autofocused and not traversable:
+  /// a wedge scanner types into whatever has focus, so this node exists only so
+  /// the screen sees keys while nothing else is focused.
+  final _wedgeFocus = FocusNode(skipTraversal: true);
   List<Product> _products = [];
+
+  /// Which products are sold as variants, and what those variants are.
+  ///
+  /// Loaded with the products, not per tile: a till asks the same two questions
+  /// about every product it draws, and a query per grid cell is a grid that
+  /// stutters exactly when the shop is busiest.
+  VariantCatalogue _variants = VariantCatalogue.empty;
+
   String _searchQuery = '';
   bool _loading = true;
   bool _processingPayment = false;
+  bool _portionSheetOpen = false;
+  bool _scanInFlight = false;
   String? _statusMessage;
+
+  /// Whether the search field currently holds focus, mirrored into state.
+  ///
+  /// Tracked rather than read from `FocusManager` at key time because the
+  /// focus listener fires *after* the key event that changed it, so the wedge
+  /// handler would still see the stale value for one keystroke.
+  bool _searchHasFocus = false;
 
   void _announceStatus(String message) {
     if (!mounted) return;
@@ -39,20 +71,36 @@ class _SellScreenState extends State<SellScreen> {
   @override
   void initState() {
     super.initState();
+    _searchFocus.addListener(() {
+      // The wedge buffer is disarmed while the search field holds focus, so a
+      // human typing a product name can never be read as a scan. Tracked as
+      // state rather than read from `FocusManager` at key time because the
+      // listener fires *after* the key event that cleared it.
+      final focused = _searchFocus.hasFocus;
+      if (focused == _searchHasFocus) return;
+      setState(() {
+        _searchHasFocus = focused;
+        if (focused) _wedge.reset();
+      });
+    });
     _loadProducts();
   }
 
   @override
   void dispose() {
     _searchController.dispose();
+    _searchFocus.dispose();
+    _wedgeFocus.dispose();
     super.dispose();
   }
 
   Future<void> _loadProducts() async {
     final products = await DatabaseHelper.instance.getProducts();
+    final catalogue = await VariantCatalogue.load();
     if (mounted) {
       setState(() {
         _products = products.where((p) => p.active).toList();
+        _variants = catalogue;
         _loading = false;
       });
     }
@@ -62,10 +110,24 @@ class _SellScreenState extends State<SellScreen> {
   /// portions. Portion availability must subtract this, otherwise a cashier can
   /// fill the cart with more product than exists and the sale only fails at
   /// `recordSale` — after the customer has already paid.
+  ///
+  /// Variant lines are skipped: they reserve their own variant's stock, which is
+  /// a different pile of bottles, and counting them here would let a Dark order
+  /// eat into the Regular stock.
   double _cartUnitsFor(Product product) {
     var total = 0.0;
     for (final line in _cart) {
+      if (line.variant != null) continue;
       if (line.product.id == product.id) total += line.qty * line.fraction;
+    }
+    return total;
+  }
+
+  /// Units of one variant already reserved in the cart.
+  double _cartUnitsForVariant(ProductVariant variant) {
+    var total = 0.0;
+    for (final line in _cart) {
+      if (line.variant?.id == variant.id) total += line.qty;
     }
     return total;
   }
@@ -177,6 +239,10 @@ class _SellScreenState extends State<SellScreen> {
       final decoded = jsonDecode(pending['cart_json'] as String? ?? '[]');
       if (decoded is! List) return false;
       final items = <SaleItem>[];
+      // Units per variant, so the variant's own stock moves too. The names in
+      // the snapshot are already folded, so nothing here needs the variant
+      // itself — only the count, which is what stock is.
+      final variantUnits = <int, double>{};
       for (final line in decoded) {
         if (line is! Map) continue;
         items.add(SaleItem(
@@ -189,6 +255,12 @@ class _SellScreenState extends State<SellScreen> {
           portion: line['portion'] as String? ?? 'full',
           portionMl: (line['portionMl'] as num?)?.toInt() ?? 0,
         ));
+        final variantId = (line['variantId'] as num?)?.toInt();
+        if (variantId != null) {
+          variantUnits[variantId] =
+              (variantUnits[variantId] ?? 0) +
+                  ((line['qty'] as num?)?.toDouble() ?? 0);
+        }
       }
       if (items.isEmpty) return false;
       await DatabaseHelper.instance.recordSale(
@@ -202,6 +274,14 @@ class _SellScreenState extends State<SellScreen> {
         paymentMethod: 'mpesa',
         paymentReference: reference,
       );
+      for (final entry in variantUnits.entries) {
+        try {
+          await VariantCatalogue.deductVariantStock(entry.key, entry.value);
+        } catch (_) {
+          // The sale is booked; a variant count to correct at the next stock
+          // take is not worth failing a reconciliation over.
+        }
+      }
       await DatabaseHelper.instance.resolvePendingPayment(reference);
       _announceStatus('Reconciled payment $reference and recorded the sale.');
       if (!mounted) return true;
@@ -224,49 +304,233 @@ class _SellScreenState extends State<SellScreen> {
     }
   }
 
-  Future<void> _addToCart(Product product) async {
-    final portion = await showModalBottomSheet<String>(
-      context: context,
-      builder: (sheetContext) => SafeArea(
-          child: Column(mainAxisSize: MainAxisSize.min, children: [
-        Padding(
-            padding: const EdgeInsets.all(16),
-            child: Text('Choose serving · ${product.name}',
-                style: Theme.of(context).textTheme.titleMedium)),
-        _portionOption(
-            sheetContext, product, 'full', 'Full', product.sellPrice),
-        _portionOption(
-            sheetContext, product, 'half', 'Half', product.priceFor('half')),
-        _portionOption(sheetContext, product, 'quarter', 'Quarter',
-            product.priceFor('quarter')),
-      ])),
-    );
-    if (portion == null || !mounted) return;
-    // Re-check after the sheet closes: the picker is async, so the cart or the
-    // loaded product list may have changed underneath it.
-    final current = _products.where((p) => p.id == product.id).firstOrNull;
-    if (current == null) return;
-    final needed = current.fractionFor(portion);
-    if (current.stockQty - _cartUnitsFor(current) < needed) {
-      _announceStatus(
-          'Not enough ${current.name} stock left for that serving.');
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-        content: Text(
-            'Not enough ${current.name} left. Adjust the cart before adding more.'),
-      ));
+  /// Handles a code that arrived from a wedge scanner or the camera.
+  ///
+  /// Both sources funnel through here so a product added by scan is
+  /// indistinguishable from one added by tapping the tile — same portion
+  /// default, same stock re-validation, same merge into an existing line.
+  ///
+  /// Resolved through `getScanTarget` rather than by barcode alone, because a
+  /// code can belong to the product *or* to one of its variants and the two sell
+  /// differently: a variant's code must add that variant, at the variant's price,
+  /// out of the variant's stock. Resolving to the product and stopping there is
+  /// how "Dark" quietly gets charged at the parent's price.
+  Future<void> _handleScan(ScanResult scan) async {
+    if (_scanInFlight) return;
+    _scanInFlight = true;
+    try {
+      final target =
+          await DatabaseHelper.instance.getScanTarget(scan.normalised);
+      if (!mounted) return;
+      if (target == null) {
+        final problem = Barcode.rejectionReason(scan.normalised);
+        // Names the variant case in the same message, because a code that was
+        // never attached to anything is usually a code the owner typed into the
+        // wrong field — a variant's code belongs on that variant.
+        final message = problem ??
+            'No product carries that barcode. Add it in Inventory — on the '
+                'product or on one of its variants — or pick the product by name.';
+        _announceStatus(message);
+        ScaffoldMessenger.of(context)
+            .showSnackBar(SnackBar(content: Text(message)));
+        return;
+      }
+      final product = target.product;
+      final variant = target.variant;
+      if (variant == null && _variants.sellsAsVariants(product)) {
+        // The product's own code on a product that is only sellable as one of
+        // its variants. Refused out loud: adding the parent here would charge
+        // the parent's price for something the owner never priced, and the
+        // cashier would only find out at the stock count.
+        final message = '${product.name} is sold as variants, so its own '
+            'barcode is not enough. Scan one of its variant barcodes, or tap '
+            'the product to choose.';
+        _announceStatus(message);
+        ScaffoldMessenger.of(context)
+            .showSnackBar(SnackBar(content: Text(message)));
+        return;
+      }
+      if (variant != null && variant.stockQty <= 0) {
+        final message = '${variant.label} is out of stock.';
+        _announceStatus(message);
+        ScaffoldMessenger.of(context)
+            .showSnackBar(SnackBar(content: Text(message)));
+        return;
+      }
+      // A scan is a whole unit of whatever it resolved to. A sheet of choices
+      // would cost one modal per label, which is unusable at a till; a half or
+      // a different size is changed on the cart line instead.
+      await _addToCartDirect(product, 'full', variant: variant);
+    } finally {
+      _scanInFlight = false;
+    }
+  }
+
+  /// Screen-level key handler for hardware wedge scanners.
+  ///
+  /// A `KeyboardListener` rather than autofocus on a hidden field: autofocus
+  /// pops the soft keyboard over the cart, which is a worse problem than the
+  /// one being solved. The listener sees every key the till receives while no
+  /// field has focus and ignores everything while the search field does.
+  void _onKeyEvent(KeyEvent event) {
+    if (_searchHasFocus || _portionSheetOpen || _processingPayment) {
+      _wedge.reset();
       return;
     }
-    final existing =
-        _cart.where((c) => c.product.id == product.id && c.portion == portion);
-    if (existing.isNotEmpty) {
-      setState(() {
-        existing.first.qty++;
-      });
-    } else {
-      setState(() {
-        _cart.add(CartItem(product: product, portion: portion, qty: 1));
-      });
+    final scan = _wedge.onKey(event);
+    if (scan == null) return;
+    unawaited(_handleScan(scan));
+  }
+
+  Future<void> _scanWithCamera() async {
+    await Navigator.of(context).push(MaterialPageRoute<void>(
+      builder: (_) => CameraScanScreen(onDetected: _handleScan),
+    ));
+  }
+
+  Future<void> _addToCart(Product product) async {
+    // Re-entrancy guard. `_addToCart` is async and opens a modal; a fast
+    // double-tap on a product tile, or a wedge scan landing mid-sheet, would
+    // otherwise stack two sheets on top of each other.
+    if (_portionSheetOpen) return;
+    _portionSheetOpen = true;
+    final variants = _variants.of(product);
+    final sellsAsVariants = _variants.sellsAsVariants(product);
+    String? choice;
+    try {
+      choice = await showModalBottomSheet<String>(
+        context: context,
+        builder: (sheetContext) => SafeArea(
+            child: Column(mainAxisSize: MainAxisSize.min, children: [
+          Padding(
+              padding: const EdgeInsets.all(16),
+              child: Text('Choose serving · ${product.name}',
+                  style: Theme.of(context).textTheme.titleMedium)),
+          if (sellsAsVariants && variants.isEmpty)
+            // Said rather than silently offering full/half/quarter: on a
+            // variant product those portions are the parent's, and charging
+            // them for "Dark" is a price nobody set.
+            ListTile(
+              leading: const Icon(Icons.info_outline),
+              title: Text('${product.name} has no variants yet'),
+              subtitle: const Text(
+                  'Add them in Inventory — Dark, Regular, Big cup — and they '
+                  'will appear here.'),
+              enabled: false,
+            )
+          else if (sellsAsVariants)
+            // The variants replace the portions rather than joining them: a
+            // half of "Dark" is not something the shop sells, and offering both
+            // would put eight rows on a phone screen.
+            for (final variant in variants)
+              _variantOption(sheetContext, variant)
+          else ...[
+            _portionOption(
+                sheetContext, product, 'full', 'Full', product.sellPrice),
+            _portionOption(sheetContext, product, 'half', 'Half',
+                product.priceFor('half')),
+            _portionOption(sheetContext, product, 'quarter', 'Quarter',
+                product.priceFor('quarter')),
+          ],
+        ])),
+      );
+    } finally {
+      _portionSheetOpen = false;
     }
+    if (choice == null || !mounted) return;
+    if (choice.startsWith(_variantChoicePrefix)) {
+      final variant =
+          _variants.byId(int.tryParse(choice.substring(_variantChoicePrefix.length)));
+      if (variant == null) {
+        // The variant was deleted while the sheet was open. Say so rather than
+        // falling back to the parent.
+        _say('That variant is no longer on ${product.name}. Try again.');
+        return;
+      }
+      await _addToCartDirect(product, 'full', variant: variant);
+      return;
+    }
+    await _addToCartDirect(product, choice);
+  }
+
+  /// Marker for a variant choice in the sheet's result.
+  ///
+  /// A prefix rather than a second return value, because the sheet already
+  /// returns "what did they tap" as one string and the variant id needs saying
+  /// alongside it without changing what every other caller passes back.
+  static const String _variantChoicePrefix = 'v:';
+
+  /// A quantity the way the owner reads it: no trailing `.0` on a whole number.
+  static String _qtyLabel(double qty) =>
+      qty % 1 == 0 ? qty.toInt().toString() : '$qty';
+
+  /// Announces and shows one message. Both, every time: the announcement is for
+  /// a screen reader and the snack bar for everyone looking at the cart.
+  void _say(String message) {
+    _announceStatus(message);
+    ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(message)));
+  }
+
+  /// Adds one unit of [product] in [portion] with no modal in the way.
+  ///
+  /// The scan path uses this, and it *shares* the stock re-validation and merge
+  /// logic with [_addToCart] rather than repeating it. Duplicating that check
+  /// is exactly how the oversell-after-payment bug comes back: the cart would
+  /// look right, `recordSale` would then throw after the customer had paid.
+  ///
+  /// [variant] is set when the line is one variant of the product. Its price,
+  /// cost and stock are its own: a variant is a whole unit of itself, so the
+  /// portion arithmetic — halves, quarters, fractions of a bottle — does not
+  /// apply to it at all.
+  ///
+  /// Portion changes are made on the cart line afterwards, so a scanner never
+  /// costs throughput — one scan is one tap, not a modal.
+  Future<void> _addToCartDirect(Product product, String portion,
+      {ProductVariant? variant}) async {
+    // Re-check against the loaded product rather than the caller's snapshot:
+    // the tap and the resolution are separated by a frame, and stock moves.
+    final current = _products.where((p) => p.id == product.id).firstOrNull;
+    if (current == null) return;
+    if (variant != null) {
+      // The variant's own count, not the parent's. The parent's is the sum of
+      // its variants for a variant product, so checking it here would let two
+      // orders of Dark go through while Regular is the only one in stock.
+      final available = variant.stockQty - _cartUnitsForVariant(variant);
+      if (available < 1) {
+        _say(available <= 0
+            ? 'All ${variant.name} stock is already in the cart.'
+            : 'No ${variant.name} left. Adjust the cart before adding more.');
+        return;
+      }
+      // Merges on the variant, not on the product: Dark and Regular are two
+      // lines, and combining them would charge the first one's price for both.
+      final existing = _cart.where((c) => c.variant?.id == variant.id);
+      setState(() {
+        if (existing.isNotEmpty) {
+          existing.first.qty++;
+        } else {
+          _cart.add(CartItem(
+              product: current, portion: 'full', qty: 1, variant: variant));
+        }
+      });
+      return;
+    }
+    final needed = current.fractionFor(portion);
+    if (current.stockQty - _cartUnitsFor(current) < needed) {
+      _say('Not enough ${current.name} left. '
+          'Adjust the cart before adding more.');
+      return;
+    }
+    final existing = _cart
+        .where((c) => c.variant == null && c.product.id == current.id &&
+            c.portion == portion);
+    setState(() {
+      if (existing.isNotEmpty) {
+        existing.first.qty++;
+      } else {
+        _cart.add(CartItem(product: current, portion: portion, qty: 1));
+      }
+    });
   }
 
   Widget _portionOption(BuildContext context, Product product, String portion,
@@ -285,6 +549,33 @@ class _SellScreenState extends State<SellScreen> {
               : 'Only $available of a bottle left')
           : null,
       onTap: canAdd ? () => Navigator.pop(context, portion) : null,
+    );
+  }
+
+  /// One variant in the portion sheet, at its own price and from its own stock.
+  ///
+  /// The low-stock warning rides on the icon *and* the words, never on colour
+  /// alone: "low stock" in the subtitle is what a cashier reads at speed, and it
+  /// is what a screen reader announces.
+  Widget _variantOption(BuildContext sheetContext, ProductVariant variant) {
+    final available = variant.stockQty - _cartUnitsForVariant(variant);
+    final canAdd = available >= 1;
+    return ListTile(
+      leading: Icon(
+          variant.isLow ? Icons.warning_amber_outlined : Icons.local_bar_outlined),
+      title: Text(variant.label),
+      trailing: Text(formatMoney(variant.sellPrice)),
+      enabled: canAdd,
+      subtitle: Text(!canAdd
+          ? (available <= 0
+              ? 'All stock is already in the cart'
+              : 'No stock left')
+          : (variant.isLow
+              ? '${_qtyLabel(variant.stockQty)} in stock · low'
+              : '${_qtyLabel(variant.stockQty)} in stock')),
+      onTap: canAdd
+          ? () => Navigator.pop(sheetContext, '$_variantChoicePrefix${variant.id}')
+          : null,
     );
   }
 
@@ -311,6 +602,59 @@ Money get _total => sumMoney(_cart.map((item) => item.total));
     'bank_transfer': 'Bank transfer',
     'mobile_money_manual': 'Mobile money (manual)',
   };
+
+  /// The ledger line for one cart row.
+  ///
+  /// `SaleItem` lives in a file this feature may not edit and has nowhere to put
+  /// a variant, so the variant is folded into [SaleItem.productName] here, at
+  /// the point the line is built. That is also the only place it *can* be
+  /// folded: the name is what the receipt prints and what the ledger stores, so
+  /// a line that reads "Kenyana Beer · Dark" still says Dark after the owner
+  /// renames or deletes the variant — the only thing a receipt the customer was
+  /// already handed can do.
+  SaleItem _saleItemFor(CartItem line) => SaleItem(
+        saleId: 0,
+        productId: line.product.id!,
+        productName: line.variant != null
+            ? foldedVariantName(line.product, line.variant!)
+            : line.product.name,
+        qty: line.qty,
+        unitPrice: line.unitPrice,
+        unitCost: line.unitCost,
+        portion: line.portion,
+        // A variant's own serving size, not a fraction of the parent's bottle:
+        // "Dark 500 ml" is 500ml however big the parent bottle is.
+        portionMl: line.portionMl,
+      );
+
+  /// Takes the sold quantity off each variant's own stock, once the sale is
+  /// committed.
+  ///
+  /// `recordSale` checks and decrements `products.stock_qty` and knows nothing
+  /// about `product_variants`, so without this the variant's count would never
+  /// move and the till would sell Dark until the stock take found out. The
+  /// parent's aggregate is refreshed by the same call, so the ledger's own check
+  /// keeps agreeing with what the variants hold.
+  ///
+  /// Best effort by design: the sale is already committed and the money already
+  /// taken, so a failure here is a stock count to correct at the next stock
+  /// take — never a reason to fail a checkout that happened.
+  Future<void> _deductVariantStockForSale(Iterable<CartItem> lines) async {
+    final sold = <int, double>{};
+    for (final line in lines) {
+      final id = line.variant?.id;
+      if (id == null) continue;
+      sold[id] = (sold[id] ?? 0) + line.qty;
+    }
+    for (final entry in sold.entries) {
+      try {
+        await VariantCatalogue.deductVariantStock(entry.key, entry.value);
+      } catch (_) {
+        // Deliberately swallowed — see above. The next stock adjustment or
+        // reload reconciles the count.
+      }
+    }
+  }
 
   Future<void> _checkoutOffline() async {
     if (_cart.isEmpty || _processingPayment) return;
@@ -416,6 +760,11 @@ Money get _total => sumMoney(_cart.map((item) => item.total));
 
     final state = context.read<AppState>();
 
+    // Resolved once, before the sale is written, so the queue decision and the
+    // post-sale flush cannot disagree about whether this sale owes KRA a
+    // receipt.
+    final etimsEnabled = await EtimsService().isEnabledForSales();
+
     // Resolve the signed-in cashier once so the sale carries a stable
     // `staff_id`. Ledger attribution is keyed on that id, not the display
     // name, so cash sales must record it too or cashier deletion silently
@@ -431,41 +780,40 @@ Money get _total => sumMoney(_cart.map((item) => item.total));
     setState(() => _processingPayment = true);
 
     try {
-      final items = _cart
-          .map((c) => SaleItem(
-                saleId: 0,
-                productId: c.product.id!,
-                productName: c.product.name,
-                qty: c.qty,
-                unitPrice: c.unitPrice,
-                unitCost: c.unitCost,
-                portion: c.portion,
-                portionMl: c.product.mlFor(c.portion),
-              ))
-          .toList();
+      final items = _cart.map(_saleItemFor).toList();
 
-      await DatabaseHelper.instance.recordSale(
+      final saleId = await DatabaseHelper.instance.recordSale(
         staffName: state.currentStaffName ?? 'Unknown',
         items: items,
         paymentMethod: paymentMethod,
         paymentReference: paymentReference,
         amountTendered: amountTendered,
         staffId: staffId,
+        etimsPending: etimsEnabled,
       );
+
+      // Before the cart is emptied, while the lines that were sold are still
+      // readable, and only once the sale is committed.
+      await _deductVariantStockForSale(_cart);
 
       if (mounted) {
         _announceStatus('Sale recorded: ${formatMoney(_total)}');
         final change = amountTendered - _total;
+        setState(() {
+          _cart.clear();
+        });
+        _loadProducts(); // Refresh stock
+        if (!mounted) return;
         ScaffoldMessenger.of(context).showSnackBar(SnackBar(
           content: Text(!change.isNegative
               ? 'Sale recorded: ${formatMoney(_total)} · Change ${formatMoney(change)}'
               : 'Sale recorded: ${formatMoney(_total)}'),
         ));
-        setState(() {
-          _cart.clear();
-          _loadProducts(); // Refresh stock
-        });
       }
+      // The sale is committed. Everything below is best-effort and must not be
+      // able to fail the checkout it is reporting on — a till that has taken the
+      // money has done its job whether or not paper or a KRA receipt follows.
+      unawaited(_afterSale(saleId, etimsEnabled: etimsEnabled));
     } catch (e) {
       if (mounted) {
         _announceStatus(
@@ -481,8 +829,119 @@ Money get _total => sumMoney(_cart.map((item) => item.total));
     }
   }
 
+  /// Prints the receipt and reconciles the tax invoice for a committed sale.
+  ///
+  /// The single post-sale path. Both checkout routes and the reprint action in
+  /// Reports reach the same receipt through the same builder, from the stored
+  /// sale, so a reprint cannot drift from the original — and neither can a print
+  /// failure touch the sale, which is already committed by the time this runs.
+  Future<void> _afterSale(int saleId, {required bool etimsEnabled}) async {
+    if (etimsEnabled) {
+      // Issue the receipt before printing, so the paper the customer walks away
+      // with carries KRA's number. A failure leaves the sale queued and prints
+      // without it rather than not printing at all.
+      await EtimsService().flushPending(limit: 1);
+    }
+    final config = await PrinterConfig.load();
+    if (!config.printAfterSale) return;
+    await _printReceipt(saleId, config);
+  }
+
+  /// Prints [saleId]'s receipt, offering a reprint if the printer refuses.
+  ///
+  /// Returns the result so a caller (print-after-sale, or the reprint action in
+  /// Reports) can react. Never throws.
+  Future<PrintResult> _printReceipt(int saleId, PrinterConfig config) async {
+    final state = context.read<AppState>();
+    final result = await ReceiptPrinter().printSale(
+      saleId: saleId,
+      shopName: state.owner?.shopName ?? 'Duka POS',
+      staffRole: state.isOwnerSession ? 'Owner' : state.currentRole,
+      config: config,
+      vatRatePercent: await DatabaseHelper.instance.getVatRatePercent(),
+    );
+    if (!mounted) return result;
+    if (result.outcome == PrintOutcome.printed ||
+        result.outcome == PrintOutcome.disabled) {
+      return result;
+    }
+    _announceStatus('Sale recorded but the receipt did not print.');
+    ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+      content: const Text('The sale is recorded, but the receipt did not print.'),
+      // No retry action when the operator has to change something first:
+      // offering "Retry" against a refused Bluetooth permission just fails
+      // again and teaches the owner that the button does not work.
+      action: result.needsUserAction
+          ? null
+          : SnackBarAction(
+              label: 'Retry',
+              onPressed: () => unawaited(_printReceipt(saleId, config)),
+            ),
+    ));
+    return result;
+  }
+
+  /// Records an M-Pesa sale that could not be pushed, and says so plainly.
+  ///
+  /// Records `payment_verified = false` rather than pretending the payment
+  /// happened. The distinction is what makes the day's figures honest and gives
+  /// the owner something specific to reconcile against PayHero once there is a
+  /// signal: "we recorded 14,000 of unverified M-Pesa" is actionable, whereas a
+  /// sale quietly booked as confirmed is a number nobody can trust.
+  Future<void> _recordUnverifiedMpesa({required String phoneNumber}) async {
+    final state = context.read<AppState>();
+    final items = _cart
+        .map((c) => SaleItem(
+              saleId: 0,
+              productId: c.product.id!,
+              productName: c.product.name,
+              qty: c.qty,
+              unitPrice: c.product.priceFor(c.portion).times(c.fraction),
+              unitCost: c.product.costPrice.times(c.fraction),
+              portion: c.portion,
+              portionMl: c.product.bottleMl,
+            ))
+        .toList();
+
+    try {
+      final saleId = await DatabaseHelper.instance.recordSale(
+        staffName: state.currentStaffName ?? 'Unknown',
+        items: items,
+        paymentMethod: 'mpesa',
+        paymentReference: phoneNumber.trim().isEmpty
+            ? null
+            : 'offline-${phoneNumber.trim()}',
+        amountTendered: _total,
+        paymentVerified: false,
+        staffId: state.isOwnerSession ? null : state.currentStaffId,
+      );
+      if (!mounted) return;
+      _announceStatus('M-Pesa sale recorded. Payment not yet confirmed.');
+      setState(_cart.clear);
+      _loadProducts();
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+        content: Text(
+          'No connection, so no M-Pesa prompt was sent. The sale is recorded and '
+          'will show as unconfirmed until you check it against PayHero.',
+        ),
+      ));
+      unawaited(_afterSale(saleId, etimsEnabled: await EtimsService().isEnabledForSales()));
+    } catch (error) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text("Couldn't record the sale. Nothing was charged — try again."),
+        ),
+      );
+    }
+  }
+
   Future<void> _checkoutMpesa() async {
     if (_cart.isEmpty || _processingPayment) return;
+    // Read the session before the first await. Everything below is a network
+    // round-trip, and `context` must not be touched once the screen could have
+    // been popped.
+    final state = context.read<AppState>();
 
     final phoneController = TextEditingController();
     final customerNameController = TextEditingController();
@@ -548,6 +1007,19 @@ Money get _total => sumMoney(_cart.map((item) => item.total));
     setState(() => _processingPayment = true);
 
     try {
+      // Offline first, and deliberately before any remote check.
+      //
+      // A till in a Kenyan shop loses signal constantly, and an M-Pesa sale is
+      // a sale regardless: the customer has handed over money in the shop. An
+      // STK push needs a network, so with none the only honest outcome is to
+      // record the sale and mark the payment unverified — never to refuse it,
+      // and never to pretend the push succeeded.
+      final linked = await BackendService.isBackendLinked;
+      if (!linked) {
+        await _recordUnverifiedMpesa(phoneNumber: result['phone'] ?? '');
+        return;
+      }
+
       // Check if all products have remote IDs (synced)
       final unsynced = _cart.where((c) => c.product.remoteId == null).toList();
       if (unsynced.isNotEmpty) {
@@ -559,7 +1031,6 @@ Money get _total => sumMoney(_cart.map((item) => item.total));
         return;
       }
 
-      final state = context.read<AppState>();
       await BackendService.syncStaffToBackend();
       final staff = await DatabaseHelper.instance.getStaff();
       final matchingStaff =
@@ -587,7 +1058,11 @@ Money get _total => sumMoney(_cart.map((item) => item.total));
         items: _cart
             .map((c) => {
                   'product_id': c.product.remoteId,
-                  'product_name': c.product.name,
+                  // The provider bills for a name, and a variant's name is the
+                  // one the customer asked for.
+                  'product_name': c.variant != null
+                      ? foldedVariantName(c.product, c.variant!)
+                      : c.product.name,
                   'qty': c.qty,
                   'portion': c.portion,
                 })
@@ -603,7 +1078,13 @@ Money get _total => sumMoney(_cart.map((item) => item.total));
       final cartJson = jsonEncode(_cart
           .map((c) => {
                 'productId': c.product.id,
-                'productName': c.product.name,
+                // Already the folded variant name, so a sale booked days later
+                // from this snapshot prints and reports the same line the
+                // customer was charged for.
+                'productName': c.variant != null
+                    ? foldedVariantName(c.product, c.variant!)
+                    : c.product.name,
+                'variantId': c.variant?.id,
                 'qty': c.qty,
                 // Minor units, not the Money object. jsonEncode throws on
                 // anything it cannot encode, so writing `c.unitPrice` here
@@ -613,7 +1094,7 @@ Money get _total => sumMoney(_cart.map((item) => item.total));
                 'unitPrice': c.unitPrice.minorUnits,
                 'unitCost': c.unitCost.minorUnits,
                 'portion': c.portion,
-                'portionMl': c.product.mlFor(c.portion),
+                'portionMl': c.portionMl,
               })
           .toList());
       await DatabaseHelper.instance.recordPendingPayment(
@@ -653,21 +1134,14 @@ Money get _total => sumMoney(_cart.map((item) => item.total));
         Navigator.pop(context); // Close waiting dialog
 
         if (outcome == PaymentOutcome.success) {
-          final state = context.read<AppState>();
-          final localItems = _cart
-              .map((c) => SaleItem(
-                    saleId: 0,
-                    productId: c.product.id!,
-                    productName: c.product.name,
-                    qty: c.qty,
-                    unitPrice: c.unitPrice,
-                    unitCost: c.unitCost,
-                    portion: c.portion,
-                    portionMl: c.product.mlFor(c.portion),
-                  ))
-              .toList();
+final state = context.read<AppState>();
+    // Resolved once, before the sale is written, so the queue decision and the
+    // post-sale flush cannot disagree about whether this sale owes KRA a
+    // receipt.
+    final etimsEnabled = await EtimsService().isEnabledForSales();
+          final localItems = _cart.map(_saleItemFor).toList();
           try {
-            await DatabaseHelper.instance.recordSale(
+            final saleId = await DatabaseHelper.instance.recordSale(
               staffName: state.currentStaffName ?? 'Unknown',
               items: localItems,
               // The backend already confirmed payment and authoritative stock.
@@ -676,8 +1150,15 @@ Money get _total => sumMoney(_cart.map((item) => item.total));
               paymentMethod: 'mpesa',
               paymentReference: reference,
               staffId: state.isOwnerSession ? null : cashierProfile?.id,
+              etimsPending: etimsEnabled,
             );
+            await _deductVariantStockForSale(_cart);
             await DatabaseHelper.instance.resolvePendingPayment(reference);
+            // Same post-sale path as the cash route. Forgetting it here is the
+            // easiest mistake in this file to make: the M-Pesa branch has its
+            // own confirmation SnackBar and its own error handling, so it reads
+            // like a complete flow on its own.
+            unawaited(_afterSale(saleId, etimsEnabled: etimsEnabled));
           } catch (_) {
             // Never imply the payment failed: the customer has already paid.
             // Clear the cart to prevent a second charge and surface the
@@ -750,10 +1231,13 @@ Money get _total => sumMoney(_cart.map((item) => item.total));
     return LayoutBuilder(
       builder: (context, constraints) {
         final compact = constraints.maxWidth < 720;
-        return SafeArea(
-          child: Flex(
-            direction: compact ? Axis.vertical : Axis.horizontal,
-            children: [
+        return KeyboardListener(
+          focusNode: _wedgeFocus,
+          onKeyEvent: _onKeyEvent,
+          child: SafeArea(
+            child: Flex(
+                direction: compact ? Axis.vertical : Axis.horizontal,
+                children: [
               // Product catalog
               Expanded(
                 flex: 3,
@@ -763,6 +1247,7 @@ Money get _total => sumMoney(_cart.map((item) => item.total));
                       padding: const EdgeInsets.all(16),
                       child: TextField(
                         controller: _searchController,
+                        focusNode: _searchFocus,
                         decoration: InputDecoration(
                           hintText: 'Search products...',
                           prefixIcon: const Icon(Icons.search),
@@ -781,6 +1266,30 @@ Money get _total => sumMoney(_cart.map((item) => item.total));
                         onChanged: (v) => setState(() => _searchQuery = v),
                       ),
                     ),
+                    // Camera scanning is an explicit action, never an automatic
+                    // one: a till with a wedge scanner needs nothing from the
+                    // camera, and a phone held over the counter should not open
+                    // a camera view on its own.
+                    Padding(
+                      padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
+                      child: Row(
+                        children: [
+                          Expanded(
+                            child: Semantics(
+                              button: true,
+                              label: 'Scan a barcode with the camera',
+                              hint:
+                                  'Adds one scanned product to the cart as a full bottle',
+                              child: OutlinedButton.icon(
+                                onPressed: _scanInFlight ? null : _scanWithCamera,
+                                icon: const Icon(Icons.qr_code_scanner),
+                                label: const Text('Scan barcode'),
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
                     Expanded(
                       child: _loading
                           ? const Center(child: CircularProgressIndicator())
@@ -797,23 +1306,33 @@ Money get _total => sumMoney(_cart.map((item) => item.total));
                               itemCount: filteredProducts.length,
                               itemBuilder: (ctx, i) {
                                 final p = filteredProducts[i];
+                                final variants = _variants.of(p);
+                                final sellsAsVariants =
+                                    _variants.sellsAsVariants(p);
+                                final fromPrice =
+                                    sellsAsVariants && variants.isNotEmpty
+                                        ? _variants.cheapestVariant(p)!.sellPrice
+                                        : null;
                                 final matchingCart =
                                     _cart.where((c) => c.product.id == p.id);
                                 final inCart = matchingCart.fold<double>(
                                     0, (sum, item) => sum + item.stockUnits);
+                                final canTap = p.stockQty > 0 || sellsAsVariants;
 
                                 return Semantics(
-                                  button: p.stockQty > 0,
-                                  label:
-                                      '${p.name}, ${formatMoney(p.sellPrice)}, ${p.stockQty} in stock',
-                                  hint: p.stockQty > 0
-                                      ? 'Double tap to add to cart'
-                                      : 'Out of stock',
+                                  button: canTap,
+                                  label: sellsAsVariants
+                                      ? '${p.name}, from ${fromPrice == null ? '' : formatMoney(fromPrice)}, ${variants.length} variants, ${p.stockQty} in stock'
+                                      : '${p.name}, ${formatMoney(p.sellPrice)}, ${p.stockQty} in stock',
+                                  hint: !canTap
+                                      ? 'Out of stock'
+                                      : sellsAsVariants
+                                          ? 'Double tap to choose a variant'
+                                          : 'Double tap to add to cart',
                                   child: Card(
                                     child: InkWell(
-                                      onTap: p.stockQty > 0
-                                          ? () => _addToCart(p)
-                                          : null,
+                                      onTap:
+                                          canTap ? () => _addToCart(p) : null,
                                       child: Padding(
                                         padding: const EdgeInsets.all(8),
                                         child: Column(
@@ -844,7 +1363,17 @@ Money get _total => sumMoney(_cart.map((item) => item.total));
                                             ),
                                             const SizedBox(height: 4),
                                             Text(
-                                              formatMoney(p.sellPrice),
+                                              // A variant product has no single
+                                              // price to show, so the cheapest
+                                              // thing it can be sold as stands in
+                                              // for it. Printing the parent's
+                                              // price would price a Dark at the
+                                              // Kenyana Beer the owner set once.
+                                              sellsAsVariants
+                                                  ? (fromPrice == null
+                                                      ? 'No variants yet'
+                                                      : 'From ${formatMoney(fromPrice)}')
+                                                  : formatMoney(p.sellPrice),
                                               style: const TextStyle(
                                                   fontWeight: FontWeight.bold),
                                             ),
@@ -921,17 +1450,15 @@ Money get _total => sumMoney(_cart.map((item) => item.total));
                               itemBuilder: (ctx, i) {
                                 final item = _cart[i];
                                 return ListTile(
-                                  title: Text(
-                                      '${item.product.name} · ${item.portionLabel}'),
-                                  subtitle: Text(
-                                      '${item.product.mlFor(item.portion)} ml · ${formatMoney(item.total)}'),
+                                  title: Text(item.cartTitle),
+                                  subtitle: Text(item.cartSubtitle),
                                   trailing: Row(
                                     mainAxisSize: MainAxisSize.min,
                                     children: [
                                       IconButton(
                                         icon: const Icon(Icons.remove),
                                         tooltip:
-                                            'Decrease ${item.product.name}',
+                                            'Decrease ${item.label}',
                                         onPressed: () => _updateQty(i, -1),
                                       ),
                                       Text(
@@ -939,12 +1466,12 @@ Money get _total => sumMoney(_cart.map((item) => item.total));
                                       IconButton(
                                         icon: const Icon(Icons.add),
                                         tooltip:
-                                            'Increase ${item.product.name}',
+                                            'Increase ${item.label}',
                                         onPressed: () => _updateQty(i, 1),
                                       ),
                                       IconButton(
                                         icon: const Icon(Icons.delete),
-                                        tooltip: 'Remove ${item.product.name}',
+                                        tooltip: 'Remove ${item.label}',
                                         onPressed: () => _removeFromCart(i),
                                       ),
                                     ],
@@ -1005,6 +1532,7 @@ Money get _total => sumMoney(_cart.map((item) => item.total));
                 ),
               ),
             ],
+            ),
           ),
         );
       },
@@ -1012,22 +1540,80 @@ Money get _total => sumMoney(_cart.map((item) => item.total));
   }
 }
 
+/// One line in the cart.
+///
+/// Carries an optional [variant] directly rather than through a side table keyed
+/// by line index. A `Map<int, ProductVariant>` was the other option and it is
+/// the worse one: the index is only meaningful while the list is unchanged, so
+/// removing a line, reordering, or reading a line after a rebuild would silently
+/// attach the wrong variant's price to the wrong bottle. Holding it on the line
+/// makes that failure unrepresentable, and this class is declared here rather
+/// than in `models.dart`, so it can grow a field without touching a file this
+/// feature does not own.
 class CartItem {
   final Product product;
   final String portion;
+
+  /// Set when this line is one variant of [product]. A variant is a whole unit
+  /// of itself — its own price, its own cost, its own stock — so every derived
+  /// figure below switches to it rather than to a fraction of the parent.
+  final ProductVariant? variant;
+
   double qty;
 
-  CartItem({required this.product, required this.portion, required this.qty});
+  CartItem({
+    required this.product,
+    required this.portion,
+    required this.qty,
+    this.variant,
+  });
 
-  double get fraction => product.fractionFor(portion);
+  bool get isVariant => variant != null;
+
+  /// Bottles this line consumes.
+  ///
+  /// One for a variant, whatever the parent's bottle size is: a 500ml "Dark" is
+  /// half a 750ml bottle to a shopkeeper, but it is one Dark to the ledger, and
+  /// treating it as a fraction is how a variant gets charged for a portion it
+  /// was never priced in.
+  double get fraction => isVariant ? 1 : product.fractionFor(portion);
   double get stockUnits => qty * fraction;
+
+  /// The serving size this line was sold in: the variant's own, or the parent's
+  /// bottle size scaled by the portion.
+  int get portionMl => variant?.sizeMl ?? product.mlFor(portion);
+
+  /// "Dark 500 ml" for a variant, the product's name otherwise. What the cart
+  /// line, the receipt and the stock-take list all agree on.
+  String get label => variant?.label ?? product.name;
+
+  /// How the owner reads a size or a quantity: no trailing `.0` on a whole
+  /// number, and no "0 ml" on something countable.
+  String get sizeLabel {
+    final ml = portionMl;
+    return ml > 0 ? Volume(ml.toDouble()).display : '';
+  }
 
   /// Money. A portion of a bottle is priced in whole cents and the portion of
   /// the *cost* is scaled the same way, so profit on a half bottle is derived
-  /// from real amounts rather than from a float approximation of one.
-  Money get unitPrice => product.priceFor(portion);
-  Money get unitCost => product.costPrice.times(fraction);
+  /// from real amounts rather than from a float approximation of one. A variant
+  /// carries both prices outright, so no scaling happens at all.
+  Money get unitPrice => variant?.sellPrice ?? product.priceFor(portion);
+  Money get unitCost =>
+      variant?.costPrice ?? product.costPrice.times(fraction);
   String get portionLabel => portion[0].toUpperCase() + portion.substring(1);
+
+  /// The title of the cart row: a variant names both the product and itself,
+  /// a portion only the product and which slice of it.
+  String get cartTitle =>
+      isVariant ? '${product.name} · ${variant!.label}' : '${product.name} · $portionLabel';
+
+  /// The line under it: the size and the line amount, with the size left out
+  /// entirely when there is no size to state.
+  String get cartSubtitle {
+    final amount = formatMoney(total);
+    return sizeLabel.isEmpty ? amount : '$sizeLabel · $amount';
+  }
 
   /// The one rounding point per line: [qty] is a quantity and may be fractional,
   /// so the product is quantised here rather than at every intermediate step.

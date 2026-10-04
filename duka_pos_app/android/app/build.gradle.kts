@@ -15,7 +15,7 @@ if (hasReleaseSigning) {
 }
 
 android {
-    namespace = "com.dukapos.duka_pos"
+    namespace = "com.dukapos.simplepos"
     compileSdk = flutter.compileSdkVersion
     // Flutter's recommended NDK for this SDK version, which is also what every
     // plugin in the tree expects — `jni`, `sentry_flutter`, `sqflite_android` and
@@ -31,7 +31,13 @@ android {
     }
 
     defaultConfig {
-        applicationId = "com.dukapos.duka_pos"
+        // The app id is the app's identity on Android. It changed to
+        // com.dukapos.simplepos when the app was renamed to Simple POS, so a
+        // 1.x install under com.dukapos.duka_pos is a DIFFERENT app to the
+        // launcher and will not be updated in place. Keep it in step with the
+        // `package` in AndroidManifest.xml and the Kotlin package directory
+        // under src/main/kotlin/com/dukapos/simplepos/.
+        applicationId = "com.dukapos.simplepos"
         // You can update the following values to match your application needs.
         // For more information, see: https://flutter.dev/to/review-gradle-config.
         minSdk = flutter.minSdkVersion

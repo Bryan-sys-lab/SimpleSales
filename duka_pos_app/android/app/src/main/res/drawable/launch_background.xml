@@ -1,12 +1,8 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- Modify this file to customize your launch splash screen -->
 <layer-list xmlns:android="http://schemas.android.com/apk/res/android">
-    <item android:drawable="@android:color/white" />
-
-    <!-- You can insert your own image assets here -->
-    <!-- <item>
-        <bitmap
-            android:gravity="center"
-            android:src="@mipmap/launch_image" />
-    </item> -->
+    <!-- DukaColors.ink, not white. The startup window is on screen from the
+         moment the launcher taps the icon until Flutter's first frame lands,
+         and a white window under an ink-themed icon reads as a flash of glare
+         on a till that is often in a dim shop. -->
+    <item android:drawable="@color/brand_ink" />
 </layer-list>
