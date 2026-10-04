@@ -42,6 +42,17 @@ jobs:
       && github.event.workflow_run.event == 'push'
     runs-on: ubuntu-24.04
     timeout-minutes: 10
+    defaults:
+      run:
+        # pubspec.yaml lives here, not at the repository root. Without this the
+        # job runs at the root and the very first read fails with
+        #   awk: fatal: cannot open file `pubspec.yaml'
+        # which is what the first live run of this workflow did. Matched to
+        # release.yml so both read the same file from the same place.
+        #
+        # git is not path-sensitive about refs, so the tag creation below is
+        # unaffected by running from a subdirectory.
+        working-directory: duka_pos_app
 
     steps:
       - name: Explain what is about to happen
@@ -106,8 +117,16 @@ jobs:
           # One tag per commit. If this commit is already tagged, the release for
           # it exists or is in flight and there is nothing to do. This is what
           # makes a re-run of the whole pipeline idempotent.
-          if git rev-parse -q --verify "refs/tags/v${semver}+*" >/dev/null 2>&1 \
-             || git tag --points-at "$sha" | grep -q .; then
+          # `git tag --points-at`, and only that.
+          #
+          # An earlier version of this also tried
+          #   git rev-parse -q --verify "refs/tags/v${semver}+*"
+          # which looks like it asks whether any build of this version has been
+          # tagged. It never matches: --verify requires an exact ref name and
+          # does not glob, so the condition was always false. A guard that reads
+          # like a guard and silently never fires is worse than none, because it
+          # is the reason somebody believes re-runs are safe.
+          if git tag --points-at "$sha" | grep -q .; then
             existing="$(git tag --points-at "$sha" | tr '\n' ' ')"
             echo "::notice::Commit ${sha} is already tagged (${existing}). Nothing to release."
             echo "already_tagged=true" >> "$GITHUB_OUTPUT"
