@@ -55,11 +55,22 @@ jobs:
           fi
           echo "Tag ${GITHUB_REF_NAME} is on main."
 
-      # Guards against the most common release mistake: tagging v1.2.0 while
-      # pubspec still says 1.1.0. The APK would then ship under a version that
-      # disagrees with its own name, and Android would reject the install as a
-      # downgrade.
-      - name: Verify tag matches the pubspec version
+      # The tag carries both halves of the version: `v<semver>+<build>`.
+      #
+      # The semver is a human's decision — it is whatever pubspec.yaml says and
+      # this workflow never changes it. The build number is derived from release
+      # history by auto-release.yml, which never commits either half.
+      #
+      # Both halves are in the tag because Android keys the install on
+      # versionCode alone: two releases of 2.0.0 at builds 7 and 8 are different
+      # APKs to a handset, and `v2.0.0` cannot name both. The build number is
+      # also never reused, because a reused one produces an APK that silently
+      # refuses to update an installed till.
+      #
+      # Guarded here as well as in the tagger, because a release can equally be
+      # driven by hand — `git tag v2.0.1+9 && git push origin v2.0.1+9` — and this
+      # job is the last thing between a typo and a published artefact.
+      - name: Verify the tag matches the pubspec version
         id: version
         shell: bash
         run: |
@@ -67,20 +78,80 @@ jobs:
           pubspec_line="$(awk '/^version:/{print $2; exit}' pubspec.yaml)"
           pubspec_name="${pubspec_line%%+*}"
           pubspec_code="${pubspec_line##*+}"
-          tag_version="${GITHUB_REF_NAME#v}"
+          # The literal `v` is required rather than stripped with ${var#v}.
+          # Stripping means a tag named "2.0.0+4" is silently accepted as though
+          # it were "v2.0.0+4", and this job can be driven by hand, so the tag
+          # that reaches it is whatever a person typed.
+          if [[ "${GITHUB_REF_NAME}" != v* ]]; then
+            echo "::error::Tag '${GITHUB_REF_NAME}' must begin with 'v'."
+            exit 1
+          fi
+          tag="${GITHUB_REF_NAME#v}"
 
-          echo "name=${pubspec_name}" >> "$GITHUB_OUTPUT"
-          echo "code=${pubspec_code}" >> "$GITHUB_OUTPUT"
+          # pubspec's own semver is validated rather than trusted. auto-release.yml
+          # checks it before minting a tag, but a hand-driven release never goes
+          # near that workflow, and "releases whatever pubspec says" is only a
+          # safe statement if "says" means something well-formed.
+          if ! [[ "$pubspec_name" =~ ^[0-9]+\.[0-9]+\.[0-9]+([-+][0-9A-Za-z.-]+)?$ ]]; then
+            echo "::error::pubspec version '${pubspec_name}' is not a recognisable semver."
+            exit 1
+          fi
 
-          if [ "$tag_version" != "$pubspec_name" ]; then
-            echo "::error::Tag ${GITHUB_REF_NAME} does not match pubspec version ${pubspec_name}. Update pubspec.yaml or retag."
+          if ! [[ "$tag" =~ ^(.+)\+([0-9]+)$ ]]; then
+            echo "::error::Tag '${GITHUB_REF_NAME}' must be v<semver>+<build>, for example v2.0.1+4."
+            echo "::error::Got '${tag}'."
+            exit 1
+          fi
+          tag_name="${BASH_REMATCH[1]}"
+          tag_code="${BASH_REMATCH[2]}"
+
+          echo "name=${tag_name}" >> "$GITHUB_OUTPUT"
+          echo "code=${tag_code}" >> "$GITHUB_OUTPUT"
+
+          if [ "$tag_name" != "$pubspec_name" ]; then
+            echo "::error::Tag version ${tag_name} does not match pubspec ${pubspec_name}."
+            echo "::error::This workflow releases whatever pubspec declares; change pubspec, or tag the version it declares."
             exit 1
           fi
           if ! [[ "$pubspec_code" =~ ^[0-9]+$ ]] || [ "$pubspec_code" -lt 1 ]; then
             echo "::error::pubspec build number '${pubspec_code}' is not a positive integer."
             exit 1
           fi
+          if [ "$tag_code" -lt "$pubspec_code" ]; then
+            echo "::error::Tag build number ${tag_code} is below the pubspec build number ${pubspec_code}."
+            echo "::error::A handset that already has build ${pubspec_code} will refuse to install this one."
+            exit 1
+          fi
           echo "Tag ${GITHUB_REF_NAME} matches pubspec ${pubspec_line}."
+
+      # The last line of defence against publishing a build a handset cannot
+      # install. Re-running a failed release is allowed to repeat its own build
+      # number, so equality with an existing tag is fine and only a *lower*
+      # number is refused.
+      - name: Verify this build number has not been released before
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          semver="${{ steps.version.outputs.name }}"
+          code="${{ steps.version.outputs.code }}"
+
+          highest=0
+          for tag in $(git tag --list "v${semver}+*"); do
+            other="${tag##*+}"
+            if [[ "$other" =~ ^[0-9]+$ ]] && [ "$other" -gt "$highest" ]; then
+              highest="$other"
+            fi
+          done
+          echo "Highest released build of ${semver}: ${highest}"
+
+          if [ "$code" -lt "$highest" ]; then
+            echo "::error::Build ${code} of ${semver} is below the highest already released (${highest})."
+            echo "::error::Publishing it would produce an APK that cannot update a device already on ${highest}."
+            exit 1
+          fi
+          echo "Build ${code} is current."
 
       - name: Analyze
         run: flutter analyze --fatal-infos
@@ -317,8 +388,16 @@ jobs:
             echo "Signing certificate matches the expected release key."
           fi
 
-      # Confirms the binary itself reports the version it is being released as,
-      # closing the loop on the pubspec check above.
+      # Confirms the binary reports the version it is being released as, on both
+      # halves. Closing the loop on the pubspec check is not enough: the tag
+      # could be right and the APK wrong, and that APK is the thing that ships.
+      #
+      # versionName carries the semver alone. Flutter splits pubspec `2.0.0+4`
+      # into Android's versionName="2.0.0" and versionCode=4, so comparing
+      # versionName against the whole `v2.0.0+4` tag fails on every correct
+      # build. versionCode is compared too, which the previous check never did:
+      # it is the half Android actually refuses to downgrade on, so it is the
+      # half worth asserting.
       - name: Verify the APK reports the released version
         shell: bash
         run: |
@@ -329,14 +408,29 @@ jobs:
           badging="$("$aapt2" dump badging "$apk" | head -1)"
           echo "$badging"
 
-          expected="${GITHUB_REF_NAME#v}"
+          expected_name="${{ steps.version.outputs.name }}"
+          expected_code="${{ steps.version.outputs.code }}"
           actual_name="$(sed -n "s/.*versionName='\([^']*\)'.*/\1/p" <<<"$badging")"
+          actual_code="$(sed -n "s/.*versionCode='\([^']*\)'.*/\1/p" <<<"$badging")"
 
-          if [ "$actual_name" != "$expected" ]; then
-            echo "::error::APK versionName '${actual_name}' does not match the tag version '${expected}'."
+          if [ -z "$actual_name" ] || [ -z "$actual_code" ]; then
+            echo "::error::Could not read versionName/versionCode out of the APK's badging output."
+            echo "::error::Refusing to publish an APK whose version cannot be identified."
             exit 1
           fi
-          echo "APK reports version ${actual_name}."
+
+          if [ "$actual_name" != "$expected_name" ]; then
+            echo "::error::APK versionName '${actual_name}' does not match the release version '${expected_name}'."
+            exit 1
+          fi
+
+          if [ "$actual_code" != "$expected_code" ]; then
+            echo "::error::APK versionCode '${actual_code}' does not match the tag's build number '${expected_code}'."
+            echo "::error::A handset already on ${actual_code} would refuse to install this one."
+            exit 1
+          fi
+
+          echo "APK reports versionName=${actual_name} versionCode=${actual_code}, as released."
 
       - name: Remove signing material from the workspace
         if: always()
@@ -394,7 +488,20 @@ jobs:
             echo '```'
           } > release_notes.md
 
+          # Draft, then published. A release that builds and verifies gets
+          # published by the step below; one that fails after this point still
+          # leaves a visible record that this commit was built for release and did
+          # not ship, which a release that simply never existed cannot. The
+          # alternative — creating nothing on failure — makes an outage and a
+          # deliberate skip look identical.
+          #
+          # `gh release edit --draft=false` is a no-op on an already-published
+          # release, so a re-run is safe.
           gh release create "${GITHUB_REF_NAME}" \
             --title "Duka POS ${GITHUB_REF_NAME}" \
             --notes-file release_notes.md \
+            --draft \
             "$apk"
+
+          gh release edit "${GITHUB_REF_NAME}" --draft=false
+          echo "Published ${GITHUB_REF_NAME}."

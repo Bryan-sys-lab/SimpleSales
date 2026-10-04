@@ -1,0 +1,188 @@
+name: Auto release
+
+# Tags a release once CI is green on main. It does not build anything.
+#
+# The build, signing, verification and publication all stay in `release.yml`,
+# which is still triggered by a tag and can still be driven by hand. This
+# workflow only automates the decision to *make* a tag, which keeps the
+# irreversible part of a release — signing a real key and publishing a public
+# artefact — in one reviewed, gated place rather than duplicating it.
+#
+# Why this cannot run away:
+#
+#   Every version this workflow produces is derived from what has already been
+#   released, and it commits nothing. No commit means no new push to main, which
+#   means no new green CI run, which means no new auto-release. The loop that a
+#   "bump pubspec, commit, release" design walks straight into has nothing to
+#   grip here.
+#
+#   Two further guards, because "cannot loop" is not the same as "cannot repeat":
+#   a tag already pointing at this commit ends the run, and the release is a
+#   draft until it has built and verified successfully.
+on:
+  workflow_run:
+    workflows: [CI]
+    types: [completed]
+    branches: [main]
+
+# Serialise: two green runs finishing together must not both read the same
+# highest released build number and mint the same one.
+concurrency:
+  group: auto-release-main
+  cancel-in-progress: false
+
+permissions:
+  contents: write
+
+jobs:
+  tag:
+    name: Tag the release for this commit
+    if: >-
+      github.event.workflow_run.conclusion == 'success'
+      && github.event.workflow_run.event == 'push'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+
+    steps:
+      - name: Explain what is about to happen
+        run: |
+          echo "CI run ${{ github.event.workflow_run.id }} concluded:"
+          echo "  conclusion : ${{ github.event.workflow_run.conclusion }}"
+          echo "  event      : ${{ github.event.workflow_run.event }}"
+          echo "  branch     : ${{ github.event.workflow_run.head_branch }}"
+          echo "  commit     : ${{ github.event.workflow_run.head_sha }}"
+          echo "  url        : ${{ github.event.workflow_run.html_url }}"
+
+      # `actions/checkout` defaults to the default branch at *this* run's ref,
+      # and on a `workflow_run` trigger GITHUB_SHA is the default branch's head —
+      # which is not necessarily the commit that was just tested. The tested
+      # commit is head_sha on the event payload, and tagging anything else would
+      # release code that never passed CI.
+      - name: Check out the tested commit
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.workflow_run.head_sha }}
+          fetch-depth: 0
+
+      - name: Compute the release tag
+        id: plan
+        shell: bash
+        run: |
+          set -euo pipefail
+          sha="${{ github.event.workflow_run.head_sha }}"
+          branch="${{ github.event.workflow_run.head_branch }}"
+
+          # Belt and braces. `branches: [main]` above already filters on the
+          # head branch, so a pull request's run should never arrive here — but
+          # a release is irreversible and this workflow holds signing-triggering
+          # permission, so the check is repeated rather than assumed.
+          if [ "$branch" != "main" ]; then
+            echo "::error::Refusing to release: tested branch is '${branch}', not main."
+            exit 1
+          fi
+
+          # The version is read from pubspec exactly as a human left it. This
+          # workflow does not decide that a commit is a new product version; it
+          # only decides which build of the version the human already declared to
+          # publish next.
+          line="$(awk '/^version:/{print $2; exit}' pubspec.yaml)"
+          if [ -z "$line" ]; then
+            echo "::error::Could not read 'version:' from pubspec.yaml."
+            exit 1
+          fi
+          semver="${line%%+*}"
+          declared="${line##*+}"
+
+          if ! [[ "$semver" =~ ^[0-9]+\.[0-9]+\.[0-9]+([-+][0-9A-Za-z.-]+)?$ ]]; then
+            echo "::error::pubspec version '${line}' is not a recognisable semver."
+            exit 1
+          fi
+          if ! [[ "$declared" =~ ^[0-9]+$ ]]; then
+            echo "::error::pubspec build number '${declared}' is not a positive integer."
+            exit 1
+          fi
+          echo "pubspec declares ${semver}+${declared}"
+
+          # One tag per commit. If this commit is already tagged, the release for
+          # it exists or is in flight and there is nothing to do. This is what
+          # makes a re-run of the whole pipeline idempotent.
+          if git rev-parse -q --verify "refs/tags/v${semver}+*" >/dev/null 2>&1 \
+             || git tag --points-at "$sha" | grep -q .; then
+            existing="$(git tag --points-at "$sha" | tr '\n' ' ')"
+            echo "::notice::Commit ${sha} is already tagged (${existing}). Nothing to release."
+            echo "already_tagged=true" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          # The build number comes from release history, not from pubspec, so it
+          # is monotonic by construction. Android refuses to install over an
+          # equal or lower versionCode, so reusing a number is not a cosmetic
+          # problem: it produces an APK that silently will not update a till.
+          highest=0
+          for tag in $(git tag --list "v${semver}+*"); do
+            code="${tag##*+}"
+            if [[ "$code" =~ ^[0-9]+$ ]] && [ "$code" -gt "$highest" ]; then
+              highest="$code"
+            fi
+          done
+          # Tags are the source of truth rather than releases: a tag survives a
+          # failed or abandoned release, which is exactly when a number must not
+          # be reused.
+          for release in $(gh release list --limit 200 --json tagName --jq '.[].tagName' 2>/dev/null || true); do
+            case "$release" in
+              v${semver}+*)
+                code="${release##*+}"
+                if [[ "$code" =~ ^[0-9]+$ ]] && [ "$code" -gt "$highest" ]; then
+                  highest="$code"
+                fi
+                ;;
+            esac
+          done
+
+          next=$(( highest + 1 ))
+          # Never below the number pubspec already carries: a human who wrote
+          # 2.0.0+7 means seven builds exist.
+          if [ "$declared" -gt "$next" ]; then
+            next="$declared"
+          fi
+
+          echo "highest released build for ${semver}: ${highest}"
+          echo "next release tag: v${semver}+${next}"
+          echo "tag=v${semver}+${next}" >> "$GITHUB_OUTPUT"
+          echo "semver=${semver}" >> "$GITHUB_OUTPUT"
+          echo "code=${next}" >> "$GITHUB_OUTPUT"
+          echo "already_tagged=false" >> "$GITHUB_OUTPUT"
+
+      - name: Create and push the tag
+        if: steps.plan.outputs.already_tagged == 'false'
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          tag="${{ steps.plan.outputs.tag }}"
+          sha="${{ github.event.workflow_run.head_sha }}"
+
+          # Lightweight and local-only until the push succeeds: a tag object
+          # created but never pushed is harmless, whereas a half-applied remote
+          # ref is not something this job can inspect.
+          git tag "$tag" "$sha"
+
+          if ! git push origin "refs/tags/$tag"; then
+            git tag -d "$tag" >/dev/null 2>&1 || true
+            echo "::error::Could not push ${tag}. Another release job may have created it first."
+            exit 1
+          fi
+
+          echo "Tagged ${tag} at ${sha}."
+          echo "release.yml will build, sign, verify and publish it as a draft."
+
+      - name: Summarise
+        if: always()
+        run: |
+          if [ "${{ steps.plan.outputs.already_tagged }}" = "true" ]; then
+            echo "Nothing to do: this commit was already released."
+          else
+            echo "Requested release ${{ steps.plan.outputs.tag }}."
+            echo "It appears as a DRAFT until the signed APK has built and verified."
+          fi
