@@ -126,7 +126,11 @@ class Volume {
     // An explicit unit always wins, including over a declared column unit: the
     // shopkeeper who wrote "500ml" meant 500.
     final ml = switch (suffix) {
-      'ml' || 'millilitre' || 'milliltres' || 'milliliter' || 'milliliters' =>
+      'ml' ||
+      'millilitre' ||
+      'milliltres' ||
+      'milliliter' ||
+      'milliliters' =>
         amount,
       'l' || 'litre' || 'litres' || 'liter' || 'liters' => amount * 1000,
       _ => null,

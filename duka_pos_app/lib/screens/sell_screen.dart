@@ -1,9 +1,11 @@
 import 'package:flutter/material.dart';
+import 'package:go_router/go_router.dart';
 import 'dart:async';
 import 'dart:convert';
 import 'package:flutter/services.dart';
 import 'package:flutter/semantics.dart';
 import 'package:provider/provider.dart';
+import '../routing/routes.dart';
 import '../services/app_state.dart';
 import '../services/backend_service.dart';
 import '../services/barcode/barcode_service.dart';
@@ -11,10 +13,17 @@ import '../services/barcode/scan_input_service.dart';
 import '../services/etims/etims_service.dart';
 import '../services/printer/printer_config.dart';
 import '../services/printer/receipt_printer.dart';
-import '../widgets/camera_scan_screen.dart';
 import '../widgets/sign_out_sheet.dart';
-import 'home_shell.dart';
+import '../routing/home_shell.dart';
 import '../widgets/variant_catalogue.dart';
+import '../l10n/generated/app_localizations.dart';
+import '../theme/app_colors.dart';
+import '../theme/app_shapes.dart';
+import '../theme/app_spacing.dart';
+import '../theme/typography.dart';
+import '../ui/components/status.dart';
+import '../ui/layout/page.dart';
+import '../ui/components/surface.dart';
 import '../models/models.dart';
 import '../db/database_helper.dart';
 import '../utils/money.dart';
@@ -28,6 +37,7 @@ class SellScreen extends StatefulWidget {
 }
 
 class _SellScreenState extends State<SellScreen> {
+  static const _pollTimeout = Duration(seconds: 20);
   final List<CartItem> _cart = [];
 
   /// The shell's catalogue-change signal. Assigned in `initState`.
@@ -201,14 +211,14 @@ class _SellScreenState extends State<SellScreen> {
                 width: 24, height: 24, child: CircularProgressIndicator()),
             const SizedBox(width: 16),
             Expanded(
-                child:
-                    Text('Checking status of $reference with the provider…')),
+                child: Text(AppLocalizations.of(context)
+                    .sellCheckingPayment(reference))),
           ],
         ),
       ),
     );
     final outcome = await BackendService.pollPaymentStatus(reference,
-        timeout: const Duration(seconds: 20));
+        timeout: _pollTimeout);
     if (!mounted) return;
     Navigator.of(context, rootNavigator: true).pop();
 
@@ -219,7 +229,8 @@ class _SellScreenState extends State<SellScreen> {
       if (!mounted) return;
       _announceStatus('Payment $reference was declined. You can retry.');
       ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-        content: Text('Reference $reference was declined. Safe to retry.'),
+        content:
+            Text(AppLocalizations.of(context).sellReferenceDeclined(reference)),
       ));
       return;
     }
@@ -239,18 +250,18 @@ class _SellScreenState extends State<SellScreen> {
     final checkAgain = await showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
-        title: const Text('Payment still unconfirmed'),
+        title: Text(AppLocalizations.of(context).sellPaymentUnconfirmedTitle),
         content: Text(
             'Reference $reference${amount is num ? ' for ${formatMoney(Money.fromMajor(amount))}' : ''} has not been confirmed by the provider. '
             'Do not charge the customer again. Check again now, or record the sale later from Reports.'),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(ctx, false),
-            child: const Text('Later'),
+            child: Text(AppLocalizations.of(context).sellCheckAgainLater),
           ),
           ElevatedButton(
             onPressed: () => Navigator.pop(ctx, true),
-            child: const Text('Check again'),
+            child: Text(AppLocalizations.of(context).sellCheckAgainAction),
           ),
         ],
       ),
@@ -324,8 +335,10 @@ class _SellScreenState extends State<SellScreen> {
       _announceStatus('Reconciled payment $reference and recorded the sale.');
       if (!mounted) return true;
       ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-        content:
-            Text('Payment $reference was received. The sale is now recorded.'),
+        content: Text(
+          AppLocalizations.of(context)
+              .sellPaymentReceivedSaleRecorded(reference),
+        ),
       ));
       return true;
     } catch (_) {
@@ -366,9 +379,8 @@ class _SellScreenState extends State<SellScreen> {
         // Names the variant case in the same message, because a code that was
         // never attached to anything is usually a code the owner typed into the
         // wrong field — a variant's code belongs on that variant.
-        final message = problem ??
-            'No product carries that barcode. Add it in Inventory — on the '
-                'product or on one of its variants — or pick the product by name.';
+        final message =
+            problem ?? AppLocalizations.of(context).sellScanNoProductBarcode;
         _announceStatus(message);
         ScaffoldMessenger.of(context)
             .showSnackBar(SnackBar(content: Text(message)));
@@ -381,16 +393,16 @@ class _SellScreenState extends State<SellScreen> {
         // its variants. Refused out loud: adding the parent here would charge
         // the parent's price for something the owner never priced, and the
         // cashier would only find out at the stock count.
-        final message = '${product.name} is sold as variants, so its own '
-            'barcode is not enough. Scan one of its variant barcodes, or tap '
-            'the product to choose.';
+        final message = AppLocalizations.of(context)
+            .sellScanVariantOnlyMessage(product.name);
         _announceStatus(message);
         ScaffoldMessenger.of(context)
             .showSnackBar(SnackBar(content: Text(message)));
         return;
       }
       if (variant != null && variant.stockQty <= 0) {
-        final message = '${variant.label} is out of stock.';
+        final message = AppLocalizations.of(context)
+            .sellScanVariantOutOfStockMessage(variant.label);
         _announceStatus(message);
         ScaffoldMessenger.of(context)
             .showSnackBar(SnackBar(content: Text(message)));
@@ -422,9 +434,16 @@ class _SellScreenState extends State<SellScreen> {
   }
 
   Future<void> _scanWithCamera() async {
-    await Navigator.of(context).push(MaterialPageRoute<void>(
-      builder: (_) => CameraScanScreen(onDetected: _handleScan),
-    ));
+    // `push`, not `go`: the scanner is a screen the user comes back FROM with a
+    // result, and `go` would replace the till in the shell's branch history.
+    // The camera surface itself is deliberately a ROUTE rather than a pushed
+    // `Navigator` page, so deep linking can reach it and the back button from
+    // inside the viewfinder leaves the till.
+    final ScanResult? scan = await context.push<ScanResult>(Routes.cameraScan);
+    // A null result is the user backing out, which is its own outcome and not a
+    // failed scan. There is nothing to add to the cart.
+    if (scan == null) return;
+    await _handleScan(scan);
   }
 
   Future<void> _addToCart(Product product) async {
@@ -444,7 +463,9 @@ class _SellScreenState extends State<SellScreen> {
             child: Column(mainAxisSize: MainAxisSize.min, children: [
           Padding(
               padding: const EdgeInsets.all(16),
-              child: Text('Choose serving · ${product.name}',
+              child: Text(
+                  AppLocalizations.of(context)
+                      .sellChooseServingTitle(product.name),
                   style: Theme.of(context).textTheme.titleMedium)),
           if (sellsAsVariants && variants.isEmpty)
             // Said rather than silently offering full/half/quarter: on a
@@ -452,10 +473,11 @@ class _SellScreenState extends State<SellScreen> {
             // them for "Dark" is a price nobody set.
             ListTile(
               leading: const Icon(Icons.info_outline),
-              title: Text('${product.name} has no variants yet'),
-              subtitle: const Text(
-                  'Add them in Inventory — Dark, Regular, Big cup — and they '
-                  'will appear here.'),
+              title: Text(AppLocalizations.of(context)
+                  .sellNoVariantsYetTitle(product.name)),
+              subtitle: Text(
+                AppLocalizations.of(context).sellNoVariantsYetHint,
+              ),
               enabled: false,
             )
           else if (sellsAsVariants)
@@ -479,8 +501,8 @@ class _SellScreenState extends State<SellScreen> {
             const Divider(height: 24),
             Padding(
               padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
-              child:
-                  Text('Shots', style: Theme.of(context).textTheme.labelLarge),
+              child: Text(AppLocalizations.of(context).sellShotsSection,
+                  style: Theme.of(context).textTheme.labelLarge),
             ),
             for (final cup in shots) _shotOption(sheetContext, product, cup),
           ],
@@ -640,7 +662,10 @@ class _SellScreenState extends State<SellScreen> {
     final canAdd = available >= needed;
     return ListTile(
       leading: const Icon(Icons.local_bar_outlined),
-      title: Text('$label · ${product.mlFor(portion)} ml'),
+      title: Text(
+        AppLocalizations.of(context)
+            .sellPourOptionTitle(label, '${product.mlFor(portion)}'),
+      ),
       trailing: Text(formatMoney(price)),
       enabled: canAdd,
       subtitle: !canAdd
@@ -665,7 +690,10 @@ class _SellScreenState extends State<SellScreen> {
       leading: Icon(verdict.canPour
           ? Icons.local_drink_outlined
           : Icons.warning_amber_outlined),
-      title: Text('${cup.label} · ${cup.capacityMl} ml'),
+      title: Text(
+        AppLocalizations.of(context)
+            .sellPourOptionTitle(cup.label, '${cup.capacityMl}'),
+      ),
       trailing: Text(formatMoney(cup.price)),
       enabled: verdict.canPour,
       // Each blocked reason names its own cause. "Not available" would leave a
@@ -797,14 +825,19 @@ class _SellScreenState extends State<SellScreen> {
       context: context,
       builder: (dialogContext) => StatefulBuilder(
         builder: (dialogContext, setDialogState) => AlertDialog(
-          title: const Text('Record offline payment'),
+          title: Text(AppLocalizations.of(context).sellOfflinePaymentTitle),
           content: SingleChildScrollView(
               child: Column(mainAxisSize: MainAxisSize.min, children: [
-            Text('Sale total: ${formatMoney(_total)}'),
+            Text(
+              AppLocalizations.of(context)
+                  .sellSaleTotalLabel(formatMoney(_total)),
+            ),
             const SizedBox(height: 12),
             DropdownButtonFormField<String>(
               initialValue: method,
-              decoration: const InputDecoration(labelText: 'Payment method'),
+              decoration: InputDecoration(
+                  labelText:
+                      AppLocalizations.of(context).sellPaymentMethodLabel),
               items: _offlinePaymentLabels.entries
                   .map((entry) => DropdownMenuItem(
                         value: entry.key,
@@ -836,15 +869,16 @@ class _SellScreenState extends State<SellScreen> {
             const SizedBox(height: 12),
             TextField(
               controller: referenceController,
-              decoration:
-                  const InputDecoration(labelText: 'Reference (optional)'),
+              decoration: InputDecoration(
+                labelText: AppLocalizations.of(context).sellReferenceLabel,
+              ),
               textInputAction: TextInputAction.done,
             ),
           ])),
           actions: [
             TextButton(
                 onPressed: () => Navigator.pop(dialogContext),
-                child: const Text('Cancel')),
+                child: Text(AppLocalizations.of(context).actionCancel)),
             FilledButton(
               onPressed: () {
                 final typed = double.tryParse(amountController.text.trim());
@@ -866,7 +900,7 @@ class _SellScreenState extends State<SellScreen> {
                   'reference': referenceController.text.trim(),
                 });
               },
-              child: const Text('Record sale'),
+              child: Text(AppLocalizations.of(context).sellRecordSaleAction),
             ),
           ],
         ),
@@ -999,15 +1033,14 @@ class _SellScreenState extends State<SellScreen> {
     }
     _announceStatus('Sale recorded but the receipt did not print.');
     ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-      content:
-          const Text('The sale is recorded, but the receipt did not print.'),
+      content: Text(AppLocalizations.of(context).sellReceiptDidNotPrint),
       // No retry action when the operator has to change something first:
       // offering "Retry" against a refused Bluetooth permission just fails
       // again and teaches the owner that the button does not work.
       action: result.needsUserAction
           ? null
           : SnackBarAction(
-              label: 'Retry',
+              label: AppLocalizations.of(context).actionRetry,
               onPressed: () => unawaited(_printReceipt(saleId, config)),
             ),
     ));
@@ -1062,9 +1095,9 @@ class _SellScreenState extends State<SellScreen> {
     } catch (error) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
+        SnackBar(
           content: Text(
-              "Couldn't record the sale. Nothing was charged — try again."),
+              AppLocalizations.of(context).sellSaleNotRecordedNothingCharged),
         ),
       );
     }
@@ -1083,16 +1116,19 @@ class _SellScreenState extends State<SellScreen> {
     final result = await showDialog<Map<String, String>>(
       context: context,
       builder: (ctx) => AlertDialog(
-        title: const Text('M-Pesa Payment'),
+        title: Text(AppLocalizations.of(context).sellMpesaPaymentTitle),
         content: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            Text('Total: ${formatMoney(_total)}'),
+            Text(
+              AppLocalizations.of(context)
+                  .sellSaleTotalLabel(formatMoney(_total)),
+            ),
             const SizedBox(height: 16),
             TextField(
               controller: phoneController,
-              decoration: const InputDecoration(
-                labelText: 'Phone Number',
+              decoration: InputDecoration(
+                labelText: AppLocalizations.of(context).sellPhoneNumberLabel,
                 hintText: '0712345678',
               ),
               keyboardType: TextInputType.phone,
@@ -1101,8 +1137,9 @@ class _SellScreenState extends State<SellScreen> {
             const SizedBox(height: 12),
             TextField(
               controller: customerNameController,
-              decoration: const InputDecoration(
-                labelText: 'Customer Name (optional)',
+              decoration: InputDecoration(
+                labelText:
+                    AppLocalizations.of(context).sellCustomerNameOptionalLabel,
               ),
               autofillHints: const [AutofillHints.name],
             ),
@@ -1111,14 +1148,16 @@ class _SellScreenState extends State<SellScreen> {
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(ctx),
-            child: const Text('Cancel'),
+            child: Text(AppLocalizations.of(context).actionCancel),
           ),
           ElevatedButton(
             onPressed: () {
               final phone = phoneController.text.trim();
               if (phone.length < 10) {
                 ScaffoldMessenger.of(ctx).showSnackBar(
-                  const SnackBar(content: Text('Enter a valid phone number')),
+                  SnackBar(
+                      content: Text(
+                          AppLocalizations.of(context).sellEnterValidPhone)),
                 );
                 return;
               }
@@ -1127,7 +1166,7 @@ class _SellScreenState extends State<SellScreen> {
                 'customer': customerNameController.text.trim(),
               });
             },
-            child: const Text('Pay'),
+            child: Text(AppLocalizations.of(context).sellPayAction),
           ),
         ],
       ),
@@ -1159,7 +1198,9 @@ class _SellScreenState extends State<SellScreen> {
       if (unsynced.isNotEmpty) {
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(content: Text('Sync products first in Settings')),
+            SnackBar(
+                content:
+                    Text(AppLocalizations.of(context).sellSyncProductsFirst)),
           );
         }
         return;
@@ -1242,15 +1283,19 @@ class _SellScreenState extends State<SellScreen> {
           context: context,
           barrierDismissible: false,
           builder: (ctx) => AlertDialog(
-            title: const Text('Processing M-Pesa Payment'),
+            title: Text(AppLocalizations.of(context).sellProcessingMpesaTitle),
             content: Column(
               mainAxisSize: MainAxisSize.min,
               children: [
                 const CircularProgressIndicator(),
                 const SizedBox(height: 16),
-                Text('Check phone ${result['phone']} for STK push'),
+                Text(
+                  AppLocalizations.of(context)
+                      .sellCheckPhoneForStk('${result['phone']}'),
+                ),
                 const SizedBox(height: 8),
-                Text('Reference: $reference'),
+                Text(
+                    AppLocalizations.of(context).sellReferenceValue(reference)),
               ],
             ),
           ),
@@ -1308,7 +1353,9 @@ class _SellScreenState extends State<SellScreen> {
           _announceStatus('M-Pesa payment successful. Sale recorded.');
           if (!mounted) return;
           ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(content: Text('Payment successful!')),
+            SnackBar(
+                content: Text(
+                    AppLocalizations.of(context).sellMpesaPaymentSuccessful)),
           );
           setState(() => _cart.clear());
           _loadProducts();
@@ -1385,13 +1432,15 @@ class _SellScreenState extends State<SellScreen> {
                           controller: _searchController,
                           focusNode: _searchFocus,
                           decoration: InputDecoration(
-                            hintText: 'Search products...',
+                            hintText: AppLocalizations.of(context)
+                                .sellScanHintSearchProducts,
                             prefixIcon: const Icon(Icons.search),
                             border: const OutlineInputBorder(),
                             suffixIcon: _searchQuery.isEmpty
                                 ? null
                                 : IconButton(
-                                    tooltip: 'Clear product search',
+                                    tooltip: AppLocalizations.of(context)
+                                        .sellClearSearchTooltip,
                                     icon: const Icon(Icons.clear),
                                     onPressed: () {
                                       _searchController.clear();
@@ -1413,14 +1462,16 @@ class _SellScreenState extends State<SellScreen> {
                             Expanded(
                               child: Semantics(
                                 button: true,
-                                label: 'Scan a barcode with the camera',
-                                hint:
-                                    'Adds one scanned product to the cart as a full bottle',
+                                label: AppLocalizations.of(context)
+                                    .sellScanCameraLabel,
+                                hint: AppLocalizations.of(context)
+                                    .sellScanCameraHint,
                                 child: OutlinedButton.icon(
                                   onPressed:
                                       _scanInFlight ? null : _scanWithCamera,
                                   icon: const Icon(Icons.qr_code_scanner),
-                                  label: const Text('Scan barcode'),
+                                  label: Text(AppLocalizations.of(context)
+                                      .sellScanBarcode),
                                 ),
                               ),
                             ),
@@ -1434,8 +1485,22 @@ class _SellScreenState extends State<SellScreen> {
                                 padding: const EdgeInsets.all(8),
                                 gridDelegate:
                                     SliverGridDelegateWithFixedCrossAxisCount(
-                                  crossAxisCount:
-                                      constraints.maxWidth < 480 ? 2 : 3,
+                                  // From the shared breakpoint vocabulary, so the
+                                  // catalogue grid breaks at the SAME widths as
+                                  // the shell's navigation affordance. A local
+                                  // `maxWidth < 480` is how a phone gets three
+                                  // columns while the bottom bar says it is a
+                                  // small phone.
+                                  crossAxisCount: AdaptiveGrid.columnsFor(
+                                    available: constraints.maxWidth,
+                                    gap: 8,
+                                    minCellWidth: 170,
+                                    maxColumns: 3,
+                                  ),
+                                  // 1.2 rather than 1.0 because the tile reserves
+                                  // TWO lines of name, and a square cell clips the
+                                  // second one. The aspect ratio is what makes the
+                                  // name budget real rather than aspirational.
                                   childAspectRatio: 1.2,
                                   crossAxisSpacing: 8,
                                   mainAxisSpacing: 8,
@@ -1452,86 +1517,22 @@ class _SellScreenState extends State<SellScreen> {
                                       : null;
                                   final matchingCart =
                                       _cart.where((c) => c.product.id == p.id);
-                                  final inCart = matchingCart.fold<double>(
-                                      0, (sum, item) => sum + item.stockUnits);
-                                  final canTap =
+                                  final double inCart =
+                                      matchingCart.fold<double>(
+                                    0,
+                                    (double sum, item) => sum + item.stockUnits,
+                                  );
+                                  final bool canTap =
                                       p.stockQty > 0 || sellsAsVariants;
 
-                                  return Semantics(
-                                    button: canTap,
-                                    label: sellsAsVariants
-                                        ? '${p.name}, from ${fromPrice == null ? '' : formatMoney(fromPrice)}, ${variants.length} variants, ${p.stockQty} in stock'
-                                        : '${p.name}, ${formatMoney(p.sellPrice)}, ${p.stockQty} in stock',
-                                    hint: !canTap
-                                        ? 'Out of stock'
-                                        : sellsAsVariants
-                                            ? 'Double tap to choose a variant'
-                                            : 'Double tap to add to cart',
-                                    child: Card(
-                                      child: InkWell(
-                                        onTap:
-                                            canTap ? () => _addToCart(p) : null,
-                                        child: Padding(
-                                          padding: const EdgeInsets.all(8),
-                                          child: Column(
-                                            mainAxisAlignment:
-                                                MainAxisAlignment.center,
-                                            children: [
-                                              Stack(
-                                                children: [
-                                                  Text(
-                                                    p.name,
-                                                    textAlign: TextAlign.center,
-                                                    maxLines: 2,
-                                                    overflow:
-                                                        TextOverflow.ellipsis,
-                                                  ),
-                                                  if (inCart > 0)
-                                                    Positioned(
-                                                      right: 0,
-                                                      child: CircleAvatar(
-                                                        radius: 10,
-                                                        child: Text(inCart %
-                                                                    1 ==
-                                                                0
-                                                            ? '${inCart.toInt()}'
-                                                            : '$inCart'),
-                                                      ),
-                                                    ),
-                                                ],
-                                              ),
-                                              const SizedBox(height: 4),
-                                              Text(
-                                                // A variant product has no single
-                                                // price to show, so the cheapest
-                                                // thing it can be sold as stands in
-                                                // for it. Printing the parent's
-                                                // price would price a Dark at the
-                                                // Kenyana Beer the owner set once.
-                                                sellsAsVariants
-                                                    ? (fromPrice == null
-                                                        ? 'No variants yet'
-                                                        : 'From ${formatMoney(fromPrice)}')
-                                                    : formatMoney(p.sellPrice),
-                                                style: const TextStyle(
-                                                    fontWeight:
-                                                        FontWeight.bold),
-                                              ),
-                                              Text(
-                                                '${p.stockQty} in stock',
-                                                style: TextStyle(
-                                                  color: p.isLow
-                                                      ? Theme.of(context)
-                                                          .colorScheme
-                                                          .error
-                                                      : null,
-                                                ),
-                                              ),
-                                            ],
-                                          ),
-                                        ),
-                                      ),
-                                    ),
+                                  return _ProductTile(
+                                    product: p,
+                                    inCart: inCart,
+                                    sellsAsVariants: sellsAsVariants,
+                                    variantCount: variants.length,
+                                    cheapestPrice: fromPrice,
+                                    canTap: canTap,
+                                    onTap: canTap ? () => _addToCart(p) : null,
                                   );
                                 },
                               ),
@@ -1573,11 +1574,14 @@ class _SellScreenState extends State<SellScreen> {
                               children: [
                                 Semantics(
                                     header: true,
-                                    child: Text('Cart',
+                                    child: Text(
+                                        AppLocalizations.of(context)
+                                            .sellCartTitle,
                                         style: Theme.of(context)
                                             .textTheme
                                             .titleLarge!)),
-                                Text('${_cart.length} items'),
+                                Text(AppLocalizations.of(context)
+                                    .sellCartItemCount(_cart.length)),
                               ],
                             ),
                           ],
@@ -1585,7 +1589,9 @@ class _SellScreenState extends State<SellScreen> {
                       ),
                       Expanded(
                         child: _cart.isEmpty
-                            ? const Center(child: Text('Tap products to add'))
+                            ? Center(
+                                child: Text(AppLocalizations.of(context)
+                                    .sellCartEmptyHint))
                             : ListView.builder(
                                 itemCount: _cart.length,
                                 itemBuilder: (ctx, i) {
@@ -1598,19 +1604,22 @@ class _SellScreenState extends State<SellScreen> {
                                       children: [
                                         IconButton(
                                           icon: const Icon(Icons.remove),
-                                          tooltip: 'Decrease ${item.label}',
+                                          tooltip: AppLocalizations.of(context)
+                                              .sellDecreaseItem(item.label),
                                           onPressed: () => _updateQty(i, -1),
                                         ),
                                         Text(
                                             '${item.qty % 1 == 0 ? item.qty.toInt() : item.qty}'),
                                         IconButton(
                                           icon: const Icon(Icons.add),
-                                          tooltip: 'Increase ${item.label}',
+                                          tooltip: AppLocalizations.of(context)
+                                              .sellIncreaseItem(item.label),
                                           onPressed: () => _updateQty(i, 1),
                                         ),
                                         IconButton(
                                           icon: const Icon(Icons.delete),
-                                          tooltip: 'Remove ${item.label}',
+                                          tooltip: AppLocalizations.of(context)
+                                              .sellRemoveItem(item.label),
                                           onPressed: () => _removeFromCart(i),
                                         ),
                                       ],
@@ -1626,7 +1635,7 @@ class _SellScreenState extends State<SellScreen> {
                             Row(
                               mainAxisAlignment: MainAxisAlignment.spaceBetween,
                               children: [
-                                Text('Total:',
+                                Text(AppLocalizations.of(context).sellTotalOnly,
                                     style:
                                         Theme.of(context).textTheme.titleLarge),
                                 Text(
@@ -1646,7 +1655,8 @@ class _SellScreenState extends State<SellScreen> {
                                             ? null
                                             : _checkoutOffline,
                                     icon: const Icon(Icons.payments),
-                                    label: const Text('Offline payment'),
+                                    label: Text(AppLocalizations.of(context)
+                                        .sellOfflinePaymentAction),
                                   ),
                                 ),
                                 const SizedBox(width: 8),
@@ -1657,7 +1667,8 @@ class _SellScreenState extends State<SellScreen> {
                                             ? null
                                             : _checkoutMpesa,
                                     icon: const Icon(Icons.phone_iphone),
-                                    label: const Text('M-Pesa'),
+                                    label: Text(AppLocalizations.of(context)
+                                        .sellMethodMpesa),
                                     style: ElevatedButton.styleFrom(
                                       backgroundColor: Theme.of(context)
                                           .colorScheme
@@ -1722,9 +1733,8 @@ class _SellScreenState extends State<SellScreen> {
       reason: '${product.name} has no volume set, so it cannot be poured'
     );
   }
-  final perBottle = cup.capacityMl > 0
-      ? (containerMl / cup.capacityMl).floor()
-      : 0;
+  final perBottle =
+      cup.capacityMl > 0 ? (containerMl / cup.capacityMl).floor() : 0;
   if (perBottle <= 0) {
     return (
       canPour: false,
@@ -1863,4 +1873,207 @@ class CartItem {
   /// The one rounding point per line: [qty] is a quantity and may be fractional,
   /// so the product is quantised here rather than at every intermediate step.
   Money get total => unitPrice.times(qty);
+}
+
+/// One product in the till's catalogue grid.
+///
+/// Extracted as a class rather than left inline because it is the most-tapped
+/// control in the app, and a 70-line inline block in an `itemBuilder` is
+/// untestable in isolation.
+class _ProductTile extends StatelessWidget {
+  const _ProductTile({
+    required this.product,
+    required this.inCart,
+    required this.sellsAsVariants,
+    required this.variantCount,
+    required this.cheapestPrice,
+    required this.canTap,
+    required this.onTap,
+  });
+
+  final Product product;
+
+  /// Units already in the cart, as a fraction — a shot can be poured in 0.25
+  /// steps, so this is not an integer count.
+  final double inCart;
+
+  final bool sellsAsVariants;
+  final int variantCount;
+  final Money? cheapestPrice;
+  final bool canTap;
+  final VoidCallback? onTap;
+
+  /// Lines of name the tile reserves.
+  ///
+  /// Two, and the tile is sized so two lines FIT rather than so two lines are
+  /// permitted. That distinction is the whole difference between a name that is
+  /// readable and a name that is silently cut: the cell grows taller instead of
+  /// the text shrinking or clipping.
+  static const int _nameLines = 2;
+
+  @override
+  Widget build(BuildContext context) {
+    final AppColors colors = AppColors.of(context);
+    final AppSpacing spacing = AppSpacing.of(context);
+    final TextTheme type = AppTypography.of(context);
+
+    final String priceLine = sellsAsVariants
+        ? (cheapestPrice == null
+            ? 'No variants yet'
+            : 'From ${formatMoney(cheapestPrice!)}')
+        : formatMoney(product.sellPrice);
+
+    // The stock line carries a WORD as well as a tone. It used to carry only a
+    // red colour, which is invisible to a deuteranopic cashier, to a greyscale
+    // screenshot, and to a screen reader.
+    final String stockLine = '${product.stockQty.round()} in stock';
+
+    return Semantics(
+      button: canTap,
+      // One node carrying the whole tile: a cashier stepping through the grid with
+      // TalkBack should hear "Kenyatta bread, KSh 60, 12 in stock, add to cart",
+      // not four separate stops for name, price, count and action.
+      label: sellsAsVariants
+          ? '${product.name}, from '
+              '${cheapestPrice == null ? 'no variants' : formatMoney(cheapestPrice!)}, '
+              '$variantCount variants, $stockLine'
+          : '${product.name}, ${formatMoney(product.sellPrice)}, $stockLine',
+      hint: !canTap
+          ? AppLocalizations.of(context).sellOutOfStock
+          : sellsAsVariants
+              ? 'Double tap to choose a variant'
+              : 'Double tap to add to the cart',
+      excludeSemantics: true,
+      child: ExcludeSemantics(
+        child: SurfaceCard(
+          onTap: onTap,
+          child: Stack(
+            children: <Widget>[
+              Padding(
+                padding: EdgeInsets.all(spacing.sm),
+                child: Column(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: <Widget>[
+                    Flexible(
+                      child: Text(
+                        product.name,
+                        textAlign: TextAlign.center,
+                        maxLines: _nameLines,
+                        // No ellipsis. A name is what the cashier is scanning for;
+                        // an ellipsis here means the product they are looking for
+                        // is spelled with a trailing dot. Two lines is a BUDGET,
+                        // and the tile is sized to honour it — the overflow matrix
+                        // is the thing that catches a name that cannot fit.
+                        overflow: TextOverflow.visible,
+                        style: type.titleSmall,
+                      ),
+                    ),
+                    SizedBox(height: spacing.xs),
+                    Text(
+                      priceLine,
+                      textAlign: TextAlign.center,
+                      // Tabular figures: a column of prices that shifts sideways
+                      // as the digit count changes cannot be scanned.
+                      style: AppTypography.money(
+                        context,
+                        size: 14,
+                        weight: FontWeight.w700,
+                      ),
+                    ),
+                    SizedBox(height: 2),
+                    Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: <Widget>[
+                        Icon(
+                          product.isLow
+                              ? StatusTone.warning.icon
+                              : StatusTone.success.icon,
+                          size: 12,
+                          color:
+                              product.isLow ? colors.warning : colors.success,
+                        ),
+                        SizedBox(width: spacing.xs),
+                        Text(
+                          stockLine,
+                          style: type.labelSmall?.copyWith(
+                            color: product.isLow
+                                ? colors.warning
+                                : colors.onSurfaceMuted,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ],
+                ),
+              ),
+              if (inCart > 0)
+                PositionedDirectional(
+                  top: spacing.xs,
+                  end: spacing.xs,
+                  child: _CartCountPip(count: inCart),
+                ),
+              if (!canTap)
+                Positioned.fill(
+                  child: DecoratedBox(
+                    // A scrim rather than a disabled colour on the text: the
+                    // contents stay legible so the cashier can still read WHAT is
+                    // out of stock, which is the information they need.
+                    decoration: BoxDecoration(
+                      color: colors.canvas.withValues(alpha: 0.72),
+                      borderRadius: AppShapes.of(context).controlRadius,
+                    ),
+                    child: Center(
+                      child: StatusChip(
+                        tone: StatusTone.danger,
+                        text: AppLocalizations.of(context).sellOutOfStock,
+                        dense: true,
+                      ),
+                    ),
+                  ),
+                ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+/// How many units of this product are already in the cart.
+class _CartCountPip extends StatelessWidget {
+  const _CartCountPip({required this.count});
+
+  /// Fractional, because a shot can be poured in quarter steps: the pip shows
+  /// `3` while it is `3.0`, and `1.5` while it is not.
+  final double count;
+
+  @override
+  Widget build(BuildContext context) {
+    final AppColors colors = AppColors.of(context);
+    final String label = count == count.roundToDouble()
+        ? '${count.toInt()}'
+        : count.toStringAsFixed(1);
+
+    return Semantics(
+      label: '$label in the cart',
+      excludeSemantics: true,
+      child: Container(
+        constraints: const BoxConstraints(minWidth: 20, minHeight: 20),
+        alignment: Alignment.center,
+        padding: const EdgeInsets.symmetric(horizontal: 5),
+        decoration: BoxDecoration(
+          color: colors.accent,
+          shape: BoxShape.circle,
+        ),
+        child: Text(
+          label,
+          style: AppTypography.of(context).labelSmall?.copyWith(
+                color: colors.onAccent,
+                fontWeight: FontWeight.w700,
+                height: 1,
+              ),
+        ),
+      ),
+    );
+  }
 }

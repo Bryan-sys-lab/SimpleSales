@@ -10,6 +10,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
 import '../db/database_helper.dart';
+import '../l10n/generated/app_localizations.dart';
 import '../models/models.dart';
 import '../services/barcode/barcode_service.dart';
 import '../utils/money.dart';
@@ -294,6 +295,19 @@ class _VariantFormSheetState extends State<VariantFormSheet> {
   String _suggestionLabel(CupSizeSuggestion s) =>
       Volume(s.sizeMl.toDouble()).display;
 
+  /// What the unit picker offers for [unit].
+  ///
+  /// Mapped here rather than read from `ProductUnit.label`, because that label
+  /// is part of the stored vocabulary and translating it would change the words
+  /// the database agrees with. The picker is the presentation edge, so this is
+  /// where the copy is localized.
+  String _unitLabel(AppLocalizations l10n, ProductUnit unit) => switch (unit) {
+        ProductUnit.each => l10n.variantUnitEach,
+        ProductUnit.millilitre => l10n.variantUnitMillilitre,
+        ProductUnit.litre => l10n.variantUnitLitre,
+        ProductUnit.cup => l10n.variantUnitCup,
+      };
+
   void _useSuggestion(CupSizeSuggestion s) {
     final text = _suggestionLabel(s);
     _size.text = text;
@@ -317,24 +331,24 @@ class _VariantFormSheetState extends State<VariantFormSheet> {
   }
 
   Future<void> _submitDraft() async {
+    final l10n = AppLocalizations.of(context);
     final name = _name.text.trim();
     if (name.isEmpty) {
-      setState(() => _error = 'Give the variant a name, like Dark or Big cup');
+      setState(() => _error = l10n.variantNameRequired);
       return;
     }
     if (name.length > Product.maxNameLength) {
-      setState(() =>
-          _error = 'Name must be ${Product.maxNameLength} characters or fewer');
+      setState(() => _error = l10n.variantNameTooLong(Product.maxNameLength));
       return;
     }
 
     final price = double.tryParse(_price.text.trim());
     if (price == null) {
-      setState(() => _error = 'Selling price must be a number');
+      setState(() => _error = l10n.variantSellPriceNotANumber);
       return;
     }
     if (!Money.isValidMajor(price)) {
-      setState(() => _error = 'Selling price must be 0 or more');
+      setState(() => _error = l10n.variantSellPriceNotNegative);
       return;
     }
 
@@ -348,12 +362,15 @@ class _VariantFormSheetState extends State<VariantFormSheet> {
     if (costText.isNotEmpty) {
       final parsed = double.tryParse(costText);
       if (parsed == null) {
-        setState(() => _error = 'Cost price must be a number, or empty to use '
-            '${formatMoney(widget.seed.costPrice)}');
+        setState(
+          () => _error = l10n.variantCostPriceNotANumber(
+            formatMoney(widget.seed.costPrice),
+          ),
+        );
         return;
       }
       if (!Money.isValidMajor(parsed)) {
-        setState(() => _error = 'Cost price must be 0 or more');
+        setState(() => _error = l10n.variantCostPriceNotNegative);
         return;
       }
       cost = Money.fromMajor(parsed);
@@ -361,12 +378,12 @@ class _VariantFormSheetState extends State<VariantFormSheet> {
 
     final stock = double.tryParse(_stock.text.trim());
     if (stock == null || !stock.isFinite || stock < 0) {
-      setState(() => _error = 'Stock must be 0 or more');
+      setState(() => _error = l10n.validationStockNotNegative);
       return;
     }
     final reorder = int.tryParse(_reorder.text.trim()) ?? 0;
     if (reorder < 0) {
-      setState(() => _error = 'Reorder level must be 0 or more');
+      setState(() => _error = l10n.variantReorderLevelNotNegative);
       return;
     }
 
@@ -374,7 +391,7 @@ class _VariantFormSheetState extends State<VariantFormSheet> {
     if (_unit != ProductUnit.each) {
       final raw = _size.text.trim();
       if (raw.isEmpty) {
-        setState(() => _error = 'Enter the serving size, for example 500ml');
+        setState(() => _error = l10n.variantSizeRequired);
         return;
       }
       // The owner's own words, through the one parser the importers and the
@@ -382,8 +399,7 @@ class _VariantFormSheetState extends State<VariantFormSheet> {
       // `declared` decides what a bare number in a litre column means.
       final volume = Volume.parse(raw, declared: _unit);
       if (!volume.isValid) {
-        setState(() => _error =
-            'Size must be a number, optionally with ml or L — for example 500ml');
+        setState(() => _error = l10n.variantSizeInvalid);
         return;
       }
       sizeMl = volume.rounded;
@@ -435,13 +451,15 @@ class _VariantFormSheetState extends State<VariantFormSheet> {
   }
 
   /// The serving-size field, shown only for a variant that has one.
-  Widget _sizeField() => TextField(
+  Widget _sizeField(AppLocalizations l10n) => TextField(
         controller: _size,
         textInputAction: TextInputAction.next,
         decoration: InputDecoration(
-          labelText: 'Serving size',
-          hintText: _unit == ProductUnit.litre ? '0.5L' : '500ml',
-          helperText: 'Millilitres or litres — 500ml, 0.5L, 1.5 L.',
+          labelText: l10n.variantSizeLabel,
+          hintText: _unit == ProductUnit.litre
+              ? l10n.variantSizeHintLitre
+              : l10n.variantSizeHintMillilitre,
+          helperText: l10n.variantSizeHelper,
         ),
         keyboardType:
             const TextInputType.numberWithOptions(decimal: true, signed: false),
@@ -454,11 +472,11 @@ class _VariantFormSheetState extends State<VariantFormSheet> {
   /// as the group it is. Wrapping rather than scrolling horizontally, because a
   /// horizontally scrolled row hides the sizes the shop uses most — the ones at
   /// the far end are the least used, so hiding them costs nothing.
-  Widget _suggestionChips(ThemeData theme) => Padding(
+  Widget _suggestionChips(ThemeData theme, AppLocalizations l10n) => Padding(
         padding: const EdgeInsets.only(top: 8),
         child: Semantics(
           container: true,
-          label: 'Cup sizes you have used before',
+          label: l10n.variantSizeSuggestionsSpoken,
           child: Wrap(
             spacing: 8,
             runSpacing: 4,
@@ -476,9 +494,10 @@ class _VariantFormSheetState extends State<VariantFormSheet> {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
+    final l10n = AppLocalizations.of(context);
     return Padding(
       padding: EdgeInsets.only(
-        bottom: MediaQuery.of(context).viewInsets.bottom,
+        bottom: MediaQuery.viewInsetsOf(context).bottom,
         left: 16,
         right: 16,
         top: 16,
@@ -490,7 +509,9 @@ class _VariantFormSheetState extends State<VariantFormSheet> {
           children: [
             Text(
               widget.title ??
-                  (widget.seed.isNew ? 'Add variant' : 'Edit variant'),
+                  (widget.seed.isNew
+                      ? l10n.variantAddTitle
+                      : l10n.variantEditTitle),
               style: theme.textTheme.titleLarge,
             ),
             const SizedBox(height: 12),
@@ -499,20 +520,20 @@ class _VariantFormSheetState extends State<VariantFormSheet> {
               autofocus: widget.seed.isNew,
               textCapitalization: TextCapitalization.words,
               textInputAction: TextInputAction.next,
-              decoration: const InputDecoration(
-                labelText: 'Name',
-                hintText: 'Dark, Regular, Big cup',
+              decoration: InputDecoration(
+                labelText: l10n.variantNameLabel,
+                hintText: l10n.variantNameHint,
               ),
             ),
             const SizedBox(height: 8),
             DropdownButtonFormField<ProductUnit>(
               initialValue: _unit,
-              decoration: const InputDecoration(labelText: 'Measured in'),
+              decoration: InputDecoration(labelText: l10n.variantUnitLabel),
               items: [
                 for (final unit in ProductUnit.values)
                   DropdownMenuItem(
                     value: unit,
-                    child: Text(unit.label),
+                    child: Text(_unitLabel(l10n, unit)),
                   ),
               ],
               onChanged: (unit) {
@@ -527,13 +548,13 @@ class _VariantFormSheetState extends State<VariantFormSheet> {
               Padding(
                 padding: const EdgeInsets.only(top: 4, bottom: 4),
                 child: Text(
-                  'Countable — no serving size. One bottle is one Dark.',
+                  l10n.variantCountableNote,
                   style: theme.textTheme.bodySmall,
                 ),
               )
             else ...[
-              _sizeField(),
-              if (_visibleSuggestions.isNotEmpty) _suggestionChips(theme),
+              _sizeField(l10n),
+              if (_visibleSuggestions.isNotEmpty) _suggestionChips(theme, l10n),
             ],
             Row(children: [
               Expanded(
@@ -541,7 +562,8 @@ class _VariantFormSheetState extends State<VariantFormSheet> {
                   controller: _price,
                   keyboardType:
                       const TextInputType.numberWithOptions(decimal: true),
-                  decoration: const InputDecoration(labelText: 'Sell price'),
+                  decoration:
+                      InputDecoration(labelText: l10n.variantSellPriceLabel),
                 ),
               ),
               const SizedBox(width: 8),
@@ -551,10 +573,11 @@ class _VariantFormSheetState extends State<VariantFormSheet> {
                   keyboardType:
                       const TextInputType.numberWithOptions(decimal: true),
                   decoration: InputDecoration(
-                    labelText: 'Cost price',
+                    labelText: l10n.variantCostPriceLabel,
                     hintText: formatMoney(widget.seed.costPrice),
-                    helperText:
-                        'Empty keeps ${formatMoney(widget.seed.costPrice)}',
+                    helperText: l10n.variantCostPriceHelper(
+                      formatMoney(widget.seed.costPrice),
+                    ),
                   ),
                 ),
               ),
@@ -565,9 +588,9 @@ class _VariantFormSheetState extends State<VariantFormSheet> {
                   controller: _stock,
                   keyboardType:
                       const TextInputType.numberWithOptions(decimal: true),
-                  decoration: const InputDecoration(
-                    labelText: 'Starting stock',
-                    helperText: 'How many you have now',
+                  decoration: InputDecoration(
+                    labelText: l10n.variantStartingStockLabel,
+                    helperText: l10n.variantStartingStockHelper,
                   ),
                 ),
               ),
@@ -576,9 +599,9 @@ class _VariantFormSheetState extends State<VariantFormSheet> {
                 child: TextField(
                   controller: _reorder,
                   keyboardType: TextInputType.number,
-                  decoration: const InputDecoration(
-                    labelText: 'Reorder level',
-                    helperText: 'Warn at or below',
+                  decoration: InputDecoration(
+                    labelText: l10n.variantReorderLevelLabel,
+                    helperText: l10n.variantReorderLevelHelper,
                   ),
                 ),
               ),
@@ -586,9 +609,9 @@ class _VariantFormSheetState extends State<VariantFormSheet> {
             TextField(
               controller: _sku,
               textCapitalization: TextCapitalization.characters,
-              decoration: const InputDecoration(
-                labelText: 'Stock-keeping code (optional)',
-                helperText: 'Your own reference for this variant',
+              decoration: InputDecoration(
+                labelText: l10n.variantSkuLabel,
+                helperText: l10n.variantSkuHelper,
               ),
             ),
             TextField(
@@ -597,10 +620,10 @@ class _VariantFormSheetState extends State<VariantFormSheet> {
                 FilteringTextInputFormatter.allow(RegExp(r'[A-Za-z0-9\-]')),
               ],
               textCapitalization: TextCapitalization.characters,
-              decoration: const InputDecoration(
-                labelText: 'Barcode (optional)',
-                hintText: '6001234567892',
-                helperText: 'Scanning this adds this variant, not the product',
+              decoration: InputDecoration(
+                labelText: l10n.variantBarcodeLabel,
+                hintText: l10n.variantBarcodeHint,
+                helperText: l10n.variantBarcodeHelper,
               ),
             ),
             if (_error != null)
@@ -614,7 +637,9 @@ class _VariantFormSheetState extends State<VariantFormSheet> {
             const SizedBox(height: 16),
             FilledButton(
               onPressed: _submit,
-              child: Text(widget.seed.isNew ? 'Add variant' : 'Save variant'),
+              child: Text(widget.seed.isNew
+                  ? l10n.variantAddTitle
+                  : l10n.variantSaveAction),
             ),
             const SizedBox(height: 16),
           ],

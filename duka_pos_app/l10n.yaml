@@ -1,0 +1,27 @@
+# gen-l10n configuration.
+#
+# The contract this file encodes:
+#
+#   * `app_en.arb` is the TEMPLATE. Every key and every `{placeholder}` name is
+#     authored there first; a locale file mirrors it exactly.
+#   * `nullable-getter: false` makes a missing or misspelled key a COMPILE
+#     ERROR rather than a widget that silently renders nothing. That is the
+#     single most important line in this file: without it, a typo in a key name
+#     ships as an empty `Text` on a till.
+#   * Generated code lands INSIDE `lib/` (`synthetic-package` is deprecated and
+#     removed), so it is greppable by the same gates as hand-written code and can
+#     be imported with a normal relative path.
+#   * `use-deferred-loading: false` keeps the generated catalogue synchronous.
+#     This app ships one locale today and loads instantly offline; deferred
+#     loading is a web-bundle optimisation that would make
+#     `AppLocalizations.of(context)` asynchronous for no measurable gain.
+#   * `untranslated-messages-file` gives the parity gate a machine-readable
+#     report instead of making it diff two ARB files itself.
+arb-dir: lib/l10n
+template-arb-file: app_en.arb
+output-dir: lib/l10n/generated
+output-localization-file: app_localizations.dart
+output-class: AppLocalizations
+nullable-getter: false
+use-deferred-loading: false
+untranslated-messages-file: lib/l10n/untranslated.json

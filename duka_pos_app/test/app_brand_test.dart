@@ -72,14 +72,16 @@ void main() {
         () {
       for (final entry in legacyDensities.entries) {
         final path = '$resDir/${entry.key}/ic_launcher.png';
-        expectValidPng(path, expectedWidth: entry.value, expectedHeight: entry.value);
+        expectValidPng(path,
+            expectedWidth: entry.value, expectedHeight: entry.value);
       }
     });
 
     test('every density has an adaptive foreground layer', () {
       for (final entry in adaptiveDensities.entries) {
         final path = '$resDir/${entry.key}/ic_launcher_foreground.png';
-        expectValidPng(path, expectedWidth: entry.value, expectedHeight: entry.value);
+        expectValidPng(path,
+            expectedWidth: entry.value, expectedHeight: entry.value);
       }
     });
 
@@ -88,7 +90,8 @@ void main() {
       // build failure, so nothing else would catch a missing file here.
       for (final entry in adaptiveDensities.entries) {
         final path = '$resDir/${entry.key}/ic_launcher_monochrome.png';
-        expectValidPng(path, expectedWidth: entry.value, expectedHeight: entry.value);
+        expectValidPng(path,
+            expectedWidth: entry.value, expectedHeight: entry.value);
       }
     });
 
@@ -117,25 +120,30 @@ void main() {
       expect(brandInk, isNotNull,
           reason: 'colors.xml must define brand_ink from DukaColors.ink');
       final hex = brandInk!.group(1)!;
-      final argb = hex.length == 6 ? 0xFF000000 | int.parse(hex, radix: 16)
+      final argb = hex.length == 6
+          ? 0xFF000000 | int.parse(hex, radix: 16)
           : int.parse(hex, radix: 16);
       expect(argb, expectedInk);
       for (final variant in ['drawable', 'drawable-v21']) {
         final launch = File('$resDir/$variant/launch_background.xml');
-        expect(launch.existsSync(), isTrue, reason: '$variant splash is missing');
+        expect(launch.existsSync(), isTrue,
+            reason: '$variant splash is missing');
         expect(launch.readAsStringSync(), contains('@color/brand_ink'),
             reason: '$variant would flash white on startup');
       }
       for (final variant in ['values', 'values-night']) {
         final styles = File('$resDir/$variant/styles.xml');
-        expect(styles.existsSync(), isTrue, reason: '$variant/styles.xml is missing');
-        expect(styles.readAsStringSync(), contains('@drawable/launch_background'));
+        expect(styles.existsSync(), isTrue,
+            reason: '$variant/styles.xml is missing');
+        expect(
+            styles.readAsStringSync(), contains('@drawable/launch_background'));
       }
     });
 
     test('every iOS app icon slot named in Contents.json is a real PNG', () {
-      final dir = Directory(
-          'ios/Runner/Assets.xcassets/AppIcon.appiconset').absolute.path;
+      final dir = Directory('ios/Runner/Assets.xcassets/AppIcon.appiconset')
+          .absolute
+          .path;
       final contentsFile = File('$dir/Contents.json');
       expect(contentsFile.existsSync(), isTrue);
       final decoded = jsonDecode(contentsFile.readAsStringSync()) as Map;
@@ -146,8 +154,7 @@ void main() {
         final entry = raw as Map<String, dynamic>;
         final filename = entry['filename'] as String?;
         if (filename == null) continue; // a slot Xcode fills in itself
-        final points =
-            double.parse((entry['size'] as String).split('x').first);
+        final points = double.parse((entry['size'] as String).split('x').first);
         final scale = int.parse((entry['scale'] as String).replaceAll('x', ''));
         final edge = (points * scale).round();
         expectValidPng('$dir/$filename',
@@ -163,8 +170,9 @@ void main() {
       // App Store validation rejects an app icon with transparency. The colour
       // type byte of the IHDR chunk is at offset 25: 2 is truecolour RGB,
       // 6 is truecolour with alpha.
-      final dir = Directory(
-          'ios/Runner/Assets.xcassets/AppIcon.appiconset').absolute.path;
+      final dir = Directory('ios/Runner/Assets.xcassets/AppIcon.appiconset')
+          .absolute
+          .path;
       for (final entity in Directory(dir).listSync().whereType<File>()) {
         if (!entity.path.endsWith('.png')) continue;
         final bytes = entity.readAsBytesSync();
@@ -187,8 +195,9 @@ void expectValidPng(
   required int expectedHeight,
 }) {
   final file = File(path);
-  expect(file.existsSync(), isTrue, reason: '$path is missing — re-run '
-      'assets/branding/generate_launcher_icon.py');
+  expect(file.existsSync(), isTrue,
+      reason: '$path is missing — re-run '
+          'assets/branding/generate_launcher_icon.py');
 
   final bytes = file.readAsBytesSync();
   expect(bytes.length, greaterThan(0), reason: '$path is empty');

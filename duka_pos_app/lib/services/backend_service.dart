@@ -234,7 +234,8 @@ class BackendService {
     DateTime? date,
   }) async {
     await ensureInitialized();
-    final response = await _dio.get('$backendUrl/etims/z-report', queryParameters: {
+    final response =
+        await _dio.get('$backendUrl/etims/z-report', queryParameters: {
       if (date != null) 'date': _isoDate(date),
     });
     return (response.data as Map<String, dynamic>?) ?? const {};
@@ -260,7 +261,8 @@ class BackendService {
     await _dio.post('$backendUrl/etims/device', data: {
       'tin': tin,
       'device_id': deviceId,
-      if (deviceName != null && deviceName.isNotEmpty) 'device_name': deviceName,
+      if (deviceName != null && deviceName.isNotEmpty)
+        'device_name': deviceName,
     });
   }
 

@@ -49,8 +49,8 @@ class Barcode {
     final withoutGroupSeparator = raw
         .replaceAll('<GS>', '')
         .replaceAll(String.fromCharCode(gs1Separator), '');
-    final withoutSeparators = withoutGroupSeparator.replaceAll(
-        RegExp(r'[\s\-]'), '');
+    final withoutSeparators =
+        withoutGroupSeparator.replaceAll(RegExp(r'[\s\-]'), '');
     return withoutSeparators.trim().toUpperCase();
   }
 

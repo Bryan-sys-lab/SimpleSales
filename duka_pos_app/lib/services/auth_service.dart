@@ -136,7 +136,8 @@ class AuthService {
     Future<List<int>> inline() async {
       if (request.iterations == defaultIterations && request.bits == 256) {
         final key = await _kdf.deriveKey(
-            secretKey: SecretKey(utf8.encode(request.pin)), nonce: request.salt);
+            secretKey: SecretKey(utf8.encode(request.pin)),
+            nonce: request.salt);
         return key.extractBytes();
       }
       return derivePbkdf2Key(request);
@@ -144,8 +145,7 @@ class AuthService {
 
     if (kIsWeb) return inline();
     try {
-      return await compute(derivePbkdf2Key, request,
-          debugLabel: 'duka-pbkdf2');
+      return await compute(derivePbkdf2Key, request, debugLabel: 'duka-pbkdf2');
     } catch (_) {
       return inline();
     }

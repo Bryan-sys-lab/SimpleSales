@@ -47,8 +47,7 @@ void main() {
 
     test('rejects an EAN-13 whose check digit is wrong', () {
       expect(Barcode.isValid('6001234567890'), isFalse);
-      expect(Barcode.rejectionReason('6001234567890'),
-          contains('check digit'));
+      expect(Barcode.rejectionReason('6001234567890'), contains('check digit'));
     });
 
     test('accepts a valid EAN-8, UPC-A and GTIN-14', () {

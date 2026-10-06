@@ -100,10 +100,8 @@ class ExcelService {
     sheet.appendRow(
         Product.sheetHeaders.map((h) => xl.TextCellValue(h)).toList());
     for (final p in products) {
-      sheet.appendRow(p
-          .toSheetRow(barcode: primaryByProduct[p.id])
-          .map(_cell)
-          .toList());
+      sheet.appendRow(
+          p.toSheetRow(barcode: primaryByProduct[p.id]).map(_cell).toList());
     }
     book.delete('Sheet1');
 
@@ -290,7 +288,9 @@ class ExcelService {
   /// while reporting no error at all.
   static String _inventorySheetName(xl.Excel book) {
     for (final name in book.tables.keys) {
-      if (name.trim().toLowerCase() == inventorySheetName.toLowerCase()) return name;
+      if (name.trim().toLowerCase() == inventorySheetName.toLowerCase()) {
+        return name;
+      }
     }
     for (final name in book.tables.keys) {
       if (_rawRows(book.tables[name]!).isNotEmpty) return name;
@@ -313,7 +313,8 @@ class ExcelService {
     final read = _inventorySheetName(book).trim().toLowerCase();
     return book.tables.keys
         .where((name) => name.trim().toLowerCase() != read)
-        .where((name) => !_readableSheetNames.contains(name.trim().toLowerCase()))
+        .where(
+            (name) => !_readableSheetNames.contains(name.trim().toLowerCase()))
         .where((name) => !skipEmpty || _rawRows(book.tables[name]!).isNotEmpty)
         .toList();
   }

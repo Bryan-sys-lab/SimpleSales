@@ -25,7 +25,8 @@ enum ScanSource {
 /// needs to see the label's code to know which label is wrong.
 @immutable
 class ScanResult {
-  const ScanResult({required this.raw, required this.normalised, required this.source});
+  const ScanResult(
+      {required this.raw, required this.normalised, required this.source});
 
   final String raw;
   final String normalised;
@@ -202,7 +203,8 @@ class WedgeScannerBuffer {
     if (normalised.length < minLength || normalised.length > maxLength) {
       return null;
     }
-    return ScanResult(raw: raw, normalised: normalised, source: ScanSource.wedge);
+    return ScanResult(
+        raw: raw, normalised: normalised, source: ScanSource.wedge);
   }
 
   void _reset() {

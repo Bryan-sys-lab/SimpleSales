@@ -49,8 +49,7 @@ final class ReceiptText extends ReceiptLine {
   final int scale;
 
   @override
-  String render(int columnBudget) =>
-      _fit(text, columnBudget, alignment);
+  String render(int columnBudget) => _fit(text, columnBudget, alignment);
 }
 
 /// A left-hand label and a right-hand figure on the same physical line.
@@ -160,7 +159,6 @@ class ReceiptInput {
   bool get isVatExempt => vatRatePercent == 0;
 }
 
-
 /// Lays a receipt out as a list of printable lines.
 ///
 /// Pure: same input, same output, no clock, no I/O, no globals. Every customer-
@@ -188,15 +186,15 @@ class ReceiptBuilder {
         alignment: ReceiptAlignment.center,
         bold: true,
         scale: input.shopName.trim().length <= columnBudget ~/ 2 ? 2 : 1));
-    lines.add(const ReceiptText('SALES RECEIPT',
-        alignment: ReceiptAlignment.center));
+    lines.add(
+        const ReceiptText('SALES RECEIPT', alignment: ReceiptAlignment.center));
 
     lines.add(const ReceiptRule());
     lines.add(ReceiptColumns('Date', _date(input.issuedAt)));
     lines.add(ReceiptColumns('Receipt No.', input.receiptNumber));
     if (input.cashierName.trim().isNotEmpty) {
-      lines.add(ReceiptColumns(
-          'Served by', '${_oneLine(input.cashierName)} (${input.cashierRole})'));
+      lines.add(ReceiptColumns('Served by',
+          '${_oneLine(input.cashierName)} (${input.cashierRole})'));
     }
     lines.add(const ReceiptRule());
 
@@ -235,8 +233,8 @@ class ReceiptBuilder {
     }
     lines.add(const ReceiptRule());
     lines.add(ReceiptColumns('TOTAL', _money(input.total), bold: true));
-    lines.add(ReceiptColumns(input.paymentMethodLabel,
-        _money(input.amountTendered)));
+    lines.add(
+        ReceiptColumns(input.paymentMethodLabel, _money(input.amountTendered)));
     if (!input.changeGiven.isZero) {
       lines.add(ReceiptColumns('Change', _money(input.changeGiven)));
     }
@@ -269,9 +267,8 @@ class ReceiptBuilder {
 
   String _lineLabel(SaleItem item) {
     final portion = _portionSuffix(item.portion);
-    final base = item.productName.trim().isEmpty
-        ? 'Item'
-        : item.productName.trim();
+    final base =
+        item.productName.trim().isEmpty ? 'Item' : item.productName.trim();
     return portion.isEmpty ? base : '$base ($portion)';
   }
 

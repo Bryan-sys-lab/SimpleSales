@@ -100,9 +100,9 @@ class ReceiptPrinter {
           failure: PrinterFailure.printFailed);
     }
     final row = await _db.getSaleRowById(saleId);
-    final receiptNumber =
-        row == null ? 'POS-${saleId.toString().padLeft(6, '0')}'
-            : _db.receiptNumberFor(row);
+    final receiptNumber = row == null
+        ? 'POS-${saleId.toString().padLeft(6, '0')}'
+        : _db.receiptNumberFor(row);
 
     final input = ReceiptInput(
       shopName: shopName,
@@ -169,8 +169,8 @@ class ReceiptPrinter {
   /// URL built locally is how a receipt ends up with a QR that scans to a 404.
   /// A reprint has no backend to ask, so it rebuilds the URL from the same
   /// public route the backend publishes.
-  static Future<String?> verificationPayloadFor(
-      Map<String, dynamic>? row, {String? fallbackBaseUrl}) async {
+  static Future<String?> verificationPayloadFor(Map<String, dynamic>? row,
+      {String? fallbackBaseUrl}) async {
     if (row == null) return null;
     final number = row['etims_receipt_number'] as String?;
     if (number == null || number.trim().isEmpty) return null;

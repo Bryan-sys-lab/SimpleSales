@@ -26,6 +26,8 @@
 
 import 'package:flutter/foundation.dart';
 
+import '../l10n/generated/app_localizations.dart';
+
 import '../db/database_helper.dart';
 import '../models/models.dart';
 import '../utils/units.dart';
@@ -61,10 +63,12 @@ class ProductCode {
   /// "Dark 500 ml" for a variant-level code, "All sizes" for a product-level
   /// one. Spelled out rather than an icon, because the distinction the owner is
   /// looking for is which of their own words the code means.
-  String get scopeLabel {
+  /// Takes the catalogue in, because a getter cannot reach one: this is a value
+  /// type built in a `rawQuery` loop, far above any `Localizations` ancestor.
+  String scopeLabel(AppLocalizations l10n) {
     final name = variantName.trim();
-    if (!isVariantLevel) return 'All sizes';
-    return name.isEmpty ? 'One variant' : name;
+    if (!isVariantLevel) return l10n.variantAllSizesLabel;
+    return name.isEmpty ? l10n.variantOneVariantLabel : name;
   }
 }
 
@@ -100,8 +104,7 @@ class VariantCatalogue {
       ? const <ProductVariant>[]
       : variantsByProduct[product.id] ?? const <ProductVariant>[];
 
-  ProductVariant? byId(int? id) =>
-      id == null ? null : variantsById[id];
+  ProductVariant? byId(int? id) => id == null ? null : variantsById[id];
 
   /// Whether the till must offer variants instead of portions.
   ///
@@ -110,7 +113,8 @@ class VariantCatalogue {
   /// the cashier cannot sell as a whole bottle. Treating those two states
   /// differently is how "Dark" and "Regular" quietly merge back into the
   /// parent's price at the till.
-  bool sellsAsVariants(Product product) => tracks(product) || of(product).isNotEmpty;
+  bool sellsAsVariants(Product product) =>
+      tracks(product) || of(product).isNotEmpty;
 
   /// The cheapest thing this product can be sold as, for "from KSh 60" on a
   /// tile that no longer has a single price.

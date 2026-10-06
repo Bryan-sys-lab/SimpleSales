@@ -141,8 +141,8 @@ class SheetsService {
       // the signal to stay signed out rather than to interrupt a customer.
       // 7.x hangs the scope API off the account's `authorizationClient`, not off
       // the account itself.
-      final authz = await account.authorizationClient
-          .authorizationForScopes(_scopes);
+      final authz =
+          await account.authorizationClient.authorizationForScopes(_scopes);
       if (authz == null) return null;
 
       return sheets.SheetsApi(authz.authClient(scopes: _scopes));
@@ -173,8 +173,10 @@ class SheetsService {
       sheets: [
         sheets.Sheet(properties: sheets.SheetProperties(title: 'Inventory')),
         sheets.Sheet(properties: sheets.SheetProperties(title: 'Sales')),
-        sheets.Sheet(properties: sheets.SheetProperties(title: barcodesSheetTitle)),
-        sheets.Sheet(properties: sheets.SheetProperties(title: variantsSheetTitle)),
+        sheets.Sheet(
+            properties: sheets.SheetProperties(title: barcodesSheetTitle)),
+        sheets.Sheet(
+            properties: sheets.SheetProperties(title: variantsSheetTitle)),
       ],
     );
     final created = await api.spreadsheets.create(spreadsheet);
@@ -210,8 +212,7 @@ class SheetsService {
 
     final rows = [
       Product.sheetHeaders,
-      ...products
-          .map((p) => p.toSheetRow(barcode: primaryByProduct[p.id])),
+      ...products.map((p) => p.toSheetRow(barcode: primaryByProduct[p.id])),
     ];
     await api.spreadsheets.values.update(
       sheets.ValueRange(values: rows),
@@ -341,10 +342,10 @@ class SheetsService {
       sheetName: inventorySheetName,
       rows: layout.rows,
       columns: layout.columns,
-      barcodes: readBarcodeRows(
-          await _values(api, spreadsheetId, barcodesRange)),
-      variants: readVariantRows(
-          await _values(api, spreadsheetId, variantsRange)),
+      barcodes:
+          readBarcodeRows(await _values(api, spreadsheetId, barcodesRange)),
+      variants:
+          readVariantRows(await _values(api, spreadsheetId, variantsRange)),
     );
     return result.imported;
   }
@@ -394,7 +395,8 @@ class SheetsService {
       for (final s in sales) {
         rows.addAll(s.toSheetRows());
         final created = DateTime.tryParse(s.createdAt);
-        if (created != null && (batchNewest == null || created.isAfter(batchNewest))) {
+        if (created != null &&
+            (batchNewest == null || created.isAfter(batchNewest))) {
           batchNewest = created;
         }
       }

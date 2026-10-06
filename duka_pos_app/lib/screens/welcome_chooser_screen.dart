@@ -1,31 +1,43 @@
 import 'package:flutter/material.dart';
+import 'package:go_router/go_router.dart';
+import 'package:provider/provider.dart';
 
 import '../app_brand.dart';
+import '../routing/app_stage_controller.dart';
+import '../routing/routes.dart';
 import '../services/app_stage.dart';
-import '../theme/app_theme.dart';
-import 'login_screen.dart';
-import 'owner_setup_screen.dart';
-import 'splash_screen.dart';
+import '../l10n/generated/app_localizations.dart';
+import '../theme/app_colors.dart';
+import '../theme/app_haptics.dart';
+import '../theme/app_spacing.dart';
+import '../theme/typography.dart';
+import '../ui/brand/simple_pos_mark.dart';
 
 /// The first screen a person sees when there is no signed-in session.
 ///
 /// Two choices, always, for everyone: **sign in** or **set up**. This replaces a
 /// flow that branched silently on whether a shop happened to exist, so a
 /// cashier handed a brand-new till landed on a form addressed to whoever
-/// installs the app — "create shop admin account" — with no sign-in anywhere in
-/// sight. Nothing about who is holding the phone should decide whether they are
-/// offered a way to sign in.
+/// installs the app, with no sign-in anywhere in the sightline. Nothing about
+/// who is holding the phone should decide whether they are offered a way to
+/// sign in.
 ///
 /// The shop name is shown so somebody signing in knows *which* shop this device
-/// is pointed at before they type a PIN. A shop name is not sensitive — it is
-/// printed on every receipt this till issues — and without it a person holding a
+/// is pointed at before they type a PIN. A shop name is not sensitive: it is
+/// printed on every receipt this till issues, and without it a person holding a
 /// till set up for someone else has no way to tell they are in the wrong place.
-class WelcomeChooserScreen extends StatefulWidget {
+///
+/// Where a choice LEADS is the router's decision, not this screen's. Pressing a
+/// button records the intent with [AppStageController] and asks the router to
+/// resolve it; there is no `Navigator` call on this screen at all, and that is
+/// deliberate. A chooser that pushed its own screens is how a signed-out till
+/// ends up with two stacks and two sets of answers to "where am I".
+class WelcomeChooserScreen extends StatelessWidget {
   const WelcomeChooserScreen({
     super.key,
     required this.shopName,
     required this.hasShop,
-    this.intent = AppChooserIntent.signIn,
+    this.intent,
   });
 
   /// The active shop's name, or empty when there is no shop yet.
@@ -33,129 +45,137 @@ class WelcomeChooserScreen extends StatefulWidget {
 
   final bool hasShop;
 
-  /// Where this chooser was entered from. `addShop` changes the setup call's
-  /// copy, because adding a second shop is not the same job as creating the
-  /// first one.
-  final AppChooserIntent intent;
+  /// Overrides where the setup action sends the chooser.
+  ///
+  /// Null, which is how the router builds this screen, means "derive it": on a
+  /// device that already runs a shop, setting up again IS adding a second one,
+  /// and the setup screen changes its heading and reuses the existing PIN
+  /// because of that flag alone.
+  final AppChooserIntent? intent;
 
-  @override
-  State<WelcomeChooserScreen> createState() => _WelcomeChooserScreenState();
-}
+  /// The intent the setup action sends.
+  AppChooserIntent get _setupIntent =>
+      intent ?? (hasShop ? AppChooserIntent.addShop : AppChooserIntent.setUp);
 
-class _WelcomeChooserScreenState extends State<WelcomeChooserScreen> {
-  Future<void> _openLogin() async {
-    await Navigator.of(context).push(
-      MaterialPageRoute<void>(
-        builder: (_) => const LoginScreen(),
-        fullscreenDialog: true,
-      ),
-    );
-    if (mounted) setState(() {});
-  }
-
-  Future<void> _openSetup() async {
-    final created = await Navigator.of(context).push<bool>(
-      MaterialPageRoute<bool>(
-        builder: (_) => OwnerSetupScreen(
-          // Adding a second shop must not read as "create the owner for this
-          // shop" — the owner already exists elsewhere on this device. The
-          // screen uses this to change its own heading and its submit label.
-          isAdditionalShop: widget.intent == AppChooserIntent.addShop,
-          onCancel: () => Navigator.of(context).pop(false),
-        ),
-      ),
-    );
-    if (created == true && mounted) setState(() {});
+  void _choose(BuildContext context, AppChooserIntent choice) {
+    HapticTheme.of(context).fire(HapticEvent.select);
+    // Both halves are needed. `choose` records WHY, which the setup screen
+    // reads to change its own copy. `go` asks the router where that lands.
+    // Recording alone would be a no-op whenever the intent was already current
+    // (and "sign in" is the intent a chooser starts on), so the one choice a
+    // returning user makes every single day would do nothing at all.
+    context.read<AppStageController>().choose(choice);
+    context.go(choice == AppChooserIntent.signIn ? Routes.login : Routes.setup);
   }
 
   @override
   Widget build(BuildContext context) {
-    final addingAnother = widget.intent == AppChooserIntent.addShop;
+    final AppColors colors = AppColors.of(context);
+    final AppSpacing spacing = AppSpacing.of(context);
+    final TextTheme type = AppTypography.of(context);
+
+    final bool addingAnother = _setupIntent == AppChooserIntent.addShop;
+    final bool showShop = hasShop && shopName.trim().isNotEmpty;
 
     return Scaffold(
       body: SafeArea(
         child: Center(
           child: SingleChildScrollView(
-            padding: const EdgeInsets.all(24),
+            padding: EdgeInsets.all(spacing.xl),
             child: ConstrainedBox(
-              constraints: const BoxConstraints(maxWidth: 420),
+              constraints: const BoxConstraints(maxWidth: _kChooserWidth),
               child: Column(
                 mainAxisSize: MainAxisSize.min,
                 crossAxisAlignment: CrossAxisAlignment.stretch,
-                children: [
-                  const Center(child: SimplePosMark(size: 72)),
-                  const SizedBox(height: 18),
+                children: <Widget>[
+                  const Center(
+                      child: SimplePosMark(size: 64, decorative: true)),
+                  SizedBox(height: spacing.lg),
+                  const Center(child: SimplePosWordmark()),
+                  SizedBox(height: spacing.lg),
+
+                  // Either the shop this device is pointed at, or the one thing
+                  // a person has to do next. Both are states a screen reader
+                  // should announce on arrival: the first is what proves this
+                  // is the right till, the second is the screen's own job.
                   Semantics(
+                    liveRegion: true,
                     header: true,
                     child: Text(
-                      SimplePosBrand.appName,
+                      showShop
+                          ? AppLocalizations.of(context)
+                              .chooserSignedInShop(shopName)
+                          : AppLocalizations.of(context).chooserHeading,
                       textAlign: TextAlign.center,
-                      style: Theme.of(context).textTheme.headlineSmall,
+                      style: showShop ? type.bodyMedium : type.titleMedium,
                     ),
                   ),
-                  const SizedBox(height: 8),
-                  if (widget.hasShop && widget.shopName.trim().isNotEmpty)
-                    Semantics(
-                      liveRegion: true,
-                      child: Text(
-                        addingAnother
-                            ? 'Adding another shop. You are signed out of $SimplePosBrand.appName on this device until you sign in.'
-                            : 'Signed-in shop: ${widget.shopName}',
-                        textAlign: TextAlign.center,
-                        style: Theme.of(context).textTheme.bodySmall,
-                      ),
-                    )
-                  else
+
+                  if (addingAnother) ...<Widget>[
+                    SizedBox(height: spacing.sm),
                     Text(
-                      'Choose how you want to start',
+                      AppLocalizations.of(context).chooserHasShopWarning,
                       textAlign: TextAlign.center,
-                      style: Theme.of(context).textTheme.bodySmall,
+                      style: type.bodySmall?.copyWith(
+                        color: colors.onSurfaceMuted,
+                      ),
                     ),
-                  const SizedBox(height: 28),
+                  ],
+
+                  SizedBox(height: spacing.xxl),
 
                   // Sign in first, and unconditionally. It is the choice a
                   // returning user makes every single day, and it must never
                   // be the one that is hidden.
                   FilledButton.icon(
-                    onPressed: _openLogin,
-                    icon: const Icon(Icons.pin_outlined),
+                    onPressed: () => _choose(context, AppChooserIntent.signIn),
+                    icon:
+                        const ExcludeSemantics(child: Icon(Icons.pin_outlined)),
                     label: Padding(
-                      padding: const EdgeInsets.symmetric(vertical: 14),
-                      child: Text(widget.hasShop ? 'Sign in' : 'Sign in'),
+                      padding: EdgeInsets.symmetric(vertical: spacing.lg),
+                      child: Text(
+                          AppLocalizations.of(context).chooserSignInAction),
                     ),
                   ),
-                  const SizedBox(height: 12),
+                  SizedBox(height: spacing.md),
 
                   OutlinedButton.icon(
-                    onPressed: _openSetup,
-                    icon: Icon(addingAnother
-                        ? Icons.add_business_outlined
-                        : Icons.storefront_outlined),
+                    onPressed: () => _choose(context, _setupIntent),
+                    icon: ExcludeSemantics(
+                      child: Icon(
+                        addingAnother
+                            ? Icons.add_business_outlined
+                            : Icons.storefront_outlined,
+                      ),
+                    ),
                     label: Padding(
-                      padding: const EdgeInsets.symmetric(vertical: 14),
-                      child: Text(addingAnother
-                          ? 'Set up another shop'
-                          : 'Set up a shop on this device'),
+                      padding: EdgeInsets.symmetric(vertical: spacing.lg),
+                      child: Text(
+                        addingAnother
+                            ? AppLocalizations.of(context).chooserSetupAnother
+                            : AppLocalizations.of(context).chooserSetupFirst,
+                      ),
                     ),
                   ),
 
-                  const SizedBox(height: 24),
-                  const Divider(),
-                  const SizedBox(height: 12),
+                  SizedBox(height: spacing.xl),
+                  Divider(color: colors.outline),
+                  SizedBox(height: spacing.md),
+
                   Text(
-                    widget.hasShop
-                        ? 'Cashiers, managers and admins all sign in with the PIN their shop gave them.'
-                        : 'A shop admin sets this device up once. After that, everyone signs in with the PIN they are given. No internet is needed.',
+                    hasShop
+                        ? AppLocalizations.of(context).chooserSignInHelp
+                        : AppLocalizations.of(context).chooserSetupHelp,
                     textAlign: TextAlign.center,
-                    style: Theme.of(context).textTheme.bodySmall,
+                    style:
+                        type.bodySmall?.copyWith(color: colors.onSurfaceMuted),
                   ),
-                  const SizedBox(height: 24),
+                  SizedBox(height: spacing.lg),
                   Text(
                     SimplePosBrand.poweredByTag,
                     textAlign: TextAlign.center,
-                    style: TextStyle(
-                      fontSize: 12,
-                      color: DukaColors.mutedInk,
+                    style: type.labelSmall?.copyWith(
+                      color: colors.onSurfaceMuted,
                     ),
                   ),
                 ],
@@ -167,3 +187,10 @@ class _WelcomeChooserScreenState extends State<WelcomeChooserScreen> {
     );
   }
 }
+
+/// The measure of the chooser column.
+///
+/// Not a token: this is not prose but two buttons and a lockup, and past this
+/// width a two-choice screen stops reading as a decision and starts reading as
+/// a form. The brief's readable cap exists for paragraphs; this is not one.
+const double _kChooserWidth = 460;

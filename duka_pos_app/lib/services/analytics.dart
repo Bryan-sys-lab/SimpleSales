@@ -274,10 +274,7 @@ class AttentionSummary {
   final int unverifiedPayments;
 
   int get total =>
-      pendingEtims +
-      rejectedEtims +
-      openImportProblems +
-      unverifiedPayments;
+      pendingEtims + rejectedEtims + openImportProblems + unverifiedPayments;
 
   bool get isEmpty => total == 0;
 }
@@ -408,7 +405,8 @@ String _unitsLabel(double units) {
 String describePaymentMix(List<PaymentMixRow> rows, int rangeTotalMinor) {
   if (rows.isEmpty) return 'Payment methods. Nothing taken in this period.';
   final head = rows
-      .map((row) => '${row.label} ${formatMoney(Money.fromMinor(row.salesMinor))} '
+      .map((row) =>
+          '${row.label} ${formatMoney(Money.fromMinor(row.salesMinor))} '
           'across ${row.transactions} ${row.transactions == 1 ? 'sale' : 'sales'}, '
           '${row.sharePct(rangeTotalMinor).toStringAsFixed(0)} percent')
       .join('; ');

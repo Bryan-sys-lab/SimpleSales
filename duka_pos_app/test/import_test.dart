@@ -216,7 +216,10 @@ void main() {
 
     test('refused barcodes are named by the product that owns them', () async {
       final first = _workbook({
-        'Inventory': [_inventoryHeader, _row(id: 1, name: 'Coke', barcode: '6001234567899')],
+        'Inventory': [
+          _inventoryHeader,
+          _row(id: 1, name: 'Coke', barcode: '6001234567899')
+        ],
       });
       await ExcelService().importInventoryBytes(first);
 
@@ -366,7 +369,8 @@ void main() {
       // Guessing that lives in two importers is how the Excel path files a
       // lager under Beer and the Sheets path files it under General, and neither
       // report looks wrong on its own.
-      expect(ImportRowParser.inferCategoryFromName('Tusker Lager 500ml'), 'Beer');
+      expect(
+          ImportRowParser.inferCategoryFromName('Tusker Lager 500ml'), 'Beer');
       expect(ImportRowParser.inferCategoryFromName('Mala 1L'), 'Milk & Dairy');
       expect(ImportRowParser.inferCategoryFromName('Safi Water'), 'Water');
       expect(ImportRowParser.inferCategoryFromName('Sultani 300g'), 'Snacks');
@@ -374,8 +378,10 @@ void main() {
       expect(ImportRowParser.inferCategoryFromName(''), isNull);
       // An explicit category is never overridden by inference.
       expect(ImportRowParser.resolveCategory('Wine', 'Tusker Lager'), 'Wine');
-      expect(ImportRowParser.resolveCategory('  wines  AND spirits ',
-          'Tusker Lager'), 'Wines & Spirits');
+      expect(
+          ImportRowParser.resolveCategory(
+              '  wines  AND spirits ', 'Tusker Lager'),
+          'Wines & Spirits');
       expect(ImportRowParser.resolveCategory(null, 'Ken Stout'), 'Beer');
       expect(ImportRowParser.resolveCategory('', 'Zebra Widget'),
           CategoryName.general);
@@ -472,7 +478,8 @@ void main() {
 
       final result = await ExcelService().importInventoryBytes(bytes);
 
-      expect(result.imported, 0, reason: 'nothing was written, so nothing broke');
+      expect(result.imported, 0,
+          reason: 'nothing was written, so nothing broke');
       final stored = await productNamed('Kenya Lager');
       expect(stored!.halfPrice, Money.fromMajor(25));
       expect(stored.quarterPrice, Money.fromMajor(15));
@@ -495,7 +502,8 @@ void main() {
       expect(problem.rawRow, contains('TBD'));
     });
 
-    test('an empty optional price still means "not sold in portions"', () async {
+    test('an empty optional price still means "not sold in portions"',
+        () async {
       final bytes = _workbook({
         'Inventory': [
           _inventoryHeader,
@@ -545,29 +553,30 @@ void main() {
 
       expect(result.imported, 1);
       final product = await productNamed('Bare Minimum');
-      expect(product!.stockQty, 0, reason: 'blank stock is zero, and is not flagged');
+      expect(product!.stockQty, 0,
+          reason: 'blank stock is zero, and is not flagged');
       expect(product.reorderLevel, 5);
       expect(result.needsAttention, 1,
           reason: 'only the missing size is worth the owner looking at it');
     });
 
     test('a missing cost price is flagged', () {
-      final parsed = ImportRowParser.parseProductRow(
-          _row(name: 'No Cost', cost: ''));
+      final parsed =
+          ImportRowParser.parseProductRow(_row(name: 'No Cost', cost: ''));
       expect(parsed.product, isNull);
       expect(parsed.problem, 'No Cost price');
     });
 
     test('a missing sell price is flagged', () {
-      final parsed = ImportRowParser.parseProductRow(
-          _row(name: 'No Price', sell: ''));
+      final parsed =
+          ImportRowParser.parseProductRow(_row(name: 'No Price', sell: ''));
       expect(parsed.product, isNull);
       expect(parsed.problem, 'No Selling price');
     });
 
     test('a missing name is flagged', () {
-      final parsed = ImportRowParser.parseProductRow(
-          _row(name: '', cost: 10, sell: 20));
+      final parsed =
+          ImportRowParser.parseProductRow(_row(name: '', cost: 10, sell: 20));
       expect(parsed.product, isNull);
       expect(parsed.problem, 'No product name');
     });
@@ -618,8 +627,12 @@ void main() {
     test('the tabs it did not read are reported', () async {
       final bytes = _workbook({
         'Inventory': [_inventoryHeader, _row(name: 'Kenya Lager')],
-        'Sales': [['date', 'total']],
-        'Notes': [['hello']],
+        'Sales': [
+          ['date', 'total']
+        ],
+        'Notes': [
+          ['hello']
+        ],
       });
 
       final result = await ExcelService().importInventoryBytes(bytes);
@@ -629,8 +642,7 @@ void main() {
 
     test('a file that is not a workbook says so in words', () async {
       expect(
-        () => ExcelService().importInventoryBytes(
-            List<int>.filled(64, 0x41)),
+        () => ExcelService().importInventoryBytes(List<int>.filled(64, 0x41)),
         throwsA(isA<FormatException>()),
       );
     });
@@ -652,8 +664,7 @@ void main() {
       expect(result.imported, 1);
       expect(result.needsAttention, 0);
       final product = await productNamed('Kenya Lager');
-      expect(await db.getBarcodesForProduct(product!.id!),
-          hasLength(1));
+      expect(await db.getBarcodesForProduct(product!.id!), hasLength(1));
     });
 
     test('a barcode pointing at a product outside the import is kept, not lost',
@@ -802,11 +813,13 @@ void main() {
       // By column position, not by searching the row for a number that has
       // deliberately just changed.
       final sizeColumn = Product.sheetHeaders.indexOf('bottle_ml');
-      expect(row[sizeColumn], '50', reason: 'litres, matching the declared unit');
+      expect(row[sizeColumn], '50',
+          reason: 'litres, matching the declared unit');
       final parsed = Product.fromRow(row);
       expect(parsed!.unit, ProductUnit.litre);
       expect(parsed.bottleMl, 50000,
-          reason: 'a 50-litre keg must survive export and re-import as 50 000 ml');
+          reason:
+              'a 50-litre keg must survive export and re-import as 50 000 ml');
     });
 
     test('an exported product imports with no attention flags', () async {

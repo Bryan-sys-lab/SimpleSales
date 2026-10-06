@@ -126,7 +126,8 @@ void main() {
       expect(remaining!.inSeconds, greaterThan(0));
     }, timeout: kdfTimeout);
 
-    test('a single user exhausting the threshold also trips the till', () async {
+    test('a single user exhausting the threshold also trips the till',
+        () async {
       const user = 'till-throttle-solo';
       for (var i = 0; i < AuthService.maxAttempts; i++) {
         await AuthService.recordFailure(user);

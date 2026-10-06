@@ -18,6 +18,7 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
+import '../l10n/generated/app_localizations.dart';
 import '../models/models.dart';
 import '../services/app_state.dart';
 
@@ -45,66 +46,67 @@ Future<bool> confirmSignOut(BuildContext context) async {
 
   final confirmed = await showModalBottomSheet<bool>(
     context: context,
-    builder: (sheetContext) => SafeArea(
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          Padding(
-            padding: const EdgeInsets.fromLTRB(20, 20, 20, 4),
-            child: Text(
-              name == null ? 'Sign out' : 'Sign out $name',
-              style: Theme.of(sheetContext).textTheme.titleLarge,
+    builder: (sheetContext) {
+      final l10n = AppLocalizations.of(sheetContext);
+
+      return SafeArea(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Padding(
+              padding: const EdgeInsets.fromLTRB(20, 20, 20, 4),
+              child: Text(
+                name == null ? l10n.signOutTitle : l10n.signOutTitleNamed(name),
+                style: Theme.of(sheetContext).textTheme.titleLarge,
+              ),
             ),
-          ),
-          Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 20),
-            child: Text(
-              'The PIN pad comes back for the next person.',
-              style: Theme.of(sheetContext).textTheme.bodyMedium,
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 20),
+              child: Text(
+                l10n.signOutDetail,
+                style: Theme.of(sheetContext).textTheme.bodyMedium,
+              ),
             ),
-          ),
-          if (cartCount > 0)
-            _Warning(
-              icon: Icons.shopping_cart_outlined,
-              title:
-                  'You have ${cartCount == 1 ? 'an item' : '$cartCount items'} in the cart',
-              detail:
-                  'Nothing has been charged, and signing out clears the cart.',
-            ),
-          if (openShift != null)
-            _Warning(
-              icon: Icons.point_of_sale_outlined,
-              title: 'Your shift is still open',
-              detail:
-                  'The cash you started with is still counted against your shift. '
-                  'You can sign out and reconcile later, but the shift stays open '
-                  'until someone closes it.',
-            ),
-          const SizedBox(height: 12),
-          Padding(
-            padding: const EdgeInsets.fromLTRB(20, 0, 20, 20),
-            child: Row(
-              children: [
-                Expanded(
-                  child: OutlinedButton(
-                    onPressed: () => Navigator.pop(sheetContext, false),
-                    child: const Text('Stay signed in'),
+            if (cartCount > 0)
+              _Warning(
+                icon: Icons.shopping_cart_outlined,
+                // An ICU plural, not a ternary: "1 item" / "2 items" is a two-way
+                // fork this app can only express in English.
+                title: l10n.signOutCartWarningTitle(cartCount),
+                detail: l10n.signOutCartWarningDetail,
+              ),
+            if (openShift != null)
+              _Warning(
+                icon: Icons.point_of_sale_outlined,
+                title: l10n.signOutShiftWarningTitle,
+                detail: l10n.signOutShiftWarningDetail,
+              ),
+            const SizedBox(height: 12),
+            Padding(
+              padding: const EdgeInsets.fromLTRB(20, 0, 20, 20),
+              child: Row(
+                children: [
+                  Expanded(
+                    child: OutlinedButton(
+                      onPressed: () => Navigator.pop(sheetContext, false),
+                      child: Text(l10n.signOutStayAction),
+                    ),
                   ),
-                ),
-                const SizedBox(width: 12),
-                Expanded(
-                  child: FilledButton(
-                    onPressed: () => Navigator.pop(sheetContext, true),
-                    child: const Text('Sign out'),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: FilledButton(
+                      onPressed: () => Navigator.pop(sheetContext, true),
+                      child: Text(l10n.signOutConfirmAction),
+                    ),
                   ),
-                ),
-              ],
+                ],
+              ),
             ),
-          ),
-        ],
-      ),
-    ),
+          ],
+        ),
+      );
+    },
   );
   return confirmed == true;
 }
@@ -130,7 +132,7 @@ class _Warning extends StatelessWidget {
     return Padding(
       padding: const EdgeInsets.fromLTRB(20, 16, 20, 0),
       child: Semantics(
-        label: '$title. $detail',
+        label: AppLocalizations.of(context).signOutWarningSpoken(title, detail),
         excludeSemantics: true,
         child: Row(
           crossAxisAlignment: CrossAxisAlignment.start,

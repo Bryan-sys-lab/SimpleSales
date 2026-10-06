@@ -131,7 +131,8 @@ void main() {
     expect(again, isTrue);
   });
 
-  test('a product keeps its variants in the order the owner arranged', () async {
+  test('a product keeps its variants in the order the owner arranged',
+      () async {
     await db.upsertVariant(variant(name: 'Regular'));
     await db.upsertVariant(variant(name: 'Dark'));
     expect((await db.getVariants(productId)).map((v) => v.name),

@@ -191,8 +191,12 @@ class SheetColumns {
   };
 
   /// `  Selling Price : ` and `SELLING PRICE` are the same header.
-  static String normaliseHeader(String raw) =>
-      raw.toLowerCase().replaceAll(RegExp(r'\s+'), ' ').trim().replaceAll(':', '').trim();
+  static String normaliseHeader(String raw) => raw
+      .toLowerCase()
+      .replaceAll(RegExp(r'\s+'), ' ')
+      .trim()
+      .replaceAll(':', '')
+      .trim();
 
   int? indexOf(String field) => _indexByField[field];
 
@@ -204,7 +208,8 @@ class SheetColumns {
     return row[index];
   }
 
-  String? text(List<dynamic> row, String field) => cell(row, field)?.toString().trim();
+  String? text(List<dynamic> row, String field) =>
+      cell(row, field)?.toString().trim();
 
   /// True when row 1 is a header row rather than the shopkeeper's first product.
   ///
@@ -388,11 +393,15 @@ class ImportRowParser {
     // the single most consequential figure in the app.
     final costCell = cols.cell(row, 'cost_price');
     final cost = SheetColumns.parseNumber(costCell);
-    if (cost == null) return ParsedRow.rejected(_missingNumber('Cost price', costCell));
+    if (cost == null) {
+      return ParsedRow.rejected(_missingNumber('Cost price', costCell));
+    }
 
     final sellCell = cols.cell(row, 'sell_price');
     final sell = SheetColumns.parseNumber(sellCell);
-    if (sell == null) return ParsedRow.rejected(_missingNumber('Selling price', sellCell));
+    if (sell == null) {
+      return ParsedRow.rejected(_missingNumber('Selling price', sellCell));
+    }
 
     String? warning;
 
@@ -414,14 +423,16 @@ class ImportRowParser {
     if (reorderRaw == null) {
       final text = reorderCell?.toString().trim() ?? '';
       if (text.isNotEmpty) {
-        warning ??= 'Reorder level "$text" is not a number — imported as $defaultReorderLevel';
+        warning ??=
+            'Reorder level "$text" is not a number — imported as $defaultReorderLevel';
       }
     }
 
     final unitCell = cols.text(row, 'unit') ?? '';
     final unit = ProductUnit.parse(unitCell);
     if (unitCell.isNotEmpty && !isKnownUnit(unitCell)) {
-      warning ??= 'Unit "$unitCell" was not recognised — imported as a countable item';
+      warning ??=
+          'Unit "$unitCell" was not recognised — imported as a countable item';
     }
 
     // Volume, not a bare number. "750", "0.75", "1.5 L" and "500ml" are all real
@@ -545,7 +556,9 @@ class ImportRowParser {
   /// is a row the owner has to re-file by hand, every time, forever.
   static String resolveCategory(String? raw, String productName) {
     final text = (raw ?? '').trim();
-    if (text.isEmpty) return inferCategoryFromName(productName) ?? CategoryName.general;
+    if (text.isEmpty) {
+      return inferCategoryFromName(productName) ?? CategoryName.general;
+    }
     return CategoryName.normalise(text);
   }
 
@@ -626,7 +639,15 @@ class ImportRowParser {
       'grocery',
       'pilchard',
     ],
-    'Bakery': ['bread', 'cake', 'pastry', 'croissant', 'samosa', 'mandazi', 'loaf'],
+    'Bakery': [
+      'bread',
+      'cake',
+      'pastry',
+      'croissant',
+      'samosa',
+      'mandazi',
+      'loaf'
+    ],
     'Produce': [
       'onion',
       'tomato',
@@ -718,7 +739,8 @@ class ImportRowParser {
   /// substring, so "Household Cleaner 1L" lands in Household even without a
   /// keyword for "Cleaner".
   static String? inferCategoryFromName(String name) {
-    final haystack = ' ${name.toLowerCase().replaceAll(RegExp(r'\s+'), ' ').trim()} ';
+    final haystack =
+        ' ${name.toLowerCase().replaceAll(RegExp(r'\s+'), ' ').trim()} ';
     if (haystack.trim().isEmpty) return null;
 
     for (final seed in CategoryName.seeds) {

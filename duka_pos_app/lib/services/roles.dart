@@ -49,8 +49,7 @@ enum ShopRole {
   /// is not [admin] is [manager], which is what makes an unrecognised database
   /// value resolve to the least-privileged known role instead of the most
   /// privileged one.
-  bool get canAdminister =>
-      this == ShopRole.admin || this == ShopRole.manager;
+  bool get canAdminister => this == ShopRole.admin || this == ShopRole.manager;
 
   /// Whether this role may delete a product outright rather than deactivate it.
   ///

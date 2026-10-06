@@ -21,11 +21,25 @@ version: 2.0.0+1
 
 environment:
   sdk: '>=3.0.0 <4.0.0'
+  # Pinned so a Flutter upgrade is a deliberate act, not something a transitive
+  # bump can trigger underneath the design system.
+  flutter: '>=3.35.0'
 
 dependencies:
   flutter:
     sdk: flutter
   cupertino_icons: ^2.0.0
+
+  # Flutter's OWN chrome strings and the ambient TextDirection come from a
+  # different catalogue than our ARB. Without these the first Tooltip asserts on
+  # an unsupported locale, and `Directionality` stays LTR no matter what the ARB
+  # says — which is an app that looks translated and reads backwards.
+  flutter_localizations:
+    sdk: flutter
+
+  # The one router for the whole app. Every screen is URL-addressable and each
+  # tab keeps its own navigation stack via StatefulShellRoute.indexedStack.
+  go_router: ^17.5.0
 
   # Local database (offline-first system of record)
   sqflite: ^2.4.4
@@ -100,3 +114,34 @@ dev_dependencies:
 
 flutter:
   uses-material-design: true
+
+  # Runs `flutter gen-l10n` on every build, so a key added to lib/l10n/app_en.arb
+  # without a matching reference cannot compile: the generated getter is missing.
+  generate: true
+
+  # Plus Jakarta Sans is the brand face named in the launcher artwork
+  # (assets/branding/ARTWORK_PROMPT.md). It ships as a VARIABLE font so a single
+  # file covers the whole 200-800 weight axis: `FontWeight` drives the `wght`
+  # axis directly, which is why no static per-weight duplicates are declared and
+  # why `FontVariation('wght', …)` never appears in the theme. Weights used by
+  # the design system are 400 (body), 500 (labels), 600 (dense emphasis), 700
+  # (titles) and 800 (money).
+  #
+  # Never `google_fonts` here: the till is offline-first and a runtime font fetch
+  # is a network dependency in the one code path that must never need one.
+  fonts:
+    - family: PlusJakartaSans
+      fonts:
+        - asset: assets/fonts/PlusJakartaSans-Variable.ttf
+        - asset: assets/fonts/PlusJakartaSans-Italic-Variable.ttf
+          style: italic
+
+  # Brand artwork. `SimplePosMark` renders the mark as vectors (see
+  # lib/ui/brand/simple_pos_mark.dart), so these rasters exist for the surfaces
+  # that genuinely want a bitmap — the share/export header and the store listing
+  # — not for on-screen chrome.
+  assets:
+    - assets/branding/simple_pos_icon_512.png
+    - assets/branding/simple_pos_icon_1024.png
+    - assets/branding/simple_pos_foreground_512.png
+    - assets/branding/simple_pos_icon_monochrome_512.png

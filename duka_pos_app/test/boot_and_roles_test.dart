@@ -68,18 +68,17 @@ void main() {
     });
 
     test('a signed-in admin who has not seen the walkthrough gets it', () {
-      expect(
-          stage(signedIn: true, isAdmin: true, onboarding: false),
+      expect(stage(signedIn: true, isAdmin: true, onboarding: false),
           AppStage.onboarding);
     });
 
-    test('a signed-in CASHIER never gets the walkthrough, even undismissed', () {
+    test('a signed-in CASHIER never gets the walkthrough, even undismissed',
+        () {
       // This is the rule that was previously checked first and stranded every
       // user on welcome screens with no way to reach the PIN pad. It is also a
       // small information leak: the walkthrough's copy describes how the shop
       // is configured.
-      expect(
-          stage(signedIn: true, isAdmin: false, onboarding: false),
+      expect(stage(signedIn: true, isAdmin: false, onboarding: false),
           AppStage.ready);
     });
 
@@ -87,7 +86,10 @@ void main() {
       for (final onboardingComplete in [true, false]) {
         for (final isAdmin in [true, false]) {
           expect(
-            stage(signedIn: false, isAdmin: isAdmin, onboarding: onboardingComplete),
+            stage(
+                signedIn: false,
+                isAdmin: isAdmin,
+                onboarding: onboardingComplete),
             isNot(AppStage.onboarding),
             reason: 'onboarding=$onboardingComplete admin=$isAdmin',
           );
@@ -106,12 +108,20 @@ void main() {
     test('an unknown or missing role resolves to the LEAST privileged', () {
       // The old check was `role != 'cashier'`, which granted inventory and
       // reports to anything unrecognised — fail-open on every permission.
-      for (final junk in ['', 'Cashier', 'CASHIER ', 'superuser', 'root', null]) {
+      for (final junk in [
+        '',
+        'Cashier',
+        'CASHIER ',
+        'superuser',
+        'root',
+        null
+      ]) {
         final role = ShopRole.parse(junk);
         expect(role.seesAllSales, isFalse, reason: '$junk saw all sales');
         expect(role.canManageStock, isFalse, reason: '$junk managed stock');
         expect(role.canAdminister, isFalse, reason: '$junk administered');
-        expect(role.canDeleteProducts, isFalse, reason: '$junk deleted products');
+        expect(role.canDeleteProducts, isFalse,
+            reason: '$junk deleted products');
       }
     });
 

@@ -1,113 +1,145 @@
+// Field validation, and the two confirmations a form has to stop and ask about.
+//
+// Every message here is now an ICU string in `lib/l10n/app_en.arb`, and every
+// method takes an [AppLocalizations] rather than reaching for a global. That is
+// deliberate on both counts:
+//
+//   * A global lookup would be a lookup at the wrong moment. `TextFormField`'s
+//     `validator` runs inside `Form.validate()`, which can happen during a
+//     build-adjacent phase, and a `Localizations` read from a non-widget context
+//     either asserts or — worse, with a cached instance — silently renders the
+//     previous locale's text into a form the user is looking at.
+//   * Word order is not English. "Sell price is required" and "Sell price must be
+//     a valid number" have to be able to reorder, which is why the field NAME is
+//     an ICU placeholder rather than spliced in with `'$fieldName is required'`.
+//
+// The regexes stay as they are on purpose: they are the shipped rules, and
+// tightening a validation is a behaviour change, not a localization task.
+
 import 'package:flutter/material.dart';
 
-class ValidationUtils {
-  /// Validate product form inputs
-  static String? validateProductName(String? value) {
+import '../l10n/generated/app_localizations.dart';
+
+abstract final class ValidationUtils {
+  const ValidationUtils._();
+
+  static String? validateProductName(AppLocalizations l10n, String? value) {
     if (value == null || value.trim().isEmpty) {
-      return 'Product name is required';
+      return l10n.validationProductNameRequired;
     }
     if (value.trim().length < 2) {
-      return 'Product name must be at least 2 characters';
+      return l10n.validationProductNameTooShort;
     }
     return null;
   }
 
-  static String? validatePrice(String? value, String fieldName) {
+  static String? validatePrice(
+    AppLocalizations l10n,
+    String? value,
+    String fieldName,
+  ) {
     if (value == null || value.trim().isEmpty) {
-      return '$fieldName is required';
+      return l10n.validationFieldRequired(fieldName);
     }
     final price = double.tryParse(value.replaceAll(',', ''));
     if (price == null) {
-      return '$fieldName must be a valid number';
+      return l10n.validationFieldNotANumber(fieldName);
     }
     if (price < 0) {
-      return '$fieldName cannot be negative';
+      return l10n.validationFieldNotNegative(fieldName);
     }
     return null;
   }
 
-  static String? validateStock(String? value) {
+  static String? validateStock(AppLocalizations l10n, String? value) {
     if (value == null || value.trim().isEmpty) {
-      return 'Stock quantity is required';
+      return l10n.validationStockRequired;
     }
     final stock = int.tryParse(value.replaceAll(',', ''));
     if (stock == null) {
-      return 'Stock must be a whole number';
+      return l10n.validationStockNotWhole;
     }
     if (stock < 0) {
-      return 'Stock cannot be negative';
+      return l10n.validationStockNotNegative;
     }
     return null;
   }
 
-  static String? validatePIN(String? value) {
+  static String? validatePIN(AppLocalizations l10n, String? value) {
     if (value == null || value.isEmpty) {
-      return 'PIN is required';
+      return l10n.validationPinRequired;
     }
     if (!RegExp(r'^\d{4}$').hasMatch(value)) {
-      return 'PIN must be exactly 4 digits';
+      return l10n.validationPinNotFourDigits;
     }
     return null;
   }
 
-  static String? validateEmail(String? value) {
+  static String? validateEmail(AppLocalizations l10n, String? value) {
     if (value == null || value.trim().isEmpty) {
-      return 'Email is required';
+      return l10n.validationEmailRequired;
     }
     if (!RegExp(r'^[\w-\.]+@([\w-]+\.)+[\w-]{2,4}$').hasMatch(value)) {
-      return 'Enter a valid email address';
+      return l10n.validationEmailInvalid;
     }
     return null;
   }
 
-  static String? validatePassword(String? value) {
+  static String? validatePassword(AppLocalizations l10n, String? value) {
     if (value == null || value.isEmpty) {
-      return 'Password is required';
+      return l10n.validationPasswordRequired;
     }
     if (value.length < 6) {
-      return 'Password must be at least 6 characters';
+      return l10n.validationPasswordTooShort;
     }
     return null;
   }
 
-  static String? validatePhone(String? value) {
+  static String? validatePhone(AppLocalizations l10n, String? value) {
     if (value == null || value.trim().isEmpty) {
-      return 'Phone number is required';
+      return l10n.validationPhoneRequired;
     }
     final phone = value.replaceAll(RegExp(r'[^\d]'), '');
     if (phone.length < 9 || phone.length > 12) {
-      return 'Enter a valid phone number (9-12 digits)';
+      return l10n.validationPhoneInvalid;
     }
     return null;
   }
 
-  static String? validateChannelId(String? value) {
+  static String? validateChannelId(AppLocalizations l10n, String? value) {
     if (value == null || value.trim().isEmpty) {
-      return 'Channel ID is required';
+      return l10n.validationChannelIdRequired;
     }
     final id = int.tryParse(value.trim());
     if (id == null) {
-      return 'Channel ID must be a number';
+      return l10n.validationChannelIdNotANumber;
     }
     return null;
   }
 
-  /// Show warning dialog for sell price below cost
+  /// Asks whether to sell below cost.
+  ///
+  /// True when confirmed, false when declined OR dismissed. The two are collapsed
+  /// here on purpose: this confirmation has no side effect before it resolves, so
+  /// "backed out" and "said no" are the same honest answer, and returning null
+  /// would push a third state onto every call site.
   static Future<bool> showPriceWarning(BuildContext context) async {
+    final l10n = AppLocalizations.of(context);
     final result = await showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
-        title: const Text('Warning: Low Price'),
-        content: const Text(
-            'Sell price is below cost price. This sale will result in a loss. Continue anyway?'),
-        actions: [
+        title: Text(l10n.validationLowPriceTitle),
+        content: Text(l10n.validationLowPriceMessage),
+        actions: <Widget>[
           TextButton(
             onPressed: () => Navigator.pop(ctx, false),
-            child: const Text('Cancel'),
+            child: Text(l10n.actionCancel),
           ),
           ElevatedButton(
             onPressed: () => Navigator.pop(ctx, true),
-            child: const Text('Continue'),
+            // The verb plus the consequence. "Continue" beside a loss warning is
+            // the button somebody taps without reading the paragraph.
+            child: Text(l10n.validationLowPriceConfirm),
           ),
         ],
       ),
@@ -115,33 +147,32 @@ class ValidationUtils {
     return result ?? false;
   }
 
-  /// Check for duplicate product name
+  /// Asks whether to create a product whose name is already taken.
   static Future<bool> checkDuplicateName(
     BuildContext context,
     String name,
     List<String> existingNames,
   ) async {
-    if (existingNames.contains(name.toLowerCase())) {
-      final result = await showDialog<bool>(
-        context: context,
-        builder: (ctx) => AlertDialog(
-          title: const Text('Duplicate Product Name'),
-          content: const Text(
-              'A product with this name already exists. Create anyway?'),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.pop(ctx, false),
-              child: const Text('Cancel'),
-            ),
-            ElevatedButton(
-              onPressed: () => Navigator.pop(ctx, true),
-              child: const Text('Create'),
-            ),
-          ],
-        ),
-      );
-      return result ?? false;
-    }
-    return true;
+    if (!existingNames.contains(name.toLowerCase())) return true;
+
+    final l10n = AppLocalizations.of(context);
+    final result = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: Text(l10n.validationDuplicateNameTitle),
+        content: Text(l10n.validationDuplicateNameMessage),
+        actions: <Widget>[
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: Text(l10n.actionCancel),
+          ),
+          ElevatedButton(
+            onPressed: () => Navigator.pop(ctx, true),
+            child: Text(l10n.validationDuplicateNameConfirm),
+          ),
+        ],
+      ),
+    );
+    return result ?? false;
   }
 }

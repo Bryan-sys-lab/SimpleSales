@@ -124,8 +124,7 @@ void main() {
           profitMinor: 200,
           at: midnight.add(const Duration(hours: 14)));
 
-      final totals =
-          await db.salesTotalsFor(since: midnight, staffId: null);
+      final totals = await db.salesTotalsFor(since: midnight, staffId: null);
 
       expect(totals.transactions, 3);
       expect(totals.totalMinor, 5000);
@@ -215,10 +214,9 @@ void main() {
           totalMinor: 4000,
           at: secondDay.add(const Duration(hours: 9)));
 
-      final first = await db.salesTotalsFor(
-          since: midnight, until: secondDay);
-      final second =
-          await db.salesTotalsFor(since: secondDay, until: secondDay.add(const Duration(days: 1)));
+      final first = await db.salesTotalsFor(since: midnight, until: secondDay);
+      final second = await db.salesTotalsFor(
+          since: secondDay, until: secondDay.add(const Duration(days: 1)));
 
       expect(first.transactions, 0);
       expect(second.transactions, 1);
@@ -274,8 +272,7 @@ void main() {
       await db.deleteStaffWithTombstone(
           removed.firstWhere((s) => s.name == 'Amina'));
 
-      final exAmina =
-          await db.salesTotalsFor(since: midnight, staffId: amina);
+      final exAmina = await db.salesTotalsFor(since: midnight, staffId: amina);
       final josephs = await db.salesTotalsFor(since: midnight, staffId: joseph);
 
       expect(exAmina.totalMinor, 1500);
@@ -309,10 +306,10 @@ void main() {
     test('groups by product with units, revenue and profit', () async {
       final soda = await addProduct(name: 'Soda 350ml');
       final water = await addProduct(name: 'Water 500ml');
-      final first = await writeSale(
-          staffName: 'Amina', totalMinor: 3000, at: midnight);
-      final second = await writeSale(
-          staffName: 'Amina', totalMinor: 2000, at: midnight);
+      final first =
+          await writeSale(staffName: 'Amina', totalMinor: 3000, at: midnight);
+      final second =
+          await writeSale(staffName: 'Amina', totalMinor: 2000, at: midnight);
 
       await writeSaleItem(
           saleId: first,
@@ -384,10 +381,7 @@ void main() {
       final mine = await writeSale(
           staffName: 'Amina', staffId: amina, totalMinor: 1500, at: midnight);
       final theirs = await writeSale(
-          staffName: 'Joseph',
-          staffId: joseph,
-          totalMinor: 9999,
-          at: midnight);
+          staffName: 'Joseph', staffId: joseph, totalMinor: 9999, at: midnight);
       await writeSaleItem(
           saleId: mine,
           productId: soda,
@@ -403,8 +397,7 @@ void main() {
           unitPriceMinor: 1500,
           unitCostMinor: 1000);
 
-      final scoped =
-          await db.topProducts(since: midnight, staffId: amina);
+      final scoped = await db.topProducts(since: midnight, staffId: amina);
       final shop = await db.topProducts(since: midnight);
 
       expect(scoped.single.units, 1.0);
@@ -415,10 +408,10 @@ void main() {
       // The name on a line is what the receipt said, so a catalogue rename
       // would otherwise split one product across two ranks.
       final soda = await addProduct(name: 'Soda 350ml');
-      final before = await writeSale(
-          staffName: 'Amina', totalMinor: 1500, at: midnight);
-      final after = await writeSale(
-          staffName: 'Amina', totalMinor: 1500, at: midnight);
+      final before =
+          await writeSale(staffName: 'Amina', totalMinor: 1500, at: midnight);
+      final after =
+          await writeSale(staffName: 'Amina', totalMinor: 1500, at: midnight);
       await writeSaleItem(
           saleId: before,
           productId: soda,
@@ -521,8 +514,7 @@ void main() {
       final buckets = await db.salesByHour(day: midnight, staffId: amina);
 
       expect(buckets[10].salesMinor, 1000);
-      final total =
-          buckets.fold<int>(0, (sum, b) => sum + b.salesMinor);
+      final total = buckets.fold<int>(0, (sum, b) => sum + b.salesMinor);
       expect(total, 1000);
     });
 
@@ -564,10 +556,11 @@ void main() {
       // the month and day from another silently produces a different day
       // whenever the range crosses a month boundary.
       final firstDay = midnight.subtract(const Duration(days: 2));
-      expect(buckets.first.day,
+      expect(
+          buckets.first.day,
           '${firstDay.year.toString().padLeft(4, '0')}-'
-              '${firstDay.month.toString().padLeft(2, '0')}-'
-              '${firstDay.day.toString().padLeft(2, '0')}');
+          '${firstDay.month.toString().padLeft(2, '0')}-'
+          '${firstDay.day.toString().padLeft(2, '0')}');
       // Range is day-2, day-1, today. The gap is a zero bar, not a missing
       // one: "we shut yesterday" is exactly what an owner is looking for.
       expect(buckets[0].salesMinor, 3000, reason: 'two days ago');
@@ -613,8 +606,7 @@ void main() {
       final merged = mergeDateBuckets(buckets, 6);
 
       expect(merged.length, 6);
-      expect(
-          merged.fold<int>(0, (sum, b) => sum + b.salesMinor), 3000);
+      expect(merged.fold<int>(0, (sum, b) => sum + b.salesMinor), 3000);
       expect(merged.fold<int>(0, (sum, b) => sum + b.transactions), 60);
       expect(merged.first.label, contains('–'));
     });
@@ -683,7 +675,8 @@ void main() {
       await addProduct(name: 'Exactly at level', stock: 5, reorder: 5);
       await addProduct(name: 'Below level', stock: 2, reorder: 5);
       await addProduct(name: 'Sold out', stock: 0, reorder: 5);
-      await addProduct(name: 'Inactive and empty', stock: 0, reorder: 5, active: false);
+      await addProduct(
+          name: 'Inactive and empty', stock: 0, reorder: 5, active: false);
 
       final fromSql = await db.countLowStockProducts();
       final fromDart = (await db.getProducts()).where((p) => p.isLow).length;
@@ -749,7 +742,9 @@ void main() {
 
     test('counts unverified payments and lists them', () async {
       await writeSale(
-          staffName: 'Amina', totalMinor: 1000, at: midnight.add(const Duration(hours: 9)));
+          staffName: 'Amina',
+          totalMinor: 1000,
+          at: midnight.add(const Duration(hours: 9)));
       await writeSale(
           staffName: 'Amina',
           totalMinor: 2500,

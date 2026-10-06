@@ -69,12 +69,15 @@ void main() {
     test('a code can belong to exactly one product', () async {
       final soda = await db.upsertProduct(product('Soda 350ml'));
       final beer = await db.upsertProduct(product('Kenyana Beer'));
-      expect(await db.addBarcode(productId: soda, barcode: '6001234567899'), isTrue);
+      expect(await db.addBarcode(productId: soda, barcode: '6001234567899'),
+          isTrue);
 
       // Refused rather than silently re-pointed: overwriting would make the
       // *other* product unscannable, which is worse than refusing.
-      expect(await db.addBarcode(productId: beer, barcode: '6001234567899'), isFalse);
-      expect((await db.getProductByBarcode('6001234567899'))?.name, 'Soda 350ml');
+      expect(await db.addBarcode(productId: beer, barcode: '6001234567899'),
+          isFalse);
+      expect(
+          (await db.getProductByBarcode('6001234567899'))?.name, 'Soda 350ml');
     });
 
     test('the refusal names the product that already holds the code', () async {
@@ -89,14 +92,14 @@ void main() {
     test('one product answers to several codes', () async {
       final soda = await db.upsertProduct(product('Soda 350ml'));
       await db.addBarcode(productId: soda, barcode: '6001234567899');
-      await db.addBarcode(productId: soda, barcode: 'COKE-500', kind: BarcodeKind.own);
+      await db.addBarcode(
+          productId: soda, barcode: 'COKE-500', kind: BarcodeKind.own);
       expect((await db.getBarcodesForProduct(soda)).map((b) => b.barcode),
           containsAll(['6001234567899', 'COKE-500']));
       expect((await db.getProductByBarcode('COKE-500'))?.name, 'Soda 350ml');
     });
 
-    test('a soft-deleted product keeps its codes but stops scanning',
-        () async {
+    test('a soft-deleted product keeps its codes but stops scanning', () async {
       // The inventory screen deactivates rather than deletes, so the owner can
       // bring a product back. Its barcode must stop resolving (it is not for
       // sale) while staying attached (it is not lost).
@@ -109,8 +112,7 @@ void main() {
           contains('6001234567899'));
     });
 
-    test('a hard delete frees the codes, so the product can return',
-        () async {
+    test('a hard delete frees the codes, so the product can return', () async {
       // Foreign keys are not enforced on this connection (see the note on
       // DatabaseHelper), so `ON DELETE CASCADE` alone would leave the code
       // behind and permanently block re-adding the product under it.
@@ -120,8 +122,9 @@ void main() {
 
       expect(await db.getBarcodesForProduct(soda), isEmpty);
       final replacement = await db.upsertProduct(product('Soda 350ml'));
-      expect(await db.addBarcode(
-          productId: replacement, barcode: '6001234567899'), isTrue);
+      expect(
+          await db.addBarcode(productId: replacement, barcode: '6001234567899'),
+          isTrue);
     });
 
     test('removing a barcode detaches it from its product', () async {
@@ -147,8 +150,8 @@ void main() {
 
       expect(refused, ['6001234567899']);
       expect((await db.getProductByBarcode('96385074'))?.name, 'Kenyana Beer');
-      expect((await db.getProductByBarcode('036000291452'))?.name,
-          'Kenyana Beer');
+      expect(
+          (await db.getProductByBarcode('036000291452'))?.name, 'Kenyana Beer');
     });
 
     test('a barcode survives an unrelated product edit', () async {
@@ -170,7 +173,8 @@ void main() {
       expect(await db.getVatRatePercent(), 16);
       await db.setVatRatePercent(0);
       expect(await db.getVatRatePercent(), 0,
-          reason: 'zero means exempt and must be storable, not treated as unset');
+          reason:
+              'zero means exempt and must be storable, not treated as unset');
       await db.setVatRatePercent(12);
       expect(await db.getVatRatePercent(), 12);
     });
@@ -180,7 +184,8 @@ void main() {
       // closure expectation rather than an awaited one.
       expect(() => db.setVatRatePercent(-1), throwsArgumentError);
       expect(() => db.setVatRatePercent(101), throwsArgumentError);
-      expect(await db.getVatRatePercent(), 16, reason: 'and nothing was stored');
+      expect(await db.getVatRatePercent(), 16,
+          reason: 'and nothing was stored');
     });
 
     test('an out-of-range stored rate falls back to the default', () async {
@@ -208,10 +213,10 @@ void main() {
       final soda = await db.upsertProduct(product('Soda 350ml'));
       await db.setTillCode('T1');
 
-      final first = await db.recordSale(
-          staffName: 'Alice', items: [item(soda, 'Soda 350ml')]);
-      final second = await db.recordSale(
-          staffName: 'Alice', items: [item(soda, 'Soda 350ml')]);
+      final first = await db
+          .recordSale(staffName: 'Alice', items: [item(soda, 'Soda 350ml')]);
+      final second = await db
+          .recordSale(staffName: 'Alice', items: [item(soda, 'Soda 350ml')]);
 
       expect((await db.getSaleRowById(first))!['receipt_number'], 'T1-000001');
       expect((await db.getSaleRowById(second))!['receipt_number'], 'T1-000002');
@@ -221,8 +226,8 @@ void main() {
       final soda = await db.upsertProduct(product('Soda 350ml'));
       final ids = <int>[];
       for (var i = 0; i < 8; i++) {
-        ids.add(await db.recordSale(
-            staffName: 'Alice', items: [item(soda, 'Soda 350ml')]));
+        ids.add(await db
+            .recordSale(staffName: 'Alice', items: [item(soda, 'Soda 350ml')]));
       }
       final numbers = {
         for (final id in ids)
@@ -235,8 +240,8 @@ void main() {
       // Rows that predate the sequence have no `receipt_number`. They still
       // need something on the paper, and the row id is monotonic and unique.
       final soda = await db.upsertProduct(product('Soda 350ml'));
-      final id = await db.recordSale(
-          staffName: 'Alice', items: [item(soda, 'Soda 350ml')]);
+      final id = await db
+          .recordSale(staffName: 'Alice', items: [item(soda, 'Soda 350ml')]);
       final row = Map<String, dynamic>.from((await db.getSaleRowById(id))!);
       row.remove('receipt_number');
       expect(db.receiptNumberFor(row), 'POS-${id.toString().padLeft(6, '0')}');
@@ -273,8 +278,8 @@ void main() {
   group('eTIMS queue', () {
     test('a sale is not queued when eTIMS is off', () async {
       final soda = await db.upsertProduct(product('Soda 350ml'));
-      final id = await db.recordSale(
-          staffName: 'Alice', items: [item(soda, 'Soda 350ml')]);
+      final id = await db
+          .recordSale(staffName: 'Alice', items: [item(soda, 'Soda 350ml')]);
       expect((await db.getSaleRowById(id))!['etims_status'], 'not_required');
       expect(await db.countPendingEtimsReceipts(), 0);
     });
@@ -283,7 +288,9 @@ void main() {
         () async {
       final soda = await db.upsertProduct(product('Soda 350ml'));
       final id = await db.recordSale(
-          staffName: 'Alice', items: [item(soda, 'Soda 350ml')], etimsPending: true);
+          staffName: 'Alice',
+          items: [item(soda, 'Soda 350ml')],
+          etimsPending: true);
       expect((await db.getSaleRowById(id))!['etims_status'], 'pending');
       expect(await db.countPendingEtimsReceipts(), 1);
       final pending = await db.getPendingEtimsReceipts();
@@ -298,8 +305,10 @@ void main() {
       final soda = await db.upsertProduct(product('Soda 350ml'));
       final ids = <int>[];
       for (var i = 0; i < 3; i++) {
-        ids.add(await db.recordSale(staffName: 'Alice',
-            items: [item(soda, 'Soda 350ml')], etimsPending: true));
+        ids.add(await db.recordSale(
+            staffName: 'Alice',
+            items: [item(soda, 'Soda 350ml')],
+            etimsPending: true));
       }
       final pending = await db.getPendingEtimsReceipts();
       expect(pending.map((p) => p.saleId), ids);
@@ -310,8 +319,11 @@ void main() {
     test('issuing a receipt stores the number and clears the queue', () async {
       final soda = await db.upsertProduct(product('Soda 350ml'));
       final id = await db.recordSale(
-          staffName: 'Alice', items: [item(soda, 'Soda 350ml')], etimsPending: true);
-      await db.resolveEtimsReceipt(saleId: id, kraReceiptNumber: 'KRA-8f2a-0001');
+          staffName: 'Alice',
+          items: [item(soda, 'Soda 350ml')],
+          etimsPending: true);
+      await db.resolveEtimsReceipt(
+          saleId: id, kraReceiptNumber: 'KRA-8f2a-0001');
 
       final row = (await db.getSaleRowById(id))!;
       expect(row['etims_status'], 'issued');
@@ -322,7 +334,9 @@ void main() {
     test('resolving twice does not create a second invoice', () async {
       final soda = await db.upsertProduct(product('Soda 350ml'));
       final id = await db.recordSale(
-          staffName: 'Alice', items: [item(soda, 'Soda 350ml')], etimsPending: true);
+          staffName: 'Alice',
+          items: [item(soda, 'Soda 350ml')],
+          etimsPending: true);
       await db.resolveEtimsReceipt(saleId: id, kraReceiptNumber: 'KRA-1');
       // A retried upload must be a no-op rather than a second invoice for the
       // same money, which the queue row's absence is what proves.
@@ -336,10 +350,14 @@ void main() {
       // queue would mean an unissued tax invoice for money actually taken.
       final soda = await db.upsertProduct(product('Soda 350ml'));
       final id = await db.recordSale(
-          staffName: 'Alice', items: [item(soda, 'Soda 350ml')], etimsPending: true);
+          staffName: 'Alice',
+          items: [item(soda, 'Soda 350ml')],
+          etimsPending: true);
 
-      await db.recordEtimsAttemptFailure(saleId: id, error: 'network unreachable');
-      await db.recordEtimsAttemptFailure(saleId: id, error: 'network unreachable');
+      await db.recordEtimsAttemptFailure(
+          saleId: id, error: 'network unreachable');
+      await db.recordEtimsAttemptFailure(
+          saleId: id, error: 'network unreachable');
 
       expect((await db.getSaleRowById(id))!['etims_status'], 'pending');
       final pending = await db.getPendingEtimsReceipts();
@@ -350,7 +368,9 @@ void main() {
     test('a KRA refusal stops the row being retried forever', () async {
       final soda = await db.upsertProduct(product('Soda 350ml'));
       final id = await db.recordSale(
-          staffName: 'Alice', items: [item(soda, 'Soda 350ml')], etimsPending: true);
+          staffName: 'Alice',
+          items: [item(soda, 'Soda 350ml')],
+          etimsPending: true);
       await db.recordEtimsAttemptFailure(saleId: id, error: 'invalid TIN');
       await db.markEtimsRejected(id, 'invalid TIN');
 

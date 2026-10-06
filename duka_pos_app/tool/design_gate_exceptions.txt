@@ -1,0 +1,33 @@
+# Reviewed exceptions to the greppable design gates.
+#
+# This is NOT a suppression list. Every line here is a place a reviewer READ a
+# gate hit, decided the code was right, and wrote down WHY. A line with no reason
+# is not an exception; it is a gate that was switched off.
+#
+# The gate prints every entry here as a WARNING rather than a pass, so it stays
+# visible and a future edit to one of these files is a deliberate act.
+#
+# Format:  <file>:<gate>  —  <reason>
+# Gates:   ellipsis  fontSize  radius  duration  geometry  raw-color  elevation
+#          curve  mediaquery  navigator  exception-text  platform
+#
+# Matching is by file and gate, never by line number: a line-number allowlist
+# silently re-approves whatever drifts into that line after a reformat.
+
+# The ellipsis rule exists because a truncated LABEL hides a value from a SIGHTED
+# user. Every exception below is a value whose full content is already announced
+# through a `Semantics` label wrapping the same widget, so nothing is lost — and
+# in each case the visual form is not the primary channel for that value.
+
+lib/routing/home_shell.dart:ellipsis — the shop name in a 48px app bar, announced in full by the `Semantics(header: true, label: '$title, signed in as $role')` wrapping it. A 34-character shop name cannot grow a 48px bar, and Settings shows the whole name.
+lib/routing/home_shell.dart:ellipsis — also the role/name in the trailing action, announced as 'Account and sign out'. The same name appears in full on the dashboard greeting and in Settings.
+lib/routing/not_found_screen.dart:ellipsis — the unmatched URL, announced in full by the `Semantics(label: 'Requested path: $location')` above it. This screen exists to show a path for a bug report; wrapping a URL onto four lines is worse than losing the middle of it.
+lib/screens/shot_cups_screen.dart:ellipsis — a product name in a list row that already carries `semanticsLabel: '${p.name}, …'`, and in full on the shot's own detail row.
+
+# POLICY TIMEOUTS. The duration rule governs MOTION. A value that is a security or
+# network POLICY — how long a till stays signed in, how long an HTTP call waits —
+# is not an animation duration and putting it in the motion scale would imply it
+# is one, and that it can be tuned like one.
+
+lib/routing/home_shell.dart:duration — the 4-minute idle sign-out. Security policy, stated as a named constant beside the code that enforces it, not a design token.
+lib/screens/sell_screen.dart:duration — the 20-second PayHero network timeout on a mobile connection. Also policy; a design token for it would be a category error.

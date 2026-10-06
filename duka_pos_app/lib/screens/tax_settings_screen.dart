@@ -8,11 +8,13 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 import '../app_brand.dart';
 import '../db/database_helper.dart';
+import '../l10n/generated/app_localizations.dart';
 import '../services/app_state.dart';
 import '../services/etims/etims_service.dart';
 import '../services/workspace_service.dart';
 import '../services/printer/receipt_builder.dart';
-import '../theme/app_theme.dart';
+import '../theme/app_colors.dart';
+import '../theme/typography.dart';
 import '../utils/money.dart';
 import '../services/backend_service.dart';
 
@@ -60,8 +62,7 @@ class _TaxSettingsScreenState extends State<TaxSettingsScreen> {
     final device =
         (await db.getSetting(DatabaseHelper.settingEtimsDeviceId)) ?? '';
     final prefs = await SharedPreferences.getInstance();
-    final includesVat =
-        prefs.getBool(_pricesIncludeVatKey) ?? true;
+    final includesVat = prefs.getBool(_pricesIncludeVatKey) ?? true;
     final etimsOn = prefs.getBool(EtimsService.etimsEnabledPrefKey) ?? false;
     if (!mounted) return;
     setState(() {
@@ -86,7 +87,7 @@ class _TaxSettingsScreenState extends State<TaxSettingsScreen> {
   Future<void> _toggleEtims(bool value) async {
     if (value && _tin.trim().isEmpty) {
       setState(() {
-        _message = 'Register your KRA taxpayer PIN first.';
+        _message = AppLocalizations.of(context).taxSettingsRegisterPinFirst;
         _messageIsError = true;
       });
       return;
@@ -105,13 +106,15 @@ class _TaxSettingsScreenState extends State<TaxSettingsScreen> {
       if (!mounted) return;
       setState(() {
         _etimsEnabled = value;
-        _message = value ? 'eTIMS receipts switched on' : 'eTIMS receipts switched off';
+        _message = value
+            ? AppLocalizations.of(context).taxSettingsEtimsOn
+            : AppLocalizations.of(context).taxSettingsEtimsOff;
         _messageIsError = false;
       });
     } catch (_) {
       if (!mounted) return;
       setState(() {
-        _message = "Couldn't update eTIMS. Check your connection and try again.";
+        _message = AppLocalizations.of(context).taxSettingsEtimsUpdateFailed;
         _messageIsError = true;
       });
     } finally {
@@ -149,7 +152,7 @@ class _TaxSettingsScreenState extends State<TaxSettingsScreen> {
         if (tillCode != null) _tillCode = tillCode;
         if (tin != null) _tin = tin;
         if (pricesIncludeVat != null) _pricesIncludeVat = pricesIncludeVat;
-        _message = 'Saved';
+        _message = AppLocalizations.of(context).taxSettingsSaved;
         _messageIsError = false;
       });
     } catch (_) {
@@ -178,31 +181,33 @@ class _TaxSettingsScreenState extends State<TaxSettingsScreen> {
       // Defence in depth. Settings does not show the tab to a non-admin, but a
       // screen that mints a TIN should not depend on that alone.
       return Scaffold(
-        appBar: AppBar(title: const Text('Tax settings')),
-        body: const Center(
+        appBar:
+            AppBar(title: Text(AppLocalizations.of(context).taxSettingsTitle)),
+        body: Center(
           child: Padding(
             padding: EdgeInsets.all(24),
-            child: Text('Only the shop admin can change tax settings.'),
+            child: Text(AppLocalizations.of(context).taxSettingsAdminOnly),
           ),
         ),
       );
     }
 
     return Scaffold(
-      appBar: AppBar(title: const Text('Tax settings')),
+      appBar:
+          AppBar(title: Text(AppLocalizations.of(context).taxSettingsTitle)),
       body: _loading
           ? const Center(child: CircularProgressIndicator())
           : ListView(
               padding: const EdgeInsets.all(16),
               children: [
-                _section('Value Added Tax'),
+                _section(AppLocalizations.of(context).taxSettingsVatSection),
                 Card(
                   child: Column(
                     children: [
                       ListTile(
                         title: Text('VAT rate: $_vatRatePercent%'),
                         subtitle: Text(_vatRatePercent == 0
-                            ? 'Exempt — receipts omit the VAT line entirely.'
+                            ? AppLocalizations.of(context).taxSettingsVatExempt
                             : _workedExample(_vatRatePercent)),
                       ),
                       Padding(
@@ -219,7 +224,8 @@ class _TaxSettingsScreenState extends State<TaxSettingsScreen> {
                                 min: 0,
                                 max: 25,
                                 divisions: 25,
-                                label: '$_vatRatePercent%',
+                                label: AppLocalizations.of(context)
+                                    .taxVatRatePercent(_vatRatePercent),
                                 // Announced, because a slider's value is
                                 // invisible to a screen reader otherwise.
                                 semanticFormatterCallback: (v) =>
@@ -227,40 +233,43 @@ class _TaxSettingsScreenState extends State<TaxSettingsScreen> {
                                 onChanged: _saving
                                     ? null
                                     : (v) => setState(
-                                          () => _vatRatePercent = v.round()),
+                                        () => _vatRatePercent = v.round()),
                               ),
                             ),
                             const SizedBox(width: 8),
                             FilledButton(
                               onPressed: _saving
                                   ? null
-                                  : () => _save(vatRatePercent: _vatRatePercent),
-                              child: const Text('Apply'),
+                                  : () =>
+                                      _save(vatRatePercent: _vatRatePercent),
+                              child: Text(AppLocalizations.of(context)
+                                  .taxSettingsApplyAction),
                             ),
                           ],
                         ),
                       ),
                       const Divider(height: 24),
                       SwitchListTile(
-                        title: const Text('Prices include VAT'),
+                        title: Text(AppLocalizations.of(context)
+                            .taxSettingsPricesIncludeVat),
                         subtitle: const Text(
                           'On: you type the shelf price and VAT is extracted from '
                           'it. Off: you type the net price and VAT is added on top.',
                         ),
                         value: _pricesIncludeVat,
-                        onChanged: _saving
-                            ? null
-                            : (v) => _save(pricesIncludeVat: v),
+                        onChanged:
+                            _saving ? null : (v) => _save(pricesIncludeVat: v),
                       ),
                     ],
                   ),
                 ),
-
                 const SizedBox(height: 20),
-                _section('Receipt numbering'),
+                _section(AppLocalizations.of(context)
+                    .taxSettingsReceiptNumberingSection),
                 Card(
                   child: ListTile(
-                    title: const Text('Till code'),
+                    title:
+                        Text(AppLocalizations.of(context).taxSettingsTillCode),
                     subtitle: Text(
                       'Receipts are numbered $_tillCode-000001, and KRA needs '
                       'that number to match the sequence it has on file. Give '
@@ -268,13 +277,13 @@ class _TaxSettingsScreenState extends State<TaxSettingsScreen> {
                     ),
                     trailing: TextButton(
                       onPressed: _saving ? null : _editTillCode,
-                      child: const Text('Change'),
+                      child: Text(
+                          AppLocalizations.of(context).taxSettingsChangeAction),
                     ),
                   ),
                 ),
-
                 const SizedBox(height: 20),
-                _section('KRA eTIMS'),
+                _section(AppLocalizations.of(context).taxSettingsEtimsSection),
                 Card(
                   child: Column(
                     children: [
@@ -286,7 +295,8 @@ class _TaxSettingsScreenState extends State<TaxSettingsScreen> {
                       // the dependency is visible.
                       SwitchListTile(
                         secondary: const Icon(Icons.receipt_long_outlined),
-                        title: const Text('Issue eTIMS receipts'),
+                        title: Text(AppLocalizations.of(context)
+                            .taxSettingsIssueEtimsTitle),
                         subtitle: Text(_etimsEnabled
                             ? 'On — every sale is filed with KRA. Sales keep '
                                 'working with no signal; receipts upload as soon '
@@ -302,27 +312,36 @@ class _TaxSettingsScreenState extends State<TaxSettingsScreen> {
                       ListTile(
                         leading: const Icon(Icons.badge_outlined),
                         title: Text(_tin.isEmpty
-                            ? 'TIN not registered'
-                            : 'Taxpayer PIN $_tin'),
+                            ? AppLocalizations.of(context)
+                                .taxSettingsTinNotRegistered
+                            : AppLocalizations.of(context)
+                                .taxTaxpayerPIN(_tin)),
                         subtitle: Text(_tin.isEmpty
                             ? 'Receipts cannot be issued until this shop\'s KRA '
                                 'PIN is registered. Until then, sales are '
                                 'recorded but no tax invoice is issued.'
-                            : 'Invoices are issued against this PIN.'),
+                            : AppLocalizations.of(context)
+                                .taxSettingsTinRegisteredHelp),
                         trailing: TextButton(
                           onPressed: _saving ? null : _editTin,
-                          child: Text(_tin.isEmpty ? 'Register' : 'Change'),
+                          child: Text(_tin.isEmpty
+                              ? AppLocalizations.of(context)
+                                  .taxSettingsRegisterAction
+                              : AppLocalizations.of(context)
+                                  .taxSettingsChangeAction),
                         ),
                       ),
                       if (_etimsDeviceId.isNotEmpty)
                         ListTile(
                           leading: const Icon(Icons.devices_outlined),
-                          title: const Text('Registered device'),
+                          title: Text(AppLocalizations.of(context)
+                              .taxSettingsRegisteredDevice),
                           subtitle: Text(_etimsDeviceId),
                         ),
                       ListTile(
                         leading: const Icon(Icons.cloud_upload_outlined),
-                        title: const Text('Wait for receipts to be issued'),
+                        title: Text(AppLocalizations.of(context)
+                            .taxSettingsWaitForReceipts),
                         subtitle: Text(
                           'Queued automatically after every sale while online. '
                           'Sales never wait for it.',
@@ -333,25 +352,26 @@ class _TaxSettingsScreenState extends State<TaxSettingsScreen> {
                     ],
                   ),
                 ),
-
                 if (_message != null)
                   Padding(
                     padding: const EdgeInsets.only(top: 16),
                     child: Text(
                       _message!,
                       style: TextStyle(
+                        // Both tones from the same slot family, so the
+                        // success/error pair cannot drift apart as they did when
+                        // one came from the ColorScheme and one from a literal.
                         color: _messageIsError
-                            ? Theme.of(context).colorScheme.error
-                            : DukaColors.success,
+                            ? AppColors.of(context).danger
+                            : AppColors.of(context).success,
                       ),
                     ),
                   ),
-
                 const SizedBox(height: 32),
                 Center(
                   child: Text(
                     SimplePosBrand.poweredByTag,
-                    style: const TextStyle(fontSize: 12, color: DukaColors.mutedInk),
+                    style: AppTypography.of(context).bodySmall,
                   ),
                 ),
                 const SizedBox(height: 24),
@@ -361,7 +381,7 @@ class _TaxSettingsScreenState extends State<TaxSettingsScreen> {
   }
 
   Widget _section(String title) => Padding(
-        padding: const EdgeInsets.only(bottom: 8, left: 4),
+        padding: const EdgeInsetsDirectional.only(bottom: 8, start: 4),
         child: Text(title, style: Theme.of(context).textTheme.titleMedium),
       );
 
@@ -372,15 +392,17 @@ class _TaxSettingsScreenState extends State<TaxSettingsScreen> {
       context: context,
       builder: (dialogContext) => StatefulBuilder(
         builder: (dialogContext, setDialogState) => AlertDialog(
-          title: const Text('Till code'),
+          title: Text(AppLocalizations.of(context).taxSettingsTillCode),
           content: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
-              const Text(
+              // Not `const`: the style comes from the theme, and a `const`
+              // widget cannot call `AppTypography.of(context)`.
+              Text(
                 'Letters and digits only. Every till in a shop needs its own '
                 'code, because KRA rejects two tills issuing the same receipt '
                 'number.',
-                style: TextStyle(fontSize: 13),
+                style: AppTypography.of(context).bodyMedium,
               ),
               const SizedBox(height: 12),
               TextField(
@@ -391,7 +413,9 @@ class _TaxSettingsScreenState extends State<TaxSettingsScreen> {
                 inputFormatters: [
                   FilteringTextInputFormatter.allow(RegExp(r'[A-Za-z0-9]')),
                 ],
-                decoration: const InputDecoration(labelText: 'Till code'),
+                decoration: InputDecoration(
+                    labelText:
+                        AppLocalizations.of(context).taxSettingsTillCode),
               ),
               if (error != null)
                 Text(error!,
@@ -407,13 +431,13 @@ class _TaxSettingsScreenState extends State<TaxSettingsScreen> {
               onPressed: () {
                 final value = controller.text.trim().toUpperCase();
                 if (value.isEmpty) {
-                  setDialogState(
-                      () => error = 'Enter at least one letter or digit');
+                  setDialogState(() => error =
+                      AppLocalizations.of(context).taxSettingsTillCodeRequired);
                   return;
                 }
                 Navigator.pop(dialogContext, value);
               },
-              child: const Text('Save'),
+              child: Text(AppLocalizations.of(context).inventorySaveAction),
             ),
           ],
         ),
@@ -432,16 +456,16 @@ class _TaxSettingsScreenState extends State<TaxSettingsScreen> {
       context: context,
       builder: (dialogContext) => StatefulBuilder(
         builder: (dialogContext, setDialogState) => AlertDialog(
-          title: const Text('KRA taxpayer PIN'),
+          title: Text(AppLocalizations.of(context).taxSettingsKraPinTitle),
           content: SingleChildScrollView(
             child: Column(
               mainAxisSize: MainAxisSize.min,
               children: [
-                const Text(
+                Text(
                   'Enter the PIN exactly as printed on this shop\'s KRA '
                   'certificate, including the P0 prefix. A PIN issued to the '
                   'wrong business puts invoices on someone else\'s return.',
-                  style: TextStyle(fontSize: 13),
+                  style: AppTypography.of(context).bodyMedium,
                 ),
                 const SizedBox(height: 12),
                 TextField(
@@ -451,7 +475,9 @@ class _TaxSettingsScreenState extends State<TaxSettingsScreen> {
                   inputFormatters: [
                     FilteringTextInputFormatter.allow(RegExp(r'[A-Za-z0-9]')),
                   ],
-                  decoration: const InputDecoration(labelText: 'TIN (PIN)'),
+                  decoration: InputDecoration(
+                      labelText:
+                          AppLocalizations.of(context).taxSettingsTinLabel),
                 ),
                 if (error != null)
                   Padding(
@@ -473,8 +499,9 @@ class _TaxSettingsScreenState extends State<TaxSettingsScreen> {
                   : () async {
                       final value = controller.text.trim().toUpperCase();
                       if (value.length < 4) {
-                        setDialogState(() =>
-                            error = 'A TIN is at least 4 characters');
+                        setDialogState(() => error =
+                            AppLocalizations.of(context)
+                                .taxSettingsTinTooShort);
                         return;
                       }
                       setDialogState(() {
@@ -485,8 +512,8 @@ class _TaxSettingsScreenState extends State<TaxSettingsScreen> {
                         final deviceId = await _deviceIdentifier();
                         await BackendService.registerEtimsDevice(
                             tin: value, deviceId: deviceId);
-                        await DatabaseHelper.instance.setSetting(
-                            DatabaseHelper.settingTin, value);
+                        await DatabaseHelper.instance
+                            .setSetting(DatabaseHelper.settingTin, value);
                         await DatabaseHelper.instance.setSetting(
                             DatabaseHelper.settingEtimsDeviceId, deviceId);
                         if (dialogContext.mounted) {
@@ -495,8 +522,8 @@ class _TaxSettingsScreenState extends State<TaxSettingsScreen> {
                       } catch (_) {
                         setDialogState(() {
                           submitting = false;
-                          error = "Couldn't reach KRA. Check the shop is linked "
-                              'and you have a connection, then try again.';
+                          error = AppLocalizations.of(context)
+                              .taxSettingsKraUnreachable;
                         });
                       }
                     },
@@ -505,7 +532,8 @@ class _TaxSettingsScreenState extends State<TaxSettingsScreen> {
                       width: 16,
                       height: 16,
                       child: CircularProgressIndicator(strokeWidth: 2))
-                  : const Text('Register'),
+                  : Text(
+                      AppLocalizations.of(context).taxSettingsRegisterAction),
             ),
           ],
         ),
@@ -532,7 +560,7 @@ class _TaxSettingsScreenState extends State<TaxSettingsScreen> {
     } catch (_) {
       if (!mounted) return;
       setState(() {
-        _message = "Couldn't reach KRA. Try again when you have a connection.";
+        _message = AppLocalizations.of(context).taxSettingsKraUnreachableRetry;
         _messageIsError = true;
       });
     } finally {

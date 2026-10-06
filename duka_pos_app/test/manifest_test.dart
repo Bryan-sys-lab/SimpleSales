@@ -23,9 +23,7 @@ import 'package:flutter_test/flutter_test.dart';
 
 void main() {
   final manifest = File('android/app/src/main/AndroidManifest.xml');
-  final xml = manifest.existsSync()
-      ? manifest.readAsStringSync()
-      : '';
+  final xml = manifest.existsSync() ? manifest.readAsStringSync() : '';
 
   /// The character offset of the first real occurrence of [tag], skipping any
   /// occurrence inside an XML comment.
@@ -96,8 +94,7 @@ void main() {
       for (final tag in tags) {
         // Only judge elements at the manifest's own indentation level; nested
         // ones (<activity>, <intent>, <data>) are legitimate.
-        if (RegExp('^\\s{0,4}<$tag[\\s>]', multiLine: true)
-            .hasMatch(xml)) {
+        if (RegExp('^\\s{0,4}<$tag[\\s>]', multiLine: true).hasMatch(xml)) {
           expect(allowed, contains(tag),
               reason: '<$tag> is not a valid direct child of <manifest>');
         }
@@ -117,9 +114,11 @@ void main() {
       expect(xml, contains('android:usesPermissionFlags="neverForLocation"'));
       // The pre-31 pair is capped, because it is silently ignored above it and
       // declaring an ignored permission is noise.
-      expect(xml, matches(RegExp(
-          r'android\.permission\.BLUETOOTH"\s*\n?\s*android:maxSdkVersion="30"'
-          r'|android:maxSdkVersion="30"\s*\n?\s*android:name="android\.permission\.BLUETOOTH"')));
+      expect(
+          xml,
+          matches(RegExp(
+              r'android\.permission\.BLUETOOTH"\s*\n?\s*android:maxSdkVersion="30"'
+              r'|android:maxSdkVersion="30"\s*\n?\s*android:name="android\.permission\.BLUETOOTH"')));
     });
 
     test('requests the camera permission for barcode scanning', () {
@@ -129,9 +128,10 @@ void main() {
     test('neither Bluetooth nor a camera is required to install', () {
       // A shop with a wedge scanner and no camera must still be able to install
       // and sell. Making either hardware required would exclude real tills.
+      expect(
+          xml, contains('android.hardware.camera" android:required="false"'));
       expect(xml,
-          contains('android.hardware.camera" android:required="false"'));
-      expect(xml, contains('android.hardware.bluetooth" android:required="false"'));
+          contains('android.hardware.bluetooth" android:required="false"'));
     });
 
     test('does not request NFC', () {
@@ -141,9 +141,8 @@ void main() {
     });
 
     test('the launcher icon and splash point at files that exist', () {
-      final icon = RegExp(r'android:icon="@mipmap/([^"]+)"')
-          .firstMatch(xml)
-          ?.group(1);
+      final icon =
+          RegExp(r'android:icon="@mipmap/([^"]+)"').firstMatch(xml)?.group(1);
       expect(icon, isNotNull, reason: 'no android:icon on <application>');
       for (final density in [
         'mdpi',
@@ -152,8 +151,8 @@ void main() {
         'xxhdpi',
         'xxxhdpi',
       ]) {
-        final file = File(
-            'android/app/src/main/res/mipmap-$density/ic_launcher.png');
+        final file =
+            File('android/app/src/main/res/mipmap-$density/ic_launcher.png');
         expect(file.existsSync(), isTrue,
             reason: 'ic_launcher.png missing from mipmap-$density');
       }

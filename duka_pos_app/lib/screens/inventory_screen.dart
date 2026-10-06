@@ -1,23 +1,39 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
+import 'package:go_router/go_router.dart';
+import 'package:flutter/semantics.dart';
 import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
 import '../db/database_helper.dart';
+import '../l10n/generated/app_localizations.dart';
 import '../services/barcode/barcode_service.dart';
 import '../models/models.dart';
 import '../services/app_state.dart';
 import '../services/backend_service.dart';
+import '../ui/components/controls.dart';
+import '../utils/error_utils.dart';
 import '../utils/money.dart';
 import '../utils/units.dart';
 import '../widgets/variant_catalogue.dart';
 import '../widgets/variant_form_sheet.dart';
-import 'home_shell.dart';
-import 'shot_cups_screen.dart';
-import '../theme/app_theme.dart';
+import '../routing/home_shell.dart';
+import '../routing/routes.dart';
+import '../theme/app_colors.dart';
+import '../theme/app_shapes.dart';
+import '../theme/typography.dart';
+import '../ui/components/status.dart';
 
 class InventoryScreen extends StatefulWidget {
-  const InventoryScreen({super.key});
+  const InventoryScreen({this.focusedProductId, super.key});
+
+  /// A product id from a deep link (`/inventory/product/:productId`).
+  ///
+  /// Identity comes from the PATH PARAMETER rather than `state.extra`, because
+  /// `extra` is `null` on a cold start from a deep link and after process death —
+  /// a low-stock link that only works once is worse than no link.
+  final String? focusedProductId;
+
   @override
   State<InventoryScreen> createState() => _InventoryScreenState();
 }
@@ -42,11 +58,29 @@ class _InventoryScreenState extends State<InventoryScreen> {
     if (mounted) setState(() => _products = []);
     final p = await DatabaseHelper.instance.getProducts();
     final catalogue = await VariantCatalogue.load();
-    if (mounted) {
-      setState(() {
-        _products = p;
-        _variants = catalogue;
-      });
+    if (!mounted) return;
+    setState(() {
+      _products = p;
+      _variants = catalogue;
+    });
+    // Announced rather than merely scrolled: a deep-linked product arriving at the
+    // top of a 400-row list is invisible to anyone not watching the screen move,
+    // and the whole point of the link is that they end up looking at the product.
+    if (widget.focusedProductId != null) {
+      // An internal marker, not copy: it never reaches a widget, so it stays a
+      // literal. Translating it would be translating the routing contract.
+      final match =
+          p.where((Product e) => 'id-${e.id}' == widget.focusedProductId);
+      if (match.isNotEmpty) {
+        await SemanticsService.sendAnnouncement(
+          // `View.of(context)` rather than a deprecated global: the announcement
+          // is scoped to the window it was requested from, so a second window
+          // does not hear the first one's navigation.
+          View.of(context),
+          '${match.first.name} is in the inventory list',
+          Directionality.of(context),
+        );
+      }
     }
   }
 
@@ -113,23 +147,24 @@ class _InventoryScreenState extends State<InventoryScreen> {
           staffProfileId: staffRemoteId,
         );
         if (!pushed && mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+          ScaffoldMessenger.of(context).showSnackBar(SnackBar(
               content: Text(
-                  'Stock updated on this till. The online count will catch up on the next sync.')));
+                  AppLocalizations.of(context).inventoryStockSavedLocally)));
         }
       }
     } on StateError catch (error) {
       if (mounted) {
         final message = error.toString().contains('below zero')
-            ? 'Stock cannot go below zero. Check the current quantity and try again.'
-            : 'Stock update failed. Refresh the inventory and try again.';
+            ? AppLocalizations.of(context).inventoryStockCannotGoBelowZero
+            : AppLocalizations.of(context).inventoryStockUpdateFailed;
         ScaffoldMessenger.of(context)
             .showSnackBar(SnackBar(content: Text(message)));
       }
     } catch (_) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(content: Text('Couldn’t adjust stock. Try again.')));
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+            content:
+                Text(AppLocalizations.of(context).inventoryAdjustStockFailed)));
       }
     }
   }
@@ -146,8 +181,8 @@ class _InventoryScreenState extends State<InventoryScreen> {
     final variants = _variants.of(p);
     if (variants.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-        content:
-            Text('Add ${p.name}\'s variants first — its stock is their total.'),
+        content: Text(
+            AppLocalizations.of(context).inventoryAddVariantsFirst(p.name)),
       ));
       return;
     }
@@ -167,7 +202,8 @@ class _InventoryScreenState extends State<InventoryScreen> {
                       : Icons.label_outline,
                 ),
                 title: Text(variant.name),
-                subtitle: Text('${variant.stockQty} in stock'),
+                subtitle: Text(AppLocalizations.of(context)
+                    .inventoryStockqtyStock(variant.stockQty)),
               ),
             ),
         ],
@@ -191,15 +227,19 @@ class _InventoryScreenState extends State<InventoryScreen> {
       ));
     } on StateError catch (error) {
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-        content: Text(error.toString().contains('below zero')
-            ? 'Stock cannot go below zero. Check the current quantity and try again.'
-            : 'Stock update failed. Refresh the inventory and try again.'),
-      ));
+      // Never match an exception string to decide what to tell the user: the
+      // message is thrown by the database layer and a wording change there would
+      // silently turn "check the quantity" into a generic failure. `ErrorUtils` is
+      // the one boundary that maps a failure to words.
+      showAppSnackBar(
+        context,
+        message: ErrorUtils.userMessage(AppLocalizations.of(context), error),
+      );
     } catch (_) {
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Couldn’t adjust stock. Try again.')));
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+          content:
+              Text(AppLocalizations.of(context).inventoryAdjustStockFailed)));
     }
   }
 
@@ -207,7 +247,7 @@ class _InventoryScreenState extends State<InventoryScreen> {
     final confirmed = await showDialog<bool>(
       context: context,
       builder: (_) => AlertDialog(
-        title: const Text('Delete product?'),
+        title: Text(AppLocalizations.of(context).inventoryDeleteTitle),
         content: Text('Remove ${p.name} from inventory?'),
         actions: [
           TextButton(
@@ -215,7 +255,7 @@ class _InventoryScreenState extends State<InventoryScreen> {
               child: const Text('Cancel')),
           FilledButton(
               onPressed: () => Navigator.pop(context, true),
-              child: const Text('Delete')),
+              child: Text(AppLocalizations.of(context).inventoryDeleteAction)),
         ],
       ),
     );
@@ -231,7 +271,7 @@ class _InventoryScreenState extends State<InventoryScreen> {
     return Scaffold(
       floatingActionButton: FloatingActionButton(
         onPressed: () => _openEditor(),
-        tooltip: 'Add product',
+        tooltip: AppLocalizations.of(context).inventoryAddProduct,
         child: const Icon(Icons.add),
       ),
       body: RefreshIndicator(
@@ -245,27 +285,23 @@ class _InventoryScreenState extends State<InventoryScreen> {
             // the feature that makes it a bar.
             if (i == 0) {
               return Semantics(
-                label:
-                    'Shot cups. Fixed-size shots of any drink in your inventory.',
+                label: AppLocalizations.of(context).inventoryShotCupsSpoken,
                 child: ListTile(
                   leading: const Icon(Icons.local_drink_outlined),
-                  title: const Text('Shot cups'),
-                  subtitle: const Text(
-                      'Sell fixed-size shots of any drink in your inventory'),
+                  title:
+                      Text(AppLocalizations.of(context).inventoryShotCupsTitle),
+                  subtitle: Text(
+                      AppLocalizations.of(context).inventoryShotCupsSubtitle),
                   trailing: const Icon(Icons.chevron_right),
-                  onTap: () => Navigator.push(
-                    context,
-                    MaterialPageRoute<void>(
-                        builder: (_) => const ShotCupsScreen()),
-                  ),
+                  onTap: () => context.push(Routes.shotCups),
                 ),
               );
             }
             final p = _products[i - 1];
             final variantCount = _variants.of(p).length;
             return Semantics(
-              label:
-                  '${p.name}, ${formatMoney(p.sellPrice)}, ${p.stockQty} in stock',
+              label: AppLocalizations.of(context).inventoryNameStock(
+                  p.name, formatMoney(p.sellPrice), p.stockQty),
               child: ListTile(
                 title: Text(p.name),
                 subtitle: Text([
@@ -275,19 +311,14 @@ class _InventoryScreenState extends State<InventoryScreen> {
                   // "Sold as variants" is the difference between one row and
                   // four at the till, so it is stated on the list rather than
                   // left to be discovered when a cashier cannot find Dark.
-                  if (_variants.tracks(p)) 'no variants yet',
+                  if (_variants.tracks(p))
+                    AppLocalizations.of(context).inventoryNoVariantsYet,
                   if (variantCount > 0)
                     '$variantCount variant${variantCount == 1 ? '' : 's'}',
                 ].join(' · ')),
-                leading: CircleAvatar(
-                  backgroundColor:
-                      p.isLow ? DukaColors.surfaceWarm : DukaColors.surface,
-                  child: Text('${p.stockQty}',
-                      style: TextStyle(
-                          fontSize: 12,
-                          color: p.isLow
-                              ? DukaColors.danger
-                              : DukaColors.success)),
+                leading: _StockCountBadge(
+                  quantity: p.stockQty.round(),
+                  isLow: p.isLow,
                 ),
                 trailing: PopupMenuButton<String>(
                   onSelected: (v) {
@@ -296,12 +327,19 @@ class _InventoryScreenState extends State<InventoryScreen> {
                     if (v == 'delete') _delete(p);
                   },
                   itemBuilder: (_) => [
-                    const PopupMenuItem(value: 'edit', child: Text('Edit')),
-                    const PopupMenuItem(
-                        value: 'adjust', child: Text('Adjust stock')),
+                    PopupMenuItem(
+                        value: 'edit',
+                        child: Text(
+                            AppLocalizations.of(context).inventoryEditAction)),
+                    PopupMenuItem(
+                        value: 'adjust',
+                        child: Text(AppLocalizations.of(context)
+                            .inventoryAdjustAction)),
                     if (isOwner)
-                      const PopupMenuItem(
-                          value: 'delete', child: Text('Delete')),
+                      PopupMenuItem(
+                          value: 'delete',
+                          child: Text(AppLocalizations.of(context)
+                              .inventoryDeleteAction)),
                   ],
                 ),
               ),
@@ -447,7 +485,7 @@ class _ProductEditorState extends State<_ProductEditor> {
         padding: const EdgeInsets.only(top: 6),
         child: Semantics(
           container: true,
-          label: 'Sizes you have used before',
+          label: AppLocalizations.of(context).inventorySizeSuggestionsSpoken,
           child: Wrap(
             spacing: 8,
             runSpacing: 4,
@@ -525,6 +563,11 @@ class _ProductEditorState extends State<_ProductEditor> {
     final major = value.minorUnits ~/ kMinorUnitsPerMajor;
     final cents = value.minorUnits % kMinorUnitsPerMajor;
     // Show cents only when they exist, so a whole-shilling price does not read
+    // Not `formatMoney`: this is an EDIT field, and it has to show `500` rather
+    // than `KSh 500.00` — a figure the owner types back into their own price list
+    // should not arrive with a currency symbol glued to it. Not an ARB key
+    // either: the digits come from arithmetic, not a translator, and a message
+    // that only places a bare number is a number no locale can reformat.
     // as "500.00" while the shop's price list says "500".
     return cents == 0 ? '$major' : '$major.${cents.toString().padLeft(2, '0')}';
   }
@@ -555,8 +598,8 @@ class _ProductEditorState extends State<_ProductEditor> {
     // unsaved new product gets its codes after the save rather than before.
     final existing = widget.existing;
     if (existing?.id == null) {
-      setState(
-          () => _error = 'Save the product first, then add its barcode(s).');
+      setState(() =>
+          _error = AppLocalizations.of(context).inventorySaveBeforeBarcode);
       return;
     }
     final added = await DatabaseHelper.instance.addBarcode(
@@ -573,8 +616,8 @@ class _ProductEditorState extends State<_ProductEditor> {
       final owner = await DatabaseHelper.instance.getProductOwningBarcode(code);
       if (!mounted) return;
       setState(() => _error = owner == null
-          ? 'That barcode is already on another product.'
-          : 'That barcode is already on ${owner.name}.');
+          ? AppLocalizations.of(context).inventoryBarcodeOnOtherProduct
+          : AppLocalizations.of(context).inventoryBarcodeAlready(owner.name));
       return;
     }
     _barcode.clear();
@@ -616,10 +659,12 @@ class _ProductEditorState extends State<_ProductEditor> {
     return Product(
       id: existing?.id,
       name: _name.text.trim().isEmpty
-          ? (existing?.name ?? 'This product')
+          ? (existing?.name ??
+              AppLocalizations.of(context).inventoryThisProduct)
           : _name.text.trim(),
-      category:
-          _category.text.trim().isEmpty ? 'General' : _category.text.trim(),
+      category: _category.text.trim().isEmpty
+          ? AppLocalizations.of(context).inventoryDefaultCategory
+          : _category.text.trim(),
       costPrice:
           Money.fromMajor(number(_cost.text, existing?.costPrice.asMajor ?? 0)),
       sellPrice: Money.fromMajor(
@@ -658,7 +703,7 @@ class _ProductEditorState extends State<_ProductEditor> {
     final draft = await showVariantFormSheet(
       context,
       seed: existingDraft,
-      title: 'Edit ${existingDraft.name}',
+      title: AppLocalizations.of(context).inventoryEdit(existingDraft.name),
       parentProductId: widget.existing?.id,
     );
     if (draft == null || !mounted) return;
@@ -679,8 +724,9 @@ class _ProductEditorState extends State<_ProductEditor> {
         builder: (dialogContext) => AlertDialog(
           title: Text('Remove ${draft.name}?'),
           content: Text(draft.hasStoredBarcode
-              ? 'Its barcode is freed so another variant can use it. Sales already recorded keep the name they were sold under.'
-              : 'It stops being offered at the till. Sales already recorded keep the name they were sold under.'),
+              ? AppLocalizations.of(context).inventoryRemoveVariantBarcodeFreed
+              : AppLocalizations.of(context)
+                  .inventoryRemoveVariantStopsSelling),
           actions: [
             TextButton(
               onPressed: () => Navigator.pop(dialogContext, false),
@@ -688,7 +734,7 @@ class _ProductEditorState extends State<_ProductEditor> {
             ),
             FilledButton(
               onPressed: () => Navigator.pop(dialogContext, true),
-              child: const Text('Remove'),
+              child: Text(AppLocalizations.of(context).inventoryRemoveAction),
             ),
           ],
         ),
@@ -727,8 +773,11 @@ class _ProductEditorState extends State<_ProductEditor> {
           'variant-${draft.id ?? 'new-${draft.name}-${draft.position}'}'),
       direction: DismissDirection.endToStart,
       background: Container(
-        alignment: Alignment.centerRight,
-        padding: const EdgeInsets.only(right: 20),
+        // Directional: the delete affordance sits on the trailing edge, which is
+        // the LEFT edge under RTL. A physical `right` would put the trash icon
+        // under the thumb of an RTL-swiping user.
+        alignment: AlignmentDirectional.centerEnd,
+        padding: const EdgeInsetsDirectional.only(end: 20),
         color: Theme.of(context).colorScheme.errorContainer,
         child: const Icon(Icons.delete_outline),
       ),
@@ -741,29 +790,33 @@ class _ProductEditorState extends State<_ProductEditor> {
       },
       child: ListTile(
         contentPadding: EdgeInsets.zero,
-        leading: CircleAvatar(
-          backgroundColor: low ? DukaColors.surfaceWarm : DukaColors.surface,
-          child: Text('${draft.stockQty}',
-              style: TextStyle(
-                  fontSize: 12,
-                  color: low ? DukaColors.danger : DukaColors.success)),
-        ),
-        title: Text(draft.name.trim().isEmpty ? 'New variant' : draft.name),
+        leading: _StockCountBadge(quantity: draft.stockQty.round(), isLow: low),
+        title: Text(draft.name.trim().isEmpty
+            ? AppLocalizations.of(context).inventoryNewVariantName
+            : draft.name),
         subtitle: Text([
           // Blank for a countable variant: it has no size, and printing "0 ml"
           // would invent one.
           if (draft.sizeLabel.isNotEmpty) draft.sizeLabel,
           formatMoney(draft.sellPrice),
-          low ? 'low stock' : '${editVariantQuantity(draft.stockQty)} in stock',
+          low
+              ? AppLocalizations.of(context).inventoryLowStock
+              : '${editVariantQuantity(draft.stockQty)} in stock',
         ].join(' · ')),
         trailing: PopupMenuButton<String>(
           onSelected: (value) {
             if (value == 'edit') _editVariant(index);
             if (value == 'remove') _removeVariant(index);
           },
-          itemBuilder: (_) => const [
-            PopupMenuItem(value: 'edit', child: Text('Edit')),
-            PopupMenuItem(value: 'remove', child: Text('Remove')),
+          itemBuilder: (_) => <PopupMenuEntry<String>>[
+            PopupMenuItem(
+              value: 'edit',
+              child: Text(AppLocalizations.of(context).inventoryEditAction),
+            ),
+            PopupMenuItem(
+              value: 'remove',
+              child: Text(AppLocalizations.of(context).inventoryRemoveAction),
+            ),
           ],
         ),
         onTap: () => _editVariant(index),
@@ -779,6 +832,7 @@ class _ProductEditorState extends State<_ProductEditor> {
   /// code points at the variant's row.
   Future<void> _saveVariants(int productId) async {
     final db = DatabaseHelper.instance;
+    final l10n = AppLocalizations.of(context);
     for (final removedId in _removedVariantIds) {
       // Also frees that variant's barcodes.
       await db.deleteVariant(removedId);
@@ -807,8 +861,8 @@ class _ProductEditorState extends State<_ProductEditor> {
           // exactly one thing, so a clash is reported rather than resolved.
           final owner = await db.getProductOwningBarcode(code);
           throw StateError(owner == null
-              ? 'Barcode $code is already used by another product or variant.'
-              : 'Barcode $code is already on ${owner.name}.');
+              ? l10n.inventoryBarcodeAlreadyUsedAnother(code)
+              : l10n.inventoryBarcodeAlready2(code, owner.name));
         }
       }
     }
@@ -857,18 +911,20 @@ class _ProductEditorState extends State<_ProductEditor> {
     final parsed = double.tryParse(text);
     if (parsed == null) {
       throw FormatException(
-          '$label must be a number, or empty if not sold in portions');
+          AppLocalizations.of(context).inventoryLabelMustNumberEmpty(label));
     }
     if (!Money.isValidMajor(parsed)) {
-      throw FormatException('$label must be 0 or more');
+      throw FormatException(
+          AppLocalizations.of(context).inventoryLabelMust0(label));
     }
     return Money.fromMajor(parsed);
   }
 
   Future<void> _save() async {
     final name = _name.text.trim();
-    final category =
-        _category.text.trim().isEmpty ? 'General' : _category.text.trim();
+    final category = _category.text.trim().isEmpty
+        ? AppLocalizations.of(context).inventoryDefaultCategory
+        : _category.text.trim();
 
     // Half and quarter are read first and separately: they are optional, and
     // an optional field needs its own error message. Letting them fall through
@@ -877,8 +933,10 @@ class _ProductEditorState extends State<_ProductEditor> {
     Money? halfPrice;
     Money? quarterPrice;
     try {
-      halfPrice = _optionalPrice(_halfPrice, 'Half price');
-      quarterPrice = _optionalPrice(_quarterPrice, 'Quarter price');
+      halfPrice = _optionalPrice(
+          _halfPrice, AppLocalizations.of(context).inventoryFieldHalfPrice);
+      quarterPrice = _optionalPrice(_quarterPrice,
+          AppLocalizations.of(context).inventoryFieldQuarterPrice);
     } on FormatException catch (error) {
       setState(() => _error = error.message);
       return;
@@ -920,16 +978,19 @@ class _ProductEditorState extends State<_ProductEditor> {
       final proceed = await showDialog<bool>(
           context: context,
           builder: (_) => AlertDialog(
-                title: const Text('Sell price is below cost'),
+                title:
+                    Text(AppLocalizations.of(context).inventoryLowPriceTitle),
                 content: Text(
                     '$name would sell at a loss (KSh $price vs cost KSh $cost). Save anyway?'),
                 actions: [
                   TextButton(
                       onPressed: () => Navigator.pop(context, false),
-                      child: const Text('Go back')),
+                      child:
+                          Text(AppLocalizations.of(context).inventoryGoBack)),
                   FilledButton(
                       onPressed: () => Navigator.pop(context, true),
-                      child: const Text('Save anyway')),
+                      child: Text(
+                          AppLocalizations.of(context).inventorySaveAnyway)),
                 ],
               ));
       if (proceed != true) return;
@@ -1023,7 +1084,7 @@ class _ProductEditorState extends State<_ProductEditor> {
   Widget build(BuildContext context) {
     return Padding(
       padding: EdgeInsets.only(
-          bottom: MediaQuery.of(context).viewInsets.bottom,
+          bottom: MediaQuery.viewInsetsOf(context).bottom,
           left: 16,
           right: 16,
           top: 16),
@@ -1032,51 +1093,64 @@ class _ProductEditorState extends State<_ProductEditor> {
             mainAxisSize: MainAxisSize.min,
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
-              Text(widget.existing == null ? 'Add product' : 'Edit product',
+              Text(
+                  widget.existing == null
+                      ? AppLocalizations.of(context).inventoryAddProduct
+                      : AppLocalizations.of(context).inventoryEditProduct,
                   style: Theme.of(context).textTheme.titleLarge),
               const SizedBox(height: 12),
               TextField(
                   controller: _name,
-                  decoration: const InputDecoration(labelText: 'Name')),
+                  decoration: InputDecoration(
+                      labelText:
+                          AppLocalizations.of(context).inventoryFieldName)),
               TextField(
                   controller: _category,
-                  decoration: const InputDecoration(labelText: 'Category')),
+                  decoration: InputDecoration(
+                      labelText:
+                          AppLocalizations.of(context).inventoryFieldCategory)),
               Row(children: [
                 Expanded(
                     child: TextField(
                         controller: _cost,
-                        decoration:
-                            const InputDecoration(labelText: 'Cost price'),
+                        decoration: InputDecoration(
+                            labelText: AppLocalizations.of(context)
+                                .inventoryFieldCostPrice),
                         keyboardType: TextInputType.number)),
                 const SizedBox(width: 8),
                 Expanded(
                     child: TextField(
                         controller: _price,
-                        decoration:
-                            const InputDecoration(labelText: 'Sell price'),
+                        decoration: InputDecoration(
+                            labelText: AppLocalizations.of(context)
+                                .inventoryFieldSellPrice),
                         keyboardType: TextInputType.number)),
               ]),
               TextField(
                   controller: _bottleMl,
-                  decoration: const InputDecoration(
-                      labelText: 'Size (ml)',
-                      helperText: 'Bottle, keg or tank — 330, 500, 50000'),
+                  decoration: InputDecoration(
+                      labelText:
+                          AppLocalizations.of(context).inventoryFieldSizeMl,
+                      helperText: AppLocalizations.of(context)
+                          .inventoryFieldSizeMlHelper),
                   keyboardType: TextInputType.number),
               if (_visibleSizeSuggestions.isNotEmpty) _sizeSuggestionChips(),
               Row(children: [
                 Expanded(
                     child: TextField(
                         controller: _halfPrice,
-                        decoration: const InputDecoration(
-                            labelText: 'Half price (optional)'),
+                        decoration: InputDecoration(
+                            labelText: AppLocalizations.of(context)
+                                .inventoryFieldHalfPriceOptional),
                         keyboardType: const TextInputType.numberWithOptions(
                             decimal: true))),
                 const SizedBox(width: 8),
                 Expanded(
                     child: TextField(
                         controller: _quarterPrice,
-                        decoration: const InputDecoration(
-                            labelText: 'Quarter price (optional)'),
+                        decoration: InputDecoration(
+                            labelText: AppLocalizations.of(context)
+                                .inventoryFieldQuarterPriceOptional),
                         keyboardType: const TextInputType.numberWithOptions(
                             decimal: true))),
               ]),
@@ -1086,8 +1160,10 @@ class _ProductEditorState extends State<_ProductEditor> {
                         controller: _stock,
                         decoration: InputDecoration(
                             labelText: _trackVariants
-                                ? 'Total stock (from variants)'
-                                : 'Stock qty',
+                                ? AppLocalizations.of(context)
+                                    .inventoryFieldTotalStock
+                                : AppLocalizations.of(context)
+                                    .inventoryFieldStockQty,
                             helperText: _trackVariants
                                 ? 'The variants\' total, kept in step for you'
                                 : null),
@@ -1096,39 +1172,45 @@ class _ProductEditorState extends State<_ProductEditor> {
                 Expanded(
                     child: TextField(
                         controller: _reorder,
-                        decoration:
-                            const InputDecoration(labelText: 'Reorder level'),
+                        decoration: InputDecoration(
+                            labelText: AppLocalizations.of(context)
+                                .inventoryFieldReorderLevel),
                         keyboardType: TextInputType.number)),
               ]),
               TextField(
                   controller: _stamp,
-                  decoration: const InputDecoration(
-                      labelText: 'Excise stamp batch (optional)')),
+                  decoration: InputDecoration(
+                      labelText: AppLocalizations.of(context)
+                          .inventoryExciseStampField)),
               const SizedBox(height: 8),
               SwitchListTile(
                 contentPadding: EdgeInsets.zero,
                 value: _trackVariants,
                 onChanged: _setTrackVariants,
-                title: const Text('Sold as variants'),
+                title:
+                    Text(AppLocalizations.of(context).inventorySoldAsVariants),
                 // Says what turning it on does to the till, because the switch
                 // is otherwise invisible in its consequences: with it on, the
                 // product itself stops being sellable and its variants take over.
                 subtitle: Text(_trackVariants
-                    ? 'The till offers Dark, Regular, Big cup… instead of the whole product'
-                    : 'For Dark and Regular, or a big cup and a small cup, at different prices'),
+                    ? AppLocalizations.of(context)
+                        .inventorySoldAsVariantsOnSubtitle
+                    : AppLocalizations.of(context)
+                        .inventorySoldAsVariantsOffSubtitle),
               ),
               if (_trackVariants) ...[
-                Text('Variants', style: Theme.of(context).textTheme.titleSmall),
+                Text(AppLocalizations.of(context).inventoryVariantsSection,
+                    style: Theme.of(context).textTheme.titleSmall),
                 const SizedBox(height: 4),
                 if (_loadingMeta)
                   const LinearProgressIndicator()
                 else if (_drafts.isEmpty)
-                  const Padding(
-                    padding: EdgeInsets.symmetric(vertical: 4),
+                  Padding(
+                    padding: const EdgeInsets.symmetric(vertical: 4),
                     child: Text(
                         'No variants yet. The till will ask for one instead of '
                         'selling the whole product.',
-                        style: TextStyle(fontSize: 13)),
+                        style: AppTypography.of(context).bodyMedium),
                   )
                 else
                   for (var i = 0; i < _drafts.length; i++) _variantRow(i),
@@ -1136,29 +1218,31 @@ class _ProductEditorState extends State<_ProductEditor> {
                   onPressed: _addVariant,
                   icon: const Icon(Icons.add),
                   label: Text(_drafts.isEmpty
-                      ? 'Add its first variant'
-                      : 'Add another variant'),
+                      ? AppLocalizations.of(context).inventoryAddFirstVariant
+                      : AppLocalizations.of(context)
+                          .inventoryAddAnotherVariant),
                 ),
                 const SizedBox(height: 16),
               ],
-              Text('Barcodes', style: Theme.of(context).textTheme.titleSmall),
+              Text(AppLocalizations.of(context).inventoryBarcodesSection,
+                  style: Theme.of(context).textTheme.titleSmall),
               const SizedBox(height: 4),
-              const Text(
+              Text(
                 'A code on the product adds the whole product. A code on a '
                 'variant — entered in that variant\'s own form — adds that '
                 'variant, at its price and from its stock. Each code can only '
                 'ever resolve to one of them.',
-                style: TextStyle(fontSize: 12),
+                style: AppTypography.of(context).bodySmall,
               ),
               const SizedBox(height: 8),
               if (_loadingMeta)
                 const LinearProgressIndicator()
               else if (_codes.isEmpty)
-                const Padding(
-                  padding: EdgeInsets.symmetric(vertical: 4),
+                Padding(
+                  padding: const EdgeInsets.symmetric(vertical: 4),
                   child: Text(
-                      'No barcodes yet — this product is sold by name only.',
-                      style: TextStyle(fontSize: 13)),
+                      AppLocalizations.of(context).inventoryNoBarcodesYet,
+                      style: AppTypography.of(context).bodyMedium),
                 )
               else
                 for (final code in _codes)
@@ -1184,7 +1268,8 @@ class _ProductEditorState extends State<_ProductEditor> {
                     onTap: () => _cycleBarcodeKind(code),
                     trailing: IconButton(
                       icon: const Icon(Icons.close, size: 18),
-                      tooltip: 'Remove ${code.barcode}',
+                      tooltip: AppLocalizations.of(context)
+                          .inventoryRemove(code.barcode),
                       onPressed: () => _removeBarcode(code),
                     ),
                   ),
@@ -1192,8 +1277,11 @@ class _ProductEditorState extends State<_ProductEditor> {
                 Expanded(
                   child: TextField(
                     controller: _barcode,
-                    decoration: const InputDecoration(
-                        labelText: 'Add a barcode', hintText: '6001234567892'),
+                    decoration: InputDecoration(
+                        labelText:
+                            AppLocalizations.of(context).inventoryAddBarcode,
+                        hintText:
+                            AppLocalizations.of(context).inventoryBarcodeHint),
                     // Digits and letters only: what a scanner could emit.
                     inputFormatters: [
                       FilteringTextInputFormatter.allow(
@@ -1265,11 +1353,12 @@ class _AdjustDialogState extends State<_AdjustDialog> {
         TextField(
             controller: _delta,
             keyboardType: const TextInputType.numberWithOptions(signed: true),
-            decoration: const InputDecoration(
-                labelText: 'Change (+50 restock, -2 breakage)')),
+            decoration: InputDecoration(
+                labelText: AppLocalizations.of(context).inventoryDeltaLabel)),
         TextField(
             controller: _reason,
-            decoration: const InputDecoration(labelText: 'Reason')),
+            decoration: InputDecoration(
+                labelText: AppLocalizations.of(context).inventoryReasonLabel)),
       ]),
       actions: [
         TextButton(
@@ -1278,9 +1367,56 @@ class _AdjustDialogState extends State<_AdjustDialog> {
         FilledButton(
           onPressed: () => Navigator.pop(
               context, {'delta': _delta.text, 'reason': _reason.text}),
-          child: const Text('Save'),
+          child: Text(AppLocalizations.of(context).inventorySaveAction),
         ),
       ],
+    );
+  }
+}
+
+/// The stock count on a product or variant row.
+///
+/// Was a `CircleAvatar` tinted red or green by `isLow`. That is the
+/// colour-alone rule in its plainest form: a shopkeeper with deuteranopia, or a
+/// greyscale screenshot in a bug report, or a screen reader, learns nothing from
+/// a red circle. The count is still the number — but the TONE comes from
+/// [StatusTone], which carries a glyph and a word alongside the colour, and the
+/// badge is excluded from the row's own semantics because the row announces the
+/// count already.
+class _StockCountBadge extends StatelessWidget {
+  const _StockCountBadge({required this.quantity, required this.isLow});
+
+  final int quantity;
+  final bool isLow;
+
+  @override
+  Widget build(BuildContext context) {
+    final StatusTone tone = isLow ? StatusTone.warning : StatusTone.success;
+    final AppColors colors = AppColors.of(context);
+
+    return Semantics(
+      excludeSemantics: true,
+      child: Container(
+        constraints: const BoxConstraints(minWidth: 32, minHeight: 32),
+        alignment: Alignment.center,
+        padding: const EdgeInsets.symmetric(horizontal: 6),
+        decoration: BoxDecoration(
+          color: tone.container(colors),
+          shape: BoxShape.rectangle,
+          borderRadius: BorderRadius.circular(AppShapes.of(context).pill),
+          border: Border.all(color: tone.color(colors)),
+        ),
+        child: Text(
+          AppLocalizations.of(context).inventoryQuantity(quantity),
+          // Tabular figures: a column of stock counts that shifts sideways as
+          // the digit count changes is unreadable at a glance.
+          style: AppTypography.money(
+            context,
+            size: 12,
+            weight: FontWeight.w700,
+          ).copyWith(color: tone.onContainer(colors)),
+        ),
+      ),
     );
   }
 }

@@ -66,16 +66,19 @@ void main() {
   group('payload shape', () {
     test('carries the till receipt number, not a fresh one', () async {
       await db.setTillCode('T1');
-      final saleId = await db.recordSale(staffName: 'Alice', items: [
-        SaleItem(
-          saleId: 0,
-          productId: sodaId,
-          productName: 'Soda 350ml',
-          qty: 1,
-          unitPrice: Money.fromMajor(80),
-          unitCost: Money.fromMajor(45),
-        )
-      ], etimsPending: true);
+      final saleId = await db.recordSale(
+          staffName: 'Alice',
+          items: [
+            SaleItem(
+              saleId: 0,
+              productId: sodaId,
+              productName: 'Soda 350ml',
+              qty: 1,
+              unitPrice: Money.fromMajor(80),
+              unitCost: Money.fromMajor(45),
+            )
+          ],
+          etimsPending: true);
       final payload = await fileAsync(
         items: [
           SaleItem(
@@ -96,16 +99,19 @@ void main() {
     });
 
     test('amounts travel as integer minor units, never as floats', () async {
-      final saleId = await db.recordSale(staffName: 'Alice', items: [
-        SaleItem(
-          saleId: 0,
-          productId: sodaId,
-          productName: 'Soda 350ml',
-          qty: 3,
-          unitPrice: Money.fromMajor(80),
-          unitCost: Money.fromMajor(45),
-        )
-      ], etimsPending: true);
+      final saleId = await db.recordSale(
+          staffName: 'Alice',
+          items: [
+            SaleItem(
+              saleId: 0,
+              productId: sodaId,
+              productName: 'Soda 350ml',
+              qty: 3,
+              unitPrice: Money.fromMajor(80),
+              unitCost: Money.fromMajor(45),
+            )
+          ],
+          etimsPending: true);
       final payload = await fileAsync(
         items: [
           SaleItem(
@@ -156,11 +162,10 @@ void main() {
           items: items,
           amountTendered: Money.fromMajor(280),
           etimsPending: true);
-      final payload = await fileAsync(
-          items: items, vatRatePercent: 16, saleId: saleId);
+      final payload =
+          await fileAsync(items: items, vatRatePercent: 16, saleId: saleId);
 
-      final filed =
-          (payload['items'] as List).cast<Map<String, dynamic>>();
+      final filed = (payload['items'] as List).cast<Map<String, dynamic>>();
       for (var i = 0; i < filed.length; i++) {
         final expected =
             vatComponentOf(items[i].total, ratePercent: 16).minorUnits;
@@ -189,8 +194,8 @@ void main() {
           .where((line) => line.left.startsWith('VAT ('))
           .map((line) => line.right)
           .single;
-      final filedVatTotal = filed.fold<int>(
-          0, (sum, line) => sum + (line['vat_amount']! as int));
+      final filedVatTotal =
+          filed.fold<int>(0, (sum, line) => sum + (line['vat_amount']! as int));
       expect(printedVatTotal, _minorText(filedVatTotal));
     });
 
@@ -218,8 +223,8 @@ void main() {
           items: items,
           amountTendered: Money.fromMajor(370),
           etimsPending: true);
-      final payload = await fileAsync(
-          items: items, vatRatePercent: 16, saleId: saleId);
+      final payload =
+          await fileAsync(items: items, vatRatePercent: 16, saleId: saleId);
       final filed = (payload['items'] as List).cast<Map<String, dynamic>>();
       final lineSum =
           filed.fold<int>(0, (sum, line) => sum + (line['line_total']! as int));
@@ -243,14 +248,15 @@ void main() {
           items: items,
           amountTendered: Money.fromMajor(80),
           etimsPending: true);
-      final payload = await fileAsync(
-          items: items, vatRatePercent: 0, saleId: saleId);
+      final payload =
+          await fileAsync(items: items, vatRatePercent: 0, saleId: saleId);
       expect(payload['vat_rate_percent'], 0);
       final filed = (payload['items'] as List).cast<Map<String, dynamic>>();
       expect(filed.single['vat_amount'], 0);
     });
 
-    test('the payload carries the VAT rate and the payment reference', () async {
+    test('the payload carries the VAT rate and the payment reference',
+        () async {
       final saleId = await db.recordSale(
         staffName: 'Alice',
         items: [
@@ -293,11 +299,13 @@ void main() {
       // The message has to be actionable: an owner who cannot tell whether KRA
       // still owes an invoice will not know whether to wait or to fix something.
       expect(
-        EtimsService.describeResult(const EtimsFlushResult(uploaded: 5, remaining: 0)),
+        EtimsService.describeResult(
+            const EtimsFlushResult(uploaded: 5, remaining: 0)),
         contains('5'),
       );
       expect(
-        EtimsService.describeResult(const EtimsFlushResult(uploaded: 0, remaining: 3)),
+        EtimsService.describeResult(
+            const EtimsFlushResult(uploaded: 0, remaining: 3)),
         contains('3'),
       );
       expect(
@@ -308,7 +316,8 @@ void main() {
     });
 
     test('a refusal is permanent and a transport failure is not', () {
-      expect(const EtimsRejectedException('bad TIN'), isA<EtimsRejectedException>());
+      expect(const EtimsRejectedException('bad TIN'),
+          isA<EtimsRejectedException>());
     });
   });
 }

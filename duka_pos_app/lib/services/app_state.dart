@@ -44,13 +44,32 @@ class AppState extends ChangeNotifier {
   /// The role as stored, for the one call site that writes it back to a row.
   String get currentRole => _role.wire;
 
+  bool _disposed = false;
+
+  /// Whether this session has been torn down.
+  ///
+  /// Exists because [loadOwner] awaits real I/O and its caller — the boot gate —
+  /// can be disposed while those awaits are in flight. `notifyListeners()` on a
+  /// disposed `ChangeNotifier` asserts in debug and silently does nothing in
+  /// release, so without this the symptom on a device is a router that never
+  /// resolves and a blank screen with no error anywhere.
+  bool get isDisposed => _disposed;
+
   Future<void> loadOwner() async {
     workspaceKey = await WorkspaceService.activeWorkspaceKey();
     await DatabaseHelper.instance.initializeWorkspace(workspaceKey);
     owner = await DatabaseHelper.instance.getOwner();
+    if (_disposed) return;
     identityLinkPending =
         owner != null && (await BackendService.tenantId) == null;
+    if (_disposed) return;
     notifyListeners();
+  }
+
+  @override
+  void dispose() {
+    _disposed = true;
+    super.dispose();
   }
 
   void markIdentityLinked() {

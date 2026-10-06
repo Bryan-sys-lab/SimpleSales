@@ -71,8 +71,8 @@ class EncryptedBackupService {
   static Future<File> encryptToFile(List<int> clearBytes,
       {String prefix = 'duka-backup'}) async {
     final keyBytes = await _keyBytes();
-    final payload =
-        await compute(buildEncryptedPayload, EncryptRequest(keyBytes, clearBytes));
+    final payload = await compute(
+        buildEncryptedPayload, EncryptRequest(keyBytes, clearBytes));
     final dir = await getApplicationDocumentsDirectory();
     final file = File(
         '${dir.path}/$prefix-${DateTime.now().toIso8601String().substring(0, 10)}.duka');

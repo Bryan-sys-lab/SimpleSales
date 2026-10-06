@@ -80,7 +80,8 @@ class EscPosPrinter implements PrinterService {
       await _invoke<bool>('isPaired', {'address': address}) ?? false;
 
   @override
-  Future<void> connect(String address, {Duration timeout = const Duration(seconds: 8)}) async {
+  Future<void> connect(String address,
+      {Duration timeout = const Duration(seconds: 8)}) async {
     await _invoke<bool>('connect', {
       'address': address,
       'timeoutMs': timeout.inMilliseconds,

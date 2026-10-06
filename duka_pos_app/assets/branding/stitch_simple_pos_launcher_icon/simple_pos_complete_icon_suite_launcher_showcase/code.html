@@ -1,0 +1,327 @@
+<!DOCTYPE html>
+
+<html lang="en"><head>
+<meta charset="utf-8"/>
+<meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+<title>Simple POS — Icon Suite &amp; Launcher System</title>
+<!-- Tailwind CSS v3 with Plugins -->
+<script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+<!-- Tailwind Configuration for Custom Brand Colors and Fonts -->
+<script data-purpose="tailwind-config">
+    tailwind.config = {
+      theme: {
+        extend: {
+          colors: {
+            ink: '#251A1D',
+            wine: '#6E2638',
+            'wine-deep': '#4B1725',
+            'ink-muted': '#66575B',
+            'ink-border': '#3D2D32',
+            'card-surface': '#1C1316',
+          },
+          fontFamily: {
+            sans: ['Inter', 'system-ui', '-apple-system', 'BlinkMacSystemFont', 'Segoe UI', 'Roboto', 'sans-serif'],
+          }
+        }
+      }
+    };
+  </script>
+<!-- BEGIN: Custom Atmospheric Background Styles -->
+<style data-purpose="atmosphere-layout">
+    body {
+      background-color: #251A1D;
+      background-image: 
+        radial-gradient(circle at 50% 180px, rgba(75, 23, 37, 0.45) 0%, rgba(37, 26, 29, 0) 70%),
+        radial-gradient(circle at 80% 800px, rgba(110, 38, 56, 0.15) 0%, rgba(37, 26, 29, 0) 60%);
+      background-attachment: fixed;
+    }
+  </style>
+<!-- END: Custom Atmospheric Background Styles -->
+</head>
+<body class="text-white font-sans antialiased min-h-screen selection:bg-wine selection:text-white">
+<!-- BEGIN: MainHeader -->
+<header class="pt-16 pb-12 px-6 max-w-7xl mx-auto text-center" data-purpose="page-header">
+<div class="inline-flex items-center gap-2 px-3 py-1 rounded-full border border-wine/40 bg-wine/10 text-xs font-mono tracking-wider uppercase text-rose-200 mb-6">
+<span class="w-1.5 h-1.5 rounded-full bg-rose-400 animate-pulse"></span>
+      Asset Guidelines &amp; Launcher System v2.4
+    </div>
+<h1 class="text-3xl md:text-5xl font-semibold tracking-tight text-white mb-3">
+      Simple POS <span class="text-ink-muted font-normal">—</span> Icon Suite &amp; Launcher System
+    </h1>
+<p class="text-lg md:text-xl text-[#B39DA4] font-normal tracking-wide max-w-2xl mx-auto">
+      Point of sale, built for the till it runs on
+    </p>
+<!-- Palette Swatches Strip -->
+<div class="mt-8 flex flex-wrap items-center justify-center gap-3 text-xs font-mono text-[#D4C3C8]" data-purpose="color-palette-bar">
+<div class="flex items-center gap-2 bg-black/40 px-3 py-1.5 rounded-md border border-ink-border">
+<span class="w-3.5 h-3.5 rounded-full bg-[#251A1D] border border-white/20"></span>
+<span>#251A1D Ink</span>
+</div>
+<div class="flex items-center gap-2 bg-black/40 px-3 py-1.5 rounded-md border border-ink-border">
+<span class="w-3.5 h-3.5 rounded-full bg-[#4B1725] border border-white/20"></span>
+<span>#4B1725 Wine Deep</span>
+</div>
+<div class="flex items-center gap-2 bg-black/40 px-3 py-1.5 rounded-md border border-ink-border">
+<span class="w-3.5 h-3.5 rounded-full bg-[#6E2638] border border-white/20"></span>
+<span>#6E2638 Wine Red</span>
+</div>
+<div class="flex items-center gap-2 bg-black/40 px-3 py-1.5 rounded-md border border-ink-border">
+<span class="w-3.5 h-3.5 rounded-full bg-[#66575B] border border-white/20"></span>
+<span>#66575B Muted</span>
+</div>
+<div class="flex items-center gap-2 bg-black/40 px-3 py-1.5 rounded-md border border-ink-border">
+<span class="w-3.5 h-3.5 rounded-full bg-[#FFFFFF] border border-white/20"></span>
+<span>#FFFFFF Primary</span>
+</div>
+</div>
+</header>
+<!-- END: MainHeader -->
+<!-- BEGIN: MainContent -->
+<main class="max-w-7xl mx-auto px-6 pb-24 space-y-12">
+<!-- BEGIN: Section 1 - Master Launcher Icon -->
+<section class="bg-card-surface/90 border border-ink-border rounded-2xl p-8 lg:p-10 shadow-2xl backdrop-blur-sm" data-purpose="master-launcher-section">
+<div class="flex flex-col lg:flex-row gap-10 items-center justify-between">
+<!-- Left: Icon Showcase Frame -->
+<div class="flex flex-col items-center justify-center w-full lg:w-1/2">
+<div class="relative group p-6 rounded-3xl bg-black/30 border border-white/5 flex items-center justify-center">
+<!-- Safe Circle Target Ring (66/108 Adaptive guideline visualization) -->
+<div class="absolute inset-0 m-auto w-64 h-64 md:w-72 md:h-72 rounded-full border border-dashed border-wine/50 pointer-events-none flex items-start justify-center pt-2">
+<span class="text-[10px] uppercase font-mono tracking-widest text-rose-300/60 bg-[#251A1D]/80 px-2 py-0.5 rounded">66dp Safe Area</span>
+</div>
+<!-- Master Icon Render -->
+<div class="relative w-56 h-56 md:w-64 md:h-64 shadow-2xl shadow-black/80 transition-transform duration-300 group-hover:scale-[1.02]">
+<svg aria-label="Simple POS Master Launcher Icon" class="w-full h-full drop-shadow-xl" viewbox="0 0 512 512" xmlns="http://www.w3.org/2000/svg">
+<!-- Background squircle: corner radius 116 (0.227 * 512 = 116.224), fill #251A1D -->
+<rect fill="#251A1D" height="512" rx="116" ry="116" width="512" x="0" y="0"></rect>
+<!-- Receipt: left 171.52, top 66.56, right 340.48, bottom 307.2 -->
+<path d="
+                  M 183.808 66.56
+                  L 328.192 66.56
+                  A 12.288 12.288 0 0 1 340.48 78.848
+                  L 340.48 307.2
+                  L 322.048 307.2
+                  L 300.928 276.48
+                  L 279.808 307.2
+                  L 267.328 307.2
+                  L 256.0 276.48
+                  L 244.672 307.2
+                  L 232.192 307.2
+                  L 211.072 276.48
+                  L 189.952 307.2
+                  L 171.52 307.2
+                  L 171.52 78.848
+                  A 12.288 12.288 0 0 1 183.808 66.56
+                  Z" fill="#FFFFFF"></path>
+<!-- Terminal body: left 76.8, top 337.92, right 435.2, bottom 444.416 -->
+<rect fill="#FFFFFF" height="106.496" rx="23.552" ry="23.552" width="358.4" x="76.8" y="337.92"></rect>
+<!-- Terminal screen: left 102.4, top 337.92, right 409.6, bottom 404.48 -->
+<rect fill="#6E2638" height="66.56" rx="10.24" ry="10.24" width="307.2" x="102.4" y="337.92"></rect>
+</svg>
+</div>
+</div>
+<p class="mt-4 text-xs font-mono text-ink-muted">Master Asset: 1024×1024 px · Squircle Radius: 0.227</p>
+</div>
+<!-- Right: Technical Breakdown Specifications -->
+<div class="w-full lg:w-1/2 space-y-6">
+<div>
+<span class="text-xs uppercase font-mono tracking-wider text-rose-300">Section 01</span>
+<h2 class="text-2xl font-bold tracking-tight text-white mt-1">Master Launcher Icon</h2>
+<p class="text-sm text-[#C4B2B8] mt-2 leading-relaxed">
+              Designed specifically for counter hardware displays, high-density touchscreens, and system app drawers. The silhouette balances high-contrast white paper geometry with tactile wine hardware elements.
+            </p>
+</div>
+<!-- Feature Cards Grid -->
+<div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+<div class="p-4 rounded-xl bg-black/40 border border-ink-border/80">
+<div class="flex items-center gap-2 mb-1.5">
+<span class="w-2 h-2 rounded-full bg-rose-400"></span>
+<h3 class="text-sm font-semibold text-white">Till Receipt Geometry</h3>
+</div>
+<p class="text-xs text-[#A8969C]">
+                3-point triangular serrated tear base at y:276.48 with 12.288px top corner fillets.
+              </p>
+</div>
+<div class="p-4 rounded-xl bg-black/40 border border-ink-border/80">
+<div class="flex items-center gap-2 mb-1.5">
+<span class="w-2 h-2 rounded-full bg-wine"></span>
+<h3 class="text-sm font-semibold text-white">Terminal Screen Bar</h3>
+</div>
+<p class="text-xs text-[#A8969C]">
+                Embedded #6E2638 customer-facing display slot seated flush within the 358px base chassis.
+              </p>
+</div>
+<div class="p-4 rounded-xl bg-black/40 border border-ink-border/80">
+<div class="flex items-center gap-2 mb-1.5">
+<span class="w-2 h-2 rounded-full bg-white"></span>
+<h3 class="text-sm font-semibold text-white">Squircle Substrate</h3>
+</div>
+<p class="text-xs text-[#A8969C]">
+                Standard 0.227 ratio (116px at 512px canvas) solid #251A1D ink background.
+              </p>
+</div>
+<div class="p-4 rounded-xl bg-black/40 border border-ink-border/80">
+<div class="flex items-center gap-2 mb-1.5">
+<span class="w-2 h-2 rounded-full bg-ink-muted"></span>
+<h3 class="text-sm font-semibold text-white">Android 13+ Ready</h3>
+</div>
+<p class="text-xs text-[#A8969C]">
+                Calibrated foreground layer centered precisely inside the 66/108 diameter safe circle.
+              </p>
+</div>
+</div>
+</div>
+</div>
+</section>
+<!-- END: Section 1 - Master Launcher Icon -->
+<!-- BEGIN: Section 2 - Monogram & Brand Marks -->
+<section class="bg-card-surface/90 border border-ink-border rounded-2xl p-8 lg:p-10 shadow-xl backdrop-blur-sm" data-purpose="monograms-section">
+<div class="mb-8">
+<span class="text-xs uppercase font-mono tracking-wider text-rose-300">Section 02</span>
+<h2 class="text-2xl font-bold tracking-tight text-white mt-1">The 'S' Monogram &amp; Brand Marks</h2>
+<p class="text-sm text-[#C4B2B8] mt-1">Supplementary hardware, keycap, and brand signatures across the till interface.</p>
+</div>
+<div class="grid grid-cols-1 md:grid-cols-3 gap-6">
+<!-- Mark 1: Receipt-Fold 'S' Monogram -->
+<article class="p-6 rounded-xl bg-black/40 border border-ink-border flex flex-col items-center text-center group hover:border-wine/60 transition-colors">
+<div class="w-28 h-28 rounded-2xl bg-[#251A1D] border border-white/10 flex items-center justify-center p-3 shadow-inner mb-5">
+<!-- Receipt Fold S SVG -->
+<svg class="w-16 h-16" fill="none" viewbox="0 0 100 100" xmlns="http://www.w3.org/2000/svg">
+<path d="M68 22H36C29.3726 22 24 27.3726 24 34C24 40.6274 29.3726 46 36 46H64C70.6274 46 76 51.3726 76 58C76 64.6274 70.6274 70 64 70H28" stroke="#FFFFFF" stroke-linecap="round" stroke-linejoin="round" stroke-width="12"></path>
+<path d="M44 86H76" stroke="#6E2638" stroke-linecap="round" stroke-width="8"></path>
+<circle cx="70" cy="22" fill="#6E2638" r="4"></circle>
+</svg>
+</div>
+<h3 class="text-base font-semibold text-white">Receipt-Fold 'S' Monogram</h3>
+<p class="text-xs text-ink-muted mt-0.5 mb-3 font-mono">Brand Identity Alternative</p>
+<p class="text-xs text-[#A8969C] leading-relaxed">
+            Curved thermal roll ribbon folded dynamically to form the letter 'S', grounded by the horizontal wine screen anchor.
+          </p>
+</article>
+<!-- Mark 2: Geometric 'S' Typography Icon -->
+<article class="p-6 rounded-xl bg-black/40 border border-ink-border flex flex-col items-center text-center group hover:border-wine/60 transition-colors">
+<div class="w-28 h-28 rounded-2xl bg-[#251A1D] border border-white/10 flex items-center justify-center p-3 shadow-inner mb-5">
+<!-- Geometric Typography S with Wine Accent Dot -->
+<div class="relative flex items-center justify-center">
+<span class="text-6xl font-black tracking-tighter text-white font-sans">S</span>
+<span class="absolute -top-1 -right-2 w-3.5 h-3.5 bg-wine rounded-full border-2 border-[#251A1D]"></span>
+</div>
+</div>
+<h3 class="text-base font-semibold text-white">Geometric 'S' Glyph</h3>
+<p class="text-xs text-ink-muted mt-0.5 mb-3 font-mono">Minimal Display Variant</p>
+<p class="text-xs text-[#A8969C] leading-relaxed">
+            Engineered bold sans glyph paired with our signature wine till accent dot, optimized for 16px and 24px small-scale favicons.
+          </p>
+</article>
+<!-- Mark 3: In-app Quick Action Till Key -->
+<article class="p-6 rounded-xl bg-black/40 border border-ink-border flex flex-col items-center text-center group hover:border-wine/60 transition-colors">
+<div class="w-28 h-28 rounded-2xl bg-[#251A1D] border border-white/10 flex items-center justify-center p-3 shadow-inner mb-5">
+<!-- Hardware Key Style "S" Quick Action -->
+<div class="w-16 h-16 rounded-xl bg-gradient-to-b from-[#3D2D32] to-[#251A1D] border-t border-rose-300/30 border-b border-black shadow-lg flex flex-col items-center justify-center">
+<span class="text-xl font-bold tracking-tight text-white">SALE</span>
+<span class="text-[9px] font-mono text-rose-300/80 -mt-0.5">[ F1 ]</span>
+</div>
+</div>
+<h3 class="text-base font-semibold text-white">In-App Quick Action 'S'</h3>
+<p class="text-xs text-ink-muted mt-0.5 mb-3 font-mono">Till Tactile Control</p>
+<p class="text-xs text-[#A8969C] leading-relaxed">
+            High-cadence point of sale operator trigger key designed for fast checkout lanes and touch-register tactile interfaces.
+          </p>
+</article>
+</div>
+</section>
+<!-- END: Section 2 - Monogram & Brand Marks -->
+<!-- BEGIN: Section 3 - Technical Specifications Table -->
+<section class="bg-card-surface/90 border border-ink-border rounded-2xl p-8 lg:p-10 shadow-xl backdrop-blur-sm" data-purpose="technical-specifications-section">
+<div class="mb-6 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+<div>
+<span class="text-xs uppercase font-mono tracking-wider text-rose-300">Section 03</span>
+<h2 class="text-2xl font-bold tracking-tight text-white mt-1">Technical Specifications &amp; Asset Mapping</h2>
+<p class="text-sm text-[#C4B2B8] mt-1">Deployment matrix for native Android packaging, App Store listings, and POS web builds.</p>
+</div>
+<div class="text-xs font-mono text-ink-muted bg-black/40 px-3 py-1.5 rounded border border-ink-border self-start">
+          Format: PNG / SVG / Vector XML
+        </div>
+</div>
+<!-- Specs Table Container -->
+<div class="overflow-x-auto">
+<table class="w-full text-left text-sm border-collapse" id="asset-specs-table">
+<thead>
+<tr class="border-b border-ink-border text-xs uppercase font-mono text-ink-muted bg-black/20">
+<th class="py-3.5 px-4 font-medium">Asset Identifier</th>
+<th class="py-3.5 px-4 font-medium">Dimensions</th>
+<th class="py-3.5 px-4 font-medium">Format / Substrate</th>
+<th class="py-3.5 px-4 font-medium">Target Context</th>
+<th class="py-3.5 px-4 font-medium text-right">Status</th>
+</tr>
+</thead>
+<tbody class="divide-y divide-ink-border/50 text-[#C4B2B8]">
+<tr class="hover:bg-white/[0.02] transition-colors">
+<td class="py-4 px-4 font-mono font-medium text-white flex items-center gap-2">
+<span class="w-1.5 h-1.5 rounded-full bg-emerald-400"></span>
+                simple_pos_icon_1024.png
+              </td>
+<td class="py-4 px-4 font-mono text-xs text-[#E0D3D7]">1024 × 1024 px</td>
+<td class="py-4 px-4 text-xs">Opaque #251A1D Solid</td>
+<td class="py-4 px-4 text-xs">Master Store Artwork / Hi-DPI Displays</td>
+<td class="py-4 px-4 text-xs font-mono text-right text-emerald-400">Production</td>
+</tr>
+<tr class="hover:bg-white/[0.02] transition-colors">
+<td class="py-4 px-4 font-mono font-medium text-white flex items-center gap-2">
+<span class="w-1.5 h-1.5 rounded-full bg-emerald-400"></span>
+                simple_pos_icon_512.png
+              </td>
+<td class="py-4 px-4 font-mono text-xs text-[#E0D3D7]">512 × 512 px</td>
+<td class="py-4 px-4 text-xs">Opaque Squircle (r: 116.2px)</td>
+<td class="py-4 px-4 text-xs">Primary Android / Web Launcher Icon</td>
+<td class="py-4 px-4 text-xs font-mono text-right text-emerald-400">Production</td>
+</tr>
+<tr class="hover:bg-white/[0.02] transition-colors">
+<td class="py-4 px-4 font-mono font-medium text-white flex items-center gap-2">
+<span class="w-1.5 h-1.5 rounded-full bg-emerald-400"></span>
+                simple_pos_foreground_512.png
+              </td>
+<td class="py-4 px-4 font-mono text-xs text-[#E0D3D7]">512 × 512 px</td>
+<td class="py-4 px-4 text-xs">Transparent Alpha Channel</td>
+<td class="py-4 px-4 text-xs">Android Adaptive Foreground Layer</td>
+<td class="py-4 px-4 text-xs font-mono text-right text-emerald-400">Production</td>
+</tr>
+<tr class="hover:bg-white/[0.02] transition-colors">
+<td class="py-4 px-4 font-mono font-medium text-white flex items-center gap-2">
+<span class="w-1.5 h-1.5 rounded-full bg-amber-400"></span>
+                simple_pos_icon_monochrome_512.png
+              </td>
+<td class="py-4 px-4 font-mono text-xs text-[#E0D3D7]">512 × 512 px</td>
+<td class="py-4 px-4 text-xs">Single Alpha Mask (Pure White)</td>
+<td class="py-4 px-4 text-xs">Android 13+ Dynamic Themed Color Engine</td>
+<td class="py-4 px-4 text-xs font-mono text-right text-amber-300">Verified</td>
+</tr>
+<tr class="hover:bg-white/[0.02] transition-colors">
+<td class="py-4 px-4 font-mono font-medium text-white flex items-center gap-2">
+<span class="w-1.5 h-1.5 rounded-full bg-purple-400"></span>
+                simple_pos_s_monogram.png
+              </td>
+<td class="py-4 px-4 font-mono text-xs text-[#E0D3D7]">512 × 512 px</td>
+<td class="py-4 px-4 text-xs">Vector &amp; Transparent PNG</td>
+<td class="py-4 px-4 text-xs">Hardware Register Bezel &amp; Receipt Header</td>
+<td class="py-4 px-4 text-xs font-mono text-right text-purple-300">Brand Asset</td>
+</tr>
+</tbody>
+</table>
+</div>
+</section>
+<!-- END: Section 3 - Technical Specifications Table -->
+</main>
+<!-- END: MainContent -->
+<!-- BEGIN: MainFooter -->
+<footer class="border-t border-ink-border py-8 text-center text-xs font-mono text-ink-muted">
+<div class="max-w-7xl mx-auto px-6 flex flex-col sm:flex-row items-center justify-between gap-4">
+<p>Simple POS Design System © 2025. All till assets calibrated.</p>
+<div class="flex items-center gap-4">
+<span>Contrast: 12.8:1 (AAA)</span>
+<span>•</span>
+<span>Resolution: 1376×768 Desktop Viewport</span>
+</div>
+</div>
+</footer>
+<!-- END: MainFooter -->
+</body></html>

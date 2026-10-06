@@ -22,3 +22,5 @@ Thumbs.db
 *.jks
 *.keystore
 key.properties
+*.jks.bak*
+keystore-base64.txt

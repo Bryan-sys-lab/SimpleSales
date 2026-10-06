@@ -1,25 +1,21 @@
-import 'package:flutter/material.dart';
 import 'package:flutter/foundation.dart';
-import 'dart:ui';
+import 'package:go_router/go_router.dart';
+import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
+import 'package:provider/single_child_widget.dart';
 import 'package:sentry_flutter/sentry_flutter.dart';
 import 'package:sqflite/sqflite.dart';
 import 'package:sqflite_common_ffi_web/sqflite_ffi_web.dart';
-import 'services/app_state.dart';
-import 'services/app_stage.dart';
+
 import 'app_brand.dart';
-import 'services/auto_sync_service.dart';
-import 'screens/splash_screen.dart';
-import 'screens/welcome_chooser_screen.dart';
-import 'screens/owner_setup_screen.dart';
-import 'screens/login_screen.dart';
-import 'screens/home_shell.dart';
-import 'screens/onboarding_screen.dart';
-import 'package:shared_preferences/shared_preferences.dart';
+import 'l10n/generated/app_localizations.dart';
+import 'routing/app_router.dart';
+import 'routing/app_stage_controller.dart';
+import 'services/app_state.dart';
 import 'theme/app_theme.dart';
 
 /// Sentry DSN for crash reporting - get from https://sentry.io
-const sentryDsn = String.fromEnvironment(
+const String sentryDsn = String.fromEnvironment(
   'SENTRY_DSN',
   defaultValue: '', // Empty = crash reporting disabled
 );
@@ -34,13 +30,13 @@ Future<void> main() async {
     databaseFactory = databaseFactoryFfiWeb;
   }
 
-  FlutterError.onError = (details) {
+  FlutterError.onError = (FlutterErrorDetails details) {
     FlutterError.presentError(details);
     if (sentryDsn.isNotEmpty) {
       Sentry.captureException(details.exception, stackTrace: details.stack);
     }
   };
-  PlatformDispatcher.instance.onError = (error, stack) {
+  PlatformDispatcher.instance.onError = (Object error, StackTrace stack) {
     if (sentryDsn.isNotEmpty && _sentryReady) {
       Sentry.captureException(error, stackTrace: stack);
       return true;
@@ -57,7 +53,7 @@ Future<void> main() async {
   if (sentryDsn.isNotEmpty) {
     try {
       await SentryFlutter.init(
-        (options) {
+        (SentryFlutterOptions options) {
           options.dsn = sentryDsn;
           options.tracesSampleRate = kReleaseMode ? 0.1 : 0.0;
           options.environment = kReleaseMode ? 'production' : 'development';
@@ -75,143 +71,93 @@ Future<void> main() async {
 
 bool _sentryReady = false;
 
+/// The composition root.
+///
+/// Everything the app needs is provided HERE and nowhere else: the session, the
+/// boot gate, the router. A screen reaches downward for its dependencies and
+/// never sideways for someone else's.
 class DukaPosApp extends StatelessWidget {
   const DukaPosApp({super.key});
 
   @override
   Widget build(BuildContext context) {
-    return ChangeNotifierProvider(
-      create: (_) => AppState(),
-      child: MaterialApp(
-        title: SimplePosBrand.appName,
-        debugShowCheckedModeBanner: false,
-        theme: buildDukaTheme(),
-        home: const RootRouter(),
-      ),
+    return MultiProvider(
+      providers: <SingleChildWidget>[
+        ChangeNotifierProvider<AppState>(create: (_) => AppState()),
+        // The boot gate reads the session, so it is created after it — and both
+        // live ABOVE `MaterialApp.router`, because the router's `redirect` reads
+        // the gate and a provider below the router could not be seen by the
+        // guard.
+        ChangeNotifierProvider<AppStageController>(
+          create: (BuildContext context) =>
+              AppStageController(context.read<AppState>())..boot(),
+        ),
+        // Last: the router needs the two above. It is never rebuilt afterwards —
+        // `refreshListenable` re-runs the guard on its own, and rebuilding a
+        // `GoRouter` throws away every branch's navigation stack.
+        Provider<GoRouter>(
+            create: (BuildContext context) => appRouter(context)),
+      ],
+      child: const _ThemedApp(),
     );
   }
 }
 
-/// Decides which top-level screen to show.
+/// Reads the two providers the router is built from.
 ///
-/// The order is deliberate and is expressed by [resolveAppStage] rather than
-/// inline: a shop with no signed-in user always reaches the PIN pad, and the
-/// first-run walkthrough only ever appears for the admin after a successful
-/// sign-in. The walkthrough used to be checked first, which trapped every user
-/// — cashiers included — on the welcome screens of any till that had not
-/// dismissed it.
-class RootRouter extends StatefulWidget {
-  const RootRouter({super.key});
-  @override
-  State<RootRouter> createState() => _RootRouterState();
-}
-
-class _RootRouterState extends State<RootRouter> {
-  bool _loading = true;
-  bool _dbFailed = false;
-  bool _onboardingComplete = false;
-
-  /// Which door the chooser offered. Held here because the router, not the
-  /// chooser, decides what comes next, and keeping it here is what lets
-  /// [resolveAppStage] stay a pure function that a test can drive with no
-  /// widget tree at all.
-  AppChooserIntent _intent = AppChooserIntent.signIn;
-
-  @override
-  void initState() {
-    super.initState();
-    _init();
-  }
-
-  Future<void> _init() async {
-    try {
-      final state = context.read<AppState>();
-      await state.loadOwner();
-      final prefs = await SharedPreferences.getInstance();
-      _onboardingComplete =
-          prefs.getBool('onboarding_completed_${state.workspaceKey}') ?? false;
-      await AutoSyncService.start();
-      if (!mounted) return;
-      setState(() => _loading = false);
-    } catch (e) {
-      // Report to Sentry if available; do not expose database contents in the UI.
-      if (sentryDsn.isNotEmpty) {
-        Sentry.captureException(e, stackTrace: StackTrace.current);
-      }
-
-      if (!mounted) return;
-      setState(() {
-        _loading = false;
-        _dbFailed = true;
-      });
-    }
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    final state = context.watch<AppState>();
-    final shopName = state.owner?.shopName ?? '';
-    final stage = resolveAppStage(
-      isLoading: _loading,
-      hasDatabaseFailure: _dbFailed,
-      hasShop: state.owner != null,
-      isSignedIn: state.isSignedIn,
-      isAdmin: state.isAdmin,
-      onboardingComplete: _onboardingComplete,
-      chooserIntent: _intent,
+/// Named so the dependency arrow is stated once: `lib/routing` depends on the
+/// session and the boot gate, and on nothing above them.
+GoRouter appRouter(BuildContext context) => buildAppRouter(
+      stage: context.read<AppStageController>(),
+      appState: context.read<AppState>(),
     );
 
-    return switch (stage) {
-      AppStage.loading => const SplashScreen(),
-      AppStage.databaseFailed => const _DatabaseErrorScreen(),
-      AppStage.chooser => WelcomeChooserScreen(
-          shopName: shopName,
-          hasShop: state.owner != null,
-          intent: _intent,
-        ),
-      AppStage.signingIn => const LoginScreen(),
-      AppStage.settingUp => OwnerSetupScreen(
-          isAdditionalShop: _intent == AppChooserIntent.addShop,
-          carryOverFrom: _intent == AppChooserIntent.addShop ? state.owner : null,
-          onCancel: _intent == AppChooserIntent.addShop
-              ? () => setState(() => _intent = AppChooserIntent.signIn)
-              : null,
-        ),
-      AppStage.onboarding => OnboardingScreen(
-          onComplete: () => setState(() => _onboardingComplete = true)),
-      AppStage.ready => const HomeShell(),
-    };
-  }
-}
+/// The app widget: theme, locale and the router, injected exactly once.
+class _ThemedApp extends StatelessWidget {
+  const _ThemedApp();
 
-/// Shown if the local database can't be opened at all.
-class _DatabaseErrorScreen extends StatelessWidget {
-  const _DatabaseErrorScreen();
   @override
   Widget build(BuildContext context) {
-    return const Scaffold(
-      body: SafeArea(
-        child: Center(
-          child: Padding(
-            padding: EdgeInsets.all(24),
-            child: Column(mainAxisSize: MainAxisSize.min, children: [
-              Icon(Icons.error_outline, size: 48, color: DukaColors.danger),
-              SizedBox(height: 16),
-              Text('This app could not open its data.',
-                  textAlign: TextAlign.center,
-                  style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
-              SizedBox(height: 8),
-              Text(
-                "This can happen after a crash or a low-storage event. Nothing has been changed or deleted — "
-                "but the app can't read your inventory or sales right now.\n\n"
-                "If you have a recent backup file (.xlsx or .json), reinstalling the app and restoring that "
-                "backup from Settings is the safest way forward. If this keeps happening, contact support.",
-                textAlign: TextAlign.center,
-              ),
-            ]),
-          ),
-        ),
-      ),
+    final ({ThemeData light, ThemeData dark}) themes = buildDukaThemes();
+
+    return MaterialApp.router(
+      title: SimplePosBrand.appName,
+      debugShowCheckedModeBanner: false,
+      routerConfig: context.read<GoRouter>(),
+      theme: themes.light,
+      darkTheme: themes.dark,
+      // Both themes are hand-authored and both pass AA independently, so the
+      // system setting is honoured rather than forced. The mode is read from
+      // `MediaQuery.platformBrightnessOf` inside each theme's own construction,
+      // which means the OS choice is respected with no stored preference and
+      // therefore no first-frame flash: there is nothing to restore late.
+      themeMode: ThemeMode.system,
+
+      // Localization. Three things have to be wired together or "English-only"
+      // silently costs more than it looks:
+      //
+      //   * `AppLocalizations.localizationsDelegates` already contains the three
+      //     `Global*` delegates, so appending them again would duplicate each one
+      //     and `Localizations._loadAll` would take the first — which is the
+      //     wrong one the moment anyone vendors their own.
+      //   * `supportedLocales` comes from the ARB catalogue rather than a
+      //     hand-written list, so a locale cannot be half-shipped: adding
+      //     `app_sw.arb` is the whole of adding Swahili.
+      //   * `locale` is left null so the OS decides. There is nothing to restore
+      //     before the first frame because there is no stored preference, which
+      //     is why there is no locale flash on boot the way a persisted choice
+      //     would cause.
+      localizationsDelegates: AppLocalizations.localizationsDelegates,
+      supportedLocales: AppLocalizations.supportedLocales,
+      locale: null,
+      // No `localeResolutionCallback`: the default resolution picks the first
+      // supported locale whose language matches the device and falls back to the
+      // first supported locale, so an OS set to French still gets English rather
+      // than English copy inside French chrome. Adding a callback would only be
+      // needed once the app has a language the OS cannot select.
+      // A theme change is a sudden luminance change the user did not cause.
+      // Interpolating it renders a half-styled state no screen was laid out for.
+      themeAnimationStyle: AnimationStyle.noAnimation,
     );
   }
 }

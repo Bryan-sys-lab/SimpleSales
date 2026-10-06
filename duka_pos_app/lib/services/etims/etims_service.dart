@@ -40,8 +40,9 @@ Map<String, dynamic> buildEtimsPayload({
               // The VAT contained in this line, in minor units. Sent rather
               // than recomputed server-side so the figure KRA records is
               // exactly the figure printed on the customer's receipt.
-              'vat_amount': vatComponentOf(item.total,
-                  ratePercent: vatRatePercent).minorUnits,
+              'vat_amount':
+                  vatComponentOf(item.total, ratePercent: vatRatePercent)
+                      .minorUnits,
               'line_total': item.total.minorUnits,
             })
         .toList(),
@@ -64,8 +65,8 @@ class EtimsService {
   DatabaseHelper get _db => DatabaseHelper.instance;
 
   /// Whether a sale recorded now should be queued for KRA.
-///
-/// Requires the shop's own switch to be on. The backend is never asked at
+  ///
+  /// Requires the shop's own switch to be on. The backend is never asked at
   /// this point: it is unreachable by definition in the case that matters.
   Future<bool> isEnabledForSales() async {
     final prefs = await SharedPreferences.getInstance();
@@ -104,7 +105,8 @@ class EtimsService {
     final tillCode = await _db.getTillCode();
     final vatRate = await _db.getVatRatePercent();
     final device =
-        (await _db.getSetting(DatabaseHelper.settingEtimsDeviceId))?.trim() ?? '';
+        (await _db.getSetting(DatabaseHelper.settingEtimsDeviceId))?.trim() ??
+            '';
 
     var uploaded = 0;
     for (final entry in pending) {
@@ -192,8 +194,7 @@ class EtimsService {
     return '${result.uploaded} receipt(s) issued. ${result.remaining} still waiting.';
   }
 
-  static bool _isPermanent(Object error) =>
-      error is EtimsRejectedException;
+  static bool _isPermanent(Object error) => error is EtimsRejectedException;
 
   static String _describe(Object error) {
     if (error is EtimsRejectedException) return error.reason;

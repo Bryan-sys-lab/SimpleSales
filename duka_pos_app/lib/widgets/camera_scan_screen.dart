@@ -6,18 +6,28 @@ import 'package:mobile_scanner/mobile_scanner.dart';
 import '../services/barcode/barcode_service.dart' as barcode_rules;
 
 import '../../services/barcode/scan_input_service.dart';
-import '../../theme/app_theme.dart';
+import '../l10n/generated/app_localizations.dart';
+import '../../theme/app_colors.dart';
+import '../../theme/app_shapes.dart';
+import '../../theme/typography.dart';
 
 /// Camera barcode scanning.
 ///
-/// [onDetected] is called at most once per open sheet and then the scanner
-/// closes — a till operator has already looked at the product they scanned, and
-/// a scanner that keeps firing hands the same code back two seconds later while
-/// they are serving the next customer.
+/// POPS a [ScanResult] rather than calling a callback, and that is the whole
+/// design of this screen.
+///
+/// It used to take an `onDetected` closure that the caller was expected to use to
+/// close it, which couples three things that should not be coupled: what was
+/// scanned, how the route closes, and the caller's state. A popped VALUE crosses
+/// the route boundary, so the caller writes `final scan = await context.push(
+/// ScanResult, Routes.cameraScan)` and the result is inspectable in a test
+/// instead of being a side effect on a widget instance.
+///
+/// Popping at most once, immediately, is also why it closes: a till operator has
+/// already seen the product they scanned, and a scanner that keeps firing hands
+/// the same code back two seconds later while they serve the next customer.
 class CameraScanScreen extends StatefulWidget {
-  const CameraScanScreen({super.key, required this.onDetected});
-
-  final Future<void> Function(ScanResult result) onDetected;
+  const CameraScanScreen({super.key});
 
   @override
   State<CameraScanScreen> createState() => _CameraScanScreenState();
@@ -97,10 +107,9 @@ class _CameraScanScreenState extends State<CameraScanScreen>
 
   Future<void> _onBarcode(BarcodeCapture capture) async {
     if (_handled) return;
-    final raw = capture.barcodes
-        .map((barcode) => barcode.rawValue)
-        .firstWhere((value) => value != null && value.trim().isNotEmpty,
-            orElse: () => null);
+    final raw = capture.barcodes.map((barcode) => barcode.rawValue).firstWhere(
+        (value) => value != null && value.trim().isNotEmpty,
+        orElse: () => null);
     if (raw == null) return;
 
     final normalised = barcode_rules.Barcode.normalise(raw);
@@ -111,7 +120,7 @@ class _CameraScanScreenState extends State<CameraScanScreen>
     _handled = true;
     await _controller.stop();
     if (!mounted) return;
-    await widget.onDetected(ScanResult(
+    Navigator.of(context).pop(ScanResult(
       raw: raw,
       normalised: normalised,
       source: ScanSource.camera,
@@ -129,7 +138,7 @@ class _CameraScanScreenState extends State<CameraScanScreen>
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: const Text('Scan barcode')),
+      appBar: AppBar(title: Text(AppLocalizations.of(context).scanTitle)),
       body: SafeArea(
         child: _permissionDenied ? _buildDenied() : _buildScanner(),
       ),
@@ -147,25 +156,30 @@ class _CameraScanScreenState extends State<CameraScanScreen>
               width: 260,
               height: 150,
               decoration: BoxDecoration(
-                border: Border.all(color: DukaColors.primary, width: 2),
-                borderRadius: BorderRadius.circular(8),
+                border:
+                    Border.all(color: AppColors.of(context).accent, width: 2),
+                borderRadius: AppShapes.of(context).controlRadius,
               ),
             ),
           ),
         ),
-        Positioned(
-          left: 0,
-          right: 0,
+        PositionedDirectional(
+          // `start: 0, end: 0` rather than `left: 0, right: 0`: the banner is
+          // full-width and bottom-anchored, so it is its own mirror — the reticle
+          // and the feed it sits on are direction-neutral content that must NOT
+          // flip with the locale.
+          start: 0,
+          end: 0,
           bottom: 24,
           child: Semantics(
             liveRegion: true,
             child: Container(
-              color: Colors.black54,
+              color: AppColors.of(context).mediaScrim,
               padding: const EdgeInsets.all(12),
-              child: const Text(
-                'Hold the barcode inside the frame',
+              child: Text(
+                AppLocalizations.of(context).scanHoldInsideFrame,
                 textAlign: TextAlign.center,
-                style: TextStyle(color: Colors.white),
+                style: TextStyle(color: AppColors.of(context).onMediaScrim),
               ),
             ),
           ),
@@ -178,7 +192,8 @@ class _CameraScanScreenState extends State<CameraScanScreen>
   /// normalising and the once-only gate. This exists so the widget has a
   /// detector too (the controller needs one for the overlay preview) and both
   /// paths funnel into the same handler.
-  void _onBarcodeCapture(BarcodeCapture capture) => unawaited(_onBarcode(capture));
+  void _onBarcodeCapture(BarcodeCapture capture) =>
+      unawaited(_onBarcode(capture));
 
   Widget _buildDenied() {
     return Center(
@@ -187,17 +202,20 @@ class _CameraScanScreenState extends State<CameraScanScreen>
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            const Icon(Icons.no_photography_outlined,
-                size: 48, color: DukaColors.danger),
+            Icon(
+              Icons.no_photography_outlined,
+              size: 48,
+              color: AppColors.of(context).danger,
+            ),
             const SizedBox(height: 16),
-            const Text(
-              'The camera is not available',
-              style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+            Text(
+              AppLocalizations.of(context).scanUnavailableTitle,
+              textAlign: TextAlign.center,
+              style: AppTypography.of(context).titleLarge,
             ),
             const SizedBox(height: 8),
-            const Text(
-              'You can still sell this product — search for it by name on the Sell screen, '
-              'or use a Bluetooth or USB barcode scanner, which types the code straight into the till.',
+            Text(
+              AppLocalizations.of(context).scanUnavailableMessage,
               textAlign: TextAlign.center,
             ),
             if (_detail != null)
@@ -205,16 +223,18 @@ class _CameraScanScreenState extends State<CameraScanScreen>
                 padding: const EdgeInsets.only(top: 12),
                 child: Text(
                   _detail!,
-                  style: const TextStyle(fontSize: 11, color: DukaColors.mutedInk),
+                  style: AppTypography.of(context).bodySmall,
                   textAlign: TextAlign.center,
-                  maxLines: 3,
-                  overflow: TextOverflow.ellipsis,
+                  // No maxLines. This is the scanned code or the reason the scan
+                  // failed — the two things a person reads to decide what to do
+                  // next. Truncating it removes the information at the exact
+                  // moment it is needed.
                 ),
               ),
             const SizedBox(height: 24),
             FilledButton(
               onPressed: () => Navigator.pop(context),
-              child: const Text('Back to selling'),
+              child: Text(AppLocalizations.of(context).scanBackToSelling),
             ),
           ],
         ),

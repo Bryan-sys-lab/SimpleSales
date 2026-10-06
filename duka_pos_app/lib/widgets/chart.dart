@@ -2,7 +2,10 @@ import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
 
-import '../theme/app_theme.dart';
+import '../l10n/generated/app_localizations.dart';
+import '../theme/app_colors.dart';
+import '../theme/app_spacing.dart';
+import '../theme/typography.dart';
 
 /// Which way the bars grow.
 enum PosChartAxis {
@@ -101,28 +104,37 @@ class SimplePosChart extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    final labelStyle = theme.textTheme.bodySmall ??
-        const TextStyle(fontSize: 12, color: DukaColors.mutedInk);
-    final valueStyle = (theme.textTheme.bodyMedium ??
-            const TextStyle(fontSize: 14, color: DukaColors.ink))
-        .copyWith(fontWeight: FontWeight.w600);
+    final AppColors colors = AppColors.of(context);
+    final AppSpacing spacing = AppSpacing.of(context);
+    final TextTheme type = AppTypography.of(context);
+    final labelStyle = type.bodySmall ?? const TextStyle();
+    // Tabular figures on the painted values: a column of takings whose digits
+    // shift horizontally as the day grows is the same unreadability MoneyText
+    // exists to fix, and a bar chart is a column of takings.
+    final valueStyle = AppTypography.money(
+      context,
+      size: 14,
+      weight: FontWeight.w600,
+    );
 
     return Semantics(
-      label: semanticsLabel ?? _fallbackSemantics(),
+      label: semanticsLabel ?? _fallbackSemantics(AppLocalizations.of(context)),
       container: true,
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         mainAxisSize: MainAxisSize.min,
         children: [
-          Text(title, style: theme.textTheme.titleMedium),
+          Text(title, style: type.titleMedium),
           if (emphasis != null) ...[
             const SizedBox(height: 2),
             Text(emphasis!, style: labelStyle),
           ],
-          const SizedBox(height: DukaSpacing.sm),
+          SizedBox(height: spacing.sm),
           if (bars.isEmpty)
-            Text('Nothing to show yet.', style: labelStyle)
+            Text(
+              AppLocalizations.of(context).chartNothingToShow,
+              style: labelStyle,
+            )
           else
             ExcludeSemantics(
               child: _ChartCanvas(
@@ -132,6 +144,9 @@ class SimplePosChart extends StatelessWidget {
                 labelStyle: labelStyle,
                 valueStyle: valueStyle,
                 direction: Directionality.of(context),
+                accent: colors.accent,
+                track: colors.surfaceSunken,
+                gap: spacing.sm,
               ),
             ),
         ],
@@ -139,11 +154,19 @@ class SimplePosChart extends StatelessWidget {
     );
   }
 
-  String _fallbackSemantics() {
-    if (bars.isEmpty) return '$title. No values.';
+  /// The chart for a screen reader, as a sentence rather than as bars.
+  ///
+  /// A `Bar` is a value with no order a finger can follow, so the whole summary
+  /// is one node: what is charted, how many values, and which one is highest.
+  /// Anything with no context — "1.2" — is worse than nothing.
+  String _fallbackSemantics(AppLocalizations l10n) {
+    if (bars.isEmpty) return l10n.chartSpokenNoValues(title);
     final peak = bars.reduce((a, b) => b.value > a.value ? b : a);
-    return '$title. ${bars.length} values. '
-        'Highest is ${peak.label} at ${peak.displayValue}.';
+    // gen-l10n orders the parameters by the plural's own type first, so the
+    // count leads even though the title reads first. Named arguments would not
+    // help — the generated getters are positional by design.
+    return l10n.chartSpokenPeak(
+        bars.length, peak.label, title, peak.displayValue);
   }
 }
 
@@ -157,6 +180,9 @@ class _ChartCanvas extends StatelessWidget {
     required this.labelStyle,
     required this.valueStyle,
     required this.direction,
+    required this.accent,
+    required this.track,
+    required this.gap,
   });
 
   final List<PosChartBar> bars;
@@ -165,6 +191,15 @@ class _ChartCanvas extends StatelessWidget {
   final TextStyle labelStyle;
   final TextStyle valueStyle;
   final TextDirection direction;
+
+  /// Colours are resolved HERE and handed down as values. `paint()` runs on the
+  /// raster path, where a `Theme.of` lookup is both wrong (it can be called
+  /// outside a build) and a per-frame cost; a painter must snapshot, not reach.
+  final Color accent;
+  final Color track;
+
+  /// Breathing room around the plot, from the spacing scale.
+  final double gap;
 
   @override
   Widget build(BuildContext context) {
@@ -182,6 +217,9 @@ class _ChartCanvas extends StatelessWidget {
           direction: direction,
           textScaler: scaler,
           plotHeight: height,
+          accent: accent,
+          track: track,
+          gap: gap,
         );
         return SizedBox(
           width: width,
@@ -204,6 +242,9 @@ class _ChartPainter extends CustomPainter {
     required this.direction,
     required this.textScaler,
     required this.plotHeight,
+    required this.accent,
+    required this.track,
+    required this.gap,
   });
 
   final List<PosChartBar> bars;
@@ -214,8 +255,14 @@ class _ChartPainter extends CustomPainter {
   final TextScaler textScaler;
   final double plotHeight;
 
-  /// Breathing room under/around the plot.
-  static const double _gap = DukaSpacing.sm;
+  /// Snapshot of `AppColors.accent`, taken at the widget layer.
+  final Color accent;
+
+  /// Snapshot of `AppColors.surfaceSunken`: the empty track a bar sits in.
+  final Color track;
+
+  /// Breathing room under/around the plot, snapshotted from the spacing scale.
+  final double gap;
 
   /// The least a bar may be worth on screen.
   ///
@@ -266,8 +313,8 @@ class _ChartPainter extends CustomPainter {
   /// much of the height it takes.
   double verticalAxisHeight(double height) {
     final label = _lineHeight(labelStyle);
-    if (height - label - _gap < _minPlotWithAxis) return 0;
-    return label + _gap;
+    if (height - label - gap < _minPlotWithAxis) return 0;
+    return label + gap;
   }
 
   /// Total height a vertical chart occupies: its plot plus the axis strip, if
@@ -278,7 +325,7 @@ class _ChartPainter extends CustomPainter {
   double horizontalHeight(double width) {
     final label = _lineHeight(labelStyle);
     final value = _lineHeight(valueStyle);
-    final row = math.max(math.max(label, value) + _gap * 2, 28.0);
+    final row = math.max(math.max(label, value) + gap * 2, 28.0);
     return row * bars.length;
   }
 
@@ -300,8 +347,8 @@ class _ChartPainter extends CustomPainter {
     final maxValue = math.max(_maxValue, 1);
     final baseline = size.height - axisHeight;
 
-    final fill = Paint()..color = DukaColors.primary;
-    final track = Paint()..color = DukaColors.surfaceWarm;
+    final fill = Paint()..color = accent;
+    final trackPaint = Paint()..color = track;
 
     // Every slot gets a full-height track, so the shape of the day is readable
     // even before any value is compared.
@@ -312,7 +359,7 @@ class _ChartPainter extends CustomPainter {
           Rect.fromLTWH(left + (slot - barWidth) / 2, 0, barWidth, plotHeight),
           const Radius.circular(3),
         ),
-        track,
+        trackPaint,
       );
     }
 
@@ -358,7 +405,7 @@ class _ChartPainter extends CustomPainter {
     // Draw every Nth label so they cannot overlap, and always the last one —
     // the most recent day is the one a reader is looking for.
     final stride = math.max(1, (widest / slot).ceil());
-    final baselineY = baseline + _gap;
+    final baselineY = baseline + gap;
 
     void drawLabel(int index) {
       if (index < 0 || index >= bars.length) return;
@@ -378,8 +425,8 @@ class _ChartPainter extends CustomPainter {
     final peak = bars[peakIndex];
     if (peak.value > 0) {
       final value = _text(peak.displayValue, labelStyle);
-      final drawn = math.max(
-          _minBar, (peak.value / math.max(_maxValue, 1)) * plotHeight);
+      final drawn =
+          math.max(_minBar, (peak.value / math.max(_maxValue, 1)) * plotHeight);
       final barLeft =
           _slotLeft(peakIndex, slot, size.width) + (slot - _barWidth(slot)) / 2;
       final x = (barLeft + (_barWidth(slot) - value.width) / 2)
@@ -392,21 +439,22 @@ class _ChartPainter extends CustomPainter {
     }
   }
 
-  double _barWidth(double slot) => (slot * 0.62).clamp(_minBar, 28.0).toDouble();
+  double _barWidth(double slot) =>
+      (slot * 0.62).clamp(_minBar, 28.0).toDouble();
 
   void _paintHorizontal(Canvas canvas, Size size) {
     final labelColumn = (size.width * _labelColumnFraction)
         .clamp(_minLabelColumn, size.width * 0.6)
         .toDouble();
-    final barGap = _gap * 2;
+    final barGap = gap * 2;
 
     final widestValue =
         _widest(bars.map((b) => b.displayValue), valueStyle, size.width);
     final minBarRoom = 32.0;
-    final valueRoom = (size.width - labelColumn - barGap - minBarRoom) >=
-            widestValue + barGap
-        ? widestValue + barGap
-        : 0.0;
+    final valueRoom =
+        (size.width - labelColumn - barGap - minBarRoom) >= widestValue + barGap
+            ? widestValue + barGap
+            : 0.0;
 
     final trackStart = _isRtl
         ? size.width - labelColumn - barGap - valueRoom
@@ -418,8 +466,8 @@ class _ChartPainter extends CustomPainter {
     final barHeight = (rowHeight * 0.56).clamp(4.0, 22.0);
     final maxValue = math.max(_maxValue, 1);
 
-    final fill = Paint()..color = DukaColors.primary;
-    final track = Paint()..color = DukaColors.surfaceWarm;
+    final fill = Paint()..color = accent;
+    final trackPaint = Paint()..color = track;
 
     for (var i = 0; i < bars.length; i++) {
       final bar = bars[i];
@@ -440,7 +488,7 @@ class _ChartPainter extends CustomPainter {
           Rect.fromLTWH(trackStart, y, trackWidth, barHeight),
           const Radius.circular(3),
         ),
-        track,
+        trackPaint,
       );
 
       final length = bar.value <= 0
@@ -457,7 +505,7 @@ class _ChartPainter extends CustomPainter {
 
       if (valueRoom > 0) {
         final value = _text(bar.displayValue, valueStyle, maxWidth: valueRoom);
-        final valueX = _isRtl ? trackStart - _gap - value.width : trackEnd + _gap;
+        final valueX = _isRtl ? trackStart - gap - value.width : trackEnd + gap;
         value.paint(canvas, Offset(valueX, centreY - value.height / 2));
       }
     }

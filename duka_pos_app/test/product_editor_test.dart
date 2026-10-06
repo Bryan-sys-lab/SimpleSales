@@ -20,9 +20,7 @@ class _Editor {
     if (value == null) return '';
     final major = value.minorUnits ~/ kMinorUnitsPerMajor;
     final cents = value.minorUnits % kMinorUnitsPerMajor;
-    return cents == 0
-        ? '$major'
-        : '$major.${cents.toString().padLeft(2, '0')}';
+    return cents == 0 ? '$major' : '$major.${cents.toString().padLeft(2, '0')}';
   }
 
   static String editQuantity(double? value) {

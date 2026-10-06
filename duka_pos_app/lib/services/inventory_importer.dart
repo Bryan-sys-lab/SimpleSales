@@ -146,8 +146,7 @@ List<dynamic> variantSheetRow(ProductVariant variant) {
 /// anywhere.
 List<PendingBarcode> readBarcodeRows(List<List<dynamic>> raw) {
   if (raw.isEmpty) return const [];
-  final columns =
-      _namedColumns(raw.first, ProductBarcode.sheetHeaders);
+  final columns = _namedColumns(raw.first, ProductBarcode.sheetHeaders);
   final start = columns.headerRowDetected ? 1 : 0;
   final codes = <PendingBarcode>[];
   for (var i = start; i < raw.length; i++) {
@@ -243,7 +242,8 @@ SheetColumns _variantColumns(List<dynamic> header, List<String> fields) =>
     _namedColumns(header, fields);
 
 PendingVariant _parseVariant(int rowNumber, List<dynamic> row, SheetColumns c) {
-  int? int_(String field) => SheetColumns.parseNumber(c.cell(row, field))?.round();
+  int? int_(String field) =>
+      SheetColumns.parseNumber(c.cell(row, field))?.round();
 
   final name = c.text(row, 'name') ?? '';
   if (name.isEmpty) {
@@ -374,7 +374,9 @@ class InventoryImporter {
     // Registered before anything is written, so no product can land with a
     // category the shop's vocabulary has never heard of. The importer is the
     // only place that knows what this shop actually stocks.
-    final categories = <String>{for (final entry in pending) entry.product.category};
+    final categories = <String>{
+      for (final entry in pending) entry.product.category
+    };
     for (final category in categories) {
       await _db.ensureCategory(category);
     }
@@ -404,7 +406,9 @@ class InventoryImporter {
     for (final entry in written.entries) {
       final localId = resolveId(entry);
       final sheetId = entry.product.id;
-      if (localId != null && sheetId != null) localIdBySheetId[sheetId] = localId;
+      if (localId != null && sheetId != null) {
+        localIdBySheetId[sheetId] = localId;
+      }
 
       final raw = entry.product.primaryBarcode;
       if (raw == null || raw.trim().isEmpty) continue;
@@ -448,7 +452,8 @@ class InventoryImporter {
           rowNumber: pending.rowNumber,
           rawName: pending.raw,
           rawRow: pending.cells,
-          problem: 'Barcode "${pending.raw}" points at a product that is not in '
+          problem:
+              'Barcode "${pending.raw}" points at a product that is not in '
               'this import, so it was left alone',
         );
         continue;

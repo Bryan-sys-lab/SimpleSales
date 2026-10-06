@@ -1,14 +1,17 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
+import 'package:go_router/go_router.dart';
 import 'package:provider/provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../db/database_helper.dart';
+import '../l10n/generated/app_localizations.dart';
 import '../utils/money.dart';
 import '../models/models.dart';
 import '../services/auth_service.dart';
 import '../services/sync_service.dart';
 import '../services/excel_service.dart';
+import '../routing/routes.dart';
 import '../services/app_state.dart';
 import '../services/roles.dart';
 import '../app_brand.dart';
@@ -22,8 +25,8 @@ import '../services/printer/printer_service.dart';
 import '../services/printer/receipt_builder.dart';
 import '../services/printer/esc_pos_printer.dart';
 import '../services/printer/esc_pos_encoder.dart';
-import '../theme/app_theme.dart';
-import 'tax_settings_screen.dart';
+import '../theme/app_colors.dart';
+import '../theme/typography.dart';
 
 class SettingsScreen extends StatefulWidget {
   const SettingsScreen({super.key});
@@ -93,23 +96,31 @@ class _SettingsScreenState extends State<SettingsScreen> {
   }
 
   /// Explains a printer failure in terms the owner can act on.
-  static String _printerMessage(PrinterFailure failure) => switch (failure) {
+  ///
+  /// Takes the catalogue rather than reading one: this is a `static` helper, so
+  /// there is no `BuildContext` to read from, and threading a captured context
+  /// into a static would be a use-after-dispose waiting for the phone to rotate
+  /// mid-pairing.
+  static String _printerMessage(
+    AppLocalizations l10n,
+    PrinterFailure failure,
+  ) =>
+      switch (failure) {
         PrinterFailure.permissionDenied =>
-          'Duka POS needs permission to use Bluetooth. Allow it in Settings, then try again.',
+          l10n.settingsPrinterPermissionNeeded(SimplePosBrand.appName),
         PrinterFailure.permissionPermanentlyDenied =>
-          'Bluetooth permission was turned off for Duka POS. Open the phone\'s app settings and allow Bluetooth.',
-        PrinterFailure.notPaired =>
-          'That printer is not paired with this phone. Pair it from the phone\'s Bluetooth settings first.',
-        PrinterFailure.unavailable =>
-          'Bluetooth is switched off on this phone, or it has no Bluetooth.',
-        PrinterFailure.connectFailed =>
-          'Could not reach the printer. Check it is switched on and in range, then try again.',
-        PrinterFailure.printFailed =>
-          'The printer connection dropped. Check the printer is on, then print again.',
-        PrinterFailure.disabled => 'Printing is switched off.',
+          l10n.settingsPrinterPermissionDenied(SimplePosBrand.appName),
+        PrinterFailure.notPaired => l10n.settingsPrinterNotPaired,
+        PrinterFailure.unavailable => l10n.settingsPrinterUnavailable,
+        PrinterFailure.connectFailed => l10n.settingsPrinterUnreachable,
+        PrinterFailure.printFailed => l10n.settingsPrinterConnectionDropped,
+        PrinterFailure.disabled => l10n.settingsPrinterDisabled,
       };
 
   Future<void> _chooseAndPairPrinter() async {
+    // Read before the first await: pairing opens system dialogs and this screen
+    // can be left behind by all of them.
+    final l10n = AppLocalizations.of(context);
     final printer = EscPosPrinter();
     _setPrinterBusy(true);
     try {
@@ -120,14 +131,17 @@ class _SettingsScreenState extends State<SettingsScreen> {
           final granted = await printer.requestPermission();
           if (!granted) {
             final permanently = await printer.isPermissionPermanentlyDenied();
-            _err(_printerMessage(permanently
-                ? PrinterFailure.permissionPermanentlyDenied
-                : PrinterFailure.permissionDenied));
+            _err(_printerMessage(
+              l10n,
+              permanently
+                  ? PrinterFailure.permissionPermanentlyDenied
+                  : PrinterFailure.permissionDenied,
+            ));
             return;
           }
         }
         if (!await printer.isAvailable()) {
-          _err(_printerMessage(PrinterFailure.unavailable));
+          _err(_printerMessage(l10n, PrinterFailure.unavailable));
           return;
         }
       }
@@ -142,7 +156,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
       final chosen = await showDialog<PrinterDevice>(
         context: context,
         builder: (dialogContext) => SimpleDialog(
-          title: const Text('Choose printer'),
+          title: Text(AppLocalizations.of(context).settingsChoosePrinter),
           children: [
             for (final device in devices)
               SimpleDialogOption(
@@ -179,7 +193,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
       if (!mounted) return;
       _err('${chosen.label} paired.');
     } on PrinterException catch (error) {
-      _err(_printerMessage(error.failure));
+      _err(_printerMessage(AppLocalizations.of(context), error.failure));
     } finally {
       _setPrinterBusy(false);
     }
@@ -193,7 +207,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
   /// font their till will use all day.
   Future<void> _testPrint() async {
     if (!_printer.isConfigured) {
-      _err('Pair a printer first.');
+      _err(AppLocalizations.of(context).settingsPairAPrinterFirst);
       return;
     }
     final state = context.read<AppState>();
@@ -229,9 +243,9 @@ class _SettingsScreenState extends State<SettingsScreen> {
       await printer.connect(_printer.macAddress);
       await printer.send(bytes);
       if (!mounted) return;
-      _err('Test receipt sent.');
+      _err(AppLocalizations.of(context).settingsTestReceiptSent);
     } on PrinterException catch (error) {
-      _err(_printerMessage(error.failure));
+      _err(_printerMessage(AppLocalizations.of(context), error.failure));
     } finally {
       _setPrinterBusy(false);
     }
@@ -246,13 +260,13 @@ class _SettingsScreenState extends State<SettingsScreen> {
   /// Opens the dedicated tax screen.
   Future<void> _openTaxSettings() async {
     if (!context.read<AppState>().isAdmin) {
-      _err('Only the shop admin can change tax settings.');
+      _err(AppLocalizations.of(context).taxSettingsAdminOnly);
       return;
     }
     if (!mounted) return;
-    await Navigator.of(context).push(
-      MaterialPageRoute<void>(builder: (_) => const TaxSettingsScreen()),
-    );
+    // `push`, not `go`: tax settings is a sheet you come back FROM, and `go`
+    // would replace the branch and lose the Settings scroll position behind it.
+    await context.push(Routes.taxSettings);
     if (!mounted) return;
     // The screen can change the rate, the till code and the TIN; Settings shows
     // all three in its summary line, so re-read rather than guess.
@@ -269,30 +283,36 @@ class _SettingsScreenState extends State<SettingsScreen> {
     final confirmed = await showDialog<bool>(
         context: context,
         builder: (_) => AlertDialog(
-              title: const Text('Erase encrypted backups?'),
-              content: const Text(
-                  'This permanently removes this phone’s backup key and encrypted backup files. Copies already shared to another device or cloud storage are not erased.'),
+              title:
+                  Text(AppLocalizations.of(context).settingsEraseBackupsTitle),
+              content: Text(
+                  AppLocalizations.of(context).settingsEraseBackupsMessage),
               actions: [
                 TextButton(
                     onPressed: () => Navigator.pop(context, false),
-                    child: const Text('Cancel')),
+                    child: Text(AppLocalizations.of(context).actionCancel)),
                 FilledButton(
                     onPressed: () => Navigator.pop(context, true),
-                    child: const Text('Erase local backups')),
+                    child: Text(AppLocalizations.of(context)
+                        .settingsEraseBackupsConfirm)),
               ],
             ));
     if (confirmed != true) return;
     await EncryptedBackupService.cryptographicEraseLocalBackups();
-    if (mounted) _err('Local encrypted backups and their key were erased.');
+    if (mounted) _err(AppLocalizations.of(context).settingsBackupsErased);
   }
 
   Future<void> _addStaff() async {
+    // Read once, before the dialog. A `showDialog` is an async gap, and the
+    // screen can be popped underneath it — a lookup after the await would be
+    // reading a scope whose element is gone.
+    final l10n = AppLocalizations.of(context);
     final result = await showDialog<Map<String, String>>(
         context: context, builder: (_) => const _StaffDialog());
     if (result == null) return;
     final name = (result['name'] ?? '').trim();
     if (name.isEmpty) {
-      _err('Enter a staff name');
+      _err(l10n.settingsEnterStaffName);
       return;
     }
     if (!RegExp(r'^\d{4}$').hasMatch(result['pin'] ?? '')) {
@@ -312,8 +332,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
         try {
           await BackendService.syncStaffToBackend();
         } catch (_) {
-          _err(
-              'Cashier saved offline. It will be linked to the backend on the next successful sync.');
+          _err(l10n.settingsStaffSavedOffline);
         }
       }
       await _load();
@@ -323,12 +342,13 @@ class _SettingsScreenState extends State<SettingsScreen> {
   }
 
   Future<void> _resetPin(Staff s) async {
+    final l10n = AppLocalizations.of(context);
     final result = await showDialog<Map<String, String>>(
         context: context,
         builder: (_) => _StaffDialog(existingName: s.name, pinOnly: true));
     if (result == null) return;
     if (!RegExp(r'^\d{4}$').hasMatch(result['pin'] ?? '')) {
-      _err('PIN must be exactly 4 digits');
+      _err(l10n.validationPinNotFourDigits);
       return;
     }
     try {
@@ -341,19 +361,22 @@ class _SettingsScreenState extends State<SettingsScreen> {
   }
 
   Future<void> _removeStaff(Staff s) async {
+    final l10n = AppLocalizations.of(context);
     final confirmed = await showDialog<bool>(
         context: context,
         builder: (_) => AlertDialog(
-              title: const Text('Remove staff member?'),
+              title:
+                  Text(AppLocalizations.of(context).settingsRemoveStaffTitle),
               content: Text(
                   '${s.name} will no longer be able to sign in. Their past sales stay on record.'),
               actions: [
                 TextButton(
                     onPressed: () => Navigator.pop(context, false),
-                    child: const Text('Cancel')),
+                    child: Text(AppLocalizations.of(context).actionCancel)),
                 FilledButton(
                     onPressed: () => Navigator.pop(context, true),
-                    child: const Text('Remove')),
+                    child: Text(
+                        AppLocalizations.of(context).settingsRemoveAction)),
               ],
             ));
     if (confirmed != true) return;
@@ -363,8 +386,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
         try {
           await BackendService.syncStaffToBackend();
         } catch (_) {
-          _err(
-              'Cashier removed locally. Backend access will be updated on the next successful sync.');
+          _err(l10n.settingsStaffRemovedOffline);
         }
       }
       await _load();
@@ -374,6 +396,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
   }
 
   Future<void> _toggleMpesa(bool value) async {
+    final l10n = AppLocalizations.of(context);
     if (value && !_backendLinked) {
       final linked = await _showLinkBackendDialog();
       if (linked != true) return; // user cancelled — leave the toggle off
@@ -396,8 +419,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
         });
       }
     } catch (e) {
-      _err(
-          "Couldn't update M-Pesa setting — check your connection and try again.");
+      _err(l10n.settingsMpesaUpdateFailed);
     } finally {
       if (mounted) setState(() => _savingToggle = false);
     }
@@ -413,24 +435,28 @@ class _SettingsScreenState extends State<SettingsScreen> {
       builder: (dialogContext) =>
           StatefulBuilder(builder: (dialogContext, setDialogState) {
         return AlertDialog(
-          title: const Text('Connect M-Pesa (via PayHero)'),
+          title: Text(AppLocalizations.of(context).settingsConnectMpesaTitle),
           content: SingleChildScrollView(
             child: Column(mainAxisSize: MainAxisSize.min, children: [
-              const Text(
-                'This shop needs to be registered with the backend once. Sign in with the shop identity account; '
-                'staff continue using local PINs for the till.',
-                style: TextStyle(fontSize: 13),
+              Text(
+                'This shop needs to be registered with the backend once. Sign '
+                'in with the shop identity account; staff continue using local '
+                'PINs for the till.',
+                style: AppTypography.of(context).bodyMedium,
               ),
               const SizedBox(height: 12),
               TextField(
                   controller: channelId,
-                  decoration:
-                      const InputDecoration(labelText: 'PayHero channel ID'),
+                  decoration: InputDecoration(
+                      labelText: AppLocalizations.of(context)
+                          .settingsPayHeroChannelId),
                   keyboardType: TextInputType.number),
               const SizedBox(height: 4),
-              const Text(
-                  'Find your channel ID on your PayHero dashboard, under your wallet/channel settings.',
-                  style: TextStyle(fontSize: 12, color: DukaColors.mutedInk)),
+              Text(
+                'Find your channel ID on your PayHero dashboard, under your '
+                'wallet/channel settings.',
+                style: AppTypography.of(context).bodySmall,
+              ),
               if (error != null)
                 Padding(
                   padding: const EdgeInsets.only(top: 8),
@@ -443,15 +469,16 @@ class _SettingsScreenState extends State<SettingsScreen> {
           actions: [
             TextButton(
                 onPressed: () => Navigator.pop(dialogContext, false),
-                child: const Text('Cancel')),
+                child: Text(AppLocalizations.of(context).actionCancel)),
             FilledButton(
               onPressed: submitting
                   ? null
                   : () async {
                       final cid = int.tryParse(channelId.text.trim());
                       if (cid == null) {
-                        setDialogState(
-                            () => error = 'Enter a numeric PayHero channel ID');
+                        setDialogState(() => error =
+                            AppLocalizations.of(context)
+                                .settingsPayHeroChannelIdRequired);
                         return;
                       }
                       setDialogState(() {
@@ -472,8 +499,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
                       } catch (e) {
                         setDialogState(() {
                           submitting = false;
-                          error =
-                              "Couldn't connect. Check the identity login and internet connection.";
+                          error = AppLocalizations.of(context)
+                              .settingsConnectFailed;
                         });
                       }
                     },
@@ -482,7 +509,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                       width: 16,
                       height: 16,
                       child: CircularProgressIndicator(strokeWidth: 2))
-                  : const Text('Connect'),
+                  : Text(AppLocalizations.of(context).settingsConnectAction),
             ),
           ],
         );
@@ -509,11 +536,10 @@ class _SettingsScreenState extends State<SettingsScreen> {
       await state.loadOwner();
       state.markIdentityLinked();
       if (!mounted) return;
-      _err('Online identity linked. M-Pesa and analytics are now available.');
+      _err(AppLocalizations.of(context).settingsIdentityLinked);
     } catch (_) {
       if (!mounted) return;
-      _err(
-          'Could not link your online account. Check your connection and sign in with the same email you entered during setup.');
+      _err(AppLocalizations.of(context).settingsIdentityLinkFailed);
     } finally {
       if (mounted) setState(() => _verifyingIdentity = false);
     }
@@ -541,36 +567,50 @@ class _SettingsScreenState extends State<SettingsScreen> {
       _syncing = false;
       _syncStatus = invResult == SyncResult.pushedToSheets &&
               salesResult == SyncResult.pushedToSheets
-          ? 'Synced to Google Sheets just now.'
+          ? AppLocalizations.of(context).settingsSyncSheets
           : (invResult == SyncResult.failed || salesResult == SyncResult.failed)
-              ? 'Sync failed — try again when you have signal.'
-              : 'No internet — saved an Excel file instead. Share it from the prompt that opened.';
+              ? AppLocalizations.of(context).settingsSyncFailed
+              : AppLocalizations.of(context).settingsSyncOfflineExcel;
     });
   }
 
   Future<void> _manageShops() async {
+    // Read before the network call: listing shops is an async gap and this screen
+    // can be popped underneath it.
+    final l10n = AppLocalizations.of(context);
     try {
       final shops = await BackendService.listMyShops();
       if (!mounted) return;
       await showDialog<void>(
           context: context,
           builder: (dialogContext) => AlertDialog(
-                title: const Text('Your shops'),
+                title:
+                    Text(AppLocalizations.of(context).settingsYourShopsTitle),
                 content: SizedBox(
                     width: 380,
                     child: shops.isEmpty
-                        ? const Text(
-                            'No online shops are linked to this identity yet.')
+                        ? Text(
+                            AppLocalizations.of(context).settingsNoOnlineShops)
                         : Column(
                             mainAxisSize: MainAxisSize.min,
                             children: shops
                                 .map((shop) => ListTile(
                                       title: Text(
                                           '${shop['shopName'] ?? 'Unnamed shop'}'),
-                                      subtitle:
-                                          Text(shop['role']?.toString() ?? ''),
+                                      // Read through a typed cast rather than
+                                      // `.toString()` on a map value: the column
+                                      // is a name, and formatting whatever is in
+                                      // the row would render "null" or a Map to
+                                      // a shopkeeper.
+                                      subtitle: Text(
+                                        shop['role'] as String? ?? '',
+                                      ),
                                       trailing: TextButton(
                                         onPressed: () async {
+                                          // Read before the first await: switching
+                                          // shops tears this whole subtree down.
+                                          final l10n =
+                                              AppLocalizations.of(context);
                                           try {
                                             await BackendService.switchShop(
                                                 shop['tenantId'].toString());
@@ -580,7 +620,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                                                         .toString());
                                             if (key == null) {
                                               throw StateError(
-                                                  'Set this shop up on this device first');
+                                                  l10n.settingsShopNotOnDevice);
                                             }
                                             if (dialogContext.mounted) {
                                               Navigator.pop(dialogContext);
@@ -593,21 +633,23 @@ class _SettingsScreenState extends State<SettingsScreen> {
                                           } catch (e) {
                                             _err(e is StateError
                                                 ? e.message
-                                                : 'Could not switch shops');
+                                                : l10n
+                                                    .settingsSwitchShopFailed);
                                           }
                                         },
-                                        child: const Text('Switch'),
+                                        child: Text(AppLocalizations.of(context)
+                                            .settingsSwitchAction),
                                       ),
                                     ))
                                 .toList())),
                 actions: [
                   TextButton(
                       onPressed: () => Navigator.pop(dialogContext),
-                      child: const Text('Close'))
+                      child: Text(l10n.settingsCloseAction))
                 ],
               ));
     } catch (_) {
-      _err('Could not load shops. Connect to the internet and try again.');
+      _err(l10n.settingsLoadShopsFailed);
     }
   }
 
@@ -624,8 +666,9 @@ class _SettingsScreenState extends State<SettingsScreen> {
   /// hash*, so the same four digits work and no re-authentication is needed.
   Future<void> _addShopOnThisDevice() async {
     final previous = context.read<AppState>().owner;
+    final l10n = AppLocalizations.of(context);
     if (previous == null) {
-      _err('Sign in as the shop admin before adding another shop.');
+      _err(l10n.settingsSignInBeforeAddingShop);
       return;
     }
 
@@ -633,19 +676,21 @@ class _SettingsScreenState extends State<SettingsScreen> {
     final shop = await showDialog<String>(
         context: context,
         builder: (context) => AlertDialog(
-              title: const Text('Add another shop'),
+              title: Text(AppLocalizations.of(context).settingsAddShopTitle),
               content: TextField(
                   controller: name,
                   autofocus: true,
-                  decoration: const InputDecoration(labelText: 'Shop name'),
+                  decoration: InputDecoration(
+                      labelText:
+                          AppLocalizations.of(context).settingsShopNameLabel),
                   autofillHints: const [AutofillHints.organizationName]),
               actions: [
                 TextButton(
                     onPressed: () => Navigator.pop(context),
-                    child: const Text('Cancel')),
+                    child: Text(AppLocalizations.of(context).actionCancel)),
                 FilledButton(
                     onPressed: () => Navigator.pop(context, name.text.trim()),
-                    child: const Text('Continue'))
+                    child: Text(AppLocalizations.of(context).actionContinue))
               ],
             ));
     name.dispose();
@@ -673,7 +718,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
         createdAt: DateTime.now().toIso8601String(),
       ));
     } catch (e) {
-      _err("Couldn't create the shop. Check the phone has storage free, then try again.");
+      _err(l10n.settingsCreateShopFailed);
       return;
     }
 
@@ -705,55 +750,65 @@ class _SettingsScreenState extends State<SettingsScreen> {
         const SizedBox(height: 24),
         if (context.watch<AppState>().identityLinkPending) ...[
           Card(
-            color: DukaColors.surfaceWarm,
+            color: AppColors.of(context).surfaceSunken,
             child: ListTile(
-              leading: const Icon(Icons.cloud_off_outlined,
-                  color: DukaColors.warning),
-              title: const Text('Online identity not linked yet'),
-              subtitle: const Text(
-                  'Selling works fully offline. Connect to the internet and sign in with your Keycloak account to enable M-Pesa and analytics.'),
+              leading: Icon(
+                Icons.cloud_off_outlined,
+                color: AppColors.of(context).warning,
+              ),
+              title: Text(
+                  AppLocalizations.of(context).settingsIdentityNotLinkedTitle),
+              subtitle: Text(AppLocalizations.of(context)
+                  .settingsIdentityNotLinkedMessage),
               trailing: TextButton(
                 onPressed: _verifyingIdentity ? null : _verifyIdentityOnline,
-                child: Text(_verifyingIdentity ? 'Verifying…' : 'Verify'),
+                child: Text(_verifyingIdentity
+                    ? AppLocalizations.of(context).settingsVerifying
+                    : AppLocalizations.of(context).settingsVerifyAction),
               ),
             ),
           ),
           const SizedBox(height: 16),
         ],
-        Text('Shops and offline workspaces',
+        Text(AppLocalizations.of(context).settingsShopsSection,
             style: Theme.of(context).textTheme.titleMedium),
         Card(
             child: Column(children: [
-          const ListTile(
+          ListTile(
               leading: Icon(Icons.lock_outline),
-              title: Text('Each shop has separate offline data'),
-              subtitle: Text(
-                  'Sales, stock, staff, and backups cannot mix between shops on this device.')),
+              title: Text(AppLocalizations.of(context)
+                  .settingsSeparateOfflineDataTitle),
+              subtitle: Text(AppLocalizations.of(context)
+                  .settingsSeparateOfflineDataSubtitle)),
           ListTile(
               leading: const Icon(Icons.store_mall_directory_outlined),
-              title: const Text('Switch linked shop'),
+              title:
+                  Text(AppLocalizations.of(context).settingsSwitchShopAction),
               onTap: _manageShops),
           ListTile(
               leading: const Icon(Icons.add_business_outlined),
-              title: const Text('Add another shop on this device'),
+              title: Text(
+                  AppLocalizations.of(context).settingsAddShopOnDeviceAction),
               onTap: _addShopOnThisDevice),
         ])),
-        Text('Managers and cashiers',
+        Text(AppLocalizations.of(context).settingsStaffSection,
             style: Theme.of(context).textTheme.titleMedium),
-        const Padding(
+        Padding(
           padding: EdgeInsets.only(top: 4, bottom: 8),
-          child: Text(
-              'The shop admin creates and disables manager and cashier profiles. Their local PIN is the offline till unlock; the same profile is synchronized to Keycloak-backed analytics when online.'),
+          child: Text(AppLocalizations.of(context).settingsStaffSectionHelp),
         ),
         Card(
             child: Column(children: [
           ..._staff.map((s) => ListTile(
                 title: Text(s.name),
-                subtitle: Text(s.role == 'manager' ? 'Manager' : 'Cashier'),
+                subtitle: Text(s.role == 'manager'
+                    ? AppLocalizations.of(context).settingsRoleManager
+                    : AppLocalizations.of(context).settingsRoleCashier),
                 trailing: Wrap(spacing: 4, children: [
                   TextButton(
                       onPressed: () => _resetPin(s),
-                      child: const Text('Reset PIN')),
+                      child: Text(
+                          AppLocalizations.of(context).settingsResetPinAction)),
                   IconButton(
                     icon: const Icon(Icons.remove_circle_outline),
                     tooltip: 'Remove ${s.name}',
@@ -763,38 +818,45 @@ class _SettingsScreenState extends State<SettingsScreen> {
               )),
           ListTile(
             leading: const Icon(Icons.add),
-            title: const Text('Add staff'),
+            title: Text(AppLocalizations.of(context).settingsAddStaffAction),
             onTap: _addStaff,
           ),
         ])),
         const SizedBox(height: 24),
-        Text('Payment methods', style: Theme.of(context).textTheme.titleMedium),
+        Text(AppLocalizations.of(context).settingsPaymentMethodsSection,
+            style: Theme.of(context).textTheme.titleMedium),
         Card(
             child: Column(children: [
-          const ListTile(
-            leading: Icon(Icons.payments_outlined),
-            title: Text('Cash'),
-            subtitle: Text('Always available — works fully offline.'),
-            trailing:
-                Text('Included', style: TextStyle(color: DukaColors.mutedInk)),
+          ListTile(
+            leading: const Icon(Icons.payments_outlined),
+            title: Text(AppLocalizations.of(context).settingsCashMethod),
+            subtitle:
+                Text(AppLocalizations.of(context).settingsCashMethodSubtitle),
+            // Read at build time rather than `const`: the style comes from the
+            // theme, and a `const` widget cannot call a method.
+            trailing: Text(
+              AppLocalizations.of(context).settingsIncluded,
+              style: AppTypography.of(context).bodySmall,
+            ),
           ),
           SwitchListTile(
             secondary: const Icon(Icons.phone_iphone_outlined),
-            title: const Text('M-Pesa (via PayHero)'),
+            title: Text(AppLocalizations.of(context).settingsMpesaMethod),
             subtitle: Text(_mpesaEnabled
-                ? 'Included — customers can pay by M-Pesa STK push. Requires internet at checkout.'
-                : 'Excluded — turn on to accept M-Pesa. Requires a one-time backend connection and a PayHero account.'),
+                ? AppLocalizations.of(context).settingsMpesaOnSubtitle
+                : AppLocalizations.of(context).settingsMpesaOffSubtitle),
             value: _mpesaEnabled,
             onChanged: _savingToggle ? null : _toggleMpesa,
           ),
         ])),
         const SizedBox(height: 24),
-        Text('Receipt printer', style: Theme.of(context).textTheme.titleMedium),
+        Text(AppLocalizations.of(context).settingsPrinterSection,
+            style: Theme.of(context).textTheme.titleMedium),
         Card(
             child: Column(children: [
-          const ListTile(
+          ListTile(
             leading: Icon(Icons.print_outlined),
-            title: Text('Bluetooth thermal printer'),
+            title: Text(AppLocalizations.of(context).settingsPrinterKindTitle),
             subtitle: Text(
                 'Pair the printer from this phone\'s Bluetooth settings first, then pair it here.'),
           ),
@@ -807,17 +869,19 @@ class _SettingsScreenState extends State<SettingsScreen> {
               subtitle: Text('${_printer.paperWidth.mm}mm roll'),
               trailing: TextButton(
                 onPressed: _printerBusy ? null : _chooseAndPairPrinter,
-                child: const Text('Change'),
+                child: Text(AppLocalizations.of(context).settingsChangeAction),
               ),
             ),
           SwitchListTile(
             secondary: const Icon(Icons.power_settings_new),
-            title: const Text('Printing enabled'),
+            title: Text(AppLocalizations.of(context).settingsPrintingEnabled),
             subtitle: Text(_printer.isConfigured
                 ? (_printer.enabled
-                    ? 'This till can print receipts.'
-                    : 'Paired, but switched off. Reprints still work.')
-                : 'Pair a printer to turn printing on.'),
+                    ? AppLocalizations.of(context).settingsPrintingOnSubtitle
+                    : AppLocalizations.of(context)
+                        .settingsPrintingPairedOffSubtitle)
+                : AppLocalizations.of(context)
+                    .settingsPrintingUnpairedSubtitle),
             value: _printer.enabled,
             onChanged: !_printer.isConfigured
                 ? null
@@ -825,9 +889,9 @@ class _SettingsScreenState extends State<SettingsScreen> {
           ),
           SwitchListTile(
             secondary: const Icon(Icons.receipt),
-            title: const Text('Print after every sale'),
-            subtitle: const Text(
-                'Off by default, so a shop that hands over change first chooses when the paper comes out.'),
+            title: Text(AppLocalizations.of(context).settingsPrintAfterSale),
+            subtitle: Text(
+                AppLocalizations.of(context).settingsPrintAfterSaleSubtitle),
             value: _printer.printAfterSale,
             onChanged: _printer.isConfigured
                 ? (value) =>
@@ -840,8 +904,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
               children: [
                 Expanded(
                   child: OutlinedButton.icon(
-                    onPressed:
-                        _printerBusy ? null : _chooseAndPairPrinter,
+                    onPressed: _printerBusy ? null : _chooseAndPairPrinter,
                     icon: _printerBusy
                         ? const SizedBox(
                             width: 16,
@@ -849,8 +912,9 @@ class _SettingsScreenState extends State<SettingsScreen> {
                             child: CircularProgressIndicator(strokeWidth: 2))
                         : const Icon(Icons.bluetooth_searching),
                     label: Text(_printer.macAddress.isEmpty
-                        ? 'Pair a printer'
-                        : 'Pair another'),
+                        ? AppLocalizations.of(context).settingsPairAPrinter
+                        : AppLocalizations.of(context)
+                            .settingsPairAnotherPrinter),
                   ),
                 ),
                 const SizedBox(width: 8),
@@ -860,7 +924,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
                         ? null
                         : _testPrint,
                     icon: const Icon(Icons.play_arrow),
-                    label: const Text('Test print'),
+                    label: Text(
+                        AppLocalizations.of(context).settingsTestPrintAction),
                   ),
                 ),
               ],
@@ -874,7 +939,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
         // issuing at the default rate without ever having seen the control.
         ListTile(
           leading: const Icon(Icons.percent),
-          title: const Text('Tax settings'),
+          title: Text(AppLocalizations.of(context).taxSettingsTitle),
           subtitle: Text(
             'VAT $_vatRatePercent%${_tin.isEmpty ? '' : ' · TIN $_tin'}'
             ' · receipts numbered $_tillCode-000001',
@@ -883,7 +948,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
           onTap: _openTaxSettings,
         ),
         const SizedBox(height: 24),
-        Text('Sync — Google Sheets & Excel',
+        Text(AppLocalizations.of(context).settingsSyncSection,
             style: Theme.of(context).textTheme.titleMedium),
         Card(
             child: Padding(
@@ -895,9 +960,9 @@ class _SettingsScreenState extends State<SettingsScreen> {
                 'With no signal, it saves an Excel file you can share manually instead — nothing is ever blocked by connectivity.'),
             SwitchListTile.adaptive(
               contentPadding: EdgeInsets.zero,
-              title: const Text('Automatic backup and online sync'),
-              subtitle: const Text(
-                  'Opt in to retry online sync and save a local inventory backup while the app is open.'),
+              title: Text(AppLocalizations.of(context).settingsAutoBackupSync),
+              subtitle: Text(
+                  AppLocalizations.of(context).settingsAutoBackupSyncSubtitle),
               value: _automaticBackupSync,
               onChanged: (value) async {
                 await AutoSyncService.setEnabled(value);
@@ -913,7 +978,9 @@ class _SettingsScreenState extends State<SettingsScreen> {
                       height: 16,
                       child: CircularProgressIndicator(strokeWidth: 2))
                   : const Icon(Icons.sync),
-              label: Text(_syncing ? 'Syncing…' : 'Sync now'),
+              label: Text(_syncing
+                  ? AppLocalizations.of(context).settingsSyncing
+                  : AppLocalizations.of(context).settingsSyncNowAction),
             ),
             if (_syncStatus != null)
               Padding(
@@ -923,14 +990,14 @@ class _SettingsScreenState extends State<SettingsScreen> {
           ]),
         )),
         const SizedBox(height: 24),
-        Text('Backup', style: Theme.of(context).textTheme.titleMedium),
+        Text(AppLocalizations.of(context).settingsBackupSection,
+            style: Theme.of(context).textTheme.titleMedium),
         Card(
             child: Padding(
           padding: const EdgeInsets.all(16),
           child:
               Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-            const Text(
-                'Export a full backup regularly, and keep a copy somewhere safe off this phone.'),
+            Text(AppLocalizations.of(context).settingsBackupHelp),
             const SizedBox(height: 12),
             Wrap(spacing: 8, children: [
               OutlinedButton(
@@ -938,7 +1005,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
                     final f = await _excel.exportEncryptedInventory();
                     await _excel.shareFile(f);
                   },
-                  child: const Text('Export encrypted backup (.duka)')),
+                  child: Text(
+                      AppLocalizations.of(context).settingsExportEncrypted)),
               OutlinedButton(
                   onPressed: () async {
                     try {
@@ -947,19 +1015,22 @@ class _SettingsScreenState extends State<SettingsScreen> {
                       ScaffoldMessenger.of(context).showSnackBar(
                           SnackBar(content: Text('Restored $n products')));
                     } on FormatException {
-                      _err(
-                          'That encrypted backup is invalid or belongs to another installation.');
+                      _err(AppLocalizations.of(context)
+                          .settingsInvalidEncryptedBackup);
                     } catch (_) {
-                      _err('Couldn’t decrypt the backup.');
+                      _err(AppLocalizations.of(context)
+                          .settingsDecryptBackupFailed);
                     }
                   },
-                  child: const Text('Restore encrypted backup')),
+                  child: Text(
+                      AppLocalizations.of(context).settingsRestoreEncrypted)),
               OutlinedButton(
                   onPressed: () async {
                     final f = await _excel.exportInventory();
                     await _excel.shareFile(f);
                   },
-                  child: const Text('Export inventory (.xlsx)')),
+                  child: Text(
+                      AppLocalizations.of(context).settingsExportInventory)),
               OutlinedButton(
                   onPressed: () async {
                     try {
@@ -975,23 +1046,25 @@ class _SettingsScreenState extends State<SettingsScreen> {
                       ));
                     } on FormatException {
                       if (!context.mounted) return;
-                      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
-                          content: Text(
-                              'That workbook has invalid inventory data. No products were imported.')));
+                      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+                          content: Text(AppLocalizations.of(context)
+                              .settingsInvalidWorkbook)));
                     } catch (_) {
                       if (!context.mounted) return;
-                      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
-                          content: Text(
-                              'Couldn’t import the workbook. Check the file and try again.')));
+                      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+                          content: Text(AppLocalizations.of(context)
+                              .settingsImportWorkbookFailed)));
                     }
                   },
-                  child: const Text('Import inventory (.xlsx)')),
+                  child: Text(
+                      AppLocalizations.of(context).settingsImportInventory)),
             ]),
             const SizedBox(height: 12),
             TextButton.icon(
                 onPressed: _eraseEncryptedBackups,
                 icon: const Icon(Icons.delete_forever),
-                label: const Text('Erase local encrypted backups')),
+                label: Text(AppLocalizations.of(context)
+                    .settingsEraseLocalBackupsAction)),
           ]),
         )),
         const SizedBox(height: 32),
@@ -1044,19 +1117,19 @@ class _AboutFooterState extends State<_AboutFooter> {
           children: [
             Text(
               SimplePosBrand.appName,
-              style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w600),
+              style: AppTypography.of(context).labelLarge,
             ),
             if (_version.isNotEmpty)
               Text(
                 '  v$_version',
-                style: const TextStyle(fontSize: 13, color: DukaColors.mutedInk),
+                style: AppTypography.of(context).labelMedium,
               ),
           ],
         ),
         const SizedBox(height: 2),
         Text(
           SimplePosBrand.poweredByTag,
-          style: const TextStyle(fontSize: 12, color: DukaColors.mutedInk),
+          style: AppTypography.of(context).bodySmall,
         ),
       ],
     );
@@ -1088,16 +1161,19 @@ class _StaffDialogState extends State<_StaffDialog> {
     return AlertDialog(
       title: Text(widget.pinOnly
           ? 'Reset PIN for ${widget.existingName}'
-          : 'Add staff'),
+          : AppLocalizations.of(context).settingsAddStaffAction),
       content: Column(mainAxisSize: MainAxisSize.min, children: [
         if (!widget.pinOnly) ...[
           TextField(
               controller: _name,
-              decoration: const InputDecoration(labelText: 'Name'),
+              decoration: InputDecoration(
+                  labelText:
+                      AppLocalizations.of(context).settingsStaffNameLabel),
               autofillHints: const [AutofillHints.name]),
           DropdownButtonFormField<String>(
               initialValue: ShopRole.parse(_role).wire,
-              decoration: const InputDecoration(labelText: 'Role'),
+              decoration: InputDecoration(
+                  labelText: AppLocalizations.of(context).settingsRoleLabel),
               items: [
                 // Built from ShopRole.assignable rather than a literal list, so
                 // a role added there cannot be forgotten here. Admin is
@@ -1122,7 +1198,8 @@ class _StaffDialogState extends State<_StaffDialog> {
         ],
         TextField(
             controller: _pin,
-            decoration: const InputDecoration(labelText: '4-digit PIN'),
+            decoration: InputDecoration(
+                labelText: AppLocalizations.of(context).settingsPinLabel),
             keyboardType: TextInputType.number,
             obscureText: true,
             maxLength: 4,
@@ -1131,14 +1208,14 @@ class _StaffDialogState extends State<_StaffDialog> {
       actions: [
         TextButton(
             onPressed: () => Navigator.pop(context),
-            child: const Text('Cancel')),
+            child: Text(AppLocalizations.of(context).actionCancel)),
         FilledButton(
           onPressed: () => Navigator.pop(context, {
             'name': widget.existingName ?? _name.text.trim(),
             'pin': _pin.text,
             'role': _role
           }),
-          child: const Text('Save'),
+          child: Text(AppLocalizations.of(context).settingsSaveAction),
         ),
       ],
     );

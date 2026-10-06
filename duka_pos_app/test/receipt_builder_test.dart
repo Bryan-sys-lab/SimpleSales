@@ -41,8 +41,7 @@ ReceiptInput receipt({
   String shopName = 'Kijani Stores',
   String receiptNumber = 'T1-000001',
 }) {
-  final lines = items ??
-      [line('Soda 350ml', qty: 2, unitPrice: 80)];
+  final lines = items ?? [line('Soda 350ml', qty: 2, unitPrice: 80)];
   final computed = sumMoney(lines.map((item) => item.total));
   return ReceiptInput(
     shopName: shopName,
@@ -116,8 +115,8 @@ void main() {
     });
 
     test('a zero rate means exempt, not a division by zero', () {
-      expect(vatComponentOf(Money.fromMinor(8000), ratePercent: 0).minorUnits,
-          0);
+      expect(
+          vatComponentOf(Money.fromMinor(8000), ratePercent: 0).minorUnits, 0);
     });
 
     test('handles a non-16 rate the same way', () {
@@ -188,8 +187,11 @@ void main() {
   group('column budget', () {
     test('no printed line exceeds the 58mm budget, even with a huge name', () {
       final input = receipt(items: [
-        line('Kenyana Special Reserve Aged Extra Long Name Malt '
-            'Bottle 500ml With Gift Packaging', qty: 1, unitPrice: 250),
+        line(
+            'Kenyana Special Reserve Aged Extra Long Name Malt '
+            'Bottle 500ml With Gift Packaging',
+            qty: 1,
+            unitPrice: 250),
       ]);
       for (final row in render(input)) {
         expect(row.length, lessThanOrEqualTo(k58mmColumnBudget),
@@ -199,8 +201,11 @@ void main() {
 
     test('the amount is never what gets truncated', () {
       final input = receipt(items: [
-        line('A product name that is far too long to fit on one line of a '
-            'thermal receipt without help', qty: 1, unitPrice: 123456),
+        line(
+            'A product name that is far too long to fit on one line of a '
+            'thermal receipt without help',
+            qty: 1,
+            unitPrice: 123456),
       ]);
       // A nine-figure amount leaves room for a shorter label, not a shorter
       // number: the figure is what the customer is checking.
@@ -211,7 +216,8 @@ void main() {
 
     test('a truncated name is visibly truncated, not silently shortened', () {
       final input = receipt(items: [
-        line('Kenyana Special Reserve Aged Extra Long Name Malt', unitPrice: 80),
+        line('Kenyana Special Reserve Aged Extra Long Name Malt',
+            unitPrice: 80),
       ]);
       final row = render(input).firstWhere((r) => r.contains('Kenyana'));
       expect(row, contains('...'));
@@ -247,7 +253,8 @@ void main() {
   });
 
   group('receipt content', () {
-    test('carries shop, receipt number, cashier, date, tendered and change', () {
+    test('carries shop, receipt number, cashier, date, tendered and change',
+        () {
       final input = receipt(
         tendered: Money.fromMajor(500),
         change: Money.fromMajor(120),
@@ -265,8 +272,8 @@ void main() {
     });
 
     test('an eTIMS verification QR is emitted with the number', () {
-      final lines = const ReceiptBuilder()
-          .build(receipt(etimsNumber: 'KRA-1', etimsPayload: 'https://kra/v/1'));
+      final lines = const ReceiptBuilder().build(
+          receipt(etimsNumber: 'KRA-1', etimsPayload: 'https://kra/v/1'));
       expect(lines.whereType<ReceiptQr>().map((qr) => qr.payload),
           contains('https://kra/v/1'));
     });
@@ -277,8 +284,8 @@ void main() {
     });
 
     test('zero change does not print a change line', () {
-      final text = render(receipt(tendered: Money.fromMajor(160),
-          change: Money.zero));
+      final text =
+          render(receipt(tendered: Money.fromMajor(160), change: Money.zero));
       expect(text.any((row) => row.startsWith('Change')), isFalse);
     });
 
@@ -291,7 +298,8 @@ void main() {
 
   group('ESC/POS bytes', () {
     test('starts by initialising the printer and ends with a cut', () {
-      final bytes = const EscPosEncoder().encode(const ReceiptBuilder().build(receipt()));
+      final bytes =
+          const EscPosEncoder().encode(const ReceiptBuilder().build(receipt()));
       expect(bytes.sublist(0, 2), [0x1b, 0x40]);
       expect(bytes.sublist(bytes.length - 4), [0x1d, 0x56, 0x42, 0x00]);
     });
@@ -310,42 +318,60 @@ void main() {
     });
 
     test('emits bold for the total and not for the body', () {
-      final bytes = const EscPosEncoder()
-          .encode(const ReceiptBuilder().build(receipt()));
+      final bytes =
+          const EscPosEncoder().encode(const ReceiptBuilder().build(receipt()));
       // ESC E 1 then ESC E 0 both appear: the layout really does toggle bold.
       expect(containsSequence(bytes, [0x1b, 0x45, 0x01]), isTrue);
       expect(containsSequence(bytes, [0x1b, 0x45, 0x00]), isTrue);
     });
 
     test('sets alignment for centred lines', () {
-      final bytes = const EscPosEncoder()
-          .encode(const ReceiptBuilder().build(receipt()));
+      final bytes =
+          const EscPosEncoder().encode(const ReceiptBuilder().build(receipt()));
       // ESC a 1 = centre.
       expect(containsSequence(bytes, [0x1b, 0x61, 0x01]), isTrue);
     });
 
     test('a QR carries its full payload with correct length fields', () {
       const payload = 'https://verify.example/v/KRA-8f2a-0001';
-      final bytes = const EscPosEncoder().encode(const ReceiptBuilder().build(
-          receipt(etimsNumber: 'KRA-8f2a-0001', etimsPayload: payload)));
+      final bytes = const EscPosEncoder().encode(const ReceiptBuilder()
+          .build(receipt(etimsNumber: 'KRA-8f2a-0001', etimsPayload: payload)));
       final decoded = String.fromCharCodes(bytes);
       expect(decoded, contains(payload));
       // pL/pH must be (len + 3); a wrong length silently truncates the URL,
       // which still loads, so nothing else would catch it.
       const header = [0x1d, 0x28, 0x6b, 0, 0, 0x31, 0x50, 0x30];
       expect(
-        containsSequence(bytes,
-            [header[0], header[1], header[2], 0, payload.length + 3, 0x31, 0x50, 0x30]),
+        containsSequence(bytes, [
+          header[0],
+          header[1],
+          header[2],
+          0,
+          payload.length + 3,
+          0x31,
+          0x50,
+          0x30
+        ]),
         isTrue,
       );
     });
 
     test('a payload longer than 255 bytes still gets the right high byte', () {
       final long = 'https://verify.example/v/${'A' * 400}';
-      final bytes = const EscPosEncoder().encode(const ReceiptBuilder().build(
-          receipt(etimsNumber: 'KRA-LONG', etimsPayload: long)));
+      final bytes = const EscPosEncoder().encode(const ReceiptBuilder()
+          .build(receipt(etimsNumber: 'KRA-LONG', etimsPayload: long)));
       final length = long.length + 3;
-      expect(containsSequence(bytes, [0x1d, 0x28, 0x6b, length ~/ 256, length % 256, 0x31, 0x50, 0x30]),
+      expect(
+          containsSequence(bytes, [
+            0x1d,
+            0x28,
+            0x6b,
+            length ~/ 256,
+            length % 256,
+            0x31,
+            0x50,
+            0x30
+          ]),
           isTrue);
     });
 
@@ -353,8 +379,8 @@ void main() {
       // A product named in a script the printer's code page cannot hold must
       // still produce a receipt. Throwing here would stop a sale being printed
       // because of one emoji in the catalogue.
-      final bytes = const EscPosEncoder().encode(const ReceiptBuilder().build(
-          receipt(items: [line('Café 🥤 Lager')])));
+      final bytes = const EscPosEncoder().encode(const ReceiptBuilder()
+          .build(receipt(items: [line('Café 🥤 Lager')])));
       expect(bytes, isNotEmpty);
       expect(bytes.every((b) => b <= 0xff), isTrue);
     });
@@ -362,12 +388,11 @@ void main() {
     test('the same layout produces different bytes for 58mm and 80mm', () {
       final lines = const ReceiptBuilder(columnBudget: k80mmColumnBudget)
           .build(receipt());
-      final narrow = const EscPosEncoder()
-          .encode(const ReceiptBuilder().build(receipt()));
-      final wide = const EscPosEncoder().encode(lines,
-          columnBudget: k80mmColumnBudget);
+      final narrow =
+          const EscPosEncoder().encode(const ReceiptBuilder().build(receipt()));
+      final wide =
+          const EscPosEncoder().encode(lines, columnBudget: k80mmColumnBudget);
       expect(narrow, isNot(equals(wide)));
     });
   });
 }
-

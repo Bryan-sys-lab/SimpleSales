@@ -1,11 +1,24 @@
 import 'package:flutter/material.dart';
+import 'package:provider/provider.dart';
 
 import '../db/database_helper.dart';
+import '../l10n/generated/app_localizations.dart';
 import '../models/models.dart';
+import '../routing/home_shell.dart';
+import '../routing/routes.dart';
 import '../services/analytics.dart';
-import '../theme/app_theme.dart';
+import '../theme/app_colors.dart';
+import '../theme/app_haptics.dart';
+import '../theme/app_shapes.dart';
+import '../theme/app_spacing.dart';
+import '../theme/typography.dart';
+import '../ui/components/controls.dart';
+import '../ui/components/states.dart';
+import '../ui/components/surface.dart';
+import '../ui/layout/page.dart';
 import '../utils/money.dart';
 import '../widgets/chart.dart';
+import 'analytics_tables.dart';
 
 /// The windows the owner thinks in.
 ///
@@ -36,6 +49,18 @@ enum AnalyticsRange {
     final today = DateTime(now.year, now.month, now.day);
     return today.subtract(Duration(days: days - 1));
   }
+
+  /// The window of equal length immediately before this one, as
+  /// `[previousSince, until)`.
+  ///
+  /// Derived from [since] rather than from a second `DateTime.now()`, so the
+  /// comparison window can never drift across midnight relative to the one it is
+  /// being compared with — the two windows are adjacent by construction, which
+  /// is the only way "up 12% on the week before" means anything.
+  DateTime get previousSince => since.subtract(Duration(days: days));
+
+  /// Exclusive end of the previous window, which is this window's start.
+  DateTime get previousUntil => since;
 }
 
 /// Which column the product table is ordered by.
@@ -50,10 +75,82 @@ enum ProductSort {
   final String label;
 }
 
+/// Everything one load of this screen resolved to.
+///
+/// Built once, in [_AnalyticsScreenState._load], so that `build()` does no
+/// formatting, no sorting and no aggregation: every string a user reads and
+/// every `PosChartBar` is already made by the time the widget tree is asked for
+/// it.
+@immutable
+class AnalyticsSnapshot {
+  const AnalyticsSnapshot({
+    required this.totals,
+    required this.previousTotals,
+    required this.days,
+    required this.products,
+    required this.payments,
+    required this.outOfStock,
+    required this.lowStock,
+  });
+
+  /// What an empty range aggregates to, so the first frame renders real zeros
+  /// instead of branching on a null.
+  static const AnalyticsSnapshot empty = AnalyticsSnapshot(
+    totals: DailyTotals.empty,
+    previousTotals: DailyTotals.empty,
+    days: <DateBucket>[],
+    products: <ProductSalesRow>[],
+    payments: <PaymentMixRow>[],
+    outOfStock: <Product>[],
+    lowStock: <Product>[],
+  );
+
+  final DailyTotals totals;
+  final DailyTotals previousTotals;
+  final List<DateBucket> days;
+  final List<ProductSalesRow> products;
+  final List<PaymentMixRow> payments;
+  final List<Product> outOfStock;
+  final List<Product> lowStock;
+
+  bool get isEmpty =>
+      !totals.hasSales &&
+      products.isEmpty &&
+      payments.isEmpty &&
+      outOfStock.isEmpty &&
+      lowStock.isEmpty;
+}
+
+/// Exactly one of these is on screen.
+///
+/// A sealed class rather than an `isLoading`/`error`/`data` trio: the three
+/// flags can disagree with each other, and every one of the three combinations
+/// they allow is a screen nobody designed. The loading case carries the
+/// *previous* snapshot so a pull-to-refresh or a range change keeps the figures
+/// on screen rather than blanking the shop's takings for the length of a query.
+sealed class AnalyticsView {
+  const AnalyticsView();
+}
+
+final class AnalyticsLoading extends AnalyticsView {
+  const AnalyticsLoading(this.previous);
+  final AnalyticsSnapshot previous;
+}
+
+final class AnalyticsFailure extends AnalyticsView {
+  const AnalyticsFailure(this.message);
+  final String message;
+}
+
+final class AnalyticsContent extends AnalyticsView {
+  const AnalyticsContent(this.snapshot);
+  final AnalyticsSnapshot snapshot;
+}
+
 /// The shop's trading over a chosen window.
 ///
-/// Manager and owner only (the shell adds the tab for `canManageStock`): the
-/// figures here are the whole shop's, including every cashier's takings and
+/// Manager and owner only (the shell adds the destination for `canManageStock`):
+/// the figures here are the whole shop's, including every cashier's takings and
 /// every product's margin, which is not a cashier's to read. A cashier's own
 /// numbers are on their dashboard, scoped by `staff_id`.
 ///
@@ -72,15 +169,14 @@ class _AnalyticsScreenState extends State<AnalyticsScreen> {
   ProductSort _sort = ProductSort.revenue;
   bool _ascending = false;
 
-  bool _loading = true;
-  String? _error;
+  AnalyticsView _view = const AnalyticsLoading(AnalyticsSnapshot.empty);
 
-  DailyTotals _totals = DailyTotals.empty;
-  List<DateBucket> _days = const [];
-  List<ProductSalesRow> _products = const [];
-  List<PaymentMixRow> _payments = const [];
-  List<Product> _lowStock = const [];
-  List<Product> _outOfStock = const [];
+  /// The display order of the product table. Held rather than derived in
+  /// `build()` so a rebuild is never also a sort.
+  List<ProductSalesRow> _sortedProducts = const <ProductSalesRow>[];
+
+  /// The chart's bars, merged and pre-formatted at load time.
+  List<PosChartBar> _salesBars = const <PosChartBar>[];
 
   @override
   void initState() {
@@ -89,54 +185,81 @@ class _AnalyticsScreenState extends State<AnalyticsScreen> {
   }
 
   Future<void> _load() async {
-    final db = DatabaseHelper.instance;
+    final DatabaseHelper db = DatabaseHelper.instance;
+    // The previous window rides along in the same batch: it is one more
+    // aggregate query, and fetching it with the current one means the comparison
+    // is answered by a single consistent read of the ledger rather than two
+    // queries that could straddle a sale landing between them.
+    final AnalyticsRange range = _range;
+    final DateTime since = range.since;
     try {
-      final since = _range.since;
-      final results = await Future.wait([
+      final List<Object> results = await Future.wait(<Future<Object>>[
         db.salesTotalsFor(since: since),
         db.salesByDay(since: since),
         db.topProducts(since: since, limit: 20),
         db.salesByPaymentMethod(since: since),
         db.getProducts(),
+        db.salesTotalsFor(since: range.previousSince, until: since),
       ]);
       if (!mounted) return;
-      final products = results[4] as List<Product>;
+      final List<Product> products = results[4] as List<Product>;
       setState(() {
-        _totals = results[0] as DailyTotals;
-        _days = results[1] as List<DateBucket>;
-        _products = results[2] as List<ProductSalesRow>;
-        _payments = results[3] as List<PaymentMixRow>;
-        // Two lists, not one: "out of stock" and "running low" are different
-        // urgencies, and one list that quietly contains both is read as the
-        // milder of the two.
-        _outOfStock = products.where((p) => p.stockQty <= 0).toList()
-          ..sort((a, b) => a.name.compareTo(b.name));
-        _lowStock = products
-            .where((p) => p.stockQty > 0 && p.isLow)
-            .toList()
-          ..sort((a, b) => a.stockQty.compareTo(b.stockQty));
-        _loading = false;
-        _error = null;
+        _sortedProducts = _order(
+          results[2] as List<ProductSalesRow>,
+          _sort,
+          _ascending,
+        );
+        _salesBars = _salesChartBars(results[1] as List<DateBucket>);
+        _view = AnalyticsContent(
+          AnalyticsSnapshot(
+            totals: results[0] as DailyTotals,
+            previousTotals: results[5] as DailyTotals,
+            days: results[1] as List<DateBucket>,
+            products: results[2] as List<ProductSalesRow>,
+            payments: results[3] as List<PaymentMixRow>,
+            // Two lists, not one: "out of stock" and "running low" are different
+            // urgencies, and one list that quietly contains both is read as the
+            // milder of the two.
+            outOfStock: products.where((Product p) => p.stockQty <= 0).toList()
+              ..sort((Product a, Product b) => a.name.compareTo(b.name)),
+            lowStock: products
+                .where((Product p) => p.stockQty > 0 && p.isLow)
+                .toList()
+              ..sort(
+                  (Product a, Product b) => a.stockQty.compareTo(b.stockQty)),
+          ),
+        );
       });
     } catch (_) {
       if (!mounted) return;
       setState(() {
-        _loading = false;
-        _error = 'Couldn’t load analytics.';
+        _view = AnalyticsFailure('Couldn’t load analytics.');
       });
     }
   }
 
   void _setRange(AnalyticsRange range) {
     if (range == _range) return;
+    HapticTheme.of(context).fire(HapticEvent.select);
     setState(() {
       _range = range;
-      _loading = true;
+      // Previous content stays on screen under the skeleton. A range change is a
+      // question, not a reset: blanking the takings to answer it reads as the
+      // shop having sold nothing.
+      _view = AnalyticsLoading(
+        _view is AnalyticsContent
+            ? (_view as AnalyticsContent).snapshot
+            : AnalyticsSnapshot.empty,
+      );
     });
     _load();
   }
 
   void _sortBy(ProductSort column) {
+    HapticTheme.of(context).fire(HapticEvent.select);
+    final List<ProductSalesRow> rows = _view is AnalyticsContent
+        ? (_view as AnalyticsContent).snapshot.products
+        : const <ProductSalesRow>[];
     setState(() {
       // Tapping the active column reverses it; a new column starts descending,
       // because the first thing anyone looks at in a top-sellers list is the
@@ -147,113 +270,236 @@ class _AnalyticsScreenState extends State<AnalyticsScreen> {
         _sort = column;
         _ascending = column == ProductSort.name;
       }
+      _sortedProducts = _order(rows, _sort, _ascending);
     });
   }
 
   /// The order the table is displayed in, derived from the column the header
   /// says is sorted — so the arrow and the rows can never disagree.
-  List<ProductSalesRow> get _sortedProducts {
-    int compare(ProductSalesRow a, ProductSalesRow b) => switch (_sort) {
-          ProductSort.name => a.productName.toLowerCase().compareTo(b.productName.toLowerCase()),
+  static List<ProductSalesRow> _order(
+    List<ProductSalesRow> rows,
+    ProductSort sort,
+    bool ascending,
+  ) {
+    int compare(ProductSalesRow a, ProductSalesRow b) => switch (sort) {
+          ProductSort.name =>
+            a.productName.toLowerCase().compareTo(b.productName.toLowerCase()),
           ProductSort.units => a.units.compareTo(b.units),
           ProductSort.revenue => a.revenueMinor.compareTo(b.revenueMinor),
           ProductSort.profit => a.profitMinor.compareTo(b.profitMinor),
           ProductSort.margin => a.marginPct.compareTo(b.marginPct),
         };
-    final sorted = [..._products]..sort(compare);
-    return _ascending ? sorted : sorted.reversed.toList();
+    final List<ProductSalesRow> sorted = <ProductSalesRow>[...rows]
+      ..sort(compare);
+    return ascending ? sorted : sorted.reversed.toList();
+  }
+
+  /// 90 bars is unreadable at any phone width; merging consecutive days keeps
+  /// every shilling in the bar while making the axis legible.
+  static List<PosChartBar> _salesChartBars(List<DateBucket> days) {
+    return <PosChartBar>[
+      for (final DateBucket day in mergeDateBuckets(days, 14))
+        PosChartBar(
+          label: day.label,
+          value: day.salesMinor,
+          valueLabel: formatMoney(day.sales),
+        ),
+    ];
   }
 
   @override
   Widget build(BuildContext context) {
-    if (_loading) return const Center(child: CircularProgressIndicator());
-    if (_error != null) {
-      return Center(
-          child: Padding(
-        padding: const EdgeInsets.all(24),
-        child: Column(mainAxisSize: MainAxisSize.min, children: [
-          Text(_error!, textAlign: TextAlign.center),
-          const SizedBox(height: 12),
-          FilledButton(onPressed: _load, child: const Text('Try again')),
-        ]),
-      ));
-    }
+    final AppSpacing spacing = AppSpacing.of(context);
 
-    // 90 bars is unreadable at any phone width; merging consecutive days keeps
-    // every shilling in the bar while making the axis legible.
-    final chartDays = mergeDateBuckets(_days, 14);
-
-    return RefreshIndicator(
-      onRefresh: _load,
-      child: ListView(
-        padding: const EdgeInsets.all(DukaSpacing.lg),
-        children: [
-          _RangeSelector(range: _range, onChanged: _setRange),
-          const SizedBox(height: DukaSpacing.lg),
-          _RangeKpis(totals: _totals, range: _range),
-          const SizedBox(height: DukaSpacing.xl),
-          SimplePosChart(
-            title: 'Sales by day',
-            emphasis: _totals.hasSales
-                ? '${formatMoney(_totals.total)} over ${_range.label.toLowerCase()}'
-                : null,
-            semanticsLabel: describeDailyBuckets('Sales by day', chartDays),
-            height: 168,
-            bars: [
-              for (final day in chartDays)
-                PosChartBar(
-                  label: day.label,
-                  value: day.salesMinor,
-                  valueLabel: formatMoney(day.sales),
-                ),
-            ],
+    return switch (_view) {
+      AnalyticsLoading(previous: final AnalyticsSnapshot previous) =>
+        _AnalyticsScaffold(
+          range: _range,
+          onRangeChanged: _setRange,
+          snapshot: previous,
+          onRetry: _load,
+          loading: true,
+        ),
+      AnalyticsFailure(message: final String message) => _AnalyticsScaffold(
+          range: _range,
+          onRangeChanged: _setRange,
+          snapshot: AnalyticsSnapshot.empty,
+          onRetry: _load,
+          errorMessage: message,
+        ),
+      AnalyticsContent(snapshot: final AnalyticsSnapshot snapshot) =>
+        _AnalyticsScaffold(
+          range: _range,
+          onRangeChanged: _setRange,
+          snapshot: snapshot,
+          onRetry: _load,
+          onSortBy: _sortBy,
+          sort: _sort,
+          ascending: _ascending,
+          sortedProducts: _sortedProducts,
+          salesBars: _salesBars,
+          chartSemantics: describeDailyBuckets(
+            AppLocalizations.of(context).analyticsChartTitleSalesByDay,
+            snapshot.days,
           ),
-          const SizedBox(height: DukaSpacing.xl),
-          _ProductTable(
-            rows: _sortedProducts,
-            sort: _sort,
-            ascending: _ascending,
-            onSort: _sortBy,
-          ),
-          const SizedBox(height: DukaSpacing.xl),
-          _PaymentMix(rows: _payments, rangeTotalMinor: _totals.totalMinor),
-          const SizedBox(height: DukaSpacing.xl),
-          _StockSection(
-            outOfStock: _outOfStock,
-            lowStock: _lowStock,
-          ),
-        ],
-      ),
-    );
+          chartEmphasis: snapshot.totals.hasSales
+              ? '${formatMoney(snapshot.totals.total)} over ${_range.label.toLowerCase()}'
+              : null,
+          bottomInset: spacing.xl,
+        ),
+    };
   }
 }
 
-/// The range control. A [SegmentedButton] rather than a dropdown because all
-/// four windows are equally likely and should cost one tap, not two.
-class _RangeSelector extends StatelessWidget {
-  const _RangeSelector({required this.range, required this.onChanged});
+/// The page: the range control, then whichever of the four sections the snapshot
+/// can fill.
+///
+/// [AdaptivePage] supplies the canvas and the safe-area inset; this adds the
+/// pull-to-refresh and the vertical rhythm between sections.
+class _AnalyticsScaffold extends StatelessWidget {
+  const _AnalyticsScaffold({
+    required this.range,
+    required this.onRangeChanged,
+    required this.snapshot,
+    required this.onRetry,
+    this.loading = false,
+    this.errorMessage,
+    this.onSortBy,
+    this.sort = ProductSort.revenue,
+    this.ascending = false,
+    this.sortedProducts = const <ProductSalesRow>[],
+    this.salesBars = const <PosChartBar>[],
+    this.chartSemantics,
+    this.chartEmphasis,
+    this.bottomInset = 0,
+  });
+
+  final AnalyticsRange range;
+  final ValueChanged<AnalyticsRange> onRangeChanged;
+  final AnalyticsSnapshot snapshot;
+  final Future<void> Function() onRetry;
+  final bool loading;
+
+  /// Non-null means the load failed and there is nothing behind it.
+  final String? errorMessage;
+
+  final ValueChanged<ProductSort>? onSortBy;
+  final ProductSort sort;
+  final bool ascending;
+  final List<ProductSalesRow> sortedProducts;
+  final List<PosChartBar> salesBars;
+  final String? chartSemantics;
+  final String? chartEmphasis;
+  final double bottomInset;
+
+  @override
+  Widget build(BuildContext context) {
+    final AppSpacing spacing = AppSpacing.of(context);
+    final AnalyticsSnapshot shown =
+        errorMessage != null ? AnalyticsSnapshot.empty : snapshot;
+
+    return AdaptivePage(
+      // A five-column table is legitimately wider than the prose cap, so the
+      // window's own width is the limit here rather than 680.
+      maxContentWidth: double.infinity,
+      padding: EdgeInsets.zero,
+      child: RefreshIndicator(
+        onRefresh: onRetry,
+        child: ListView(
+          physics: const AlwaysScrollableScrollPhysics(),
+          padding: EdgeInsetsDirectional.only(
+            start: spacing.md,
+            end: spacing.md,
+            top: spacing.md,
+            bottom: spacing.xl + bottomInset,
+          ),
+          children: <Widget>[
+            _RangeBar(range: range, onChanged: onRangeChanged),
+            SizedBox(height: spacing.lg),
+            if (loading)
+              const SkeletonList(itemCount: 4)
+            else if (errorMessage != null)
+              _AnalyticsError(message: errorMessage!, onRetry: onRetry)
+            else
+              ..._content(context, shown),
+          ],
+        ),
+      ),
+    );
+  }
+
+  List<Widget> _content(BuildContext context, AnalyticsSnapshot shown) {
+    final AppSpacing spacing = AppSpacing.of(context);
+    return <Widget>[
+      _RangeKpis(totals: shown.totals, range: range),
+      SizedBox(height: spacing.md),
+      _GrowthLine(
+        current: shown.totals,
+        previous: shown.previousTotals,
+        range: range,
+      ),
+      SizedBox(height: spacing.lg),
+      SurfaceCard(
+        padding: EdgeInsetsDirectional.only(
+          start: spacing.md,
+          end: spacing.md,
+          top: spacing.md,
+          bottom: spacing.sm,
+        ),
+        child: SimplePosChart(
+          title: AppLocalizations.of(context).analyticsChartTitleSalesByDay,
+          emphasis: chartEmphasis,
+          semanticsLabel: chartSemantics,
+          height: 168,
+          bars: salesBars,
+        ),
+      ),
+      SizedBox(height: spacing.lg),
+      ProductTableCard(
+        rows: sortedProducts,
+        sort: sort,
+        ascending: ascending,
+        onSort: onSortBy,
+      ),
+      SizedBox(height: spacing.lg),
+      PaymentMixCard(rows: shown.payments, totals: shown.totals),
+      SizedBox(height: spacing.lg),
+      StockSection(outOfStock: shown.outOfStock, lowStock: shown.lowStock),
+    ];
+  }
+}
+
+/// The range control.
+///
+/// Four windows, all equally likely, so one tap each: a segmented control
+/// rather than a dropdown. [SegmentedChoice] scrolls horizontally at large text
+/// scales instead of squeezing, and names the group for a screen reader, which
+/// would otherwise hear a row of unrelated buttons.
+class _RangeBar extends StatelessWidget {
+  const _RangeBar({required this.range, required this.onChanged});
 
   final AnalyticsRange range;
   final ValueChanged<AnalyticsRange> onChanged;
 
   @override
   Widget build(BuildContext context) {
-    return SegmentedButton<AnalyticsRange>(
-      segments: [
-        for (final option in AnalyticsRange.values)
-          ButtonSegment<AnalyticsRange>(
-            value: option,
-            label: Text(option.label),
-          ),
+    return SegmentedChoice<AnalyticsRange>(
+      value: range,
+      onChanged: onChanged,
+      semanticLabel: 'Reporting period',
+      options: <SegmentedOption<AnalyticsRange>>[
+        for (final AnalyticsRange option in AnalyticsRange.values)
+          SegmentedOption<AnalyticsRange>(value: option, label: option.label),
       ],
-      selected: {range},
-      showSelectedIcon: false,
-      onSelectionChanged: (selection) => onChanged(selection.first),
     );
   }
 }
 
 /// The range's headline figures.
+///
+/// Four [StatTile]s, whose value style is already tabular, in a [Wrap] rather
+/// than a [Row]: a value that wraps at 200% text scale makes a taller tile
+/// rather than a clipped number, and the second row simply reflows.
 class _RangeKpis extends StatelessWidget {
   const _RangeKpis({required this.totals, required this.range});
 
@@ -262,391 +508,226 @@ class _RangeKpis extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final tiles = <Widget>[
-      _RangeKpi(
-        label: 'Sales',
+    final AppSpacing spacing = AppSpacing.of(context);
+
+    return LayoutBuilder(
+      builder: (BuildContext context, BoxConstraints constraints) {
+        final double width = (constraints.maxWidth - spacing.md) / 2;
+        return Wrap(
+          spacing: spacing.md,
+          runSpacing: spacing.md,
+          children: <Widget>[
+            for (final Widget tile in _tiles(AppLocalizations.of(context)))
+              SizedBox(
+                width: width,
+                child: SurfaceCard(
+                  padding: EdgeInsets.zero,
+                  child: tile,
+                ),
+              ),
+          ],
+        );
+      },
+    );
+  }
+
+  /// The catalogue is passed in: this is called from `build`, which has the
+  /// context, and reaching for a field here would mean a second lookup per tile
+  /// row for no benefit.
+  List<Widget> _tiles(AppLocalizations l10n) {
+    return <Widget>[
+      StatTile(
+        label: l10n.analyticsSalesLabel,
         value: formatMoney(totals.total),
         caption: range.label,
+        emphasis: StatEmphasis.strong,
       ),
-      _RangeKpi(
-        label: 'Profit',
+      StatTile(
+        label: l10n.analyticsProfitLabel,
         value: formatMoney(totals.profit),
         caption: totals.hasSales
-            ? '${totals.marginPct.toStringAsFixed(0)}% margin'
+            ? l10n.analyticsMarginCaption(totals.marginPct.toStringAsFixed(0))
             : null,
       ),
-      _RangeKpi(
-        label: 'Sales',
-        value: '${totals.transactions}',
-        caption: totals.transactions == 1 ? 'transaction' : 'transactions',
+      // The transaction COUNT is the caption, not the value: the value is money,
+      // and a tile whose big number is "7" beside a money tile beside it is
+      // read as KSh 7.
+      StatTile(
+        label: l10n.analyticsTransactionsLabel,
+        value: l10n.analyticsTransactionCaption(totals.transactions),
+        emphasis: StatEmphasis.strong,
       ),
-      _RangeKpi(
-        label: 'Avg basket',
+      StatTile(
+        label: l10n.analyticsAvgBasketLabel,
         value: formatMoney(totals.averageBasket),
-        caption: 'per sale',
+        caption: l10n.analyticsAvgBasketCaption,
       ),
     ];
-
-    return LayoutBuilder(builder: (context, constraints) {
-      const spacing = DukaSpacing.md;
-      final tileWidth = (constraints.maxWidth - spacing) / 2;
-      return Wrap(
-        spacing: spacing,
-        runSpacing: spacing,
-        children: [
-          for (final tile in tiles)
-            SizedBox(width: tileWidth, child: tile),
-        ],
-      );
-    });
   }
 }
 
-class _RangeKpi extends StatelessWidget {
-  const _RangeKpi({required this.label, required this.value, this.caption});
+/// Takings against the window before, as a signed word and a figure.
+///
+/// Colour is the LAST channel here and never the only one. The direction is
+/// carried by three independent signals — an arrow glyph whose silhouette
+/// differs per direction, the word "Up"/"Down"/"Level", and the sign on the
+/// figure — so the comparison survives greyscale, `invertColors` and every
+/// screen reader. A red/green pair alone would fail all three.
+class _GrowthLine extends StatelessWidget {
+  const _GrowthLine({
+    required this.current,
+    required this.previous,
+    required this.range,
+  });
 
-  final String label;
-  final String value;
-  final String? caption;
+  final DailyTotals current;
+  final DailyTotals previous;
+  final AnalyticsRange range;
 
   @override
   Widget build(BuildContext context) {
-    final theme = Theme.of(context);
+    final AppSpacing spacing = AppSpacing.of(context);
+    final AppColors colors = AppColors.of(context);
+
+    final int delta = current.totalMinor - previous.totalMinor;
+    final bool hasComparison = previous.totalMinor > 0;
+    final double percent =
+        hasComparison ? (delta / previous.totalMinor) * 100 : 0;
+
+    final bool isUp = delta > 0;
+    final bool isDown = delta < 0;
+    // A shop with nothing in the earlier window has no percentage to quote, so
+    // the line says what actually happened rather than inventing a ratio.
+    final String word = isUp ? 'Up' : (isDown ? 'Down' : 'Level');
+    final IconData glyph = isUp
+        ? Icons.arrow_upward
+        : (isDown ? Icons.arrow_downward : Icons.horizontal_rule);
+    final Color tone = isUp
+        ? colors.success
+        : (isDown ? colors.danger : colors.onSurfaceVariant);
+
+    final String figure = hasComparison
+        ? '${isUp ? '+' : (isDown ? '−' : '')}${percent.abs().toStringAsFixed(0)}%'
+        : (isUp ? 'nothing to compare' : 'no change');
+
+    final TextStyle figureStyle = AppTypography.money(
+      context,
+      size: 13,
+      weight: FontWeight.w700,
+    ).copyWith(color: tone);
+
+    final String comparison = previous.hasSales || current.hasSales
+        ? AppLocalizations.of(context).analyticsAgainstDaysBefore(range.days)
+        : 'no sales yet in this period';
+
     return Semantics(
-      label: [label, value, if (caption != null) caption!].join(', '),
-      excludeSemantics: true,
-      child: Card(
-        child: Padding(
-          padding: const EdgeInsets.all(DukaSpacing.md),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Text(
-                value,
-                maxLines: 2,
-                overflow: TextOverflow.ellipsis,
-                style: theme.textTheme.titleLarge,
-              ),
-              const SizedBox(height: 2),
-              Text(label, style: theme.textTheme.bodySmall),
-              if (caption != null)
-                Text(caption!, style: theme.textTheme.bodySmall),
-            ],
+      container: true,
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.center,
+        children: <Widget>[
+          Icon(glyph, size: 18, color: tone, semanticLabel: word),
+          SizedBox(width: spacing.sm),
+          Text(
+            word,
+            style: AppTypography.of(context).labelLarge?.copyWith(color: tone),
           ),
-        ),
+          SizedBox(width: spacing.sm),
+          Text(figure, style: figureStyle),
+          SizedBox(width: spacing.sm),
+          Expanded(
+            child: Text(
+              comparison,
+              style: AppTypography.of(context).bodySmall,
+            ),
+          ),
+        ],
       ),
     );
   }
 }
 
-/// The best sellers, sortable by any column.
+/// The load failed and there is nothing behind it.
 ///
-/// A table rather than another chart: five columns of unrelated magnitudes
-/// cannot share one set of bars without one of them being unreadable, and this
-/// is the screen where an owner is comparing a product's margin against its
-/// revenue.
-class _ProductTable extends StatelessWidget {
-  const _ProductTable({
-    required this.rows,
-    required this.sort,
-    required this.ascending,
-    required this.onSort,
-  });
+/// Offers the one action that can fix it, and says which range it will retry —
+/// an error with no stated next action is a dead end.
+class _AnalyticsError extends StatelessWidget {
+  const _AnalyticsError({required this.message, required this.onRetry});
 
-  final List<ProductSalesRow> rows;
-  final ProductSort sort;
-  final bool ascending;
-  final ValueChanged<ProductSort> onSort;
+  final String message;
+  final Future<void> Function() onRetry;
 
   @override
   Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      mainAxisSize: MainAxisSize.min,
-      children: [
-        Semantics(
-          header: true,
-          child: Text('Top products', style: theme.textTheme.titleMedium),
+    final AppColors colors = AppColors.of(context);
+    return Semantics(
+      liveRegion: true,
+      child: Container(
+        width: double.infinity,
+        padding: const EdgeInsets.all(16),
+        decoration: BoxDecoration(
+          color: colors.dangerContainer,
+          borderRadius: AppShapes.of(context).controlRadius,
+          border: Border.all(color: colors.danger),
         ),
-        const SizedBox(height: DukaSpacing.sm),
-        if (rows.isEmpty)
-          const Padding(
-            padding: EdgeInsets.symmetric(vertical: DukaSpacing.sm),
-            child: Text('Nothing sold in this period.'),
-          )
-        else
-          Card(
-            child: Column(
-              children: [
-                _TableHeader(
-                    sort: sort, ascending: ascending, onSort: onSort),
-                const Divider(height: 1),
-                for (final row in rows)
-                  Padding(
-                    padding: const EdgeInsets.symmetric(
-                        horizontal: DukaSpacing.md, vertical: DukaSpacing.sm),
-                    child: Row(
-                      children: [
-                        Expanded(
-                          flex: 4,
-                          child: Text(row.productName,
-                              style: theme.textTheme.bodyMedium),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          mainAxisSize: MainAxisSize.min,
+          children: <Widget>[
+            Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: <Widget>[
+                Icon(Icons.cloud_off_outlined, size: 18, color: colors.danger),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: Text(
+                    message,
+                    style: AppTypography.of(context).bodyMedium?.copyWith(
+                          color: colors.danger,
                         ),
-                        Expanded(
-                          flex: 2,
-                          child: Text(_units(row.units),
-                              textAlign: TextAlign.end,
-                              style: theme.textTheme.bodySmall),
-                        ),
-                        Expanded(
-                          flex: 3,
-                          child: Text(formatMoney(row.revenue),
-                              textAlign: TextAlign.end,
-                              style: theme.textTheme.bodyMedium),
-                        ),
-                        Expanded(
-                          flex: 3,
-                          child: Text(formatMoney(row.profit),
-                              textAlign: TextAlign.end,
-                              style: theme.textTheme.bodyMedium),
-                        ),
-                        Expanded(
-                          flex: 2,
-                          child: Text(row.marginLabel,
-                              textAlign: TextAlign.end,
-                              style: theme.textTheme.bodySmall),
-                        ),
-                      ],
-                    ),
                   ),
+                ),
               ],
             ),
-          ),
-      ],
-    );
-  }
-
-  static String _units(double units) =>
-      units == units.roundToDouble() ? units.toStringAsFixed(0) : units.toStringAsFixed(2);
-}
-
-class _TableHeader extends StatelessWidget {
-  const _TableHeader({
-    required this.sort,
-    required this.ascending,
-    required this.onSort,
-  });
-
-  final ProductSort sort;
-  final bool ascending;
-  final ValueChanged<ProductSort> onSort;
-
-  @override
-  Widget build(BuildContext context) {
-    return Padding(
-      padding: const EdgeInsets.fromLTRB(
-          DukaSpacing.md, DukaSpacing.sm, DukaSpacing.md, DukaSpacing.sm),
-      child: Row(
-        children: [
-          Expanded(flex: 4, child: _cell(context, ProductSort.name)),
-          Expanded(flex: 2, child: _cell(context, ProductSort.units)),
-          Expanded(flex: 3, child: _cell(context, ProductSort.revenue)),
-          Expanded(flex: 3, child: _cell(context, ProductSort.profit)),
-          Expanded(flex: 2, child: _cell(context, ProductSort.margin)),
-        ],
-      ),
-    );
-  }
-
-  Widget _cell(BuildContext context, ProductSort column) {
-    final theme = Theme.of(context);
-    final active = sort == column;
-    // The arrow, not just the bold, says which way — colour and weight alone
-    // would leave a screen-reader user with no way to tell ascending from
-    // descending.
-    return Semantics(
-      button: true,
-      selected: active,
-      label: '${column.label} column, '
-          '${active ? (ascending ? 'sorted ascending' : 'sorted descending') : 'not sorted'}',
-      excludeSemantics: true,
-      child: InkWell(
-        onTap: () => onSort(column),
-        child: Padding(
-          padding: const EdgeInsets.symmetric(vertical: DukaSpacing.xs),
-          child: Text(
-            active ? '${column.label}${ascending ? ' ↑' : ' ↓'}' : column.label,
-            textAlign: column == ProductSort.name
-                ? TextAlign.start
-                : TextAlign.end,
-            style: (active
-                    ? theme.textTheme.labelLarge
-                    : theme.textTheme.bodySmall)
-                ?.copyWith(color: active ? DukaColors.primary : null),
-          ),
-        ),
-      ),
-    );
-  }
-}
-
-/// How the money came in, by tender.
-class _PaymentMix extends StatelessWidget {
-  const _PaymentMix({required this.rows, required this.rangeTotalMinor});
-
-  final List<PaymentMixRow> rows;
-  final int rangeTotalMinor;
-
-  @override
-  Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      mainAxisSize: MainAxisSize.min,
-      children: [
-        Semantics(
-          header: true,
-          child: Text('Payment methods', style: theme.textTheme.titleMedium),
-        ),
-        const SizedBox(height: DukaSpacing.sm),
-        if (rows.isEmpty)
-          const Text('Nothing taken in this period.')
-        else
-          SimplePosChart(
-            title: '',
-            semanticsLabel: describePaymentMix(rows, rangeTotalMinor),
-            axis: PosChartAxis.horizontal,
-            bars: [
-              for (final row in rows)
-                PosChartBar(
-                  label: row.label,
-                  value: row.salesMinor,
-                  valueLabel: formatMoney(row.sales),
-                ),
-            ],
-          ),
-      ],
-    );
-  }
-}
-
-/// Out of stock first, then what is running low.
-class _StockSection extends StatelessWidget {
-  const _StockSection({required this.outOfStock, required this.lowStock});
-
-  final List<Product> outOfStock;
-  final List<Product> lowStock;
-
-  static const int shown = 10;
-
-  @override
-  Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      mainAxisSize: MainAxisSize.min,
-      children: [
-        Semantics(
-          header: true,
-          child: Text('Stock', style: theme.textTheme.titleMedium),
-        ),
-        const SizedBox(height: DukaSpacing.sm),
-        if (outOfStock.isEmpty && lowStock.isEmpty)
-          const Padding(
-            padding: EdgeInsets.symmetric(vertical: DukaSpacing.sm),
-            child: Text('Everything is above its reorder level.'),
-          )
-        else ...[
-          if (outOfStock.isNotEmpty)
-            _StockList(
-              title: 'Out of stock',
-              icon: Icons.remove_shopping_cart_outlined,
-              colour: DukaColors.danger,
-              products: outOfStock.take(shown).toList(),
-              total: outOfStock.length,
-            ),
-          if (outOfStock.isNotEmpty && lowStock.isNotEmpty)
-            const SizedBox(height: DukaSpacing.md),
-          if (lowStock.isNotEmpty)
-            _StockList(
-              title: 'Running low',
-              icon: Icons.trending_down,
-              colour: DukaColors.warning,
-              products: lowStock.take(shown).toList(),
-              total: lowStock.length,
-            ),
-          const SizedBox(height: DukaSpacing.sm),
-          Text(
-            'Open Inventory from the tab bar to reorder.',
-            style: theme.textTheme.bodySmall,
-          ),
-        ],
-      ],
-    );
-  }
-}
-
-class _StockList extends StatelessWidget {
-  const _StockList({
-    required this.title,
-    required this.icon,
-    required this.colour,
-    required this.products,
-    required this.total,
-  });
-
-  final String title;
-  final IconData icon;
-  final Color colour;
-  final List<Product> products;
-  final int total;
-
-  @override
-  Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    return Card(
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          ListTile(
-            dense: true,
-            leading: Icon(icon, color: colour),
-            title: Text(title, style: theme.textTheme.titleMedium),
-            // The count is the reason the section exists, so it is not hidden
-            // behind a list the reader has to count.
-            trailing: Text('$total'),
-          ),
-          for (final product in products)
-            Padding(
-              padding: const EdgeInsets.fromLTRB(
-                  DukaSpacing.lg, 0, DukaSpacing.lg, DukaSpacing.sm),
-              child: Row(
-                children: [
-                  Expanded(
-                    child: Text(product.name, style: theme.textTheme.bodyMedium),
-                  ),
-                  const SizedBox(width: DukaSpacing.sm),
-                  Text(
-                    '${_qty(product.stockQty)} left',
-                    style: TextStyle(color: colour, fontWeight: FontWeight.w600),
-                  ),
-                ],
+            const SizedBox(height: 8),
+            Align(
+              alignment: AlignmentDirectional.centerStart,
+              child: TextButton(
+                onPressed: () => onRetry(),
+                child: const Text('Try again'),
               ),
             ),
-          if (total > products.length)
-            Padding(
-              padding: const EdgeInsets.fromLTRB(
-                  DukaSpacing.lg, 0, DukaSpacing.lg, DukaSpacing.md),
-              child: Text('and ${total - products.length} more',
-                  style: theme.textTheme.bodySmall),
-            ),
-        ],
+          ],
+        ),
       ),
     );
   }
+}
 
-  static String _qty(double value) =>
-      value == value.roundToDouble() ? value.toStringAsFixed(0) : value.toStringAsFixed(1);
+/// Reorder stock from the report, rather than telling the owner where to go.
+class OpenInventoryAction extends StatelessWidget {
+  const OpenInventoryAction({super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    final AppColors colors = AppColors.of(context);
+    return Semantics(
+      button: true,
+      label: 'Open Inventory to reorder',
+      child: ExcludeSemantics(
+        child: Align(
+          alignment: AlignmentDirectional.centerStart,
+          child: TextButton.icon(
+            onPressed: () =>
+                context.read<HomeShellTabs>().goTo(AppDestination.inventory),
+            icon: const Icon(Icons.inventory_2_outlined),
+            label: const Text('Reorder in Inventory'),
+            style: TextButton.styleFrom(
+              foregroundColor: colors.accent,
+              minimumSize: const Size(0, 44),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
 }

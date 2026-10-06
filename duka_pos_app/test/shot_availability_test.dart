@@ -105,8 +105,7 @@ void main() {
     });
 
     test('the drink is named, so the fix is obvious', () {
-      final verdict =
-          shotAvailability(spirit(name: 'AAA Tusker'), cup(), 0);
+      final verdict = shotAvailability(spirit(name: 'AAA Tusker'), cup(), 0);
       expect(verdict.reason, contains('AAA Tusker'));
     });
   });
