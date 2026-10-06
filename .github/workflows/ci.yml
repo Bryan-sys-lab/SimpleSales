@@ -54,27 +54,19 @@ jobs:
       - name: Run tests
         run: flutter test --reporter expanded
 
-      # A release APK build exercises the part of the pipeline that analyze and
+      # A debug APK build exercises the part of the pipeline that analyze and
       # test cannot see: the Gradle configuration, AGP/manifest wiring, and the
-      # native toolchain.
-      - name: Build release APK
-        run: flutter build apk --release
+      # native toolchain. Release builds require the signing keystore, which is
+      # intentionally absent from this secret-free validation job — signing only
+      # happens in release.yml during a tag-triggered release — so debug is the
+      # variant that verifies the Android toolchain here.
+      - name: Build debug APK (verifies the Android build still configures)
+        run: flutter build apk --debug
 
-      - name: Build release app bundle
-        run: flutter build appbundle --release
-
-      - name: Upload APK artifact
+      - name: Upload debug APK artifact
         uses: actions/upload-artifact@v4
         if: success()
         with:
-          name: duka-pos-release-apk
-          path: duka_pos_app/build/app/outputs/flutter-apk/app-release.apk
-          retention-days: 30
-
-      - name: Upload App Bundle artifact
-        uses: actions/upload-artifact@v4
-        if: success()
-        with:
-          name: duka-pos-release-aab
-          path: duka_pos_app/build/app/outputs/bundle/release/app-release.aab
+          name: duka-pos-debug-apk
+          path: duka_pos_app/build/app/outputs/flutter-apk/app-debug.apk
           retention-days: 30
