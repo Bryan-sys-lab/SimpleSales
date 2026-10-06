@@ -1,7 +1,9 @@
 name: CI
 
 # Pull-request validation: catches broken Dart and broken Android builds before
-# anything reaches main. Release signing is never involved here.
+# anything reaches main. When the signing secret is available (pushes to main and
+# same-repo PRs) it also produces a signed release APK as an artifact; fork PRs
+# cannot read secrets and fall back to analyze + test only.
 #
 # `.github/**` rather than naming this file and the shared action, because the
 # narrower list was a trap: a commit that changed only `release.yml` or
@@ -40,6 +42,14 @@ jobs:
     defaults:
       run:
         working-directory: duka_pos_app
+    env:
+      # Fork pull requests cannot read repository secrets, so on one they never
+      # see a keystore here. Gate the release build on the secret's presence: a
+      # fork PR still asserts that analyze + test pass, but skips signing and the
+      # APK upload rather than failing the job over a missing secret. On pushes
+      # to main and same-repo PRs the secret is present and the signed release
+      # APK is built and uploaded below.
+      BUILD_RELEASE: ${{ secrets.ANDROID_KEYSTORE_BASE64 != '' }}
 
     steps:
       - name: Check out source
@@ -54,19 +64,72 @@ jobs:
       - name: Run tests
         run: flutter test --reporter expanded
 
-      # A debug APK build exercises the part of the pipeline that analyze and
+      # A release APK build exercises the part of the pipeline that analyze and
       # test cannot see: the Gradle configuration, AGP/manifest wiring, and the
-      # native toolchain. Release builds require the signing keystore, which is
-      # intentionally absent from this secret-free validation job — signing only
-      # happens in release.yml during a tag-triggered release — so debug is the
-      # variant that verifies the Android toolchain here.
-      - name: Build debug APK (verifies the Android build still configures)
-        run: flutter build apk --debug
+      # native toolchain. Unlike a debug build it is *signed*, so the release
+      # keystore is reconstructed only inside this ephemeral runner from the same
+      # secret release.yml uses (rebuilt, used, and deleted before the job ends).
+      # The signing steps only run when BUILD_RELEASE is true (see the env guard
+      # above), so a fork PR that cannot supply the secret is not failed here.
+      - name: Reconstruct the release keystore
+        if: ${{ env.BUILD_RELEASE == 'true' }}
+        shell: bash
+        env:
+          KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+          KEYSTORE_PASSWORD: ${{ secrets.KEYSTORE_PASSWORD }}
+          KEY_ALIAS: ${{ secrets.KEY_ALIAS }}
+          KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
+        run: |
+          set -euo pipefail
+          for var in KEYSTORE_BASE64 KEYSTORE_PASSWORD KEY_ALIAS; do
+            if [ -z "${!var}" ]; then
+              echo "::error::Secret ${var} is not set. Add it under Settings > Secrets and variables > Actions."
+              exit 1
+            fi
+          done
 
-      - name: Upload debug APK artifact
+          # KEY_PASSWORD is optional and deliberately so. A keystore made with a
+          # plain `keytool -genkeypair` and no -keypass shares one password between
+          # the store and the key, and this project's key.properties has no
+          # keyPassword entry at all. When it is supplied it wins.
+          KEY_PASSWORD="${KEY_PASSWORD:-$KEYSTORE_PASSWORD}"
+
+          echo "$KEYSTORE_BASE64" | base64 --decode > "android/duka-pos-release.jks"
+
+          # Fail here rather than deep inside Gradle if the secret is corrupt or
+          # the passwords are wrong — the message is otherwise very opaque.
+          keytool -list -keystore "android/duka-pos-release.jks" \
+            -storepass "$KEYSTORE_PASSWORD" -alias "$KEY_ALIAS" > /dev/null
+
+          # Consumed by android/app/build.gradle.kts. storeFile is written as an
+          # absolute path because it is resolved with Project.file() from the
+          # :app module directory, and the workspace path is not known until run
+          # time. The file is gitignored, so it never enters the repository.
+          cat > android/key.properties <<EOF
+          storeFile=$GITHUB_WORKSPACE/duka_pos_app/android/duka-pos-release.jks
+          storePassword=$KEYSTORE_PASSWORD
+          keyAlias=$KEY_ALIAS
+          keyPassword=$KEY_PASSWORD
+          EOF
+          chmod 600 android/key.properties
+
+      - name: Build release APK
+        if: ${{ env.BUILD_RELEASE == 'true' }}
+        run: flutter build apk --release
+
+      - name: Upload release APK artifact
+        if: ${{ env.BUILD_RELEASE == 'true' }}
         uses: actions/upload-artifact@v4
-        if: success()
         with:
-          name: duka-pos-debug-apk
-          path: duka_pos_app/build/app/outputs/flutter-apk/app-debug.apk
+          name: duka-pos-release-apk
+          path: duka_pos_app/build/app/outputs/flutter-apk/app-release.apk
           retention-days: 30
+
+      # Scrub signing material from the runner even if the build above failed,
+      # so a keystore never outlives the job that reconstructed it.
+      - name: Remove signing material from the workspace
+        if: always()
+        shell: bash
+        run: |
+          rm -f android/key.properties android/duka-pos-release.jks
+          rm -f "$RUNNER_TEMP"/duka_pos_keystore.jks 2>/dev/null || true
