@@ -54,9 +54,16 @@ jobs:
       - name: Run tests
         run: flutter test --reporter expanded
 
-      # A debug APK build exercises the part of the pipeline that analyze and
+      # A release APK build exercises the part of the pipeline that analyze and
       # test cannot see: the Gradle configuration, AGP/manifest wiring, and the
-      # native toolchain. Release signing is skipped for a debug build, so no
-      # secret is required to run this job.
-      - name: Build debug APK (verifies the Android build still configures)
-        run: flutter build apk --debug
+      # native toolchain.
+      - name: Build release APK
+        run: flutter build apk --release
+
+      - name: Upload APK artifact
+        uses: actions/upload-artifact@v4
+        if: success()
+        with:
+          name: duka-pos-release-apk
+          path: duka_pos_app/build/app/outputs/flutter-apk/app-release.apk
+          retention-days: 30
