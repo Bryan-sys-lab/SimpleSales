@@ -546,7 +546,7 @@ SELECT name FROM staff GROUP BY name HAVING COUNT(*) = 1
     //
     // An offline "Paid" tap records the sale with `payment_verified = 0`. It is
     // *not* a lesser kind of sale — the money was taken — but it has not been
-    // matched to a PayHero receipt, and the owner needs to be able to find those
+    // matched to a payment receipt, and the owner needs to be able to find those
     // and reconcile them. Defaults to 1 so every pre-existing row is verified.
     await db.execute(
         'ALTER TABLE sales ADD COLUMN payment_verified INTEGER NOT NULL DEFAULT 1');
@@ -2370,7 +2370,7 @@ SELECT name FROM staff GROUP BY name HAVING COUNT(*) = 1
   /// Marks an offline payment as confirmed once it has been matched.
   ///
   /// The counterpart to `getUnverifiedSales`: the owner finds the row, checks it
-  /// against PayHero, and confirms it here. [reference] replaces the provisional
+  /// against the payment provider, and confirms it here. [reference] replaces
   /// one, because the real transaction code is what makes the match auditable
   /// later.
   ///

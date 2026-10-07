@@ -730,7 +730,7 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get sellMpesaOfflineRecorded =>
-      'No connection, so no M-Pesa prompt was sent. The sale is recorded and will show as unconfirmed until you check it against PayHero.';
+      'No connection, so no M-Pesa prompt was sent. The sale is recorded and will show as unconfirmed until you reconcile it.';
 
   @override
   String get sellMpesaPaymentSuccessful =>
@@ -1447,7 +1447,7 @@ class AppLocalizationsEn extends AppLocalizations {
       'This shop needs to be registered with the backend once. Sign in with the shop identity account; staff continue using local PINs for the till.';
 
   @override
-  String get settingsConnectMpesaTitle => 'Connect M-Pesa (via PayHero)';
+  String get settingsConnectMpesaTitle => 'Connect M-Pesa';
 
   @override
   String get settingsCreateShopFailed =>
@@ -1488,7 +1488,7 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get settingsIdentityNotLinkedMessage =>
-      'Selling works fully offline. Connect to the internet and sign in with your Keycloak account to enable M-Pesa and analytics.';
+      'Selling works fully offline. Connect to the internet and sign in to enable M-Pesa and analytics.';
 
   @override
   String get settingsIdentityNotLinkedTitle => 'Online identity not linked yet';
@@ -1545,11 +1545,11 @@ class AppLocalizationsEn extends AppLocalizations {
       'Could not load shops. Connect to the internet and try again.';
 
   @override
-  String get settingsMpesaMethod => 'M-Pesa (via PayHero)';
+  String get settingsMpesaMethod => 'M-Pesa';
 
   @override
   String get settingsMpesaOffSubtitle =>
-      'Excluded — turn on to accept M-Pesa. Requires a one-time backend connection and a PayHero account.';
+      'Excluded — turn on to accept M-Pesa. Requires a one-time backend connection.';
 
   @override
   String get settingsMpesaOnSubtitle =>
@@ -1586,11 +1586,11 @@ class AppLocalizationsEn extends AppLocalizations {
   }
 
   @override
-  String get settingsPayHeroChannelHint =>
-      'Find your channel ID on your PayHero dashboard, under your wallet/channel settings.';
+  String get settingsPaymentChannelHint =>
+      'Find your channel ID on the payment provider dashboard, under your wallet/channel settings.';
 
   @override
-  String get settingsPayHeroChannelId => 'PayHero channel ID';
+  String get settingsPaymentChannelId => 'Payment channel ID';
 
   @override
   String get settingsPaymentMethodsSection => 'Payment methods';
@@ -1777,7 +1777,7 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get settingsStaffSectionHelp =>
-      'The shop admin creates and disables manager and cashier profiles. Their local PIN is the offline till unlock; the same profile is synchronized to Keycloak-backed analytics when online.';
+      'The shop admin creates and disables manager and cashier profiles. Their local PIN is the offline till unlock; the same profile is synchronized for online analytics when connected.';
 
   @override
   String get settingsSwitchAction => 'Switch';
@@ -2447,8 +2447,8 @@ class AppLocalizationsEn extends AppLocalizations {
       'Local encrypted backups and their key were erased.';
 
   @override
-  String get settingsPayHeroChannelIdRequired =>
-      'Enter a numeric PayHero channel ID';
+  String get settingsPaymentChannelIdRequired =>
+      'Enter a numeric payment channel ID';
 
   @override
   String get settingsCloseAction => 'Close';

@@ -449,12 +449,12 @@ class _SettingsScreenState extends State<SettingsScreen> {
                   controller: channelId,
                   decoration: InputDecoration(
                       labelText: AppLocalizations.of(context)
-                          .settingsPayHeroChannelId),
+                          .settingsPaymentChannelId),
                   keyboardType: TextInputType.number),
               const SizedBox(height: 4),
               Text(
-                'Find your channel ID on your PayHero dashboard, under your '
-                'wallet/channel settings.',
+                'Find your channel ID on the payment provider dashboard, '
+                'under your wallet/channel settings.',
                 style: AppTypography.of(context).bodySmall,
               ),
               if (error != null)
@@ -478,7 +478,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                       if (cid == null) {
                         setDialogState(() => error =
                             AppLocalizations.of(context)
-                                .settingsPayHeroChannelIdRequired);
+                                .settingsPaymentChannelIdRequired);
                         return;
                       }
                       setDialogState(() {
@@ -519,7 +519,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
     return result;
   }
 
-  /// Completes the authoritative Keycloak link for an offline-created shop.
+  /// Completes the authoritative online link for an offline-created shop.
   /// The backend requires the verified token email to match the email captured
   /// during local account creation, so a mismatch is surfaced to the owner
   /// instead of silently linking the wrong identity.

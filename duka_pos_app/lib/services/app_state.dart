@@ -34,8 +34,8 @@ class AppState extends ChangeNotifier {
   /// owner session has no staff row and reports everything.
   int? currentStaffId;
 
-  /// True when the local shop exists but has not yet been linked to a Keycloak
-  /// identity. Selling stays fully available offline; this only drives the
+  /// True when the local shop exists but has not yet been linked to an
+  /// online identity. Selling stays fully available offline; this only drives the
   /// "verify online" reminder in Settings.
   bool identityLinkPending = false;
 
@@ -137,7 +137,7 @@ class AppState extends ChangeNotifier {
   /// one delivered late.
   ///
   /// Online sign-out is therefore started but not awaited: [tearDownOnlineSession]
-  /// clears the stored OIDC tokens and asks Keycloak to end its session. A till
+  /// clears the stored OIDC tokens and ends the online session. A till
   /// that only ever works offline has nothing to tear down and this is a no-op.
   ///
   /// Deliberately does **not** touch the open shift or the till's float. A shift
@@ -153,7 +153,7 @@ class AppState extends ChangeNotifier {
     unawaited(tearDownOnlineSession());
   }
 
-  /// Ends the Keycloak session and forgets the tokens.
+  /// Ends the online session and forgets the tokens.
   ///
   /// Split out from [signOut] so the network teardown can also be awaited
   /// deliberately — by a "sign out everywhere" path, or a test — without making

@@ -1250,7 +1250,7 @@ abstract class AppLocalizations {
   /// No description provided for @sellMpesaOfflineRecorded.
   ///
   /// In en, this message translates to:
-  /// **'No connection, so no M-Pesa prompt was sent. The sale is recorded and will show as unconfirmed until you check it against PayHero.'**
+  /// **'No connection, so no M-Pesa prompt was sent. The sale is recorded and will show as unconfirmed until you reconcile it.'**
   String get sellMpesaOfflineRecorded;
 
   /// No description provided for @sellMpesaPaymentSuccessful.
@@ -2307,7 +2307,7 @@ abstract class AppLocalizations {
   /// No description provided for @settingsConnectMpesaTitle.
   ///
   /// In en, this message translates to:
-  /// **'Connect M-Pesa (via PayHero)'**
+  /// **'Connect M-Pesa'**
   String get settingsConnectMpesaTitle;
 
   /// No description provided for @settingsCreateShopFailed.
@@ -2379,7 +2379,7 @@ abstract class AppLocalizations {
   /// No description provided for @settingsIdentityNotLinkedMessage.
   ///
   /// In en, this message translates to:
-  /// **'Selling works fully offline. Connect to the internet and sign in with your Keycloak account to enable M-Pesa and analytics.'**
+  /// **'Selling works fully offline. Connect to the internet and sign in to enable M-Pesa and analytics.'**
   String get settingsIdentityNotLinkedMessage;
 
   /// No description provided for @settingsIdentityNotLinkedTitle.
@@ -2440,13 +2440,13 @@ abstract class AppLocalizations {
   /// No description provided for @settingsMpesaMethod.
   ///
   /// In en, this message translates to:
-  /// **'M-Pesa (via PayHero)'**
+  /// **'M-Pesa'**
   String get settingsMpesaMethod;
 
   /// No description provided for @settingsMpesaOffSubtitle.
   ///
   /// In en, this message translates to:
-  /// **'Excluded — turn on to accept M-Pesa. Requires a one-time backend connection and a PayHero account.'**
+  /// **'Excluded — turn on to accept M-Pesa. Requires a one-time backend connection.'**
   String get settingsMpesaOffSubtitle;
 
   /// No description provided for @settingsMpesaOnSubtitle.
@@ -2503,17 +2503,17 @@ abstract class AppLocalizations {
   /// **'{size}mm roll'**
   String settingsPaperRoll(Object size);
 
-  /// No description provided for @settingsPayHeroChannelHint.
+  /// No description provided for @settingsPaymentChannelHint.
   ///
   /// In en, this message translates to:
-  /// **'Find your channel ID on your PayHero dashboard, under your wallet/channel settings.'**
-  String get settingsPayHeroChannelHint;
+  /// **'Find your channel ID on the payment provider dashboard, under your wallet/channel settings.'**
+  String get settingsPaymentChannelHint;
 
-  /// No description provided for @settingsPayHeroChannelId.
+  /// No description provided for @settingsPaymentChannelId.
   ///
   /// In en, this message translates to:
-  /// **'PayHero channel ID'**
-  String get settingsPayHeroChannelId;
+  /// **'Payment channel ID'**
+  String get settingsPaymentChannelId;
 
   /// No description provided for @settingsPaymentMethodsSection.
   ///
@@ -2800,7 +2800,7 @@ abstract class AppLocalizations {
   /// No description provided for @settingsStaffSectionHelp.
   ///
   /// In en, this message translates to:
-  /// **'The shop admin creates and disables manager and cashier profiles. Their local PIN is the offline till unlock; the same profile is synchronized to Keycloak-backed analytics when online.'**
+  /// **'The shop admin creates and disables manager and cashier profiles. Their local PIN is the offline till unlock; the same profile is synchronized for online analytics when connected.'**
   String get settingsStaffSectionHelp;
 
   /// No description provided for @settingsSwitchAction.
@@ -3902,11 +3902,11 @@ abstract class AppLocalizations {
   /// **'Local encrypted backups and their key were erased.'**
   String get settingsBackupsErased;
 
-  /// No description provided for @settingsPayHeroChannelIdRequired.
+  /// No description provided for @settingsPaymentChannelIdRequired.
   ///
   /// In en, this message translates to:
-  /// **'Enter a numeric PayHero channel ID'**
-  String get settingsPayHeroChannelIdRequired;
+  /// **'Enter a numeric payment channel ID'**
+  String get settingsPaymentChannelIdRequired;
 
   /// No description provided for @settingsCloseAction.
   ///

@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
@@ -204,17 +206,11 @@ class _OwnerSetupScreenState extends State<OwnerSetupScreen> {
         workspaceKey: await WorkspaceService.activeWorkspaceKey(),
         shopName: owner.shopName,
       );
-      // Online identity/tenant provisioning is opportunistic. The shop still
-      // completes setup fully offline; a later owner action can retry it.
-      try {
-        await BackendService.linkShopToBackend(
-          shopName: owner.shopName,
-          ownerName: owner.name,
-          email: owner.email,
-        );
-      } catch (_) {
-        // Do not turn an offline-first local setup into an online dependency.
-      }
+      unawaited(BackendService.linkShopToBackend(
+        shopName: owner.shopName,
+        ownerName: owner.name,
+        email: owner.email,
+      ).catchError((_) {}));
       if (!mounted) return;
       // Land the person straight into the new shop. Choosing from a shop list
       // used to happen here, and it dumped them on a landing page asking to
@@ -511,7 +507,7 @@ class _SetupFields extends StatelessWidget {
           SizedBox(height: spacing.md),
           _SetupField(
             controller: email,
-            label: 'Owner email (Keycloak identity)',
+            label: 'Owner email',
             keyboardType: TextInputType.emailAddress,
             autofillHints: const <String>[AutofillHints.email],
             validator: validateEmail,

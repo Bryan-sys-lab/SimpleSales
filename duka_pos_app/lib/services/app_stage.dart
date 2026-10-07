@@ -67,17 +67,13 @@ AppStage resolveAppStage({
   if (hasDatabaseFailure) return AppStage.databaseFailed;
 
   if (!isSignedIn) {
-    // No shop at all means there is nothing to sign in to — no roster, no PIN
-    // hash — so setup is the only honest destination.
-    if (!hasShop) return AppStage.settingUp;
+    if (!hasShop) return AppStage.chooser;
     switch (chooserIntent) {
       case AppChooserIntent.signIn:
         return AppStage.signingIn;
       case AppChooserIntent.setUp:
         return AppStage.settingUp;
       case AppChooserIntent.addShop:
-        // Adding a *second* shop still needs a PIN for the new shop's owner
-        // unless one is carried across, so it reuses the setup screen.
         return AppStage.settingUp;
     }
   }

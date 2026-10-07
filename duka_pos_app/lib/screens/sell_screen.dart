@@ -1051,9 +1051,10 @@ class _SellScreenState extends State<SellScreen> {
   ///
   /// Records `payment_verified = false` rather than pretending the payment
   /// happened. The distinction is what makes the day's figures honest and gives
-  /// the owner something specific to reconcile against PayHero once there is a
-  /// signal: "we recorded 14,000 of unverified M-Pesa" is actionable, whereas a
-  /// sale quietly booked as confirmed is a number nobody can trust.
+  /// the owner something specific to reconcile against the payment provider
+  /// once there is a signal: "we recorded 14,000 of unverified M-Pesa" is
+  /// actionable, whereas a sale quietly booked as confirmed is a number nobody
+  /// can trust.
   Future<void> _recordUnverifiedMpesa({required String phoneNumber}) async {
     final state = context.read<AppState>();
     final items = _cart
@@ -1087,7 +1088,7 @@ class _SellScreenState extends State<SellScreen> {
       ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
         content: Text(
           'No connection, so no M-Pesa prompt was sent. The sale is recorded and '
-          'will show as unconfirmed until you check it against PayHero.',
+          'will show as unconfirmed until you reconcile it.',
         ),
       ));
       unawaited(_afterSale(saleId,

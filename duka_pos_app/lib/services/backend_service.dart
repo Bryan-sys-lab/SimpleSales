@@ -94,7 +94,7 @@ class BackendService {
       {required String tenantId, required int channelId}) async {
     await requireSystemAdmin();
     await _dio.patch('$backendUrl/system/tenants/$tenantId/settings',
-        data: {'mpesaEnabled': true, 'payheroChannelId': channelId});
+        data: {'mpesaEnabled': true, 'paymentChannelId': channelId});
   }
 
   /// One-time backend registration after the owner completes OIDC login.
@@ -152,7 +152,7 @@ class BackendService {
 
     await _dio.patch('$backendUrl/tenant/settings', data: {
       'mpesaEnabled': enabled,
-      if (channelId != null) 'payheroChannelId': channelId,
+      if (channelId != null) 'paymentChannelId': channelId,
     });
   }
 
