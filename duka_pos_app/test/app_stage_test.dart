@@ -56,6 +56,36 @@ void main() {
       );
     });
 
+    test('a till with no shop still reaches setup when the chooser asks for it', () {
+      expect(
+        resolveAppStage(
+          isLoading: false,
+          hasDatabaseFailure: false,
+          hasShop: false,
+          isSignedIn: false,
+          isAdmin: true,
+          onboardingComplete: false,
+          chooserIntent: AppChooserIntent.setUp,
+        ),
+        AppStage.settingUp,
+      );
+    });
+
+    test('a till with no shop reaches setup for add-shop intent too', () {
+      expect(
+        resolveAppStage(
+          isLoading: false,
+          hasDatabaseFailure: false,
+          hasShop: false,
+          isSignedIn: false,
+          isAdmin: true,
+          onboardingComplete: false,
+          chooserIntent: AppChooserIntent.addShop,
+        ),
+        AppStage.settingUp,
+      );
+    });
+
     test('an existing shop with nobody signed in reaches the PIN pad', () {
       expect(
         resolveAppStage(

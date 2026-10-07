@@ -67,7 +67,10 @@ AppStage resolveAppStage({
   if (hasDatabaseFailure) return AppStage.databaseFailed;
 
   if (!isSignedIn) {
-    if (!hasShop) return AppStage.chooser;
+    if (!hasShop) {
+      if (chooserIntent == AppChooserIntent.signIn) return AppStage.chooser;
+      return AppStage.settingUp;
+    }
     switch (chooserIntent) {
       case AppChooserIntent.signIn:
         return AppStage.signingIn;
