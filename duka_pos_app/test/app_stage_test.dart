@@ -11,6 +11,8 @@
 
 import 'package:flutter_test/flutter_test.dart';
 import 'package:duka_pos/services/app_stage.dart';
+import 'package:duka_pos/routing/app_stage_controller.dart';
+import 'package:duka_pos/services/app_state.dart';
 
 void main() {
   group('resolveAppStage', () {
@@ -226,6 +228,37 @@ void main() {
 
       expect(asOwner, AppStage.onboarding);
       expect(asCashier, AppStage.ready);
+    });
+  });
+
+  group('AppStageController', () {
+    test('choose updates intent and notifies listeners', () {
+      final AppState state = AppState();
+      final AppStageController controller = AppStageController(state);
+
+      expect(controller.intent, AppChooserIntent.signIn);
+      expect(controller.snapshot.stage, AppStage.loading);
+
+      controller.choose(AppChooserIntent.setUp);
+      expect(controller.intent, AppChooserIntent.setUp);
+
+      controller.choose(AppChooserIntent.addShop);
+      expect(controller.intent, AppChooserIntent.addShop);
+
+      controller.choose(AppChooserIntent.signIn);
+      expect(controller.intent, AppChooserIntent.signIn);
+    });
+
+    test('choose is a no-op when the intent is already current', () {
+      final AppState state = AppState();
+      final AppStageController controller = AppStageController(state);
+
+      int notifyCount = 0;
+      controller.addListener(() => notifyCount++);
+
+      controller.choose(AppChooserIntent.signIn);
+      expect(notifyCount, 0,
+          reason: 'choosing the same intent twice should not notify');
     });
   });
 }
