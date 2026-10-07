@@ -17,7 +17,15 @@ import '../services/auto_sync_service.dart';
 /// It holds no navigation. It only reports what is true; where to go is
 /// `appRedirect`'s problem.
 class AppStageController extends ChangeNotifier {
-  AppStageController(this._state);
+  AppStageController(this._state) {
+    // The router's `refreshListenable` is this controller, not [AppState].
+    // Without forwarding [AppState] changes, a successful sign-in — which
+    // updates [AppState] and calls its `notifyListeners` — never reaches the
+    // router, so the redirect never re-runs and the user stays frozen on the
+    // PIN pad or setup screen. Forwarding makes every session transition
+    // observable to the guard immediately.
+    _state.addListener(notifyListeners);
+  }
 
   final AppState _state;
 
@@ -63,6 +71,7 @@ class AppStageController extends ChangeNotifier {
 
   @override
   void dispose() {
+    _state.removeListener(notifyListeners);
     _disposed = true;
     super.dispose();
   }

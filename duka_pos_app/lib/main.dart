@@ -1,6 +1,9 @@
+import 'dart:async';
+
 import 'package:flutter/foundation.dart';
 import 'package:go_router/go_router.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
 import 'package:provider/single_child_widget.dart';
 import 'package:sentry_flutter/sentry_flutter.dart';
@@ -116,11 +119,44 @@ GoRouter appRouter(BuildContext context) => buildAppRouter(
 class _ThemedApp extends StatelessWidget {
   const _ThemedApp();
 
+  static bool _exitRequested = false;
+  static Timer? _exitTimer;
+
+  void _onPopInvoked(BuildContext context, bool didPop, Object? result) {
+    if (didPop) return;
+    final GoRouter router = context.read<GoRouter>();
+    if (router.canPop()) {
+      router.pop();
+      return;
+    }
+    if (_exitRequested) {
+      _exitTimer?.cancel();
+      _exitTimer = null;
+      _exitRequested = false;
+      SystemNavigator.pop();
+      return;
+    }
+    _exitRequested = true;
+    _exitTimer = Timer(const Duration(seconds: 2), () {
+      _exitRequested = false;
+    });
+    final navigatorContext = rootNavigatorKey.currentContext;
+    if (navigatorContext != null) {
+      ScaffoldMessenger.of(navigatorContext).showSnackBar(
+        const SnackBar(content: Text('Press back again to exit')),
+      );
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final ({ThemeData light, ThemeData dark}) themes = buildDukaThemes();
 
-    return MaterialApp.router(
+    return PopScope(
+      canPop: false,
+      onPopInvokedWithResult: (bool didPop, Object? result) =>
+          _onPopInvoked(context, didPop, result),
+      child: MaterialApp.router(
       title: SimplePosBrand.appName,
       debugShowCheckedModeBanner: false,
       routerConfig: context.read<GoRouter>(),
@@ -158,6 +194,7 @@ class _ThemedApp extends StatelessWidget {
       // A theme change is a sudden luminance change the user did not cause.
       // Interpolating it renders a half-styled state no screen was laid out for.
       themeAnimationStyle: AnimationStyle.noAnimation,
+      ),
     );
   }
 }

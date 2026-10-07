@@ -1,12 +1,12 @@
 #!/usr/bin/env python3
-"""Generate every Simple POS launcher icon from one vector-ish definition.
+"""Generate every Simple POS launcher icon from the geometric S mark.
 
 Why a script and not checked-in binaries alone: the mark is described once,
-here, as geometry, and every size is rendered from that single description. A
-hand-painted PNG per density drifts — the 192 gets a nudged tooth, the 48 gets
-a heavier bezel — and the drift is invisible until someone notices the app
-looks different on two launchers. Rendering all 5 Android densities, all 3
-adaptive layers and all 19 iOS slots from one function means they cannot
+here, and every size is rendered from that single source. A hand-painted PNG
+per density drifts — the 192 gets a nudged tooth, the 48 gets a heavier
+bezel — and the drift is invisible until someone notices the app looks
+different on two launchers. Rendering all 5 Android densities, all 3
+adaptive layers and all 19 iOS slots from one pipeline means they cannot
 disagree.
 
 Colours are read from lib/theme/app_theme.dart (DukaColors) and are NOT chosen
@@ -21,53 +21,29 @@ from __future__ import annotations
 
 import json
 import os
-from PIL import Image, ImageDraw
+from PIL import Image, ImageChops, ImageDraw
 
 # ---------------------------------------------------------------------------
 # Palette — mirrors DukaColors in lib/theme/app_theme.dart
 # ---------------------------------------------------------------------------
-INK = (0x25, 0x1A, 0x1D, 0xFF)  # DukaColors.ink        #251A1D
-PAPER = (0xFF, 0xFF, 0xFF, 0xFF)  # DukaColors.onPrimary #FFFFFF
-WINE = (0x6E, 0x26, 0x38, 0xFF)  # DukaColors.primary   #6E2638
+INK = (0x25, 0x1A, 0x1D, 0xFF)       # DukaColors.ink        #251A1D
+PAPER = (0xFF, 0xFF, 0xFF, 0xFF)      # DukaColors.onPrimary  #FFFFFF
+WINE = (0x6E, 0x26, 0x38, 0xFF)       # DukaColors.primary    #6E2638
 
 # ---------------------------------------------------------------------------
-# The mark: a receipt with a torn bottom edge rising out of a POS terminal.
-#
-# Coordinates are fractions of the canvas, origin top-left. Every shape is a
-# solid fill on purpose:
-#
-#  * No thin strokes and no interior hairlines. At 48x48 a 2px line is either
-#    gone or a smudge, and the mark has to survive being shrunk, tinted and
-#    masked by three different launchers.
-#  * The only interior colour is the wine screen inside the terminal body, and
-#    it is a solid block rather than a line. Monochrome icons discard it
-#    entirely and still read, because each shape is independently identifiable.
-#  * PAPER on INK is ~17:1 contrast. WINE on INK is ~1.6:1, which is why the
-#    wine is only ever used *inside* a white shape (WINE on PAPER is ~10:1).
+# The mark: the geometric "S" — a single continuous white curve with a wine
+# accent dot. The source PNG is exported from the design tool's SVG and
+# rendered on a solid ink background; this script strips that background so
+# the mark can composited onto whatever surface the platform provides.
 # ---------------------------------------------------------------------------
-RECEIPT = (0.335, 0.130, 0.665, 0.600)  # left, top, right, bottom
-RECEIPT_RADIUS = 0.024
-TEETH = 4  # torn edge: 4 points and 3 notches
-NOTCH_INSET = 0.012  # keeps the notches clear of the rounded corners
-NOTCH_APEX = 0.540  # how far each notch cuts back up into the paper
-
-TERMINAL = (0.150, 0.660, 0.850, 0.868)
-TERMINAL_RADIUS = 0.046
-# The wine screen sits flush with the terminal's top edge and is inset from its
-# sides, so the white terminal reads as a bezel around it and the strip of white
-# below it reads as the keypad. The screen takes the larger share on purpose: at
-# 48x48 the whole terminal is only 10px tall, and a screen/keypad split that is
-# too even collapses into one grey bar.
-SCREEN = (0.200, 0.660, 0.800, 0.790)
-SCREEN_RADIUS = 0.020
 
 # How much of the canvas the mark fills, per context. Each is set by how much
 # of the artwork the platform is about to throw away.
-SCALE_LEGACY = 0.92  # rounded square the user sees whole
-SCALE_APPLE = 1.00  # iOS masks to a squircle; this mark already has margins
+SCALE_LEGACY = 0.92    # rounded square the user sees whole
+SCALE_APPLE = 1.00     # iOS masks to a squircle; full canvas
 # Adaptive icons only guarantee the central 66/108 of the canvas, and a round
 # mask takes a 66dp circle out of that. 0.58 is the largest scale whose widest
-# corner (the terminal's bottom-left) still lands inside that circle.
+# point still lands inside that circle.
 SCALE_ADAPTIVE = 0.58
 LEGACY_BG_RADIUS = 0.225  # the legacy square's own corner radius
 
@@ -97,104 +73,76 @@ APPICONSET = os.path.join(
 )
 BRANDING = os.path.join(ROOT, "assets", "branding")
 
-
-def _px(value: float, size: int, scale: float) -> float:
-    """Map a mark coordinate onto the output canvas, honouring the scale."""
-    return (0.5 + (value - 0.5) * scale) * size
-
-
-def _radii(value: float, size: int, scale: float) -> float:
-    return value * scale * size
+_GEOMETRIC_S_SOURCE = os.path.join(
+    BRANDING, "stitch_simple_pos_launcher_icon",
+    "simple_pos_geometric_s_icon", "screen.png",
+)
 
 
-def paper_mask(size: int, scale: float) -> Image.Image:
-    """The white silhouette: receipt (with torn edge) plus terminal body.
+def _load_s_source() -> Image.Image:
+    """Load the geometric S source PNG and return it centred in a square canvas.
 
-    Returned as an 8-bit mask so the notches are real transparency rather than
-    a flood-fill of the background colour, which is what makes the same code
-    usable for the transparent adaptive and monochrome layers.
+    The source may be 512x520 (taller than wide) with a solid ink background.
+    We centre-crop to a square, upscale for supersampling, and strip the ink
+    background to transparency using fast C-level `ImageChops` operations so the
+    mark can be composited onto any platform-supplied background.
     """
-    s = size * SUPERSAMPLE
-    mask = Image.new("L", (s, s), 0)
-    draw = ImageDraw.Draw(mask)
+    src = Image.open(_GEOMETRIC_S_SOURCE).convert("RGBA")
+    # Centre-crop to square.
+    min_dim = min(src.size)
+    left = (src.size[0] - min_dim) // 2
+    top = (src.size[1] - min_dim) // 2
+    src = src.crop((left, top, left + min_dim, top + min_dim))
+    s = min_dim * SUPERSAMPLE
+    src = src.resize((s, s), Image.LANCZOS)
 
-    draw.rounded_rectangle(
-        tuple(_px(v, s, scale) for v in RECEIPT),
-        radius=_radii(RECEIPT_RADIUS, s, scale),
-        fill=255,
-    )
-    left, _, right, bottom = RECEIPT
-    segment = (right - left) / TEETH
-    for index in range(TEETH - 1):
-        start = left + index * segment + NOTCH_INSET
-        end = left + (index + 1) * segment - NOTCH_INSET
-        draw.polygon(
-            [
-                (_px(start, s, scale), _px(bottom, s, scale)),
-                (_px(end, s, scale), _px(bottom, s, scale)),
-                (_px((start + end) / 2, s, scale), _px(NOTCH_APEX, s, scale)),
-            ],
-            fill=0,
-        )
+    # Build a mask: pixels close to ink become transparent, everything else is kept.
+    ink_bg = Image.new("RGB", (s, s), INK[:3])
+    diff = ImageChops.difference(src.convert("RGB"), ink_bg)
+    diff_gray = diff.convert("L")
+    # Threshold: anything that differs from ink by >10 is part of the mark.
+    mask = diff_gray.point(lambda v: 255 if v > 10 else 0, mode="L")
 
-    draw.rounded_rectangle(
-        tuple(_px(v, s, scale) for v in TERMINAL),
-        radius=_radii(TERMINAL_RADIUS, s, scale),
-        fill=255,
-    )
-    return mask
-
-
-def screen_mask(size: int, scale: float) -> Image.Image:
-    """The wine screen punched into the terminal body."""
-    s = size * SUPERSAMPLE
-    mask = Image.new("L", (s, s), 0)
-    ImageDraw.Draw(mask).rounded_rectangle(
-        tuple(_px(v, s, scale) for v in SCREEN),
-        radius=_radii(SCREEN_RADIUS, s, scale),
-        fill=255,
-    )
-    return mask
-
-
-def _coloured(mask: Image.Image, rgba: tuple[int, int, int, int]) -> Image.Image:
-    layer = Image.new("RGBA", mask.size, rgba[:3] + (0,))
-    layer.putalpha(mask)
-    return layer
-
-
-def _flatten(mask: Image.Image, size: int) -> Image.Image:
-    """Downsample the supersampled mask to `size` with a clean edge."""
-    return mask.resize((size, size), Image.LANCZOS)
+    result = Image.new("RGBA", (s, s), (0, 0, 0, 0))
+    result.paste(src, (0, 0), mask)
+    return result
 
 
 def render_mark(size: int, scale: float) -> Image.Image:
-    """The full-colour mark on transparency, supersampled down to `size`.
+    """The full-colour geometric S mark on transparency.
 
-    The screen is composited *over* the paper, not under it: it is a cut-out
-    window in the white terminal body, so painting it first and the terminal
-    second hides it completely.
+    The wine dot is preserved: it is solid wine on white, which reads as its
+    own tone at every density and survives a monochrome pass because the
+    dot's alpha is non-zero.
     """
-    paper = _flatten(paper_mask(size, scale), size)
-    screen = _flatten(screen_mask(size, scale), size)
-    mark = Image.new("RGBA", (size, size), (0, 0, 0, 0))
-    mark.alpha_composite(_coloured(paper, PAPER))
-    mark.alpha_composite(_coloured(screen, WINE))
-    return mark
+    supersampled = _load_s_source()  # at SUPERSAMPLE * source_dim
+    # Scale the mark to fill `scale` fraction of the output canvas.
+    # Resizing directly from the supersampled source with LANCZOS provides
+    # natural anti-aliasing — no manual supersample/downsample needed.
+    mark_size = int(size * scale)
+    mark = supersampled.resize((mark_size, mark_size), Image.LANCZOS)
+    output = Image.new("RGBA", (size, size), (0, 0, 0, 0))
+    offset = (size - mark_size) // 2
+    output.alpha_composite(mark, (offset, offset))
+    return output
 
 
 def render_monochrome(size: int, scale: float) -> Image.Image:
-    """Solid silhouette for `android:monochrome`.
+    """Solid white silhouette for `android:monochrome`.
 
     No wine, no bezel: the launcher tints this one colour and supplies its own
-    background, so anything that survives as a separate tone would collapse.
+    background, so the entire mark (S stroke and wine dot) is collapsed to a
+    single white silhouette.
     """
-    paper = _flatten(paper_mask(size, scale), size)
-    return _coloured(paper, PAPER)
+    mark = render_mark(size, scale)
+    alpha = mark.split()[-1]  # alpha channel
+    result = Image.new("RGBA", (size, size), PAPER)
+    result.putalpha(alpha)
+    return result
 
 
 def render_legacy(size: int) -> Image.Image:
-    """Pre-API-26 launcher icon: rounded ink square, mark centred on it."""
+    """Pre-API-26 launcher icon: rounded ink square, S centred on it."""
     s = size * SUPERSAMPLE
     base = Image.new("RGBA", (s, s), (0, 0, 0, 0))
     ImageDraw.Draw(base).rounded_rectangle(
@@ -202,10 +150,13 @@ def render_legacy(size: int) -> Image.Image:
         radius=LEGACY_BG_RADIUS * s,
         fill=INK,
     )
-    mark = render_mark(size, SCALE_LEGACY)
-    base = base.resize((size, size), Image.LANCZOS)
-    base.alpha_composite(mark)
-    return base
+    # Render the mark at supersampled resolution, then downsample the base.
+    mark = _load_s_source()
+    mark_size = int(size * SCALE_LEGACY * SUPERSAMPLE)
+    mark = mark.resize((mark_size, mark_size), Image.LANCZOS)
+    offset = (s - mark_size) // 2
+    base.alpha_composite(mark, (offset, offset))
+    return base.resize((size, size), Image.LANCZOS)
 
 
 def render_apple(size: int) -> Image.Image:

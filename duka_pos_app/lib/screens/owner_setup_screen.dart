@@ -218,6 +218,8 @@ class _OwnerSetupScreenState extends State<OwnerSetupScreen> {
       await context.read<AppState>().loadOwner();
       if (!mounted) return;
       await context.read<AppState>().signInAsOwner();
+      if (!mounted) return;
+      setState(() => _saving = false);
       widget.onCreated?.call(owner.shopName);
     } catch (_) {
       if (!mounted) return;
