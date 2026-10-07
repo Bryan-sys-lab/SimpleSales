@@ -330,7 +330,14 @@ class _SetupLockup extends StatelessWidget {
       crossAxisAlignment: WrapCrossAlignment.center,
       spacing: spacing.md,
       children: const <Widget>[
-        SimplePosMark(size: 36, decorative: true),
+        Image(
+          image: AssetImage(
+            'assets/branding/stitch_simple_pos_launcher_icon/simple_pos_geometric_s_icon/screen.png',
+          ),
+          width: 36,
+          height: 36,
+          fit: BoxFit.contain,
+        ),
         SimplePosWordmark(),
       ],
     );

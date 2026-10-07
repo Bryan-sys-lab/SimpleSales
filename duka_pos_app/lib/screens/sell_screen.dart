@@ -39,6 +39,8 @@ class SellScreen extends StatefulWidget {
 class _SellScreenState extends State<SellScreen> {
   static const _pollTimeout = Duration(seconds: 20);
   final List<CartItem> _cart = [];
+  final Map<int, double> _reservedByProduct = <int, double>{};
+  final Map<int, double> _reservedByVariant = <int, double>{};
 
   /// The shell's catalogue-change signal. Assigned in `initState`.
   late final HomeShellTabs _shellTabs;
@@ -133,13 +135,15 @@ class _SellScreenState extends State<SellScreen> {
 
   Future<void> _loadProducts() async {
     final db = DatabaseHelper.instance;
-    final products = await db.getProducts();
-    final catalogue = await VariantCatalogue.load();
-    // Cups whose spirit has been deleted or deactivated are dropped here rather
-    // than offered and then refused at the till: a shot the cashier can add to
-    // the cart but cannot check out is worse than one that is not listed.
+    final results = await Future.wait([
+      db.getProducts(),
+      VariantCatalogue.load(),
+      db.getShotCups(),
+    ]);
+    final products = results[0] as List<Product>;
+    final catalogue = results[1] as VariantCatalogue;
+    final cups = results[2] as List<ShotCup>;
     final liveIds = products.where((p) => p.active).map((p) => p.id).toSet();
-    final cups = await db.getShotCups();
     final shots = cups.where((c) => liveIds.contains(c.productId)).toList();
     if (mounted) {
       setState(() {
@@ -163,22 +167,39 @@ class _SellScreenState extends State<SellScreen> {
   /// Variant lines are skipped: they reserve their own variant's stock, which is
   /// a different pile of bottles, and counting them here would let a Dark order
   /// eat into the Regular stock.
-  double _cartUnitsFor(Product product) {
-    var total = 0.0;
-    for (final line in _cart) {
-      if (line.variant != null) continue;
-      if (line.product.id == product.id) total += line.qty * line.fraction;
-    }
-    return total;
-  }
+  double _cartUnitsFor(Product product) =>
+      _reservedByProduct[product.id] ?? 0.0;
 
   /// Units of one variant already reserved in the cart.
-  double _cartUnitsForVariant(ProductVariant variant) {
-    var total = 0.0;
+  double _cartUnitsForVariant(ProductVariant variant) =>
+      _reservedByVariant[variant.id] ?? 0.0;
+
+  void _rebuildReservations() {
+    _reservedByProduct.clear();
+    _reservedByVariant.clear();
     for (final line in _cart) {
-      if (line.variant?.id == variant.id) total += line.qty;
+      final variant = line.variant;
+      if (variant != null && variant.id != null) {
+        _reservedByVariant[variant.id!] =
+            (_reservedByVariant[variant.id] ?? 0.0) + line.qty;
+      } else if (line.shotCup != null) {
+        final fraction = line.product.bottleMl <= 0
+            ? 1.0
+            : (line.shotCup!.capacityMl / line.product.bottleMl)
+                .clamp(0.0, 1.0);
+        if (line.product.id != null) {
+          _reservedByProduct[line.product.id!] =
+              (_reservedByProduct[line.product.id] ?? 0.0) +
+                  line.qty * fraction;
+        }
+      } else {
+        if (line.product.id != null) {
+          _reservedByProduct[line.product.id!] =
+              (_reservedByProduct[line.product.id] ?? 0.0) +
+                  line.qty * line.product.fractionFor(line.portion);
+        }
+      }
     }
-    return total;
   }
 
   /// Offers a safe way out of an outstanding M-Pesa push.
@@ -239,7 +260,10 @@ class _SellScreenState extends State<SellScreen> {
       final recorded = await _recordReconciledSale(pending);
       if (!mounted) return;
       if (recorded) {
-        setState(() => _cart.clear());
+        setState(() {
+          _cart.clear();
+          _rebuildReservations();
+        });
         _loadProducts();
       }
       return;
@@ -600,6 +624,7 @@ class _SellScreenState extends State<SellScreen> {
           _cart.add(CartItem(
               product: current, portion: 'full', qty: 1, variant: variant));
         }
+        _rebuildReservations();
       });
       return;
     }
@@ -632,6 +657,7 @@ class _SellScreenState extends State<SellScreen> {
             shotCup: shotCup,
           ));
         }
+        _rebuildReservations();
       });
       return;
     }
@@ -652,6 +678,7 @@ class _SellScreenState extends State<SellScreen> {
       } else {
         _cart.add(CartItem(product: current, portion: portion, qty: 1));
       }
+      _rebuildReservations();
     });
   }
 
@@ -743,12 +770,14 @@ class _SellScreenState extends State<SellScreen> {
     setState(() {
       _cart[index].qty = (_cart[index].qty + delta).clamp(0, 999).toDouble();
       if (_cart[index].qty == 0) _cart.removeAt(index);
+      _rebuildReservations();
     });
   }
 
   void _removeFromCart(int index) {
     setState(() {
       _cart.removeAt(index);
+      _rebuildReservations();
     });
   }
 
@@ -967,6 +996,7 @@ class _SellScreenState extends State<SellScreen> {
         final change = amountTendered - _total;
         setState(() {
           _cart.clear();
+          _rebuildReservations();
         });
         _loadProducts(); // Refresh stock
         if (!mounted) return;
@@ -1194,17 +1224,17 @@ class _SellScreenState extends State<SellScreen> {
         return;
       }
 
-      // Check if all products have remote IDs (synced)
       final unsynced = _cart.where((c) => c.product.remoteId == null).toList();
       if (unsynced.isNotEmpty) {
+        unawaited(BackendService.syncProductsToBackend());
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
             SnackBar(
-                content:
-                    Text(AppLocalizations.of(context).sellSyncProductsFirst)),
+                content: Text(
+                    'Some products are not yet synced. The sale will proceed '
+                    'and they will be synced in the background.')),
           );
         }
-        return;
       }
 
       await BackendService.syncStaffToBackend();
@@ -1347,7 +1377,10 @@ class _SellScreenState extends State<SellScreen> {
                   content: Text(
                       'Payment succeeded. Local recording failed — contact support before reconciling reports.')),
             );
-            setState(() => _cart.clear());
+            setState(() {
+              _cart.clear();
+              _rebuildReservations();
+            });
             _loadProducts();
             return;
           }
@@ -1358,7 +1391,10 @@ class _SellScreenState extends State<SellScreen> {
                 content: Text(
                     AppLocalizations.of(context).sellMpesaPaymentSuccessful)),
           );
-          setState(() => _cart.clear());
+          setState(() {
+            _cart.clear();
+            _rebuildReservations();
+          });
           _loadProducts();
         } else {
           // Only a definitive decline means the push can safely be retried, so

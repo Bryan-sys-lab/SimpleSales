@@ -49,7 +49,14 @@ class SplashScreen extends StatelessWidget {
                     // loads. Its plate is the brand ink, the same ink as the
                     // page behind it, so the lockup reads as one mark rather
                     // than as an icon sitting on a background.
-                    const SimplePosMark(size: 76),
+                    const Image(
+                      image: AssetImage(
+                        'assets/branding/stitch_simple_pos_launcher_icon/simple_pos_geometric_s_icon/screen.png',
+                      ),
+                      width: 76,
+                      height: 76,
+                      fit: BoxFit.contain,
+                    ),
                     SizedBox(height: spacing.xl),
                     const SimplePosWordmark(color: kBrandPaper),
                     SizedBox(height: spacing.sm),

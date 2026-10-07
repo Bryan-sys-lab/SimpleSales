@@ -35,8 +35,7 @@ String? appRedirect({
     _ => null,
   };
   if (gate != null) {
-    // The splash may push to the recovery screen itself; do not bounce it back.
-    if (location == gate || location == Routes.splash) return null;
+    if (location == gate) return null;
     return gate;
   }
 
@@ -64,6 +63,11 @@ String? appRedirect({
     Routes.setup,
   };
   if (doors.contains(location)) return Routes.dashboard;
+
+  // A finished walkthrough is stale the moment the stage flips to ready.
+  if (snapshot.stage == AppStage.ready && location == Routes.onboarding) {
+    return Routes.dashboard;
+  }
 
   // 4. The walkthrough is guidance, not a gate — but an admin who has not seen
   //    it is the only one who should be held on it.

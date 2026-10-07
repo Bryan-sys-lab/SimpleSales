@@ -111,6 +111,10 @@ class OidcService {
     }
   }
 
+  static Future<void> clearAccessToken() async {
+    await _storage.delete(key: _accessTokenKey);
+  }
+
   static Future<void> _storeTokens({
     required String? accessToken,
     required String? refreshToken,

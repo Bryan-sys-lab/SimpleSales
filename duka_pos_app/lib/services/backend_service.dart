@@ -17,11 +17,15 @@ class BackendService {
     sendTimeout: const Duration(seconds: 15),
     receiveTimeout: const Duration(seconds: 20),
   ));
+  static SharedPreferences? _prefs;
 
   static const backendUrl = String.fromEnvironment(
     'BACKEND_URL',
     defaultValue: 'http://localhost:3000/api',
   );
+
+  static Future<SharedPreferences> get _prefsInstance async =>
+      _prefs ??= await SharedPreferences.getInstance();
 
   static Future<void> ensureInitialized() async {
     if (_initialized) return;
@@ -30,8 +34,7 @@ class BackendService {
       onRequest: (options, handler) async {
         final token = await OidcService.accessToken;
         if (token != null) options.headers['Authorization'] = 'Bearer $token';
-        final selectedTenant =
-            (await SharedPreferences.getInstance()).getString('tenant_id');
+        final selectedTenant = (await _prefsInstance).getString('tenant_id');
         if (selectedTenant != null) {
           options.headers['x-tenant-id'] = selectedTenant;
         }
@@ -39,10 +42,19 @@ class BackendService {
         return handler.next(options);
       },
       onError: (error, handler) async {
-        // Handle 401 - token expired
         if (error.response?.statusCode == 401) {
-          // Try to re-authenticate
-          // Force online re-authentication on the next protected request.
+          await OidcService.clearAccessToken();
+          final newToken = await OidcService.accessToken;
+          if (newToken != null) {
+            final requestOptions = error.requestOptions;
+            requestOptions.headers['Authorization'] = 'Bearer $newToken';
+            try {
+              final response = await _dio.fetch(requestOptions);
+              return handler.resolve(response);
+            } on DioException catch (_) {
+              return handler.next(error);
+            }
+          }
           await OidcService.logout();
         }
         return handler.next(error);
@@ -53,7 +65,7 @@ class BackendService {
   }
 
   static Future<String?> get tenantId async =>
-      (await SharedPreferences.getInstance()).getString('tenant_id');
+      (await _prefsInstance).getString('tenant_id');
 
   static Future<bool> get isBackendLinked async => (await tenantId) != null;
 
@@ -75,8 +87,7 @@ class BackendService {
     if (existing == null) {
       throw StateError('This shop is not set up on this device yet');
     }
-    await (await SharedPreferences.getInstance())
-        .setString('tenant_id', selectedTenantId);
+    await (await _prefsInstance).setString('tenant_id', selectedTenantId);
     await WorkspaceService.setActiveWorkspace(existing);
   }
 
@@ -404,7 +415,11 @@ class BackendService {
           await _dio.delete('$backendUrl/tenant/staff/$remoteId',
               data: {'reason': 'Cashier deletion requested on till'});
         } on DioException catch (error) {
-          if (error.response?.statusCode != 404) rethrow;
+          if (error.response?.statusCode != 404) {
+            // ignore: avoid_print
+            print('Staff tombstone deletion failed for $remoteId: $error');
+            continue;
+          }
         }
         await DatabaseHelper.instance.clearStaffDeletionTombstone(localId);
       } else if (localId is int) {

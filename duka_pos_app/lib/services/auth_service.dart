@@ -1,8 +1,7 @@
 import 'dart:convert';
 import 'dart:math';
 import 'package:crypto/crypto.dart' show sha256;
-import 'package:cryptography/cryptography.dart';
-import 'package:cryptography/cryptography.dart' as cryptography show Hmac;
+import 'package:cryptography/cryptography.dart' show Hmac, Pbkdf2, SecretKey;
 import 'package:flutter/foundation.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 
@@ -27,7 +26,7 @@ class Pbkdf2Request {
 /// stops the login and PIN-reset screens freezing on a budget phone.
 Future<List<int>> derivePbkdf2Key(Pbkdf2Request request) async {
   final kdf = Pbkdf2(
-    macAlgorithm: cryptography.Hmac.sha256(),
+    macAlgorithm: Hmac.sha256(),
     iterations: request.iterations,
     bits: request.bits,
   );
@@ -67,7 +66,7 @@ class AuthService {
   /// low enough that verifying a PIN stays imperceptible on a budget phone.
   static const int defaultIterations = 120000;
 
-  static final _kdfHmac = cryptography.Hmac.sha256();
+  static final _kdfHmac = Hmac.sha256();
 
   /// The configured default KDF. Held as an instance so there is exactly one
   /// definition of the current work factor, and used for the inline path

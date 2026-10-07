@@ -66,12 +66,14 @@ abstract final class Routes {
 /// with the session. An index is how a low-stock tile ends up opening Settings.
 enum AppDestination {
   dashboard('navDashboard', 'navDashboardShort'),
-  sell('navSell', 'navSellShort'),
+  sell('navSell', 'navSellShort',
+      imageAsset:
+          'assets/branding/stitch_simple_pos_launcher_icon/simple_pos_till_action_s_icon/screen.png'),
   inventory('navInventory', 'navInventoryShort'),
   analytics('navAnalytics', 'navAnalyticsShort'),
   settings('navSettings', 'navSettingsShort');
 
-  const AppDestination(this.labelKey, this.shortLabelKey);
+  const AppDestination(this.labelKey, this.shortLabelKey, {this.imageAsset});
 
   /// The ARB key for the permanent label.
   ///
@@ -85,6 +87,8 @@ enum AppDestination {
 
   /// The ARB key for the collapsed rail, where three words do not fit.
   final String shortLabelKey;
+
+  final String? imageAsset;
 
   /// The permanent label, in the active locale.
   String label(AppLocalizations l10n) => l10n.byKey(labelKey);

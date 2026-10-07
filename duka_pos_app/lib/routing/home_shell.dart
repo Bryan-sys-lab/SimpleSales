@@ -337,7 +337,14 @@ class _ShellNavigationBar extends StatelessWidget {
         destinations: <Widget>[
           for (final AppDestination destination in destinations)
             NavigationDestination(
-              icon: Icon(destination.icon),
+              icon: destination.imageAsset != null
+                  ? Image.asset(
+                      destination.imageAsset!,
+                      width: 24,
+                      height: 24,
+                      fit: BoxFit.contain,
+                    )
+                  : Icon(destination.icon),
               label: destination.label(l10n),
               tooltip: destination.label(l10n),
             ),
@@ -374,7 +381,14 @@ class _ShellRail extends StatelessWidget {
       destinations: <NavigationRailDestination>[
         for (final AppDestination destination in destinations)
           NavigationRailDestination(
-            icon: Icon(destination.icon),
+            icon: destination.imageAsset != null
+                ? Image.asset(
+                    destination.imageAsset!,
+                    width: 24,
+                    height: 24,
+                    fit: BoxFit.contain,
+                  )
+                : Icon(destination.icon),
             // `extended` renders its own label beside the icon; supplying one
             // here too would double it.
             label: Text(

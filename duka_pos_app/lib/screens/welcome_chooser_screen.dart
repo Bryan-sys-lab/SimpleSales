@@ -89,7 +89,14 @@ class WelcomeChooserScreen extends StatelessWidget {
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: <Widget>[
                   const Center(
-                      child: SimplePosMark(size: 64, decorative: true)),
+                      child: Image(
+                    image: AssetImage(
+                      'assets/branding/stitch_simple_pos_launcher_icon/simple_pos_geometric_s_icon/screen.png',
+                    ),
+                    width: 64,
+                    height: 64,
+                    fit: BoxFit.contain,
+                  )),
                   SizedBox(height: spacing.lg),
                   const Center(child: SimplePosWordmark()),
                   SizedBox(height: spacing.lg),

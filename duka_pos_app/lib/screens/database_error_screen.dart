@@ -4,7 +4,6 @@ import '../l10n/generated/app_localizations.dart';
 import '../theme/app_colors.dart';
 import '../theme/app_spacing.dart';
 import '../theme/typography.dart';
-import '../ui/brand/simple_pos_mark.dart';
 
 /// Shown when the local database cannot be opened at all.
 ///
@@ -34,7 +33,14 @@ class DatabaseErrorScreen extends StatelessWidget {
               child: Column(
                 mainAxisSize: MainAxisSize.min,
                 children: <Widget>[
-                  const SimplePosMark(size: 48),
+                  const Image(
+                    image: AssetImage(
+                      'assets/branding/stitch_simple_pos_launcher_icon/simple_pos_geometric_s_icon/screen.png',
+                    ),
+                    width: 48,
+                    height: 48,
+                    fit: BoxFit.contain,
+                  ),
                   SizedBox(height: spacing.xl),
                   Icon(
                     Icons.storage_outlined,

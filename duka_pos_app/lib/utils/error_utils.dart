@@ -127,7 +127,7 @@ abstract final class ErrorUtils {
     if (text.contains('403') || text.contains('forbidden')) {
       return messageFor(l10n, PosFailureCode.notPermitted);
     }
-    if (text.contains('mpesa')) {
+    if (text.contains('mpesa') || text.contains('m-pesa')) {
       return messageFor(l10n, PosFailureCode.paymentFailed);
     }
     if (text.contains('stock') || text.contains('inventory')) {

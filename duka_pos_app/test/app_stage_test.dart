@@ -42,7 +42,7 @@ void main() {
       );
     });
 
-    test('a till with no shop goes to setup, not to a login attempt', () {
+    test('a till with no shop goes to the chooser, not straight to setup', () {
       expect(
         resolveAppStage(
           isLoading: false,
@@ -52,7 +52,7 @@ void main() {
           isAdmin: true,
           onboardingComplete: false,
         ),
-        AppStage.settingUp,
+        AppStage.chooser,
       );
     });
 

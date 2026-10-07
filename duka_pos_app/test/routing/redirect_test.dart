@@ -46,9 +46,7 @@ void main() {
     test('a broken database lands on recovery, whatever was requested', () {
       expect(guard(AppStage.databaseFailed, Routes.dashboard), Routes.recovery);
       expect(guard(AppStage.databaseFailed, Routes.login), Routes.recovery);
-      // The splash must be allowed THROUGH to reach the recovery screen, or the
-      // guard would bounce it back and the user would sit on a splash forever.
-      expect(guard(AppStage.databaseFailed, Routes.splash), isNull);
+      expect(guard(AppStage.databaseFailed, Routes.splash), Routes.recovery);
     });
   });
 

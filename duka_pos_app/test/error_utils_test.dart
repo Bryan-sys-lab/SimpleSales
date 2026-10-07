@@ -133,7 +133,7 @@ void main() {
 
     test('Payment error messages', () {
       expect(
-        ErrorUtils.userMessage(l10n, Exception('PayHero payment failed')),
+        ErrorUtils.userMessage(l10n, Exception('M-Pesa payment failed')),
         contains('Payment failed'),
       );
     });

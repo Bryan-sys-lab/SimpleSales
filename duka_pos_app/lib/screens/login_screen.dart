@@ -17,7 +17,6 @@ import '../theme/app_haptics.dart';
 import '../theme/app_shapes.dart';
 import '../theme/app_spacing.dart';
 import '../theme/typography.dart';
-import '../ui/brand/simple_pos_mark.dart';
 import '../ui/components/controls.dart';
 import '../ui/components/status.dart';
 import '../ui/components/surface.dart';
@@ -374,7 +373,14 @@ class _SignInHeader extends StatelessWidget {
 
     return Row(
       children: <Widget>[
-        const SimplePosMark(size: 36),
+        const Image(
+          image: AssetImage(
+            'assets/branding/stitch_simple_pos_launcher_icon/simple_pos_geometric_s_icon/screen.png',
+          ),
+          width: 36,
+          height: 36,
+          fit: BoxFit.contain,
+        ),
         SizedBox(width: spacing.md),
         Expanded(
           child: Semantics(

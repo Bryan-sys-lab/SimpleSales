@@ -58,13 +58,15 @@ void main() {
       expect(stage(intent: AppChooserIntent.addShop), AppStage.settingUp);
     });
 
-    test('no shop at all -> setup, because there is nothing to sign in to', () {
-      // There is no roster and no PIN hash, so offering a sign-in would be
-      // offering a keypad that cannot succeed.
-      expect(stage(hasShop: false), AppStage.settingUp);
-      // Even if the chooser asked for sign in, setup is the only honest answer.
+    test('no shop at all -> chooser, because setup is one option among many',
+        () {
+      // A fresh till offers the chooser: sign in is impossible without a roster,
+      // but "Set up shop" is the honest first step, not a forced gate.
+      expect(stage(hasShop: false), AppStage.chooser);
+      // Even if the chooser asked for sign in, the chooser is the only honest
+      // answer — the user can then choose to set up.
       expect(stage(hasShop: false, intent: AppChooserIntent.signIn),
-          AppStage.settingUp);
+          AppStage.chooser);
     });
 
     test('a signed-in admin who has not seen the walkthrough gets it', () {
