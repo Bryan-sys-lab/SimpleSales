@@ -142,7 +142,7 @@ void main() {
       expect(manager.seesAllSales, isTrue);
       expect(manager.canManageStock, isTrue);
       expect(manager.canSeeAnalytics, isTrue);
-      expect(manager.canAdminister, isTrue);
+      expect(manager.canAdminister, isFalse);
       // Deleting a product and registering a tax identity are both
       // consequential enough to be owner-only.
       expect(manager.canDeleteProducts, isFalse);

@@ -249,7 +249,7 @@ void main() {
       expect(controller.intent, AppChooserIntent.signIn);
     });
 
-    test('choose is a no-op when the intent is already current', () {
+    test('choose notifies on every call, even for the same intent', () {
       final AppState state = AppState();
       final AppStageController controller = AppStageController(state);
 
@@ -257,8 +257,10 @@ void main() {
       controller.addListener(() => notifyCount++);
 
       controller.choose(AppChooserIntent.signIn);
-      expect(notifyCount, 0,
-          reason: 'choosing the same intent twice should not notify');
+      expect(notifyCount, 1, reason: 'first choose should notify');
+
+      controller.choose(AppChooserIntent.signIn);
+      expect(notifyCount, 2, reason: 'choosing the same intent again should notify');
     });
   });
 }

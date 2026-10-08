@@ -54,7 +54,7 @@ class DatabaseHelper {
   /// shipped — always add a new one, even for a one-line fix — because a
   /// shop's phone may be several versions behind and needs every step run
   /// in order to land on the current schema without data loss.
-  static const _schemaVersion = 16;
+  static const _schemaVersion = 17;
 
   /// Slack allowed when deciding whether a container has enough left for a sale.
   ///
@@ -266,6 +266,19 @@ SELECT name FROM staff GROUP BY name HAVING COUNT(*) = 1
     if (oldVersion < 16) {
       await db.execute('ALTER TABLE staff ADD COLUMN username TEXT');
       await db.execute('CREATE UNIQUE INDEX IF NOT EXISTS idx_staff_username ON staff (username) WHERE username IS NOT NULL');
+    }
+    if (oldVersion < 17) {
+      // Indexes for query hotspots the v10 set did not cover. Without these,
+      // a shop with months of history full-scans `sales` on every dashboard
+      // load and product load.
+      await db.execute(
+          'CREATE INDEX IF NOT EXISTS idx_sales_payment_verified ON sales (payment_verified, created_at DESC)');
+      await db.execute(
+          'CREATE INDEX IF NOT EXISTS idx_sales_etims_status ON sales (etims_status)');
+      await db.execute(
+          'CREATE INDEX IF NOT EXISTS idx_products_active ON products (active)');
+      await db.execute(
+          'CREATE INDEX IF NOT EXISTS idx_products_track_variants ON products (track_variants)');
     }
   }
 
@@ -860,6 +873,18 @@ SELECT name FROM staff GROUP BY name HAVING COUNT(*) = 1
     await _createShiftTables(db);
     await _createShotCupsTable(db);
     await _createCupSizeSuggestionsTable(db);
+
+    // Indexes for query hotspots not covered by the core set above. Created
+    // after the helper calls so the columns they add (payment_verified,
+    // etims_status, track_variants) already exist.
+    await db.execute(
+        'CREATE INDEX idx_sales_payment_verified ON sales (payment_verified, created_at DESC)');
+    await db.execute(
+        'CREATE INDEX idx_sales_etims_status ON sales (etims_status)');
+    await db.execute(
+        'CREATE INDEX idx_products_active ON products (active)');
+    await db.execute(
+        'CREATE INDEX idx_products_track_variants ON products (track_variants)');
   }
 
   // ---------------- Owner ----------------
@@ -1166,6 +1191,26 @@ SELECT name FROM staff GROUP BY name HAVING COUNT(*) = 1
           .delete('product_barcodes', where: 'variant_id = ?', whereArgs: [id]);
       await txn.delete('product_variants', where: 'id = ?', whereArgs: [id]);
     });
+  }
+
+  // Transaction-aware variants of the above, so a save that touches N rows
+  // can run them in one fsync instead of N.
+  Future<int> upsertVariantInTransaction(
+      Transaction txn, ProductVariant variant) async {
+    final map = variant.toMap();
+    if (variant.id == null) {
+      final id = await txn.insert('product_variants', map..remove('id'));
+      return id;
+    }
+    await txn.update('product_variants', map,
+        where: 'id = ?', whereArgs: [variant.id]);
+    return variant.id!;
+  }
+
+  Future<void> deleteVariantInTransaction(Transaction txn, int id) async {
+    await txn.delete('product_barcodes',
+        where: 'variant_id = ?', whereArgs: [id]);
+    await txn.delete('product_variants', where: 'id = ?', whereArgs: [id]);
   }
 
   /// Resolves a barcode to a product and, when the code belongs to one, the

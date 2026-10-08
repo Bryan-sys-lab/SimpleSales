@@ -16,9 +16,6 @@ enum HapticEvent {
   /// Input refused.
   reject,
 
-  /// A task completed.
-  success,
-
   /// A genuinely rare moment — a shift closing balanced. Reached from at most one
   /// place in the app.
   milestone,
@@ -90,8 +87,6 @@ class HapticTheme extends ThemeExtension<HapticTheme> {
         commit();
       case HapticEvent.reject:
         reject();
-      case HapticEvent.success:
-        success();
       case HapticEvent.milestone:
         milestone();
     }
@@ -113,28 +108,7 @@ class HapticTheme extends ThemeExtension<HapticTheme> {
     enabled: true,
   );
 
-  /// Silences every slot. The map still exists — the design still declares what
-  /// *would* happen — which is what makes turning haptics back on a settings
-  /// toggle rather than a code change.
-  static final HapticTheme muted = HapticTheme(
-    select: HapticFeedback.selectionClick,
-    commit: HapticFeedback.lightImpact,
-    reject: HapticFeedback.lightImpact,
-    success: HapticFeedback.mediumImpact,
-    milestone: HapticFeedback.heavyImpact,
-    enabled: false,
-  );
-
-  /// Returns a copy with the central gate flipped, keeping every slot intact.
-  HapticTheme withEnabled(bool value) => HapticTheme(
-        select: select,
-        commit: commit,
-        reject: reject,
-        success: success,
-        milestone: milestone,
-        enabled: value,
-      );
-
+  /// Reads the map for the ambient theme.
   @override
   HapticTheme copyWith({
     Future<void> Function()? select,

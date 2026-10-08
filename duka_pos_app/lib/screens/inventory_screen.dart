@@ -830,19 +830,31 @@ class _ProductEditorState extends State<_ProductEditor> {
   /// added in the same save, and so the aggregate is computed from what is
   /// actually left. Barcodes are written after their variant exists, because the
   /// code points at the variant's row.
+  ///
+  /// All deletes + upserts are batched in one transaction (a single fsync for
+  /// N variants) rather than N separate transactions.
   Future<void> _saveVariants(int productId) async {
     final db = DatabaseHelper.instance;
     final l10n = AppLocalizations.of(context);
-    for (final removedId in _removedVariantIds) {
-      // Also frees that variant's barcodes.
-      await db.deleteVariant(removedId);
-    }
+    final rawDb = await db.database;
+    final savedIds = <int>[];
+    await rawDb.transaction((txn) async {
+      for (final removedId in _removedVariantIds) {
+        // Also frees that variant's barcodes.
+        await db.deleteVariantInTransaction(txn, removedId);
+      }
+      for (var i = 0; i < _drafts.length; i++) {
+        final draft = _drafts[i];
+        // Position follows the order on screen, so reordering is reordering and
+        // the till offers Dark before Regular because the owner put it there.
+        final variantId = await db.upsertVariantInTransaction(
+            txn, draft.copyWith(position: i).toVariant(productId));
+        savedIds.add(variantId);
+      }
+    });
     for (var i = 0; i < _drafts.length; i++) {
       final draft = _drafts[i];
-      // Position follows the order on screen, so reordering is reordering and
-      // the till offers Dark before Regular because the owner put it there.
-      final variantId = await db
-          .upsertVariant(draft.copyWith(position: i).toVariant(productId));
+      final variantId = savedIds[i];
       final code = draft.barcode.trim();
       if (draft.hasStoredBarcode && draft.barcodeChanged) {
         await db.removeBarcode(draft.storedBarcode);
@@ -1071,9 +1083,10 @@ class _ProductEditorState extends State<_ProductEditor> {
   static Future<void> _pushProductInBackground(Product saved) async {
     try {
       if (saved.id == null) return;
-      final all = await DatabaseHelper.instance.getProducts(activeOnly: false);
-      final fresh = all.where((p) => p.id == saved.id).firstOrNull;
-      await BackendService.syncProductToBackend(fresh ?? saved);
+      // `saved` already carries the id (checked above) and any remote_id that
+      // was assigned during the save — re-reading the whole catalogue to find
+      // the same row is a full-table scan on every product save.
+      await BackendService.syncProductToBackend(saved);
     } catch (_) {
       // Offline, unlinked or the backend rejected it: the bulk auto-sync path
       // will pick the change up. Never block the local save on the network.

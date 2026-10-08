@@ -112,7 +112,11 @@ class ExcelService {
     barcodeSheet.appendRow(
         ProductBarcode.sheetHeaders.map((h) => xl.TextCellValue(h)).toList());
     for (final code in extra) {
-      barcodeSheet.appendRow(code.toMap().values.map(_cell).toList());
+      barcodeSheet.appendRow([
+        code.productId,
+        code.barcode,
+        code.kind,
+      ].map(_cell).toList());
     }
 
     final variantSheet = book[variantsSheetName];
@@ -125,8 +129,8 @@ class ExcelService {
     return _save(book, 'duka-inventory');
   }
 
-  Future<File> exportSales({DateTime? since}) async {
-    final sales = await _db.getSales(since: since);
+  Future<File> exportSales({DateTime? since, int limit = 10000}) async {
+    final sales = await _db.getSales(since: since, limit: limit);
     final book = xl.Excel.createExcel();
     final sheet = book['Sales'];
     sheet.appendRow(Sale.sheetHeaders.map((h) => xl.TextCellValue(h)).toList());
@@ -139,8 +143,8 @@ class ExcelService {
     return _save(book, 'duka-sales');
   }
 
-  Future<File> exportEncryptedSales({DateTime? since}) async {
-    final workbook = await exportSales(since: since);
+  Future<File> exportEncryptedSales({DateTime? since, int limit = 10000}) async {
+    final workbook = await exportSales(since: since, limit: limit);
     final encrypted = await EncryptedBackupService.encryptToFile(
         await workbook.readAsBytes(),
         prefix: 'duka-sales');
@@ -154,12 +158,20 @@ class ExcelService {
     return xl.TextCellValue(v?.toString() ?? '');
   }
 
+  /// Encodes a workbook to bytes off the main thread.
+  ///
+  /// The `excel` codec is pure Dart and transferable across isolates, so it
+  /// can run on a background isolate without the platform channels that
+  /// `getProducts`/`getSales` need on the main isolate.
+  static List<int> _encodeWorkbook(xl.Excel book) => book.encode()!;
+
   Future<File> _save(xl.Excel book, String prefix) async {
     final dir = await getApplicationDocumentsDirectory();
     final filename =
         '$prefix-${DateTime.now().toIso8601String().substring(0, 10)}.xlsx';
     final file = File('${dir.path}/$filename');
-    await file.writeAsBytes(book.encode()!);
+    final bytes = await compute(_encodeWorkbook, book);
+    await file.writeAsBytes(bytes);
     return file;
   }
 

@@ -143,6 +143,10 @@ class AppState extends ChangeNotifier {
     isOwnerSession = false;
     _role = ShopRole.cashier;
     unawaited(clearRememberedStaff());
+    // Tear down the previous shop's online identity too. Like signOut, this
+    // must not block the workspace switch — the tokens are cleared in the
+    // background and the local session is already gone.
+    unawaited(tearDownOnlineSession());
     await loadOwner();
   }
 

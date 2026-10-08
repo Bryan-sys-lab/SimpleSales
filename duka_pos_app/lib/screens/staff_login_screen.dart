@@ -64,6 +64,27 @@ class _StaffLoginScreenState extends State<StaffLoginScreen> {
       final String username = _usernameController.text.trim();
       final String password = _passwordController.text;
 
+      // Throttle BEFORE any sign-in attempt. The online backend has its own
+      // rate limiting, but the local fallback below verifies a 4-digit PIN
+      // against a local hash — a keyspace an attacker with physical access
+      // walks in minutes if it is not throttled.
+      final String userKey = username;
+      if (await AuthService.isTillLockedOut()) {
+        final Duration? remaining = await AuthService.tillLockoutRemaining();
+        if (!mounted) return;
+        setState(() => _error =
+            'Too many wrong PINs on this till. Try again in '
+            '${remaining?.inSeconds ?? 0}s.');
+        return;
+      }
+      if (await AuthService.isLockedOut(userKey)) {
+        final Duration? remaining = await AuthService.lockoutRemaining(userKey);
+        if (!mounted) return;
+        setState(() => _error =
+            'Too many wrong PINs. Try again in ${remaining?.inSeconds ?? 0}s.');
+        return;
+      }
+
       final Map<String, dynamic>? backendResponse =
           await BackendService.authenticateStaff(
         username: username,
@@ -100,7 +121,12 @@ class _StaffLoginScreenState extends State<StaffLoginScreen> {
         if (staff != null) {
           final bool ok =
               await AuthService.verifyPin(password, staff.pinHash);
-          if (!ok) staff = null;
+          if (ok) {
+            await AuthService.recordSuccess(userKey);
+          } else {
+            staff = null;
+            await AuthService.recordFailure(userKey);
+          }
         }
       }
 

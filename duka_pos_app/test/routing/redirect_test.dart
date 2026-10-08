@@ -142,12 +142,11 @@ void main() {
     });
 
     test(
-        'a cashier deep-linked to a pushed shift screen is sent to the '
-        'dashboard — the pushed route bypasses the branch, so the guard must '
-        'cover it explicitly', () {
+        'a cashier can reach their own shift screen for reconciliation',
+        () {
       expect(
         guard(AppStage.ready, Routes.shift, canManageStock: false),
-        Routes.dashboard,
+        isNull,
       );
     });
 

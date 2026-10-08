@@ -98,17 +98,12 @@ final class ReportsReady extends ReportsView {
 
 /// The shift ledger, the takings per cashier, and the last fifty receipts.
 ///
-/// [embedded] is what lets one widget be two things. Reports used to be a sixth
-/// tab reporting the same numbers Analytics already showed under a different
-/// name, so it became a view *inside* Analytics at `/analytics/reports`. There
-/// it must draw no `Scaffold` and no `AppBar` — the branch page above it owns
-/// the chrome and the way back — while on its own (`embedded: false`) it is a
-/// complete screen with its own title bar.
+/// Reports used to be a sixth tab reporting the same numbers Analytics already
+/// showed under a different name, so it became a view *inside* Analytics at
+/// `/analytics/reports`. It is always embedded there, so it draws no `Scaffold`
+/// and no `AppBar` — the branch page above it owns the chrome and the way back.
 class ReportsScreen extends StatefulWidget {
-  const ReportsScreen({this.embedded = false, super.key});
-
-  /// True when Analytics supplies the chrome and the way back.
-  final bool embedded;
+  const ReportsScreen({super.key});
 
   @override
   State<ReportsScreen> createState() => _ReportsScreenState();
@@ -328,30 +323,7 @@ class _ReportsScreenState extends State<ReportsScreen> {
   }
 
   @override
-  Widget build(BuildContext context) {
-    final Widget body = _body(context);
-    if (widget.embedded) return body;
-    // Read into a local rather than inline in the ternary: `canPop` answers a
-    // question about the CURRENT stack, and hoisting it makes it obvious that the
-    // back affordance is conditional on something already settled by this point.
-    final bool canGoBack = Navigator.canPop(context);
-
-    return Scaffold(
-      appBar: AppBar(
-        title: const Text('Reports'),
-        // A directional glyph, so this mirrors under an RTL locale. Reports used
-        // to have no back affordance at all when opened as its own tab.
-        leading: canGoBack
-            ? IconButton(
-                icon: const Icon(Icons.arrow_back),
-                tooltip: 'Back to analytics',
-                onPressed: () => context.pop(),
-              )
-            : null,
-      ),
-      body: body,
-    );
-  }
+  Widget build(BuildContext context) => _body(context);
 
   Widget _body(BuildContext context) {
     final AppSpacing spacing = AppSpacing.of(context);

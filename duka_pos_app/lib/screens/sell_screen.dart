@@ -960,12 +960,17 @@ class _SellScreenState extends State<SellScreen> {
     // receipt.
     final etimsEnabled = await EtimsService().isEnabledForSales();
 
-    // Resolve the signed-in cashier once so the sale carries a stable
+    // Resolve the signed-in person's id so the sale carries a stable
     // `staff_id`. Ledger attribution is keyed on that id, not the display
     // name, so cash sales must record it too or cashier deletion silently
     // leaves the real name on the ledger.
-    int? staffId;
-    if (!state.isOwnerSession) {
+    //
+    // An owner who opened a shift has an id (signInAsOwner(staffId:)), and
+    // `expectedCashForShift` scopes by that id — so owner cash sales must
+    // record it too, or they vanish from the till reconciliation. The name
+    // lookup below is only a fallback for rows whose id was never set.
+    int? staffId = state.currentStaffId;
+    if (staffId == null) {
       final staff = await DatabaseHelper.instance.getStaff();
       final match = staff.where((s) => s.name == state.currentStaffName);
       staffId = match.isEmpty ? null : match.first.id;
@@ -1087,18 +1092,7 @@ class _SellScreenState extends State<SellScreen> {
   /// can trust.
   Future<void> _recordUnverifiedMpesa({required String phoneNumber}) async {
     final state = context.read<AppState>();
-    final items = _cart
-        .map((c) => SaleItem(
-              saleId: 0,
-              productId: c.product.id!,
-              productName: c.product.name,
-              qty: c.qty,
-              unitPrice: c.product.priceFor(c.portion).times(c.fraction),
-              unitCost: c.product.costPrice.times(c.fraction),
-              portion: c.portion,
-              portionMl: c.product.bottleMl,
-            ))
-        .toList();
+    final items = _cart.map(_saleItemFor).toList();
 
     try {
       final saleId = await DatabaseHelper.instance.recordSale(
@@ -1109,7 +1103,7 @@ class _SellScreenState extends State<SellScreen> {
             phoneNumber.trim().isEmpty ? null : 'offline-${phoneNumber.trim()}',
         amountTendered: _total,
         paymentVerified: false,
-        staffId: state.isOwnerSession ? null : state.currentStaffId,
+               staffId: state.currentStaffId,
       );
       if (!mounted) return;
       _announceStatus('M-Pesa sale recorded. Payment not yet confirmed.');

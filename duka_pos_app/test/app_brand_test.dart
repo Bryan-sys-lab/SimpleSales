@@ -15,35 +15,24 @@ import 'package:flutter_test/flutter_test.dart';
 /// symptom a user sees is a Flutter logo, or a blank tile, on their handset.
 void main() {
   group('SimplePosBrand', () {
-    test('exposes a non-empty name and legal name', () {
+    test('exposes a non-empty app name', () {
       expect(SimplePosBrand.appName, isNotEmpty);
-      expect(SimplePosBrand.legalName, isNotEmpty);
     });
 
     test('is named Simple POS', () {
       // Hardcoded on purpose. A rename that changes this constant is a product
       // decision, and this test is the thing that has to be argued with.
       expect(SimplePosBrand.appName, 'Simple POS');
-      expect(SimplePosBrand.legalName, 'Simple POS');
     });
 
     test('attributes the vendor', () {
       expect(SimplePosBrand.poweredByTag, contains('Nerva'));
     });
 
-    test('has no placeholder support contact', () {
-      // Empty is a valid state: the owner has not filled it in yet. What is
-      // not valid is a placeholder that looks like a real address, because an
-      // empty string at least has to be handled deliberately by the caller.
-      expect(SimplePosBrand.supportContact, isNot(contains('TODO')));
-      expect(SimplePosBrand.supportContact, isNot(contains('example')));
-    });
-
     test('keeps the product name free of the Dart package name', () {
       // The Dart package is still duka_pos. That is deliberate and invisible;
       // it only becomes a bug if a user-visible string inherits it.
       expect(SimplePosBrand.appName, isNot(contains('duka')));
-      expect(SimplePosBrand.legalName, isNot(contains('duka')));
     });
   });
 

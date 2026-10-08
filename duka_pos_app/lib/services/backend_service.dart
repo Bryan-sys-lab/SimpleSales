@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'package:flutter/foundation.dart' show debugPrint, kReleaseMode;
 import 'package:dio/dio.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../db/database_helper.dart';
@@ -21,7 +22,7 @@ class BackendService {
 
   static const backendUrl = String.fromEnvironment(
     'BACKEND_URL',
-    defaultValue: 'http://localhost:3000/api',
+    defaultValue: 'https://localhost:3000/api',
   );
 
   static Future<SharedPreferences> get _prefsInstance async =>
@@ -29,6 +30,20 @@ class BackendService {
 
   static Future<void> ensureInitialized() async {
     if (_initialized) return;
+
+    // Refuse plaintext transport: the backend carries staff PINs, OIDC bearer
+    // tokens, and KRA tax-compliance data. A non-HTTPS URL would send all of
+    // that in cleartext.
+    if (backendUrl.startsWith('http://')) {
+      if (kReleaseMode) {
+        throw StateError(
+            'Insecure BACKEND_URL ($backendUrl): use https:// to protect '
+            'staff credentials and OIDC tokens in transit.');
+      }
+      debugPrint('WARNING: BACKEND_URL is http:// — staff PINs, usernames, '
+          'and OIDC tokens will transit in plaintext. Set BACKEND_URL to '
+          'https:// for any non-local deployment.');
+    }
 
     _dio.interceptors.add(InterceptorsWrapper(
       onRequest: (options, handler) async {
@@ -322,6 +337,29 @@ class BackendService {
     }
   }
 
+  /// Builds the single shared product payload both sync paths send to the
+  /// backend. Extracted so the single-row and bulk paths can never drift apart:
+  /// a field added to one is added to both.
+  ///
+  /// Major units on the wire: the backend contract predates the move to
+  /// integer cents and is expressed in shillings. Sending a Money object
+  /// here would serialise as "Money(4050 minor units)".
+  static Map<String, dynamic> _productPayload(Product product) => {
+        'id': product.id,
+        'remoteId': product.remoteId,
+        'name': product.name,
+        'category': product.category,
+        'costPrice': product.costPrice.asMajor,
+        'sellPrice': product.sellPrice.asMajor,
+        'stockQty': product.stockQty,
+        'reorderLevel': product.reorderLevel,
+        'bottleMl': product.bottleMl,
+        'halfPrice': product.halfPrice?.asMajor,
+        'quarterPrice': product.quarterPrice?.asMajor,
+        'exciseStampBatch': product.exciseStampBatch,
+        'active': product.active,
+      };
+
   /// Syncs one product to the backend immediately after it is edited.
   ///
   /// The bulk path runs on the auto-sync timer, so a price or name change is
@@ -335,26 +373,7 @@ class BackendService {
     if (product.id == null) return;
 
     final response = await _dio.post('$backendUrl/products/sync', data: {
-      'products': [
-        {
-          'id': product.id,
-          'remoteId': product.remoteId,
-          'name': product.name,
-          'category': product.category,
-          // Major units on the wire: the backend contract predates the move to
-          // integer cents and is expressed in shillings. Sending a Money object
-          // here would serialise as "Money(4050 minor units)".
-          'costPrice': product.costPrice.asMajor,
-          'sellPrice': product.sellPrice.asMajor,
-          'stockQty': product.stockQty,
-          'reorderLevel': product.reorderLevel,
-          'bottleMl': product.bottleMl,
-          'halfPrice': product.halfPrice?.asMajor,
-          'quarterPrice': product.quarterPrice?.asMajor,
-          'exciseStampBatch': product.exciseStampBatch,
-          'active': product.active,
-        }
-      ],
+      'products': [_productPayload(product)],
     });
 
     final synced = response.data['synced'] as List?;
@@ -380,23 +399,7 @@ class BackendService {
     if (products.isEmpty) return;
 
     final response = await _dio.post('$backendUrl/products/sync', data: {
-      'products': products
-          .map((p) => {
-                'id': p.id,
-                'remoteId': p.remoteId,
-                'name': p.name,
-                'category': p.category,
-                'costPrice': p.costPrice.asMajor,
-                'sellPrice': p.sellPrice.asMajor,
-                'stockQty': p.stockQty,
-                'reorderLevel': p.reorderLevel,
-                'bottleMl': p.bottleMl,
-                'halfPrice': p.halfPrice?.asMajor,
-                'quarterPrice': p.quarterPrice?.asMajor,
-                'exciseStampBatch': p.exciseStampBatch,
-                'active': p.active,
-              })
-          .toList(),
+      'products': products.map(_productPayload).toList(),
     });
 
     // Update local DB with remote IDs in one transaction. This ran on the

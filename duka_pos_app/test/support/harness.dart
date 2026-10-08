@@ -82,7 +82,7 @@ ThemeData themedForTest(Brightness brightness, {bool hapticsEnabled = false}) {
   return base.copyWith(
     extensions: <ThemeExtension<Object?>>[
       ...withoutHaptics,
-      HapticTheme.muted,
+      HapticTheme.standard.copyWith(enabled: false),
     ],
   );
 }

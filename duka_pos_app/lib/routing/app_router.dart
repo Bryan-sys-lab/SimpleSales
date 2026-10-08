@@ -236,7 +236,7 @@ List<RouteBase> _shellRoutes() {
                       (BuildContext context, GoRouterState routerState) =>
                           _fadeThrough(
                     routerState,
-                    const ReportsScreen(embedded: true),
+                    const ReportsScreen(),
                   ),
                 ),
                 GoRoute(

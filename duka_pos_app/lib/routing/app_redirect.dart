@@ -44,6 +44,9 @@ String? appRedirect({
 
   // 2. The session door.
   if (!signedIn) {
+    // Allow sign-in and staff login as valid unauthenticated routes.
+    if (location == Routes.login || location == Routes.staffLogin) return null;
+
     final String door = switch (snapshot.stage) {
       AppStage.chooser => Routes.welcome,
       AppStage.signingIn => Routes.login,
@@ -77,9 +80,11 @@ String? appRedirect({
   }
 
   // 5. Role gating on the branch itself.
+  // The shift sub-route is explicitly NOT in this set: it reconciles the
+  // signed-in person's own till and is reachable from the dashboard's "Open
+  // Shift" card for cashiers too. Only the full-shop branches are gated.
   final bool stockBranch = location.startsWith(Routes.inventory) ||
-      location.startsWith(Routes.analytics) ||
-      location == Routes.shift ||
+      (location.startsWith(Routes.analytics) && location != Routes.shift) ||
       location == Routes.reports;
   if (stockBranch && !snapshot.canManageStock) return Routes.dashboard;
 
@@ -88,17 +93,4 @@ String? appRedirect({
   }
 
   return null;
-}
-
-/// Whether [location] needs the shell chrome around it.
-///
-/// Pure, and separate from [appRedirect] because the shell asks it for layout
-/// reasons, not for authorisation. A screen pushed over the shell (a sheet, the
-/// PIN pad) covers the navigation entirely; a branch screen sits inside it.
-bool isShellLocation(String location) {
-  if (AppDestination.fromPath(location) != null) return true;
-  for (final AppDestination destination in AppDestination.values) {
-    if (location.startsWith('${destination.path}/')) return true;
-  }
-  return false;
 }

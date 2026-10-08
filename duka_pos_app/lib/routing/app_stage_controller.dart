@@ -78,7 +78,11 @@ class AppStageController extends ChangeNotifier {
   /// chooser because the router resolves what the choice *leads to* — that is
   /// the whole reason the chooser exists.
   void choose(AppChooserIntent intent) {
-    if (_disposed || _intent == intent) return;
+    if (_disposed) return;
+    // Always notify even if the intent is the same. A user pressing "Sign in"
+    /// when it's already the current intent still needs the router to re-evaluate
+    /// and navigate to the login screen. The redirect uses the intent to decide
+    /// whether the stage is [AppStage.chooser] or [AppStage.signingIn].
     _intent = intent;
     notifyListeners();
   }

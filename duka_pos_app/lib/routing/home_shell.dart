@@ -46,20 +46,34 @@ List<AppDestination> visibleDestinations(AppState state) {
 /// moment a role hides a destination, and conflating them is how a low-stock link
 /// opens Settings.
 class HomeShellTabs extends ChangeNotifier {
-  HomeShellTabs(this._shell, this._state) {
+  HomeShellTabs(this._shell, this._state) : _shellIndex = _shell.currentIndex {
     _state.addListener(_onAppStateChanged);
   }
 
   final StatefulNavigationShell _shell;
   final AppState _state;
 
+  late int _shellIndex;
+
+  /// Call this from [HomeShell.build] to keep the shell index in sync.
+  void updateShellIndex(int index) {
+    if (_shellIndex == index) return;
+    _shellIndex = index;
+    notifyListeners();
+  }
+
   void _onAppStateChanged() {
     final List<AppDestination> visible = visibleDestinations(_state).toList();
-    final int current = _shell.currentIndex;
-    if (current < 0 || current >= visible.length) {
-      if (visible.isNotEmpty) {
-        _shell.goBranch(visible.first.index, initialLocation: false);
-      }
+    // If the current branch is no longer visible (role change), go to first visible.
+    final AppDestination? currentDest = visible.isNotEmpty
+        ? visible.firstWhere(
+            (d) => d.index == _shellIndex,
+            orElse: () => visible.first,
+          )
+        : null;
+    if (currentDest == null) return;
+    if (!visible.contains(currentDest)) {
+      _shell.goBranch(visible.first.index, initialLocation: false);
     }
   }
 
@@ -76,18 +90,20 @@ class HomeShellTabs extends ChangeNotifier {
   StatefulNavigationShell get shell => _shell;
 
   AppDestination get current {
-    final int raw = _shell.currentIndex;
     final List<AppDestination> visible = visibleDestinations(_state).toList();
-    if (raw >= 0 && raw < visible.length) {
-      return visible[raw];
-    }
-    return visible.isNotEmpty ? visible.first : AppDestination.dashboard;
+    // Find visible destination whose shell branch index (enum index) matches _shellIndex.
+    return visible.isNotEmpty
+        ? visible.firstWhere(
+            (d) => d.index == _shellIndex,
+            orElse: () => visible.first,
+          )
+        : AppDestination.dashboard;
   }
 
   void goTo(AppDestination destination) {
     final List<AppDestination> visible = visibleDestinations(_state).toList();
     if (!visible.contains(destination)) {
-      if (visible.isNotEmpty && _shell.currentIndex != visible.first.index) {
+      if (visible.isNotEmpty && _shellIndex != visible.first.index) {
         _shell.goBranch(visible.first.index, initialLocation: false);
       }
       return;
@@ -96,6 +112,10 @@ class HomeShellTabs extends ChangeNotifier {
       destination.index,
       initialLocation: destination == current,
     );
+    // Update local index immediately for instant UI feedback; the shell rebuild
+    // will call updateShellIndex again with the confirmed value.
+    _shellIndex = destination.index;
+    notifyListeners();
   }
 
   void markCatalogueChanged() {
@@ -124,6 +144,12 @@ class HomeShell extends StatelessWidget {
     final AppState state = context.watch<AppState>();
     return ChangeNotifierProvider<HomeShellTabs>(
       create: (_) => HomeShellTabs(navigationShell, state),
+      // Update the shell index on every build so navigation affordances stay in
+      // sync when the branch changes via user interaction (not just goTo).
+      builder: (BuildContext context, Widget? child) {
+        context.read<HomeShellTabs>().updateShellIndex(navigationShell.currentIndex);
+        return child!;
+      },
       // Above the branches, not inside the sell screen: the sign-out sheet is
       // shown by the shell's own app bar and must read the cart count from a
       // screen that may never have been opened this session.
@@ -343,8 +369,6 @@ class _ShellNavigationBar extends StatelessWidget {
     final AppLocalizations l10n = AppLocalizations.of(context);
 
     return DecoratedBox(
-      // A hairline instead of a shadow: the bar sits on the canvas, and a shadow
-      // under a full-width element reads as a smudge across the whole screen.
       decoration: BoxDecoration(
         border: Border(
           top: BorderSide(
@@ -393,6 +417,7 @@ class _ShellRail extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final AppLocalizations l10n = AppLocalizations.of(context);
+
     return NavigationRail(
       selectedIndex: destinations.indexOf(selected),
       onDestinationSelected: (int i) => onSelect(destinations[i]),
@@ -436,6 +461,7 @@ class _ShellDrawer extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final AppState state = context.watch<AppState>();
+    final AppLocalizations l10n = AppLocalizations.of(context);
 
     return Drawer(
       child: SafeArea(
@@ -446,7 +472,7 @@ class _ShellDrawer extends StatelessWidget {
               leading: const Icon(Icons.storefront_outlined),
               title: Text(state.owner?.shopName ?? SimplePosBrand.appName),
               subtitle: Text(
-                AppLocalizations.of(context).roleLabel(state.isAdmin),
+                l10n.roleLabel(state.isAdmin),
                 style: Theme.of(context).textTheme.bodySmall,
               ),
             ),
@@ -457,12 +483,9 @@ class _ShellDrawer extends StatelessWidget {
                 selectedTileColor:
                     Theme.of(context).colorScheme.primaryContainer,
                 leading: Icon(destination.icon),
-                title: Text(destination.label(AppLocalizations.of(context))),
+                title: Text(destination.label(l10n)),
                 onTap: () {
                   onSelect(destination);
-                  // The drawer on an extra-large window is a permanent rail, not
-                  // a modal — there is nothing to pop, and asking for a pop would
-                  // eat the branch change.
                   Navigator.of(context).maybePop();
                 },
               ),

@@ -44,12 +44,11 @@ enum ShopRole {
   /// Whether this role may add, rename and remove staff, pair a printer, change
   /// the tax settings, back up or restore, and manage linked shops.
   ///
-  /// This is the single gate for the Settings tab. Note it is a *deny* list of
-  /// capabilities rather than "not a cashier": a role that is not [cashier] and
-  /// is not [admin] is [manager], which is what makes an unrecognised database
-  /// value resolve to the least-privileged known role instead of the most
-  /// privileged one.
-  bool get canAdminister => this == ShopRole.admin || this == ShopRole.manager;
+  /// This is the single gate for the Settings tab. A manager is documented as
+  /// "Everything except staff management and shop administration," so only the
+  /// owner may reach Settings. Restricting this to [admin] also keeps the shell
+  /// app-bar from mislabeling a manager as "Owner" via `isOwner: state.isAdmin`.
+  bool get canAdminister => this == ShopRole.admin;
 
   /// Whether this role may delete a product outright rather than deactivate it.
   ///

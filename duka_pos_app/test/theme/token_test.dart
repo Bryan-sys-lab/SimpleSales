@@ -273,12 +273,11 @@ void main() {
   });
 
   group('haptics', () {
-    test('the muted map keeps every slot and only closes the gate', () {
+    test('copyWith closes the gate without dropping the slots', () {
       // Turning haptics off must not delete the design: the slots are what a
       // settings toggle turns back on, not something to rebuild.
-      expect(HapticTheme.muted.enabled, isFalse);
+      expect(HapticTheme.standard.copyWith(enabled: false).enabled, isFalse);
       expect(HapticTheme.standard.enabled, isTrue);
-      expect(HapticTheme.muted.withEnabled(true).enabled, isTrue);
     });
   });
 

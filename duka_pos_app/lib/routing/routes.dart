@@ -5,10 +5,9 @@ import '../l10n/l10n_keys.dart';
 
 /// Every path in the app, in one place.
 ///
-/// Call sites never hand-concatenate a URL. `Routes.staff(id)` and
-/// `Routes.analytics` are the only strings the router and the screens agree on,
-/// so a renamed path is a compile error rather than a deep link that 404s in the
-/// field.
+/// Call sites never hand-concatenate a URL. `Routes.analytics` is the only
+/// string the router and the screens agree on, so a renamed path is a compile
+/// error rather than a deep link that 404s in the field.
 ///
 /// Identity always lives in a PATH PARAMETER, never in `state.extra`: `extra` is
 /// a live Dart object, so it is `null` on a cold start from a deep link and after
@@ -50,9 +49,6 @@ abstract final class Routes {
 
   /// Deep-link identity that must survive process death.
   static String product(String id) => '/inventory/product/$id';
-  static const String productPattern = '/inventory/product/:productId';
-  static const String staffPattern = '/settings/staff/:staffId';
-  static String staff(String id) => '/settings/staff/$id';
 
   /// The root the app opens on. The splash is a real route so a cold deep link
   /// into `/login` still shows the boot gate before it is evaluated.

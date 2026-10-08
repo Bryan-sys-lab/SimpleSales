@@ -170,11 +170,16 @@ void main() {
       expect(visible, equals(AppDestination.values));
     });
 
-    test('manager sees five tabs (manager can administer)', () {
+    test('manager sees four tabs (no Settings)', () {
       final AppState state = AppState();
       state.signIn('Manager', asOwner: false, role: 'manager');
       final visible = visibleDestinations(state).toList();
-      expect(visible, equals(AppDestination.values));
+      expect(visible, <AppDestination>[
+        AppDestination.dashboard,
+        AppDestination.sell,
+        AppDestination.inventory,
+        AppDestination.analytics,
+      ]);
     });
 
     test('cashier sees only dashboard and sell', () {
@@ -242,7 +247,7 @@ void main() {
           reason: 'expected navigation to change the URL, got $visited');
     });
 
-    testWidgets('manager sees all five tabs', (WidgetTester tester) async {
+    testWidgets('manager sees four tabs', (WidgetTester tester) async {
       tester.view.physicalSize = const Size(320, 640).testerPhysicalSizeForDpr(2.0);
       tester.view.devicePixelRatio = 2.0;
       addTearDown(tester.view.reset);
@@ -251,7 +256,7 @@ void main() {
       final GoRouter router = _testRouter(state);
       await _pumpShell(tester, state, router);
 
-      expect(find.byType(NavigationDestination), findsNWidgets(5));
+      expect(find.byType(NavigationDestination), findsNWidgets(4));
     });
 
     testWidgets('cashier sees only two tabs', (WidgetTester tester) async {

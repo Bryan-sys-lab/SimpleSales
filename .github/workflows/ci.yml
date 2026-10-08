@@ -58,6 +58,15 @@ jobs:
       - name: Set up Flutter and Android SDK
         uses: ./.github/actions/setup-flutter-android
 
+      - name: Check for dependency upgrades
+        run: |
+          flutter pub upgrade --dry-run 2>&1 | tee /tmp/pub-upgrade.txt
+          if grep -q "Changed [0-9]" /tmp/pub-upgrade.txt; then
+            echo "::notice::Dependencies can be upgraded. Run 'flutter pub upgrade' locally and verify tests pass."
+          else
+            echo "All dependencies are up to date."
+          fi
+
       - name: Analyze
         run: flutter analyze --fatal-infos
 
