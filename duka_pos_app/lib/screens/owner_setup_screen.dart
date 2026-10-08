@@ -217,7 +217,7 @@ class _OwnerSetupScreenState extends State<OwnerSetupScreen> {
       // create an admin they had already created.
       await context.read<AppState>().loadOwner();
       if (!mounted) return;
-      await context.read<AppState>().signInAsOwner();
+      context.read<AppState>().signInAsOwner();
       if (!mounted) return;
       setState(() => _saving = false);
       widget.onCreated?.call(owner.shopName);

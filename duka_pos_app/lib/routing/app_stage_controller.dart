@@ -51,15 +51,13 @@ class AppStageController extends ChangeNotifier {
   Future<void> boot() async {
     try {
       await _state.loadOwner();
+      await _state.loadRememberedStaff();
       final SharedPreferences prefs = await SharedPreferences.getInstance();
       _onboardingComplete =
           prefs.getBool('onboarding_completed_${_state.workspaceKey}') ?? false;
       if (_disposed) return;
       await AutoSyncService.start();
     } catch (error, stack) {
-      // Never surfaced: an exception in the UI teaches a shopkeeper that their
-      // data is gone. `DatabaseErrorScreen` says what actually happened and what
-      // to do, and the crash reporter gets the detail.
       debugPrint('Boot failed: $error\n$stack');
       if (_disposed) return;
       _databaseFailed = true;

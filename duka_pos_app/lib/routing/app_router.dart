@@ -7,6 +7,7 @@ import '../screens/dashboard_screen.dart';
 import '../screens/database_error_screen.dart';
 import '../screens/inventory_screen.dart';
 import '../screens/login_screen.dart';
+import '../screens/staff_login_screen.dart';
 import '../screens/onboarding_screen.dart';
 import '../screens/owner_setup_screen.dart';
 import '../screens/reports_screen.dart';
@@ -109,6 +110,12 @@ List<RouteBase> _doorRoutes(AppStageController stage, AppState appState) {
       parentNavigatorKey: rootNavigatorKey,
       pageBuilder: (BuildContext context, GoRouterState routerState) =>
           _fadeThrough(routerState, const LoginScreen()),
+    ),
+    GoRoute(
+      path: Routes.staffLogin,
+      parentNavigatorKey: rootNavigatorKey,
+      pageBuilder: (BuildContext context, GoRouterState routerState) =>
+          _fadeThrough(routerState, const StaffLoginScreen()),
     ),
     GoRoute(
       path: Routes.setup,

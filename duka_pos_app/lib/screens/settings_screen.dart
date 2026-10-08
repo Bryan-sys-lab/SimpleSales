@@ -734,7 +734,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
     if (!mounted) return;
     await context.read<AppState>().loadOwner();
     if (!mounted) return;
-    await context.read<AppState>().signInAsOwner();
+    context.read<AppState>().signInAsOwner();
     if (!mounted) return;
     _err('$shop is ready. Your admin account and PIN carried across.');
   }

@@ -47,6 +47,7 @@ class Owner {
 class Staff {
   final int? id;
   final String name;
+  final String? username;
   final String pinHash;
   final bool active;
   final String? remoteId;
@@ -55,6 +56,7 @@ class Staff {
   Staff(
       {this.id,
       required this.name,
+      this.username,
       required this.pinHash,
       this.active = true,
       this.remoteId,
@@ -63,6 +65,7 @@ class Staff {
   Map<String, dynamic> toMap() => {
         if (id != null) 'id': id,
         'name': name,
+        if (username != null) 'username': username,
         'pin_hash': pinHash,
         'active': active ? 1 : 0,
         'remote_id': remoteId,
@@ -72,6 +75,7 @@ class Staff {
   factory Staff.fromMap(Map<String, dynamic> m) => Staff(
         id: m['id'],
         name: m['name'],
+        username: m['username'] as String?,
         pinHash: m['pin_hash'],
         active: m['active'] == 1,
         remoteId: m['remote_id'],

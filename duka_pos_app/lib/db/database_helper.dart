@@ -54,7 +54,7 @@ class DatabaseHelper {
   /// shipped — always add a new one, even for a one-line fix — because a
   /// shop's phone may be several versions behind and needs every step run
   /// in order to land on the current schema without data loss.
-  static const _schemaVersion = 15;
+  static const _schemaVersion = 16;
 
   /// Slack allowed when deciding whether a container has enough left for a sale.
   ///
@@ -262,6 +262,10 @@ SELECT name FROM staff GROUP BY name HAVING COUNT(*) = 1
       await _createShiftTables(db);
       await _createShotCupsTable(db);
       await _createCupSizeSuggestionsTable(db);
+    }
+    if (oldVersion < 16) {
+      await db.execute('ALTER TABLE staff ADD COLUMN username TEXT');
+      await db.execute('CREATE UNIQUE INDEX IF NOT EXISTS idx_staff_username ON staff (username) WHERE username IS NOT NULL');
     }
   }
 
@@ -757,7 +761,8 @@ SELECT name FROM staff GROUP BY name HAVING COUNT(*) = 1
         pin_hash TEXT NOT NULL,
         active INTEGER NOT NULL DEFAULT 1,
         remote_id TEXT,
-        role TEXT NOT NULL DEFAULT 'cashier'
+        role TEXT NOT NULL DEFAULT 'cashier',
+        username TEXT
       )
     ''');
     await db.execute('''

@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import 'package:flutter/foundation.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import '../models/models.dart';
 import '../db/database_helper.dart';
 import 'oidc_service.dart';
@@ -38,6 +39,14 @@ class AppState extends ChangeNotifier {
   /// online identity. Selling stays fully available offline; this only drives the
   /// "verify online" reminder in Settings.
   bool identityLinkPending = false;
+
+  /// The last staff username that signed in on this till, persisted across
+  /// restarts so the staff-login screen can prefill it.
+  String? rememberedStaffUsername;
+
+  /// The last staff id that signed in on this till, persisted across restarts
+  /// so the credential cache can be keyed correctly.
+  int? rememberedStaffId;
 
   ShopRole get role => _role;
 
@@ -77,6 +86,48 @@ class AppState extends ChangeNotifier {
     notifyListeners();
   }
 
+  Future<void> rememberStaff(Staff staff) async {
+    rememberedStaffUsername = staff.username ?? staff.name;
+    rememberedStaffId = staff.id;
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setString('remembered_staff_username', rememberedStaffUsername!);
+      if (staff.id != null) {
+        await prefs.setInt('remembered_staff_id', staff.id!);
+      }
+    } catch (_) {
+      // SharedPreferences is unavailable in some test environments; the
+      // in-memory fields above are enough for the app to function.
+    }
+    notifyListeners();
+  }
+
+  Future<void> loadRememberedStaff() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      rememberedStaffUsername = prefs.getString('remembered_staff_username');
+      rememberedStaffId = prefs.getInt('remembered_staff_id');
+    } catch (_) {
+      // SharedPreferences is unavailable in some test environments; leave
+      // the in-memory fields null.
+    }
+    notifyListeners();
+  }
+
+  Future<void> clearRememberedStaff() async {
+    rememberedStaffUsername = null;
+    rememberedStaffId = null;
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.remove('remembered_staff_username');
+      await prefs.remove('remembered_staff_id');
+    } catch (_) {
+      // SharedPreferences is unavailable in some test environments; the
+      // in-memory fields above are enough.
+    }
+    notifyListeners();
+  }
+
   /// Moves to another shop on this device.
   ///
   /// The session is dropped *after* the database has been repointed, not
@@ -91,17 +142,19 @@ class AppState extends ChangeNotifier {
     currentStaffId = null;
     isOwnerSession = false;
     _role = ShopRole.cashier;
+    unawaited(clearRememberedStaff());
     await loadOwner();
   }
 
   /// Signs in as the shop owner.
-  Future<void> signInAsOwner({int? staffId}) async {
+  void signInAsOwner({int? staffId}) {
     final shop = owner;
     if (shop == null) return;
     currentStaffName = shop.name;
     currentStaffId = staffId;
     isOwnerSession = true;
     _role = ShopRole.admin;
+    unawaited(clearRememberedStaff());
     notifyListeners();
   }
 
@@ -113,6 +166,7 @@ class AppState extends ChangeNotifier {
     // A name that is not a known role resolves to cashier rather than to
     // manager. See [ShopRole.parse].
     _role = ShopRole.parse(staff.role);
+    unawaited(rememberStaff(staff));
     notifyListeners();
   }
 
@@ -149,6 +203,7 @@ class AppState extends ChangeNotifier {
     currentStaffId = null;
     isOwnerSession = false;
     _role = ShopRole.cashier;
+    unawaited(clearRememberedStaff());
     notifyListeners();
     unawaited(tearDownOnlineSession());
   }

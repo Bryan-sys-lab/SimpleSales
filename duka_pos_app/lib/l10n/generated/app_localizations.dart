@@ -3667,6 +3667,12 @@ abstract class AppLocalizations {
   /// **'Sign in'**
   String get chooserSignInAction;
 
+  /// No description provided for @chooserSignInAsStaffAction.
+  ///
+  /// In en, this message translates to:
+  /// **'Sign in as staff'**
+  String get chooserSignInAsStaffAction;
+
   /// No description provided for @chooserSetupAnother.
   ///
   /// In en, this message translates to:
@@ -4291,6 +4297,54 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'Digit {digit}'**
   String loginDigit(Object digit);
+
+  /// No description provided for @fieldRequired.
+  ///
+  /// In en, this message translates to:
+  /// **'{label} is required'**
+  String fieldRequired(Object label);
+
+  /// No description provided for @loginSignInAction.
+  ///
+  /// In en, this message translates to:
+  /// **'Sign in'**
+  String get loginSignInAction;
+
+  /// No description provided for @backToPinPadAction.
+  ///
+  /// In en, this message translates to:
+  /// **'Back to PIN pad'**
+  String get backToPinPadAction;
+
+  /// No description provided for @staffLoginTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Sign in as staff'**
+  String get staffLoginTitle;
+
+  /// No description provided for @staffUsernameLabel.
+  ///
+  /// In en, this message translates to:
+  /// **'Username'**
+  String get staffUsernameLabel;
+
+  /// No description provided for @staffPasswordLabel.
+  ///
+  /// In en, this message translates to:
+  /// **'Password'**
+  String get staffPasswordLabel;
+
+  /// No description provided for @loginWrongCredentials.
+  ///
+  /// In en, this message translates to:
+  /// **'Wrong username or password'**
+  String get loginWrongCredentials;
+
+  /// No description provided for @loginNetworkError.
+  ///
+  /// In en, this message translates to:
+  /// **'Could not reach the shop server. Try again.'**
+  String get loginNetworkError;
 
   /// No description provided for @onboardingImportedProducts.
   ///

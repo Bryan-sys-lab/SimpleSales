@@ -893,6 +893,14 @@ void main() {
             await db.execute('''CREATE TABLE IF NOT EXISTS categories (
               name TEXT PRIMARY KEY NOT NULL, sort_order INTEGER NOT NULL DEFAULT 0
             )''');
+            await db.execute('''CREATE TABLE IF NOT EXISTS staff (
+              id INTEGER PRIMARY KEY AUTOINCREMENT,
+              name TEXT NOT NULL,
+              role TEXT NOT NULL DEFAULT 'cashier',
+              pin_hash TEXT NOT NULL,
+              is_active INTEGER NOT NULL DEFAULT 1,
+              created_at TEXT NOT NULL
+            )''');
           },
         ),
       );
@@ -1020,6 +1028,316 @@ void main() {
       expect(names.where((n) => n.endsWith('_v15')), isEmpty);
       expect(names.where((n) => n.contains('moneyfix')), isEmpty);
       await db.close();
+    });
+  });
+
+  group('v15 -> v16: staff username column', () {
+    Future<Database> migratedFromV15() async {
+      await _createV10Database(path, products: const [], sales: const []);
+      final db = await databaseFactoryFfi.openDatabase(
+        path,
+        options: OpenDatabaseOptions(
+          version: 15,
+          onOpen: (db) async {
+            const moneyColumns = <String, List<String>>{
+              'products': [
+                'cost_price',
+                'sell_price',
+                'half_price',
+                'quarter_price'
+              ],
+              'sales': ['total', 'profit', 'amount_tendered', 'change_given'],
+              'sale_items': ['unit_price', 'unit_cost'],
+            };
+            for (final entry in moneyColumns.entries) {
+              final table = entry.key;
+              final ddl = (await db.rawQuery(
+                      "SELECT sql FROM sqlite_master WHERE type='table' AND name=?",
+                      [table]))
+                  .first['sql'] as String;
+              var rebuilt = ddl;
+              for (final col in entry.value) {
+                rebuilt = rebuilt.replaceAll('$col REAL', '$col INTEGER');
+              }
+              final tmp = '${table}_moneyfix';
+              await db.execute(rebuilt.replaceFirst(
+                  'CREATE TABLE $table', 'CREATE TABLE $tmp'));
+
+              final cols = [
+                for (final row
+                    in await db.rawQuery('PRAGMA table_info($table)'))
+                  row['name'] as String
+              ];
+              final projections = <String>[
+                for (final col in cols)
+                  if (entry.value.contains(col) &&
+                      !cols.contains('${col}_minor'))
+                    'CAST(ROUND($col * 100) AS INTEGER)'
+                  else
+                    col
+              ];
+              await db.execute('INSERT INTO $tmp (${cols.join(', ')}) '
+                  'SELECT ${projections.join(', ')} FROM $table');
+              await db.execute('DROP TABLE $table');
+              await db.execute('ALTER TABLE $tmp RENAME TO $table');
+            }
+
+            await db
+                .execute('ALTER TABLE sales ADD COLUMN receipt_number TEXT');
+            await db.execute('ALTER TABLE sales ADD COLUMN etims_status TEXT');
+            await db.execute(
+                'ALTER TABLE sales ADD COLUMN etims_receipt_number TEXT');
+            await db.execute(
+                "ALTER TABLE sales ADD COLUMN payment_verified INTEGER NOT NULL DEFAULT 1");
+            await db.execute(
+                "ALTER TABLE products ADD COLUMN unit TEXT NOT NULL DEFAULT 'each'");
+            await db.execute(
+                'ALTER TABLE products ADD COLUMN track_variants INTEGER NOT NULL DEFAULT 0');
+            await db.execute('ALTER TABLE sale_items ADD COLUMN variant_id INTEGER');
+            await db
+                .execute('ALTER TABLE sale_items ADD COLUMN variant_name TEXT');
+            await db.execute('''CREATE TABLE IF NOT EXISTS product_barcodes (
+              barcode TEXT PRIMARY KEY NOT NULL,
+              product_id INTEGER NOT NULL,
+              kind TEXT NOT NULL DEFAULT 'supplier',
+              variant_id INTEGER
+            )''');
+            await db.execute('''CREATE TABLE IF NOT EXISTS shop_settings (
+              key TEXT PRIMARY KEY NOT NULL, value TEXT
+            )''');
+            await db.execute('''CREATE TABLE IF NOT EXISTS
+              receipt_counters (
+              key TEXT PRIMARY KEY NOT NULL, value INTEGER NOT NULL
+            )''');
+            await db.execute('''CREATE TABLE IF NOT EXISTS pending_etims (
+              sale_id INTEGER PRIMARY KEY,
+              receipt_number TEXT NOT NULL,
+              attempts INTEGER NOT NULL DEFAULT 0,
+              last_error TEXT,
+              created_at TEXT NOT NULL,
+              updated_at TEXT NOT NULL
+            )''');
+            await db.execute('''CREATE TABLE IF NOT EXISTS product_variants (
+              id INTEGER PRIMARY KEY AUTOINCREMENT,
+              product_id INTEGER NOT NULL,
+              name TEXT NOT NULL,
+              sku TEXT,
+              unit TEXT NOT NULL DEFAULT 'each',
+              size_ml INTEGER NOT NULL DEFAULT 0,
+              sell_price INTEGER NOT NULL,
+              cost_price INTEGER NOT NULL DEFAULT 0,
+              stock_qty REAL NOT NULL DEFAULT 0,
+              reorder_level INTEGER NOT NULL DEFAULT 0,
+              position INTEGER NOT NULL DEFAULT 0,
+              active INTEGER NOT NULL DEFAULT 1
+            )''');
+            await db.execute('''CREATE TABLE IF NOT EXISTS categories (
+              name TEXT PRIMARY KEY NOT NULL, sort_order INTEGER NOT NULL DEFAULT 0
+            )''');
+            await db.execute('''CREATE TABLE IF NOT EXISTS owner (
+              id INTEGER PRIMARY KEY CHECK (id = 1),
+              name TEXT NOT NULL,
+              pin_hash TEXT NOT NULL,
+              email TEXT NOT NULL DEFAULT '',
+              shop_name TEXT NOT NULL,
+              created_at TEXT NOT NULL
+            )''');
+            await db.execute('''CREATE TABLE IF NOT EXISTS staff (
+              id INTEGER PRIMARY KEY AUTOINCREMENT,
+              name TEXT NOT NULL,
+              role TEXT NOT NULL DEFAULT 'cashier',
+              pin_hash TEXT NOT NULL,
+              is_active INTEGER NOT NULL DEFAULT 1,
+              created_at TEXT NOT NULL
+            )''');
+            await db.execute('''CREATE TABLE IF NOT EXISTS stock_adjustments (
+              product_id INTEGER NOT NULL,
+              delta REAL NOT NULL,
+              reason TEXT,
+              staff_id INTEGER,
+              created_at TEXT NOT NULL
+            )''');
+            await db.execute('''CREATE TABLE IF NOT EXISTS staff_deletion_tombstones (
+              staff_id INTEGER PRIMARY KEY,
+              remote_id TEXT,
+              deleted_at TEXT NOT NULL
+            )''');
+            await db.execute('''CREATE TABLE IF NOT EXISTS pending_payments (
+              reference TEXT PRIMARY KEY,
+              phone_number TEXT,
+              amount INTEGER NOT NULL,
+              cart_json TEXT NOT NULL,
+              staff_name TEXT,
+              staff_id INTEGER,
+              created_at TEXT NOT NULL
+            )''');
+          },
+        ),
+      );
+      return db;
+    }
+
+    test('staff table gains a nullable username column', () async {
+      await migratedFromV15().then((db) => db.close());
+      final db = await DatabaseHelper.openExistingForUpgradeTests(path);
+      final info = await db.rawQuery(
+          "PRAGMA table_info(staff)");
+      final columns =
+          info.map((row) => row['name'] as String).toList();
+      expect(columns, contains('username'));
+      await db.close();
+    });
+
+    test('fresh installs match upgraded installs', () async {
+      final db = await migratedFromV15();
+      final path2 = '${path}_fresh_v16';
+      final fresh = await databaseFactoryFfi.openDatabase(
+        path2,
+        options: OpenDatabaseOptions(
+          version: 16,
+          onCreate: (db, version) async {
+            await db.execute('''CREATE TABLE IF NOT EXISTS products (
+              id INTEGER PRIMARY KEY AUTOINCREMENT,
+              name TEXT NOT NULL,
+              category TEXT NOT NULL,
+              cost_price INTEGER NOT NULL,
+              sell_price INTEGER NOT NULL,
+              stock_qty REAL NOT NULL DEFAULT 0,
+              reorder_level INTEGER NOT NULL DEFAULT 0,
+              bottle_ml INTEGER NOT NULL DEFAULT 750,
+              unit TEXT NOT NULL DEFAULT 'each',
+              track_variants INTEGER NOT NULL DEFAULT 0,
+              half_price INTEGER,
+              quarter_price INTEGER,
+              excise_stamp_batch TEXT NOT NULL DEFAULT '',
+              active INTEGER NOT NULL DEFAULT 1,
+              updated_at TEXT NOT NULL,
+              remote_id TEXT
+            )''');
+            await db.execute('''CREATE TABLE IF NOT EXISTS sales (
+              id INTEGER PRIMARY KEY AUTOINCREMENT,
+              staff_name TEXT NOT NULL,
+              staff_id INTEGER,
+              total INTEGER NOT NULL,
+              profit INTEGER NOT NULL,
+              created_at TEXT NOT NULL,
+              payment_method TEXT NOT NULL DEFAULT 'cash',
+              payment_reference TEXT,
+              amount_tendered INTEGER NOT NULL DEFAULT 0,
+              change_given INTEGER NOT NULL DEFAULT 0,
+              receipt_number TEXT,
+              etims_status TEXT,
+              etims_receipt_number TEXT,
+              payment_verified INTEGER NOT NULL DEFAULT 1
+            )''');
+            await db.execute('''CREATE TABLE IF NOT EXISTS sale_items (
+              id INTEGER PRIMARY KEY AUTOINCREMENT,
+              sale_id INTEGER NOT NULL,
+              product_id INTEGER NOT NULL,
+              product_name TEXT NOT NULL,
+              qty REAL NOT NULL,
+              unit_price INTEGER NOT NULL,
+              unit_cost INTEGER NOT NULL,
+              portion TEXT NOT NULL DEFAULT 'full',
+              portion_ml INTEGER NOT NULL DEFAULT 0,
+              variant_id INTEGER,
+              variant_name TEXT
+            )''');
+            await db.execute(
+                'CREATE INDEX idx_sales_staff ON sales (staff_id)');
+            await db.execute('''CREATE TABLE IF NOT EXISTS product_barcodes (
+              barcode TEXT PRIMARY KEY NOT NULL,
+              product_id INTEGER NOT NULL,
+              kind TEXT NOT NULL DEFAULT 'supplier',
+              variant_id INTEGER
+            )''');
+            await db.execute('''CREATE TABLE IF NOT EXISTS shop_settings (
+              key TEXT PRIMARY KEY NOT NULL, value TEXT
+            )''');
+            await db.execute('''CREATE TABLE IF NOT EXISTS
+              receipt_counters (
+              key TEXT PRIMARY KEY NOT NULL, value INTEGER NOT NULL
+            )''');
+            await db.execute('''CREATE TABLE IF NOT EXISTS pending_etims (
+              sale_id INTEGER PRIMARY KEY,
+              receipt_number TEXT NOT NULL,
+              attempts INTEGER NOT NULL DEFAULT 0,
+              last_error TEXT,
+              created_at TEXT NOT NULL,
+              updated_at TEXT NOT NULL
+            )''');
+            await db.execute('''CREATE TABLE IF NOT EXISTS product_variants (
+              id INTEGER PRIMARY KEY AUTOINCREMENT,
+              product_id INTEGER NOT NULL,
+              name TEXT NOT NULL,
+              sku TEXT,
+              unit TEXT NOT NULL DEFAULT 'each',
+              size_ml INTEGER NOT NULL DEFAULT 0,
+              sell_price INTEGER NOT NULL,
+              cost_price INTEGER NOT NULL DEFAULT 0,
+              stock_qty REAL NOT NULL DEFAULT 0,
+              reorder_level INTEGER NOT NULL DEFAULT 0,
+              position INTEGER NOT NULL DEFAULT 0,
+              active INTEGER NOT NULL DEFAULT 1
+            )''');
+            await db.execute('''CREATE TABLE IF NOT EXISTS categories (
+              name TEXT PRIMARY KEY NOT NULL, sort_order INTEGER NOT NULL DEFAULT 0
+            )''');
+            await db.execute('''CREATE TABLE IF NOT EXISTS owner (
+              id INTEGER PRIMARY KEY CHECK (id = 1),
+              name TEXT NOT NULL,
+              pin_hash TEXT NOT NULL,
+              email TEXT NOT NULL DEFAULT '',
+              shop_name TEXT NOT NULL,
+              created_at TEXT NOT NULL
+            )''');
+            await db.execute('''CREATE TABLE IF NOT EXISTS staff (
+              id INTEGER PRIMARY KEY AUTOINCREMENT,
+              name TEXT NOT NULL,
+              role TEXT NOT NULL DEFAULT 'cashier',
+              pin_hash TEXT NOT NULL,
+              is_active INTEGER NOT NULL DEFAULT 1,
+              created_at TEXT NOT NULL,
+              username TEXT
+            )''');
+            await db.execute('''CREATE TABLE IF NOT EXISTS stock_adjustments (
+              product_id INTEGER NOT NULL,
+              delta REAL NOT NULL,
+              reason TEXT,
+              staff_id INTEGER,
+              created_at TEXT NOT NULL
+            )''');
+            await db.execute('''CREATE TABLE IF NOT EXISTS staff_deletion_tombstones (
+              staff_id INTEGER PRIMARY KEY,
+              remote_id TEXT,
+              deleted_at TEXT NOT NULL
+            )''');
+            await db.execute('''CREATE TABLE IF NOT EXISTS pending_payments (
+              reference TEXT PRIMARY KEY,
+              phone_number TEXT,
+              amount INTEGER NOT NULL,
+              cart_json TEXT NOT NULL,
+              staff_name TEXT,
+              staff_id INTEGER,
+              created_at TEXT NOT NULL
+            )''');
+          },
+        ),
+      );
+
+      final migratedTables = [
+        for (final row in await db.rawQuery(
+            "SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%'"))
+          row['name'] as String
+      ];
+      final freshTables = [
+        for (final row in await fresh.rawQuery(
+            "SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%'"))
+          row['name'] as String
+      ];
+      expect(freshTables, migratedTables,
+          reason: 'a new till and an upgraded one must not diverge');
+      await fresh.close();
     });
   });
 }

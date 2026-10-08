@@ -109,8 +109,8 @@ final class _DashboardReady extends _DashboardState {
 }
 
 class _DashboardScreenState extends State<DashboardScreen> {
-  /// Null until the first load resolves, then whatever it resolved to.
   _DashboardState? _state;
+  bool _loading = false;
 
   @override
   void initState() {
@@ -119,19 +119,17 @@ class _DashboardScreenState extends State<DashboardScreen> {
   }
 
   Future<void> _load() async {
+    if (_loading) return;
     final AppState appState = context.read<AppState>();
-    final bool ownOnly = !appState.canManageStock;
-
     setState(() {
-      // The first load has nothing to keep, so it shows the skeleton shape. A
-      // later reload leaves `_state` alone, which is what keeps the content on
-      // screen instead of flashing a spinner over data the user was reading.
       _state ??= const _DashboardLoading();
+      _loading = true;
     });
 
     try {
       final DatabaseHelper db = DatabaseHelper.instance;
-      final staffId = ownOnly
+      final bool ownOnly = !appState.canManageStock;
+      final int? staffId = ownOnly
           ? staffIdForCashier(
               await db.getStaff(activeOnly: false), appState.currentStaffName)
           : null;
@@ -140,45 +138,99 @@ class _DashboardScreenState extends State<DashboardScreen> {
       final DateTime dayStart = DateTime(now.year, now.month, now.day);
       final DateTime tomorrow = dayStart.add(const Duration(days: 1));
 
-      // One round trip for the whole screen rather than a cascade of dependent
-      // ones: these aggregates do not depend on each other.
+      final List<Product> products = await db.getProducts();
+      final DailyTotals totalsToday =
+          await db.salesTotalsFor(since: dayStart, staffId: staffId);
+      final DailyTotals totalsAll =
+          await db.salesTotalsFor(staffId: staffId);
+
+      if (!mounted) return;
+      if (products.isEmpty && !totalsAll.hasSales) {
+        final Shift? shift = appState.currentStaffId == null
+            ? null
+            : await db.getOpenShift(appState.currentStaffId!);
+        final String scopeLabel =
+            ownOnly ? (appState.currentStaffName ?? 'you') : 'the shop';
+        setState(() {
+          _state = _DashboardReady(
+            totals: totalsToday,
+            hasEverSold: totalsAll.hasSales,
+            hours: const <TimeBucket>[],
+            topProducts: const <ProductSalesRow>[],
+            lowStock: const <Product>[],
+            lowStockCount: 0,
+            attention: const AttentionSummary(
+              pendingEtims: 0,
+              rejectedEtims: 0,
+              openImportProblems: 0,
+              unverifiedPayments: 0,
+            ),
+            scopeLabel: scopeLabel,
+            greeting: _greeting(
+              AppLocalizations.of(context),
+              shopName: appState.owner?.shopName ?? SimplePosBrand.appName,
+              staffName: appState.currentStaffName,
+              role: appState.currentRole,
+              scopeLabel: scopeLabel,
+            ),
+            openShift: shift,
+            expectedTill: Money.zero,
+          );
+        });
+        if (shift == null) return;
+        final Money expected = await db.expectedTillBalance(shift);
+        if (!mounted) return;
+        final _DashboardReady? ready = _state as _DashboardReady?;
+        if (ready == null || ready.openShift?.id != shift.id) return;
+        setState(() => _state = _DashboardReady(
+              totals: ready.totals,
+              hasEverSold: ready.hasEverSold,
+              hours: ready.hours,
+              topProducts: ready.topProducts,
+              lowStock: ready.lowStock,
+              lowStockCount: ready.lowStockCount,
+              attention: ready.attention,
+              scopeLabel: ready.scopeLabel,
+              greeting: ready.greeting,
+              openShift: ready.openShift,
+              expectedTill: expected,
+            ));
+        return;
+      }
+
       final List<Object?> results = await Future.wait<Object?>([
-        db.salesTotalsFor(since: dayStart, staffId: staffId),
-        db.salesTotalsFor(staffId: staffId),
         db.salesByHour(day: dayStart, staffId: staffId),
         db.topProducts(
             since: dayStart, until: tomorrow, staffId: staffId, limit: 5),
         db.countLowStockProducts(),
         db.attentionSummary(),
-        db.getProducts(),
         appState.currentStaffId == null
             ? Future<Shift?>.value(null)
             : db.getOpenShift(appState.currentStaffId!),
       ]);
 
-      final List<Product> low = (results[6]! as List<Product>)
+      final List<Product> low = (await db.getProducts())
           .where((Product product) => product.isLow)
           .toList()
-        // Out-of-stock first: it is the only entry here that stops a sale.
         ..sort((Product a, Product b) {
           final int byEmpty =
               (a.stockQty <= 0 ? 0 : 1).compareTo(b.stockQty <= 0 ? 0 : 1);
           return byEmpty != 0 ? byEmpty : a.stockQty.compareTo(b.stockQty);
         });
 
-      final Shift? shift = results[7] as Shift?;
+      final Shift? shift = results[4] as Shift?;
       final String scopeLabel =
           ownOnly ? (appState.currentStaffName ?? 'you') : 'the shop';
 
       if (!mounted) return;
       setState(() {
         _state = _DashboardReady(
-          totals: results[0]! as DailyTotals,
-          hasEverSold: (results[1]! as DailyTotals).hasSales,
-          hours: results[2]! as List<TimeBucket>,
-          topProducts: results[3]! as List<ProductSalesRow>,
-          lowStockCount: results[4]! as int,
-          attention: results[5]! as AttentionSummary,
+          totals: totalsToday,
+          hasEverSold: totalsAll.hasSales,
+          hours: results[0] as List<TimeBucket>,
+          topProducts: results[1] as List<ProductSalesRow>,
+          lowStockCount: results[2] as int,
+          attention: results[3] as AttentionSummary,
           lowStock: low,
           scopeLabel: scopeLabel,
           greeting: _greeting(
@@ -193,8 +245,6 @@ class _DashboardScreenState extends State<DashboardScreen> {
         );
       });
 
-      // Outside the setState so the expected figure does not arrive a frame
-      // later than the shift that produces it.
       if (shift == null) return;
       final Money expected = await db.expectedTillBalance(shift);
       if (!mounted) return;
@@ -216,11 +266,14 @@ class _DashboardScreenState extends State<DashboardScreen> {
     } catch (_) {
       if (!mounted) return;
       setState(() {
-        // A refresh that fails keeps what it had: the figures on screen are
-        // still true as of the last successful read, and blanking them turns a
-        // dropped connection into an empty dashboard.
         _state ??= const _DashboardFailed();
       });
+    } finally {
+      if (mounted) {
+        setState(() {
+          _loading = false;
+        });
+      }
     }
   }
 

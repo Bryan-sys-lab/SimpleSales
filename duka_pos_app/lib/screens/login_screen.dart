@@ -12,6 +12,7 @@ import '../services/app_stage.dart';
 import '../services/app_state.dart';
 import '../services/auth_service.dart';
 import '../services/roles.dart';
+import '../services/staff_credential_cache.dart';
 import '../theme/app_colors.dart';
 import '../theme/app_haptics.dart';
 import '../theme/app_shapes.dart';
@@ -235,6 +236,9 @@ class _LoginScreenState extends State<LoginScreen> {
         final Staff? staff = _selectedStaff;
         if (staff != null) {
           ok = await AuthService.verifyPin(_pin, staff.pinHash);
+          if (!ok && staff.id != null) {
+            ok = await StaffCredentialCache.verifyCachedPin(staff.id!, _pin);
+          }
           if (!mounted) return;
           if (ok) {
             await AuthService.recordSuccess(userKey);

@@ -46,38 +46,58 @@ List<AppDestination> visibleDestinations(AppState state) {
 /// moment a role hides a destination, and conflating them is how a low-stock link
 /// opens Settings.
 class HomeShellTabs extends ChangeNotifier {
-  HomeShellTabs(this._shell);
+  HomeShellTabs(this._shell, this._state) {
+    _state.addListener(_onAppStateChanged);
+  }
 
   final StatefulNavigationShell _shell;
+  final AppState _state;
 
-  /// Bumped whenever the catalogue changes — a product added, a variant
-  /// configured, a shot cup saved.
-  ///
-  /// `StatefulShellRoute.indexedStack` keeps the sell screen alive across tab
-  /// switches, so it is still holding the catalogue it loaded. Without this it
-  /// would go on selling yesterday's prices until the app restarted.
+  void _onAppStateChanged() {
+    final List<AppDestination> visible = visibleDestinations(_state).toList();
+    final int current = _shell.currentIndex;
+    if (current < 0 || current >= visible.length) {
+      if (visible.isNotEmpty) {
+        _shell.goBranch(visible.first.index, initialLocation: false);
+      }
+    }
+  }
+
+  @override
+  void dispose() {
+    _state.removeListener(_onAppStateChanged);
+    super.dispose();
+  }
+
   int _catalogueGeneration = 0;
 
   int get catalogueGeneration => _catalogueGeneration;
 
   StatefulNavigationShell get shell => _shell;
 
-  AppDestination get current => AppDestination.values[_shell.currentIndex];
+  AppDestination get current {
+    final int raw = _shell.currentIndex;
+    final List<AppDestination> visible = visibleDestinations(_state).toList();
+    if (raw >= 0 && raw < visible.length) {
+      return visible[raw];
+    }
+    return visible.isNotEmpty ? visible.first : AppDestination.dashboard;
+  }
 
   void goTo(AppDestination destination) {
-    // `initialLocation: false` keeps the stack: coming back to a tab should
-    // restore where the user was, not reset them to its root. Tapping the
-    // already-current tab is the one case that SHOULD pop to root — that is the
-    // universal "take me back to the top" gesture.
+    final List<AppDestination> visible = visibleDestinations(_state).toList();
+    if (!visible.contains(destination)) {
+      if (visible.isNotEmpty && _shell.currentIndex != visible.first.index) {
+        _shell.goBranch(visible.first.index, initialLocation: false);
+      }
+      return;
+    }
     _shell.goBranch(
       destination.index,
       initialLocation: destination == current,
     );
   }
 
-  /// Says the catalogue changed. Separate from [goTo] because saving a product
-  /// does not necessarily move the user anywhere, and a reload should happen
-  /// whether or not they navigate afterwards.
   void markCatalogueChanged() {
     _catalogueGeneration++;
     notifyListeners();
@@ -101,8 +121,9 @@ class HomeShell extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final AppState state = context.watch<AppState>();
     return ChangeNotifierProvider<HomeShellTabs>(
-      create: (_) => HomeShellTabs(navigationShell),
+      create: (_) => HomeShellTabs(navigationShell, state),
       // Above the branches, not inside the sell screen: the sign-out sheet is
       // shown by the shell's own app bar and must read the cart count from a
       // screen that may never have been opened this session.

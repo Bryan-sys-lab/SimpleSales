@@ -145,6 +145,20 @@ class WelcomeChooserScreen extends StatelessWidget {
                     ),
                   ),
                   SizedBox(height: spacing.md),
+                  OutlinedButton.icon(
+                    onPressed: () => context.go(Routes.staffLogin),
+                    icon: ExcludeSemantics(
+                      child: Icon(Icons.person_outline),
+                    ),
+                    label: Padding(
+                      padding: EdgeInsets.symmetric(vertical: spacing.lg),
+                      child: Text(
+                        AppLocalizations.of(context)
+                            .chooserSignInAsStaffAction,
+                      ),
+                    ),
+                  ),
+                  SizedBox(height: spacing.md),
 
                   OutlinedButton.icon(
                     onPressed: () => _choose(context, _setupIntent),

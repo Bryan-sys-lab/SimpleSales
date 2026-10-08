@@ -91,6 +91,21 @@ class BackendService {
     await WorkspaceService.setActiveWorkspace(existing);
   }
 
+  static Future<Map<String, dynamic>?> authenticateStaff({
+    required String username,
+    required String pin,
+  }) async {
+    await ensureInitialized();
+    try {
+      final response = await _dio.post('$backendUrl/tenant/staff/authenticate',
+          data: {'username': username, 'pin': pin});
+      final data = response.data as Map<String, dynamic>? ?? const {};
+      return data.isNotEmpty ? data : null;
+    } on DioException catch (_) {
+      return null;
+    }
+  }
+
   /// Platform backend configuration is restricted to the explicit system
   /// administrator allowlist; shop admins manage only their own shop data.
   static Future<void> requireSystemAdmin() async {

@@ -44,6 +44,7 @@ abstract final class Routes {
   static const String recovery = '/recovery';
   static const String welcome = '/welcome';
   static const String login = '/login';
+  static const String staffLogin = '/staff-login';
   static const String setup = '/setup';
   static const String onboarding = '/onboarding';
 

@@ -2291,6 +2291,9 @@ class AppLocalizationsEn extends AppLocalizations {
   String get chooserSignInAction => 'Sign in';
 
   @override
+  String get chooserSignInAsStaffAction => 'Sign in as staff';
+
+  @override
   String get chooserSetupAnother => 'Set up another shop on this device';
 
   @override
@@ -2758,6 +2761,32 @@ class AppLocalizationsEn extends AppLocalizations {
   String loginDigit(Object digit) {
     return 'Digit $digit';
   }
+
+  @override
+  String fieldRequired(Object label) {
+    return '$label is required';
+  }
+
+  @override
+  String get loginSignInAction => 'Sign in';
+
+  @override
+  String get backToPinPadAction => 'Back to PIN pad';
+
+  @override
+  String get staffLoginTitle => 'Sign in as staff';
+
+  @override
+  String get staffUsernameLabel => 'Username';
+
+  @override
+  String get staffPasswordLabel => 'Password';
+
+  @override
+  String get loginWrongCredentials => 'Wrong username or password';
+
+  @override
+  String get loginNetworkError => 'Could not reach the shop server. Try again.';
 
   @override
   String onboardingImportedProducts(Object products) {
