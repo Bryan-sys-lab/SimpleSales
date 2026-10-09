@@ -161,8 +161,10 @@ List<RouteBase> _shellRoutes() {
           routes: <RouteBase>[
             GoRoute(
               path: Routes.dashboard,
-              pageBuilder: (BuildContext context, GoRouterState routerState) =>
-                  _fadeThrough(routerState, const DashboardScreen()),
+              pageBuilder: (BuildContext context, GoRouterState routerState) {
+                debugPrint('app_router: building DashboardScreen');
+                return _fadeThrough(routerState, const DashboardScreen());
+              },
             ),
           ],
         ),
@@ -171,8 +173,10 @@ List<RouteBase> _shellRoutes() {
           routes: <RouteBase>[
             GoRoute(
               path: Routes.sell,
-              pageBuilder: (BuildContext context, GoRouterState routerState) =>
-                  _fadeThrough(routerState, const SellScreen()),
+              pageBuilder: (BuildContext context, GoRouterState routerState) {
+                debugPrint('app_router: building SellScreen');
+                return _fadeThrough(routerState, const SellScreen());
+              },
               routes: <RouteBase>[
                 // Covers the shell: a scanner wants the whole screen, including
                 // the navigation affordance it would otherwise hide behind.
@@ -192,8 +196,10 @@ List<RouteBase> _shellRoutes() {
           routes: <RouteBase>[
             GoRoute(
               path: Routes.inventory,
-              pageBuilder: (BuildContext context, GoRouterState routerState) =>
-                  _fadeThrough(routerState, const InventoryScreen()),
+              pageBuilder: (BuildContext context, GoRouterState routerState) {
+                debugPrint('app_router: building InventoryScreen');
+                return _fadeThrough(routerState, const InventoryScreen());
+              },
               routes: <RouteBase>[
                 // Identity in the PATH, so a cold deep link fully reconstructs the
                 // screen. `extra` would be null after process death.
@@ -225,8 +231,10 @@ List<RouteBase> _shellRoutes() {
           routes: <RouteBase>[
             GoRoute(
               path: Routes.analytics,
-              pageBuilder: (BuildContext context, GoRouterState routerState) =>
-                  _fadeThrough(routerState, const AnalyticsScreen()),
+              pageBuilder: (BuildContext context, GoRouterState routerState) {
+                debugPrint('app_router: building AnalyticsScreen');
+                return _fadeThrough(routerState, const AnalyticsScreen());
+              },
               routes: <RouteBase>[
                 // Reports used to be a sixth tab reporting the same numbers
                 // under a different name. It is a view inside Analytics now.
@@ -255,8 +263,10 @@ List<RouteBase> _shellRoutes() {
           routes: <RouteBase>[
             GoRoute(
               path: Routes.settings,
-              pageBuilder: (BuildContext context, GoRouterState routerState) =>
-                  _fadeThrough(routerState, const SettingsScreen()),
+              pageBuilder: (BuildContext context, GoRouterState routerState) {
+                debugPrint('app_router: building SettingsScreen');
+                return _fadeThrough(routerState, const SettingsScreen());
+              },
               routes: <RouteBase>[
                 GoRoute(
                   path: 'tax',
