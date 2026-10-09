@@ -104,13 +104,13 @@ class HomeShellTabs extends ChangeNotifier {
     final List<AppDestination> visible = visibleDestinations(_state).toList();
     if (!visible.contains(destination)) {
       if (visible.isNotEmpty && _shellIndex != visible.first.index) {
-        _shell.goBranch(visible.first.index, initialLocation: false);
+        _shell.goBranch(visible.first.index, initialLocation: true);
       }
       return;
     }
     _shell.goBranch(
       destination.index,
-      initialLocation: destination == current,
+      initialLocation: destination != current,
     );
     // Update local index immediately for instant UI feedback; the shell rebuild
     // will call updateShellIndex again with the confirmed value.
