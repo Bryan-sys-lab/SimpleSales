@@ -129,7 +129,7 @@ List<RouteBase> _doorRoutes(AppStageController stage, AppState appState) {
               stage.intent == AppChooserIntent.addShop ? appState.owner : null,
           onCancel: stage.intent == AppChooserIntent.addShop
               ? () => context.go(Routes.welcome)
-              : null,
+              : () => context.go(Routes.welcome),
         ),
       ),
     ),

@@ -56,10 +56,10 @@ void main() {
       expect(guard(AppStage.settingUp, Routes.setup), isNull);
     });
 
-    test('a shop with nobody signed in lands on the PIN pad', () {
-      expect(guard(AppStage.signingIn, Routes.dashboard), Routes.login);
-      expect(guard(AppStage.signingIn, Routes.settings), Routes.login);
-      expect(guard(AppStage.signingIn, Routes.login), isNull);
+    test('a shop with nobody signed in lands on the chooser', () {
+      expect(guard(AppStage.signingIn, Routes.dashboard), Routes.welcome);
+      expect(guard(AppStage.signingIn, Routes.settings), Routes.welcome);
+      expect(guard(AppStage.signingIn, Routes.welcome), isNull);
     });
 
     test('THE rule: a deep link can never reach the shop while signed out', () {
@@ -75,7 +75,7 @@ void main() {
       ]) {
         expect(
           guard(AppStage.signingIn, path),
-          Routes.login,
+          Routes.welcome,
           reason: 'a signed-out user reached $path',
         );
       }
@@ -203,7 +203,7 @@ void main() {
       AppStage.loading: Routes.splash,
       AppStage.databaseFailed: Routes.recovery,
       AppStage.chooser: Routes.welcome,
-      AppStage.signingIn: Routes.login,
+      AppStage.signingIn: Routes.welcome,
       AppStage.settingUp: Routes.setup,
       AppStage.onboarding: Routes.onboarding,
     };
