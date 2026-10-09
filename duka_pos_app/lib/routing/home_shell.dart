@@ -58,6 +58,7 @@ class HomeShellTabs extends ChangeNotifier {
   /// Call this from [HomeShell.build] to keep the shell index in sync.
   void updateShellIndex(int index) {
     if (_shellIndex == index) return;
+    debugPrint('HomeShellTabs.updateShellIndex: old=$_shellIndex new=$index');
     _shellIndex = index;
     notifyListeners();
   }
@@ -102,15 +103,19 @@ class HomeShellTabs extends ChangeNotifier {
 
   void goTo(AppDestination destination) {
     final List<AppDestination> visible = visibleDestinations(_state).toList();
+    debugPrint('HomeShellTabs.goTo: destination=${destination.name}, current=${current.name}, shellIndex=$_shellIndex, visible=${visible.map((d) => d.name).toList()}');
     if (!visible.contains(destination)) {
+      debugPrint('HomeShellTabs.goTo: destination not visible, redirecting to first visible');
       if (visible.isNotEmpty && _shellIndex != visible.first.index) {
         _shell.goBranch(visible.first.index, initialLocation: true);
       }
       return;
     }
+    final bool shouldInit = destination != current;
+    debugPrint('HomeShellTabs.goTo: calling goBranch with index=${destination.index}, initialLocation=$shouldInit');
     _shell.goBranch(
       destination.index,
-      initialLocation: destination != current,
+      initialLocation: shouldInit,
     );
     // Update local index immediately for instant UI feedback; the shell rebuild
     // will call updateShellIndex again with the confirmed value.
@@ -378,7 +383,10 @@ class _ShellNavigationBar extends StatelessWidget {
       ),
       child: NavigationBar(
         selectedIndex: destinations.indexOf(selected),
-        onDestinationSelected: (int i) => onSelect(destinations[i]),
+        onDestinationSelected: (int i) {
+          debugPrint('_ShellNavigationBar: onDestinationSelected index=$i, destination=${destinations[i].name}');
+          onSelect(destinations[i]);
+        },
         destinations: <Widget>[
           for (final AppDestination destination in destinations)
             NavigationDestination(
@@ -420,7 +428,10 @@ class _ShellRail extends StatelessWidget {
 
     return NavigationRail(
       selectedIndex: destinations.indexOf(selected),
-      onDestinationSelected: (int i) => onSelect(destinations[i]),
+      onDestinationSelected: (int i) {
+        debugPrint('_ShellRail: onDestinationSelected index=$i, destination=${destinations[i].name}');
+        onSelect(destinations[i]);
+      },
       extended: extended,
       minExtendedWidth: 176,
       labelType: extended ? null : NavigationRailLabelType.all,
@@ -485,6 +496,7 @@ class _ShellDrawer extends StatelessWidget {
                 leading: Icon(destination.icon),
                 title: Text(destination.label(l10n)),
                 onTap: () {
+                  debugPrint('_ShellDrawer: onTap destination=${destination.name}');
                   onSelect(destination);
                   Navigator.of(context).maybePop();
                 },
