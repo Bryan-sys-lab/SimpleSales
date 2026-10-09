@@ -3,11 +3,13 @@
 //
 // `DashboardAttentionCard` sits ABOVE every number on this screen deliberately.
 // A section that is usually empty and occasionally urgent is read far more
-// seriously than a section that is always on screen — which is why the sales
-// figures go third and the problems go first.
+// seriously than a section that is always on screen — which is why the problems
+// go first and the sales figures follow.
 
 import 'package:flutter/material.dart';
+import 'package:intl/intl.dart';
 
+import '../routing/routes.dart';
 import '../services/analytics.dart';
 import '../l10n/generated/app_localizations.dart';
 import '../theme/app_colors.dart';
@@ -17,55 +19,94 @@ import '../theme/typography.dart';
 import '../ui/components/status.dart';
 import '../ui/components/surface.dart';
 
-/// Who is signed in, and whose takings these are.
+/// The top of the dashboard: today's date, the shop, whose takings these are, and
+/// the one thing a till is for.
 ///
-/// The scope label is here rather than buried next to the totals because a
+/// The scope line is here rather than buried next to the totals because a
 /// cashier looking at KSh 48,320 needs to know whether that is the shop's money or
 /// theirs. The number cannot say.
-class DashboardGreeting extends StatelessWidget {
-  const DashboardGreeting({
+///
+/// The Sell button is the screen's single primary action. Every other control on
+/// the dashboard is either a drill-down into a figure or a fix for a problem;
+/// "start a sale" is the only thing someone opens a POS in order to do.
+class DashboardHeader extends StatelessWidget {
+  const DashboardHeader({
     required this.shopName,
     required this.subtitle,
+    required this.onSell,
     super.key,
   });
 
   final String shopName;
+
+  /// "Good morning, Wanjiku · Cashier · you" — resolved once per load by the
+  /// screen, so it does not change because a rebuild happened at 17:00.
   final String subtitle;
+
+  final VoidCallback onSell;
 
   @override
   Widget build(BuildContext context) {
     final AppColors colors = AppColors.of(context);
     final AppSpacing spacing = AppSpacing.of(context);
     final TextTheme type = AppTypography.of(context);
+    final AppLocalizations l10n = AppLocalizations.of(context);
 
-    return Column(
+    final String date =
+        DateFormat.MMMMEEEEd(l10n.localeName).format(DateTime.now());
+
+    final Widget titles = Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: <Widget>[
+        Text(
+          date.toUpperCase(),
+          style: type.labelSmall?.copyWith(
+            color: colors.onSurfaceMuted,
+            letterSpacing: 0.6,
+          ),
+        ),
+        SizedBox(height: spacing.sm),
         Semantics(
           header: true,
           child: Text(shopName, style: type.headlineSmall),
         ),
-        SizedBox(height: spacing.xs),
-        Row(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: <Widget>[
-            Icon(
-              Icons.person_outline,
-              size: 16,
-              color: colors.onSurfaceMuted,
-            ),
-            SizedBox(width: spacing.xs),
-            Expanded(
-              child: Text(
-                subtitle,
-                style: type.bodyMedium?.copyWith(
-                  color: colors.onSurfaceMuted,
-                ),
-              ),
-            ),
-          ],
+        SizedBox(height: spacing.sm),
+        Text(
+          subtitle,
+          style: type.bodyMedium?.copyWith(color: colors.onSurfaceMuted),
         ),
       ],
+    );
+
+    final Widget sell = FilledButton.icon(
+      onPressed: onSell,
+      icon: const Icon(Icons.point_of_sale_outlined, size: 18),
+      label: Text(AppDestination.sell.label(l10n)),
+    );
+
+    return LayoutBuilder(
+      builder: (BuildContext context, BoxConstraints constraints) {
+        // A phone gets the button under the titles at full width, where a thumb
+        // reaches it; anything wider puts it beside them.
+        if (constraints.maxWidth < 560) {
+          return Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: <Widget>[
+              titles,
+              SizedBox(height: spacing.xl),
+              sell,
+            ],
+          );
+        }
+        return Row(
+          crossAxisAlignment: CrossAxisAlignment.center,
+          children: <Widget>[
+            Expanded(child: titles),
+            SizedBox(width: spacing.xl),
+            sell,
+          ],
+        );
+      },
     );
   }
 }

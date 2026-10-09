@@ -45,87 +45,87 @@ List<AppDestination> visibleDestinations(AppState state) {
 /// and not the index in the role-filtered list — those are different numbers the
 /// moment a role hides a destination, and conflating them is how a low-stock link
 /// opens Settings.
+///
+/// ## Why [attach] exists
+///
+/// go_router builds a NEW [StatefulNavigationShell] widget on every navigation,
+/// and `currentIndex` is a `final` field of that widget: the shell's
+/// `IndexedStack` shows `widget.currentIndex` and nothing else. An earlier
+/// version of this class captured the FIRST shell widget in its constructor and
+/// the scaffold rendered `tabs.shell` — so `goBranch` ran, the URL and the
+/// highlighted tab changed, and the body kept painting the stale widget whose
+/// index was still 0: the dashboard, forever. [HomeShell] now hands every fresh
+/// shell to [attach], and nothing in this class mirrors the index: the router is
+/// the only source of truth for which tab is showing.
 class HomeShellTabs extends ChangeNotifier {
-  HomeShellTabs(this._shell, this._state) : _shellIndex = _shell.currentIndex {
+  HomeShellTabs(this._shell, this._state) {
     _state.addListener(_onAppStateChanged);
   }
 
-  final StatefulNavigationShell _shell;
+  StatefulNavigationShell _shell;
   final AppState _state;
+  bool _disposed = false;
 
-  late int _shellIndex;
+  /// Points this at the shell widget go_router most recently built.
+  ///
+  /// Deliberately silent: it runs inside a build, and the widgets that care
+  /// about the index are rebuilt by the same pass that delivered the new shell.
+  void attach(StatefulNavigationShell shell) => _shell = shell;
 
-  /// Call this from [HomeShell.build] to keep the shell index in sync.
-  void updateShellIndex(int index) {
-    if (_shellIndex == index) return;
-    debugPrint('HomeShellTabs.updateShellIndex: old=$_shellIndex new=$index');
-    _shellIndex = index;
-    notifyListeners();
-  }
+  StatefulNavigationShell get shell => _shell;
 
+  /// The destination the router is showing, whether or not this role may see it.
+  AppDestination get current => AppDestination.values[_shell.currentIndex];
+
+  /// Role changed under a live session (an owner demoting a manager, say): if the
+  /// branch on screen is no longer offered, move to the first one that is.
+  ///
+  /// The router's redirect also guards the URL; this keeps the shell's own
+  /// chrome from sitting on a tab it no longer lists. Deferred to after the
+  /// frame because this listener can fire in the middle of a build.
   void _onAppStateChanged() {
-    final List<AppDestination> visible = visibleDestinations(_state).toList();
-    // If the current branch is no longer visible (role change), go to first visible.
-    final AppDestination? currentDest = visible.isNotEmpty
-        ? visible.firstWhere(
-            (d) => d.index == _shellIndex,
-            orElse: () => visible.first,
-          )
-        : null;
-    if (currentDest == null) return;
-    if (!visible.contains(currentDest)) {
-      _shell.goBranch(visible.first.index, initialLocation: false);
-    }
-  }
-
-  @override
-  void dispose() {
-    _state.removeListener(_onAppStateChanged);
-    super.dispose();
+    if (_disposed || !_state.isSignedIn) return;
+    if (visibleDestinations(_state).contains(current)) return;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (_disposed) return;
+      final List<AppDestination> visible = visibleDestinations(_state);
+      if (visible.isEmpty || visible.contains(current)) return;
+      _shell.goBranch(visible.first.index);
+    });
+    WidgetsBinding.instance.scheduleFrame();
   }
 
   int _catalogueGeneration = 0;
 
   int get catalogueGeneration => _catalogueGeneration;
 
-  StatefulNavigationShell get shell => _shell;
-
-  AppDestination get current {
-    final List<AppDestination> visible = visibleDestinations(_state).toList();
-    // Find visible destination whose shell branch index (enum index) matches _shellIndex.
-    return visible.isNotEmpty
-        ? visible.firstWhere(
-            (d) => d.index == _shellIndex,
-            orElse: () => visible.first,
-          )
-        : AppDestination.dashboard;
-  }
-
+  /// Moves the shell to [destination].
+  ///
+  /// A no-op for a destination this role does not have: a cashier tapping a
+  /// stock tile should not be thrown somewhere else.
+  ///
+  /// Switching to another tab RESUMES that tab's own stack (each branch keeps its
+  /// scroll position and any pushed detail); re-selecting the tab already showing
+  /// pops it back to its root. Passing `initialLocation: true` on a switch would
+  /// throw away the stack the router keeps alive for exactly this reason.
   void goTo(AppDestination destination) {
-    final List<AppDestination> visible = visibleDestinations(_state).toList();
-    debugPrint('HomeShellTabs.goTo: destination=${destination.name}, current=${current.name}, shellIndex=$_shellIndex, visible=${visible.map((d) => d.name).toList()}');
-    if (!visible.contains(destination)) {
-      debugPrint('HomeShellTabs.goTo: destination not visible, redirecting to first visible');
-      if (visible.isNotEmpty && _shellIndex != visible.first.index) {
-        _shell.goBranch(visible.first.index, initialLocation: true);
-      }
-      return;
-    }
-    final bool shouldInit = destination != current;
-    debugPrint('HomeShellTabs.goTo: calling goBranch with index=${destination.index}, initialLocation=$shouldInit');
+    if (!visibleDestinations(_state).contains(destination)) return;
     _shell.goBranch(
       destination.index,
-      initialLocation: shouldInit,
+      initialLocation: destination.index == _shell.currentIndex,
     );
-    // Update local index immediately for instant UI feedback; the shell rebuild
-    // will call updateShellIndex again with the confirmed value.
-    _shellIndex = destination.index;
-    notifyListeners();
   }
 
   void markCatalogueChanged() {
     _catalogueGeneration++;
     notifyListeners();
+  }
+
+  @override
+  void dispose() {
+    _disposed = true;
+    _state.removeListener(_onAppStateChanged);
+    super.dispose();
   }
 }
 
@@ -139,28 +139,53 @@ class HomeShellTabs extends ChangeNotifier {
 /// Width, never the device: a resized desktop window, a split-screen tablet and
 /// a foldable's outer display all report their real constraints, and none of
 /// them is `Platform.isTablet`.
-class HomeShell extends StatelessWidget {
+///
+/// Stateful so the [HomeShellTabs] it owns outlives the many [StatefulNavigationShell]
+/// widgets go_router will hand it — see [HomeShellTabs.attach].
+class HomeShell extends StatefulWidget {
   const HomeShell({required this.navigationShell, super.key});
 
   final StatefulNavigationShell navigationShell;
 
   @override
+  State<HomeShell> createState() => _HomeShellState();
+}
+
+class _HomeShellState extends State<HomeShell> {
+  late final HomeShellTabs _tabs;
+
+  @override
+  void initState() {
+    super.initState();
+    _tabs = HomeShellTabs(widget.navigationShell, context.read<AppState>());
+  }
+
+  @override
+  void didUpdateWidget(HomeShell oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    _tabs.attach(widget.navigationShell);
+  }
+
+  @override
+  void dispose() {
+    _tabs.dispose();
+    super.dispose();
+  }
+
+  @override
   Widget build(BuildContext context) {
-    final AppState state = context.watch<AppState>();
-    return ChangeNotifierProvider<HomeShellTabs>(
-      create: (_) => HomeShellTabs(navigationShell, state),
-      // Update the shell index on every build so navigation affordances stay in
-      // sync when the branch changes via user interaction (not just goTo).
-      builder: (BuildContext context, Widget? child) {
-        context.read<HomeShellTabs>().updateShellIndex(navigationShell.currentIndex);
-        return child!;
-      },
+    return ChangeNotifierProvider<HomeShellTabs>.value(
+      value: _tabs,
       // Above the branches, not inside the sell screen: the sign-out sheet is
       // shown by the shell's own app bar and must read the cart count from a
       // screen that may never have been opened this session.
       child: Provider<CartLineCount>(
         create: (_) => CartLineCount(),
-        child: const _IdleGuard(child: _ShellScaffold()),
+        // The CURRENT shell widget travels down as a constructor argument, so
+        // the scaffold can never paint a stale one.
+        child: _IdleGuard(
+          child: _ShellScaffold(navigationShell: widget.navigationShell),
+        ),
       ),
     );
   }
@@ -217,20 +242,30 @@ class _IdleGuardState extends State<_IdleGuard> {
 }
 
 class _ShellScaffold extends StatelessWidget {
-  const _ShellScaffold();
+  const _ShellScaffold({required this.navigationShell});
+
+  final StatefulNavigationShell navigationShell;
 
   @override
   Widget build(BuildContext context) {
     final AppState state = context.watch<AppState>();
-    final HomeShellTabs tabs = context.watch<HomeShellTabs>();
+    final HomeShellTabs tabs = context.read<HomeShellTabs>();
     final List<AppDestination> destinations =
         visibleDestinations(state).toList(growable: false);
+
+    // Read straight from the router's widget, on every build. If a role change
+    // has just hidden the branch on screen, highlight the first tab that is
+    // offered rather than handing the bar an index of -1.
+    final AppDestination active =
+        AppDestination.values[navigationShell.currentIndex];
+    final AppDestination selected =
+        destinations.contains(active) ? active : destinations.first;
 
     return LayoutBuilder(
       builder: (BuildContext context, BoxConstraints constraints) {
         final WindowSizeClass sizeClass =
             windowSizeClassFor(constraints.maxWidth);
-        final Widget body = tabs.shell;
+        final Widget body = navigationShell;
 
         return Scaffold(
           appBar: _ShellAppBar(
@@ -245,7 +280,7 @@ class _ShellScaffold extends StatelessWidget {
                 children: <Widget>[
                   _ShellDrawer(
                     destinations: destinations,
-                    selected: tabs.current,
+                    selected: selected,
                     onSelect: tabs.goTo,
                   ),
                   VerticalDivider(
@@ -259,7 +294,7 @@ class _ShellScaffold extends StatelessWidget {
                 children: <Widget>[
                   _ShellRail(
                     destinations: destinations,
-                    selected: tabs.current,
+                    selected: selected,
                     extended: sizeClass != WindowSizeClass.medium,
                     onSelect: tabs.goTo,
                   ),
@@ -274,7 +309,7 @@ class _ShellScaffold extends StatelessWidget {
           bottomNavigationBar: sizeClass == WindowSizeClass.compact
               ? _ShellNavigationBar(
                   destinations: destinations,
-                  selected: tabs.current,
+                  selected: selected,
                   onSelect: tabs.goTo,
                 )
               : null,
@@ -383,10 +418,7 @@ class _ShellNavigationBar extends StatelessWidget {
       ),
       child: NavigationBar(
         selectedIndex: destinations.indexOf(selected),
-        onDestinationSelected: (int i) {
-          debugPrint('_ShellNavigationBar: onDestinationSelected index=$i, destination=${destinations[i].name}');
-          onSelect(destinations[i]);
-        },
+        onDestinationSelected: (int i) => onSelect(destinations[i]),
         destinations: <Widget>[
           for (final AppDestination destination in destinations)
             NavigationDestination(
@@ -428,10 +460,7 @@ class _ShellRail extends StatelessWidget {
 
     return NavigationRail(
       selectedIndex: destinations.indexOf(selected),
-      onDestinationSelected: (int i) {
-        debugPrint('_ShellRail: onDestinationSelected index=$i, destination=${destinations[i].name}');
-        onSelect(destinations[i]);
-      },
+      onDestinationSelected: (int i) => onSelect(destinations[i]),
       extended: extended,
       minExtendedWidth: 176,
       labelType: extended ? null : NavigationRailLabelType.all,
@@ -495,11 +524,11 @@ class _ShellDrawer extends StatelessWidget {
                     Theme.of(context).colorScheme.primaryContainer,
                 leading: Icon(destination.icon),
                 title: Text(destination.label(l10n)),
-                onTap: () {
-                  debugPrint('_ShellDrawer: onTap destination=${destination.name}');
-                  onSelect(destination);
-                  Navigator.of(context).maybePop();
-                },
+                // No `Navigator.maybePop()` here: this is a permanent pane, not a
+                // modal drawer, so there is nothing to close. The call used to
+                // reach the root navigator, where the app's `PopScope` turned
+                // every tap into a "Press back again to exit" snackbar.
+                onTap: () => onSelect(destination),
               ),
           ],
         ),

@@ -23,10 +23,21 @@ class _PlaceholderScreen extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) => Scaffold(
+        // Findable by identity: the label text also appears on the navigation
+        // bar, so `find.text` cannot tell "the Sell screen is showing" from
+        // "the Sell tab exists".
+        key: ValueKey<String>('screen-$label'),
         appBar: AppBar(title: Text(label)),
         body: Center(child: Text(label)),
       );
 }
+
+/// The screen for [label] — found only while it is actually on screen. The
+/// default `skipOffstage: true` is the point: go_router keeps every visited
+/// branch alive inside an `IndexedStack`, offstage, so a finder that saw
+/// offstage widgets would pass even with the dashboard still showing.
+Finder _screen(String label) =>
+    find.byKey(ValueKey<String>('screen-$label'));
 
 class _FakeStage extends ChangeNotifier {
   _FakeStage(this._snapshot);
@@ -309,6 +320,138 @@ void main() {
       expect(find.byType(Drawer), findsOneWidget);
       expect(find.byType(NavigationBar), findsNothing);
       expect(find.byType(ListTile), findsNWidgets(6));
+});
+  });
+
+  group('the body follows the tab', () {
+    // The regression this group exists for: the shell once rendered the FIRST
+    // StatefulNavigationShell widget go_router built, so the URL and the
+    // highlighted tab changed while the body stayed on the dashboard. The old
+    // tests only looked at the URL, which is why that shipped.
+    testWidgets('every compact tab shows its own screen',
+        (WidgetTester tester) async {
+      tester.view.physicalSize = const Size(320, 640).testerPhysicalSizeForDpr(2.0);
+      tester.view.devicePixelRatio = 2.0;
+      addTearDown(tester.view.reset);
+      final AppState state = AppState();
+      state.signIn('Test Owner', asOwner: true);
+      final GoRouter router = _testRouter(state);
+      await _pumpShell(tester, state, router);
+
+      expect(_screen('Dashboard'), findsOneWidget);
+
+      const List<String> tabs = <String>[
+        'Sell',
+        'Inventory',
+        'Analytics',
+        'Settings',
+        'Dashboard',
+      ];
+      for (final String label in tabs) {
+        await tester.tap(find
+            .descendant(
+              of: find.byType(NavigationBar),
+              matching: find.text(label),
+            )
+            .first);
+        await tester.pumpAndSettle();
+
+        expect(_screen(label), findsOneWidget,
+            reason: 'tapped $label but its screen is not showing');
+        for (final String other in tabs.where((String t) => t != label)) {
+          expect(_screen(other), findsNothing,
+              reason: 'tapped $label but $other is still on screen');
+        }
+      }
+    });
+
+    testWidgets('the rail switches the body too', (WidgetTester tester) async {
+      tester.view.physicalSize = const Size(800, 600).testerPhysicalSizeForDpr(2.0);
+      tester.view.devicePixelRatio = 2.0;
+      addTearDown(tester.view.reset);
+      final AppState state = AppState();
+      state.signIn('Test Owner', asOwner: true);
+      final GoRouter router = _testRouter(state);
+      await _pumpShell(tester, state, router);
+
+      // The collapsed rail shows the short labels: Till is Sell, Stock is
+      // Inventory.
+      await tester.tap(find
+          .descendant(
+            of: find.byType(NavigationRail),
+            matching: find.text('Till'),
+          )
+          .first);
+      await tester.pumpAndSettle();
+      expect(_screen('Sell'), findsOneWidget);
+      expect(_screen('Dashboard'), findsNothing);
+
+      await tester.tap(find
+          .descendant(
+            of: find.byType(NavigationRail),
+            matching: find.text('Stock'),
+          )
+          .first);
+      await tester.pumpAndSettle();
+      expect(_screen('Inventory'), findsOneWidget);
+      expect(_screen('Sell'), findsNothing);
+    });
+
+    testWidgets('the wide-screen drawer switches the body too',
+        (WidgetTester tester) async {
+      tester.view.physicalSize = const Size(1600, 800).testerPhysicalSizeForDpr(2.0);
+      tester.view.devicePixelRatio = 2.0;
+      addTearDown(tester.view.reset);
+      final AppState state = AppState();
+      state.signIn('Test Owner', asOwner: true);
+      final GoRouter router = _testRouter(state);
+      await _pumpShell(tester, state, router);
+
+      await tester.tap(find.widgetWithText(ListTile, 'Analytics'));
+      await tester.pumpAndSettle();
+      expect(_screen('Analytics'), findsOneWidget);
+      expect(_screen('Dashboard'), findsNothing);
+    });
+
+    testWidgets('a screen can move the shell with HomeShellTabs.goTo',
+        (WidgetTester tester) async {
+      tester.view.physicalSize = const Size(320, 640).testerPhysicalSizeForDpr(2.0);
+      tester.view.devicePixelRatio = 2.0;
+      addTearDown(tester.view.reset);
+      final AppState state = AppState();
+      state.signIn('Test Owner', asOwner: true);
+      final GoRouter router = _testRouter(state);
+      await _pumpShell(tester, state, router);
+
+      // What the dashboard's "12 items low" tile does.
+      tester
+          .element(find.byType(NavigationBar))
+          .read<HomeShellTabs>()
+          .goTo(AppDestination.inventory);
+      await tester.pumpAndSettle();
+
+      expect(_screen('Inventory'), findsOneWidget);
+      expect(_screen('Dashboard'), findsNothing);
+    });
+
+    testWidgets('goTo is a no-op for a destination the role does not have',
+        (WidgetTester tester) async {
+      tester.view.physicalSize = const Size(320, 640).testerPhysicalSizeForDpr(2.0);
+      tester.view.devicePixelRatio = 2.0;
+      addTearDown(tester.view.reset);
+      final AppState state = AppState();
+      state.signIn('Cashier', asOwner: false);
+      final GoRouter router = _testRouter(state);
+      await _pumpShell(tester, state, router);
+
+      tester
+          .element(find.byType(NavigationBar))
+          .read<HomeShellTabs>()
+          .goTo(AppDestination.inventory);
+      await tester.pumpAndSettle();
+
+      expect(_screen('Dashboard'), findsOneWidget);
+      expect(_screen('Inventory'), findsNothing);
     });
   });
 }

@@ -118,6 +118,29 @@ class _DashboardScreenState extends State<DashboardScreen> {
     _load();
   }
 
+  /// Whether this tab was the one on screen the last time dependencies changed.
+  bool _wasActive = true;
+
+  /// Reloads when the dashboard becomes the visible tab again.
+  ///
+  /// The shell keeps every visited tab alive in an `IndexedStack`, so leaving
+  /// the dashboard to ring up a sale and coming back would otherwise show the
+  /// figures from before that sale. go_router switches `TickerMode` off for the
+  /// tabs that are not showing, which makes it a reliable "am I visible" signal
+  /// that needs no wiring into the shell. Deferred to after the frame because a
+  /// dependency change is delivered in the middle of a build.
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    final bool active = TickerMode.valuesOf(context).enabled;
+    if (active && !_wasActive) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) _load();
+      });
+    }
+    _wasActive = active;
+  }
+
   Future<void> _load() async {
     if (_loading) return;
     final AppState appState = context.read<AppState>();
@@ -314,6 +337,10 @@ class _DashboardScreenState extends State<DashboardScreen> {
     if (mounted) await _load();
   }
 
+  void _openSell() {
+    context.read<HomeShellTabs>().goTo(AppDestination.sell);
+  }
+
   void _openInventory() {
     // A cashier has no Inventory destination; `HomeShellTabs.goTo` is a no-op
     // for one this role does not have, so there is nothing to guard here.
@@ -383,6 +410,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
           onRefresh: _load,
           onBackupNow: _backupNow,
           onOpenShift: _openShift,
+          onOpenSell: _openSell,
           onOpenInventory: _openInventory,
           onOpenEtimsSettings: _openEtimsSettings,
           onOpenProduct: _openProduct,
@@ -405,20 +433,38 @@ class _DashboardSkeleton extends StatelessWidget {
     final AppSpacing spacing = AppSpacing.of(context);
 
     return AdaptivePage(
-      maxContentWidth: spacing.readableMaxWidth,
-      padding: EdgeInsets.all(spacing.md),
+      maxContentWidth: _kDashboardMaxWidth,
+      padding: EdgeInsets.all(spacing.xl),
       child: const SkeletonList(itemCount: 5, linesPerItem: 2),
     );
   }
 }
 
+/// The widest the dashboard grows. A manager on a desktop monitor gets two
+/// columns of panels, not one 1600px-wide row of numbers nobody can scan.
+const double _kDashboardMaxWidth = 1200;
+
+/// At and above this content width the panels split into a main column and a
+/// side column. Below it they stack in reading order.
+const double _kTwoColumnBreakpoint = 840;
+
 /// The screen's body, in reading order.
+///
+/// On a phone, one column:
+///
+///   header · what needs attention · today's figures · shift · sales by hour ·
+///   top products · reorder
+///
+/// On a tablet or desktop the same content is split so nothing is further than
+/// one glance away: the MAIN column (what happened — the hour chart and the top
+/// sellers) beside a SIDE column (what to do — the shift and the reorder list).
 class _DashboardContent extends StatelessWidget {
   const _DashboardContent({
     required this.data,
     required this.onRefresh,
     required this.onBackupNow,
     required this.onOpenShift,
+    required this.onOpenSell,
     required this.onOpenInventory,
     required this.onOpenEtimsSettings,
     required this.onOpenProduct,
@@ -429,71 +475,135 @@ class _DashboardContent extends StatelessWidget {
   final Future<void> Function() onRefresh;
   final Future<void> Function() onBackupNow;
   final Future<void> Function() onOpenShift;
+  final VoidCallback onOpenSell;
   final VoidCallback onOpenInventory;
   final VoidCallback onOpenEtimsSettings;
   final ValueChanged<Product> onOpenProduct;
   final Future<void> Function() onRetryEtims;
 
+  /// [items] with the nulls dropped and [gap] put between what is left, so a
+  /// section that is absent today leaves no double gap behind it.
+  static List<Widget> _spaced(List<Widget?> items, double gap) {
+    final List<Widget> present = items.whereType<Widget>().toList();
+    return <Widget>[
+      for (int i = 0; i < present.length; i++) ...<Widget>[
+        if (i > 0) SizedBox(height: gap),
+        present[i],
+      ],
+    ];
+  }
+
   @override
   Widget build(BuildContext context) {
     final AppSpacing spacing = AppSpacing.of(context);
     final AppState appState = context.watch<AppState>();
+    final double gap = spacing.xl;
+
+    final bool hasSales = data.totals.hasSales;
+
+    final Widget? attention = data.attention.isEmpty
+        ? null
+        : DashboardAttentionCard(
+            summary: data.attention,
+            canFixEtims: appState.isAdmin,
+            onRetryEtims: onRetryEtims,
+            onOpenEtimsSettings: onOpenEtimsSettings,
+          );
+
+    final Widget shift = DashboardShiftCard(
+      shift: data.openShift,
+      expected: data.expectedTill,
+      onOpen: onOpenShift,
+    );
+
+    final Widget sales = hasSales
+        ? DashboardHourlySales(buckets: data.hours)
+        : DashboardNoSalesCard(hasEverSold: data.hasEverSold);
+
+    final Widget? topProducts =
+        hasSales ? DashboardTopProducts(rows: data.topProducts) : null;
+
+    final Widget reorder = DashboardLowStockList(
+      products: data.lowStock,
+      totalCount: data.lowStockCount,
+      canOpen: appState.canManageStock,
+      onOpenProduct: onOpenProduct,
+      onViewAll: onOpenInventory,
+    );
 
     return RefreshIndicator(
       onRefresh: onRefresh,
       child: AdaptivePage(
         scrollable: true,
-        maxContentWidth: spacing.readableMaxWidth,
-        padding: EdgeInsets.all(spacing.md),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: <Widget>[
-            BackupReminderBanner(onBackupNow: onBackupNow),
-            DashboardGreeting(
-              shopName: appState.owner?.shopName ?? 'Simple POS',
-              subtitle: data.greeting,
-            ),
-            // First because it is the only thing that stops a sale, and a
-            // section that is usually empty and occasionally urgent is read far
-            // more seriously than one that is always on screen.
-            if (!data.attention.isEmpty) ...<Widget>[
-              SizedBox(height: spacing.xl),
-              DashboardAttentionCard(
-                summary: data.attention,
-                canFixEtims: appState.isAdmin,
-                onRetryEtims: onRetryEtims,
-                onOpenEtimsSettings: onOpenEtimsSettings,
-              ),
-            ],
-            SizedBox(height: spacing.xl),
-            DashboardShiftCard(
-              shift: data.openShift,
-              expected: data.expectedTill,
-              onOpen: onOpenShift,
-            ),
-            SizedBox(height: spacing.xl),
-            DashboardKpis(totals: data.totals, scopeLabel: data.scopeLabel),
-            SizedBox(height: spacing.md),
-            DashboardLowStockCard(
-              count: data.lowStockCount,
-              onOpen: onOpenInventory,
-            ),
-            SizedBox(height: spacing.xl),
-            if (!data.totals.hasSales)
-              DashboardNoSalesCard(hasEverSold: data.hasEverSold)
-            else ...<Widget>[
-              DashboardHourlySales(buckets: data.hours),
-              SizedBox(height: spacing.xl),
-              DashboardTopProducts(rows: data.topProducts),
-            ],
-            SizedBox(height: spacing.xl),
-            DashboardLowStockList(
-              products: data.lowStock,
-              totalCount: data.lowStockCount,
-              onOpenProduct: onOpenProduct,
-              onViewAll: onOpenInventory,
-            ),
-          ],
+        maxContentWidth: _kDashboardMaxWidth,
+        padding: EdgeInsets.all(spacing.xl),
+        child: LayoutBuilder(
+          builder: (BuildContext context, BoxConstraints constraints) {
+            final bool twoColumns =
+                constraints.maxWidth >= _kTwoColumnBreakpoint;
+
+            final List<Widget> panels = twoColumns
+                ? <Widget>[
+                    Row(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: <Widget>[
+                        Expanded(
+                          flex: 3,
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.stretch,
+                            children: _spaced(
+                              <Widget?>[sales, topProducts],
+                              gap,
+                            ),
+                          ),
+                        ),
+                        SizedBox(width: gap),
+                        Expanded(
+                          flex: 2,
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.stretch,
+                            children: _spaced(
+                              <Widget?>[shift, reorder],
+                              gap,
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ]
+                : _spaced(
+                    <Widget?>[shift, sales, topProducts, reorder],
+                    gap,
+                  );
+
+            return Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: <Widget>[
+                BackupReminderBanner(onBackupNow: onBackupNow),
+                ..._spaced(
+                  <Widget?>[
+                    DashboardHeader(
+                      shopName: appState.owner?.shopName ?? 'Simple POS',
+                      subtitle: data.greeting,
+                      onSell: onOpenSell,
+                    ),
+                    // First after the header because it is the only thing that
+                    // stops a sale, and a section that is usually empty and
+                    // occasionally urgent is read far more seriously than one
+                    // that is always on screen.
+                    attention,
+                    DashboardKpis(
+                      totals: data.totals,
+                      scopeLabel: data.scopeLabel,
+                    ),
+                  ],
+                  gap,
+                ),
+                SizedBox(height: gap),
+                ...panels,
+              ],
+            );
+          },
         ),
       ),
     );
