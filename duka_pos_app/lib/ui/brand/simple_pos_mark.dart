@@ -7,12 +7,13 @@ import '../../theme/typography.dart';
 ///
 /// This is the launcher artwork from
 /// `assets/branding/stitch_simple_pos_launcher_icon/` — the ink squircle, the
-/// white receipt with its torn edge, the white terminal body, the botanical
-/// green screen — reproduced from the source SVG rather than decoded from a
-/// PNG. Three reasons that matters:
+/// white terminal body, the botanical green screen — reproduced from the source
+/// SVG rather than decoded from a PNG. The receipt that used to sit above the
+/// terminal was removed: it read as paper rather than as a till, and at launcher
+/// sizes the torn edge turned into noise. Three reasons the rest matters:
 ///
 /// 1. **It was wrong before.** The in-app `SimplePosMark` that shipped in
-///    `splash_screen.dart` inverted the brand: green plate, ink receipt. The
+///    `splash_screen.dart` inverted the brand: green plate, ink terminal. The
 ///    launcher icon on the device home screen and the logo inside the app were
 ///    two different logos.
 /// 2. **It is crisp at every size** with no decode, which matters on the splash
@@ -23,18 +24,18 @@ import '../../theme/typography.dart';
 ///
 /// The geometry below is expressed in the SVG's own 512-unit space and scaled by
 /// [scale] at paint time. It is duplicated from the source SVG on purpose: a
-/// `flutter_svg` dependency to draw four shapes would be a worse trade than one
+/// `flutter_svg` dependency to draw three shapes would be a worse trade than one
 /// reviewed constant, and the source file stays the reference of record.
 enum SimplePosMarkVariant {
-  /// Plate + receipt + terminal + screen. The app icon and the splash.
+  /// Plate + terminal + screen. The app icon and the splash.
   full,
 
-  /// Receipt + terminal + screen, no plate. For placing the mark on a surface
-  /// that is already the plate colour.
+  /// Terminal + screen, no plate. For placing the mark on a surface that is
+  /// already the plate colour.
   foreground,
 
-  /// Receipt + terminal only, both one colour. For a themed-icon slot
-  /// (Android's `monochrome` layer) where the platform tints it.
+  /// Terminal only, one colour. For a themed-icon slot (Android's
+  /// `monochrome` layer) where the platform tints it.
   monochrome,
 }
 
@@ -82,10 +83,10 @@ class SimplePosMark extends StatelessWidget {
   /// [SimplePosMarkVariant.foreground] to omit it.
   final Color? plate;
 
-  /// Overrides the receipt and terminal colour.
+  /// Overrides the S stroke's colour.
   final Color? glyph;
 
-  /// Overrides the terminal screen colour.
+  /// Overrides the wine accent's colour.
   final Color? screen;
 
   /// Hides the mark from assistive tech. Use only where the same words appear
@@ -139,54 +140,42 @@ class SimplePosMarkPainter extends CustomPainter {
   /// Logical pixels per SVG unit.
   final double scale;
 
-  // Corners and the receipt, in 512-space. Named so a reader can check them
-  // against assets/branding/stitch_simple_pos_launcher_icon without arithmetic.
+  /// The plate's corner radius, in 512-space.
   static const double _squircleRadius = 116;
-  static const Rect _terminalBody = Rect.fromLTWH(76.8, 337.92, 358.4, 106.496);
-  static const double _terminalRadius = 23.552;
-  static const Rect _terminalScreen =
-      Rect.fromLTWH(102.4, 337.92, 307.2, 66.56);
-  static const double _screenRadius = 10.24;
 
-  /// The receipt: a 512-space path with a rounded top and a torn bottom edge of
-  /// four teeth and three notches, the notches reaching up to y=276.48.
-  static final Path _receipt = _buildReceipt();
+  /// The "S": a bold geometric stroke matching the wordmark's type.
+  ///
+  /// Transcribed from `assets/branding/stitch_simple_pos_launcher_icon/
+  /// simple_pos_geometric_s_icon/code.html`, which is the same source the
+  /// launcher icons are rendered from — so the in-app mark and the icon on the
+  /// home screen are finally the same shape, rather than the receipt-and-terminal
+  /// composition that used to differ from them.
+  static final Path _s = _buildS();
 
-  static Path _buildReceipt() {
-    const double left = 171.52;
-    const double right = 340.48;
-    const double top = 66.56;
-    const double bottom = 307.2;
-    const double corner = 12.288;
-    const double notch = 276.48;
+  /// The wine accent, offset from the S's lower bowl.
+  static const Rect _accent = Rect.fromLTWH(130, 240, 32, 32);
+  static const double _accentRadius = 16;
 
-    return Path()
-      ..moveTo(183.808, top)
-      ..lineTo(328.192, top)
-      ..arcToPoint(
-        const Offset(340.48, 78.848),
-        radius: const Radius.circular(corner),
-      )
-      ..lineTo(right, bottom)
-      // The torn edge, walked right to left: flat, up to a notch, down to a
-      // tooth, flat — repeated to the bottom-left corner.
-      ..lineTo(322.048, bottom)
-      ..lineTo(300.928, notch)
-      ..lineTo(279.808, bottom)
-      ..lineTo(267.328, bottom)
-      ..lineTo(256.0, notch)
-      ..lineTo(244.672, bottom)
-      ..lineTo(232.192, bottom)
-      ..lineTo(211.072, notch)
-      ..lineTo(189.952, bottom)
-      ..lineTo(left, bottom)
-      ..lineTo(left, 78.848)
-      ..arcToPoint(
-        const Offset(183.808, top),
-        radius: const Radius.circular(corner),
-      )
-      ..close();
-  }
+  static Path _buildS() => Path()
+    ..moveTo(345, 130)
+    ..cubicTo(370, 130, 388, 142, 396, 162)
+    ..lineTo(345, 186)
+    ..cubicTo(340, 174, 330, 168, 315, 168)
+    ..cubicTo(292, 168, 280, 180, 280, 196)
+    ..cubicTo(280, 212, 292, 222, 318, 232)
+    ..lineTo(340, 240)
+    ..cubicTo(382, 256, 402, 284, 402, 322)
+    ..cubicTo(402, 368, 366, 400, 308, 400)
+    ..cubicTo(255, 400, 220, 372, 210, 332)
+    ..lineTo(262, 312)
+    ..cubicTo(268, 335, 285, 352, 310, 352)
+    ..cubicTo(334, 352, 348, 340, 348, 322)
+    ..cubicTo(348, 304, 335, 294, 306, 282)
+    ..lineTo(284, 274)
+    ..cubicTo(246, 258, 228, 232, 228, 196)
+    ..cubicTo(228, 154, 262, 130, 315, 130)
+    ..lineTo(345, 130)
+    ..close();
 
   @override
   void paint(Canvas canvas, Size size) {
@@ -203,20 +192,11 @@ class SimplePosMarkPainter extends CustomPainter {
       );
     }
 
-    canvas.drawPath(_receipt, Paint()..color = glyph);
-
-    canvas.drawRRect(
-      RRect.fromRectAndRadius(
-          _terminalBody, const Radius.circular(_terminalRadius)),
-      Paint()..color = glyph,
-    );
+    canvas.drawPath(_s, Paint()..color = glyph);
 
     if (variant != SimplePosMarkVariant.monochrome) {
       canvas.drawRRect(
-        RRect.fromRectAndRadius(
-          _terminalScreen,
-          const Radius.circular(_screenRadius),
-        ),
+        RRect.fromRectAndRadius(_accent, const Radius.circular(_accentRadius)),
         Paint()..color = screen,
       );
     }

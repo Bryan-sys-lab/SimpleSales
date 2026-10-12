@@ -16,6 +16,8 @@ import 'models/crash_log.dart';
 import 'routing/app_router.dart';
 import 'routing/app_stage_controller.dart';
 import 'services/app_state.dart';
+import 'services/backend_service.dart';
+import 'services/live_channel_service.dart';
 import 'services/failure_recorder.dart';
 import 'theme/app_theme.dart';
 
@@ -115,13 +117,21 @@ class DukaPosApp extends StatelessWidget {
           create: (BuildContext context) =>
               AppStageController(context.read<AppState>())..boot(),
         ),
+        // The live change stream. Created after the session and before the
+        // router so a screen can watch it from any branch, and torn down with
+        // the tree so a socket is never left open behind a closed app.
+        ChangeNotifierProvider<LiveChannelService>(
+          create: (BuildContext context) => LiveChannelService()..start(),
+        ),
         // Last: the router needs the two above. It is never rebuilt afterwards —
         // `refreshListenable` re-runs the guard on its own, and rebuilding a
         // `GoRouter` throws away every branch's navigation stack.
         Provider<GoRouter>(
             create: (BuildContext context) => appRouter(context)),
       ],
-      child: const _ThemedApp(),
+      // The gate sits above the router so a lifecycle change reaches the
+      // channel from one place, whatever branch is showing.
+      child: const _LiveChannelGate(child: _ThemedApp()),
     );
   }
 }
@@ -216,5 +226,74 @@ class _ThemedApp extends StatelessWidget {
         themeAnimationStyle: AnimationStyle.noAnimation,
       ),
     );
+  }
+}
+
+/// Keeps the live channel honest about the app's actual state.
+///
+/// Two facts drive the channel and neither lives in it: whether this shop is
+/// linked to a backend at all, and whether the app is in the foreground. Both
+/// are read here, where the providers and the lifecycle both exist, rather than
+/// being duplicated inside the channel or guessed at by a screen.
+///
+/// A backgrounded app closes the socket rather than leaving it open: Android
+/// can kill the process at any point, and a shop on a counter needs no live
+/// refresh while the screen is off. Returning to the foreground reconnects.
+class _LiveChannelGate extends StatefulWidget {
+  const _LiveChannelGate({required this.child});
+
+  final Widget child;
+
+  @override
+  State<_LiveChannelGate> createState() => _LiveChannelGateState();
+}
+
+class _LiveChannelGateState extends State<_LiveChannelGate>
+    with WidgetsBindingObserver {
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addObserver(this);
+    // Read in the first frame, not in initState: the session completes its own
+    // bootstrap before this widget is mounted, but reading a provider before
+    // the first build is the kind of thing that works by accident.
+    WidgetsBinding.instance.addPostFrameCallback((_) => _sync());
+  }
+
+  @override
+  void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    super.dispose();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    // Only `resumed` counts as foreground. `inactive` is a transient state an
+    // Android device passes through for a call or the notification shade, and
+    // closing the socket for it would drop the channel for no reason.
+    final foreground = state == AppLifecycleState.resumed;
+    context.read<LiveChannelService>().setForeground(foreground);
+    if (foreground) unawaited(_sync());
+  }
+
+  /// Applies the current link state and asks for a snapshot.
+  Future<void> _sync() async {
+    if (!mounted) return;
+    final channel = context.read<LiveChannelService>();
+    final linked = await BackendService.isBackendLinked;
+    channel.setLinked(linked);
+    // One snapshot on entering the foreground, so a returning shop sees current
+    // figures rather than whatever the last visit left on screen.
+    if (linked) channel.requestRead();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    // Signing in, signing out, or unlinking is exactly when the channel's
+    // premise changes, and a socket pointed at the previous shop is worse than
+    // no socket. The session's own notifyListeners triggers this rebuild.
+    context.watch<LiveChannelService>();
+    unawaited(_sync());
+    return widget.child;
   }
 }

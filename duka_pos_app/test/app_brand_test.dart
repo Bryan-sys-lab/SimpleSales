@@ -3,6 +3,8 @@ import 'dart:io';
 import 'dart:typed_data';
 
 import 'package:duka_pos/app_brand.dart';
+import 'package:duka_pos/ui/brand/simple_pos_mark.dart';
+import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 /// Brand constants and the launcher icon they ship as.
@@ -169,6 +171,54 @@ void main() {
         expect(colourType, isNot(6),
             reason: '${entity.path} has an alpha channel; iOS rejects that');
       }
+    });
+  });
+// The mark itself: that it paints, in every variant, at every size it is asked
+// for. A malformed path fails at paint() rather than at build(), so this is the
+// cheapest place to catch a broken transcription of the S.
+  group('the SimplePosMark', () {
+    testWidgets('paints in all three variants', (WidgetTester tester) async {
+      for (final variant in SimplePosMarkVariant.values) {
+        await tester.pumpWidget(MaterialApp(
+          home: Center(
+            child: SimplePosMark(size: 64, variant: variant),
+          ),
+        ));
+        await tester.pumpAndSettle();
+        expect(tester.takeException(), isNull,
+            reason: '$variant failed to paint');
+        expect(find.byType(SimplePosMark), findsOneWidget);
+      }
+    });
+
+    testWidgets('paints at the smallest size it is used at',
+        (WidgetTester tester) async {
+      // The launcher's 20pt slot. Geometry that only survives at 64pt would show
+      // up here as a throw or an empty canvas.
+      await tester.pumpWidget(const MaterialApp(
+        home: Center(child: SimplePosMark(size: 20)),
+      ));
+      await tester.pumpAndSettle();
+      expect(tester.takeException(), isNull);
+    });
+
+    testWidgets('announces the product, unless told it is decorative',
+        (WidgetTester tester) async {
+      await tester.pumpWidget(const MaterialApp(
+        home: Center(child: SimplePosMark(decorative: true)),
+      ));
+      expect(find.bySemanticsLabel(RegExp('SimplePOS', caseSensitive: false)),
+          findsNothing,
+          reason: 'a decorative mark must not announce itself twice');
+
+      await tester.pumpWidget(const MaterialApp(
+        home: Center(child: SimplePosMark()),
+      ));
+      expect(
+        find.bySemanticsLabel(RegExp('simplesales', caseSensitive: false)),
+        findsOneWidget,
+        reason: 'the product name, one word, no hyphen and no space',
+      );
     });
   });
 }

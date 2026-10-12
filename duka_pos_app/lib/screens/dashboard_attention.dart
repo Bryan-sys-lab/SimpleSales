@@ -7,10 +7,12 @@
 // go first and the sales figures follow.
 
 import 'package:flutter/material.dart';
+import 'package:provider/provider.dart';
 import 'package:intl/intl.dart';
 
 import '../routing/routes.dart';
 import '../services/analytics.dart';
+import '../services/live_channel_service.dart';
 import '../l10n/generated/app_localizations.dart';
 import '../theme/app_colors.dart';
 import '../theme/app_shapes.dart';
@@ -75,6 +77,18 @@ class DashboardHeader extends StatelessWidget {
           subtitle,
           style: type.bodyMedium?.copyWith(color: colors.onSurfaceMuted),
         ),
+        // The live status, only when the channel is doing something.
+        //
+        // Shown under the subtitle rather than as a badge of its own, because
+        // the moment it is useful is when a shop is waiting for the other
+        // terminal to finish a sale. An `off` channel is not shown at all: an
+        // offline-only build has no channel, and telling every such shop
+        // "not connected" is noise about a state they chose.
+        //
+        // Watching the service rebuilds this header on every live change, which
+        // is also how the dashboard itself notices one — see
+        // `_DashboardScreenState.didChangeDependencies`.
+        _LiveStatusLine(service: context.watch<LiveChannelService>()),
       ],
     );
 
@@ -344,4 +358,87 @@ class _AttentionRow extends StatelessWidget {
       ),
     );
   }
+}
+
+/// The live channel's state, as a quiet line of text.
+///
+/// Deliberately not a badge or a banner: this is ambient information for an
+/// owner who is already looking at the figures. It says whether the numbers on
+/// screen are current, which is a fact worth having and not worth shouting.
+class _LiveStatusLine extends StatelessWidget {
+  const _LiveStatusLine({required this.service});
+
+  final LiveChannelService service;
+
+  @override
+  Widget build(BuildContext context) {
+    final AppColors colors = AppColors.of(context);
+    final AppLocalizations l10n = AppLocalizations.of(context);
+
+    return switch (service.state) {
+      // The only state worth a colour: connected is good news, and the rest is
+      // neutral because none of them is an error the owner caused.
+      LiveConnectionState.connected => _StatusText(
+          text: service.change == null
+              ? l10n.liveStatusConnected
+              : l10n.liveStatusUpdated(_timeAgo(service.change!.at, l10n)),
+          tone: colors.success,
+        ),
+      LiveConnectionState.connecting =>
+        _StatusText(text: l10n.liveStatusConnecting),
+      LiveConnectionState.paused =>
+        _StatusText(text: l10n.liveStatusReconnecting),
+      // Nothing to render. See the note on the header: an offline-only build
+      // has no channel, and telling every such shop "not connected" is noise
+      // about a state they chose.
+      LiveConnectionState.off => const SizedBox.shrink(),
+    };
+  }
+}
+
+/// One quiet line of live status.
+class _StatusText extends StatelessWidget {
+  const _StatusText({required this.text, this.tone});
+
+  final String text;
+  final Color? tone;
+
+  @override
+  Widget build(BuildContext context) {
+    final AppColors colors = AppColors.of(context);
+    final TextTheme type = AppTypography.of(context);
+    final Color effective = tone ?? colors.onSurfaceMuted;
+
+    return Padding(
+      padding: const EdgeInsets.only(top: 4),
+      child: Row(
+        children: <Widget>[
+          Container(
+            width: 8,
+            height: 8,
+            decoration: BoxDecoration(color: effective, shape: BoxShape.circle),
+          ),
+          const SizedBox(width: 6),
+          Text(
+            text,
+            style: type.labelSmall?.copyWith(color: effective),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+/// "just now", "3 min ago" — the one date-relative string this screen needs.
+///
+/// Local rather than an intl relative formatter, because the app already ships
+/// `DateFormat` and adding a whole relative-time locale table for one label is
+/// more than the label is worth. Bumped to the minute because a second-level
+/// figure would churn on every message.
+String _timeAgo(DateTime at, AppLocalizations l10n) {
+  final seconds = DateTime.now().toUtc().difference(at).inSeconds;
+  if (seconds < 60) return l10n.liveStatusJustNow;
+  final minutes = seconds ~/ 60;
+  if (minutes < 60) return l10n.liveStatusMinutes(minutes);
+  return l10n.liveStatusHours(minutes ~/ 60);
 }

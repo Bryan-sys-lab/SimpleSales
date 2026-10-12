@@ -2564,6 +2564,45 @@ class AppLocalizationsEn extends AppLocalizations {
       'Sales will appear here as soon as the first sale goes through the till.';
 
   @override
+  String get liveStatusConnected => 'Live';
+
+  @override
+  String liveStatusUpdated(Object when) {
+    return 'Updated $when';
+  }
+
+  @override
+  String get liveStatusJustNow => 'just now';
+
+  @override
+  String liveStatusMinutes(num count) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: '$count minutes',
+      one: '1 minute',
+    );
+    return '$_temp0 ago';
+  }
+
+  @override
+  String liveStatusHours(num count) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: '$count hours',
+      one: '1 hour',
+    );
+    return '$_temp0 ago';
+  }
+
+  @override
+  String get liveStatusConnecting => 'Connecting…';
+
+  @override
+  String get liveStatusReconnecting => 'Reconnecting…';
+
+  @override
   String get dashboardAllClear => 'All clear';
 
   @override

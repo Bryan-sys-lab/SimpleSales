@@ -4141,6 +4141,48 @@ abstract class AppLocalizations {
   /// **'Sales will appear here as soon as the first sale goes through the till.'**
   String get dashboardNoSalesFirstBody;
 
+  /// No description provided for @liveStatusConnected.
+  ///
+  /// In en, this message translates to:
+  /// **'Live'**
+  String get liveStatusConnected;
+
+  /// No description provided for @liveStatusUpdated.
+  ///
+  /// In en, this message translates to:
+  /// **'Updated {when}'**
+  String liveStatusUpdated(Object when);
+
+  /// No description provided for @liveStatusJustNow.
+  ///
+  /// In en, this message translates to:
+  /// **'just now'**
+  String get liveStatusJustNow;
+
+  /// No description provided for @liveStatusMinutes.
+  ///
+  /// In en, this message translates to:
+  /// **'{count, plural, =1{1 minute} other{{count} minutes}} ago'**
+  String liveStatusMinutes(num count);
+
+  /// No description provided for @liveStatusHours.
+  ///
+  /// In en, this message translates to:
+  /// **'{count, plural, =1{1 hour} other{{count} hours}} ago'**
+  String liveStatusHours(num count);
+
+  /// No description provided for @liveStatusConnecting.
+  ///
+  /// In en, this message translates to:
+  /// **'Connecting…'**
+  String get liveStatusConnecting;
+
+  /// No description provided for @liveStatusReconnecting.
+  ///
+  /// In en, this message translates to:
+  /// **'Reconnecting…'**
+  String get liveStatusReconnecting;
+
   /// No description provided for @dashboardAllClear.
   ///
   /// In en, this message translates to:
