@@ -9,16 +9,22 @@ class AppLocalizationsEn extends AppLocalizations {
   AppLocalizationsEn([String locale = 'en']) : super(locale);
 
   @override
-  String get appName => 'Simple POS';
+  String get appName => 'SimpleSales';
 
   @override
   String get actionCancel => 'Cancel';
 
   @override
-  String get actionRetry => 'Retry';
+  String get actionSave => 'Save';
 
   @override
   String get actionRefresh => 'Refresh';
+
+  @override
+  String get actionConfirm => 'Clear';
+
+  @override
+  String get actionRetry => 'Retry';
 
   @override
   String get errorDuplicateName =>
@@ -145,7 +151,7 @@ class AppLocalizationsEn extends AppLocalizations {
   String get actionContinue => 'Continue';
 
   @override
-  String get actionCreate => 'Create';
+  String get actionDone => 'Done';
 
   @override
   String get shiftScreenTitle => 'Shift & reconciliation';
@@ -176,13 +182,6 @@ class AppLocalizationsEn extends AppLocalizations {
   @override
   String get shiftNoShiftNoRoster =>
       'Sign in as someone on the staff roster to open a shift.';
-
-  @override
-  String get shiftEmptyTitle => 'No shifts on record yet';
-
-  @override
-  String get shiftEmptyMessage =>
-      'Open a shift, count the drawer when you finish, and this becomes the record of every till day.';
 
   @override
   String get shiftOpenSection => 'Open shift';
@@ -228,10 +227,6 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get shiftRosterDialogDecline => 'Not now';
-
-  @override
-  String get shiftRosterMissingMessage =>
-      'A shift needs a staff entry. Add yourself in Settings, then open the shift.';
 
   @override
   String shiftCountedSnack(Object amount) {
@@ -364,9 +359,6 @@ class AppLocalizationsEn extends AppLocalizations {
   String get shiftCloseFailed => 'Couldn\'t close the shift. Try again.';
 
   @override
-  String get shiftHistorySection => 'Past shifts';
-
-  @override
   String shiftHistoryShiftCount(num count) {
     String _temp0 = intl.Intl.pluralLogic(
       count,
@@ -392,9 +384,6 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get shiftHistoryUnknownCashier => 'Unknown cashier';
-
-  @override
-  String get shiftReconciliationsSection => 'Reconciliations';
 
   @override
   String shiftReconciliationsCount(num count) {
@@ -471,9 +460,6 @@ class AppLocalizationsEn extends AppLocalizations {
   String get shellRoleOwner => 'Owner';
 
   @override
-  String get shellRoleCashier => 'Cashier';
-
-  @override
   String get shellAccountMenuLabel => 'Account and sign out';
 
   @override
@@ -511,29 +497,6 @@ class AppLocalizationsEn extends AppLocalizations {
   @override
   String get databaseErrorAdvice =>
       'This usually follows a crash or a low-storage event. If you have a recent backup file, reinstalling the app and restoring that backup from Settings is the safest way forward.';
-
-  @override
-  String get sellAllStockInCart =>
-      'All stock for this product is already in the cart';
-
-  @override
-  String sellAmountAtLeast(Object amount) {
-    return 'Amount received must be at least $amount.';
-  }
-
-  @override
-  String get sellAmountConfirmedLabel => 'Amount confirmed';
-
-  @override
-  String sellAmountMustEqual(Object amount) {
-    return 'Amount confirmed must equal $amount.';
-  }
-
-  @override
-  String get sellAmountMustMatchTotal => 'Must match the sale total.';
-
-  @override
-  String get sellAmountReceivedLabel => 'Amount received';
 
   @override
   String get sellBrowseProductsAction => 'Browse products';
@@ -578,14 +541,6 @@ class AppLocalizationsEn extends AppLocalizations {
   }
 
   @override
-  String get sellChangeHelper => 'Extra amount is recorded as change.';
-
-  @override
-  String sellChargeButton(Object amount, Object method) {
-    return 'Charge $amount $method';
-  }
-
-  @override
   String sellChargingAmount(Object amount) {
     return 'Charging $amount…';
   }
@@ -599,11 +554,6 @@ class AppLocalizationsEn extends AppLocalizations {
   @override
   String sellCheckingPayment(Object reference) {
     return 'Checking payment $reference…';
-  }
-
-  @override
-  String sellCheckingStatusWithProvider(Object reference) {
-    return 'Checking status of $reference with the provider…';
   }
 
   @override
@@ -623,9 +573,6 @@ class AppLocalizationsEn extends AppLocalizations {
   String get sellClearSearchTooltip => 'Clear product search';
 
   @override
-  String get sellCloseSheetTooltip => 'Close without adding anything';
-
-  @override
   String get sellCustomerNameOptionalLabel => 'Customer Name (optional)';
 
   @override
@@ -639,20 +586,6 @@ class AppLocalizationsEn extends AppLocalizations {
   }
 
   @override
-  String get sellHintAddToCart => 'Double tap to add to the cart';
-
-  @override
-  String get sellHintChooseVariant => 'Double tap to choose a variant';
-
-  @override
-  String sellInCartCount(Object qty) {
-    return '$qty in the cart';
-  }
-
-  @override
-  String get sellInCartNoun => 'in cart';
-
-  @override
   String sellIncreaseItem(Object item) {
     return 'Increase $item';
   }
@@ -663,89 +596,11 @@ class AppLocalizationsEn extends AppLocalizations {
   }
 
   @override
-  String sellInStock(Object qty) {
-    return '$qty in stock';
-  }
-
-  @override
-  String sellItemCount(num count) {
-    String _temp0 = intl.Intl.pluralLogic(
-      count,
-      locale: localeName,
-      other: '$count items',
-      one: '1 item',
-    );
-    return '$_temp0';
-  }
-
-  @override
-  String sellItemsNoun(num count) {
-    String _temp0 = intl.Intl.pluralLogic(
-      count,
-      locale: localeName,
-      other: 'items',
-      one: 'item',
-    );
-    return '$_temp0';
-  }
-
-  @override
-  String get sellMethodBankTransfer => 'Bank transfer';
-
-  @override
-  String get sellMethodCard => 'Card';
-
-  @override
-  String get sellMethodCash => 'Cash';
-
-  @override
-  String get sellMethodCashCommit => 'in cash';
-
-  @override
-  String get sellMethodMpesa => 'M-Pesa';
-
-  @override
-  String get sellMethodMpesaCommit => 'by M-Pesa';
-
-  @override
-  String get sellMethodMobileMoneyManual => 'Mobile money (manual)';
-
-  @override
-  String get sellMethodOffline => 'Offline';
-
-  @override
-  String get sellMethodOfflineCommit => 'offline';
-
-  @override
-  String sellMillilitres(Object ml) {
-    return '$ml ml';
-  }
-
-  @override
-  String get sellMpesaLabel => 'M-Pesa';
-
-  @override
-  String get sellMpesaLocalRecordFailed =>
-      'Payment succeeded. Local recording failed — contact support before reconciling reports.';
-
-  @override
-  String get sellMpesaOfflineRecorded =>
-      'No connection, so no M-Pesa prompt was sent. The sale is recorded and will show as unconfirmed until you reconcile it.';
-
-  @override
   String get sellMpesaPaymentSuccessful =>
       'M-Pesa payment successful. Sale recorded.';
 
   @override
   String get sellMpesaPaymentTitle => 'M-Pesa Payment';
-
-  @override
-  String get sellMpesaRecordNeedsAttention =>
-      'M-Pesa payment succeeded, but the local sale record needs attention.';
-
-  @override
-  String get sellMpesaUnconfirmed =>
-      'M-Pesa sale recorded. Payment not yet confirmed.';
 
   @override
   String get sellNoMatchFilter => 'Nothing matches this filter';
@@ -765,19 +620,6 @@ class AppLocalizationsEn extends AppLocalizations {
   }
 
   @override
-  String get sellNoStockLeft => 'No stock left';
-
-  @override
-  String get sellNoVariantsYetMessage =>
-      'Add them in Inventory — Dark, Regular, Big cup — and they will appear here.';
-
-  @override
-  String get sellNoVariantsYetNotice => 'This product has no variants yet';
-
-  @override
-  String get sellNoVariantsYetPrice => 'No variants yet';
-
-  @override
   String sellNoVariantsYetTitle(Object product) {
     return '$product has no variants yet';
   }
@@ -788,23 +630,10 @@ class AppLocalizationsEn extends AppLocalizations {
   }
 
   @override
-  String get sellNothingToCharge => 'Nothing to charge yet';
-
-  @override
-  String sellNotEnoughStock(Object product) {
-    return 'Not enough $product left. Adjust the cart before adding more.';
-  }
-
-  @override
   String get sellOfflinePaymentAction => 'Offline payment';
 
   @override
   String get sellOfflinePaymentTitle => 'Record offline payment';
-
-  @override
-  String sellOnlyBottleLeft(Object available) {
-    return 'Only $available of a bottle left';
-  }
 
   @override
   String get sellOutOfStock => 'Out of stock';
@@ -818,39 +647,11 @@ class AppLocalizationsEn extends AppLocalizations {
   }
 
   @override
-  String get sellPaymentCouldNotStart =>
-      'Payment could not be started. Check your connection and try again.';
-
-  @override
-  String sellPaymentDeclined(Object reference) {
-    return 'Payment $reference was declined. You can retry.';
-  }
-
-  @override
   String get sellPaymentMethodLabel => 'Payment method';
-
-  @override
-  String sellPaymentNeedsManualRepair(Object reference) {
-    return 'Payment $reference was received but needs manual repair.';
-  }
-
-  @override
-  String sellPaymentNotRecordedLocally(Object reference) {
-    return 'Payment $reference was received but could not be recorded locally. Keep this reference and contact support.';
-  }
 
   @override
   String sellPaymentReceivedSaleRecorded(Object reference) {
     return 'Payment $reference was received. The sale is now recorded.';
-  }
-
-  @override
-  String get sellPaymentTimedOutDoNotCharge =>
-      'M-Pesa payment timed out. Do not charge again.';
-
-  @override
-  String sellPaymentTimedOutWithReference(Object reference) {
-    return 'Payment timed out — do not charge again. Reference $reference is saved and will be reconciled before another payment.';
   }
 
   @override
@@ -860,23 +661,6 @@ class AppLocalizationsEn extends AppLocalizations {
   String get sellPhoneNumberLabel => 'Phone Number';
 
   @override
-  String get sellPortionFull => 'Full';
-
-  @override
-  String get sellPortionHalf => 'Half';
-
-  @override
-  String get sellPortionMeasured => 'Measured';
-
-  @override
-  String get sellPortionQuarter => 'Quarter';
-
-  @override
-  String sellPriceFrom(Object price) {
-    return 'From $price';
-  }
-
-  @override
   String get sellProcessingMpesaTitle => 'Processing M-Pesa Payment';
 
   @override
@@ -884,17 +668,7 @@ class AppLocalizationsEn extends AppLocalizations {
       'The sale is recorded, but the receipt did not print.';
 
   @override
-  String sellReconciledSaleRecorded(Object reference) {
-    return 'Reconciled payment $reference and recorded the sale.';
-  }
-
-  @override
   String get sellRecordSaleAction => 'Record sale';
-
-  @override
-  String sellReferenceAlreadyReconciled(Object reference) {
-    return 'Reference $reference was already reconciled.';
-  }
 
   @override
   String sellReferenceDeclined(Object reference) {
@@ -923,22 +697,8 @@ class AppLocalizationsEn extends AppLocalizations {
   }
 
   @override
-  String get sellSaleNotCompleted =>
-      'Couldn’t complete the sale. Check stock and try again.';
-
-  @override
   String get sellSaleNotRecordedNothingCharged =>
       'Couldn\'t record the sale. Nothing was charged — try again.';
-
-  @override
-  String sellSaleRecorded(Object amount) {
-    return 'Sale recorded: $amount';
-  }
-
-  @override
-  String sellSaleRecordedWithChange(Object amount, Object change) {
-    return 'Sale recorded: $amount · Change $change';
-  }
 
   @override
   String sellSaleTotalLabel(Object amount) {
@@ -956,18 +716,15 @@ class AppLocalizationsEn extends AppLocalizations {
   String get sellScanCameraLabel => 'Scan a barcode with the camera';
 
   @override
+  String get sellScanCameraError =>
+      'Could not open the camera scanner. Try scanning with the hardware scanner, or pick the product by name.';
+
+  @override
+  String get sellPhoneNumberHint => '0712345678';
+
+  @override
   String get sellScanNoProductBarcode =>
       'No product carries that barcode. Add it in Inventory — on the product or on one of its variants — or pick the product by name.';
-
-  @override
-  String sellScanVariantOnly(Object product) {
-    return '$product is sold as variants, so its own barcode is not enough. Scan one of its variant barcodes, or tap the product to choose.';
-  }
-
-  @override
-  String sellScanVariantOutOfStock(Object variant) {
-    return '$variant is out of stock.';
-  }
 
   @override
   String get sellSearchNameOrCategory => 'Name or category';
@@ -976,81 +733,7 @@ class AppLocalizationsEn extends AppLocalizations {
   String get sellSearchProducts => 'Search products';
 
   @override
-  String sellServingOptionTitle(Object label, Object size) {
-    return '$label · $size';
-  }
-
-  @override
-  String sellShotCannotPourCounted(Object product) {
-    return '$product is counted, not measured, so it cannot be poured';
-  }
-
-  @override
-  String sellShotCannotPourNoVolume(Object product) {
-    return '$product has no volume set, so it cannot be poured';
-  }
-
-  @override
-  String sellShotCupBiggerThanBottle(Object ml) {
-    return 'The cup is bigger than the $ml ml bottle';
-  }
-
-  @override
-  String get sellShotCupGone =>
-      'That shot cup is no longer available. Try again.';
-
-  @override
-  String sellShotNoneLeftToPour(Object product) {
-    return 'No $product left to pour';
-  }
-
-  @override
-  String sellShotNotEnough(Object product) {
-    return 'Not enough $product left for another shot. Adjust the cart before adding more.';
-  }
-
-  @override
-  String sellShotsInBottle(num count) {
-    String _temp0 = intl.Intl.pluralLogic(
-      count,
-      locale: localeName,
-      other: '$count shots in the bottle',
-      one: '1 shot in the bottle',
-    );
-    return '$_temp0';
-  }
-
-  @override
   String get sellShotsSection => 'Shots';
-
-  @override
-  String sellTileSpoken(Object price, Object product, Object stock) {
-    return '$product, $price, $stock';
-  }
-
-  @override
-  String sellTileSpokenVariants(
-      Object price, Object product, Object stock, Object variants) {
-    return '$product, from $price, $variants, $stock';
-  }
-
-  @override
-  String get sellTotalLabel => 'Total:';
-
-  @override
-  String sellUnconfirmedNoAmount(Object reference) {
-    return 'Reference $reference has not been confirmed by the provider. Do not charge the customer again. Check again now, or record the sale later from Reports.';
-  }
-
-  @override
-  String sellUnconfirmedWithAmount(Object amount, Object reference) {
-    return 'Reference $reference for $amount has not been confirmed by the provider. Do not charge the customer again. Check again now, or record the sale later from Reports.';
-  }
-
-  @override
-  String sellVariantAllStockInCart(Object variant) {
-    return 'All $variant stock is already in the cart.';
-  }
 
   @override
   String sellVariantCount(num count) {
@@ -1061,26 +744,6 @@ class AppLocalizationsEn extends AppLocalizations {
       one: '1 variant',
     );
     return '$_temp0';
-  }
-
-  @override
-  String sellVariantGone(Object product) {
-    return 'That variant is no longer on $product. Try again.';
-  }
-
-  @override
-  String sellVariantNoneLeft(Object variant) {
-    return 'No $variant left. Adjust the cart before adding more.';
-  }
-
-  @override
-  String sellVariantStockInCart(Object qty) {
-    return '$qty in stock · already in cart';
-  }
-
-  @override
-  String sellVariantStockLow(Object qty) {
-    return '$qty in stock · low';
   }
 
   @override
@@ -1107,6 +770,13 @@ class AppLocalizationsEn extends AppLocalizations {
   String get inventoryAddProduct => 'Add product';
 
   @override
+  String get inventoryEmptyTitle => 'No products yet';
+
+  @override
+  String get inventoryEmptyBody =>
+      'Add your first product to start tracking stock and sales.';
+
+  @override
   String inventoryAddVariantsFirst(Object name) {
     return 'Add $name\'s variants first — its stock is their total.';
   }
@@ -1130,11 +800,6 @@ class AppLocalizationsEn extends AppLocalizations {
       'That barcode is already on another product.';
 
   @override
-  String inventoryBarcodeOnProduct(Object name) {
-    return 'That barcode is already on $name.';
-  }
-
-  @override
   String get inventoryBarcodesHelp =>
       'A code on the product adds the whole product. A code on a variant — entered in that variant\'s own form — adds that variant, at its price and from its stock. Each code can only ever resolve to one of them.';
 
@@ -1153,8 +818,8 @@ class AppLocalizationsEn extends AppLocalizations {
   String get inventoryDeleteAction => 'Delete';
 
   @override
-  String inventoryDeleteMessage(Object name) {
-    return 'Remove $name from inventory?';
+  String inventoryDeactivatedProduct(Object name) {
+    return 'deactivated $name';
   }
 
   @override
@@ -1167,12 +832,10 @@ class AppLocalizationsEn extends AppLocalizations {
   String get inventoryEditAction => 'Edit';
 
   @override
-  String get inventoryEditProduct => 'Edit product';
+  String get inventoryActionsTooltip => 'Product actions';
 
   @override
-  String inventoryEditVariantTitle(Object name) {
-    return 'Edit $name';
-  }
+  String get inventoryEditProduct => 'Edit product';
 
   @override
   String get inventoryExciseStampField => 'Excise stamp batch (optional)';
@@ -1221,11 +884,6 @@ class AppLocalizationsEn extends AppLocalizations {
   String get inventoryFieldTotalStock => 'Total stock (from variants)';
 
   @override
-  String inventoryFocusedAnnouncement(Object name) {
-    return '$name is in the inventory list';
-  }
-
-  @override
   String get inventoryGoBack => 'Go back';
 
   @override
@@ -1240,9 +898,7 @@ class AppLocalizationsEn extends AppLocalizations {
   String get inventoryLowStock => 'low stock';
 
   @override
-  String inventoryMargin(Object percent) {
-    return 'margin $percent%';
-  }
+  String get inventoryOutOfStock => 'Out of stock';
 
   @override
   String get inventoryNewVariantName => 'New variant';
@@ -1255,34 +911,10 @@ class AppLocalizationsEn extends AppLocalizations {
   String get inventoryNoVariantsYet => 'no variants yet';
 
   @override
-  String get inventoryNoVariantsYetHint =>
-      'No variants yet. The till will ask for one instead of selling the whole product.';
-
-  @override
-  String inventoryPriceFieldMessage(Object field) {
-    return '$field must be a number, or empty if not sold in portions';
-  }
-
-  @override
-  String inventoryPriceFieldNotNegative(Object field) {
-    return '$field must be 0 or more';
-  }
-
-  @override
-  String inventoryQtyInStock(Object count) {
-    return '$count in stock';
-  }
-
-  @override
   String get inventoryReasonLabel => 'Reason';
 
   @override
   String get inventoryRemoveAction => 'Remove';
-
-  @override
-  String inventoryRemoveBarcodeTooltip(Object code) {
-    return 'Remove $code';
-  }
 
   @override
   String get inventoryRemoveVariantBarcodeFreed =>
@@ -1295,11 +927,6 @@ class AppLocalizationsEn extends AppLocalizations {
   @override
   String inventoryRemoveVariantTitle(Object name) {
     return 'Remove $name?';
-  }
-
-  @override
-  String inventoryRowSpoken(Object count, Object name, Object price) {
-    return '$name, $price, $count in stock';
   }
 
   @override
@@ -1369,23 +996,8 @@ class AppLocalizationsEn extends AppLocalizations {
   String get inventoryThisProduct => 'This product';
 
   @override
-  String get inventoryTotalStockHelper =>
-      'The variants\' total, kept in step for you';
-
-  @override
   String inventoryUnnamedVariant(Object position) {
     return 'Give every variant a name — one of them has none (position $position).';
-  }
-
-  @override
-  String inventoryVariantCount(num count) {
-    String _temp0 = intl.Intl.pluralLogic(
-      count,
-      locale: localeName,
-      other: '$count variants',
-      one: '1 variant',
-    );
-    return '$_temp0';
   }
 
   @override
@@ -1406,9 +1018,6 @@ class AppLocalizationsEn extends AppLocalizations {
   String get settingsAddStaffAction => 'Add staff';
 
   @override
-  String get settingsAddStaffFailed => 'Couldn’t add staff — try again.';
-
-  @override
   String get settingsAutoBackupSync => 'Automatic backup and online sync';
 
   @override
@@ -1423,14 +1032,14 @@ class AppLocalizationsEn extends AppLocalizations {
   String get settingsBackupSection => 'Backup';
 
   @override
+  String get settingsAccountSection => 'Your account';
+
+  @override
   String get settingsCashMethod => 'Cash';
 
   @override
   String get settingsCashMethodSubtitle =>
       'Always available — works fully offline.';
-
-  @override
-  String get settingsChangeAction => 'Change';
 
   @override
   String get settingsChoosePrinter => 'Choose printer';
@@ -1441,10 +1050,6 @@ class AppLocalizationsEn extends AppLocalizations {
   @override
   String get settingsConnectFailed =>
       'Couldn’t connect. Check the identity login and internet connection.';
-
-  @override
-  String get settingsConnectMpesaMessage =>
-      'This shop needs to be registered with the backend once. Sign in with the shop identity account; staff continue using local PINs for the till.';
 
   @override
   String get settingsConnectMpesaTitle => 'Connect M-Pesa';
@@ -1473,6 +1078,120 @@ class AppLocalizationsEn extends AppLocalizations {
   String get settingsEraseLocalBackupsAction => 'Erase local encrypted backups';
 
   @override
+  String get settingsDeleteAccountAction => 'Delete account';
+
+  @override
+  String get accountDeleteConfirmTitle => 'Delete this account for good?';
+
+  @override
+  String get accountDeleteConfirmMessage =>
+      'Your online account and this shop’s record of it are deleted. Everything on this phone that names or contacts a person — your name, your email, your PIN, the cashiers, the till numbers — is overwritten with unreadable data, and the key that would read it back is destroyed. The takings and stock figures themselves are left alone, because those are your books.\n\nAny encrypted backup taken before today is also made unreadable. This cannot be undone.';
+
+  @override
+  String get accountDeleteConfirmAction => 'Delete and erase';
+
+  @override
+  String get accountDeleteDoneTitle => 'Account deleted';
+
+  @override
+  String get accountDeleteDoneRemote =>
+      'The online account is deleted on the server as well as on this phone. Keep the receipt below.';
+
+  @override
+  String get accountDeleteDoneLocalOnly =>
+      'This phone no longer holds any of your details. The server could not be reached, so ask it to finish the deletion when you are back online — the receipt below is what to quote.';
+
+  @override
+  String accountDeleteReceipt(Object at, Object id) {
+    return 'Deletion reference: $id\nCompleted: $at';
+  }
+
+  @override
+  String get accountDeleteCompactionPending =>
+      'The data is unreadable, but the file was never fully rewritten. Open the app again with free storage to finish the job.';
+
+  @override
+  String get accountDeleteErasureFailed =>
+      'The account was not deleted because the erasure could not finish. Nothing was changed.';
+
+  @override
+  String get settingsForgotPinAction => 'Forgot PIN?';
+
+  @override
+  String get pinResetRowSubtitle => 'Email a code and set a new owner PIN';
+
+  @override
+  String get accountDeleteShortWarning =>
+      'Erases your account and makes this phone’s copy of your details unreadable. Cannot be undone.';
+
+  @override
+  String get pinResetTitle => 'Set a new owner PIN';
+
+  @override
+  String pinResetIntro(Object email) {
+    return 'We will email a 6-digit code to $email. It proves the phone belongs to you, which is the only way a forgotten PIN can be reset.';
+  }
+
+  @override
+  String get pinResetSendCode => 'Email me a code';
+
+  @override
+  String get pinResetSending => 'Sending…';
+
+  @override
+  String get pinResetSaving => 'Saving…';
+
+  @override
+  String pinResetSentTo(Object email) {
+    return 'Code sent to $email. Enter it here, then your new PIN.';
+  }
+
+  @override
+  String get pinResetCodeLabel => 'Code from the email';
+
+  @override
+  String get pinResetNewPinLabel => 'New PIN';
+
+  @override
+  String get pinResetNewPinAgainLabel => 'New PIN again';
+
+  @override
+  String get pinResetPinsDiffer => 'The two PINs do not match.';
+
+  @override
+  String get pinResetPinShape => 'A PIN is exactly four digits.';
+
+  @override
+  String get pinResetCodeWrong =>
+      'That code is not right. Check your email and try again.';
+
+  @override
+  String get pinResetOffline =>
+      'No connection. A PIN reset needs the server to email you a code, so it cannot run offline.';
+
+  @override
+  String get pinResetTimeout => 'The server did not answer in time. Try again.';
+
+  @override
+  String get pinResetTooMany =>
+      'Too many attempts. Wait a few minutes, then ask for a new code.';
+
+  @override
+  String get pinResetNoEmail =>
+      'This shop has no email on record, so there is nowhere to send a code. Add and verify an email first.';
+
+  @override
+  String get pinResetStartOver => 'That code has expired. Ask for a new one.';
+
+  @override
+  String get pinResetServer =>
+      'The server refused the reset. Try again shortly.';
+
+  @override
+  String get pinResetDone =>
+      'Your owner PIN has been changed. Use the new one from now on.';
+
+  @override
   String get settingsExportEncrypted => 'Export encrypted backup (.duka)';
 
   @override
@@ -1487,11 +1206,172 @@ class AppLocalizationsEn extends AppLocalizations {
       'Online identity linked. M-Pesa and analytics are now available.';
 
   @override
-  String get settingsIdentityNotLinkedMessage =>
-      'Selling works fully offline. Connect to the internet and sign in to enable M-Pesa and analytics.';
+  String get settingsIdentityVerified =>
+      'Email verified. Auto-backups, analytics and auto-update are now on.';
 
   @override
-  String get settingsIdentityNotLinkedTitle => 'Online identity not linked yet';
+  String get settingsIdentityNotLinkedMessage =>
+      'Selling works fully offline. Verify your email to switch on auto-backups, analytics and auto-update.';
+
+  @override
+  String get settingsIdentityNotLinkedTitle =>
+      'Verify your email to finish setup';
+
+  @override
+  String get settingsVerifyPinTitle => 'Enter your admin PIN';
+
+  @override
+  String settingsVerifyPinMessage(Object email) {
+    return 'Confirm you are the shop admin with your 4-digit PIN. Your online account is created for $email, and we will send a 6-digit code to that address to prove it is yours.';
+  }
+
+  @override
+  String get settingsVerifyPinWrong =>
+      'That is not the admin PIN for this shop.';
+
+  @override
+  String get settingsVerifyPinLabel => '4-digit admin PIN';
+
+  @override
+  String get settingsVerifyCodeTitle => 'Enter the code we emailed';
+
+  @override
+  String settingsVerifyCodeMessage(Object email, Object minutes) {
+    return 'We sent a 6-digit code to $email. It expires in $minutes minutes.';
+  }
+
+  @override
+  String settingsVerifyPinLocked(Object seconds) {
+    return 'Too many wrong PINs on this till. Try again in ${seconds}s.';
+  }
+
+  @override
+  String get settingsVerifyCodeLabel => '6-digit code';
+
+  @override
+  String settingsVerifyCodeSent(Object email) {
+    return 'Code sent to $email.';
+  }
+
+  @override
+  String settingsVerifyCodeWrong(num count) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: 'That code is not right. $count attempts left.',
+      one: 'That code is not right. 1 attempt left.',
+    );
+    return '$_temp0';
+  }
+
+  @override
+  String get settingsVerifyCodeExpired =>
+      'That code has expired. Send a new one and try again.';
+
+  @override
+  String get settingsVerifyCodeBurnt =>
+      'Too many wrong attempts. Send a new code and try again.';
+
+  @override
+  String get settingsVerifyResendAction => 'Send a new code';
+
+  @override
+  String get settingsVerifyTooManyCodes =>
+      'Too many codes requested. Wait a few minutes before asking for another.';
+
+  @override
+  String get settingsVerifyNotConfigured =>
+      'This server cannot verify emails yet. Try again later.';
+
+  @override
+  String get settingsVerifyEmailFailed =>
+      'The email could not be sent. Check your connection and send a new code.';
+
+  @override
+  String get settingsVerifyIdentityUnavailable =>
+      'Could not reach the account server. Try again when you have signal.';
+
+  @override
+  String get settingsVerifyShopMissing =>
+      'This account has no shop yet. Finish shop setup first.';
+
+  @override
+  String get settingsAutoBackupLockedSubtitle =>
+      'Verify your email to switch on automatic backups, analytics and auto-update.';
+
+  @override
+  String get diagnosticsTitle => 'Diagnostics';
+
+  @override
+  String get diagnosticsRecentTitle => 'Recent failures';
+
+  @override
+  String diagnosticsRecentCount(Object cap, num count, Object days) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: '$count failures kept',
+      one: '1 failure kept',
+    );
+    return '$_temp0 — the last $days weeks, newer than $cap rows are not kept';
+  }
+
+  @override
+  String get diagnosticsEmptyTitle => 'Nothing has gone wrong lately';
+
+  @override
+  String get diagnosticsEmptyMessage =>
+      'When something fails, the app records what it was doing and keeps it here. The newest failures replace the oldest, so this list never grows without limit.';
+
+  @override
+  String get diagnosticsUnreadableTitle => 'The failure log could not be read';
+
+  @override
+  String get diagnosticsUnreadableMessage =>
+      'The log is on this phone, but it did not open. That is itself worth reporting — refresh to try again, and send this screen to the shop\'s developer.';
+
+  @override
+  String get diagnosticsTrailTitle => 'What the shop was doing';
+
+  @override
+  String get diagnosticsStackTitle => 'Stack trace';
+
+  @override
+  String get diagnosticsCopyReport => 'Copy report';
+
+  @override
+  String get diagnosticsClear => 'Clear log';
+
+  @override
+  String get diagnosticsClearConfirmTitle => 'Clear the failure log?';
+
+  @override
+  String get diagnosticsClearConfirmMessage =>
+      'The recorded failures will be deleted from this device. This cannot be undone.';
+
+  @override
+  String get diagnosticsReportCopied => 'Report copied to the clipboard.';
+
+  @override
+  String get diagnosticsCleared => 'Failure log cleared.';
+
+  @override
+  String get settingsDiagnosticsHelp =>
+      'What the phone recorded when something went wrong: which screen, who was signed in, and what the shop was doing. The newest failures replace the oldest.';
+
+  @override
+  String get diagnosticsRouteUnknown => 'unknown screen';
+
+  @override
+  String get diagnosticsActorUnknown => 'unknown user';
+
+  @override
+  String get diagnosticsActionUnknown => 'nothing in particular';
+
+  @override
+  String diagnosticsEntryContext(Object action, Object actor, Object route) {
+    return 'on $route · $actor · $action';
+  }
 
   @override
   String get settingsImportInventory => 'Import inventory (.xlsx)';
@@ -1499,35 +1379,6 @@ class AppLocalizationsEn extends AppLocalizations {
   @override
   String get settingsImportWorkbookFailed =>
       'Couldn’t import the workbook. Check the file and try again.';
-
-  @override
-  String settingsImportedProducts(num products) {
-    String _temp0 = intl.Intl.pluralLogic(
-      products,
-      locale: localeName,
-      other: 'Imported $products products',
-      one: 'Imported 1 product',
-    );
-    return '$_temp0';
-  }
-
-  @override
-  String settingsImportedProductsWithRefused(
-      num codes, Object list, num products) {
-    String _temp0 = intl.Intl.pluralLogic(
-      products,
-      locale: localeName,
-      other: 'Imported $products products.',
-      one: 'Imported 1 product.',
-    );
-    String _temp1 = intl.Intl.pluralLogic(
-      codes,
-      locale: localeName,
-      other: '$codes barcodes were',
-      one: '1 barcode was',
-    );
-    return '$_temp0 $_temp1 already on another product: $list';
-  }
 
   @override
   String get settingsIncluded => 'Included';
@@ -1542,7 +1393,25 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get settingsLoadShopsFailed =>
-      'Could not load shops. Connect to the internet and try again.';
+      'Could not read the shops on this device.';
+
+  @override
+  String get settingsOneShopOnDevice =>
+      'Only one shop is set up on this device. Add another here and you can move between them.';
+
+  @override
+  String get settingsCurrentShop => 'Current shop';
+
+  @override
+  String get settingsLinkedShop => 'Linked to the backend';
+
+  @override
+  String get settingsLocalOnlyShop => 'On this device only';
+
+  @override
+  String settingsSwitchedToShop(Object name) {
+    return 'Switched to $name. Its stock, sales and staff are kept separate.';
+  }
 
   @override
   String get settingsMpesaMethod => 'M-Pesa';
@@ -1564,10 +1433,6 @@ class AppLocalizationsEn extends AppLocalizations {
       'No online shops are linked to this identity yet.';
 
   @override
-  String get settingsNoPairedPrinters =>
-      'No Bluetooth printers are paired with this phone. Pair one from the phone\'s Bluetooth settings, then come back.';
-
-  @override
   String get settingsPairAPrinter => 'Pair a printer';
 
   @override
@@ -1577,19 +1442,6 @@ class AppLocalizationsEn extends AppLocalizations {
   String get settingsPairAnotherPrinter => 'Pair another';
 
   @override
-  String get settingsPairingCancelled =>
-      'Pairing was cancelled. Pair the printer from the phone\'s Bluetooth settings, then try again.';
-
-  @override
-  String settingsPaperRoll(Object size) {
-    return '${size}mm roll';
-  }
-
-  @override
-  String get settingsPaymentChannelHint =>
-      'Find your channel ID on the payment provider dashboard, under your wallet/channel settings.';
-
-  @override
   String get settingsPaymentChannelId => 'Payment channel ID';
 
   @override
@@ -1597,11 +1449,6 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get settingsPinLabel => '4-digit PIN';
-
-  @override
-  String settingsPinResetFor(Object name) {
-    return 'PIN reset for $name';
-  }
 
   @override
   String get settingsPrintAfterSale => 'Print after every sale';
@@ -1620,11 +1467,6 @@ class AppLocalizationsEn extends AppLocalizations {
   @override
   String get settingsPrinterNotPaired =>
       'That printer is not paired with this phone. Pair it from the phone\'s Bluetooth settings first.';
-
-  @override
-  String settingsPrinterPaired(Object name) {
-    return '$name paired.';
-  }
 
   @override
   String settingsPrinterPermissionDenied(Object app) {
@@ -1665,53 +1507,13 @@ class AppLocalizationsEn extends AppLocalizations {
   String get settingsRemoveAction => 'Remove';
 
   @override
-  String get settingsRemoveStaffFailed => 'Couldn’t remove staff — try again.';
-
-  @override
-  String settingsRemoveStaffMessage(Object name) {
-    return '$name will no longer be able to sign in. Their past sales stay on record.';
-  }
-
-  @override
   String get settingsRemoveStaffTitle => 'Remove staff member?';
-
-  @override
-  String settingsRemoveStaffTooltip(Object name) {
-    return 'Remove $name';
-  }
 
   @override
   String get settingsResetPinAction => 'Reset PIN';
 
   @override
-  String get settingsResetPinFailed => 'Couldn’t reset PIN — try again.';
-
-  @override
-  String settingsResetPinTitle(Object name) {
-    return 'Reset PIN for $name';
-  }
-
-  @override
   String get settingsRestoreEncrypted => 'Restore encrypted backup';
-
-  @override
-  String settingsRestoredProducts(num count) {
-    String _temp0 = intl.Intl.pluralLogic(
-      count,
-      locale: localeName,
-      other: 'Restored $count products',
-      one: 'Restored 1 product',
-    );
-    return '$_temp0';
-  }
-
-  @override
-  String get settingsRoleAdmin => 'Admin';
-
-  @override
-  String settingsRoleAdminFull(Object role) {
-    return '$role (full rights)';
-  }
 
   @override
   String get settingsRoleCashier => 'Cashier';
@@ -1740,29 +1542,11 @@ class AppLocalizationsEn extends AppLocalizations {
   String get settingsShopNotOnDevice => 'Set this shop up on this device first';
 
   @override
-  String settingsShopReady(Object name) {
-    return '$name is ready. Your admin account and PIN carried across.';
-  }
-
-  @override
-  String get settingsShopsSection => 'Shops and offline workspaces';
-
-  @override
   String get settingsSignInBeforeAddingShop =>
       'Sign in as the shop admin before adding another shop.';
 
   @override
-  String settingsSignedInAsAdmin(Object name) {
-    return 'Signed in as shop admin: $name';
-  }
-
-  @override
   String get settingsStaffNameLabel => 'Name';
-
-  @override
-  String settingsStaffNameTaken(Object name) {
-    return 'A staff member named \"$name\" already exists';
-  }
 
   @override
   String get settingsStaffRemovedOffline =>
@@ -1771,6 +1555,41 @@ class AppLocalizationsEn extends AppLocalizations {
   @override
   String get settingsStaffSavedOffline =>
       'Cashier saved offline. It will be linked to the backend on the next successful sync.';
+
+  @override
+  String get settingsStaffEmpty => 'No managers or cashiers yet.';
+
+  @override
+  String settingsStaffActionsTooltip(Object name) {
+    return 'Actions for $name';
+  }
+
+  @override
+  String settingsStaffNameTaken(Object name) {
+    return 'A staff member named \"$name\" already exists';
+  }
+
+  @override
+  String get settingsAddStaffFailed => 'Couldn’t add staff — try again.';
+
+  @override
+  String get settingsResetPinFailed => 'Couldn’t reset PIN — try again.';
+
+  @override
+  String get settingsRemoveStaffFailed => 'Couldn’t remove staff — try again.';
+
+  @override
+  String settingsRemoveStaffMessage(Object name) {
+    return '$name will no longer be able to sign in. Their past sales stay on record.';
+  }
+
+  @override
+  String get settingsConnectMpesaMessage =>
+      'This shop needs to be registered with the backend once. Sign in with the shop identity account; staff continue using local PINs for the till.';
+
+  @override
+  String get settingsPaymentChannelHint =>
+      'Find your channel ID on the payment provider dashboard, under your wallet/channel settings.';
 
   @override
   String get settingsStaffSection => 'Managers and cashiers';
@@ -1793,10 +1612,6 @@ class AppLocalizationsEn extends AppLocalizations {
       'Sync failed — try again when you have signal.';
 
   @override
-  String get settingsSyncHelp =>
-      'When online, sync pushes inventory and sales to a Google Sheet. With no signal, it saves an Excel file you can share manually instead — nothing is ever blocked by connectivity.';
-
-  @override
   String get settingsSyncNowAction => 'Sync now';
 
   @override
@@ -1813,6 +1628,29 @@ class AppLocalizationsEn extends AppLocalizations {
   String get settingsSyncing => 'Syncing…';
 
   @override
+  String get settingsTestPrintAction => 'Test print';
+
+  @override
+  String get settingsTestReceiptSent => 'Test receipt sent.';
+
+  @override
+  String get settingsVerifyAction => 'Verify';
+
+  @override
+  String settingsShopReady(Object name) {
+    return '$name is ready. Your admin account and PIN carried across.';
+  }
+
+  @override
+  String get settingsPrinterPairHelp =>
+      'Pair the printer from this phone\'s Bluetooth settings first, then pair it here.';
+
+  @override
+  String settingsPaperRoll(Object size) {
+    return '${size}mm roll';
+  }
+
+  @override
   String settingsTaxSummary(Object rate, Object till) {
     return 'VAT $rate% · receipts numbered $till-000001';
   }
@@ -1823,19 +1661,81 @@ class AppLocalizationsEn extends AppLocalizations {
   }
 
   @override
-  String get settingsTestPrintAction => 'Test print';
+  String get settingsSyncHelp =>
+      'When online, sync pushes inventory and sales to a Google Sheet. With no signal, it saves an Excel file you can share manually instead — nothing is ever blocked by connectivity.';
 
   @override
-  String get settingsTestReceiptSent => 'Test receipt sent.';
+  String settingsRestoredProducts(num count) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: 'Restored $count products',
+      one: 'Restored 1 product',
+    );
+    return '$_temp0';
+  }
 
   @override
-  String get settingsUnnamedShop => 'Unnamed shop';
+  String settingsImportedProducts(num products) {
+    String _temp0 = intl.Intl.pluralLogic(
+      products,
+      locale: localeName,
+      other: 'Imported $products products',
+      one: 'Imported 1 product',
+    );
+    return '$_temp0';
+  }
 
   @override
-  String get settingsVerifyAction => 'Verify';
+  String settingsImportedProductsWithRefused(
+      Object detail, num products, Object refused) {
+    String _temp0 = intl.Intl.pluralLogic(
+      products,
+      locale: localeName,
+      other: 'Imported $products products.',
+      one: 'Imported 1 product.',
+    );
+    return '$_temp0 $refused: $detail';
+  }
 
   @override
-  String get settingsVerifying => 'Verifying…';
+  String settingsBarcodesRefusedList(num count) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: '$count barcodes',
+      one: '1 barcode',
+    );
+    return '$_temp0 were already on another product';
+  }
+
+  @override
+  String get settingsNoPairedPrinters =>
+      'No Bluetooth printers are paired with this phone. Pair one from the phone\'s Bluetooth settings, then try again.';
+
+  @override
+  String get settingsPairingCancelled =>
+      'Pairing was cancelled. Pair the printer from the phone\'s Bluetooth settings, then try again.';
+
+  @override
+  String settingsPrinterPaired(Object name) {
+    return '$name paired.';
+  }
+
+  @override
+  String settingsResetPinTitle(Object name) {
+    return 'Reset PIN for $name';
+  }
+
+  @override
+  String settingsPinResetFor(Object name) {
+    return 'PIN reset for $name';
+  }
+
+  @override
+  String settingsRoleAdminFull(Object role) {
+    return '$role (full rights)';
+  }
 
   @override
   String settingsVersionLabel(Object version) {
@@ -1850,9 +1750,6 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get shotCupsAddAction => 'Add a shot cup';
-
-  @override
-  String get shotCupsAddCupAction => 'Add cup';
 
   @override
   String get shotCupsCapacityHelper => 'Fixed for this cup';
@@ -1906,9 +1803,6 @@ class AppLocalizationsEn extends AppLocalizations {
   String get shotCupsEditAction => 'Edit';
 
   @override
-  String get shotCupsEditTitle => 'Edit shot cup';
-
-  @override
   String get shotCupsEmptyMessageNoPermission =>
       'No shot cups have been set up for this shop.';
 
@@ -1936,31 +1830,7 @@ class AppLocalizationsEn extends AppLocalizations {
       'Give the cup a name, like Shot or Double.';
 
   @override
-  String get shotCupsNoDrinksNotice =>
-      'No drinks in millilitres yet. Set a product\'s unit to cup or litre in Inventory first: a shot is a pour, so it needs something to pour.';
-
-  @override
   String get shotCupsNotSold => 'Not sold';
-
-  @override
-  String shotCupsOptionNoVolume(Object name) {
-    return '$name · no volume set';
-  }
-
-  @override
-  String shotCupsOptionSpokenNoVolume(Object name) {
-    return '$name, no volume set';
-  }
-
-  @override
-  String shotCupsOptionSpokenWithVolume(Object name, Object size) {
-    return '$name, $size ml';
-  }
-
-  @override
-  String shotCupsOptionWithVolume(Object name, Object size) {
-    return '$name · $size ml';
-  }
 
   @override
   String shotCupsPerBottle(Object count) {
@@ -1981,9 +1851,6 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get shotCupsRetryLoading => 'Try loading again';
-
-  @override
-  String get shotCupsSaveCupAction => 'Save cup';
 
   @override
   String get shotCupsSaveFailed => 'Couldn’t save the cup. Try again.';
@@ -2009,6 +1876,58 @@ class AppLocalizationsEn extends AppLocalizations {
       'Only the shop admin can change tax settings.';
 
   @override
+  String taxSettingsVatRateLine(Object percent) {
+    return 'VAT rate $percent%';
+  }
+
+  @override
+  String taxSettingsVatRateSpoken(Object percent) {
+    return 'VAT rate $percent percent';
+  }
+
+  @override
+  String taxSettingsWorkedExample(Object net, Object vat) {
+    return 'A KSh 100 sale carries KSh $vat VAT, leaving KSh $net net.';
+  }
+
+  @override
+  String get taxSettingsPricesIncludeVatSubtitle =>
+      'On: you type the shelf price and VAT is extracted from it. Off: you type the net price and VAT is added on top.';
+
+  @override
+  String taxSettingsTillCodeHelp(Object tillCode) {
+    return 'Receipts are numbered $tillCode-000001, and KRA needs that number to match the sequence it has on file. Give each till its own code.';
+  }
+
+  @override
+  String get taxSettingsEtimsOnSubtitle =>
+      'On — every sale is filed with KRA. Sales keep working with no signal; receipts upload as soon as there is a connection.';
+
+  @override
+  String get taxSettingsEtimsOffSubtitle =>
+      'Off — sales are recorded but no tax invoice is issued. Turn this on once a TIN is registered.';
+
+  @override
+  String get taxSettingsTinNotRegisteredHelp =>
+      'Receipts cannot be issued until this shop\'s KRA PIN is registered. Until then, sales are recorded but no tax invoice is issued.';
+
+  @override
+  String get taxSettingsWaitForReceiptsSubtitle =>
+      'Queued automatically after every sale while online. Sales never wait for it.';
+
+  @override
+  String get taxSettingsTillCodeDialogHelp =>
+      'Letters and digits only. Every till in a shop needs its own code, because KRA rejects two tills issuing the same receipt number.';
+
+  @override
+  String get taxSettingsKraPinDialogHelp =>
+      'Enter the PIN exactly as printed on this shop\'s KRA certificate, including the P0 prefix. A PIN issued to the wrong business puts invoices on someone else\'s return.';
+
+  @override
+  String get taxSettingsSaveFailed =>
+      'Couldn\'t save. Check the phone has storage free.';
+
+  @override
   String get taxSettingsApplyAction => 'Apply';
 
   @override
@@ -2018,15 +1937,7 @@ class AppLocalizationsEn extends AppLocalizations {
   String get taxSettingsEtimsOff => 'eTIMS receipts switched off';
 
   @override
-  String get taxSettingsEtimsOffSubtitle =>
-      'Off — sales are recorded but no tax invoice is issued. Turn this on once a TIN is registered.';
-
-  @override
   String get taxSettingsEtimsOn => 'eTIMS receipts switched on';
-
-  @override
-  String get taxSettingsEtimsOnSubtitle =>
-      'On — every sale is filed with KRA. Sales keep working with no signal; receipts upload as soon as there is a connection.';
 
   @override
   String get taxSettingsEtimsSection => 'KRA eTIMS';
@@ -2037,10 +1948,6 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get taxSettingsIssueEtimsTitle => 'Issue eTIMS receipts';
-
-  @override
-  String get taxSettingsKraPinHelp =>
-      'Enter the PIN exactly as printed on this shop\'s KRA certificate, including the P0 prefix. A PIN issued to the wrong business puts invoices on someone else\'s return.';
 
   @override
   String get taxSettingsKraPinTitle => 'KRA taxpayer PIN';
@@ -2057,10 +1964,6 @@ class AppLocalizationsEn extends AppLocalizations {
   String get taxSettingsPricesIncludeVat => 'Prices include VAT';
 
   @override
-  String get taxSettingsPricesIncludeVatSubtitle =>
-      'On: you type the shelf price and VAT is extracted from it. Off: you type the net price and VAT is added on top.';
-
-  @override
   String get taxSettingsReceiptNumberingSection => 'Receipt numbering';
 
   @override
@@ -2074,42 +1977,17 @@ class AppLocalizationsEn extends AppLocalizations {
   String get taxSettingsRegisteredDevice => 'Registered device';
 
   @override
-  String get taxSettingsSaveAction => 'Save';
-
-  @override
-  String get taxSettingsSaveFailed =>
-      'Couldn’t save. Check the phone has storage free.';
-
-  @override
   String get taxSettingsSaved => 'Saved';
 
   @override
-  String taxSettingsTaxpayerPin(Object tin) {
-    return 'Taxpayer PIN $tin';
-  }
-
-  @override
   String get taxSettingsTillCode => 'Till code';
-
-  @override
-  String get taxSettingsTillCodeHelp =>
-      'Letters and digits only. Every till in a shop needs its own code, because KRA rejects two tills issuing the same receipt number.';
 
   @override
   String get taxSettingsTillCodeRequired =>
       'Enter at least one letter or digit';
 
   @override
-  String taxSettingsTillCodeSubtitle(Object code) {
-    return 'Receipts are numbered $code-000001, and KRA needs that number to match the sequence it has on file. Give each till its own code.';
-  }
-
-  @override
   String get taxSettingsTinLabel => 'TIN (PIN)';
-
-  @override
-  String get taxSettingsTinMissingHelp =>
-      'Receipts cannot be issued until this shop\'s KRA PIN is registered. Until then, sales are recorded but no tax invoice is issued.';
 
   @override
   String get taxSettingsTinNotRegistered => 'TIN not registered';
@@ -2129,29 +2007,10 @@ class AppLocalizationsEn extends AppLocalizations {
       'Exempt — receipts omit the VAT line entirely.';
 
   @override
-  String taxSettingsVatRate(Object rate) {
-    return 'VAT rate: $rate%';
-  }
-
-  @override
-  String taxSettingsVatRatePercent(Object value) {
-    return 'VAT rate $value percent';
-  }
-
-  @override
   String get taxSettingsVatSection => 'Value Added Tax';
 
   @override
   String get taxSettingsWaitForReceipts => 'Wait for receipts to be issued';
-
-  @override
-  String get taxSettingsWaitForReceiptsSubtitle =>
-      'Queued automatically after every sale while online. Sales never wait for it.';
-
-  @override
-  String taxSettingsWorkedExample(Object net, Object vat) {
-    return 'A KSh 100 sale carries KSh $vat VAT, leaving KSh $net net.';
-  }
 
   @override
   String get variantAddTitle => 'Add variant';
@@ -2359,6 +2218,9 @@ class AppLocalizationsEn extends AppLocalizations {
   String get scanBackToSelling => 'Back to selling';
 
   @override
+  String get scanRetryCamera => 'Try camera again';
+
+  @override
   String signOutTitleNamed(Object name) {
     return 'Sign out $name';
   }
@@ -2403,25 +2265,10 @@ class AppLocalizationsEn extends AppLocalizations {
   }
 
   @override
-  String sellServingOptionTitleWithReason(
-      Object label, Object reason, Object size) {
-    return '$label · $size, $reason';
-  }
-
-  @override
   String get sellScanHintSearchProducts => 'Search products...';
 
   @override
-  String get sellRetry => 'Retry';
-
-  @override
-  String get sellSyncProductsFirst => 'Sync products first in Settings';
-
-  @override
   String get sellEnterValidPhone => 'Enter a valid phone number';
-
-  @override
-  String get sellNothingToChargeHint => 'Tap products to add';
 
   @override
   String get sellTotalOnly => 'Total:';
@@ -2457,64 +2304,8 @@ class AppLocalizationsEn extends AppLocalizations {
   String get settingsCloseAction => 'Close';
 
   @override
-  String get settingsPrinterKindTitle => 'Bluetooth thermal printer';
-
-  @override
-  String inventoryDuplicateMatch(Object product) {
-    return '$product is in the inventory list';
-  }
-
-  @override
-  String get inventoryStockBelowZero => 'Stock cannot go below zero.';
-
-  @override
-  String inventoryAdjustWhichVariant(Object product) {
-    return 'Which variant? · $product';
-  }
-
-  @override
-  String inventoryInStock(Object qty) {
-    return '$qty in stock';
-  }
-
-  @override
-  String inventoryStockNow(Object product, Object qty) {
-    return '$product is now $qty in stock.';
-  }
-
-  @override
   String inventoryRemoveTitle(Object product) {
     return 'Remove $product from inventory?';
-  }
-
-  @override
-  String inventoryMarginLabel(Object margin) {
-    return 'margin $margin%';
-  }
-
-  @override
-  String inventoryBarcodeOnProductSpoken(Object code) {
-    return 'Remove $code';
-  }
-
-  @override
-  String inventoryBarcodeTaken(Object code) {
-    return 'Barcode $code is already used by another product or variant.';
-  }
-
-  @override
-  String inventoryBarcodeTakenNamed(Object code, Object product) {
-    return 'Barcode $code is already on $product.';
-  }
-
-  @override
-  String inventoryPriceNotANumber(Object label) {
-    return '$label must be a number, or empty if not sold in portions';
-  }
-
-  @override
-  String inventoryPriceNotNegative(Object label) {
-    return '$label must be 0 or more';
   }
 
   @override
@@ -2527,99 +2318,12 @@ class AppLocalizationsEn extends AppLocalizations {
   String get inventoryStockNotANumber => 'Stock must be a number';
 
   @override
-  String inventoryWouldSellAtLoss(Object cost, Object name, Object price) {
-    return '$name would sell at a loss ($price against cost $cost). Save anyway?';
-  }
-
-  @override
-  String inventoryUnnamedVariantPosition(Object position) {
-    return 'Give every variant a name — one of them has none (position $position).';
-  }
-
-  @override
   String get inventoryNoVariantsHelper =>
       'No variants yet. The till will ask for one instead of selling the whole product.';
 
   @override
-  String get inventoryBarcodesHelper =>
-      'A code on the product adds the whole product. A code on a variant, at its price and from its stock. Each code can only ever resolve to one of them.';
-
-  @override
-  String inventoryBarcodeSpoken(Object kind, Object scope) {
-    return '$scope · $kind';
-  }
-
-  @override
-  String inventoryRemoveBarcodeAction(Object code) {
-    return 'Remove $code';
-  }
-
-  @override
-  String get inventoryAddBarcodeAction => 'Add barcode';
-
-  @override
-  String inventorySaveProductWithVariants(num count) {
-    String _temp0 = intl.Intl.pluralLogic(
-      count,
-      locale: localeName,
-      other: '$count variants',
-      one: '1 variant',
-    );
-    return 'Save product and $_temp0';
-  }
-
-  @override
-  String get inventorySaveProduct => 'Save product';
-
-  @override
-  String inventoryAdjustProductTitle(Object product) {
-    return 'Adjust stock — $product';
-  }
-
-  @override
-  String inventoryAdjustVariantTitle(Object variant) {
-    return 'Adjust stock — $variant';
-  }
-
-  @override
-  String dashboardOpenshiftsincestarttimeexpectedindrawer(Object startTime) {
-    return 'Open shift since $startTime. Expected in drawer ';
-  }
-
-  @override
-  String dashboardAmountopentheshift(Object amount) {
-    return '$amount. Open the shift.';
-  }
-
-  @override
-  String dashboardStaffnamesincestarttime(Object staffName, Object startTime) {
-    return '$staffName, since $startTime';
-  }
-
-  @override
-  String dashboardSalestodayscopelabel(Object scopeLabel) {
-    return 'Sales today · $scopeLabel';
-  }
-
-  @override
-  String dashboardCountproductsatorbelowtheirreorderlevel(Object count) {
-    return '$count products at or below their reorder level. ';
-  }
-
-  @override
-  String dashboardWithamount(Object amount) {
-    return 'with $amount.';
-  }
-
-  @override
-  String dashboardHouram(Object hour) {
-    return '${hour}am';
-  }
-
-  @override
-  String dashboardSeealltotalcount(Object totalCount) {
-    return 'See all $totalCount';
-  }
+  String get inventoryStockIsDerived =>
+      'The variants\' total, kept in step for you';
 
   @override
   String dashboardStaffNameSince(Object staffName, Object startTime) {
@@ -2646,30 +2350,6 @@ class AppLocalizationsEn extends AppLocalizations {
   String get dashboardAverageSaleLabel => 'Average sale';
 
   @override
-  String dashboardTransactionCaption(num count) {
-    String _temp0 = intl.Intl.pluralLogic(
-      count,
-      locale: localeName,
-      other: '$count transactions',
-      one: '1 transaction',
-      zero: 'No transactions',
-    );
-    return '$_temp0';
-  }
-
-  @override
-  String dashboardLowStockSpoken(num count) {
-    String _temp0 = intl.Intl.pluralLogic(
-      count,
-      locale: localeName,
-      other:
-          '$count products at or below their reorder level. Open the low stock list.',
-      one: '1 product at or below its reorder level. Open the low stock list.',
-    );
-    return '$_temp0';
-  }
-
-  @override
   String dashboardLowStockNoun(num count) {
     String _temp0 = intl.Intl.pluralLogic(
       count,
@@ -2678,25 +2358,6 @@ class AppLocalizationsEn extends AppLocalizations {
       one: 'product low',
     );
     return '$_temp0';
-  }
-
-  @override
-  String get dashboardLowStockFewMessage =>
-      'Running low. Worth ordering before the next delivery.';
-
-  @override
-  String get dashboardLowStockManyMessage =>
-      'A lot is below its reorder level.';
-
-  @override
-  String get dashboardNoSalesTitle => 'Nothing sold today';
-
-  @override
-  String get dashboardNoSalesMessage => 'No sales recorded yet';
-
-  @override
-  String dashboardScopeSuffix(Object scope) {
-    return 'Sales today · $scope';
   }
 
   @override
@@ -2716,21 +2377,6 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get dashboardReorderSection => 'Reorder';
-
-  @override
-  String dashboardSeeAll(Object totalCount) {
-    return 'See all $totalCount';
-  }
-
-  @override
-  String dashboardBusiestAt(Object hour) {
-    return 'Busiest at $hour';
-  }
-
-  @override
-  String dashboardSalesByHourSpoken(Object hour) {
-    return 'Sales by hour. Busiest at $hour.';
-  }
 
   @override
   String dashboardUnitsInStock(Object qty) {
@@ -2829,11 +2475,6 @@ class AppLocalizationsEn extends AppLocalizations {
   }
 
   @override
-  String inventoryId(Object id) {
-    return '$id';
-  }
-
-  @override
   String inventoryStockqtyStock(Object stockqty) {
     return '$stockqty in stock';
   }
@@ -2907,18 +2548,23 @@ class AppLocalizationsEn extends AppLocalizations {
   String get dashboardSalesByHour => 'Sales by hour';
 
   @override
-  String get dashboardSalesByHourEmpty =>
-      'Sales by hour. No sales recorded in any hour today.';
-
-  @override
-  String dashboardBusiestHour(Object hour) {
-    return 'Busiest at $hour';
-  }
-
-  @override
   String dashboardPeakHourSpoken(Object amount, Object hour) {
     return 'Busiest at $hour, $amount.';
   }
+
+  @override
+  String get dashboardNoSalesTitle => 'No sales today';
+
+  @override
+  String get dashboardNoSalesTodayBody =>
+      'That\'s normal if you haven\'t opened yet.';
+
+  @override
+  String get dashboardNoSalesFirstBody =>
+      'Sales will appear here as soon as the first sale goes through the till.';
+
+  @override
+  String get dashboardAllClear => 'All clear';
 
   @override
   String analyticsTransactionCaption(num count) {
@@ -2979,6 +2625,27 @@ class AppLocalizationsEn extends AppLocalizations {
   String get analyticsTransactionsLabel => 'Transactions';
 
   @override
+  String get analyticsPaymentMethodsSection => 'Payment methods';
+
+  @override
+  String get analyticsNothingTaken => 'Nothing taken in this period.';
+
+  @override
+  String get analyticsPaymentMixTotal => 'Total';
+
+  @override
+  String analyticsPaymentRowSpoken(
+      Object amount, num count, Object label, Object share) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: '$count sales',
+      one: '1 sale',
+    );
+    return '$label, $share of takings, $amount across $_temp0';
+  }
+
+  @override
   String attentionItemsToFix(num count) {
     String _temp0 = intl.Intl.pluralLogic(
       count,
@@ -3020,6 +2687,144 @@ class AppLocalizationsEn extends AppLocalizations {
   }
 
   @override
+  String get activityTitle => 'Activity';
+
+  @override
+  String get settingsActivitySubtitle =>
+      'Who changed what, in every shop on this phone';
+
+  @override
+  String activitySummary(num entries, num shops) {
+    String _temp0 = intl.Intl.pluralLogic(
+      shops,
+      locale: localeName,
+      other: '$shops shops',
+      one: '1 shop',
+    );
+    String _temp1 = intl.Intl.pluralLogic(
+      entries,
+      locale: localeName,
+      other: '$entries changes',
+      one: '1 change',
+    );
+    return '$_temp0, $_temp1';
+  }
+
+  @override
+  String get activityViewMerged => 'Everything';
+
+  @override
+  String get activityViewByShop => 'By shop';
+
+  @override
+  String get activityEmptyTitle => 'No activity yet';
+
+  @override
+  String get activityEmptyMessage =>
+      'Changes to stock, prices, staff, backups and settings will appear here for every shop on this phone.';
+
+  @override
+  String get activityLoadFailed =>
+      'Could not read the activity log for your shops.';
+
+  @override
+  String get activityShopEmpty => 'Nothing yet in this shop.';
+
+  @override
+  String get activityShopUnreadable => 'Unreadable';
+
+  @override
+  String get activityShopUnreadableDetail =>
+      'This shop\'s activity log could not be read on this phone. Its changes are still recorded; the log simply cannot be shown here.';
+
+  @override
+  String get activityProductCreated => 'Product added';
+
+  @override
+  String get activityProductUpdated => 'Product changed';
+
+  @override
+  String get activityBarcodeAdded => 'Barcode added';
+
+  @override
+  String get activityBarcodeRemoved => 'Barcode removed';
+
+  @override
+  String get activityBarcodeKindChanged => 'Barcode label changed';
+
+  @override
+  String get activityStockAdjusted => 'Stock adjusted';
+
+  @override
+  String get activitySaleRecorded => 'Sale recorded';
+
+  @override
+  String get activityShotCupSold => 'Shot cup sold';
+
+  @override
+  String get activityStaffAdded => 'Staff added';
+
+  @override
+  String get activityStaffRemoved => 'Staff removed';
+
+  @override
+  String get activityStaffPinReset => 'PIN reset';
+
+  @override
+  String get activityPaymentChanged => 'Payment method changed';
+
+  @override
+  String get activityPrinterPaired => 'Printer paired';
+
+  @override
+  String get activityPrinterSaved => 'Printer settings saved';
+
+  @override
+  String get activityTaxChanged => 'Tax settings changed';
+
+  @override
+  String get activitySyncChanged => 'Backup sync settings changed';
+
+  @override
+  String get activityBackupExported => 'Backup exported';
+
+  @override
+  String get activityBackupRestored => 'Backup restored';
+
+  @override
+  String get activityBackupErased => 'Backup erased';
+
+  @override
+  String get activityShopSwitched => 'Switched shop';
+
+  @override
+  String get activityShopCreated => 'Shop created';
+
+  @override
+  String get activityShiftOpened => 'Shift opened';
+
+  @override
+  String get activityShiftClosed => 'Shift closed';
+
+  @override
+  String get activityIdentityLinked => 'Online account linked';
+
+  @override
+  String get activityOwnerPinReset => 'Owner PIN reset';
+
+  @override
+  String get activityAccountDeleted => 'Account deleted and data erased';
+
+  @override
+  String get activityVariantAdded => 'Variant added';
+
+  @override
+  String get activityVariantUpdated => 'Variant changed';
+
+  @override
+  String get activityVariantRemoved => 'Variant removed';
+
+  @override
   String reportsStaffRowSpoken(
       num count, Object name, Object profit, Object total) {
     String _temp0 = intl.Intl.pluralLogic(
@@ -3029,5 +2834,75 @@ class AppLocalizationsEn extends AppLocalizations {
       one: '1 transaction',
     );
     return '$name, $_temp0, taking $total, profit $profit';
+  }
+
+  @override
+  String get portfolioTitle => 'All shops';
+
+  @override
+  String get portfolioOpenAction => 'How all my shops are doing';
+
+  @override
+  String get portfolioOpenSubtitle => 'One view of every shop on this device';
+
+  @override
+  String get portfolioRangeWeek => '7 days';
+
+  @override
+  String get portfolioRangeLabel => 'Date range';
+
+  @override
+  String get portfolioRangeCurrent => 'current range';
+
+  @override
+  String get portfolioRangeMonth => '30 days';
+
+  @override
+  String get portfolioRangeQuarter => '90 days';
+
+  @override
+  String get portfolioSharedTitle => 'Who\'s taking what';
+
+  @override
+  String get portfolioShopsTitle => 'Shops';
+
+  @override
+  String get portfolioTotalRevenue => 'Total takings';
+
+  @override
+  String get portfolioProfit => 'Profit';
+
+  @override
+  String get portfolioTransactions => 'Sales';
+
+  @override
+  String get portfolioAvgBasket => 'Avg basket';
+
+  @override
+  String portfolioTopShop(Object amount, Object shop) {
+    return 'Busiest: $shop at $amount';
+  }
+
+  @override
+  String get portfolioEmptyTitle => 'No shops to report yet';
+
+  @override
+  String get portfolioEmptyMessage =>
+      'Add a shop on this device, or check the internet connection and try again.';
+
+  @override
+  String get portfolioFailureMessage =>
+      'Couldn\'t load the shop figures. This view needs a connection.';
+
+  @override
+  String portfolioShopRowSpoken(
+      num count, Object profit, Object revenue, Object share, Object shop) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: '$count transactions',
+      one: '1 transaction',
+    );
+    return '$shop, $revenue takings, $profit profit, $_temp0, $share of all shops';
   }
 }

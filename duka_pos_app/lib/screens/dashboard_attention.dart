@@ -303,8 +303,11 @@ class _AttentionRow extends StatelessWidget {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: <Widget>[
                 Semantics(
+                  // gen-l10n sorts the parameters ALPHABETICALLY — detail,
+                  // label — which is the reverse of the sentence's own order
+                  // "{label}. {detail}". These were passed label-first.
                   label: AppLocalizations.of(context)
-                      .attentionSpoken(attention.label, attention.detail),
+                      .attentionSpoken(attention.detail, attention.label),
                   excludeSemantics: true,
                   child: ExcludeSemantics(
                     child: Column(

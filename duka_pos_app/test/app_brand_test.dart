@@ -19,10 +19,10 @@ void main() {
       expect(SimplePosBrand.appName, isNotEmpty);
     });
 
-    test('is named Simple POS', () {
+    test('is named SimpleSales', () {
       // Hardcoded on purpose. A rename that changes this constant is a product
       // decision, and this test is the thing that has to be argued with.
-      expect(SimplePosBrand.appName, 'Simple POS');
+      expect(SimplePosBrand.appName, 'SimpleSales');
     });
 
     test('attributes the vendor', () {
@@ -101,7 +101,7 @@ void main() {
       // `#RRGGBB` and `#AARRGGBB` for the same colour, so a strict string match
       // would fail on a resource that is in fact exactly right — which is how a
       // correct splash ends up "fixed" into a wrong one.
-      const expectedInk = 0xFF251A1D;
+      const expectedInk = 0xFF2D2A26;
       final colors = File('$resDir/values/colors.xml');
       expect(colors.existsSync(), isTrue);
       final brandInk = RegExp(r'name="brand_ink"\s*>\s*#([0-9a-fA-F]{6,8})')

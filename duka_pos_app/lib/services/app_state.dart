@@ -4,8 +4,10 @@ import 'package:flutter/foundation.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../models/models.dart';
 import '../db/database_helper.dart';
+import 'failure_recorder.dart';
 import 'oidc_service.dart';
 import 'roles.dart';
+import 'staff_credential_cache.dart';
 import 'workspace_service.dart';
 import 'backend_service.dart';
 
@@ -40,6 +42,32 @@ class AppState extends ChangeNotifier {
   /// "verify online" reminder in Settings.
   bool identityLinkPending = false;
 
+  /// True once the online identity has been *verified* — the emailed code was
+  /// presented and the backend said so.
+  ///
+  /// Distinct from [identityLinkPending]: a linked-but-unverified shop is the
+  /// one state that needs chasing, because verification is what turns on
+  /// auto-backups, analytics and auto-update. Loaded from storage rather than
+  /// derived, because the backend is the authority on it and a phone that has
+  /// just verified itself must not have to go online again to find that out.
+  bool identityVerified = false;
+
+  /// Preference key for this WORKSPACE's [identityVerified].
+  ///
+  /// Scoped by workspace key, not a single global key: a device can hold
+  /// several shops, and one global preference meant shop B inherited shop A's
+  /// verification — offering the auto-sync switch, switched on, for a shop that
+  /// never presented an emailed code and holds no session.
+  static String identityVerifiedKeyFor(String workspaceKey) =>
+      'profile_email_verified@$workspaceKey';
+
+  /// The single global key the flag used to live under.
+  ///
+  /// Read once, as a fallback, so a shop that verified before the flag was
+  /// scoped keeps its state instead of being asked to verify again. Absent
+  /// afterwards it has already been adopted.
+  static const _legacyIdentityVerifiedKey = 'profile_email_verified';
+
   /// The last staff username that signed in on this till, persisted across
   /// restarts so the staff-login screen can prefill it.
   String? rememberedStaffUsername;
@@ -71,6 +99,26 @@ class AppState extends ChangeNotifier {
     if (_disposed) return;
     identityLinkPending =
         owner != null && (await BackendService.tenantId) == null;
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final String key = identityVerifiedKeyFor(workspaceKey);
+      var verified = prefs.getBool(key) ?? false;
+      if (!verified) {
+        // One-time adoption of the pre-scoping global flag. Only ever on the
+        // shop that is loading, and only when that shop has nothing of its own
+        // yet, so shop B still does not inherit shop A's verification.
+        if (prefs.getBool(_legacyIdentityVerifiedKey) ?? false) {
+          verified = true;
+          await prefs.setBool(key, true);
+        }
+      }
+      identityVerified = verified;
+    } catch (_) {
+      // SharedPreferences is unavailable in some test environments; an
+      // unverified shop is the safe answer, and the settings banner will
+      // simply offer the flow again.
+      identityVerified = false;
+    }
     if (_disposed) return;
     notifyListeners();
   }
@@ -86,12 +134,31 @@ class AppState extends ChangeNotifier {
     notifyListeners();
   }
 
+  /// Records that the emailed code was presented and accepted.
+  ///
+  /// Persisted, not derived from being logged in: the flag gates work the
+  /// phone does on its own, and an app that forgot it had verified itself
+  /// after a restart would quietly stop backing up.
+  Future<void> markIdentityVerified() async {
+    identityVerified = true;
+    identityLinkPending = false;
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setBool(identityVerifiedKeyFor(workspaceKey), true);
+    } catch (_) {
+      // The in-memory flag still lets this session use the features; the
+      // next start will offer verification again rather than lose anything.
+    }
+    notifyListeners();
+  }
+
   Future<void> rememberStaff(Staff staff) async {
     rememberedStaffUsername = staff.username ?? staff.name;
     rememberedStaffId = staff.id;
     try {
       final prefs = await SharedPreferences.getInstance();
-      await prefs.setString('remembered_staff_username', rememberedStaffUsername!);
+      await prefs.setString(
+          'remembered_staff_username', rememberedStaffUsername!);
       if (staff.id != null) {
         await prefs.setInt('remembered_staff_id', staff.id!);
       }
@@ -158,6 +225,7 @@ class AppState extends ChangeNotifier {
     currentStaffId = staffId;
     isOwnerSession = true;
     _role = ShopRole.admin;
+    failureRecorder.context.actorName = shop.name;
     unawaited(clearRememberedStaff());
     notifyListeners();
   }
@@ -167,6 +235,7 @@ class AppState extends ChangeNotifier {
     currentStaffName = staff.name;
     currentStaffId = staff.id;
     isOwnerSession = false;
+    failureRecorder.context.actorName = staff.name;
     // A name that is not a known role resolves to cashier rather than to
     // manager. See [ShopRole.parse].
     _role = ShopRole.parse(staff.role);
@@ -209,6 +278,17 @@ class AppState extends ChangeNotifier {
     _role = ShopRole.cashier;
     unawaited(clearRememberedStaff());
     notifyListeners();
+    // The offline staff credential cache goes too.
+    //
+    // It holds a PBKDF2 hash of every staff PIN plus each username in the
+    // clear, and `login_screen` verifies against it as a fallback after
+    // `AuthService.verifyPin` fails. Leaving it populated means the next person
+    // at the till can sign in as whoever was here before, which is precisely
+    // what ending a session is supposed to stop.
+    //
+    // Its own doc has always claimed "cleared on sign-out"; nothing did it, and
+    // the account-deletion erasure had to learn the cache existed the hard way.
+    unawaited(StaffCredentialCache.clearAll());
     unawaited(tearDownOnlineSession());
   }
 

@@ -3,16 +3,16 @@ import 'package:flutter/material.dart';
 import '../../theme/primitives.dart';
 import '../../theme/typography.dart';
 
-/// The Simple POS mark, drawn as vectors.
+/// The SimpleSales mark, drawn as vectors.
 ///
 /// This is the launcher artwork from
 /// `assets/branding/stitch_simple_pos_launcher_icon/` — the ink squircle, the
-/// white receipt with its torn edge, the white terminal body, the wine screen —
-/// reproduced from the source SVG rather than decoded from a PNG. Three reasons
-/// that matters:
+/// white receipt with its torn edge, the white terminal body, the botanical
+/// green screen — reproduced from the source SVG rather than decoded from a
+/// PNG. Three reasons that matters:
 ///
 /// 1. **It was wrong before.** The in-app `SimplePosMark` that shipped in
-///    `splash_screen.dart` inverted the brand: wine plate, ink receipt. The
+///    `splash_screen.dart` inverted the brand: green plate, ink receipt. The
 ///    launcher icon on the device home screen and the logo inside the app were
 ///    two different logos.
 /// 2. **It is crisp at every size** with no decode, which matters on the splash
@@ -42,15 +42,16 @@ enum SimplePosMarkVariant {
 /// and scaled by `size / kBrandViewBox` at paint time.
 const double kBrandViewBox = 512;
 
-/// The brand's own ink. Deliberately NOT read from [AppColors]: a logo keeps its
+/// The mark's own ink. Deliberately NOT read from [AppColors]: a logo keeps its
 /// identity in both brightnesses, so the plate is a brand constant and only the
-/// screen's wine lifts for a dark surface.
+/// screen's green lifts for a dark surface.
 const Color kBrandInk = Primitives.neutral23;
 
-/// The mark's wine. Lifts in dark mode so the terminal screen stays legible
-/// against the plate instead of disappearing into it.
-const Color kBrandWineLight = Primitives.wine38;
-const Color kBrandWineDark = Color(0xFFB04A66);
+/// The mark's screen accent — the brand's deep botanical green. Lifts in dark
+/// mode so the terminal screen stays legible against the plate instead of
+/// disappearing into it.
+const Color kBrandScreenLight = Primitives.botanical38;
+const Color kBrandScreenDark = Primitives.botanical58;
 
 /// The brand paper — the mark's glyph colour in both brightnesses.
 const Color kBrandPaper = Primitives.neutral100;
@@ -58,7 +59,7 @@ const Color kBrandPaper = Primitives.neutral100;
 /// Renders the mark at [size], on the brand plate unless told otherwise.
 ///
 /// The whole widget is one semantics node: a screen reader announcing "image,
-/// Simple POS" is correct, and so is announcing nothing at all where the mark is
+/// SimpleSales" is correct, and so is announcing nothing at all where the mark is
 /// purely decorative next to a wordmark. Pass `decorative: true` in the second
 /// case rather than leaving it to chance.
 class SimplePosMark extends StatelessWidget {
@@ -97,7 +98,7 @@ class SimplePosMark extends StatelessWidget {
 
     return Semantics(
       image: true,
-      label: decorative ? null : 'Simple POS',
+      label: decorative ? null : 'SimpleSales',
       child: ExcludeSemantics(
         child: SizedBox.square(
           dimension: size,
@@ -106,7 +107,7 @@ class SimplePosMark extends StatelessWidget {
               variant: variant,
               plate: plate ?? kBrandInk,
               glyph: glyph ?? kBrandPaper,
-              screen: screen ?? (isDark ? kBrandWineDark : kBrandWineLight),
+              screen: screen ?? (isDark ? kBrandScreenDark : kBrandScreenLight),
               scale: size / kBrandViewBox,
             ),
           ),
@@ -232,7 +233,7 @@ class SimplePosMarkPainter extends CustomPainter {
       old.scale != scale;
 }
 
-/// The wordmark: "Simple POS" in the brand face.
+/// The wordmark: "SimpleSales" in the brand face.
 ///
 /// A separate widget rather than a `Text` at each call site so the tracking and
 /// the weight are one decision. Tracking is positive (0.08em, per the brand
@@ -247,7 +248,7 @@ class SimplePosWordmark extends StatelessWidget {
   const SimplePosWordmark({
     this.fontSize = 20,
     this.color,
-    this.semanticLabel = 'Simple POS',
+    this.semanticLabel = 'SimpleSales',
     super.key,
   });
 
@@ -261,7 +262,7 @@ class SimplePosWordmark extends StatelessWidget {
       label: semanticLabel,
       child: ExcludeSemantics(
         child: Text(
-          'Simple POS',
+          'SimpleSales',
           style: TextStyle(
             fontFamily: AppTypography.family,
             fontSize: fontSize,

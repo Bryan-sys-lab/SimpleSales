@@ -7,12 +7,17 @@ import 'package:shared_preferences/shared_preferences.dart';
 import '../db/database_helper.dart';
 import '../l10n/generated/app_localizations.dart';
 import '../utils/money.dart';
+import '../utils/datetime_format.dart';
+import '../models/audit_log.dart';
 import '../models/models.dart';
+import '../services/app_state.dart';
+import '../services/account_deletion_service.dart';
+import '../services/audit_actor.dart';
 import '../services/auth_service.dart';
+import '../services/staff_credential_cache.dart';
 import '../services/sync_service.dart';
 import '../services/excel_service.dart';
 import '../routing/routes.dart';
-import '../services/app_state.dart';
 import '../services/roles.dart';
 import '../app_brand.dart';
 import 'package:package_info_plus/package_info_plus.dart';
@@ -26,7 +31,13 @@ import '../services/printer/receipt_builder.dart';
 import '../services/printer/esc_pos_printer.dart';
 import '../services/printer/esc_pos_encoder.dart';
 import '../theme/app_colors.dart';
+import '../theme/app_spacing.dart';
 import '../theme/typography.dart';
+import '../ui/components/controls.dart';
+import '../ui/components/status.dart';
+import '../ui/components/surface.dart';
+import '../ui/dialogs/verify_identity_dialog.dart';
+import '../ui/layout/page.dart';
 
 class SettingsScreen extends StatefulWidget {
   const SettingsScreen({super.key});
@@ -35,6 +46,11 @@ class SettingsScreen extends StatefulWidget {
 }
 
 class _SettingsScreenState extends State<SettingsScreen> {
+  /// The lockout key for the owner's own PIN.
+  ///
+  /// The same literal the login pad uses for its owner entry, so a wrong PIN
+  /// here counts against the counter a wrong PIN there is already spending.
+  /// A different key would give this dialog its own private attempt budget.
   final _sync = SyncService();
   final _excel = ExcelService();
   List<Staff> _staff = [];
@@ -149,8 +165,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
       final devices = await printer.pairedDevices();
       if (!mounted) return;
       if (devices.isEmpty) {
-        _err('No Bluetooth printers are paired with this phone. Pair one from '
-            'the phone\'s Bluetooth settings, then come back.');
+        _err(l10n.settingsNoPairedPrinters);
         return;
       }
       final chosen = await showDialog<PrinterDevice>(
@@ -179,8 +194,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
       final paired = await printer.pair(chosen.address);
       if (!mounted) return;
       if (!paired && !await printer.isPaired(chosen.address)) {
-        _err('Pairing was cancelled. Pair the printer from the phone\'s '
-            'Bluetooth settings, then try again.');
+        _err(l10n.settingsPairingCancelled);
         return;
       }
 
@@ -191,7 +205,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
         enabled: true,
       ));
       if (!mounted) return;
-      _err('${chosen.label} paired.');
+      _err(l10n.settingsPrinterPaired(chosen.label));
     } on PrinterException catch (error) {
       _err(_printerMessage(AppLocalizations.of(context), error.failure));
     } finally {
@@ -252,7 +266,20 @@ class _SettingsScreenState extends State<SettingsScreen> {
   }
 
   Future<void> _savePrinter(PrinterConfig config) async {
+    // Read before the await: the config write is the async gap.
+    final AppState state = context.read<AppState>();
     await config.save();
+    // The printer config is the setup a shop changes once and then trusts for
+    // years, so when a receipt stops printing there is exactly one place to
+    // look for who last changed it.
+    await recordActionAudit(
+      state,
+      action: AuditAction.printerSaved,
+      entity: AuditEntity.settings,
+      detail: config.isConfigured && config.enabled
+          ? '${config.macAddress}, printing on'
+          : 'printing off',
+    );
     if (!mounted) return;
     setState(() => _printer = config);
   }
@@ -279,7 +306,150 @@ class _SettingsScreenState extends State<SettingsScreen> {
     }
   }
 
+  /// True while the deletion is running, so the row can be disabled and the
+  /// screen can say so rather than looking ignored.
+  bool _deletingAccount = false;
+
+  /// Deletes the online account and renders what it held unreadable.
+  ///
+  /// Gated on the admin PIN the same way every other destructive action in
+  /// this screen is, so a till left unlocked on a counter cannot be wiped by
+  /// someone passing by. The confirmation text names what is lost, because
+  /// "are you sure" over an action like this tells the owner nothing they need.
+  Future<void> _deleteOnlineAccount() async {
+    final AppState state = context.read<AppState>();
+    final l10n = AppLocalizations.of(context);
+
+    // 1. The admin PIN, verified against the local hash, with the till-wide
+    //    lockout shared with the login pad so this dialog is not a way around
+    //    the attempt counting.
+    final String? pin = await showVerifyPinSheet(
+      context,
+      email: state.owner?.email ?? '',
+      onSubmit: (String entered) =>
+          _verifyOwnerPinOrError(entered, state.owner?.pinHash ?? '', l10n),
+    );
+    if (pin == null || !mounted) return;
+
+    // 2. The confirmation, which has to be explicit about irreversibility.
+    //    This is the only screen in the app where the honest advice is "if you
+    //    are not certain, cancel" rather than a reassurance.
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (_) => AlertDialog(
+        title: Text(l10n.accountDeleteConfirmTitle),
+        content: Text(l10n.accountDeleteConfirmMessage),
+        actions: <Widget>[
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: Text(l10n.actionCancel),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(context, true),
+            child: Text(l10n.accountDeleteConfirmAction),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true || !mounted) return;
+
+    setState(() => _deletingAccount = true);
+    try {
+      final report = await AccountDeletionService.deleteAccount(pin: pin);
+      if (!mounted) return;
+      // The receipt is offered for keeping, because the owner will need to show
+      // someone that the account is gone.
+      await showDialog<void>(
+        context: context,
+        builder: (_) => AlertDialog(
+          title: Text(l10n.accountDeleteDoneTitle),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: <Widget>[
+              Text(report.remoteDeleted
+                  ? l10n.accountDeleteDoneRemote
+                  : l10n.accountDeleteDoneLocalOnly),
+              SizedBox(height: AppSpacing.of(context).md),
+              Text(
+                l10n.accountDeleteReceipt(
+                  report.deletionId,
+                  formatInstant(report.completedAt.toIso8601String()),
+                ),
+                style: AppTypography.of(context).bodySmall,
+              ),
+              // A failed compaction is the one partial-erasure state worth
+              // naming: the data is unreadable but the file was never fully
+              // rewritten, and only the owner can act on that.
+              if (!report.compacted) ...<Widget>[
+                SizedBox(height: AppSpacing.of(context).sm),
+                Text(
+                  l10n.accountDeleteCompactionPending,
+                  style: AppTypography.of(context).bodySmall?.copyWith(
+                        color: Theme.of(context).colorScheme.error,
+                      ),
+                ),
+              ],
+            ],
+          ),
+          actions: <Widget>[
+            FilledButton(
+              onPressed: () => Navigator.pop(context),
+              child: Text(l10n.actionDone),
+            ),
+          ],
+        ),
+      );
+    } on AccountDeletionException catch (e) {
+      if (!mounted) return;
+      // The lockout remaining is read HERE rather than stashed earlier, because
+      // it is the one message whose value is still moving while the dialog is
+      // open — and a countdown read a minute ago would be a minute wrong.
+      final int lockedSeconds =
+          (await AuthService.tillLockoutRemaining())?.inSeconds ?? 0;
+      _err(switch (e.reason) {
+        AccountDeletionFailure.lockedOut =>
+          l10n.settingsVerifyPinLocked(lockedSeconds),
+        AccountDeletionFailure.localErasureFailed =>
+          l10n.accountDeleteErasureFailed,
+        AccountDeletionFailure.wrongPin => l10n.settingsVerifyPinWrong,
+      });
+    } finally {
+      if (mounted) setState(() => _deletingAccount = false);
+    }
+  }
+
+  /// The owner PIN, checked against the local hash with the till-wide lockout
+  /// honoured. Returns null when it is right, or the message to show.
+  ///
+  /// ONE implementation, because this precheck is security-relevant and was
+  /// written out three times — here for verify-identity, again for the
+  /// delete-account flow, and a third time inside
+  /// [AccountDeletionService.deleteAccount]. Any change to how a wrong PIN is
+  /// counted would have had to be mirrored in all three or the flows would
+  /// silently disagree about how hard it is to guess a PIN.
+  ///
+  /// The lockout it shares with the login pad is the point of the whole thing:
+  /// without an attempt counter on this path, a dialog on an unattended till is
+  /// a PIN oracle. 10,000 four-digit values is minutes of guessing.
+  static Future<String?> _verifyOwnerPinOrError(
+      String entered, String expectedHash, AppLocalizations l10n) async {
+    if (await AuthService.isTillLockedOut()) {
+      final Duration? remaining = await AuthService.tillLockoutRemaining();
+      return l10n.settingsVerifyPinLocked(remaining?.inSeconds ?? 0);
+    }
+    if (!await AuthService.verifyPin(entered, expectedHash)) {
+      // Counted against the owner's key and against the till as a whole, so
+      // switching identities does not reset the budget.
+      await AuthService.recordFailure(AuthService.ownerLockoutKey);
+      return l10n.settingsVerifyPinWrong;
+    }
+    return null;
+  }
+
   Future<void> _eraseEncryptedBackups() async {
+    // Read before the dialog's async gap.
+    final AppState state = context.read<AppState>();
     final confirmed = await showDialog<bool>(
         context: context,
         builder: (_) => AlertDialog(
@@ -300,6 +470,14 @@ class _SettingsScreenState extends State<SettingsScreen> {
     if (confirmed != true) return;
     await EncryptedBackupService.cryptographicEraseLocalBackups();
     if (mounted) _err(AppLocalizations.of(context).settingsBackupsErased);
+    // The single most destructive action in the app, and the one an exclusion
+    // the log exists for: after this, the device holds no restorable backup.
+    await recordActionAudit(
+      state,
+      action: AuditAction.backupErased,
+      entity: AuditEntity.backup,
+      detail: 'local encrypted backups erased',
+    );
   }
 
   Future<void> _addStaff() async {
@@ -307,6 +485,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
     // screen can be popped underneath it — a lookup after the await would be
     // reading a scope whose element is gone.
     final l10n = AppLocalizations.of(context);
+    // Read before the dialog's async gap.
+    final state = context.read<AppState>();
     final result = await showDialog<Map<String, String>>(
         context: context, builder: (_) => const _StaffDialog());
     if (result == null) return;
@@ -320,7 +500,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
       return;
     }
     if (_staff.any((s) => s.name.toLowerCase() == name.toLowerCase())) {
-      _err('A staff member named "$name" already exists');
+      _err(l10n.settingsStaffNameTaken(name));
       return;
     }
     try {
@@ -328,6 +508,15 @@ class _SettingsScreenState extends State<SettingsScreen> {
           name: name,
           role: result['role'] ?? 'cashier',
           pinHash: await AuthService.hashPin(result['pin']!)));
+      // Logged after the row exists, and carrying the role: "a cashier was
+      // added" and "a manager was added" are different facts.
+      await recordActionAudit(
+        state,
+        action: AuditAction.staffAdded,
+        entity: AuditEntity.staff,
+        entityId: name,
+        detail: result['role'] ?? 'cashier',
+      );
       if (_backendLinked) {
         try {
           await BackendService.syncStaffToBackend();
@@ -337,12 +526,13 @@ class _SettingsScreenState extends State<SettingsScreen> {
       }
       await _load();
     } catch (e) {
-      _err("Couldn't add staff — try again.");
+      _err(l10n.settingsAddStaffFailed);
     }
   }
 
   Future<void> _resetPin(Staff s) async {
     final l10n = AppLocalizations.of(context);
+    final state = context.read<AppState>();
     final result = await showDialog<Map<String, String>>(
         context: context,
         builder: (_) => _StaffDialog(existingName: s.name, pinOnly: true));
@@ -354,21 +544,30 @@ class _SettingsScreenState extends State<SettingsScreen> {
     try {
       await DatabaseHelper.instance
           .resetStaffPin(s.id!, await AuthService.hashPin(result['pin']!));
-      _err('PIN reset for ${s.name}');
+      _err(l10n.settingsPinResetFor(s.name));
+      // A reset is how a locked-out cashier gets back in, so a PIN changed at
+      // 11pm by someone who is not the named cashier is worth having recorded.
+      await recordActionAudit(
+        state,
+        action: AuditAction.staffPinReset,
+        entity: AuditEntity.staff,
+        entityId: s.name,
+        detail: 'PIN reset',
+      );
     } catch (e) {
-      _err("Couldn't reset PIN — try again.");
+      _err(l10n.settingsResetPinFailed);
     }
   }
 
   Future<void> _removeStaff(Staff s) async {
     final l10n = AppLocalizations.of(context);
+    final state = context.read<AppState>();
     final confirmed = await showDialog<bool>(
         context: context,
         builder: (_) => AlertDialog(
               title:
                   Text(AppLocalizations.of(context).settingsRemoveStaffTitle),
-              content: Text(
-                  '${s.name} will no longer be able to sign in. Their past sales stay on record.'),
+              content: Text(l10n.settingsRemoveStaffMessage(s.name)),
               actions: [
                 TextButton(
                     onPressed: () => Navigator.pop(context, false),
@@ -382,6 +581,23 @@ class _SettingsScreenState extends State<SettingsScreen> {
     if (confirmed != true) return;
     try {
       await DatabaseHelper.instance.deleteStaffWithTombstone(s);
+      // And the cached offline credential, which survives the roster row being
+      // relabelled. Without this the removed cashier can still sign in against
+      // the keystore fallback, because `login_screen` verifies against it when
+      // `staff.pinHash` no longer matches.
+      if (s.id != null) {
+        await StaffCredentialCache.clearStaffCredentials(s.id!);
+      }
+      // The NAME, not the id: the tombstone scrubs the row this id pointed at,
+      // so a later read resolves to nothing and the log has to carry the name
+      // itself.
+      await recordActionAudit(
+        state,
+        action: AuditAction.staffRemoved,
+        entity: AuditEntity.staff,
+        entityId: s.name,
+        detail: s.role,
+      );
       if (_backendLinked) {
         try {
           await BackendService.syncStaffToBackend();
@@ -391,11 +607,13 @@ class _SettingsScreenState extends State<SettingsScreen> {
       }
       await _load();
     } catch (e) {
-      _err("Couldn't remove staff — try again.");
+      _err(l10n.settingsRemoveStaffFailed);
     }
   }
 
   Future<void> _toggleMpesa(bool value) async {
+    // Read before the await.
+    final AppState state = context.read<AppState>();
     final l10n = AppLocalizations.of(context);
     if (value && !_backendLinked) {
       final linked = await _showLinkBackendDialog();
@@ -412,6 +630,14 @@ class _SettingsScreenState extends State<SettingsScreen> {
       }
       final prefs = await SharedPreferences.getInstance();
       await prefs.setBool('mpesa_enabled_local', value);
+      // Turning M-Pesa on or off changes what the till can take, so it is one
+      // of the settings whose change an owner would want attributed.
+      await recordActionAudit(
+        state,
+        action: AuditAction.paymentMethodChanged,
+        entity: AuditEntity.settings,
+        detail: 'M-Pesa ${value ? 'enabled' : 'disabled'}',
+      );
       if (mounted) {
         setState(() {
           _mpesaEnabled = value;
@@ -426,6 +652,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
   }
 
   Future<bool?> _showLinkBackendDialog() async {
+    final AppLocalizations l10n = AppLocalizations.of(context);
     final channelId = TextEditingController();
     final owner = context.read<AppState>().owner!;
     var submitting = false;
@@ -439,9 +666,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
           content: SingleChildScrollView(
             child: Column(mainAxisSize: MainAxisSize.min, children: [
               Text(
-                'This shop needs to be registered with the backend once. Sign '
-                'in with the shop identity account; staff continue using local '
-                'PINs for the till.',
+                l10n.settingsConnectMpesaMessage,
                 style: AppTypography.of(context).bodyMedium,
               ),
               const SizedBox(height: 12),
@@ -453,8 +678,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                   keyboardType: TextInputType.number),
               const SizedBox(height: 4),
               Text(
-                'Find your channel ID on the payment provider dashboard, '
-                'under your wallet/channel settings.',
+                l10n.settingsPaymentChannelHint,
                 style: AppTypography.of(context).bodySmall,
               ),
               if (error != null)
@@ -520,37 +744,132 @@ class _SettingsScreenState extends State<SettingsScreen> {
   }
 
   /// Completes the authoritative online link for an offline-created shop.
-  /// The backend requires the verified token email to match the email captured
-  /// during local account creation, so a mismatch is surfaced to the owner
-  /// instead of silently linking the wrong identity.
+  ///
+  /// Three steps, and each one is a separate failure the owner can act on:
+  /// the admin PIN (checked on the device first, so a wrong one never leaves
+  /// the phone), the emailed 6-digit code (which is what proves the address),
+  /// and the shop the code unlocks. The backend creates the online account
+  /// from the email and PIN already captured at setup, so there is no
+  /// registration form anywhere in this flow.
   Future<void> _verifyIdentityOnline() async {
-    final state = context.read<AppState>();
-    final owner = state.owner!;
+    // Read before the first await: the audit row names the shop, and a
+    // BuildContext held across a network call is exactly what this codebase
+    // refuses to do.
+    final AppState state = context.read<AppState>();
+    final Owner owner = state.owner!;
+    final AppLocalizations l10n = AppLocalizations.of(context);
     setState(() => _verifyingIdentity = true);
     try {
-      await BackendService.linkShopToBackend(
-        shopName: owner.shopName,
-        ownerName: owner.name,
+      // 1. The admin PIN, verified against the local hash. The backend cannot
+      //    check it — the hash lives in this phone's database — so the till
+      //    refuses a wrong one here rather than sending it over the wire.
+      //
+      //    This is also the ONE place the owner PIN is rate-limited, so it
+      //    shares the till-wide lockout the login pad uses. Without it this
+      //    dialog was a PIN oracle with no attempt counting: a wrong guess
+      //    costs one local PBKDF2 check, is never recorded, and repeats
+      //    forever — 10,000 values is minutes of guessing.
+      final String? pin = await showVerifyPinSheet(
+        context,
         email: owner.email,
+        onSubmit: (String entered) =>
+            _verifyOwnerPinOrError(entered, owner.pinHash, l10n),
       );
+      if (pin == null || !mounted) return;
+
+      // 2. The account and the code. A failure here is the shop's problem to
+      //    see (no signal, server not configured, too many codes), so it is
+      //    reported as one sentence and the flow stops where it can retry.
+      final VerificationChallenge challenge;
+      try {
+        challenge = await BackendService.requestVerificationCode(
+          email: owner.email,
+          pin: pin,
+          shopName: owner.shopName,
+          ownerName: owner.name,
+        );
+      } on VerificationException catch (error) {
+        if (!mounted) return;
+        _err(_verificationMessage(l10n, error));
+        return;
+      } catch (_) {
+        if (!mounted) return;
+        _err(l10n.settingsIdentityLinkFailed);
+        return;
+      }
+      if (!mounted) return;
+      _err(l10n.settingsVerifyCodeSent(owner.email));
+
+      // 3. The code from the email, and the way to ask for another one. The
+      //    dialog stays open on a wrong code, so the owner retypes rather
+      //    than starting again.
+      final bool verified = await showVerifyCodeSheet(
+        context,
+        maskedEmail:
+            challenge.maskedEmail.isEmpty ? owner.email : challenge.maskedEmail,
+        onSubmit: (String code) async {
+          try {
+            await BackendService.confirmVerificationCode(
+              email: owner.email,
+              pin: pin,
+              code: code,
+            );
+            return null;
+          } on VerificationException catch (error) {
+            return _verificationMessage(l10n, error);
+          } catch (_) {
+            return l10n.settingsIdentityLinkFailed;
+          }
+        },
+        onResend: () async {
+          try {
+            await BackendService.requestVerificationCode(
+              email: owner.email,
+              pin: pin,
+              shopName: owner.shopName,
+              ownerName: owner.name,
+            );
+            return l10n.settingsVerifyCodeSent(owner.email);
+          } on VerificationException catch (error) {
+            return _verificationMessage(l10n, error);
+          } catch (_) {
+            return l10n.settingsIdentityLinkFailed;
+          }
+        },
+      );
+      if (!verified || !mounted) return;
+
       await state.loadOwner();
-      state.markIdentityLinked();
+      await state.markIdentityVerified();
+      await recordActionAudit(
+        state,
+        action: AuditAction.identityLinked,
+        entity: AuditEntity.identity,
+        detail: 'email verified: ${owner.email}',
+      );
       if (!mounted) return;
-      _err(AppLocalizations.of(context).settingsIdentityLinked);
-    } catch (_) {
-      if (!mounted) return;
-      _err(AppLocalizations.of(context).settingsIdentityLinkFailed);
+      _err(AppLocalizations.of(context).settingsIdentityVerified);
     } finally {
       if (mounted) setState(() => _verifyingIdentity = false);
     }
   }
+
+  String _verificationMessage(
+    AppLocalizations l10n,
+    VerificationException error,
+  ) =>
+      verificationMessage(l10n, error);
 
   Future<void> _syncNow() async {
     setState(() {
       _syncing = true;
       _syncStatus = null;
     });
-    final shopName = context.read<AppState>().owner!.shopName;
+    // Read before the sync's async gap, and used after it: the audit row has to
+    // name the outcome, which is only known once the two syncs have returned.
+    final AppState state = context.read<AppState>();
+    final AppLocalizations l10n = AppLocalizations.of(context);
+    final shopName = state.owner!.shopName;
     final invResult = await _sync.syncInventory(shopName);
     final salesResult = await _sync.syncSales(shopName);
     if (_mpesaEnabled && _backendLinked) {
@@ -563,93 +882,255 @@ class _SettingsScreenState extends State<SettingsScreen> {
       }
     }
     if (!mounted) return;
+    final String statusLabel = invResult == SyncResult.pushedToSheets &&
+            salesResult == SyncResult.pushedToSheets
+        ? l10n.settingsSyncSheets
+        : (invResult == SyncResult.failed || salesResult == SyncResult.failed)
+            ? l10n.settingsSyncFailed
+            : l10n.settingsSyncOfflineExcel;
     setState(() {
       _syncing = false;
-      _syncStatus = invResult == SyncResult.pushedToSheets &&
-              salesResult == SyncResult.pushedToSheets
-          ? AppLocalizations.of(context).settingsSyncSheets
-          : (invResult == SyncResult.failed || salesResult == SyncResult.failed)
-              ? AppLocalizations.of(context).settingsSyncFailed
-              : AppLocalizations.of(context).settingsSyncOfflineExcel;
+      _syncStatus = statusLabel;
     });
+    // A sync that reports success is a claim about the backend, so the claim is
+    // logged with its outcome rather than left as a snackbar that vanishes.
+    await recordActionAudit(
+      state,
+      action: AuditAction.syncSettingsChanged,
+      entity: AuditEntity.settings,
+      detail: 'manual sync: $statusLabel',
+    );
   }
 
+  /// Toggles the automatic backup/sync preference.
+  ///
+  /// Named rather than an inline closure so the switch's row can stay a dumb
+  /// widget with one `onChanged` callback, the same shape as every other
+  /// control on this screen.
+  Future<void> _setAutoSync(bool value) async {
+    // Read before the await: the preference write is the async gap, and the
+    // audit row after it must not hold a BuildContext.
+    final AppState state = context.read<AppState>();
+    await AutoSyncService.setEnabled(value);
+    if (mounted) setState(() => _automaticBackupSync = value);
+    // A backup that silently stopped happening is indistinguishable from one
+    // that never existed, so the toggle's own state is logged.
+    await recordActionAudit(
+      state,
+      action: AuditAction.syncSettingsChanged,
+      entity: AuditEntity.settings,
+      detail: 'auto-sync ${value ? 'on' : 'off'}',
+    );
+  }
+
+  Future<void> _exportEncryptedInventory() async {
+    final state = context.read<AppState>();
+    final f = await _excel.exportEncryptedInventory();
+    await _excel.shareFile(f);
+    // The share has already left the device, so the row says a backup WAS
+    // produced — the audit is the last thing standing after the share sheet
+    // closes.
+    await recordActionAudit(
+      state,
+      action: AuditAction.backupExported,
+      entity: AuditEntity.backup,
+      detail: 'encrypted',
+    );
+  }
+
+  Future<void> _exportInventory() async {
+    final state = context.read<AppState>();
+    final f = await _excel.exportInventory();
+    await _excel.shareFile(f);
+    await recordActionAudit(
+      state,
+      action: AuditAction.backupExported,
+      entity: AuditEntity.backup,
+      detail: 'plain workbook',
+    );
+  }
+
+  /// Restores an encrypted backup, reporting how many products came back.
+  ///
+  /// The barcode-refusal list is part of the result rather than a second
+  /// summary: a restored catalogue that silently dropped three codes is a
+  /// discrepancy the shop finds at the till a week later.
+  Future<void> _restoreEncryptedInventory() async {
+    final l10n = AppLocalizations.of(context);
+    final state = context.read<AppState>();
+    try {
+      final n = await _excel.importEncryptedInventory();
+      if (!mounted) return;
+      _err(l10n.settingsRestoredProducts(n));
+      // Logged with the count, because a restore that brought back three
+      // products of four hundred is the most important row this screen writes.
+      await recordActionAudit(
+        state,
+        action: AuditAction.backupRestored,
+        entity: AuditEntity.backup,
+        detail: 'encrypted, $n products',
+      );
+    } on FormatException {
+      if (!mounted) return;
+      _err(l10n.settingsInvalidEncryptedBackup);
+    } catch (_) {
+      if (!mounted) return;
+      _err(l10n.settingsDecryptBackupFailed);
+    }
+  }
+
+  /// Imports a plain workbook, naming any barcode it refused and why.
+  Future<void> _importInventory() async {
+    final l10n = AppLocalizations.of(context);
+    final state = context.read<AppState>();
+    try {
+      final result = await _excel.importInventory();
+      if (!mounted) return;
+      final refused = result.refusedBarcodes;
+      // One sentence either way. The refusal count is part of the audit row,
+      // not just of the snackbar: the snackbar disappears in six seconds, and
+      // the question "did this restore drop anything" outlives it.
+      final detail = refused.isEmpty
+          ? '${result.products} products'
+          : '${result.products} products, ${refused.length} barcodes refused';
+      if (refused.isEmpty) {
+        _err(l10n.settingsImportedProducts(result.products));
+      } else {
+        // Each code paired with the product that already owns it, so the owner
+        // can fix the workbook instead of guessing which rows were skipped.
+        // Alphabetical order, as gen-l10n emits the generated parameters:
+        // detail, products, refused.
+        _err(l10n.settingsImportedProductsWithRefused(
+          detail,
+          result.products,
+          l10n.settingsBarcodesRefusedList(refused.length),
+        ));
+      }
+      await recordActionAudit(
+        state,
+        action: AuditAction.backupRestored,
+        entity: AuditEntity.backup,
+        detail: detail,
+      );
+    } on FormatException {
+      if (!mounted) return;
+      _err(l10n.settingsInvalidWorkbook);
+    } catch (_) {
+      if (!mounted) return;
+      _err(l10n.settingsImportWorkbookFailed);
+    }
+  }
+
+  /// The shop switcher.
+  ///
+  /// Reads the LOCAL REGISTRY, not the backend's shop list. It used to call
+  /// `/tenant/shops`, which meant a shop added on this device without a tenant
+  /// link was unreachable — its database existed, the app was pointed at it, and
+  /// the one screen that changes between them could not see it. The registry is
+  /// the only authority on which shops are here, so it is the source of truth;
+  /// the backend still contributes the role and the online state where it has
+  /// them, but it can no longer be the reason a shop is missing.
   Future<void> _manageShops() async {
-    // Read before the network call: listing shops is an async gap and this screen
-    // can be popped underneath it.
+    // Read before the first await: the registry is local, but the dialog it
+    // populates is built from it and the switch tears the screen down.
     final l10n = AppLocalizations.of(context);
     try {
-      final shops = await BackendService.listMyShops();
+      final List<LocalShop> shops = await WorkspaceServiceShops.localShops();
+      final String activeKey = await WorkspaceService.activeWorkspaceKey();
       if (!mounted) return;
       await showDialog<void>(
-          context: context,
-          builder: (dialogContext) => AlertDialog(
-                title:
-                    Text(AppLocalizations.of(context).settingsYourShopsTitle),
-                content: SizedBox(
-                    width: 380,
-                    child: shops.isEmpty
-                        ? Text(
-                            AppLocalizations.of(context).settingsNoOnlineShops)
-                        : Column(
-                            mainAxisSize: MainAxisSize.min,
-                            children: shops
-                                .map((shop) => ListTile(
-                                      title: Text(
-                                          '${shop['shopName'] ?? 'Unnamed shop'}'),
-                                      // Read through a typed cast rather than
-                                      // `.toString()` on a map value: the column
-                                      // is a name, and formatting whatever is in
-                                      // the row would render "null" or a Map to
-                                      // a shopkeeper.
-                                      subtitle: Text(
-                                        shop['role'] as String? ?? '',
-                                      ),
-                                      trailing: TextButton(
-                                        onPressed: () async {
-                                          // Read before the first await: switching
-                                          // shops tears this whole subtree down.
-                                          final l10n =
-                                              AppLocalizations.of(context);
-                                          try {
-                                            await BackendService.switchShop(
-                                                shop['tenantId'].toString());
-                                            final key = await WorkspaceService
-                                                .workspaceForTenant(
-                                                    shop['tenantId']
-                                                        .toString());
-                                            if (key == null) {
-                                              throw StateError(
-                                                  l10n.settingsShopNotOnDevice);
-                                            }
-                                            if (dialogContext.mounted) {
-                                              Navigator.pop(dialogContext);
-                                            }
-                                            if (mounted) {
-                                              await context
-                                                  .read<AppState>()
-                                                  .switchWorkspace(key);
-                                            }
-                                          } catch (e) {
-                                            _err(e is StateError
-                                                ? e.message
-                                                : l10n
-                                                    .settingsSwitchShopFailed);
-                                          }
-                                        },
-                                        child: Text(AppLocalizations.of(context)
-                                            .settingsSwitchAction),
-                                      ),
-                                    ))
-                                .toList())),
-                actions: [
-                  TextButton(
-                      onPressed: () => Navigator.pop(dialogContext),
-                      child: Text(l10n.settingsCloseAction))
-                ],
-              ));
+        context: context,
+        builder: (BuildContext dialogContext) => AlertDialog(
+          title: Text(l10n.settingsYourShopsTitle),
+          content: SizedBox(
+            width: 380,
+            // A device with one shop is not a broken list: it says so, rather
+            // than showing a single row that cannot be switched to anything.
+            child: shops.length <= 1
+                ? Text(l10n.settingsOneShopOnDevice)
+                : ListView(
+                    shrinkWrap: true,
+                    children: <Widget>[
+                      for (final LocalShop shop in shops)
+                        ListTile(
+                          leading: ExcludeSemantics(
+                            child: Icon(
+                              shop.workspaceKey == activeKey
+                                  ? Icons.check_circle
+                                  : Icons.store_mall_directory_outlined,
+                            ),
+                          ),
+                          title: Text(shop.shopName),
+                          // The role, not the tenant id: a shopkeeper
+                          // switching shops wants to know what they are, and a
+                          // UUID is not that.
+                          subtitle: Text(
+                            shop.workspaceKey == activeKey
+                                ? l10n.settingsCurrentShop
+                                : (shop.isBackendLinked
+                                    ? l10n.settingsLinkedShop
+                                    : l10n.settingsLocalOnlyShop),
+                          ),
+                          trailing: shop.workspaceKey == activeKey
+                              ? null
+                              : TextButton(
+                                  onPressed: () async =>
+                                      _switchToShop(dialogContext, shop),
+                                  child: Text(l10n.settingsSwitchAction),
+                                ),
+                        ),
+                    ],
+                  ),
+          ),
+          actions: <Widget>[
+            TextButton(
+              onPressed: () => Navigator.pop(dialogContext),
+              child: Text(l10n.settingsCloseAction),
+            ),
+          ],
+        ),
+      );
     } catch (_) {
       _err(l10n.settingsLoadShopsFailed);
+    }
+  }
+
+  /// Points the app at [shop] and rebuilds the session around it.
+  ///
+  /// Separated from the dialog so the dialog's lifetime and the screen's
+  /// lifetime are two explicit things: the dialog is popped first, then the
+  /// workspace switch tears down and rebuilds the subtree underneath it.
+  /// Reading the context after an await is safe here because [messageService]
+  /// captures the messaging subtree, which is not the thing being replaced.
+  Future<void> _switchToShop(BuildContext dialogContext, LocalShop shop) async {
+    final l10n = AppLocalizations.of(context);
+    // Captured before the await, and used after it: `_err` needs a live
+    // ScaffoldMessenger, which the workspace switch tears down.
+    final AppState state = context.read<AppState>();
+    try {
+      if (dialogContext.mounted) Navigator.pop(dialogContext);
+      if (!mounted) return;
+      // Written BEFORE the switch, because the switch changes which database
+      // the row belongs to: after it, this line would log the change into the
+      // shop that was just left — and the shop the owner is now in would show
+      // nothing at all. The row therefore lives in the shop it describes.
+      await recordActionAudit(
+        state,
+        action: AuditAction.shopSwitched,
+        entity: AuditEntity.workspace,
+        entityId: shop.workspaceKey,
+        detail: shop.shopName,
+      );
+      // Switching tears the session down and reloads from the new shop's own
+      // database, so the next screen is that shop's owner, staff and stock.
+      await state.switchWorkspace(shop.workspaceKey);
+      if (!mounted) return;
+      state.signInAsOwner();
+      if (!mounted) return;
+      _err(l10n.settingsSwitchedToShop(shop.shopName));
+    } catch (_) {
+      if (!mounted) return;
+      _err(l10n.settingsSwitchShopFailed);
     }
   }
 
@@ -697,8 +1178,10 @@ class _SettingsScreenState extends State<SettingsScreen> {
     if (shop == null || shop.isEmpty || !mounted) return;
 
     final key = 'local-${DateTime.now().microsecondsSinceEpoch}';
+    // A brand-new shop registers with NO tenant. That is the point: the new
+    // shop is unlinked until its owner verifies it, and clearing the legacy
+    // global key stops it inheriting the shop it was created from.
     await WorkspaceService.register(workspaceKey: key, shopName: shop);
-    await (await SharedPreferences.getInstance()).remove('tenant_id');
     if (!mounted) return;
 
     // Point the app at the new shop *first*, so the owner row is written into
@@ -736,340 +1219,267 @@ class _SettingsScreenState extends State<SettingsScreen> {
     if (!mounted) return;
     context.read<AppState>().signInAsOwner();
     if (!mounted) return;
-    _err('$shop is ready. Your admin account and PIN carried across.');
+    _err(l10n.settingsShopReady(shop));
   }
 
   @override
   Widget build(BuildContext context) {
-    final owner = context.watch<AppState>().owner!;
-    return ListView(
-      padding: const EdgeInsets.all(16),
-      children: [
-        Text('Signed in as shop admin: ${owner.name}',
-            style: Theme.of(context).textTheme.titleMedium),
-        const SizedBox(height: 24),
-        if (context.watch<AppState>().identityLinkPending) ...[
-          Card(
-            color: AppColors.of(context).surfaceSunken,
-            child: ListTile(
-              leading: Icon(
-                Icons.cloud_off_outlined,
-                color: AppColors.of(context).warning,
-              ),
-              title: Text(
-                  AppLocalizations.of(context).settingsIdentityNotLinkedTitle),
-              subtitle: Text(AppLocalizations.of(context)
-                  .settingsIdentityNotLinkedMessage),
-              trailing: TextButton(
-                onPressed: _verifyingIdentity ? null : _verifyIdentityOnline,
-                child: Text(_verifyingIdentity
-                    ? AppLocalizations.of(context).settingsVerifying
-                    : AppLocalizations.of(context).settingsVerifyAction),
-              ),
-            ),
-          ),
-          const SizedBox(height: 16),
-        ],
-        Text(AppLocalizations.of(context).settingsShopsSection,
-            style: Theme.of(context).textTheme.titleMedium),
-        Card(
-            child: Column(children: [
-          ListTile(
-              leading: Icon(Icons.lock_outline),
-              title: Text(AppLocalizations.of(context)
-                  .settingsSeparateOfflineDataTitle),
-              subtitle: Text(AppLocalizations.of(context)
-                  .settingsSeparateOfflineDataSubtitle)),
-          ListTile(
-              leading: const Icon(Icons.store_mall_directory_outlined),
-              title:
-                  Text(AppLocalizations.of(context).settingsSwitchShopAction),
-              onTap: _manageShops),
-          ListTile(
-              leading: const Icon(Icons.add_business_outlined),
-              title: Text(
-                  AppLocalizations.of(context).settingsAddShopOnDeviceAction),
-              onTap: _addShopOnThisDevice),
-        ])),
-        Text(AppLocalizations.of(context).settingsStaffSection,
-            style: Theme.of(context).textTheme.titleMedium),
-        Padding(
-          padding: EdgeInsets.only(top: 4, bottom: 8),
-          child: Text(AppLocalizations.of(context).settingsStaffSectionHelp),
+    // The stateful screen does the async work; this delegates to a widget that
+    // takes the loaded values, so the whole presentation can be rendered from a
+    // constructed snapshot in a test without a database — the same split the
+    // shift screen uses.
+    return SettingsPanel(
+      identityLinkPending: context.watch<AppState>().identityLinkPending,
+      identityVerified: context.watch<AppState>().identityVerified,
+      verifyingIdentity: _verifyingIdentity,
+      onVerifyIdentity: _verifyIdentityOnline,
+      staff: _staff,
+      onAddStaff: _addStaff,
+      onResetPin: _resetPin,
+      onRemoveStaff: _removeStaff,
+      mpesaEnabled: _mpesaEnabled,
+      savingPaymentToggle: _savingToggle,
+      onToggleMpesa: _toggleMpesa,
+      printer: _printer,
+      printerBusy: _printerBusy,
+      onPairPrinter: _chooseAndPairPrinter,
+      onTestPrint: _testPrint,
+      onSavePrinter: _savePrinter,
+      vatRatePercent: _vatRatePercent,
+      tin: _tin,
+      tillCode: _tillCode,
+      onOpenTaxSettings: _openTaxSettings,
+      autoSyncEnabled: _automaticBackupSync,
+      syncing: _syncing,
+      syncStatus: _syncStatus,
+      onSetAutoSync: _setAutoSync,
+      onSyncNow: _syncNow,
+      onExportEncrypted: _exportEncryptedInventory,
+      onRestoreEncrypted: _restoreEncryptedInventory,
+      onExport: _exportInventory,
+      onImport: _importInventory,
+      onEraseBackups: _eraseEncryptedBackups,
+      onDeleteAccount: _deleteOnlineAccount,
+      accountDeleting: _deletingAccount,
+      onAddShop: _addShopOnThisDevice,
+      onManageShops: _manageShops,
+      onOpenPortfolio: () => context.push(Routes.portfolio),
+      onOpenActivity: () => context.push(Routes.activity),
+    );
+  }
+}
+
+/// The whole screen as one constructed value.
+///
+/// Split from [SettingsScreen] so the presentation can be rendered from a value
+/// rather than from a database read in `initState`. Every field is a loaded
+/// value or a callback: the panel holds no state and reads nothing, which is
+/// what lets a test assert the layout without seeding a shop.
+class SettingsPanel extends StatelessWidget {
+  const SettingsPanel({
+    super.key,
+    required this.identityLinkPending,
+    required this.verifyingIdentity,
+    required this.onVerifyIdentity,
+    required this.identityVerified,
+    required this.staff,
+    required this.onAddStaff,
+    required this.onResetPin,
+    required this.onRemoveStaff,
+    required this.mpesaEnabled,
+    required this.savingPaymentToggle,
+    required this.onToggleMpesa,
+    required this.printer,
+    required this.printerBusy,
+    required this.onPairPrinter,
+    required this.onTestPrint,
+    required this.onSavePrinter,
+    required this.vatRatePercent,
+    required this.tin,
+    required this.tillCode,
+    required this.onOpenTaxSettings,
+    required this.autoSyncEnabled,
+    required this.syncing,
+    required this.syncStatus,
+    required this.onSetAutoSync,
+    required this.onSyncNow,
+    required this.onExportEncrypted,
+    required this.onRestoreEncrypted,
+    required this.onExport,
+    required this.onImport,
+    required this.onEraseBackups,
+    required this.onDeleteAccount,
+    required this.accountDeleting,
+    required this.onAddShop,
+    required this.onManageShops,
+    required this.onOpenPortfolio,
+    required this.onOpenActivity,
+  });
+
+  final bool identityLinkPending;
+  final bool verifyingIdentity;
+  final Future<void> Function() onVerifyIdentity;
+
+  /// Whether the emailed code has been presented and accepted. The until-then
+  /// gate on everything that needs an authoritative online identity:
+  /// automatic backups, the cross-shop analytics the portfolio screen reads,
+  /// and auto-update.
+  final bool identityVerified;
+
+  final List<Staff> staff;
+  final Future<void> Function() onAddStaff;
+  final void Function(Staff) onResetPin;
+  final Future<void> Function(Staff) onRemoveStaff;
+
+  final bool mpesaEnabled;
+  final bool savingPaymentToggle;
+  final Future<void> Function(bool) onToggleMpesa;
+
+  final PrinterConfig printer;
+  final bool printerBusy;
+  final Future<void> Function() onPairPrinter;
+  final Future<void> Function() onTestPrint;
+  final Future<void> Function(PrinterConfig) onSavePrinter;
+
+  final int vatRatePercent;
+  final String tin;
+  final String tillCode;
+  final Future<void> Function() onOpenTaxSettings;
+
+  final bool autoSyncEnabled;
+  final bool syncing;
+  final String? syncStatus;
+  final Future<void> Function(bool) onSetAutoSync;
+  final Future<void> Function() onSyncNow;
+
+  final Future<void> Function() onExportEncrypted;
+  final Future<void> Function() onRestoreEncrypted;
+  final Future<void> Function() onExport;
+  final Future<void> Function() onImport;
+  final Future<void> Function() onEraseBackups;
+
+  /// Deletes the online account and erases what this shop held.
+  final Future<void> Function() onDeleteAccount;
+
+  /// True while a deletion is running, so the row can be disabled rather than
+  /// appearing to have been ignored.
+  final bool accountDeleting;
+
+  final Future<void> Function() onAddShop;
+  final Future<void> Function() onManageShops;
+  final VoidCallback onOpenPortfolio;
+  final VoidCallback onOpenActivity;
+
+  @override
+  Widget build(BuildContext context) {
+    // An unverified identity is the one condition on this screen that is the
+    // shop's problem rather than the phone's, so it leads instead of sitting in
+    // its own section to be scrolled past.
+    return SectionedPage(
+      maxContentWidth: 880,
+      sections: <Widget>[
+        if (identityLinkPending)
+          _IdentityBanner(busy: verifyingIdentity, onVerify: onVerifyIdentity),
+        _ShopsPanel(
+          onAddShop: onAddShop,
+          onManage: onManageShops,
+          onOpenPortfolio: onOpenPortfolio,
+          onOpenActivity: onOpenActivity,
         ),
-        Card(
-            child: Column(children: [
-          ..._staff.map((s) => ListTile(
-                title: Text(s.name),
-                subtitle: Text(s.role == 'manager'
-                    ? AppLocalizations.of(context).settingsRoleManager
-                    : AppLocalizations.of(context).settingsRoleCashier),
-                trailing: Wrap(spacing: 4, children: [
-                  TextButton(
-                      onPressed: () => _resetPin(s),
-                      child: Text(
-                          AppLocalizations.of(context).settingsResetPinAction)),
-                  IconButton(
-                    icon: const Icon(Icons.remove_circle_outline),
-                    tooltip: 'Remove ${s.name}',
-                    onPressed: () => _removeStaff(s),
-                  ),
-                ]),
-              )),
-          ListTile(
-            leading: const Icon(Icons.add),
-            title: Text(AppLocalizations.of(context).settingsAddStaffAction),
-            onTap: _addStaff,
-          ),
-        ])),
-        const SizedBox(height: 24),
-        Text(AppLocalizations.of(context).settingsPaymentMethodsSection,
-            style: Theme.of(context).textTheme.titleMedium),
-        Card(
-            child: Column(children: [
-          ListTile(
-            leading: const Icon(Icons.payments_outlined),
-            title: Text(AppLocalizations.of(context).settingsCashMethod),
-            subtitle:
-                Text(AppLocalizations.of(context).settingsCashMethodSubtitle),
-            // Read at build time rather than `const`: the style comes from the
-            // theme, and a `const` widget cannot call a method.
-            trailing: Text(
-              AppLocalizations.of(context).settingsIncluded,
-              style: AppTypography.of(context).bodySmall,
-            ),
-          ),
-          SwitchListTile(
-            secondary: const Icon(Icons.phone_iphone_outlined),
-            title: Text(AppLocalizations.of(context).settingsMpesaMethod),
-            subtitle: Text(_mpesaEnabled
-                ? AppLocalizations.of(context).settingsMpesaOnSubtitle
-                : AppLocalizations.of(context).settingsMpesaOffSubtitle),
-            value: _mpesaEnabled,
-            onChanged: _savingToggle ? null : _toggleMpesa,
-          ),
-        ])),
-        const SizedBox(height: 24),
-        Text(AppLocalizations.of(context).settingsPrinterSection,
-            style: Theme.of(context).textTheme.titleMedium),
-        Card(
-            child: Column(children: [
-          ListTile(
-            leading: Icon(Icons.print_outlined),
-            title: Text(AppLocalizations.of(context).settingsPrinterKindTitle),
-            subtitle: Text(
-                'Pair the printer from this phone\'s Bluetooth settings first, then pair it here.'),
-          ),
-          if (_printer.macAddress.trim().isNotEmpty)
-            ListTile(
-              dense: true,
-              leading: const Icon(Icons.bluetooth_connected, size: 20),
-              title: Text(_printer.macAddress,
-                  style: const TextStyle(fontFamily: 'monospace')),
-              subtitle: Text('${_printer.paperWidth.mm}mm roll'),
-              trailing: TextButton(
-                onPressed: _printerBusy ? null : _chooseAndPairPrinter,
-                child: Text(AppLocalizations.of(context).settingsChangeAction),
-              ),
-            ),
-          SwitchListTile(
-            secondary: const Icon(Icons.power_settings_new),
-            title: Text(AppLocalizations.of(context).settingsPrintingEnabled),
-            subtitle: Text(_printer.isConfigured
-                ? (_printer.enabled
-                    ? AppLocalizations.of(context).settingsPrintingOnSubtitle
-                    : AppLocalizations.of(context)
-                        .settingsPrintingPairedOffSubtitle)
-                : AppLocalizations.of(context)
-                    .settingsPrintingUnpairedSubtitle),
-            value: _printer.enabled,
-            onChanged: !_printer.isConfigured
-                ? null
-                : (value) => _savePrinter(_printer.copyWith(enabled: value)),
-          ),
-          SwitchListTile(
-            secondary: const Icon(Icons.receipt),
-            title: Text(AppLocalizations.of(context).settingsPrintAfterSale),
-            subtitle: Text(
-                AppLocalizations.of(context).settingsPrintAfterSaleSubtitle),
-            value: _printer.printAfterSale,
-            onChanged: _printer.isConfigured
-                ? (value) =>
-                    _savePrinter(_printer.copyWith(printAfterSale: value))
-                : null,
-          ),
-          Padding(
-            padding: const EdgeInsets.fromLTRB(16, 0, 16, 12),
-            child: Row(
-              children: [
-                Expanded(
-                  child: OutlinedButton.icon(
-                    onPressed: _printerBusy ? null : _chooseAndPairPrinter,
-                    icon: _printerBusy
-                        ? const SizedBox(
-                            width: 16,
-                            height: 16,
-                            child: CircularProgressIndicator(strokeWidth: 2))
-                        : const Icon(Icons.bluetooth_searching),
-                    label: Text(_printer.macAddress.isEmpty
-                        ? AppLocalizations.of(context).settingsPairAPrinter
-                        : AppLocalizations.of(context)
-                            .settingsPairAnotherPrinter),
-                  ),
-                ),
-                const SizedBox(width: 8),
-                Expanded(
-                  child: OutlinedButton.icon(
-                    onPressed: _printerBusy || !_printer.isConfigured
-                        ? null
-                        : _testPrint,
-                    icon: const Icon(Icons.play_arrow),
-                    label: Text(
-                        AppLocalizations.of(context).settingsTestPrintAction),
-                  ),
-                ),
-              ],
-            ),
-          ),
-        ])),
-        const SizedBox(height: 24),
-        // Tax configuration is now one screen rather than three tiles and two
-        // dialogs. It was reachable only behind an edit chevron on a card
-        // titled "Tax and receipts", which is how a VAT-registered shop ended up
-        // issuing at the default rate without ever having seen the control.
-        ListTile(
-          leading: const Icon(Icons.percent),
-          title: Text(AppLocalizations.of(context).taxSettingsTitle),
-          subtitle: Text(
-            'VAT $_vatRatePercent%${_tin.isEmpty ? '' : ' · TIN $_tin'}'
-            ' · receipts numbered $_tillCode-000001',
-          ),
-          trailing: const Icon(Icons.chevron_right),
-          onTap: _openTaxSettings,
+        _StaffPanel(
+          staff: staff,
+          onAdd: onAddStaff,
+          onResetPin: onResetPin,
+          onRemove: onRemoveStaff,
         ),
-        const SizedBox(height: 24),
-        Text(AppLocalizations.of(context).settingsSyncSection,
-            style: Theme.of(context).textTheme.titleMedium),
-        Card(
-            child: Padding(
-          padding: const EdgeInsets.all(16),
-          child:
-              Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-            const Text(
-                'When online, sync pushes inventory and sales to a Google Sheet. '
-                'With no signal, it saves an Excel file you can share manually instead — nothing is ever blocked by connectivity.'),
-            SwitchListTile.adaptive(
-              contentPadding: EdgeInsets.zero,
-              title: Text(AppLocalizations.of(context).settingsAutoBackupSync),
-              subtitle: Text(
-                  AppLocalizations.of(context).settingsAutoBackupSyncSubtitle),
-              value: _automaticBackupSync,
-              onChanged: (value) async {
-                await AutoSyncService.setEnabled(value);
-                if (mounted) setState(() => _automaticBackupSync = value);
-              },
-            ),
-            const SizedBox(height: 12),
-            FilledButton.icon(
-              onPressed: _syncing ? null : _syncNow,
-              icon: _syncing
-                  ? const SizedBox(
-                      width: 16,
-                      height: 16,
-                      child: CircularProgressIndicator(strokeWidth: 2))
-                  : const Icon(Icons.sync),
-              label: Text(_syncing
-                  ? AppLocalizations.of(context).settingsSyncing
-                  : AppLocalizations.of(context).settingsSyncNowAction),
-            ),
-            if (_syncStatus != null)
-              Padding(
-                padding: const EdgeInsets.only(top: 8),
-                child: Text(_syncStatus!),
-              ),
-          ]),
-        )),
-        const SizedBox(height: 24),
-        Text(AppLocalizations.of(context).settingsBackupSection,
-            style: Theme.of(context).textTheme.titleMedium),
-        Card(
-            child: Padding(
-          padding: const EdgeInsets.all(16),
-          child:
-              Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-            Text(AppLocalizations.of(context).settingsBackupHelp),
-            const SizedBox(height: 12),
-            Wrap(spacing: 8, children: [
-              OutlinedButton(
-                  onPressed: () async {
-                    final f = await _excel.exportEncryptedInventory();
-                    await _excel.shareFile(f);
-                  },
-                  child: Text(
-                      AppLocalizations.of(context).settingsExportEncrypted)),
-              OutlinedButton(
-                  onPressed: () async {
-                    try {
-                      final n = await _excel.importEncryptedInventory();
-                      if (!context.mounted) return;
-                      ScaffoldMessenger.of(context).showSnackBar(
-                          SnackBar(content: Text('Restored $n products')));
-                    } on FormatException {
-                      _err(AppLocalizations.of(context)
-                          .settingsInvalidEncryptedBackup);
-                    } catch (_) {
-                      _err(AppLocalizations.of(context)
-                          .settingsDecryptBackupFailed);
-                    }
-                  },
-                  child: Text(
-                      AppLocalizations.of(context).settingsRestoreEncrypted)),
-              OutlinedButton(
-                  onPressed: () async {
-                    final f = await _excel.exportInventory();
-                    await _excel.shareFile(f);
-                  },
-                  child: Text(
-                      AppLocalizations.of(context).settingsExportInventory)),
-              OutlinedButton(
-                  onPressed: () async {
-                    try {
-                      final result = await _excel.importInventory();
-                      if (!context.mounted) return;
-                      final refused = result.refusedBarcodes;
-                      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-                        content: Text(refused.isEmpty
-                            ? 'Imported ${result.products} products'
-                            : 'Imported ${result.products} products. '
-                                '${refused.length} barcode(s) were already on '
-                                'another product: ${refused.entries.map((e) => '${e.key} (${e.value})').join(', ')}'),
-                      ));
-                    } on FormatException {
-                      if (!context.mounted) return;
-                      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-                          content: Text(AppLocalizations.of(context)
-                              .settingsInvalidWorkbook)));
-                    } catch (_) {
-                      if (!context.mounted) return;
-                      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-                          content: Text(AppLocalizations.of(context)
-                              .settingsImportWorkbookFailed)));
-                    }
-                  },
-                  child: Text(
-                      AppLocalizations.of(context).settingsImportInventory)),
-            ]),
-            const SizedBox(height: 12),
-            TextButton.icon(
-                onPressed: _eraseEncryptedBackups,
-                icon: const Icon(Icons.delete_forever),
-                label: Text(AppLocalizations.of(context)
-                    .settingsEraseLocalBackupsAction)),
-          ]),
-        )),
-        const SizedBox(height: 32),
+        _PaymentsPanel(
+          mpesaEnabled: mpesaEnabled,
+          saving: savingPaymentToggle,
+          onToggleMpesa: onToggleMpesa,
+        ),
+        _PrinterPanel(
+          printer: printer,
+          busy: printerBusy,
+          onPair: onPairPrinter,
+          onTestPrint: onTestPrint,
+          onSave: onSavePrinter,
+        ),
+        _TaxPanel(
+          vatRatePercent: vatRatePercent,
+          tin: tin,
+          tillCode: tillCode,
+          onOpen: onOpenTaxSettings,
+        ),
+        _SyncPanel(
+          identityVerified: identityVerified,
+          enabled: autoSyncEnabled,
+          syncing: syncing,
+          status: syncStatus,
+          onToggle: onSetAutoSync,
+          onSyncNow: onSyncNow,
+        ),
+        _BackupPanel(
+          onOpenDiagnostics: () => context.push(Routes.diagnostics),
+          onExportEncrypted: onExportEncrypted,
+          onRestoreEncrypted: onRestoreEncrypted,
+          onExport: onExport,
+          onImport: onImport,
+          onErase: onEraseBackups,
+        ),
+        _AccountPanel(
+          onDeleteAccount: onDeleteAccount,
+          deleting: accountDeleting,
+        ),
         const _AboutFooter(),
       ],
+    );
+  }
+}
+
+/// The online account: the PIN recovery, and the way out.
+///
+/// Kept as its own section rather than folded into the backup panel because it
+/// is the only place in Settings where an action is irreversible. Putting it
+/// next to the export buttons would make "delete account" look like one more
+/// data operation with an undo, and nothing here has an undo.
+class _AccountPanel extends StatelessWidget {
+  const _AccountPanel({
+    required this.onDeleteAccount,
+    required this.deleting,
+  });
+
+  final Future<void> Function() onDeleteAccount;
+
+  /// True while the erasure is running.
+  final bool deleting;
+
+  @override
+  Widget build(BuildContext context) {
+    final l10n = AppLocalizations.of(context);
+    final theme = Theme.of(context);
+    return _SettingsSection(
+      title: l10n.settingsAccountSection,
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: <Widget>[
+          // Forgotten-PIN recovery is NOT here, though it belongs to the same
+          // idea. The only way to reach this screen is to unlock the till, and
+          // unlocking it needs the PIN — so recovery has to be on the login pad
+          // (see `_LoginScreenState._forgotPin`), behind nothing.
+          ListTile(
+            leading: Icon(Icons.delete_forever_outlined,
+                color: theme.colorScheme.error),
+            title: Text(
+              l10n.settingsDeleteAccountAction,
+              style: TextStyle(color: theme.colorScheme.error),
+            ),
+            subtitle: Text(l10n.accountDeleteShortWarning),
+            enabled: !deleting,
+            onTap: deleting ? null : onDeleteAccount,
+          ),
+        ],
+      ),
     );
   }
 }
@@ -1109,24 +1519,29 @@ class _AboutFooterState extends State<_AboutFooter> {
 
   @override
   Widget build(BuildContext context) {
+    final AppLocalizations l10n = AppLocalizations.of(context);
     return Column(
-      children: [
-        const SizedBox(height: 8),
-        Row(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            Text(
-              SimplePosBrand.appName,
-              style: AppTypography.of(context).labelLarge,
-            ),
-            if (_version.isNotEmpty)
-              Text(
-                '  v$_version',
-                style: AppTypography.of(context).labelMedium,
+      children: <Widget>[
+        SizedBox(height: AppSpacing.of(context).sm),
+        // The app name and the version as one labelled line rather than two
+        // text runs merged with spaces: a screen reader stops after the name
+        // and a reader comparing versions stops in the right place.
+        Text.rich(
+          TextSpan(
+            children: <InlineSpan>[
+              TextSpan(
+                text: SimplePosBrand.appName,
+                style: AppTypography.of(context).labelLarge,
               ),
-          ],
+              if (_version.isNotEmpty)
+                TextSpan(
+                  text: ' ${l10n.settingsVersionLabel(_version)}',
+                  style: AppTypography.of(context).labelMedium,
+                ),
+            ],
+          ),
         ),
-        const SizedBox(height: 2),
+        SizedBox(height: AppSpacing.of(context).xs),
         Text(
           SimplePosBrand.poweredByTag,
           style: AppTypography.of(context).bodySmall,
@@ -1158,10 +1573,13 @@ class _StaffDialogState extends State<_StaffDialog> {
 
   @override
   Widget build(BuildContext context) {
+    final l10n = AppLocalizations.of(context);
     return AlertDialog(
-      title: Text(widget.pinOnly
-          ? 'Reset PIN for ${widget.existingName}'
-          : AppLocalizations.of(context).settingsAddStaffAction),
+      title: Text(
+        widget.pinOnly
+            ? l10n.settingsResetPinTitle(widget.existingName ?? '')
+            : l10n.settingsAddStaffAction,
+      ),
       content: Column(mainAxisSize: MainAxisSize.min, children: [
         if (!widget.pinOnly) ...[
           TextField(
@@ -1189,7 +1607,7 @@ class _StaffDialogState extends State<_StaffDialog> {
                 ),
                 DropdownMenuItem(
                   value: ShopRole.admin.wire,
-                  child: Text('${ShopRole.admin.label} (full rights)'),
+                  child: Text(l10n.settingsRoleAdminFull(ShopRole.admin.label)),
                 ),
               ],
               onChanged: (value) {
@@ -1221,3 +1639,659 @@ class _StaffDialogState extends State<_StaffDialog> {
     );
   }
 }
+
+// ---------------------------------------------------------------------------
+// Sections
+//
+// Each section is one widget class that renders a SurfaceCard behind a
+// SectionHeader, and takes callbacks up rather than reaching into the screen's
+// state: the rows stay presentation, and the screen keeps every rule it had.
+// ---------------------------------------------------------------------------
+
+/// One settings section: a header, optional help, and a card of rows.
+class _SettingsSection extends StatelessWidget {
+  const _SettingsSection({
+    required this.title,
+    required this.child,
+    this.help,
+  });
+
+  final String title;
+  final String? help;
+  final Widget child;
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: <Widget>[
+        SectionHeader(padding: EdgeInsets.zero, label: title),
+        if (help != null) ...<Widget>[
+          SizedBox(height: AppSpacing.of(context).xs),
+          Text(
+            help!,
+            // `onSurfaceMuted` at body size: the help line is context for the
+            // section, never the reason someone opened the screen.
+            style: AppTypography.of(context)
+                .bodyMedium
+                ?.copyWith(color: AppColors.of(context).onSurfaceMuted),
+          ),
+        ],
+        SizedBox(height: AppSpacing.of(context).sm),
+        // The transparent Material is not decoration: an `InkWell` inside a
+        // card needs a Material ancestor to draw its splash, and a settings
+        // section is exactly a card of tappable rows.
+        SurfaceCard(
+          child: Material(
+            type: MaterialType.transparency,
+            child: child,
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+/// The identity banner: the one condition on this screen the shop must act on.
+class _IdentityBanner extends StatelessWidget {
+  const _IdentityBanner({required this.busy, required this.onVerify});
+
+  final bool busy;
+  final Future<void> Function() onVerify;
+
+  @override
+  Widget build(BuildContext context) {
+    final AppColors colors = AppColors.of(context);
+    final AppSpacing spacing = AppSpacing.of(context);
+    final AppLocalizations l10n = AppLocalizations.of(context);
+    final StatusTone tone = StatusTone.warning;
+
+    return SurfaceCard(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: <Widget>[
+          Row(
+            children: <Widget>[
+              // The glyph is the first of three channels: it survives a
+              // greyscale print and a screen reader alike.
+              ExcludeSemantics(
+                child: Icon(tone.icon, color: tone.color(colors)),
+              ),
+              SizedBox(width: spacing.md),
+              Expanded(
+                child: Text(
+                  l10n.settingsIdentityNotLinkedTitle,
+                  style: AppTypography.of(context).titleSmall,
+                ),
+              ),
+            ],
+          ),
+          SizedBox(height: spacing.sm),
+          Text(
+            l10n.settingsIdentityNotLinkedMessage,
+            style: AppTypography.of(context)
+                .bodyMedium
+                ?.copyWith(color: colors.onSurfaceMuted),
+          ),
+          SizedBox(height: spacing.md),
+          Align(
+            alignment: AlignmentDirectional.centerEnd,
+            child: FilledButton(
+              // Disabled while in flight, with a spinner on the control itself
+              // rather than a barrier over the screen.
+              onPressed: busy ? null : () => onVerify(),
+              child: busy
+                  ? SizedBox(
+                      height: 16,
+                      width: 16,
+                      child: CircularProgressIndicator(strokeWidth: 2),
+                    )
+                  : Text(l10n.settingsVerifyAction),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+/// Shops on this device and the linked shop.
+class _ShopsPanel extends StatelessWidget {
+  const _ShopsPanel({
+    required this.onAddShop,
+    required this.onManage,
+    required this.onOpenPortfolio,
+    required this.onOpenActivity,
+  });
+
+  final Future<void> Function() onAddShop;
+  final Future<void> Function() onManage;
+  final VoidCallback onOpenPortfolio;
+  final VoidCallback onOpenActivity;
+
+  @override
+  Widget build(BuildContext context) {
+    final AppLocalizations l10n = AppLocalizations.of(context);
+    return _SettingsSection(
+      title: l10n.settingsYourShopsTitle,
+      child: Column(
+        children: <Widget>[
+          SettingsInfoRow(
+            icon: Icons.lock_outline,
+            title: l10n.settingsSeparateOfflineDataTitle,
+            subtitle: l10n.settingsSeparateOfflineDataSubtitle,
+          ),
+          // The all-shops read, offered next to the switcher because the two
+          // questions arrive together: "which shop am I in" and "how are they
+          // all doing".
+          SettingsNavRow(
+            icon: Icons.insights_outlined,
+            title: l10n.portfolioOpenAction,
+            subtitle: l10n.portfolioOpenSubtitle,
+            onTap: onOpenPortfolio,
+          ),
+          SettingsNavRow(
+            icon: Icons.history_outlined,
+            title: l10n.activityTitle,
+            subtitle: l10n.settingsActivitySubtitle,
+            onTap: onOpenActivity,
+          ),
+          SettingsNavRow(
+            icon: Icons.store_mall_directory_outlined,
+            title: l10n.settingsSwitchShopAction,
+            onTap: () => onManage(),
+          ),
+          SettingsNavRow(
+            icon: Icons.add_business_outlined,
+            title: l10n.settingsAddShopOnDeviceAction,
+            onTap: () => onAddShop(),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+/// The staff roster: who can sign in, and the controls to change that.
+class _StaffPanel extends StatelessWidget {
+  const _StaffPanel({
+    required this.staff,
+    required this.onAdd,
+    required this.onResetPin,
+    required this.onRemove,
+  });
+
+  final List<Staff> staff;
+  final Future<void> Function() onAdd;
+  final void Function(Staff) onResetPin;
+  final Future<void> Function(Staff) onRemove;
+
+  @override
+  Widget build(BuildContext context) {
+    final AppLocalizations l10n = AppLocalizations.of(context);
+    final AppColors colors = AppColors.of(context);
+
+    return _SettingsSection(
+      title: l10n.settingsStaffSection,
+      help: l10n.settingsStaffSectionHelp,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: <Widget>[
+          if (staff.isEmpty)
+            // "nobody yet" is its own state, distinct from "none on the backend"
+            // and from a failed load: the roster is local, so an empty list is
+            // genuinely the whole roster.
+            Padding(
+              padding: EdgeInsets.all(AppSpacing.of(context).md),
+              child: Text(
+                l10n.settingsStaffEmpty,
+                style: AppTypography.of(context)
+                    .bodyMedium
+                    ?.copyWith(color: colors.onSurfaceMuted),
+              ),
+            ),
+          for (final Staff s in staff)
+            _StaffRow(
+              staff: s,
+              onResetPin: () => onResetPin(s),
+              onRemove: () => onRemove(s),
+            ),
+          SettingsNavRow(
+            icon: Icons.add,
+            title: l10n.settingsAddStaffAction,
+            onTap: () => onAdd(),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+/// One staff member: the name, the role, and the two things done to them.
+///
+/// The reset/remove pair was two buttons in a `Wrap` at the end of the row, so
+/// they were two sub-44px targets competing with the row's own tap area. They
+/// are a menu now — the same shape the inventory row uses, which is why it
+/// reads as one system rather than one screen's preference.
+class _StaffRow extends StatelessWidget {
+  const _StaffRow({
+    required this.staff,
+    required this.onResetPin,
+    required this.onRemove,
+  });
+
+  final Staff staff;
+  final VoidCallback onResetPin;
+  final Future<void> Function() onRemove;
+
+  @override
+  Widget build(BuildContext context) {
+    final AppLocalizations l10n = AppLocalizations.of(context);
+    final AppColors colors = AppColors.of(context);
+    final bool isManager = staff.role == 'manager';
+
+    return Row(
+      children: <Widget>[
+        Expanded(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: <Widget>[
+              Text(staff.name, style: AppTypography.of(context).bodyLarge),
+              SizedBox(height: 2),
+              Text(
+                isManager ? l10n.settingsRoleManager : l10n.settingsRoleCashier,
+                style: AppTypography.of(context)
+                    .bodySmall
+                    ?.copyWith(color: colors.onSurfaceMuted),
+              ),
+            ],
+          ),
+        ),
+        Semantics(
+          button: true,
+          label: l10n.settingsStaffActionsTooltip(staff.name),
+          child: PopupMenuButton<String>(
+            tooltip: l10n.settingsStaffActionsTooltip(staff.name),
+            icon: const Icon(Icons.more_vert),
+            onSelected: (value) {
+              if (value == 'reset') onResetPin();
+              if (value == 'remove') onRemove();
+            },
+            itemBuilder: (_) => <PopupMenuEntry<String>>[
+              PopupMenuItem<String>(
+                value: 'reset',
+                child: Row(
+                  children: <Widget>[
+                    const Icon(Icons.lock_reset_outlined, size: 20),
+                    SizedBox(width: AppSpacing.of(context).md),
+                    Text(l10n.settingsResetPinAction),
+                  ],
+                ),
+              ),
+              PopupMenuItem<String>(
+                value: 'remove',
+                child: Text(l10n.settingsRemoveAction),
+              ),
+            ],
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+/// Payment methods: what this till accepts, and the M-Pesa link.
+class _PaymentsPanel extends StatelessWidget {
+  const _PaymentsPanel({
+    required this.mpesaEnabled,
+    required this.saving,
+    required this.onToggleMpesa,
+  });
+
+  final bool mpesaEnabled;
+  final bool saving;
+  final Future<void> Function(bool) onToggleMpesa;
+
+  @override
+  Widget build(BuildContext context) {
+    final AppLocalizations l10n = AppLocalizations.of(context);
+    return _SettingsSection(
+      title: l10n.settingsPaymentMethodsSection,
+      child: Column(
+        children: <Widget>[
+          SettingsInfoRow(
+            icon: Icons.payments_outlined,
+            title: l10n.settingsCashMethod,
+            subtitle: l10n.settingsCashMethodSubtitle,
+            trailing: l10n.settingsIncluded,
+          ),
+          SettingsSwitchRow(
+            icon: Icons.phone_iphone_outlined,
+            title: l10n.settingsMpesaMethod,
+            subtitle: mpesaEnabled
+                ? l10n.settingsMpesaOnSubtitle
+                : l10n.settingsMpesaOffSubtitle,
+            value: mpesaEnabled,
+            enabled: !saving,
+            onChanged: (value) => onToggleMpesa(value),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+/// The printer: pairing, and the two switches that decide what it prints.
+class _PrinterPanel extends StatelessWidget {
+  const _PrinterPanel({
+    required this.printer,
+    required this.busy,
+    required this.onPair,
+    required this.onTestPrint,
+    required this.onSave,
+  });
+
+  final PrinterConfig printer;
+  final bool busy;
+  final Future<void> Function() onPair;
+  final Future<void> Function() onTestPrint;
+  final Future<void> Function(PrinterConfig) onSave;
+
+  @override
+  Widget build(BuildContext context) {
+    final AppLocalizations l10n = AppLocalizations.of(context);
+    final AppSpacing spacing = AppSpacing.of(context);
+    final String subtitle = !printer.isConfigured
+        ? l10n.settingsPrintingUnpairedSubtitle
+        : (printer.enabled
+            ? l10n.settingsPrintingOnSubtitle
+            : l10n.settingsPrintingPairedOffSubtitle);
+
+    return _SettingsSection(
+      title: l10n.settingsPrinterSection,
+      help: l10n.settingsPrinterPairHelp,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: <Widget>[
+          if (printer.macAddress.trim().isNotEmpty) ...<Widget>[
+            SettingsInfoRow(
+              icon: Icons.bluetooth_connected,
+              title: printer.macAddress,
+              subtitle: l10n.settingsPaperRoll(printer.paperWidth.mm),
+            ),
+            SettingsSwitchRow(
+              icon: Icons.power_settings_new,
+              title: l10n.settingsPrintingEnabled,
+              subtitle: subtitle,
+              value: printer.enabled,
+              onChanged: (value) => onSave(printer.copyWith(enabled: value)),
+            ),
+            SettingsSwitchRow(
+              icon: Icons.receipt,
+              title: l10n.settingsPrintAfterSale,
+              subtitle: l10n.settingsPrintAfterSaleSubtitle,
+              value: printer.printAfterSale,
+              onChanged: (value) =>
+                  onSave(printer.copyWith(printAfterSale: value)),
+            ),
+          ],
+          SizedBox(height: spacing.sm),
+          // The pair button carries the in-flight state itself: a second
+          // spinner over the whole screen would say the app froze exactly
+          // where it is doing the one thing the owner asked for.
+          Row(
+            children: <Widget>[
+              Expanded(
+                child: FilledButton.icon(
+                  onPressed: busy ? null : () => onPair(),
+                  icon: busy
+                      ? SizedBox(
+                          height: 16,
+                          width: 16,
+                          child: CircularProgressIndicator(strokeWidth: 2),
+                        )
+                      : const Icon(Icons.bluetooth_searching),
+                  label: Text(printer.macAddress.isEmpty
+                      ? l10n.settingsPairAPrinter
+                      : l10n.settingsPairAnotherPrinter),
+                ),
+              ),
+              SizedBox(width: spacing.sm),
+              Expanded(
+                child: OutlinedButton.icon(
+                  onPressed: busy || !printer.isConfigured
+                      ? null
+                      : () => onTestPrint(),
+                  icon: const Icon(Icons.play_arrow),
+                  label: Text(l10n.settingsTestPrintAction),
+                ),
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+/// The tax summary line: opens the dedicated tax screen.
+class _TaxPanel extends StatelessWidget {
+  const _TaxPanel({
+    required this.vatRatePercent,
+    required this.tin,
+    required this.tillCode,
+    required this.onOpen,
+  });
+
+  final int vatRatePercent;
+  final String tin;
+  final String tillCode;
+  final Future<void> Function() onOpen;
+
+  @override
+  Widget build(BuildContext context) {
+    final AppLocalizations l10n = AppLocalizations.of(context);
+    return _SettingsSection(
+      title: l10n.taxSettingsTitle,
+      child: SettingsNavRow(
+        icon: Icons.percent,
+        title: l10n.taxSettingsTitle,
+        subtitle: tin.isEmpty
+            ? l10n.settingsTaxSummary(vatRatePercent, tillCode)
+            : l10n.settingsTaxSummaryWithTin(vatRatePercent, tillCode, tin),
+        onTap: () => onOpen(),
+      ),
+    );
+  }
+}
+
+/// Sync: the one switch and the one button, plus what happened last.
+class _SyncPanel extends StatelessWidget {
+  const _SyncPanel({
+    required this.identityVerified,
+    required this.enabled,
+    required this.syncing,
+    required this.status,
+    required this.onToggle,
+    required this.onSyncNow,
+  });
+
+  /// True once the emailed code has been presented. Everything that pushes a
+  /// shop's data to the backend needs an authoritative online identity, so
+  /// until then automatic sync is offered switched off and says why.
+  final bool identityVerified;
+  final bool enabled;
+  final bool syncing;
+  final String? status;
+  final Future<void> Function(bool) onToggle;
+  final Future<void> Function() onSyncNow;
+
+  @override
+  Widget build(BuildContext context) {
+    final AppLocalizations l10n = AppLocalizations.of(context);
+    final AppColors colors = AppColors.of(context);
+    final AppSpacing spacing = AppSpacing.of(context);
+
+    return _SettingsSection(
+      title: l10n.settingsSyncSection,
+      help: l10n.settingsSyncHelp,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: <Widget>[
+          SettingsSwitchRow(
+            icon: Icons.cloud_sync_outlined,
+            title: l10n.settingsAutoBackupSync,
+            // The subtitle says which step is missing rather than leaving a
+            // dead switch with no explanation: a control that cannot move
+            // and does not say why is the one thing on this screen that reads
+            // as broken.
+            subtitle: identityVerified
+                ? l10n.settingsAutoBackupSyncSubtitle
+                : l10n.settingsAutoBackupLockedSubtitle,
+            value: identityVerified && enabled,
+            enabled: identityVerified,
+            onChanged: (value) => onToggle(value),
+          ),
+          SizedBox(height: spacing.md),
+          FilledButton.icon(
+            onPressed: syncing ? null : () => onSyncNow(),
+            icon: syncing
+                ? SizedBox(
+                    height: 16,
+                    width: 16,
+                    child: CircularProgressIndicator(strokeWidth: 2),
+                  )
+                : const Icon(Icons.sync),
+            label: Text(
+                syncing ? l10n.settingsSyncing : l10n.settingsSyncNowAction),
+          ),
+          // The result of the last sync, announced rather than left to be seen:
+          // "synced just now" is information, and information only the eye can
+          // reach is information a screen reader never gets.
+          Semantics(
+            liveRegion: true,
+            child: Text(
+              status ?? '',
+              style: AppTypography.of(context)
+                  .bodyMedium
+                  ?.copyWith(color: colors.onSurfaceMuted),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+/// Backup and restore: the two directions that matter, plus erasure.
+class _BackupPanel extends StatelessWidget {
+  const _BackupPanel({
+    required this.onExportEncrypted,
+    required this.onRestoreEncrypted,
+    required this.onExport,
+    required this.onImport,
+    required this.onErase,
+    required this.onOpenDiagnostics,
+  });
+
+  final Future<void> Function() onExportEncrypted;
+  final Future<void> Function() onRestoreEncrypted;
+  final Future<void> Function() onExport;
+  final Future<void> Function() onImport;
+  final Future<void> Function() onErase;
+
+  /// Where the phone's failure log lives.
+  final Future<void> Function() onOpenDiagnostics;
+
+  @override
+  Widget build(BuildContext context) {
+    final AppLocalizations l10n = AppLocalizations.of(context);
+    final AppSpacing spacing = AppSpacing.of(context);
+    final AppColors colors = AppColors.of(context);
+
+    return _SettingsSection(
+      title: l10n.settingsBackupSection,
+      help: l10n.settingsBackupHelp,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: <Widget>[
+          // Wraps rather than scrolls: at a large text scale these labels
+          // become two lines each and a horizontal row would clip them.
+          Wrap(
+            spacing: spacing.sm,
+            runSpacing: spacing.sm,
+            children: <Widget>[
+              OutlinedButton(
+                onPressed: () => onExportEncrypted(),
+                child: Text(l10n.settingsExportEncrypted),
+              ),
+              OutlinedButton(
+                onPressed: () => onRestoreEncrypted(),
+                child: Text(l10n.settingsRestoreEncrypted),
+              ),
+              OutlinedButton(
+                onPressed: () => onExport(),
+                child: Text(l10n.settingsExportInventory),
+              ),
+              OutlinedButton(
+                onPressed: () => onImport(),
+                child: Text(l10n.settingsImportInventory),
+              ),
+            ],
+          ),
+          SizedBox(height: spacing.sm),
+          // Erasure is destructive and separate from the four reversible
+          // buttons, so it is a text button in the danger colour rather than a
+          // fifth sibling — one mis-tap away from the backups.
+          TextButton.icon(
+            onPressed: () => onErase(),
+            icon: const Icon(Icons.delete_forever),
+            style: TextButton.styleFrom(foregroundColor: colors.danger),
+            label: Text(l10n.settingsEraseLocalBackupsAction),
+          ),
+          SizedBox(height: spacing.md),
+          // Diagnostics sits with the backups rather than with the analytics:
+          // it answers "what broke", which is the same question a backup
+          // exists to answer forward.
+          SettingsNavRow(
+            icon: Icons.health_and_safety_outlined,
+            title: l10n.diagnosticsTitle,
+            subtitle: l10n.settingsDiagnosticsHelp,
+            onTap: onOpenDiagnostics,
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+/// The sentence a verification failure is worth.
+///
+/// A free function rather than a method on the screen: the copy is a locale
+/// decision, and a test can walk the whole taxonomy without building a
+/// SettingsScreen to do it.
+///
+/// Every branch ends in something the owner can act on — a new code, a
+/// resend, a wait, or a retry when the signal comes back. The branch that
+/// cannot is [VerificationFailure.unknown], which deliberately falls back to
+/// the generic link failure: an unrecognised cause is not a sentence worth
+/// inventing.
+String verificationMessage(
+  AppLocalizations l10n,
+  VerificationException error,
+) =>
+    switch (error.failure) {
+      VerificationFailure.notConfigured => l10n.settingsVerifyNotConfigured,
+      VerificationFailure.identityUnavailable =>
+        l10n.settingsVerifyIdentityUnavailable,
+      VerificationFailure.emailUnavailable => l10n.settingsVerifyEmailFailed,
+      VerificationFailure.expired => l10n.settingsVerifyCodeExpired,
+      VerificationFailure.tooManyAttempts => l10n.settingsVerifyCodeBurnt,
+      VerificationFailure.tooManyCodes => l10n.settingsVerifyTooManyCodes,
+      VerificationFailure.shopSetupRequired => l10n.settingsVerifyShopMissing,
+      VerificationFailure.invalidCode => error.attemptsRemaining == null
+          ? l10n.settingsVerifyCodeWrong(1)
+          : l10n.settingsVerifyCodeWrong(error.attemptsRemaining!),
+      VerificationFailure.network => l10n.settingsIdentityLinkFailed,
+      VerificationFailure.unknown => l10n.settingsIdentityLinkFailed,
+    };

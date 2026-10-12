@@ -356,7 +356,9 @@ class _ShellAppBar extends StatelessWidget implements PreferredSizeWidget {
         // The header a screen reader announces is the shop AND the session, not
         // just the shop: on a till with four staff, "which shop am I in and as
         // whom" is the first question after every sign-in.
-        label: l10n.shellSignedInAs(title, role),
+        // gen-l10n sorts the parameters ALPHABETICALLY — role, title — which is
+        // the reverse of the sentence "{title}, signed in as {role}".
+        label: l10n.shellSignedInAs(role, title),
         child: ExcludeSemantics(
           child: Text(title, overflow: TextOverflow.ellipsis),
         ),

@@ -33,6 +33,9 @@ abstract final class Routes {
   static const String shotCups = '/inventory/shot-cups';
   static const String shift = '/analytics/shift';
   static const String reports = '/analytics/reports';
+  static const String portfolio = '/analytics/portfolio';
+  static const String activity = '/settings/activity';
+  static const String diagnostics = '/settings/diagnostics';
   static const String taxSettings = '/settings/tax';
   static const String cameraScan = '/sell/scan';
 

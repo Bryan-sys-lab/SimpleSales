@@ -141,9 +141,7 @@ void main() {
       );
     });
 
-    test(
-        'a cashier can reach their own shift screen for reconciliation',
-        () {
+    test('a cashier can reach their own shift screen for reconciliation', () {
       expect(
         guard(AppStage.ready, Routes.shift, canManageStock: false),
         isNull,

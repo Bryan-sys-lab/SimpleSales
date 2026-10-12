@@ -58,7 +58,8 @@ void main() {
       );
     });
 
-    test('a till with no shop still reaches setup when the chooser asks for it', () {
+    test('a till with no shop still reaches setup when the chooser asks for it',
+        () {
       expect(
         resolveAppStage(
           isLoading: false,
@@ -260,7 +261,8 @@ void main() {
       expect(notifyCount, 1, reason: 'first choose should notify');
 
       controller.choose(AppChooserIntent.signIn);
-      expect(notifyCount, 2, reason: 'choosing the same intent again should notify');
+      expect(notifyCount, 2,
+          reason: 'choosing the same intent again should notify');
     });
   });
 }

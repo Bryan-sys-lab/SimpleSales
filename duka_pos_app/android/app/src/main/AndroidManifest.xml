@@ -59,7 +59,7 @@
     </queries>
 
     <application
-        android:label="Simple POS"
+        android:label="SimpleSales"
         android:name="${applicationName}"
         android:icon="@mipmap/ic_launcher"
         android:allowBackup="false"

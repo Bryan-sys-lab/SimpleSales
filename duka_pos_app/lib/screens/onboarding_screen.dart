@@ -465,7 +465,7 @@ class _Footer extends StatelessWidget {
               // Adaptive, because "back" is a direction and this app is read
               // right to left as readily as left to right. Not const: the
               // adaptive set resolves per platform at build time.
-              icon: ExcludeSemantics(child: Icon(Icons.arrow_back)),
+              icon: ExcludeSemantics(child: Icon(Icons.adaptive.arrow_back)),
               label: const Text('Back'),
             )
           else

@@ -7,9 +7,11 @@ import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
 import '../db/database_helper.dart';
 import '../l10n/generated/app_localizations.dart';
-import '../services/barcode/barcode_service.dart';
+import '../models/audit_log.dart';
 import '../models/models.dart';
 import '../services/app_state.dart';
+import '../services/audit_actor.dart';
+import '../services/barcode/barcode_service.dart';
 import '../services/backend_service.dart';
 import '../ui/components/controls.dart';
 import '../utils/error_utils.dart';
@@ -21,6 +23,7 @@ import '../routing/home_shell.dart';
 import '../routing/routes.dart';
 import '../theme/app_colors.dart';
 import '../theme/app_shapes.dart';
+import '../theme/app_spacing.dart';
 import '../theme/typography.dart';
 import '../ui/components/status.dart';
 
@@ -41,6 +44,11 @@ class InventoryScreen extends StatefulWidget {
 class _InventoryScreenState extends State<InventoryScreen> {
   List<Product> _products = [];
 
+  /// True until the first load resolves, so the list can tell "still loading"
+  /// from "nothing here yet" — an empty shop and a loading shop look identical
+  /// otherwise, and the empty state would flash at every cold start.
+  bool _loading = true;
+
   /// Which products are sold as variants, and what those variants are.
   ///
   /// Loaded with the products rather than per row: the list needs to know for
@@ -55,11 +63,14 @@ class _InventoryScreenState extends State<InventoryScreen> {
   }
 
   Future<void> _load() async {
-    if (mounted) setState(() => _products = []);
+    // No clearing of the previous list first: a pull-to-refresh that blanks the
+    // screen reads as "my stock is gone" for the second it takes to reload. The
+    // RefreshIndicator's own spinner says the reload is happening.
     final p = await DatabaseHelper.instance.getProducts();
     final catalogue = await VariantCatalogue.load();
     if (!mounted) return;
     setState(() {
+      _loading = false;
       _products = p;
       _variants = catalogue;
     });
@@ -91,6 +102,29 @@ class _InventoryScreenState extends State<InventoryScreen> {
       builder: (_) => _ProductEditor(existing: existing, onSaved: _load),
     );
   }
+
+  /// Writes one audit row for an action this screen just took.
+  ///
+  /// Delegates to [recordActionAudit] so attribution is resolved one way for
+  /// the whole app — the screen and the editor sheet both write audit rows, and
+  /// two copies of "who is signed in" eventually disagree.
+  ///
+  /// A failure to write a log row never fails the action itself: a shop that
+  /// could not adjust its stock because a log insert failed is worse than a
+  /// shop with a gap in its log.
+  Future<void> _audit(
+    AuditAction action,
+    AuditEntity entity, {
+    String? entityId,
+    String? detail,
+  }) =>
+      recordActionAudit(
+        context.read<AppState>(),
+        action: action,
+        entity: entity,
+        entityId: entityId,
+        detail: detail,
+      );
 
   Future<void> _adjustStock(Product p) async {
     // A product sold as variants has no stock count of its own to correct: its
@@ -134,6 +168,16 @@ class _InventoryScreenState extends State<InventoryScreen> {
             createdAt: DateTime.now().toIso8601String(),
           ),
           staffId: staffId);
+      // The ledger records THAT the stock moved; the audit log records WHO
+      // moved it. Both are needed, because the stock adjustment table carries
+      // no row for "the owner waived the low-stock warning".
+      await _audit(
+        AuditAction.stockAdjusted,
+        AuditEntity.product,
+        entityId: 'id-${p.id}',
+        detail: '${delta > 0 ? '+' : ''}$delta'
+            '${result['reason']?.isNotEmpty == true ? ' — ${result['reason']}' : ''}',
+      );
       await _load();
       // The server owns the authoritative stock count, so the correction has to
       // be pushed as an adjustment rather than folded into the next catalogue
@@ -244,10 +288,13 @@ class _InventoryScreenState extends State<InventoryScreen> {
   }
 
   Future<void> _delete(Product p) async {
+    // Captured before the first await: the dialog is built from it, and a
+    // BuildContext must not be read after it has been awaited away.
+    final AppLocalizations l10n = AppLocalizations.of(context);
     final confirmed = await showDialog<bool>(
       context: context,
       builder: (_) => AlertDialog(
-        title: Text(AppLocalizations.of(context).inventoryDeleteTitle),
+        title: Text(l10n.inventoryDeleteTitle),
         content: Text('Remove ${p.name} from inventory?'),
         actions: [
           TextButton(
@@ -261,6 +308,15 @@ class _InventoryScreenState extends State<InventoryScreen> {
     );
     if (confirmed == true) {
       await DatabaseHelper.instance.deactivateProduct(p.id!);
+      // A deactivated product is still in the history — the till's past sales
+      // point at it — so the row says deactivated rather than deleted, and
+      // carries the name because the id will stop resolving.
+      await _audit(
+        AuditAction.productUpdated,
+        AuditEntity.product,
+        entityId: 'id-${p.id}',
+        detail: l10n.inventoryDeactivatedProduct(p.name),
+      );
       await _load();
     }
   }
@@ -268,85 +324,394 @@ class _InventoryScreenState extends State<InventoryScreen> {
   @override
   Widget build(BuildContext context) {
     final isOwner = context.watch<AppState>().isOwnerSession;
+    final l10n = AppLocalizations.of(context);
     return Scaffold(
       floatingActionButton: FloatingActionButton(
         onPressed: () => _openEditor(),
-        tooltip: AppLocalizations.of(context).inventoryAddProduct,
+        tooltip: l10n.inventoryAddProduct,
         child: const Icon(Icons.add),
       ),
       body: RefreshIndicator(
         onRefresh: _load,
-        child: ListView.builder(
-          itemCount: _products.length + 1,
-          itemBuilder: (_, i) {
-            // Row zero is the shot-cup entry rather than a product: it is a way of selling
-            // what is already in the catalogue, not another line of it, and
-            // burying it under the first hundred sodas is how a bar never finds
-            // the feature that makes it a bar.
-            if (i == 0) {
-              return Semantics(
-                label: AppLocalizations.of(context).inventoryShotCupsSpoken,
-                child: ListTile(
-                  leading: const Icon(Icons.local_drink_outlined),
-                  title:
-                      Text(AppLocalizations.of(context).inventoryShotCupsTitle),
-                  subtitle: Text(
-                      AppLocalizations.of(context).inventoryShotCupsSubtitle),
-                  trailing: const Icon(Icons.chevron_right),
-                  onTap: () => context.push(Routes.shotCups),
+        child: _products.isEmpty && _loading
+            ? const _InventorySkeleton()
+            : ListView.separated(
+                itemCount: _products.isEmpty ? 1 : _products.length + 1,
+                separatorBuilder: (_, i) => Divider(
+                  height: 1,
+                  indent: _rowDividerInset(context),
+                  color: AppColors.of(context).outline,
                 ),
-              );
-            }
-            final p = _products[i - 1];
-            final variantCount = _variants.of(p).length;
-            return Semantics(
-              label: AppLocalizations.of(context).inventoryNameStock(
-                  p.name, formatMoney(p.sellPrice), p.stockQty),
-              child: ListTile(
-                title: Text(p.name),
-                subtitle: Text([
-                  p.category,
-                  formatMoney(p.sellPrice),
-                  'margin ${p.marginPct.toStringAsFixed(0)}%',
-                  // "Sold as variants" is the difference between one row and
-                  // four at the till, so it is stated on the list rather than
-                  // left to be discovered when a cashier cannot find Dark.
-                  if (_variants.tracks(p))
-                    AppLocalizations.of(context).inventoryNoVariantsYet,
-                  if (variantCount > 0)
-                    '$variantCount variant${variantCount == 1 ? '' : 's'}',
-                ].join(' · ')),
-                leading: _StockCountBadge(
-                  quantity: p.stockQty.round(),
-                  isLow: p.isLow,
+                itemBuilder: (_, i) {
+                  // An empty catalogue is a setup problem, not an empty list:
+                  // say what is missing and offer the one action that fixes it.
+                  if (i == 0 && _products.isEmpty) {
+                    return _InventoryEmptyState(onAdd: () => _openEditor());
+                  }
+                  // Row zero is the shot-cup entry rather than a product: it is a
+                  // way of selling what is already in the catalogue, not another
+                  // line of it, and burying it under the first hundred sodas is
+                  // how a bar never finds the feature that makes it a bar.
+                  if (_products.isEmpty || i == 0) {
+                    return Semantics(
+                      label: l10n.inventoryShotCupsSpoken,
+                      child: ListTile(
+                        leading: const Icon(Icons.local_drink_outlined),
+                        title: Text(l10n.inventoryShotCupsTitle),
+                        subtitle: Text(l10n.inventoryShotCupsSubtitle),
+                        trailing: const Icon(Icons.chevron_right),
+                        onTap: () => context.push(Routes.shotCups),
+                      ),
+                    );
+                  }
+                  final p = _products[i - 1];
+                  final variantCount = _variants.of(p).length;
+                  return Semantics(
+                    label: l10n.inventoryNameStock(
+                        formatMoney(p.sellPrice), p.name, p.stockQty),
+                    child: _ProductListTile(
+                      // Stable identity: a filtered or refreshed list reuses the
+                      // row's element only when the key says it is the same
+                      // product, so state never bleeds between two rows.
+                      key: ValueKey('product-${p.id}'),
+                      product: p,
+                      variantCount: variantCount,
+                      tracksVariants: _variants.tracks(p),
+                      isOwner: isOwner,
+                      onEdit: () => _openEditor(p),
+                      onAdjust: () => _adjustStock(p),
+                      onDelete: () => _delete(p),
+                    ),
+                  );
+                },
+              ),
+      ),
+    );
+  }
+
+  /// Divider inset that lines the rule up with the product name rather than the
+  /// screen edge — the badge is the row's anchor, the text is what the rule
+  /// separates.
+  double _rowDividerInset(BuildContext context) =>
+      AppSpacing.of(context).md + 40 + AppSpacing.of(context).md;
+}
+
+/// The first load, drawn as the rows it is about to become.
+///
+/// A skeleton rather than a spinner because the shape tells the shopkeeper what
+/// is coming — a list — and nothing moves when the content lands. The shimmer is
+/// deliberately absent: a pulsing placeholder on a till used in a bright shop is
+/// an animation nobody asked for, and this app's motion budget is spent on
+/// things that mean something.
+class _InventorySkeleton extends StatelessWidget {
+  const _InventorySkeleton();
+
+  @override
+  Widget build(BuildContext context) {
+    final AppSpacing spacing = AppSpacing.of(context);
+    final AppColors colors = AppColors.of(context);
+    final AppShapes shapes = AppShapes.of(context);
+
+    return Column(
+      children: List<Widget>.generate(8, (int i) {
+        return Padding(
+          padding: EdgeInsetsDirectional.only(
+            start: spacing.md,
+            end: spacing.md,
+            top: spacing.sm,
+            bottom: spacing.sm,
+          ),
+          child: Row(
+            children: <Widget>[
+              // The count badge's slot.
+              Container(
+                width: 40,
+                height: 40,
+                decoration: BoxDecoration(
+                  color: colors.surfaceSunken,
+                  borderRadius: shapes.chipRadius,
                 ),
-                trailing: PopupMenuButton<String>(
-                  onSelected: (v) {
-                    if (v == 'edit') _openEditor(p);
-                    if (v == 'adjust') _adjustStock(p);
-                    if (v == 'delete') _delete(p);
-                  },
-                  itemBuilder: (_) => [
-                    PopupMenuItem(
-                        value: 'edit',
-                        child: Text(
-                            AppLocalizations.of(context).inventoryEditAction)),
-                    PopupMenuItem(
-                        value: 'adjust',
-                        child: Text(AppLocalizations.of(context)
-                            .inventoryAdjustAction)),
-                    if (isOwner)
-                      PopupMenuItem(
-                          value: 'delete',
-                          child: Text(AppLocalizations.of(context)
-                              .inventoryDeleteAction)),
+              ),
+              SizedBox(width: spacing.md),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: <Widget>[
+                    // The name's slot: wider than the meta line's, because
+                    // that is the proportion the real rows land at.
+                    FractionallySizedBox(
+                      widthFactor: i.isEven ? 0.62 : 0.45,
+                      child: Container(
+                        height: 14,
+                        decoration: BoxDecoration(
+                          color: colors.surfaceSunken,
+                          borderRadius: shapes.barRadius,
+                        ),
+                      ),
+                    ),
+                    SizedBox(height: spacing.sm),
+                    FractionallySizedBox(
+                      widthFactor: 0.35,
+                      child: Container(
+                        height: 10,
+                        decoration: BoxDecoration(
+                          color: colors.surfaceSunken,
+                          borderRadius: shapes.barRadius,
+                        ),
+                      ),
+                    ),
                   ],
                 ),
               ),
-            );
-          },
+            ],
+          ),
+        );
+      }),
+    );
+  }
+}
+
+/// A catalogue with nothing in it.
+///
+/// Three different situations produce an empty-looking list and this is the one
+/// that is a setup problem: a loading list gets the skeleton, a filtered list
+/// gets its filter cleared, and a genuinely empty catalogue gets this — the
+/// words that say what is missing and the one action that fixes it.
+class _InventoryEmptyState extends StatelessWidget {
+  const _InventoryEmptyState({required this.onAdd});
+
+  final VoidCallback onAdd;
+
+  @override
+  Widget build(BuildContext context) {
+    final AppLocalizations l10n = AppLocalizations.of(context);
+    final AppSpacing spacing = AppSpacing.of(context);
+    final AppColors colors = AppColors.of(context);
+    final TextTheme type = AppTypography.of(context);
+
+    return Padding(
+      padding: EdgeInsets.all(spacing.xl),
+      child: Column(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: <Widget>[
+          Icon(
+            Icons.inventory_2_outlined,
+            size: 40,
+            color: colors.onSurfaceMuted,
+          ),
+          SizedBox(height: spacing.lg),
+          Text(
+            l10n.inventoryEmptyTitle,
+            textAlign: TextAlign.center,
+            style: type.titleMedium,
+          ),
+          SizedBox(height: spacing.xs),
+          Text(
+            l10n.inventoryEmptyBody,
+            textAlign: TextAlign.center,
+            style: type.bodyMedium?.copyWith(color: colors.onSurfaceMuted),
+          ),
+          SizedBox(height: spacing.lg),
+          FilledButton.icon(
+            onPressed: onAdd,
+            icon: const Icon(Icons.add),
+            label: Text(l10n.inventoryAddProduct),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+/// A product list tile with reliable edit/adjust/delete actions.
+///
+/// Uses an explicit menu button instead of PopupMenuButton to avoid
+/// touch target issues in ListView.
+class _ProductListTile extends StatelessWidget {
+  const _ProductListTile({
+    required this.product,
+    required this.variantCount,
+    required this.tracksVariants,
+    required this.isOwner,
+    required this.onEdit,
+    required this.onAdjust,
+    required this.onDelete,
+    super.key,
+  });
+
+  final Product product;
+  final int variantCount;
+  final bool tracksVariants;
+  final bool isOwner;
+  final VoidCallback onEdit;
+  final VoidCallback onAdjust;
+  final VoidCallback onDelete;
+
+  @override
+  Widget build(BuildContext context) {
+    final AppLocalizations l10n = AppLocalizations.of(context);
+    final AppSpacing spacing = AppSpacing.of(context);
+    final AppColors colors = AppColors.of(context);
+    final TextTheme type = AppTypography.of(context);
+
+    final bool isOut = product.stockQty <= 0;
+    final bool isLow = !isOut && product.isLow;
+
+    // The state, resolved ONCE from the value. Normal is quiet on purpose: a
+    // till where every in-stock product wears a green chip is a till where the
+    // amber ones no longer stand out.
+    final StatusTone tone = isOut
+        ? StatusTone.danger
+        : isLow
+            ? StatusTone.warning
+            : StatusTone.neutral;
+
+    // One line, three facts, in the order a shopkeeper scans them. The count is
+    // deliberately NOT repeated here — the badge on the leading edge is the
+    // count, and saying it twice makes both harder to read.
+    final String meta = [
+      product.category,
+      formatMoney(product.sellPrice),
+      if (tracksVariants && variantCount == 0) l10n.inventoryNoVariantsYet,
+      if (variantCount > 0) l10n.sellVariantCount(variantCount),
+    ].join(' · ');
+
+    return Semantics(
+      button: true,
+      child: InkWell(
+        onTap: onEdit,
+        child: Padding(
+          padding: EdgeInsetsDirectional.only(
+            start: spacing.md,
+            end: spacing.xs,
+            top: spacing.sm,
+            bottom: spacing.sm,
+          ),
+          child: ConstrainedBox(
+            // The floor is on the ROW, not the text: a 44px minimum with the
+            // name free to wrap keeps the target legal at any text scale.
+            constraints: const BoxConstraints(minHeight: 56),
+            child: Row(
+              children: [
+                _StockCountBadge(
+                  quantity: product.stockQty.round(),
+                  tone: tone,
+                ),
+                SizedBox(width: spacing.md),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      Text(
+                        product.name,
+                        // Wraps to two lines and stops there — no ellipsis:
+                        // a cut-off product name is a product nobody can find.
+                        maxLines: 2,
+                        style: type.titleSmall,
+                      ),
+                      SizedBox(height: spacing.xs),
+                      Text(
+                        meta,
+                        style: type.bodySmall?.copyWith(
+                          color: colors.onSurfaceMuted,
+                        ),
+                      ),
+                      if (isOut || isLow) ...[
+                        SizedBox(height: spacing.xs),
+                        StatusChip(
+                          tone: tone,
+                          text: isOut
+                              ? l10n.inventoryOutOfStock
+                              : l10n.inventoryLowStock,
+                        ),
+                      ],
+                    ],
+                  ),
+                ),
+                _ProductActionMenu(
+                  isOwner: isOwner,
+                  onEdit: onEdit,
+                  onAdjust: onAdjust,
+                  onDelete: onDelete,
+                ),
+              ],
+            ),
+          ),
         ),
       ),
+    );
+  }
+}
+
+class _ProductActionMenu extends StatelessWidget {
+  const _ProductActionMenu({
+    required this.isOwner,
+    required this.onEdit,
+    required this.onAdjust,
+    required this.onDelete,
+  });
+
+  final bool isOwner;
+  final VoidCallback onEdit;
+  final VoidCallback onAdjust;
+  final VoidCallback onDelete;
+
+  @override
+  Widget build(BuildContext context) {
+    final l10n = AppLocalizations.of(context);
+    final AppColors colors = AppColors.of(context);
+    return PopupMenuButton<String>(
+      tooltip: l10n.inventoryActionsTooltip,
+      onSelected: (value) {
+        switch (value) {
+          case 'edit':
+            onEdit();
+            break;
+          case 'adjust':
+            onAdjust();
+            break;
+          case 'delete':
+            onDelete();
+            break;
+        }
+      },
+      itemBuilder: (context) => [
+        PopupMenuItem(
+          value: 'edit',
+          child: Row(
+            children: [
+              Icon(Icons.edit_outlined, size: 20),
+              SizedBox(width: 12),
+              Text(l10n.inventoryEditAction),
+            ],
+          ),
+        ),
+        PopupMenuItem(
+          value: 'adjust',
+          child: Row(
+            children: [
+              Icon(Icons.inventory_outlined, size: 20),
+              SizedBox(width: 12),
+              Text(l10n.inventoryAdjustAction),
+            ],
+          ),
+        ),
+        if (isOwner)
+          PopupMenuItem(
+            value: 'delete',
+            child: Row(
+              children: [
+                Icon(Icons.delete_outline, size: 20, color: colors.danger),
+                SizedBox(width: 12),
+                Text(
+                  l10n.inventoryDeleteAction,
+                  style: TextStyle(color: colors.danger),
+                ),
+              ],
+            ),
+          ),
+      ],
     );
   }
 }
@@ -396,6 +761,10 @@ class _ProductEditorState extends State<_ProductEditor> {
   /// Variants already in the table that this session removes. Applied after the
   /// product save, so backing out of the sheet undoes the removal too.
   final List<int> _removedVariantIds = [];
+
+  /// The rows behind [_removedVariantIds], so the save can name what was
+  /// removed rather than only that something was.
+  final List<VariantDraft> _removedVariantDrafts = [];
 
   /// Whether the product is sold as variants. Read from the row rather than
   /// from the passed-in [Product], because `Product.fromMap` does not populate
@@ -626,7 +995,22 @@ class _ProductEditorState extends State<_ProductEditor> {
   }
 
   Future<void> _removeBarcode(ProductCode code) async {
+    // Captured before the first await: holding a BuildContext across one is
+    // exactly what `use_build_context_synchronously` forbids.
+    final AppState state = context.read<AppState>();
+    final l10n = AppLocalizations.of(context);
     await DatabaseHelper.instance.removeBarcode(code.barcode);
+    // A barcode removed is a code someone at the till can no longer scan, so
+    // the audit row says which product it belonged to — the code itself is the
+    // thing that just stopped working.
+    await recordActionAudit(
+      state,
+      action: AuditAction.barcodeRemoved,
+      entity: AuditEntity.barcode,
+      entityId: code.barcode,
+      detail:
+          code.isVariantLevel ? code.variantName : l10n.variantAllSizesLabel,
+    );
     if (!mounted) return;
     setState(() => _error = null);
     await _reloadCodes();
@@ -636,9 +1020,17 @@ class _ProductEditorState extends State<_ProductEditor> {
   /// code labelled "own" is the kind of thing that makes an import's duplicate
   /// report unreadable three months later.
   Future<void> _cycleBarcodeKind(ProductCode code) async {
+    final AppState state = context.read<AppState>();
     final index = BarcodeKind.kinds.indexOf(code.kind);
     final next = BarcodeKind.kinds[(index + 1) % BarcodeKind.kinds.length];
     await DatabaseHelper.instance.setBarcodeKind(code.barcode, next);
+    await recordActionAudit(
+      state,
+      action: AuditAction.barcodeKindChanged,
+      entity: AuditEntity.barcode,
+      entityId: code.barcode,
+      detail: '${BarcodeKind.label(code.kind)} → ${BarcodeKind.label(next)}',
+    );
     if (!mounted) return;
     await _reloadCodes();
   }
@@ -745,6 +1137,10 @@ class _ProductEditorState extends State<_ProductEditor> {
     setState(() {
       if (draft.id != null) {
         _removedVariantIds.add(draft.id!);
+        // Kept alongside the id so the save can log WHICH variant went, not
+        // just that one did — a variant id alone is meaningless to anyone
+        // reading the log later.
+        _removedVariantDrafts.add(draft);
         // The code goes with the variant, so the list must stop showing it
         // before the save that actually frees it.
         _codes = _codes.where((code) => code.variantId != draft.id).toList();
@@ -790,7 +1186,10 @@ class _ProductEditorState extends State<_ProductEditor> {
       },
       child: ListTile(
         contentPadding: EdgeInsets.zero,
-        leading: _StockCountBadge(quantity: draft.stockQty.round(), isLow: low),
+        leading: _StockCountBadge(
+          quantity: draft.stockQty.round(),
+          tone: low ? StatusTone.warning : StatusTone.neutral,
+        ),
         title: Text(draft.name.trim().isEmpty
             ? AppLocalizations.of(context).inventoryNewVariantName
             : draft.name),
@@ -834,6 +1233,7 @@ class _ProductEditorState extends State<_ProductEditor> {
   /// All deletes + upserts are batched in one transaction (a single fsync for
   /// N variants) rather than N separate transactions.
   Future<void> _saveVariants(int productId) async {
+    final AppState state = context.read<AppState>();
     final db = DatabaseHelper.instance;
     final l10n = AppLocalizations.of(context);
     final rawDb = await db.database;
@@ -852,6 +1252,78 @@ class _ProductEditorState extends State<_ProductEditor> {
         savedIds.add(variantId);
       }
     });
+    // Variants are logged after the transaction that committed them, and the
+    // row says which product — a variant id on its own means nothing to anyone
+    // reading the log six months later. Every row this gesture produces is
+    // written in ONE transaction, so saving a variant list costs one disk
+    // commit rather than four to eight.
+    final List<AuditLogEntry> auditRows = <AuditLogEntry>[];
+    for (final VariantDraft removed in _removedVariantDrafts) {
+      auditRows.add(
+        recordAuditEntry(
+          state,
+          action: AuditAction.productVariantRemoved,
+          entity: AuditEntity.variant,
+          entityId: 'id-$productId',
+          detail: removed.name,
+        ),
+      );
+    }
+    for (var i = 0; i < _drafts.length; i++) {
+      final draft = _drafts[i];
+      final variantId = savedIds[i];
+      final code = draft.barcode.trim();
+      if (code.isNotEmpty && (draft.isNew || draft.barcodeChanged)) {
+        auditRows.add(
+          recordAuditEntry(
+            state,
+            action: AuditAction.barcodeAdded,
+            entity: AuditEntity.barcode,
+            entityId: code,
+            detail: 'variant ${draft.name}',
+          ),
+        );
+      }
+      if (draft.hasStoredBarcode && draft.barcodeChanged) {
+        // A non-nullable String with an empty default, so the `?? ''` the
+        // analyzer flagged as a dead null-aware is simply not needed.
+        auditRows.add(
+          recordAuditEntry(
+            state,
+            action: AuditAction.barcodeRemoved,
+            entity: AuditEntity.barcode,
+            entityId: draft.storedBarcode,
+            detail: 'variant ${draft.name}',
+          ),
+        );
+      }
+      if (draft.isNew) {
+        auditRows.add(
+          recordAuditEntry(
+            state,
+            action: AuditAction.productVariantAdded,
+            entity: AuditEntity.variant,
+            entityId: 'id-$variantId',
+            detail: draft.name,
+          ),
+        );
+      } else if (draft.barcodeChanged || draft.name.trim().isNotEmpty) {
+        // An existing variant was edited. There is no dirty-tracking on the
+        // draft, so this is deliberately broad: "an existing variant was saved"
+        // is still a fact worth having, and a row that over-reports is less
+        // harmful than a log that says nothing happened when it did.
+        auditRows.add(
+          recordAuditEntry(
+            state,
+            action: AuditAction.productVariantUpdated,
+            entity: AuditEntity.variant,
+            entityId: 'id-$variantId',
+            detail: draft.name,
+          ),
+        );
+      }
+    }
+    await DatabaseHelper.instance.recordAudits(auditRows);
     for (var i = 0; i < _drafts.length; i++) {
       final draft = _drafts[i];
       final variantId = savedIds[i];
@@ -933,6 +1405,10 @@ class _ProductEditorState extends State<_ProductEditor> {
   }
 
   Future<void> _save() async {
+    // The session and the catalogue are both read before the first await: the
+    // audit rows written after each write are attributed from `state`, and a
+    // BuildContext must not be held across one.
+    final AppState state = context.read<AppState>();
     final name = _name.text.trim();
     final category = _category.text.trim().isEmpty
         ? AppLocalizations.of(context).inventoryDefaultCategory
@@ -1049,6 +1525,21 @@ class _ProductEditorState extends State<_ProductEditor> {
       // The product first: `product_variants.product_id` is NOT NULL, so a
       // variant has nowhere to point until this row exists.
       final productId = await DatabaseHelper.instance.upsertProduct(product);
+      // The product's existence is now durable, so "who changed it" is safe to
+      // record: writing the audit row after the write it describes means a
+      // crash between the two leaves a product with no audit row, never an
+      // audit row for a product that does not exist.
+      await recordActionAudit(
+        state,
+        action: widget.existing == null
+            ? AuditAction.productCreated
+            : AuditAction.productUpdated,
+        entity: AuditEntity.product,
+        entityId: 'id-$productId',
+        detail: product.trackVariants
+            ? '${product.name} · sold as variants'
+            : product.name,
+      );
       // Then the variants, still inside this same dialog session — the owner
       // configured "Kenyana Beer" and its four variants as one thing, and
       // saving half of it would leave the till offering something the catalogue
@@ -1095,12 +1586,17 @@ class _ProductEditorState extends State<_ProductEditor> {
 
   @override
   Widget build(BuildContext context) {
+    // The spacing scale, so the editor's rhythm is the app's rhythm. These used
+    // to be raw `SizedBox(height: n)` values, which is how a form ends up with
+    // 12, 8, 4 and 16 all meaning "between fields" at once — the congestion the
+    // brief asked to remove, and a value no other screen shares.
+    final AppSpacing spacing = AppSpacing.of(context);
     return Padding(
-      padding: EdgeInsets.only(
+      padding: EdgeInsetsDirectional.only(
           bottom: MediaQuery.viewInsetsOf(context).bottom,
-          left: 16,
-          right: 16,
-          top: 16),
+          start: spacing.xl,
+          end: spacing.xl,
+          top: spacing.xl),
       child: SingleChildScrollView(
         child: Column(
             mainAxisSize: MainAxisSize.min,
@@ -1111,7 +1607,7 @@ class _ProductEditorState extends State<_ProductEditor> {
                       ? AppLocalizations.of(context).inventoryAddProduct
                       : AppLocalizations.of(context).inventoryEditProduct,
                   style: Theme.of(context).textTheme.titleLarge),
-              const SizedBox(height: 12),
+              SizedBox(height: spacing.lg),
               TextField(
                   controller: _name,
                   decoration: InputDecoration(
@@ -1130,7 +1626,7 @@ class _ProductEditorState extends State<_ProductEditor> {
                             labelText: AppLocalizations.of(context)
                                 .inventoryFieldCostPrice),
                         keyboardType: TextInputType.number)),
-                const SizedBox(width: 8),
+                SizedBox(width: spacing.md),
                 Expanded(
                     child: TextField(
                         controller: _price,
@@ -1157,7 +1653,7 @@ class _ProductEditorState extends State<_ProductEditor> {
                                 .inventoryFieldHalfPriceOptional),
                         keyboardType: const TextInputType.numberWithOptions(
                             decimal: true))),
-                const SizedBox(width: 8),
+                SizedBox(width: spacing.md),
                 Expanded(
                     child: TextField(
                         controller: _quarterPrice,
@@ -1178,10 +1674,11 @@ class _ProductEditorState extends State<_ProductEditor> {
                                 : AppLocalizations.of(context)
                                     .inventoryFieldStockQty,
                             helperText: _trackVariants
-                                ? 'The variants\' total, kept in step for you'
+                                ? AppLocalizations.of(context)
+                                    .inventoryStockIsDerived
                                 : null),
                         keyboardType: TextInputType.number)),
-                const SizedBox(width: 8),
+                SizedBox(width: spacing.md),
                 Expanded(
                     child: TextField(
                         controller: _reorder,
@@ -1195,7 +1692,7 @@ class _ProductEditorState extends State<_ProductEditor> {
                   decoration: InputDecoration(
                       labelText: AppLocalizations.of(context)
                           .inventoryExciseStampField)),
-              const SizedBox(height: 8),
+              SizedBox(height: spacing.md),
               SwitchListTile(
                 contentPadding: EdgeInsets.zero,
                 value: _trackVariants,
@@ -1214,15 +1711,14 @@ class _ProductEditorState extends State<_ProductEditor> {
               if (_trackVariants) ...[
                 Text(AppLocalizations.of(context).inventoryVariantsSection,
                     style: Theme.of(context).textTheme.titleSmall),
-                const SizedBox(height: 4),
+                SizedBox(height: spacing.sm),
                 if (_loadingMeta)
                   const LinearProgressIndicator()
                 else if (_drafts.isEmpty)
                   Padding(
                     padding: const EdgeInsets.symmetric(vertical: 4),
                     child: Text(
-                        'No variants yet. The till will ask for one instead of '
-                        'selling the whole product.',
+                        AppLocalizations.of(context).inventoryNoVariantsHelper,
                         style: AppTypography.of(context).bodyMedium),
                   )
                 else
@@ -1235,19 +1731,16 @@ class _ProductEditorState extends State<_ProductEditor> {
                       : AppLocalizations.of(context)
                           .inventoryAddAnotherVariant),
                 ),
-                const SizedBox(height: 16),
+                SizedBox(height: spacing.xl),
               ],
               Text(AppLocalizations.of(context).inventoryBarcodesSection,
                   style: Theme.of(context).textTheme.titleSmall),
-              const SizedBox(height: 4),
+              SizedBox(height: spacing.sm),
               Text(
-                'A code on the product adds the whole product. A code on a '
-                'variant — entered in that variant\'s own form — adds that '
-                'variant, at its price and from its stock. Each code can only '
-                'ever resolve to one of them.',
+                AppLocalizations.of(context).inventoryBarcodesHelp,
                 style: AppTypography.of(context).bodySmall,
               ),
-              const SizedBox(height: 8),
+              SizedBox(height: spacing.md),
               if (_loadingMeta)
                 const LinearProgressIndicator()
               else if (_codes.isEmpty)
@@ -1304,7 +1797,7 @@ class _ProductEditorState extends State<_ProductEditor> {
                     onSubmitted: (_) => _addBarcode(),
                   ),
                 ),
-                const SizedBox(width: 8),
+                SizedBox(width: spacing.md),
                 IconButton.filledTonal(
                   icon: const Icon(Icons.add),
                   tooltip: 'Add barcode',
@@ -1318,7 +1811,7 @@ class _ProductEditorState extends State<_ProductEditor> {
                       style: TextStyle(
                           color: Theme.of(context).colorScheme.error)),
                 ),
-              const SizedBox(height: 16),
+              SizedBox(height: spacing.xl),
               FilledButton(
                   onPressed: _save,
                   // Says what the button will do: on a product with variants
@@ -1327,7 +1820,7 @@ class _ProductEditorState extends State<_ProductEditor> {
                   child: Text(_trackVariants && _drafts.isNotEmpty
                       ? 'Save product and ${_drafts.length} variant${_drafts.length == 1 ? '' : 's'}'
                       : 'Save product')),
-              const SizedBox(height: 16),
+              SizedBox(height: spacing.xl),
             ]),
       ),
     );
@@ -1360,8 +1853,10 @@ class _AdjustDialogState extends State<_AdjustDialog> {
   Widget build(BuildContext context) {
     return AlertDialog(
       title: Text(widget.variant == null
-          ? 'Adjust stock — ${widget.product.name}'
-          : 'Adjust stock — ${widget.variant!.label}'),
+          ? AppLocalizations.of(context)
+              .inventoryAdjustStockTitle(widget.product.name)
+          : AppLocalizations.of(context)
+              .inventoryAdjustStockTitle(widget.variant!.label)),
       content: Column(mainAxisSize: MainAxisSize.min, children: [
         TextField(
             controller: _delta,
@@ -1397,27 +1892,31 @@ class _AdjustDialogState extends State<_AdjustDialog> {
 /// badge is excluded from the row's own semantics because the row announces the
 /// count already.
 class _StockCountBadge extends StatelessWidget {
-  const _StockCountBadge({required this.quantity, required this.isLow});
+  const _StockCountBadge({required this.quantity, required this.tone});
 
   final int quantity;
-  final bool isLow;
+
+  /// The row's state, carried by the badge so the count and the state are read
+  /// as one thing at the leading edge of the list.
+  final StatusTone tone;
 
   @override
   Widget build(BuildContext context) {
-    final StatusTone tone = isLow ? StatusTone.warning : StatusTone.success;
     final AppColors colors = AppColors.of(context);
 
     return Semantics(
       excludeSemantics: true,
       child: Container(
-        constraints: const BoxConstraints(minWidth: 32, minHeight: 32),
+        constraints: const BoxConstraints(minWidth: 40, minHeight: 40),
         alignment: Alignment.center,
-        padding: const EdgeInsets.symmetric(horizontal: 6),
+        padding: EdgeInsets.symmetric(
+          horizontal: AppSpacing.of(context).sm,
+        ),
         decoration: BoxDecoration(
           color: tone.container(colors),
           shape: BoxShape.rectangle,
-          borderRadius: BorderRadius.circular(AppShapes.of(context).pill),
-          border: Border.all(color: tone.color(colors)),
+          borderRadius: AppShapes.of(context).chipRadius,
+          border: tone.isFilled ? Border.all(color: tone.color(colors)) : null,
         ),
         child: Text(
           AppLocalizations.of(context).inventoryQuantity(quantity),
@@ -1425,7 +1924,7 @@ class _StockCountBadge extends StatelessWidget {
           // the digit count changes is unreadable at a glance.
           style: AppTypography.money(
             context,
-            size: 12,
+            size: 14,
             weight: FontWeight.w700,
           ).copyWith(color: tone.onContainer(colors)),
         ),

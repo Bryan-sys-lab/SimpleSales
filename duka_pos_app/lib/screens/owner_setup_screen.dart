@@ -308,7 +308,7 @@ class _OwnerSetupScreenState extends State<OwnerSetupScreen> {
 /// The mark and the logotype, above the form.
 ///
 /// The wordmark is the product's own name, so the mark beside it is decorative:
-/// two nodes announcing "Simple POS" is a screen reader stuttering.
+/// two nodes announcing "SimpleSales" is a screen reader stuttering.
 class _SetupLockup extends StatelessWidget {
   const _SetupLockup();
 
@@ -446,7 +446,7 @@ class _BackRow extends StatelessWidget {
         // hard-coded arrow is a screen that is wrong in half the world's
         // languages. Not const: the adaptive set resolves per platform at
         // build time.
-        icon: ExcludeSemantics(child: Icon(Icons.arrow_back)),
+        icon: ExcludeSemantics(child: Icon(Icons.adaptive.arrow_back)),
         label: const Text('Back'),
       ),
     );

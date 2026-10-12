@@ -36,8 +36,7 @@ class _PlaceholderScreen extends StatelessWidget {
 /// default `skipOffstage: true` is the point: go_router keeps every visited
 /// branch alive inside an `IndexedStack`, offstage, so a finder that saw
 /// offstage widgets would pass even with the dashboard still showing.
-Finder _screen(String label) =>
-    find.byKey(ValueKey<String>('screen-$label'));
+Finder _screen(String label) => find.byKey(ValueKey<String>('screen-$label'));
 
 class _FakeStage extends ChangeNotifier {
   _FakeStage(this._snapshot);
@@ -56,15 +55,14 @@ GoRouter _testRouter(AppState state) {
     navigatorKey: GlobalKey<NavigatorState>(debugLabel: 'root'),
     initialLocation: Routes.dashboard,
     refreshListenable: stage,
-    redirect: (BuildContext context, GoRouterState routerState) =>
-        appRedirect(
-          snapshot: AppStageSnapshot(
-            stage: AppStage.ready,
-            canManageStock: state.canManageStock,
-            isAdmin: state.isAdmin,
-          ),
-          location: routerState.uri.path,
-        ),
+    redirect: (BuildContext context, GoRouterState routerState) => appRedirect(
+      snapshot: AppStageSnapshot(
+        stage: AppStage.ready,
+        canManageStock: state.canManageStock,
+        isAdmin: state.isAdmin,
+      ),
+      location: routerState.uri.path,
+    ),
     errorBuilder: (BuildContext context, GoRouterState routerState) =>
         const Scaffold(body: Center(child: Text('404'))),
     routes: <RouteBase>[
@@ -124,8 +122,8 @@ GoRouter _testRouter(AppState state) {
   );
 }
 
-Future<void> _pumpShell(WidgetTester tester, AppState state,
-    GoRouter router) async {
+Future<void> _pumpShell(
+    WidgetTester tester, AppState state, GoRouter router) async {
   await tester.pumpWidget(
     MultiProvider(
       providers: <SingleChildWidget>[
@@ -205,9 +203,11 @@ void main() {
   });
 
   group('mobile bottom nav', () {
-    testWidgets('all five destinations are offered to an owner on a compact screen',
+    testWidgets(
+        'all five destinations are offered to an owner on a compact screen',
         (WidgetTester tester) async {
-      tester.view.physicalSize = const Size(320, 640).testerPhysicalSizeForDpr(2.0);
+      tester.view.physicalSize =
+          const Size(320, 640).testerPhysicalSizeForDpr(2.0);
       tester.view.devicePixelRatio = 2.0;
       addTearDown(tester.view.reset);
       final AppState state = AppState();
@@ -222,7 +222,8 @@ void main() {
 
     testWidgets('tapping each destination changes the URL',
         (WidgetTester tester) async {
-      tester.view.physicalSize = const Size(320, 640).testerPhysicalSizeForDpr(2.0);
+      tester.view.physicalSize =
+          const Size(320, 640).testerPhysicalSizeForDpr(2.0);
       tester.view.devicePixelRatio = 2.0;
       addTearDown(tester.view.reset);
       final AppState state = AppState();
@@ -232,8 +233,7 @@ void main() {
 
       final List<String> visited = <String>[];
 
-      String location() =>
-          router.routeInformationProvider.value.uri.path;
+      String location() => router.routeInformationProvider.value.uri.path;
 
       visited.add(location());
 
@@ -259,7 +259,8 @@ void main() {
     });
 
     testWidgets('manager sees four tabs', (WidgetTester tester) async {
-      tester.view.physicalSize = const Size(320, 640).testerPhysicalSizeForDpr(2.0);
+      tester.view.physicalSize =
+          const Size(320, 640).testerPhysicalSizeForDpr(2.0);
       tester.view.devicePixelRatio = 2.0;
       addTearDown(tester.view.reset);
       final AppState state = AppState();
@@ -271,7 +272,8 @@ void main() {
     });
 
     testWidgets('cashier sees only two tabs', (WidgetTester tester) async {
-      tester.view.physicalSize = const Size(320, 640).testerPhysicalSizeForDpr(2.0);
+      tester.view.physicalSize =
+          const Size(320, 640).testerPhysicalSizeForDpr(2.0);
       tester.view.devicePixelRatio = 2.0;
       addTearDown(tester.view.reset);
       final AppState state = AppState();
@@ -289,7 +291,8 @@ void main() {
   group('rail and drawer shells', () {
     testWidgets('medium width exposes a rail with the same destinations',
         (WidgetTester tester) async {
-      tester.view.physicalSize = const Size(800, 600).testerPhysicalSizeForDpr(2.0);
+      tester.view.physicalSize =
+          const Size(800, 600).testerPhysicalSizeForDpr(2.0);
       tester.view.devicePixelRatio = 2.0;
       addTearDown(tester.view.reset);
       final AppState state = AppState();
@@ -300,7 +303,8 @@ void main() {
       expect(find.byType(Scaffold), findsNWidgets(2));
       expect(find.byType(NavigationRail), findsOneWidget);
       expect(find.byType(NavigationBar), findsNothing);
-      final NavigationRail rail = find.byType(NavigationRail).evaluate().first.widget as NavigationRail;
+      final NavigationRail rail =
+          find.byType(NavigationRail).evaluate().first.widget as NavigationRail;
       expect(rail.destinations.length, 5);
       expect(rail.selectedIndex, 0);
       expect(rail.extended, false);
@@ -308,7 +312,8 @@ void main() {
 
     testWidgets('extra-large width exposes a drawer with the same destinations',
         (WidgetTester tester) async {
-      tester.view.physicalSize = const Size(1600, 800).testerPhysicalSizeForDpr(2.0);
+      tester.view.physicalSize =
+          const Size(1600, 800).testerPhysicalSizeForDpr(2.0);
       tester.view.devicePixelRatio = 2.0;
       addTearDown(tester.view.reset);
       final AppState state = AppState();
@@ -320,7 +325,7 @@ void main() {
       expect(find.byType(Drawer), findsOneWidget);
       expect(find.byType(NavigationBar), findsNothing);
       expect(find.byType(ListTile), findsNWidgets(6));
-});
+    });
   });
 
   group('the body follows the tab', () {
@@ -330,7 +335,8 @@ void main() {
     // tests only looked at the URL, which is why that shipped.
     testWidgets('every compact tab shows its own screen',
         (WidgetTester tester) async {
-      tester.view.physicalSize = const Size(320, 640).testerPhysicalSizeForDpr(2.0);
+      tester.view.physicalSize =
+          const Size(320, 640).testerPhysicalSizeForDpr(2.0);
       tester.view.devicePixelRatio = 2.0;
       addTearDown(tester.view.reset);
       final AppState state = AppState();
@@ -366,7 +372,8 @@ void main() {
     });
 
     testWidgets('the rail switches the body too', (WidgetTester tester) async {
-      tester.view.physicalSize = const Size(800, 600).testerPhysicalSizeForDpr(2.0);
+      tester.view.physicalSize =
+          const Size(800, 600).testerPhysicalSizeForDpr(2.0);
       tester.view.devicePixelRatio = 2.0;
       addTearDown(tester.view.reset);
       final AppState state = AppState();
@@ -399,7 +406,8 @@ void main() {
 
     testWidgets('the wide-screen drawer switches the body too',
         (WidgetTester tester) async {
-      tester.view.physicalSize = const Size(1600, 800).testerPhysicalSizeForDpr(2.0);
+      tester.view.physicalSize =
+          const Size(1600, 800).testerPhysicalSizeForDpr(2.0);
       tester.view.devicePixelRatio = 2.0;
       addTearDown(tester.view.reset);
       final AppState state = AppState();
@@ -415,7 +423,8 @@ void main() {
 
     testWidgets('a screen can move the shell with HomeShellTabs.goTo',
         (WidgetTester tester) async {
-      tester.view.physicalSize = const Size(320, 640).testerPhysicalSizeForDpr(2.0);
+      tester.view.physicalSize =
+          const Size(320, 640).testerPhysicalSizeForDpr(2.0);
       tester.view.devicePixelRatio = 2.0;
       addTearDown(tester.view.reset);
       final AppState state = AppState();
@@ -436,7 +445,8 @@ void main() {
 
     testWidgets('goTo is a no-op for a destination the role does not have',
         (WidgetTester tester) async {
-      tester.view.physicalSize = const Size(320, 640).testerPhysicalSizeForDpr(2.0);
+      tester.view.physicalSize =
+          const Size(320, 640).testerPhysicalSizeForDpr(2.0);
       tester.view.devicePixelRatio = 2.0;
       addTearDown(tester.view.reset);
       final AppState state = AppState();

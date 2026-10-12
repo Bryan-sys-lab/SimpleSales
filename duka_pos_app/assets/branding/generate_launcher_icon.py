@@ -26,13 +26,13 @@ from PIL import Image, ImageChops, ImageDraw
 # ---------------------------------------------------------------------------
 # Palette — mirrors DukaColors in lib/theme/app_theme.dart
 # ---------------------------------------------------------------------------
-INK = (0x25, 0x1A, 0x1D, 0xFF)       # DukaColors.ink        #251A1D
+INK = (0x2D, 0x2A, 0x26, 0xFF)       # DukaColors.ink        #2D2A26
 PAPER = (0xFF, 0xFF, 0xFF, 0xFF)      # DukaColors.onPrimary  #FFFFFF
-WINE = (0x6E, 0x26, 0x38, 0xFF)       # DukaColors.primary    #6E2638
+GREEN = (0x1B, 0x6B, 0x3A, 0xFF)      # DukaColors.primary    #1B6B3A
 
 # ---------------------------------------------------------------------------
-# The mark: the geometric "S" — a single continuous white curve with a wine
-# accent dot. The source PNG is exported from the design tool's SVG and
+# The mark: the geometric "S" — a single continuous white curve with a brand
+# green accent dot. The source PNG is exported from the design tool's SVG and
 # rendered on a solid ink background; this script strips that background so
 # the mark can composited onto whatever surface the platform provides.
 # ---------------------------------------------------------------------------
@@ -111,7 +111,7 @@ def _load_s_source() -> Image.Image:
 def render_mark(size: int, scale: float) -> Image.Image:
     """The full-colour geometric S mark on transparency.
 
-    The wine dot is preserved: it is solid wine on white, which reads as its
+    The brand dot is preserved: it is solid green on white, which reads as its
     own tone at every density and survives a monochrome pass because the
     dot's alpha is non-zero.
     """
@@ -130,8 +130,8 @@ def render_mark(size: int, scale: float) -> Image.Image:
 def render_monochrome(size: int, scale: float) -> Image.Image:
     """Solid white silhouette for `android:monochrome`.
 
-    No wine, no bezel: the launcher tints this one colour and supplies its own
-    background, so the entire mark (S stroke and wine dot) is collapsed to a
+    No green, no bezel: the launcher tints this one colour and supplies its own
+    background, so the entire mark (S stroke and brand dot) is collapsed to a
     single white silhouette.
     """
     mark = render_mark(size, scale)

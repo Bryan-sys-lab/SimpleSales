@@ -370,8 +370,11 @@ class _ShotCupCard extends StatelessWidget {
     ].join(' · ');
   }
 
+  // gen-l10n sorts the parameters ALPHABETICALLY — capacity, label — which is
+  // the reverse of the label's own order "{label} · {capacity} ml". The
+  // capacity came first and the label second, so the card read "30 · Shot ml".
   String _name(AppLocalizations l10n) =>
-      l10n.shotCupsCardName(cup.label, cup.capacityMl);
+      l10n.shotCupsCardName(cup.capacityMl, cup.label);
 
   @override
   Widget build(BuildContext context) {
@@ -395,9 +398,12 @@ class _ShotCupCard extends StatelessWidget {
       // The row's own words, read as one phrase. A screen-reader user stepping
       // through the shelf should hear "Shot, 30 ml, Tusker, 14 per bottle, KSh
       // 80" as one stop, not five.
+      // Both row labels take (detail, name, price) — gen-l10n sorts the three
+      // ALPHABETICALLY, which is the reverse of the sentence's own order
+      // "{name}, {detail}, {price}". These were passed name-first.
       semanticLabel: cup.active
-          ? l10n.shotCupsCardSpoken(name, detail, price)
-          : l10n.shotCupsCardSpokenInactive(name, detail, price),
+          ? l10n.shotCupsCardSpoken(detail, name, price)
+          : l10n.shotCupsCardSpokenInactive(detail, name, price),
       child: Row(
         children: <Widget>[
           // Decorative: the name and the price beside it say everything the

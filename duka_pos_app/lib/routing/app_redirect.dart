@@ -49,7 +49,8 @@ String? appRedirect({
 
     final String door = switch (snapshot.stage) {
       AppStage.chooser => Routes.welcome,
-      AppStage.signingIn => Routes.welcome, // Sign-out lands on chooser, not PIN pad
+      AppStage.signingIn =>
+        Routes.welcome, // Sign-out lands on chooser, not PIN pad
       AppStage.settingUp => Routes.setup,
       AppStage.onboarding || AppStage.ready => Routes.dashboard,
       _ => Routes.welcome,

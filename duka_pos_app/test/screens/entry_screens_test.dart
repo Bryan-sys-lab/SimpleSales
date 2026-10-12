@@ -116,7 +116,7 @@ void main() {
             textScaler: TextScaler.linear(scale),
           );
           tester.expectNoOverflow('splash $where');
-          expect(find.text('Simple POS'), findsWidgets);
+          expect(find.text('SimpleSales'), findsWidgets);
         });
 
         testWidgets('chooser fits $where', (WidgetTester tester) async {

@@ -87,6 +87,15 @@ class _CameraScanScreenState extends State<CameraScanScreen>
     }
   }
 
+  Future<void> _retryCamera() async {
+    setState(() {
+      _permissionDenied = false;
+      _detail = null;
+      _handled = false;
+    });
+    await _start();
+  }
+
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
     final controller = _controller.value;
@@ -232,6 +241,12 @@ class _CameraScanScreenState extends State<CameraScanScreen>
                 ),
               ),
             const SizedBox(height: 24),
+            FilledButton.icon(
+              onPressed: _retryCamera,
+              icon: const Icon(Icons.refresh),
+              label: Text(AppLocalizations.of(context).scanRetryCamera),
+            ),
+            const SizedBox(height: 12),
             FilledButton(
               onPressed: () => Navigator.pop(context),
               child: Text(AppLocalizations.of(context).scanBackToSelling),

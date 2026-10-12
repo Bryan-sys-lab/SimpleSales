@@ -1,8 +1,8 @@
 name: duka_pos
 description: >-
-  Simple POS — an offline-first point of sale for African retail: sales, M-Pesa
-  payments, stock and eTIMS receipts that keep working when the internet does
-  not.
+  SimpleSales — an offline-first point of sale for African retail: sales,
+  M-Pesa payments, stock and eTIMS receipts that keep working when the internet
+  does not.
 publish_to: 'none'
 # The build number must increase on every release: Android refuses to install a
 # build whose code is not higher than the installed one.
@@ -111,6 +111,15 @@ dev_dependencies:
   # Mocking for tests
   mockito: ^5.4.4
   build_runner: ^2.16.2
+  # A test takes over the documents directory so a backup's target is somewhere
+  # it owns. Declared here rather than borrowed transitively through
+  # path_provider, because importing a package you do not declare is exactly the
+  # dependency-hygiene smell the analyzer is right to flag.
+  path_provider_platform_interface: ^2.1.3
+  # The keystore seam the backup test drives.  is a
+  # direct dependency already, so this is its platform interface, declared for
+  # the same reason as the one above.
+  flutter_secure_storage_platform_interface: ^2.1.1
 
 flutter:
   uses-material-design: true

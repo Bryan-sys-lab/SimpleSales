@@ -282,6 +282,86 @@ void main() {
       tester.expectTapTargetsMeetMinimum(find.byType(Scaffold));
     });
 
+    testWidgets('every shared settings row clears 44px',
+        (WidgetTester tester) async {
+      // The rows Settings and Tax settings are built from. They are the most
+      // reused interactive shapes in the app now, so a target regression in
+      // one of them lands on two screens.
+      tester.useDevice(Device.small);
+      await tester.pumpApp(
+        home: Scaffold(
+          body: SingleChildScrollView(
+            child: Column(
+              children: <Widget>[
+                SettingsInfoRow(
+                  icon: Icons.percent,
+                  title: 'VAT rate 16%',
+                  subtitle: 'A KSh 100 sale carries KSh 13.79 VAT.',
+                ),
+                SettingsNavRow(
+                  icon: Icons.tag_outlined,
+                  title: 'Till code',
+                  subtitle: 'Receipts are numbered KRA42-000001.',
+                  trailing: 'Change',
+                  onTap: () {},
+                ),
+                SettingsSwitchRow(
+                  icon: Icons.print,
+                  title: 'Print after sale',
+                  subtitle: 'A receipt prints as the sale completes.',
+                  value: true,
+                  onChanged: (bool _) {},
+                ),
+                SettingsNavRow(
+                  icon: Icons.cloud_sync_outlined,
+                  title: 'Sync now',
+                  // Null onTap: the row exists but is dimmed and inert, and it
+                  // still has to occupy its full target slot so the layout does
+                  // not jump between idle and busy.
+                  onTap: null,
+                ),
+              ],
+            ),
+          ),
+        ),
+      );
+      tester.expectTapTargetsMeetMinimum(find.byType(Scaffold));
+    });
+
+    testWidgets('a disabled row keeps its slot rather than collapsing',
+        (WidgetTester tester) async {
+      tester.useDevice(Device.small);
+      await tester.pumpApp(
+        home: Scaffold(
+          body: Column(
+            children: <Widget>[
+              SettingsNavRow(
+                icon: Icons.tag_outlined,
+                title: 'Enabled',
+                onTap: () {},
+              ),
+              SettingsNavRow(
+                icon: Icons.tag_outlined,
+                title: 'Disabled',
+                onTap: null,
+              ),
+            ],
+          ),
+        ),
+      );
+
+      // Same height, because a row that shrinks when it stops accepting input
+      // makes every row below it move.
+      final List<double> heights = tester
+          .widgetList<SettingsNavRow>(find.byType(SettingsNavRow))
+          .map((row) => tester.getSize(find.byWidget(row)).height)
+          .toList();
+      expect(heights.length, 2);
+      expect(heights[0], heights[1]);
+      expect(
+          heights[0], greaterThanOrEqualTo(AppSpacing.standard.minTapTarget));
+    });
+
     testWidgets('the action bar button is at least 44px, and taller',
         (WidgetTester tester) async {
       tester.useDevice(Device.small);

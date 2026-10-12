@@ -37,7 +37,8 @@ extension AppLocalizationsKeys on AppLocalizations {
   /// The role line under the shop name: an owner is an owner, everyone else is a
   /// cashier. A method rather than a key so no call site has to spell the ternary
   /// — which is how two of them end up saying "Owner" for a manager.
-  String roleLabel(bool isAdmin) => isAdmin ? shellRoleOwner : shellRoleCashier;
+  String roleLabel(bool isAdmin) =>
+      isAdmin ? shellRoleOwner : settingsRoleCashier;
 
   /// Every key [byKey] can resolve, so a test can assert the mapping is TOTAL
   /// against the keys the enums actually use rather than against this file's own

@@ -118,22 +118,36 @@ Money sumMoney(Iterable<Money> values) =>
 ///
 /// A [ratePercent] of zero means exempt and yields zero, not a division by
 /// something derived from zero.
+/// `numerator / denominator` rounded half up, in integers only.
+///
+/// The ONE division path for money. `((n * 2) + d) ~/ (d * 2)` is
+/// `floor(n/d + 1/2)`, which is round-half-up for a non-negative ratio and needs
+/// no floating point to express.
+///
+/// Every average, split, proration and share in the app goes through here
+/// rather than through `num` division, because a `double` round trip lands just
+/// below a half and truncates against the shop: 29 cents over 2 baskets is
+/// exactly 14.5 cents, which is 15 half-up, but `0.29 / 2 * 100` is
+/// 14.499999999999998 and rounds to 14.
+int divideMoneyHalfUp(int numerator, int denominator) {
+  if (denominator == 0) return 0;
+  if (numerator < 0) {
+    return -divideMoneyHalfUp(-numerator, denominator);
+  }
+  return ((numerator * 2) + denominator) ~/ (denominator * 2);
+}
+
 Money vatComponentOf(Money vatInclusive, {required int ratePercent}) {
   if (ratePercent == 0 || vatInclusive.minorUnits == 0) return Money.zero;
   final numerator = vatInclusive.minorUnits * ratePercent;
   final denominator = 100 + ratePercent;
+  // Routes through the ONE public division primitive rather than a private
+  // twin: two copies of the same half-up rule is how a receipt ends up
+  // disagreeing with an average basket over the same cent.
   if (numerator < 0) {
-    return Money.fromMinor(-_divideRoundHalfUp(-numerator, denominator));
+    return Money.fromMinor(-divideMoneyHalfUp(-numerator, denominator));
   }
-  return Money.fromMinor(_divideRoundHalfUp(numerator, denominator));
-}
-
-/// `numerator / denominator` rounded half up, in integers only.
-///
-/// `((n * 2) + d) ~/ (d * 2)` is `floor(n/d + 1/2)`, which is round-half-up for
-/// a non-negative ratio and needs no floating point to express.
-int _divideRoundHalfUp(int numerator, int denominator) {
-  return ((numerator * 2) + denominator) ~/ (denominator * 2);
+  return Money.fromMinor(divideMoneyHalfUp(numerator, denominator));
 }
 
 /// Quantises a raw major-unit figure. Retained for the places that still hold a

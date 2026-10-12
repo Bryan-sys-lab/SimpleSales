@@ -72,9 +72,9 @@ class _StaffLoginScreenState extends State<StaffLoginScreen> {
       if (await AuthService.isTillLockedOut()) {
         final Duration? remaining = await AuthService.tillLockoutRemaining();
         if (!mounted) return;
-        setState(() => _error =
-            'Too many wrong PINs on this till. Try again in '
-            '${remaining?.inSeconds ?? 0}s.');
+        setState(
+            () => _error = 'Too many wrong PINs on this till. Try again in '
+                '${remaining?.inSeconds ?? 0}s.');
         return;
       }
       if (await AuthService.isLockedOut(userKey)) {
@@ -115,12 +115,12 @@ class _StaffLoginScreenState extends State<StaffLoginScreen> {
         final List<Staff> localStaff =
             await DatabaseHelper.instance.getStaff(activeOnly: false);
         staff = localStaff.cast<Staff?>().firstWhere(
-              (Staff? s) => s?.username?.toLowerCase() == username.toLowerCase(),
+              (Staff? s) =>
+                  s?.username?.toLowerCase() == username.toLowerCase(),
               orElse: () => null,
             );
         if (staff != null) {
-          final bool ok =
-              await AuthService.verifyPin(password, staff.pinHash);
+          final bool ok = await AuthService.verifyPin(password, staff.pinHash);
           if (ok) {
             await AuthService.recordSuccess(userKey);
           } else {
@@ -139,7 +139,8 @@ class _StaffLoginScreenState extends State<StaffLoginScreen> {
       }
 
       if (!mounted) return;
-      final int staffId = staff.id ?? context.read<AppState>().rememberedStaffId ?? 0;
+      final int staffId =
+          staff.id ?? context.read<AppState>().rememberedStaffId ?? 0;
       await StaffCredentialCache.cacheStaffCredentials(
         staffId,
         username,
@@ -252,9 +253,8 @@ class _StaffLoginScreenState extends State<StaffLoginScreen> {
                     ),
                     SizedBox(height: spacing.md),
                     TextButton.icon(
-                      onPressed: _loading
-                          ? null
-                          : () => context.go(Routes.login),
+                      onPressed:
+                          _loading ? null : () => context.go(Routes.login),
                       icon: const Icon(Icons.arrow_back_ios_new_rounded),
                       label: Text(l10n.backToPinPadAction),
                     ),

@@ -9,12 +9,19 @@ import 'package:shared_preferences/shared_preferences.dart';
 import '../app_brand.dart';
 import '../db/database_helper.dart';
 import '../l10n/generated/app_localizations.dart';
+import '../models/audit_log.dart';
 import '../services/app_state.dart';
+import '../services/audit_actor.dart';
 import '../services/etims/etims_service.dart';
 import '../services/workspace_service.dart';
 import '../services/printer/receipt_builder.dart';
 import '../theme/app_colors.dart';
+import '../theme/app_shapes.dart';
+import '../theme/app_spacing.dart';
 import '../theme/typography.dart';
+import '../ui/components/controls.dart';
+import '../ui/components/surface.dart';
+import '../ui/layout/page.dart';
 import '../utils/money.dart';
 import '../services/backend_service.dart';
 
@@ -34,10 +41,43 @@ class TaxSettingsScreen extends StatefulWidget {
 
   @override
   State<TaxSettingsScreen> createState() => _TaxSettingsScreenState();
+
+  /// What a KSh 100 line will look like, so the rate is not an abstraction.
+  ///
+  /// Static, because the panel that renders it is pure and takes its catalogue
+  /// as an argument. Formatted through the same `formatMoney` the rest of the
+  /// app uses, and the sentence comes from the ARB with the two figures as
+  /// placeholders — the old version spliced raw ASCII digits into a literal,
+  /// which is simultaneously un-localizable and wrong in any locale that groups
+  /// decimals differently.
+  static String workedExample(AppLocalizations l10n, int rate) {
+    final Money gross = Money.fromMajor(100);
+    final Money vat = vatComponentOf(gross, ratePercent: rate);
+    // gen-l10n orders the generated parameters ALPHABETICALLY by placeholder
+    // name, so `net` comes first and `vat` second regardless of the order they
+    // appear in the ARB template. Passing them in the template's order prints
+    // the VAT figure where the net figure belongs.
+    return l10n.taxSettingsWorkedExample(
+      formatMoney(gross - vat),
+      formatMoney(vat),
+    );
+  }
 }
 
 class _TaxSettingsScreenState extends State<TaxSettingsScreen> {
+  /// The rate as it will be saved: what the database holds.
   int _vatRatePercent = kDefaultVatRatePercent;
+
+  /// The rate the slider is showing while it is dragged.
+  ///
+  /// Held apart from [_vatRatePercent] so a drag can preview the effect on the
+  /// worked example without persisting anything, and so releasing the slider is
+  /// the single commit that writes the setting and one audit row.
+  int? _previewVatRate;
+
+  /// The rate on screen: the preview while dragging, otherwise the saved one.
+  int get _showingVatRate => _previewVatRate ?? _vatRatePercent;
+
   bool _pricesIncludeVat = true;
   bool _etimsEnabled = false;
   String _tillCode = '';
@@ -133,6 +173,9 @@ class _TaxSettingsScreenState extends State<TaxSettingsScreen> {
     String? tillCode,
     String? tin,
   }) async {
+    // Read before any await: the audit row below is attributed from the
+    // session, and a BuildContext must not be held across one.
+    final AppState state = context.read<AppState>();
     setState(() {
       _saving = true;
       _message = null;
@@ -146,6 +189,20 @@ class _TaxSettingsScreenState extends State<TaxSettingsScreen> {
         final prefs = await SharedPreferences.getInstance();
         await prefs.setBool(_pricesIncludeVatKey, pricesIncludeVat);
       }
+      // The tax settings decide what every future receipt says, so a rate
+      // changed at 11pm is the row an audit log exists to hold.
+      await recordActionAudit(
+        state,
+        action: AuditAction.taxSettingsChanged,
+        entity: AuditEntity.settings,
+        entityId: 'tax',
+        detail: _describeTaxChange(
+          vatRatePercent: vatRatePercent,
+          tillCode: tillCode,
+          tin: tin,
+          pricesIncludeVat: pricesIncludeVat,
+        ),
+      );
       if (!mounted) return;
       setState(() {
         if (vatRatePercent != null) _vatRatePercent = vatRatePercent;
@@ -158,232 +215,71 @@ class _TaxSettingsScreenState extends State<TaxSettingsScreen> {
     } catch (_) {
       if (!mounted) return;
       setState(() {
-        _message = "Couldn't save. Check the phone has storage free.";
+        _message = AppLocalizations.of(context).taxSettingsSaveFailed;
         _messageIsError = true;
       });
     } finally {
-      if (mounted) setState(() => _saving = false);
+      // The drag is over either way: the slider stops previewing and shows the
+      // saved rate, which keeps a failed save visibly unsuccessful.
+      if (mounted) {
+        setState(() {
+          _previewVatRate = null;
+          _saving = false;
+        });
+      }
     }
   }
 
-  /// What a KSh 100 line will look like, so the rate is not an abstraction.
-  String _workedExample(int rate) {
-    final gross = Money.fromMajor(100);
-    final vat = vatComponentOf(gross, ratePercent: rate);
-    return 'A KSh 100 sale carries KSh ${vat.asMajor.toStringAsFixed(2)} VAT, '
-        'leaving KSh ${(gross - vat).asMajor.toStringAsFixed(2)} net.';
+  /// The change, in words, for the audit row.
+  ///
+  /// One sentence naming only the fields that moved: a row saying "tax changed"
+  /// when only the till code moved is a row nobody can act on.
+  String _describeTaxChange({
+    int? vatRatePercent,
+    String? tillCode,
+    String? tin,
+    bool? pricesIncludeVat,
+  }) {
+    final parts = <String>[
+      if (vatRatePercent != null) 'VAT $vatRatePercent%',
+      if (tillCode != null) 'till $tillCode',
+      if (tin != null && tin.isNotEmpty) 'TIN $tin',
+      if (pricesIncludeVat != null)
+        pricesIncludeVat ? 'prices include VAT' : 'prices exclude VAT',
+    ];
+    return parts.isEmpty ? 'no change' : parts.join(', ');
   }
 
   @override
   Widget build(BuildContext context) {
-    final state = context.watch<AppState>();
-    if (!state.isAdmin) {
-      // Defence in depth. Settings does not show the tab to a non-admin, but a
-      // screen that mints a TIN should not depend on that alone.
-      return Scaffold(
-        appBar:
-            AppBar(title: Text(AppLocalizations.of(context).taxSettingsTitle)),
-        body: Center(
-          child: Padding(
-            padding: EdgeInsets.all(24),
-            child: Text(AppLocalizations.of(context).taxSettingsAdminOnly),
-          ),
-        ),
-      );
-    }
-
-    return Scaffold(
-      appBar:
-          AppBar(title: Text(AppLocalizations.of(context).taxSettingsTitle)),
-      body: _loading
-          ? const Center(child: CircularProgressIndicator())
-          : ListView(
-              padding: const EdgeInsets.all(16),
-              children: [
-                _section(AppLocalizations.of(context).taxSettingsVatSection),
-                Card(
-                  child: Column(
-                    children: [
-                      ListTile(
-                        title: Text('VAT rate: $_vatRatePercent%'),
-                        subtitle: Text(_vatRatePercent == 0
-                            ? AppLocalizations.of(context).taxSettingsVatExempt
-                            : _workedExample(_vatRatePercent)),
-                      ),
-                      Padding(
-                        padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
-                        child: Row(
-                          children: [
-                            Expanded(
-                              child: Slider(
-                                value: _vatRatePercent.toDouble(),
-                                // 0 to 25 in whole steps. Kenya's standard is
-                                // 16; 0 means exempt. Anything above 25 is not
-                                // a rate any real Kenyan shop faces and would
-                                // only produce absurd VAT figures.
-                                min: 0,
-                                max: 25,
-                                divisions: 25,
-                                label: AppLocalizations.of(context)
-                                    .taxVatRatePercent(_vatRatePercent),
-                                // Announced, because a slider's value is
-                                // invisible to a screen reader otherwise.
-                                semanticFormatterCallback: (v) =>
-                                    'VAT rate ${v.round()} percent',
-                                onChanged: _saving
-                                    ? null
-                                    : (v) => setState(
-                                        () => _vatRatePercent = v.round()),
-                              ),
-                            ),
-                            const SizedBox(width: 8),
-                            FilledButton(
-                              onPressed: _saving
-                                  ? null
-                                  : () =>
-                                      _save(vatRatePercent: _vatRatePercent),
-                              child: Text(AppLocalizations.of(context)
-                                  .taxSettingsApplyAction),
-                            ),
-                          ],
-                        ),
-                      ),
-                      const Divider(height: 24),
-                      SwitchListTile(
-                        title: Text(AppLocalizations.of(context)
-                            .taxSettingsPricesIncludeVat),
-                        subtitle: const Text(
-                          'On: you type the shelf price and VAT is extracted from '
-                          'it. Off: you type the net price and VAT is added on top.',
-                        ),
-                        value: _pricesIncludeVat,
-                        onChanged:
-                            _saving ? null : (v) => _save(pricesIncludeVat: v),
-                      ),
-                    ],
-                  ),
-                ),
-                const SizedBox(height: 20),
-                _section(AppLocalizations.of(context)
-                    .taxSettingsReceiptNumberingSection),
-                Card(
-                  child: ListTile(
-                    title:
-                        Text(AppLocalizations.of(context).taxSettingsTillCode),
-                    subtitle: Text(
-                      'Receipts are numbered $_tillCode-000001, and KRA needs '
-                      'that number to match the sequence it has on file. Give '
-                      'each till its own code.',
-                    ),
-                    trailing: TextButton(
-                      onPressed: _saving ? null : _editTillCode,
-                      child: Text(
-                          AppLocalizations.of(context).taxSettingsChangeAction),
-                    ),
-                  ),
-                ),
-                const SizedBox(height: 20),
-                _section(AppLocalizations.of(context).taxSettingsEtimsSection),
-                Card(
-                  child: Column(
-                    children: [
-                      // The master switch lives here rather than in Settings.
-                      // It is tax configuration, it is owner-only like the rest
-                      // of this screen, and turning it on with no TIN registered
-                      // would queue every sale against a shop that can never
-                      // issue a receipt — so the two belong side by side where
-                      // the dependency is visible.
-                      SwitchListTile(
-                        secondary: const Icon(Icons.receipt_long_outlined),
-                        title: Text(AppLocalizations.of(context)
-                            .taxSettingsIssueEtimsTitle),
-                        subtitle: Text(_etimsEnabled
-                            ? 'On — every sale is filed with KRA. Sales keep '
-                                'working with no signal; receipts upload as soon '
-                                'as there is a connection.'
-                            : 'Off — sales are recorded but no tax invoice is '
-                                'issued. Turn this on once a TIN is registered.'),
-                        value: _etimsEnabled,
-                        onChanged: _saving ? null : _toggleEtims,
-                      ),
-                      if (_etimsEnabled) ...[
-                        const Divider(height: 1),
-                      ],
-                      ListTile(
-                        leading: const Icon(Icons.badge_outlined),
-                        title: Text(_tin.isEmpty
-                            ? AppLocalizations.of(context)
-                                .taxSettingsTinNotRegistered
-                            : AppLocalizations.of(context)
-                                .taxTaxpayerPIN(_tin)),
-                        subtitle: Text(_tin.isEmpty
-                            ? 'Receipts cannot be issued until this shop\'s KRA '
-                                'PIN is registered. Until then, sales are '
-                                'recorded but no tax invoice is issued.'
-                            : AppLocalizations.of(context)
-                                .taxSettingsTinRegisteredHelp),
-                        trailing: TextButton(
-                          onPressed: _saving ? null : _editTin,
-                          child: Text(_tin.isEmpty
-                              ? AppLocalizations.of(context)
-                                  .taxSettingsRegisterAction
-                              : AppLocalizations.of(context)
-                                  .taxSettingsChangeAction),
-                        ),
-                      ),
-                      if (_etimsDeviceId.isNotEmpty)
-                        ListTile(
-                          leading: const Icon(Icons.devices_outlined),
-                          title: Text(AppLocalizations.of(context)
-                              .taxSettingsRegisteredDevice),
-                          subtitle: Text(_etimsDeviceId),
-                        ),
-                      ListTile(
-                        leading: const Icon(Icons.cloud_upload_outlined),
-                        title: Text(AppLocalizations.of(context)
-                            .taxSettingsWaitForReceipts),
-                        subtitle: Text(
-                          'Queued automatically after every sale while online. '
-                          'Sales never wait for it.',
-                        ),
-                        trailing: const Icon(Icons.chevron_right),
-                        onTap: _saving ? null : _refreshQueue,
-                      ),
-                    ],
-                  ),
-                ),
-                if (_message != null)
-                  Padding(
-                    padding: const EdgeInsets.only(top: 16),
-                    child: Text(
-                      _message!,
-                      style: TextStyle(
-                        // Both tones from the same slot family, so the
-                        // success/error pair cannot drift apart as they did when
-                        // one came from the ColorScheme and one from a literal.
-                        color: _messageIsError
-                            ? AppColors.of(context).danger
-                            : AppColors.of(context).success,
-                      ),
-                    ),
-                  ),
-                const SizedBox(height: 32),
-                Center(
-                  child: Text(
-                    SimplePosBrand.poweredByTag,
-                    style: AppTypography.of(context).bodySmall,
-                  ),
-                ),
-                const SizedBox(height: 24),
-              ],
-            ),
+    // The stateful screen owns the async work; it delegates to a widget that
+    // takes the loaded values, so the presentation can be rendered from a
+    // constructed value in a test without seeding four settings first.
+    return TaxSettingsPanel(
+      loading: _loading,
+      saving: _saving,
+      isAdmin: context.watch<AppState>().isAdmin,
+      vatRatePercent: _showingVatRate,
+      pricesIncludeVat: _pricesIncludeVat,
+      onSaveVatRate: (int rate) => _save(vatRatePercent: rate),
+      // Preview only: the panel's own copy of the rate moves with the drag and
+      // is overwritten by the committed value once the save lands. Nothing is
+      // written to the database or the audit log here.
+      onPreviewVatRate: (int rate) =>
+          mounted ? setState(() => _previewVatRate = rate) : null,
+      onSetPricesIncludeVat: (bool v) => _save(pricesIncludeVat: v),
+      tillCode: _tillCode,
+      onEditTillCode: _saving ? null : _editTillCode,
+      etimsEnabled: _etimsEnabled,
+      onToggleEtims: _saving ? null : _toggleEtims,
+      tin: _tin,
+      onEditTin: _saving ? null : _editTin,
+      etimsDeviceId: _etimsDeviceId,
+      onRefreshQueue: _saving ? null : _refreshQueue,
+      message: _message,
+      messageIsError: _messageIsError,
     );
   }
-
-  Widget _section(String title) => Padding(
-        padding: const EdgeInsetsDirectional.only(bottom: 8, start: 4),
-        child: Text(title, style: Theme.of(context).textTheme.titleMedium),
-      );
 
   Future<void> _editTillCode() async {
     final controller = TextEditingController(text: _tillCode);
@@ -399,9 +295,7 @@ class _TaxSettingsScreenState extends State<TaxSettingsScreen> {
               // Not `const`: the style comes from the theme, and a `const`
               // widget cannot call `AppTypography.of(context)`.
               Text(
-                'Letters and digits only. Every till in a shop needs its own '
-                'code, because KRA rejects two tills issuing the same receipt '
-                'number.',
+                AppLocalizations.of(context).taxSettingsTillCodeDialogHelp,
                 style: AppTypography.of(context).bodyMedium,
               ),
               const SizedBox(height: 12),
@@ -426,7 +320,7 @@ class _TaxSettingsScreenState extends State<TaxSettingsScreen> {
           actions: [
             TextButton(
                 onPressed: () => Navigator.pop(dialogContext),
-                child: const Text('Cancel')),
+                child: Text(AppLocalizations.of(context).actionCancel)),
             FilledButton(
               onPressed: () {
                 final value = controller.text.trim().toUpperCase();
@@ -462,9 +356,7 @@ class _TaxSettingsScreenState extends State<TaxSettingsScreen> {
               mainAxisSize: MainAxisSize.min,
               children: [
                 Text(
-                  'Enter the PIN exactly as printed on this shop\'s KRA '
-                  'certificate, including the P0 prefix. A PIN issued to the '
-                  'wrong business puts invoices on someone else\'s return.',
+                  AppLocalizations.of(context).taxSettingsKraPinDialogHelp,
                   style: AppTypography.of(context).bodyMedium,
                 ),
                 const SizedBox(height: 12),
@@ -492,7 +384,7 @@ class _TaxSettingsScreenState extends State<TaxSettingsScreen> {
           actions: [
             TextButton(
                 onPressed: () => Navigator.pop(dialogContext),
-                child: const Text('Cancel')),
+                child: Text(AppLocalizations.of(context).actionCancel)),
             FilledButton(
               onPressed: submitting
                   ? null
@@ -577,5 +469,418 @@ class _TaxSettingsScreenState extends State<TaxSettingsScreen> {
     final workspace = await WorkspaceService.activeWorkspaceKey();
     final digest = sha256.convert(utf8.encode('simple-pos-etims:$workspace'));
     return digest.toString().substring(0, 16).toUpperCase();
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Sections
+//
+// Tax is the last screen on the old Material layout, so it takes the same
+// treatment Settings took: a header, a card, and rows of the shared shape.
+// ---------------------------------------------------------------------------
+
+/// The whole screen as one constructed value.
+///
+/// Split from [TaxSettingsScreen] for the same reason [SettingsPanel] exists:
+/// the presentation renders from a value, so a test can assert the layout
+/// without seeding four persisted settings into a database first.
+class TaxSettingsPanel extends StatelessWidget {
+  const TaxSettingsPanel({
+    super.key,
+    required this.loading,
+    required this.saving,
+    required this.isAdmin,
+    required this.vatRatePercent,
+    required this.pricesIncludeVat,
+    required this.onSaveVatRate,
+    required this.onPreviewVatRate,
+    required this.onSetPricesIncludeVat,
+    required this.tillCode,
+    required this.onEditTillCode,
+    required this.etimsEnabled,
+    required this.onToggleEtims,
+    required this.tin,
+    required this.onEditTin,
+    required this.etimsDeviceId,
+    required this.onRefreshQueue,
+    required this.message,
+    required this.messageIsError,
+  });
+
+  final bool loading;
+  final bool saving;
+  final bool isAdmin;
+
+  final int vatRatePercent;
+  final bool pricesIncludeVat;
+  final ValueChanged<int> onSaveVatRate;
+
+  /// Updates the slider's position while it is being dragged, WITHOUT writing.
+  ///
+  /// Separate from [onSaveVatRate] so the preview is local state: the preview
+  /// updates the worked example as the owner drags, but nothing is persisted —
+  /// and no audit row is written — until the value is released.
+  final ValueChanged<int> onPreviewVatRate;
+  final ValueChanged<bool> onSetPricesIncludeVat;
+
+  final String tillCode;
+
+  /// Null while a save is in flight: the row stays, dimmed, so the layout does
+  /// not jump between idle and busy.
+  final VoidCallback? onEditTillCode;
+
+  final bool etimsEnabled;
+  final ValueChanged<bool>? onToggleEtims;
+  final String tin;
+  final VoidCallback? onEditTin;
+  final String etimsDeviceId;
+  final VoidCallback? onRefreshQueue;
+
+  final String? message;
+  final bool messageIsError;
+
+  @override
+  Widget build(BuildContext context) {
+    final AppLocalizations l10n = AppLocalizations.of(context);
+
+    // Defence in depth. Settings does not show the tab to a non-admin, but a
+    // screen that mints a TIN should not depend on that alone.
+    if (!isAdmin) {
+      return const AdaptivePage(
+        scrollable: true,
+        child: AdminOnlyNotice(),
+      );
+    }
+
+    if (loading) {
+      return const AdaptivePage(
+        scrollable: true,
+        child: TaxSkeleton(),
+      );
+    }
+
+    return AdaptivePage(
+      scrollable: true,
+      maxContentWidth: 880,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: <Widget>[
+          // VAT: the rate, what it does to a real price, and whether shelf
+          // prices already contain it.
+          TaxSection(
+            label: l10n.taxSettingsVatSection,
+            children: <Widget>[
+              SettingsInfoRow(
+                icon: Icons.percent,
+                title: l10n.taxSettingsVatRateLine(vatRatePercent),
+                subtitle: vatRatePercent == 0
+                    ? l10n.taxSettingsVatExempt
+                    : TaxSettingsScreen.workedExample(l10n, vatRatePercent),
+              ),
+              // The rate is a slider plus Apply rather than a text field: a
+              // shop picking between 0% and 25% is choosing, not typing, and a
+              // keyboard invites a 16.5% a receipt must never carry.
+              Row(
+                children: <Widget>[
+                  Expanded(
+                    child: Slider(
+                      value: vatRatePercent.toDouble(),
+                      // 0 to 25 in whole steps. Kenya's standard is 16; 0
+                      // means exempt. Anything above 25 is not a rate any real
+                      // Kenyan shop faces and would only produce absurd VAT
+                      // figures.
+                      min: 0,
+                      max: 25,
+                      divisions: 25,
+                      label: l10n.taxVatRatePercent(vatRatePercent),
+                      // Announced, because a slider's value is invisible to a
+                      // screen reader otherwise — and announced through the
+                      // catalogue, so the words are the app's words.
+                      // The rate is NOT persisted as the slider moves: the value
+                      // stays local to the panel and is committed on release, so
+                      // one drag writes ONE `tax_settings_changed` row instead of
+                      // one per division tick. Every tick used to reach `_save`,
+                      // which wrote the setting and an audit row each time.
+                      semanticFormatterCallback: (double v) =>
+                          l10n.taxSettingsVatRateSpoken(v.round()),
+                      onChanged: saving
+                          ? null
+                          : (double v) => onPreviewVatRate(v.round()),
+                      onChangeEnd: saving
+                          ? null
+                          : (double v) => onSaveVatRate(v.round()),
+                    ),
+                  ),
+                  SizedBox(width: AppSpacing.of(context).sm),
+                  FilledButton(
+                    onPressed:
+                        saving ? null : () => onSaveVatRate(vatRatePercent),
+                    child: Text(l10n.taxSettingsApplyAction),
+                  ),
+                ],
+              ),
+              SettingsSwitchRow(
+                icon: Icons.sell_outlined,
+                title: l10n.taxSettingsPricesIncludeVat,
+                subtitle: l10n.taxSettingsPricesIncludeVatSubtitle,
+                value: pricesIncludeVat,
+                enabled: !saving,
+                onChanged: onSetPricesIncludeVat,
+              ),
+            ],
+          ),
+          SizedBox(height: AppSpacing.of(context).md),
+          // Receipt numbering: the till code KRA matches against.
+          TaxSection(
+            label: l10n.taxSettingsReceiptNumberingSection,
+            children: <Widget>[
+              SettingsNavRow(
+                icon: Icons.tag_outlined,
+                title: l10n.taxSettingsTillCode,
+                subtitle: l10n.taxSettingsTillCodeHelp(tillCode),
+                trailing: l10n.taxSettingsChangeAction,
+                onTap: onEditTillCode,
+              ),
+            ],
+          ),
+          SizedBox(height: AppSpacing.of(context).md),
+          // KRA eTIMS: issuance, the PIN it is filed against, and the queue.
+          TaxSection(
+            label: l10n.taxSettingsEtimsSection,
+            children: <Widget>[
+              SettingsSwitchRow(
+                icon: Icons.receipt_long_outlined,
+                title: l10n.taxSettingsIssueEtimsTitle,
+                subtitle: etimsEnabled
+                    ? l10n.taxSettingsEtimsOnSubtitle
+                    : l10n.taxSettingsEtimsOffSubtitle,
+                value: etimsEnabled,
+                enabled: !saving,
+                onChanged: onToggleEtims ?? (bool _) {},
+              ),
+              if (etimsEnabled) const Divider(height: 1),
+              SettingsNavRow(
+                icon: Icons.badge_outlined,
+                title: tin.isEmpty
+                    ? l10n.taxSettingsTinNotRegistered
+                    : l10n.taxTaxpayerPIN(tin),
+                subtitle: tin.isEmpty
+                    ? l10n.taxSettingsTinNotRegisteredHelp
+                    : l10n.taxSettingsTinRegisteredHelp,
+                trailing: tin.isEmpty
+                    ? l10n.taxSettingsRegisterAction
+                    : l10n.taxSettingsChangeAction,
+                onTap: onEditTin,
+              ),
+              if (etimsDeviceId.isNotEmpty)
+                SettingsInfoRow(
+                  icon: Icons.devices_outlined,
+                  title: l10n.taxSettingsRegisteredDevice,
+                  subtitle: etimsDeviceId,
+                ),
+              SettingsNavRow(
+                icon: Icons.cloud_upload_outlined,
+                title: l10n.taxSettingsWaitForReceipts,
+                subtitle: l10n.taxSettingsWaitForReceiptsSubtitle,
+                onTap: onRefreshQueue,
+              ),
+            ],
+          ),
+          // The result of the last action, announced rather than only shown:
+          // "Saved" is information, and information only the eye can reach is
+          // information a screen reader never gets.
+          if (message != null) ...<Widget>[
+            SizedBox(height: AppSpacing.of(context).md),
+            Semantics(
+              liveRegion: true,
+              child: Text(
+                message!,
+                style: AppTypography.of(context).bodyMedium?.copyWith(
+                      color: messageIsError
+                          ? AppColors.of(context).danger
+                          : AppColors.of(context).success,
+                    ),
+              ),
+            ),
+          ],
+          SizedBox(height: AppSpacing.of(context).lg),
+          Center(
+            child: Text(
+              SimplePosBrand.poweredByTag,
+              style: AppTypography.of(context).bodySmall,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Sections
+//
+// Tax is the last screen on the old Material layout, so it takes the same
+// treatment Settings took: a header, a card, and rows of the shared shape. The
+// section wrapper is local rather than shared because the two screens word
+// their help lines differently and a card that carries rows of two different
+// kinds is easier to read as two widgets than as one with three flags.
+// ---------------------------------------------------------------------------
+
+/// One tax section: a header and a card of rows.
+class TaxSection extends StatelessWidget {
+  const TaxSection({super.key, required this.label, required this.children});
+
+  final String label;
+  final List<Widget> children;
+
+  @override
+  Widget build(BuildContext context) {
+    final AppSpacing spacing = AppSpacing.of(context);
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: <Widget>[
+        SectionHeader(padding: EdgeInsets.zero, label: label),
+        SizedBox(height: spacing.sm),
+        SurfaceCard(
+          // The transparent Material is what lets the rows inside draw ink:
+          // `SurfaceCard` paints a decoration, not a Material, and an `InkWell`
+          // without one throws at build time.
+          child: Material(
+            type: MaterialType.transparency,
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: children,
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+/// Shown to a non-admin who reached this route directly.
+///
+/// A screen that mints a TIN should not depend on Settings hiding the tab, and a
+/// dead screen with no explanation is worse than this one with a sentence.
+class AdminOnlyNotice extends StatelessWidget {
+  const AdminOnlyNotice({super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    final AppLocalizations l10n = AppLocalizations.of(context);
+    final AppColors colors = AppColors.of(context);
+    return Column(
+      mainAxisAlignment: MainAxisAlignment.center,
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: <Widget>[
+        ExcludeSemantics(
+          child: Icon(
+            Icons.lock_outline,
+            size: 32,
+            color: colors.onSurfaceMuted,
+          ),
+        ),
+        const SizedBox(height: 12),
+        Text(
+          l10n.taxSettingsAdminOnly,
+          textAlign: TextAlign.center,
+          style: AppTypography.of(context).bodyMedium,
+        ),
+      ],
+    );
+  }
+}
+
+/// The first load, drawn as the rows it is about to become.
+///
+/// A skeleton rather than a spinner because the shape says what is coming, and
+/// nothing moves when it arrives. The load reads four settings, so it is fast —
+/// but a shop on a slow phone with a large database still gets a frame of it,
+/// and a flash of empty cards reads as "tax is not configured".
+class TaxSkeleton extends StatelessWidget {
+  const TaxSkeleton({super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    final AppSpacing spacing = AppSpacing.of(context);
+    final AppColors colors = AppColors.of(context);
+    final AppShapes shapes = AppShapes.of(context);
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: List<Widget>.generate(3, (int section) {
+        return Padding(
+          padding: EdgeInsets.only(bottom: spacing.md),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: <Widget>[
+              // The header's slot, narrower than the card's rows.
+              FractionallySizedBox(
+                widthFactor: 0.35,
+                child: Container(
+                  height: 12,
+                  decoration: BoxDecoration(
+                    color: colors.surfaceSunken,
+                    borderRadius: shapes.barRadius,
+                  ),
+                ),
+              ),
+              SizedBox(height: spacing.sm),
+              SurfaceCard(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: List<Widget>.generate(2, (int row) {
+                    return Padding(
+                      padding: EdgeInsets.symmetric(vertical: spacing.sm),
+                      child: Row(
+                        children: <Widget>[
+                          Container(
+                            width: 20,
+                            height: 20,
+                            decoration: BoxDecoration(
+                              color: colors.surfaceSunken,
+                              borderRadius: shapes.barRadius,
+                            ),
+                          ),
+                          SizedBox(width: spacing.md),
+                          Expanded(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: <Widget>[
+                                FractionallySizedBox(
+                                  widthFactor: row.isEven ? 0.6 : 0.45,
+                                  child: Container(
+                                    height: 14,
+                                    decoration: BoxDecoration(
+                                      color: colors.surfaceSunken,
+                                      borderRadius: shapes.barRadius,
+                                    ),
+                                  ),
+                                ),
+                                SizedBox(height: spacing.xs),
+                                FractionallySizedBox(
+                                  widthFactor: 0.75,
+                                  child: Container(
+                                    height: 10,
+                                    decoration: BoxDecoration(
+                                      color: colors.surfaceSunken,
+                                      borderRadius: shapes.barRadius,
+                                    ),
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                        ],
+                      ),
+                    );
+                  }),
+                ),
+              ),
+            ],
+          ),
+        );
+      }),
+    );
   }
 }

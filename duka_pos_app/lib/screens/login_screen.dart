@@ -19,6 +19,7 @@ import '../theme/app_shapes.dart';
 import '../theme/app_spacing.dart';
 import '../theme/typography.dart';
 import '../ui/components/controls.dart';
+import '../ui/dialogs/pin_reset_dialog.dart';
 import '../ui/components/status.dart';
 import '../ui/components/surface.dart';
 
@@ -184,6 +185,43 @@ class _LoginScreenState extends State<LoginScreen> {
       _error = null;
     });
     HapticTheme.of(context).fire(HapticEvent.select);
+  }
+
+  /// Forgot PIN: a code emailed to the owner, then a new one.
+  ///
+  /// Only reachable for the OWNER. A cashier's PIN is the owner's to reset from
+  /// Settings — handing a mailed reset to every staff identity would let any
+  /// one of them take over the account the owner row protects.
+  ///
+  /// The owner is signed in on the existing session by the dialog, so no one
+  /// has to unlock the till to get their PIN back: this is the whole reason the
+  /// entry point is on this screen rather than in Settings.
+  Future<void> _forgotPin() async {
+    final AppState state = context.read<AppState>();
+    final Owner? owner = state.owner;
+    if (owner == null || owner.email.trim().isEmpty) {
+      if (!mounted) return;
+      _refuse(AppLocalizations.of(context).pinResetNoEmail);
+      return;
+    }
+    final result = await showDialog<PinResetResult>(
+      context: context,
+      // Not dismissible by tapping outside: a half-finished reset would leave
+      // a live code redeemable by whoever picks the phone up next.
+      barrierDismissible: false,
+      builder: (_) => PinResetDialog(ownerEmail: owner.email),
+    );
+    if (!mounted || result == null || !result.completed) return;
+    // The PIN is new, so the pad clears and the owner types it fresh. Leaving
+    // the old four digits in the dots would invite a fifth tap that submits
+    // them as the new PIN.
+    setState(() {
+      _pin = '';
+      _error = null;
+    });
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text(AppLocalizations.of(context).pinResetDone)),
+    );
   }
 
   Future<void> _tryLogin() async {
@@ -354,6 +392,27 @@ class _LoginScreenState extends State<LoginScreen> {
                       color: colors.onSurfaceMuted,
                     ),
                   ),
+                  // Forgot PIN lives HERE, on the pad, and nowhere else.
+                  //
+                  // The only way to reach the settings screen is to unlock the
+                  // till, and unlocking the till needs the PIN. Putting recovery
+                  // there would put it behind the very thing it recovers — which
+                  // is how a shop ends up unable to use its own till with a
+                  // staff-less phone in its hand.
+                  //
+                  // It is shown only when the OWNER is the picked identity and
+                  // the owner row actually carries an email. A cashier's PIN is
+                  // reset by the owner from Settings, so offering a mailed reset
+                  // against a cashier would be a dead button; and a shop that
+                  // never verified an email has nothing to send a code to.
+                  if (owner != null &&
+                      owner.email.trim().isNotEmpty &&
+                      (_selected == null || _selected == _ownerValue))
+                    TextButton(
+                      onPressed: _verifying ? null : _forgotPin,
+                      child: Text(
+                          AppLocalizations.of(context).settingsForgotPinAction),
+                    ),
                 ],
               ),
             ),

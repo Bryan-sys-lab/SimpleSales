@@ -575,13 +575,15 @@ class _StaffTakingsRow extends StatelessWidget {
 
     return Semantics(
       container: true,
-      // gen-l10n orders the parameters with the plural's own type first, so the
-      // count leads even though the name reads first.
+      // gen-l10n orders the parameters ALPHABETICALLY by placeholder name —
+      // count, name, profit, total — not in the order the sentence reads them.
+      // The profit and the total were swapped, so a screen reader announced
+      // "…, <total>, <profit> profit" with the two figures reversed.
       label: AppLocalizations.of(context).reportsStaffRowSpoken(
         row.transactions,
         row.staffName,
-        formatMoney(row.total),
         formatMoney(row.profit),
+        formatMoney(row.total),
       ),
       excludeSemantics: true,
       child: ExcludeSemantics(
@@ -698,8 +700,10 @@ class _RecentSaleRow extends StatelessWidget {
 
     return Semantics(
       container: true,
+      // gen-l10n sorts the parameters ALPHABETICALLY — amount, detail,
+      // staffName — so the money leads even though the name reads first.
       label: AppLocalizations.of(context)
-          .reportsStaffName(sale.staffName, detail, formatMoney(sale.total)),
+          .reportsStaffName(formatMoney(sale.total), detail, sale.staffName),
       excludeSemantics: true,
       child: ExcludeSemantics(
         child: showDivider

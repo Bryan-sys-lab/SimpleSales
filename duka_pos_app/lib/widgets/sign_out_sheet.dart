@@ -132,7 +132,9 @@ class _Warning extends StatelessWidget {
     return Padding(
       padding: const EdgeInsets.fromLTRB(20, 16, 20, 0),
       child: Semantics(
-        label: AppLocalizations.of(context).signOutWarningSpoken(title, detail),
+        // gen-l10n sorts the parameters ALPHABETICALLY — detail, title — which
+        // is the reverse of the warning's own order "{title}. {detail}".
+        label: AppLocalizations.of(context).signOutWarningSpoken(detail, title),
         excludeSemantics: true,
         child: Row(
           crossAxisAlignment: CrossAxisAlignment.start,

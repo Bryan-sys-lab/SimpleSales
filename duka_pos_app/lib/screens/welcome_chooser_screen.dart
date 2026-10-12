@@ -153,8 +153,7 @@ class WelcomeChooserScreen extends StatelessWidget {
                     label: Padding(
                       padding: EdgeInsets.symmetric(vertical: spacing.lg),
                       child: Text(
-                        AppLocalizations.of(context)
-                            .chooserSignInAsStaffAction,
+                        AppLocalizations.of(context).chooserSignInAsStaffAction,
                       ),
                     ),
                   ),

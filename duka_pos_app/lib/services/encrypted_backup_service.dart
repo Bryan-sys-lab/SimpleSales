@@ -2,7 +2,8 @@ import 'dart:convert';
 import 'dart:io';
 import 'package:cryptography/cryptography.dart';
 import 'package:file_picker/file_picker.dart';
-import 'package:flutter/foundation.dart' show compute, immutable;
+import 'package:flutter/foundation.dart'
+    show compute, immutable, visibleForTesting;
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:path_provider/path_provider.dart';
 
@@ -26,7 +27,21 @@ class EncryptRequest {
 class EncryptedBackupService {
   static const _keyName = 'duka_backup_key_v1';
   static const _format = 'duka-encrypted-backup-v1';
-  static const _storage = FlutterSecureStorage();
+
+  /// The keystore. Injectable so a test can substitute an in-memory one; the
+  /// production build never touches this.
+  ///
+  /// The seam exists at the keystore rather than at the cipher on purpose: the
+  /// cipher, the framing and the `compute` hop are the very things a backup
+  /// round trip depends on, and a test that mocks THEM away proves nothing.
+  /// `flutter_secure_storage` is the only platform-bound part, and the only part
+  /// a test genuinely cannot drive.
+  @visibleForTesting
+  static FlutterSecureStorage? storageForTest;
+
+  static FlutterSecureStorage get _storage =>
+      storageForTest ?? const FlutterSecureStorage();
+
   static final _cipher = AesGcm.with256bits();
 
   /// Raw key bytes, read from or created in the OS keystore. Kept separate
@@ -46,6 +61,14 @@ class EncryptedBackupService {
 
   static Future<SecretKey> _key() async =>
       _cipher.newSecretKeyFromBytes(await _keyBytes());
+
+  /// The key bytes, for a test that must prove the key is STABLE.
+  ///
+  /// A new key per run would make last week's backup undecryptable — the
+  /// quietest possible way for a backup scheme to fail, because nothing errors
+  /// until the day someone actually tries to restore.
+  @visibleForTesting
+  static Future<List<int>> keyBytesForTest() => _keyBytes();
 
   /// The CPU-bound half of [encryptToFile]: AES-256-GCM over a whole workbook.
   ///

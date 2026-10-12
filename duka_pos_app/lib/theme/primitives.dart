@@ -8,163 +8,161 @@ import 'dart:ui' show Color;
 /// second brightness or a hue shift arrives, and an appearance name inverts
 /// catastrophically under one.
 ///
-/// Neutrals are OKLCH lightness x100 at hue 25 (warm, chroma 1.8-3.4), which is
-/// the measured hue of the brand's own greys. The accent ramp is OKLCH hue 8.1,
-/// anchored so that `wine38` is byte-identical to the shipped brand primary
-/// `#6E2638`.
-///
 /// Widgets never import this file. They read the semantic tier in
 /// `app_colors.dart` through an asserting `AppColors.of(context)`.
-///
-/// Regenerating a ramp after a brand change: the recipe is
-/// `oklch(L / 100, chroma, hue)` with the anchors pinned below verified against
-/// the shipped artwork rather than derived, because four of these values are
-/// contract — changing them changes the launcher icon, the Android
-/// `colors.xml`, and `test/app_brand_test.dart` together.
 abstract final class Primitives {
   const Primitives._();
 
   // ---------------------------------------------------------------- neutrals
-  /// Near-black with a trace of warmth. Darks below this exist only so a
-  /// hairline is drawable on [neutral06].
-  static const neutral06 = Color(0xFF0D0B0B);
+  /// Near-black with a trace of warmth. Dark theme deepest surface.
+  static const neutral06 = Color(0xFF0F0E0D);
 
-  /// Darkest surface in the dark theme.
-  static const neutral10 = Color(0xFF131011);
-
-  /// Dark-theme canvas — one step above [neutral06] so a raised card reads.
-  static const neutral14 = Color(0xFF1D181A);
+  /// Dark-theme canvas — warm charcoal base.
+  static const neutral10 = Color(0xFF1A1816);
 
   /// Dark-theme raised surface (cards, sheets, menus).
-  static const neutral20 = Color(0xFF262022);
+  static const neutral14 = Color(0xFF242220);
 
-  /// Dark-theme surface for a control sitting on a card.
-  static const neutral25 = Color(0xFF302A2C);
+  /// Dark-theme elevated surface (dialogs, bottom sheets).
+  static const neutral20 = Color(0xFF2E2B28);
 
-  /// Dark-theme hairline. Decorative only: 1.41:1 on [neutral14], so it must
-  /// never be the only boundary of a meaningful control. Use
-  /// `AppColors.outlineStrong` for that.
-  static const neutral32 = Color(0xFF3A3234);
+  /// Dark-theme control surface (input fields, chips).
+  static const neutral25 = Color(0xFF3A3633);
 
-  /// Dark-theme meaningful boundary: 3.08:1 on [neutral14], clearing WCAG
-  /// 1.4.11 for a control edge.
-  static const neutral45 = Color(0xFF6F6467);
+  /// Dark-theme hairline. Decorative only: below 3:1.
+  static const neutral32 = Color(0xFF4A4541);
 
-  /// Dark-theme muted text: 6.08:1 on [neutral14].
-  static const neutral63 = Color(0xFFA29597);
+  /// Dark-theme meaningful boundary: clears 3:1 on neutral10.
+  static const neutral45 = Color(0xFF7A736D);
 
-  /// Dark-theme secondary text: 9.61:1 on [neutral14].
-  static const neutral79 = Color(0xFFC9BDBE);
+  /// Dark-theme muted text: clears 4.5:1.
+  static const neutral63 = Color(0xFFAA9F97);
 
-  /// Dark-theme body text: 15.11:1 on [neutral14].
-  static const neutral95 = Color(0xFFF5ECED);
+  /// Dark-theme secondary text.
+  static const neutral79 = Color(0xFFD4CAC0);
 
-  /// Body ink. PINNED — brand `#251A1D`, also the launcher icon's background
-  /// and the Android `brand_ink` colour resource. 16.88:1 on paper.
-  static const neutral23 = Color(0xFF251A1D);
+  /// Dark-theme body text: warm off-white.
+  static const neutral95 = Color(0xFFF5F0EB);
 
-  /// Tertiary body text. PINNED — brand `#66575B`. 6.82:1 on paper.
-  static const neutral47 = Color(0xFF66575B);
+  /// Light-theme body ink: warm charcoal (not pure black).
+  static const neutral23 = Color(0xFF2D2A26);
 
-  /// Secondary body text: 9.94:1 on paper.
-  static const neutral34 = Color(0xFF4E3F42);
+  /// Light-theme tertiary body text.
+  static const neutral47 = Color(0xFF6B635A);
 
-  /// Light-theme meaningful boundary: 5.06:1 on paper.
-  static const neutral54 = Color(0xFF746D6C);
+  /// Light-theme secondary body text.
+  static const neutral34 = Color(0xFF4A433C);
 
-  /// Light-theme hairline. Decorative only: 1.61:1 on paper.
-  static const neutral84 = Color(0xFFD6C9C4);
+  /// Light-theme meaningful boundary: clears 3:1.
+  static const neutral54 = Color(0xFF8A8075);
 
-  /// Sunken wells, chips, table stripes. PINNED — brand `#F1EAE5`.
-  static const neutral94 = Color(0xFFF1EAE5);
+  /// Light-theme hairline. Decorative only.
+  static const neutral84 = Color(0xFFE8E0D6);
 
-  /// App canvas behind cards. PINNED — brand `#F8F5F1`.
-  static const neutral97 = Color(0xFFF8F5F1);
+  /// Sunken wells, chips, table stripes. Warm ivory.
+  static const neutral94 = Color(0xFFF3EDE6);
 
-  /// Card and sheet surface. PINNED — brand `#FFFFFF`.
+  /// App canvas behind cards. Warm cream/ivory.
+  static const neutral97 = Color(0xFFFAF6F0);
+
+  /// Card and sheet surface. Soft white.
   static const neutral100 = Color(0xFFFFFFFF);
 
-  // -------------------------------------------------------------------- wine
-  /// Deepest accent. Dark-theme primary-container fill.
-  static const wine26 = Color(0xFF440A1C);
+  // -------------------------------------------------------------------- botanical green (primary brand)
+  /// Dark-theme primary container fill.
+  static const botanical26 = Color(0xFF244A30);
 
-  /// PINNED — brand `primaryDark` `#4B1725`, the shade the wine mark sits on in
-  /// the launcher artwork.
-  static const wine29 = Color(0xFF4B1725);
+  /// Dark-theme accent green: clears 4.5:1 on neutral10.
+  static const botanical58 = Color(0xFF4ADE7E);
 
-  /// PINNED — brand `primary` `#6E2638`. 10.51:1 on paper, 9.67:1 on canvas.
-  static const wine38 = Color(0xFF6E2638);
+  /// Dark-theme on-accent text.
+  static const botanical90 = Color(0xFFA8F5C4);
 
-  /// Mid accent for hover/pressed fills in light mode.
-  static const wine44 = Color(0xFF8C2944);
+  /// Light-theme brand green: deep botanical. Clears 4.5:1 on neutral97.
+  static const botanical38 = Color(0xFF1B6B3A);
 
-  /// Dark-theme accent: 5.64:1 as text on [neutral14], and 5.43:1 against
-  /// [neutral23] as a button fill carrying [neutral23] text.
-  static const wine68 = Color(0xFFE86885);
+  /// Light-theme primary container fill.
+  static const botanical96 = Color(0xFFE8F5EC);
 
-  /// Dark-theme on-primary-container text: 9.91:1 on [wine26].
-  static const wine90 = Color(0xFFFFB7D1);
+  /// Light-theme on-primary-container text.
+  static const botanical29 = Color(0xFF0D3D1E);
 
-  /// Light-theme primary-container fill.
-  static const wine96 = Color(0xFFF6E7EA);
+  // -------------------------------------------------------------------- status semantics
+  // Each status is three values: text tone, container, on-container.
+  // Colour is never the only channel — see StatusTone for glyph + word.
 
-  // ------------------------------------------------------------------ status
-  // Each status is three values, not one: a text tone that clears 4.5:1 on the
-  // surface it is read from, a low-chroma container to sit on, and an on-
-  // container tone for text inside that container. Colour is never the only
-  // channel — see `StatusTone` in lib/ui/ for the glyph + word that ride along.
-
-  /// Light-theme success text. PINNED — brand `#176B4D`. 6.47:1 on paper.
-  static const green47Light = Color(0xFF176B4D);
+  /// Light-theme success text. Natural green.
+  static const green47Light = Color(0xFF1A7A3A);
 
   /// Light-theme success container.
-  static const green95Light = Color(0xFFE7F2EC);
+  static const green95Light = Color(0xFFE8F5EC);
 
-  /// Text on [green95Light]: 8.21:1.
-  static const green35Light = Color(0xFF10503A);
+  /// Text on green95Light.
+  static const green35Light = Color(0xFF0D4D1E);
 
-  /// Dark-theme success text: 5.91:1 on [neutral14].
-  static const green66 = Color(0xFF44A780);
+  /// Dark-theme success text.
+  static const green66 = Color(0xFF5CE68A);
 
   /// Dark-theme success container.
-  static const green18Dark = Color(0xFF0E2A20);
+  static const green18Dark = Color(0xFF0E2A16);
 
-  /// Text on [green18Dark]: 11.86:1.
-  static const green90Dark = Color(0xFF8CF7C9);
+  /// Text on green18Dark.
+  static const green90Dark = Color(0xFFA8F5C4);
 
-  /// Light-theme warning text. PINNED — brand `#9A5B00`. 5.43:1 on paper.
-  static const amber53Light = Color(0xFF9A5B00);
+  /// Light-theme warning text. Warm amber, darkened to clear 4.5:1 on paper —
+  /// a lighter gold fails AA as text on a white card (3.25:1), so the text
+  /// tone is this bronze-gold and the container below carries the bright tint.
+  static const amber53Light = Color(0xFF8A6508);
 
   /// Light-theme warning container.
-  static const amber93Light = Color(0xFFF7EEDD);
+  static const amber93Light = Color(0xFFFFF3E0);
 
-  /// Text on [amber93Light]: 6.62:1.
-  static const amber45Light = Color(0xFF7A4800);
+  /// Text on amber93Light.
+  static const amber45Light = Color(0xFF7A5A00);
 
-  /// Dark-theme warning text: 6.85:1 on [neutral14].
-  static const amber72 = Color(0xFFDF9044);
+  /// Dark-theme warning text.
+  static const amber72 = Color(0xFFFFB84D);
 
   /// Dark-theme warning container.
-  static const amber22Dark = Color(0xFF33220D);
+  static const amber22Dark = Color(0xFF3D2A0A);
 
-  /// Text on [amber22Dark]: 10.84:1.
-  static const amber93Dark = Color(0xFFFFD386);
+  /// Text on amber22Dark.
+  static const amber93Dark = Color(0xFFFFE0A0);
 
-  /// Light-theme danger text. PINNED — brand `#B3261E`. 6.54:1 on paper.
-  static const red50Light = Color(0xFFB3261E);
+  /// Light-theme error text. Restrained red.
+  static const red50Light = Color(0xFFC0392B);
 
-  /// Light-theme danger container.
-  static const red95Light = Color(0xFFFBE9E7);
+  /// Light-theme error container.
+  static const red95Light = Color(0xFFFDEDEA);
 
-  /// Text on [red95Light]: 7.11:1.
-  static const red42Light = Color(0xFF96201A);
+  /// Text on red95Light.
+  static const red42Light = Color(0xFF8B2518);
 
-  /// Dark-theme danger text: 5.65:1 on [neutral14].
-  static const red68 = Color(0xFFEE685D);
+  /// Dark-theme error text.
+  static const red68 = Color(0xFFFF6B5B);
 
-  /// Dark-theme danger container.
-  static const red22Dark = Color(0xFF331512);
+  /// Dark-theme error container.
+  static const red22Dark = Color(0xFF3D1814);
 
-  /// Text on [red22Dark]: 9.33:1.
-  static const red92Dark = Color(0xFFFFAD9E);
+  /// Text on red22Dark.
+  static const red92Dark = Color(0xFFFFB3A8);
+
+  /// Light-theme info text. Calm blue.
+  static const blue47Light = Color(0xFF1A6BAA);
+
+  /// Dark-theme info text.
+  static const blue66 = Color(0xFF6AB0F5);
+
+  // -------------------------------------------------------------------- external payment identities (NOT brand colors)
+  /// M-PESA / Safaricom green. Provider identity only.
+  static const mpesaGreen = Color(0xFF00A651);
+
+  /// Airtel Money red. Provider identity only.
+  static const airtelRed = Color(0xFFEC1C24);
+
+  /// Equitel blue. Provider identity only.
+  static const equitelBlue = Color(0xFF0066CC);
+
+  /// Cash neutral.
+  static const cashNeutral = Color(0xFF6B635A);
 }

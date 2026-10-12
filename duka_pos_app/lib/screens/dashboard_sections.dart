@@ -159,7 +159,7 @@ class DashboardKpis extends StatelessWidget {
 
     final List<_Kpi> kpis = <_Kpi>[
       _Kpi(
-        icon: Icons.payments_outlined,
+        icon: Icons.point_of_sale_outlined,
         label: l10n.dashboardSalesLabel,
         value: formatMoney(Money.fromMinor(totals.totalMinor)),
         caption: l10n.dashboardSalesToday(scopeLabel),
@@ -253,7 +253,7 @@ class _KpiCard extends StatelessWidget {
     final bool hero = kpi.hero;
     final Color ink = hero ? colors.onAccentContainer : colors.onSurface;
     final Color quiet = hero ? colors.onAccentContainer : colors.onSurfaceMuted;
-    final double size = hero ? (compact ? 22 : 28) : (compact ? 18 : 22);
+    final double size = hero ? (compact ? 22 : 32) : (compact ? 18 : 24);
 
     return Semantics(
       container: true,
@@ -266,17 +266,33 @@ class _KpiCard extends StatelessWidget {
           padding: EdgeInsets.all(spacing.xl),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
+            mainAxisSize: MainAxisSize.min,
             children: <Widget>[
               Row(
                 children: <Widget>[
+                  Container(
+                    padding: EdgeInsets.all(spacing.xs),
+                    decoration: BoxDecoration(
+                      color: hero
+                          ? colors.accent.withValues(alpha: 0.15)
+                          : colors.surfaceSunken,
+                      borderRadius: AppShapes.of(context).controlRadius,
+                    ),
+                    child: Icon(
+                      kpi.icon,
+                      size: hero ? 22 : 18,
+                      color: hero ? colors.accent : quiet,
+                    ),
+                  ),
+                  SizedBox(width: spacing.md),
                   Expanded(
                     child: Text(
                       kpi.label,
                       style: type.labelMedium?.copyWith(color: quiet),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
                     ),
                   ),
-                  SizedBox(width: spacing.md),
-                  Icon(kpi.icon, size: 18, color: quiet),
                 ],
               ),
               SizedBox(height: spacing.lg),
@@ -380,7 +396,8 @@ class DashboardShiftCard extends StatelessWidget {
               children: <Widget>[
                 Text(
                   l10n.dashboardStaffNameSince(open.staffName, since),
-                  style: type.bodyMedium?.copyWith(color: colors.onSurfaceMuted),
+                  style:
+                      type.bodyMedium?.copyWith(color: colors.onSurfaceMuted),
                 ),
                 SizedBox(height: spacing.xl),
                 Text(
@@ -449,18 +466,19 @@ class DashboardNoSalesCard extends StatelessWidget {
           ),
           SizedBox(height: spacing.lg),
           Text(
-            hasEverSold
-                ? l10n.dashboardNoSalesTitle
-                : l10n.dashboardNoSalesMessage,
+            l10n.dashboardNoSalesTitle,
             textAlign: TextAlign.center,
             style: AppTypography.of(context).titleMedium,
           ),
           SizedBox(height: spacing.sm),
           Text(
+            // The two body strings are the two halves of the same empty state:
+            // one for "you have sold before, just not yet today", one for "you
+            // have never sold". A hardcoded pair once stood here, and the two
+            // keys that were supposed to carry it went unreferenced.
             hasEverSold
-                ? 'That is normal if you have not opened.'
-                : 'Sales will appear here as soon as the first sale goes '
-                    'through the till.',
+                ? l10n.dashboardNoSalesTodayBody
+                : l10n.dashboardNoSalesFirstBody,
             textAlign: TextAlign.center,
             style: AppTypography.of(context).bodyMedium?.copyWith(
                   color: colors.onSurfaceMuted,
@@ -477,10 +495,73 @@ class DashboardNoSalesCard extends StatelessWidget {
 /// The chart is a real element with a heading and a semantics label, not a
 /// painted decoration: a screen-reader user gets "Sales by hour. Busiest at 6pm
 /// with KSh 12,400" rather than silence where a picture should be.
-class DashboardHourlySales extends StatelessWidget {
+/// The hourly sales line chart, and the shape of the day.
+///
+/// StateFUL rather than stateless, and the reason is the cache below: it is a
+/// value derived from `buckets` that is expensive to compute (a locale
+/// formatter per bucket) and that must survive a rebuild. A `StatelessWidget`
+/// cannot hold it, and building it in `build()` is what the previous version
+/// did — the ~30-object allocation on every dashboard rebuild the cache exists
+/// to remove.
+/// Whether two bucket lists hold the same content.
+///
+/// Compares by value rather than identity because the caller rebuilds the list
+/// on every data load: `identity` would report an unchanged day as changed, and
+/// a cache that never hits is a cache that does nothing.
+bool _bucketsEqual(List<TimeBucket> a, List<TimeBucket> b) {
+  if (a.length != b.length) return false;
+  for (var i = 0; i < a.length; i++) {
+    if (a[i].hour != b[i].hour || a[i].salesMinor != b[i].salesMinor) {
+      return false;
+    }
+  }
+  return true;
+}
+
+class DashboardHourlySales extends StatefulWidget {
   const DashboardHourlySales({required this.buckets, super.key});
 
   final List<TimeBucket> buckets;
+
+  @override
+  State<DashboardHourlySales> createState() => _DashboardHourlySalesState();
+}
+
+class _DashboardHourlySalesState extends State<DashboardHourlySales> {
+  /// Memoised points. Null until the first call to [_points].
+  List<PosLinePoint>? _cachedPoints;
+
+  /// The points for the chart, formatted once.
+  ///
+  /// EVERY bucket in the window is included, including the hours that sold
+  /// nothing. The x axis is index-based — `_LineChartPainter._x` spaces points
+  /// evenly across the width — so dropping the empty hours would move every
+  /// later point left and flatten a day that sold at 9am and 5pm into one
+  /// adjacent pair, which is exactly the false "continuous sales" reading the
+  /// line chart exists to avoid. A zero hour plots at the baseline instead.
+  ///
+  /// Invalidated when the buckets themselves change, so a fresh day's data is
+  /// reformatted rather than shown with yesterday's labels — which is the
+  /// failure mode of any cache keyed on nothing.
+  List<PosLinePoint> _points(AppLocalizations l10n) {
+    _cachedPoints ??= <PosLinePoint>[
+      for (final TimeBucket bucket in widget.buckets)
+        PosLinePoint(
+          label: _hourLabel(bucket.hour, l10n),
+          value: bucket.salesMinor,
+          valueLabel: formatMoney(Money.fromMinor(bucket.salesMinor)),
+        ),
+    ];
+    return _cachedPoints!;
+  }
+
+  @override
+  void didUpdateWidget(covariant DashboardHourlySales oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (!_bucketsEqual(oldWidget.buckets, widget.buckets)) {
+      _cachedPoints = null;
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -491,35 +572,86 @@ class DashboardHourlySales extends StatelessWidget {
     // is a PRESENTATION fact about this list — the same buckets rendered on the
     // analytics screen may not want it.
     TimeBucket? peak;
-    for (final TimeBucket bucket in buckets) {
+    for (final TimeBucket bucket in widget.buckets) {
       if (bucket.salesMinor > 0 &&
           (peak == null || bucket.salesMinor > peak.salesMinor)) {
         peak = bucket;
       }
     }
 
+    // "There is a peak" and "there are sales today" are the SAME fact, asked
+    // once and used in both branches, rather than re-asked of the buckets a
+    // second time and hoped to agree.
+    final bool hasData = peak != null;
+
+    // Formatted once per widget instance, not once per build. See [_points].
+    final List<PosLinePoint> points = _points(l10n);
     return SurfaceCard(
       padding: EdgeInsets.all(spacing.xl),
-      child: SimplePosChart(
-        title: l10n.dashboardSalesByHour,
-        semanticsLabel: peak == null
-            ? l10n.dashboardSalesByHourEmpty
-            : l10n.dashboardPeakHourSpoken(
-                _hourLabel(peak.hour, l10n),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Expanded(
+                child: Text(
+                  l10n.dashboardSalesByHour,
+                  style: AppTypography.of(context).titleMedium,
+                ),
+              ),
+              if (hasData) ...[
+                SizedBox(width: spacing.md),
+                _PeakHourBadge(
+                  hour: _hourLabel(peak.hour, l10n),
+                  amount: formatMoney(Money.fromMinor(peak.salesMinor)),
+                ),
+              ],
+            ],
+          ),
+          SizedBox(height: spacing.lg),
+          if (!hasData)
+            Center(
+                child: Padding(
+              padding: EdgeInsets.symmetric(vertical: spacing.xxl),
+              child: Column(
+                children: [
+                  Icon(
+                    Icons.nightlight_outlined,
+                    size: 32,
+                    color: AppColors.of(context).onSurfaceMuted,
+                  ),
+                  SizedBox(height: spacing.md),
+                  Text(
+                    l10n.dashboardNoSalesTitle,
+                    textAlign: TextAlign.center,
+                    style: AppTypography.of(context).titleMedium,
+                  ),
+                  SizedBox(height: spacing.sm),
+                  Text(
+                    l10n.dashboardNoSalesFirstBody,
+                    textAlign: TextAlign.center,
+                    style: AppTypography.of(context).bodyMedium?.copyWith(
+                          color: AppColors.of(context).onSurfaceMuted,
+                        ),
+                  ),
+                ],
+              ),
+            ))
+          else
+            // A line, not a stack of hourly bars. This chart's whole job is to
+            // show the SHAPE of the day, and a line draws the shape where a
+            // column of bars makes the reader compare every height to find it.
+            //
+            // No force-unwrap: `hasData` is DERIVED from `peak != null`, so
+            // flow analysis already knows the peak exists in this branch.
+            PosLineChart(
+              title: '',
+              semanticsLabel: l10n.dashboardPeakHourSpoken(
                 formatMoney(Money.fromMinor(peak.salesMinor)),
+                _hourLabel(peak.hour, l10n),
               ),
-        emphasis: peak == null
-            ? null
-            : l10n.dashboardBusiestHour(_hourLabel(peak.hour, l10n)),
-        axis: PosChartAxis.vertical,
-        bars: <PosChartBar>[
-          for (final TimeBucket bucket in buckets)
-            PosChartBar(
-              label: _hourLabel(bucket.hour, l10n),
-              value: bucket.salesMinor,
-              valueLabel: formatMoney(
-                Money.fromMinor(bucket.salesMinor),
-              ),
+              height: 132,
+              points: points,
             ),
         ],
       ),
@@ -533,6 +665,49 @@ class DashboardHourlySales extends StatelessWidget {
   /// first, which use a dot, and which have no AM/PM at all.
   static String _hourLabel(int hour, AppLocalizations l10n) =>
       DateFormat.jm(l10n.localeName).format(DateTime(2000, 1, 1, hour));
+}
+
+class _PeakHourBadge extends StatelessWidget {
+  const _PeakHourBadge({required this.hour, required this.amount});
+
+  final String hour;
+  final String amount;
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = AppColors.of(context);
+    final spacing = AppSpacing.of(context);
+    final type = AppTypography.of(context);
+
+    return Container(
+      padding: EdgeInsets.symmetric(
+        horizontal: spacing.md,
+        vertical: spacing.xs,
+      ),
+      decoration: BoxDecoration(
+        color: colors.accentContainer,
+        borderRadius: AppShapes.of(context).chipRadius,
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(
+            Icons.trending_up,
+            size: 14,
+            color: colors.accent,
+          ),
+          SizedBox(width: spacing.xs),
+          Text(
+            '$hour · $amount',
+            style: type.labelSmall?.copyWith(
+              color: colors.onAccentContainer,
+              fontWeight: FontWeight.w600,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
 }
 
 /// What actually sold, most first.
@@ -742,10 +917,24 @@ class DashboardLowStockList extends StatelessWidget {
     if (products.isEmpty) {
       return DashboardPanel(
         title: l10n.dashboardReorderSection,
-        trailing: const StatusChip(tone: StatusTone.success, text: 'All clear'),
+        trailing: StatusChip(
+          tone: StatusTone.success,
+          text: l10n.dashboardAllClear,
+        ),
         child: Row(
           children: <Widget>[
-            Icon(Icons.inventory_2_outlined, color: colors.onSurfaceMuted),
+            Container(
+              padding: EdgeInsets.all(spacing.sm),
+              decoration: BoxDecoration(
+                color: colors.successContainer,
+                borderRadius: AppShapes.of(context).controlRadius,
+              ),
+              child: Icon(
+                Icons.check_circle_outline,
+                color: colors.success,
+                size: 24,
+              ),
+            ),
             SizedBox(width: spacing.lg),
             Expanded(
               child: Text(
@@ -765,45 +954,114 @@ class DashboardLowStockList extends StatelessWidget {
     return DashboardPanel(
       title: l10n.dashboardReorderSection,
       trailing: canOpen
-          ? TextButton(
+          ? TextButton.icon(
               onPressed: onViewAll,
-              child: Text(l10n.dashboardSee(totalCount)),
+              icon: Icon(Icons.chevron_right, size: 18),
+              label: Text(l10n.dashboardSee(totalCount)),
             )
-          : Padding(
-              padding: EdgeInsetsDirectional.only(end: spacing.md),
-              child: CountBadge(
-                count: totalCount,
-                noun: l10n.dashboardLowStockNoun(totalCount),
-                tone: totalCount <= 5 ? StatusTone.warning : StatusTone.danger,
-              ),
+          : CountBadge(
+              count: totalCount,
+              noun: l10n.dashboardLowStockNoun(totalCount),
+              tone: totalCount <= 5 ? StatusTone.warning : StatusTone.danger,
             ),
       padChild: false,
       child: Column(
         children: <Widget>[
           for (int i = 0; i < shown.length; i++)
-            KeyValueRow(
-              label: shown[i].name,
-              // A "0.0" for a product sold in whole units is noise.
-              value: '${shown[i].stockQty.round()} in stock',
-              trailing: shown[i].stockQty <= 0
-                  ? const StatusChip(
-                      tone: StatusTone.danger,
-                      text: 'Out',
-                      dense: true,
-                    )
-                  : const StatusChip(
-                      tone: StatusTone.warning,
-                      text: 'Low',
-                      dense: true,
-                    ),
-              // The identity handed back is the row itself, and the caller
-              // re-reads the id from it. A closure that captured an id at
-              // render time opens the wrong product if the list re-sorts
-              // between the tap and the handler running.
+            _LowStockRow(
+              product: shown[i],
+              canOpen: canOpen,
               onTap: canOpen ? () => onOpenProduct(shown[i]) : null,
               showDivider: i != shown.length - 1,
             ),
         ],
+      ),
+    );
+  }
+}
+
+class _LowStockRow extends StatelessWidget {
+  const _LowStockRow({
+    required this.product,
+    required this.canOpen,
+    required this.onTap,
+    required this.showDivider,
+  });
+
+  final Product product;
+  final bool canOpen;
+  final VoidCallback? onTap;
+  final bool showDivider;
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = AppColors.of(context);
+    final spacing = AppSpacing.of(context);
+    final type = AppTypography.of(context);
+
+    final bool isOut = product.stockQty <= 0;
+    final StatusTone tone = isOut ? StatusTone.danger : StatusTone.warning;
+
+    return InkWell(
+      key: key,
+      onTap: onTap,
+      child: Padding(
+        padding: EdgeInsets.symmetric(
+          horizontal: spacing.xl,
+          vertical: spacing.md,
+        ),
+        child: Row(
+          children: <Widget>[
+            Container(
+              padding: EdgeInsets.all(spacing.sm),
+              decoration: BoxDecoration(
+                color: tone.container(colors),
+                borderRadius: AppShapes.of(context).controlRadius,
+              ),
+              child: Icon(
+                tone.icon,
+                size: 20,
+                color: tone.onContainer(colors),
+              ),
+            ),
+            SizedBox(width: spacing.md),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                mainAxisSize: MainAxisSize.min,
+                children: <Widget>[
+                  Text(
+                    product.name,
+                    style: type.bodyMedium,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                  SizedBox(height: 2),
+                  Text(
+                    '${product.stockQty.round()} in stock',
+                    style: type.bodySmall?.copyWith(
+                      color: colors.onSurfaceMuted,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            SizedBox(width: spacing.md),
+            StatusChip(
+              tone: tone,
+              text: isOut ? 'Out of stock' : 'Low stock',
+              dense: true,
+            ),
+            if (canOpen) ...[
+              SizedBox(width: spacing.sm),
+              Icon(
+                Icons.chevron_right,
+                color: colors.onSurfaceMuted,
+                size: 20,
+              ),
+            ],
+          ],
+        ),
       ),
     );
   }

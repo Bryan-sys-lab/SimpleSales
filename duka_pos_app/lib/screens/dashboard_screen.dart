@@ -164,8 +164,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
       final List<Product> products = await db.getProducts();
       final DailyTotals totalsToday =
           await db.salesTotalsFor(since: dayStart, staffId: staffId);
-      final DailyTotals totalsAll =
-          await db.salesTotalsFor(staffId: staffId);
+      final DailyTotals totalsAll = await db.salesTotalsFor(staffId: staffId);
 
       if (!mounted) return;
       if (products.isEmpty && !totalsAll.hasSales) {
@@ -583,7 +582,7 @@ class _DashboardContent extends StatelessWidget {
                 ..._spaced(
                   <Widget?>[
                     DashboardHeader(
-                      shopName: appState.owner?.shopName ?? 'Simple POS',
+                      shopName: appState.owner?.shopName ?? 'SimpleSales',
                       subtitle: data.greeting,
                       onSell: onOpenSell,
                     ),

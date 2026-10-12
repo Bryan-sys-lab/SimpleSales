@@ -210,12 +210,14 @@ class _SortCell extends StatelessWidget {
     final AppLocalizations l10n = AppLocalizations.of(context);
     // The arrow glyph is not decoration: it is the ONLY thing in the header
     // saying which way the sort runs, and a screen reader gets the words instead.
+    // gen-l10n sorts the parameters ALPHABETICALLY — direction, label — which
+    // is the reverse of the header's own order "{label}, sorted {direction}".
     final String spoken = active
         ? l10n.analyticsSortedBy(
-            column.label,
             ascending
                 ? l10n.analyticsSortedAscending
                 : l10n.analyticsSortedDescending,
+            column.label,
           )
         : l10n.analyticsNotSorted(column.label);
 
@@ -354,12 +356,16 @@ class _ProductTableRow extends StatelessWidget {
 
     return Semantics(
       container: true,
+      // gen-l10n sorts the parameters ALPHABETICALLY — margin, product, profit,
+      // revenue, units — which is not the order the sentence reads them in.
+      // Every one was bound to the wrong placeholder, so the whole row was
+      // scrambled.
       label: AppLocalizations.of(context).analyticsRowSpokenFull(
-        row.productName,
-        _unitsLabel(row.units),
-        formatMoney(row.revenue),
-        formatMoney(row.profit),
         row.marginLabel,
+        row.productName,
+        formatMoney(row.profit),
+        formatMoney(row.revenue),
+        _unitsLabel(row.units),
       ),
       excludeSemantics: true,
       child: ExcludeSemantics(
@@ -416,10 +422,12 @@ class _ProductLine extends StatelessWidget {
           ),
           SizedBox(height: spacing.xs),
           Text(
+            // gen-l10n sorts these three ALPHABETICALLY — margin, profit,
+            // units — so the margin leads even though the units read first.
             AppLocalizations.of(context).analyticsRowSpokenCompact(
-                _unitsLabel(row.units),
+                row.marginLabel,
                 formatMoney(row.profit),
-                row.marginLabel),
+                _unitsLabel(row.units)),
             style: _tabularSmallStyle(context),
           ),
         ],
@@ -458,6 +466,31 @@ TextStyle _tabularSmallStyle(BuildContext context) =>
 /// The chart carries the shape — which tender dominates — and the rows beneath
 /// carry the exact figures, right-aligned with tabular numbers so a manager can
 /// compare them down the column. A chart alone cannot be read to the shilling.
+/// A payment method's own colour.
+///
+/// Each tender keeps its identity as a colour where it has one — M-Pesa green,
+/// Airtel red, Equitel blue — and takes a neutral tone where it has none, so the
+/// ring is a picture of which tenders a shop actually uses rather than five
+/// arbitrary hues. The legend underneath names every slice, so the colour is
+/// never the only thing identifying a tender.
+Color _tenderColor(String method, AppColors colors) => switch (method) {
+      'cash' => colors.cashNeutral,
+      'mpesa' => colors.mpesaGreen,
+      'airtel' => colors.airtelRed,
+      'equitel' => colors.equitelBlue,
+      'card' => colors.info,
+      'bank_transfer' => colors.accent,
+      'mobile_money_manual' => colors.warning,
+      _ => colors.onSurfaceMuted,
+    };
+
+/// How the money came in, by tender.
+///
+/// A RING and its legend, not a stack of bars: the question a manager opens this
+/// card with is "is this shop cash-heavy or mobile-money-heavy" — a share of the
+/// whole, which a ring answers at a glance and a list of bars answers only after
+/// comparing every row. The rows underneath still carry the exact figures, so
+/// nothing is lost by preferring the shape.
 class PaymentMixCard extends StatelessWidget {
   const PaymentMixCard({required this.rows, required this.totals, super.key});
 
@@ -466,8 +499,19 @@ class PaymentMixCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final AppLocalizations l10n = AppLocalizations.of(context);
     final AppSpacing spacing = AppSpacing.of(context);
     final AppColors colors = AppColors.of(context);
+
+    final slices = <PosPieSlice>[
+      for (final row in rows)
+        PosPieSlice(
+          label: row.label,
+          value: row.salesMinor,
+          color: _tenderColor(row.method, colors),
+          valueLabel: formatMoney(row.sales),
+        ),
+    ];
 
     return SurfaceCard(
       padding: EdgeInsets.zero,
@@ -475,17 +519,17 @@ class PaymentMixCard extends StatelessWidget {
         crossAxisAlignment: CrossAxisAlignment.stretch,
         mainAxisSize: MainAxisSize.min,
         children: <Widget>[
-          const SectionHeader(label: 'Payment methods'),
+          SectionHeader(label: l10n.analyticsPaymentMethodsSection),
           if (rows.isEmpty)
             Padding(
-              padding: EdgeInsets.fromLTRB(
-                spacing.md,
-                spacing.sm,
-                spacing.md,
-                spacing.md,
+              padding: EdgeInsetsDirectional.only(
+                start: spacing.md,
+                end: spacing.md,
+                top: spacing.sm,
+                bottom: spacing.md,
               ),
               child: Text(
-                'Nothing taken in this period.',
+                l10n.analyticsNothingTaken,
                 style: AppTypography.of(context).bodyMedium?.copyWith(
                       color: colors.onSurfaceMuted,
                     ),
@@ -497,18 +541,15 @@ class PaymentMixCard extends StatelessWidget {
                 start: spacing.md,
                 end: spacing.md,
               ),
-              child: SimplePosChart(
+              // The ring's own spoken form is the payment-mix sentence, so a
+              // screen reader gets the same share figures the rows below show.
+              child: PosPieChart(
                 title: '',
+                slices: slices,
                 semanticsLabel: describePaymentMix(rows, totals.totalMinor),
-                axis: PosChartAxis.horizontal,
-                bars: <PosChartBar>[
-                  for (final PaymentMixRow row in rows)
-                    PosChartBar(
-                      label: row.label,
-                      value: row.salesMinor,
-                      valueLabel: formatMoney(row.sales),
-                    ),
-                ],
+                centerLabel: l10n.analyticsPaymentMixTotal,
+                centerValue: formatMoney(totals.total),
+                size: 116,
               ),
             ),
             SizedBox(height: spacing.sm),
@@ -539,6 +580,7 @@ class _PaymentMixRow extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final AppLocalizations l10n = AppLocalizations.of(context);
     final AppSpacing spacing = AppSpacing.of(context);
     final AppColors colors = AppColors.of(context);
 
@@ -569,9 +611,14 @@ class _PaymentMixRow extends StatelessWidget {
 
     return Semantics(
       container: true,
-      label: '${row.label}, $share of takings, '
-          '${formatMoney(row.sales)} across ${row.transactions} '
-          '${row.transactions == 1 ? 'sale' : 'sales'}',
+      // Alphabetical: gen-l10n orders the generated parameters by name, and
+      // l10n.dart documents that these getters are positional by design.
+      label: l10n.analyticsPaymentRowSpoken(
+        formatMoney(row.sales),
+        row.transactions,
+        row.label,
+        share,
+      ),
       excludeSemantics: true,
       child: ExcludeSemantics(
         child: showDivider

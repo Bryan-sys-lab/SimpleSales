@@ -159,7 +159,10 @@ void main() {
     });
 
     test('the launcher label is the product name', () {
-      expect(xml, contains('android:label="Simple POS"'));
+      // The product is "SimpleSales", one word, with no space. Both Android and
+      // iOS carry the same string so the launcher never disagrees with the
+      // splash screen's wordmark.
+      expect(xml, contains('android:label="SimpleSales"'));
     });
   });
 }

@@ -189,6 +189,16 @@ class AuthService {
 
   // ---------------- Persisted lockout ----------------
 
+  /// The lockout key for the owner's own PIN.
+  ///
+  /// The same literal the login pad uses for its owner entry, so a wrong PIN
+  /// typed on the login pad, in the verify-identity dialog, and in the
+  /// delete-account dialog all count against ONE budget. Three copies of this
+  /// string — which is what existed before — is how a path ends up with its own
+  /// private attempt allowance, and a PIN that can be guessed 10,000 times on
+  /// one screen is not a PIN.
+  static const ownerLockoutKey = '__owner__';
+
   static const int maxAttempts = 5;
   static const Duration lockoutDuration = Duration(seconds: 30);
   static const Duration maxLockoutDuration = Duration(minutes: 30);

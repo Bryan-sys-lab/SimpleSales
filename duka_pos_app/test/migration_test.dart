@@ -1093,7 +1093,8 @@ void main() {
                 "ALTER TABLE products ADD COLUMN unit TEXT NOT NULL DEFAULT 'each'");
             await db.execute(
                 'ALTER TABLE products ADD COLUMN track_variants INTEGER NOT NULL DEFAULT 0');
-            await db.execute('ALTER TABLE sale_items ADD COLUMN variant_id INTEGER');
+            await db.execute(
+                'ALTER TABLE sale_items ADD COLUMN variant_id INTEGER');
             await db
                 .execute('ALTER TABLE sale_items ADD COLUMN variant_name TEXT');
             await db.execute('''CREATE TABLE IF NOT EXISTS product_barcodes (
@@ -1157,7 +1158,8 @@ void main() {
               staff_id INTEGER,
               created_at TEXT NOT NULL
             )''');
-            await db.execute('''CREATE TABLE IF NOT EXISTS staff_deletion_tombstones (
+            await db.execute(
+                '''CREATE TABLE IF NOT EXISTS staff_deletion_tombstones (
               staff_id INTEGER PRIMARY KEY,
               remote_id TEXT,
               deleted_at TEXT NOT NULL
@@ -1180,10 +1182,8 @@ void main() {
     test('staff table gains a nullable username column', () async {
       await migratedFromV15().then((db) => db.close());
       final db = await DatabaseHelper.openExistingForUpgradeTests(path);
-      final info = await db.rawQuery(
-          "PRAGMA table_info(staff)");
-      final columns =
-          info.map((row) => row['name'] as String).toList();
+      final info = await db.rawQuery("PRAGMA table_info(staff)");
+      final columns = info.map((row) => row['name'] as String).toList();
       expect(columns, contains('username'));
       await db.close();
     });
@@ -1243,8 +1243,8 @@ void main() {
               variant_id INTEGER,
               variant_name TEXT
             )''');
-            await db.execute(
-                'CREATE INDEX idx_sales_staff ON sales (staff_id)');
+            await db
+                .execute('CREATE INDEX idx_sales_staff ON sales (staff_id)');
             await db.execute('''CREATE TABLE IF NOT EXISTS product_barcodes (
               barcode TEXT PRIMARY KEY NOT NULL,
               product_id INTEGER NOT NULL,
@@ -1307,7 +1307,8 @@ void main() {
               staff_id INTEGER,
               created_at TEXT NOT NULL
             )''');
-            await db.execute('''CREATE TABLE IF NOT EXISTS staff_deletion_tombstones (
+            await db.execute(
+                '''CREATE TABLE IF NOT EXISTS staff_deletion_tombstones (
               staff_id INTEGER PRIMARY KEY,
               remote_id TEXT,
               deleted_at TEXT NOT NULL
@@ -1338,6 +1339,189 @@ void main() {
       expect(freshTables, migratedTables,
           reason: 'a new till and an upgraded one must not diverge');
       await fresh.close();
+    });
+  });
+
+  /// v17 -> v19: the audit log and the crash log.
+  ///
+  /// v17 is what a real till in the field is on today: the ledger, variants,
+  /// shifts and staff username, with rows. Opening it at the current version
+  /// runs the two `oldVersion < 18` / `oldVersion < 19` branches for real,
+  /// which nothing else did — the newest builder in this suite used to be v16,
+  /// so the newest two shipped migration steps had no coverage at all.
+  group('v17 -> v19: audit log and crash log', () {
+    /// The v17 shape, built the way the app reaches v17: from v10 up through
+    /// its own migrations, plus the one column v17 adds.
+    Future<Database> atV17() async {
+      await _createV10Database(
+        path,
+        products: [
+          product(cost: 100, sell: 150),
+        ],
+        sales: [
+          sale(id: 1, total: 150, profit: 50),
+        ],
+      );
+      final db = await databaseFactoryFfi.openDatabase(
+        path,
+        options: OpenDatabaseOptions(
+          version: 17,
+          onOpen: (db) async {
+            // The roster as v16 leaves it, so this is a real v17 file rather
+            // than an empty one.
+            await db.execute('''CREATE TABLE IF NOT EXISTS staff (
+              id INTEGER PRIMARY KEY AUTOINCREMENT,
+              name TEXT NOT NULL,
+              role TEXT NOT NULL DEFAULT 'cashier',
+              pin_hash TEXT NOT NULL,
+              is_active INTEGER NOT NULL DEFAULT 1,
+              created_at TEXT NOT NULL,
+              username TEXT
+            )''');
+            // Three rows of live ledger, which is what makes this a real
+            // migration rather than an empty-file exercise.
+            expect((await db.query('products')).length, 1);
+          },
+        ),
+      );
+      return db;
+    }
+
+    Future<Database> upgraded() async {
+      final db = await atV17();
+      await db.close();
+      return DatabaseHelper.openExistingForUpgradeTests(path);
+    }
+
+    /// The columns an index leads with, read back off the upgraded file, so a
+    /// dropped or mis-ordered index fails here rather than on a phone.
+    Future<List<String>> indexColumnsOn(
+      Database db,
+      String index,
+    ) async {
+      final rows = await db.rawQuery(
+        "SELECT sql FROM sqlite_master WHERE type='index' AND name=?",
+        <Object?>[index],
+      );
+      expect(rows, isNotEmpty,
+          reason: 'index $index is missing after the upgrade');
+      final sql = rows.first['sql'] as String;
+      final open = sql.indexOf('(');
+      final close = sql.lastIndexOf(')');
+      final body = sql.substring(open + 1, close);
+      return body
+          .split(',')
+          .map((c) => c.trim().split(' ').first)
+          .toList(growable: false);
+    }
+
+    test('the audit table exists with the columns the app writes', () async {
+      final db = await upgraded();
+      final rows = await db.query('audit_log');
+      expect(rows, isEmpty);
+
+      final columns = (await db.rawQuery('PRAGMA table_info(audit_log)'))
+          .map((r) => r['name'] as String)
+          .toSet();
+      expect(
+        columns,
+        containsAll(<String>[
+          'id',
+          'action',
+          'entity',
+          'entity_id',
+          'actor_id',
+          'actor_name',
+          'detail',
+          'created_at',
+        ]),
+      );
+      await db.close();
+    });
+
+    test('every audit index leads with the column its query filters on',
+        () async {
+      final db = await upgraded();
+      // `action` is the column the owner-relevant filter reads, and it was
+      // missing: without a leading `action` the activity screen walked
+      // `created_at DESC` and discarded every sale row to show 50 rows.
+      expect(await indexColumnsOn(db, 'idx_audit_action'),
+          <String>['action', 'created_at']);
+      expect(await indexColumnsOn(db, 'idx_audit_entity'),
+          <String>['entity', 'entity_id', 'created_at']);
+      expect(await indexColumnsOn(db, 'idx_audit_actor'),
+          <String>['actor_id', 'created_at']);
+      expect(await indexColumnsOn(db, 'idx_audit_created'),
+          <String>['created_at']);
+      await db.close();
+    });
+
+    test('the crash table exists and its indexes lead with what it filters on',
+        () async {
+      final db = await upgraded();
+      final columns = (await db.rawQuery('PRAGMA table_info(crash_log)'))
+          .map((r) => r['name'] as String)
+          .toSet();
+      expect(
+        columns,
+        containsAll(<String>[
+          'id',
+          'kind',
+          'message',
+          'stack',
+          'route',
+          'actor_name',
+          'action',
+          'breadcrumbs',
+          'created_at',
+        ]),
+      );
+      // The three reads the diagnostics screen performs.
+      expect(await indexColumnsOn(db, 'idx_crash_created'),
+          <String>['created_at']);
+      expect(await indexColumnsOn(db, 'idx_crash_actor'),
+          <String>['actor_name', 'created_at']);
+      await db.close();
+    });
+
+    test('the ledger it walked through is untouched', () async {
+      final db = await upgraded();
+      final products = await db.query('products');
+      expect(products.length, 1);
+      final sales = await db.query('sales');
+      expect(sales.length, 1);
+      // The migration rebuilt nothing it did not own.
+      expect(sales.single['total'], 150);
+      await db.close();
+    });
+
+    test('a fresh v19 install has the same new tables as an upgraded one',
+        () async {
+      // The v17 fixture is deliberately a PARTIAL v17 — it is built from v10
+      // and declared v17, so it holds the ledger but not the tables the
+      // v11-v17 branches add. The claim this test can honestly make is
+      // therefore about the two tables the 18 and 19 branches own, which is
+      // the one both paths define through the same helpers.
+      final db = await upgraded();
+      final freshPath = '${path}_fresh_v19';
+      final fresh = await DatabaseHelper.openExistingForUpgradeTests(freshPath);
+
+      Future<List<String>> tableNames(Database database) async {
+        final names = <String>[];
+        for (final row in await database.rawQuery(
+            "SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%'")) {
+          names.add(row['name'] as String);
+        }
+        names.sort();
+        return names;
+      }
+
+      expect(await tableNames(fresh),
+          containsAll(<String>['audit_log', 'crash_log']));
+      expect(await tableNames(db),
+          containsAll(<String>['audit_log', 'crash_log']));
+      await fresh.close();
+      await db.close();
     });
   });
 }

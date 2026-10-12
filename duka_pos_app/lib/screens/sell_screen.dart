@@ -6,7 +6,9 @@ import 'package:flutter/services.dart';
 import 'package:flutter/semantics.dart';
 import 'package:provider/provider.dart';
 import '../routing/routes.dart';
+import '../models/audit_log.dart';
 import '../services/app_state.dart';
+import '../services/audit_actor.dart';
 import '../services/backend_service.dart';
 import '../services/barcode/barcode_service.dart';
 import '../services/barcode/scan_input_service.dart';
@@ -301,6 +303,10 @@ class _SellScreenState extends State<SellScreen> {
   /// customer's basket belongs to the original push and must not be mutated by
   /// whatever the cashier has typed since.
   Future<bool> _recordReconciledSale(Map<String, dynamic> pending) async {
+    // Read before the first await: the audit row written after the sale is
+    // attributed from the session, and a BuildContext must not be held across
+    // an await.
+    final AppState state = context.read<AppState>();
     final reference = pending['reference'] as String? ?? '';
     // The row is the only record that this payment still needs booking. If it
     // has already gone — a concurrent reconcile, or the stale sweep — booking
@@ -346,6 +352,16 @@ class _SellScreenState extends State<SellScreen> {
         enforceStock: false,
         paymentMethod: 'mpesa',
         paymentReference: reference,
+      );
+      // A reconciled payment is a sale the till never saw happen — the money
+      // arrived from the provider, not from a cart on screen. That is precisely
+      // the sale an audit log exists to explain.
+      await recordActionAudit(
+        state,
+        action: AuditAction.saleRecorded,
+        entity: AuditEntity.sale,
+        entityId: reference,
+        detail: '${items.length} line(s), M-Pesa, reconciled',
       );
       for (final entry in variantUnits.entries) {
         try {
@@ -463,11 +479,25 @@ class _SellScreenState extends State<SellScreen> {
     // The camera surface itself is deliberately a ROUTE rather than a pushed
     // `Navigator` page, so deep linking can reach it and the back button from
     // inside the viewfinder leaves the till.
-    final ScanResult? scan = await context.push<ScanResult>(Routes.cameraScan);
-    // A null result is the user backing out, which is its own outcome and not a
-    // failed scan. There is nothing to add to the cart.
-    if (scan == null) return;
-    await _handleScan(scan);
+    try {
+      final GoRouter router = GoRouter.of(context);
+      final ScanResult? scan = await router.push<ScanResult>(Routes.cameraScan);
+      // A null result is the user backing out, which is its own outcome and not a
+      // failed scan. There is nothing to add to the cart.
+      if (scan == null) return;
+      await _handleScan(scan);
+    } catch (e) {
+      if (!mounted) return;
+      // The message names what to do NEXT, not what broke: a cashier mid-sale
+      // with a queue behind them needs the wedge scanner or the product list,
+      // not a stack trace. The wedge path is mentioned because it is the
+      // fallback that never needs the camera at all.
+      final l10n = AppLocalizations.of(context);
+      _announceStatus(l10n.sellScanCameraError);
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(l10n.sellScanCameraError)),
+      );
+    }
   }
 
   Future<void> _addToCart(Product product) async {
@@ -991,6 +1021,16 @@ class _SellScreenState extends State<SellScreen> {
         staffId: staffId,
         etimsPending: etimsEnabled,
       );
+      // Every sale is attributed. The ledger records THAT money changed hands;
+      // the log records WHO rang it, which is the question a variance review
+      // asks and the sales table answers only by a display name.
+      await recordActionAudit(
+        state,
+        action: AuditAction.saleRecorded,
+        entity: AuditEntity.sale,
+        entityId: 'id-$saleId',
+        detail: '${items.length} line(s), $paymentMethod',
+      );
 
       // Before the cart is emptied, while the lines that were sold are still
       // readable, and only once the sale is committed.
@@ -1103,7 +1143,16 @@ class _SellScreenState extends State<SellScreen> {
             phoneNumber.trim().isEmpty ? null : 'offline-${phoneNumber.trim()}',
         amountTendered: _total,
         paymentVerified: false,
-               staffId: state.currentStaffId,
+        staffId: state.currentStaffId,
+      );
+      // An unconfirmed sale is the one most likely to be disputed later, so
+      // its attribution matters more, not less.
+      await recordActionAudit(
+        state,
+        action: AuditAction.saleRecorded,
+        entity: AuditEntity.sale,
+        entityId: 'id-$saleId',
+        detail: '${items.length} line(s), M-Pesa, unconfirmed',
       );
       if (!mounted) return;
       _announceStatus('M-Pesa sale recorded. Payment not yet confirmed.');
@@ -1154,7 +1203,7 @@ class _SellScreenState extends State<SellScreen> {
               controller: phoneController,
               decoration: InputDecoration(
                 labelText: AppLocalizations.of(context).sellPhoneNumberLabel,
-                hintText: '0712345678',
+                hintText: AppLocalizations.of(context).sellPhoneNumberHint,
               ),
               keyboardType: TextInputType.phone,
               autofillHints: const [AutofillHints.telephoneNumber],
@@ -1351,6 +1400,13 @@ class _SellScreenState extends State<SellScreen> {
               paymentReference: reference,
               staffId: state.isOwnerSession ? null : cashierProfile?.id,
               etimsPending: etimsEnabled,
+            );
+            await recordActionAudit(
+              state,
+              action: AuditAction.saleRecorded,
+              entity: AuditEntity.sale,
+              entityId: 'id-$saleId',
+              detail: '${localItems.length} line(s), M-Pesa, confirmed',
             );
             await _deductVariantStockForSale(_cart);
             await DatabaseHelper.instance.resolvePendingPayment(reference);
@@ -1699,7 +1755,7 @@ class _SellScreenState extends State<SellScreen> {
                                             : _checkoutMpesa,
                                     icon: const Icon(Icons.phone_iphone),
                                     label: Text(AppLocalizations.of(context)
-                                        .sellMethodMpesa),
+                                        .settingsMpesaMethod),
                                     style: ElevatedButton.styleFrom(
                                       backgroundColor: Theme.of(context)
                                           .colorScheme

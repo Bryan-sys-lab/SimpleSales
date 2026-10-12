@@ -4,6 +4,8 @@ import 'package:flutter/foundation.dart';
 import 'package:intl/intl.dart';
 import 'package:path/path.dart';
 import 'package:sqflite/sqflite.dart';
+import '../models/audit_log.dart';
+import '../models/crash_log.dart';
 import '../models/models.dart';
 import '../utils/money.dart';
 // The aggregate result types (DailyTotals, ProductSalesRow, TimeBucket,
@@ -23,9 +25,40 @@ class DatabaseHelper {
   Database? _db;
   String _workspaceKey = 'legacy';
 
+  /// Serialises moving this singleton to another shop.
+  ///
+  /// Held for a whole operation, not for a single switch, so that a caller
+  /// which must walk several shops (the cross-shop activity read) can keep the
+  /// database still for as long as it is looking.
+  static final _AsyncGate _workspaceGate = _AsyncGate();
+
   /// Must run before the first database access. The legacy path is retained
   /// for existing installations; every additional shop gets a separate file.
-  Future<void> initializeWorkspace(String workspaceKey) async {
+  ///
+  /// Takes the workspace gate (see [_AsyncGate]) so a shop switch can never
+  /// land in the middle of a cross-shop tour — see
+  /// [CrossShopAuditReader.readAllShops].
+  Future<void> initializeWorkspace(String workspaceKey) =>
+      _workspaceGate.run(() => _pointAtWorkspace(workspaceKey));
+
+  /// Moves the database to another shop.
+  ///
+  /// Holds the workspace gate for the move, so it can never land in the middle
+  /// of a cross-shop tour. Use [switchWorkspaceHoldingGate] from inside a tour
+  /// — the gate is already held there, and taking it twice would deadlock.
+  Future<void> switchWorkspace(String workspaceKey) =>
+      initializeWorkspace(workspaceKey);
+
+  /// Moves the database WITHOUT taking the workspace gate.
+  ///
+  /// Valid only for a caller that already holds the gate, which it obtains
+  /// through [withWorkspaceGate]. A caller that switches without the gate can
+  /// have its switch reverted by a concurrent tour, which leaves the till
+  /// pointed at the shop the tour happened to be walking.
+  Future<void> switchWorkspaceHoldingGate(String workspaceKey) =>
+      _pointAtWorkspace(workspaceKey);
+
+  Future<void> _pointAtWorkspace(String workspaceKey) async {
     if (workspaceKey.trim().isEmpty) {
       throw ArgumentError.value(workspaceKey, 'workspaceKey');
     }
@@ -35,8 +68,27 @@ class DatabaseHelper {
     _workspaceKey = workspaceKey;
   }
 
-  Future<void> switchWorkspace(String workspaceKey) =>
-      initializeWorkspace(workspaceKey);
+  /// Runs [body] holding the workspace gate.
+  ///
+  /// The gate exists because the whole process reads and writes through this
+  /// one singleton: while a body holds it, no other code can move the database
+  /// to another shop, and the gate is what makes a multi-shop tour safe to run
+  /// from a screen the rest of the app is still using.
+  Future<T> withWorkspaceGate<T>(Future<T> Function() body) =>
+      _workspaceGate.run(body);
+
+  /// The shop this singleton is CURRENTLY pointed at.
+  ///
+  /// Distinct from `WorkspaceService.activeWorkspaceKey()`, and deliberately so:
+  /// the registry in SharedPreferences is what a *user* chose, while this is
+  /// what the *database* is actually reading. A cross-shop reader that restores
+  /// from the registry would restore the user's choice even though it had
+  /// already moved the database somewhere else — and would then point the till
+  /// at a shop whose stock it is not showing.
+  ///
+  /// A caller that walked several shops and wants to put things back exactly as
+  /// they found them needs THIS.
+  String get currentWorkspaceKey => _workspaceKey;
 
   Future<Database> get database async {
     _db ??= await _initDb();
@@ -54,7 +106,7 @@ class DatabaseHelper {
   /// shipped — always add a new one, even for a one-line fix — because a
   /// shop's phone may be several versions behind and needs every step run
   /// in order to land on the current schema without data loss.
-  static const _schemaVersion = 17;
+  static const _schemaVersion = 19;
 
   /// Slack allowed when deciding whether a container has enough left for a sale.
   ///
@@ -265,7 +317,8 @@ SELECT name FROM staff GROUP BY name HAVING COUNT(*) = 1
     }
     if (oldVersion < 16) {
       await db.execute('ALTER TABLE staff ADD COLUMN username TEXT');
-      await db.execute('CREATE UNIQUE INDEX IF NOT EXISTS idx_staff_username ON staff (username) WHERE username IS NOT NULL');
+      await db.execute(
+          'CREATE UNIQUE INDEX IF NOT EXISTS idx_staff_username ON staff (username) WHERE username IS NOT NULL');
     }
     if (oldVersion < 17) {
       // Indexes for query hotspots the v10 set did not cover. Without these,
@@ -280,6 +333,91 @@ SELECT name FROM staff GROUP BY name HAVING COUNT(*) = 1
       await db.execute(
           'CREATE INDEX IF NOT EXISTS idx_products_track_variants ON products (track_variants)');
     }
+    if (oldVersion < 18) {
+      // Who did what, when. The ledger records that a sale happened and a
+      // stock adjustment happened; neither says which manager changed the VAT
+      // rate at 11pm, or which cashier erased a backup. Every state-changing
+      // action in the app writes one row here.
+      //
+      // The table and its indexes live in [_createAuditLogTable] so `onCreate`
+      // and this upgrade path run the SAME code and the two schemas cannot
+      // diverge. `migration_test.dart` asserts that invariant directly.
+      await _createAuditLogTable(db);
+    }
+    if (oldVersion < 19) {
+      // What went wrong, and what the app was doing when it did. The other half
+      // of the audit log, for the moments no action commit succeeded.
+      //
+      // Bounded and self-deleting: the recorder trims on every write, so a
+      // phone that crashes repeatedly cannot fill its storage before anybody
+      // reads it.
+      await _createCrashLogTable(db);
+    }
+  }
+
+  /// v19: the failure log — what broke, and what the shop was doing.
+  ///
+  /// Called from BOTH paths, for the same reason as [_createAuditLogTable]: a
+  /// shop must not get a different database depending on when it installed.
+  Future<void> _createCrashLogTable(Database db) async {
+    await db.execute('''CREATE TABLE IF NOT EXISTS crash_log (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        kind TEXT NOT NULL DEFAULT 'error',
+        message TEXT NOT NULL,
+        stack TEXT,
+        route TEXT,
+        actor_name TEXT,
+        action TEXT,
+        breadcrumbs TEXT,
+        created_at TEXT NOT NULL
+      )''');
+    // The two ways it is read: newest first (the diagnostics screen), and by
+    // actor (an owner asking which cashier's till keeps failing).
+    await db.execute(
+        'CREATE INDEX IF NOT EXISTS idx_crash_created ON crash_log (created_at DESC)');
+    await db.execute(
+        'CREATE INDEX IF NOT EXISTS idx_crash_actor ON crash_log (actor_name, created_at DESC)');
+  }
+
+  /// v18: the audit log — who did what, when.
+  ///
+  /// Called from BOTH paths: a fresh install's `onCreate` and the v17 -> v18
+  /// `onUpgrade`. Defining the schema once and applying it twice is the only
+  /// way `migration_test.dart`'s "fresh installs match upgraded installs" can
+  /// stay true, and a shop must not get a different database depending on when
+  /// it installed.
+  Future<void> _createAuditLogTable(Database db) async {
+    // `actor_id` is NULL for the owner: `deleteStaffWithTombstone` anonymises
+    // the staff table, and tying an audit row to a row that may be scrubbed
+    // would leak the very name the tombstone exists to remove. The display name
+    // is denormalised into `actor_name` so the row still reads without a join.
+    await db.execute('''CREATE TABLE IF NOT EXISTS audit_log (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        action TEXT NOT NULL,
+        entity TEXT NOT NULL,
+        entity_id TEXT,
+        actor_id INTEGER,
+        actor_name TEXT NOT NULL,
+        detail TEXT,
+        created_at TEXT NOT NULL
+      )''');
+    // The three ways the log is read: the filtered control-relevant view the
+    // activity screen uses on every load, everything on an entity (what
+    // happened to THIS product), and everything by an actor in a window (what
+    // did THIS cashier do today).
+    //
+    // `idx_audit_action` matters because `action IN (…)` filters a table where
+    // sale rows dominate: without a leading `action` column SQLite walks
+    // `created_at DESC` and discards every row that is not in the filter, so
+    // the activity screen reads the whole recent log to show 50 rows of it.
+    await db.execute(
+        'CREATE INDEX IF NOT EXISTS idx_audit_action ON audit_log (action, created_at DESC)');
+    await db.execute(
+        'CREATE INDEX IF NOT EXISTS idx_audit_entity ON audit_log (entity, entity_id, created_at DESC)');
+    await db.execute(
+        'CREATE INDEX IF NOT EXISTS idx_audit_actor ON audit_log (actor_id, created_at DESC)');
+    await db.execute(
+        'CREATE INDEX IF NOT EXISTS idx_audit_created ON audit_log (created_at DESC)');
   }
 
   /// v14 -> v15: shifts, till counts, and reconciliations.
@@ -873,16 +1011,17 @@ SELECT name FROM staff GROUP BY name HAVING COUNT(*) = 1
     await _createShiftTables(db);
     await _createShotCupsTable(db);
     await _createCupSizeSuggestionsTable(db);
+    await _createAuditLogTable(db);
+    await _createCrashLogTable(db);
 
     // Indexes for query hotspots not covered by the core set above. Created
     // after the helper calls so the columns they add (payment_verified,
     // etims_status, track_variants) already exist.
     await db.execute(
         'CREATE INDEX idx_sales_payment_verified ON sales (payment_verified, created_at DESC)');
-    await db.execute(
-        'CREATE INDEX idx_sales_etims_status ON sales (etims_status)');
-    await db.execute(
-        'CREATE INDEX idx_products_active ON products (active)');
+    await db
+        .execute('CREATE INDEX idx_sales_etims_status ON sales (etims_status)');
+    await db.execute('CREATE INDEX idx_products_active ON products (active)');
     await db.execute(
         'CREATE INDEX idx_products_track_variants ON products (track_variants)');
   }
@@ -1208,8 +1347,8 @@ SELECT name FROM staff GROUP BY name HAVING COUNT(*) = 1
   }
 
   Future<void> deleteVariantInTransaction(Transaction txn, int id) async {
-    await txn.delete('product_barcodes',
-        where: 'variant_id = ?', whereArgs: [id]);
+    await txn
+        .delete('product_barcodes', where: 'variant_id = ?', whereArgs: [id]);
     await txn.delete('product_variants', where: 'id = ?', whereArgs: [id]);
   }
 
@@ -1617,6 +1756,37 @@ SELECT name FROM staff GROUP BY name HAVING COUNT(*) = 1
         await txn.update('products', {'remote_id': entry.value},
             where: 'id = ?', whereArgs: [entry.key]);
       }
+    });
+  }
+
+  /// Clears every cached `remote_id`, on products and on staff.
+  ///
+  /// Called when the tenant this shop is bound to changes. The ids are minted
+  /// inside one tenant's namespace, so keeping them after a relink would mean
+  /// addressing foreign rows — see `BackendService._assertRowsInScope`.
+  ///
+  /// Clears the ids only. The rows are untouched: a product the shop still sells
+  /// is still its product, and the next sync lets the server mint a fresh id
+  /// under the tenant the shop is actually bound to now.
+  Future<void> clearAllRemoteIds() async {
+    final db = await database;
+    await db.transaction((txn) async {
+      await txn.update('products', <String, Object?>{'remote_id': null});
+      await txn.update('staff', <String, Object?>{'remote_id': null});
+    });
+  }
+
+  /// Clears every staff deletion tombstone.
+  ///
+  /// A tombstone replays "this cashier was removed" by `remote_id`, so after a
+  /// tenant change the replay would name a row in the old tenant's namespace.
+  /// Dropping them is the honest answer: the next sync under the new tenant
+  /// states the roster as it is now, and a removed cashier is simply absent
+  /// from it.
+  Future<void> clearAllDeletionTombstones() async {
+    final db = await database;
+    await db.transaction((txn) async {
+      await txn.delete('staff_deletion_tombstones');
     });
   }
 
@@ -2852,6 +3022,327 @@ SELECT name FROM staff GROUP BY name HAVING COUNT(*) = 1
     );
     return rows.map(CupSizeSuggestion.fromMap).toList();
   }
+  // -------------------------------------------------------------------------
+  // The audit log
+  //
+  // Every state-changing action in the app writes exactly one row, through
+  // exactly one method, so "who did what" cannot silently stop being recorded
+  // because a call site forgot to. The method is `recordAudit`; a screen never
+  // INSERTs into `audit_log` itself.
+  // -------------------------------------------------------------------------
+
+  /// Writes one audit row.
+  ///
+  /// Returns the new row's id so a caller can chain it onto the action it
+  /// recorded (the inventory screen does this: the row it writes is then
+  /// selectable as "this is the product I just changed").
+  ///
+  /// The row is written and the log is trimmed in ONE transaction, so the
+  /// table the trim bounds is bounded by the very write that extends it — a
+  /// separate `pruneAuditLog` an unbounded number of call sites must remember
+  /// to invoke is how an audit log grows forever on a busy till.
+  Future<int> recordAudit(AuditLogEntry entry) async {
+    final db = await database;
+    return db.transaction((txn) async {
+      final id = await txn.insert('audit_log', entry.toMap());
+      await _trimAuditLog(txn);
+      return id;
+    });
+  }
+
+  /// Writes several audit rows that belong to one action, in one transaction.
+  ///
+  /// The variant/barcode save on the inventory screen is the reason this
+  /// exists: that action is one transaction for its data but then fired four
+  /// separate audit transactions, which is four disk commits — and four fsyncs
+  /// on the sale path — for one user-visible gesture.
+  Future<void> recordAudits(List<AuditLogEntry> entries) async {
+    if (entries.isEmpty) return;
+    final db = await database;
+    await db.transaction((txn) async {
+      final batch = txn.batch();
+      for (final entry in entries) {
+        batch.insert('audit_log', entry.toMap());
+      }
+      await batch.commit(noResult: true);
+      await _trimAuditLog(txn);
+    });
+  }
+
+  /// Deletes rows past the newest [auditRetainRows], only when there are any.
+  ///
+  /// Runs inside the writing transaction, so the cap can never be observed
+  /// above the limit by another reader.
+  ///
+  /// Cut on `(created_at, id)` — the same key every READER orders by — rather
+  /// than on `id` alone. The id-only form was cheaper and wrong: `created_at`
+  /// comes from the device clock, so a phone whose clock moved backwards gives
+  /// older rows later timestamps, and the id cut then deleted the newest work
+  /// and kept the stale. An audit log exists to answer "who changed what
+  /// recently", so dropping the recent rows is a defect on the feature's whole
+  /// surface.
+  ///
+  /// The delete compares the timestamp FIRST and breaks ties on id, which is
+  /// what "older than the boundary row" means under the readers' ordering. A
+  /// bare `id < boundary` would be wrong in the same way the id-only cut was:
+  /// the boundary row often has a LOWER id than rows it is newer than, and the
+  /// comparison would then delete nothing.
+  ///
+  /// The COUNT-then-cut shape keeps the cost down: when the table is already
+  /// under the cap it does nothing at all, and otherwise it is one indexed
+  /// lookup (`idx_audit_created`) plus a delete over that range.
+  Future<void> _trimAuditLog(Transaction txn) async {
+    final rows = await txn
+        .rawQuery('SELECT COUNT(*) AS total FROM audit_log', <Object?>[]);
+    final total = rows.isEmpty ? 0 : rows.first['total'] as int? ?? 0;
+    if (total <= auditRetainRows) return;
+    // The boundary row, in the order the readers use: everything older than it
+    // goes.
+    final boundary = await txn.rawQuery(
+      'SELECT id, created_at FROM audit_log '
+      'ORDER BY created_at DESC, id DESC LIMIT 1 OFFSET ?',
+      <Object?>[auditRetainRows - 1],
+    );
+    if (boundary.isEmpty) return;
+    final boundaryRow = boundary.first;
+    final cutoffAt = boundaryRow['created_at'] as String?;
+    final cutoffId = boundaryRow['id'] as int?;
+    if (cutoffAt == null || cutoffId == null) return;
+    await txn.delete(
+      'audit_log',
+      where: 'created_at < ? OR (created_at = ? AND id < ?)',
+      whereArgs: <Object?>[cutoffAt, cutoffAt, cutoffId],
+    );
+  }
+
+  /// Every row on one entity, newest first.
+  ///
+  /// The "what happened to this product" question, which is the one the
+  /// inventory screen asks when an owner taps an audit badge.
+  Future<List<AuditLogEntry>> auditForEntity(
+    AuditEntity entity,
+    String entityId, {
+    int limit = 100,
+  }) async {
+    return auditLog(AuditLogQuery(
+      entity: entity,
+      entityId: entityId,
+      limit: limit,
+    ));
+  }
+
+  /// A filtered window of the log, newest first.
+  ///
+  /// One method for the admin dashboard and for the in-app activity view, so a
+  /// filter added to one is not missing from the other.
+  Future<List<AuditLogEntry>> auditLog(AuditLogQuery query) async {
+    final db = await database;
+    final conditions = <String>[];
+    final args = <Object?>[];
+
+    if (query.entity != null) {
+      conditions.add('entity = ?');
+      args.add(query.entity!.wire);
+    }
+    if (query.entityId != null) {
+      conditions.add('entity_id = ?');
+      args.add(query.entityId);
+    }
+    if (query.actorId != null) {
+      conditions.add('actor_id = ?');
+      args.add(query.actorId);
+    }
+    if (query.actions != null && query.actions!.isNotEmpty) {
+      final placeholders =
+          List<String>.filled(query.actions!.length, '?').join(', ');
+      conditions.add('action IN ($placeholders)');
+      args.addAll(query.actions!.map((a) => a.wire));
+    }
+    if (query.since != null) {
+      conditions.add('created_at >= ?');
+      args.add(query.since);
+    }
+
+    final rows = await db.query(
+      'audit_log',
+      where: conditions.isEmpty ? null : conditions.join(' AND '),
+      whereArgs: conditions.isEmpty ? null : args,
+      orderBy: 'created_at DESC, id DESC',
+      limit: query.limit,
+    );
+    return rows.map(AuditLogEntry.fromMap).toList();
+  }
+
+  /// The rows an owner's activity view opens on: the actions that change what
+  /// the shop can do, rather than the thousands of sale rows.
+  static const List<AuditAction> _ownerVisibleActions = <AuditAction>[
+    AuditAction.staffAdded,
+    AuditAction.staffRemoved,
+    AuditAction.staffPinReset,
+    AuditAction.productVariantRemoved,
+    AuditAction.barcodeRemoved,
+    AuditAction.barcodeKindChanged,
+    AuditAction.taxSettingsChanged,
+    AuditAction.paymentMethodChanged,
+    AuditAction.printerSaved,
+    AuditAction.backupErased,
+    AuditAction.backupRestored,
+    AuditAction.shopCreated,
+    AuditAction.shopSwitched,
+    AuditAction.identityLinked,
+  ];
+
+  /// The control-relevant rows only.
+  ///
+  /// A raw activity feed is 200 sale rows deep before the manager's settings
+  /// change that the owner actually wanted to see, so the owner's view reads a
+  /// filtered list and the full log stays available for the admin dashboard.
+  Future<List<AuditLogEntry>> ownerRelevantAudit({int limit = 50}) async {
+    final db = await database;
+    final placeholders =
+        List<String>.filled(_ownerVisibleActions.length, '?').join(', ');
+    final rows = await db.query(
+      'audit_log',
+      where: 'action IN ($placeholders)',
+      whereArgs: _ownerVisibleActions.map((a) => a.wire).toList(),
+      orderBy: 'created_at DESC, id DESC',
+      limit: limit,
+    );
+    return rows.map(AuditLogEntry.fromMap).toList();
+  }
+
+  /// How many audit rows a shop keeps.
+  ///
+  /// Every sale adds a row, so on a busy till this is what bounds the table:
+  /// 5,000 rows is months of "who did what" on one shop and tens of kilobytes,
+  /// and the admin dashboard is where longer history lives.
+  static const int auditRetainRows = 5000;
+
+  /// Trims the log to [keepRows].
+  ///
+  /// Kept as an explicit operation — the diagnostics screen and tests use it to
+  /// force the state a capped log is meant to be in — but production writes go
+  /// through [recordAudit] and [recordAudits], which trim in the same
+  /// transaction as the insert. The cap is enforced by the write, not by a
+  /// schedule something might forget to run.
+  Future<int> pruneAuditLog({int keepRows = auditRetainRows}) async {
+    final db = await database;
+    return db.transaction((txn) async {
+      final oldest = await txn.query('audit_log',
+          columns: <String>['COUNT(*) as total'], limit: 1);
+      if (oldest.isEmpty) return 0;
+      final total = oldest.first['total'] as int;
+      if (total <= keepRows) return 0;
+      final cutoff = await txn.query('audit_log',
+          columns: <String>['id'],
+          orderBy: 'id DESC',
+          offset: keepRows,
+          limit: 1);
+      if (cutoff.isEmpty) return 0;
+      final cutoffId = cutoff.first['id'] as int;
+      return txn.delete('audit_log',
+          where: 'id <= ?', whereArgs: <Object?>[cutoffId]);
+    });
+  }
+
+  /// How many rows the audit log holds.
+  ///
+  /// Reported so a shop can see that the log is capped rather than that it has
+  /// quietly stopped recording. The cap is enforced by the writes, so this is
+  /// a reading, not a control.
+  Future<int> auditLogCount() async {
+    final db = await database;
+    final rows = await db.query('audit_log',
+        columns: <String>['COUNT(*) as n'], limit: 1);
+    if (rows.isEmpty) return 0;
+    return rows.first['n'] as int;
+  }
+
+  // --------------------------------------------------------------- failure log
+
+  /// How many failures a phone keeps.
+  ///
+  /// 200 is a fortnight of a genuinely broken build (a crash that happens on
+  /// every sale), and under a megabyte of the text that matters — where a cap
+  /// of 10,000 would be a phone whose storage a bug could eat.
+  static const int crashRetainRows = 200;
+
+  /// Records a failure and trims the log to [crashRetainRows] in the same
+  /// transaction.
+  ///
+  /// The trim is INSIDE the write because "auto-deleting bounded logs" is a
+  /// property of the write, not of a background job: a shop that never opens
+  /// the diagnostics screen must not accumulate an unbounded log, and a job
+  /// that runs "later" does not run on a phone that is switched off. Deleting
+  /// the oldest is the cost — a fortnight of history is as far back as a
+  /// phone's own failure log is useful anyway, and the admin dashboard is
+  /// where long history lives.
+  Future<int> recordCrash(CrashLogEntry entry) async {
+    final db = await database;
+    return db.transaction((txn) async {
+      final id = await txn.insert('crash_log', entry.toMap());
+      await _trimCrashLog(txn);
+      return id;
+    });
+  }
+
+  /// Deletes everything past the newest [crashRetainRows].
+  ///
+  /// Takes a transaction so the recorder's write cannot insert without it, and
+  /// so the diagnostics screen's "clear" can reuse it.
+  Future<void> _trimCrashLog(Transaction txn) async {
+    final cutoff = await txn.query('crash_log',
+        columns: <String>['id'],
+        orderBy: 'id DESC',
+        offset: crashRetainRows,
+        limit: 1);
+    if (cutoff.isEmpty) return;
+    final cutoffId = cutoff.first['id'] as int;
+    // `<=` and not `<`: the row the offset lands on IS the one being dropped,
+    // and excluding it leaves the table one row over its cap on every write —
+    // the difference between a bounded log and one that grows by one each time
+    // the limit is reached.
+    await txn
+        .delete('crash_log', where: 'id <= ?', whereArgs: <Object>[cutoffId]);
+  }
+
+  /// The failure log, newest first.
+  Future<List<CrashLogEntry>> crashLog(CrashLogQuery query) async {
+    final db = await database;
+    final conditions = <String>[];
+    final args = <Object?>[];
+    if (query.kinds != null && query.kinds!.isNotEmpty) {
+      conditions.add('kind IN (${query.kinds!.map((_) => '?').join(', ')})');
+      args.addAll(query.kinds!.map((kind) => kind.wire));
+    }
+    if (query.since != null) {
+      conditions.add('created_at >= ?');
+      args.add(query.since!);
+    }
+    final rows = await db.query(
+      'crash_log',
+      where: conditions.isEmpty ? null : conditions.join(' AND '),
+      whereArgs: args.isEmpty ? null : args,
+      orderBy: 'created_at DESC, id DESC',
+      limit: query.limit,
+    );
+    return rows.map(CrashLogEntry.fromMap).toList(growable: false);
+  }
+
+  Future<int> crashLogCount() async {
+    final db = await database;
+    final rows = await db.query('crash_log',
+        columns: <String>['COUNT(*) as n'], limit: 1);
+    if (rows.isEmpty) return 0;
+    return rows.first['n'] as int;
+  }
+
+  /// Empties the failure log. The owner's call, from the diagnostics screen,
+  /// once a problem has been dealt with — keeping the log is otherwise right.
+  Future<int> clearCrashLog() async {
+    final db = await database;
+    return db.delete('crash_log');
+  }
 }
 
 /// Small Kotlin-style `let` helper so we can transform the just-parsed Sale
@@ -2912,26 +3403,26 @@ class SalePortion {
   /// what makes a shot of a 200 ml bottle and a shot of a 750 ml bottle both
   /// deduct correctly from their own container.
   static const String measured = 'measured';
-}
 
-/// Why foreign keys are **not** enforced on this connection.
-///
-/// Read this before "fixing" it by adding `onConfigure: PRAGMA foreign_keys =
-/// ON`. That pragma cannot be set from inside a transaction, sqflite runs
-/// `onUpgrade` in one, and turning it on makes the v11 money migration
-/// unrecoverable on any till that has recorded a sale: v11 rebuilds `sales` by
-/// dropping and recreating it while `sale_items` references it, and SQLite
-/// rejects a `DROP TABLE` whose implicit `DELETE FROM` would orphan a child —
-/// under `defer_foreign_keys` too, because the deferred violation from the
-/// implicit delete is never cleared and the failure simply moves to `COMMIT`.
-/// Every ordering of the rebuild was measured; all four fail.
-///
-/// So the `ON DELETE CASCADE` clauses in the schema are *declarative intent*,
-/// and the behaviour they promise is actually enforced in Dart — see
-/// [DatabaseHelper.hardDeleteProduct], which removes a product's barcodes in the
-/// same transaction as the product itself. That is the only way to guarantee
-/// that a removed product's codes are freed rather than silently blocking it
-/// from ever being re-added under the same barcode.
+  /// Why foreign keys are **not** enforced on this connection.
+  ///
+  /// Read this before "fixing" it by adding `onConfigure: PRAGMA foreign_keys =
+  /// ON`. That pragma cannot be set from inside a transaction, sqflite runs
+  /// `onUpgrade` in one, and turning it on makes the v11 money migration
+  /// unrecoverable on any till that has recorded a sale: v11 rebuilds `sales` by
+  /// dropping and recreating it while `sale_items` references it, and SQLite
+  /// rejects a `DROP TABLE` whose implicit `DELETE FROM` would orphan a child —
+  /// under `defer_foreign_keys` too, because the deferred violation from the
+  /// implicit delete is never cleared and the failure simply moves to `COMMIT`.
+  /// Every ordering of the rebuild was measured; all four fail.
+  ///
+  /// So the `ON DELETE CASCADE` clauses in the schema are *declarative intent*,
+  /// and the behaviour they promise is actually enforced in Dart — see
+  /// [DatabaseHelper.hardDeleteProduct], which removes a product's barcodes in the
+  /// same transaction as the product itself. That is the only way to guarantee
+  /// that a removed product's codes are freed rather than silently blocking it
+  /// from ever being re-added under the same barcode.
+}
 
 /// A sale waiting for KRA to accept its receipt.
 ///
@@ -2951,4 +3442,33 @@ class PendingEtimsReceipt {
   final int attempts;
   final DateTime createdAt;
   final String? lastError;
+}
+
+/// A one-holder gate for asynchronous work.
+///
+/// Not a general mutex — the app has no threads to protect anything from. It
+/// covers the one case where two `async` operations sharing process state must
+/// not interleave: moving the database to another shop. Without it, a tour that
+/// walks every shop on the device can be interrupted by the owner switching
+/// shops, or can interrupt an automatic sync, and either way the till ends up
+/// pointed at a shop neither party chose.
+///
+/// Queue order is FIFO: each body runs to completion before the next starts,
+/// and a body that throws does not poison the queue — the next waiter still
+/// runs, and receives that body's error.
+class _AsyncGate {
+  Future<void> _drain = Future<void>.value();
+
+  /// Runs [body], waiting for anything already queued.
+  Future<T> run<T>(Future<T> Function() body) {
+    final result = Completer<T>();
+    _drain = _drain.then((_) async {
+      try {
+        result.complete(await body());
+      } catch (error, stack) {
+        result.completeError(error, stack);
+      }
+    });
+    return result.future;
+  }
 }

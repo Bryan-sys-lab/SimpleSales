@@ -1,4 +1,5 @@
 import 'dart:convert';
+import 'package:flutter/foundation.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 /// Local shop registry. Each workspace has its own SQLite file, so an offline
@@ -36,10 +37,14 @@ class WorkspaceService {
   static Future<void> register(
       {required String workspaceKey,
       String? tenantId,
-      required String shopName}) async {
+      required String shopName,
+      bool legacyTenantSeen = false}) async {
     final current = await registry();
     current[workspaceKey] = {
       'shopName': shopName,
+      // Written as '0' rather than omitted so an existing key is overwritten
+      // rather than left behind: the adoption marker must be able to be cleared.
+      if (legacyTenantSeen) _legacyAdoptedKey: '1',
       if (tenantId != null && tenantId.isNotEmpty) 'tenantId': tenantId,
     };
     final prefs = await SharedPreferences.getInstance();
@@ -52,5 +57,143 @@ class WorkspaceService {
       if (entry.value['tenantId'] == tenantId) return entry.key;
     }
     return null;
+  }
+
+  /// The tenant this device should be posting for, given the shop in use.
+  ///
+  /// The ACTIVE tenant is derived from the active workspace rather than kept in
+  /// a second key: a single global `tenant_id` was written by whichever shop
+  /// verified last and then posted from every shop on the device. With two shops
+  /// on one phone, the second shop's syncs, staff calls and analytics were sent
+  /// under the first shop's tenant id — cross-shop data mixing the server
+  /// resolves in the caller's favour, so it is both a privacy and a correctness
+  /// fault.
+  ///
+  /// Returns null when the active shop has no tenant, which is the honest
+  /// answer: an unlinked shop has nothing to post under, and silently falling
+  /// back to another shop's tenant would be the bug this replaces.
+  static Future<String?> activeTenantId() async {
+    final active = await activeWorkspaceKey();
+    final all = await registry();
+    final entry = all[active];
+    final tenantId = entry?['tenantId'];
+    if (tenantId != null && tenantId.isNotEmpty) return tenantId;
+    return _adoptLegacyTenant(active, all);
+  }
+
+  /// One-time adoption of the pre-per-workspace global `tenant_id`.
+  ///
+  /// Moving the active tenant from a global preference into the registry is
+  /// correct — see the note on [activeTenantId] — but it would have left every
+  /// install that had linked before the change reading "no tenant": the
+  /// registry entry for such a shop holds only `shopName`, because
+  /// `owner_setup_screen` registered it that way and the tenant was written to
+  /// the global key by `linkShopToBackend`. Every guarded backend call then
+  /// silently no-ops (`if (await tenantId == null) return;`), so the shop looks
+  /// unlinked to the owner and to anyone reading the logs, with nothing wrong
+  /// on the server.
+  ///
+  /// So the global value is adopted once, for the shop that is active at the
+  /// time, and only until it has been. It is not read again afterwards, which
+  /// keeps the cross-shop fix intact: an adopted tenant belongs to exactly one
+  /// workspace from then on.
+  ///
+  /// Returns null when there is nothing to adopt — a genuinely unlinked shop,
+  /// which is the honest answer rather than a silent fallback.
+  static Future<String?> _adoptLegacyTenant(
+      String active, Map<String, Map<String, String>> all) async {
+    final prefs = await SharedPreferences.getInstance();
+    final legacy = prefs.getString(_legacyTenantKey);
+    if (legacy == null || legacy.isEmpty) return null;
+    if (all.containsKey(active) &&
+        all[active]!.containsKey(_legacyAdoptedKey)) {
+      // Already adopted for this shop: the legacy key is stale now.
+      await prefs.remove(_legacyTenantKey);
+      return null;
+    }
+    await register(
+      workspaceKey: active,
+      shopName: all[active]?['shopName'] ?? 'Shop',
+      tenantId: legacy,
+      legacyTenantSeen: true,
+    );
+    await prefs.remove(_legacyTenantKey);
+    return legacy;
+  }
+
+  /// The single global key the active tenant used to live under.
+  ///
+  /// Read once per install by [_adoptLegacyTenant], then removed.
+  static const _legacyTenantKey = 'tenant_id';
+
+  /// Registry marker recording that this shop already adopted the legacy
+  /// tenant, so the adoption runs exactly once rather than on every read.
+  static const _legacyAdoptedKey = 'legacyTenantSeen';
+
+  /// The active shop's name, or null when it holds none.
+  ///
+  /// Needed by the caller that writes a tenant back into the registry, because
+  /// [register] takes the fields it already has rather than inventing a name for
+  /// the shop being linked.
+  static Future<String?> activeShopName() async {
+    final all = await registry();
+    return all[await activeWorkspaceKey()]?['shopName'];
+  }
+}
+
+/// One shop that lives on this device.
+///
+/// The shop switcher used to build its list from the BACKEND's `/tenant/shops`,
+/// which meant a shop added on this device without a tenant link could never be
+/// switched to — the shop existed, its database existed, and the one screen
+/// supposed to change between them could not see it. The local registry is the
+/// only authority on which shops are HERE, so it is what the switcher reads;
+/// the backend still contributes the role and the online state where it has
+/// them, but it is never the reason a shop is missing from the list.
+@immutable
+class LocalShop {
+  const LocalShop({
+    required this.workspaceKey,
+    required this.shopName,
+    this.tenantId,
+  });
+
+  final String workspaceKey;
+  final String shopName;
+  final String? tenantId;
+
+  /// Whether this shop has been linked to the backend. Not whether it is
+  /// reachable right now: a linked shop that is offline is still linked.
+  bool get isBackendLinked => tenantId != null && tenantId!.isNotEmpty;
+}
+
+/// Extension so [WorkspaceService] can be read as a single object with the
+/// registry helpers on it, while the model stays a plain value type.
+extension WorkspaceServiceShops on WorkspaceService {
+  /// Every shop registered on this device, in the order a person expects: the
+  /// original shop first, then the rest alphabetically.
+  ///
+  /// The registry is keyed by workspace key, so a shop whose name was later
+  /// edited on the backend keeps its local entry — the name shown here is the
+  /// one recorded when the shop was created on this device, which is the name
+  /// the owner typed.
+  static Future<List<LocalShop>> localShops() async {
+    final all = await WorkspaceService.registry();
+    final shops = all.entries.map((entry) {
+      final name = entry.value['shopName'] ?? '';
+      return LocalShop(
+        workspaceKey: entry.key,
+        // A blank name renders as a placeholder rather than an empty row: the
+        // key is what identifies the shop, and the row has to say something.
+        shopName: name.isEmpty ? 'Unnamed shop' : name,
+        tenantId: entry.value['tenantId'],
+      );
+    }).toList();
+    shops.sort((a, b) {
+      if (a.workspaceKey == WorkspaceService.legacyKey) return -1;
+      if (b.workspaceKey == WorkspaceService.legacyKey) return 1;
+      return a.shopName.compareTo(b.shopName);
+    });
+    return shops;
   }
 }

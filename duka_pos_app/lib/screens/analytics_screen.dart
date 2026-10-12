@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:go_router/go_router.dart';
 import 'package:provider/provider.dart';
 
 import '../db/database_helper.dart';
@@ -13,11 +14,12 @@ import '../theme/app_shapes.dart';
 import '../theme/app_spacing.dart';
 import '../theme/typography.dart';
 import '../ui/components/controls.dart';
+import '../services/workspace_service.dart';
 import '../ui/components/states.dart';
 import '../ui/components/surface.dart';
+import '../widgets/chart.dart';
 import '../ui/layout/page.dart';
 import '../utils/money.dart';
-import '../widgets/chart.dart';
 import 'analytics_tables.dart';
 
 /// The windows the owner thinks in.
@@ -79,7 +81,7 @@ enum ProductSort {
 ///
 /// Built once, in [_AnalyticsScreenState._load], so that `build()` does no
 /// formatting, no sorting and no aggregation: every string a user reads and
-/// every `PosChartBar` is already made by the time the widget tree is asked for
+/// every `PosLinePoint` is already made by the time the widget tree is asked for
 /// it.
 @immutable
 class AnalyticsSnapshot {
@@ -165,6 +167,14 @@ class AnalyticsScreen extends StatefulWidget {
 }
 
 class _AnalyticsScreenState extends State<AnalyticsScreen> {
+  /// Whether to offer the all-shops view.
+  ///
+  /// Read from the local shop registry rather than the backend: the answer is
+  /// "how many shops are on THIS device", which is a question the phone can
+  /// already answer without a round trip — and an owner who has added a second
+  /// shop deserves to see the link offline.
+  bool _canShowPortfolio = false;
+
   AnalyticsRange _range = AnalyticsRange.week;
   ProductSort _sort = ProductSort.revenue;
   bool _ascending = false;
@@ -176,12 +186,19 @@ class _AnalyticsScreenState extends State<AnalyticsScreen> {
   List<ProductSalesRow> _sortedProducts = const <ProductSalesRow>[];
 
   /// The chart's bars, merged and pre-formatted at load time.
-  List<PosChartBar> _salesBars = const <PosChartBar>[];
+  List<PosLinePoint> _salesPoints = const <PosLinePoint>[];
 
   @override
   void initState() {
     super.initState();
+    _loadShopCount();
     _load();
+  }
+
+  Future<void> _loadShopCount() async {
+    final int count = (await WorkspaceServiceShops.localShops()).length;
+    if (!mounted) return;
+    setState(() => _canShowPortfolio = count > 1);
   }
 
   Future<void> _load() async {
@@ -209,7 +226,7 @@ class _AnalyticsScreenState extends State<AnalyticsScreen> {
           _sort,
           _ascending,
         );
-        _salesBars = _salesChartBars(results[1] as List<DateBucket>);
+        _salesPoints = _salesChartPoints(results[1] as List<DateBucket>);
         _view = AnalyticsContent(
           AnalyticsSnapshot(
             totals: results[0] as DailyTotals,
@@ -294,12 +311,12 @@ class _AnalyticsScreenState extends State<AnalyticsScreen> {
     return ascending ? sorted : sorted.reversed.toList();
   }
 
-  /// 90 bars is unreadable at any phone width; merging consecutive days keeps
-  /// every shilling in the bar while making the axis legible.
-  static List<PosChartBar> _salesChartBars(List<DateBucket> days) {
-    return <PosChartBar>[
+  /// 90 points is unreadable at any phone width; merging consecutive days keeps
+  /// every shilling on the line while making the axis legible.
+  static List<PosLinePoint> _salesChartPoints(List<DateBucket> days) {
+    return <PosLinePoint>[
       for (final DateBucket day in mergeDateBuckets(days, 14))
-        PosChartBar(
+        PosLinePoint(
           label: day.label,
           value: day.salesMinor,
           valueLabel: formatMoney(day.sales),
@@ -337,7 +354,7 @@ class _AnalyticsScreenState extends State<AnalyticsScreen> {
           sort: _sort,
           ascending: _ascending,
           sortedProducts: _sortedProducts,
-          salesBars: _salesBars,
+          salesPoints: _salesPoints,
           chartSemantics: describeDailyBuckets(
             AppLocalizations.of(context).analyticsChartTitleSalesByDay,
             snapshot.days,
@@ -346,6 +363,8 @@ class _AnalyticsScreenState extends State<AnalyticsScreen> {
               ? '${formatMoney(snapshot.totals.total)} over ${_range.label.toLowerCase()}'
               : null,
           bottomInset: spacing.xl,
+          onOpenPortfolio: () => context.push(Routes.portfolio),
+          showPortfolioLink: _canShowPortfolio,
         ),
     };
   }
@@ -368,10 +387,12 @@ class _AnalyticsScaffold extends StatelessWidget {
     this.sort = ProductSort.revenue,
     this.ascending = false,
     this.sortedProducts = const <ProductSalesRow>[],
-    this.salesBars = const <PosChartBar>[],
+    this.salesPoints = const <PosLinePoint>[],
     this.chartSemantics,
     this.chartEmphasis,
     this.bottomInset = 0,
+    this.onOpenPortfolio,
+    this.showPortfolioLink = false,
   });
 
   final AnalyticsRange range;
@@ -387,10 +408,18 @@ class _AnalyticsScaffold extends StatelessWidget {
   final ProductSort sort;
   final bool ascending;
   final List<ProductSalesRow> sortedProducts;
-  final List<PosChartBar> salesBars;
+  final List<PosLinePoint> salesPoints;
   final String? chartSemantics;
   final String? chartEmphasis;
   final double bottomInset;
+
+  /// Opens the all-shops view.
+  final VoidCallback? onOpenPortfolio;
+
+  /// Whether to offer it. An owner running one duka has no use for "All shops",
+  /// and an affordance that answers a question they never asked is noise on the
+  /// screen they use every day.
+  final bool showPortfolioLink;
 
   @override
   Widget build(BuildContext context) {
@@ -415,6 +444,15 @@ class _AnalyticsScaffold extends StatelessWidget {
           ),
           children: <Widget>[
             _RangeBar(range: range, onChanged: onRangeChanged),
+            if (showPortfolioLink && onOpenPortfolio != null) ...<Widget>[
+              SizedBox(height: spacing.md),
+              SettingsNavRow(
+                icon: Icons.insights_outlined,
+                title: AppLocalizations.of(context).portfolioOpenAction,
+                subtitle: AppLocalizations.of(context).portfolioOpenSubtitle,
+                onTap: onOpenPortfolio,
+              ),
+            ],
             SizedBox(height: spacing.lg),
             if (loading)
               const SkeletonList(itemCount: 4)
@@ -446,12 +484,15 @@ class _AnalyticsScaffold extends StatelessWidget {
           top: spacing.md,
           bottom: spacing.sm,
         ),
-        child: SimplePosChart(
+        // A line, not a column of dates. The question this chart answers is
+        // "is the week trending up or down" — a direction, which a line renders
+        // directly and fourteen bars ask the reader to derive.
+        child: PosLineChart(
           title: AppLocalizations.of(context).analyticsChartTitleSalesByDay,
           emphasis: chartEmphasis,
           semanticsLabel: chartSemantics,
           height: 168,
-          bars: salesBars,
+          points: salesPoints,
         ),
       ),
       SizedBox(height: spacing.lg),

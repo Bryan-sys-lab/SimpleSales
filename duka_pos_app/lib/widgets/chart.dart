@@ -6,100 +6,63 @@ import '../l10n/generated/app_localizations.dart';
 import '../theme/app_colors.dart';
 import '../theme/app_spacing.dart';
 import '../theme/typography.dart';
+// ---------------------------------------------------------------------------
+// Time series
+// ---------------------------------------------------------------------------
 
-/// Which way the bars grow.
-enum PosChartAxis {
-  /// Bars grow upward from a baseline — time on the horizontal axis.
-  ///
-  /// For a series the eye reads as a *sequence* (hours of a day, days of a
-  /// month), where position along the axis carries the meaning.
-  vertical,
-
-  /// Bars grow sideways, names down the side — categories whose labels are
-  /// words.
-  ///
-  /// A product name rotated or ellipsised under a vertical bar is unreadable;
-  /// laid out horizontally it gets the whole left column to itself.
-  horizontal,
-}
-
-/// One bar. [value] is the number the bar is drawn from; [valueLabel] is what
-/// the user is told it is, when the raw figure is not what should be shown.
+/// One point in a series over time.
+///
+/// This app's chart widgets carry no shape: a caller reading one cannot tell
+/// whether it will be drawn as a line, a ring, or anything else.
 @immutable
-class PosChartBar {
-  const PosChartBar({
+class PosLinePoint {
+  const PosLinePoint({
     required this.label,
     required this.value,
     this.valueLabel,
   });
 
-  /// The axis label — an hour, a date, a product name.
+  /// The moment — an hour, a date.
   final String label;
 
-  /// Height/length of the bar.
   final int value;
 
-  /// The pre-formatted figure, e.g. `KSh 4,200`. Falls back to the raw value,
-  /// which is what a unit count wants.
+  /// Pre-formatted figure. Falls back to the raw value.
   final String? valueLabel;
 
   String get displayValue => valueLabel ?? '$value';
 }
 
-/// A dependency-free bar chart drawn with a [CustomPainter].
+/// A line chart, for a series the eye reads as a SEQUENCE.
 ///
-/// The app has no charting dependency, and adding one for two bar charts would
-/// put a transitive package tree and a version pin between an owner and their
-/// own takings. This paints what is needed and nothing else.
+/// The bar chart this replaces was the wrong instrument: twelve vertical bars
+/// for twelve hours asks the reader to compare twelve heights to find a shape,
+/// when a line already draws the shape. A line is what "the day rose, peaked at
+/// six, and fell" looks like without being described in words.
 ///
-/// ## Accessibility
-///
-/// A painted chart is a canvas of coloured rectangles: it has no text nodes, so
-/// a screen reader announces nothing at all for it. Every chart therefore
-/// carries the *same* figures as a sentence on a [Semantics] node — the peak,
-/// the total, how many periods had sales — and the painted text inside is
-/// excluded so the two are not read out twice. Callers build that sentence
-/// (see `describeDailyBuckets` in `services/analytics.dart`); if they do not,
-/// a generic description of the series is used rather than silence.
-///
-/// ## Text scaling
-///
-/// Nothing here shrinks text to make it fit. Text scaling is honoured at full
-/// size, and a label that does not fit is either truncated with an ellipsis or
-/// — for the axis on a vertical chart, where a truncated date is worse than no
-/// date — dropped entirely, with the value still present in the semantics.
-/// That is also why neither orientation can overflow: heights are derived from
-/// the *scaled* text metrics, and the painter is free to paint outside its box
-/// without producing a layout overflow, because there is no layout to overflow.
-class SimplePosChart extends StatelessWidget {
-  const SimplePosChart({
+/// Same accessibility contract as [PosPieChart] — a painted canvas has no
+/// text nodes, so the whole series is restated as a sentence on a [Semantics]
+/// node and the painted content is excluded from it — and the same rules on
+/// text scaling: nothing shrinks, axis labels are dropped rather than squeezed,
+/// and the painter is free to paint outside its box because there is no layout
+/// to overflow.
+class PosLineChart extends StatelessWidget {
+  const PosLineChart({
     super.key,
     required this.title,
-    required this.bars,
+    required this.points,
     this.semanticsLabel,
-    this.axis = PosChartAxis.vertical,
     this.height = 148,
     this.emphasis,
   });
 
-  /// Heading above the chart. Rendered as text, so it is real content rather
-  /// than something painted.
   final String title;
-
-  final List<PosChartBar> bars;
-
-  /// The non-visual equivalent. When null a short generic description is built
-  /// from [bars] — never an empty label, because an unlabelled chart is
-  /// indistinguishable from a chart that failed to load.
+  final List<PosLinePoint> points;
   final String? semanticsLabel;
 
-  final PosChartAxis axis;
-
-  /// Plot height for [PosChartAxis.vertical]. Ignored for
-  /// [PosChartAxis.horizontal], whose height follows its row count.
+  /// Plot height. The axis strip is added on top of it.
   final double height;
 
-  /// Optional line under the heading — "Busiest at 6pm", a period caption.
   final String? emphasis;
 
   @override
@@ -108,14 +71,6 @@ class SimplePosChart extends StatelessWidget {
     final AppSpacing spacing = AppSpacing.of(context);
     final TextTheme type = AppTypography.of(context);
     final labelStyle = type.bodySmall ?? const TextStyle();
-    // Tabular figures on the painted values: a column of takings whose digits
-    // shift horizontally as the day grows is the same unreadability MoneyText
-    // exists to fix, and a bar chart is a column of takings.
-    final valueStyle = AppTypography.money(
-      context,
-      size: 14,
-      weight: FontWeight.w600,
-    );
 
     return Semantics(
       label: semanticsLabel ?? _fallbackSemantics(AppLocalizations.of(context)),
@@ -123,29 +78,26 @@ class SimplePosChart extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         mainAxisSize: MainAxisSize.min,
-        children: [
+        children: <Widget>[
           Text(title, style: type.titleMedium),
           if (emphasis != null) ...[
             const SizedBox(height: 2),
             Text(emphasis!, style: labelStyle),
           ],
           SizedBox(height: spacing.sm),
-          if (bars.isEmpty)
+          if (points.isEmpty)
             Text(
               AppLocalizations.of(context).chartNothingToShow,
               style: labelStyle,
             )
           else
             ExcludeSemantics(
-              child: _ChartCanvas(
-                bars: bars,
-                axis: axis,
+              child: _LineCanvas(
+                points: points,
                 height: height,
                 labelStyle: labelStyle,
-                valueStyle: valueStyle,
                 direction: Directionality.of(context),
                 accent: colors.accent,
-                track: colors.surfaceSunken,
                 gap: spacing.sm,
               ),
             ),
@@ -154,78 +106,53 @@ class SimplePosChart extends StatelessWidget {
     );
   }
 
-  /// The chart for a screen reader, as a sentence rather than as bars.
-  ///
-  /// A `Bar` is a value with no order a finger can follow, so the whole summary
-  /// is one node: what is charted, how many values, and which one is highest.
-  /// Anything with no context — "1.2" — is worse than nothing.
   String _fallbackSemantics(AppLocalizations l10n) {
-    if (bars.isEmpty) return l10n.chartSpokenNoValues(title);
-    final peak = bars.reduce((a, b) => b.value > a.value ? b : a);
-    // gen-l10n orders the parameters by the plural's own type first, so the
-    // count leads even though the title reads first. Named arguments would not
-    // help — the generated getters are positional by design.
+    if (points.isEmpty) return l10n.chartSpokenNoValues(title);
+    final peak = points.reduce((a, b) => b.value > a.value ? b : a);
     return l10n.chartSpokenPeak(
-        bars.length, peak.label, title, peak.displayValue);
+        points.length, peak.label, title, peak.displayValue);
   }
 }
 
-/// The painted part. Kept as its own widget so the [Semantics] wrapper above
-/// can exclude everything inside it in one place.
-class _ChartCanvas extends StatelessWidget {
-  const _ChartCanvas({
-    required this.bars,
-    required this.axis,
+/// The painted part, kept separate so the [Semantics] wrapper can exclude it in
+/// one place.
+class _LineCanvas extends StatelessWidget {
+  const _LineCanvas({
+    required this.points,
     required this.height,
     required this.labelStyle,
-    required this.valueStyle,
     required this.direction,
     required this.accent,
-    required this.track,
     required this.gap,
   });
 
-  final List<PosChartBar> bars;
-  final PosChartAxis axis;
+  final List<PosLinePoint> points;
   final double height;
   final TextStyle labelStyle;
-  final TextStyle valueStyle;
   final TextDirection direction;
-
-  /// Colours are resolved HERE and handed down as values. `paint()` runs on the
-  /// raster path, where a `Theme.of` lookup is both wrong (it can be called
-  /// outside a build) and a per-frame cost; a painter must snapshot, not reach.
   final Color accent;
-  final Color track;
-
-  /// Breathing room around the plot, from the spacing scale.
   final double gap;
 
   @override
   Widget build(BuildContext context) {
     final scaler = MediaQuery.textScalerOf(context);
     return LayoutBuilder(
-      builder: (context, constraints) {
+      builder: (BuildContext context, BoxConstraints constraints) {
         final width = constraints.maxWidth.isFinite
             ? constraints.maxWidth
             : constraints.biggest.width;
-        final painter = _ChartPainter(
-          bars: bars,
-          axis: axis,
+        final painter = _LineChartPainter(
+          points: points,
           labelStyle: labelStyle,
-          valueStyle: valueStyle,
           direction: direction,
           textScaler: scaler,
           plotHeight: height,
           accent: accent,
-          track: track,
           gap: gap,
         );
         return SizedBox(
           width: width,
-          height: axis == PosChartAxis.vertical
-              ? height
-              : painter.horizontalHeight(width),
+          height: painter.totalHeight(height),
           child: CustomPaint(painter: painter),
         );
       },
@@ -233,55 +160,43 @@ class _ChartCanvas extends StatelessWidget {
   }
 }
 
-class _ChartPainter extends CustomPainter {
-  _ChartPainter({
-    required this.bars,
-    required this.axis,
+class _LineChartPainter extends CustomPainter {
+  _LineChartPainter({
+    required this.points,
     required this.labelStyle,
-    required this.valueStyle,
     required this.direction,
     required this.textScaler,
     required this.plotHeight,
     required this.accent,
-    required this.track,
     required this.gap,
   });
 
-  final List<PosChartBar> bars;
-  final PosChartAxis axis;
+  final List<PosLinePoint> points;
   final TextStyle labelStyle;
-  final TextStyle valueStyle;
   final TextDirection direction;
   final TextScaler textScaler;
   final double plotHeight;
-
-  /// Snapshot of `AppColors.accent`, taken at the widget layer.
   final Color accent;
-
-  /// Snapshot of `AppColors.surfaceSunken`: the empty track a bar sits in.
-  final Color track;
-
-  /// Breathing room under/around the plot, snapshotted from the spacing scale.
   final double gap;
 
-  /// The least a bar may be worth on screen.
+  /// Label metrics, laid out ONCE.
   ///
-  /// A zero-value bar still draws, as a stub: "nothing sold at 03:00" is a
-  /// fact the chart is being asked to show, and a gap would be indistinguishable
-  /// from "the hour was not counted".
-  static const double _minBar = 2.0;
+  /// `paint()` re-runs on every repaint — for an hourly chart that is 24
+  /// `TextPainter.layout()` calls per frame, on top of the line height — and it
+  /// used to redo all of them every time, because the peak value and every
+  /// label were measured inside `paint()` itself. The layout depends only on
+  /// the point list, the style, the scaler and the direction, all of which
+  /// `shouldRepaint` already compares, so caching per painter instance is exact.
+  Map<String, double>? _labelWidths;
+  double? _lineHeightValue;
 
   /// Below this, the plot is too short to be worth an axis and the labels are
-  /// dropped rather than drawn into the bars.
+  /// dropped rather than drawn into the plot.
   static const double _minPlotWithAxis = 44.0;
-
-  /// Share of the width given to names on a horizontal chart.
-  static const double _labelColumnFraction = 0.42;
-  static const double _minLabelColumn = 40.0;
 
   bool get _isRtl => direction == TextDirection.rtl;
 
-  int get _maxValue => bars.fold(0, (m, b) => math.max(m, b.value));
+  int get _maxValue => points.fold(0, (m, p) => math.max(m, p.value));
 
   TextPainter _text(String text, TextStyle style, {double? maxWidth}) {
     final painter = TextPainter(
@@ -295,228 +210,426 @@ class _ChartPainter extends CustomPainter {
     return painter;
   }
 
-  /// Height of one line of [style] *after* the user's text scale is applied.
+  /// One line of label-size text, measured once per painter instance.
   double _lineHeight(TextStyle style) =>
-      _text('Ag', style, maxWidth: double.infinity).height;
+      _lineHeightValue ??= _text('Ag', style, maxWidth: double.infinity).height;
 
-  /// Widest of [texts] laid out at [style], truncated to [cap].
-  double _widest(Iterable<String> texts, TextStyle style, double cap) {
+  /// The widest label, measured once per painter instance.
+  ///
+  /// Capped at [cap], so a label wider than its slot does not set the stride.
+  double _widestCached(Iterable<PosLinePoint> pts, double cap) {
+    final cache = _labelWidths ??= <String, double>{};
     var widest = 0.0;
-    for (final text in texts) {
-      final painter = _text(text, style, maxWidth: cap);
-      widest = math.max(widest, painter.width);
+    for (final point in pts) {
+      final label = point.label;
+      final width = cache[label] ??= () {
+        final measured = _text(label, labelStyle, maxWidth: cap).width;
+        cache[label] = measured;
+        return measured;
+      }();
+      widest = math.max(widest, width);
     }
     return widest;
   }
 
-  /// Whether a vertical chart has room for an axis *under* its bars, and how
-  /// much of the height it takes.
-  double verticalAxisHeight(double height) {
+  /// The axis strip, if there is room for one.
+  double _axisHeight(double height) {
     final label = _lineHeight(labelStyle);
     if (height - label - gap < _minPlotWithAxis) return 0;
     return label + gap;
   }
 
-  /// Total height a vertical chart occupies: its plot plus the axis strip, if
-  /// the axis survived the "does it fit" check.
-  double verticalHeight(double plotOnlyHeight) => plotOnlyHeight;
+  double totalHeight(double height) => height;
 
-  /// One row per bar, tall enough for the scaled text in it.
-  double horizontalHeight(double width) {
-    final label = _lineHeight(labelStyle);
-    final value = _lineHeight(valueStyle);
-    final row = math.max(math.max(label, value) + gap * 2, 28.0);
-    return row * bars.length;
+  /// X position of point [index], mirrored so the series still reads
+  /// start-to-finish in both directions.
+  double _x(int index, double width) {
+    if (points.length == 1) return width / 2;
+    final step = width / (points.length - 1);
+    return _isRtl ? width - index * step : index * step;
   }
 
   @override
   void paint(Canvas canvas, Size size) {
-    if (bars.isEmpty || size.width <= 0 || size.height <= 0) return;
-    if (axis == PosChartAxis.vertical) {
-      _paintVertical(canvas, size);
-    } else {
-      _paintHorizontal(canvas, size);
-    }
-  }
+    if (points.isEmpty || size.width <= 0 || size.height <= 0) return;
 
-  void _paintVertical(Canvas canvas, Size size) {
-    final slot = size.width / bars.length;
-    final barWidth = _barWidth(slot);
-    final axisHeight = verticalAxisHeight(size.height);
+    final axisHeight = _axisHeight(size.height);
     final plotHeight = size.height - axisHeight;
-    final maxValue = math.max(_maxValue, 1);
     final baseline = size.height - axisHeight;
+    final maxValue = math.max(_maxValue, 1);
 
-    final fill = Paint()..color = accent;
-    final trackPaint = Paint()..color = track;
+    double yOf(int value) =>
+        baseline - (value <= 0 ? 0 : (value / maxValue) * plotHeight);
 
-    // Every slot gets a full-height track, so the shape of the day is readable
-    // even before any value is compared.
-    for (var i = 0; i < bars.length; i++) {
-      final left = _slotLeft(i, slot, size.width);
-      canvas.drawRRect(
-        RRect.fromRectAndRadius(
-          Rect.fromLTWH(left + (slot - barWidth) / 2, 0, barWidth, plotHeight),
-          const Radius.circular(3),
-        ),
-        trackPaint,
-      );
+    final line = Paint()
+      ..color = accent
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = 2
+      ..strokeCap = StrokeCap.round
+      ..strokeJoin = StrokeJoin.round;
+
+    final path = Path()..moveTo(_x(0, size.width), yOf(points[0].value));
+    for (var i = 1; i < points.length; i++) {
+      path.lineTo(_x(i, size.width), yOf(points[i].value));
     }
 
+    // The area under the line, so the shape reads as a quantity and not just a
+    // trajectory. Filled at low alpha: the line stays the signal.
+    final area = Path.from(path)
+      ..lineTo(_x(points.length - 1, size.width), baseline)
+      ..lineTo(_x(0, size.width), baseline)
+      ..close();
+    canvas.drawPath(
+      area,
+      Paint()
+        ..shader = LinearGradient(
+          begin: Alignment.topCenter,
+          end: Alignment.bottomCenter,
+          colors: <Color>[
+            accent.withValues(alpha: 0.22),
+            accent.withValues(alpha: 0.0),
+          ],
+        ).createShader(Rect.fromLTWH(0, 0, size.width, baseline)),
+    );
+
+    canvas.drawPath(path, line);
+
+    // A dot per point: the places where a reading is actually taken, which is
+    // what makes a gap in the data visible as a gap rather than a straight line
+    // across it.
+    final dot = Paint()..color = accent;
+    for (var i = 0; i < points.length; i++) {
+      canvas.drawCircle(
+          Offset(_x(i, size.width), yOf(points[i].value)), 2.5, dot);
+    }
+
+    // The peak, stated in text. A colour difference would be the only other cue
+    // that one reading matters, and colour alone is not a signal.
     var peakIndex = 0;
-    for (var i = 1; i < bars.length; i++) {
-      if (bars[i].value > bars[peakIndex].value) peakIndex = i;
+    for (var i = 1; i < points.length; i++) {
+      if (points[i].value > points[peakIndex].value) peakIndex = i;
     }
-
-    for (var i = 0; i < bars.length; i++) {
-      final bar = bars[i];
-      final drawn = bar.value <= 0
-          ? _minBar
-          : math.max(_minBar, (bar.value / maxValue) * plotHeight);
-      final left = _slotLeft(i, slot, size.width);
-      canvas.drawRRect(
-        RRect.fromRectAndRadius(
-          Rect.fromLTWH(
-            left + (slot - barWidth) / 2,
-            baseline - drawn,
-            barWidth,
-            drawn,
-          ),
-          const Radius.circular(3),
-        ),
-        fill,
-      );
-    }
-
-    if (axisHeight > 0) {
-      _paintVerticalAxis(canvas, size, slot, baseline, peakIndex, plotHeight);
-    }
-  }
-
-  /// Left edge of slot [index], mirrored in RTL so the series still reads
-  /// start-to-finish.
-  double _slotLeft(int index, double slot, double width) =>
-      _isRtl ? width - (index + 1) * slot : index * slot;
-
-  void _paintVerticalAxis(Canvas canvas, Size size, double slot,
-      double baseline, int peakIndex, double plotHeight) {
-    final cap = math.max(slot, 12.0);
-    final widest = _widest(bars.map((b) => b.label), labelStyle, cap);
-    // Draw every Nth label so they cannot overlap, and always the last one —
-    // the most recent day is the one a reader is looking for.
-    final stride = math.max(1, (widest / slot).ceil());
-    final baselineY = baseline + gap;
-
-    void drawLabel(int index) {
-      if (index < 0 || index >= bars.length) return;
-      final painter = _text(bars[index].label, labelStyle, maxWidth: slot);
-      final left = _slotLeft(index, slot, size.width);
-      painter.paint(canvas, Offset(left, baselineY));
-    }
-
-    for (var i = 0; i < bars.length; i += stride) {
-      drawLabel(i);
-    }
-    if ((bars.length - 1) % stride != 0) drawLabel(bars.length - 1);
-
-    // The peak's figure, in text. A colour difference is the only other cue
-    // that one bar matters, and colour alone is not a signal a low-vision or
-    // colour-blind reader can use.
-    final peak = bars[peakIndex];
+    final peak = points[peakIndex];
     if (peak.value > 0) {
+      // Measured through the same cache the axis labels use, so the peak's
+      // caption is not a per-frame TextPainter layout of its own.
+      final cache = _labelWidths ??= <String, double>{};
+      final valueWidth = cache[peak.displayValue] ??= () {
+        final measured = _text(peak.displayValue, labelStyle).width;
+        cache[peak.displayValue] = measured;
+        return measured;
+      }();
       final value = _text(peak.displayValue, labelStyle);
-      final drawn =
-          math.max(_minBar, (peak.value / math.max(_maxValue, 1)) * plotHeight);
-      final barLeft =
-          _slotLeft(peakIndex, slot, size.width) + (slot - _barWidth(slot)) / 2;
-      final x = (barLeft + (_barWidth(slot) - value.width) / 2)
-          .clamp(0.0, math.max(0.0, size.width - value.width))
+      final x = (_x(peakIndex, size.width) - valueWidth / 2)
+          .clamp(0.0, math.max(0.0, size.width - valueWidth))
           .toDouble();
-      final y = (baseline - drawn - value.height - 2)
+      final y = (yOf(peak.value) - value.height - 6)
           .clamp(0.0, math.max(0.0, size.height))
           .toDouble();
       value.paint(canvas, Offset(x, y));
     }
+
+    if (axisHeight <= 0) return;
+
+    // Axis labels, every Nth so they cannot overlap — and always the last one,
+    // the most recent reading, which is the one a reader is looking for.
+    //
+    // The widest label is read from the cache rather than measured here: 24
+    // layout passes per repaint was the cost of a chart that repainted on every
+    // parent rebuild.
+    final slot = size.width / math.max(points.length, 1);
+    final widest = _widestCached(points, math.max(slot, 12.0));
+    final stride = math.max(1, (widest / slot).ceil());
+    final baselineY = baseline + gap;
+
+    for (var i = 0; i < points.length; i += stride) {
+      _paintAxisLabel(canvas, size, i, stride, baselineY);
+    }
+    if ((points.length - 1) % stride != 0) {
+      _paintAxisLabel(canvas, size, points.length - 1, stride, baselineY);
+    }
   }
 
-  double _barWidth(double slot) =>
-      (slot * 0.62).clamp(_minBar, 28.0).toDouble();
-
-  void _paintHorizontal(Canvas canvas, Size size) {
-    final labelColumn = (size.width * _labelColumnFraction)
-        .clamp(_minLabelColumn, size.width * 0.6)
+  void _paintAxisLabel(
+      Canvas canvas, Size size, int index, int stride, double baselineY) {
+    if (index < 0 || index >= points.length) return;
+    final painter = _text(points[index].label, labelStyle);
+    final x = (_x(index, size.width) - painter.width / 2)
+        .clamp(0.0, math.max(0.0, size.width - painter.width))
         .toDouble();
-    final barGap = gap * 2;
+    painter.paint(canvas, Offset(x, baselineY));
+  }
 
-    final widestValue =
-        _widest(bars.map((b) => b.displayValue), valueStyle, size.width);
-    final minBarRoom = 32.0;
-    final valueRoom =
-        (size.width - labelColumn - barGap - minBarRoom) >= widestValue + barGap
-            ? widestValue + barGap
-            : 0.0;
+  @override
+  bool shouldRepaint(covariant _LineChartPainter old) =>
+      old.points != points ||
+      old.textScaler != textScaler ||
+      old.direction != direction ||
+      old.labelStyle != labelStyle ||
+      old.accent != accent;
+}
 
-    final trackStart = _isRtl
-        ? size.width - labelColumn - barGap - valueRoom
-        : labelColumn + barGap;
-    final trackEnd = _isRtl ? labelColumn + barGap : size.width - valueRoom;
-    final trackWidth = math.max(0.0, trackEnd - trackStart);
+// ---------------------------------------------------------------------------
+// Part-to-whole
+// ---------------------------------------------------------------------------
 
-    final rowHeight = size.height / bars.length;
-    final barHeight = (rowHeight * 0.56).clamp(4.0, 22.0);
-    final maxValue = math.max(_maxValue, 1);
+/// One slice of a whole — a tender, a category, a share.
+///
+/// [color] comes from the caller rather than from the chart: which slice is which
+/// tender is a fact the screen knows and the chart does not, and the legend
+/// repeats it in words so colour is never the only channel.
+@immutable
+class PosPieSlice {
+  const PosPieSlice({
+    required this.label,
+    required this.value,
+    required this.color,
+    this.valueLabel,
+  });
 
-    final fill = Paint()..color = accent;
-    final trackPaint = Paint()..color = track;
+  final String label;
+  final int value;
 
-    for (var i = 0; i < bars.length; i++) {
-      final bar = bars[i];
-      final top = i * rowHeight;
-      final centreY = top + rowHeight / 2;
-      final y = centreY - barHeight / 2;
+  final Color color;
 
-      // Name, ellipsised to its column rather than scaled to fit: a product
-      // name is what identifies the row, and shrinking it until it fits makes
-      // two different names indistinguishable. The full text is still in the
-      // chart's semantics label.
-      final name = _text(bar.label, labelStyle, maxWidth: labelColumn);
-      final nameX = _isRtl ? size.width - name.width : 0.0;
-      name.paint(canvas, Offset(nameX, centreY - name.height / 2));
+  /// Pre-formatted figure, e.g. `KSh 4,200`. Falls back to the raw value.
+  final String? valueLabel;
 
-      canvas.drawRRect(
-        RRect.fromRectAndRadius(
-          Rect.fromLTWH(trackStart, y, trackWidth, barHeight),
-          const Radius.circular(3),
-        ),
-        trackPaint,
+  String get displayValue => valueLabel ?? '$value';
+}
+
+/// A donut chart, for a WHOLE and the parts it is made of.
+///
+/// The bar chart this replaces was the wrong instrument for a payment mix: five
+/// horizontal bars invite reading them as a ranking, when the question is "is
+/// this shop cash-heavy or mobile-money-heavy" — a question a ring answers at a
+/// glance and a list of bars answers only after five comparisons.
+///
+/// The legend is real text, not painted: a label a screen reader cannot reach
+/// and that cannot grow with the user's text scale is the thing this chart
+/// exists to avoid, and the ring is the only painted part.
+class PosPieChart extends StatelessWidget {
+  const PosPieChart({
+    super.key,
+    required this.title,
+    required this.slices,
+    this.semanticsLabel,
+    this.centerLabel,
+    this.centerValue,
+    this.size = 132,
+  });
+
+  final String title;
+  final List<PosPieSlice> slices;
+  final String? semanticsLabel;
+
+  /// Small word over the figure in the hole — "Total", "Taken".
+  final String? centerLabel;
+
+  /// The whole the slices divide — rendered as real text so it scales.
+  final String? centerValue;
+
+  final double size;
+
+  @override
+  Widget build(BuildContext context) {
+    final AppSpacing spacing = AppSpacing.of(context);
+    final TextTheme type = AppTypography.of(context);
+
+    final total = slices.fold<int>(0, (sum, s) => sum + s.value);
+
+    return Semantics(
+      label: semanticsLabel ??
+          _fallbackSemantics(AppLocalizations.of(context), total),
+      container: true,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        mainAxisSize: MainAxisSize.min,
+        children: <Widget>[
+          Text(title, style: type.titleMedium),
+          SizedBox(height: spacing.sm),
+          if (slices.isEmpty)
+            Text(
+              AppLocalizations.of(context).chartNothingToShow,
+              style: type.bodySmall,
+            )
+          else
+            Row(
+              crossAxisAlignment: CrossAxisAlignment.center,
+              children: <Widget>[
+                // The ring, with the total inside it as real text over a hole.
+                //
+                // `IntrinsicHeight` is not a trick to force; the ring is sized
+                // by its own [size], and the centre figure is painted as real
+                // text, so the ROW grows to whichever is taller. A fixed-height
+                // `SizedBox` here overflowed by 12px at 2.0× text, which is the
+                // one failure mode the brief bans.
+                SizedBox(
+                  width: size,
+                  height: size,
+                  child: Stack(
+                    alignment: Alignment.center,
+                    children: <Widget>[
+                      ExcludeSemantics(
+                        child: CustomPaint(
+                          size: Size.square(size),
+                          painter: _PiePainter(slices: slices, total: total),
+                        ),
+                      ),
+                      if (centerValue != null)
+                        // The centre figure is capped to the ring's hole: a
+                        // 32-digit total would otherwise fill the middle and
+                        // swallow the arcs it is supposed to summarise.
+                        ConstrainedBox(
+                          constraints: BoxConstraints(
+                            maxWidth: size * 0.62,
+                          ),
+                          child: Column(
+                            mainAxisSize: MainAxisSize.min,
+                            children: <Widget>[
+                              if (centerLabel != null)
+                                Text(
+                                  centerLabel!,
+                                  maxLines: 2,
+                                  textAlign: TextAlign.center,
+                                  style: type.bodySmall?.copyWith(
+                                    color: AppColors.of(context).onSurfaceMuted,
+                                  ),
+                                ),
+                              FittedBox(
+                                child: Text(
+                                  centerValue!,
+                                  style: AppTypography.money(
+                                    context,
+                                    size: 16,
+                                    weight: FontWeight.w700,
+                                  ),
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                    ],
+                  ),
+                ),
+                SizedBox(width: spacing.md),
+                // The legend: swatch, name, figure. This is the part that
+                // survives greyscale, a colour-blind reader, and a screen
+                // reader — the ring is a picture of what is already written
+                // here.
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    mainAxisSize: MainAxisSize.min,
+                    children: <Widget>[
+                      for (final PosPieSlice slice in slices)
+                        Padding(
+                          padding: EdgeInsets.symmetric(vertical: spacing.xs),
+                          child: Row(
+                            children: <Widget>[
+                              Container(
+                                width: 10,
+                                height: 10,
+                                decoration: BoxDecoration(
+                                  color: slice.color,
+                                  shape: BoxShape.circle,
+                                ),
+                              ),
+                              SizedBox(width: spacing.sm),
+                              Expanded(
+                                child: Text(
+                                  slice.label,
+                                  style: type.bodySmall,
+                                  maxLines: 2,
+                                ),
+                              ),
+                              SizedBox(width: spacing.xs),
+                              Text(
+                                slice.displayValue,
+                                style: AppTypography.money(
+                                  context,
+                                  size: 12,
+                                  weight: FontWeight.w600,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+        ],
+      ),
+    );
+  }
+
+  String _fallbackSemantics(AppLocalizations l10n, int total) {
+    if (slices.isEmpty) return l10n.chartSpokenNoValues(title);
+    return describeSlices(l10n, title, slices, total);
+  }
+}
+
+/// The ring. Painted only — the total and the legend are widgets above it.
+class _PiePainter extends CustomPainter {
+  _PiePainter({required this.slices, required this.total});
+
+  final List<PosPieSlice> slices;
+  final int total;
+
+  /// The hole, as a share of the radius. Big enough that the figure inside it
+  /// has somewhere to live, small enough that each slice is still readable as a
+  /// length of arc.
+  static const double _holeFraction = 0.58;
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    if (slices.isEmpty || total <= 0) return;
+
+    final rect = Rect.fromLTWH(0, 0, size.width, size.height);
+    final stroke = size.width * (1 - _holeFraction) / 2;
+    final ringPaint = Paint()
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = stroke;
+
+    var start = -math.pi / 2;
+    for (final PosPieSlice slice in slices) {
+      if (slice.value <= 0) continue;
+      // At least a sliver: a tender that took one sale is a fact the ring is
+      // being asked to show, and a gap would read as "not counted".
+      final sweep = math.max(2 * math.pi * (slice.value / total), 0.04);
+      ringPaint.color = slice.color;
+      canvas.drawArc(
+        rect.deflate(stroke / 2),
+        start,
+        sweep,
+        false,
+        ringPaint,
       );
-
-      final length = bar.value <= 0
-          ? _minBar
-          : math.max(_minBar, (bar.value / maxValue) * trackWidth);
-      final lengthClamped = math.min(length, trackWidth);
-      canvas.drawRRect(
-        RRect.fromRectAndRadius(
-          Rect.fromLTWH(trackStart, y, lengthClamped, barHeight),
-          const Radius.circular(3),
-        ),
-        fill,
-      );
-
-      if (valueRoom > 0) {
-        final value = _text(bar.displayValue, valueStyle, maxWidth: valueRoom);
-        final valueX = _isRtl ? trackStart - gap - value.width : trackEnd + gap;
-        value.paint(canvas, Offset(valueX, centreY - value.height / 2));
-      }
+      start += sweep;
     }
   }
 
   @override
-  bool shouldRepaint(covariant _ChartPainter old) =>
-      old.bars != bars ||
-      old.axis != axis ||
-      old.textScaler != textScaler ||
-      old.direction != direction ||
-      old.labelStyle != labelStyle ||
-      old.valueStyle != valueStyle;
+  bool shouldRepaint(covariant _PiePainter old) =>
+      old.slices != slices || old.total != total;
+}
+
+/// The ring's non-visual equivalent: the title, the whole, and every part in
+/// order. Public so the payment-mix screen can reuse it for its table.
+String describeSlices(
+  AppLocalizations l10n,
+  String title,
+  List<PosPieSlice> slices,
+  int total,
+) {
+  if (slices.isEmpty) return l10n.chartSpokenNoValues(title);
+  final ordered = List<PosPieSlice>.from(slices)
+    ..sort((a, b) => b.value.compareTo(a.value));
+  final parts = ordered
+      .map((s) => '${s.label} ${s.displayValue}, '
+          '${(s.value * 100 / math.max(total, 1)).round()} percent')
+      .join('; ');
+  return '$title, total ${ordered.fold<int>(0, (sum, s) => sum + s.value)}. $parts.';
 }

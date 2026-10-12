@@ -143,7 +143,8 @@ class ExcelService {
     return _save(book, 'duka-sales');
   }
 
-  Future<File> exportEncryptedSales({DateTime? since, int limit = 10000}) async {
+  Future<File> exportEncryptedSales(
+      {DateTime? since, int limit = 10000}) async {
     final workbook = await exportSales(since: since, limit: limit);
     final encrypted = await EncryptedBackupService.encryptToFile(
         await workbook.readAsBytes(),
@@ -215,6 +216,27 @@ class ExcelService {
     final bytes = await EncryptedBackupService.pickAndDecrypt();
     if (bytes == null) return 0;
     return (await importInventoryBytes(bytes)).imported;
+  }
+
+  /// The restore, from bytes.
+  ///
+  /// The production path goes through the share sheet and a file picker; this is
+  /// the same importer from the moment the bytes arrive, which is what a test
+  /// can drive and what a restore actually depends on.
+  @visibleForTesting
+  Future<InventoryImportResult> importInventoryBytesForTest(List<int> bytes) =>
+      importInventoryBytes(bytes);
+
+  /// Records when a backup was written, at an injectable moment.
+  ///
+  /// Production records "now"; a test ages the stamp to prove the reminder
+  /// re-appears without waiting thirty days for it.
+  @visibleForTesting
+  static Future<void> recordAutomaticBackupForTest(String path,
+      {DateTime? at}) async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString(
+        _lastBackupKey, (at ?? DateTime.now()).toIso8601String());
   }
 
   static Future<DateTime?> lastBackupTime() async {

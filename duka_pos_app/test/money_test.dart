@@ -132,6 +132,65 @@ void main() {
     });
   });
 
+  group('divideMoneyHalfUp', () {
+    test('halves a whole cent rather than losing it', () {
+      // The bug this closes: 0.29 / 2 in binary floating point is
+      // 0.14499999999999999, so `Money.fromMajor(0.29 / 2)` rounded DOWN to 14
+      // cents where the exact half-up answer is 15. Every average basket on
+      // the portfolio screen went through that double round trip.
+      expect(divideMoneyHalfUp(29, 2), 15);
+      expect(divideMoneyHalfUp(15, 2), 8);
+      expect(divideMoneyHalfUp(25, 2), 13);
+    });
+
+    test('exact divisions stay exact', () {
+      expect(divideMoneyHalfUp(100, 4), 25);
+      expect(divideMoneyHalfUp(0, 4), 0);
+      expect(divideMoneyHalfUp(100, 1), 100);
+    });
+
+    test('a third truncates in the shop\'s favour, like the VAT split', () {
+      // `vatComponentOf` divides the same way, so an average and a tax split
+      // must never disagree about which way a remainder goes.
+      expect(divideMoneyHalfUp(100, 3), 33);
+      expect(divideMoneyHalfUp(200, 3), 67);
+      expect(divideMoneyHalfUp(101, 3), 34);
+    });
+
+    test('equal shares round the same way, and stay close to the whole', () {
+      // The invariant that matters for an AVERAGE: every share rounds
+      // identically, so the shares never disagree with each other, and their
+      // sum is the whole to within half a cent per part — never a drift.
+      for (final (minor, count) in <(int, int)>[
+        (100, 3),
+        (29, 2),
+        (12345, 7),
+        (1, 4),
+        (999, 9),
+        (5000, 2),
+      ]) {
+        final share = divideMoneyHalfUp(minor, count);
+        var sum = 0;
+        for (var i = 0; i < count; i++) {
+          expect(divideMoneyHalfUp(minor, count), share);
+          sum += share;
+        }
+        expect((sum - minor).abs(), lessThan(count));
+      }
+    });
+
+    test('a zero count is zero rather than a throw', () {
+      // Money math must never throw into the UI: an empty shop has a zero
+      // average basket, not a crash.
+      expect(divideMoneyHalfUp(500, 0), 0);
+    });
+
+    test('negatives mirror, the way the discount path needs', () {
+      expect(divideMoneyHalfUp(-29, 2), -15);
+      expect(divideMoneyHalfUp(-100, 3), -33);
+    });
+  });
+
   group('formatMoney', () {
     test('whole shillings render without decimals', () {
       expect(formatMoney(Money.fromMajor(100)), contains('100'));

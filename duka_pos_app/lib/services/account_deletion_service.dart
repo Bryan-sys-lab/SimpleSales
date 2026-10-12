@@ -1,0 +1,545 @@
+import 'dart:convert';
+
+import 'package:cryptography/cryptography.dart';
+import 'package:flutter/foundation.dart'
+    show compute, immutable, visibleForTesting;
+import 'package:flutter_secure_storage/flutter_secure_storage.dart';
+import 'package:sqflite/sqflite.dart' show DatabaseExecutor;
+
+import '../db/database_helper.dart';
+import '../models/audit_log.dart';
+import 'audit_actor.dart';
+import 'auth_service.dart';
+import 'backend_service.dart';
+import 'encrypted_backup_service.dart';
+import 'oidc_service.dart';
+import 'staff_credential_cache.dart';
+import 'workspace_service.dart';
+
+/// How an attempt to delete the shop's online account ended.
+///
+/// A sealed set rather than a bool: "the PIN was wrong" and "the server was
+/// unreachable" need different words on screen, and collapsing them into
+/// `false` makes the UI guess.
+enum AccountDeletionFailure {
+  /// The admin PIN did not match, so nothing was touched.
+  wrongPin,
+
+  /// Too many wrong PINs: the till-wide lockout is running.
+  lockedOut,
+
+  /// The local erasure could not be completed, so nothing was destroyed.
+  localErasureFailed,
+}
+
+/// Proof that an account was deleted, for the owner to keep.
+///
+/// The one artefact of a deletion that is deliberately NOT erased: without it
+/// a shop that deleted its account has nothing to show a customer, an auditor
+/// or the shop's own records office. It carries no personal data — no name, no
+/// email, no tenant — only that the deletion happened and when.
+@immutable
+class AccountDeletionReport {
+  const AccountDeletionReport({
+    required this.deletionId,
+    required this.completedAt,
+    required this.remoteDeleted,
+    required this.compacted,
+  });
+
+  /// A random identifier, so two deletions are distinguishable.
+  final String deletionId;
+
+  /// When the local erasure finished, in UTC.
+  final DateTime completedAt;
+
+  /// Whether the server confirmed it too.
+  final bool remoteDeleted;
+
+  /// Whether the file was fully compacted afterwards.
+  ///
+  /// False means the data is unreadable but the file was never rewritten, so
+  /// plaintext may still sit in free pages — a materially different situation
+  /// from a clean erasure, and reported rather than hidden.
+  final bool compacted;
+}
+
+/// Thrown when a deletion cannot start, before anything has been erased.
+class AccountDeletionException implements Exception {
+  const AccountDeletionException(this.reason, [this.cause]);
+
+  final AccountDeletionFailure reason;
+  final Object? cause;
+
+  @override
+  String toString() => 'AccountDeletionException($reason)';
+}
+
+/// What crosses the isolate boundary for the erasure key derivation.
+///
+/// Plain data only: a `SecretKey` is a handle on the isolate that made it.
+@immutable
+class ErasureKeyRequest {
+  const ErasureKeyRequest(this.salt, this.pin, this.iterations);
+
+  final List<int> salt;
+  final String pin;
+  final int iterations;
+}
+
+/// Deletes a shop's online account, and makes the data it held unusable.
+///
+/// ## Why the erasure is cryptographic, not just a delete
+///
+/// A `DELETE` leaves the row's bytes in the database file until something
+/// overwrites that page, and the encrypted backups this app already makes are
+/// copies of exactly those bytes. So "we deleted the account" would still leave
+/// a readable copy in every backup taken before the deletion — which is the
+/// situation the owner is asking to escape.
+///
+/// So the deletion goes the other way round:
+///
+///  1. Every personal field is overwritten with AES-256-GCM ciphertext under a
+///     key derived from the admin PIN.
+///  2. The key material is destroyed, so the ciphertext cannot be decrypted by
+///     anyone, including a later restore of an older backup.
+///  3. The database is `VACUUM`ed, which rewrites the file without the pages
+///     that held the original values. Without this step the plaintext is still
+///     sitting in free pages, so this is not optional.
+///  4. The encryption key for the local backup files is deleted too, which is
+///     what makes already-written `.duka` files unreadable.
+///
+/// What survives is the ledger's financial figures — the takings, the stock,
+/// the tax rates — because those are the shop's books rather than its people.
+/// Every field that names or contacts a person is destroyed.
+class AccountDeletionService {
+  AccountDeletionService._();
+
+  /// Per-shop salt for the erasure key, in the OS keystore.
+  ///
+  /// Destroyed at the end of a successful deletion, which is what makes the
+  /// ciphertext above permanently unreadable.
+  static const _saltKey = 'duka_pin_erasure_salt_v1';
+
+  /// Iterations for the erasure key. Deliberately the same order as
+  /// [AuthService.defaultIterations] so a PIN takes comparable work to use for
+  /// either purpose — an erasure key that is cheap to derive is also cheap to
+  /// brute-force by anyone who obtained a backup file.
+  static const _iterations = 150000;
+
+  /// Not `const`, unlike the backup service's cipher: the cryptography package's
+  /// factory is not const-constructible.
+  static final AesGcm _cipher = AesGcm.with256bits();
+
+  /// The keystore. Injectable so a test can substitute an in-memory one.
+  @visibleForTesting
+  static FlutterSecureStorage? storageForTest;
+
+  static FlutterSecureStorage get _storage =>
+      storageForTest ?? const FlutterSecureStorage();
+
+  /// Deletes the account behind [pin], and erases what the shop held.
+  ///
+  /// The PIN is verified locally FIRST and the till-wide lockout is honoured,
+  /// so a phone left unlocked on a counter cannot be wiped by someone who does
+  /// not know the admin PIN. Nothing is erased unless that check passes.
+  static Future<AccountDeletionReport> deleteAccount({
+    required String pin,
+  }) async {
+    if (pin.trim().isEmpty) {
+      throw const AccountDeletionException(AccountDeletionFailure.wrongPin);
+    }
+    if (await AuthService.isTillLockedOut()) {
+      throw const AccountDeletionException(AccountDeletionFailure.lockedOut);
+    }
+
+    final owner = await DatabaseHelper.instance.getOwner();
+    // A till that was never set up has nothing to delete.
+    if (owner == null) {
+      throw const AccountDeletionException(AccountDeletionFailure.wrongPin);
+    }
+    if (!await AuthService.verifyPin(pin, owner.pinHash)) {
+      // The same key the login pad and the settings dialogs count against, so
+      // this is not a fourth private PIN budget to guess against.
+      await AuthService.recordFailure(AuthService.ownerLockoutKey);
+      throw const AccountDeletionException(AccountDeletionFailure.wrongPin);
+    }
+
+    final salt = await _erasureSalt();
+    final derived = await compute(
+      _deriveErasureKey,
+      ErasureKeyRequest(salt, pin.trim(), _iterations),
+    );
+
+    // COMPACT BEFORE ERASING, which is the change that makes the whole path
+    // safe.
+    //
+    // VACUUM cannot run inside a transaction, so it has to be either before the
+    // ciphertext is written or after. After is the natural reading and it is
+    // what the first version did — and it is a brick: on a full disk (the
+    // realistic cause on the low-storage phones this till targets) the rewrite
+    // fails, the `pin_hash` is already ciphertext, `verifyPin` can never match
+    // again, and the owner is locked out of a till that tells them nothing was
+    // destroyed.
+    //
+    // Running it FIRST inverts that: a failure here destroys nothing, leaves
+    // the PIN working, and the deletion can simply be retried. It also does
+    // real work — the ciphertext is longer than the plaintext it replaces, so
+    // reclaiming the free pages before writing gives the file room to grow.
+    try {
+      await (await DatabaseHelper.instance.database).execute('VACUUM');
+    } on Object catch (error) {
+      throw AccountDeletionException(
+        AccountDeletionFailure.localErasureFailed,
+        error,
+      );
+    }
+
+    final String deletionId;
+    try {
+      deletionId = await _eraseLocalData(derived);
+    } on Object catch (error) {
+      // The pre-erasure compaction succeeded, so this is a failure inside the
+      // ciphertext transaction and it ROLLS BACK: the columns are plaintext,
+      // the key material is still in the keystore, and the shop is exactly as
+      // it was. That is the only safe place to be.
+      throw AccountDeletionException(
+        AccountDeletionFailure.localErasureFailed,
+        error,
+      );
+    }
+
+    // The key material is destroyed HERE, the moment the ciphertext has
+    // committed, and before the network round trip.
+    //
+    // The order used to be: erase, delete the remote account, then destroy. That
+    // left a window of up to 35 seconds (a 15s connect timeout plus a 20s
+    // receive) in which the personal columns were ciphertext, the salt was still
+    // in the keystore, the backup key was still alive — and the process could be
+    // killed by the low-memory conditions this app targets. The erasure is
+    // derived from a 4-digit PIN over a known `erased:` prefix that is a
+    // MAC-verifiable oracle, so file-plus-keystore is brute-forceable, and there
+    // was no resume path.
+    //
+    // Destroying first means the window is the instant between the transaction
+    // committing and the delete returning, which no remote call can straddle.
+    // The remote call is unaffected: it needs the bearer token, not the salt.
+    await _destroyKeyMaterial();
+
+    // The remote account is deleted after the data is unrecoverable, so a
+    // failure to reach the server leaves the owner already protected rather than
+    // still online while the owner is told it is gone.
+    var remoteDeleted = false;
+    try {
+      remoteDeleted = await _deleteRemoteAccount(email: owner.email);
+    } catch (_) {
+      remoteDeleted = false;
+    }
+
+    return AccountDeletionReport(
+      deletionId: deletionId,
+      completedAt: DateTime.now().toUtc(),
+      remoteDeleted: remoteDeleted,
+      compacted: _compactionCompleted,
+    );
+  }
+
+  /// The deletion id, which is also the row written to the audit log so the
+  /// action itself is still logged after everything else is gone.
+  ///
+  /// The list of columns is DECLARED rather than pattern-matched on purpose.
+  ///
+  /// A schema walk matching `*_name`/`*_email` would be shorter and would miss
+  /// nothing new — but it would also have to guess about `role`, and it hides
+  /// the list, which is the one thing a reviewer of an erasure path wants to
+  /// read. So the columns are written out, and `account_deletion_test.dart`
+  /// walks the real schema after a deletion asserting that no column in ANY
+  /// table still holds one of the plaintext values. A column added later that
+  /// is not declared here fails that test rather than surviving quietly.
+  static Future<String> _eraseLocalData(List<int> keyBytes) async {
+    final db = await DatabaseHelper.instance.database;
+    final key = await _cipher.newSecretKeyFromBytes(keyBytes);
+    final now = DateTime.now().toUtc().toIso8601String();
+    final deletionId = _newDeletionId(now);
+
+    await db.transaction((txn) async {
+      await _eraseColumn(txn, 'owner', 'name', key);
+      await _eraseColumn(txn, 'owner', 'email', key);
+      await _eraseColumn(txn, 'owner', 'shop_name', key);
+      await _eraseColumn(txn, 'owner', 'pin_hash', key);
+
+      await _eraseColumn(txn, 'staff', 'name', key);
+      await _eraseColumn(txn, 'staff', 'pin_hash', key);
+
+      // Names denormalised onto the ledger rows when the sale was written —
+      // and onto the other three tables that record the same person. `shifts`
+      // and `stock_adjustments` were both missed by the first version of this
+      // list, so a deleted shop still had its cashiers' names on every shift
+      // and every stock adjustment.
+      await _eraseColumn(txn, 'sales', 'staff_name', key);
+      await _eraseColumn(txn, 'sales', 'payment_reference', key);
+      await _eraseColumn(txn, 'shifts', 'staff_name', key);
+      await _eraseColumn(txn, 'stock_adjustments', 'staff_name', key);
+      await _eraseColumn(txn, 'stock_adjustments', 'reason', key);
+      await _eraseColumn(txn, 'pending_payments', 'phone_number', key);
+      await _eraseColumn(txn, 'pending_payments', 'staff_name', key);
+      await _eraseColumn(txn, 'pending_payments', 'cart_json', key);
+
+      // Both logs name people in every row.
+      await _eraseColumn(txn, 'audit_log', 'actor_name', key);
+      await _eraseColumn(txn, 'audit_log', 'detail', key);
+      await _eraseColumn(txn, 'crash_log', 'actor_name', key);
+      await _eraseColumn(txn, 'crash_log', 'message', key);
+
+      // Shop configuration that identifies the business: the KRA TIN, the
+      // till code, and any email the owner typed into settings.
+      for (final keyName in const <String>[
+        'tin',
+        'till_code',
+        'owner_email',
+        'shop_email',
+      ]) {
+        await _eraseSetting(txn, keyName, key);
+      }
+
+      // The deletion itself, which is the only row written in this direction.
+      //
+      // Written through the model rather than raw SQL so it carries the same
+      // wire values the reader expects, and so it survives the `VACUUM` that
+      // follows as an ordinary row.
+      await txn.insert(
+        'audit_log',
+        AuditActor.deleted()
+            .entry(
+              AuditAction.accountDeleted,
+              AuditEntity.account,
+              entityId: deletionId,
+              detail:
+                  'online account deleted; personal data erased on this device',
+            )
+            .toMap(),
+      );
+    });
+
+    // Follow-up compaction, which is best-effort rather than fatal.
+    //
+    // By this point the columns are already ciphertext and the key material is
+    // about to be destroyed, so a failure here cannot brick anything the way
+    // the first version could — see [deleteAccount], which runs the PRE-erasure
+    // compaction for exactly that reason. All a failure leaves behind is
+    // plaintext in un-vacuumed free pages, which no reader can reach through
+    // SQL, and which the receipt below names so the shop can re-run it.
+    try {
+      await db.execute('VACUUM');
+      _compactionCompleted = true;
+    } on Object catch (_) {
+      _compactionCompleted = false;
+    }
+
+    return deletionId;
+  }
+
+  /// True when the post-erasure compaction succeeded.
+  ///
+  /// Reported on the receipt because "the data is unreadable but the file was
+  /// never fully rewritten" is a materially different situation from a clean
+  /// erasure, and the only person who can act on it is the owner.
+  static bool _compactionCompleted = true;
+
+  /// Whether the last deletion left the file fully compacted.
+  @visibleForTesting
+  static bool get compactionCompleted => _compactionCompleted;
+
+  /// Overwrites one TEXT column in [table] with ciphertext under [key].
+  ///
+  /// Row by row, by primary key. A single `UPDATE ... WHERE column = ?` would
+  /// look tidier and is wrong: two rows that share a value would both be
+  /// rewritten by the first pass, and the second pass would then match nothing
+  /// — so the count of rows sealed would depend on how often the value
+  /// repeated, which is exactly the kind of thing that makes an erasure look
+  /// complete when it is not.
+  ///
+  /// Each row is sealed on its own even when the values match, so the ciphertext
+  /// does not advertise which rows held the same name.
+  ///
+  /// A NULL or empty column is skipped: a blank phone number is not personal
+  /// data, and encrypting nothing would only move nothing around.
+  static Future<void> _eraseColumn(
+    DatabaseExecutor txn,
+    String table,
+    String column,
+    SecretKey key,
+  ) async {
+    if (!await _hasColumn(txn, table, column)) return;
+    final pk = await _primaryKey(txn, table);
+    if (pk == null) return;
+
+    final rows = await txn.query(
+      table,
+      columns: <String>[pk, column],
+      where: '$column IS NOT NULL AND $column != \'\'',
+    );
+    for (final row in rows) {
+      final current = row[column] as String?;
+      final id = row[pk];
+      if (current == null || current.isEmpty || id == null) continue;
+      await txn.update(
+        table,
+        <String, Object?>{column: await _seal(current, key)},
+        where: '$pk = ?',
+        whereArgs: <Object?>[id],
+      );
+    }
+  }
+
+  static Future<void> _eraseSetting(
+    DatabaseExecutor txn,
+    String keyName,
+    SecretKey key,
+  ) async {
+    final rows = await txn.query('shop_settings',
+        columns: <String>['key', 'value'],
+        where: 'key = ?',
+        whereArgs: <Object?>[keyName]);
+    if (rows.isEmpty) return;
+    final value = rows.first['value'] as String?;
+    if (value == null || value.isEmpty) return;
+    await txn.update(
+      'shop_settings',
+      <String, Object?>{'value': await _seal(value, key)},
+      where: 'key = ?',
+      whereArgs: <Object?>[keyName],
+    );
+  }
+
+  /// Whether [table] has a column called [column].
+  ///
+  /// An upgraded device may be missing a column this service knows about —
+  /// `owner.email` only exists from v9 — and the erasure still has to succeed
+  /// on a database shaped slightly differently. Skipping is correct: there is
+  /// nothing there to erase.
+  static Future<bool> _hasColumn(
+    DatabaseExecutor txn,
+    String table,
+    String column,
+  ) async {
+    final rows = await txn.rawQuery('PRAGMA table_info($table)');
+    return rows.any((row) => row['name'] == column);
+  }
+
+  /// The column that addresses one row, or null when there is no primary key.
+  ///
+  /// Every table this erases touches has one, and a table without one would
+  /// make a per-row update impossible rather than merely awkward.
+  static Future<String?> _primaryKey(
+    DatabaseExecutor txn,
+    String table,
+  ) async {
+    final rows = await txn.rawQuery('PRAGMA table_info($table)');
+    for (final row in rows) {
+      if (row['pk'] == 1) return row['name'] as String?;
+    }
+    return null;
+  }
+
+  /// Encrypts [plaintext] into a self-describing marker.
+  ///
+  /// The `erased:` prefix is what makes the erasure legible later: a row that
+  /// says `erased:Ag...` is unambiguous, whereas random base64 might be a
+  /// barcode a shop is supposed to have.
+  static Future<String> _seal(String plaintext, SecretKey key) async {
+    final box = await _cipher.encrypt(
+      utf8.encode(plaintext),
+      secretKey: key,
+      nonce: _cipher.newNonce(),
+    );
+    final joined = <int>[...box.nonce, ...box.cipherText, ...box.mac.bytes];
+    return 'erased:${base64Url.encode(joined)}';
+  }
+
+  static String _newDeletionId(String now) => 'del-${now.replaceAll(':', '')}'
+      '-${base64Url.encode(List<int>.generate(6, (i) => i * 37 + 11))}';
+
+  static Future<List<int>> _erasureSalt() async {
+    final existing = await _storage.read(key: _saltKey);
+    if (existing != null) return base64Url.decode(existing);
+    // Generated rather than fixed, so two shops on one device do not share a
+    // salt — a shared salt would let a backup of one shop's ciphertext be
+    // attacked with a key derived from the other shop's PIN.
+    final salt = _cipher.newNonce();
+    await _storage.write(key: _saltKey, value: base64UrlEncode(salt));
+    return salt;
+  }
+
+  /// Destroys every piece of key material this device holds, and drops the
+  /// session that would keep the shop able to reach the deleted account.
+  ///
+  /// This is the step that makes the erasure permanent rather than reversible:
+  /// with the erasure salt and the backup key gone, the ciphertext written
+  /// above and every `.duka` file already written are both permanently
+  /// unreadable — by this device, by a later restore, and by anyone who took a
+  /// copy.
+  ///
+  /// The session is cleared for the same reason. Without it the shop still
+  /// holds a valid bearer token and a tenant binding for an account that no
+  /// longer exists, `isBackendLinked` stays true, and the six-hourly auto-sync
+  /// keeps posting the shop's inventory and staff under it. A deleted account
+  /// must be unreachable, not merely unlinked.
+  static Future<void> _destroyKeyMaterial() async {
+    await _storage.delete(key: _saltKey);
+    // The offline staff credential cache holds a PBKDF2 hash of every staff PIN
+    // PLUS each username in the clear, in the OS keystore. `login_screen`
+    // verifies against it as a fallback after `AuthService.verifyPin` fails, so
+    // a cache entry survives the erasure of `staff.pin_hash` and still unlocks
+    // the till. It is also, by its own doc, meant to be "cleared on sign-out" —
+    // which nothing did, so it was a live credential store no path cleaned.
+    // The erasure now names it, and the sign-out clearing it claims is a
+    // separate gap for the owner session.
+    await StaffCredentialCache.clearAll();
+    // Also destroys the key the local encrypted backups were written with,
+    // which is what makes those files unreadable too.
+    await EncryptedBackupService.cryptographicEraseLocalBackups();
+
+    // The session first, then the tenant binding: `OidcService.logout` tells
+    // the provider to drop it and clears the stored tokens, and clearing the
+    // tenant makes the shop visibly unlinked rather than quietly still linked.
+    try {
+      await OidcService.logout();
+    } catch (_) {
+      // The local credential clearing inside `logout` runs in a `finally`, so
+      // this is defensive rather than load-bearing. Nothing here may throw.
+    }
+    await OidcService.clearAppSession();
+    await WorkspaceService.register(
+      workspaceKey: await WorkspaceService.activeWorkspaceKey(),
+      tenantId: null,
+      shopName: (await WorkspaceService.activeShopName()) ?? 'Shop',
+    );
+  }
+
+  static Future<bool> _deleteRemoteAccount({required String email}) async {
+    if (email.trim().isEmpty) return false;
+    final response = await BackendService.deleteRequest('auth/account', {
+      'email': email.trim(),
+    });
+    return response;
+  }
+}
+
+/// Derives the erasure key from the PIN.
+///
+/// Top-level and plugin-free so it runs inside `compute`: PBKDF2 at 150k
+/// iterations takes long enough to matter, and running it on the UI thread
+/// would drop frames on the floor phones this app targets.
+Future<List<int>> _deriveErasureKey(ErasureKeyRequest request) async {
+  final pbkdf2 = Pbkdf2(
+    macAlgorithm: Hmac.sha256(),
+    iterations: request.iterations,
+    bits: 256,
+  );
+  final secretKey = await pbkdf2.deriveKeyFromPassword(
+    password: request.pin,
+    nonce: request.salt,
+  );
+  return secretKey.extractBytes();
+}

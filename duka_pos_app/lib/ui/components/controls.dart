@@ -477,3 +477,268 @@ void showAppSnackBar(
     ),
   );
 }
+
+// ---------------------------------------------------------------------------
+// Settings rows
+//
+// The rows a settings screen is made of. Shared rather than private because
+// Settings and Tax settings render the same three shapes, and a copy in each
+// file is two copies to fix.
+//
+// All three take a `Material` ancestor as a given: they draw ink, and a
+// card of rows has to supply it — see SurfaceCard.
+// ---------------------------------------------------------------------------
+/// A row that reads out a fact: an icon, a title, an optional subtitle, and an
+/// optional trailing label. Nothing to do, so nothing to tap.
+///
+/// The rows of Settings and Tax settings are made of this, and it deliberately
+/// carries no semantics of its own: an unlabelled `Icon` is invisible to a
+/// screen reader, so the icon is excluded and the TEXT is what gets announced.
+class SettingsInfoRow extends StatelessWidget {
+  const SettingsInfoRow({
+    super.key,
+    required this.icon,
+    required this.title,
+    this.subtitle,
+    this.trailing,
+  });
+
+  final IconData icon;
+  final String title;
+  final String? subtitle;
+  final String? trailing;
+
+  @override
+  Widget build(BuildContext context) {
+    final AppColors colors = AppColors.of(context);
+    return Padding(
+      padding: EdgeInsetsDirectional.only(
+        top: AppSpacing.of(context).sm,
+        bottom: AppSpacing.of(context).sm,
+      ),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: <Widget>[
+          ExcludeSemantics(
+            child: Icon(icon, size: 20, color: colors.onSurfaceVariant),
+          ),
+          SizedBox(width: AppSpacing.of(context).md),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: <Widget>[
+                Text(title, style: AppTypography.of(context).bodyLarge),
+                if (subtitle != null) ...<Widget>[
+                  SizedBox(height: 2),
+                  Text(
+                    subtitle!,
+                    style: AppTypography.of(context)
+                        .bodySmall
+                        ?.copyWith(color: colors.onSurfaceMuted),
+                  ),
+                ],
+              ],
+            ),
+          ),
+          if (trailing != null) ...<Widget>[
+            SizedBox(width: AppSpacing.of(context).md),
+            Text(
+              trailing!,
+              style: AppTypography.of(context)
+                  .labelLarge
+                  ?.copyWith(color: colors.onSurfaceMuted),
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+}
+
+/// A row that navigates: one target, the display label as its semantic label.
+///
+/// The tap target is the whole row, never just the chevron, and the minimum
+/// height is enforced HERE rather than left to each caller — the row that
+/// forgets is invisible in review.
+class SettingsNavRow extends StatelessWidget {
+  const SettingsNavRow({
+    required this.icon,
+    required this.title,
+    required this.onTap,
+    this.subtitle,
+    this.trailing,
+    super.key,
+  });
+
+  final IconData icon;
+  final String title;
+  final String? subtitle;
+
+  /// Null while the action is unavailable — mid-save, or before the row has
+  /// anything to act on. The row dims itself rather than losing its height, so
+  /// the layout does not jump between idle and busy.
+  final VoidCallback? onTap;
+
+  /// Replaces the chevron with a label ("Change") where the destination acts on
+  /// the row rather than opening a detail screen. The chevron says "there is
+  /// more"; a verb says what tapping will do, and a shopkeeper setting a till
+  /// code needs the verb.
+  final String? trailing;
+
+  @override
+  Widget build(BuildContext context) {
+    final AppColors colors = AppColors.of(context);
+    return Semantics(
+      button: true,
+      label: title,
+      child: Opacity(
+        // Dimmed with the control: a row at full strength with no tap is a row
+        // that reads as broken rather than busy.
+        opacity: onTap == null ? 0.5 : 1,
+        child: InkWell(
+          onTap: onTap,
+          child: Padding(
+            padding: EdgeInsetsDirectional.only(
+              top: AppSpacing.of(context).sm,
+              bottom: AppSpacing.of(context).sm,
+            ),
+            child: ConstrainedBox(
+              // The floor is on the row, not on the label: the tap target
+              // stays legal when the subtitle wraps to three lines at 200%
+              // text.
+              constraints: const BoxConstraints(minHeight: 48),
+              child: Row(
+                children: <Widget>[
+                  ExcludeSemantics(
+                    child: Icon(icon, size: 20, color: colors.onSurfaceVariant),
+                  ),
+                  SizedBox(width: AppSpacing.of(context).md),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: <Widget>[
+                        Text(title, style: AppTypography.of(context).bodyLarge),
+                        if (subtitle != null) ...<Widget>[
+                          SizedBox(height: 2),
+                          Text(
+                            subtitle!,
+                            style: AppTypography.of(context)
+                                .bodySmall
+                                ?.copyWith(color: colors.onSurfaceMuted),
+                          ),
+                        ],
+                      ],
+                    ),
+                  ),
+                  if (trailing != null) ...<Widget>[
+                    SizedBox(width: AppSpacing.of(context).sm),
+                    Text(
+                      trailing!,
+                      style: AppTypography.of(context)
+                          .labelLarge
+                          ?.copyWith(color: colors.onSurfaceMuted),
+                    ),
+                  ] else ...<Widget>[
+                    SizedBox(width: AppSpacing.of(context).sm),
+                    ExcludeSemantics(
+                      child: Icon(
+                        Icons.chevron_right,
+                        size: 20,
+                        color: colors.onSurfaceMuted,
+                      ),
+                    ),
+                  ],
+                ],
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+/// A row that toggles. The switch is the whole row's target, because a
+/// switch-sized switch at the end of a full-width row is a target nobody hits
+/// first try.
+///
+/// [enabled] false dims the icon and the title with the switch: a control at
+/// full strength beside a switch that cannot move reads as one that can.
+class SettingsSwitchRow extends StatelessWidget {
+  const SettingsSwitchRow({
+    super.key,
+    required this.icon,
+    required this.title,
+    required this.value,
+    required this.onChanged,
+    this.subtitle,
+    this.enabled = true,
+  });
+
+  final IconData icon;
+  final String title;
+  final String? subtitle;
+  final bool value;
+  final bool enabled;
+  final ValueChanged<bool> onChanged;
+
+  @override
+  Widget build(BuildContext context) {
+    final AppColors colors = AppColors.of(context);
+    return InkWell(
+      onTap: enabled ? () => onChanged(!value) : null,
+      child: Padding(
+        padding: EdgeInsetsDirectional.only(
+          top: AppSpacing.of(context).sm,
+          bottom: AppSpacing.of(context).sm,
+        ),
+        child: ConstrainedBox(
+          constraints: const BoxConstraints(minHeight: 48),
+          child: Row(
+            children: <Widget>[
+              ExcludeSemantics(
+                child: Icon(
+                  icon,
+                  size: 20,
+                  // Dimmed with the control: an icon at full strength beside a
+                  // switch that cannot move reads as a switch that can.
+                  color:
+                      enabled ? colors.onSurfaceVariant : colors.onSurfaceMuted,
+                ),
+              ),
+              SizedBox(width: AppSpacing.of(context).md),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: <Widget>[
+                    Text(
+                      title,
+                      style: AppTypography.of(context).bodyLarge?.copyWith(
+                          color: enabled
+                              ? colors.onSurface
+                              : colors.onSurfaceMuted),
+                    ),
+                    if (subtitle != null) ...<Widget>[
+                      SizedBox(height: 2),
+                      Text(
+                        subtitle!,
+                        style: AppTypography.of(context)
+                            .bodySmall
+                            ?.copyWith(color: colors.onSurfaceMuted),
+                      ),
+                    ],
+                  ],
+                ),
+              ),
+              SizedBox(width: AppSpacing.of(context).md),
+              Switch(
+                value: value,
+                onChanged: enabled ? onChanged : null,
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}

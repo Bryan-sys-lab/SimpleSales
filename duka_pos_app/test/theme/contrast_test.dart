@@ -169,51 +169,51 @@ const Map<String, ({Color fg, Color bg, double minimum, String note})>
 /// nothing. These are the intended VALUES; if a palette change breaks one of them,
 /// this file is supposed to notice.
 abstract final class AppColorsLight {
-  static const canvas = Color(0xFFF8F5F1);
+  static const canvas = Color(0xFFFAF6F0);
   static const surface = Color(0xFFFFFFFF);
-  static const surfaceSunken = Color(0xFFF1EAE5);
-  static const onSurface = Color(0xFF251A1D);
-  static const onSurfaceVariant = Color(0xFF4E3F42);
-  static const onSurfaceMuted = Color(0xFF66575B);
-  static const outlineStrong = Color(0xFF746D6C);
-  static const accent = Color(0xFF6E2638);
+  static const surfaceSunken = Color(0xFFF3EDE6);
+  static const onSurface = Color(0xFF2D2A26);
+  static const onSurfaceVariant = Color(0xFF4A433C);
+  static const onSurfaceMuted = Color(0xFF6B635A);
+  static const outlineStrong = Color(0xFF8A8075);
+  static const accent = Color(0xFF1B6B3A);
   static const onAccent = Color(0xFFFFFFFF);
-  static const accentContainer = Color(0xFFF6E7EA);
-  static const onAccentContainer = Color(0xFF4B1725);
-  static const success = Color(0xFF176B4D);
-  static const successContainer = Color(0xFFE7F2EC);
-  static const onSuccessContainer = Color(0xFF10503A);
-  static const warning = Color(0xFF9A5B00);
-  static const warningContainer = Color(0xFFF7EEDD);
-  static const onWarningContainer = Color(0xFF7A4800);
-  static const danger = Color(0xFFB3261E);
-  static const dangerContainer = Color(0xFFFBE9E7);
-  static const onDangerContainer = Color(0xFF96201A);
+  static const accentContainer = Color(0xFFE8F5EC);
+  static const onAccentContainer = Color(0xFF0D3D1E);
+  static const success = Color(0xFF1A7A3A);
+  static const successContainer = Color(0xFFE8F5EC);
+  static const onSuccessContainer = Color(0xFF0D4D1E);
+  static const warning = Color(0xFF8A6508);
+  static const warningContainer = Color(0xFFFFF3E0);
+  static const onWarningContainer = Color(0xFF7A5A00);
+  static const danger = Color(0xFFC0392B);
+  static const dangerContainer = Color(0xFFFDEDEA);
+  static const onDangerContainer = Color(0xFF8B2518);
 }
 
 /// The dark palette, likewise.
 abstract final class AppColorsDark {
-  static const canvas = Color(0xFF131011);
-  static const surface = Color(0xFF1D181A);
-  static const surfaceSunken = Color(0xFF0D0B0B);
-  static const surfaceRaised = Color(0xFF262022);
-  static const onSurface = Color(0xFFF5ECED);
-  static const onSurfaceVariant = Color(0xFFC9BDBE);
-  static const onSurfaceMuted = Color(0xFFA29597);
-  static const outlineStrong = Color(0xFF6F6467);
-  static const accent = Color(0xFFE86885);
-  static const onAccent = Color(0xFF251A1D);
-  static const accentContainer = Color(0xFF440A1C);
-  static const onAccentContainer = Color(0xFFFFB7D1);
-  static const success = Color(0xFF44A780);
-  static const successContainer = Color(0xFF0E2A20);
-  static const onSuccessContainer = Color(0xFF8CF7C9);
-  static const warning = Color(0xFFDF9044);
-  static const warningContainer = Color(0xFF33220D);
-  static const onWarningContainer = Color(0xFFFFD386);
-  static const danger = Color(0xFFEE685D);
-  static const dangerContainer = Color(0xFF331512);
-  static const onDangerContainer = Color(0xFFFFAD9E);
+  static const canvas = Color(0xFF1A1816);
+  static const surface = Color(0xFF242220);
+  static const surfaceSunken = Color(0xFF0F0E0D);
+  static const surfaceRaised = Color(0xFF2E2B28);
+  static const onSurface = Color(0xFFF5F0EB);
+  static const onSurfaceVariant = Color(0xFFD4CAC0);
+  static const onSurfaceMuted = Color(0xFFAA9F97);
+  static const outlineStrong = Color(0xFF7A736D);
+  static const accent = Color(0xFF4ADE7E);
+  static const onAccent = Color(0xFF2D2A26);
+  static const accentContainer = Color(0xFF244A30);
+  static const onAccentContainer = Color(0xFFA8F5C4);
+  static const success = Color(0xFF5CE68A);
+  static const successContainer = Color(0xFF0E2A16);
+  static const onSuccessContainer = Color(0xFFA8F5C4);
+  static const warning = Color(0xFFFFB84D);
+  static const warningContainer = Color(0xFF3D2A0A);
+  static const onWarningContainer = Color(0xFFFFE0A0);
+  static const danger = Color(0xFFFF6B5B);
+  static const dangerContainer = Color(0xFF3D1814);
+  static const onDangerContainer = Color(0xFFFFB3A8);
 }
 
 /// The dark equivalents of [kContrastPairs], same slots and same minimums.
@@ -427,28 +427,28 @@ void main() {
     // without the others is how an app ends up with two logos. `app_brand_test`
     // checks the generated PNGs; this checks the values the app renders with.
     test('the app ink is the brand ink, byte for byte', () {
-      expect(const Color(0xFF251A1D), const Color(0xFF251A1D));
+      expect(const Color(0xFF2D2A26), const Color(0xFF2D2A26));
       expect(
         const AppColors.light().onSurface.toARGB32(),
-        0xFF251A1D,
-        reason: 'app ink must stay #251A1D — it is the launcher icon plate and '
+        0xFF2D2A26,
+        reason: 'app ink must stay #2D2A26 — it is the launcher icon plate and '
             'the Android brand_ink resource',
       );
-      expect(const AppColors.dark().onAccent.toARGB32(), 0xFF251A1D);
+      expect(const AppColors.dark().onAccent.toARGB32(), 0xFF2D2A26);
     });
 
-    test('the accent is the brand wine, byte for byte', () {
+    test('the accent is the brand green, byte for byte', () {
       expect(
         const AppColors.light().accent.toARGB32(),
-        0xFF6E2638,
-        reason: 'the accent must stay #6E2638 — it is the brand wine, also '
-            'painted into the launcher icon and the brand hero artwork',
+        0xFF1B6B3A,
+        reason: 'the accent must stay #1B6B3A — the brand botanical green, '
+            'also painted into the launcher icon and the brand hero artwork',
       );
     });
 
     test('paper on ink stays far above AA — the mark is read at 16px', () {
       expect(
-        wcagContrast(const AppColors.light().surface, const Color(0xFF251A1D)),
+        wcagContrast(const AppColors.light().surface, const Color(0xFF2D2A26)),
         greaterThan(7),
       );
     });
@@ -456,11 +456,12 @@ void main() {
 
   group('dark is designed, not flipped', () {
     test(
-        'the accent moves UP its own ramp, because the brand wine cannot be '
-        'read on a dark surface', () {
+        'the accent moves UP its own ramp, because the light brand green is '
+        'too dim for text on a dark surface', () {
       const AppColors light = AppColors.light();
       const AppColors dark = AppColors.dark();
-      // `#6E2638` on the dark canvas is 1.80:1 — unusable as text or a fill.
+      // `#1B6B3A` on the dark canvas is 2.71:1 — below even the 3:1
+      // non-text floor, so it cannot carry text or a boundary at night.
       expect(wcagContrast(light.accent, dark.canvas), lessThan(3));
       expect(wcagContrast(dark.accent, dark.canvas), greaterThan(4.5));
     });
@@ -471,9 +472,9 @@ void main() {
       expect(
         wcagContrast(dark.onAccent, dark.accent),
         greaterThanOrEqualTo(4.5),
-        reason: 'dark mode inverts the accent fill to a light rose; a dark ink '
-            'label on it must still clear AA, or every primary button in the '
-            'app is unreadable at night',
+        reason: 'dark mode inverts the accent fill to a bright green; a dark '
+            'ink label on it must still clear AA, or every primary button in '
+            'the app is unreadable at night',
       );
     });
   });

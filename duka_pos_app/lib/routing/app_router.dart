@@ -2,6 +2,8 @@ import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import 'package:provider/provider.dart';
 
+import '../services/failure_recorder.dart';
+
 import '../screens/analytics_screen.dart';
 import '../screens/dashboard_screen.dart';
 import '../screens/database_error_screen.dart';
@@ -10,8 +12,11 @@ import '../screens/login_screen.dart';
 import '../screens/staff_login_screen.dart';
 import '../screens/onboarding_screen.dart';
 import '../screens/owner_setup_screen.dart';
+import '../screens/portfolio_screen.dart';
 import '../screens/reports_screen.dart';
 import '../screens/sell_screen.dart';
+import '../screens/activity_screen.dart';
+import '../screens/diagnostics_screen.dart';
 import '../screens/settings_screen.dart';
 import '../screens/shift_screen.dart';
 import '../screens/shot_cups_screen.dart';
@@ -69,6 +74,11 @@ GoRouter buildAppRouter({
     ),
     errorBuilder: (BuildContext context, GoRouterState routerState) =>
         NotFoundScreen(location: routerState.matchedLocation),
+    // Where the failure log's trail comes from. The observer receives the
+    // recorder the app already owns, so navigation is a note and nothing else.
+    observers: <NavigatorObserver>[
+      _BreadcrumbObserver(failureRecorder),
+    ],
     routes: <RouteBase>[
       ..._doorRoutes(stage, appState),
       ..._shellRoutes(),
@@ -246,6 +256,16 @@ List<RouteBase> _shellRoutes() {
                       (BuildContext context, GoRouterState routerState) =>
                           _fadeThrough(routerState, const ShiftScreen()),
                 ),
+                // The all-shops view. A sibling of Reports rather than a tab:
+                // it answers a question a single shop cannot, so it is only
+                // offered where the answer exists.
+                GoRoute(
+                  path: 'portfolio',
+                  parentNavigatorKey: rootNavigatorKey,
+                  pageBuilder:
+                      (BuildContext context, GoRouterState routerState) =>
+                          _fadeThrough(routerState, const PortfolioScreen()),
+                ),
               ],
             ),
           ],
@@ -265,6 +285,30 @@ List<RouteBase> _shellRoutes() {
                       (BuildContext context, GoRouterState routerState) =>
                           _fadeThrough(routerState, const TaxSettingsScreen()),
                 ),
+                // The owner's activity view. A child of Settings because that
+                // is where an owner goes to look at what their shop is doing,
+                // and a `push` target so the back button returns them to the
+                // Settings scroll position they came from.
+                GoRoute(
+                  path: 'activity',
+                  parentNavigatorKey: rootNavigatorKey,
+                  pageBuilder:
+                      (BuildContext context, GoRouterState routerState) =>
+                          _fadeThrough(routerState, const ActivityScreen()),
+                ),
+                // Where the phone's own failure log is read. A child of
+                // Settings for the same reason as Activity: an owner looks for
+                // what went wrong where they look for everything else.
+                // The wiring lives in the screen's own factory, so the router
+                // stays a routing table and the feature decides what its data
+                // is.
+                GoRoute(
+                  path: 'diagnostics',
+                  parentNavigatorKey: rootNavigatorKey,
+                  pageBuilder:
+                      (BuildContext context, GoRouterState routerState) =>
+                          _fadeThrough(routerState, DiagnosticsScreenOpen()),
+                ),
               ],
             ),
           ],
@@ -272,6 +316,50 @@ List<RouteBase> _shellRoutes() {
       ],
     ),
   ];
+}
+
+/// Watches navigation so the failure log has a trail.
+///
+/// Without this, a crash in the sell screen is a crash in a screen nobody can
+/// name, and a shop owner's description ("it broke when I was selling") is all
+/// anyone has. With it, the last ten places the shop went are on the entry.
+///
+/// The trail is the recorder's own ring buffer, so this is a note and nothing
+/// more — it does not read the router's state, hold a reference to it, or slow
+/// a navigation down.
+class _BreadcrumbObserver extends NavigatorObserver {
+  _BreadcrumbObserver(this._recorder);
+
+  final FailureRecorder _recorder;
+
+  @override
+  void didPush(Route<void> route, Route<void>? previousRoute) {
+    final String location = _locationOf(route);
+    _recorder.jot('navigated $location');
+    // Also set the context: a failure recorded a moment later should say WHERE
+    // it happened, and without this the route column of the log was always null
+    // because nothing else knew the current route.
+    _recorder.context.route = location;
+  }
+
+  @override
+  void didPop(Route<void> route, Route<void>? previousRoute) {
+    final String location = _locationOf(previousRoute);
+    _recorder.jot('back to $location');
+    _recorder.context.route = location;
+  }
+
+  /// The route's settings name, which is where a screen's identity lives.
+  ///
+  /// A route with no name is described by its type — `_ModalScopeState`, say,
+  /// which is useless — so an unnamed route records nothing rather than
+  /// recording noise.
+  String _locationOf(Route<void>? route) {
+    final String? name = route?.settings.name;
+    if (name != null && name.isNotEmpty) return name;
+    final String kind = route?.runtimeType.toString() ?? 'unknown';
+    return kind.replaceAll('_', '').toLowerCase();
+  }
 }
 
 /// The app's one transition: a short fade-through.

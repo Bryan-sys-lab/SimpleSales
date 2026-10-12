@@ -30,7 +30,9 @@ import 'package:provider/provider.dart';
 import '../db/database_helper.dart';
 import '../l10n/generated/app_localizations.dart';
 import '../models/models.dart';
+import '../models/audit_log.dart';
 import '../services/app_state.dart';
+import '../services/audit_actor.dart';
 import '../theme/app_colors.dart';
 import '../theme/app_haptics.dart';
 import '../theme/app_spacing.dart';
@@ -208,6 +210,16 @@ class _ShiftScreenState extends State<ShiftScreen> {
         staffName: name,
         startFloat: openingFloat,
       );
+      // A shift is the unit everything else is accounted against: which sales
+      // belong to which drawer, and whose float it was. Recording the FLOAT is
+      // what makes a short drawer reconstructible later.
+      await recordActionAudit(
+        _appState,
+        action: AuditAction.shiftOpened,
+        entity: AuditEntity.shift,
+        entityId: 'id-$staffId',
+        detail: 'float ${formatMoney(openingFloat)}',
+      );
       if (!mounted) return;
       HapticTheme.of(context).fire(HapticEvent.commit);
       await _load();
@@ -254,6 +266,19 @@ class _ShiftScreenState extends State<ShiftScreen> {
       variance.isZero ? HapticEvent.milestone : HapticEvent.commit,
     );
 
+    // Logged before the snackbar and the reload, both of which are UI-only:
+    // the reconciliation is the fact, and a variance on it is the number an
+    // owner reviews first.
+    await recordActionAudit(
+      _appState,
+      action: AuditAction.shiftClosed,
+      entity: AuditEntity.shift,
+      entityId: 'id-${open.id}',
+      detail: 'counted ${formatMoney(result.countedCash)}, '
+          'expected ${formatMoney(result.expectedCash)}',
+    );
+
+    if (!mounted) return;
     showAppSnackBar(
       context,
       message: describeClosedShift(l10n, variance),
@@ -456,11 +481,15 @@ class OpenShiftCard extends StatelessWidget {
           ),
         ),
         SurfaceCard(
+          // gen-l10n sorts the generated parameters ALPHABETICALLY by
+          // placeholder name — expected, name, variance, when — which is not the
+          // order the sentence reads in. Passing them in reading order bound
+          // the staff name to `expected` and the variance to `when`.
           semanticLabel: l10n.shiftOpenCardSpoken(
-            shift.staffName,
-            formatInstant(shift.startTime),
             formatMoney(expected),
+            shift.staffName,
             variance.spoken,
+            formatInstant(shift.startTime),
           ),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,

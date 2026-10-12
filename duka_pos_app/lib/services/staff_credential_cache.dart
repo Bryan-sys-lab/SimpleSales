@@ -18,6 +18,15 @@ class StaffCredentialCache {
   static const _storage = FlutterSecureStorage();
   static const _prefix = 'duka_staff_cred_';
 
+  /// The keys this cache has written, so it can be emptied without enumerating
+  /// the keystore.
+  ///
+  /// `readAll` is the natural way to find owned keys, and it is not implemented
+  /// on every platform (it throws `MissingPluginException` under test). Keeping
+  /// an index means `clearAll` deletes exactly what this cache wrote, works
+  /// everywhere, and never has to guess at other apps' storage.
+  static const _indexKey = '${_prefix}index';
+
   static Future<void> cacheStaffCredentials(
       int staffId, String username, String pin) async {
     final salt = _randomBytes(16);
@@ -28,7 +37,9 @@ class StaffCredentialCache {
       'hash': hash,
       'salt': base64Url.encode(salt),
     });
-    await _storage.write(key: '$_prefix$staffId', value: payload);
+    final key = '$_prefix$staffId';
+    await _storage.write(key: key, value: payload);
+    await _index(staffId);
   }
 
   static Future<bool> verifyCachedPin(int staffId, String pin) async {
@@ -43,16 +54,45 @@ class StaffCredentialCache {
     }
   }
 
+  /// Records [staffId] in the index, without duplicates.
+  static Future<void> _index(int staffId) async {
+    try {
+      final raw = await _storage.read(key: _indexKey);
+      final ids = raw == null || raw.isEmpty
+          ? <String>{}
+          : raw.split(',').where((s) => s.isNotEmpty).toSet();
+      if (ids.add('$staffId')) {
+        await _storage.write(key: _indexKey, value: ids.join(','));
+      }
+    } catch (_) {
+      // The index is a convenience, not a credential. Failing to record it only
+      // means `clearAll` may miss this entry — and `clearStaffCredentials`
+      // still clears it directly, so it is never left behind on the paths that
+      // matter (staff removal, account deletion).
+    }
+  }
+
   static Future<void> clearStaffCredentials(int staffId) async {
     await _storage.delete(key: '$_prefix$staffId');
   }
 
   static Future<void> clearAll() async {
-    final keys = await _storage.readAll();
-    for (final key in keys.keys) {
-      if (key.startsWith(_prefix)) {
-        await _storage.delete(key: key);
+    try {
+      final raw = await _storage.read(key: _indexKey);
+      final ids = raw == null || raw.isEmpty
+          ? const <String>[]
+          : raw.split(',').where((s) => s.isNotEmpty);
+      for (final id in ids) {
+        await _storage.delete(key: '$_prefix$id');
       }
+      await _storage.delete(key: _indexKey);
+    } catch (_) {
+      // Swallowed, because this is called from `signOut`, and a sign-out that
+      // threw would leave a caller holding a half-ended session — or, under
+      // `unawaited`, an unhandled async error that takes the app down.
+      //
+      // Leaving stale cached credentials on a keystore refusal is not good, but
+      // it is strictly better than the till refusing to sign anyone out.
     }
   }
 

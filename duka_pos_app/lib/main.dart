@@ -12,9 +12,11 @@ import 'package:sqflite_common_ffi_web/sqflite_ffi_web.dart';
 
 import 'app_brand.dart';
 import 'l10n/generated/app_localizations.dart';
+import 'models/crash_log.dart';
 import 'routing/app_router.dart';
 import 'routing/app_stage_controller.dart';
 import 'services/app_state.dart';
+import 'services/failure_recorder.dart';
 import 'theme/app_theme.dart';
 
 /// Sentry DSN for crash reporting - get from https://sentry.io
@@ -33,17 +35,35 @@ Future<void> main() async {
     databaseFactory = databaseFactoryFfiWeb;
   }
 
+  // The phone's own failure log. The framework hook is set HERE rather than
+  // inside the recorder, so the whole error path is visible at the one place
+  // that bootstraps the app: an `install()` that `main` then overwrote left the
+  // recorder's copy unreachable.
   FlutterError.onError = (FlutterErrorDetails details) {
     FlutterError.presentError(details);
     if (sentryDsn.isNotEmpty) {
       Sentry.captureException(details.exception, stackTrace: details.stack);
     }
+    // And the phone's own log. Independent of Sentry, deliberately: an empty
+    // DSN must not mean "record nothing", because the empty-DSN case is exactly
+    // the one where a shop has no other way to say what broke.
+    failureRecorder.record(
+      kind: details.exception is Error ? CrashKind.crash : CrashKind.error,
+      message: details.exceptionAsString(),
+      stack: details.stack?.toString(),
+    );
   };
   PlatformDispatcher.instance.onError = (Object error, StackTrace stack) {
     if (sentryDsn.isNotEmpty && _sentryReady) {
       Sentry.captureException(error, stackTrace: stack);
-      return true;
     }
+    // Whatever Sentry does with it, this side records it. The app's own log is
+    // the one that works with no DSN, no network and no third party.
+    failureRecorder.record(
+      kind: CrashKind.crash,
+      message: error.toString(),
+      stack: stack.toString(),
+    );
     // Without a working crash reporter, returning true would mark the error as
     // handled and discard it silently. Log it so it is visible either way.
     debugPrint('Unhandled error: $error\n$stack');
@@ -157,43 +177,43 @@ class _ThemedApp extends StatelessWidget {
       onPopInvokedWithResult: (bool didPop, Object? result) =>
           _onPopInvoked(context, didPop, result),
       child: MaterialApp.router(
-      title: SimplePosBrand.appName,
-      debugShowCheckedModeBanner: false,
-      routerConfig: context.read<GoRouter>(),
-      theme: themes.light,
-      darkTheme: themes.dark,
-      // Both themes are hand-authored and both pass AA independently, so the
-      // system setting is honoured rather than forced. The mode is read from
-      // `MediaQuery.platformBrightnessOf` inside each theme's own construction,
-      // which means the OS choice is respected with no stored preference and
-      // therefore no first-frame flash: there is nothing to restore late.
-      themeMode: ThemeMode.system,
+        title: SimplePosBrand.appName,
+        debugShowCheckedModeBanner: false,
+        routerConfig: context.read<GoRouter>(),
+        theme: themes.light,
+        darkTheme: themes.dark,
+        // Both themes are hand-authored and both pass AA independently, so the
+        // system setting is honoured rather than forced. The mode is read from
+        // `MediaQuery.platformBrightnessOf` inside each theme's own construction,
+        // which means the OS choice is respected with no stored preference and
+        // therefore no first-frame flash: there is nothing to restore late.
+        themeMode: ThemeMode.system,
 
-      // Localization. Three things have to be wired together or "English-only"
-      // silently costs more than it looks:
-      //
-      //   * `AppLocalizations.localizationsDelegates` already contains the three
-      //     `Global*` delegates, so appending them again would duplicate each one
-      //     and `Localizations._loadAll` would take the first — which is the
-      //     wrong one the moment anyone vendors their own.
-      //   * `supportedLocales` comes from the ARB catalogue rather than a
-      //     hand-written list, so a locale cannot be half-shipped: adding
-      //     `app_sw.arb` is the whole of adding Swahili.
-      //   * `locale` is left null so the OS decides. There is nothing to restore
-      //     before the first frame because there is no stored preference, which
-      //     is why there is no locale flash on boot the way a persisted choice
-      //     would cause.
-      localizationsDelegates: AppLocalizations.localizationsDelegates,
-      supportedLocales: AppLocalizations.supportedLocales,
-      locale: null,
-      // No `localeResolutionCallback`: the default resolution picks the first
-      // supported locale whose language matches the device and falls back to the
-      // first supported locale, so an OS set to French still gets English rather
-      // than English copy inside French chrome. Adding a callback would only be
-      // needed once the app has a language the OS cannot select.
-      // A theme change is a sudden luminance change the user did not cause.
-      // Interpolating it renders a half-styled state no screen was laid out for.
-      themeAnimationStyle: AnimationStyle.noAnimation,
+        // Localization. Three things have to be wired together or "English-only"
+        // silently costs more than it looks:
+        //
+        //   * `AppLocalizations.localizationsDelegates` already contains the three
+        //     `Global*` delegates, so appending them again would duplicate each one
+        //     and `Localizations._loadAll` would take the first — which is the
+        //     wrong one the moment anyone vendors their own.
+        //   * `supportedLocales` comes from the ARB catalogue rather than a
+        //     hand-written list, so a locale cannot be half-shipped: adding
+        //     `app_sw.arb` is the whole of adding Swahili.
+        //   * `locale` is left null so the OS decides. There is nothing to restore
+        //     before the first frame because there is no stored preference, which
+        //     is why there is no locale flash on boot the way a persisted choice
+        //     would cause.
+        localizationsDelegates: AppLocalizations.localizationsDelegates,
+        supportedLocales: AppLocalizations.supportedLocales,
+        locale: null,
+        // No `localeResolutionCallback`: the default resolution picks the first
+        // supported locale whose language matches the device and falls back to the
+        // first supported locale, so an OS set to French still gets English rather
+        // than English copy inside French chrome. Adding a callback would only be
+        // needed once the app has a language the OS cannot select.
+        // A theme change is a sudden luminance change the user did not cause.
+        // Interpolating it renders a half-styled state no screen was laid out for.
+        themeAnimationStyle: AnimationStyle.noAnimation,
       ),
     );
   }

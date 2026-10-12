@@ -17,8 +17,7 @@ import 'typography.dart';
 /// identity means stating every role that is read — below, that is all of them —
 /// and letting Material's own defaults cover the rest.
 ///
-
-/// The light theme: warm paper, one confident accent.
+/// The light theme: warm cream canvas, deep botanical green accent.
 ThemeData buildDukaLightTheme() => _buildTheme(
       brightness: Brightness.light,
       colors: const AppColors.light(),
@@ -26,9 +25,9 @@ ThemeData buildDukaLightTheme() => _buildTheme(
 
 /// The dark theme: authored, not flipped.
 ///
-/// The accent moves six steps up its own ramp and the accent *fill* inverts to a
-/// light rose, because the brand wine `#6E2638` on a dark surface is 1.80:1 and
-/// an auto-flip would have shipped that. Both themes pass AA independently;
+/// The accent moves to a brighter botanical green and the accent fill inverts
+/// to a deep green container, because the light brand green on a dark surface
+/// would not clear 4.5:1. Both themes pass AA independently;
 /// `test/theme/contrast_test.dart` is the proof, not this comment.
 ThemeData buildDukaDarkTheme() => _buildTheme(
       brightness: Brightness.dark,
@@ -94,7 +93,7 @@ ThemeData _buildTheme({
       HapticTheme.standard,
     ],
 
-    // ------------------------------------------------------------- app bar
+    // ------------------------------------------------------------ app bar
     // The app bar is the shell's identity line, so it carries the accent rather
     // than the canvas: it is the one chrome element that says which till this
     // is from across the counter.
@@ -125,7 +124,7 @@ ThemeData _buildTheme({
       actionsIconTheme: IconThemeData(color: colors.onAccent, size: 22),
     ),
 
-    // -------------------------------------------------------------- cards
+    // ------------------------------------------------------------- cards
     // Elevation 0 plus a hairline edge. A card on a warm canvas separated by a
     // shadow alone is a smudge; the edge is what actually draws the boundary.
     cardTheme: CardThemeData(
@@ -505,11 +504,11 @@ ColorScheme _colorScheme(Brightness brightness, AppColors c) {
     // The container ladder. Material's own defaults would derive these from a
     // seed and land nowhere near the paper/canvas ladder this app is built on.
     surfaceContainerLowest: light ? const Color(0xFFFFFFFF) : c.surfaceSunken,
-    surfaceContainerLow: light ? c.canvas : const Color(0xFF191315),
-    surfaceContainer: light ? c.canvas : const Color(0xFF1D181A),
+    surfaceContainerLow: light ? c.canvas : const Color(0xFF1A1816),
+    surfaceContainer: light ? c.canvas : const Color(0xFF1E1C1A),
     surfaceContainerHigh: light ? c.surfaceSunken : c.surfaceRaised,
-    surfaceContainerHighest: light ? c.surfaceSunken : const Color(0xFF3A3234),
-    surfaceDim: light ? c.surfaceSunken : const Color(0xFF191315),
+    surfaceContainerHighest: light ? c.surfaceSunken : const Color(0xFF3A3633),
+    surfaceDim: light ? c.surfaceSunken : const Color(0xFF1A1816),
     surfaceBright: light ? c.surface : c.surfaceRaised,
     surfaceTint: c.accent,
     // Hairline, and its stronger sibling for meaningful boundaries.
@@ -519,6 +518,6 @@ ColorScheme _colorScheme(Brightness brightness, AppColors c) {
     scrim: c.scrim,
     inverseSurface: c.onSurface,
     onInverseSurface: c.canvas,
-    inversePrimary: light ? const Color(0xFFE86885) : const Color(0xFF6E2638),
+    inversePrimary: light ? const Color(0xFF4ADE7E) : const Color(0xFF1B6B3A),
   );
 }

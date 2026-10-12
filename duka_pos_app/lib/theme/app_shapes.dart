@@ -58,6 +58,10 @@ class AppShapes extends ThemeExtension<AppShapes> {
   /// A chip or a badge.
   BorderRadius get chipRadius => BorderRadius.circular(pill);
 
+  /// A thin placeholder bar: a skeleton's line, a progress track. `xs`, because
+  /// a bar's radius is measured in hairline turns rather than in corners.
+  BorderRadius get barRadius => BorderRadius.circular(xs);
+
   /// The card silhouette. Pass the ambient colours when the card needs an edge,
   /// which on the warm canvas is the default: a shadow alone is too soft to
   /// separate paper from paper.

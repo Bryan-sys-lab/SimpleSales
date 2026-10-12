@@ -36,11 +36,16 @@ class AppColors extends ThemeExtension<AppColors> {
     required this.danger,
     required this.dangerContainer,
     required this.onDangerContainer,
+    required this.info,
     required this.scrim,
     required this.shadow,
     required this.mediaScrim,
     required this.onMediaScrim,
     required this.mediaFrame,
+    required this.mpesaGreen,
+    required this.airtelRed,
+    required this.equitelBlue,
+    required this.cashNeutral,
   });
 
   /// The page behind cards. The largest area on screen, so it is the quietest.
@@ -74,9 +79,8 @@ class AppColors extends ThemeExtension<AppColors> {
   /// resting state. Clears WCAG 1.4.11 (3:1) in both brightnesses.
   final Color outlineStrong;
 
-  /// The single accent. One per app, locked — wine in light, its own lifted
-  /// value in dark because the light brand wine cannot clear 4.5:1 on a dark
-  /// surface. Not a seed: every role here is authored.
+  /// The single brand accent: deep botanical green.
+  /// One per app, locked — not a seed: every role here is authored.
   final Color accent;
 
   /// Text and icons on an [accent] fill.
@@ -88,17 +92,23 @@ class AppColors extends ThemeExtension<AppColors> {
   /// Text and icons on [accentContainer].
   final Color onAccentContainer;
 
+  /// Success semantic color.
   final Color success;
   final Color successContainer;
   final Color onSuccessContainer;
 
+  /// Warning semantic color.
   final Color warning;
   final Color warningContainer;
   final Color onWarningContainer;
 
+  /// Error semantic color.
   final Color danger;
   final Color dangerContainer;
   final Color onDangerContainer;
+
+  /// Info semantic color.
+  final Color info;
 
   /// Modal barrier. A scrim, not a colour with meaning.
   final Color scrim;
@@ -123,6 +133,18 @@ class AppColors extends ThemeExtension<AppColors> {
   /// The shadow colour for elevation. Deliberately the ink hue rather than pure
   /// black: a pure-black shadow on warm paper reads as a grey smudge.
   final Color shadow;
+
+  /// M-PESA provider identity green. Not a semantic color.
+  final Color mpesaGreen;
+
+  /// Airtel Money provider identity red. Not a semantic color.
+  final Color airtelRed;
+
+  /// Equitel provider identity blue. Not a semantic color.
+  final Color equitelBlue;
+
+  /// Cash payment neutral.
+  final Color cashNeutral;
 
   /// Reads the slots for the ambient brightness.
   ///
@@ -151,10 +173,10 @@ class AppColors extends ThemeExtension<AppColors> {
         onSurfaceMuted = Primitives.neutral47,
         outline = Primitives.neutral84,
         outlineStrong = Primitives.neutral54,
-        accent = Primitives.wine38,
+        accent = Primitives.botanical38,
         onAccent = Primitives.neutral100,
-        accentContainer = Primitives.wine96,
-        onAccentContainer = Primitives.wine29,
+        accentContainer = Primitives.botanical96,
+        onAccentContainer = Primitives.botanical29,
         success = Primitives.green47Light,
         successContainer = Primitives.green95Light,
         onSuccessContainer = Primitives.green35Light,
@@ -164,15 +186,18 @@ class AppColors extends ThemeExtension<AppColors> {
         danger = Primitives.red50Light,
         dangerContainer = Primitives.red95Light,
         onDangerContainer = Primitives.red42Light,
-        scrim = const Color(0x991C1315),
-        shadow = const Color(0x1A251A1D),
+        info = Primitives.blue47Light,
+        scrim = const Color(0x991A1816),
+        shadow = const Color(0x1A1A1816),
         mediaScrim = const Color(0xB3000000),
         onMediaScrim = Primitives.neutral100,
-        mediaFrame = Primitives.wine38;
+        mediaFrame = Primitives.botanical38,
+        mpesaGreen = Primitives.mpesaGreen,
+        airtelRed = Primitives.airtelRed,
+        equitelBlue = Primitives.equitelBlue,
+        cashNeutral = Primitives.cashNeutral;
 
-  /// The dark slots, hand-authored rather than flipped: the accent moves six
-  /// steps up its own ramp and the accent fill inverts to a light rose, because
-  /// `[Primitives.wine38]` on `[Primitives.neutral14]` is 1.80:1.
+  /// The dark slots, hand-authored rather than flipped.
   const AppColors.dark()
       : canvas = Primitives.neutral10,
         surface = Primitives.neutral14,
@@ -183,10 +208,13 @@ class AppColors extends ThemeExtension<AppColors> {
         onSurfaceMuted = Primitives.neutral63,
         outline = Primitives.neutral32,
         outlineStrong = Primitives.neutral45,
-        accent = Primitives.wine68,
+        accent = Primitives.botanical58,
+        // The brand ink, not the dark canvas: the accent fill inverts to a
+        // bright green at night, and the ink that identifies the brand is the
+        // value its label is painted in. Contrast on #4ADE7E is 10.9:1.
         onAccent = Primitives.neutral23,
-        accentContainer = Primitives.wine26,
-        onAccentContainer = Primitives.wine90,
+        accentContainer = Primitives.botanical26,
+        onAccentContainer = Primitives.botanical90,
         success = Primitives.green66,
         successContainer = Primitives.green18Dark,
         onSuccessContainer = Primitives.green90Dark,
@@ -196,11 +224,16 @@ class AppColors extends ThemeExtension<AppColors> {
         danger = Primitives.red68,
         dangerContainer = Primitives.red22Dark,
         onDangerContainer = Primitives.red92Dark,
+        info = Primitives.blue66,
         scrim = const Color(0xB3000000),
         shadow = const Color(0x66000000),
         mediaScrim = const Color(0xB3000000),
         onMediaScrim = Primitives.neutral100,
-        mediaFrame = Primitives.wine68;
+        mediaFrame = Primitives.botanical58,
+        mpesaGreen = Primitives.mpesaGreen,
+        airtelRed = Primitives.airtelRed,
+        equitelBlue = Primitives.equitelBlue,
+        cashNeutral = Primitives.cashNeutral;
 
   @override
   AppColors copyWith({
@@ -226,11 +259,16 @@ class AppColors extends ThemeExtension<AppColors> {
     Color? danger,
     Color? dangerContainer,
     Color? onDangerContainer,
+    Color? info,
     Color? scrim,
     Color? shadow,
     Color? mediaScrim,
     Color? onMediaScrim,
     Color? mediaFrame,
+    Color? mpesaGreen,
+    Color? airtelRed,
+    Color? equitelBlue,
+    Color? cashNeutral,
   }) {
     return AppColors(
       canvas: canvas ?? this.canvas,
@@ -255,11 +293,16 @@ class AppColors extends ThemeExtension<AppColors> {
       danger: danger ?? this.danger,
       dangerContainer: dangerContainer ?? this.dangerContainer,
       onDangerContainer: onDangerContainer ?? this.onDangerContainer,
+      info: info ?? this.info,
       scrim: scrim ?? this.scrim,
       shadow: shadow ?? this.shadow,
       mediaScrim: mediaScrim ?? this.mediaScrim,
       onMediaScrim: onMediaScrim ?? this.onMediaScrim,
       mediaFrame: mediaFrame ?? this.mediaFrame,
+      mpesaGreen: mpesaGreen ?? this.mpesaGreen,
+      airtelRed: airtelRed ?? this.airtelRed,
+      equitelBlue: equitelBlue ?? this.equitelBlue,
+      cashNeutral: cashNeutral ?? this.cashNeutral,
     );
   }
 
@@ -296,11 +339,16 @@ class AppColors extends ThemeExtension<AppColors> {
       danger: mix(danger, other.danger),
       dangerContainer: mix(dangerContainer, other.dangerContainer),
       onDangerContainer: mix(onDangerContainer, other.onDangerContainer),
+      info: mix(info, other.info),
       scrim: mix(scrim, other.scrim),
       shadow: mix(shadow, other.shadow),
       mediaScrim: mix(mediaScrim, other.mediaScrim),
       onMediaScrim: mix(onMediaScrim, other.onMediaScrim),
       mediaFrame: mix(mediaFrame, other.mediaFrame),
+      mpesaGreen: mix(mpesaGreen, other.mpesaGreen),
+      airtelRed: mix(airtelRed, other.airtelRed),
+      equitelBlue: mix(equitelBlue, other.equitelBlue),
+      cashNeutral: mix(cashNeutral, other.cashNeutral),
     );
   }
 
@@ -330,11 +378,16 @@ class AppColors extends ThemeExtension<AppColors> {
           other.danger == danger &&
           other.dangerContainer == dangerContainer &&
           other.onDangerContainer == onDangerContainer &&
+          other.info == info &&
           other.scrim == scrim &&
           other.shadow == shadow &&
           other.mediaScrim == mediaScrim &&
           other.onMediaScrim == onMediaScrim &&
-          other.mediaFrame == mediaFrame;
+          other.mediaFrame == mediaFrame &&
+          other.mpesaGreen == mpesaGreen &&
+          other.airtelRed == airtelRed &&
+          other.equitelBlue == equitelBlue &&
+          other.cashNeutral == cashNeutral;
 
   @override
   int get hashCode => Object.hashAll(<Object?>[
@@ -360,10 +413,15 @@ class AppColors extends ThemeExtension<AppColors> {
         danger,
         dangerContainer,
         onDangerContainer,
+        info,
         scrim,
         shadow,
         mediaScrim,
         onMediaScrim,
         mediaFrame,
+        mpesaGreen,
+        airtelRed,
+        equitelBlue,
+        cashNeutral,
       ]);
 }

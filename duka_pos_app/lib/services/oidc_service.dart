@@ -30,12 +30,65 @@ class OidcService {
   static const _refreshTokenKey = 'oidc_refresh_token';
   static const _expiryKey = 'oidc_token_expiry';
   static const _idTokenKey = 'oidc_id_token';
+
+  /// The session the backend mints after the emailed code is presented.
+  ///
+  /// Stored beside the OIDC tokens rather than through them: this one is
+  /// signed by our own server, so it is refreshed by `/auth/refresh` and not
+  /// by the browser flow. Keeping the keys separate means a browser sign-in
+  /// and a device-linked session can never be mistaken for one another,
+  /// and clearing one never silently clears the other.
+  static const _appSessionAccessKey = 'app_session_access_token';
+  static const _appSessionRefreshKey = 'app_session_refresh_token';
+  static const _appSessionExpiryKey = 'app_session_expiry';
+
   static const _appAuth = FlutterAppAuth();
 
   static bool get isConfigured =>
       !_issuer.contains('example.com') && _clientId.isNotEmpty;
 
-  static Future<bool> get isAuthenticated async => (await accessToken) != null;
+  static Future<bool> get isAuthenticated async =>
+      (await accessToken) != null || (await appSessionAccessToken) != null;
+
+  /// Saves the session returned by `/auth/verify` or `/auth/refresh`.
+  static Future<void> storeAppSession({
+    required String accessToken,
+    required String refreshToken,
+    required DateTime expiresAt,
+  }) async {
+    await _storage.write(key: _appSessionAccessKey, value: accessToken);
+    await _storage.write(key: _appSessionRefreshKey, value: refreshToken);
+    await _storage.write(
+        key: _appSessionExpiryKey, value: expiresAt.toIso8601String());
+  }
+
+  /// The device session while it is still valid, or null.
+  ///
+  /// Not refreshed here: expiring it is the point of a twelve-hour lifetime,
+  /// and the refresh that replaces it is an authenticated call with its own
+  /// failure mode, which [`BackendService`] owns.
+  static Future<String?> get appSessionAccessToken async {
+    final token = await _storage.read(key: _appSessionAccessKey);
+    if (token == null) return null;
+    final rawExpiry = await _storage.read(key: _appSessionExpiryKey);
+    final expiry = rawExpiry == null ? null : DateTime.tryParse(rawExpiry);
+    if (expiry == null || !expiry.isAfter(DateTime.now())) return null;
+    return token;
+  }
+
+  static Future<String?> get appSessionRefreshToken async =>
+      _storage.read(key: _appSessionRefreshKey);
+
+  static Future<void> clearAppSession() async {
+    await _storage.delete(key: _appSessionAccessKey);
+    await _storage.delete(key: _appSessionRefreshKey);
+    await _storage.delete(key: _appSessionExpiryKey);
+  }
+
+  /// True once the till has a session, valid or not — the caller is asking
+  /// whether it is worth attempting a refresh, not whether it is still live.
+  static Future<bool> get hasAppSession async =>
+      (await _storage.read(key: _appSessionRefreshKey)) != null;
 
   /// Opens the system browser and completes OIDC Authorization Code + PKCE.
   static Future<bool> login() async {
@@ -138,5 +191,6 @@ class OidcService {
     await _storage.delete(key: _refreshTokenKey);
     await _storage.delete(key: _expiryKey);
     await _storage.delete(key: _idTokenKey);
+    await clearAppSession();
   }
 }

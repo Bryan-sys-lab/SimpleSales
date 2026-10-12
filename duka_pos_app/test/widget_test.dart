@@ -101,13 +101,13 @@ void main() {
     // plus the 19 iOS and 25 Android mipmaps, checked by app_brand_test.dart.
     expect(
       app.theme!.colorScheme.primary,
-      Primitives.wine38,
-      reason: 'the accent must stay the brand wine #6E2638',
+      Primitives.botanical38,
+      reason: 'the accent must stay the brand green #1B6B3A',
     );
     expect(
       app.theme!.extension<AppColors>()!.onSurface,
       Primitives.neutral23,
-      reason: 'body ink must stay the brand ink #251A1D',
+      reason: 'body ink must stay the brand ink #2D2A26',
     );
     expect(app.theme!.scaffoldBackgroundColor, Primitives.neutral97);
   });
