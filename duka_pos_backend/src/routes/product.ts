@@ -3,6 +3,7 @@ import { prisma } from '../lib/prisma';
 import { asyncHandler } from '../lib/http';
 import { parseBody, productSyncSchema, stockAdjustmentSchema } from '../lib/validation';
 import { requireRole } from '../middleware/auth';
+import { announceChange } from '../lib/live';
 
 const router = Router();
 
@@ -57,6 +58,10 @@ router.post('/sync', requireRole('admin', 'manager'), asyncHandler(async (req: R
     }
     return result;
   });
+  // After the write, and only because it succeeded: a stream told about a
+  // catalogue that failed to save is a stream chasing a change that never
+  // happened. See lib/live.ts.
+  announceChange([tenantId], 'products');
   return res.json({ synced });
 }));
 
@@ -123,6 +128,7 @@ router.post('/stock-adjust', requireRole('admin', 'manager'), asyncHandler(async
     });
     return { adjustmentId: adjustment.id, stockQty: Number(product.stockQty) + input.delta };
   });
+  announceChange([tenantId], 'stock');
 
   return res.status(201).json(result);
 }));
