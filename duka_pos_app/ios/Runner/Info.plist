@@ -8,6 +8,10 @@
 	<string>$(DEVELOPMENT_LANGUAGE)</string>
 	<key>CFBundleDisplayName</key>
 	<string>SimpleSales</string>
+	<key>NSPhotoLibraryUsageDescription</key>
+	<string>Choose a photograph of a product from your library, so a cashier can match the shelf at the till.</string>
+	<key>NSCameraUsageDescription</key>
+	<string>Take a photograph of a product, so a cashier can match the shelf at the till.</string>
 	<key>CFBundleExecutable</key>
 	<string>$(EXECUTABLE_NAME)</string>
 	<key>CFBundleIdentifier</key>
