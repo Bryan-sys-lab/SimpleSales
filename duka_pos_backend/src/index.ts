@@ -16,6 +16,7 @@ import { attachLiveChannel } from './routes/live';
 import systemRoutes from './routes/system';
 import etimsRoutes, { publicEtimsRouter } from './routes/etims';
 import authRoutes from './routes/auth';
+import appReleaseRoutes from './routes/app-release';
 import dashboardRoutes from './routes/dashboard';
 
 dotenv.config();
@@ -68,6 +69,11 @@ app.use('/api/auth', authRoutes);
 // authentication of its own — every read it makes is an authenticated call to
 // `/api/system/*`, which is where the allowlist is enforced.
 app.use('/admin', dashboardRoutes);
+
+// The release manifest, unauthenticated: a shop that has never signed in still
+// needs to be able to update. Mounted here rather than under `/api` so it is
+// outside `authMiddleware` entirely — see the note in the route file.
+app.use('/', appReleaseRoutes);
 
 // Protected routes (require OIDC JWT)
 app.use('/api', authMiddleware);
