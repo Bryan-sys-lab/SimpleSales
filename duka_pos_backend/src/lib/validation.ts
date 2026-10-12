@@ -14,6 +14,46 @@ export const settingsSchema = z.object({
   payheroChannelId: z.number().int().positive().max(2_000_000).nullable().optional(),
 }).strict();
 
+/**
+ * The shop's own admin PIN, as the till sends it.
+ *
+ * Exactly four digits, and nothing else, because that is the only thing the
+ * local account asks for. The backend cannot verify it against a local
+ * database it does not have — it is bound into the challenge instead, so the
+ * person who started the link is the person who finishes it.
+ */
+const adminPin = z.string().regex(/^\d{4}$/, 'The admin PIN is exactly 4 digits');
+
+export const linkSchema = z.object({
+  email: z.string().trim().toLowerCase().email().max(254),
+  pin: adminPin,
+  shopName: boundedName,
+  ownerName: boundedName,
+}).strict();
+
+/**
+ * The code presented back, plus the PIN again.
+ *
+ * Re-sending the PIN rather than trusting the one from `/link` is what makes
+ * the second half of the flow a second factor rather than a replay: a code
+ * overheard in a mailbox is not enough without the device that holds the PIN.
+ */
+export const verificationCodeSchema = z.object({
+  email: z.string().trim().toLowerCase().email().max(254),
+  pin: adminPin,
+  code: z.string().regex(/^\d{6}$/, 'The verification code is exactly 6 digits'),
+  shopName: boundedName.optional(),
+  ownerName: boundedName.optional(),
+}).strict();
+
+/**
+ * A refresh token. Bounded so a junk body cannot become a hashing cost, and
+ * long enough to exclude anything a human would type.
+ */
+export const refreshSchema = z.object({
+  refreshToken: z.string().min(20).max(512),
+}).strict();
+
 export const productSyncSchema = z.object({
   products: z.array(z.object({
     id: z.number().int().positive().optional(),
@@ -76,6 +116,14 @@ export const staffSyncSchema = z.object({
     role: z.enum(['cashier', 'manager']).default('cashier'),
     active: z.boolean().default(true),
   })).max(500),
+}).strict();
+
+/// Whether a staff member's account is usable.
+///
+/// A single boolean, `.strict()`, so a payload that carries anything else — a
+/// role, a name — is rejected rather than half-applied.
+export const staffActiveSchema = z.object({
+  active: z.boolean(),
 }).strict();
 
 /// A stock correction made at the till.

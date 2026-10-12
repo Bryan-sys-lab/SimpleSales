@@ -4,6 +4,8 @@ import { prisma } from '../lib/prisma';
 import { asyncHandler } from '../lib/http';
 import { parseBody, provisionSchema, settingsSchema, staffSyncSchema, deletionSchema } from '../lib/validation';
 import { isVerifiedEmailMatch } from '../lib/identity';
+import { readPortfolio } from '../lib/portfolio_query';
+import { announceChange } from '../lib/live';
 
 const router = Router();
 
@@ -48,6 +50,60 @@ router.get('/shops', asyncHandler(async (req: Request, res: Response) => {
     res.json({ shops: profiles.map((profile) => ({ tenantId: profile.tenantId, shopName: profile.tenant.shopName, role: profile.role })) });
 }));
 
+// Cross-shop KPI roll-up: how every shop the caller RUNS is doing, in one body.
+//
+// An owner with two dukas needs one screen that answers "how are all my shops
+// doing", and that is a question no single tenant can answer — `/report/sales`
+// is scoped to `req.user.tenantId`, so asking it twice still gives two bodies to
+// combine on a phone that is often offline when it needs the answer most.
+//
+// Three properties this must not break, in order of how badly they break:
+//
+//   1. LEAKS NOTHING. The tenant list is the caller's OWN profiles. It is never
+//      derived from the request body, a query parameter, or the target header,
+//      any of which would let one customer enumerate another's tenants by
+//      guessing ids.
+//   2. A CASHIER GETS NOTHING. `role: 'admin' | 'manager'` is the ownership
+//      predicate, applied in the SAME query that scopes the tenants — a
+//      separate role check afterwards would be a second gate that has to stay
+//      in step with this one. A cashier's request therefore resolves to an
+//      empty shop list and a zeroed total, not a 403 the client has to
+//      interpret.
+//   3. STAYS BOUNDED. One aggregate query per shop, capped at MAX_PORTFOLIO_SHOPS,
+//      with `truncated` set when the cap is hit. An owner with 200 shops is
+//      served a partial answer that says so, rather than 200 queries and a
+//      timeout.
+//
+// The totals are computed in SQL (`groupBy`/`aggregate`), not by summing
+// hydrated rows in Node: the cost is the same however long each shop's ledger
+// grows, which is the same reason `/report/sales` does it that way.
+router.get('/portfolio', requireRole('admin', 'manager'), asyncHandler(async (req: Request, res: Response) => {
+    const oidcUserId = req.auth?.sub;
+    if (!oidcUserId) return res.status(401).json({ error: 'Authenticated user required' });
+
+    const from = typeof req.query.from === 'string' ? new Date(req.query.from) : new Date(Date.now() - 30 * 24 * 60 * 60 * 1000);
+    const to = typeof req.query.to === 'string' ? new Date(req.query.to) : new Date();
+    if (!Number.isFinite(from.getTime()) || !Number.isFinite(to.getTime()) || from > to) {
+      return res.status(400).json({ error: 'Invalid report date range' });
+    }
+
+    const reading = await readPortfolio(req.auth?.sub, { from, to });
+    if (reading.truncated) {
+      // Deliberately not an error: an owner with more shops than the cap gets
+      // the ones they set up first and a flag saying the rest are missing.
+      res.setHeader('X-Portfolio-Truncated', 'true');
+    }
+
+    // The whole comes back with the parts, so a screen does not have to add
+    // them and risk disagreeing with them — see lib/portfolio.ts.
+    res.json({
+      from: from.toISOString(),
+      to: to.toISOString(),
+      shops: reading.shops,
+      total: reading.total,
+    });
+}));
+
 // Get tenant settings
 router.get('/settings', requireRole('admin', 'manager', 'cashier'), asyncHandler(async (req: Request, res: Response) => {
     const tenant = await prisma.tenant.findUnique({
@@ -61,6 +117,9 @@ router.get('/settings', requireRole('admin', 'manager', 'cashier'), asyncHandler
       }
     });
 
+    // A platform-wide signal: settings change for every till in the shop, and
+    // the reason carries no tenant list, so every stream in this shop is told.
+    announceChange([], 'settings');
     res.json(tenant);
 }));
 

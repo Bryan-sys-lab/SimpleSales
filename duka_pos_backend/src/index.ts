@@ -12,8 +12,11 @@ import rateLimit from 'express-rate-limit';
 import { prisma } from './lib/prisma';
 import { requestContext, log } from './lib/observability';
 import reportRoutes from './routes/report';
+import { attachLiveChannel } from './routes/live';
 import systemRoutes from './routes/system';
 import etimsRoutes, { publicEtimsRouter } from './routes/etims';
+import authRoutes from './routes/auth';
+import dashboardRoutes from './routes/dashboard';
 
 dotenv.config();
 
@@ -54,6 +57,18 @@ app.use('/api/system', systemAdminMiddleware, systemRoutes);
 // never will. Behind auth it would 401 the only person it is for.
 app.use('/api/etims/verify', publicEtimsRouter);
 
+// The verify flow, and the only endpoints in the service that authenticate by
+// content instead of by token — they run *before* a shop has a token, because
+// the first one has to work for an account that does not exist yet. Mounted
+// ahead of `authMiddleware` for that reason, rate-limited per address inside.
+app.use('/api/auth', authRoutes);
+
+// The operator dashboard: a hand-built page, served from this origin so it
+// cannot drift from the API it reads. Sits outside `/api` and carries no
+// authentication of its own — every read it makes is an authenticated call to
+// `/api/system/*`, which is where the allowlist is enforced.
+app.use('/admin', dashboardRoutes);
+
 // Protected routes (require OIDC JWT)
 app.use('/api', authMiddleware);
 app.use('/api/tenant', tenantRoutes);
@@ -65,9 +80,22 @@ app.use('/api/etims', etimsRoutes);
 app.use((req, res) => res.status(404).json({ error: 'Not found', requestId: req.requestId }));
 app.use(errorHandler);
 
+// The live channel lives on its own path because it is the one route that is
+// not a request/response: the upgrade is handled by the HTTP server, not by
+// Express, so attaching a listener here is what makes /live exist at all. It
+// must be attached before the first connection, and it must see the same
+// server the app listens on.
 if (require.main === module) {
   const server = app.listen(PORT, () => log('info', 'server.started', { port: PORT, environment: process.env.NODE_ENV ?? 'development' }));
-  const shutdown = (signal: string) => { log('info', 'server.shutdown', { signal }); server.close(() => void prisma.$disconnect()); };
+  const live = attachLiveChannel(server);
+  const shutdown = (signal: string) => {
+    log('info', 'server.shutdown', { signal });
+    // Close the streams before the server: a till left holding a socket the
+    // process has abandoned reconnects and gets a clean 1001 rather than a
+    // half-read frame.
+    live.close();
+    server.close(() => void prisma.$disconnect());
+  };
   process.once('SIGTERM', () => shutdown('SIGTERM'));
   process.once('SIGINT', () => shutdown('SIGINT'));
   process.on('unhandledRejection', (reason) => log('error', 'process.unhandled_rejection', { message: reason instanceof Error ? reason.message : 'unknown' }));
