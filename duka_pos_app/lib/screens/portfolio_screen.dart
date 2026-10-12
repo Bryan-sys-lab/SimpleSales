@@ -21,6 +21,8 @@ import 'package:intl/intl.dart';
 import '../l10n/generated/app_localizations.dart';
 import '../services/backend_service.dart';
 import '../services/portfolio_kpis.dart';
+import '../services/live_refresh_mixin.dart';
+import '../services/live_channel_service.dart';
 import '../theme/app_colors.dart';
 import '../theme/app_spacing.dart';
 import '../theme/app_haptics.dart';
@@ -64,9 +66,20 @@ class PortfolioScreen extends StatefulWidget {
   State<PortfolioScreen> createState() => _PortfolioScreenState();
 }
 
-class _PortfolioScreenState extends State<PortfolioScreen> {
+class _PortfolioScreenState extends State<PortfolioScreen>
+    with LiveRefresh<PortfolioScreen> {
   PortfolioRange _range = PortfolioRange.week;
   _PortfolioView _view = const _PortfolioLoading();
+
+  /// Cross-shop by definition, so it re-reads on any change.
+  @override
+  Set<LiveReason> get liveReasons => const <LiveReason>{};
+
+  @override
+  bool get liveIsVisible => TickerMode.valuesOf(context).enabled;
+
+  @override
+  Future<void> reloadFromLive() => _load();
 
   @override
   void initState() {

@@ -1033,7 +1033,19 @@ class _LowStockRow extends StatelessWidget {
                   Text(
                     product.name,
                     style: type.bodyMedium,
-                    maxLines: 1,
+                    // Wraps rather than ellipsises.
+                    //
+                    // This was `maxLines: 1` with an ellipsis, which shows
+                    // "Tusker Lager 500ml Returnab…" — a name cut at the point
+                    // where the product is least recognisable. The repo's own
+                    // stated policy for this exact case lives a file over, in
+                    // analytics_tables.dart: "Nothing is dropped and nothing
+                    // is truncated: a product name wraps instead of being
+                    // ellipsised, because a truncated product name in a report
+                    // is a defect, not a design." The dashboard is where an
+                    // owner acts on low stock, so it needs to be readable here
+                    // most of all.
+                    maxLines: 2,
                     overflow: TextOverflow.ellipsis,
                   ),
                   SizedBox(height: 2),

@@ -40,6 +40,7 @@ ReceiptInput receipt({
   String? etimsPayload,
   String shopName = 'Kijani Stores',
   String receiptNumber = 'T1-000001',
+  String cashierName = 'Alice',
 }) {
   final lines = items ?? [line('Soda 350ml', qty: 2, unitPrice: 80)];
   final computed = sumMoney(lines.map((item) => item.total));
@@ -47,7 +48,7 @@ ReceiptInput receipt({
     shopName: shopName,
     receiptNumber: receiptNumber,
     issuedAt: DateTime(2026, 10, 3, 14, 5),
-    cashierName: 'Alice',
+    cashierName: cashierName,
     cashierRole: 'Cashier',
     items: lines,
     total: total ?? computed,
@@ -238,6 +239,47 @@ void main() {
     });
   });
 
+  test('a right-hand figure wider than the budget is clamped, not emitted', () {
+    // The guard this adds: when the figure alone is wider than the paper,
+    // `room` goes negative and both `padRight`/`padLeft` return their input
+    // unchanged (Dart guards `delta <= 0`). The line was then the FULL right
+    // string — past the paper — and the printer wrapped the figure onto the
+    // next physical line, orphaned from its item.
+    final longName = List<String>.filled(50, 'A').join();
+    final rows = render(
+      receipt(items: [line('Item', unitPrice: 80)], cashierName: longName),
+    );
+    for (final row in rows) {
+      expect(row.length, lessThanOrEqualTo(k58mmColumnBudget),
+          reason: 'over budget: "$row" (${row.length})');
+    }
+    // The LABEL is what gives way: with the figure filling the line there is
+    // no room for "Served by" at all, which is the correct trade — the figure
+    // is what the receipt exists to carry, and its tail survives because that
+    // is where a reference or check digit lives.
+    final served = rows.firstWhere((r) => r.contains('AAAAAAAAAA'));
+    expect(served, startsWith('...'));
+  });
+
+  test('a newline in a name cannot push the amount onto its own line', () {
+    // A cell imported from a spreadsheet can contain Alt+Enter. Trim() only
+    // trims the ENDS, and `Product.validate` checks only emptiness and length
+    // — so a raw newline reached the receipt, and `ReceiptColumns` appends the
+    // figure AFTER the label, which put the amount on its own physical line.
+    final rows = render(receipt(
+      items: [line('Kenya\nBreweries Ltd', unitPrice: 80)],
+      shopName: 'Amina\nDuka',
+    ));
+    for (final row in rows) {
+      expect(row, isNot(contains('\n')),
+          reason: 'a label spanning lines breaks the fixed line structure');
+    }
+    // Both surfaces collapsed, and the amount stays on its line.
+    expect(rows.any((r) => r.contains('Kenya Breweries Ltd')), isTrue);
+    expect(rows.any((r) => r.contains('Amina Duka')), isTrue);
+    expect(rows.any((r) => r.contains('80.00')), isTrue);
+  });
+
   group('exempt shops', () {
     test('a zero VAT rate omits the VAT line rather than printing zero', () {
       final text = render(receipt(vatRatePercent: 0));
@@ -393,6 +435,29 @@ void main() {
       final wide =
           const EscPosEncoder().encode(lines, columnBudget: k80mmColumnBudget);
       expect(narrow, isNot(equals(wide)));
+    });
+  });
+
+  // The code-page command. A missing `ESC R n` means Latin-1 bytes are read as
+  // CP437, so `Café` printed as `CafΘ` — and `KSh` is ASCII, so nothing in the
+  // existing fixtures ever caught it.
+  group('the encoder character set', () {
+    test('selects Latin-1 immediately after the initialise', () {
+      final bytes =
+          const EscPosEncoder().encode(const ReceiptBuilder().build(receipt()));
+      // `ESC @` resets the code page to the printer's own default, so the
+      // selection must FOLLOW it rather than precede it.
+      expect(containsSequence(bytes, [0x1b, 0x40, 0x1b, 0x52, 0x10]), isTrue);
+    });
+
+    test('a non-ASCII product name survives as the character it is', () {
+      final bytes = const EscPosEncoder().encode(
+        const ReceiptBuilder().build(receipt(
+          items: [line('Café 350ml', unitPrice: 80)],
+        )),
+      );
+      // 0xE9 is `é` in Latin-1. Under CP437 it is Greek capital Theta.
+      expect(bytes, contains(0xe9));
     });
   });
 }

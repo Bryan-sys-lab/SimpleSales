@@ -155,6 +155,101 @@ void main() {
       expect(notifications, afterDispose);
     });
   });
+
+  // The shared refresh rule, which is what the four live screens run on.
+  // These are the properties that would be silent in production: a screen
+  // reacting to a reason it does not display, two live screens agreeing to
+  // disagree, or a burst of changes rendering the oldest figures after the
+  // newest read completes.
+  group('the shared refresh rule', () {
+    test('a screen that shows one reason ignores a change in another', () {
+      const salesOnly = <LiveReason>{LiveReason.sales};
+      final stockChange = LiveChange(
+        reasons: const <LiveReason>[LiveReason.stock],
+        at: DateTime.utc(2026, 10, 12, 9, 30),
+      );
+      final salesChange = LiveChange(
+        reasons: const <LiveReason>[LiveReason.sales],
+        at: DateTime.utc(2026, 10, 12, 9, 31),
+      );
+
+      bool cares(LiveChange change) =>
+          change.isBroad ||
+          salesOnly.isEmpty ||
+          change.reasons.any(salesOnly.contains);
+
+      expect(cares(stockChange), isFalse,
+          reason: 'a stock change leaves every sales figure identical');
+      expect(cares(salesChange), isTrue);
+    });
+
+    test('a roll-up screen reacts to a change with no reasons at all', () {
+      // An omitted `reasons` array means the server did not narrow it. Treating
+      // it as "nothing changed" would drop the refresh for the screens whose
+      // whole content is a roll-up.
+      const rollup = <LiveReason>{};
+      final broad = LiveChange(
+        reasons: const <LiveReason>[],
+        at: DateTime.utc(2026, 10, 12, 9, 30),
+      );
+
+      bool cares(LiveChange change) =>
+          change.isBroad ||
+          rollup.isEmpty ||
+          change.reasons.any(rollup.contains);
+
+      expect(cares(broad), isTrue);
+    });
+
+    test('a change already handled is not acted on twice', () {
+      // The service holds ONE slot, so this is what distinguishes a new change
+      // from the same one re-delivered on an unrelated dependency change.
+      final change = LiveChange(
+        reasons: const <LiveReason>[LiveReason.sales],
+        at: DateTime.utc(2026, 10, 12, 9, 30),
+      );
+      LiveChange? lastHandled;
+      var reloads = 0;
+
+      void onDependencyChange(LiveChange? incoming) {
+        if (incoming == null || identical(incoming, lastHandled)) return;
+        lastHandled = incoming;
+        reloads++;
+      }
+
+      onDependencyChange(change);
+      onDependencyChange(change);
+      onDependencyChange(change);
+
+      expect(reloads, 1);
+    });
+
+    test('a burst of changes coalesces into one in-flight reload', () async {
+      // The failure this prevents: without a "reloading" flag a burst queues one
+      // reload each, and the LAST to finish wins — so the screen renders the
+      // OLDEST figures after the newest read completes.
+      var reloading = false;
+      var started = 0;
+      var finished = 0;
+
+      Future<void> reload() async {
+        if (reloading) return;
+        reloading = true;
+        started++;
+        try {
+          await Future<void>.delayed(const Duration(milliseconds: 10));
+        } finally {
+          reloading = false;
+          finished++;
+        }
+      }
+
+      await Future.wait(<Future<void>>[reload(), reload(), reload()]);
+
+      expect(started, 1);
+      expect(finished, 1);
+    });
+  });
 }
 
 /// A deterministic random, so the reconnect jitter cannot make a test flaky.

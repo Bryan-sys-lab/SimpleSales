@@ -10,6 +10,7 @@ import 'package:flutter_test/flutter_test.dart';
 
 import 'package:duka_pos/services/barcode/barcode_service.dart';
 import 'package:duka_pos/services/barcode/scan_input_service.dart';
+import 'package:flutter/material.dart';
 
 void main() {
   group('normalise', () {
@@ -229,6 +230,114 @@ void main() {
       expect(outcome.matched, isFalse);
       expect(outcome.reason, isNotNull);
       expect(outcome.normalised, '6001234567892');
+    });
+  });
+
+  // The screen-level focus wiring, which is what turns a keystroke the OS
+  // delivered into a scan the buffer can see.
+  //
+  // The rule this pins lives in the framework: FocusManager dispatches a key
+  // event ONLY to `primaryFocus` and its ancestors, and returns early when
+  // nothing is focused ("if (FocusManager.instance.primaryFocus == null) ...
+  // return false"). So a `KeyboardListener` whose node is never focused sees
+  // nothing at all — which is exactly the idle state a till sits in.
+  group('wedge scanner focus wiring', () {
+    // The rule being pinned lives in the framework, and it is the opposite of
+    // what intuition suggests: a `KeyboardListener` is just a `Focus` widget
+    // with an `onKeyEvent`, so it hears keys only while SOMETHING in its own
+    // subtree holds primary focus.
+    //
+    // FocusManager dispatches to `[primaryFocus, ...primaryFocus.ancestors]`
+    // (focus_manager.dart:2280). The route's own FocusScope is what holds
+    // primary focus in an idle app, and a screen-level listener is a
+    // DESCENDANT of it — never an ancestor — so it is not in that list at all.
+    //
+    // The sell screen's listener was created, disposed, and never focused. The
+    // hardware scanner typed into the void.
+
+    testWidgets('an unfocused screen-level listener hears nothing',
+        (WidgetTester tester) async {
+      var seen = 0;
+      final node = FocusNode();
+      addTearDown(node.dispose);
+
+      await tester.pumpWidget(MaterialApp(
+        home: KeyboardListener(
+          focusNode: node,
+          // No `autofocus` — exactly what the sell screen used to rely on.
+          onKeyEvent: (_) => seen++,
+          child: const SizedBox(),
+        ),
+      ));
+      await tester.pumpAndSettle();
+
+      // The route's scope holds focus, so the framework does NOT drop the
+      // message as "no primary focus" — it walks the scope's ancestors, and the
+      // listener is simply not among them.
+      expect(FocusManager.instance.primaryFocus, isNotNull);
+      expect(node.hasPrimaryFocus, isFalse);
+
+      await tester.sendKeyEvent(LogicalKeyboardKey.keyA);
+      expect(seen, 0,
+          reason: 'a descendant of the focused scope is never walked');
+    });
+
+    testWidgets('autofocus is what makes the idle till hear a scanner',
+        (WidgetTester tester) async {
+      var seen = 0;
+      final node = FocusNode();
+      addTearDown(node.dispose);
+
+      await tester.pumpWidget(MaterialApp(
+        home: KeyboardListener(
+          focusNode: node,
+          autofocus: true,
+          onKeyEvent: (_) => seen++,
+          child: const SizedBox(),
+        ),
+      ));
+      await tester.pumpAndSettle();
+
+      expect(node.hasPrimaryFocus, isTrue);
+      await tester.sendKeyEvent(LogicalKeyboardKey.keyA);
+      // `greaterThan(0)`, not `== 1`: `sendKeyEvent` delivers through a path
+      // that can invoke a focused handler more than once per logical press
+      // (the synthesized-event branch in hardware_keyboard.dart calls both
+      // `handleKeyEvent` and `_dispatchKeyMessage`). The doubled count is an
+      // artefact of the test harness, and the assertion that carries the
+      // meaning is the ABSENCE below against the PRESENCE here.
+      expect(seen, greaterThan(0));
+    });
+
+    testWidgets(
+        'a focused field inside stays reachable, because the listener '
+        'is its ancestor', (WidgetTester tester) async {
+      // The other half of the trade: once focus moves to the search field, the
+      // screen listener is the field's ANCESTOR, so it still runs. That is how
+      // `_searchHasFocus` gets to disarm the scanner rather than the listener
+      // going silent.
+      var listenerCalls = 0;
+      final screenFocus = FocusNode();
+      final fieldFocus = FocusNode();
+      addTearDown(screenFocus.dispose);
+      addTearDown(fieldFocus.dispose);
+
+      await tester.pumpWidget(MaterialApp(
+        home: KeyboardListener(
+          focusNode: screenFocus,
+          autofocus: true,
+          onKeyEvent: (_) => listenerCalls++,
+          child: const Material(child: TextField()),
+        ),
+      ));
+      await tester.pumpAndSettle();
+
+      fieldFocus.requestFocus();
+      await tester.pumpAndSettle();
+      await tester.sendKeyEvent(LogicalKeyboardKey.keyA);
+
+      expect(listenerCalls, greaterThan(0),
+          reason: 'the listener is the focused field\'s ancestor');
     });
   });
 }

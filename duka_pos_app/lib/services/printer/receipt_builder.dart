@@ -1,5 +1,3 @@
-import 'dart:math' as math;
-
 import 'package:flutter/foundation.dart';
 
 import '../../models/models.dart';
@@ -66,12 +64,27 @@ final class ReceiptColumns extends ReceiptLine {
 
   @override
   String render(int columnBudget) {
-    // The right-hand figure is never sacrificed. It is the number the customer
-    // is checking, so it is laid out first and the label is trimmed to fit.
-    final rightWidth = math.min(right.length, columnBudget);
+    // The right-hand figure is never truncated mid-number: it is the number the
+    // customer is checking. But it is CLAMPED, and that guard is new.
+    //
+    // When the figure alone is wider than the paper — a long staff name, a long
+    // confirmation reference, a long eTIMS number — `rightWidth` becomes
+    // `columnBudget` and `room` becomes -1. Both `padRight(-1)` and
+    // `padLeft(-1)` return their input unchanged, because Dart guards
+    // `delta <= 0`. So the emitted line was the FULL right string, i.e.
+    // `right.length - columnBudget` characters over the paper, and the printer
+    // wrapped the amount onto the next physical line: unreadable, and
+    // ambiguous about which item it belonged to — the exact failure the class
+    // doc describes, just reached from the other side.
+    //
+    // The clamp keeps the TRAILING characters, which is where a reference or a
+    // check digit lives.
+    final shownRight =
+        right.length <= columnBudget ? right : _keepTail(right, columnBudget);
+    final rightWidth = shownRight.length;
     final room = columnBudget - rightWidth - 1;
     final trimmed = room <= 0 ? '' : _truncateEnd(left, room);
-    return trimmed.padRight(room) + right.padLeft(rightWidth);
+    return trimmed.padRight(room) + shownRight.padLeft(rightWidth);
   }
 }
 
@@ -182,7 +195,7 @@ class ReceiptBuilder {
 
     final lines = <ReceiptLine>[];
 
-    lines.add(ReceiptText(input.shopName,
+    lines.add(ReceiptText(_oneLine(input.shopName),
         alignment: ReceiptAlignment.center,
         bold: true,
         scale: input.shopName.trim().length <= columnBudget ~/ 2 ? 2 : 1));
@@ -267,8 +280,15 @@ class ReceiptBuilder {
 
   String _lineLabel(SaleItem item) {
     final portion = _portionSuffix(item.portion);
-    final base =
+    final raw =
         item.productName.trim().isEmpty ? 'Item' : item.productName.trim();
+    // `_oneLine`, for the same reason as the cashier's name below: an item
+    // imported from a spreadsheet cell containing Alt+Enter arrives with a
+    // raw newline in it. `ReceiptColumns` appends the figure AFTER the label,
+    // so the newline put the amount on its own physical line — orphaned from
+    // the item it belonged to. `Product.validate` checks only emptiness and
+    // length, so nothing upstream rejects it.
+    final base = _oneLine(raw);
     return portion.isEmpty ? base : '$base ($portion)';
   }
 
@@ -334,4 +354,16 @@ String _truncateEnd(String text, int width) {
   if (text.length <= width) return text;
   if (width <= 3) return text.substring(0, width.clamp(0, text.length));
   return '${text.substring(0, width - 3)}...';
+}
+
+/// Keeps the *tail* of [text] to [width] characters.
+///
+/// The counterpart to [_truncateEnd], for the right-hand column. A reference or
+/// a check digit lives at the END of the string, so that is the end to keep:
+/// an M-Pesa reference truncated from the left still identifies the
+/// transaction, while one truncated from the right does not.
+String _keepTail(String text, int width) {
+  if (text.length <= width) return text;
+  if (width <= 3) return text.substring(text.length - width);
+  return '...${text.substring(text.length - (width - 3))}';
 }

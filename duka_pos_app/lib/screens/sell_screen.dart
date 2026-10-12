@@ -50,9 +50,11 @@ class _SellScreenState extends State<SellScreen> {
   final _searchFocus = FocusNode();
   final _wedge = WedgeScannerBuffer();
 
-  /// Holds the screen-level key listener. Not autofocused and not traversable:
-  /// a wedge scanner types into whatever has focus, so this node exists only so
-  /// the screen sees keys while nothing else is focused.
+  /// Holds the screen-level key listener.
+  ///
+  /// Autofocused on mount (see the `KeyboardListener` below) and not
+  /// traversable: a wedge scanner types into whatever has focus, so this node
+  /// holds focus in the idle state precisely so the screen sees the keys.
   final _wedgeFocus = FocusNode(skipTraversal: true);
   List<Product> _products = [];
 
@@ -1501,8 +1503,23 @@ class _SellScreenState extends State<SellScreen> {
     return LayoutBuilder(
       builder: (context, constraints) {
         final compact = constraints.maxWidth < 720;
+        // `autofocus: true` is not a nicety, it is what makes the scanner work.
+        //
+        // Flutter dispatches a key event ONLY to `primaryFocus` and its
+        // ancestors, and drops it entirely when nothing has focus
+        // (`focus_manager.dart`: "if (FocusManager.instance.primaryFocus ==
+        // null) ... return false"). So a listener that is never focused sees
+        // nothing at all in the idle state — which is exactly the state a till
+        // is in 99% of the time. This node was created, disposed, and never
+        // armed, and the hardware scanner typed into the void.
+        //
+        // The node remains `skipTraversal`, so it takes focus on mount without
+        // joining Tab order. When the cashier taps search, focus moves to the
+        // TextField — which is a descendant, so this listener still runs and
+        // `_searchHasFocus` disarms it. The two states are both correct.
         return KeyboardListener(
           focusNode: _wedgeFocus,
+          autofocus: true,
           onKeyEvent: _onKeyEvent,
           child: SafeArea(
             child: Flex(
@@ -2046,12 +2063,24 @@ class _ProductTile extends StatelessWidget {
                         product.name,
                         textAlign: TextAlign.center,
                         maxLines: _nameLines,
-                        // No ellipsis. A name is what the cashier is scanning for;
-                        // an ellipsis here means the product they are looking for
-                        // is spelled with a trailing dot. Two lines is a BUDGET,
-                        // and the tile is sized to honour it — the overflow matrix
-                        // is the thing that catches a name that cannot fit.
-                        overflow: TextOverflow.visible,
+                        // Ellipsis, not `visible`.
+                        //
+                        // `visible` was defended in a comment as "no ellipsis
+                        // here, the product would be spelled with a trailing
+                        // dot", and it pointed at the overflow matrix as the
+                        // guard. But that matrix only exercises
+                        // ui/components/ and page.dart — nothing in this file.
+                        // So a 120-character name (the editor's own limit,
+                        // models.dart) rendered as `maxLines` lines with NO
+                        // ellipsis at all: `TextPainter` silently drops lines
+                        // past `maxLines`, and a cashier saw a name cut
+                        // mid-word with nothing saying text was lost.
+                        //
+                        // An ellipsis IS the signal. It is read by screen
+                        // readers as "text truncated", which is exactly the
+                        // truth, and the tile's `Semantics` label above carries
+                        // the full name for whoever needs it spoken.
+                        overflow: TextOverflow.ellipsis,
                         style: type.titleSmall,
                       ),
                     ),

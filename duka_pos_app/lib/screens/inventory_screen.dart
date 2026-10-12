@@ -13,6 +13,8 @@ import '../services/app_state.dart';
 import '../services/audit_actor.dart';
 import '../services/barcode/barcode_service.dart';
 import '../services/backend_service.dart';
+import '../services/live_refresh_mixin.dart';
+import '../services/live_channel_service.dart';
 import '../ui/components/controls.dart';
 import '../utils/error_utils.dart';
 import '../utils/money.dart';
@@ -41,7 +43,8 @@ class InventoryScreen extends StatefulWidget {
   State<InventoryScreen> createState() => _InventoryScreenState();
 }
 
-class _InventoryScreenState extends State<InventoryScreen> {
+class _InventoryScreenState extends State<InventoryScreen>
+    with LiveRefresh<InventoryScreen> {
   List<Product> _products = [];
 
   /// True until the first load resolves, so the list can tell "still loading"
@@ -55,6 +58,19 @@ class _InventoryScreenState extends State<InventoryScreen> {
   /// every tile whether it has variants to offer, and a query per tile is a
   /// list that stutters on exactly the shops with the most stock.
   VariantCatalogue _variants = VariantCatalogue.empty;
+
+  /// Re-reads on a product or stock change: both are what the list shows.
+  @override
+  Set<LiveReason> get liveReasons => const <LiveReason>{
+        LiveReason.products,
+        LiveReason.stock,
+      };
+
+  @override
+  bool get liveIsVisible => TickerMode.valuesOf(context).enabled;
+
+  @override
+  Future<void> reloadFromLive() => _load();
 
   @override
   void initState() {
@@ -605,9 +621,20 @@ class _ProductListTile extends StatelessWidget {
                     children: [
                       Text(
                         product.name,
-                        // Wraps to two lines and stops there — no ellipsis:
-                        // a cut-off product name is a product nobody can find.
+                        // Two lines, then an ellipsis.
+                        //
+                        // The comment here said "no ellipsis: a cut-off product
+                        // name is a product nobody can find" — but `maxLines`
+                        // WITHOUT `overflow` means `TextPainter` never renders
+                        // lines past the limit, so a third line was dropped
+                        // with no marker at all and an unbroken word longer
+                        // than the row was chopped by the row's edge.
+                        //
+                        // The row's `Semantics` label carries the full name, so
+                        // this is a visual budget rather than a truncation of
+                        // the data.
                         maxLines: 2,
+                        overflow: TextOverflow.ellipsis,
                         style: type.titleSmall,
                       ),
                       SizedBox(height: spacing.xs),

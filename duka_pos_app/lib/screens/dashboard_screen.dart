@@ -11,6 +11,7 @@ import '../services/analytics.dart';
 import '../app_brand.dart';
 import '../services/app_state.dart';
 import '../services/live_channel_service.dart';
+import '../services/live_refresh_mixin.dart';
 import '../services/etims/etims_service.dart';
 import '../services/excel_service.dart';
 import '../theme/app_haptics.dart';
@@ -109,63 +110,29 @@ final class _DashboardReady extends _DashboardState {
   final Money expectedTill;
 }
 
-class _DashboardScreenState extends State<DashboardScreen> {
+class _DashboardScreenState extends State<DashboardScreen>
+    with LiveRefresh<DashboardScreen> {
   _DashboardState? _state;
   bool _loading = false;
 
-  /// Whether this tab was the one on screen the last time dependencies changed.
-  bool _wasActive = true;
+  @override
+  Set<LiveReason> get liveReasons => const <LiveReason>{
+        LiveReason.sales,
+        LiveReason.stock,
+        LiveReason.products,
+      };
+
+  @override
+  bool get liveIsVisible => TickerMode.valuesOf(context).enabled;
+
+  @override
+  Future<void> reloadFromLive() => _load();
 
   @override
   void initState() {
     super.initState();
     _load();
   }
-
-  /// Re-reads on a live change, but only while this tab is the visible one.
-  ///
-  /// The live channel is a signal: it says "something changed", and this
-  /// re-reads the same local data it read on first load. It is a convenience
-  /// over pull-to-refresh, never a second source of truth, so a missed or
-  /// duplicated change costs nothing — the next one, or the tab becoming
-  /// visible, restores the figures.
-  @override
-  void didChangeDependencies() {
-    super.didChangeDependencies();
-    final bool active = TickerMode.valuesOf(context).enabled;
-    if (active && !_wasActive) {
-      WidgetsBinding.instance.addPostFrameCallback((_) {
-        if (mounted) _load();
-      });
-    }
-    _wasActive = active;
-
-    // Watched, not read: the channel notifies on each change, which is what
-    // makes this a listener rather than a one-time read.
-    final LiveChange? change = context.watch<LiveChannelService>().change;
-    if (change == null || _lastHandledChange == change) return;
-    _lastHandledChange = change;
-
-    // Only the reasons this screen actually shows. A `settings` change leaves
-    // every number here identical, so re-reading for one would be work with no
-    // visible effect.
-    final touchesDashboard = change.isBroad ||
-        change.reasons.any((r) =>
-            r == LiveReason.sales ||
-            r == LiveReason.stock ||
-            r == LiveReason.products);
-    if (!touchesDashboard) return;
-
-    // Deferred, because a dependency change is delivered mid-build and calling
-    // _load (which setStates) from here would rebuild during a build.
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (mounted && TickerMode.valuesOf(context).enabled) _load();
-    });
-  }
-
-  /// The change already acted on. LiveChannelService keeps one slot, so this is
-  /// what distinguishes "this is new" from "this is the same change again".
-  LiveChange? _lastHandledChange;
 
   Future<void> _load() async {
     if (_loading) return;

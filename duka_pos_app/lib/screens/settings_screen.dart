@@ -249,9 +249,21 @@ class _SettingsScreenState extends State<SettingsScreen> {
         amountTendered: Money.fromMajor(100),
         changeGiven: Money.zero,
       );
+      // The SAME budget for the layout and the encode, taken from the printer
+      // the shop is actually configured for.
+      //
+      // This used to lay the slip out against a hardcoded `k58mmColumnBudget`
+      // while encoding against `_printer.paperWidth.columnBudget`. Those are the
+      // only two numbers involved, so the split was invisible — but the budget
+      // decides the shop name's magnification and its centring, so an 80mm shop
+      // printed its test slip with the name single-width and centred in 32
+      // columns while every real receipt had it double-width in 48. A test
+      // print that does not match the receipt it claims to test is worse than
+      // no test print: it looks like verification.
+      final budget = _printer.paperWidth.columnBudget;
       final bytes = const EscPosEncoder().encode(
-        const ReceiptBuilder(columnBudget: k58mmColumnBudget).build(receipt),
-        columnBudget: _printer.paperWidth.columnBudget,
+        ReceiptBuilder(columnBudget: budget).build(receipt),
+        columnBudget: budget,
       );
       final printer = EscPosPrinter();
       await printer.connect(_printer.macAddress);

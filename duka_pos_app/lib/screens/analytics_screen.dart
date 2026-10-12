@@ -15,6 +15,8 @@ import '../theme/app_spacing.dart';
 import '../theme/typography.dart';
 import '../ui/components/controls.dart';
 import '../services/workspace_service.dart';
+import '../services/live_refresh_mixin.dart';
+import '../services/live_channel_service.dart';
 import '../ui/components/states.dart';
 import '../ui/components/surface.dart';
 import '../widgets/chart.dart';
@@ -166,7 +168,8 @@ class AnalyticsScreen extends StatefulWidget {
   State<AnalyticsScreen> createState() => _AnalyticsScreenState();
 }
 
-class _AnalyticsScreenState extends State<AnalyticsScreen> {
+class _AnalyticsScreenState extends State<AnalyticsScreen>
+    with LiveRefresh<AnalyticsScreen> {
   /// Whether to offer the all-shops view.
   ///
   /// Read from the local shop registry rather than the backend: the answer is
@@ -187,6 +190,16 @@ class _AnalyticsScreenState extends State<AnalyticsScreen> {
 
   /// The chart's bars, merged and pre-formatted at load time.
   List<PosLinePoint> _salesPoints = const <PosLinePoint>[];
+
+  /// Every figure here is a roll-up, so any reason applies.
+  @override
+  Set<LiveReason> get liveReasons => const <LiveReason>{};
+
+  @override
+  bool get liveIsVisible => TickerMode.valuesOf(context).enabled;
+
+  @override
+  Future<void> reloadFromLive() => _load();
 
   @override
   void initState() {

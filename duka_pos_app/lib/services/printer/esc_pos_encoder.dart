@@ -23,6 +23,25 @@ class EscPosEncoder {
   /// Initialise the printer: reset modes, clear the buffer.
   static const List<int> _initialise = [_esc, 0x40];
 
+  /// Select the international character set to Latin-1 (CP1252/WCP1252).
+  ///
+  /// `ESC R n`. Without it the payload is read as whatever the printer's DIP
+  /// switches or its own default say, and ESC/POS's default is CP437 — where
+  /// byte `0xE9` is Greek capital Theta, not `é`. So `Café 350ml` printed as
+  /// `CafΘ 350ml`, and every `è ñ ° £` in a catalogue came out as a different
+  /// glyph entirely.
+  ///
+  /// This command was simply missing: `_encodeText` emits Latin-1 bytes (0x00-
+  /// 0xFF passed through raw) and no command told the printer to interpret them
+  /// that way. `KSh` is ASCII and was never affected, which is why this went
+  /// unnoticed — a Kenyan till's brand name prints fine and a product with an
+  /// accent in it does not.
+  ///
+  /// n = 0x10 is Latin-1 on the Epson command set. A printer that does not
+  /// honour it ignores the two bytes and prints the byte unchanged, which is no
+  /// worse than the previous behaviour.
+  static const List<int> _characterSet = [_esc, 0x52, 0x10];
+
   /// Print and feed `n` lines.
   static List<int> _feed(int lines) => [_esc, 0x64, lines.clamp(0, 255)];
 
@@ -73,6 +92,10 @@ class EscPosEncoder {
     }
 
     emit(_initialise);
+    // Right after initialise, because `ESC @` resets the character set back to
+    // the printer's own default. Setting it before initialise would be undone
+    // by it.
+    emit(_characterSet);
     emit(_align(ReceiptAlignment.left));
     emit(_bold(false));
     emit(_scale(1));
