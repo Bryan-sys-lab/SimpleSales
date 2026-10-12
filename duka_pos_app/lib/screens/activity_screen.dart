@@ -534,6 +534,8 @@ class _ActivityRow extends StatelessWidget {
     final String action = switch (entry.action) {
       AuditAction.productCreated => l10n.activityProductCreated,
       AuditAction.productUpdated => l10n.activityProductUpdated,
+      AuditAction.productPhotoSet => l10n.activityProductPhotoSet,
+      AuditAction.productPhotoRemoved => l10n.activityProductPhotoRemoved,
       AuditAction.barcodeAdded => l10n.activityBarcodeAdded,
       AuditAction.barcodeRemoved => l10n.activityBarcodeRemoved,
       AuditAction.barcodeKindChanged => l10n.activityBarcodeKindChanged,

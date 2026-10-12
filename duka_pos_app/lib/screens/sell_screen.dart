@@ -24,6 +24,7 @@ import '../theme/app_shapes.dart';
 import '../theme/app_spacing.dart';
 import '../theme/typography.dart';
 import '../ui/components/status.dart';
+import '../ui/components/product_photo.dart';
 import '../ui/layout/page.dart';
 import '../ui/components/surface.dart';
 import '../models/models.dart';
@@ -2058,6 +2059,30 @@ class _ProductTile extends StatelessWidget {
                 child: Column(
                   mainAxisAlignment: MainAxisAlignment.center,
                   children: <Widget>[
+                    // The photograph, when there is one.
+                    //
+                    // Only here. A product is a row in a list on every other
+                    // screen, and a photograph in a list makes it slower to scan
+                    // and slower to render for no gain. At the till it is the
+                    // thing a cashier matches against the shelf.
+                    //
+                    // Sized from the tile rather than hardcoded: the tile grows
+                    // on a tablet, and a fixed 64px image would strand a
+                    // half-width cell.
+                    if (product.imagePath != null) ...<Widget>[
+                      LayoutBuilder(
+                        builder:
+                            (BuildContext context, BoxConstraints constraints) {
+                          final edge = (constraints.maxWidth - spacing.sm * 2)
+                              .clamp(40.0, 96.0);
+                          return ProductPhoto(
+                            imagePath: product.imagePath,
+                            size: edge,
+                          );
+                        },
+                      ),
+                      SizedBox(height: spacing.xs),
+                    ],
                     Flexible(
                       child: Text(
                         product.name,

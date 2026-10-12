@@ -87,6 +87,30 @@ class AppStageController extends ChangeNotifier {
     notifyListeners();
   }
 
+  /// Abandons the flow the chooser chose, returning it to its starting state.
+  ///
+  /// This is what the setup screen's Back button calls, and it is the reason
+  /// Back works at all.
+  ///
+  /// The stage is DERIVED from the intent, not stored beside it — see
+  /// `resolveAppStage`: with a shop present and nobody signed in, an
+  /// `addShop` intent resolves to `AppStage.settingUp`, and the guard then
+  /// sends anything that is not `/setup` back to `/setup`. So a Back button
+  /// that only navigates is a no-op in the literal sense: the guard
+  /// immediately sends the user forward again, and they watch the screen
+  /// they just left reappear.
+  ///
+  /// Resetting the intent to `signIn` re-derives the stage to `signingIn`,
+  /// whose door is `/welcome` — so the same navigation that was refused is
+  /// now the guard's own answer. The fix is to change the state the guard
+  /// reads, not the guard.
+  void abandonChoice() {
+    if (_disposed) return;
+    if (_intent == AppChooserIntent.signIn) return;
+    _intent = AppChooserIntent.signIn;
+    notifyListeners();
+  }
+
   /// Marks the walkthrough done. The preference is written before the stage
   /// flips, so a crash between the two leaves the walkthrough showing again
   /// rather than skipping it forever.

@@ -1,3 +1,4 @@
+import 'dart:io';
 import 'dart:async';
 
 import 'package:flutter/material.dart';
@@ -28,6 +29,9 @@ import '../theme/app_shapes.dart';
 import '../theme/app_spacing.dart';
 import '../theme/typography.dart';
 import '../ui/components/status.dart';
+import 'package:image_picker/image_picker.dart';
+import '../services/product_image_store.dart';
+import '../ui/components/product_photo.dart';
 
 class InventoryScreen extends StatefulWidget {
   const InventoryScreen({this.focusedProductId, super.key});
@@ -743,6 +747,135 @@ class _ProductActionMenu extends StatelessWidget {
   }
 }
 
+/// The photograph controls for one product.
+///
+/// Its own widget rather than inline in the editor's `build` because it holds
+/// three pieces of local presentation state — what is stored, what was picked,
+/// what is marked for removal — and the editor already has six of those for its
+/// own fields. Keeping them in one place means the "removed" state cannot
+/// disagree with the preview.
+class _PhotoRow extends StatelessWidget {
+  const _PhotoRow({
+    required this.existingPath,
+    required this.picked,
+    required this.removed,
+    required this.importing,
+    required this.onPick,
+    required this.onRemove,
+    required this.onUndoRemove,
+  });
+
+  /// The path already stored on the product, if it has one.
+  final String? existingPath;
+
+  /// A file picked in this session, not yet imported.
+  final File? picked;
+
+  /// Whether the stored photograph is marked for removal.
+  final bool removed;
+
+  final bool importing;
+  final VoidCallback onPick;
+  final VoidCallback onRemove;
+  final VoidCallback onUndoRemove;
+
+  @override
+  Widget build(BuildContext context) {
+    final l10n = AppLocalizations.of(context);
+    final spacing = AppSpacing.of(context);
+    final type = AppTypography.of(context);
+    final colors = AppColors.of(context);
+
+    // One preview resolves in priority order: a pick wins over a removal wins
+    // over what is already stored. A preview that showed the stored photo while
+    // "remove" was pending would be a preview of the wrong thing.
+    if (picked != null) {
+      return Row(
+        children: <Widget>[
+          ClipRRect(
+            borderRadius: BorderRadius.circular(12),
+            child: Image.file(
+              picked!,
+              width: 72,
+              height: 72,
+              fit: BoxFit.cover,
+            ),
+          ),
+          SizedBox(width: spacing.md),
+          Expanded(
+            child: Text(
+              l10n.inventoryPhotoHelp,
+              style: type.bodySmall?.copyWith(color: colors.onSurfaceMuted),
+            ),
+          ),
+          IconButton(
+            onPressed: importing ? null : onPick,
+            icon: const Icon(Icons.refresh),
+            tooltip: l10n.inventoryPhotoChange,
+          ),
+        ],
+      );
+    }
+
+    if (removed) {
+      return Row(
+        children: <Widget>[
+          Icon(Icons.image_not_supported_outlined,
+              size: 72, color: colors.onSurfaceMuted),
+          SizedBox(width: spacing.md),
+          Expanded(
+            child: Text(
+              l10n.inventoryPhotoRemovedNote,
+              style: type.bodySmall,
+            ),
+          ),
+          TextButton(
+            onPressed: importing ? null : onUndoRemove,
+            child: Text(l10n.actionUndo),
+          ),
+        ],
+      );
+    }
+
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.center,
+      children: <Widget>[
+        if (existingPath != null) ...<Widget>[
+          ProductPhoto(imagePath: existingPath, size: 72),
+          SizedBox(width: spacing.md),
+        ],
+        Expanded(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            mainAxisSize: MainAxisSize.min,
+            children: <Widget>[
+              Text(l10n.inventoryPhotoSection, style: type.titleSmall),
+              SizedBox(height: 2),
+              Text(
+                l10n.inventoryPhotoHelp,
+                style: type.bodySmall?.copyWith(color: colors.onSurfaceMuted),
+              ),
+            ],
+          ),
+        ),
+        if (existingPath != null)
+          IconButton(
+            onPressed: importing ? null : onRemove,
+            icon: const Icon(Icons.delete_outline),
+            tooltip: l10n.inventoryPhotoRemove,
+            color: colors.danger,
+          )
+        else
+          TextButton.icon(
+            onPressed: importing ? null : onPick,
+            icon: const Icon(Icons.add_a_photo_outlined),
+            label: Text(l10n.inventoryPhotoAdd),
+          ),
+      ],
+    );
+  }
+}
+
 class _ProductEditor extends StatefulWidget {
   final Product? existing;
   final VoidCallback onSaved;
@@ -819,6 +952,23 @@ class _ProductEditorState extends State<_ProductEditor> {
 
   /// How many chips to offer before the row stops being scannable.
   static const _maxSizeSuggestions = 6;
+
+  /// The photograph picked in this session, not yet imported.
+  ///
+  /// A file, not a path already in the store: the store names its files by
+  /// product id, and a NEW product has no id until it is saved. So the pick is
+  /// held and flushed AFTER the insert — the same order the variants follow.
+  /// Importing before the insert would have nowhere to put the file.
+  File? _pickedPhoto;
+
+  /// Whether the existing photograph is marked for removal on save.
+  ///
+  /// Deferred rather than immediate so backing out of the sheet without saving
+  /// leaves the photograph alone, exactly as it leaves an un-saved variant.
+  bool _photoRemoved = false;
+
+  /// True while a photograph is being imported.
+  final bool _importingPhoto = false;
 
   @override
   void dispose() {
@@ -1099,6 +1249,98 @@ class _ProductEditorState extends State<_ProductEditor> {
       updatedAt: DateTime.now().toIso8601String(),
       remoteId: existing?.remoteId,
     );
+  }
+
+  /// Imports, or removes, the photograph for [productId].
+  ///
+  /// Called after the product row is durable, so the id exists and the store
+  /// has a filename. A failure is REPORTED rather than propagated: the product
+  /// the owner just saved must not be rolled back because a photograph failed.
+  Future<void> _flushPhoto(int productId, AppState state) async {
+    final source = _pickedPhoto;
+    final removed = _photoRemoved;
+    if (source == null && !removed) return;
+
+    final l10n = AppLocalizations.of(context);
+    try {
+      if (removed) {
+        await ProductImageStore.delete(productId);
+        await DatabaseHelper.instance.setProductImage(null, productId);
+      } else {
+        final relative = await ProductImageStore.save(
+          source!,
+          productId: productId,
+        );
+        await DatabaseHelper.instance.setProductImage(relative, productId);
+      }
+      await recordActionAudit(
+        state,
+        action: removed
+            ? AuditAction.productPhotoRemoved
+            : AuditAction.productPhotoSet,
+        entity: AuditEntity.product,
+        entityId: 'id-$productId',
+        detail: widget.existing?.name ?? l10n.inventoryThisProduct,
+      );
+    } on ProductImageException {
+      // Kept as a message rather than a throw: the product is saved and the
+      // catalogue is correct, and losing the whole save over a photograph
+      // would be the worse outcome.
+      if (!mounted) return;
+      // The message names the phone's storage rather than "something went
+      // wrong", because the two failures that happen are a full disk and a
+      // file the gallery moved — and the owner can act on the first.
+      setState(() {
+        _error = source == null
+            ? l10n.inventoryPhotoRemoveFailed
+            : l10n.inventoryPhotoAddFailed;
+      });
+    } finally {
+      // Cleared either way, so a retry that fails is not retried by the next
+      // save with the same stale pick.
+      if (mounted) {
+        setState(() {
+          _pickedPhoto = null;
+          _photoRemoved = false;
+        });
+      }
+    }
+  }
+
+  /// Offers the gallery or the camera for a product photograph.
+  Future<void> _pickPhoto() async {
+    if (_importingPhoto) return;
+    final l10n = AppLocalizations.of(context);
+    final picked = await showModalBottomSheet<ImageSource>(
+      context: context,
+      builder: (BuildContext sheetContext) => SafeArea(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: <Widget>[
+            ListTile(
+              leading: const Icon(Icons.photo_library_outlined),
+              title: Text(l10n.inventoryPhotoFromGallery),
+              onTap: () => Navigator.of(sheetContext).pop(ImageSource.gallery),
+            ),
+            ListTile(
+              leading: const Icon(Icons.photo_camera_outlined),
+              title: Text(l10n.inventoryPhotoFromCamera),
+              onTap: () => Navigator.of(sheetContext).pop(ImageSource.camera),
+            ),
+          ],
+        ),
+      ),
+    );
+    if (picked == null) return;
+
+    final XFile? file = await ImagePicker()
+        .pickImage(source: picked, maxWidth: 1024, imageQuality: 90);
+    if (file == null) return;
+    if (!mounted) return;
+    setState(() {
+      _pickedPhoto = File(file.path);
+      _photoRemoved = false;
+    });
   }
 
   Future<void> _addVariant() async {
@@ -1547,6 +1789,10 @@ class _ProductEditorState extends State<_ProductEditor> {
       active: widget.existing?.active ?? true,
       updatedAt: DateTime.now().toIso8601String(),
       remoteId: widget.existing?.remoteId,
+      // The photograph is flushed after the insert, not here: see
+      // [_pickedPhoto]. `imagePath` is only written when it changes, so an
+      // unrelated edit never rewrites the column.
+      imagePath: widget.existing?.imagePath,
     );
     try {
       // The product first: `product_variants.product_id` is NOT NULL, so a
@@ -1573,6 +1819,18 @@ class _ProductEditorState extends State<_ProductEditor> {
       // does not have.
       await _saveVariants(productId);
       await _rememberSize(_unit == ProductUnit.each ? 0 : (bottleMl ?? 0));
+      // Then the photograph, now that there is an id to name its file after.
+      //
+      // Flushed here rather than before the insert because the store names a
+      // photograph `<productId>.jpg`, and a new product has no id yet. The
+      // order mirrors the variants above for the same reason.
+      //
+      // A failure here is NOT allowed to lose the product the owner just
+      // saved: the catalogue row is already durable, so the import error is
+      // recorded and told to them rather than surfaced as a failed save.
+      if (_pickedPhoto != null || _photoRemoved) {
+        await _flushPhoto(productId, state);
+      }
       // The sell tab is kept alive in an IndexedStack and would otherwise keep
       // selling the catalogue as it was before this save.
       if (mounted) context.read<HomeShellTabs>().markCatalogueChanged();
@@ -1640,11 +1898,13 @@ class _ProductEditorState extends State<_ProductEditor> {
                   decoration: InputDecoration(
                       labelText:
                           AppLocalizations.of(context).inventoryFieldName)),
+              SizedBox(height: spacing.md),
               TextField(
                   controller: _category,
                   decoration: InputDecoration(
                       labelText:
                           AppLocalizations.of(context).inventoryFieldCategory)),
+              SizedBox(height: spacing.md),
               Row(children: [
                 Expanded(
                     child: TextField(
@@ -1662,6 +1922,7 @@ class _ProductEditorState extends State<_ProductEditor> {
                                 .inventoryFieldSellPrice),
                         keyboardType: TextInputType.number)),
               ]),
+              SizedBox(height: spacing.md),
               TextField(
                   controller: _bottleMl,
                   decoration: InputDecoration(
@@ -1690,6 +1951,7 @@ class _ProductEditorState extends State<_ProductEditor> {
                         keyboardType: const TextInputType.numberWithOptions(
                             decimal: true))),
               ]),
+              SizedBox(height: spacing.md),
               Row(children: [
                 Expanded(
                     child: TextField(
@@ -1714,11 +1976,25 @@ class _ProductEditorState extends State<_ProductEditor> {
                                 .inventoryFieldReorderLevel),
                         keyboardType: TextInputType.number)),
               ]),
+              SizedBox(height: spacing.md),
               TextField(
                   controller: _stamp,
                   decoration: InputDecoration(
                       labelText: AppLocalizations.of(context)
                           .inventoryExciseStampField)),
+              SizedBox(height: spacing.md),
+              _PhotoRow(
+                existingPath: widget.existing?.imagePath,
+                picked: _pickedPhoto,
+                removed: _photoRemoved,
+                importing: _importingPhoto,
+                onPick: _pickPhoto,
+                onRemove: () => setState(() {
+                  _photoRemoved = true;
+                  _pickedPhoto = null;
+                }),
+                onUndoRemove: () => setState(() => _photoRemoved = false),
+              ),
               SizedBox(height: spacing.md),
               SwitchListTile(
                 contentPadding: EdgeInsets.zero,

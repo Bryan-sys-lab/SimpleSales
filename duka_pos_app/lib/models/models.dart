@@ -112,6 +112,20 @@ class Product {
   final String?
       remoteId; // Supabase products.id, once synced — see backend_service.dart
 
+  /// Where this product's photograph lives, relative to the documents directory.
+  ///
+  /// A PATH and not the bytes: a photograph is the one large thing on a product
+  /// row, and storing the bytes would put them in every encrypted backup and
+  /// every cross-shop read. It is RELATIVE because the absolute directory
+  /// differs between phones, so a backup restored onto a different handset
+  /// resolves it against that handset's own directory — and yields null rather
+  /// than a broken path when the files were not part of the backup.
+  ///
+  /// Read and drawn on the SELL screen only. Everywhere else a product is a row
+  /// in a list, and a photograph there would make the list slower to scan and
+  /// slower to render for no gain the owner asked for.
+  final String? imagePath;
+
   /// The primary barcode, carried through a spreadsheet import only.
   ///
   /// Deliberately *not* persisted on this model: barcodes live in their own
@@ -137,6 +151,7 @@ class Product {
     this.active = true,
     required this.updatedAt,
     this.remoteId,
+    this.imagePath,
     this.primaryBarcode,
   });
 
@@ -216,6 +231,7 @@ class Product {
         'active': active ? 1 : 0,
         'updated_at': updatedAt,
         'remote_id': remoteId,
+        'image_path': imagePath,
       };
 
   factory Product.fromMap(Map<String, dynamic> m) => Product(
@@ -243,6 +259,12 @@ class Product {
         active: m['active'] == 1,
         updatedAt: m['updated_at'] ?? '',
         remoteId: m['remote_id'],
+        // An empty string is stored as null: the column is nullable and a blank
+        // path is not a path. `fromMap` turning '' into '' would have every
+        // reader distinguishing "" from null for no reason.
+        imagePath: (m['image_path'] as String?)?.isEmpty ?? true
+            ? null
+            : m['image_path'] as String,
       );
 
   /// Row order used for both Excel export and Google Sheets export, so the

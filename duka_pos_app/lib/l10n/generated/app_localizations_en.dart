@@ -15,6 +15,9 @@ class AppLocalizationsEn extends AppLocalizations {
   String get actionCancel => 'Cancel';
 
   @override
+  String get actionUndo => 'Undo';
+
+  @override
   String get actionSave => 'Save';
 
   @override
@@ -860,6 +863,40 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get inventoryFieldQuarterPriceOptional => 'Quarter price (optional)';
+
+  @override
+  String get inventoryPhotoSection => 'Photograph';
+
+  @override
+  String get inventoryPhotoHelp =>
+      'Shown on the till so a cashier can match the shelf. Not shown anywhere else in the app.';
+
+  @override
+  String get inventoryPhotoFromGallery => 'Choose from gallery';
+
+  @override
+  String get inventoryPhotoFromCamera => 'Take a photo';
+
+  @override
+  String get inventoryPhotoAdd => 'Add a photograph';
+
+  @override
+  String get inventoryPhotoRemovedNote =>
+      'The photograph will be removed when you save.';
+
+  @override
+  String get inventoryPhotoChange => 'Change photograph';
+
+  @override
+  String get inventoryPhotoRemove => 'Remove photograph';
+
+  @override
+  String get inventoryPhotoAddFailed =>
+      'The photograph could not be saved. Check the phone has storage space free, then try again.';
+
+  @override
+  String get inventoryPhotoRemoveFailed =>
+      'The photograph could not be removed. Try again.';
 
   @override
   String get inventoryFieldReorderLevel => 'Reorder level';
@@ -2847,6 +2884,12 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get activityIdentityLinked => 'Online account linked';
+
+  @override
+  String get activityProductPhotoSet => 'Product photo added';
+
+  @override
+  String get activityProductPhotoRemoved => 'Product photo removed';
 
   @override
   String get activityOwnerPinReset => 'Owner PIN reset';

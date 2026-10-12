@@ -106,6 +106,12 @@ abstract class AppLocalizations {
   /// **'Cancel'**
   String get actionCancel;
 
+  /// No description provided for @actionUndo.
+  ///
+  /// In en, this message translates to:
+  /// **'Undo'**
+  String get actionUndo;
+
   /// No description provided for @actionSave.
   ///
   /// In en, this message translates to:
@@ -1468,6 +1474,66 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'Quarter price (optional)'**
   String get inventoryFieldQuarterPriceOptional;
+
+  /// No description provided for @inventoryPhotoSection.
+  ///
+  /// In en, this message translates to:
+  /// **'Photograph'**
+  String get inventoryPhotoSection;
+
+  /// No description provided for @inventoryPhotoHelp.
+  ///
+  /// In en, this message translates to:
+  /// **'Shown on the till so a cashier can match the shelf. Not shown anywhere else in the app.'**
+  String get inventoryPhotoHelp;
+
+  /// No description provided for @inventoryPhotoFromGallery.
+  ///
+  /// In en, this message translates to:
+  /// **'Choose from gallery'**
+  String get inventoryPhotoFromGallery;
+
+  /// No description provided for @inventoryPhotoFromCamera.
+  ///
+  /// In en, this message translates to:
+  /// **'Take a photo'**
+  String get inventoryPhotoFromCamera;
+
+  /// No description provided for @inventoryPhotoAdd.
+  ///
+  /// In en, this message translates to:
+  /// **'Add a photograph'**
+  String get inventoryPhotoAdd;
+
+  /// No description provided for @inventoryPhotoRemovedNote.
+  ///
+  /// In en, this message translates to:
+  /// **'The photograph will be removed when you save.'**
+  String get inventoryPhotoRemovedNote;
+
+  /// No description provided for @inventoryPhotoChange.
+  ///
+  /// In en, this message translates to:
+  /// **'Change photograph'**
+  String get inventoryPhotoChange;
+
+  /// No description provided for @inventoryPhotoRemove.
+  ///
+  /// In en, this message translates to:
+  /// **'Remove photograph'**
+  String get inventoryPhotoRemove;
+
+  /// No description provided for @inventoryPhotoAddFailed.
+  ///
+  /// In en, this message translates to:
+  /// **'The photograph could not be saved. Check the phone has storage space free, then try again.'**
+  String get inventoryPhotoAddFailed;
+
+  /// No description provided for @inventoryPhotoRemoveFailed.
+  ///
+  /// In en, this message translates to:
+  /// **'The photograph could not be removed. Try again.'**
+  String get inventoryPhotoRemoveFailed;
 
   /// No description provided for @inventoryFieldReorderLevel.
   ///
@@ -4544,6 +4610,18 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'Online account linked'**
   String get activityIdentityLinked;
+
+  /// No description provided for @activityProductPhotoSet.
+  ///
+  /// In en, this message translates to:
+  /// **'Product photo added'**
+  String get activityProductPhotoSet;
+
+  /// No description provided for @activityProductPhotoRemoved.
+  ///
+  /// In en, this message translates to:
+  /// **'Product photo removed'**
+  String get activityProductPhotoRemoved;
 
   /// No description provided for @activityOwnerPinReset.
   ///

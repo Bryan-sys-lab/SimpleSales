@@ -106,7 +106,7 @@ class DatabaseHelper {
   /// shipped — always add a new one, even for a one-line fix — because a
   /// shop's phone may be several versions behind and needs every step run
   /// in order to land on the current schema without data loss.
-  static const _schemaVersion = 19;
+  static const _schemaVersion = 20;
 
   /// Slack allowed when deciding whether a container has enough left for a sale.
   ///
@@ -352,6 +352,20 @@ SELECT name FROM staff GROUP BY name HAVING COUNT(*) = 1
       // phone that crashes repeatedly cannot fill its storage before anybody
       // reads it.
       await _createCrashLogTable(db);
+    }
+    if (oldVersion < 20) {
+      // The product's photograph, held as a RELATIVE path.
+      //
+      // The bytes live in `product_photos/<id>.jpg` under the app's documents
+      // directory; only the path is in the row. A photograph is the one large
+      // thing on a product — storing the bytes would put them in every
+      // encrypted backup and every cross-shop read, against a few dozen bytes
+      // for the rest of the row.
+      //
+      // Relative so it survives a migration: the absolute directory differs
+      // between phones, and an absolute path restored onto a different handset
+      // would point at a folder that does not exist there.
+      await db.execute('ALTER TABLE products ADD COLUMN image_path TEXT');
     }
   }
 
@@ -931,7 +945,8 @@ SELECT name FROM staff GROUP BY name HAVING COUNT(*) = 1
         excise_stamp_batch TEXT,
         active INTEGER NOT NULL DEFAULT 1,
         updated_at TEXT,
-        remote_id TEXT
+        remote_id TEXT,
+        image_path TEXT
       )
     ''');
     await db.execute('''
@@ -1757,6 +1772,23 @@ SELECT name FROM staff GROUP BY name HAVING COUNT(*) = 1
             where: 'id = ?', whereArgs: [entry.key]);
       }
     });
+  }
+
+  /// Sets (or clears, with null) a product's photograph path.
+  ///
+  /// Only this one column is written. `upsertProduct` rewrites the whole row,
+  /// so routing a photograph through it would let every unrelated edit
+  /// overwrite the path with whatever was in the product object that happened
+  /// to be passed — and the editor's product object is built before the
+  /// photograph is imported.
+  Future<void> setProductImage(String? relativePath, int productId) async {
+    final db = await database;
+    await db.update(
+      'products',
+      <String, Object?>{'image_path': relativePath},
+      where: 'id = ?',
+      whereArgs: <Object?>[productId],
+    );
   }
 
   /// Clears every cached `remote_id`, on products and on staff.

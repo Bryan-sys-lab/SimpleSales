@@ -137,9 +137,14 @@ List<RouteBase> _doorRoutes(AppStageController stage, AppState appState) {
           isAdditionalShop: stage.intent == AppChooserIntent.addShop,
           carryOverFrom:
               stage.intent == AppChooserIntent.addShop ? appState.owner : null,
-          onCancel: stage.intent == AppChooserIntent.addShop
-              ? () => context.go(Routes.welcome)
-              : () => context.go(Routes.welcome),
+          onCancel: () {
+            // Abandon the choice BEFORE navigating. The stage is derived from
+            // the intent, so leaving the intent alone would make the guard pull
+            // the user straight back into setup — the Back button appearing to
+            // do nothing while the screen they left came back.
+            stage.abandonChoice();
+            context.go(Routes.welcome);
+          },
         ),
       ),
     ),

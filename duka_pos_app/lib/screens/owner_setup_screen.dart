@@ -236,66 +236,83 @@ class _OwnerSetupScreenState extends State<OwnerSetupScreen> {
   Widget build(BuildContext context) {
     final AppSpacing spacing = AppSpacing.of(context);
 
-    return Scaffold(
-      body: SafeArea(
-        child: Center(
-          child: SingleChildScrollView(
-            padding: EdgeInsets.all(spacing.xl),
-            child: ConstrainedBox(
-              constraints: const BoxConstraints(maxWidth: _kFormWidth),
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                crossAxisAlignment: CrossAxisAlignment.stretch,
-                children: <Widget>[
-                  if (widget.onCancel != null)
-                    _BackRow(onBack: widget.onCancel!),
-                  const _SetupLockup(),
-                  SizedBox(height: spacing.lg),
-                  _SetupHeading(
-                    isAdditionalShop: widget.isAdditionalShop,
-                    reusingPin: _reusingPin,
-                  ),
-                  SizedBox(height: spacing.md),
-                  if (_reusingPin) ...<Widget>[
-                    const _CarriedPinNote(),
-                    SizedBox(height: spacing.md),
-                  ],
-                  _SetupFields(
-                    formKey: _formKey,
-                    shop: _shop,
-                    name: _name,
-                    email: _email,
-                    pin: _pin,
-                    pin2: _pin2,
-                    reusingPin: _reusingPin,
-                    validateShop: _validateShop,
-                    validateName: _validateName,
-                    validateEmail: _validateEmail,
-                    validatePin: _validatePin,
-                    validatePinConfirm: _validatePinConfirm,
-                    onSubmit: _create,
-                  ),
-                  if (_error != null) ...<Widget>[
-                    SizedBox(height: spacing.md),
-                    PersistentBanner(
-                      message: _error!,
-                      icon: Icons.error_outline,
-                      tone: StatusTone.danger,
+    return PopScope(
+      // The system back button gets the same treatment as the visible Back row.
+      //
+      // Without this, Android's back on a setup screen either does nothing or
+      // leaves the app, while the on-screen Back works — two different answers
+      // to the same question, and the hardware one is what a thumb on the edge
+      // of the phone actually presses.
+      //
+      // `canPop: false` because there is nowhere in the stack to pop TO at this
+      // point: setup is reached by the chooser's intent rather than by a push,
+      // and the guard above it resolves where the user should be.
+      canPop: false,
+      onPopInvokedWithResult: (bool didPop, Object? result) {
+        if (didPop) return;
+        widget.onCancel?.call();
+      },
+      child: Scaffold(
+        body: SafeArea(
+          child: Center(
+            child: SingleChildScrollView(
+              padding: EdgeInsets.all(spacing.xl),
+              child: ConstrainedBox(
+                constraints: const BoxConstraints(maxWidth: _kFormWidth),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: <Widget>[
+                    if (widget.onCancel != null)
+                      _BackRow(onBack: widget.onCancel!),
+                    const _SetupLockup(),
+                    SizedBox(height: spacing.lg),
+                    _SetupHeading(
+                      isAdditionalShop: widget.isAdditionalShop,
+                      reusingPin: _reusingPin,
                     ),
-                  ],
-                  SizedBox(height: spacing.xl),
-                  FilledButton(
-                    onPressed: _saving ? null : _create,
-                    child: Padding(
-                      padding: EdgeInsets.symmetric(vertical: spacing.md),
-                      child: Text(
-                        _saving
-                            ? 'Creating the shop'
-                            : 'Create shop admin account',
+                    SizedBox(height: spacing.md),
+                    if (_reusingPin) ...<Widget>[
+                      const _CarriedPinNote(),
+                      SizedBox(height: spacing.md),
+                    ],
+                    _SetupFields(
+                      formKey: _formKey,
+                      shop: _shop,
+                      name: _name,
+                      email: _email,
+                      pin: _pin,
+                      pin2: _pin2,
+                      reusingPin: _reusingPin,
+                      validateShop: _validateShop,
+                      validateName: _validateName,
+                      validateEmail: _validateEmail,
+                      validatePin: _validatePin,
+                      validatePinConfirm: _validatePinConfirm,
+                      onSubmit: _create,
+                    ),
+                    if (_error != null) ...<Widget>[
+                      SizedBox(height: spacing.md),
+                      PersistentBanner(
+                        message: _error!,
+                        icon: Icons.error_outline,
+                        tone: StatusTone.danger,
+                      ),
+                    ],
+                    SizedBox(height: spacing.xl),
+                    FilledButton(
+                      onPressed: _saving ? null : _create,
+                      child: Padding(
+                        padding: EdgeInsets.symmetric(vertical: spacing.md),
+                        child: Text(
+                          _saving
+                              ? 'Creating the shop'
+                              : 'Create shop admin account',
+                        ),
                       ),
                     ),
-                  ),
-                ],
+                  ],
+                ),
               ),
             ),
           ),

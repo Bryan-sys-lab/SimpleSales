@@ -320,12 +320,15 @@ class _LineChartPainter extends CustomPainter {
         return measured;
       }();
       final value = _text(peak.displayValue, labelStyle);
+      // Snapped for the same reason as the axis labels: a fractional origin
+      // anti-aliases the glyphs into softness. This one is the busiest hour's
+      // money figure, so it is the label a cashier actually reads.
       final x = (_x(peakIndex, size.width) - valueWidth / 2)
           .clamp(0.0, math.max(0.0, size.width - valueWidth))
-          .toDouble();
+          .roundToDouble();
       final y = (yOf(peak.value) - value.height - 6)
           .clamp(0.0, math.max(0.0, size.height))
-          .toDouble();
+          .roundToDouble();
       value.paint(canvas, Offset(x, y));
     }
 
@@ -354,10 +357,23 @@ class _LineChartPainter extends CustomPainter {
       Canvas canvas, Size size, int index, int stride, double baselineY) {
     if (index < 0 || index >= points.length) return;
     final painter = _text(points[index].label, labelStyle);
-    final x = (_x(index, size.width) - painter.width / 2)
+    // PIXEL-SNAPPED, and this is what makes the axis readable.
+    //
+    // `TextPainter.paint` renders glyphs at exactly the offset it is given, with
+    // no pixel alignment. The x position here is `index * width / (points - 1)`
+    // — an arbitrary fraction — and the y is a computed baseline, also fractional.
+    // A glyph whose origin lands at 10.4 straddles two device pixels, so the
+    // rasteriser splits each stem across them and anti-aliases it: the label
+    // reads as grey and soft rather than as crisp text.
+    //
+    // Rounding BOTH axes to whole logical pixels puts every glyph origin on the
+    // pixel grid, which is what the framework's own text engine does for a
+    // `Text` widget. It is a one-line change that is the difference between an
+    // axis a cashier can read and one they squint at.
+    final snappedX = (_x(index, size.width) - painter.width / 2)
         .clamp(0.0, math.max(0.0, size.width - painter.width))
-        .toDouble();
-    painter.paint(canvas, Offset(x, baselineY));
+        .roundToDouble();
+    painter.paint(canvas, Offset(snappedX, baselineY.roundToDouble()));
   }
 
   @override

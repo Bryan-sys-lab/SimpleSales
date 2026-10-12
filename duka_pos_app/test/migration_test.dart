@@ -1524,4 +1524,81 @@ void main() {
       await db.close();
     });
   });
+
+  // v19 -> v20: the product photograph's path.
+  //
+  // The one migration whose mistake is not a crash but a slow, silent one: an
+  // absolute path would survive the upgrade, work on the phone that stored it,
+  // and break on every phone the shop's backup was restored to. So the path is
+  // asserted RELATIVE, and asserted to match the fresh-install column so the two
+  // paths cannot diverge.
+  group('v19 -> v20: product photograph path', () {
+    Future<Database> atV19() async {
+      // Open at 19 with no upgrade, so the shop's data is the real v19 shape.
+      await _createV10Database(
+        path,
+        products: [
+          product(cost: 100, sell: 150),
+        ],
+        sales: [
+          sale(id: 1, total: 150, profit: 50),
+        ],
+      );
+      return databaseFactoryFfi.openDatabase(
+        path,
+        options: OpenDatabaseOptions(
+          version: 19,
+          onOpen: (db) async {
+            // `image_path` does not exist at v19, which is the whole point of
+            // the migration being tested.
+            final columns = await db.rawQuery('PRAGMA table_info(products)');
+            expect(
+                columns.map((r) => r['name']), isNot(contains('image_path')));
+          },
+        ),
+      );
+    }
+
+    test('the column exists after the upgrade, and the ledger survives',
+        () async {
+      final db = await atV19();
+      await db.close();
+      final upgraded = await DatabaseHelper.openExistingForUpgradeTests(path);
+
+      final columns = await upgraded.rawQuery('PRAGMA table_info(products)');
+      expect(columns.map((r) => r['name']), contains('image_path'));
+
+      // The shop's existing rows are untouched: an upgrade that rewrote the
+      // catalogue would be worse than a missing column.
+      final products = await upgraded.query('products');
+      expect(products.length, 1);
+      expect(products.single['image_path'], isNull);
+      await upgraded.close();
+    });
+
+    test('a fresh v20 install has the SAME column as an upgraded one',
+        () async {
+      final db = await atV19();
+      await db.close();
+      final upgraded = await DatabaseHelper.openExistingForUpgradeTests(path);
+
+      final freshPath = '${path}_fresh_v20';
+      final fresh = await DatabaseHelper.openExistingForUpgradeTests(freshPath);
+
+      Future<List<String>> imageColumns(Database database) async {
+        final columns = await database.rawQuery('PRAGMA table_info(products)');
+        return columns
+            .where((r) => r['name'] == 'image_path')
+            .map((r) => r['type'] as String)
+            .toList();
+      }
+
+      // Same name AND same type, from both paths, through the one production
+      // entry point each.
+      expect(await imageColumns(fresh), await imageColumns(upgraded));
+
+      await fresh.close();
+      await upgraded.close();
+    });
+  });
 }

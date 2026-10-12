@@ -34,7 +34,9 @@ enum AuditAction {
   shiftClosed('shift_closed'),
   identityLinked('identity_linked'),
   ownerPinReset('owner_pin_reset'),
-  accountDeleted('account_deleted');
+  accountDeleted('account_deleted'),
+  productPhotoSet('product_photo_set'),
+  productPhotoRemoved('product_photo_removed');
 
   const AuditAction(this.wire);
 
