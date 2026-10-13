@@ -64,6 +64,10 @@ class _InventoryScreenState extends State<InventoryScreen>
   /// list that stutters on exactly the shops with the most stock.
   VariantCatalogue _variants = VariantCatalogue.empty;
 
+  /// The limit the sheet opens on. Not the source of truth — that is each
+  /// product's own `reorderLevel` — just the value the owner last agreed to.
+  int _lowStockLimit = 5;
+
   /// Re-reads on a product or stock change: both are what the list shows.
   @override
   Set<LiveReason> get liveReasons => const <LiveReason>{
@@ -103,11 +107,20 @@ class _InventoryScreenState extends State<InventoryScreen>
     // RefreshIndicator's own spinner says the reload is happening.
     final p = await DatabaseHelper.instance.getProducts();
     final catalogue = await VariantCatalogue.load();
+    final int? limit = p
+        .where((Product product) => product.reorderLevel > 0)
+        .map((Product product) => product.reorderLevel)
+        .fold<int?>(null, (int? common, int level) =>
+            common == null || common == level ? level : -1);
     if (!mounted) return;
     setState(() {
       _loading = false;
       _products = p;
       _variants = catalogue;
+      // The level the shop actually uses, when every product agrees on one. If
+      // they disagree, the dialog starts on the default rather than silently
+      // proposing to flatten a per-product choice the owner made on purpose.
+      if (limit != null && limit >= 0) _lowStockLimit = limit;
     });
     // Announced rather than merely scrolled: a deep-linked product arriving at the
     // top of a 400-row list is invisible to anyone not watching the screen move,
@@ -356,6 +369,39 @@ class _InventoryScreenState extends State<InventoryScreen>
     }
   }
 
+  /// Sets the low-stock limit for every active product at once.
+  ///
+  /// A shop deciding its limit is 8, not 5, is not a decision about 214 products
+  /// one at a time. The alternative — an owner who will not tap through the
+  /// editor 214 times — is a dashboard warning about nothing, which trains them
+  /// to ignore it. The per-product level stays where it already is, for the
+  /// handful of items a shop genuinely counts differently.
+  Future<void> _setLowStockLimit() async {
+    final l10n = AppLocalizations.of(context);
+    final int? limit = await showDialog<int>(
+      context: context,
+      builder: (dialogContext) => _LowStockLimitDialog(
+        title: l10n.inventoryLowStockLimitTitle,
+        initial: _lowStockLimit,
+      ),
+    );
+    if (limit == null || !mounted) return;
+    setState(() => _lowStockLimit = limit);
+    final int changed = await DatabaseHelper.instance.setLowStockLimit(limit);
+    // One row, not one per product: a limit set across the whole catalogue is
+    // one decision, and 214 identical audit rows would bury every other entry.
+    await _audit(
+      AuditAction.stockAdjusted,
+      AuditEntity.product,
+      detail: l10n.inventoryLowStockLimitAudit(changed, limit),
+    );
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+      content: Text(l10n.inventoryLowStockLimitApplied(changed, limit)),
+    ));
+    await _load();
+  }
+
   @override
   Widget build(BuildContext context) {
     final isOwner = context.watch<AppState>().isOwnerSession;
@@ -388,15 +434,30 @@ class _InventoryScreenState extends State<InventoryScreen>
                   // line of it, and burying it under the first hundred sodas is
                   // how a bar never finds the feature that makes it a bar.
                   if (_products.isEmpty || i == 0) {
-                    return Semantics(
-                      label: l10n.inventoryShotCupsSpoken,
-                      child: ListTile(
-                        leading: const Icon(Icons.local_drink_outlined),
-                        title: Text(l10n.inventoryShotCupsTitle),
-                        subtitle: Text(l10n.inventoryShotCupsSubtitle),
-                        trailing: const Icon(Icons.chevron_right),
-                        onTap: () => context.push(Routes.shotCups),
-                      ),
+                    return Column(
+                      children: <Widget>[
+                        Semantics(
+                          label: l10n.inventoryShotCupsSpoken,
+                          child: ListTile(
+                            leading: const Icon(Icons.local_drink_outlined),
+                            title: Text(l10n.inventoryShotCupsTitle),
+                            subtitle: Text(l10n.inventoryShotCupsSubtitle),
+                            trailing: const Icon(Icons.chevron_right),
+                            onTap: () => context.push(Routes.shotCups),
+                          ),
+                        ),
+                        ListTile(
+                          leading: const Icon(Icons.tune),
+                          title: Text(l10n.inventoryLowStockLimitTitle),
+                          // The CURRENT limit, so a seller opening this sees what
+                          // the warning is set to rather than a blank field. A
+                          // policy nobody can read is a policy nobody sets.
+                          subtitle: Text(l10n.inventoryLowStockLimitSubtitle(
+                              _lowStockLimit)),
+                          trailing: const Icon(Icons.chevron_right),
+                          onTap: _setLowStockLimit,
+                        ),
+                      ],
                     );
                   }
                   final p = _products[i - 1];
@@ -2141,6 +2202,60 @@ class _ProductEditorState extends State<_ProductEditor> {
               SizedBox(height: spacing.xl),
             ]),
       ),
+    );
+  }
+}
+
+/// Asks for the shop-wide low-stock limit.
+///
+/// A number, not a switch: the whole point is that a shop's limit is a count of
+/// units it wants warning at, and "on" says nothing. The consequence is stated
+/// in the dialog because the write touches every active product.
+class _LowStockLimitDialog extends StatefulWidget {
+  const _LowStockLimitDialog({required this.title, required this.initial});
+
+  final String title;
+  final int initial;
+
+  @override
+  State<_LowStockLimitDialog> createState() => _LowStockLimitDialogState();
+}
+
+class _LowStockLimitDialogState extends State<_LowStockLimitDialog> {
+  late final TextEditingController _limit =
+      TextEditingController(text: widget.initial.toString());
+
+  @override
+  void dispose() {
+    _limit.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final l10n = AppLocalizations.of(context);
+    return AlertDialog(
+      title: Text(widget.title),
+      content: TextField(
+        controller: _limit,
+        autofocus: true,
+        keyboardType: TextInputType.number,
+        decoration: InputDecoration(labelText: l10n.inventoryLowStockLimitTitle),
+      ),
+      actions: <Widget>[
+        TextButton(
+          onPressed: () => Navigator.pop(context),
+          child: Text(l10n.actionCancel),
+        ),
+        FilledButton(
+          onPressed: () {
+            final int? value = int.tryParse(_limit.text.trim());
+            if (value == null || value < 0) return;
+            Navigator.pop(context, value);
+          },
+          child: Text(l10n.actionSave),
+        ),
+      ],
     );
   }
 }

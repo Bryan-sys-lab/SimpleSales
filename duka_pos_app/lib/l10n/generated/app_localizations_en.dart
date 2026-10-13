@@ -927,6 +927,38 @@ class AppLocalizationsEn extends AppLocalizations {
   String get inventoryGoBack => 'Go back';
 
   @override
+  String get inventoryLowStockLimitTitle => 'Low stock limit';
+
+  @override
+  String inventoryLowStockLimitSubtitle(Object limit) {
+    return 'Every product warns below $limit. Tap to change.';
+  }
+
+  @override
+  String inventoryLowStockLimitAudit(num count, Object limit) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: '$count products',
+      one: '1 product',
+      zero: 'No products',
+    );
+    return '$_temp0 low-stock limit set to $limit';
+  }
+
+  @override
+  String inventoryLowStockLimitApplied(num count, Object limit) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: '$count products now warn below $limit',
+      one: '1 product now warns below $limit',
+      zero: 'No products to set',
+    );
+    return '$_temp0';
+  }
+
+  @override
   String get importsTitle => 'Import problems';
 
   @override

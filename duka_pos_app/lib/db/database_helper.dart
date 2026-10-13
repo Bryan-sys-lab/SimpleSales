@@ -123,6 +123,11 @@ class DatabaseHelper {
   static const String settingTin = 'tin';
   static const String settingEtimsDeviceId = 'etims_device_id';
 
+  /// The limit every product is low-stock below, when the shop has not set its
+  /// own per-product limit. Kept as a setting rather than read off a column
+  /// because the limit is a policy about the shop, not a fact about one item.
+  static const String settingLowStockLimit = 'low_stock_limit';
+
   /// Test-only: opens an existing database *file* at the current schema
   /// version, running the real [_onUpgrade].
   ///
@@ -1642,6 +1647,25 @@ SELECT name FROM staff GROUP BY name HAVING COUNT(*) = 1
     final stored = (saleRow['receipt_number'] as String?)?.trim();
     if (stored != null && stored.isNotEmpty) return stored;
     return 'POS-${(saleRow['id'] as int? ?? 0).toString().padLeft(receiptSequenceDigits, '0')}';
+  }
+
+  /// Sets the low-stock limit for every active product in one transaction.
+  ///
+  /// A shop deciding its limit is 8, not 5, is not a decision about 214
+  /// products one at a time — and an owner who will not tap through an editor
+  /// 214 times ends up with a dashboard warning about nothing. One write, one
+  /// count returned, one audit row.
+  ///
+  /// Only `reorder_level` and the audit column are written; a product's name,
+  /// price and stock are read and rewritten untouched, because upsertProduct
+  /// replaces the whole row.
+  Future<int> setLowStockLimit(int limit) async {
+    final List<Product> products = await getProducts(activeOnly: true);
+    if (products.isEmpty) return 0;
+    await upsertProducts(<Product>[
+      for (final product in products) product.copyWith(reorderLevel: limit),
+    ]);
+    return products.length;
   }
 
   Future<int> upsertProduct(Product p) async {

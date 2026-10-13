@@ -1589,6 +1589,30 @@ abstract class AppLocalizations {
   /// **'Go back'**
   String get inventoryGoBack;
 
+  /// No description provided for @inventoryLowStockLimitTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Low stock limit'**
+  String get inventoryLowStockLimitTitle;
+
+  /// No description provided for @inventoryLowStockLimitSubtitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Every product warns below {limit}. Tap to change.'**
+  String inventoryLowStockLimitSubtitle(Object limit);
+
+  /// No description provided for @inventoryLowStockLimitAudit.
+  ///
+  /// In en, this message translates to:
+  /// **'{count, plural, =0{No products} =1{1 product} other{{count} products}} low-stock limit set to {limit}'**
+  String inventoryLowStockLimitAudit(num count, Object limit);
+
+  /// No description provided for @inventoryLowStockLimitApplied.
+  ///
+  /// In en, this message translates to:
+  /// **'{count, plural, =0{No products to set} =1{1 product now warns below {limit}} other{{count} products now warn below {limit}}}'**
+  String inventoryLowStockLimitApplied(num count, Object limit);
+
   /// No description provided for @importsTitle.
   ///
   /// In en, this message translates to:

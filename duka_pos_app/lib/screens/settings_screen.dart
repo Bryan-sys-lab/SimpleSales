@@ -217,6 +217,11 @@ class _SettingsScreenState extends State<SettingsScreen>
         // Turning the shop on here rather than making the owner find a second
         // switch: a printer they just paired is a printer they want used.
         enabled: true,
+        // And the same reasoning one switch over. A shop pairs a printer to
+        // print receipts, so leaving print-after-sale off after pairing means
+        // the receipt they just wired up never appears on a sale — the switch
+        // exists to turn it OFF, not as a second thing to discover.
+        printAfterSale: true,
       ));
       if (!mounted) return;
       _err(l10n.settingsPrinterPaired(chosen.label));
