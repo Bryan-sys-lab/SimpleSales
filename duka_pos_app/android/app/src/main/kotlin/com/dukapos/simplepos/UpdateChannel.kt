@@ -37,8 +37,18 @@ class UpdateChannel(private val activity: MainActivity) {
 
     companion object {
         const val CHANNEL = "duka.app.update"
+
+        /** The provider's authority suffix, after the app id. */
         private const val AUTHORITY_SUFFIX = ".fileprovider"
-        private const val REQUEST_INSTALL = 0x5157
+
+        /** The request code for the install-permission screen.
+         *
+         * `internal`, not `private`: MainActivity matches the result that comes
+         * back against it, and it is a DIFFERENT class. A `private` constant
+         * here is a compile error at that use, which is how this first failed.
+         * The channel owns the code and the activity owns the routing to it,
+         * and neither can hold the other's half. */
+        internal const val REQUEST_INSTALL = 0x5157
     }
 
     private var pendingResult: MethodChannel.Result? = null
