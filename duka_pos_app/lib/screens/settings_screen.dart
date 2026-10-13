@@ -14,6 +14,7 @@ import '../services/app_state.dart';
 import '../services/account_deletion_service.dart';
 import '../services/audit_actor.dart';
 import '../services/auth_service.dart';
+import '../services/session_refresh_mixin.dart';
 import '../services/staff_credential_cache.dart';
 import '../services/sync_service.dart';
 import '../services/excel_service.dart';
@@ -48,7 +49,8 @@ class SettingsScreen extends StatefulWidget {
   State<SettingsScreen> createState() => _SettingsScreenState();
 }
 
-class _SettingsScreenState extends State<SettingsScreen> {
+class _SettingsScreenState extends State<SettingsScreen>
+    with SessionRefresh<SettingsScreen> {
   /// The lockout key for the owner's own PIN.
   ///
   /// The same literal the login pad uses for its owner entry, so a wrong PIN
@@ -79,6 +81,18 @@ class _SettingsScreenState extends State<SettingsScreen> {
     super.initState();
     _load();
   }
+
+  /// The roster on screen was read for the session that just ended, and staff
+  /// management is exactly what a sign-out can change. Drop the list rather
+  /// than leave the previous session's roster — with its PIN-reset buttons —
+  /// in front of whoever signs in next.
+  @override
+  void clearForSession() {
+    _staff = const <Staff>[];
+  }
+
+  @override
+  Future<void> reloadFromSession() => _load();
 
   Future<void> _load() async {
     final staff = await DatabaseHelper.instance.getStaff();

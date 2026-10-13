@@ -12,6 +12,7 @@ import '../services/app_state.dart';
 import '../services/excel_service.dart';
 import '../services/printer/printer_config.dart';
 import '../services/printer/receipt_printer.dart';
+import '../services/session_refresh_mixin.dart';
 import '../theme/app_colors.dart';
 import '../theme/app_haptics.dart';
 import '../theme/app_spacing.dart';
@@ -109,7 +110,8 @@ class ReportsScreen extends StatefulWidget {
   State<ReportsScreen> createState() => _ReportsScreenState();
 }
 
-class _ReportsScreenState extends State<ReportsScreen> {
+class _ReportsScreenState extends State<ReportsScreen>
+    with SessionRefresh<ReportsScreen> {
   final ExcelService _excel = ExcelService();
   final TextEditingController _search = TextEditingController();
 
@@ -132,6 +134,22 @@ class _ReportsScreenState extends State<ReportsScreen> {
     _search.dispose();
     super.dispose();
   }
+
+  /// The ledger these rows came from was read for the session that just
+  /// ended, so the rows go with it. The filter goes too: it was built against
+  /// a cashier's own sales, and a shop-wide re-read that keeps it would
+  /// silently narrow the new session's view.
+  @override
+  void clearForSession() {
+    _view = const ReportsLoading(ReportsData.empty);
+    _shown = ReportsData.empty;
+    _query = '';
+    _unfilteredCount = 0;
+    _search.clear();
+  }
+
+  @override
+  Future<void> reloadFromSession() => _load();
 
   Future<void> _load() async {
     final AppState state = context.read<AppState>();

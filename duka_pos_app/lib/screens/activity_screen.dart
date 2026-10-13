@@ -22,6 +22,7 @@ import 'package:flutter/material.dart';
 import '../l10n/generated/app_localizations.dart';
 import '../models/audit_log.dart';
 import '../services/cross_shop_audit_reader.dart';
+import '../services/session_refresh_mixin.dart';
 import '../theme/app_colors.dart';
 import '../theme/app_shapes.dart';
 import '../theme/app_spacing.dart';
@@ -81,7 +82,8 @@ class ActivityScreen extends StatefulWidget {
   State<ActivityScreen> createState() => _ActivityScreenState();
 }
 
-class _ActivityScreenState extends State<ActivityScreen> {
+class _ActivityScreenState extends State<ActivityScreen>
+    with SessionRefresh<ActivityScreen> {
   ActivityView _view = ActivityView.merged;
   ActivitySnapshot _snapshot = ActivitySnapshot.empty;
   bool _loading = true;
@@ -92,6 +94,19 @@ class _ActivityScreenState extends State<ActivityScreen> {
     super.initState();
     _load();
   }
+
+  /// The audit rows on screen were read for the session that just ended.
+  /// Back to loading with nothing behind it: an activity log left on screen
+  /// under a new session is the previous session's log.
+  @override
+  void clearForSession() {
+    _snapshot = ActivitySnapshot.empty;
+    _loading = true;
+    _failed = false;
+  }
+
+  @override
+  Future<void> reloadFromSession() => _load();
 
   Future<void> _load() async {
     setState(() {

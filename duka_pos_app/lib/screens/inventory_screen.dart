@@ -16,6 +16,7 @@ import '../services/barcode/barcode_service.dart';
 import '../services/backend_service.dart';
 import '../services/live_refresh_mixin.dart';
 import '../services/live_channel_service.dart';
+import '../services/session_refresh_mixin.dart';
 import '../ui/components/controls.dart';
 import '../utils/error_utils.dart';
 import '../utils/money.dart';
@@ -48,7 +49,7 @@ class InventoryScreen extends StatefulWidget {
 }
 
 class _InventoryScreenState extends State<InventoryScreen>
-    with LiveRefresh<InventoryScreen> {
+    with LiveRefresh<InventoryScreen>, SessionRefresh<InventoryScreen> {
   List<Product> _products = [];
 
   /// True until the first load resolves, so the list can tell "still loading"
@@ -75,6 +76,20 @@ class _InventoryScreenState extends State<InventoryScreen>
 
   @override
   Future<void> reloadFromLive() => _load();
+
+  /// The session that was reading the catalogue has ended: stop showing it
+  /// theirs. The list is re-read for whoever signs in next, and the skeleton
+  /// — not the "catalogue empty" panel — is what a shop with products and no
+  /// session yet must look like.
+  @override
+  void clearForSession() {
+    _loading = true;
+    _products = const <Product>[];
+    _variants = VariantCatalogue.empty;
+  }
+
+  @override
+  Future<void> reloadFromSession() => _load();
 
   @override
   void initState() {

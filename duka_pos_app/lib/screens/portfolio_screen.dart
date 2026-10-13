@@ -17,12 +17,15 @@
 
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
+import 'package:provider/provider.dart';
 
 import '../l10n/generated/app_localizations.dart';
+import '../services/app_state.dart';
 import '../services/backend_service.dart';
 import '../services/portfolio_kpis.dart';
 import '../services/live_refresh_mixin.dart';
 import '../services/live_channel_service.dart';
+import '../services/session_refresh_mixin.dart';
 import '../theme/app_colors.dart';
 import '../theme/app_spacing.dart';
 import '../theme/app_haptics.dart';
@@ -67,7 +70,7 @@ class PortfolioScreen extends StatefulWidget {
 }
 
 class _PortfolioScreenState extends State<PortfolioScreen>
-    with LiveRefresh<PortfolioScreen> {
+    with LiveRefresh<PortfolioScreen>, SessionRefresh<PortfolioScreen> {
   PortfolioRange _range = PortfolioRange.week;
   _PortfolioView _view = const _PortfolioLoading();
 
@@ -81,6 +84,18 @@ class _PortfolioScreenState extends State<PortfolioScreen>
   @override
   Future<void> reloadFromLive() => _load();
 
+  /// These KPIs are fetched as the signed-in shop's identity. Signing out
+  /// tears the tokens that produced them down, so nothing read under them may
+  /// outlive the session: back to loading, and the read that follows either
+  /// answers for the new session or fails honestly.
+  @override
+  void clearForSession() {
+    _view = const _PortfolioLoading();
+  }
+
+  @override
+  Future<void> reloadFromSession() => _load();
+
   @override
   void initState() {
     super.initState();
@@ -89,6 +104,11 @@ class _PortfolioScreenState extends State<PortfolioScreen>
 
   Future<void> _load() async {
     final PortfolioRange range = _range;
+    // Whose tokens this fetch will use. A read that outlives its session has
+    // to be dropped rather than painted, because these KPIs are the signed-in
+    // shop's — the next person's figures must come from the next person's
+    // fetch, however the two overlap.
+    final int session = context.read<AppState>().sessionGeneration;
     final DateTime now = DateTime.now();
     setState(() => _view = const _PortfolioLoading());
     try {
@@ -96,17 +116,21 @@ class _PortfolioScreenState extends State<PortfolioScreen>
         from: range.since(now),
         to: now,
       );
-      if (!mounted) return;
+      if (!_current(session)) return;
       setState(() {
         _view = kpis.isEmpty
             ? const _PortfolioEmpty()
             : _PortfolioContent(kpis: kpis);
       });
     } catch (_) {
-      if (!mounted) return;
+      if (!_current(session)) return;
       setState(() => _view = const _PortfolioFailure());
     }
   }
+
+  /// Whether the session this load started under is still the session.
+  bool _current(int session) =>
+      mounted && context.read<AppState>().sessionGeneration == session;
 
   void _setRange(PortfolioRange range) {
     if (range == _range) return;

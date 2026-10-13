@@ -10,6 +10,7 @@ import '../models/audit_log.dart';
 import '../services/app_state.dart';
 import '../services/audit_actor.dart';
 import '../services/backend_service.dart';
+import '../services/session_refresh_mixin.dart';
 import '../services/barcode/barcode_service.dart';
 import '../services/barcode/scan_input_service.dart';
 import '../services/etims/etims_service.dart';
@@ -39,7 +40,8 @@ class SellScreen extends StatefulWidget {
   State<SellScreen> createState() => _SellScreenState();
 }
 
-class _SellScreenState extends State<SellScreen> {
+class _SellScreenState extends State<SellScreen>
+    with SessionRefresh<SellScreen> {
   static const _pollTimeout = Duration(seconds: 20);
   final List<CartItem> _cart = [];
   final Map<int, double> _reservedByProduct = <int, double>{};
@@ -128,6 +130,26 @@ class _SellScreenState extends State<SellScreen> {
     _seenCatalogueGeneration = generation;
     _loadProducts();
   }
+
+  /// A part-built cart belongs to the session that built it.
+  ///
+  /// The whole screen is rebuilt for whoever signs in next, and a cart that
+  /// outlived the person who filled it would sell THEIR goods under the NEXT
+  /// cashier's name. The reservations go with it: they are derived from the
+  /// cart, and holding them would keep stock correctly counted for lines that
+  /// are no longer there. The search goes too — it is the previous session's
+  /// typing, and a catalogue filter nobody asked the next cashier about.
+  @override
+  void clearForSession() {
+    _cart.clear();
+    _reservedByProduct.clear();
+    _reservedByVariant.clear();
+    _statusMessage = null;
+    _searchController.clear();
+  }
+
+  @override
+  Future<void> reloadFromSession() => _loadProducts();
 
   @override
   void dispose() {

@@ -4,6 +4,7 @@ import 'package:flutter/foundation.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../models/models.dart';
 import '../db/database_helper.dart';
+import 'analytics.dart';
 import 'failure_recorder.dart';
 import 'oidc_service.dart';
 import 'roles.dart';
@@ -75,6 +76,34 @@ class AppState extends ChangeNotifier {
   /// The last staff id that signed in on this till, persisted across restarts
   /// so the credential cache can be keyed correctly.
   int? rememberedStaffId;
+
+  /// Advances by one on every sign-in and every sign-out.
+  ///
+  /// The counter exists because a session is a *fact about the data a screen
+  /// has already read*, and nothing else says so. The router swaps the shell
+  /// out on a normal sign-out, which disposes every branch screen and so makes
+  /// their snapshots die with the session — but that is a property the
+  /// navigation HAPPENS to have, not one any screen can rely on: an idle
+  /// timeout, a future overlay PIN pad, or a shell that survives a redirect
+  /// all leave the screens alive holding the finished session's figures. A
+  /// screen that watches this number reloads for whoever is standing at the
+  /// till NOW, and — the part that matters — clears what it held for whoever
+  /// was standing there before.
+  ///
+  /// A counter rather than a bool or a nullable name: two consecutive sessions
+  /// belonging to the same person (sign out, sign back in) still change it, and
+  /// an int cannot be half-set.
+  int _sessionGeneration = 0;
+
+  /// The current value. Watched by the shell screens through [sessionGeneration].
+  int get sessionGeneration => _sessionGeneration;
+
+  /// Marks the session as changed. Called beside every notification that
+  /// alters who is signed in, because `notifyListeners` alone tells a listener
+  /// THAT something changed and never WHAT.
+  void _advanceSession() {
+    _sessionGeneration++;
+  }
 
   ShopRole get role => _role;
 
@@ -209,6 +238,7 @@ class AppState extends ChangeNotifier {
     currentStaffId = null;
     isOwnerSession = false;
     _role = ShopRole.cashier;
+    _advanceSession();
     unawaited(clearRememberedStaff());
     // Tear down the previous shop's online identity too. Like signOut, this
     // must not block the workspace switch — the tokens are cleared in the
@@ -225,6 +255,7 @@ class AppState extends ChangeNotifier {
     currentStaffId = staffId;
     isOwnerSession = true;
     _role = ShopRole.admin;
+    _advanceSession();
     failureRecorder.context.actorName = shop.name;
     unawaited(clearRememberedStaff());
     notifyListeners();
@@ -239,6 +270,7 @@ class AppState extends ChangeNotifier {
     // A name that is not a known role resolves to cashier rather than to
     // manager. See [ShopRole.parse].
     _role = ShopRole.parse(staff.role);
+    _advanceSession();
     unawaited(rememberStaff(staff));
     notifyListeners();
   }
@@ -253,6 +285,7 @@ class AppState extends ChangeNotifier {
     currentStaffId = null;
     isOwnerSession = asOwner;
     _role = asOwner ? ShopRole.admin : ShopRole.parse(role);
+    _advanceSession();
     notifyListeners();
   }
 
@@ -276,6 +309,7 @@ class AppState extends ChangeNotifier {
     currentStaffId = null;
     isOwnerSession = false;
     _role = ShopRole.cashier;
+    _advanceSession();
     unawaited(clearRememberedStaff());
     notifyListeners();
     // The offline staff credential cache goes too.
@@ -350,7 +384,7 @@ class AppState extends ChangeNotifier {
   /// A cashier gets their own id, and `null` is never used to mean "unknown" —
   /// a cashier's queries must be narrow, so an unresolved cashier scopes to
   /// nobody rather than to everybody.
-  int? get analyticsStaffId => seesAllSales ? null : (currentStaffId ?? -1);
+  int? get analyticsStaffId => seesAllSales ? null : (currentStaffId ?? kUnmatchedStaffId);
 
   void refresh() => notifyListeners();
 }

@@ -17,6 +17,7 @@ import '../ui/components/controls.dart';
 import '../services/workspace_service.dart';
 import '../services/live_refresh_mixin.dart';
 import '../services/live_channel_service.dart';
+import '../services/session_refresh_mixin.dart';
 import '../ui/components/states.dart';
 import '../ui/components/surface.dart';
 import '../widgets/chart.dart';
@@ -169,7 +170,7 @@ class AnalyticsScreen extends StatefulWidget {
 }
 
 class _AnalyticsScreenState extends State<AnalyticsScreen>
-    with LiveRefresh<AnalyticsScreen> {
+    with LiveRefresh<AnalyticsScreen>, SessionRefresh<AnalyticsScreen> {
   /// Whether to offer the all-shops view.
   ///
   /// Read from the local shop registry rather than the backend: the answer is
@@ -200,6 +201,22 @@ class _AnalyticsScreenState extends State<AnalyticsScreen>
 
   @override
   Future<void> reloadFromLive() => _load();
+
+  /// The session that was reading these figures has ended: the figures on
+  /// screen were read for it, so they go. The shop's takings are not a
+  /// session's to keep — a shell that outlives a sign-out must not offer them
+  /// to whoever signs in next — and the empty snapshot is what makes the
+  /// skeleton the only honest thing to draw while the new session's read is
+  /// in flight.
+  @override
+  void clearForSession() {
+    _view = const AnalyticsLoading(AnalyticsSnapshot.empty);
+    _sortedProducts = const <ProductSalesRow>[];
+    _salesPoints = const <PosLinePoint>[];
+  }
+
+  @override
+  Future<void> reloadFromSession() => _load();
 
   @override
   void initState() {

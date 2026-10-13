@@ -283,6 +283,20 @@ class AttentionSummary {
 // Pure helpers
 // ---------------------------------------------------------------------------
 
+/// A `staff_id` that matches no row in `staff`.
+///
+/// The value used when a cashier's own id cannot be resolved. `null` is NOT
+/// used for that: every scoped query treats null as "no filter", so an
+/// unresolved cashier would otherwise read the whole shop's takings as their
+/// own. `-1` matches nobody, which is the safe answer — an unresolved session
+/// sees nothing rather than everything.
+///
+/// One definition, because the rule is one rule: the id is a query argument,
+/// so the places that choose it — `AppState.analyticsStaffId` and the
+/// dashboard's own-scoping through [staffIdForCashierOrNobody] — cannot drift
+/// into disagreeing about what "unresolved" costs.
+const int kUnmatchedStaffId = -1;
+
 /// The `staff.id` a cashier's name resolves to, or null when it resolves to
 /// nothing usable.
 ///
@@ -301,6 +315,38 @@ int? staffIdForCashier(Iterable<Staff> staff, String? name) {
   if (matches.length != 1) return null;
   return matches.first.id;
 }
+
+/// The id a cashier's own figures are scoped by, resolving their name.
+///
+/// The only place `staffIdForCashier`'s null is translated into
+/// [kUnmatchedStaffId], and it has to be somewhere: the null it returns means
+/// "I could not work out who this is", while the null a scoped query accepts
+/// means "every row in the shop". Handing one straight to the other is how a
+/// cashier with an unresolvable name ends up reading the whole shop's takings
+/// as their own — which is the opposite of what the null was for.
+///
+/// So an unresolved cashier sees nothing: figures they did not take are not
+/// theirs, and showing them a shop total is the worse of the two errors.
+int staffIdForCashierOrNobody(Iterable<Staff> staff, String? name) =>
+    staffIdForCashier(staff, name) ?? kUnmatchedStaffId;
+
+/// The id a signed-in person's OWN figures are scoped by.
+///
+/// The session's own id comes first, because `signInAsStaff` carries the local
+/// staff row's id — the same id the ledger's `staff_id` column holds — so it
+/// is the authoritative answer wherever the session has one. The name lookup
+/// is the fallback, for a session restored from a backup that has a name and
+/// no id, and it goes through [staffIdForCashierOrNobody] so its "unresolved"
+/// still reads as nobody.
+///
+/// Never null. Null is the one answer a session's own figures must not get,
+/// because every scoped query reads it as "every row in the shop".
+int ownStaffId({
+  required int? sessionStaffId,
+  required Iterable<Staff> staff,
+  required String? staffName,
+}) =>
+    sessionStaffId ?? staffIdForCashierOrNobody(staff, staffName);
 
 /// The hour with the most takings, or null when the day has no sales.
 ///

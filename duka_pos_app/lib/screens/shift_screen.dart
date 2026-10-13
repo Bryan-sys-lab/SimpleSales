@@ -33,6 +33,7 @@ import '../models/models.dart';
 import '../models/audit_log.dart';
 import '../services/app_state.dart';
 import '../services/audit_actor.dart';
+import '../services/session_refresh_mixin.dart';
 import '../theme/app_colors.dart';
 import '../theme/app_haptics.dart';
 import '../theme/app_spacing.dart';
@@ -98,7 +99,8 @@ class ShiftScreen extends StatefulWidget {
   State<ShiftScreen> createState() => _ShiftScreenState();
 }
 
-class _ShiftScreenState extends State<ShiftScreen> {
+class _ShiftScreenState extends State<ShiftScreen>
+    with SessionRefresh<ShiftScreen> {
   _ShiftState? _state;
 
   @override
@@ -106,6 +108,17 @@ class _ShiftScreenState extends State<ShiftScreen> {
     super.initState();
     _load();
   }
+
+  /// A shift ledger is one person's reconciliation, read for the session that
+  /// just ended. Dropping it is the only honest answer: the expected figure
+  /// belongs to whoever is holding the till NOW.
+  @override
+  void clearForSession() {
+    _state = null;
+  }
+
+  @override
+  Future<void> reloadFromSession() => _load();
 
   AppState get _appState => context.read<AppState>();
 
@@ -124,15 +137,19 @@ class _ShiftScreenState extends State<ShiftScreen> {
     setState(() => _state ??= const _ShiftLoading());
 
     final AppState appState = _appState;
+    // Whose shift this read is for. A ledger that outlives its session is
+    // dropped rather than painted: it is one person's reconciliation, and the
+    // next person's must come from the next person's read.
+    final int session = appState.sessionGeneration;
     try {
       final ShiftLedger ledger = await loadShiftLedger(
         viewerStaffId: appState.currentStaffId,
         seesAllSales: appState.seesAllSales,
       );
-      if (!mounted) return;
+      if (!mounted || appState.sessionGeneration != session) return;
       setState(() => _ShiftReady(ledger: ledger, message: null));
     } on Object {
-      if (!mounted) return;
+      if (!mounted || appState.sessionGeneration != session) return;
       // A refresh that fails keeps what it had: the figures on screen are still
       // true as of the last successful read, and blanking them turns a dropped
       // read into an empty shift ledger.

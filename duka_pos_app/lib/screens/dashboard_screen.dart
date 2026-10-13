@@ -12,6 +12,7 @@ import '../app_brand.dart';
 import '../services/app_state.dart';
 import '../services/live_channel_service.dart';
 import '../services/live_refresh_mixin.dart';
+import '../services/session_refresh_mixin.dart';
 import '../services/etims/etims_service.dart';
 import '../services/excel_service.dart';
 import '../theme/app_haptics.dart';
@@ -111,9 +112,17 @@ final class _DashboardReady extends _DashboardState {
 }
 
 class _DashboardScreenState extends State<DashboardScreen>
-    with LiveRefresh<DashboardScreen> {
+    with LiveRefresh<DashboardScreen>, SessionRefresh<DashboardScreen> {
   _DashboardState? _state;
-  bool _loading = false;
+
+  /// Which load is the current one.
+  ///
+  /// A serial rather than a bool, because a load can be started by three
+  /// different things — entry, a live change, a session change — and the LAST
+  /// one started has to be the one whose figures land. An older load that
+  /// finished after a newer one would repaint the older read, so every result
+  /// is checked against this before it is allowed anywhere near the screen.
+  int _loadSerial = 0;
 
   @override
   Set<LiveReason> get liveReasons => const <LiveReason>{
@@ -128,6 +137,21 @@ class _DashboardScreenState extends State<DashboardScreen>
   @override
   Future<void> reloadFromLive() => _load();
 
+  /// The session that built the figures on screen has ended: drop them.
+  ///
+  /// The greeting, the shift card, the scope label and the takings are all
+  /// one person's answers, and a shell that outlives a sign-out would
+  /// otherwise keep showing them to whoever signs in next. Clearing to the
+  /// skeleton rather than to zeros is the honest state: nothing is known
+  /// about the new session yet, and "KSh 0" is a figure.
+  @override
+  void clearForSession() {
+    _state = null;
+  }
+
+  @override
+  Future<void> reloadFromSession() => _load();
+
   @override
   void initState() {
     super.initState();
@@ -135,19 +159,37 @@ class _DashboardScreenState extends State<DashboardScreen>
   }
 
   Future<void> _load() async {
-    if (_loading) return;
+    final int serial = ++_loadSerial;
     final AppState appState = context.read<AppState>();
+    // Which session this load answers. A load reads the session in pieces
+    // across several awaits — the role up front, the name and the id later —
+    // so a sign-out or sign-in landing mid-load would otherwise be answered
+    // with one session's scope and another session's greeting.
+    final int session = appState.sessionGeneration;
     setState(() {
       _state ??= const _DashboardLoading();
-      _loading = true;
     });
 
     try {
       final DatabaseHelper db = DatabaseHelper.instance;
       final bool ownOnly = !appState.canManageStock;
+      // A cashier's own figures only. An id that cannot be resolved scopes to
+      // NOBODY: the name lookup returns nothing for a name that matches no
+      // roster row or two of them, and null means "no filter" to every scoped
+      // query — which would show this cashier the whole shop's takings as
+      // their own. Over-reporting someone's day is the worse of the two
+      // errors, so the unresolved case reads as nothing sold. See `ownStaffId`
+      // for the resolution order and the closed failure.
       final int? staffId = ownOnly
-          ? staffIdForCashier(
-              await db.getStaff(activeOnly: false), appState.currentStaffName)
+          ? ownStaffId(
+              // The session's own id first: `signInAsStaff` carries the local
+              // staff row's id, and that is the id `sales.staff_id` holds. The
+              // name lookup is only the fallback for a restored session with
+              // no id, and it fails CLOSED either way — see `ownStaffId`.
+              sessionStaffId: appState.currentStaffId,
+              staff: await db.getStaff(activeOnly: false),
+              staffName: appState.currentStaffName,
+            )
           : null;
 
       final DateTime now = DateTime.now();
@@ -159,11 +201,14 @@ class _DashboardScreenState extends State<DashboardScreen>
           await db.salesTotalsFor(since: dayStart, staffId: staffId);
       final DailyTotals totalsAll = await db.salesTotalsFor(staffId: staffId);
 
-      if (!mounted) return;
+      if (!_current(serial, session, appState)) return;
       if (products.isEmpty && !totalsAll.hasSales) {
         final Shift? shift = appState.currentStaffId == null
             ? null
             : await db.getOpenShift(appState.currentStaffId!);
+        // Re-checked: the greeting below reads the session again, and the read
+        // that follows it is enough time for an idle sign-out to land.
+        if (!_current(serial, session, appState)) return;
         final String scopeLabel =
             ownOnly ? (appState.currentStaffName ?? 'you') : 'the shop';
         setState(() {
@@ -194,7 +239,7 @@ class _DashboardScreenState extends State<DashboardScreen>
         });
         if (shift == null) return;
         final Money expected = await db.expectedTillBalance(shift);
-        if (!mounted) return;
+        if (!_current(serial, session, appState)) return;
         final _DashboardReady? ready = _state as _DashboardReady?;
         if (ready == null || ready.openShift?.id != shift.id) return;
         setState(() => _state = _DashboardReady(
@@ -234,10 +279,14 @@ class _DashboardScreenState extends State<DashboardScreen>
         });
 
       final Shift? shift = results[4] as Shift?;
+
+      // Every session read from here on — the scope label and the greeting —
+      // is behind the guard, so a sign-out that landed during the batch above
+      // cannot flavour the figures it finally leaves on screen.
+      if (!_current(serial, session, appState)) return;
       final String scopeLabel =
           ownOnly ? (appState.currentStaffName ?? 'you') : 'the shop';
 
-      if (!mounted) return;
       setState(() {
         _state = _DashboardReady(
           totals: totalsToday,
@@ -262,7 +311,7 @@ class _DashboardScreenState extends State<DashboardScreen>
 
       if (shift == null) return;
       final Money expected = await db.expectedTillBalance(shift);
-      if (!mounted) return;
+      if (!_current(serial, session, appState)) return;
       final _DashboardReady? ready = _state as _DashboardReady?;
       if (ready == null || ready.openShift?.id != shift.id) return;
       setState(() => _state = _DashboardReady(
@@ -279,18 +328,26 @@ class _DashboardScreenState extends State<DashboardScreen>
             expectedTill: expected,
           ));
     } catch (_) {
-      if (!mounted) return;
+      if (!_current(serial, session, appState)) return;
       setState(() {
         _state ??= const _DashboardFailed();
       });
-    } finally {
-      if (mounted) {
-        setState(() {
-          _loading = false;
-        });
-      }
     }
   }
+
+  /// Whether the load numbered [serial], started for session [session], is
+  /// still the one this screen is waiting for.
+  ///
+  /// Two ways a load can be overtaken, and both drop its result: a newer load
+  /// started (which will deliver), or the session changed underneath it — in
+  /// which case what it read is a mix of two sessions' scope and greeting and
+  /// is nobody's figures. The session case is not theoretical: this screen is
+  /// on shared till hardware, and an idle sign-out lands exactly when the
+  /// first load of the next session is in flight.
+  bool _current(int serial, int session, AppState appState) =>
+      mounted &&
+      serial == _loadSerial &&
+      appState.sessionGeneration == session;
 
   /// "Good morning, Wanjiku · Cashier · showing the shop".
   ///
