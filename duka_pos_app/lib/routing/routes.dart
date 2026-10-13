@@ -37,6 +37,7 @@ abstract final class Routes {
   static const String activity = '/settings/activity';
   static const String diagnostics = '/settings/diagnostics';
   static const String profile = '/settings/profile';
+  static const String imports = '/settings/imports';
   static const String taxSettings = '/settings/tax';
   static const String cameraScan = '/sell/scan';
 

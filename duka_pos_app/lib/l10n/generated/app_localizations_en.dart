@@ -927,6 +927,29 @@ class AppLocalizationsEn extends AppLocalizations {
   String get inventoryGoBack => 'Go back';
 
   @override
+  String get importsTitle => 'Import problems';
+
+  @override
+  String get importsEmptyTitle => 'Nothing waiting on you';
+
+  @override
+  String get importsEmptyMessage =>
+      'Every row from the last import was either written or answered. Import a spreadsheet to add stock in bulk.';
+
+  @override
+  String get importsLoadFailed =>
+      'Couldn\'t read the import list. Try again; if it keeps happening, contact support.';
+
+  @override
+  String get importsCompleteAction => 'Fill in what\'s missing';
+
+  @override
+  String get importsCompleteTitle => 'Finish this row';
+
+  @override
+  String get importsPriceLabel => 'This price';
+
+  @override
   String inventoryLowPriceMessage(Object cost, Object name, Object price) {
     return '$name would sell at a loss (KSh $price vs cost KSh $cost). Save anyway?';
   }

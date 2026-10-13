@@ -1589,6 +1589,48 @@ abstract class AppLocalizations {
   /// **'Go back'**
   String get inventoryGoBack;
 
+  /// No description provided for @importsTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Import problems'**
+  String get importsTitle;
+
+  /// No description provided for @importsEmptyTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Nothing waiting on you'**
+  String get importsEmptyTitle;
+
+  /// No description provided for @importsEmptyMessage.
+  ///
+  /// In en, this message translates to:
+  /// **'Every row from the last import was either written or answered. Import a spreadsheet to add stock in bulk.'**
+  String get importsEmptyMessage;
+
+  /// No description provided for @importsLoadFailed.
+  ///
+  /// In en, this message translates to:
+  /// **'Couldn\'t read the import list. Try again; if it keeps happening, contact support.'**
+  String get importsLoadFailed;
+
+  /// No description provided for @importsCompleteAction.
+  ///
+  /// In en, this message translates to:
+  /// **'Fill in what\'s missing'**
+  String get importsCompleteAction;
+
+  /// No description provided for @importsCompleteTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Finish this row'**
+  String get importsCompleteTitle;
+
+  /// No description provided for @importsPriceLabel.
+  ///
+  /// In en, this message translates to:
+  /// **'This price'**
+  String get importsPriceLabel;
+
   /// No description provided for @inventoryLowPriceMessage.
   ///
   /// In en, this message translates to:

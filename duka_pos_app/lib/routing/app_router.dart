@@ -7,6 +7,7 @@ import '../services/failure_recorder.dart';
 import '../screens/analytics_screen.dart';
 import '../screens/dashboard_screen.dart';
 import '../screens/database_error_screen.dart';
+import '../screens/imports_screen.dart';
 import '../screens/inventory_screen.dart';
 import '../screens/login_screen.dart';
 import '../screens/staff_login_screen.dart';
@@ -325,6 +326,17 @@ List<RouteBase> _shellRoutes() {
                   pageBuilder:
                       (BuildContext context, GoRouterState routerState) =>
                           _fadeThrough(routerState, const ProfileScreenOpen()),
+                ),
+                // The rows an import asked about. A child of Settings for the
+                // same reason as the others — an owner looks for what needs
+                // finishing where they look for everything else — and a `push`
+                // target so Back returns them to the Settings scroll position.
+                GoRoute(
+                  path: 'imports',
+                  parentNavigatorKey: rootNavigatorKey,
+                  pageBuilder:
+                      (BuildContext context, GoRouterState routerState) =>
+                          _fadeThrough(routerState, const ImportsScreen()),
                 ),
               ],
             ),

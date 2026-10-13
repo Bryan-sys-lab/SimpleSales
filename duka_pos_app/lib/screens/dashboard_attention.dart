@@ -7,6 +7,7 @@
 // go first and the sales figures follow.
 
 import 'package:flutter/material.dart';
+import 'package:go_router/go_router.dart';
 import 'package:provider/provider.dart';
 import 'package:intl/intl.dart';
 
@@ -193,7 +194,13 @@ class DashboardAttentionCard extends StatelessWidget {
           tone: StatusTone.warning,
           label: '${summary.openImportProblems} row'
               '${summary.openImportProblems == 1 ? '' : 's'} failed to import',
-          detail: 'Re-import the spreadsheet to finish that update.',
+          // The rows are answerable HERE, on the phone. The advice used to be to
+          // re-import the spreadsheet — which would not have cleared them, and
+          // which assumed a desktop and the supplier's file.
+          detail: 'Fill in what the file was missing and they are imported.',
+          action: _AttentionAction('Finish now', () {
+            context.push(Routes.imports);
+          }),
         ),
     ];
 
