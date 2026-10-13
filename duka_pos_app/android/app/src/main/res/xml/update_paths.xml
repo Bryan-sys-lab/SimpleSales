@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Where a downloaded APK may be read from.
+
+  ONLY the update folder. A FileProvider exposing more than it must is a
+  leak: every app sharing this path with it can read those files, and a path
+  covering the whole documents directory would hand the shop's encrypted
+  backups and its product photographs to any app granted a URI.
+
+  `external-path` rather than `external-files-path` because the downloaded
+  APK has to be readable by the package installer, which runs as the system
+  uid and cannot see this app's private external directory.
+-->
+<paths>
+    <external-path
+        name="updates"
+        path="Download/SimpleSales"/>
+</paths>

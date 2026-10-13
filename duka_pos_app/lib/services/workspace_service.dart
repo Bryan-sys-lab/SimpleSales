@@ -15,6 +15,25 @@ class WorkspaceService {
     return prefs.getString(activeKey) ?? legacyKey;
   }
 
+  /// [WorkspaceService.legacyKey] under another name, for a test that asserts
+  /// a shop filed under the legacy key stays filed there.
+  ///
+  /// Exposed because the constant is the value the DATABASE FILENAME is derived
+  /// from: a change to it silently moves every legacy shop's ledger to a new
+  /// empty file. A test asserting the literal value is the only thing that
+  /// catches that.
+  static const legacyKeyForTests = legacyKey;
+
+  /// [registryKey], for a test that needs to write the registry directly.
+  static const registryKeyForTests = registryKey;
+
+  /// The registry, for assertions.
+  ///
+  /// Same data [registry] returns; named separately so a test's intent is
+  /// legible at the call site.
+  static Future<Map<String, Map<String, String>>> registryForTests() =>
+      registry();
+
   static Future<void> setActiveWorkspace(String key) async {
     final prefs = await SharedPreferences.getInstance();
     await prefs.setString(activeKey, key);

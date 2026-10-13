@@ -79,6 +79,12 @@ double _sheetMaxHeight(BuildContext context) =>
     MediaQuery.sizeOf(context).height * 0.9;
 
 /// The prompt for the admin PIN.
+///
+/// Takes the email MASKED. A PIN pad is the one screen in the app that is
+/// routinely used with someone standing behind the person at the counter, and
+/// it names the address the code is going to — so it must not show the address
+/// in full. Step two below has always taken a masked value; the PIN step was
+/// passing the raw one straight through.
 class VerifyIdentityPinSheet extends StatefulWidget {
   const VerifyIdentityPinSheet({
     super.key,

@@ -1069,7 +1069,115 @@ class AppLocalizationsEn extends AppLocalizations {
   String get settingsBackupSection => 'Backup';
 
   @override
+  String get profileTitle => 'Your account';
+
+  @override
+  String get profileNoAccountYet => 'No account is set up yet.';
+
+  @override
+  String get profilePhotoLabel => 'Photograph';
+
+  @override
+  String get profilePhotoHelp =>
+      'Shown next to your name. Pick one from the gallery or take a photo.';
+
+  @override
+  String get profilePhotoChange => 'Choose';
+
+  @override
+  String get profilePhotoSaved => 'Photograph saved.';
+
+  @override
+  String get profileEmailLabel => 'Email';
+
+  @override
+  String get profileVerifiedLabel => 'Verified';
+
+  @override
+  String get profileVerifiedYes => 'Verified';
+
+  @override
+  String get profileVerifiedNo => 'Not verified yet';
+
+  @override
+  String get profileSinceLabel => 'Selling since';
+
+  @override
+  String get profileShopLabel => 'Shop';
+
+  @override
+  String get profileBackToSettings => 'Back to settings';
+
+  @override
   String get settingsAccountSection => 'Your account';
+
+  @override
+  String get settingsProfileRow => 'Your account';
+
+  @override
+  String get settingsProfileRowSubtitle => 'Your name, email and photograph';
+
+  @override
+  String get settingsUpdatesSection => 'App updates';
+
+  @override
+  String get settingsUpdatesCheck => 'Check for updates';
+
+  @override
+  String settingsUpdatesAvailable(Object version) {
+    return 'Version $version is ready';
+  }
+
+  @override
+  String settingsUpdatesFailed(Object reason) {
+    return 'Could not check ($reason)';
+  }
+
+  @override
+  String settingsUpdatesCurrent(Object version) {
+    return 'You are on the newest version ($version)';
+  }
+
+  @override
+  String get settingsUpdatesUnknownVersion => 'unknown';
+
+  @override
+  String get settingsUpdatesInstall => 'Install now';
+
+  @override
+  String settingsUpdatesDownloading(Object percent) {
+    return 'Downloading $percent%';
+  }
+
+  @override
+  String get settingsUpdatesDownloadingUnknown => 'Downloading…';
+
+  @override
+  String get settingsUpdatesReady => 'Downloaded. Tap install to apply it.';
+
+  @override
+  String get settingsUpdatesNoNotes =>
+      'No release notes were published for this version.';
+
+  @override
+  String get settingsUpdatesRefused =>
+      'The phone refused this update. It can only be installed over the same signing key and a higher build number — ask the shop\'s developer.';
+
+  @override
+  String get settingsUpdatesPermissionNeeded =>
+      'This phone needs permission to install apps. Settings has opened.';
+
+  @override
+  String get settingsUpdatesPermissionManual =>
+      'This phone needs permission to install apps. Allow it in Settings, then tap install again.';
+
+  @override
+  String get settingsUpdatesRestart => 'Restart to update';
+
+  @override
+  String settingsUpdatesPromptBody(Object version) {
+    return 'Version $version is ready. Your shop\'s data is kept — this updates the app in place instead of replacing it.';
+  }
 
   @override
   String get settingsCashMethod => 'Cash';
@@ -1077,6 +1185,17 @@ class AppLocalizationsEn extends AppLocalizations {
   @override
   String get settingsCashMethodSubtitle =>
       'Always available — works fully offline.';
+
+  @override
+  String get settingsPrinterRescan => 'Look again';
+
+  @override
+  String get settingsPrinterScanFailed =>
+      'Could not read the Bluetooth devices. Check Bluetooth is on, then look again.';
+
+  @override
+  String get settingsNoPairedPrintersHint =>
+      'Pair the printer in this phone\'s Bluetooth settings first, then look again.';
 
   @override
   String get settingsChoosePrinter => 'Choose printer';
@@ -2663,6 +2782,34 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get analyticsSalesLabel => 'Sales';
+
+  @override
+  String analyticsTopProductsCount(num count) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: '$count products sold',
+      one: '1 product sold',
+    );
+    return '$_temp0';
+  }
+
+  @override
+  String get analyticsTopProductsEmpty => 'Nothing sold in this period.';
+
+  @override
+  String analyticsTopProductsShowMore(num count) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: 'Show $count more',
+      one: 'Show 1 more',
+    );
+    return '$_temp0';
+  }
+
+  @override
+  String get analyticsTopProductsShowLess => 'Show fewer';
 
   @override
   String get analyticsProfitLabel => 'Profit';

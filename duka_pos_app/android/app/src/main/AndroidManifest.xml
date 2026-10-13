@@ -58,6 +58,13 @@
         </intent>
     </queries>
 
+    <!-- Letting the OS install an APK this app downloaded.
+         Needed only from API 26, which is why it is capped: on older releases
+         the permission exists and is granted implicitly at install time. -->
+
+    <uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES"
+        android:maxSdkVersion="25"/>
+
     <application
         android:label="SimpleSales"
         android:name="${applicationName}"
@@ -65,6 +72,30 @@
         android:allowBackup="false"
         android:fullBackupContent="false"
         android:dataExtractionRules="@xml/data_extraction_rules">
+        <!-- The hand-off that makes an in-app update possible at all from API
+             24, where a `file://` URI handed to another app throws
+             FileUriExposedException. A FileProvider is the supported
+             replacement.
+
+             MUST sit inside the application element: a `provider` is only valid
+             there, and at manifest level it is rejected by AAPT at
+             resource-linking time — which neither `flutter analyze` nor
+             `flutter test` can see, only an APK build.
+
+             This is what lets a till update WITHOUT being uninstalled: the
+             package manager treats the install as an update of an existing
+             package, so the app's own data directory — the shop's whole ledger
+             — survives. An uninstall would delete it. -->
+        <provider
+            android:name="androidx.core.content.FileProvider"
+            android:authorities="${applicationId}.fileprovider"
+            android:exported="false"
+            android:grantUriPermissions="true">
+            <meta-data
+                android:name="android.support.FILE_PROVIDER_PATHS"
+                android:resource="@xml/update_paths"/>
+        </provider>
+
         
         <activity
             android:name=".MainActivity"

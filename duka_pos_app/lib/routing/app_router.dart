@@ -17,6 +17,7 @@ import '../screens/reports_screen.dart';
 import '../screens/sell_screen.dart';
 import '../screens/activity_screen.dart';
 import '../screens/diagnostics_screen.dart';
+import '../screens/profile_screen.dart';
 import '../screens/settings_screen.dart';
 import '../screens/shift_screen.dart';
 import '../screens/shot_cups_screen.dart';
@@ -313,6 +314,17 @@ List<RouteBase> _shellRoutes() {
                   pageBuilder:
                       (BuildContext context, GoRouterState routerState) =>
                           _fadeThrough(routerState, DiagnosticsScreenOpen()),
+                ),
+                // The shop's own account: who is signed in, where it is
+                // verified, and the avatar. A child of Settings for the same
+                // reason as the other two — an owner looks for their own
+                // account where they look for everything else.
+                GoRoute(
+                  path: 'profile',
+                  parentNavigatorKey: rootNavigatorKey,
+                  pageBuilder:
+                      (BuildContext context, GoRouterState routerState) =>
+                          _fadeThrough(routerState, const ProfileScreenOpen()),
                 ),
               ],
             ),

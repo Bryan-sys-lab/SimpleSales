@@ -38,6 +38,9 @@ import '../ui/components/status.dart';
 import '../ui/components/surface.dart';
 import '../ui/dialogs/verify_identity_dialog.dart';
 import '../ui/layout/page.dart';
+import '../services/app_update_service.dart';
+import '../services/app_release.dart';
+import '../services/pin_reset_service.dart';
 
 class SettingsScreen extends StatefulWidget {
   const SettingsScreen({super.key});
@@ -162,34 +165,30 @@ class _SettingsScreenState extends State<SettingsScreen> {
         }
       }
 
-      final devices = await printer.pairedDevices();
+      // The printer is chosen through a dialog that can RE-SCAN.
+      //
+      // The list used to be fetched once, before the dialog was built, and the
+      // dialog was static. A shop that powered the printer on after tapping
+      // "Pair a printer" saw "no printers" with no way to look again — the
+      // usual reason a thermal printer is not visible is that it has not been
+      // discovered yet, and the only remedy is another scan.
+      // The navigator and the snapshot are both captured BEFORE the await:
+      // the context must not cross the gap, and a dialog shown from a stale
+      // context is the classic way this crashes after a rebuild.
+      final String selectedAddress = _printer.macAddress;
+      // `mounted` here is the guard the lint asks for: this runs inside an
+      // async method that already awaited the Bluetooth permission check, and
+      // a context used after that must be re-confirmed.
       if (!mounted) return;
-      if (devices.isEmpty) {
-        _err(l10n.settingsNoPairedPrinters);
-        return;
-      }
       final chosen = await showDialog<PrinterDevice>(
         context: context,
-        builder: (dialogContext) => SimpleDialog(
-          title: Text(AppLocalizations.of(context).settingsChoosePrinter),
-          children: [
-            for (final device in devices)
-              SimpleDialogOption(
-                onPressed: () => Navigator.pop(dialogContext, device),
-                child: ListTile(
-                  contentPadding: EdgeInsets.zero,
-                  leading: const Icon(Icons.print_outlined),
-                  title: Text(device.label),
-                  subtitle: Text(device.address),
-                  trailing: _printer.macAddress == device.address
-                      ? const Icon(Icons.check)
-                      : null,
-                ),
-              ),
-          ],
+        builder: (BuildContext dialogContext) => _PrinterChooser(
+          printer: printer,
+          selectedAddress: selectedAddress,
         ),
       );
-      if (chosen == null || !mounted) return;
+      if (chosen == null) return;
+      if (!mounted) return;
 
       final paired = await printer.pair(chosen.address);
       if (!mounted) return;
@@ -337,7 +336,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
     //    the attempt counting.
     final String? pin = await showVerifyPinSheet(
       context,
-      email: state.owner?.email ?? '',
+      email: PinResetService.maskEmail(state.owner?.email ?? ''),
       onSubmit: (String entered) =>
           _verifyOwnerPinOrError(entered, state.owner?.pinHash ?? '', l10n),
     );
@@ -783,7 +782,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
       //    forever — 10,000 values is minutes of guessing.
       final String? pin = await showVerifyPinSheet(
         context,
-        email: owner.email,
+        email: PinResetService.maskEmail(owner.email),
         onSubmit: (String entered) =>
             _verifyOwnerPinOrError(entered, owner.pinHash, l10n),
       );
@@ -810,15 +809,22 @@ class _SettingsScreenState extends State<SettingsScreen> {
         return;
       }
       if (!mounted) return;
-      _err(l10n.settingsVerifyCodeSent(owner.email));
+      // MASKED. A snackbar is read on a shop floor with people around, and it
+      // is the one place the owner's address is shown to anyone in earshot.
+      _err(l10n.settingsVerifyCodeSent(PinResetService.maskEmail(owner.email)));
 
       // 3. The code from the email, and the way to ask for another one. The
       //    dialog stays open on a wrong code, so the owner retypes rather
       //    than starting again.
       final bool verified = await showVerifyCodeSheet(
         context,
-        maskedEmail:
-            challenge.maskedEmail.isEmpty ? owner.email : challenge.maskedEmail,
+        // The server's own mask when it has one, this device's otherwise —
+        // never the raw address. A shop that linked before the server started
+        // masking has no `maskedEmail`, and falling back to the plain address
+        // would show it on a PIN pad.
+        maskedEmail: challenge.maskedEmail.isNotEmpty
+            ? challenge.maskedEmail
+            : PinResetService.maskEmail(owner.email),
         onSubmit: (String code) async {
           try {
             await BackendService.confirmVerificationCode(
@@ -841,7 +847,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
               shopName: owner.shopName,
               ownerName: owner.name,
             );
-            return l10n.settingsVerifyCodeSent(owner.email);
+            return l10n
+                .settingsVerifyCodeSent(PinResetService.maskEmail(owner.email));
           } on VerificationException catch (error) {
             return _verificationMessage(l10n, error);
           } catch (_) {
@@ -857,7 +864,10 @@ class _SettingsScreenState extends State<SettingsScreen> {
         state,
         action: AuditAction.identityLinked,
         entity: AuditEntity.identity,
-        detail: 'email verified: ${owner.email}',
+        // No address in the audit detail. This row is readable by anyone the
+        // owner shares an activity report with, and an email address is the
+        // field that turns a log line into a doxxing.
+        detail: 'email verified for this shop',
       );
       if (!mounted) return;
       _err(AppLocalizations.of(context).settingsIdentityVerified);
@@ -1441,7 +1451,9 @@ class SettingsPanel extends StatelessWidget {
         _AccountPanel(
           onDeleteAccount: onDeleteAccount,
           deleting: accountDeleting,
+          onOpenProfile: () => context.push(Routes.profile),
         ),
+        const _UpdatesPanel(),
         const _AboutFooter(),
       ],
     );
@@ -1458,9 +1470,13 @@ class _AccountPanel extends StatelessWidget {
   const _AccountPanel({
     required this.onDeleteAccount,
     required this.deleting,
+    required this.onOpenProfile,
   });
 
   final Future<void> Function() onDeleteAccount;
+
+  /// Opens the owner's account.
+  final VoidCallback onOpenProfile;
 
   /// True while the erasure is running.
   final bool deleting;
@@ -1475,6 +1491,12 @@ class _AccountPanel extends StatelessWidget {
         mainAxisSize: MainAxisSize.min,
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: <Widget>[
+          ListTile(
+            leading: const Icon(Icons.account_circle_outlined),
+            title: Text(l10n.settingsProfileRow),
+            subtitle: Text(l10n.settingsProfileRowSubtitle),
+            onTap: onOpenProfile,
+          ),
           // Forgotten-PIN recovery is NOT here, though it belongs to the same
           // idea. The only way to reach this screen is to unlock the till, and
           // unlocking it needs the PIN — so recovery has to be on the login pad
@@ -1502,6 +1524,296 @@ class _AccountPanel extends StatelessWidget {
 /// usually looking for a control, not to read who built the app — but a till
 /// that is out of date is worth telling, so the build number is on screen where
 /// a support conversation can start from it.
+/// Checks for a newer build, downloads it, and hands it to the installer.
+///
+/// The whole reason this screen exists: uninstalling to update would delete the
+/// app's private directory, and that directory is the shop's ledger. See
+/// `AppUpdateService` for the three conditions that make an in-place update
+/// possible at all.
+///
+/// The channel is an `InheritedWidget`-free lookup: this reads the service from
+/// the `Provider` the composition root installs, so there is one channel per app
+/// rather than one per screen.
+class _UpdatesPanel extends StatelessWidget {
+  const _UpdatesPanel();
+
+  @override
+  Widget build(BuildContext context) {
+    final AppSpacing spacing = AppSpacing.of(context);
+    // Watching here rebuilds the whole panel whenever the service changes,
+    // which is the right scope: every row in it is a view of that service.
+    //
+    // This used to re-provide the service with `ChangeNotifierProvider.value`,
+    // which was a second, redundant provider wrapping one that already exists
+    // in the composition root — and it threw from inside the panel's build.
+    context.watch<AppUpdateService>();
+    return _SettingsSection(
+      title: AppLocalizations.of(context).settingsUpdatesSection,
+      child: Padding(
+        padding: EdgeInsetsDirectional.only(bottom: spacing.sm),
+        child: const _UpdateRows(),
+      ),
+    );
+  }
+}
+
+/// The state of the check, and the actions it offers.
+class _UpdateRows extends StatelessWidget {
+  const _UpdateRows();
+
+  @override
+  Widget build(BuildContext context) {
+    final AppLocalizations l10n = AppLocalizations.of(context);
+    final service = context.watch<AppUpdateService>();
+    final release = service.pendingRelease;
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      mainAxisSize: MainAxisSize.min,
+      children: <Widget>[
+        ListTile(
+          contentPadding: EdgeInsets.zero,
+          leading: const Icon(Icons.system_update_outlined),
+          title: Text(l10n.settingsUpdatesCheck),
+          subtitle: Text(_statusText(service, l10n)),
+          trailing: service.busy
+              ? const SizedBox(
+                  width: 24,
+                  height: 24,
+                  child: CircularProgressIndicator(strokeWidth: 2),
+                )
+              : null,
+          onTap: service.busy ? null : () => service.checkForUpdate(),
+        ),
+        if (service.progress != null) ...<Widget>[
+          SizedBox(height: AppSpacing.of(context).sm),
+          _DownloadBar(progress: service.progress!),
+        ],
+        if (service.downloadedApk != null) ...<Widget>[
+          SizedBox(height: AppSpacing.of(context).sm),
+          FilledButton.icon(
+            onPressed: service.busy ? null : () => _install(context),
+            icon: const Icon(Icons.install_mobile_outlined),
+            label: Text(l10n.settingsUpdatesInstall),
+          ),
+        ],
+        if (release != null) ...<Widget>[
+          SizedBox(height: AppSpacing.of(context).md),
+          Text(release.notes.isEmpty
+              ? l10n.settingsUpdatesNoNotes
+              : release.notes),
+          SizedBox(height: AppSpacing.of(context).sm),
+        ],
+      ],
+    );
+  }
+
+  /// One line describing where things stand.
+  String _statusText(AppUpdateService service, AppLocalizations l10n) {
+    final check = service.check;
+    if (check is UpdateAvailable) {
+      return l10n.settingsUpdatesAvailable(check.release.versionName);
+    }
+    if (check is UpdateCheckFailed) {
+      return l10n.settingsUpdatesFailed(check.reason);
+    }
+    if (service.downloadedApk != null) {
+      return l10n.settingsUpdatesReady;
+    }
+    return l10n.settingsUpdatesCurrent(
+        service.currentVersionName ?? l10n.settingsUpdatesUnknownVersion);
+  }
+
+  /// Asks the OS to install the downloaded APK.
+  ///
+  /// A refusal is reported AS a refusal rather than swallowed: the two causes
+  /// are a signing-key change and a build number that is not higher, and both
+  /// mean this shop can never update in place — which is exactly the situation
+  /// the owner has to be told about rather than retrying into forever.
+  Future<void> _install(BuildContext context) async {
+    final l10n = AppLocalizations.of(context);
+    final messenger = ScaffoldMessenger.of(context);
+    final service = context.read<AppUpdateService>();
+    try {
+      final granted = await service.installDownloaded();
+      if (!granted) {
+        // The permission was refused on the system screen.
+        final opened = await service.openInstallPermissionSettings();
+        messenger.showSnackBar(
+          SnackBar(
+            content: Text(opened
+                ? l10n.settingsUpdatesPermissionNeeded
+                : l10n.settingsUpdatesPermissionManual),
+          ),
+        );
+      }
+    } on UpdateException {
+      // The specific cause is deliberately not shown to the owner: a key change
+      // and a lower build number are both "ask the developer", and a stack of
+      // exception types on a till is noise. It is in the log line the exception
+      // carries.
+      messenger.showSnackBar(
+        SnackBar(content: Text(l10n.settingsUpdatesRefused)),
+      );
+    }
+  }
+}
+
+/// The download's progress, with a byte count so a stalled bar is visible.
+class _DownloadBar extends StatelessWidget {
+  const _DownloadBar({required this.progress});
+
+  final UpdateProgress progress;
+
+  @override
+  Widget build(BuildContext context) {
+    final l10n = AppLocalizations.of(context);
+    final fraction = progress.fraction;
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      mainAxisSize: MainAxisSize.min,
+      children: <Widget>[
+        ClipRRect(
+          borderRadius: BorderRadius.circular(4),
+          child: LinearProgressIndicator(
+            value: fraction,
+            minHeight: 6,
+          ),
+        ),
+        SizedBox(height: AppSpacing.of(context).xs),
+        Text(
+          fraction == null
+              ? l10n.settingsUpdatesDownloadingUnknown
+              : l10n.settingsUpdatesDownloading((fraction * 100).round()),
+          style: AppTypography.of(context).bodySmall,
+        ),
+      ],
+    );
+  }
+}
+
+/// The paired-printer picker, which can rescan.
+///
+/// Its own stateful widget rather than a static `SimpleDialog`, because the
+/// device list is a LIVE thing: a printer that was off when the dialog opened is
+/// the most common reason the list is short, and the remedy is another scan.
+/// A static list means the only way to retry is to close the dialog, and by
+/// then the shop has usually given up and gone back to writing receipts by hand.
+class _PrinterChooser extends StatefulWidget {
+  const _PrinterChooser({
+    required this.printer,
+    required this.selectedAddress,
+  });
+
+  final PrinterService printer;
+  final String? selectedAddress;
+
+  @override
+  State<_PrinterChooser> createState() => _PrinterChooserState();
+}
+
+class _PrinterChooserState extends State<_PrinterChooser> {
+  late Future<List<PrinterDevice>> _devices;
+
+  @override
+  void initState() {
+    super.initState();
+    _devices = widget.printer.pairedDevices();
+  }
+
+  void _rescan() {
+    setState(() {
+      _devices = widget.printer.pairedDevices();
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final AppLocalizations l10n = AppLocalizations.of(context);
+    final AppSpacing spacing = AppSpacing.of(context);
+
+    return AlertDialog(
+      title: Text(l10n.settingsChoosePrinter),
+      contentPadding:
+          EdgeInsetsDirectional.only(top: spacing.md, bottom: spacing.sm),
+      content: SizedBox(
+        width: double.maxFinite,
+        child: FutureBuilder<List<PrinterDevice>>(
+          future: _devices,
+          builder:
+              (BuildContext context, AsyncSnapshot<List<PrinterDevice>> snap) {
+            if (snap.connectionState == ConnectionState.waiting) {
+              return const Padding(
+                padding: EdgeInsets.all(24),
+                child: Center(child: CircularProgressIndicator()),
+              );
+            }
+            if (snap.hasError) {
+              return Padding(
+                padding: EdgeInsets.all(spacing.md),
+                child: Text(l10n.settingsPrinterScanFailed),
+              );
+            }
+            final devices = snap.data ?? const <PrinterDevice>[];
+            if (devices.isEmpty) {
+              return Padding(
+                padding: EdgeInsets.all(spacing.md),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: <Widget>[
+                    Text(l10n.settingsNoPairedPrinters),
+                    SizedBox(height: spacing.sm),
+                    // Says what to DO, not just what is wrong. The printer is
+                    // paired in Android's own Bluetooth settings, and pointing
+                    // at that is the difference between a dead end and an
+                    // instruction.
+                    Text(
+                      l10n.settingsNoPairedPrintersHint,
+                      style: AppTypography.of(context).bodySmall?.copyWith(
+                          color: AppColors.of(context).onSurfaceMuted),
+                    ),
+                  ],
+                ),
+              );
+            }
+            return ListView.builder(
+              shrinkWrap: true,
+              itemCount: devices.length,
+              itemBuilder: (BuildContext context, int i) {
+                final device = devices[i];
+                return SimpleDialogOption(
+                  onPressed: () => Navigator.pop(context, device),
+                  child: ListTile(
+                    contentPadding: EdgeInsets.zero,
+                    leading: const Icon(Icons.print_outlined),
+                    title: Text(device.label),
+                    subtitle: Text(device.address),
+                    trailing: widget.selectedAddress == device.address
+                        ? const Icon(Icons.check)
+                        : null,
+                  ),
+                );
+              },
+            );
+          },
+        ),
+      ),
+      actions: <Widget>[
+        TextButton.icon(
+          onPressed: _rescan,
+          icon: const Icon(Icons.refresh),
+          label: Text(l10n.settingsPrinterRescan),
+        ),
+        TextButton(
+          onPressed: () => Navigator.pop(context),
+          child: Text(l10n.actionCancel),
+        ),
+      ],
+    );
+  }
+}
+
 class _AboutFooter extends StatefulWidget {
   const _AboutFooter();
 
@@ -1592,49 +1904,59 @@ class _StaffDialogState extends State<_StaffDialog> {
             ? l10n.settingsResetPinTitle(widget.existingName ?? '')
             : l10n.settingsAddStaffAction,
       ),
-      content: Column(mainAxisSize: MainAxisSize.min, children: [
-        if (!widget.pinOnly) ...[
-          TextField(
-              controller: _name,
-              decoration: InputDecoration(
-                  labelText:
-                      AppLocalizations.of(context).settingsStaffNameLabel),
-              autofillHints: const [AutofillHints.name]),
-          DropdownButtonFormField<String>(
-              initialValue: ShopRole.parse(_role).wire,
-              decoration: InputDecoration(
-                  labelText: AppLocalizations.of(context).settingsRoleLabel),
-              items: [
-                // Built from ShopRole.assignable rather than a literal list, so
-                // a role added there cannot be forgotten here. Admin is
-                // excluded from that list on purpose: the owner already holds it,
-                // and it sits below as a separate, clearly-labelled choice so
-                // handing over full admin rights is deliberate rather than a
-                // mis-tap between two adjacent dropdown entries.
-                ...ShopRole.assignable.map(
-                  (role) => DropdownMenuItem(
-                    value: role.wire,
-                    child: Text(role.label),
+      // The same field rhythm as the product editor, so a form's spacing is a
+      // property of the app rather than of whichever screen you happen to be on.
+      // These three used to sit edge to edge: the floating label of each field
+      // overlapped the border of the one above it, which is the congestion
+      // the inventory form was fixed for.
+      content: SingleChildScrollView(
+        child: Column(mainAxisSize: MainAxisSize.min, children: [
+          if (!widget.pinOnly) ...[
+            TextField(
+                controller: _name,
+                decoration: InputDecoration(
+                    labelText:
+                        AppLocalizations.of(context).settingsStaffNameLabel),
+                autofillHints: const [AutofillHints.name]),
+            SizedBox(height: AppSpacing.of(context).md),
+            DropdownButtonFormField<String>(
+                initialValue: ShopRole.parse(_role).wire,
+                decoration: InputDecoration(
+                    labelText: AppLocalizations.of(context).settingsRoleLabel),
+                items: [
+                  // Built from ShopRole.assignable rather than a literal list, so
+                  // a role added there cannot be forgotten here. Admin is
+                  // excluded from that list on purpose: the owner already holds it,
+                  // and it sits below as a separate, clearly-labelled choice so
+                  // handing over full admin rights is deliberate rather than a
+                  // mis-tap between two adjacent dropdown entries.
+                  ...ShopRole.assignable.map(
+                    (role) => DropdownMenuItem(
+                      value: role.wire,
+                      child: Text(role.label),
+                    ),
                   ),
-                ),
-                DropdownMenuItem(
-                  value: ShopRole.admin.wire,
-                  child: Text(l10n.settingsRoleAdminFull(ShopRole.admin.label)),
-                ),
-              ],
-              onChanged: (value) {
-                if (value != null) setState(() => _role = value);
-              }),
-        ],
-        TextField(
-            controller: _pin,
-            decoration: InputDecoration(
-                labelText: AppLocalizations.of(context).settingsPinLabel),
-            keyboardType: TextInputType.number,
-            obscureText: true,
-            maxLength: 4,
-            autofillHints: const [AutofillHints.oneTimeCode]),
-      ]),
+                  DropdownMenuItem(
+                    value: ShopRole.admin.wire,
+                    child:
+                        Text(l10n.settingsRoleAdminFull(ShopRole.admin.label)),
+                  ),
+                ],
+                onChanged: (value) {
+                  if (value != null) setState(() => _role = value);
+                }),
+          ],
+          SizedBox(height: AppSpacing.of(context).md),
+          TextField(
+              controller: _pin,
+              decoration: InputDecoration(
+                  labelText: AppLocalizations.of(context).settingsPinLabel),
+              keyboardType: TextInputType.number,
+              obscureText: true,
+              maxLength: 4,
+              autofillHints: const [AutofillHints.oneTimeCode]),
+        ]),
+      ),
       actions: [
         TextButton(
             onPressed: () => Navigator.pop(context),

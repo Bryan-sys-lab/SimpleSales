@@ -88,15 +88,16 @@ class WelcomeChooserScreen extends StatelessWidget {
                 mainAxisSize: MainAxisSize.min,
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: <Widget>[
+                  // The VECTOR mark, not the PNG. Three other screens still
+                  // load `screen.png` for the same lockup, and a raster image
+                  // of a mark that is drawn as paths in the app is the one
+                  // place the brand can land fuzzy: this is on the very first
+                  // screen a shop owner sees, at whatever density the device
+                  // ships with. It is also the same mark the launcher icon is
+                  // built from, so the icon and the app finally agree.
                   const Center(
-                      child: Image(
-                    image: AssetImage(
-                      'assets/branding/stitch_simple_pos_launcher_icon/simple_pos_geometric_s_icon/screen.png',
-                    ),
-                    width: 64,
-                    height: 64,
-                    fit: BoxFit.contain,
-                  )),
+                    child: SimplePosMark(size: 72),
+                  ),
                   SizedBox(height: spacing.lg),
                   const Center(child: SimplePosWordmark()),
                   SizedBox(height: spacing.lg),
@@ -131,10 +132,22 @@ class WelcomeChooserScreen extends StatelessWidget {
 
                   SizedBox(height: spacing.xxl),
 
-                  // Sign in first, and unconditionally. It is the choice a
-                  // returning user makes every single day, and it must never
-                  // be the one that is hidden.
+                  // HIERARCHY, which this screen did not have.
+                  //
+                  // It used to be three buttons of equal weight: two
+                  // `OutlinedButton`s and one `FilledButton`, all the same size,
+                  // all with the same icon-first treatment. A shop owner's daily
+                  // choice — sign in — competed for attention with the one thing
+                  // they do once in the app's life.
+                  //
+                  // Now the two sign-in paths sit together as the primary
+                  // group, each sized for a thumb, and setting up a shop is
+                  // demoted to a quiet text button at the bottom, where it is
+                  // still reachable in one tap but stops reading as the main
+                  // event. The pair is ordered by how often it is used: owner
+                  // every day, staff on a shift start.
                   FilledButton.icon(
+                    autofocus: true,
                     onPressed: () => _choose(context, AppChooserIntent.signIn),
                     icon:
                         const ExcludeSemantics(child: Icon(Icons.pin_outlined)),
@@ -145,11 +158,10 @@ class WelcomeChooserScreen extends StatelessWidget {
                     ),
                   ),
                   SizedBox(height: spacing.md),
-                  OutlinedButton.icon(
+                  FilledButton.tonalIcon(
                     onPressed: () => context.go(Routes.staffLogin),
-                    icon: ExcludeSemantics(
-                      child: Icon(Icons.person_outline),
-                    ),
+                    icon: const ExcludeSemantics(
+                        child: Icon(Icons.person_outline)),
                     label: Padding(
                       padding: EdgeInsets.symmetric(vertical: spacing.lg),
                       child: Text(
@@ -157,9 +169,16 @@ class WelcomeChooserScreen extends StatelessWidget {
                       ),
                     ),
                   ),
+
+                  SizedBox(height: spacing.xl),
+                  Divider(color: colors.outline),
                   SizedBox(height: spacing.md),
 
-                  OutlinedButton.icon(
+                  // Setup is the LAST choice, and it is deliberately the quietest
+                  // thing on the screen: someone who has never set a shop up
+                  // will read the two buttons above and reach this, and someone
+                  // who has done it once will scroll past it for years.
+                  TextButton.icon(
                     onPressed: () => _choose(context, _setupIntent),
                     icon: ExcludeSemantics(
                       child: Icon(
@@ -177,10 +196,6 @@ class WelcomeChooserScreen extends StatelessWidget {
                       ),
                     ),
                   ),
-
-                  SizedBox(height: spacing.xl),
-                  Divider(color: colors.outline),
-                  SizedBox(height: spacing.md),
 
                   Text(
                     hasShop

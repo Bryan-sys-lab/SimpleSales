@@ -65,6 +65,9 @@ class ProductImageStore {
   /// The folder photographs live in, relative to the app's documents directory.
   static const _folder = 'product_photos';
 
+  /// The folder account avatars live in.
+  static const avatarFolder = 'avatars';
+
   /// The extension stored on disk.
   static const _extension = 'jpg';
 
@@ -87,16 +90,6 @@ class ProductImageStore {
   /// product photo is a rounding error against the database it belongs to.
   static const _quality = 82;
 
-  /// The absolute directory photographs live in.
-  static Future<Directory> _directory() async {
-    final docs = await getApplicationDocumentsDirectory();
-    final dir = Directory('${docs.path}/$_folder');
-    if (!await dir.exists()) {
-      await dir.create(recursive: true);
-    }
-    return dir;
-  }
-
   /// The relative path a product's photograph is stored under, or null when the
   /// product has none.
   ///
@@ -105,12 +98,24 @@ class ProductImageStore {
   static String? relativePathFor(int productId) =>
       '$_folder/$productId.$_extension';
 
+  /// The relative path this shop's avatar is stored under.
+  ///
+  /// One avatar per DEVICE, not per workspace: an owner runs several shops on
+  /// one handset and is the same person in all of them. Naming the file after
+  /// the workspace would give each shop its own avatar and a photo picked for
+  /// one would not appear in the others.
+  static const String avatarRelativePath = '$avatarFolder/owner.jpg';
+
   /// Imports [source] as the photograph for [productId], replacing any existing
   /// one.
   ///
   /// The original file is left alone: it belongs to the gallery or the camera,
   /// and deleting a file the shop did not create would be a surprising side
   /// effect of choosing a photo.
+  /// Saves an account avatar. See [avatarRelativePath] for why it is per-device.
+  static Future<String> saveAvatar(File source) =>
+      _saveAs(source, avatarRelativePath);
+
   static Future<String> save(File source, {required int productId}) async {
     if (!await source.exists()) {
       throw const ProductImageException(ProductImageFailure.missing);
@@ -127,11 +132,33 @@ class ProductImageStore {
     // from a phone camera does not arrive sideways.
     final encoded = img.encodeJpg(resized, quality: _quality);
 
+    return _saveEncoded(encoded, relativePathFor(productId)!);
+  }
+
+  /// Re-encodes [source] into [relativePath], under its own folder.
+  static Future<String> _saveAs(File source, String relativePath) async {
+    if (!await source.exists()) {
+      throw const ProductImageException(ProductImageFailure.missing);
+    }
+    final decoded = img.decodeImage(await source.readAsBytes());
+    if (decoded == null) {
+      throw const ProductImageException(ProductImageFailure.undecodable);
+    }
+    return _saveEncoded(
+      img.encodeJpg(_bound(decoded), quality: _quality),
+      relativePath,
+    );
+  }
+
+  static Future<String> _saveEncoded(List<int> encoded, String relative) async {
+    final folder = relative.split('/').first;
+    final docs = await getApplicationDocumentsDirectory();
+    final dir = Directory('${docs.path}/$folder');
+    if (!await dir.exists()) await dir.create(recursive: true);
     try {
-      final dir = await _directory();
-      final target = File('${dir.path}/$productId.$_extension');
+      final target = File('${docs.path}/$relative');
       await target.writeAsBytes(encoded, flush: true);
-      return relativePathFor(productId)!;
+      return relative;
     } on FileSystemException catch (error) {
       // ENOSPC and friends surface here. The owner is told the phone is full
       // rather than being shown a silent failure to save a product.

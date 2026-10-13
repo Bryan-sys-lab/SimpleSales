@@ -10,6 +10,9 @@ class MainActivity : FlutterActivity() {
 
     private var printer: PrinterChannel? = null
 
+    /** The platform half of an in-app update. */
+    private var updates: UpdateChannel? = null
+
     /**
      * Bridges the Bluetooth permission prompt.
      *
@@ -26,6 +29,15 @@ class MainActivity : FlutterActivity() {
         // channel needs to raise the permission dialog and read the bonding
         // state, and neither is available from the application context.
         printer = PrinterChannel(this, flutterEngine.dartExecutor.binaryMessenger)
+
+        // Same messenger, same Activity. Registered here rather than lazily on
+        // first use because a method channel that arrives before its handler is
+        // set is answered with `notImplemented`, and a shop tapping "check for
+        // updates" on a cold start would see a dead button.
+        UpdateChannel(this).also {
+            updates = it
+            it.register(flutterEngine.dartExecutor.binaryMessenger)
+        }
     }
 
     fun requestBluetoothPermission(callback: (Boolean) -> Unit) {
@@ -46,6 +58,24 @@ class MainActivity : FlutterActivity() {
             arrayOf(Manifest.permission.BLUETOOTH_CONNECT),
             REQUEST_CODE_BLUETOOTH,
         )
+    }
+
+    /**
+     * Called when the "install unknown apps" screen closes.
+     *
+     * Routed to the update channel rather than handled here, for the same
+     * reason the Bluetooth result is: the channel owns its own pending result
+     * and the single caller waiting on it.
+     */
+    override fun onActivityResult(
+        requestCode: Int,
+        resultCode: Int,
+        data: android.content.Intent?,
+    ) {
+        super.onActivityResult(requestCode, resultCode, data)
+        if (requestCode == UpdateChannel.REQUEST_INSTALL) {
+            updates?.onInstallPermissionResult()
+        }
     }
 
     override fun onRequestPermissionsResult(

@@ -113,6 +113,36 @@ if (wantsRelease && !hasReleaseSigning) {
     )
 }
 
+// ---------------------------------------------------------------------------
+// THE ONE CHANGE THAT CANNOT BE UNDONE
+//
+// `applicationId` is the app's permanent identity. Changing it produces a
+// DIFFERENT app: Android will install it beside the old one, and the old one can
+// only be removed. Uninstalling deletes the app's private data directory, and
+// that directory is the shop's entire ledger, its audit log and its encrypted
+// backups. A rename is therefore a forced re-setup for every shop.
+//
+// This has already happened once — `com.dukapos.duka_pos` became
+// `com.dukapos.simplepos` — and the cost was a shop that had to be set up again
+// from nothing. Do not do it a second time.
+//
+// What a rename WOULD look like from a user's point of view is a change of
+// DISPLAY name, which is `android:label` in AndroidManifest.xml and
+// `CFBundleDisplayName` in Info.plist. Those are free to change at any release.
+//
+// The other two things that make an update impossible are already guarded: a
+// different signing key is refused by the check above (no keystore, no release
+// build), and a build number that is not higher is refused by release.yml.
+val applicationIdLock = "com.dukapos.simplepos"
+if (applicationId != applicationIdLock) {
+    throw GradleException(
+        "applicationId has changed from ${applicationIdLock} to ${applicationId}. " +
+            "A renamed package is a different app to Android: it installs beside the old " +
+            "one and the old one must be uninstalled, which deletes the shop's database " +
+            "and forces a re-setup. Rename the DISPLAY label instead."
+    )
+}
+
 kotlin {
     compilerOptions {
         jvmTarget = org.jetbrains.kotlin.gradle.dsl.JvmTarget.JVM_17

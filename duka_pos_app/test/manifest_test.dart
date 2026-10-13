@@ -165,6 +165,51 @@ void main() {
       expect(xml, contains('android:label="SimpleSales"'));
     });
   });
+  group('in-app update plumbing', () {
+    test('the install permission is declared', () {
+      expect(
+        xml,
+        contains('android.permission.REQUEST_INSTALL_PACKAGES'),
+        reason: 'without it the OS refuses every install the app starts',
+      );
+    });
+
+    test('a FileProvider is declared inside the application element', () {
+      // From API 24 a `file://` URI thrown at another app raises
+      // FileUriExposedException, so the package installer must be given a
+      // `content://` URI from a provider instead.
+      //
+      // `provider` is only valid INSIDE `application`; at manifest level AAPT
+      // rejects it at resource-linking time, which no Dart tool can see.
+      expect(xml, contains('androidx.core.content.FileProvider'));
+      expect(xml, contains('android:grantUriPermissions="true"'));
+
+      final providerAt = xml.indexOf('<provider');
+      expect(providerAt, greaterThan(xml.indexOf('<application')),
+          reason: 'the provider must be a child of the application element');
+      expect(providerAt, lessThan(xml.lastIndexOf('</application>')),
+          reason: 'the provider must be inside it, not after it');
+    });
+
+    test('the provider authority is the app id, so it cannot collide', () {
+      // A fixed authority would collide with any other build of the same app on
+      // one device, and an upgrade would fail to install over the old provider.
+      expect(xml,
+          contains(r'android:authorities="${applicationId}.fileprovider"'));
+    });
+
+    test('the provider only shares the download folder', () {
+      // A provider covering more than it must would hand the shop's encrypted
+      // backups and product photographs to any app granted a URI.
+      final paths = File('android/app/src/main/res/xml/update_paths.xml')
+          .readAsStringSync();
+      expect(paths, contains('<external-path'));
+      expect(paths, contains('Download/SimpleSales'));
+      // And it shares nothing else.
+      expect(paths, isNot(contains('<root')));
+      expect(paths, isNot(contains('<files-path')));
+    });
+  });
 }
 
 /// Whether the first occurrence of [tag] sits inside an XML comment.
@@ -181,4 +226,9 @@ bool _isInsideComment(String xml, int at, String tag) {
   // real element and the earlier text is prose, not a comment.
   if (closeComment < 0) return false;
   return xml.substring(openComment, closeComment).contains('<$tag');
+
+  // The install-capability surface, which only an APK build can truly verify:
+  // a misplaced `provider` element or a FileProvider path that disagrees with
+  // the download folder fails at resource-linking time, which neither
+  // `flutter analyze` nor `flutter test` can see.
 }

@@ -1811,11 +1811,197 @@ abstract class AppLocalizations {
   /// **'Backup'**
   String get settingsBackupSection;
 
+  /// No description provided for @profileTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Your account'**
+  String get profileTitle;
+
+  /// No description provided for @profileNoAccountYet.
+  ///
+  /// In en, this message translates to:
+  /// **'No account is set up yet.'**
+  String get profileNoAccountYet;
+
+  /// No description provided for @profilePhotoLabel.
+  ///
+  /// In en, this message translates to:
+  /// **'Photograph'**
+  String get profilePhotoLabel;
+
+  /// No description provided for @profilePhotoHelp.
+  ///
+  /// In en, this message translates to:
+  /// **'Shown next to your name. Pick one from the gallery or take a photo.'**
+  String get profilePhotoHelp;
+
+  /// No description provided for @profilePhotoChange.
+  ///
+  /// In en, this message translates to:
+  /// **'Choose'**
+  String get profilePhotoChange;
+
+  /// No description provided for @profilePhotoSaved.
+  ///
+  /// In en, this message translates to:
+  /// **'Photograph saved.'**
+  String get profilePhotoSaved;
+
+  /// No description provided for @profileEmailLabel.
+  ///
+  /// In en, this message translates to:
+  /// **'Email'**
+  String get profileEmailLabel;
+
+  /// No description provided for @profileVerifiedLabel.
+  ///
+  /// In en, this message translates to:
+  /// **'Verified'**
+  String get profileVerifiedLabel;
+
+  /// No description provided for @profileVerifiedYes.
+  ///
+  /// In en, this message translates to:
+  /// **'Verified'**
+  String get profileVerifiedYes;
+
+  /// No description provided for @profileVerifiedNo.
+  ///
+  /// In en, this message translates to:
+  /// **'Not verified yet'**
+  String get profileVerifiedNo;
+
+  /// No description provided for @profileSinceLabel.
+  ///
+  /// In en, this message translates to:
+  /// **'Selling since'**
+  String get profileSinceLabel;
+
+  /// No description provided for @profileShopLabel.
+  ///
+  /// In en, this message translates to:
+  /// **'Shop'**
+  String get profileShopLabel;
+
+  /// No description provided for @profileBackToSettings.
+  ///
+  /// In en, this message translates to:
+  /// **'Back to settings'**
+  String get profileBackToSettings;
+
   /// No description provided for @settingsAccountSection.
   ///
   /// In en, this message translates to:
   /// **'Your account'**
   String get settingsAccountSection;
+
+  /// No description provided for @settingsProfileRow.
+  ///
+  /// In en, this message translates to:
+  /// **'Your account'**
+  String get settingsProfileRow;
+
+  /// No description provided for @settingsProfileRowSubtitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Your name, email and photograph'**
+  String get settingsProfileRowSubtitle;
+
+  /// No description provided for @settingsUpdatesSection.
+  ///
+  /// In en, this message translates to:
+  /// **'App updates'**
+  String get settingsUpdatesSection;
+
+  /// No description provided for @settingsUpdatesCheck.
+  ///
+  /// In en, this message translates to:
+  /// **'Check for updates'**
+  String get settingsUpdatesCheck;
+
+  /// No description provided for @settingsUpdatesAvailable.
+  ///
+  /// In en, this message translates to:
+  /// **'Version {version} is ready'**
+  String settingsUpdatesAvailable(Object version);
+
+  /// No description provided for @settingsUpdatesFailed.
+  ///
+  /// In en, this message translates to:
+  /// **'Could not check ({reason})'**
+  String settingsUpdatesFailed(Object reason);
+
+  /// No description provided for @settingsUpdatesCurrent.
+  ///
+  /// In en, this message translates to:
+  /// **'You are on the newest version ({version})'**
+  String settingsUpdatesCurrent(Object version);
+
+  /// No description provided for @settingsUpdatesUnknownVersion.
+  ///
+  /// In en, this message translates to:
+  /// **'unknown'**
+  String get settingsUpdatesUnknownVersion;
+
+  /// No description provided for @settingsUpdatesInstall.
+  ///
+  /// In en, this message translates to:
+  /// **'Install now'**
+  String get settingsUpdatesInstall;
+
+  /// No description provided for @settingsUpdatesDownloading.
+  ///
+  /// In en, this message translates to:
+  /// **'Downloading {percent}%'**
+  String settingsUpdatesDownloading(Object percent);
+
+  /// No description provided for @settingsUpdatesDownloadingUnknown.
+  ///
+  /// In en, this message translates to:
+  /// **'Downloading…'**
+  String get settingsUpdatesDownloadingUnknown;
+
+  /// No description provided for @settingsUpdatesReady.
+  ///
+  /// In en, this message translates to:
+  /// **'Downloaded. Tap install to apply it.'**
+  String get settingsUpdatesReady;
+
+  /// No description provided for @settingsUpdatesNoNotes.
+  ///
+  /// In en, this message translates to:
+  /// **'No release notes were published for this version.'**
+  String get settingsUpdatesNoNotes;
+
+  /// No description provided for @settingsUpdatesRefused.
+  ///
+  /// In en, this message translates to:
+  /// **'The phone refused this update. It can only be installed over the same signing key and a higher build number — ask the shop\'s developer.'**
+  String get settingsUpdatesRefused;
+
+  /// No description provided for @settingsUpdatesPermissionNeeded.
+  ///
+  /// In en, this message translates to:
+  /// **'This phone needs permission to install apps. Settings has opened.'**
+  String get settingsUpdatesPermissionNeeded;
+
+  /// No description provided for @settingsUpdatesPermissionManual.
+  ///
+  /// In en, this message translates to:
+  /// **'This phone needs permission to install apps. Allow it in Settings, then tap install again.'**
+  String get settingsUpdatesPermissionManual;
+
+  /// No description provided for @settingsUpdatesRestart.
+  ///
+  /// In en, this message translates to:
+  /// **'Restart to update'**
+  String get settingsUpdatesRestart;
+
+  /// No description provided for @settingsUpdatesPromptBody.
+  ///
+  /// In en, this message translates to:
+  /// **'Version {version} is ready. Your shop\'s data is kept — this updates the app in place instead of replacing it.'**
+  String settingsUpdatesPromptBody(Object version);
 
   /// No description provided for @settingsCashMethod.
   ///
@@ -1828,6 +2014,24 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'Always available — works fully offline.'**
   String get settingsCashMethodSubtitle;
+
+  /// No description provided for @settingsPrinterRescan.
+  ///
+  /// In en, this message translates to:
+  /// **'Look again'**
+  String get settingsPrinterRescan;
+
+  /// No description provided for @settingsPrinterScanFailed.
+  ///
+  /// In en, this message translates to:
+  /// **'Could not read the Bluetooth devices. Check Bluetooth is on, then look again.'**
+  String get settingsPrinterScanFailed;
+
+  /// No description provided for @settingsNoPairedPrintersHint.
+  ///
+  /// In en, this message translates to:
+  /// **'Pair the printer in this phone\'s Bluetooth settings first, then look again.'**
+  String get settingsNoPairedPrintersHint;
 
   /// No description provided for @settingsChoosePrinter.
   ///
@@ -4278,6 +4482,30 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'Sales'**
   String get analyticsSalesLabel;
+
+  /// No description provided for @analyticsTopProductsCount.
+  ///
+  /// In en, this message translates to:
+  /// **'{count, plural, =1{1 product sold} other{{count} products sold}}'**
+  String analyticsTopProductsCount(num count);
+
+  /// No description provided for @analyticsTopProductsEmpty.
+  ///
+  /// In en, this message translates to:
+  /// **'Nothing sold in this period.'**
+  String get analyticsTopProductsEmpty;
+
+  /// No description provided for @analyticsTopProductsShowMore.
+  ///
+  /// In en, this message translates to:
+  /// **'{count, plural, =1{Show 1 more} other{Show {count} more}}'**
+  String analyticsTopProductsShowMore(num count);
+
+  /// No description provided for @analyticsTopProductsShowLess.
+  ///
+  /// In en, this message translates to:
+  /// **'Show fewer'**
+  String get analyticsTopProductsShowLess;
 
   /// No description provided for @analyticsProfitLabel.
   ///

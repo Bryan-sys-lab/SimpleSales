@@ -17,9 +17,12 @@ import 'routing/app_router.dart';
 import 'routing/app_stage_controller.dart';
 import 'services/app_state.dart';
 import 'services/backend_service.dart';
+import 'services/app_update_service.dart';
 import 'services/live_channel_service.dart';
 import 'services/failure_recorder.dart';
 import 'theme/app_theme.dart';
+import 'services/app_release.dart';
+import 'routing/routes.dart';
 
 /// Sentry DSN for crash reporting - get from https://sentry.io
 const String sentryDsn = String.fromEnvironment(
@@ -123,6 +126,12 @@ class DukaPosApp extends StatelessWidget {
         ChangeNotifierProvider<LiveChannelService>(
           create: (BuildContext context) => LiveChannelService()..start(),
         ),
+        // The update channel. Provided here so one instance serves the whole
+        // app: a check started from the splash banner is the same download the
+        // Settings row installs, rather than two of each.
+        ChangeNotifierProvider<AppUpdateService>(
+          create: (BuildContext context) => AppUpdateService(),
+        ),
         // Last: the router needs the two above. It is never rebuilt afterwards —
         // `refreshListenable` re-runs the guard on its own, and rebuilding a
         // `GoRouter` throws away every branch's navigation stack.
@@ -131,7 +140,7 @@ class DukaPosApp extends StatelessWidget {
       ],
       // The gate sits above the router so a lifecycle change reaches the
       // channel from one place, whatever branch is showing.
-      child: const _LiveChannelGate(child: _ThemedApp()),
+      child: const _UpdateGate(child: _LiveChannelGate(child: _ThemedApp())),
     );
   }
 }
@@ -296,4 +305,73 @@ class _LiveChannelGateState extends State<_LiveChannelGate>
     unawaited(_sync());
     return widget.child;
   }
+}
+
+/// Checks for an update once per launch, and offers it.
+///
+/// Once per LAUNCH and not once per frame, because the check is a network call
+/// on a till whose owner may open the app a hundred times a day. A shop that has
+/// dismissed the prompt still gets it again next launch — which is right: an
+/// update they said "later" to is not an update they refused.
+class _UpdateGate extends StatefulWidget {
+  const _UpdateGate({required this.child});
+
+  final Widget child;
+
+  @override
+  State<_UpdateGate> createState() => _UpdateGateState();
+}
+
+class _UpdateGateState extends State<_UpdateGate> {
+  @override
+  void initState() {
+    super.initState();
+    // After the first frame, so the check runs against a mounted tree and any
+    // prompt it raises has a navigator to sit above.
+    WidgetsBinding.instance.addPostFrameCallback((_) => _check());
+  }
+
+  Future<void> _check() async {
+    if (!mounted) return;
+    final service = context.read<AppUpdateService>();
+    final result = await service.checkForUpdate();
+    if (!mounted || result is! UpdateAvailable) return;
+
+    final release = result.release;
+    if (!release.required) return;
+    // A required update is offered rather than installed: Android will not
+    // permit a silent install, and pretending otherwise would be a button that
+    // does nothing.
+    await showDialog<void>(
+      context: context,
+      barrierDismissible: true,
+      builder: (BuildContext dialogContext) => AlertDialog(
+        title: Text(AppLocalizations.of(dialogContext).settingsUpdatesInstall),
+        content: Text(
+          AppLocalizations.of(dialogContext)
+              .settingsUpdatesPromptBody(release.versionName),
+        ),
+        actions: <Widget>[
+          TextButton(
+            onPressed: () => Navigator.pop(dialogContext),
+            child: Text(AppLocalizations.of(dialogContext).actionCancel),
+          ),
+          FilledButton(
+            onPressed: () {
+              Navigator.pop(dialogContext);
+              // Takes the owner to where the install actually happens, rather
+              // than trying to drive it from here: Settings holds the progress
+              // bar and the permission prompt.
+              context.push(Routes.settings);
+            },
+            child:
+                Text(AppLocalizations.of(dialogContext).settingsUpdatesRestart),
+          ),
+        ],
+      ),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) => widget.child;
 }

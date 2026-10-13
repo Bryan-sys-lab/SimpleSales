@@ -4,6 +4,11 @@ import 'package:duka_pos/theme/app_theme.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:provider/provider.dart';
+import 'dart:math' as math;
+import 'package:duka_pos/services/app_state.dart';
+import 'package:duka_pos/services/live_channel_service.dart';
+import 'package:duka_pos/services/app_update_service.dart';
 
 /// One place that pins the surface every widget test in this app runs on.
 ///
@@ -133,17 +138,33 @@ extension TestHarness on WidgetTester {
     Locale locale = const Locale('en'),
     Iterable<Locale> supportedLocales = _appLocales,
   }) async {
-    final Widget app = MaterialApp(
-      debugShowCheckedModeBanner: false,
-      theme: themedForTest(brightness, hapticsEnabled: hapticsEnabled),
-      // Without these, `AppLocalizations.of(context)` throws a null-check error
-      // deep inside a widget rather than failing the harness: a screen's copy is
-      // part of its surface, so a test that renders it without a catalogue is
-      // testing a build that cannot ship.
-      localizationsDelegates: AppLocalizations.localizationsDelegates,
-      supportedLocales: supportedLocales,
-      locale: locale,
-      home: home,
+    final Widget app = MultiProvider(
+      // The providers the app installs at its composition root, which a
+      // screen under test reaches for through `context.watch`/`context.read`.
+      //
+      // They were absent, so a screen that asked for one threw
+      // ProviderNotFoundException from deep inside its build — which reads as
+      // a rendering bug in the screen rather than as a missing harness. A
+      // harness that cannot render the real app is not a harness.
+      providers: [
+        ChangeNotifierProvider<AppState>(create: (_) => AppState()),
+        ChangeNotifierProvider<LiveChannelService>(
+            create: (_) => LiveChannelService(random: _FakeRandomForHarness())),
+        ChangeNotifierProvider<AppUpdateService>(
+            create: (_) => AppUpdateService()),
+      ],
+      child: MaterialApp(
+        debugShowCheckedModeBanner: false,
+        theme: themedForTest(brightness, hapticsEnabled: hapticsEnabled),
+        // Without these, `AppLocalizations.of(context)` throws a null-check
+        // error deep inside a widget rather than failing the harness: a
+        // screen's copy is part of its surface, so a test that renders it
+        // without a catalogue is testing a build that cannot ship.
+        localizationsDelegates: AppLocalizations.localizationsDelegates,
+        supportedLocales: supportedLocales,
+        locale: locale,
+        home: home,
+      ),
     );
 
     await pumpWidget(
@@ -293,3 +314,19 @@ const List<Locale> _appLocales = <Locale>[Locale('en')];
 /// list precisely because nonlinear scaling makes the MID-RANGE the non-obvious
 /// part — that is where a bug hides from a test that only tries 1.0 and 3.0.
 const List<double> kTextScales = <double>[1.0, 1.3, 1.5, 2.0, 3.0];
+
+/// A deterministic random for the harness's live channel.
+///
+/// The channel jitters its reconnect to stop a room full of phones
+/// reconnecting on the same frame; in a test that jitter is a source of
+/// nondeterminism for no benefit.
+class _FakeRandomForHarness implements math.Random {
+  @override
+  bool nextBool() => true;
+
+  @override
+  double nextDouble() => 1;
+
+  @override
+  int nextInt(int max) => 0;
+}

@@ -39,7 +39,13 @@ String _stockLabel(double value) => value == value.roundToDouble()
 /// cannot share one set of bars without one of them being unreadable, and this
 /// is the screen where an owner is comparing a product's margin against its
 /// revenue.
-class ProductTableCard extends StatelessWidget {
+/// How many rows a collapsed top-products card shows.
+///
+/// Six, because that is what fits a phone screen without scrolling and still
+/// answers "what is selling". The full list is one tap away.
+const kProductTableCollapsedRows = 6;
+
+class ProductTableCard extends StatefulWidget {
   const ProductTableCard({
     required this.rows,
     required this.sort,
@@ -56,9 +62,30 @@ class ProductTableCard extends StatelessWidget {
   final ValueChanged<ProductSort>? onSort;
 
   @override
+  State<ProductTableCard> createState() => _ProductTableCardState();
+}
+
+class _ProductTableCardState extends State<ProductTableCard> {
+  /// Whether every row is showing.
+  ///
+  /// Collapsed by default, and deliberately: an uncapped "Top products" card
+  /// on a shop with a busy month rendered twenty rows and pushed the payment
+  /// breakdown and the product list below it off the bottom of the screen. A
+  /// section that grows without bound is not a section, it is a page.
+  bool _expanded = false;
+
+  @override
   Widget build(BuildContext context) {
     final AppSpacing spacing = AppSpacing.of(context);
     final AppColors colors = AppColors.of(context);
+    final rows = widget.rows;
+
+    // Collapsed if there is anything to collapse. An empty or short list needs
+    // no affordance, and showing "Show all" beside six rows is noise.
+    final bool collapsible = rows.length > kProductTableCollapsedRows;
+    final List<ProductSalesRow> shown = _expanded || !collapsible
+        ? rows
+        : rows.sublist(0, kProductTableCollapsedRows);
 
     return SurfaceCard(
       padding: EdgeInsets.zero,
@@ -67,7 +94,24 @@ class ProductTableCard extends StatelessWidget {
         mainAxisSize: MainAxisSize.min,
         children: <Widget>[
           SectionHeader(label: 'Top products'),
-          if (rows.isEmpty)
+          // The count beside the title, so a collapsed card still says how big
+          // the real list is rather than implying six is all of it.
+          if (collapsible)
+            Padding(
+              padding: EdgeInsetsDirectional.only(
+                start: spacing.md,
+                end: spacing.md,
+                bottom: spacing.sm,
+              ),
+              child: Text(
+                AppLocalizations.of(context)
+                    .analyticsTopProductsCount(rows.length),
+                style: AppTypography.of(context).bodySmall?.copyWith(
+                      color: colors.onSurfaceMuted,
+                    ),
+              ),
+            ),
+          if (shown.isEmpty)
             Padding(
               padding: EdgeInsets.fromLTRB(
                 spacing.md,
@@ -76,7 +120,7 @@ class ProductTableCard extends StatelessWidget {
                 spacing.md,
               ),
               child: Text(
-                'Nothing sold in this period.',
+                AppLocalizations.of(context).analyticsTopProductsEmpty,
                 style: AppTypography.of(context).bodyMedium?.copyWith(
                       color: colors.onSurfaceMuted,
                     ),
@@ -93,9 +137,9 @@ class ProductTableCard extends StatelessWidget {
                   children: <Widget>[
                     if (wide)
                       _WideSortHeader(
-                        sort: sort,
-                        ascending: ascending,
-                        onSort: onSort,
+                        sort: widget.sort,
+                        ascending: widget.ascending,
+                        onSort: widget.onSort,
                       )
                     else
                       Padding(
@@ -105,28 +149,60 @@ class ProductTableCard extends StatelessWidget {
                           bottom: spacing.sm,
                         ),
                         child: _NarrowSortControl(
-                          sort: sort,
-                          ascending: ascending,
-                          onSort: onSort,
+                          sort: widget.sort,
+                          ascending: widget.ascending,
+                          onSort: widget.onSort,
                         ),
                       ),
                     Divider(height: 1, color: colors.outline),
-                    for (final ProductSalesRow row in rows)
+                    for (final ProductSalesRow row in shown)
                       wide
                           ? _ProductTableRow(
                               row: row,
-                              showDivider: row != rows.last,
+                              showDivider: row != shown.last,
                             )
                           : _ProductLine(
                               row: row,
-                              showDivider: row != rows.last,
+                              showDivider: row != shown.last,
                             ),
+                    if (collapsible) ...<Widget>[
+                      Divider(height: 1, color: colors.outline),
+                      _ShowAllRowsButton(
+                        expanded: _expanded,
+                        hidden: rows.length - shown.length,
+                        onToggle: () => setState(() => _expanded = !_expanded),
+                      ),
+                    ],
                   ],
                 );
               },
             ),
         ],
       ),
+    );
+  }
+}
+
+/// The control that grows the list, and the count it is hiding.
+class _ShowAllRowsButton extends StatelessWidget {
+  const _ShowAllRowsButton({
+    required this.expanded,
+    required this.hidden,
+    required this.onToggle,
+  });
+
+  final bool expanded;
+  final int hidden;
+  final VoidCallback onToggle;
+
+  @override
+  Widget build(BuildContext context) {
+    final l10n = AppLocalizations.of(context);
+    return TextButton(
+      onPressed: onToggle,
+      child: Text(expanded
+          ? l10n.analyticsTopProductsShowLess
+          : l10n.analyticsTopProductsShowMore(hidden)),
     );
   }
 }
