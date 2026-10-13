@@ -2579,6 +2579,12 @@ abstract class AppLocalizations {
   /// **'Couldn’t import the workbook. Check the file and try again.'**
   String get settingsImportWorkbookFailed;
 
+  /// No description provided for @importNotOurFormat.
+  ///
+  /// In en, this message translates to:
+  /// **'That file isn’t in this app’s inventory format, so nothing was imported. Add a header row to the sheet — Name, Cost price, Selling price, Stock qty — or export a template from Settings and paste your rows into it.'**
+  String get importNotOurFormat;
+
   /// No description provided for @settingsIncluded.
   ///
   /// In en, this message translates to:

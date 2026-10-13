@@ -413,6 +413,7 @@
   "diagnosticsEntryContext": "on {route} · {actor} · {action}",
   "settingsImportInventory": "Import inventory (.xlsx)",
   "settingsImportWorkbookFailed": "Couldn’t import the workbook. Check the file and try again.",
+  "importNotOurFormat": "That file isn’t in this app’s inventory format, so nothing was imported. Add a header row to the sheet — Name, Cost price, Selling price, Stock qty — or export a template from Settings and paste your rows into it.",
   "settingsIncluded": "Included",
   "settingsInvalidEncryptedBackup": "That encrypted backup is invalid or belongs to another installation.",
   "settingsInvalidWorkbook": "That workbook has invalid inventory data. No products were imported.",

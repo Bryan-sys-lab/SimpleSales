@@ -78,6 +78,54 @@ List<int> _workbook(Map<String, List<List<dynamic>>> tabs) {
   return book.encode()!;
 }
 
+
+/// The shape of the workbook that shipped this bug.
+///
+/// Products in column B — where our own export puts the name — so the names
+/// read correctly and nothing about the file LOOKS wrong. Its buying price sits
+/// one column over in C, which is where our export writes out the category as
+/// words. That shifted column is the whole bug: read positionally, a buying
+/// price becomes a category, a selling price becomes a cost, and an opening
+/// stock becomes a selling price.
+List<List<dynamic>> _tracker({List<dynamic>? header, int products = 6}) {
+  final rows = <List<dynamic>>[
+    header ??
+        <dynamic>[
+          '0',
+          '',
+          'B.PRICE',
+          'S.PRICE',
+          'OP/STOCK',
+          'NEW STOCK',
+          'TOTAL STOCK QTY',
+          'TOTAL STOCK VALUE',
+          'SOLD STOCK',
+          'CLOSING STOCK',
+          'SALES AMOUNT',
+          'PROFIT',
+        ],
+    <dynamic>['SPIRITS 1 ltr'],
+  ];
+  for (var i = 0; i < products; i++) {
+    rows.add(<dynamic>[
+      '',
+      'Bond ${i + 7}',
+      90 + i,
+      200 + i,
+      i + 1,
+      i + 4,
+      5 + i,
+      450 + i,
+      3 + i,
+      4 + i,
+      600 + i,
+      200 + i,
+    ]);
+  }
+  return rows;
+}
+
+
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
   sqfliteFfiInit();
@@ -840,6 +888,137 @@ void main() {
 
       expect(result.imported, 1);
       expect(result.needsAttention, 0);
+    });
+  });
+
+  group('a workbook we cannot map is refused whole', () {
+    // The tracker above, read positionally, wrote 38 products at the wrong
+    // numbers and flagged 287 rows as failed. Both outcomes came from the same
+    // mistake, so the tests below assert neither happens.
+
+    test('the whole file is refused, and nothing is written', () async {
+      final bytes = _workbook({'Sheet1': _tracker()});
+
+      await expectLater(
+        ExcelService().importInventoryBytes(bytes),
+        throwsA(isA<UnreadableLayoutException>()),
+      );
+
+      // The point of refusing whole: no product, and no phantom needs-attention
+      // rows for a file whose rows were never readable in the first place.
+      expect(await db.getProducts(activeOnly: false), isEmpty);
+      expect(await db.countOpenImportProblems(), 0);
+    });
+
+    test('the owner is told the file is not ours, not that 287 rows are bad',
+        () async {
+      final bytes = _workbook({'Sheet1': _tracker(products: 3)});
+
+      await expectLater(
+        ExcelService().importInventoryBytes(bytes),
+        throwsA(isA<UnreadableLayoutException>().having(
+          (UnreadableLayoutException e) => e.message,
+          'message',
+          allOf(contains('category'), contains('inventory format')),
+        )),
+      );
+    });
+
+    test('a file in this app\'s own export order still imports', () async {
+      // Header-less is a promise the app makes and keeps: our export names its
+      // products in the first column, so the positional read is right for it.
+      // Refusing on shape must not take the legitimate case down with it.
+      final bytes = _workbook({
+        'Inventory': [
+          _row(id: 1, name: 'Kenya Lager', category: 'Beer'),
+          _row(id: 2, name: 'Bond 7', category: 'Spirits'),
+          _row(id: 3, name: 'Blue Ice', category: 'Spirits'),
+        ],
+      });
+
+      final result = await ExcelService().importInventoryBytes(bytes);
+
+      expect(result.imported, 3);
+      expect(result.needsAttention, 0);
+      expect(await productNamed('Kenya Lager'), isNotNull);
+    });
+
+    test('a header row with a number in it is still a header', () async {
+      // The latent half of the same bug. A year, a version column, a count of
+      // rows: a header row with a number in it used to be discarded whole and
+      // the file read positionally, so every field landed one column over.
+      final bytes = _workbook({
+        'Inventory': [
+          <dynamic>[
+            '2026',
+            'Name',
+            'Cost price',
+            'Selling price',
+            'Stock qty',
+            'Bottle ml',
+          ],
+          <dynamic>['', 'Kenya Lager', 60, 100, 24, 500],
+          <dynamic>['', 'Bond 7', 90, 200, 12, 750],
+        ],
+      });
+
+      final result = await ExcelService().importInventoryBytes(bytes);
+
+      expect(result.imported, 2);
+      expect(result.needsAttention, 0);
+      final kenya = await productNamed('Kenya Lager');
+      expect(kenya!.costPrice.minorUnits, 6000,
+          reason: 'read from Cost price, not from the year column');
+      expect(kenya.sellPrice.minorUnits, 10000);
+      expect(kenya.stockQty, 24);
+    });
+
+    test('a file whose category column was deleted is not accused of it',
+        () async {
+      // Only FILLED cells are counted. Blank is no evidence that a file is not
+      // ours, and an owner who deletes the category column from their own
+      // export must still be able to import it.
+      final bytes = _workbook({
+        'Inventory': [
+          <dynamic>['', 'Kenya Lager', null, 60, 100, 24],
+          <dynamic>['', 'Bond 7', null, 90, 200, 12],
+          <dynamic>['', 'Blue Ice', null, 110, 260, 9],
+        ],
+      });
+
+      final result = await ExcelService().importInventoryBytes(bytes);
+
+      expect(result.imported, 3);
+      final kenya = await productNamed('Kenya Lager');
+      expect(kenya!.costPrice.minorUnits, 6000);
+      expect(kenya.sellPrice.minorUnits, 10000);
+    });
+
+    test('a named header row wins over the shape check', () async {
+      // Once the header is read by name, the shape of the columns is irrelevant
+      // — which is the whole point of reading headers. A tracker whose owner has
+      // labelled the columns imports correctly rather than being refused.
+      final bytes = _workbook({
+        'Inventory': [
+          <dynamic>[
+            'Section',
+            'Product name',
+            'Cost price',
+            'Selling price',
+            'Stock qty'
+          ],
+          <dynamic>['SPIRITS', 'Bond 7', 90, 200, 5],
+          <dynamic>['SPIRITS', 'Best Gin', 110, 260, 8],
+        ],
+      });
+
+      final result = await ExcelService().importInventoryBytes(bytes);
+
+      expect(result.imported, 2);
+      final bond = await productNamed('Bond 7');
+      expect(bond!.costPrice.minorUnits, 9000);
+      expect(bond.sellPrice.minorUnits, 20000);
+      expect(bond.stockQty, 5);
     });
   });
 }

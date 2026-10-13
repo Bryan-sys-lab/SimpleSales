@@ -90,6 +90,16 @@ class ImportRow {
   }
 }
 
+/// A sheet that cannot be read as this app's inventory format.
+///
+/// A [FormatException] so the existing `on FormatException` catches around an
+/// import stay correct, and distinct so a screen can say what to DO about it
+/// instead of the generic "that workbook is invalid". Nothing is written when
+/// this is thrown — see [SheetLayout.refusal].
+class UnreadableLayoutException extends FormatException {
+  const UnreadableLayoutException(super.message);
+}
+
 /// Which spreadsheet column holds which field.
 ///
 /// A supplier's file is not this app's export format, and assuming a fixed
@@ -213,11 +223,18 @@ class SheetColumns {
 
   /// True when row 1 is a header row rather than the shopkeeper's first product.
   ///
-  /// Two independent signals, because either alone misfires. A single number in
-  /// row 1 means data, whatever the words around it — a header row has no
-  /// numbers in it. And a majority of the non-empty cells have to be names we
-  /// recognise, so a first product row called "Blue Band 2pk" (whose words are
-  /// not field names, and whose `2` is a number) is never mistaken for a header.
+  /// A majority of the non-empty cells have to be names we recognise, so a
+  /// first product row called "Blue Band 2pk" — whose words are not field names
+  /// — is never mistaken for a header. That majority IS the guard.
+  ///
+  /// A number in the row is deliberately not evidence against it, which is the
+  /// opposite of what this used to say. "A header row has no numbers in it" is
+  /// false of real files — a year, a version column, a count of rows. When one
+  /// appeared, the old rule threw the row away and read the file positionally,
+  /// which is the dragged-columns disaster this class exists to prevent: every
+  /// price landing one field over. A data row stays safe without the rule,
+  /// because a row of product words and prices has no majority of field names
+  /// in it however many numbers it carries.
   static bool looksLikeHeaderRow(List<dynamic> row) {
     var considered = 0;
     var recognised = 0;
@@ -227,8 +244,6 @@ class SheetColumns {
       considered++;
       if (aliases.containsKey(normaliseHeader(text))) {
         recognised++;
-      } else if (parseNumber(text) != null) {
-        return false;
       }
     }
     if (considered == 0 || recognised == 0) return false;
@@ -306,6 +321,7 @@ class SheetLayout {
     required this.columns,
     required this.rows,
     this.headerRow,
+    this.refusal,
   });
 
   final SheetColumns columns;
@@ -315,6 +331,19 @@ class SheetLayout {
 
   /// The header cells, when row 1 was one. Null for a header-less file.
   final List<dynamic>? headerRow;
+
+  /// Why this sheet could not be read as this app's format, when it could not.
+  ///
+  /// Non-null means the sheet is NOT ours: [rows] is empty, nothing was or will
+  /// be read from it, and [refusal] is the diagnostic sentence for the log and
+  /// the test. A workbook we cannot map is refused WHOLE, because the
+  /// alternative — reading it positionally — is the failure this type exists
+  /// to prevent. A real supplier tracker has its section titles in the first
+  /// column and its products one column over, so the canonical read takes a
+  /// section title as a product name, a selling price as a cost, and an opening
+  /// stock as a price: 38 products written at the wrong numbers, and 287 rows
+  /// reported as failed. One refused file with an accurate message beats both.
+  final String? refusal;
 
   bool get headerRowDetected => columns.headerRowDetected;
 
@@ -329,15 +358,68 @@ class SheetLayout {
     }
     final first = raw.first;
     final detected = SheetColumns.fromHeaderRow(first);
-    final columns = detected ?? SheetColumns.positional;
-    final start = detected == null ? 0 : 1;
-    final rows = <ImportRow>[
-      for (var i = start; i < raw.length; i++) ImportRow(i + 1, raw[i]),
-    ];
+    if (detected != null) {
+      return SheetLayout(
+        columns: detected,
+        rows: <ImportRow>[
+          for (var i = 1; i < raw.length; i++) ImportRow(i + 1, raw[i]),
+        ],
+        headerRow: List<dynamic>.of(first),
+      );
+    }
+
+    // No header row, so this file is about to be read as if it were this app's
+    // own export: same columns, same order. That is a promise the data has to
+    // keep, and it is checked rather than assumed.
+    //
+    // One column carries the promise. In our export every row writes its
+    // CATEGORY out as words in the category column, so a column that holds
+    // prices instead of labels is a file whose columns sit one place over from
+    // ours. The tracker that shipped this bug was exactly that: products in the
+    // name column — where our export puts them, so nothing LOOKS wrong — and
+    // its buying price one column over, where the category belongs. Read
+    // positionally that buying price became a category, a selling price became
+    // a cost, and an opening stock became a selling price: 38 products at the
+    // wrong numbers, alongside 287 rows reported as failed for a price the
+    // shifted read could not find.
+    //
+    // Only the cells that are actually filled are counted, so a legitimate
+    // file whose category column was deleted is not accused of anything; the
+    // check fires when the labels are being replaced by prices, not when they
+    // are absent.
+    final SheetColumns columns = SheetColumns.positional;
+    var named = 0;
+    var categoryWords = 0;
+    var categoryPrices = 0;
+    for (final List<dynamic> row in raw) {
+      if (SheetColumns.isBlankRow(row)) continue;
+      if ((columns.text(row, 'name') ?? '').isEmpty) continue;
+      named++;
+      final category = columns.cell(row, 'category');
+      if (category == null) continue;
+      if (SheetColumns.parseNumber(category) != null) {
+        categoryPrices++;
+      } else {
+        categoryWords++;
+      }
+    }
+    if (categoryPrices > categoryWords) {
+      return SheetLayout(
+        columns: columns,
+        rows: const <ImportRow>[],
+        headerRow: null,
+        refusal: '$categoryPrices of the ${categoryWords + categoryPrices} '
+            'filled category cells among $named named rows hold a number, '
+            'where this app writes out a category name. The sheet is not in '
+            'this app\'s inventory format.',
+      );
+    }
     return SheetLayout(
       columns: columns,
-      rows: rows,
-      headerRow: detected == null ? null : List<dynamic>.of(first),
+      rows: <ImportRow>[
+        for (var i = 0; i < raw.length; i++) ImportRow(i + 1, raw[i]),
+      ],
+      headerRow: null,
     );
   }
 }

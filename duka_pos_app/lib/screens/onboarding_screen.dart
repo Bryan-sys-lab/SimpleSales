@@ -4,6 +4,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 import '../services/app_state.dart';
 import '../services/excel_service.dart';
+import '../services/import_row_parser.dart';
 import '../services/workspace_service.dart';
 import '../l10n/generated/app_localizations.dart';
 import '../theme/app_colors.dart';
@@ -80,6 +81,12 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
                 : 'Imported ${result.products} products. '
                     '$refused barcode(s) were already on another '
                     'product and were left alone.';
+      });
+    } on UnreadableLayoutException {
+      if (!mounted) return;
+      setState(() {
+        _messageIsError = true;
+        _message = AppLocalizations.of(context).importNotOurFormat;
       });
     } on FormatException {
       if (!mounted) return;

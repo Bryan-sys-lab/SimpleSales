@@ -18,6 +18,7 @@ import '../services/session_refresh_mixin.dart';
 import '../services/staff_credential_cache.dart';
 import '../services/sync_service.dart';
 import '../services/excel_service.dart';
+import '../services/import_row_parser.dart';
 import '../routing/routes.dart';
 import '../services/roles.dart';
 import '../app_brand.dart';
@@ -1048,6 +1049,11 @@ class _SettingsScreenState extends State<SettingsScreen>
         entity: AuditEntity.backup,
         detail: detail,
       );
+    } on UnreadableLayoutException {
+      // The one workbook problem with an actionable answer, so it gets its own
+      // sentence instead of the generic invalid-workbook one.
+      if (!mounted) return;
+      _err(l10n.importNotOurFormat);
     } on FormatException {
       if (!mounted) return;
       _err(l10n.settingsInvalidWorkbook);

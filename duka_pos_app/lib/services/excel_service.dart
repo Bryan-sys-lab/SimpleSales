@@ -295,6 +295,11 @@ class ExcelService {
 
     final sheetName = _inventorySheetName(book);
     final layout = SheetLayout.fromRawRows(_rawRows(book.tables[sheetName]!));
+    // Refused whole rather than read positionally. A workbook we cannot map is
+    // not a workbook with 287 bad rows in it — see SheetLayout.refusal.
+    if (layout.refusal != null) {
+      throw UnreadableLayoutException(layout.refusal!);
+    }
     final importer = InventoryImporter(_db);
     return importer.apply(
       source: 'excel',

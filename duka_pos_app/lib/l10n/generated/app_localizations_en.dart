@@ -1537,6 +1537,10 @@ class AppLocalizationsEn extends AppLocalizations {
       'Couldn’t import the workbook. Check the file and try again.';
 
   @override
+  String get importNotOurFormat =>
+      'That file isn’t in this app’s inventory format, so nothing was imported. Add a header row to the sheet — Name, Cost price, Selling price, Stock qty — or export a template from Settings and paste your rows into it.';
+
+  @override
   String get settingsIncluded => 'Included';
 
   @override

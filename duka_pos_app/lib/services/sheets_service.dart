@@ -337,6 +337,11 @@ class SheetsService {
     // than assumed, so a spreadsheet whose first product was moved into row 1
     // by hand still imports that product instead of eating it.
     final layout = SheetLayout.fromRawRows(values);
+    // Refused whole rather than read positionally, exactly as the Excel path
+    // refuses it. A sheet is either readable by name or it is not ours.
+    if (layout.refusal != null) {
+      throw UnreadableLayoutException(layout.refusal!);
+    }
     final result = await InventoryImporter(_db).apply(
       source: 'sheets',
       sheetName: inventorySheetName,
