@@ -74,6 +74,8 @@ class _PortfolioHarness extends StatelessWidget {
         kpis: _kpis(),
         range: PortfolioRange.week,
         onRangeChanged: (PortfolioRange _) {},
+        onRetry: () async {},
+        refreshing: false,
       );
 }
 

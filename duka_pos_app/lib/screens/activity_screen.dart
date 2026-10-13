@@ -239,9 +239,17 @@ class ActivityPanel extends StatelessWidget {
             child: LinearProgressIndicator(minHeight: 2),
           ),
         Expanded(
-          child: view == ActivityView.merged
-              ? _MergedList(rows: snapshot.merged)
-              : _ByShopList(snapshot: snapshot),
+          // Pull to refresh, so the log can be re-read without leaving the
+          // screen. The rows come from every shop's own database on the device,
+          // which is the slowest read in the app — and a shop that cannot force
+          // it has to navigate away and back to see what just happened.
+          child: RefreshIndicator(
+            // `onRetry` IS the reload: the panel's one reload callback.
+            onRefresh: onRetry,
+            child: view == ActivityView.merged
+                ? _MergedList(rows: snapshot.merged)
+                : _ByShopList(snapshot: snapshot),
+          ),
         ),
       ],
     );

@@ -74,6 +74,11 @@ class _PortfolioScreenState extends State<PortfolioScreen>
   PortfolioRange _range = PortfolioRange.week;
   _PortfolioView _view = const _PortfolioLoading();
 
+  /// True from the moment a re-read starts until it settles. Drives the panel's
+  /// own indicator rather than replacing the content, which is what keeps a
+  /// pull-to-refresh from reading as data loss.
+  bool _loading = true;
+
   /// Cross-shop by definition, so it re-reads on any change.
   @override
   Set<LiveReason> get liveReasons => const <LiveReason>{};
@@ -110,7 +115,10 @@ class _PortfolioScreenState extends State<PortfolioScreen>
     // fetch, however the two overlap.
     final int session = context.read<AppState>().sessionGeneration;
     final DateTime now = DateTime.now();
-    setState(() => _view = const _PortfolioLoading());
+    setState(() {
+      _loading = true;
+      if (_view is! _PortfolioContent) _view = const _PortfolioLoading();
+    });
     try {
       final PortfolioKpis kpis = await BackendService.portfolioKpis(
         from: range.since(now),
@@ -118,13 +126,17 @@ class _PortfolioScreenState extends State<PortfolioScreen>
       );
       if (!_current(session)) return;
       setState(() {
+        _loading = false;
         _view = kpis.isEmpty
             ? const _PortfolioEmpty()
             : _PortfolioContent(kpis: kpis);
       });
     } catch (_) {
       if (!_current(session)) return;
-      setState(() => _view = const _PortfolioFailure());
+      setState(() {
+        _loading = false;
+        _view = const _PortfolioFailure();
+      });
     }
   }
 
@@ -157,6 +169,12 @@ class _PortfolioScreenState extends State<PortfolioScreen>
               kpis: kpis,
               range: _range,
               onRangeChanged: _setRange,
+              onRetry: _load,
+              // Kept on screen while it reloads: a chart that blanks to a
+              // spinner on every pull reads as the figures having gone, and a
+              // re-read triggered by a pull needs nothing more than a spinner
+              // over content that is still true.
+              refreshing: _loading,
             ),
         },
       ),
@@ -195,11 +213,20 @@ class PortfolioPanel extends StatelessWidget {
     required this.kpis,
     required this.range,
     required this.onRangeChanged,
+    required this.onRetry,
+    required this.refreshing,
   });
 
   final PortfolioKpis kpis;
   final PortfolioRange range;
   final ValueChanged<PortfolioRange> onRangeChanged;
+
+  /// The one reload callback: pulls the cross-shop figures again. The network
+  /// read is the slowest in the app and the figures are the ones an owner
+  /// checks most often after a delivery, so a shop that cannot re-read them
+  /// without a round trip has to leave and come back.
+  final Future<void> Function() onRetry;
+  final bool refreshing;
 
   @override
   Widget build(BuildContext context) {
@@ -211,114 +238,117 @@ class PortfolioPanel extends StatelessWidget {
     // child and no bound, which is an unbounded-constraints crash the moment
     // the panel is nested anywhere but a viewport. Scrolling is a property of
     // the list; the header is simply the first thing in it.
-    return ListView(
-      padding: EdgeInsets.zero,
-      children: <Widget>[
-        // The window, as a menu rather than a segmented row. Three segments
-        // named "7 days", "30 days" and "90 days" fit 320dp at 1× and overflow it
-        // at 2×, and the alternative — shrinking the labels — is the one thing
-        // this app refuses to do. A menu therefore adapts to the text instead of
-        // asking it to adapt to the row.
-        //
-        // The button is an `OutlinedButton`, not a `Chip`: a Material chip's
-        // ink box is 34px tall, below the 44px floor, and wrapping it in a
-        // `ConstrainedBox` only grows the box around the ink — the assertion
-        // measures the ink. An outlined button is already 40px and grows with
-        // its own label.
-        Align(
-          alignment: AlignmentDirectional.centerStart,
-          child: PopupMenuButton<PortfolioRange>(
-            initialValue: range,
-            onSelected: onRangeChanged,
-            tooltip: l10n.portfolioRangeLabel,
-            position: PopupMenuPosition.under,
-            itemBuilder: (BuildContext context) =>
-                <PopupMenuEntry<PortfolioRange>>[
-              for (final MapEntry<PortfolioRange, String> option
-                  in <MapEntry<PortfolioRange, String>>[
-                MapEntry<PortfolioRange, String>(
-                    PortfolioRange.week, l10n.portfolioRangeWeek),
-                MapEntry<PortfolioRange, String>(
-                    PortfolioRange.month, l10n.portfolioRangeMonth),
-                MapEntry<PortfolioRange, String>(
-                    PortfolioRange.quarter, l10n.portfolioRangeQuarter),
-              ])
-                PopupMenuItem<PortfolioRange>(
-                  value: option.key,
-                  child: Row(
-                    children: <Widget>[
-                      Semantics(
-                        // The tick is the state, and the state must be
-                        // announced, not merely visible.
-                        label: option.key == range
-                            ? l10n.portfolioRangeCurrent
-                            : '',
-                        excludeSemantics: true,
-                        child: option.key == range
-                            ? Icon(Icons.check,
-                                size: 18, color: AppColors.of(context).accent)
-                            : const SizedBox(width: 18),
-                      ),
-                      SizedBox(width: AppSpacing.of(context).sm),
-                      Text(option.value),
-                    ],
+    return RefreshIndicator(
+      onRefresh: onRetry,
+      child: ListView(
+        padding: EdgeInsets.zero,
+        children: <Widget>[
+          // The window, as a menu rather than a segmented row. Three segments
+          // named "7 days", "30 days" and "90 days" fit 320dp at 1× and overflow it
+          // at 2×, and the alternative — shrinking the labels — is the one thing
+          // this app refuses to do. A menu therefore adapts to the text instead of
+          // asking it to adapt to the row.
+          //
+          // The button is an `OutlinedButton`, not a `Chip`: a Material chip's
+          // ink box is 34px tall, below the 44px floor, and wrapping it in a
+          // `ConstrainedBox` only grows the box around the ink — the assertion
+          // measures the ink. An outlined button is already 40px and grows with
+          // its own label.
+          Align(
+            alignment: AlignmentDirectional.centerStart,
+            child: PopupMenuButton<PortfolioRange>(
+              initialValue: range,
+              onSelected: onRangeChanged,
+              tooltip: l10n.portfolioRangeLabel,
+              position: PopupMenuPosition.under,
+              itemBuilder: (BuildContext context) =>
+                  <PopupMenuEntry<PortfolioRange>>[
+                for (final MapEntry<PortfolioRange, String> option
+                    in <MapEntry<PortfolioRange, String>>[
+                  MapEntry<PortfolioRange, String>(
+                      PortfolioRange.week, l10n.portfolioRangeWeek),
+                  MapEntry<PortfolioRange, String>(
+                      PortfolioRange.month, l10n.portfolioRangeMonth),
+                  MapEntry<PortfolioRange, String>(
+                      PortfolioRange.quarter, l10n.portfolioRangeQuarter),
+                ])
+                  PopupMenuItem<PortfolioRange>(
+                    value: option.key,
+                    child: Row(
+                      children: <Widget>[
+                        Semantics(
+                          // The tick is the state, and the state must be
+                          // announced, not merely visible.
+                          label: option.key == range
+                              ? l10n.portfolioRangeCurrent
+                              : '',
+                          excludeSemantics: true,
+                          child: option.key == range
+                              ? Icon(Icons.check,
+                                  size: 18, color: AppColors.of(context).accent)
+                              : const SizedBox(width: 18),
+                        ),
+                        SizedBox(width: AppSpacing.of(context).sm),
+                        Text(option.value),
+                      ],
+                    ),
                   ),
-                ),
-            ],
-            child: OutlinedButton.icon(
-              onPressed: null,
-              icon: const Icon(Icons.date_range, size: 18),
-              label: Text(switch (range) {
-                PortfolioRange.week => l10n.portfolioRangeWeek,
-                PortfolioRange.month => l10n.portfolioRangeMonth,
-                PortfolioRange.quarter => l10n.portfolioRangeQuarter,
-              }),
+              ],
+              child: OutlinedButton.icon(
+                onPressed: null,
+                icon: const Icon(Icons.date_range, size: 18),
+                label: Text(switch (range) {
+                  PortfolioRange.week => l10n.portfolioRangeWeek,
+                  PortfolioRange.month => l10n.portfolioRangeMonth,
+                  PortfolioRange.quarter => l10n.portfolioRangeQuarter,
+                }),
+              ),
             ),
           ),
-        ),
-        SizedBox(height: spacing.lg),
-        // The whole first. An owner opens this screen to see the one number that
-        // answers "how is everything going", and burying it under the per-shop
-        // rows means they read three rows to derive it.
-        _PortfolioTotalsCard(kpis: kpis),
-        SizedBox(height: spacing.lg),
-        // The comparison as a LINE-free shape: one point per shop, ranked,
-        // so the busiest is visibly the busiest without a value axis to
-        // read.
-        if (kpis.shops.length > 1) ...<Widget>[
-          PosPieChart(
-            title: l10n.portfolioSharedTitle,
-            slices: <PosPieSlice>[
-              for (final ShopKpi shop in kpis.shopsByRevenue)
-                if (shop.revenue.minorUnits > 0)
-                  PosPieSlice(
-                    label: shop.shopName,
-                    value: shop.revenue.minorUnits,
-                    // The rank decides the tint, so the largest slice is
-                    // also the strongest one and the two channels agree
-                    // instead of the colour contradicting the size.
-                    color:
-                        _rankColor(kpis.shopsByRevenue.indexOf(shop), context),
-                    valueLabel: formatMoney(shop.revenue),
-                  ),
-            ],
-            centerLabel: l10n.portfolioTotalRevenue,
-            centerValue: formatMoney(kpis.totalRevenue),
-          ),
           SizedBox(height: spacing.lg),
+          // The whole first. An owner opens this screen to see the one number that
+          // answers "how is everything going", and burying it under the per-shop
+          // rows means they read three rows to derive it.
+          _PortfolioTotalsCard(kpis: kpis),
+          SizedBox(height: spacing.lg),
+          // The comparison as a LINE-free shape: one point per shop, ranked,
+          // so the busiest is visibly the busiest without a value axis to
+          // read.
+          if (kpis.shops.length > 1) ...<Widget>[
+            PosPieChart(
+              title: l10n.portfolioSharedTitle,
+              slices: <PosPieSlice>[
+                for (final ShopKpi shop in kpis.shopsByRevenue)
+                  if (shop.revenue.minorUnits > 0)
+                    PosPieSlice(
+                      label: shop.shopName,
+                      value: shop.revenue.minorUnits,
+                      // The rank decides the tint, so the largest slice is
+                      // also the strongest one and the two channels agree
+                      // instead of the colour contradicting the size.
+                      color: _rankColor(
+                          kpis.shopsByRevenue.indexOf(shop), context),
+                      valueLabel: formatMoney(shop.revenue),
+                    ),
+              ],
+              centerLabel: l10n.portfolioTotalRevenue,
+              centerValue: formatMoney(kpis.totalRevenue),
+            ),
+            SizedBox(height: spacing.lg),
+          ],
+          SectionHeader(label: l10n.portfolioShopsTitle),
+          for (int i = 0; kpis.shops.length > i; i++)
+            _ShopKpiRow(
+              kpi: kpis.shopsByRevenue[i],
+              rank: i + 1,
+              share: kpis.totalRevenue.isZero
+                  ? 0
+                  : kpis.shopsByRevenue[i].revenue.minorUnits /
+                      kpis.totalRevenue.minorUnits,
+              showDivider: i != kpis.shops.length - 1,
+            ),
         ],
-        SectionHeader(label: l10n.portfolioShopsTitle),
-        for (int i = 0; kpis.shops.length > i; i++)
-          _ShopKpiRow(
-            kpi: kpis.shopsByRevenue[i],
-            rank: i + 1,
-            share: kpis.totalRevenue.isZero
-                ? 0
-                : kpis.shopsByRevenue[i].revenue.minorUnits /
-                    kpis.totalRevenue.minorUnits,
-            showDivider: i != kpis.shops.length - 1,
-          ),
-      ],
+      ),
     );
   }
 

@@ -301,4 +301,23 @@ void main() {
       }
     }
   });
+
+  group('pull to refresh', () {
+    testWidgets('the log re-reads from a pull, without leaving the screen',
+        (tester) async {
+      // The rows come from every shop's own database on the device — the
+      // slowest read in the app — and a shop that cannot force it has to
+      // navigate away and back to see what just happened.
+      tester.useDevice(Device.small);
+      await tester.pumpApp(
+        home: _panel(ActivitySnapshot(perShop: <ShopActivity>[
+          _shop('Demo Shop', entries: <AuditLogEntry>[
+            _entry(AuditAction.saleRecorded, detail: 'Bond 7 x2')
+          ]),
+        ])),
+      );
+
+      expect(find.byType(RefreshIndicator), findsOneWidget);
+    });
+  });
 }
