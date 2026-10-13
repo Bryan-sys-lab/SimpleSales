@@ -386,6 +386,395 @@ class _LineChartPainter extends CustomPainter {
 }
 
 // ---------------------------------------------------------------------------
+// Magnitude per bucket
+// ---------------------------------------------------------------------------
+
+/// How far apart the axis labels sit, in bars.
+///
+/// Three is the sensible interval for a trading day: a shop that opens at 8am
+/// and closes at 11pm reads the axis as morning, midday, evening without
+/// counting bars, and eight labels fit a 320dp phone without touching. It is a
+/// floor, not a cap — a wider label or a narrower phone still widens the stride,
+/// so the axis can never read as a row of collisions.
+const int kPosBarChartMinStride = 3;
+
+/// A bar chart, for a total PER BUCKET: money taken in each hour of the day.
+///
+/// Bars rather than a line, and the choice matters. An hourly total is a
+/// magnitude at a moment, not a trajectory through it: the question the
+/// dashboard is asking is "which hour was best", and that is a comparison of
+/// LENGTHS, which a bar answers without being described. A line over 24 hourly
+/// buckets reads as a trend in a series of readings and invites tracing it
+/// finger-first, when there is no reading between the hours to trace.
+///
+/// The money figure is revealed by touch, not painted. A painted peak value on
+/// the chart is a label the shop did not ask for sitting over a picture of the
+/// answer, and at this size it is the one label most likely to collide with the
+/// hour beneath it. So a bar is quiet until it is tapped, and the tapped bar's
+/// hour and figure are announced — a screen reader gets the same answer the
+/// finger did, which is the part a painted label never managed.
+///
+/// Same accessibility contract as [PosLineChart]: the series is restated as a
+/// sentence on a [Semantics] node and the painted content is excluded from it,
+/// axis labels are dropped rather than squeezed, and the painter is free to
+/// paint outside its box because there is no layout to overflow.
+class PosBarChart extends StatefulWidget {
+  const PosBarChart({
+    super.key,
+    required this.title,
+    required this.points,
+    this.semanticsLabel,
+    this.height = 148,
+  });
+
+  final String title;
+  final List<PosLinePoint> points;
+  final String? semanticsLabel;
+  final double height;
+
+  @override
+  State<PosBarChart> createState() => _PosBarChartState();
+}
+
+class _PosBarChartState extends State<PosBarChart> {
+  /// The bar the finger is on, or null for none.
+  ///
+  /// State rather than nothing: this is the one piece of the chart that a tap
+  /// creates, and it belongs to the chart — a caller passing a selected index in
+  /// would be duplicating a fact the gesture already produced.
+  int? _selected;
+
+  @override
+  void didUpdateWidget(covariant PosBarChart oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    // A fresh day's bars make the previous selection meaningless: the bar the
+    // owner tapped is a different hour's money now.
+    if (!identical(oldWidget.points, widget.points) &&
+        oldWidget.points != widget.points) {
+      _selected = null;
+    }
+  }
+
+  void _selectAt(double localX, double width) {
+    final points = widget.points;
+    if (points.isEmpty || width <= 0) return;
+    final slot = width / points.length;
+    final index = (localX / slot).floor().clamp(0, points.length - 1);
+    setState(() => _selected = _selected == index ? null : index);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final AppColors colors = AppColors.of(context);
+    final AppSpacing spacing = AppSpacing.of(context);
+    final TextTheme type = AppTypography.of(context);
+    final l10n = AppLocalizations.of(context);
+    final labelStyle = type.bodySmall ?? const TextStyle();
+    final selected = widget.points.isEmpty ? null : _selected;
+
+    // The announcement is the chart's, not the caller's to own. A caller's
+    // `semanticsLabel` describes the SERIES; what a tap just revealed is a fact
+    // the chart alone knows, so the two are composed rather than one
+    // overriding the other — which is how the selected-bar sentence ended up
+    // unreachable on the one screen that passes a label of its own.
+    return Semantics(
+      label: _announcement(l10n),
+      container: true,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        mainAxisSize: MainAxisSize.min,
+        children: <Widget>[
+          Text(widget.title, style: type.titleMedium),
+          SizedBox(height: spacing.sm),
+          if (widget.points.isEmpty)
+            Text(l10n.chartNothingToShow, style: labelStyle)
+          else
+            ExcludeSemantics(
+              child: GestureDetector(
+                // The whole plot is the target, not one bar: a finger between
+                // two bars still selects the nearer hour, and a shop working
+                // through a queue should not have to aim.
+                onTapUp: (TapUpDetails details) => _selectAt(
+                  details.localPosition.dx,
+                  context.size?.width ?? 0,
+                ),
+                behavior: HitTestBehavior.opaque,
+                child: LayoutBuilder(
+                  builder: (BuildContext context, BoxConstraints constraints) {
+                    final width = constraints.maxWidth.isFinite
+                        ? constraints.maxWidth
+                        : constraints.biggest.width;
+                    final painter = _BarChartPainter(
+                      points: widget.points,
+                      labelStyle: labelStyle,
+                      direction: Directionality.of(context),
+                      textScaler: MediaQuery.textScalerOf(context),
+                      plotHeight: widget.height,
+                      selected: selected,
+                      accent: colors.accent,
+                      emptySlot: colors.outline.withValues(alpha: 0.35),
+                      gap: spacing.sm,
+                    );
+                    return SizedBox(
+                      width: width,
+                      height: painter.totalHeight(widget.height),
+                      child: CustomPaint(painter: painter),
+                    );
+                  },
+                ),
+              ),
+            ),
+        ],
+      ),
+    );
+  }
+
+  /// What a screen reader says for this chart right now.
+  ///
+  /// The caller's description when it gave one, the series summary otherwise,
+  /// and the tapped bar's figure APPENDED while one is tapped — so the
+  /// announcement always carries the fact the finger just produced.
+  String _announcement(AppLocalizations l10n) {
+    final String base = widget.semanticsLabel ??
+        (widget.points.isEmpty
+            ? l10n.chartSpokenNoValues(widget.title)
+            : l10n.chartSpokenPeak(
+                widget.points.length,
+                widget.points.reduce((a, b) => b.value > a.value ? b : a).label,
+                widget.title,
+                widget.points
+                    .reduce((a, b) => b.value > a.value ? b : a)
+                    .displayValue,
+              ));
+    final int? at = _selected;
+    if (at == null || at >= widget.points.length) return base;
+    final PosLinePoint point = widget.points[at];
+    if (point.value <= 0) return base;
+    return '$base. ${l10n.chartSpokenSelected(point.label, widget.title, point.displayValue)}';
+  }
+}
+
+/// The painted part, kept separate so the [Semantics] wrapper can exclude it in
+/// one place.
+class _BarChartPainter extends CustomPainter {
+  _BarChartPainter({
+    required this.points,
+    required this.labelStyle,
+    required this.direction,
+    required this.textScaler,
+    required this.plotHeight,
+    required this.selected,
+    required this.accent,
+    required this.emptySlot,
+    required this.gap,
+  });
+
+  final List<PosLinePoint> points;
+  final TextStyle labelStyle;
+  final TextDirection direction;
+  final TextScaler textScaler;
+  final double plotHeight;
+
+  /// The tapped bar, or null. Only this bar carries a figure, and it carries it
+  /// as text above the bar rather than inside it — a label a finger revealed is
+  /// one the tap made room for.
+  final int? selected;
+  final Color accent;
+  final Color emptySlot;
+  final double gap;
+
+  Map<String, double>? _labelWidths;
+  double? _lineHeightValue;
+
+  /// Below this, the plot is too short to be worth an axis and the labels are
+  /// dropped rather than drawn into the plot.
+  static const double _minPlotWithAxis = 44.0;
+
+  /// A bar never fills its slot: two bars touching read as one column of
+  /// matched height rather than as separate hours.
+  static const double _barFraction = 0.62;
+
+  static const double _maxBarWidth = 16;
+
+  bool get _isRtl => direction == TextDirection.rtl;
+
+  int get _maxValue => points.fold(0, (m, p) => math.max(m, p.value));
+
+  TextPainter _text(String text, TextStyle style, {double? maxWidth}) {
+    final painter = TextPainter(
+      text: TextSpan(text: text, style: style),
+      textDirection: direction,
+      textScaler: textScaler,
+      maxLines: 1,
+      ellipsis: '…',
+    );
+    painter.layout(maxWidth: maxWidth ?? double.infinity);
+    return painter;
+  }
+
+  double _lineHeight(TextStyle style) =>
+      _lineHeightValue ??= _text('Ag', style).height;
+
+  double _widestCached(double cap) {
+    final cache = _labelWidths ??= <String, double>{};
+    var widest = 0.0;
+    for (final point in points) {
+      final label = point.label;
+      final width =
+          cache[label] ??= _text(label, labelStyle, maxWidth: cap).width;
+      widest = math.max(widest, width);
+    }
+    return widest;
+  }
+
+  double _axisHeight(double height) {
+    final label = _lineHeight(labelStyle);
+    if (height - label - gap < _minPlotWithAxis) return 0;
+    return label + gap;
+  }
+
+  double totalHeight(double height) => height;
+
+  /// The slot each bar owns.
+  double _slot(double width) => width / math.max(points.length, 1);
+
+  /// Every Nth label drawn on the axis.
+  ///
+  /// The stride is the interval the axis reads at, so it is the whole
+  /// difference between an axis a shop can read and the row of collisions this
+  /// replaces. It starts at [kPosBarChartMinStride] and widens only when the
+  /// labels genuinely need the room.
+  int _stride(double width) {
+    final slot = _slot(width);
+    final widest = _widestCached(math.max(slot, 12.0));
+    final needed = (widest * 1.6 / math.max(slot, 1)).ceil();
+    return math.max(kPosBarChartMinStride, needed).clamp(1, points.length);
+  }
+
+  /// Left edge of bar [index], mirrored for RTL so the day still reads
+  /// start-to-finish in both directions.
+  double _barLeft(int index, double width) {
+    final slot = _slot(width);
+    final raw = index * slot + (slot - _barWidth(slot)) / 2;
+    return _isRtl ? width - raw - _barWidth(slot) : raw;
+  }
+
+  double _barWidth(double slot) => math.min(slot * _barFraction, _maxBarWidth);
+
+  double _heightOf(int value, double plotHeight) {
+    final max = math.max(_maxValue, 1);
+    return value <= 0 ? 0 : (value / max) * plotHeight;
+  }
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    if (points.isEmpty || size.width <= 0 || size.height <= 0) return;
+
+    final axisHeight = _axisHeight(size.height);
+    final plotHeight = size.height - axisHeight;
+    final baseline = size.height - axisHeight;
+    final slot = _slot(size.width);
+    final barWidth = _barWidth(slot);
+
+    final bar = Paint()..color = accent;
+    final chosen = Paint()..color = accent;
+    final empty = Paint()..color = emptySlot;
+
+    for (var i = 0; i < points.length; i++) {
+      final height = _heightOf(points[i].value, plotHeight);
+      final x = _barLeft(i, size.width);
+      final rect = RRect.fromRectAndRadius(
+        Rect.fromLTWH(x, baseline - height, barWidth, math.max(height, 2)),
+        Radius.circular(math.min(barWidth / 2, 3)),
+      );
+      // A zero hour is a hairline, not nothing: the shop needs to see that the
+      // hour is counted, or a gap in the middle of the day reads as missing data
+      // rather than as a quiet hour.
+      if (points[i].value <= 0) {
+        canvas.drawRRect(
+          RRect.fromRectAndRadius(
+            Rect.fromLTWH(x, baseline - 1.5, barWidth, 1.5),
+            Radius.circular(barWidth / 2),
+          ),
+          empty,
+        );
+        continue;
+      }
+      canvas.drawRRect(rect, i == selected ? chosen : bar);
+    }
+
+    // The revealed figure, above the bar it belongs to and nowhere else.
+    if (selected != null && points[selected!].value > 0) {
+      final at = points[selected!];
+      final cache = _labelWidths ??= <String, double>{};
+      final valueWidth = cache[at.displayValue] ??= () {
+        final measured = _text(at.displayValue, labelStyle).width;
+        cache[at.displayValue] = measured;
+        return measured;
+      }();
+      final x =
+          (_barLeft(selected!, size.width) + barWidth / 2 - valueWidth / 2)
+              .clamp(0.0, math.max(0.0, size.width - valueWidth))
+              .roundToDouble();
+      final y = (baseline -
+              _heightOf(at.value, plotHeight) -
+              _text(at.displayValue, labelStyle).height -
+              4)
+          .clamp(0.0, math.max(0.0, size.height))
+          .roundToDouble();
+      _text(at.displayValue, labelStyle).paint(canvas, Offset(x, y));
+    }
+
+    if (axisHeight <= 0) return;
+
+    final stride = _stride(size.width);
+    final baselineY = baseline + gap;
+    // The first label is the start of the window and is always drawn — it is
+    // what the rest of the axis is measured from. The last is drawn only when
+    // it does not land on top of the previous one.
+    for (var i = 0; i < points.length; i += stride) {
+      _paintAxisLabel(canvas, size, i, baselineY);
+    }
+    final last = points.length - 1;
+    if (last % stride != 0 && _fits(last, stride, size.width)) {
+      _paintAxisLabel(canvas, size, last, baselineY);
+    }
+  }
+
+  /// Whether the label at [index] is far enough from the one before it.
+  bool _fits(int index, int stride, double width) {
+    final previous = index - (index % stride);
+    if (previous < 0 || previous >= index) return true;
+    final slot = _slot(width);
+    final widest = _widestCached(math.max(slot, 12.0));
+    return (index - previous) * slot >= widest * 1.6;
+  }
+
+  void _paintAxisLabel(Canvas canvas, Size size, int index, double baselineY) {
+    if (index < 0 || index >= points.length) return;
+    final painter = _text(points[index].label, labelStyle);
+    // Pixel-snapped, for the same reason [PosLineChart]'s are: a fractional
+    // glyph origin straddles two device pixels and anti-aliases the label into
+    // softness.
+    final x = (_barLeft(index, size.width) +
+            _barWidth(_slot(size.width)) / 2 -
+            painter.width / 2)
+        .clamp(0.0, math.max(0.0, size.width - painter.width))
+        .roundToDouble();
+    painter.paint(canvas, Offset(x, baselineY.roundToDouble()));
+  }
+
+  @override
+  bool shouldRepaint(covariant _BarChartPainter old) =>
+      old.points != points ||
+      old.selected != selected ||
+      old.textScaler != textScaler ||
+      old.direction != direction ||
+      old.labelStyle != labelStyle ||
+      old.accent != accent;
+}
+
+// ---------------------------------------------------------------------------
 // Part-to-whole
 // ---------------------------------------------------------------------------
 

@@ -640,6 +640,7 @@
   "chartNothingToShow": "Nothing to show yet.",
   "chartSpokenNoValues": "{title}. No values.",
   "chartSpokenPeak": "{title}. {count, plural, =1{1 value} other{{count} values}}. Highest is {peak} at {value}.",
+  "chartSpokenSelected": "{title}. Selected {label}. {value}.",
   "variantAllSizesLabel": "All sizes",
   "variantOneVariantLabel": "One variant",
   "backupLaterAction": "Later",

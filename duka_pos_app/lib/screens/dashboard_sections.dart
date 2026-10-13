@@ -547,7 +547,7 @@ class _DashboardHourlySalesState extends State<DashboardHourlySales> {
     _cachedPoints ??= <PosLinePoint>[
       for (final TimeBucket bucket in widget.buckets)
         PosLinePoint(
-          label: _hourLabel(bucket.hour, l10n),
+          label: _axisHourLabel(bucket.hour, l10n),
           value: bucket.salesMinor,
           valueLabel: formatMoney(Money.fromMinor(bucket.salesMinor)),
         ),
@@ -638,13 +638,19 @@ class _DashboardHourlySalesState extends State<DashboardHourlySales> {
               ),
             ))
           else
-            // A line, not a stack of hourly bars. This chart's whole job is to
-            // show the SHAPE of the day, and a line draws the shape where a
-            // column of bars makes the reader compare every height to find it.
+            // One bar per hour, and the money figure only when a bar is tapped.
+            //
+            // Bars, because an hourly total is a MAGNITUDE at a moment, not a
+            // trajectory through one: "which hour was best" is a comparison of
+            // lengths, which a bar answers at a glance and a line only after
+            // being traced. The figure is hidden until a tap, because a painted
+            // peak value over a picture of the answer is the one label most
+            // likely to collide with the hour beneath it — and it is the answer
+            // to a question the shop has not asked yet.
             //
             // No force-unwrap: `hasData` is DERIVED from `peak != null`, so
             // flow analysis already knows the peak exists in this branch.
-            PosLineChart(
+            PosBarChart(
               title: '',
               semanticsLabel: l10n.dashboardPeakHourSpoken(
                 formatMoney(Money.fromMinor(peak.salesMinor)),
@@ -658,13 +664,27 @@ class _DashboardHourlySalesState extends State<DashboardHourlySales> {
     );
   }
 
-  /// `14` -> `2:00 pm`, in the locale's own clock convention.
+  /// `14` -> `2:00 pm`, in the locale's own clock convention. The full form,
+  /// for the peak-hour badge a shop reads as a sentence.
   ///
   /// `intl` rather than three hand-written cases, because a 12-hour locale is not
   /// the only difference: `DateFormat.jm` knows which locales put the meridiem
   /// first, which use a dot, and which have no AM/PM at all.
   static String _hourLabel(int hour, AppLocalizations l10n) =>
       DateFormat.jm(l10n.localeName).format(DateTime(2000, 1, 1, hour));
+
+  /// `14` -> `2pm`, for the axis.
+  ///
+  /// The full form belongs in a sentence; across a phone's width, twenty-four of
+  /// them are the row of collisions this replaces. The ":00" every hour carries
+  /// no information — an hour is an hour — and dropping it is what lets the axis
+  /// sit at a readable interval instead of being thinned until it disappears.
+  /// The locale convention survives: the meridiem, the digit order, the dot,
+  /// and a 24-hour locale's shape are all still there.
+  static String _axisHourLabel(int hour, AppLocalizations l10n) {
+    final full = _hourLabel(hour, l10n);
+    return full.replaceAll(':00 ', ' ').replaceAll(':00', '').trim();
+  }
 }
 
 class _PeakHourBadge extends StatelessWidget {

@@ -2404,6 +2404,11 @@ class AppLocalizationsEn extends AppLocalizations {
   }
 
   @override
+  String chartSpokenSelected(Object label, Object title, Object value) {
+    return '$title. Selected $label. $value.';
+  }
+
+  @override
   String get variantAllSizesLabel => 'All sizes';
 
   @override

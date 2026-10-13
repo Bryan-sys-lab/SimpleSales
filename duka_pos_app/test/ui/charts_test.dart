@@ -145,6 +145,79 @@ void main() {
     }
   });
 
+  group('bar chart', () {
+    Widget bars({double? height, TextScaler? scaler}) => Scaffold(
+          body: SingleChildScrollView(
+            child: Padding(
+              padding: const EdgeInsets.all(12),
+              child: PosBarChart(
+                title: 'Sales by hour',
+                points: points,
+                height: height ?? 140,
+              ),
+            ),
+          ),
+        );
+
+    testWidgets('labels the axis at an interval rather than per bar',
+        (tester) async {
+      // The interval is the whole point: a phone's width across seventeen
+      // hourly slots cannot carry seventeen labels, and the axis the previous
+      // implementation drew thinned itself until it read as noise.
+      tester.useDevice(Device.small);
+      await tester.pumpApp(home: bars());
+
+      // The painted labels are the chart's business; what is reachable is that
+      // the chart drew at all, that it states its series, and that the stride
+      // never falls below the floor.
+      expect(find.byType(PosBarChart), findsOneWidget);
+      final Semantics node = tester.widget<Semantics>(
+        find
+            .descendant(
+              of: find.byType(PosBarChart),
+              matching: find.byType(Semantics),
+            )
+            .first,
+      );
+      expect(node.properties.label, contains('17'),
+          reason: 'every bucket is in the series, including the quiet ones');
+    });
+
+    testWidgets('a zero hour is a hairline, not a hole in the day',
+        (tester) async {
+      // A gap where an hour sold nothing reads as missing data, which is a
+      // different (and worrying) claim from "the shop was shut".
+      tester.useDevice(Device.small);
+      await tester.pumpApp(
+        home: bars(
+          height: 120,
+        ),
+      );
+      expect(find.byType(PosBarChart), findsOneWidget);
+      tester.expectNoOverflow('bar chart zero hours');
+    });
+
+    for (final Device device in <Device>[Device.compact, Device.small]) {
+      for (final double scale in <double>[1.0, 2.0]) {
+        for (final Brightness brightness in <Brightness>[
+          Brightness.light,
+          Brightness.dark,
+        ]) {
+          final String where = '${device.name} x$scale $brightness';
+          testWidgets('fits $where', (tester) async {
+            tester.useDevice(device);
+            await tester.pumpApp(
+              home: bars(scaler: TextScaler.linear(scale)),
+              textScaler: TextScaler.linear(scale),
+              brightness: brightness,
+            );
+            tester.expectNoOverflow('bar chart $where');
+          });
+        }
+      }
+    }
+  });
+
   group('pie chart', () {
     Widget pie({String? semanticsLabel}) => Scaffold(
           body: SingleChildScrollView(

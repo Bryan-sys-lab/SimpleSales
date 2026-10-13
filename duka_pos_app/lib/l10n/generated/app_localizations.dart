@@ -3942,6 +3942,12 @@ abstract class AppLocalizations {
   /// **'{title}. {count, plural, =1{1 value} other{{count} values}}. Highest is {peak} at {value}.'**
   String chartSpokenPeak(num count, Object peak, Object title, Object value);
 
+  /// No description provided for @chartSpokenSelected.
+  ///
+  /// In en, this message translates to:
+  /// **'{title}. Selected {label}. {value}.'**
+  String chartSpokenSelected(Object label, Object title, Object value);
+
   /// No description provided for @variantAllSizesLabel.
   ///
   /// In en, this message translates to:
