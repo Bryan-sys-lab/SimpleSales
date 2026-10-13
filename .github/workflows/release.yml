@@ -8,10 +8,18 @@ name: Release
 # The version in the tag MUST equal the `version:` in duka_pos_app/pubspec.yaml.
 # That single check is what keeps the APK's own versionName/versionCode — which
 # Flutter reads from pubspec — from disagreeing with the release it is sold as.
+#
+# It is also dispatched by auto-release.yml once it has tagged a green main.
+# auto-release used to rely on the tag push alone, and GitHub declined to start
+# this workflow for those pushes: nineteen tags arrived and Release never ran
+# once, so no APK was ever published from them. Driving it with an explicit
+# dispatch makes publishing depend on a call we can see fail rather than on an
+# event GitHub may or may not deliver.
 on:
   push:
     tags:
       - 'v*'
+  workflow_dispatch:
 
 # Serialise releases: two tags pushed at once must not race to publish.
 concurrency:

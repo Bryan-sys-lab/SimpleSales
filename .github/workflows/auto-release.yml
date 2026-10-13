@@ -3,10 +3,15 @@ name: Auto release
 # Tags a release once CI is green on main. It does not build anything.
 #
 # The build, signing, verification and publication all stay in `release.yml`,
-# which is still triggered by a tag and can still be driven by hand. This
-# workflow only automates the decision to *make* a tag, which keeps the
-# irreversible part of a release — signing a real key and publishing a public
-# artefact — in one reviewed, gated place rather than duplicating it.
+# which can still be driven by hand with a tag. This workflow only automates the
+# decision to *make* a tag, which keeps the irreversible part of a release —
+# signing a real key and publishing a public artefact — in one reviewed, gated
+# place rather than duplicating it.
+#
+# Having made the tag, it dispatches `release.yml` directly rather than leaving
+# the tag push to trigger it. A tag push is not a contract here: every tag from
+# v2.0.0+2 to +20 was pushed and Release never ran once for any of them, so each
+# of those commits was released in name only. See the dispatch step below.
 #
 # Why this cannot run away:
 #
@@ -219,7 +224,55 @@ jobs:
           fi
 
           echo "Tagged ${tag} at ${sha}."
-          echo "release.yml will build, sign, verify and publish it as a draft."
+          echo "Dispatching the signed build for ${tag}."
+
+      # Do not let the tag push be the trigger. GitHub declined to run
+      # release.yml for every tag this workflow pushed from v2.0.0+2 to
+      # v2.0.0+20, so each of those commits was tagged, given a release that
+      # was never built, and quietly acquired no APK. The push event is not a
+      # contract we can rely on here, so dispatch Release explicitly instead:
+      # the API either accepts the call and a run exists, or gh fails and this
+      # job fails with it. That is the difference between a release that is
+      # merely late and one that is silently absent.
+      - name: Dispatch the signed release build
+        if: steps.plan.outputs.already_tagged == 'false'
+        shell: bash
+        env:
+          GH_TOKEN: ${{ secrets.RELEASE_TAG_TOKEN }}
+        run: |
+          set -euo pipefail
+          tag="${{ steps.plan.outputs.tag }}"
+
+          # The dispatch is accepted as soon as GitHub returns 204, which is
+          # before the run is queryable, so a single poll would mostly test
+          # GitHub's latency rather than our work.
+          if ! gh workflow run release.yml --ref "$tag"; then
+            echo "::error::Could not dispatch release.yml for ${tag}."
+            echo "::error::RELEASE_TAG_TOKEN needs the 'Actions' permission set to write,"
+            echo "::error::in addition to 'Contents' write for pushing the tag."
+            echo "::error::The tag exists but nothing is building from it. Publish by hand with:"
+            echo "::error::  gh workflow run release.yml --ref ${tag}"
+            exit 1
+          fi
+
+          # Confirm a run actually exists, because the failure this replaces
+          # was exactly a trigger that reported success and did nothing.
+          for attempt in 1 2 3 4 5 6; do
+            sleep 10
+            run_id=$(gh run list --workflow release.yml --branch "$tag" \
+                       --limit 1 --json databaseId --jq '.[0].databaseId' 2>/dev/null || true)
+            if [ -n "$run_id" ]; then
+              echo "release.yml is running for ${tag} (run ${run_id})."
+              echo "It appears as a DRAFT until the signed APK has built and verified."
+              exit 0
+            fi
+            echo "Waiting for the ${tag} release run to appear (attempt ${attempt}/6)."
+          done
+
+          echo "::error::Dispatched release.yml for ${tag} but no run appeared within a minute."
+          echo "::error::Check the Actions tab, then publish by hand with:"
+          echo "::error::  gh workflow run release.yml --ref ${tag}"
+          exit 1
 
       - name: Summarise
         if: always()
