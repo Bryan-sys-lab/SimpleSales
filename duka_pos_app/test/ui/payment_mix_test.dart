@@ -18,6 +18,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 import '../support/harness.dart';
+import 'package:duka_pos/ui/components/surface.dart';
 
 const List<PaymentMixRow> _rows = <PaymentMixRow>[
   PaymentMixRow(method: 'cash', salesMinor: 400000, transactions: 12),
@@ -71,7 +72,12 @@ void main() {
     tester.expectNoOverflow('payment mix ring and legend');
   });
 
-  testWidgets('the whole is stated in the hole', (tester) async {
+  testWidgets(
+      'the hole carries nothing, because the total is already on the '
+      'stat tile above', (tester) async {
+    // The total was drawn inside the ring as well as on the stat tile, which
+    // meant the owner had two copies of the same number on one screen to
+    // reconcile. The ring is the picture; the tile is the figure.
     tester.useDevice(Device.small);
     await tester.pumpApp(
       home: const Scaffold(
@@ -81,9 +87,63 @@ void main() {
       ),
     );
 
-    expect(find.text(l10n.analyticsPaymentMixTotal), findsOneWidget);
+    expect(find.text(l10n.analyticsPaymentMixTotal), findsNothing);
+    // And no money in the hole either.
+    expect(find.text('KSh 14,000'), findsNothing);
   });
 
+  testWidgets('the ring is enlarged, and there is no card around it',
+      (tester) async {
+    // Two of the four changes, pinned. The ring was 116px inside a
+    // `SurfaceCard`; the box cost a percentage of the width on a small phone
+    // and the 116px made the minority arcs illegible.
+    tester.useDevice(Device.small);
+    await tester.pumpApp(
+      home: const Scaffold(
+        body: SingleChildScrollView(
+          child: PaymentMixCard(rows: _rows, totals: _totals),
+        ),
+      ),
+    );
+
+    final PosPieChart chart = tester.widget(find.byType(PosPieChart));
+    expect(chart.size, PaymentMixCard.pieSize);
+    expect(chart.size, greaterThan(116),
+        reason: 'a sliver arc nobody can land on is the bug');
+
+    // And it is direct content, not a card's child: the boundary box is gone.
+    expect(find.byType(SurfaceCard), findsNothing,
+        reason: 'a rectangle around an already-legible figure');
+  });
+
+  testWidgets('each key line carries the colour of its own arc',
+      (tester) async {
+    // What makes the ring a KEY rather than a decoration: the swatch beside
+    // the tender's name is the colour its arc is drawn in.
+    tester.useDevice(Device.small);
+    await tester.pumpApp(
+      home: const Scaffold(
+        body: SingleChildScrollView(
+          child: PaymentMixCard(rows: _rows, totals: _totals),
+        ),
+      ),
+    );
+
+    final PosPieChart chart = tester.widget(find.byType(PosPieChart));
+    final Set<int> arcColours =
+        chart.slices.map((PosPieSlice s) => s.color.toARGB32()).toSet();
+
+    // One coloured swatch per tender, in the arc's own colour. Without it the
+    // colour is decorative and the ring cannot be read against the list.
+    final Set<int> swatches = tester
+        .widgetList<Container>(find.byType(Container))
+        .where((Container c) => c.decoration is BoxDecoration)
+        .map((Container c) =>
+            (c.decoration as BoxDecoration).color?.toARGB32() ?? -1)
+        .toSet();
+    expect(swatches.intersection(arcColours), arcColours,
+        reason: 'a slice with no matching swatch is a legend-less colour');
+  });
   testWidgets('the exact figures survive below the picture', (tester) async {
     tester.useDevice(Device.small);
     await tester.pumpApp(
@@ -94,11 +154,19 @@ void main() {
       ),
     );
 
-    // A chart alone cannot be read to the shilling: the rows underneath carry
-    // the figures, and each states its share of the whole.
-    expect(find.text('64%'), findsOneWidget); // mpesa, 900k of 1400k
-    expect(find.text('29%'), findsOneWidget); // cash, 400k of 1400k
-    expect(find.text('7%'), findsOneWidget); // card, 100k of 1400k
+    // The rows are keys and values: "M-Pesa  64%" then the money. The share
+    // moved INTO the key line rather than sitting as its own column, so a
+    // finder has to look for the line rather than for a bare percentage.
+    expect(find.text('M-Pesa  64%'), findsOneWidget); // 900k of 1400k
+    expect(find.text('Cash  29%'), findsOneWidget); // 400k of 1400k
+    expect(find.text('Card  7%'), findsOneWidget); // 100k of 1400k
+
+    // And the exact money, which a ring alone can never be read to. It appears
+    // twice on purpose — once in the money column of the keys, once in the
+    // ring's own spoken form — so this asserts presence rather than a count.
+    expect(find.text('KSh 4,000'), findsWidgets);
+    expect(find.text('KSh 9,000'), findsWidgets);
+    expect(find.text('KSh 1,000'), findsWidgets);
   });
 
   testWidgets('an empty period says so rather than drawing an empty ring',

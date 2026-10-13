@@ -589,58 +589,70 @@ class PaymentMixCard extends StatelessWidget {
         ),
     ];
 
-    return SurfaceCard(
-      padding: EdgeInsets.zero,
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        mainAxisSize: MainAxisSize.min,
-        children: <Widget>[
-          SectionHeader(label: l10n.analyticsPaymentMethodsSection),
-          if (rows.isEmpty)
-            Padding(
-              padding: EdgeInsetsDirectional.only(
-                start: spacing.md,
-                end: spacing.md,
-                top: spacing.sm,
-                bottom: spacing.md,
-              ),
-              child: Text(
-                l10n.analyticsNothingTaken,
-                style: AppTypography.of(context).bodyMedium?.copyWith(
-                      color: colors.onSurfaceMuted,
-                    ),
-              ),
-            )
-          else ...<Widget>[
-            Padding(
-              padding: EdgeInsetsDirectional.only(
-                start: spacing.md,
-                end: spacing.md,
-              ),
-              // The ring's own spoken form is the payment-mix sentence, so a
-              // screen reader gets the same share figures the rows below show.
-              child: PosPieChart(
-                title: '',
-                slices: slices,
-                semanticsLabel: describePaymentMix(rows, totals.totalMinor),
-                centerLabel: l10n.analyticsPaymentMixTotal,
-                centerValue: formatMoney(totals.total),
-                size: 116,
-              ),
+    // No card. This section is a ring and a list of keys, and the boundary box
+    // it used to sit in drew a rectangle around an already-legible figure,
+    // costing a real percentage of the width on a small screen. The section
+    // header still says what it is.
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      mainAxisSize: MainAxisSize.min,
+      children: <Widget>[
+        SectionHeader(label: l10n.analyticsPaymentMethodsSection),
+        if (rows.isEmpty)
+          Padding(
+            padding: EdgeInsetsDirectional.only(
+              start: spacing.md,
+              end: spacing.md,
+              top: spacing.sm,
+              bottom: spacing.md,
             ),
-            SizedBox(height: spacing.sm),
-            Divider(height: 1, color: colors.outline),
-            for (int i = 0; i < rows.length; i++)
-              _PaymentMixRow(
-                row: rows[i],
-                rangeTotalMinor: totals.totalMinor,
-                showDivider: i != rows.length - 1,
-              ),
-          ],
+            child: Text(
+              l10n.analyticsNothingTaken,
+              style: AppTypography.of(context).bodyMedium?.copyWith(
+                    color: colors.onSurfaceMuted,
+                  ),
+            ),
+          )
+        else ...<Widget>[
+          // The ring, ENLARGED and centred.
+          //
+          // 116px was legible but small: for a shop that takes 95% cash, the
+          // M-Pesa arc was a sliver nobody could land on. Enlarging it costs
+          // nothing, because the boundary box around it is gone and the space
+          // is already there. Centred, because a lone figure with no card
+          // around it reads as being off to the side when flush to the start.
+          //
+          // No figure in the hole. The total is on the stat tile above this
+          // section, and a second copy inside the ring is a number the owner
+          // has to reconcile against another number rather than just read.
+          Center(
+            child: PosPieChart(
+              title: '',
+              slices: slices,
+              semanticsLabel: describePaymentMix(rows, totals.totalMinor),
+              centerLabel: null,
+              centerValue: null,
+              size: pieSize,
+            ),
+          ),
+          SizedBox(height: spacing.md),
+          Divider(height: 1, color: colors.outline),
+          for (int i = 0; i < rows.length; i++)
+            _PaymentMixRow(
+              row: rows[i],
+              rangeTotalMinor: totals.totalMinor,
+              showDivider: i != rows.length - 1,
+            ),
         ],
-      ),
+      ],
     );
   }
+
+  /// How large the ring is drawn.
+  ///
+  /// A constant so the change is in one place, and so a test proving it grew
+  /// can read the number rather than hard-coding what it used to be.
+  static const double pieSize = 168;
 }
 
 class _PaymentMixRow extends StatelessWidget {
@@ -662,6 +674,10 @@ class _PaymentMixRow extends StatelessWidget {
 
     final String share = '${row.sharePct(rangeTotalMinor).toStringAsFixed(0)}%';
 
+    // The colour swatch is what makes this line a KEY rather than a list row:
+    // it is the same colour the ring's arc is drawn in, so a manager reads
+    // green across to the green arc. Without it the colour is legend-less and
+    // the ring is decorative.
     final Widget content = Padding(
       padding: EdgeInsetsDirectional.only(
         start: spacing.md,
@@ -671,15 +687,26 @@ class _PaymentMixRow extends StatelessWidget {
       ),
       child: Row(
         children: <Widget>[
+          ExcludeSemantics(
+            child: Container(
+              width: 12,
+              height: 12,
+              decoration: BoxDecoration(
+                color: _tenderColor(row.method, colors),
+                shape: BoxShape.circle,
+              ),
+            ),
+          ),
+          SizedBox(width: spacing.sm),
+          // The key: the tender's name, and its share of the whole.
           Expanded(
             child: Text(
-              row.label,
+              '${row.label}  $share',
               style: AppTypography.of(context).bodyMedium,
             ),
           ),
           SizedBox(width: spacing.sm),
-          Text(share, style: _figureStyle(context)),
-          SizedBox(width: spacing.md),
+          // The value: what that tender took.
           MoneyText(amount: formatMoney(row.sales), size: 13),
         ],
       ),
