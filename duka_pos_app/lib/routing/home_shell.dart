@@ -11,13 +11,8 @@ import '../services/app_state.dart';
 import '../theme/app_spacing.dart';
 import '../ui/layout/window_size_class.dart';
 import '../widgets/sign_out_sheet.dart';
+import 'idle_guard.dart';
 import 'routes.dart';
-
-/// A shared till left signed in on the counter is a real risk — anyone walking
-/// past can sell, adjust stock, or (in an owner session) open Settings. The
-/// shell wraps the whole signed-in app in an idle timer, the way a POS terminal
-/// would. Any tap or scroll anywhere resets the clock.
-const Duration _idleTimeout = Duration(minutes: 4);
 
 /// The destinations this session may see.
 ///
@@ -183,62 +178,12 @@ class _HomeShellState extends State<HomeShell> {
         create: (_) => CartLineCount(),
         // The CURRENT shell widget travels down as a constructor argument, so
         // the scaffold can never paint a stale one.
-        child: _IdleGuard(
+        child: IdleGuard(
           child: _ShellScaffold(navigationShell: widget.navigationShell),
         ),
       ),
     );
   }
-}
-
-/// Resets the idle clock on any pointer interaction.
-///
-/// `Listener` with `HitTestBehavior.translucent` rather than a gesture
-/// recogniser: this must not compete for the gesture arena, and a scroll has to
-/// count as activity too.
-class _IdleGuard extends StatefulWidget {
-  const _IdleGuard({required this.child});
-
-  final Widget child;
-
-  @override
-  State<_IdleGuard> createState() => _IdleGuardState();
-}
-
-class _IdleGuardState extends State<_IdleGuard> {
-  Timer? _timer;
-
-  @override
-  void initState() {
-    super.initState();
-    _reset();
-  }
-
-  @override
-  void dispose() {
-    _timer?.cancel();
-    super.dispose();
-  }
-
-  void _reset() {
-    _timer?.cancel();
-    _timer = Timer(_idleTimeout, () {
-      if (!mounted) return;
-      // An idle sign-out is the same event as a deliberate one — same session
-      // ended, same tokens to clear — so it goes through `signOut` rather than a
-      // shortcut that would leave the online identity alive on the device. No
-      // confirmation sheet: asking someone to confirm a timeout would defeat it,
-      // and the till is secure again either way.
-      context.read<AppState>().signOut();
-    });
-  }
-
-  @override
-  Widget build(BuildContext context) => Listener(
-        onPointerDown: (_) => _reset(),
-        behavior: HitTestBehavior.translucent,
-        child: widget.child,
-      );
 }
 
 class _ShellScaffold extends StatelessWidget {

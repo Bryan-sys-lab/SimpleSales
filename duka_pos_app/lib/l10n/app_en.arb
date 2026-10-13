@@ -7,6 +7,7 @@
   "actionRefresh": "Refresh",
   "actionConfirm": "Clear",
   "actionRetry": "Retry",
+  "actionPressBackAgainToExit": "Press back again to exit",
   "errorDuplicateName": "That name is already taken. Try a different one.",
   "errorMissingField": "Fill in every required field.",
   "errorWriteFailed": "Could not save. Try again; if it keeps happening, contact support.",

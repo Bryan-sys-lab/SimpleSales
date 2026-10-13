@@ -78,7 +78,6 @@ List<int> _workbook(Map<String, List<List<dynamic>>> tabs) {
   return book.encode()!;
 }
 
-
 /// The shape of the workbook that shipped this bug.
 ///
 /// Products in column B — where our own export puts the name — so the names
@@ -124,7 +123,6 @@ List<List<dynamic>> _tracker({List<dynamic>? header, int products = 6}) {
   }
   return rows;
 }
-
 
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
@@ -992,6 +990,182 @@ void main() {
       final kenya = await productNamed('Kenya Lager');
       expect(kenya!.costPrice.minorUnits, 6000);
       expect(kenya.sellPrice.minorUnits, 10000);
+    });
+
+    test('an import supersedes what the last import of the sheet recorded',
+        () async {
+      // The dashboard tells the owner to re-import the spreadsheet to finish
+      // the update. That is only true if a re-import clears the rows the
+      // previous import failed on, so a fixed file must not leave the old
+      // failures counted against it forever.
+      final broken = _workbook({
+        'Inventory': [
+          _inventoryHeader,
+          _row(
+              id: 1,
+              name: 'Kenya Lager',
+              category: 'Beer',
+              cost: 'not a price'),
+          _row(id: 2, name: 'Bond 7', category: 'Spirits'),
+        ],
+      });
+      await ExcelService().importInventoryBytes(broken);
+      expect(await db.countOpenImportProblems(), 1);
+
+      final fixed = _workbook({
+        'Inventory': [
+          _inventoryHeader,
+          _row(id: 1, name: 'Kenya Lager', category: 'Beer'),
+          _row(id: 2, name: 'Bond 7', category: 'Spirits'),
+        ],
+      });
+      final result = await ExcelService().importInventoryBytes(fixed);
+
+      expect(result.imported, 2);
+      expect(result.needsAttention, 0);
+      expect(await db.countOpenImportProblems(), 0,
+          reason: 'the re-import replaced the failure it fixed');
+    });
+
+    test(
+        'a refused import clears what that sheet recorded, because it cannot fix it',
+        () async {
+      // The residues of the shipped bug: 287 problems recorded out of a
+      // mis-mapped read. The refusal says the file is not ours, so no
+      // "re-import" will ever finish that update, and a warning nobody can
+      // clear is worse than none.
+      // Same sheet name both times: a problem is recorded against the sheet it
+      // was read from, so refusing that sheet is what clears it.
+      final broken = _workbook({
+        'Sheet1': [
+          _inventoryHeader,
+          _row(
+              id: 1,
+              name: 'Kenya Lager',
+              category: 'Beer',
+              cost: 'not a price'),
+        ],
+      });
+      await ExcelService().importInventoryBytes(broken);
+      expect(await db.countOpenImportProblems(), 1);
+
+      final tracker = _workbook({'Sheet1': _tracker(products: 3)});
+      await expectLater(
+        ExcelService().importInventoryBytes(tracker),
+        throwsA(isA<UnreadableLayoutException>()),
+      );
+
+      expect(await db.countOpenImportProblems(), 0);
+    });
+
+    test('a price is parsed as the exact figure written, not a float of it',
+        () async {
+      // The money path used to go double -> *100 -> round(), which is a binary
+      // float carrying a hidden remainder and a second rounding site in the same
+      // breath. "40.55" is 40 shillings and 55 cents because the digits say so.
+      for (final MapEntry<String, int> expected in <MapEntry<String, int>>[
+        const MapEntry<String, int>('150', 15000),
+        const MapEntry<String, int>('150.5', 15050),
+        const MapEntry<String, int>('150.05', 15005),
+        const MapEntry<String, int>('0.01', 1),
+        const MapEntry<String, int>('1200.55', 120055),
+        const MapEntry<String, int>('1,200.50', 120050),
+        const MapEntry<String, int>('KSh 40.50', 4050),
+        const MapEntry<String, int>('40.555', 4056),
+        const MapEntry<String, int>('.5', 50),
+        const MapEntry<String, int>('197.10', 19710),
+        const MapEntry<String, int>('  12.34  ', 1234),
+      ]) {
+        expect(SheetColumns.parseMinorUnits(expected.key), expected.value,
+            reason: '${expected.key} must read as exactly what is written');
+      }
+      // Not a price is reported as not a price, never defaulted.
+      expect(SheetColumns.parseMinorUnits('not a price'), isNull);
+      expect(SheetColumns.parseMinorUnits(''), isNull);
+      expect(SheetColumns.parseMinorUnits(null), isNull);
+
+      final bytes = _workbook({
+        'Inventory': [
+          _inventoryHeader,
+          _row(id: 1, name: 'Kenya Lager', cost: 40.55, sell: 60.25),
+          _row(id: 2, name: 'Bond 7', cost: 0.29, sell: 1.99),
+        ],
+      });
+      await ExcelService().importInventoryBytes(bytes);
+
+      final kenya = await productNamed('Kenya Lager');
+      expect(kenya!.costPrice.minorUnits, 4055);
+      expect(kenya.sellPrice.minorUnits, 6025);
+      final bond = await productNamed('Bond 7');
+      expect(bond!.costPrice.minorUnits, 29);
+      expect(bond.sellPrice.minorUnits, 199);
+    });
+
+    test('a section title in the sheet files every product under it', () async {
+      // A supplier groups its rows under titles sitting alone in the first
+      // column. That row is not a product, and skipping it without reading it
+      // throws away the only category the sheet ever states — leaving the
+      // owner to re-file goods by hand forever, or worse, with the title
+      // itself imported as a product.
+      final bytes = _workbook({
+        'Inventory': [
+          <dynamic>['', 'Name', 'Cost price', 'Selling price', 'Category'],
+          <dynamic>['SPIRITS 1 ltr'],
+          <dynamic>['', 'Bond 7', 90, 200],
+          <dynamic>['', 'Best Gin', 110, 260],
+          <dynamic>['Beer Bottles'],
+          <dynamic>['', 'Tusker', 120, 180],
+        ],
+      });
+
+      final result = await ExcelService().importInventoryBytes(bytes);
+
+      expect(result.imported, 3, reason: 'the title rows are not products');
+      final bond = await productNamed('Bond 7');
+      // Normalised by the same rule every category goes through, so a sheet's
+      // titles differing by case or trailing space produce one category.
+      expect(bond!.category, CategoryName.normalise('SPIRITS 1 ltr'));
+      final gin = await productNamed('Best Gin');
+      expect(gin!.category, CategoryName.normalise('SPIRITS 1 ltr'));
+      final tusker = await productNamed('Tusker');
+      expect(tusker!.category, CategoryName.normalise('Beer Bottles'),
+          reason: 'the row under a different title takes THAT title');
+    });
+
+    test('a stray number sitting alone is not a category title', () async {
+      // The same sheets carry counts in that first column — a bottle tally, a
+      // page number. Read as a title, the next twenty products would file
+      // themselves under "13".
+      final bytes = _workbook({
+        'Inventory': [
+          <dynamic>['', 'Name', 'Cost price', 'Selling price'],
+          <dynamic>['13'],
+          <dynamic>['', 'Bond 7', 90, 200],
+        ],
+      });
+
+      final result = await ExcelService().importInventoryBytes(bytes);
+
+      expect(result.imported, 1);
+      final bond = await productNamed('Bond 7');
+      expect(bond!.category, 'General',
+          reason: 'a number is a count, not a category');
+    });
+
+    test("a row's own category cell wins over the section title", () async {
+      final bytes = _workbook({
+        'Inventory': [
+          <dynamic>['', 'Name', 'Cost price', 'Selling price', 'Category'],
+          <dynamic>['SPIRITS 1 ltr'],
+          <dynamic>['', 'Bond 7', 90, 200, 'Gin'],
+        ],
+      });
+
+      await ExcelService().importInventoryBytes(bytes);
+
+      final bond = await productNamed('Bond 7');
+      expect(bond!.category, 'Gin',
+          reason: 'an owner who filled the column in meant it');
     });
 
     test('a named header row wins over the shape check', () async {

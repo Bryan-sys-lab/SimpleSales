@@ -77,10 +77,17 @@ class ParsedRow {
 /// 1-based, header included, because "row 14" in the report has to mean row 14
 /// in the file they are about to open and fix.
 class ImportRow {
-  const ImportRow(this.number, this.cells);
+  const ImportRow(this.number, this.cells, {this.section});
 
   final int number;
   final List<dynamic> cells;
+
+  /// The category the sheet's most recent section title declared.
+  ///
+  /// A supplier groups its rows under titles — "SPIRITS 1 ltr", "Beer Bottles"
+  /// — sitting alone in the first column. That row is not a product, and it is
+  /// the sheet telling us what everything under it belongs to.
+  final String? section;
 
   /// The product name as written, for the needs-attention list. Never parsed:
   /// the raw cell is what the owner needs to see, typo and all.
@@ -208,6 +215,56 @@ class SheetColumns {
       .replaceAll(':', '')
       .trim();
 
+  /// A decimal an owner actually typed: an optional sign, whole digits, and at
+  /// most one dot. Everything else is not a price and is reported as one.
+  static final RegExp _decimalForm = RegExp(r'^([+-]?)(\d*)(?:\.(\d*))?$');
+
+  /// The cell's value in integer minor units, parsed exactly.
+  ///
+  /// The money path used to go `double.tryParse` -> `* 100` -> `round()`, which
+  /// is a binary float carrying a hidden remainder: `0.29` is not representable,
+  /// so `0.29 * 100` lands a hair either side of the 29 it means and is only
+  /// correct because `round()` repairs it. It also answers a price with three
+  /// decimals by rounding at the same time, which is one rounding site too many
+  /// to reason about.
+  ///
+  /// This reads the DIGITS. "40.55" is 40 shillings and 55 cents because the
+  /// string says so, not because a double happened to land near it, and a
+  /// spreadsheet number arrives through its own exact shortest representation.
+  /// A third decimal is the only place a price is rounded — once, half-up,
+  /// because a price is money and money has two decimals — and it happens
+  /// HERE and nowhere else, so "the imported figure is the written figure" is a
+  /// property of one function.
+  ///
+  /// Null means "not a number", which the caller reports rather than defaults:
+  /// a price is the one figure in a row that must never be invented.
+  static int? parseMinorUnits(dynamic cell) {
+    if (cell == null) return null;
+    var text = cell.toString().trim();
+    if (text.isEmpty) return null;
+    text = text.replaceAll(_currency, '').trim();
+    if (text.isEmpty) return null;
+    if (_groupedNumber.hasMatch(text)) text = text.replaceAll(',', '');
+    final match = _decimalForm.firstMatch(text);
+    if (match == null) return null;
+    final negative = match.group(1) == '-';
+    final whole = match.group(2) ?? '';
+    final fraction = match.group(3) ?? '';
+    if (whole.isEmpty && fraction.isEmpty) return null;
+    final cents = _centsFrom(fraction);
+    final minor = int.parse(whole.isEmpty ? '0' : whole) * 100 + cents;
+    return negative ? -minor : minor;
+  }
+
+  /// The first two decimals as a whole number of cents, with a third rounding
+  /// half-up. "55" is 55, "5" is 50, "555" is 56, "554" is 55, "" is 0.
+  static int _centsFrom(String fraction) {
+    if (fraction.isEmpty) return 0;
+    var cents = int.parse(fraction.padRight(2, '0').substring(0, 2));
+    if (fraction.length > 2 && fraction.codeUnitAt(2) >= 0x35) cents++;
+    return cents;
+  }
+
   int? indexOf(String field) => _indexByField[field];
 
   /// The cell holding [field], or null when the column is absent or the row is
@@ -270,6 +327,35 @@ class SheetColumns {
     // canonical order here would read some other column as the product name.
     if (!map.containsKey('name')) return null;
     return SheetColumns._(map, true);
+  }
+
+  /// A row that declares a category rather than naming a product.
+  ///
+  /// A supplier sheet groups its products under section titles, sitting alone in
+  /// the first column: "SPIRITS 1 ltr", "Beer Bottles", "Soft Drinks". Such a
+  /// row carries no name, no cost and no sell — it holds nothing importable —
+  /// so it is not a product, and skipping it without reading it throws away the
+  /// only category the sheet ever states. An owner who never touched the
+  /// category column still gets a filed catalogue, and their stock report has
+  /// rows in it that mean something.
+  ///
+  /// A number sitting alone is NOT a title. The same sheets carry stray counts
+  /// — a bottle tally, a page number — in that same first column, and reading
+  /// those as the category files the next twenty products under "13". So the
+  /// title has to be text.
+  static bool isSectionRow(List<dynamic> row, SheetColumns columns) {
+    if (SheetColumns.isBlankRow(row)) return false;
+    if ((columns.text(row, 'name') ?? '').isNotEmpty) return false;
+    if (SheetColumns.parseNumber(columns.cell(row, 'cost_price')) != null) {
+      return false;
+    }
+    if (SheetColumns.parseNumber(columns.cell(row, 'sell_price')) != null) {
+      return false;
+    }
+    final dynamic first = row.isEmpty ? null : row.first;
+    if (first == null) return false;
+    if (SheetColumns.parseNumber(first) != null) return false;
+    return first.toString().trim().isNotEmpty;
   }
 
   /// The `1,200.50` / `KSh 40` / ` 12 ` spellings a supplier's file contains.
@@ -361,9 +447,7 @@ class SheetLayout {
     if (detected != null) {
       return SheetLayout(
         columns: detected,
-        rows: <ImportRow>[
-          for (var i = 1; i < raw.length; i++) ImportRow(i + 1, raw[i]),
-        ],
+        rows: _rowsFrom(raw, 1, detected),
         headerRow: List<dynamic>.of(first),
       );
     }
@@ -416,11 +500,35 @@ class SheetLayout {
     }
     return SheetLayout(
       columns: columns,
-      rows: <ImportRow>[
-        for (var i = 0; i < raw.length; i++) ImportRow(i + 1, raw[i]),
-      ],
+      rows: _rowsFrom(raw, 0, columns),
       headerRow: null,
     );
+  }
+
+  /// Every row from [start], each carrying the section title in force above it.
+  ///
+  /// Walking the rows in one pass is what makes a section title mean anything:
+  /// the title is a statement about the rows that FOLLOW it, so the category a
+  /// product lands under is whichever title was last seen — not the one on the
+  /// same row, and not the first one in the file.
+  static List<ImportRow> _rowsFrom(
+    List<List<dynamic>> raw,
+    int start,
+    SheetColumns columns,
+  ) {
+    String? section;
+    final rows = <ImportRow>[];
+    for (var i = start; i < raw.length; i++) {
+      final List<dynamic> row = raw[i];
+      if (SheetColumns.isSectionRow(row, columns)) {
+        // Normalised here, once, so a sheet whose titles differ by case or
+        // trailing space produces one category rather than three.
+        section = row.first.toString().trim();
+        continue;
+      }
+      rows.add(ImportRow(i + 1, row, section: section));
+    }
+    return rows;
   }
 }
 
@@ -452,10 +560,13 @@ class ImportRowParser {
   /// [columns] decides where each value is read from; omit it for a file in this
   /// app's own export order. [parseId] converts the id column, which is a
   /// spreadsheet artefact rather than something we can trust to exist locally.
+  /// [section] is the sheet's most recent section title, used as the category
+  /// when the row itself says nothing. See [ImportRow.section].
   static ParsedRow parseProductRow(
     List<dynamic> row, {
     int? Function(dynamic)? parseId,
     SheetColumns? columns,
+    String? section,
   }) {
     final cols = columns ?? SheetColumns.positional;
 
@@ -475,13 +586,15 @@ class ImportRowParser {
     // the single most consequential figure in the app.
     final costCell = cols.cell(row, 'cost_price');
     final cost = SheetColumns.parseNumber(costCell);
-    if (cost == null) {
+    final costMinor = SheetColumns.parseMinorUnits(costCell);
+    if (cost == null || costMinor == null) {
       return ParsedRow.rejected(_missingNumber('Cost price', costCell));
     }
 
     final sellCell = cols.cell(row, 'sell_price');
     final sell = SheetColumns.parseNumber(sellCell);
-    if (sell == null) {
+    final sellMinor = SheetColumns.parseMinorUnits(sellCell);
+    if (sell == null || sellMinor == null) {
       return ParsedRow.rejected(_missingNumber('Selling price', sellCell));
     }
 
@@ -551,8 +664,10 @@ class ImportRowParser {
     // a real price the shop had set and silently changes what the till charges.
     final halfCell = cols.cell(row, 'half_price');
     final half = SheetColumns.parseNumber(halfCell);
+    final halfMinor = SheetColumns.parseMinorUnits(halfCell);
     final halfText = halfCell?.toString().trim() ?? '';
-    if (half == null && halfText.isNotEmpty) {
+    if ((half == null) != (halfMinor == null) ||
+        (half == null && halfText.isNotEmpty)) {
       return ParsedRow.rejected(
         'Half price "$halfText" is not a number — the row was left out so the '
         'price already on this product is kept',
@@ -561,15 +676,21 @@ class ImportRowParser {
 
     final quarterCell = cols.cell(row, 'quarter_price');
     final quarter = SheetColumns.parseNumber(quarterCell);
+    final quarterMinor = SheetColumns.parseMinorUnits(quarterCell);
     final quarterText = quarterCell?.toString().trim() ?? '';
-    if (quarter == null && quarterText.isNotEmpty) {
+    if ((quarter == null) != (quarterMinor == null) ||
+        (quarter == null && quarterText.isNotEmpty)) {
       return ParsedRow.rejected(
         'Quarter price "$quarterText" is not a number — the row was left out so '
         'the price already on this product is kept',
       );
     }
 
-    final category = resolveCategory(cols.text(row, 'category'), name);
+    // The sheet's own section title wins over nothing and loses to the row's
+    // own cell: an owner who filled in the category column meant it, and a
+    // supplier section is only what the sheet says when the row says nothing.
+    final category =
+        resolveCategory(cols.text(row, 'category') ?? section, name);
 
     // The shared validator, so an imported row can never hold a value the editor
     // would refuse to save: over-long names, negative stock, absurd sizes.
@@ -591,14 +712,14 @@ class ImportRowParser {
       id: parseId == null ? null : parseId(cols.cell(row, 'id')),
       name: name,
       category: category,
-      costPrice: Money.fromMajor(cost),
-      sellPrice: Money.fromMajor(sell),
+      costPrice: Money.fromMinor(costMinor),
+      sellPrice: Money.fromMinor(sellMinor),
       stockQty: stock ?? defaultStockQty,
       reorderLevel: reorder,
       bottleMl: bottleMl,
       unit: unit,
-      halfPrice: half == null ? null : Money.fromMajor(half),
-      quarterPrice: quarter == null ? null : Money.fromMajor(quarter),
+      halfPrice: halfMinor == null ? null : Money.fromMinor(halfMinor),
+      quarterPrice: quarterMinor == null ? null : Money.fromMinor(quarterMinor),
       exciseStampBatch: cols.text(row, 'excise_stamp_batch') ?? '',
       updatedAt: DateTime.now().toIso8601String(),
       // Carried on the row so the importer can attach it to the product it just

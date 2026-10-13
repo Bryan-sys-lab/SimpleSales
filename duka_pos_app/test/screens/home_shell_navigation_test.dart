@@ -14,6 +14,7 @@ import 'package:duka_pos/routing/app_stage_controller.dart';
 import 'package:duka_pos/routing/home_shell.dart';
 import 'package:duka_pos/routing/routes.dart';
 import 'package:duka_pos/services/app_state.dart';
+import 'package:duka_pos/services/live_channel_service.dart';
 import 'package:duka_pos/services/app_stage.dart';
 import 'package:duka_pos/ui/layout/window_size_class.dart';
 
@@ -129,6 +130,11 @@ Future<void> _pumpShell(
       providers: <SingleChildWidget>[
         ChangeNotifierProvider<AppState>.value(value: state),
         Provider<GoRouter>.value(value: router),
+        // The idle guard listens to the shop's own activity, so a harness that
+        // mounts the shell without the channel the app always provides would
+        // take the shell down rather than observe it.
+        ChangeNotifierProvider<LiveChannelService>.value(
+            value: LiveChannelService()),
       ],
       child: MaterialApp.router(
         routerConfig: router,

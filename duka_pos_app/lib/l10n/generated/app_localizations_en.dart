@@ -30,6 +30,9 @@ class AppLocalizationsEn extends AppLocalizations {
   String get actionRetry => 'Retry';
 
   @override
+  String get actionPressBackAgainToExit => 'Press back again to exit';
+
+  @override
   String get errorDuplicateName =>
       'That name is already taken. Try a different one.';
 

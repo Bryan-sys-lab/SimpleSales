@@ -340,6 +340,12 @@ class SheetsService {
     // Refused whole rather than read positionally, exactly as the Excel path
     // refuses it. A sheet is either readable by name or it is not ours.
     if (layout.refusal != null) {
+      // Same as the Excel path: whatever the last import of this sheet recorded
+      // is not actionable, and a warning nobody can clear is worse than none.
+      await _db.resolveImportProblemsForSheet(
+        source: 'sheets',
+        sheetName: inventorySheetName,
+      );
       throw UnreadableLayoutException(layout.refusal!);
     }
     final result = await InventoryImporter(_db).apply(

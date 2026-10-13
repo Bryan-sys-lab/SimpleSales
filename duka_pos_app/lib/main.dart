@@ -3,7 +3,6 @@ import 'dart:async';
 import 'package:flutter/foundation.dart';
 import 'package:go_router/go_router.dart';
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
 import 'package:provider/single_child_widget.dart';
 import 'package:sentry_flutter/sentry_flutter.dart';
@@ -15,6 +14,7 @@ import 'l10n/generated/app_localizations.dart';
 import 'models/crash_log.dart';
 import 'routing/app_router.dart';
 import 'routing/app_stage_controller.dart';
+import 'routing/system_back_handler.dart';
 import 'services/app_state.dart';
 import 'services/backend_service.dart';
 import 'services/app_update_service.dart';
@@ -158,33 +158,19 @@ GoRouter appRouter(BuildContext context) => buildAppRouter(
 class _ThemedApp extends StatelessWidget {
   const _ThemedApp();
 
-  static bool _exitRequested = false;
-  static Timer? _exitTimer;
+  /// The back handler, one per app.
+  ///
+  /// Stateless as a widget and stateful as an object: the "press back again to
+  /// exit" window outlives the build that armed it, and a `static bool` on a
+  /// widget class is state nobody can reason about — which is how this used to
+  /// be, alongside the unguarded `router.pop()` that crashed the app.
+  static SystemBackHandler _backHandler = SystemBackHandler(() {});
 
   void _onPopInvoked(BuildContext context, bool didPop, Object? result) {
     if (didPop) return;
-    final GoRouter router = context.read<GoRouter>();
-    if (router.canPop()) {
-      router.pop();
-      return;
-    }
-    if (_exitRequested) {
-      _exitTimer?.cancel();
-      _exitTimer = null;
-      _exitRequested = false;
-      SystemNavigator.pop();
-      return;
-    }
-    _exitRequested = true;
-    _exitTimer = Timer(const Duration(seconds: 2), () {
-      _exitRequested = false;
-    });
-    final navigatorContext = rootNavigatorKey.currentContext;
-    if (navigatorContext != null) {
-      ScaffoldMessenger.of(navigatorContext).showSnackBar(
-        const SnackBar(content: Text('Press back again to exit')),
-      );
-    }
+    // Read per call: the tree may have rebuilt with a new router since the last
+    // press, and a captured one navigates a stack that no longer exists.
+    _backHandler.handle(context.read<GoRouter>());
   }
 
   @override
@@ -198,6 +184,27 @@ class _ThemedApp extends StatelessWidget {
       child: MaterialApp.router(
         title: SimplePosBrand.appName,
         debugShowCheckedModeBanner: false,
+        // Where the exit hint is assembled. This callback runs BELOW the
+        // MaterialApp's own Localizations and ScaffoldMessenger; above them is
+        // this widget, and `AppLocalizations.of` up there finds no delegates and
+        // takes the app down on boot. So the handler is built here, with a
+        // context that has both, and reached back up through a field that the
+        // PopScope callback reads on each press.
+        builder: (BuildContext inner, Widget? child) {
+          final AppLocalizations l10n = AppLocalizations.of(inner);
+          _backHandler = SystemBackHandler(() {
+            final ScaffoldMessengerState? messenger =
+                ScaffoldMessenger.maybeOf(inner);
+            if (messenger == null) return;
+            messenger
+              ..clearSnackBars()
+              ..showSnackBar(SnackBar(
+                content: Text(l10n.actionPressBackAgainToExit),
+                duration: const Duration(seconds: 2),
+              ));
+          });
+          return child ?? const SizedBox.shrink();
+        },
         routerConfig: context.read<GoRouter>(),
         theme: themes.light,
         darkTheme: themes.dark,

@@ -136,6 +136,12 @@ abstract class AppLocalizations {
   /// **'Retry'**
   String get actionRetry;
 
+  /// No description provided for @actionPressBackAgainToExit.
+  ///
+  /// In en, this message translates to:
+  /// **'Press back again to exit'**
+  String get actionPressBackAgainToExit;
+
   /// No description provided for @errorDuplicateName.
   ///
   /// In en, this message translates to:

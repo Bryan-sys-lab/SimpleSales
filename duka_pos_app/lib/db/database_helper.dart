@@ -1486,6 +1486,28 @@ SELECT name FROM staff GROUP BY name HAVING COUNT(*) = 1
         where: 'id = ?', whereArgs: [id]);
   }
 
+  /// Resolves every open problem recorded from one sheet of one source.
+  ///
+  /// A problem is a statement about what ONE import of ONE sheet left behind,
+  /// so the next import of that same sheet supersedes all of them — whether it
+  /// read them, replaced them, or refused the file outright. Without this the
+  /// list only ever grows: a re-import cannot clear the rows a previous import
+  /// failed on, which is exactly what the dashboard's "re-import the
+  /// spreadsheet to finish that update" tells the owner to do. A refused import
+  /// resolves them too, because a file whose layout cannot be mapped leaves
+  /// nothing actionable behind it and a permanent warning is worse than none.
+  Future<void> resolveImportProblemsForSheet({
+    required String source,
+    required String sheetName,
+  }) async {
+    await (await database).update(
+      'import_needs_attention',
+      {'resolved': 1},
+      where: 'resolved = 0 AND source = ? AND sheet_name = ?',
+      whereArgs: [source, sheetName],
+    );
+  }
+
   // ---------------- Shop settings ----------------
 
   Future<String?> getSetting(String key) async {

@@ -298,6 +298,12 @@ class ExcelService {
     // Refused whole rather than read positionally. A workbook we cannot map is
     // not a workbook with 287 bad rows in it — see SheetLayout.refusal.
     if (layout.refusal != null) {
+      // And what a previous import of this sheet recorded is not actionable
+      // either: the rows were read under the same mis-mapping. Resolving them is
+      // what stops a permanent "re-import to finish that update" that can never
+      // be finished.
+      await _db.resolveImportProblemsForSheet(
+          source: 'excel', sheetName: sheetName);
       throw UnreadableLayoutException(layout.refusal!);
     }
     final importer = InventoryImporter(_db);

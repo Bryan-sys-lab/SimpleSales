@@ -341,6 +341,15 @@ class InventoryImporter {
     final cols = columns ?? SheetColumns.positional;
     var needsAttention = 0;
 
+    // This import supersedes every problem the last import of this sheet left.
+    // Without it the list only grows: re-importing a fixed file would keep the
+    // rows the previous import failed on, and the dashboard would keep counting
+    // them long after they had been dealt with. Resolved BEFORE any new problem
+    // is recorded, so the list always describes this import and not its
+    // predecessors.
+    await _db.resolveImportProblemsForSheet(
+        source: source, sheetName: sheetName);
+
     Future<void> flag(ImportRow row, String problem) async {
       needsAttention++;
       await _db.recordImportProblem(
@@ -357,7 +366,7 @@ class InventoryImporter {
     for (final row in rows) {
       if (SheetColumns.isBlankRow(row.cells)) continue;
       final parsed = ImportRowParser.parseProductRow(row.cells,
-          parseId: _parseId, columns: cols);
+          parseId: _parseId, columns: cols, section: row.section);
       if (parsed.needsAttention) await flag(row, parsed.problem!);
       final product = parsed.product;
       if (product != null) {
