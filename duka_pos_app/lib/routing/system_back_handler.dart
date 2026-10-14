@@ -19,6 +19,17 @@
 // match list went with it — therefore reports `canPop() == true` and then throws
 // out of `pop()`. The user felt both halves of that: a blank screen where the
 // emptied navigator had nothing to draw, and the crash on the next press.
+//
+// ## Why the guard hangs off a page rather than the app
+//
+// The first version sat in a `PopScope` above `MaterialApp.router`, which is
+// INERT: a `PopScope` with no `ModalRoute` ancestor registers with nothing, so
+// every back press went straight to go_router's own `popRoute()` and the
+// double-press-to-exit never appeared. A test that counts invocations proved it
+// (zero). A `PopScope` built by a ROUTE is inside the router's subtree and
+// registers after the router does, so it wins the dispatch — which is why the
+// app installs one per page from the single `_fadeThrough` every route already
+// goes through.
 library;
 
 import 'dart:async';
@@ -36,17 +47,17 @@ const Duration _exitArmWindow = Duration(seconds: 2);
 
 /// Handles Back, and never crashes doing it.
 ///
-/// One instance per app, mounted by the `PopScope` above the router. The
-/// instance is disposable because it owns a timer; the handler is a plain object
-/// rather than a `static` on a widget so a test can arm it, fire it, and read
-/// what happened without pumping a tree.
+/// One instance per app, mounted by the `PopScope` each route's page builds.
+/// The instance is disposable because it owns a timer; the handler is a plain
+/// object rather than a `static` on a widget so a test can arm it, fire it, and
+/// read what happened without pumping a tree.
 class SystemBackHandler {
   SystemBackHandler(this._hint);
 
   /// Shows "press back again to exit". Called through a callback rather than
   /// holding a `BuildContext`, because the context that armed the window is not
   /// the context that disarms it.
-  final void Function() _hint;
+  void Function() _hint;
 
   bool _armed = false;
   Timer? _armTimer;
@@ -86,6 +97,14 @@ class SystemBackHandler {
     _armTimer?.cancel();
     _armed = false;
   }
+
+  /// Shows "press back again to exit".
+  ///
+  /// Settable rather than fixed in the constructor: the handler is created with
+  /// the router — before any `MaterialApp` exists — and the sentence it shows
+  /// needs the app's localizations and a `ScaffoldMessenger`, both of which live
+  /// below it. The app assigns a real hint as it builds.
+  set hint(void Function() value) => _hint = value;
 
   /// Pops the current route, but only when there is provably one to pop.
   ///

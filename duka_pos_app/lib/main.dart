@@ -14,7 +14,6 @@ import 'l10n/generated/app_localizations.dart';
 import 'models/crash_log.dart';
 import 'routing/app_router.dart';
 import 'routing/app_stage_controller.dart';
-import 'routing/system_back_handler.dart';
 import 'services/app_state.dart';
 import 'services/backend_service.dart';
 import 'services/app_update_service.dart';
@@ -158,89 +157,72 @@ GoRouter appRouter(BuildContext context) => buildAppRouter(
 class _ThemedApp extends StatelessWidget {
   const _ThemedApp();
 
-  /// The back handler, one per app.
-  ///
-  /// Stateless as a widget and stateful as an object: the "press back again to
-  /// exit" window outlives the build that armed it, and a `static bool` on a
-  /// widget class is state nobody can reason about — which is how this used to
-  /// be, alongside the unguarded `router.pop()` that crashed the app.
-  static SystemBackHandler _backHandler = SystemBackHandler(() {});
-
-  void _onPopInvoked(BuildContext context, bool didPop, Object? result) {
-    if (didPop) return;
-    // Read per call: the tree may have rebuilt with a new router since the last
-    // press, and a captured one navigates a stack that no longer exists.
-    _backHandler.handle(context.read<GoRouter>());
-  }
-
   @override
   Widget build(BuildContext context) {
     final ({ThemeData light, ThemeData dark}) themes = buildDukaThemes();
 
-    return PopScope(
-      canPop: false,
-      onPopInvokedWithResult: (bool didPop, Object? result) =>
-          _onPopInvoked(context, didPop, result),
-      child: MaterialApp.router(
-        title: SimplePosBrand.appName,
-        debugShowCheckedModeBanner: false,
-        // Where the exit hint is assembled. This callback runs BELOW the
-        // MaterialApp's own Localizations and ScaffoldMessenger; above them is
-        // this widget, and `AppLocalizations.of` up there finds no delegates and
-        // takes the app down on boot. So the handler is built here, with a
-        // context that has both, and reached back up through a field that the
-        // PopScope callback reads on each press.
-        builder: (BuildContext inner, Widget? child) {
-          final AppLocalizations l10n = AppLocalizations.of(inner);
-          _backHandler = SystemBackHandler(() {
-            final ScaffoldMessengerState? messenger =
-                ScaffoldMessenger.maybeOf(inner);
-            if (messenger == null) return;
-            messenger
-              ..clearSnackBars()
-              ..showSnackBar(SnackBar(
-                content: Text(l10n.actionPressBackAgainToExit),
-                duration: const Duration(seconds: 2),
-              ));
-          });
-          return child ?? const SizedBox.shrink();
-        },
-        routerConfig: context.read<GoRouter>(),
-        theme: themes.light,
-        darkTheme: themes.dark,
-        // Both themes are hand-authored and both pass AA independently, so the
-        // system setting is honoured rather than forced. The mode is read from
-        // `MediaQuery.platformBrightnessOf` inside each theme's own construction,
-        // which means the OS choice is respected with no stored preference and
-        // therefore no first-frame flash: there is nothing to restore late.
-        themeMode: ThemeMode.system,
+    return MaterialApp.router(
+      title: SimplePosBrand.appName,
+      debugShowCheckedModeBanner: false,
+      // Where the "press back again to exit" sentence is installed.
+      //
+      // The handler itself lives with the router, because the guard that calls it
+      // is built by each route's page. What the app owns is the sentence, and the
+      // sentence needs this device's locale and a `ScaffoldMessenger` — both of
+      // which live BELOW the `MaterialApp`. An `AppLocalizations.of` up here is
+      // above them and finds nothing, which is why this is a `builder` and not a
+      // field assignment: `MaterialApp.builder` is final, and a PopScope above
+      // the router was proved inert anyway.
+      builder: (BuildContext inner, Widget? child) {
+        final AppLocalizations l10n = AppLocalizations.of(inner);
+        setSystemBackHint(() {
+          final ScaffoldMessengerState? messenger =
+              ScaffoldMessenger.maybeOf(inner);
+          if (messenger == null) return;
+          messenger
+            ..clearSnackBars()
+            ..showSnackBar(SnackBar(
+              content: Text(l10n.actionPressBackAgainToExit),
+              duration: const Duration(seconds: 2),
+            ));
+        });
+        return child ?? const SizedBox.shrink();
+      },
+      routerConfig: context.read<GoRouter>(),
+      theme: themes.light,
+      darkTheme: themes.dark,
+      // Both themes are hand-authored and both pass AA independently, so the
+      // system setting is honoured rather than forced. The mode is read from
+      // `MediaQuery.platformBrightnessOf` inside each theme's own construction,
+      // which means the OS choice is respected with no stored preference and
+      // therefore no first-frame flash: there is nothing to restore late.
+      themeMode: ThemeMode.system,
 
-        // Localization. Three things have to be wired together or "English-only"
-        // silently costs more than it looks:
-        //
-        //   * `AppLocalizations.localizationsDelegates` already contains the three
-        //     `Global*` delegates, so appending them again would duplicate each one
-        //     and `Localizations._loadAll` would take the first — which is the
-        //     wrong one the moment anyone vendors their own.
-        //   * `supportedLocales` comes from the ARB catalogue rather than a
-        //     hand-written list, so a locale cannot be half-shipped: adding
-        //     `app_sw.arb` is the whole of adding Swahili.
-        //   * `locale` is left null so the OS decides. There is nothing to restore
-        //     before the first frame because there is no stored preference, which
-        //     is why there is no locale flash on boot the way a persisted choice
-        //     would cause.
-        localizationsDelegates: AppLocalizations.localizationsDelegates,
-        supportedLocales: AppLocalizations.supportedLocales,
-        locale: null,
-        // No `localeResolutionCallback`: the default resolution picks the first
-        // supported locale whose language matches the device and falls back to the
-        // first supported locale, so an OS set to French still gets English rather
-        // than English copy inside French chrome. Adding a callback would only be
-        // needed once the app has a language the OS cannot select.
-        // A theme change is a sudden luminance change the user did not cause.
-        // Interpolating it renders a half-styled state no screen was laid out for.
-        themeAnimationStyle: AnimationStyle.noAnimation,
-      ),
+      // Localization. Three things have to be wired together or "English-only"
+      // silently costs more than it looks:
+      //
+      //   * `AppLocalizations.localizationsDelegates` already contains the three
+      //     `Global*` delegates, so appending them again would duplicate each one
+      //     and `Localizations._loadAll` would take the first — which is the
+      //     wrong one the moment anyone vendors their own.
+      //   * `supportedLocales` comes from the ARB catalogue rather than a
+      //     hand-written list, so a locale cannot be half-shipped: adding
+      //     `app_sw.arb` is the whole of adding Swahili.
+      //   * `locale` is left null so the OS decides. There is nothing to restore
+      //     before the first frame because there is no stored preference, which
+      //     is why there is no locale flash on boot the way a persisted choice
+      //     would cause.
+      localizationsDelegates: AppLocalizations.localizationsDelegates,
+      supportedLocales: AppLocalizations.supportedLocales,
+      locale: null,
+      // No `localeResolutionCallback`: the default resolution picks the first
+      // supported locale whose language matches the device and falls back to the
+      // first supported locale, so an OS set to French still gets English rather
+      // than English copy inside French chrome. Adding a callback would only be
+      // needed once the app has a language the OS cannot select.
+      // A theme change is a sudden luminance change the user did not cause.
+      // Interpolating it renders a half-styled state no screen was laid out for.
+      themeAnimationStyle: AnimationStyle.noAnimation,
     );
   }
 }

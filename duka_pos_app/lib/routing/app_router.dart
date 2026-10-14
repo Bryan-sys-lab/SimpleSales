@@ -34,6 +34,7 @@ import 'app_stage_controller.dart';
 import 'home_shell.dart';
 import 'not_found_screen.dart';
 import 'routes.dart';
+import 'system_back_handler.dart';
 
 /// The keys that decide WHO owns a route's Navigator.
 ///
@@ -57,11 +58,22 @@ final List<GlobalKey<NavigatorState>> branchNavigatorKeys =
 /// Constructed here and nowhere else. A second `GoRouter` fragments history,
 /// deep links, and back-button behaviour; a feature registers its routes INTO
 /// this list and never builds one of its own.
+/// The app's one Back handler.
+///
+/// Held here rather than inside `_ThemedApp` because the guard that uses it is
+/// built by each route's page, which is built by this file. The hint callback
+/// is set by the app below its `MaterialApp`, where the localized sentence and a
+/// `ScaffoldMessenger` both exist.
+final SystemBackHandler systemBackHandler = SystemBackHandler(() {});
+
+/// Replaces the handler's hint, which needs a context below the `MaterialApp`.
+void setSystemBackHint(void Function() hint) => systemBackHandler.hint = hint;
+
 GoRouter buildAppRouter({
   required AppStageController stage,
   required AppState appState,
 }) {
-  return GoRouter(
+  final GoRouter router = GoRouter(
     navigatorKey: rootNavigatorKey,
     initialLocation: Routes.initial,
     // The router re-evaluates `redirect` whenever this fires. Bridging the stage
@@ -86,6 +98,8 @@ GoRouter buildAppRouter({
       ..._shellRoutes(),
     ],
   );
+  _backRouter = router;
+  return router;
 }
 
 /// Everything outside the shell: the boot gate and the four ways into a
@@ -400,13 +414,50 @@ class _BreadcrumbObserver extends NavigatorObserver {
 /// Deliberately not a slide. A horizontal push on a POS reads as "the screen
 /// moved sideways", which at a counter is one more thing to interpret between
 /// the customer and the sale.
+/// The router the guard pops, held once.
+///
+/// A module-level reference rather than a parameter: every route's page builder
+/// goes through [_fadeThrough] and none of them has the router in scope, while
+/// the router exists exactly once. Assigned when it is built and read only from
+/// a back press.
+GoRouter? _backRouter;
+
+/// The router [systemBackHandler] pops.
+///
+/// Assigned by [buildAppRouter] and by a test that drives the real dispatch
+/// path. A module-level reference because the guard is built per page and none
+/// of those builders has the router in scope.
+GoRouter? get appRouterForTesting => _backRouter;
+set appRouterForTesting(GoRouter? value) => _backRouter = value;
+
+/// The page every route is built with, for a test that needs the REAL dispatch
+/// path — the guard is installed by this function, so a test that builds its own
+/// pages would prove nothing about it.
+CustomTransitionPage<void> fadeThroughForTesting(
+  GoRouterState routerState,
+  Widget child,
+) =>
+    _fadeThrough(routerState, child);
+
 CustomTransitionPage<void> _fadeThrough(
   GoRouterState routerState,
   Widget child,
 ) {
   return CustomTransitionPage<void>(
     key: routerState.pageKey,
-    child: child,
+    // EVERY page goes through here, so this is the one place the guard can live
+    // and still cover all of them. A `PopScope` built by a route is inside the
+    // router's subtree and registers after the router does, so it wins the
+    // dispatch — which is what makes back answerable at all, where the same
+    // `PopScope` above `MaterialApp.router` was proved inert.
+    child: PopScope(
+      canPop: false,
+      onPopInvokedWithResult: (bool didPop, Object? result) {
+        final GoRouter? router = _backRouter;
+        if (router != null) systemBackHandler.handle(router, didPop: didPop);
+      },
+      child: child,
+    ),
     transitionDuration: AppMotion.standard.normal,
     reverseTransitionDuration: AppMotion.standard.fast,
     transitionsBuilder: (
