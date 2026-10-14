@@ -2347,6 +2347,18 @@ class _PrinterPanel extends StatelessWidget {
   Widget build(BuildContext context) {
     final AppLocalizations l10n = AppLocalizations.of(context);
     final AppSpacing spacing = AppSpacing.of(context);
+    // STATE, not explanation: what this till can do RIGHT NOW. The switch's
+    // position says it, but a shop wondering why no paper came out is looking
+    // for a sentence, not for the direction a toggle is pointing.
+    //
+    // Gated on the ADDRESS, not on `isConfigured` — which also requires
+    // `enabled` and so told a printer that was paired but switched off to go and
+    // pair one. The two states need opposite responses: "paired but off" is a
+    // switch on this screen, "unpaired" is a trip to Bluetooth settings, and the
+    // unpaired case renders no switch at all for this line to sit under.
+    final String printingState = printer.enabled
+        ? l10n.settingsPrintingOnSubtitle
+        : l10n.settingsPrintingPairedOffSubtitle;
     return _SettingsSection(
       title: l10n.settingsPrinterSection,
       child: Column(
@@ -2361,6 +2373,7 @@ class _PrinterPanel extends StatelessWidget {
             SettingsSwitchRow(
               icon: Icons.power_settings_new,
               title: l10n.settingsPrintingEnabled,
+              subtitle: printingState,
               value: printer.enabled,
               onChanged: (value) => onSave(printer.copyWith(enabled: value)),
             ),

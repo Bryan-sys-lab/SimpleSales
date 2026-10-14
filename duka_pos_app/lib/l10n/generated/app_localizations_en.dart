@@ -1669,6 +1669,13 @@ class AppLocalizationsEn extends AppLocalizations {
   String get settingsPrintingEnabled => 'Printing enabled';
 
   @override
+  String get settingsPrintingOnSubtitle => 'This till can print receipts.';
+
+  @override
+  String get settingsPrintingPairedOffSubtitle =>
+      'Paired, but switched off. Reprints still work.';
+
+  @override
   String get settingsRemoveAction => 'Remove';
 
   @override

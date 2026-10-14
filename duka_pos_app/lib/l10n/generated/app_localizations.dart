@@ -2777,6 +2777,18 @@ abstract class AppLocalizations {
   /// **'Printing enabled'**
   String get settingsPrintingEnabled;
 
+  /// No description provided for @settingsPrintingOnSubtitle.
+  ///
+  /// In en, this message translates to:
+  /// **'This till can print receipts.'**
+  String get settingsPrintingOnSubtitle;
+
+  /// No description provided for @settingsPrintingPairedOffSubtitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Paired, but switched off. Reprints still work.'**
+  String get settingsPrintingPairedOffSubtitle;
+
   /// No description provided for @settingsRemoveAction.
   ///
   /// In en, this message translates to:

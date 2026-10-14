@@ -169,8 +169,37 @@ void main() {
       expect(find.text('AA:BB:CC:DD:EE:FF'), findsOneWidget);
       // The 58mm roll, read from the config rather than a remembered default.
       expect(find.text(l10n.settingsPaperRoll(58)), findsOneWidget);
+      // And the printing switch STATES that it is on. The switch's own position
+      // says so, but a shop that has paired a printer and is wondering why no
+      // paper came out is looking for a sentence, not for the direction a
+      // toggle happens to be pointing.
+      expect(find.text(l10n.settingsPrintingOnSubtitle), findsOneWidget);
       expect(find.byType(Switch), findsNWidgets(4));
       tester.expectNoOverflow('settings printer section');
+    });
+
+    testWidgets(
+        'a paired printer that is switched off says so, and does not '
+        'send the owner to pair another', (tester) async {
+      // The regression this pins: the state used to be gated on
+      // `PrinterConfig.isConfigured`, which requires `enabled` as well as an
+      // address — so a till with a printer paired and printing switched off was
+      // told to go and pair one. Two states, opposite responses, and only one of
+      // them was ever reachable.
+      tester.useDevice(Device.small);
+      await tester.pumpApp(
+        home: _panel(
+          printer: PrinterConfig(
+            macAddress: 'AA:BB:CC:DD:EE:FF',
+            enabled: false,
+          ),
+        ),
+      );
+
+      expect(find.text(l10n.settingsPrintingPairedOffSubtitle), findsOneWidget);
+      expect(find.text(l10n.settingsPrintingOnSubtitle), findsNothing);
+      // And the printer is still named, so the owner knows it is the right one.
+      expect(find.text('AA:BB:CC:DD:EE:FF'), findsOneWidget);
     });
 
     testWidgets('the tax summary names the rate, the TIN and the till',

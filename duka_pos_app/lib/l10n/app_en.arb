@@ -446,6 +446,8 @@
   "settingsPrinterUnavailable": "Bluetooth is switched off on this phone, or it has no Bluetooth.",
   "settingsPrinterUnreachable": "Could not reach the printer. Check it is switched on and in range, then try again.",
   "settingsPrintingEnabled": "Printing enabled",
+  "settingsPrintingOnSubtitle": "This till can print receipts.",
+  "settingsPrintingPairedOffSubtitle": "Paired, but switched off. Reprints still work.",
   "settingsRemoveAction": "Remove",
   "settingsRemoveStaffTitle": "Remove staff member?",
   "settingsResetPinAction": "Reset PIN",
