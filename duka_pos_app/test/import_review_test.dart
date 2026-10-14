@@ -158,5 +158,129 @@ void main() {
       expect(draft.costMinor, 4055, reason: 'exact, not a float of it');
       expect(draft.sellMinor, 6025);
     });
+
+    test('a stored row is read with the mapping the import used', () {
+      // The bug: the draft re-read the raw cells against the canonical column
+      // order, so a header-named file whose columns sit elsewhere offered the
+      // owner its selling price as a cost. The mapping the import parsed with
+      // is stored with the row and read back here.
+      final reordered = SheetColumns.fromJson(
+          '{"id":0,"name":1,"category":2,"sell_price":3,'
+          '"cost_price":4,"stock_qty":5}');
+
+      final draft = ImportReviewService.draftFromRow(
+          <dynamic>['', 'Bond 7', '', '250', '169', '4'],
+          columns: reordered);
+
+      expect(draft.name, 'Bond 7');
+      expect(draft.costMinor, 16900, reason: 'the buying price, from column 5');
+      expect(draft.sellMinor, 25000,
+          reason: 'the selling price, from column 4');
+    });
+
+    test('a mapping that round-trips keeps its header detection', () {
+      final json = SheetColumns.fromHeaderRow(<dynamic>[
+        'ID',
+        'Product name',
+        'Category',
+        'Selling price',
+        'Buying price',
+        'Stock',
+      ])!
+          .toJson();
+
+      final reread = SheetColumns.fromJson(json);
+
+      expect(reread.headerRowDetected, isTrue);
+      expect(SheetColumns.fromJson(null).headerRowDetected, isFalse);
+      expect(SheetColumns.fromJson('not json'), isA<SheetColumns>());
+    });
+
+    test('a stored problem with no mapping falls back to the canonical order', () {
+      // Rows recorded before the mapping was kept, and any other writer.
+      final stored = ImportNeedsAttention(
+        source: 'excel',
+        sheetName: 'Inventory',
+        rowNumber: 4,
+        rawRow: '["","Kenya Lager","","40.55","60.25","24"]',
+        problem: 'No Cost price',
+        createdAt: DateTime(2026, 1, 1),
+      );
+
+      final draft = ImportReviewService.draftFrom(stored);
+
+      expect(draft.name, 'Kenya Lager');
+      expect(draft.costMinor, 4055);
+    });
+  });
+
+  group('finishing a row the import already wrote', () {
+    // An attention-severity problem is recorded NEXT TO a written product:
+    // "stock not a number — imported as 0". Finishing such a row is an edit of
+    // that product, not a second row for the same good — the shipped version
+    // inserted one, because it built a Product with no id and asked
+    // `upsertProduct` to insert it.
+    test('the finished row updates the product it describes', () {
+      final draft = ImportReviewService.draftFromRow(
+          <dynamic>['', 'Bond 7', '', '169', '250', '4']);
+
+      final existing = Product(
+        id: 42,
+        name: 'Bond 7',
+        category: 'Spirits',
+        costPrice: Money.zero,
+        sellPrice: Money.zero,
+        stockQty: 3,
+        reorderLevel: 6,
+        // A 50-litre keg: a size no import default could produce by accident,
+        // so the assertion below can tell "carried through" from "reset".
+        bottleMl: 50000,
+        updatedAt: DateTime(2026, 1, 1).toIso8601String(),
+        unit: ProductUnit.litre,
+        trackVariants: true,
+        imagePath: 'product_photos/42.jpg',
+      );
+
+      final product = draft.build(
+        name: 'Bond 7',
+        costMinor: 16900,
+        sellMinor: 25000,
+        stockQty: 4,
+        existing: existing,
+      );
+
+      expect(product.id, 42, reason: 'the same row, updated — not inserted');
+      expect(product.unit, ProductUnit.litre,
+          reason: '`upsertProduct` rewrites the whole row: what the form does '
+              'not ask about must be carried through');
+      expect(product.trackVariants, isTrue);
+      expect(product.imagePath, 'product_photos/42.jpg');
+      expect(product.bottleMl, 50000,
+          reason: 'the row\'s own size, not the import default: a keg '
+              'finished on this screen stays a keg');
+      expect(product.reorderLevel, ImportRowParser.defaultReorderLevel,
+          reason: 'the reorder level is read from the row, as the import '
+              'reads it — the row has no reorder cell, so it is the default');
+      expect(product.costPrice, Money.fromMinor(16900));
+      expect(product.sellPrice, Money.fromMinor(25000));
+      expect(product.stockQty, 4);
+    });
+
+    test('a row with no product behind it writes a fresh one', () {
+      final draft = ImportReviewService.draftFromRow(
+          <dynamic>['', 'Balozi', '', '', '250', '4']);
+
+      final product = draft.build(
+        name: 'Balozi',
+        costMinor: 16900,
+        sellMinor: 25000,
+        stockQty: 4,
+      );
+
+      expect(product.id, isNull);
+      expect(product.unit, ProductUnit.each);
+      expect(product.trackVariants, isFalse);
+      expect(product.imagePath, isNull);
+    });
   });
 }

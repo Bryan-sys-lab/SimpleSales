@@ -83,6 +83,57 @@ class Staff {
       );
 }
 
+/// Which rule of [Product.validate] a value broke.
+///
+/// The validator used to answer with a sentence, on the assumption that every
+/// caller would build its own message anyway — until the imports screen showed
+/// it verbatim and a shop on a non-English locale got English. A code travels
+/// through the model layer; the importer turns it back into English with
+/// [describe] (a stored row is data, written once and read later), and the
+/// screens turn it into the shop's own language.
+enum ProductProblem {
+  name,
+  nameTooLong,
+  categoryTooLong,
+  costPrice,
+  sellPrice,
+  stockQty,
+  reorderLevel,
+  size,
+  halfPrice,
+  quarterPrice;
+
+  /// The stored-row sentence: what an import wrote, and what the owner's
+  /// imports list shows.
+  String describe() {
+    switch (this) {
+      case ProductProblem.name:
+        return 'Enter a product name';
+      case ProductProblem.nameTooLong:
+        return 'Product name must be ${Product.maxNameLength} characters or '
+            'fewer';
+      case ProductProblem.categoryTooLong:
+        return 'Category must be ${Product.maxCategoryLength} characters or '
+            'fewer';
+      case ProductProblem.costPrice:
+        return 'Cost price must be a valid amount of 0 or more';
+      case ProductProblem.sellPrice:
+        return 'Selling price must be a valid amount of 0 or more';
+      case ProductProblem.stockQty:
+        return 'Stock quantity must be 0 or more';
+      case ProductProblem.reorderLevel:
+        return 'Reorder level must be 0 or more';
+      case ProductProblem.size:
+        return 'Size must be between ${Product.minBottleMl} and '
+            '${Product.maxBottleMl} ml (a 50-litre keg is 50000)';
+      case ProductProblem.halfPrice:
+        return 'Half price must be a valid amount of 0 or more';
+      case ProductProblem.quarterPrice:
+        return 'Quarter price must be a valid amount of 0 or more';
+    }
+  }
+}
+
 class Product {
   final int? id;
   final String name;
@@ -361,9 +412,15 @@ class Product {
   /// missing value, and the two must not be conflated.
   static const minBottleMl = 1;
 
-  /// Validates an already-parsed product. Returns null when valid, otherwise a
-  /// human-readable reason suitable for display.
-  static String? validate({
+  /// Validates an already-parsed product. Returns null when valid, otherwise
+  /// which rule was broken.
+  ///
+  /// A CODE, not a sentence. The model layer cannot reach `AppLocalizations`,
+  /// and the callers are three: the importer, which writes the reason into a
+  /// stored row the shop reads later ([describe] is its English, and the row is
+  /// data), and two screens that show it to a human right now — those two map it
+  /// through l10n. Returning a sentence here made every screen show it verbatim.
+  static ProductProblem? validate({
     required String name,
     required String category,
     required num costPrice,
@@ -374,32 +431,33 @@ class Product {
     num? halfPrice,
     num? quarterPrice,
   }) {
-    if (name.trim().isEmpty) return 'Enter a product name';
+    if (name.trim().isEmpty) return ProductProblem.name;
     if (name.trim().length > maxNameLength) {
-      return 'Product name must be $maxNameLength characters or fewer';
+      return ProductProblem.nameTooLong;
     }
     if (category.trim().length > maxCategoryLength) {
-      return 'Category must be $maxCategoryLength characters or fewer';
+      return ProductProblem.categoryTooLong;
     }
     if (!Money.isValidMajor(costPrice)) {
-      return 'Cost price must be a valid amount of 0 or more';
+      return ProductProblem.costPrice;
     }
     if (!Money.isValidMajor(sellPrice)) {
-      return 'Selling price must be a valid amount of 0 or more';
+      return ProductProblem.sellPrice;
     }
-    if (!stockQty.isFinite || stockQty < 0) {
-      return 'Stock quantity must be 0 or more';
+    if (stockQty.isNaN ||
+        stockQty.isInfinite ||
+        stockQty < 0) {
+      return ProductProblem.stockQty;
     }
-    if (reorderLevel < 0) return 'Reorder level must be 0 or more';
+    if (reorderLevel < 0) return ProductProblem.reorderLevel;
     if (bottleMl < minBottleMl || bottleMl > maxBottleMl) {
-      return 'Size must be between $minBottleMl and $maxBottleMl ml '
-          '(a 50-litre keg is 50000)';
+      return ProductProblem.size;
     }
     if (halfPrice != null && !Money.isValidMajor(halfPrice)) {
-      return 'Half price must be a valid amount of 0 or more';
+      return ProductProblem.halfPrice;
     }
     if (quarterPrice != null && !Money.isValidMajor(quarterPrice)) {
-      return 'Quarter price must be a valid amount of 0 or more';
+      return ProductProblem.quarterPrice;
     }
     return null;
   }
@@ -745,6 +803,13 @@ class ImportNeedsAttention {
   /// see what was actually in their file.
   final String rawRow;
 
+  /// The header-to-field mapping the import parsed the row with, as JSON —
+  /// `SheetColumns.toJson`. Null means "the canonical column order", which is
+  /// what a header-less file (or a row recorded before the mapping was kept)
+  /// used. Without it the raw row's cells cannot be read back in the fields
+  /// they were read from.
+  final String? columnMap;
+
   /// One sentence, in the owner's language: what is wrong and what to do.
   final String problem;
 
@@ -761,6 +826,7 @@ class ImportNeedsAttention {
     required this.problem,
     this.resolved = false,
     required this.createdAt,
+    this.columnMap,
   });
 
   /// "Row 14 — Kwancheri Lager", for a list title.
@@ -780,6 +846,7 @@ class ImportNeedsAttention {
         'problem': problem,
         'resolved': resolved ? 1 : 0,
         'created_at': createdAt.toIso8601String(),
+        'column_map': columnMap,
       };
 
   factory ImportNeedsAttention.fromMap(Map<String, dynamic> m) =>
@@ -794,6 +861,9 @@ class ImportNeedsAttention {
         resolved: ((m['resolved'] as num?)?.toInt() ?? 0) == 1,
         createdAt: DateTime.tryParse(m['created_at'] as String? ?? '') ??
             DateTime.fromMillisecondsSinceEpoch(0),
+        columnMap: (m['column_map'] as String?)?.isEmpty ?? true
+            ? null
+            : m['column_map'] as String,
       );
 }
 

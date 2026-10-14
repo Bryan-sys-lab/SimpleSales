@@ -1601,4 +1601,113 @@ void main() {
       await upgraded.close();
     });
   });
+
+  group('v20 -> v21: the mapping a refused row was read with', () {
+    /// A database at exactly v20: the table exists WITHOUT `column_map`, which
+    /// is the shape every released v20 build has on disk.
+    Future<Database> atV20() async {
+      // The v10 builder plus the v21 step's own precondition, opened at v20 so
+      // the production `_onUpgrade` runs from there.
+      await _createV10Database(path);
+      final db = await databaseFactoryFfi.openDatabase(
+        path,
+        options: OpenDatabaseOptions(
+          version: 20,
+          onOpen: (db) async {
+            await db.execute('''CREATE TABLE IF NOT EXISTS
+                import_needs_attention (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                source TEXT NOT NULL,
+                sheet_name TEXT NOT NULL DEFAULT '',
+                row_number INTEGER NOT NULL DEFAULT 0,
+                raw_name TEXT NOT NULL DEFAULT '',
+                raw_row TEXT NOT NULL,
+                problem TEXT NOT NULL,
+                resolved INTEGER NOT NULL DEFAULT 0,
+                created_at TEXT NOT NULL
+              )''');
+            final columns =
+                await db.rawQuery('PRAGMA table_info(import_needs_attention)');
+            expect(columns.map((r) => r['name']),
+                isNot(contains('column_map')));
+          },
+        ),
+      );
+      return db;
+    }
+
+    test('the column exists after the upgrade, and the rows survive', () async {
+      final db = await atV20();
+      await db.insert('import_needs_attention', {
+        'source': 'excel',
+        'sheet_name': 'Inventory',
+        'row_number': 14,
+        'raw_name': 'Kwancheri Lager',
+        'raw_row': '["","Kwancheri Lager","Beer","abc","80"]',
+        'problem': 'Cost price is not a number',
+        'resolved': 0,
+        'created_at': '2026-10-04T09:00:00.000Z',
+      });
+      await db.close();
+
+      final upgraded = await DatabaseHelper.openExistingForUpgradeTests(path);
+
+      final columns =
+          await upgraded.rawQuery('PRAGMA table_info(import_needs_attention)');
+      expect(columns.map((r) => r['name']), contains('column_map'));
+
+      final rows = await upgraded.query('import_needs_attention');
+      expect(rows.length, 1);
+      expect(rows.single['raw_name'], 'Kwancheri Lager');
+      expect(rows.single['column_map'], isNull);
+      await upgraded.close();
+    });
+
+    test('a shop several versions behind reaches v21 in one upgrade', () async {
+      // The shipped bug, in shape: a shop whose `<14` step ran the table
+      // CREATE *with* `column_map` — which is what a v13/v14 till migrating
+      // through the new `_createVariantsAndImportTables` produces — reaches the
+      // `<21` block with the column already present. A bare ADD COLUMN there is
+      // `duplicate column name`, which throws out of `_onUpgrade` and out of
+      // `openDatabase`: a till that cannot open its database at all, on the
+      // phones a migration exists for.
+      //
+      // Built at v20 with the column in place, because that is the only shape
+      // the collision can have — the version number alone says nothing about
+      // which columns exist.
+      await _createV10Database(path);
+      final db = await databaseFactoryFfi.openDatabase(
+        path,
+        options: OpenDatabaseOptions(
+          version: 20,
+          onOpen: (db) async {
+            await db.execute('''CREATE TABLE IF NOT EXISTS
+                import_needs_attention (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                source TEXT NOT NULL,
+                sheet_name TEXT NOT NULL DEFAULT '',
+                row_number INTEGER NOT NULL DEFAULT 0,
+                raw_name TEXT NOT NULL DEFAULT '',
+                raw_row TEXT NOT NULL,
+                problem TEXT NOT NULL,
+                resolved INTEGER NOT NULL DEFAULT 0,
+                created_at TEXT NOT NULL,
+                column_map TEXT
+              )''');
+          },
+        ),
+      );
+      await db.close();
+
+      final upgraded = await DatabaseHelper.openExistingForUpgradeTests(path);
+
+      final columns =
+          await upgraded.rawQuery('PRAGMA table_info(import_needs_attention)');
+      expect(columns.map((r) => r['name']), contains('column_map'));
+      // One occurrence, not two: a migration that added the column twice would
+      // still be broken on the next release.
+      expect(columns.where((r) => r['name'] == 'column_map'), hasLength(1));
+      await upgraded.close();
+    });
+  });
 }

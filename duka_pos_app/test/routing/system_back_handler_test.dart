@@ -131,6 +131,41 @@ void main() {
     handler.dispose();
   });
 
+  testWidgets('the armed window dies at the first navigation, not the press',
+      (WidgetTester tester) async {
+    // The bug: `handle` tested the armed flag BEFORE attempting the pop, and
+    // nothing disarmed on navigation. Arming at the root, then opening a
+    // detail screen inside the two-second window, then pressing back closed
+    // the till — the confirmation outlived the screen that produced it, on a
+    // screen that had somewhere to go.
+    final GoRouter router = _router('/');
+    await mount(tester, router);
+    await pump(tester);
+
+    int hints = 0;
+    final SystemBackHandler handler = SystemBackHandler(() => hints++);
+
+    handler.handle(router);
+    await pump(tester);
+    expect(hints, 1, reason: 'the first press arms the exit');
+
+    // The owner navigates, and THEN presses back — still inside the window.
+    router.push('/detail');
+    await pump(tester);
+    handler.handle(router);
+    await pump(tester);
+
+    expect(router.state.uri.toString(), '/',
+        reason: 'back returns to the screen the user came from');
+    expect(hints, 1, reason: 'the confirmation was spent on the navigation');
+
+    // And the disarmed state is a fresh window, not a spent one.
+    handler.handle(router);
+    await pump(tester);
+    expect(hints, 2, reason: 'a later press at the root is a new first press');
+    handler.dispose();
+  });
+
   testWidgets('a router with nothing behind it is popped only once',
       (WidgetTester tester) async {
     // The mirror image of the crash: `GoRouter.pop()` throws `GoError("There is

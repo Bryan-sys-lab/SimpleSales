@@ -93,6 +93,43 @@ class AppLocalizationsEn extends AppLocalizations {
   }
 
   @override
+  String validationProductNameTooLong(Object max) {
+    return 'Product name must be $max characters or fewer';
+  }
+
+  @override
+  String validationProductCategoryTooLong(Object max) {
+    return 'Category must be $max characters or fewer';
+  }
+
+  @override
+  String get validationProductCostPrice =>
+      'Cost price must be a valid amount of 0 or more';
+
+  @override
+  String get validationProductSellPrice =>
+      'Selling price must be a valid amount of 0 or more';
+
+  @override
+  String get validationProductStock => 'Stock quantity must be 0 or more';
+
+  @override
+  String get validationProductReorderLevel => 'Reorder level must be 0 or more';
+
+  @override
+  String validationProductSize(Object max, Object min) {
+    return 'Size must be between $min and $max ml (a 50-litre keg is 50000)';
+  }
+
+  @override
+  String get validationProductHalfPrice =>
+      'Half price must be a valid amount of 0 or more';
+
+  @override
+  String get validationProductQuarterPrice =>
+      'Quarter price must be a valid amount of 0 or more';
+
+  @override
   String get validationStockRequired => 'Stock quantity is required';
 
   @override

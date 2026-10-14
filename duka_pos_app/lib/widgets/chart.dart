@@ -46,7 +46,7 @@ class PosLinePoint {
 /// text scaling: nothing shrinks, axis labels are dropped rather than squeezed,
 /// and the painter is free to paint outside its box because there is no layout
 /// to overflow.
-class PosLineChart extends StatelessWidget {
+class PosLineChart extends StatefulWidget {
   const PosLineChart({
     super.key,
     required this.title,
@@ -66,51 +66,94 @@ class PosLineChart extends StatelessWidget {
   final String? emphasis;
 
   @override
+  State<PosLineChart> createState() => _PosLineChartState();
+}
+
+class _PosLineChartState extends State<PosLineChart> {
+  /// Label measurements, owned HERE so they outlive the painter.
+  ///
+  /// A painter is built on every `build()`, so widths cached inside one are
+  /// always cold — and a fresh [_ChartLabels] per build makes the painter's
+  /// `shouldRepaint` compare by identity and answer `true` forever after, so
+  /// every parent rebuild repaints a chart that has not changed. Holding the
+  /// helper here fixes both: it is reused across builds and its measurements
+  /// survive them.
+  final Map<String, double> _labelWidths = <String, double>{};
+  _ChartLabels? _labels;
+
+  /// The shared label helper for the style this state is building with.
+  _ChartLabels _labelsFor(TextStyle style) {
+    final direction = Directionality.of(context);
+    final scaler = MediaQuery.textScalerOf(context);
+    final existing = _labels;
+    if (existing != null &&
+        existing.labelStyle == style &&
+        existing.direction == direction &&
+        existing.textScaler == scaler) {
+      return existing;
+    }
+    // A different type scale or direction invalidates every measurement, not
+    // just the ones this dataset uses.
+    _labelWidths.clear();
+    return _labels = _ChartLabels(
+      labelStyle: style,
+      direction: direction,
+      textScaler: scaler,
+      widths: _labelWidths,
+    );
+  }
+
+  /// The spoken sentence when the caller passed no label: the title, the count
+  /// and the peak — a painted canvas has no text nodes, so without this the
+  /// chart is silent to a screen reader.
+  String _fallbackSemantics(AppLocalizations l10n) {
+    if (widget.points.isEmpty) return l10n.chartSpokenNoValues(widget.title);
+    final peak = widget.points
+        .reduce((PosLinePoint a, PosLinePoint b) => b.value > a.value ? b : a);
+    return l10n.chartSpokenPeak(widget.points.length, peak.label, widget.title,
+        peak.displayValue);
+  }
+
+  @override
   Widget build(BuildContext context) {
     final AppColors colors = AppColors.of(context);
     final AppSpacing spacing = AppSpacing.of(context);
     final TextTheme type = AppTypography.of(context);
     final labelStyle = type.bodySmall ?? const TextStyle();
+    final l10n = AppLocalizations.of(context);
 
     return Semantics(
-      label: semanticsLabel ?? _fallbackSemantics(AppLocalizations.of(context)),
+      label: widget.semanticsLabel ?? _fallbackSemantics(l10n),
       container: true,
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         mainAxisSize: MainAxisSize.min,
         children: <Widget>[
-          Text(title, style: type.titleMedium),
-          if (emphasis != null) ...[
+          Text(widget.title, style: type.titleMedium),
+          if (widget.emphasis != null) ...[
             const SizedBox(height: 2),
-            Text(emphasis!, style: labelStyle),
+            Text(widget.emphasis!, style: labelStyle),
           ],
           SizedBox(height: spacing.sm),
-          if (points.isEmpty)
-            Text(
-              AppLocalizations.of(context).chartNothingToShow,
-              style: labelStyle,
-            )
+          if (widget.points.isEmpty)
+            Text(l10n.chartNothingToShow, style: labelStyle)
           else
+            // Excluded so a painted canvas with no text nodes cannot announce
+            // anything: the series is already stated as a sentence on the
+            // [Semantics] node above, and this is what keeps it from being
+            // announced twice.
             ExcludeSemantics(
               child: _LineCanvas(
-                points: points,
-                height: height,
-                labelStyle: labelStyle,
-                direction: Directionality.of(context),
+                points: widget.points,
+                height: widget.height,
                 accent: colors.accent,
                 gap: spacing.sm,
+                labels: _labelsFor(labelStyle),
               ),
             ),
         ],
       ),
     );
-  }
-
-  String _fallbackSemantics(AppLocalizations l10n) {
-    if (points.isEmpty) return l10n.chartSpokenNoValues(title);
-    final peak = points.reduce((a, b) => b.value > a.value ? b : a);
-    return l10n.chartSpokenPeak(
-        points.length, peak.label, title, peak.displayValue);
   }
 }
 
@@ -120,22 +163,22 @@ class _LineCanvas extends StatelessWidget {
   const _LineCanvas({
     required this.points,
     required this.height,
-    required this.labelStyle,
-    required this.direction,
     required this.accent,
     required this.gap,
+    required this.labels,
   });
 
   final List<PosLinePoint> points;
   final double height;
-  final TextStyle labelStyle;
-  final TextDirection direction;
   final Color accent;
   final double gap;
 
+  /// Shared label measurement and axis rules. Owned by [_PosLineChartState] so
+  /// its measurements outlive the painter this build creates.
+  final _ChartLabels labels;
+
   @override
   Widget build(BuildContext context) {
-    final scaler = MediaQuery.textScalerOf(context);
     return LayoutBuilder(
       builder: (BuildContext context, BoxConstraints constraints) {
         final width = constraints.maxWidth.isFinite
@@ -143,12 +186,10 @@ class _LineCanvas extends StatelessWidget {
             : constraints.biggest.width;
         final painter = _LineChartPainter(
           points: points,
-          labelStyle: labelStyle,
-          direction: direction,
-          textScaler: scaler,
           plotHeight: height,
           accent: accent,
           gap: gap,
+          labels: labels,
         );
         return SizedBox(
           width: width,
@@ -160,84 +201,176 @@ class _LineCanvas extends StatelessWidget {
   }
 }
 
-class _LineChartPainter extends CustomPainter {
-  _LineChartPainter({
-    required this.points,
+/// ONE place both charts measure their labels.
+///
+/// A `CustomPainter` is built on every `build()` of the chart — the bar chart's
+/// once sat inside a `LayoutBuilder` builder — so a width cache the painter
+/// owns is always empty by the time `paint()` runs: it re-measured all
+/// twenty-four hour labels per repaint, on every tap. The width map is
+/// therefore injected by whoever wants measurements to outlive a painter, and
+/// the widths themselves are measured once. What `paint()` still does per frame
+/// is lay out the labels it draws — that is one short string each, and the
+/// framework's own text engine spends the same to render a `Text` widget; what
+/// it used to do was the WIDEST-label scan of the whole series, every frame,
+/// and that is what this removes.
+///
+/// It is also where the axis rules live — the strip height, the label stride
+/// and its collision factor, pixel snapping — instead of being duplicated in
+/// each painter and drifting into two different stride factors.
+class _ChartLabels {
+  _ChartLabels({
     required this.labelStyle,
     required this.direction,
     required this.textScaler,
-    required this.plotHeight,
-    required this.accent,
-    required this.gap,
-  });
+    Map<String, double>? widths,
+  }) : widths = widths ?? <String, double>{};
 
-  final List<PosLinePoint> points;
   final TextStyle labelStyle;
   final TextDirection direction;
   final TextScaler textScaler;
-  final double plotHeight;
-  final Color accent;
-  final double gap;
 
-  /// Label metrics, laid out ONCE.
+  /// Label widths, in logical pixels, measured once each.
   ///
-  /// `paint()` re-runs on every repaint — for an hourly chart that is 24
-  /// `TextPainter.layout()` calls per frame, on top of the line height — and it
-  /// used to redo all of them every time, because the peak value and every
-  /// label were measured inside `paint()` itself. The layout depends only on
-  /// the point list, the style, the scaler and the direction, all of which
-  /// `shouldRepaint` already compares, so caching per painter instance is exact.
-  Map<String, double>? _labelWidths;
+  /// Owned by the caller when it outlives a painter instance; owned here
+  /// (fresh) otherwise. The class speaks for a "map of per-label widths" either
+  /// way, so a measurement can never be redone per frame.
+  final Map<String, double> widths;
+
   double? _lineHeightValue;
 
   /// Below this, the plot is too short to be worth an axis and the labels are
   /// dropped rather than drawn into the plot.
-  static const double _minPlotWithAxis = 44.0;
+  static const double minPlotWithAxis = 44.0;
 
-  bool get _isRtl => direction == TextDirection.rtl;
+  /// The room one label wants beyond its own width before the next slot is
+  /// spoken for.
+  static const double collisionFactor = 1.6;
 
-  int get _maxValue => points.fold(0, (m, p) => math.max(m, p.value));
+  bool get isRtl => direction == TextDirection.rtl;
 
-  TextPainter _text(String text, TextStyle style, {double? maxWidth}) {
+  /// The granularity at which caps are remembered, in logical pixels.
+  ///
+  /// The cap comes from the slot width, which changes by a fraction on every
+  /// `LayoutBuilder` constraint — a rotation, a foldable unfolding, a
+  /// split-screen drag — and embedding the raw float in the key would file a
+  /// fresh entry per constraint change in a map the state never prunes. Half a
+  /// pixel is finer than anything the stride decision can hear, so nearby caps
+  /// share one entry.
+  static const double _capQuantum = 0.5;
+
+  /// A laid-out label, measured into [widths] the first time and free after.
+  ///
+  /// The key carries the quantised [cap]: a capped layout ellipsizes and stops
+  /// at the cap, so a width measured for the stride decision must never be
+  /// handed to a paint that needs the label's full width, or the other way
+  /// round.
+  double widthOf(String label, {double? cap}) {
+    final quantum =
+        cap == null ? null : (cap / _capQuantum).round() * _capQuantum;
+    final key = quantum == null ? label : '$label\u0000$quantum';
+    final cached = widths[key];
+    if (cached != null) return cached;
+    final painter = painterFor(label, cap: cap);
+    widths[key] = painter.width;
+    return painter.width;
+  }
+
+  /// A laid-out label, for the caller to paint.
+  ///
+  /// The painter is deliberately not cached: `TextPainter` holds its layout and
+  /// is cheap to rebuild from a string, while a cached instance would have to
+  /// be disposed when the style, scaler or direction changes — the one thing the
+  /// width map above does not have to track. The WIDTH is the part that
+  /// repeats; `paint()`'s own painter is one short string per frame, which is
+  /// what the framework's own text engine spends on a `Text` widget.
+  TextPainter painterFor(String label, {double? cap}) {
     final painter = TextPainter(
-      text: TextSpan(text: text, style: style),
+      text: TextSpan(text: label, style: labelStyle),
       textDirection: direction,
       textScaler: textScaler,
       maxLines: 1,
       ellipsis: '…',
     );
-    painter.layout(maxWidth: maxWidth ?? double.infinity);
+    painter.layout(maxWidth: cap ?? double.infinity);
     return painter;
   }
 
-  /// One line of label-size text, measured once per painter instance.
-  double _lineHeight(TextStyle style) =>
-      _lineHeightValue ??= _text('Ag', style, maxWidth: double.infinity).height;
+  /// One line of label-size text, measured once per helper instance.
+  double lineHeight() =>
+      _lineHeightValue ??= painterFor('Ag').height;
 
-  /// The widest label, measured once per painter instance.
-  ///
-  /// Capped at [cap], so a label wider than its slot does not set the stride.
-  double _widestCached(Iterable<PosLinePoint> pts, double cap) {
-    final cache = _labelWidths ??= <String, double>{};
+  /// The widest label, capped at [cap] so a label wider than its slot does not
+  /// set the stride.
+  double widest(Iterable<PosLinePoint> points, double cap) {
     var widest = 0.0;
-    for (final point in pts) {
-      final label = point.label;
-      final width = cache[label] ??= () {
-        final measured = _text(label, labelStyle, maxWidth: cap).width;
-        cache[label] = measured;
-        return measured;
-      }();
-      widest = math.max(widest, width);
+    for (final point in points) {
+      widest = math.max(widest, widthOf(point.label, cap: cap));
     }
     return widest;
   }
 
-  /// The axis strip, if there is room for one.
-  double _axisHeight(double height) {
-    final label = _lineHeight(labelStyle);
-    if (height - label - gap < _minPlotWithAxis) return 0;
+  /// The axis strip height, if there is room for one. Zero drops the axis.
+  double axisHeight(double height, double gap) {
+    final label = lineHeight();
+    if (height - label - gap < minPlotWithAxis) return 0;
     return label + gap;
   }
+
+  /// Every Nth label the axis draws.
+  ///
+  /// One rule with two callers, instead of the same arithmetic written twice
+  /// and tuned apart: [minStride] is the floor the chart reads at and
+  /// [collisionFactor] is the extra room one label asks of its slot. A stride
+  /// of 1 with no factor at all would still collide, because the factor is the
+  /// safety margin the axis needs to be readable rather than merely drawn.
+  int stride({
+    required double slot,
+    required Iterable<PosLinePoint> points,
+    required int minStride,
+  }) {
+    final widestLabel = widest(points, math.max(slot, 12.0));
+    final needed =
+        (widestLabel * collisionFactor / math.max(slot, 1)).ceil();
+    return math.max(minStride, needed).clamp(1, points.length);
+  }
+
+  /// Pixel-snapped x for a label of [width] centred on [centerX].
+  ///
+  /// `TextPainter.paint` renders glyphs at exactly the offset it is given: a
+  /// fractional origin straddles two device pixels and anti-aliases the label
+  /// into softness, so both painters snap here rather than each carrying its
+  /// own copy of the rounding.
+  double snapCenter(double centerX, double width, double sizeWidth) =>
+      (centerX - width / 2)
+          .clamp(0.0, math.max(0.0, sizeWidth - width))
+          .roundToDouble();
+}
+
+class _LineChartPainter extends CustomPainter {
+  _LineChartPainter({
+    required this.points,
+    required this.plotHeight,
+    required this.accent,
+    required this.gap,
+    required this.labels,
+  });
+
+  final List<PosLinePoint> points;
+  final double plotHeight;
+  final Color accent;
+  final double gap;
+
+  /// Shared label measurement and axis rules — see [_ChartLabels]. It carries
+  /// the style, direction and scaler this painter paints with, so a change of
+  /// any of them changes the helper and with it [shouldRepaint]'s answer.
+  final _ChartLabels labels;
+
+  bool get _isRtl => labels.isRtl;
+
+  int get _maxValue => points.fold(0, (m, p) => math.max(m, p.value));
+
+  /// The axis strip, if there is room for one.
+  double _axisHeight(double height) => labels.axisHeight(height, gap);
 
   double totalHeight(double height) => height;
 
@@ -311,21 +444,12 @@ class _LineChartPainter extends CustomPainter {
     }
     final peak = points[peakIndex];
     if (peak.value > 0) {
-      // Measured through the same cache the axis labels use, so the peak's
-      // caption is not a per-frame TextPainter layout of its own.
-      final cache = _labelWidths ??= <String, double>{};
-      final valueWidth = cache[peak.displayValue] ??= () {
-        final measured = _text(peak.displayValue, labelStyle).width;
-        cache[peak.displayValue] = measured;
-        return measured;
-      }();
-      final value = _text(peak.displayValue, labelStyle);
-      // Snapped for the same reason as the axis labels: a fractional origin
-      // anti-aliases the glyphs into softness. This one is the busiest hour's
-      // money figure, so it is the label a cashier actually reads.
-      final x = (_x(peakIndex, size.width) - valueWidth / 2)
-          .clamp(0.0, math.max(0.0, size.width - valueWidth))
-          .roundToDouble();
+      // One TextPainter for the caption: laid out once, reused for its width,
+      // its height and the paint. Snapped through the shared rule.
+      final value = labels.painterFor(peak.displayValue);
+      final valueWidth = value.width;
+      final x = labels.snapCenter(
+          _x(peakIndex, size.width), valueWidth, size.width);
       final y = (yOf(peak.value) - value.height - 6)
           .clamp(0.0, math.max(0.0, size.height))
           .roundToDouble();
@@ -337,26 +461,23 @@ class _LineChartPainter extends CustomPainter {
     // Axis labels, every Nth so they cannot overlap — and always the last one,
     // the most recent reading, which is the one a reader is looking for.
     //
-    // The widest label is read from the cache rather than measured here: 24
-    // layout passes per repaint was the cost of a chart that repainted on every
-    // parent rebuild.
+    // The stride comes from the shared rule in [_ChartLabels]; the widest label
+    // is read from its cache rather than measured here.
     final slot = size.width / math.max(points.length, 1);
-    final widest = _widestCached(points, math.max(slot, 12.0));
-    final stride = math.max(1, (widest / slot).ceil());
+    final stride = labels.stride(slot: slot, points: points, minStride: 1);
     final baselineY = baseline + gap;
 
     for (var i = 0; i < points.length; i += stride) {
-      _paintAxisLabel(canvas, size, i, stride, baselineY);
+      _paintAxisLabel(canvas, size, i, baselineY);
     }
     if ((points.length - 1) % stride != 0) {
-      _paintAxisLabel(canvas, size, points.length - 1, stride, baselineY);
+      _paintAxisLabel(canvas, size, points.length - 1, baselineY);
     }
   }
 
-  void _paintAxisLabel(
-      Canvas canvas, Size size, int index, int stride, double baselineY) {
+  void _paintAxisLabel(Canvas canvas, Size size, int index, double baselineY) {
     if (index < 0 || index >= points.length) return;
-    final painter = _text(points[index].label, labelStyle);
+    final painter = labels.painterFor(points[index].label);
     // PIXEL-SNAPPED, and this is what makes the axis readable.
     //
     // `TextPainter.paint` renders glyphs at exactly the offset it is given, with
@@ -370,18 +491,15 @@ class _LineChartPainter extends CustomPainter {
     // pixel grid, which is what the framework's own text engine does for a
     // `Text` widget. It is a one-line change that is the difference between an
     // axis a cashier can read and one they squint at.
-    final snappedX = (_x(index, size.width) - painter.width / 2)
-        .clamp(0.0, math.max(0.0, size.width - painter.width))
-        .roundToDouble();
+    final snappedX =
+        labels.snapCenter(_x(index, size.width), painter.width, size.width);
     painter.paint(canvas, Offset(snappedX, baselineY.roundToDouble()));
   }
 
   @override
   bool shouldRepaint(covariant _LineChartPainter old) =>
       old.points != points ||
-      old.textScaler != textScaler ||
-      old.direction != direction ||
-      old.labelStyle != labelStyle ||
+      old.labels != labels ||
       old.accent != accent;
 }
 
@@ -444,6 +562,42 @@ class _PosBarChartState extends State<PosBarChart> {
   /// would be duplicating a fact the gesture already produced.
   int? _selected;
 
+  /// Label measurements, owned HERE so they outlive the painter.
+  ///
+  /// A painter is built on every `build()`, so widths cached inside one are
+  /// always cold: `paint()` used to lay all twenty-four hour labels out again
+  /// on every tap that moved the selection. They depend on the labels, the
+  /// style, the scaler and the direction — all four are checked before the
+  /// helper is reused.
+  final Map<String, double> _labelWidths = <String, double>{};
+  _ChartLabels? _labels;
+
+  /// The shared label helper for the style this state is building with.
+  ///
+  /// Equality, not identity: a theme hands out a `TextStyle` that compares
+  /// equal across builds, and comparing by identity would throw a perfectly
+  /// good cache away and re-measure every label on every rebuild.
+  _ChartLabels _labelsFor(TextStyle style) {
+    final direction = Directionality.of(context);
+    final scaler = MediaQuery.textScalerOf(context);
+    final existing = _labels;
+    if (existing != null &&
+        existing.labelStyle == style &&
+        existing.direction == direction &&
+        existing.textScaler == scaler) {
+      return existing;
+    }
+    // A different type scale or direction invalidates every measurement, not
+    // just the ones this dataset uses.
+    _labelWidths.clear();
+    return _labels = _ChartLabels(
+      labelStyle: style,
+      direction: direction,
+      textScaler: scaler,
+      widths: _labelWidths,
+    );
+  }
+
   @override
   void didUpdateWidget(covariant PosBarChart oldWidget) {
     super.didUpdateWidget(oldWidget);
@@ -452,6 +606,10 @@ class _PosBarChartState extends State<PosBarChart> {
     if (!identical(oldWidget.points, widget.points) &&
         oldWidget.points != widget.points) {
       _selected = null;
+      // A new series is a new set of labels, so the widths measured for the old
+      // one are dead weight: clearing here bounds the map by the live series
+      // instead of by every width this chart has ever been laid out at.
+      _labelWidths.clear();
     }
   }
 
@@ -506,14 +664,12 @@ class _PosBarChartState extends State<PosBarChart> {
                         : constraints.biggest.width;
                     final painter = _BarChartPainter(
                       points: widget.points,
-                      labelStyle: labelStyle,
-                      direction: Directionality.of(context),
-                      textScaler: MediaQuery.textScalerOf(context),
                       plotHeight: widget.height,
                       selected: selected,
                       accent: colors.accent,
                       emptySlot: colors.outline.withValues(alpha: 0.35),
                       gap: spacing.sm,
+                      labels: _labelsFor(labelStyle),
                     );
                     return SizedBox(
                       width: width,
@@ -559,20 +715,15 @@ class _PosBarChartState extends State<PosBarChart> {
 class _BarChartPainter extends CustomPainter {
   _BarChartPainter({
     required this.points,
-    required this.labelStyle,
-    required this.direction,
-    required this.textScaler,
     required this.plotHeight,
     required this.selected,
     required this.accent,
     required this.emptySlot,
     required this.gap,
+    required this.labels,
   });
 
   final List<PosLinePoint> points;
-  final TextStyle labelStyle;
-  final TextDirection direction;
-  final TextScaler textScaler;
   final double plotHeight;
 
   /// The tapped bar, or null. Only this bar carries a figure, and it carries it
@@ -583,12 +734,9 @@ class _BarChartPainter extends CustomPainter {
   final Color emptySlot;
   final double gap;
 
-  Map<String, double>? _labelWidths;
-  double? _lineHeightValue;
-
-  /// Below this, the plot is too short to be worth an axis and the labels are
-  /// dropped rather than drawn into the plot.
-  static const double _minPlotWithAxis = 44.0;
+  /// Shared label measurement and axis rules — see [_ChartLabels]. Owned by the
+  /// chart's state so its measurements outlive this painter.
+  final _ChartLabels labels;
 
   /// A bar never fills its slot: two bars touching read as one column of
   /// matched height rather than as separate hours.
@@ -596,42 +744,9 @@ class _BarChartPainter extends CustomPainter {
 
   static const double _maxBarWidth = 16;
 
-  bool get _isRtl => direction == TextDirection.rtl;
+  bool get _isRtl => labels.isRtl;
 
   int get _maxValue => points.fold(0, (m, p) => math.max(m, p.value));
-
-  TextPainter _text(String text, TextStyle style, {double? maxWidth}) {
-    final painter = TextPainter(
-      text: TextSpan(text: text, style: style),
-      textDirection: direction,
-      textScaler: textScaler,
-      maxLines: 1,
-      ellipsis: '…',
-    );
-    painter.layout(maxWidth: maxWidth ?? double.infinity);
-    return painter;
-  }
-
-  double _lineHeight(TextStyle style) =>
-      _lineHeightValue ??= _text('Ag', style).height;
-
-  double _widestCached(double cap) {
-    final cache = _labelWidths ??= <String, double>{};
-    var widest = 0.0;
-    for (final point in points) {
-      final label = point.label;
-      final width =
-          cache[label] ??= _text(label, labelStyle, maxWidth: cap).width;
-      widest = math.max(widest, width);
-    }
-    return widest;
-  }
-
-  double _axisHeight(double height) {
-    final label = _lineHeight(labelStyle);
-    if (height - label - gap < _minPlotWithAxis) return 0;
-    return label + gap;
-  }
 
   double totalHeight(double height) => height;
 
@@ -643,13 +758,12 @@ class _BarChartPainter extends CustomPainter {
   /// The stride is the interval the axis reads at, so it is the whole
   /// difference between an axis a shop can read and the row of collisions this
   /// replaces. It starts at [kPosBarChartMinStride] and widens only when the
-  /// labels genuinely need the room.
-  int _stride(double width) {
-    final slot = _slot(width);
-    final widest = _widestCached(math.max(slot, 12.0));
-    final needed = (widest * 1.6 / math.max(slot, 1)).ceil();
-    return math.max(kPosBarChartMinStride, needed).clamp(1, points.length);
-  }
+  /// labels genuinely need the room — see the shared rule in [_ChartLabels].
+  int _stride(double width) => labels.stride(
+        slot: _slot(width),
+        points: points,
+        minStride: kPosBarChartMinStride,
+      );
 
   /// Left edge of bar [index], mirrored for RTL so the day still reads
   /// start-to-finish in both directions.
@@ -670,7 +784,7 @@ class _BarChartPainter extends CustomPainter {
   void paint(Canvas canvas, Size size) {
     if (points.isEmpty || size.width <= 0 || size.height <= 0) return;
 
-    final axisHeight = _axisHeight(size.height);
+    final axisHeight = labels.axisHeight(size.height, gap);
     final plotHeight = size.height - axisHeight;
     final baseline = size.height - axisHeight;
     final slot = _slot(size.width);
@@ -704,25 +818,21 @@ class _BarChartPainter extends CustomPainter {
     }
 
     // The revealed figure, above the bar it belongs to and nowhere else.
+    //
+    // ONE laid-out painter, reused for the width, the height and the paint:
+    // the figure used to be laid out three times per frame for the same string.
     if (selected != null && points[selected!].value > 0) {
       final at = points[selected!];
-      final cache = _labelWidths ??= <String, double>{};
-      final valueWidth = cache[at.displayValue] ??= () {
-        final measured = _text(at.displayValue, labelStyle).width;
-        cache[at.displayValue] = measured;
-        return measured;
-      }();
-      final x =
-          (_barLeft(selected!, size.width) + barWidth / 2 - valueWidth / 2)
-              .clamp(0.0, math.max(0.0, size.width - valueWidth))
-              .roundToDouble();
-      final y = (baseline -
-              _heightOf(at.value, plotHeight) -
-              _text(at.displayValue, labelStyle).height -
-              4)
+      final value = labels.painterFor(at.displayValue);
+      final valueWidth = labels.widthOf(at.displayValue);
+      final x = labels.snapCenter(
+          _barLeft(selected!, size.width) + barWidth / 2,
+          valueWidth,
+          size.width);
+      final y = (baseline - _heightOf(at.value, plotHeight) - value.height - 4)
           .clamp(0.0, math.max(0.0, size.height))
           .roundToDouble();
-      _text(at.displayValue, labelStyle).paint(canvas, Offset(x, y));
+      value.paint(canvas, Offset(x, y));
     }
 
     if (axisHeight <= 0) return;
@@ -746,21 +856,21 @@ class _BarChartPainter extends CustomPainter {
     final previous = index - (index % stride);
     if (previous < 0 || previous >= index) return true;
     final slot = _slot(width);
-    final widest = _widestCached(math.max(slot, 12.0));
-    return (index - previous) * slot >= widest * 1.6;
+    final widest = labels.widest(points, math.max(slot, 12.0));
+    return (index - previous) * slot >=
+        widest * _ChartLabels.collisionFactor;
   }
 
   void _paintAxisLabel(Canvas canvas, Size size, int index, double baselineY) {
     if (index < 0 || index >= points.length) return;
-    final painter = _text(points[index].label, labelStyle);
+    final painter = labels.painterFor(points[index].label);
     // Pixel-snapped, for the same reason [PosLineChart]'s are: a fractional
     // glyph origin straddles two device pixels and anti-aliases the label into
     // softness.
-    final x = (_barLeft(index, size.width) +
-            _barWidth(_slot(size.width)) / 2 -
-            painter.width / 2)
-        .clamp(0.0, math.max(0.0, size.width - painter.width))
-        .roundToDouble();
+    final x = labels.snapCenter(
+        _barLeft(index, size.width) + _barWidth(_slot(size.width)) / 2,
+        painter.width,
+        size.width);
     painter.paint(canvas, Offset(x, baselineY.roundToDouble()));
   }
 
@@ -768,9 +878,7 @@ class _BarChartPainter extends CustomPainter {
   bool shouldRepaint(covariant _BarChartPainter old) =>
       old.points != points ||
       old.selected != selected ||
-      old.textScaler != textScaler ||
-      old.direction != direction ||
-      old.labelStyle != labelStyle ||
+      old.labels != labels ||
       old.accent != accent;
 }
 

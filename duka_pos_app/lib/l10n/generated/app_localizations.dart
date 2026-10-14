@@ -232,6 +232,60 @@ abstract class AppLocalizations {
   /// **'{field} cannot be negative'**
   String validationFieldNotNegative(Object field);
 
+  /// No description provided for @validationProductNameTooLong.
+  ///
+  /// In en, this message translates to:
+  /// **'Product name must be {max} characters or fewer'**
+  String validationProductNameTooLong(Object max);
+
+  /// No description provided for @validationProductCategoryTooLong.
+  ///
+  /// In en, this message translates to:
+  /// **'Category must be {max} characters or fewer'**
+  String validationProductCategoryTooLong(Object max);
+
+  /// No description provided for @validationProductCostPrice.
+  ///
+  /// In en, this message translates to:
+  /// **'Cost price must be a valid amount of 0 or more'**
+  String get validationProductCostPrice;
+
+  /// No description provided for @validationProductSellPrice.
+  ///
+  /// In en, this message translates to:
+  /// **'Selling price must be a valid amount of 0 or more'**
+  String get validationProductSellPrice;
+
+  /// No description provided for @validationProductStock.
+  ///
+  /// In en, this message translates to:
+  /// **'Stock quantity must be 0 or more'**
+  String get validationProductStock;
+
+  /// No description provided for @validationProductReorderLevel.
+  ///
+  /// In en, this message translates to:
+  /// **'Reorder level must be 0 or more'**
+  String get validationProductReorderLevel;
+
+  /// No description provided for @validationProductSize.
+  ///
+  /// In en, this message translates to:
+  /// **'Size must be between {min} and {max} ml (a 50-litre keg is 50000)'**
+  String validationProductSize(Object max, Object min);
+
+  /// No description provided for @validationProductHalfPrice.
+  ///
+  /// In en, this message translates to:
+  /// **'Half price must be a valid amount of 0 or more'**
+  String get validationProductHalfPrice;
+
+  /// No description provided for @validationProductQuarterPrice.
+  ///
+  /// In en, this message translates to:
+  /// **'Quarter price must be a valid amount of 0 or more'**
+  String get validationProductQuarterPrice;
+
   /// No description provided for @validationStockRequired.
   ///
   /// In en, this message translates to:

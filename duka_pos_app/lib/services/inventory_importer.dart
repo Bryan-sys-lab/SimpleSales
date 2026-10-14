@@ -347,8 +347,15 @@ class InventoryImporter {
     // them long after they had been dealt with. Resolved BEFORE any new problem
     // is recorded, so the list always describes this import and not its
     // predecessors.
+    //
+    // BOTH sheets this apply records under: barcode problems are filed under
+    // [barcodesSheetName], so resolving the inventory tab alone leaves every
+    // previous import's barcode rows open forever and the dashboard count can
+    // never reach zero for a shop whose barcodes ever failed.
     await _db.resolveImportProblemsForSheet(
         source: source, sheetName: sheetName);
+    await _db.resolveImportProblemsForSheet(
+        source: source, sheetName: barcodesSheetName);
 
     Future<void> flag(ImportRow row, String problem) async {
       needsAttention++;
@@ -359,6 +366,9 @@ class InventoryImporter {
         rawName: row.rawName(cols),
         rawRow: row.cells,
         problem: problem,
+        // The mapping this row was read with, so the owner finishing it later
+        // is offered the same cells the import saw — not the canonical order's.
+        columnMap: cols.toJson(),
       );
     }
 

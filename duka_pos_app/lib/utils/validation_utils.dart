@@ -19,6 +19,7 @@
 import 'package:flutter/material.dart';
 
 import '../l10n/generated/app_localizations.dart';
+import '../models/models.dart';
 
 abstract final class ValidationUtils {
   const ValidationUtils._();
@@ -174,5 +175,41 @@ abstract final class ValidationUtils {
       ),
     );
     return result ?? false;
+  }
+
+  /// A [ProductProblem] as a sentence the owner reads, in their language.
+  ///
+  /// [Product.validate] answers with a code because the model layer cannot
+  /// reach `AppLocalizations`; this is where that code becomes text. Kept here
+  /// rather than at each call site so the product editor, the imports screen
+  /// and any future writer show the same words for the same broken rule.
+  static String productProblem(
+    AppLocalizations l10n,
+    ProductProblem problem,
+  ) {
+    switch (problem) {
+      case ProductProblem.name:
+        return l10n.validationProductNameRequired;
+      case ProductProblem.nameTooLong:
+        return l10n.validationProductNameTooLong(Product.maxNameLength);
+      case ProductProblem.categoryTooLong:
+        return l10n.validationProductCategoryTooLong(
+            Product.maxCategoryLength);
+      case ProductProblem.costPrice:
+        return l10n.validationProductCostPrice;
+      case ProductProblem.sellPrice:
+        return l10n.validationProductSellPrice;
+      case ProductProblem.stockQty:
+        return l10n.validationProductStock;
+      case ProductProblem.reorderLevel:
+        return l10n.validationProductReorderLevel;
+      case ProductProblem.size:
+        return l10n.validationProductSize(
+            Product.minBottleMl, Product.maxBottleMl);
+      case ProductProblem.halfPrice:
+        return l10n.validationProductHalfPrice;
+      case ProductProblem.quarterPrice:
+        return l10n.validationProductQuarterPrice;
+    }
   }
 }

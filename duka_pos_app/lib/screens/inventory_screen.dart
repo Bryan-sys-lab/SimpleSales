@@ -33,6 +33,7 @@ import '../ui/components/status.dart';
 import 'package:image_picker/image_picker.dart';
 import '../services/product_image_store.dart';
 import '../ui/components/product_photo.dart';
+import '../utils/validation_utils.dart';
 
 class InventoryScreen extends StatefulWidget {
   const InventoryScreen({this.focusedProductId, super.key});
@@ -1805,7 +1806,11 @@ class _ProductEditorState extends State<_ProductEditor> {
       quarterPrice: quarterPrice?.asMajor,
     );
     if (problem != null) {
-      setState(() => _error = problem);
+      // The shared validator answers with a code — the model layer cannot reach
+      // `AppLocalizations` — and the editor shows the shop's language for it,
+      // exactly as the imports screen does.
+      setState(() => _error =
+          ValidationUtils.productProblem(AppLocalizations.of(context), problem));
       return;
     }
     if (price < cost) {

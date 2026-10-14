@@ -297,13 +297,15 @@ class ExcelService {
     final layout = SheetLayout.fromRawRows(_rawRows(book.tables[sheetName]!));
     // Refused whole rather than read positionally. A workbook we cannot map is
     // not a workbook with 287 bad rows in it — see SheetLayout.refusal.
+    //
+    // Nothing is resolved on the way out. A refusal says nothing about the rows
+    // a PREVIOUS import of a different file left behind — and `sheetName` here
+    // is this file's tab (falling back to its first non-empty one), which need
+    // not be the tab those problems were recorded under. Resolving them on a
+    // refusal destroys the only copy of the raw row values the owner can still
+    // finish on the imports screen. Only a successful `apply()` supersedes the
+    // previous import's problems.
     if (layout.refusal != null) {
-      // And what a previous import of this sheet recorded is not actionable
-      // either: the rows were read under the same mis-mapping. Resolving them is
-      // what stops a permanent "re-import to finish that update" that can never
-      // be finished.
-      await _db.resolveImportProblemsForSheet(
-          source: 'excel', sheetName: sheetName);
       throw UnreadableLayoutException(layout.refusal!);
     }
     final importer = InventoryImporter(_db);

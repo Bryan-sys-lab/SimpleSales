@@ -106,7 +106,7 @@ class DatabaseHelper {
   /// shipped — always add a new one, even for a one-line fix — because a
   /// shop's phone may be several versions behind and needs every step run
   /// in order to land on the current schema without data loss.
-  static const _schemaVersion = 20;
+  static const _schemaVersion = 21;
 
   /// Slack allowed when deciding whether a container has enough left for a sale.
   ///
@@ -122,11 +122,6 @@ class DatabaseHelper {
   static const String settingTillCode = 'till_code';
   static const String settingTin = 'tin';
   static const String settingEtimsDeviceId = 'etims_device_id';
-
-  /// The limit every product is low-stock below, when the shop has not set its
-  /// own per-product limit. Kept as a setting rather than read off a column
-  /// because the limit is a policy about the shop, not a fact about one item.
-  static const String settingLowStockLimit = 'low_stock_limit';
 
   /// Test-only: opens an existing database *file* at the current schema
   /// version, running the real [_onUpgrade].
@@ -372,6 +367,58 @@ SELECT name FROM staff GROUP BY name HAVING COUNT(*) = 1
       // would point at a folder that does not exist there.
       await db.execute('ALTER TABLE products ADD COLUMN image_path TEXT');
     }
+    if (oldVersion < 21) {
+      // The header-to-field mapping the import that refused the row used.
+      //
+      // A problem row stores the raw cells only, and those cells mean nothing
+      // without the mapping: re-reading them against the canonical order puts
+      // a selling price in the cost field of the review form. Nullable because
+      // rows recorded before it — and rows from any other writer — fall back to
+      // the canonical order.
+      //
+      // THREE lines of defence, because this block runs on every version below
+      // 21 and they do not all arrive at the same shape:
+      //
+      //   * CREATE IF NOT EXISTS first, so a database that never had the table —
+      //     a fixture, or a till whose own migrations were interrupted — gets it
+      //     rather than aborting the ALTER with "no such table".
+      //   * The ALTER is then guarded by PRAGMA, because a v13 shop runs the
+      //     `<14` block, whose `_createVariantsAndImportTables` creates the
+      //     table WITH this column: a bare ADD COLUMN there is a duplicate
+      //     column name, which throws out of `_onUpgrade` and out of
+      //     `openDatabase` — an upgraded till that cannot open its database at
+      //     all, which is the failure these migrations exist to prevent.
+      //   * Version alone decides nothing; the shape on disk does.
+      await _createImportNeedsAttentionTable(db);
+      final columns =
+          await db.rawQuery('PRAGMA table_info(import_needs_attention)');
+      if (!columns.any((row) => row['name'] == 'column_map')) {
+        await db.execute(
+            'ALTER TABLE import_needs_attention ADD COLUMN column_map TEXT');
+      }
+    }
+  }
+
+  /// The import rows a shop still owes an answer, and their open-count index.
+  ///
+  /// ONE definition, called from `_onCreate`, from the `<14` migration that
+  /// introduced the table, and from the v21 step that extended it — so the
+  /// three paths cannot describe the same table differently.
+  Future<void> _createImportNeedsAttentionTable(Database db) async {
+    await db.execute('''CREATE TABLE IF NOT EXISTS import_needs_attention (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      source TEXT NOT NULL,
+      sheet_name TEXT NOT NULL DEFAULT '',
+      row_number INTEGER NOT NULL DEFAULT 0,
+      raw_name TEXT NOT NULL DEFAULT '',
+      raw_row TEXT NOT NULL,
+      problem TEXT NOT NULL,
+      resolved INTEGER NOT NULL DEFAULT 0,
+      created_at TEXT NOT NULL,
+      column_map TEXT
+    )''');
+    await db.execute('''CREATE INDEX IF NOT EXISTS idx_import_attention_open
+      ON import_needs_attention (resolved, created_at)''');
   }
 
   /// v19: the failure log — what broke, and what the shop was doing.
@@ -727,19 +774,7 @@ SELECT name FROM staff GROUP BY name HAVING COUNT(*) = 1
     await db.execute('ALTER TABLE sales ADD COLUMN payment_confirmed_at TEXT');
 
     // --- Import rows needing attention -------------------------------------
-    await db.execute('''CREATE TABLE IF NOT EXISTS import_needs_attention (
-      id INTEGER PRIMARY KEY AUTOINCREMENT,
-      source TEXT NOT NULL,
-      sheet_name TEXT NOT NULL DEFAULT '',
-      row_number INTEGER NOT NULL DEFAULT 0,
-      raw_name TEXT NOT NULL DEFAULT '',
-      raw_row TEXT NOT NULL,
-      problem TEXT NOT NULL,
-      resolved INTEGER NOT NULL DEFAULT 0,
-      created_at TEXT NOT NULL
-    )''');
-    await db.execute('''CREATE INDEX IF NOT EXISTS idx_import_attention_open
-      ON import_needs_attention (resolved, created_at)''');
+    await _createImportNeedsAttentionTable(db);
 
     // --- Categories --------------------------------------------------------
     //
@@ -1452,6 +1487,7 @@ SELECT name FROM staff GROUP BY name HAVING COUNT(*) = 1
     required String rawName,
     required List<dynamic> rawRow,
     required String problem,
+    String? columnMap,
   }) async {
     return (await database).insert('import_needs_attention', {
       'source': source,
@@ -1462,6 +1498,7 @@ SELECT name FROM staff GROUP BY name HAVING COUNT(*) = 1
       'problem': problem,
       'resolved': 0,
       'created_at': DateTime.now().toIso8601String(),
+      'column_map': columnMap,
     });
   }
 
@@ -1649,23 +1686,25 @@ SELECT name FROM staff GROUP BY name HAVING COUNT(*) = 1
     return 'POS-${(saleRow['id'] as int? ?? 0).toString().padLeft(receiptSequenceDigits, '0')}';
   }
 
-  /// Sets the low-stock limit for every active product in one transaction.
+  /// Sets the low-stock limit for every active product.
   ///
   /// A shop deciding its limit is 8, not 5, is not a decision about 214
   /// products one at a time — and an owner who will not tap through an editor
   /// 214 times ends up with a dashboard warning about nothing. One write, one
   /// count returned, one audit row.
   ///
-  /// Only `reorder_level` and the audit column are written; a product's name,
-  /// price and stock are read and rewritten untouched, because upsertProduct
-  /// replaces the whole row.
+  /// ONE column in ONE statement, deliberately NOT a read-then-`upsertProducts`
+  /// round-trip: `upsertProducts` rewrites the whole row through `toMap`, and
+  /// the fields a limit does not speak about — `unit`, `track_variants`,
+  /// `image_path` — cannot survive that undamaged, so a limit change used to
+  /// flatten every litre-sold product to "each", clear every variant flag and
+  /// null every photo path in the shop.
   Future<int> setLowStockLimit(int limit) async {
-    final List<Product> products = await getProducts(activeOnly: true);
-    if (products.isEmpty) return 0;
-    await upsertProducts(<Product>[
-      for (final product in products) product.copyWith(reorderLevel: limit),
-    ]);
-    return products.length;
+    return (await database).update(
+      'products',
+      {'reorder_level': limit},
+      where: 'active = 1',
+    );
   }
 
   Future<int> upsertProduct(Product p) async {

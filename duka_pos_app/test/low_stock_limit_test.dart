@@ -13,6 +13,7 @@ import 'package:sqflite_common_ffi/sqflite_ffi.dart';
 import 'package:duka_pos/db/database_helper.dart';
 import 'package:duka_pos/models/models.dart';
 import 'package:duka_pos/utils/money.dart';
+import 'package:duka_pos/utils/units.dart';
 
 final String _now = DateTime.now().toIso8601String();
 
@@ -65,6 +66,40 @@ void main() {
     DatabaseHelper.resetForTests();
     final db = await DatabaseHelper.openInMemoryForTests();
     expect(await db.setLowStockLimit(8), 0);
+    DatabaseHelper.resetForTests();
+  });
+
+  test('setting the limit touches ONLY the reorder level', () async {
+    // The shipped bug: the write went through a read-then-upsertProducts
+    // round-trip, and `copyWith` carries no `unit`, `trackVariants` or
+    // `imagePath` — so one limit change flattened a litre-sold product to
+    // "each", cleared its variant flag and nulled its photo, shop-wide.
+    DatabaseHelper.resetForTests();
+    final db = await DatabaseHelper.openInMemoryForTests();
+    await db.upsertProduct(Product(
+        name: 'Keg',
+        category: 'Beer',
+        costPrice: Money.zero,
+        sellPrice: Money.zero,
+        reorderLevel: 5,
+        stockQty: 4,
+        updatedAt: _now,
+        unit: ProductUnit.litre,
+        trackVariants: true,
+        imagePath: 'product_photos/1.jpg'));
+
+    expect(await db.setLowStockLimit(2), 1);
+
+    final Product after =
+        (await db.getProducts(activeOnly: false)).single;
+    expect(after.reorderLevel, 2, reason: 'the limit itself moved');
+    expect(after.unit, ProductUnit.litre,
+        reason: 'a limit is not a statement about how the product is sold');
+    expect(after.trackVariants, isTrue, reason: 'the variant flag survived');
+    expect(after.imagePath, 'product_photos/1.jpg',
+        reason: 'the photograph is not part of a stock threshold');
+    expect(after.name, 'Keg');
+    expect(after.category, 'Beer');
     DatabaseHelper.resetForTests();
   });
 }

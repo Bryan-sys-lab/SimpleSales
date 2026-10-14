@@ -731,6 +731,35 @@ void main() {
           contains('not in this import'));
     });
 
+    test('a re-import supersedes the barcode rows it replaces too', () async {
+      // The shipped bug resolved problems only under the inventory tab, but
+      // barcode rows are recorded under the Barcodes tab — so every previous
+      // import's barcode problems accumulated forever and the dashboard's open
+      // count could never reach zero for a shop whose barcodes ever failed.
+      final broken = _workbook({
+        'Inventory': [_inventoryHeader, _row(id: 7, name: 'Kenya Lager')],
+        'Barcodes': [
+          ProductBarcode.sheetHeaders,
+          [999, '6003333333337', 'supplier'],
+        ],
+      });
+      await ExcelService().importInventoryBytes(broken);
+      expect(await db.countOpenImportProblems(), 1);
+
+      final fixed = _workbook({
+        'Inventory': [_inventoryHeader, _row(id: 7, name: 'Kenya Lager')],
+        'Barcodes': [
+          ProductBarcode.sheetHeaders,
+          [7, '6003333333337', 'supplier'],
+        ],
+      });
+      final result = await ExcelService().importInventoryBytes(fixed);
+
+      expect(result.needsAttention, 0);
+      expect(await db.countOpenImportProblems(), 0,
+          reason: 'the re-import replaced the barcode failure it fixed');
+    });
+
     test('variants attach to the product row that was imported', () async {
       final bytes = _workbook({
         'Inventory': [_inventoryHeader, _row(id: 3, name: 'Kenyana Beer')],
@@ -1027,15 +1056,12 @@ void main() {
           reason: 'the re-import replaced the failure it fixed');
     });
 
-    test(
-        'a refused import clears what that sheet recorded, because it cannot fix it',
-        () async {
-      // The residues of the shipped bug: 287 problems recorded out of a
-      // mis-mapped read. The refusal says the file is not ours, so no
-      // "re-import" will ever finish that update, and a warning nobody can
-      // clear is worse than none.
-      // Same sheet name both times: a problem is recorded against the sheet it
-      // was read from, so refusing that sheet is what clears it.
+    test('a refused import leaves what that sheet recorded alone', () async {
+      // A refusal says nothing about the rows a PREVIOUS import left behind.
+      // The refused file was read, wrote nothing, and the tab name it failed on
+      // need not even be the tab the problems were recorded under — resolving
+      // them here destroys the only copy of those raw row values, which is
+      // what the imports screen exists to finish.
       final broken = _workbook({
         'Sheet1': [
           _inventoryHeader,
@@ -1055,7 +1081,36 @@ void main() {
         throwsA(isA<UnreadableLayoutException>()),
       );
 
-      expect(await db.countOpenImportProblems(), 0);
+      expect(await db.countOpenImportProblems(), 1);
+    });
+
+    test('a refused import cannot clear a different file\'s problems', () async {
+      // The shipped bug's other half: the refusal resolved problems keyed on
+      // the REFUSING file's tab name, which falls back to its first non-empty
+      // tab. A broken workbook whose only tab shares a name with last week's
+      // good import therefore wiped last week's rows.
+      final broken = _workbook({
+        'Sheet1': [
+          _inventoryHeader,
+          _row(
+              id: 1,
+              name: 'Kenya Lager',
+              category: 'Beer',
+              cost: 'not a price'),
+        ],
+      });
+      await ExcelService().importInventoryBytes(broken);
+      expect(await db.countOpenImportProblems(), 1);
+
+      // A different workbook — the supplier tracker shape — refused, and its
+      // tab shares the name the problems were recorded under.
+      final other = _workbook({'Sheet1': _tracker(products: 2)});
+      await expectLater(
+        ExcelService().importInventoryBytes(other),
+        throwsA(isA<UnreadableLayoutException>()),
+      );
+
+      expect(await db.countOpenImportProblems(), 1);
     });
 
     test('a price is parsed as the exact figure written, not a float of it',
@@ -1084,6 +1139,16 @@ void main() {
       expect(SheetColumns.parseMinorUnits(''), isNull);
       expect(SheetColumns.parseMinorUnits(null), isNull);
 
+      // And the same for a digit string too long to be a price. The shipped
+      // bug threw out of the parser — `int.parse` on 20 digits — and the throw
+      // escaped the row loop into the screens' `on FormatException`, so one
+      // pasted serial number in a price column cost the owner the whole file
+      // instead of one reported row. Null is one row; a throw is every row.
+      expect(SheetColumns.parseMinorUnits('12345678901234567890'), isNull);
+      expect(SheetColumns.parseMinorUnits('1,234,567,890,123,456,789,012'),
+          isNull);
+      expect(SheetColumns.parseMinorUnits(1e20), isNull);
+
       final bytes = _workbook({
         'Inventory': [
           _inventoryHeader,
@@ -1099,6 +1164,27 @@ void main() {
       final bond = await productNamed('Bond 7');
       expect(bond!.costPrice.minorUnits, 29);
       expect(bond.sellPrice.minorUnits, 199);
+    });
+
+    test('an absurd price is one bad row, not the whole import', () async {
+      // The companion to the parse above: a digit string too long for minor
+      // units is a row the parser rejects, so the rest of the file still
+      // imports. The bug this replaces aborted the workbook with the generic
+      // "that workbook is invalid".
+      final bytes = _workbook({
+        'Inventory': [
+          _inventoryHeader,
+          _row(id: 1, name: 'Kenya Lager', cost: 60, sell: 100),
+          _row(id: 2, name: 'Serial Kersteen', cost: '12345678901234567890'),
+          _row(id: 3, name: 'Bond 7', cost: 29, sell: 45),
+        ],
+      });
+      final result = await ExcelService().importInventoryBytes(bytes);
+
+      expect(result.imported, 2, reason: 'the two real products survive');
+      expect(result.needsAttention, 1);
+      expect(await productNamed('Serial Kersteen'), isNull);
+      expect((await productNamed('Kenya Lager'))!.costPrice.minorUnits, 6000);
     });
 
     test('a section title in the sheet files every product under it', () async {

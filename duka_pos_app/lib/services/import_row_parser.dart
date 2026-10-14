@@ -17,6 +17,8 @@
 ///    rather than writing null over a price the shop had already set.
 library;
 
+import 'dart:convert';
+
 import '../models/models.dart';
 import '../utils/money.dart';
 import '../utils/units.dart';
@@ -133,6 +135,35 @@ class SheetColumns {
   static final SheetColumns positional =
       SheetColumns.positionalFor(Product.sheetHeaders);
 
+  /// The mapping a problem row was parsed with, read back as JSON.
+  ///
+  /// A needs-attention row stores the raw cells only; the header-to-field
+  /// mapping the import used is what makes those cells mean anything. Without
+  /// it a row read from a header-named file whose columns are not in the
+  /// canonical order would be re-read against [positional] — a selling price
+  /// presented as a cost — so the importer persists [toJson] and the review
+  /// screen reads it back here. Anything unreadable or absent is the canonical
+  /// order, which is what a header-less file means.
+  factory SheetColumns.fromJson(String? json) {
+    if (json == null || json.trim().isEmpty) return positional;
+    final Map<String, int> map;
+    try {
+      final decoded = jsonDecode(json);
+      if (decoded is! Map) return positional;
+      map = <String, int>{
+        for (final MapEntry<dynamic, dynamic> entry in decoded.entries)
+          if (entry.value is int) '${entry.key}': entry.value as int,
+      };
+    } on FormatException {
+      return positional;
+    }
+    if (map.isEmpty) return positional;
+    return SheetColumns._(map, true);
+  }
+
+  /// The stored form of this mapping — see [fromJson].
+  String toJson() => jsonEncode(_indexByField);
+
   /// The canonical order for any header list — [ProductVariant.sheetHeaders]
   /// for the `Variants` sheet, [Product.sheetHeaders] for `Inventory`.
   static SheetColumns positionalFor(List<String> fields) => SheetColumns._(
@@ -238,6 +269,13 @@ class SheetColumns {
   ///
   /// Null means "not a number", which the caller reports rather than defaults:
   /// a price is the one figure in a row that must never be invented.
+  ///
+  /// That total-function promise is why an absurd digit string answers null
+  /// instead of throwing: `int.parse` throws `FormatException` on a whole part
+  /// too long for an int, and an unguarded throw out of the parser aborts the
+  /// WHOLE import (the callers catch `FormatException` as "that workbook is
+  /// invalid") — one pasted account number in a price column must cost the
+  /// owner one bad row, not the other 287 products.
   static int? parseMinorUnits(dynamic cell) {
     if (cell == null) return null;
     var text = cell.toString().trim();
@@ -251,10 +289,21 @@ class SheetColumns {
     final whole = match.group(2) ?? '';
     final fraction = match.group(3) ?? '';
     if (whole.isEmpty && fraction.isEmpty) return null;
+    final wholeValue = int.tryParse(whole.isEmpty ? '0' : whole);
+    // Not a price the app can carry into minor units: null, like any other
+    // unreadable figure, so the caller reports the row instead of failing on it.
+    if (wholeValue == null ||
+        wholeValue.abs() > (_maxMinorUnitsForPrice ~/ 100)) {
+      return null;
+    }
     final cents = _centsFrom(fraction);
-    final minor = int.parse(whole.isEmpty ? '0' : whole) * 100 + cents;
+    final minor = wholeValue * 100 + cents;
     return negative ? -minor : minor;
   }
+
+  /// The ceiling on a whole part, leaving headroom for `* 100 + cents` inside
+  /// 64-bit ints. A price above this is not a price — it is a serial number.
+  static final int _maxMinorUnitsForPrice = 1 << 62;
 
   /// The first two decimals as a whole number of cents, with a third rounding
   /// half-up. "55" is 55, "5" is 50, "555" is 56, "554" is 55, "" is 0.
@@ -705,7 +754,10 @@ class ImportRowParser {
       halfPrice: half,
       quarterPrice: quarter,
     );
-    if (invalid != null) return ParsedRow.rejected(invalid);
+    // A stored row's reason is data: written once, in the language of the
+    // import, and read later on a list the owner may open in any locale.
+    // [ProductProblem.describe] is that English.
+    if (invalid != null) return ParsedRow.rejected(invalid.describe());
 
     final barcode = cols.text(row, 'barcode') ?? '';
     final product = Product(

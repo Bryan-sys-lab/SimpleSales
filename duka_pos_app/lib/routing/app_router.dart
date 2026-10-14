@@ -427,7 +427,6 @@ GoRouter? _backRouter;
 /// Assigned by [buildAppRouter] and by a test that drives the real dispatch
 /// path. A module-level reference because the guard is built per page and none
 /// of those builders has the router in scope.
-GoRouter? get appRouterForTesting => _backRouter;
 set appRouterForTesting(GoRouter? value) => _backRouter = value;
 
 /// The page every route is built with, for a test that needs the REAL dispatch

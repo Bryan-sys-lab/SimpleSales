@@ -36,13 +36,13 @@ import '../l10n/generated/app_localizations.dart';
 import '../models/models.dart';
 import '../services/import_review_service.dart';
 import '../services/import_row_parser.dart';
-import '../utils/money.dart';
 import '../services/session_refresh_mixin.dart';
 import '../theme/app_shapes.dart';
 import '../theme/app_spacing.dart';
 import '../theme/typography.dart';
 import '../ui/components/states.dart';
 import '../ui/components/surface.dart';
+import '../utils/validation_utils.dart';
 
 /// One problem row, plus the draft read out of it.
 class ImportProblemRow {
@@ -350,34 +350,74 @@ class _CompleteSheetState extends State<_CompleteSheet> {
     return null;
   }
 
+  /// The shared validator's verdict, in the shop's language.
+  ///
+  /// [Product.validate] answers with a [ProductProblem] — a code, because the
+  /// model layer cannot reach `AppLocalizations`. [ValidationUtils] is where
+  /// that code becomes the words the owner reads, the same words the product
+  /// editor would show for the same broken rule.
+  String _localiseProblem(ProductProblem problem) => ValidationUtils.productProblem(
+        AppLocalizations.of(context),
+        problem,
+      );
+
   Future<void> _save() async {
     if (!(_formKey.currentState?.validate() ?? false)) return;
     setState(() => _saving = true);
+    final messenger = ScaffoldMessenger.of(context);
     try {
       final String name = _name.text.trim();
       final int cost = SheetColumns.parseMinorUnits(_cost.text)!;
       final int sell = SheetColumns.parseMinorUnits(_sell.text)!;
       final double stock = double.tryParse(_stock.text.trim()) ?? 0;
 
-      // Built here rather than through the draft's `toProduct`, because the
-      // owner has edited the values: the draft's inference and defaults are
-      // still used for the fields they did not touch.
+      // Built through the draft, not beside it: the draft's construction rules
+      // (category inference, the import's defaults) are the import's own, and
+      // the form supplies the values the owner edited.
       final ImportDraft draft = widget.row.draft;
-      final product = Product(
+
+      // An attention-severity problem sits NEXT TO a product the import already
+      // wrote, and the screen cannot tell those rows from refused ones. So the
+      // row is completed against the product it describes — matched on the name
+      // the file used, not on the name now in the field — instead of inserting a
+      // second row for the same product.
+      final DatabaseHelper db = DatabaseHelper.instance;
+      final String fileNamed = draft.name.trim().toLowerCase();
+      Product? existing;
+      for (final Product candidate in await db.getProducts(activeOnly: false)) {
+        if (candidate.name.trim().toLowerCase() == fileNamed) {
+          existing = candidate;
+          break;
+        }
+      }
+      final product = draft.build(
         name: name,
-        category: draft.category.trim().isEmpty
-            ? ImportRowParser.inferCategoryFromName(name) ??
-                CategoryName.general
-            : CategoryName.normalise(draft.category),
-        costPrice: Money.fromMinor(cost),
-        sellPrice: Money.fromMinor(sell),
+        costMinor: cost,
+        sellMinor: sell,
         stockQty: stock,
-        reorderLevel: draft.reorderLevel,
-        bottleMl: ImportRowParser.defaultBottleMl,
-        updatedAt: DateTime.now().toIso8601String(),
+        existing: existing,
       );
 
-      final DatabaseHelper db = DatabaseHelper.instance;
+      // The shared rule set, identical to the editor and both importers, so the
+      // form cannot persist a row every other write path refuses. Minor units
+      // answer the validator's finite-and-not-negative questions the same way
+      // majors do; the stock quantity is where the difference shows (NaN and
+      // Infinity pass `double.tryParse` and are poison to every total).
+      final ProductProblem? invalid = Product.validate(
+        name: product.name,
+        category: product.category,
+        costPrice: product.costPrice.minorUnits,
+        sellPrice: product.sellPrice.minorUnits,
+        stockQty: product.stockQty,
+        reorderLevel: product.reorderLevel,
+        bottleMl: product.bottleMl,
+      );
+      if (invalid != null) {
+        messenger.showSnackBar(
+            SnackBar(content: Text(_localiseProblem(invalid))));
+        return;
+      }
+
       await db.upsertProduct(product);
       await db.resolveImportProblem(widget.row.problem.id!);
 

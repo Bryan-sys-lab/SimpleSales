@@ -305,6 +305,15 @@ class PortfolioPanel extends StatelessWidget {
               ),
             ),
           ),
+          // The reload indicator, inline: a reloading view is still readable,
+          // and the figures on screen stay visible while the cross-shop read
+          // runs — a spinner in their place would flash values the owner is
+          // reading right now.
+          if (refreshing)
+            Padding(
+              padding: EdgeInsets.only(top: spacing.sm),
+              child: const LinearProgressIndicator(minHeight: 2),
+            ),
           SizedBox(height: spacing.lg),
           // The whole first. An owner opens this screen to see the one number that
           // answers "how is everything going", and burying it under the per-shop

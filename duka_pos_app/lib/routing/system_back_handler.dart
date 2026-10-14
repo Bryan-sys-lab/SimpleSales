@@ -67,16 +67,26 @@ class SystemBackHandler {
   /// [didPop] is the `PopScope`'s own result and is ignored beyond its
   /// meaning: if the framework already popped something, there is nothing here
   /// to do.
+  ///
+  /// The pop is attempted BEFORE the armed confirmation, never after it: an
+  /// armed window that outlived the navigation that produced it would exit the
+  /// till on a back press that should have returned to the previous screen —
+  /// arm at the root, open a product, press back again inside the two seconds,
+  /// and the confirmation fires on a screen that has somewhere to go.
   void handle(GoRouter router, {bool didPop = false}) {
     if (didPop) return;
+    if (_popIfAnythingToPop(router)) {
+      // Navigation supersedes the confirmation: the shop moved on, so the
+      // "press back again to exit" from a screen they have left is spent.
+      _disarm();
+      return;
+    }
     if (_armed) {
       _disarm();
       // Leaving the till deliberately, from a screen that has nothing to pop.
       SystemNavigator.pop();
       return;
     }
-    if (_popIfAnythingToPop(router)) return;
-
     _arm();
   }
 

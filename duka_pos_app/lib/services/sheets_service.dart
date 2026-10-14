@@ -339,13 +339,11 @@ class SheetsService {
     final layout = SheetLayout.fromRawRows(values);
     // Refused whole rather than read positionally, exactly as the Excel path
     // refuses it. A sheet is either readable by name or it is not ours.
+    //
+    // Nothing is resolved on the way out, same as the Excel path: a refusal is
+    // a statement about this read, not about the rows the last good import
+    // left behind. Only a successful `apply()` supersedes them.
     if (layout.refusal != null) {
-      // Same as the Excel path: whatever the last import of this sheet recorded
-      // is not actionable, and a warning nobody can clear is worse than none.
-      await _db.resolveImportProblemsForSheet(
-        source: 'sheets',
-        sheetName: inventorySheetName,
-      );
       throw UnreadableLayoutException(layout.refusal!);
     }
     final result = await InventoryImporter(_db).apply(
