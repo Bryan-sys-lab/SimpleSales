@@ -172,8 +172,9 @@ class _ShiftScreenState extends State<ShiftScreen>
       return;
     }
     await _openShiftForStaffId(
-        _staffId!, _appState.currentStaffName ?? 'Unknown',
-        fullHelp: true);
+      _staffId!,
+      _appState.currentStaffName ?? 'Unknown',
+    );
   }
 
   /// Creates a `staff` row for someone who has none, so they can hold a shift.
@@ -186,7 +187,10 @@ class _ShiftScreenState extends State<ShiftScreen>
       builder: (BuildContext context) => _AddRosterEntryDialog(name: name),
     );
     if (offer != null) {
-      await _openShiftForStaffId(offer.staffId, name, fullHelp: false);
+      await _openShiftForStaffId(
+        offer.staffId,
+        name,
+      );
       return;
     }
     if (!mounted) return;
@@ -202,21 +206,15 @@ class _ShiftScreenState extends State<ShiftScreen>
   /// Asks for the float and opens a shift against [staffId].
   ///
   /// One path for both callers, because the two places it used to be duplicated
-  /// had already drifted: only one of them carried the "count it now, it is what
-  /// the closing count is measured against" help text, which is the sentence
-  /// that stops a cashier opening a shift with a guess. The owner path takes the
-  /// short form because they have just read a longer paragraph explaining why
-  /// they are being asked for a float at all.
-  Future<void> _openShiftForStaffId(
-    int staffId,
-    String name, {
-    required bool fullHelp,
-  }) async {
+  /// had already drifted. It asks for the figure and nothing else: the sheet's
+  /// title says what is wanted, and a sentence under a text field explaining why
+  /// the shop is being asked is one more thing to read before answering a
+  /// question that already reads clearly.
+  Future<void> _openShiftForStaffId(int staffId, String name) async {
     final AppLocalizations l10n = AppLocalizations.of(context);
     final Money? openingFloat = await showFloatSheet(
       context,
       title: l10n.shiftCloseTitle,
-      help: fullHelp ? l10n.shiftFloatHelpFull : l10n.shiftFloatHelpShort,
       confirmLabel: l10n.shiftNoShiftAction,
     );
     if (openingFloat == null || !mounted) return;

@@ -296,13 +296,6 @@ class AppLocalizationsEn extends AppLocalizations {
   }
 
   @override
-  String get shiftFloatHelpFull =>
-      'Cash in the drawer when you start. Count it now, it is what the closing count is measured against.';
-
-  @override
-  String get shiftFloatHelpShort => 'Cash in the drawer when you start.';
-
-  @override
   String get shiftFloatAmountLabel => 'Amount (KSh)';
 
   @override
@@ -1055,10 +1048,6 @@ class AppLocalizationsEn extends AppLocalizations {
       'Shot cups. Fixed-size shots of any drink in your inventory.';
 
   @override
-  String get inventoryShotCupsSubtitle =>
-      'Sell fixed-size shots of any drink in your inventory';
-
-  @override
   String get inventoryShotCupsTitle => 'Shot cups';
 
   @override
@@ -1116,14 +1105,6 @@ class AppLocalizationsEn extends AppLocalizations {
   String get settingsAutoBackupSync => 'Automatic backup and online sync';
 
   @override
-  String get settingsAutoBackupSyncSubtitle =>
-      'Opt in to retry online sync and save a local inventory backup while the app is open.';
-
-  @override
-  String get settingsBackupHelp =>
-      'Export a full backup regularly, and keep a copy somewhere safe off this phone.';
-
-  @override
   String get settingsBackupSection => 'Backup';
 
   @override
@@ -1171,9 +1152,6 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get settingsProfileRow => 'Your account';
-
-  @override
-  String get settingsProfileRowSubtitle => 'Your name, email and photograph';
 
   @override
   String get settingsUpdatesSection => 'App updates';
@@ -1239,10 +1217,6 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get settingsCashMethod => 'Cash';
-
-  @override
-  String get settingsCashMethodSubtitle =>
-      'Always available — works fully offline.';
 
   @override
   String get settingsPrinterRescan => 'Look again';
@@ -1333,10 +1307,6 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get pinResetRowSubtitle => 'Email a code and set a new owner PIN';
-
-  @override
-  String get accountDeleteShortWarning =>
-      'Erases your account and makes this phone’s copy of your details unreadable. Cannot be undone.';
 
   @override
   String get pinResetTitle => 'Set a new owner PIN';
@@ -1510,10 +1480,6 @@ class AppLocalizationsEn extends AppLocalizations {
       'This account has no shop yet. Finish shop setup first.';
 
   @override
-  String get settingsAutoBackupLockedSubtitle =>
-      'Verify your email to switch on automatic backups, analytics and auto-update.';
-
-  @override
   String get diagnosticsTitle => 'Diagnostics';
 
   @override
@@ -1568,10 +1534,6 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get diagnosticsCleared => 'Failure log cleared.';
-
-  @override
-  String get settingsDiagnosticsHelp =>
-      'What the phone recorded when something went wrong: which screen, who was signed in, and what the shop was doing. The newest failures replace the oldest.';
 
   @override
   String get diagnosticsRouteUnknown => 'unknown screen';
@@ -1672,10 +1634,6 @@ class AppLocalizationsEn extends AppLocalizations {
   String get settingsPrintAfterSale => 'Print after every sale';
 
   @override
-  String get settingsPrintAfterSaleSubtitle =>
-      'Off by default, so a shop that hands over change first chooses when the paper comes out.';
-
-  @override
   String get settingsPrinterConnectionDropped =>
       'The printer connection dropped. Check the printer is on, then print again.';
 
@@ -1711,17 +1669,6 @@ class AppLocalizationsEn extends AppLocalizations {
   String get settingsPrintingEnabled => 'Printing enabled';
 
   @override
-  String get settingsPrintingOnSubtitle => 'This till can print receipts.';
-
-  @override
-  String get settingsPrintingPairedOffSubtitle =>
-      'Paired, but switched off. Reprints still work.';
-
-  @override
-  String get settingsPrintingUnpairedSubtitle =>
-      'Pair a printer to turn printing on.';
-
-  @override
   String get settingsRemoveAction => 'Remove';
 
   @override
@@ -1744,10 +1691,6 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get settingsSaveAction => 'Save';
-
-  @override
-  String get settingsSeparateOfflineDataSubtitle =>
-      'Sales, stock, staff, and backups cannot mix between shops on this device.';
 
   @override
   String get settingsSeparateOfflineDataTitle =>
@@ -1813,10 +1756,6 @@ class AppLocalizationsEn extends AppLocalizations {
   String get settingsStaffSection => 'Managers and cashiers';
 
   @override
-  String get settingsStaffSectionHelp =>
-      'The shop admin creates and disables manager and cashier profiles. Their local PIN is the offline till unlock; the same profile is synchronized for online analytics when connected.';
-
-  @override
   String get settingsSwitchAction => 'Switch';
 
   @override
@@ -1860,10 +1799,6 @@ class AppLocalizationsEn extends AppLocalizations {
   }
 
   @override
-  String get settingsPrinterPairHelp =>
-      'Pair the printer from this phone\'s Bluetooth settings first, then pair it here.';
-
-  @override
   String settingsPaperRoll(Object size) {
     return '${size}mm roll';
   }
@@ -1877,10 +1812,6 @@ class AppLocalizationsEn extends AppLocalizations {
   String settingsTaxSummaryWithTin(Object rate, Object till, Object tin) {
     return 'VAT $rate% · TIN $tin · receipts numbered $till-000001';
   }
-
-  @override
-  String get settingsSyncHelp =>
-      'When online, sync pushes inventory and sales to a Google Sheet. With no signal, it saves an Excel file you can share manually instead — nothing is ever blocked by connectivity.';
 
   @override
   String settingsRestoredProducts(num count) {
@@ -2980,10 +2911,6 @@ class AppLocalizationsEn extends AppLocalizations {
   String get activityTitle => 'Activity';
 
   @override
-  String get settingsActivitySubtitle =>
-      'Who changed what, in every shop on this phone';
-
-  @override
   String activitySummary(num entries, num shops) {
     String _temp0 = intl.Intl.pluralLogic(
       shops,
@@ -3137,9 +3064,6 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get portfolioOpenAction => 'How all my shops are doing';
-
-  @override
-  String get portfolioOpenSubtitle => 'One view of every shop on this device';
 
   @override
   String get portfolioRangeWeek => '7 days';

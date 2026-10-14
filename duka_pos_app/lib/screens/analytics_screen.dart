@@ -479,7 +479,6 @@ class _AnalyticsScaffold extends StatelessWidget {
               SettingsNavRow(
                 icon: Icons.insights_outlined,
                 title: AppLocalizations.of(context).portfolioOpenAction,
-                subtitle: AppLocalizations.of(context).portfolioOpenSubtitle,
                 onTap: onOpenPortfolio,
               ),
             ],

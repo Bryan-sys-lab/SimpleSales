@@ -110,8 +110,10 @@ class _InventoryScreenState extends State<InventoryScreen>
     final int? limit = p
         .where((Product product) => product.reorderLevel > 0)
         .map((Product product) => product.reorderLevel)
-        .fold<int?>(null, (int? common, int level) =>
-            common == null || common == level ? level : -1);
+        .fold<int?>(
+            null,
+            (int? common, int level) =>
+                common == null || common == level ? level : -1);
     if (!mounted) return;
     setState(() {
       _loading = false;
@@ -441,7 +443,6 @@ class _InventoryScreenState extends State<InventoryScreen>
                           child: ListTile(
                             leading: const Icon(Icons.local_drink_outlined),
                             title: Text(l10n.inventoryShotCupsTitle),
-                            subtitle: Text(l10n.inventoryShotCupsSubtitle),
                             trailing: const Icon(Icons.chevron_right),
                             onTap: () => context.push(Routes.shotCups),
                           ),
@@ -452,8 +453,8 @@ class _InventoryScreenState extends State<InventoryScreen>
                           // The CURRENT limit, so a seller opening this sees what
                           // the warning is set to rather than a blank field. A
                           // policy nobody can read is a policy nobody sets.
-                          subtitle: Text(l10n.inventoryLowStockLimitSubtitle(
-                              _lowStockLimit)),
+                          subtitle: Text(l10n
+                              .inventoryLowStockLimitSubtitle(_lowStockLimit)),
                           trailing: const Icon(Icons.chevron_right),
                           onTap: _setLowStockLimit,
                         ),
@@ -2240,7 +2241,8 @@ class _LowStockLimitDialogState extends State<_LowStockLimitDialog> {
         controller: _limit,
         autofocus: true,
         keyboardType: TextInputType.number,
-        decoration: InputDecoration(labelText: l10n.inventoryLowStockLimitTitle),
+        decoration:
+            InputDecoration(labelText: l10n.inventoryLowStockLimitTitle),
       ),
       actions: <Widget>[
         TextButton(

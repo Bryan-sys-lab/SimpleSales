@@ -15,7 +15,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
 import '../l10n/generated/app_localizations.dart';
-import '../theme/app_colors.dart';
+
 import '../theme/app_haptics.dart';
 import '../theme/app_spacing.dart';
 import '../theme/typography.dart';
@@ -30,7 +30,6 @@ import '../utils/text_input.dart';
 Future<Money?> showFloatSheet(
   BuildContext context, {
   required String title,
-  required String help,
   required String confirmLabel,
   String initialText = '',
 }) {
@@ -39,7 +38,6 @@ Future<Money?> showFloatSheet(
     isScrollControlled: true,
     builder: (BuildContext context) => _FloatSheet(
       title: title,
-      help: help,
       confirmLabel: confirmLabel,
       initialText: initialText,
     ),
@@ -60,13 +58,11 @@ Money? parseAmount(String raw) {
 class _FloatSheet extends StatefulWidget {
   const _FloatSheet({
     required this.title,
-    required this.help,
     required this.confirmLabel,
     required this.initialText,
   });
 
   final String title;
-  final String help;
   final String confirmLabel;
   final String initialText;
 
@@ -109,7 +105,6 @@ class _FloatSheetState extends State<_FloatSheet> {
   @override
   Widget build(BuildContext context) {
     final AppSpacing spacing = AppSpacing.of(context);
-    final AppColors colors = AppColors.of(context);
 
     return Padding(
       // `viewInsetsOf`, not `MediaQuery.of(context).viewInsets`: the aspect
@@ -133,19 +128,6 @@ class _FloatSheetState extends State<_FloatSheet> {
               child: Text(
                 widget.title,
                 style: AppTypography.of(context).titleLarge,
-              ),
-            ),
-            Padding(
-              padding: EdgeInsetsDirectional.only(
-                start: spacing.md,
-                end: spacing.md,
-                top: spacing.xs,
-              ),
-              child: Text(
-                widget.help,
-                style: AppTypography.of(context)
-                    .bodyMedium
-                    ?.copyWith(color: colors.onSurfaceMuted),
               ),
             ),
             Padding(

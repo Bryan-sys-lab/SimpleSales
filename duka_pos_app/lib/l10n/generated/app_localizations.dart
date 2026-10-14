@@ -581,18 +581,6 @@ abstract class AppLocalizations {
   /// **'Difference between counted and expected: {variance}'**
   String varianceStripSpoken(Object variance);
 
-  /// No description provided for @shiftFloatHelpFull.
-  ///
-  /// In en, this message translates to:
-  /// **'Cash in the drawer when you start. Count it now, it is what the closing count is measured against.'**
-  String get shiftFloatHelpFull;
-
-  /// No description provided for @shiftFloatHelpShort.
-  ///
-  /// In en, this message translates to:
-  /// **'Cash in the drawer when you start.'**
-  String get shiftFloatHelpShort;
-
   /// No description provided for @shiftFloatAmountLabel.
   ///
   /// In en, this message translates to:
@@ -1763,12 +1751,6 @@ abstract class AppLocalizations {
   /// **'Shot cups. Fixed-size shots of any drink in your inventory.'**
   String get inventoryShotCupsSpoken;
 
-  /// No description provided for @inventoryShotCupsSubtitle.
-  ///
-  /// In en, this message translates to:
-  /// **'Sell fixed-size shots of any drink in your inventory'**
-  String get inventoryShotCupsSubtitle;
-
   /// No description provided for @inventoryShotCupsTitle.
   ///
   /// In en, this message translates to:
@@ -1865,18 +1847,6 @@ abstract class AppLocalizations {
   /// **'Automatic backup and online sync'**
   String get settingsAutoBackupSync;
 
-  /// No description provided for @settingsAutoBackupSyncSubtitle.
-  ///
-  /// In en, this message translates to:
-  /// **'Opt in to retry online sync and save a local inventory backup while the app is open.'**
-  String get settingsAutoBackupSyncSubtitle;
-
-  /// No description provided for @settingsBackupHelp.
-  ///
-  /// In en, this message translates to:
-  /// **'Export a full backup regularly, and keep a copy somewhere safe off this phone.'**
-  String get settingsBackupHelp;
-
   /// No description provided for @settingsBackupSection.
   ///
   /// In en, this message translates to:
@@ -1972,12 +1942,6 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'Your account'**
   String get settingsProfileRow;
-
-  /// No description provided for @settingsProfileRowSubtitle.
-  ///
-  /// In en, this message translates to:
-  /// **'Your name, email and photograph'**
-  String get settingsProfileRowSubtitle;
 
   /// No description provided for @settingsUpdatesSection.
   ///
@@ -2080,12 +2044,6 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'Cash'**
   String get settingsCashMethod;
-
-  /// No description provided for @settingsCashMethodSubtitle.
-  ///
-  /// In en, this message translates to:
-  /// **'Always available — works fully offline.'**
-  String get settingsCashMethodSubtitle;
 
   /// No description provided for @settingsPrinterRescan.
   ///
@@ -2242,12 +2200,6 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'Email a code and set a new owner PIN'**
   String get pinResetRowSubtitle;
-
-  /// No description provided for @accountDeleteShortWarning.
-  ///
-  /// In en, this message translates to:
-  /// **'Erases your account and makes this phone’s copy of your details unreadable. Cannot be undone.'**
-  String get accountDeleteShortWarning;
 
   /// No description provided for @pinResetTitle.
   ///
@@ -2513,12 +2465,6 @@ abstract class AppLocalizations {
   /// **'This account has no shop yet. Finish shop setup first.'**
   String get settingsVerifyShopMissing;
 
-  /// No description provided for @settingsAutoBackupLockedSubtitle.
-  ///
-  /// In en, this message translates to:
-  /// **'Verify your email to switch on automatic backups, analytics and auto-update.'**
-  String get settingsAutoBackupLockedSubtitle;
-
   /// No description provided for @diagnosticsTitle.
   ///
   /// In en, this message translates to:
@@ -2608,12 +2554,6 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'Failure log cleared.'**
   String get diagnosticsCleared;
-
-  /// No description provided for @settingsDiagnosticsHelp.
-  ///
-  /// In en, this message translates to:
-  /// **'What the phone recorded when something went wrong: which screen, who was signed in, and what the shop was doing. The newest failures replace the oldest.'**
-  String get settingsDiagnosticsHelp;
 
   /// No description provided for @diagnosticsRouteUnknown.
   ///
@@ -2783,12 +2723,6 @@ abstract class AppLocalizations {
   /// **'Print after every sale'**
   String get settingsPrintAfterSale;
 
-  /// No description provided for @settingsPrintAfterSaleSubtitle.
-  ///
-  /// In en, this message translates to:
-  /// **'Off by default, so a shop that hands over change first chooses when the paper comes out.'**
-  String get settingsPrintAfterSaleSubtitle;
-
   /// No description provided for @settingsPrinterConnectionDropped.
   ///
   /// In en, this message translates to:
@@ -2843,24 +2777,6 @@ abstract class AppLocalizations {
   /// **'Printing enabled'**
   String get settingsPrintingEnabled;
 
-  /// No description provided for @settingsPrintingOnSubtitle.
-  ///
-  /// In en, this message translates to:
-  /// **'This till can print receipts.'**
-  String get settingsPrintingOnSubtitle;
-
-  /// No description provided for @settingsPrintingPairedOffSubtitle.
-  ///
-  /// In en, this message translates to:
-  /// **'Paired, but switched off. Reprints still work.'**
-  String get settingsPrintingPairedOffSubtitle;
-
-  /// No description provided for @settingsPrintingUnpairedSubtitle.
-  ///
-  /// In en, this message translates to:
-  /// **'Pair a printer to turn printing on.'**
-  String get settingsPrintingUnpairedSubtitle;
-
   /// No description provided for @settingsRemoveAction.
   ///
   /// In en, this message translates to:
@@ -2908,12 +2824,6 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'Save'**
   String get settingsSaveAction;
-
-  /// No description provided for @settingsSeparateOfflineDataSubtitle.
-  ///
-  /// In en, this message translates to:
-  /// **'Sales, stock, staff, and backups cannot mix between shops on this device.'**
-  String get settingsSeparateOfflineDataSubtitle;
 
   /// No description provided for @settingsSeparateOfflineDataTitle.
   ///
@@ -3017,12 +2927,6 @@ abstract class AppLocalizations {
   /// **'Managers and cashiers'**
   String get settingsStaffSection;
 
-  /// No description provided for @settingsStaffSectionHelp.
-  ///
-  /// In en, this message translates to:
-  /// **'The shop admin creates and disables manager and cashier profiles. Their local PIN is the offline till unlock; the same profile is synchronized for online analytics when connected.'**
-  String get settingsStaffSectionHelp;
-
   /// No description provided for @settingsSwitchAction.
   ///
   /// In en, this message translates to:
@@ -3101,12 +3005,6 @@ abstract class AppLocalizations {
   /// **'{name} is ready. Your admin account and PIN carried across.'**
   String settingsShopReady(Object name);
 
-  /// No description provided for @settingsPrinterPairHelp.
-  ///
-  /// In en, this message translates to:
-  /// **'Pair the printer from this phone\'s Bluetooth settings first, then pair it here.'**
-  String get settingsPrinterPairHelp;
-
   /// No description provided for @settingsPaperRoll.
   ///
   /// In en, this message translates to:
@@ -3124,12 +3022,6 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'VAT {rate}% · TIN {tin} · receipts numbered {till}-000001'**
   String settingsTaxSummaryWithTin(Object rate, Object till, Object tin);
-
-  /// No description provided for @settingsSyncHelp.
-  ///
-  /// In en, this message translates to:
-  /// **'When online, sync pushes inventory and sales to a Google Sheet. With no signal, it saves an Excel file you can share manually instead — nothing is ever blocked by connectivity.'**
-  String get settingsSyncHelp;
 
   /// No description provided for @settingsRestoredProducts.
   ///
@@ -4719,12 +4611,6 @@ abstract class AppLocalizations {
   /// **'Activity'**
   String get activityTitle;
 
-  /// No description provided for @settingsActivitySubtitle.
-  ///
-  /// In en, this message translates to:
-  /// **'Who changed what, in every shop on this phone'**
-  String get settingsActivitySubtitle;
-
   /// No description provided for @activitySummary.
   ///
   /// In en, this message translates to:
@@ -4983,12 +4869,6 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'How all my shops are doing'**
   String get portfolioOpenAction;
-
-  /// No description provided for @portfolioOpenSubtitle.
-  ///
-  /// In en, this message translates to:
-  /// **'One view of every shop on this device'**
-  String get portfolioOpenSubtitle;
 
   /// No description provided for @portfolioRangeWeek.
   ///

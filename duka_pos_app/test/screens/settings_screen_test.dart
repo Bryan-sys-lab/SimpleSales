@@ -213,11 +213,24 @@ void main() {
         home: _panel(identityVerified: false),
       );
 
-      // The switch is present and cannot move, and it says which step is
-      // missing. A dead switch with no explanation is the one control on this
-      // screen that reads as broken rather than as waiting.
-      expect(find.text(l10n.settingsAutoBackupLockedSubtitle), findsOneWidget);
-      expect(find.text(l10n.settingsAutoBackupSyncSubtitle), findsNothing);
+      // The screen is labels only, so the control's own state carries what a
+      // paragraph under it used to say. A dead switch with no reason reads as
+      // broken, so it must be findable and visibly inert.
+      // The switch sits BESIDE its title in the row, not above it, so the
+      // finder walks down into the row rather than up from the label.
+      // `SettingsSwitchRow` is an `InkWell`, so the row is found through that
+      // rather than through a `ListTile` it does not use.
+      final Finder autoSyncRow = find.ancestor(
+        of: find.text(l10n.settingsAutoBackupSync),
+        matching: find.byType(InkWell),
+      );
+      final Finder autoSyncSwitch =
+          find.descendant(of: autoSyncRow, matching: find.byType(Switch));
+      expect(autoSyncSwitch, findsOneWidget);
+      expect(tester.widget<Switch>(autoSyncSwitch).value, isFalse);
+      // And it cannot be moved, which is the half that matters: a switch that
+      // looks live while doing nothing is worse than one that reads as locked.
+      expect(tester.widget<Switch>(autoSyncSwitch).onChanged, isNull);
       // Found through its own title rather than by position: M-Pesa and the
       // printer rows are switches too, and "the first switch" would go on
       // silently testing the wrong control.
@@ -240,8 +253,6 @@ void main() {
         home: _panel(identityVerified: true, autoSyncEnabled: true),
       );
 
-      expect(find.text(l10n.settingsAutoBackupSyncSubtitle), findsOneWidget);
-      expect(find.text(l10n.settingsAutoBackupLockedSubtitle), findsNothing);
       final Finder row = find.ancestor(
         of: find.text(l10n.settingsAutoBackupSync),
         matching: find.byType(SettingsSwitchRow),

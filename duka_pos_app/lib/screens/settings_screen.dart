@@ -1519,7 +1519,6 @@ class _AccountPanel extends StatelessWidget {
           ListTile(
             leading: const Icon(Icons.account_circle_outlined),
             title: Text(l10n.settingsProfileRow),
-            subtitle: Text(l10n.settingsProfileRowSubtitle),
             onTap: onOpenProfile,
           ),
           // Forgotten-PIN recovery is NOT here, though it belongs to the same
@@ -1533,7 +1532,6 @@ class _AccountPanel extends StatelessWidget {
               l10n.settingsDeleteAccountAction,
               style: TextStyle(color: theme.colorScheme.error),
             ),
-            subtitle: Text(l10n.accountDeleteShortWarning),
             enabled: !deleting,
             onTap: deleting ? null : onDeleteAccount,
           ),
@@ -2008,15 +2006,20 @@ class _StaffDialogState extends State<_StaffDialog> {
 // ---------------------------------------------------------------------------
 
 /// One settings section: a header, optional help, and a card of rows.
+/// A settings section: a heading and its rows.
+///
+/// No explanatory text under the heading. The screen is a list of settings, and
+/// a paragraph under each heading is a design that assumes the reader arrived
+/// wanting to be taught. They did not: they came to turn something on. Where a
+/// setting genuinely cannot be guessed — pairing a printer, why backups are
+/// locked — the row's own tap explains it, at the moment it is relevant.
 class _SettingsSection extends StatelessWidget {
   const _SettingsSection({
     required this.title,
     required this.child,
-    this.help,
   });
 
   final String title;
-  final String? help;
   final Widget child;
 
   @override
@@ -2025,17 +2028,6 @@ class _SettingsSection extends StatelessWidget {
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: <Widget>[
         SectionHeader(padding: EdgeInsets.zero, label: title),
-        if (help != null) ...<Widget>[
-          SizedBox(height: AppSpacing.of(context).xs),
-          Text(
-            help!,
-            // `onSurfaceMuted` at body size: the help line is context for the
-            // section, never the reason someone opened the screen.
-            style: AppTypography.of(context)
-                .bodyMedium
-                ?.copyWith(color: AppColors.of(context).onSurfaceMuted),
-          ),
-        ],
         SizedBox(height: AppSpacing.of(context).sm),
         // The transparent Material is not decoration: an `InkWell` inside a
         // card needs a Material ancestor to draw its splash, and a settings
@@ -2138,7 +2130,6 @@ class _ShopsPanel extends StatelessWidget {
           SettingsInfoRow(
             icon: Icons.lock_outline,
             title: l10n.settingsSeparateOfflineDataTitle,
-            subtitle: l10n.settingsSeparateOfflineDataSubtitle,
           ),
           // The all-shops read, offered next to the switcher because the two
           // questions arrive together: "which shop am I in" and "how are they
@@ -2146,13 +2137,11 @@ class _ShopsPanel extends StatelessWidget {
           SettingsNavRow(
             icon: Icons.insights_outlined,
             title: l10n.portfolioOpenAction,
-            subtitle: l10n.portfolioOpenSubtitle,
             onTap: onOpenPortfolio,
           ),
           SettingsNavRow(
             icon: Icons.history_outlined,
             title: l10n.activityTitle,
-            subtitle: l10n.settingsActivitySubtitle,
             onTap: onOpenActivity,
           ),
           SettingsNavRow(
@@ -2192,7 +2181,6 @@ class _StaffPanel extends StatelessWidget {
 
     return _SettingsSection(
       title: l10n.settingsStaffSection,
-      help: l10n.settingsStaffSectionHelp,
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: <Widget>[
@@ -2321,7 +2309,6 @@ class _PaymentsPanel extends StatelessWidget {
           SettingsInfoRow(
             icon: Icons.payments_outlined,
             title: l10n.settingsCashMethod,
-            subtitle: l10n.settingsCashMethodSubtitle,
             trailing: l10n.settingsIncluded,
           ),
           SettingsSwitchRow(
@@ -2360,15 +2347,8 @@ class _PrinterPanel extends StatelessWidget {
   Widget build(BuildContext context) {
     final AppLocalizations l10n = AppLocalizations.of(context);
     final AppSpacing spacing = AppSpacing.of(context);
-    final String subtitle = !printer.isConfigured
-        ? l10n.settingsPrintingUnpairedSubtitle
-        : (printer.enabled
-            ? l10n.settingsPrintingOnSubtitle
-            : l10n.settingsPrintingPairedOffSubtitle);
-
     return _SettingsSection(
       title: l10n.settingsPrinterSection,
-      help: l10n.settingsPrinterPairHelp,
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: <Widget>[
@@ -2381,14 +2361,12 @@ class _PrinterPanel extends StatelessWidget {
             SettingsSwitchRow(
               icon: Icons.power_settings_new,
               title: l10n.settingsPrintingEnabled,
-              subtitle: subtitle,
               value: printer.enabled,
               onChanged: (value) => onSave(printer.copyWith(enabled: value)),
             ),
             SettingsSwitchRow(
               icon: Icons.receipt,
               title: l10n.settingsPrintAfterSale,
-              subtitle: l10n.settingsPrintAfterSaleSubtitle,
               value: printer.printAfterSale,
               onChanged: (value) =>
                   onSave(printer.copyWith(printAfterSale: value)),
@@ -2493,7 +2471,6 @@ class _SyncPanel extends StatelessWidget {
 
     return _SettingsSection(
       title: l10n.settingsSyncSection,
-      help: l10n.settingsSyncHelp,
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: <Widget>[
@@ -2504,9 +2481,6 @@ class _SyncPanel extends StatelessWidget {
             // dead switch with no explanation: a control that cannot move
             // and does not say why is the one thing on this screen that reads
             // as broken.
-            subtitle: identityVerified
-                ? l10n.settingsAutoBackupSyncSubtitle
-                : l10n.settingsAutoBackupLockedSubtitle,
             value: identityVerified && enabled,
             enabled: identityVerified,
             onChanged: (value) => onToggle(value),
@@ -2570,7 +2544,6 @@ class _BackupPanel extends StatelessWidget {
 
     return _SettingsSection(
       title: l10n.settingsBackupSection,
-      help: l10n.settingsBackupHelp,
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: <Widget>[
@@ -2615,7 +2588,6 @@ class _BackupPanel extends StatelessWidget {
           SettingsNavRow(
             icon: Icons.health_and_safety_outlined,
             title: l10n.diagnosticsTitle,
-            subtitle: l10n.settingsDiagnosticsHelp,
             onTap: onOpenDiagnostics,
           ),
         ],
