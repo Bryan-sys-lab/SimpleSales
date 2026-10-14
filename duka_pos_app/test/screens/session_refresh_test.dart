@@ -225,8 +225,7 @@ void main() {
       'shift_screen.dart': 'the shift ledger and its expected figure',
     };
 
-    test('each one mixes in SessionRefresh, and clears as well as reloads',
-        () {
+    test('each one mixes in SessionRefresh, and clears as well as reloads', () {
       for (final MapEntry<String, String> screen in screens.entries) {
         final String source =
             File('lib/screens/${screen.key}').readAsStringSync();

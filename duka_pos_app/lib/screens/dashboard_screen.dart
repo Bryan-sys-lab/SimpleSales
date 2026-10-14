@@ -345,9 +345,7 @@ class _DashboardScreenState extends State<DashboardScreen>
   /// on shared till hardware, and an idle sign-out lands exactly when the
   /// first load of the next session is in flight.
   bool _current(int serial, int session, AppState appState) =>
-      mounted &&
-      serial == _loadSerial &&
-      appState.sessionGeneration == session;
+      mounted && serial == _loadSerial && appState.sessionGeneration == session;
 
   /// "Good morning, Wanjiku · Cashier · showing the shop".
   ///

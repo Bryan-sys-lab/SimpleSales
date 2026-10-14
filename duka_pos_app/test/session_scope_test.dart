@@ -173,8 +173,7 @@ void main() {
       // ledger's `staff_id` holds — so it wins outright, even when the name
       // would resolve to somebody else.
       expect(
-        ownStaffId(
-            sessionStaffId: 7, staff: roster, staffName: 'Joseph'),
+        ownStaffId(sessionStaffId: 7, staff: roster, staffName: 'Joseph'),
         7,
       );
 
@@ -192,8 +191,7 @@ void main() {
         kUnmatchedStaffId,
       );
       expect(
-        ownStaffId(
-            sessionStaffId: null, staff: <Staff>[], staffName: 'Amina'),
+        ownStaffId(sessionStaffId: null, staff: <Staff>[], staffName: 'Amina'),
         kUnmatchedStaffId,
       );
     });
@@ -209,7 +207,8 @@ void main() {
 
       // A manager and an owner see the shop: null is the correct answer there
       // and only there.
-      state.signInAsStaff(Staff(id: 9, name: 'Mary', pinHash: 'x', role: 'manager'));
+      state.signInAsStaff(
+          Staff(id: 9, name: 'Mary', pinHash: 'x', role: 'manager'));
       expect(state.analyticsStaffId, isNull);
 
       state.signInAsOwner();
@@ -217,8 +216,10 @@ void main() {
     });
 
     test('the ledger agrees: nobody scoped to -1 sees nothing', () async {
-      final amina = await db.addStaff(Staff(id: null, name: 'Amina', pinHash: 'x'));
-      final joseph = await db.addStaff(Staff(id: null, name: 'Joseph', pinHash: 'x'));
+      final amina =
+          await db.addStaff(Staff(id: null, name: 'Amina', pinHash: 'x'));
+      final joseph =
+          await db.addStaff(Staff(id: null, name: 'Joseph', pinHash: 'x'));
       await (await db.database).insert('sales', <String, Object?>{
         'staff_name': 'Amina',
         'staff_id': amina,
@@ -258,7 +259,8 @@ void main() {
       // owner had signed back in. The state below is what the greeting and
       // every capability are derived from, so it has to be right at sign-in
       // rather than whenever a screen happens to reload.
-      state.signInAsStaff(Staff(id: 7, name: 'Amina', pinHash: 'x', role: 'cashier'));
+      state.signInAsStaff(
+          Staff(id: 7, name: 'Amina', pinHash: 'x', role: 'cashier'));
       expect(state.isAdmin, isFalse);
 
       state.signOut();

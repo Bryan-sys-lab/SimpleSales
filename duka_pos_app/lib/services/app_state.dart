@@ -384,7 +384,8 @@ class AppState extends ChangeNotifier {
   /// A cashier gets their own id, and `null` is never used to mean "unknown" —
   /// a cashier's queries must be narrow, so an unresolved cashier scopes to
   /// nobody rather than to everybody.
-  int? get analyticsStaffId => seesAllSales ? null : (currentStaffId ?? kUnmatchedStaffId);
+  int? get analyticsStaffId =>
+      seesAllSales ? null : (currentStaffId ?? kUnmatchedStaffId);
 
   void refresh() => notifyListeners();
 }
