@@ -20,6 +20,7 @@ import '../screens/activity_screen.dart';
 import '../screens/diagnostics_screen.dart';
 import '../screens/profile_screen.dart';
 import '../screens/settings_screen.dart';
+import '../screens/transactions_screen.dart';
 import '../screens/shift_screen.dart';
 import '../screens/shot_cups_screen.dart';
 import '../screens/splash_screen.dart';
@@ -187,16 +188,29 @@ List<RouteBase> _shellRoutes() {
       ) =>
           HomeShell(navigationShell: navigationShell),
       branches: <StatefulShellBranch>[
-        StatefulShellBranch(
-          navigatorKey: branchNavigatorKeys[AppDestination.dashboard.index],
-          routes: <RouteBase>[
-            GoRoute(
-              path: Routes.dashboard,
-              pageBuilder: (BuildContext context, GoRouterState routerState) =>
-                  _fadeThrough(routerState, const DashboardScreen()),
-            ),
-          ],
-        ),
+         StatefulShellBranch(
+           navigatorKey: branchNavigatorKeys[AppDestination.dashboard.index],
+           routes: <RouteBase>[
+             GoRoute(
+               path: Routes.dashboard,
+               pageBuilder: (BuildContext context, GoRouterState routerState) =>
+                   _fadeThrough(routerState, const DashboardScreen()),
+               routes: <RouteBase>[
+                 // Who sold what. The dashboard's transactions count is the
+                 // door into it, so it sits under the same branch it is opened
+                 // from and comes back to the day the manager was looking at.
+                 GoRoute(
+                   path: 'transactions',
+                   parentNavigatorKey: rootNavigatorKey,
+                   pageBuilder:
+                       (BuildContext context, GoRouterState routerState) =>
+                           _fadeThrough(
+                               routerState, const TransactionsScreen()),
+                 ),
+               ],
+             ),
+           ],
+         ),
         StatefulShellBranch(
           navigatorKey: branchNavigatorKeys[AppDestination.sell.index],
           routes: <RouteBase>[

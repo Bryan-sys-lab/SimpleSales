@@ -26,7 +26,23 @@ enum ProductUnit {
   /// Sold by volume, priced per cup. A tank is bought and a cup is sold, and the
   /// two never meet: the price is for the cup, and the volume only exists to
   /// work out how many cups a tank holds.
-  cup('cup', 'cup');
+  cup('cup', 'cup'),
+
+  /// What a tank of beer is measured in, and stocked in.
+  ///
+  /// A tank is bought by weight and sold by the cup. Its stock is kilograms —
+  /// the number on the delivery note and the number on the scale — and the app
+  /// converts to millilitres ONCE, at [kilogramsToMillilitres], then treats the
+  /// tank exactly as any other volumetric product for every pour, cup and sale.
+  /// A mass is not stored: a second representation of the same quantity is how a
+  /// stock count ends up disagreeing with itself, and this app counts in
+  /// millilitres for a reason.
+  ///
+  /// The conversion is ONE number, [kilogramsToMillilitres], and it is overridable
+  /// per product: a 50-kg tank of lager holds about 50 litres, and a liqueur or a
+  /// syrup holds a different amount per kilogram, which is why it is not baked
+  /// into the unit.
+  kilogram('kilogram', 'kg');
 
   const ProductUnit(this.wire, this.suffix);
 
@@ -39,6 +55,12 @@ enum ProductUnit {
   final String suffix;
 
   /// Whether quantities in this unit are volumes.
+  ///
+  /// True for [kilogram] too — deliberately. A tank is stocked by weight but it
+  /// is VOLUME that a sale deducts (a cup is millilitres), and `isVolumetric` is
+  /// the flag that says "this product can be poured from", which is exactly what
+  /// a tank is for. The weight lives only in the form and the stock count; the
+  /// pour never sees it.
   bool get isVolumetric => this != ProductUnit.each;
 
   /// One of these, in millilitres.
@@ -46,17 +68,34 @@ enum ProductUnit {
   /// 0 for [each]: a countable thing has no volume, and pretending it has one
   /// (1 ml) would make every litres-to-ml conversion silently multiply a
   /// carton of soap by a thousand.
+  ///
+  /// 0 for [kilogram]: a kilogram is not a fixed volume — see
+  /// [kilogramsToMillilitres], which carries the per-product factor instead of
+  /// baking one density into every tank in the shop.
   double get millilitresPerUnit => switch (this) {
         ProductUnit.each => 0,
         ProductUnit.millilitre => 1,
         ProductUnit.litre => 1000,
         ProductUnit.cup => 1, // a cup is not a fixed size; size_ml says how big
+        ProductUnit.kilogram => 0, // per product: the tank's ml per kg
       };
+
+  /// Whether this unit is stocked by weight rather than by volume or count.
+  ///
+  /// A tank is the only case, and the only thing that makes it different from a
+  /// litre product is that its stock is read off a scale. Everything after the
+  /// conversion is a litre product's life.
+  bool get isMeasuredByWeight => this == ProductUnit.kilogram;
 
   static ProductUnit parse(String? raw) {
     final value = (raw ?? '').trim().toLowerCase();
+    if (value.isEmpty) return ProductUnit.each;
+    // The wire value AND the suffix, because a supplier's spreadsheet says "kg"
+    // and "L" where the database says "kilogram" and "litre". Matching only the
+    // wire value silently read every kg-stocked tank as a countable product —
+    // which is the exact failure the `unit` column exists to prevent.
     return ProductUnit.values.firstWhere(
-      (unit) => unit.wire == value,
+      (unit) => unit.wire == value || unit.suffix == value,
       orElse: () => ProductUnit.each,
     );
   }
@@ -67,8 +106,61 @@ enum ProductUnit {
         ProductUnit.millilitre => 'Per millilitre',
         ProductUnit.litre => 'Per litre',
         ProductUnit.cup => 'Per cup',
+        ProductUnit.kilogram => 'Per kilogram (tank)',
       };
 }
+
+/// How much beer one kilogram of it is, in millilitres.
+///
+/// 1000 ml/kg is beer, which is why it is the default: a litre of lager weighs
+/// a kilogram to within the few percent a tank's own gauge is accurate to. It
+/// is a plain constant rather than a law of nature because the next thing that
+/// arrives by weight may not be beer — a syrup or a liqueur holds a different
+/// amount per kilogram — and a tank's own conversion is stored per product, at
+/// [Product.millilitresPerKilogram], for exactly that reason.
+const double defaultKilogramsToMillilitres = 1000;
+
+/// Kilograms to millilitres, at [millilitresPerKilogram] per kg.
+///
+/// The one conversion the app does for a weight-stocked product. A negative or
+/// non-finite factor answers 0 rather than a garbage volume, because a tank
+/// whose conversion was mistyped should hold nothing rather than hold a
+/// negative amount of beer.
+double kilogramsToMillilitres(
+  num kilograms, {
+  double millilitresPerKilogram = defaultKilogramsToMillilitres,
+}) {
+  if (!kilograms.isFinite || kilograms < 0) return 0;
+  if (!millilitresPerKilogram.isFinite || millilitresPerKilogram <= 0) return 0;
+  return kilograms * millilitresPerKilogram;
+}
+
+/// Millilitres to kilograms, at [millilitresPerKilogram] per kg.
+///
+/// The other direction, for reading a stock figure back as the weight the owner
+/// would see on a scale. A tank at 0 ml reads as 0 kg, not as a negative.
+double millilitresToKilograms(
+  num millilitres, {
+  double millilitresPerKilogram = defaultKilogramsToMillilitres,
+}) {
+  if (!millilitres.isFinite || millilitres < 0) return 0;
+  if (!millilitresPerKilogram.isFinite || millilitresPerKilogram <= 0) return 0;
+  return millilitres / millilitresPerKilogram;
+}
+
+/// Litres to millilitres.
+///
+/// The same factor [Volume.parse] applies when a litre suffix is written out,
+/// named rather than repeated as `* 1000` at every call site: a factor-of-
+/// thousand conversion is the stock error nobody notices until the month-end
+/// count, so it is spelled exactly once.
+double litresToMillilitres(num litres) =>
+    litres.isFinite && litres >= 0 ? litres * 1000 : 0;
+
+/// Millilitres to litres, for reading a volume back the way a delivery note or
+/// a tank's own gauge states it.
+double millilitresToLitres(num millilitres) =>
+    millilitres.isFinite && millilitres >= 0 ? millilitres / 1000 : 0;
 
 /// Conversions between a typed volume and millilitres.
 ///

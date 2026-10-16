@@ -190,6 +190,53 @@ void main() {
     }
   }
 
+  group('the roster, which is the list of who can sign in', () {
+    testWidgets('one heading per role, and one account per person',
+        (WidgetTester tester) async {
+      // The shipped bug: the roster stood the owner up as its OWN "Admins"
+      // group and then walked the staff by role, which produced two `admin`
+      // groups the moment the shop also had an admin-role account — the heading
+      // rendered twice and every admin account rendered twice under it.
+      //
+      // The fixture has an admin (Amina) and a cashier (Brian), and the owner
+      // arrives asynchronously so the roster is staff-only here.
+      //
+      // Uppercase because `SectionHeader` sets a label as a small caps line.
+      await tester.pumpApp(home: _wrap(_loginWithRoster(), seeded));
+      await tester.pump(const Duration(milliseconds: 50));
+
+      expect(find.text('ADMINS'), findsOneWidget,
+          reason: 'one Admins heading, not one per account under it');
+      expect(find.text('CASHIERS'), findsOneWidget);
+      expect(find.text('Amina'), findsOneWidget,
+          reason: 'an admin-role account is listed exactly once');
+      expect(find.text('Brian'), findsOneWidget);
+    });
+
+    testWidgets('an admin-role account is not dropped when there is no owner',
+        (WidgetTester tester) async {
+      // The near-miss this replaces: excluding admin staff while an owner
+      // exists drops them from the roster entirely, and the account holder is
+      // the one person who must always be signable-in on a new phone.
+      final AppState ownerless =
+          AppState(); // no owner loaded, staff supplied by the loader
+      await tester.pumpApp(
+        home: _wrap(
+          LoginScreen(
+            staffLoader: () async => <Staff>[
+              Staff(name: 'Amina', pinHash: 'x', role: 'admin'),
+            ],
+          ),
+          ownerless,
+        ),
+      );
+      await tester.pump(const Duration(milliseconds: 50));
+
+      expect(find.text('Amina'), findsOneWidget,
+          reason: 'the only account on the till must be reachable');
+    });
+  });
+
   group('the PIN pad, which is the only way into a till', () {
     testWidgets('keys are 44px, individually labelled, and work',
         (WidgetTester tester) async {

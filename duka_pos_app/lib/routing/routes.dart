@@ -31,6 +31,7 @@ abstract final class Routes {
   /// `parentNavigatorKey` so it covers the shell — a sheet pushed from Settings
   /// should hide the navigation, not render inside a 320dp column.
   static const String shotCups = '/inventory/shot-cups';
+  static const String transactions = '/dashboard/transactions';
   static const String shift = '/analytics/shift';
   static const String reports = '/analytics/reports';
   static const String portfolio = '/analytics/portfolio';

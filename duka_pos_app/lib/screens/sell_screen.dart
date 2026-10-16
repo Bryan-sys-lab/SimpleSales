@@ -125,7 +125,7 @@ class _SellScreenState extends State<SellScreen>
   int _seenCatalogueGeneration = 0;
 
   void _onShellChanged() {
-    final generation = _shellTabs.catalogueGeneration;
+    final generation = _shellTabs.catalogueGenerationSeen;
     if (generation == _seenCatalogueGeneration) return;
     _seenCatalogueGeneration = generation;
     _loadProducts();

@@ -306,6 +306,7 @@ class _VariantFormSheetState extends State<VariantFormSheet> {
         ProductUnit.millilitre => l10n.variantUnitMillilitre,
         ProductUnit.litre => l10n.variantUnitLitre,
         ProductUnit.cup => l10n.variantUnitCup,
+        ProductUnit.kilogram => l10n.variantUnitKilogram,
       };
 
   void _useSuggestion(CupSizeSuggestion s) {

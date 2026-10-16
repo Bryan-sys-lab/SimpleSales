@@ -588,21 +588,43 @@ class _WhoPicker extends StatelessWidget {
   /// One list, one builder, because a roster is unbounded in principle and
   /// `Column(children: rows)` on a shop with thirty staff is a till that will
   /// not render.
-  List<_RosterRow> _rows() {
+  ///
+  /// ONE GROUP PER ROLE, with the owner folded into the admin group rather than
+  /// standing as a group of its own. Listing them separately produced two
+  /// `admin` groups the moment the shop also had an admin-role staff account,
+  /// which rendered the "Admins" header twice and every admin account twice
+  /// beneath it — the same person listed as two different accounts, and the
+  /// owner listed among them as well.
+  /// [l10n] is passed in rather than read from a context, because this is a
+  /// [StatelessWidget]: a stateless widget has no `context` of its own outside
+  /// `build`, and a heading has to be localised wherever it is built.
+  List<_RosterRow> _rows(AppLocalizations l10n) {
     final Map<ShopRole, List<Staff>> byRole = _byRole;
     final List<Staff> chosen = staff.where(_sameTag).toList();
     final bool chosenOwner = selected == '__owner__' && ownerName != null;
-    final List<({ShopRole role, String title})> groups =
-        <({ShopRole role, String title})>[
-      if (ownerName != null) (role: ShopRole.admin, title: 'Admins'),
-      for (final MapEntry<ShopRole, List<Staff>> entry in byRole.entries)
-        (role: entry.key, title: '${entry.key.label}s'),
-    ];
+
+    // The roles that actually hold an account, in a fixed order, with the
+    // owner folded into the admin group rather than standing as a group of its
+    // own. A second group for the same role is what duplicated the "Admins"
+    // heading and every account under it.
+    //
+    // The union, NOT one filtered against the other: excluding admin staff when
+    // an owner exists is easy to write and silently drops them from the roster,
+    // and excluding the owner when admin staff exist does the same to the only
+    // account that can sign in on a new phone.
+    final Set<ShopRole> roles = <ShopRole>{
+      ...byRole.keys,
+      if (ownerName != null) ShopRole.admin,
+    };
+    final List<ShopRole> ordered = ShopRole.values
+        .where(roles.contains)
+        .toList(growable: false);
 
     final List<_RosterRow> rows = <_RosterRow>[];
-    for (final ({ShopRole role, String title}) group in groups) {
-      if (groups.length > 1) rows.add(_RosterRow.header(group.title));
-      if (group.role == ShopRole.admin && ownerName != null) {
+    for (final ShopRole role in ordered) {
+      final String title = roleSectionTitle(l10n, role);
+      if (ordered.length > 1) rows.add(_RosterRow.header(title));
+      if (role == ShopRole.admin && ownerName != null) {
         rows.add(
           _RosterRow.person(
             name: ownerName!,
@@ -612,7 +634,7 @@ class _WhoPicker extends StatelessWidget {
           ),
         );
       }
-      for (final Staff member in byRole[group.role] ?? const <Staff>[]) {
+      for (final Staff member in byRole[role] ?? const <Staff>[]) {
         rows.add(
           _RosterRow.person(
             name: member.name,
@@ -649,7 +671,8 @@ class _WhoPicker extends StatelessWidget {
             // per item turns a roster of thirty into thirty list rebuilds of
             // the whole roster.
             builder: (BuildContext context) {
-              final List<_RosterRow> rows = _rows();
+              final List<_RosterRow> rows =
+                  _rows(AppLocalizations.of(context));
               return ListView.builder(
                 padding: EdgeInsets.zero,
                 itemCount: rows.length,
@@ -1019,3 +1042,15 @@ class _PinKey extends StatelessWidget {
 /// Wider than a phone on purpose: on a tablet the keys get wider, which is the
 /// point of a till that might be a 10-inch one on a counter.
 const double _kPadWidth = 460;
+
+/// The heading over one role's accounts, localised.
+///
+/// A plural rather than `'${role.label}s'`: the singular inflected with an `s`
+/// is English, and a heading is exactly the kind of string a translated build
+/// gets judged on.
+String roleSectionTitle(AppLocalizations l10n, ShopRole role) =>
+    switch (role) {
+      ShopRole.admin => l10n.loginRoleAdmins,
+      ShopRole.manager => l10n.loginRoleManagers,
+      ShopRole.cashier => l10n.loginRoleCashiers,
+    };

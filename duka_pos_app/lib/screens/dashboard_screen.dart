@@ -642,6 +642,10 @@ class _DashboardContent extends StatelessWidget {
                     DashboardKpis(
                       totals: data.totals,
                       scopeLabel: data.scopeLabel,
+                      // A count of transactions is a question — which ones, and
+                      // by whom — so the card opens the list that answers it.
+                      onTransactions: () =>
+                          context.push(Routes.transactions),
                     ),
                   ],
                   gap,

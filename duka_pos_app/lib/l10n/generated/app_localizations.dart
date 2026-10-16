@@ -1607,6 +1607,60 @@ abstract class AppLocalizations {
   /// **'Bottle, keg or tank — 330, 500, 50000'**
   String get inventoryFieldSizeMlHelper;
 
+  /// No description provided for @productUnitPickerLabel.
+  ///
+  /// In en, this message translates to:
+  /// **'How this product is measured'**
+  String get productUnitPickerLabel;
+
+  /// No description provided for @productUnitEach.
+  ///
+  /// In en, this message translates to:
+  /// **'Counted'**
+  String get productUnitEach;
+
+  /// No description provided for @productUnitLitre.
+  ///
+  /// In en, this message translates to:
+  /// **'By the litre'**
+  String get productUnitLitre;
+
+  /// No description provided for @productUnitMillilitre.
+  ///
+  /// In en, this message translates to:
+  /// **'By the millilitre'**
+  String get productUnitMillilitre;
+
+  /// No description provided for @productUnitCup.
+  ///
+  /// In en, this message translates to:
+  /// **'By the cup'**
+  String get productUnitCup;
+
+  /// No description provided for @productSizeLabelLitre.
+  ///
+  /// In en, this message translates to:
+  /// **'How many ml one litre holds'**
+  String get productSizeLabelLitre;
+
+  /// No description provided for @productSizeLabelMillilitre.
+  ///
+  /// In en, this message translates to:
+  /// **'How many ml one unit holds'**
+  String get productSizeLabelMillilitre;
+
+  /// No description provided for @productSizeLabelCup.
+  ///
+  /// In en, this message translates to:
+  /// **'How many ml one cup holds'**
+  String get productSizeLabelCup;
+
+  /// No description provided for @productUnitCupPourHint.
+  ///
+  /// In en, this message translates to:
+  /// **'Cups are poured from a bigger container: add that container, then pour from it on the Shot cups screen.'**
+  String get productUnitCupPourHint;
+
   /// No description provided for @inventoryFieldStock.
   ///
   /// In en, this message translates to:
@@ -3876,6 +3930,30 @@ abstract class AppLocalizations {
   /// **'Cashiers, managers and admins all sign in with the PIN their shop gave them.'**
   String get chooserSignInHelp;
 
+  /// No description provided for @loginRoleAdmins.
+  ///
+  /// In en, this message translates to:
+  /// **'Admins'**
+  String get loginRoleAdmins;
+
+  /// No description provided for @loginRoleManagers.
+  ///
+  /// In en, this message translates to:
+  /// **'Managers'**
+  String get loginRoleManagers;
+
+  /// No description provided for @loginRoleCashiers.
+  ///
+  /// In en, this message translates to:
+  /// **'Cashiers'**
+  String get loginRoleCashiers;
+
+  /// No description provided for @loginRoleAccountsCount.
+  ///
+  /// In en, this message translates to:
+  /// **'{count, plural, =0{No accounts} =1{1 account} other{{count} accounts}}'**
+  String loginRoleAccountsCount(num count);
+
   /// No description provided for @chooserSetupHelp.
   ///
   /// In en, this message translates to:
@@ -4531,23 +4609,101 @@ abstract class AppLocalizations {
   /// **'{count, plural, =1{1 product sold} other{{count} products sold}}'**
   String analyticsTopProductsCount(num count);
 
+  /// No description provided for @transactionsTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Transactions'**
+  String get transactionsTitle;
+
+  /// No description provided for @transactionsSubtitle.
+  ///
+  /// In en, this message translates to:
+  /// **'{count, plural, =1{1 sale in the last 14 days} other{{count} sales in the last 14 days}}'**
+  String transactionsSubtitle(num count);
+
+  /// No description provided for @transactionsEmptyTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'No sales yet'**
+  String get transactionsEmptyTitle;
+
+  /// No description provided for @transactionsEmptyMessage.
+  ///
+  /// In en, this message translates to:
+  /// **'Every sale rung up at this till is listed here, with who sold it.'**
+  String get transactionsEmptyMessage;
+
+  /// No description provided for @transactionsEmptyOwnTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Nothing sold yet today'**
+  String get transactionsEmptyOwnTitle;
+
+  /// No description provided for @transactionsEmptyOwnMessage.
+  ///
+  /// In en, this message translates to:
+  /// **'You have not rung up any sales on this till yet. Sign in as a manager or owner to see the whole shop.'**
+  String get transactionsEmptyOwnMessage;
+
+  /// No description provided for @transactionsLoadFailed.
+  ///
+  /// In en, this message translates to:
+  /// **'That list could not be loaded.'**
+  String get transactionsLoadFailed;
+
+  /// No description provided for @transactionsSoldBy.
+  ///
+  /// In en, this message translates to:
+  /// **'Sold by {name}'**
+  String transactionsSoldBy(Object name);
+
+  /// No description provided for @transactionsAuditBy.
+  ///
+  /// In en, this message translates to:
+  /// **'Logged as {name}'**
+  String transactionsAuditBy(Object name);
+
+  /// No description provided for @transactionsMethod.
+  ///
+  /// In en, this message translates to:
+  /// **'{method}'**
+  String transactionsMethod(Object method);
+
+  /// No description provided for @transactionsItemsCount.
+  ///
+  /// In en, this message translates to:
+  /// **'{count, plural, =0{Nothing} =1{1 item} other{{count} items}}'**
+  String transactionsItemsCount(num count);
+
+  /// No description provided for @transactionsMinutesAgo.
+  ///
+  /// In en, this message translates to:
+  /// **'{count, plural, =1{Just now} other{{count} minutes ago}}'**
+  String transactionsMinutesAgo(num count);
+
+  /// No description provided for @transactionsHoursAgo.
+  ///
+  /// In en, this message translates to:
+  /// **'{count, plural, =1{An hour ago} other{{count} hours ago}}'**
+  String transactionsHoursAgo(num count);
+
+  /// No description provided for @transactionsOn.
+  ///
+  /// In en, this message translates to:
+  /// **'{day}/{month}'**
+  String transactionsOn(Object day, Object month);
+
+  /// No description provided for @dashboardTransactionsLabel.
+  ///
+  /// In en, this message translates to:
+  /// **'Transactions'**
+  String get dashboardTransactionsLabel;
+
   /// No description provided for @analyticsTopProductsEmpty.
   ///
   /// In en, this message translates to:
   /// **'Nothing sold in this period.'**
   String get analyticsTopProductsEmpty;
-
-  /// No description provided for @analyticsTopProductsShowMore.
-  ///
-  /// In en, this message translates to:
-  /// **'{count, plural, =1{Show 1 more} other{Show {count} more}}'**
-  String analyticsTopProductsShowMore(num count);
-
-  /// No description provided for @analyticsTopProductsShowLess.
-  ///
-  /// In en, this message translates to:
-  /// **'Show fewer'**
-  String get analyticsTopProductsShowLess;
 
   /// No description provided for @analyticsProfitLabel.
   ///
@@ -5032,6 +5188,180 @@ abstract class AppLocalizations {
   /// **'{shop}, {revenue} takings, {profit} profit, {count, plural, =1{1 transaction} other{{count} transactions}}, {share} of all shops'**
   String portfolioShopRowSpoken(
       num count, Object profit, Object revenue, Object share, Object shop);
+
+  /// No description provided for @productSizeLabelKilogram.
+  ///
+  /// In en, this message translates to:
+  /// **'How many litres the tank holds (ml)'**
+  String get productSizeLabelKilogram;
+
+  /// No description provided for @productUnitKilogram.
+  ///
+  /// In en, this message translates to:
+  /// **'Tank (kg)'**
+  String get productUnitKilogram;
+
+  /// No description provided for @variantUnitKilogram.
+  ///
+  /// In en, this message translates to:
+  /// **'Tank (kg)'**
+  String get variantUnitKilogram;
+
+  /// No description provided for @tankFormTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Beer tank'**
+  String get tankFormTitle;
+
+  /// No description provided for @tankFormSubtitle.
+  ///
+  /// In en, this message translates to:
+  /// **'A tank is stocked by weight and poured by the cup. Add it once, then pour from it on Shot cups.'**
+  String get tankFormSubtitle;
+
+  /// No description provided for @tankFieldName.
+  ///
+  /// In en, this message translates to:
+  /// **'Tank name'**
+  String get tankFieldName;
+
+  /// No description provided for @tankFieldNameHint.
+  ///
+  /// In en, this message translates to:
+  /// **'Tusker, Balozi, Guinness — the beer, not the keg'**
+  String get tankFieldNameHint;
+
+  /// No description provided for @tankFieldWeightKg.
+  ///
+  /// In en, this message translates to:
+  /// **'Stock on hand (kg)'**
+  String get tankFieldWeightKg;
+
+  /// No description provided for @tankFieldWeightKgHint.
+  ///
+  /// In en, this message translates to:
+  /// **'What the delivery note and the scale say. The app works out the litres from it.'**
+  String get tankFieldWeightKgHint;
+
+  /// No description provided for @tankFieldMlPerKg.
+  ///
+  /// In en, this message translates to:
+  /// **'Litres per kilogram'**
+  String get tankFieldMlPerKg;
+
+  /// No description provided for @tankFieldMlPerKgHint.
+  ///
+  /// In en, this message translates to:
+  /// **'1000 for beer. A syrup or a liqueur holds a different amount.'**
+  String get tankFieldMlPerKgHint;
+
+  /// No description provided for @tankFieldCapacityL.
+  ///
+  /// In en, this message translates to:
+  /// **'Tank capacity (L)'**
+  String get tankFieldCapacityL;
+
+  /// No description provided for @tankFieldCapacityLHint.
+  ///
+  /// In en, this message translates to:
+  /// **'How much the tank holds when full. A 50-litre keg is 50.'**
+  String get tankFieldCapacityLHint;
+
+  /// No description provided for @tankFieldCupPrice.
+  ///
+  /// In en, this message translates to:
+  /// **'Price per cup'**
+  String get tankFieldCupPrice;
+
+  /// No description provided for @tankFieldCupPriceHint.
+  ///
+  /// In en, this message translates to:
+  /// **'What a cup of this beer sells for. Set the same for both so the two cannot drift, or price each separately.'**
+  String get tankFieldCupPriceHint;
+
+  /// No description provided for @tankVariantsTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'What is in the tank'**
+  String get tankVariantsTitle;
+
+  /// No description provided for @tankVariantDark.
+  ///
+  /// In en, this message translates to:
+  /// **'Dark'**
+  String get tankVariantDark;
+
+  /// No description provided for @tankVariantRegular.
+  ///
+  /// In en, this message translates to:
+  /// **'Regular'**
+  String get tankVariantRegular;
+
+  /// No description provided for @tankVariantHint.
+  ///
+  /// In en, this message translates to:
+  /// **'Two taps from one body of beer: each is poured and priced separately, and the tank\'s stock is the two added together.'**
+  String get tankVariantHint;
+
+  /// No description provided for @tankCreated.
+  ///
+  /// In en, this message translates to:
+  /// **'{name} added. Pour from it on Shot cups.'**
+  String tankCreated(Object name);
+
+  /// No description provided for @tankWeightInvalid.
+  ///
+  /// In en, this message translates to:
+  /// **'Enter the weight in kilograms — a number, not a word.'**
+  String get tankWeightInvalid;
+
+  /// No description provided for @tankCapacityInvalid.
+  ///
+  /// In en, this message translates to:
+  /// **'Enter how much the tank holds in litres.'**
+  String get tankCapacityInvalid;
+
+  /// No description provided for @tankMlPerKgInvalid.
+  ///
+  /// In en, this message translates to:
+  /// **'Enter how many millilitres one kilogram of it holds.'**
+  String get tankMlPerKgInvalid;
+
+  /// No description provided for @tankNameRequired.
+  ///
+  /// In en, this message translates to:
+  /// **'Give the tank a name — the beer it holds.'**
+  String get tankNameRequired;
+
+  /// No description provided for @tankWeightOverCapacity.
+  ///
+  /// In en, this message translates to:
+  /// **'{weight} kg is more than the tank holds.'**
+  String tankWeightOverCapacity(Object weight);
+
+  /// No description provided for @tankWeightLitres.
+  ///
+  /// In en, this message translates to:
+  /// **'{litres} L on hand'**
+  String tankWeightLitres(Object litres);
+
+  /// No description provided for @tankAddAction.
+  ///
+  /// In en, this message translates to:
+  /// **'Add the tank'**
+  String get tankAddAction;
+
+  /// No description provided for @tankPriceInvalid.
+  ///
+  /// In en, this message translates to:
+  /// **'Enter the price of a cup.'**
+  String get tankPriceInvalid;
+
+  /// No description provided for @tankSaveFailed.
+  ///
+  /// In en, this message translates to:
+  /// **'That tank could not be saved. Your numbers are still here — try again.'**
+  String get tankSaveFailed;
 }
 
 class _AppLocalizationsDelegate

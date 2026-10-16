@@ -155,7 +155,12 @@ class _ShotCupsScreenState extends State<ShotCupsScreen> {
     if (saved == null) return;
     // A new or changed cup has to reach the till, which is kept alive and would
     // otherwise keep offering the old shelf.
-    if (mounted) context.read<HomeShellTabs>().markCatalogueChanged();
+    //
+    // The module-level signal, NOT `context.read<HomeShellTabs>()`: this route
+    // is pushed on the root navigator, so it sits outside the provider the
+    // shell mounts below it — and the lookup threw AFTER the cup was written,
+    // which is why a created cup used to appear in no list and on no shelf.
+    if (mounted) markCatalogueChanged();
     await _load();
   }
 

@@ -945,6 +945,34 @@ class AppLocalizationsEn extends AppLocalizations {
       'Bottle, keg or tank — 330, 500, 50000';
 
   @override
+  String get productUnitPickerLabel => 'How this product is measured';
+
+  @override
+  String get productUnitEach => 'Counted';
+
+  @override
+  String get productUnitLitre => 'By the litre';
+
+  @override
+  String get productUnitMillilitre => 'By the millilitre';
+
+  @override
+  String get productUnitCup => 'By the cup';
+
+  @override
+  String get productSizeLabelLitre => 'How many ml one litre holds';
+
+  @override
+  String get productSizeLabelMillilitre => 'How many ml one unit holds';
+
+  @override
+  String get productSizeLabelCup => 'How many ml one cup holds';
+
+  @override
+  String get productUnitCupPourHint =>
+      'Cups are poured from a bigger container: add that container, then pour from it on the Shot cups screen.';
+
+  @override
   String get inventoryFieldStock => 'Stock';
 
   @override
@@ -2356,6 +2384,27 @@ class AppLocalizationsEn extends AppLocalizations {
       'Cashiers, managers and admins all sign in with the PIN their shop gave them.';
 
   @override
+  String get loginRoleAdmins => 'Admins';
+
+  @override
+  String get loginRoleManagers => 'Managers';
+
+  @override
+  String get loginRoleCashiers => 'Cashiers';
+
+  @override
+  String loginRoleAccountsCount(num count) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: '$count accounts',
+      one: '1 account',
+      zero: 'No accounts',
+    );
+    return '$_temp0';
+  }
+
+  @override
   String get chooserSetupHelp =>
       'A shop admin sets this device up once. After that, everyone signs in with the PIN they are given. No internet is needed.';
 
@@ -2837,21 +2886,95 @@ class AppLocalizationsEn extends AppLocalizations {
   }
 
   @override
-  String get analyticsTopProductsEmpty => 'Nothing sold in this period.';
+  String get transactionsTitle => 'Transactions';
 
   @override
-  String analyticsTopProductsShowMore(num count) {
+  String transactionsSubtitle(num count) {
     String _temp0 = intl.Intl.pluralLogic(
       count,
       locale: localeName,
-      other: 'Show $count more',
-      one: 'Show 1 more',
+      other: '$count sales in the last 14 days',
+      one: '1 sale in the last 14 days',
     );
     return '$_temp0';
   }
 
   @override
-  String get analyticsTopProductsShowLess => 'Show fewer';
+  String get transactionsEmptyTitle => 'No sales yet';
+
+  @override
+  String get transactionsEmptyMessage =>
+      'Every sale rung up at this till is listed here, with who sold it.';
+
+  @override
+  String get transactionsEmptyOwnTitle => 'Nothing sold yet today';
+
+  @override
+  String get transactionsEmptyOwnMessage =>
+      'You have not rung up any sales on this till yet. Sign in as a manager or owner to see the whole shop.';
+
+  @override
+  String get transactionsLoadFailed => 'That list could not be loaded.';
+
+  @override
+  String transactionsSoldBy(Object name) {
+    return 'Sold by $name';
+  }
+
+  @override
+  String transactionsAuditBy(Object name) {
+    return 'Logged as $name';
+  }
+
+  @override
+  String transactionsMethod(Object method) {
+    return '$method';
+  }
+
+  @override
+  String transactionsItemsCount(num count) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: '$count items',
+      one: '1 item',
+      zero: 'Nothing',
+    );
+    return '$_temp0';
+  }
+
+  @override
+  String transactionsMinutesAgo(num count) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: '$count minutes ago',
+      one: 'Just now',
+    );
+    return '$_temp0';
+  }
+
+  @override
+  String transactionsHoursAgo(num count) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: '$count hours ago',
+      one: 'An hour ago',
+    );
+    return '$_temp0';
+  }
+
+  @override
+  String transactionsOn(Object day, Object month) {
+    return '$day/$month';
+  }
+
+  @override
+  String get dashboardTransactionsLabel => 'Transactions';
+
+  @override
+  String get analyticsTopProductsEmpty => 'Nothing sold in this period.';
 
   @override
   String get analyticsProfitLabel => 'Profit';
@@ -3169,4 +3292,107 @@ class AppLocalizationsEn extends AppLocalizations {
     );
     return '$shop, $revenue takings, $profit profit, $_temp0, $share of all shops';
   }
+
+  @override
+  String get productSizeLabelKilogram => 'How many litres the tank holds (ml)';
+
+  @override
+  String get productUnitKilogram => 'Tank (kg)';
+
+  @override
+  String get variantUnitKilogram => 'Tank (kg)';
+
+  @override
+  String get tankFormTitle => 'Beer tank';
+
+  @override
+  String get tankFormSubtitle =>
+      'A tank is stocked by weight and poured by the cup. Add it once, then pour from it on Shot cups.';
+
+  @override
+  String get tankFieldName => 'Tank name';
+
+  @override
+  String get tankFieldNameHint =>
+      'Tusker, Balozi, Guinness — the beer, not the keg';
+
+  @override
+  String get tankFieldWeightKg => 'Stock on hand (kg)';
+
+  @override
+  String get tankFieldWeightKgHint =>
+      'What the delivery note and the scale say. The app works out the litres from it.';
+
+  @override
+  String get tankFieldMlPerKg => 'Litres per kilogram';
+
+  @override
+  String get tankFieldMlPerKgHint =>
+      '1000 for beer. A syrup or a liqueur holds a different amount.';
+
+  @override
+  String get tankFieldCapacityL => 'Tank capacity (L)';
+
+  @override
+  String get tankFieldCapacityLHint =>
+      'How much the tank holds when full. A 50-litre keg is 50.';
+
+  @override
+  String get tankFieldCupPrice => 'Price per cup';
+
+  @override
+  String get tankFieldCupPriceHint =>
+      'What a cup of this beer sells for. Set the same for both so the two cannot drift, or price each separately.';
+
+  @override
+  String get tankVariantsTitle => 'What is in the tank';
+
+  @override
+  String get tankVariantDark => 'Dark';
+
+  @override
+  String get tankVariantRegular => 'Regular';
+
+  @override
+  String get tankVariantHint =>
+      'Two taps from one body of beer: each is poured and priced separately, and the tank\'s stock is the two added together.';
+
+  @override
+  String tankCreated(Object name) {
+    return '$name added. Pour from it on Shot cups.';
+  }
+
+  @override
+  String get tankWeightInvalid =>
+      'Enter the weight in kilograms — a number, not a word.';
+
+  @override
+  String get tankCapacityInvalid => 'Enter how much the tank holds in litres.';
+
+  @override
+  String get tankMlPerKgInvalid =>
+      'Enter how many millilitres one kilogram of it holds.';
+
+  @override
+  String get tankNameRequired => 'Give the tank a name — the beer it holds.';
+
+  @override
+  String tankWeightOverCapacity(Object weight) {
+    return '$weight kg is more than the tank holds.';
+  }
+
+  @override
+  String tankWeightLitres(Object litres) {
+    return '$litres L on hand';
+  }
+
+  @override
+  String get tankAddAction => 'Add the tank';
+
+  @override
+  String get tankPriceInvalid => 'Enter the price of a cup.';
+
+  @override
+  String get tankSaveFailed =>
+      'That tank could not be saved. Your numbers are still here — try again.';
 }

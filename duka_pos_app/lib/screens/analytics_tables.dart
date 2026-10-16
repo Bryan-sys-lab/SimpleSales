@@ -39,11 +39,14 @@ String _stockLabel(double value) => value == value.roundToDouble()
 /// cannot share one set of bars without one of them being unreadable, and this
 /// is the screen where an owner is comparing a product's margin against its
 /// revenue.
-/// How many rows a collapsed top-products card shows.
+/// How many rows the card shows before its list starts scrolling.
 ///
 /// Six, because that is what fits a phone screen without scrolling and still
-/// answers "what is selling". The full list is one tap away.
-const kProductTableCollapsedRows = 6;
+/// answers "what is selling". The rest is one scroll away INSIDE the card: the
+/// count beside the title says how big the real list is, and the card itself
+/// never grows past this — a section that expands until everything below it is
+/// off the bottom of the screen is not a section, it is a page.
+const kProductTableRowsInView = 6;
 
 class ProductTableCard extends StatefulWidget {
   const ProductTableCard({
@@ -66,26 +69,17 @@ class ProductTableCard extends StatefulWidget {
 }
 
 class _ProductTableCardState extends State<ProductTableCard> {
-  /// Whether every row is showing.
-  ///
-  /// Collapsed by default, and deliberately: an uncapped "Top products" card
-  /// on a shop with a busy month rendered twenty rows and pushed the payment
-  /// breakdown and the product list below it off the bottom of the screen. A
-  /// section that grows without bound is not a section, it is a page.
-  bool _expanded = false;
-
   @override
   Widget build(BuildContext context) {
     final AppSpacing spacing = AppSpacing.of(context);
     final AppColors colors = AppColors.of(context);
     final rows = widget.rows;
 
-    // Collapsed if there is anything to collapse. An empty or short list needs
-    // no affordance, and showing "Show all" beside six rows is noise.
-    final bool collapsible = rows.length > kProductTableCollapsedRows;
-    final List<ProductSalesRow> shown = _expanded || !collapsible
-        ? rows
-        : rows.sublist(0, kProductTableCollapsedRows);
+    // A card that holds a few rows and scrolls the rest, rather than one that
+    // expands. Both numbers say the same thing — the count beside the title
+    // still reports the whole list — but only one of them keeps the payment
+    // breakdown and the stock list below it on the same screen.
+    final bool scrolls = rows.length > kProductTableRowsInView;
 
     return SurfaceCard(
       padding: EdgeInsets.zero,
@@ -94,9 +88,9 @@ class _ProductTableCardState extends State<ProductTableCard> {
         mainAxisSize: MainAxisSize.min,
         children: <Widget>[
           SectionHeader(label: 'Top products'),
-          // The count beside the title, so a collapsed card still says how big
+          // The count beside the title, so a scrolling card still says how big
           // the real list is rather than implying six is all of it.
-          if (collapsible)
+          if (scrolls)
             Padding(
               padding: EdgeInsetsDirectional.only(
                 start: spacing.md,
@@ -111,7 +105,7 @@ class _ProductTableCardState extends State<ProductTableCard> {
                     ),
               ),
             ),
-          if (shown.isEmpty)
+          if (rows.isEmpty)
             Padding(
               padding: EdgeInsets.fromLTRB(
                 spacing.md,
@@ -131,6 +125,18 @@ class _ProductTableCardState extends State<ProductTableCard> {
               builder: (BuildContext context, BoxConstraints constraints) {
                 final bool wide =
                     constraints.maxWidth >= kProductTableWideWidth;
+                final List<Widget> rowWidgets = <Widget>[
+                  for (int i = 0; i < rows.length; i++)
+                    wide
+                        ? _ProductTableRow(
+                            row: rows[i],
+                            showDivider: i != rows.length - 1,
+                          )
+                        : _ProductLine(
+                            row: rows[i],
+                            showDivider: i != rows.length - 1,
+                          ),
+                ];
                 return Column(
                   crossAxisAlignment: CrossAxisAlignment.stretch,
                   mainAxisSize: MainAxisSize.min,
@@ -155,54 +161,32 @@ class _ProductTableCardState extends State<ProductTableCard> {
                         ),
                       ),
                     Divider(height: 1, color: colors.outline),
-                    for (final ProductSalesRow row in shown)
-                      wide
-                          ? _ProductTableRow(
-                              row: row,
-                              showDivider: row != shown.last,
-                            )
-                          : _ProductLine(
-                              row: row,
-                              showDivider: row != shown.last,
-                            ),
-                    if (collapsible) ...<Widget>[
-                      Divider(height: 1, color: colors.outline),
-                      _ShowAllRowsButton(
-                        expanded: _expanded,
-                        hidden: rows.length - shown.length,
-                        onToggle: () => setState(() => _expanded = !_expanded),
-                      ),
-                    ],
+                    // A window onto the list, sized by the theme's row token
+                    // rather than by the list itself. The card is the thing that
+                    // is bounded, not the data: everything the list has is in
+                    // this box, and a finger that keeps going scrolls through
+                    // it without the sections below this card moving.
+                    //
+                    // No `Scrollbar` and no scroll indicator on purpose — the
+                    // count above already says there is more, and a card that
+                    // grows its own chrome to say so is what this replaced.
+                    if (scrolls)
+                      SizedBox(
+                        height: spacing.rowHeight * kProductTableRowsInView,
+                        child: ListView(
+                          padding: EdgeInsets.zero,
+                          primary: false,
+                          children: rowWidgets,
+                        ),
+                      )
+                    else
+                      ...rowWidgets,
                   ],
                 );
               },
             ),
         ],
       ),
-    );
-  }
-}
-
-/// The control that grows the list, and the count it is hiding.
-class _ShowAllRowsButton extends StatelessWidget {
-  const _ShowAllRowsButton({
-    required this.expanded,
-    required this.hidden,
-    required this.onToggle,
-  });
-
-  final bool expanded;
-  final int hidden;
-  final VoidCallback onToggle;
-
-  @override
-  Widget build(BuildContext context) {
-    final l10n = AppLocalizations.of(context);
-    return TextButton(
-      onPressed: onToggle,
-      child: Text(expanded
-          ? l10n.analyticsTopProductsShowLess
-          : l10n.analyticsTopProductsShowMore(hidden)),
     );
   }
 }

@@ -149,6 +149,20 @@ class Product {
   /// the same size field holding the cup's volume.
   final ProductUnit unit;
 
+  /// How many millilitres one kilogram of this product is.
+  ///
+  /// A TANK is stocked by weight and sold by the cup, and this is the bridge:
+  /// `kg x this` is the millilitres the app counts and pours. [bottleMl] then
+  /// holds the tank's capacity in those millilitres, exactly as it does for a
+  /// keg measured in litres, so nothing downstream — the pour maths, the cups
+  /// this tank holds, the low-stock threshold — needs to know the stock arrived
+  /// on a scale.
+  ///
+  /// 0 for everything that is not stocked by weight, which is what makes a
+  /// litre product's row and a tank's row distinguishable without a second flag:
+  /// `unit.isMeasuredByWeight` and this is positive, or neither is.
+  final double millilitresPerKilogram;
+
   /// Whether this product is sold as variants.
   ///
   /// Separate from "has variants" because the two mean different things to the
@@ -199,6 +213,7 @@ class Product {
     this.halfPrice,
     this.quarterPrice,
     this.exciseStampBatch = '',
+    this.millilitresPerKilogram = 0,
     this.active = true,
     required this.updatedAt,
     this.remoteId,
@@ -276,6 +291,8 @@ class Product {
         'bottle_ml': bottleMl,
         'unit': unit.wire,
         'track_variants': trackVariants ? 1 : 0,
+        // 0 for a product not stocked by weight; see the field's doc.
+        'ml_per_kg': millilitresPerKilogram,
         'half_price': halfPrice?.minorUnits,
         'quarter_price': quarterPrice?.minorUnits,
         'excise_stamp_batch': exciseStampBatch,
@@ -300,6 +317,10 @@ class Product {
         // error anywhere.
         unit: ProductUnit.parse(m['unit'] as String?),
         trackVariants: ((m['track_variants'] as num?)?.toInt() ?? 0) == 1,
+        // 0 for a row written before tanks existed, and for every product that
+        // is not stocked by weight — see the field's doc.
+        millilitresPerKilogram:
+            (m['ml_per_kg'] as num?)?.toDouble() ?? 0,
         halfPrice: (m['half_price'] as num?) == null
             ? null
             : Money.fromMinor((m['half_price'] as num).toInt()),

@@ -34,6 +34,7 @@ import 'package:image_picker/image_picker.dart';
 import '../services/product_image_store.dart';
 import '../ui/components/product_photo.dart';
 import '../utils/validation_utils.dart';
+import 'tank_form_sheet.dart';
 
 class InventoryScreen extends StatefulWidget {
   const InventoryScreen({this.focusedProductId, super.key});
@@ -415,6 +416,18 @@ class _InventoryScreenState extends State<InventoryScreen>
         tooltip: l10n.inventoryAddProduct,
         child: const Icon(Icons.add),
       ),
+      // A tank is not another kind of bottle: it is stocked by weight, has two
+      // named taps, and is poured by the cup, so it gets its own form rather
+      // than one more option on this screen's product editor.
+      persistentFooterButtons: isOwner
+          ? <Widget>[
+              TextButton.icon(
+                onPressed: () => showTankFormSheet(context),
+                icon: const Icon(Icons.propane_tank_outlined, size: 18),
+                label: Text(l10n.tankAddAction),
+              ),
+            ]
+          : null,
       body: RefreshIndicator(
         onRefresh: _load,
         child: _products.isEmpty && _loading
@@ -952,6 +965,59 @@ class _PhotoRow extends StatelessWidget {
       ],
     );
   }
+}
+
+/// What the product is measured in, as one choice.
+///
+/// The product form's only unit control — until now `_unit` was read from the
+/// row and written back unchanged, so a product created here was always
+/// `each`, and a shop could not pour a shot cup, sell a litre, or stock a tank.
+///
+/// It sits immediately above the size field on purpose: the size field's label
+/// changes with the choice, and "750" means a different thing for a counted
+/// bottle, a litre unit, a millilitre unit and a cup.
+class _UnitPicker extends StatelessWidget {
+  const _UnitPicker({required this.value, required this.onChanged});
+
+  final ProductUnit value;
+  final ValueChanged<ProductUnit> onChanged;
+
+  @override
+  Widget build(BuildContext context) {
+    final AppLocalizations l10n = AppLocalizations.of(context);
+    return SegmentedChoice<ProductUnit>(
+      value: value,
+      semanticLabel: l10n.productUnitPickerLabel,
+      options: <SegmentedOption<ProductUnit>>[
+        SegmentedOption<ProductUnit>(
+            value: ProductUnit.each, label: l10n.productUnitEach),
+        SegmentedOption<ProductUnit>(
+            value: ProductUnit.litre, label: l10n.productUnitLitre),
+        SegmentedOption<ProductUnit>(
+            value: ProductUnit.millilitre, label: l10n.productUnitMillilitre),
+        SegmentedOption<ProductUnit>(
+            value: ProductUnit.cup, label: l10n.productUnitCup),
+      ],
+      onChanged: onChanged,
+    );
+  }
+}
+
+/// What the size field should be called for this unit.
+///
+/// One field, several names, because the number is the same shape in all of them
+/// but the thing it describes is not.
+String _sizeLabelOf(BuildContext context, ProductUnit unit) {
+  final AppLocalizations l10n = AppLocalizations.of(context);
+  return switch (unit) {
+    ProductUnit.each => l10n.inventoryFieldSizeMl,
+    ProductUnit.litre => l10n.productSizeLabelLitre,
+    ProductUnit.millilitre => l10n.productSizeLabelMillilitre,
+    ProductUnit.cup => l10n.productSizeLabelCup,
+    // A tank's capacity, in the litres it holds once its kilograms have been
+    // converted: the same field, read from the other side of the conversion.
+    ProductUnit.kilogram => l10n.productSizeLabelKilogram,
+  };
 }
 
 class _ProductEditor extends StatefulWidget {
@@ -1915,7 +1981,10 @@ class _ProductEditorState extends State<_ProductEditor> {
       }
       // The sell tab is kept alive in an IndexedStack and would otherwise keep
       // selling the catalogue as it was before this save.
-      if (mounted) context.read<HomeShellTabs>().markCatalogueChanged();
+      //
+      // The module-level signal, so a save made from a screen pushed above the
+      // shell reaches the till too.
+      if (mounted) markCatalogueChanged();
       widget.onSaved();
       if (mounted) Navigator.pop(context);
       // Push just this row to the backend after the editor closes. A price
@@ -2005,14 +2074,41 @@ class _ProductEditorState extends State<_ProductEditor> {
                         keyboardType: TextInputType.number)),
               ]),
               SizedBox(height: spacing.md),
+              // What the product is measured in, and the one control this form
+              // has never had. `_unit` was read from the row and written back
+              // unchanged, so a product created HERE was always `each` — and a
+              // shop with plenty of stock could then not pour a single shot cup,
+              // because "pour from" only offers volumetric drinks. Every shot
+              // cup, every litre of beer and every tank depends on this.
+              _UnitPicker(
+                value: _unit,
+                onChanged: (ProductUnit unit) =>
+                    setState(() => _unit = unit),
+              ),
+              SizedBox(height: spacing.md),
               TextField(
                   controller: _bottleMl,
                   decoration: InputDecoration(
-                      labelText:
-                          AppLocalizations.of(context).inventoryFieldSizeMl,
+                      labelText: _sizeLabelOf(context, _unit),
                       helperText: AppLocalizations.of(context)
                           .inventoryFieldSizeMlHelper),
                   keyboardType: TextInputType.number),
+              // The one thing a cup product needs to be told: it is poured from
+              // something bigger, and where. Without this the next screen is a
+              // dead end, which is exactly how this used to read.
+              if (_unit == ProductUnit.cup)
+                Padding(
+                  padding: EdgeInsetsDirectional.only(
+                    start: spacing.md,
+                    end: spacing.md,
+                    top: spacing.xs,
+                  ),
+                  child: Text(
+                    AppLocalizations.of(context).productUnitCupPourHint,
+                    style: AppTypography.of(context).bodySmall?.copyWith(
+                        color: AppColors.of(context).onSurfaceMuted),
+                  ),
+                ),
               if (_visibleSizeSuggestions.isNotEmpty) _sizeSuggestionChips(),
               Row(children: [
                 Expanded(

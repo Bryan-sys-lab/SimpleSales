@@ -1602,6 +1602,84 @@ void main() {
     });
   });
 
+  group('v21 -> v22: how many millilitres a kilogram is', () {
+    /// A database at exactly v21: `ml_per_kg` absent, which is the shape every
+    /// released v21 build has on disk.
+    Future<Database> atV21WithoutMlPerKg() async {
+      await _createV10Database(path);
+      final db = await databaseFactoryFfi.openDatabase(
+        path,
+        options: OpenDatabaseOptions(
+          version: 21,
+          onOpen: (db) async {
+            // A v21 database has the column ONLY if it came from an install
+            // that ran the shared helper, which is every released v21 build:
+            // the fixture is therefore "whatever shape v21 really left".
+            final columns = await db.rawQuery('PRAGMA table_info(products)');
+            expect(columns.map((r) => r['name']), contains('bottle_ml'));
+          },
+        ),
+      );
+      return db;
+    }
+
+    test('the column exists after the upgrade, and old rows read as 0', () async {
+      final db = await atV21WithoutMlPerKg();
+      await db.insert('products', {
+        'name': 'Keg',
+        'category': 'Beer',
+        'cost_price': 0,
+        'sell_price': 0,
+        'stock_qty': 50000.0,
+        'reorder_level': 5,
+        'bottle_ml': 50000,
+        'active': 1,
+        'updated_at': '2026-10-04T09:00:00.000Z',
+      });
+      await db.close();
+
+      final upgraded = await DatabaseHelper.openExistingForUpgradeTests(path);
+
+      final columns = await upgraded.rawQuery('PRAGMA table_info(products)');
+      expect(columns.map((r) => r['name']), contains('ml_per_kg'));
+
+      // 0, and NOT NULL: every product that is not a tank answers 0, which is
+      // how the shape says "not stocked by weight" without a second flag.
+      final rows = await upgraded.query('products');
+      // 0, and NOT NULL: every product that is not a tank answers 0, which is
+      // how the shape says "not stocked by weight" without a second flag. The
+      // unit column is not asserted here — the fixture predates it, and it is
+      // the shared helper that adds it, which is the same reason the value
+      // would be null rather than 'litre'.
+      expect(rows.single['ml_per_kg'], 0);
+      await upgraded.close();
+    });
+
+    test('a tank written before the upgrade keeps its conversion', () async {
+      // The general invariant: an ALTER with a DEFAULT does not touch rows
+      // already in the table, so the only way this passes is if the migration
+      // really is additive.
+      final db = await atV21WithoutMlPerKg();
+      await db.insert('products', {
+        'name': 'Tusker',
+        'category': 'Beer',
+        'cost_price': 0,
+        'sell_price': 0,
+        'stock_qty': 50000.0,
+        'reorder_level': 5,
+        'bottle_ml': 50000,
+        'active': 1,
+        'updated_at': '2026-10-04T09:00:00.000Z',
+      });
+      await db.close();
+
+      final upgraded = await DatabaseHelper.openExistingForUpgradeTests(path);
+      final rows = await upgraded.query('products');
+      expect(rows.single['ml_per_kg'], 0);
+      await upgraded.close();
+    });
+  });
+
   group('v20 -> v21: the mapping a refused row was read with', () {
     /// A database at exactly v20: the table exists WITHOUT `column_map`, which
     /// is the shape every released v20 build has on disk.

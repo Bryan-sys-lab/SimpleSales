@@ -106,7 +106,7 @@ class DatabaseHelper {
   /// shipped — always add a new one, even for a one-line fix — because a
   /// shop's phone may be several versions behind and needs every step run
   /// in order to land on the current schema without data loss.
-  static const _schemaVersion = 21;
+  static const _schemaVersion = 22;
 
   /// Slack allowed when deciding whether a container has enough left for a sale.
   ///
@@ -395,6 +395,25 @@ SELECT name FROM staff GROUP BY name HAVING COUNT(*) = 1
       if (!columns.any((row) => row['name'] == 'column_map')) {
         await db.execute(
             'ALTER TABLE import_needs_attention ADD COLUMN column_map TEXT');
+      }
+    }
+    if (oldVersion < 22) {
+      // How many millilitres one kilogram of the product is.
+      //
+      // A tank of beer is stocked by WEIGHT — the number on the delivery note
+      // and on the scale — and sold by the cup, which is millilitres. This is
+      // the bridge: `kg x this` is the volume the app counts and pours, and
+      // [Product.millilitresPerKilogram] carries the per-product factor because
+      // not everything that arrives by weight holds a litre per kilogram.
+      //
+      // Defaults to 0, which is the field's way of saying "not stocked by
+      // weight" — every existing row answers 0 and stays a volume product, so
+      // nothing about the shop's current catalogue changes shape on upgrade.
+      final productColumns =
+          await db.rawQuery('PRAGMA table_info(products)');
+      if (!productColumns.any((row) => row['name'] == 'ml_per_kg')) {
+        await db.execute(
+            'ALTER TABLE products ADD COLUMN ml_per_kg REAL NOT NULL DEFAULT 0');
       }
     }
   }
@@ -744,6 +763,20 @@ SELECT name FROM staff GROUP BY name HAVING COUNT(*) = 1
     await db.execute(
         'ALTER TABLE products ADD COLUMN track_variants INTEGER NOT NULL DEFAULT 0');
 
+    // --- Weight-stocked tanks -----------------------------------------------
+    //
+    // How many millilitres one kilogram of the product is: the bridge between a
+    // tank's stock, which arrives on a scale, and the volume the pour maths
+    // counts. 0 means "not stocked by weight", so every product that is not a
+    // tank answers 0 and stays a volume product — an old row and a fresh install
+    // describe the same shape.
+    //
+    // Added here as well as in the v22 migration step because this helper runs
+    // from BOTH paths, and a column defined in only one of them is a column a
+    // fresh install does not have.
+    await db.execute(
+        'ALTER TABLE products ADD COLUMN ml_per_kg REAL NOT NULL DEFAULT 0');
+
     // --- Variant barcodes --------------------------------------------------
     //
     // Reuses `product_barcodes` rather than a second table so that a code still
@@ -989,6 +1022,11 @@ SELECT name FROM staff GROUP BY name HAVING COUNT(*) = 1
         image_path TEXT
       )
     ''');
+    // `unit`, `track_variants`, `ml_per_kg` and every other column added since
+    // v11 are NOT written here. They are added by the ALTERs in the migration
+    // steps — and `_createVariantsAndImportTables` runs its ALTERs on a database
+    // this method has JUST created, so listing a column in both places is
+    // `duplicate column name` on every fresh install.
     await db.execute('''
       CREATE TABLE sales (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -1729,7 +1767,50 @@ SELECT name FROM staff GROUP BY name HAVING COUNT(*) = 1
     }
   }
 
-  /// Bulk upsert in a single transaction.
+  /// Runs [action] in one transaction, and gives back the rows it wrote.
+  ///
+  /// The seam a multi-row save uses so that N rows are one journal commit and
+  /// one all-or-nothing unit. `upsertProducts` already does this for a batch of
+  /// products; this exposes the same guarantee to a save whose rows are of
+  /// DIFFERENT kinds — a tank and its two taps — which is otherwise three
+  /// implicit transactions, and a failure between them leaving the product with
+  /// no taps to pour from.
+  ///
+  /// Returns the inserted product id, which is what `product_variants.product_id`
+  /// needs and why the taps cannot simply be written first.
+  Future<int> saveTank({
+    required Product tank,
+    required List<ProductVariant> taps,
+  }) async {
+    final db = await database;
+    return db.transaction((txn) async {
+      final values = tank.toMap()..remove('id');
+      if (tank.remoteId == null) values.remove('remote_id');
+      final int tankId = await txn.insert('products', values);
+      for (final tap in taps) {
+        await upsertVariantInTransaction(
+          txn,
+          ProductVariant(
+            id: tap.id,
+            // The row the tap hangs off, resolved here because it does not
+            // exist until the tank does.
+            productId: tankId,
+            name: tap.name,
+            sku: tap.sku,
+            unit: tap.unit,
+            sizeMl: tap.sizeMl,
+            sellPrice: tap.sellPrice,
+            costPrice: tap.costPrice,
+            stockQty: tap.stockQty,
+            reorderLevel: tap.reorderLevel,
+            position: tap.position,
+            active: tap.active,
+          ),
+        );
+      }
+      return tankId;
+    });
+  }
   ///
   /// Bulk import previously called [upsertProduct] per row, which meant one
   /// implicit transaction and one journal fsync per product. This makes an

@@ -123,6 +123,7 @@ class _Kpi {
     required this.value,
     this.caption,
     this.hero = false,
+    this.onTap,
   });
 
   final IconData icon;
@@ -132,6 +133,10 @@ class _Kpi {
 
   /// The one figure the shop is judged on. Bigger, and tinted.
   final bool hero;
+
+  /// Set when the card is a door: a count of transactions is the figure a
+  /// manager opens the list of.
+  final VoidCallback? onTap;
 }
 
 /// Today's four figures, in a row on a wide window and a 2 x 2 grid on a phone.
@@ -143,11 +148,16 @@ class DashboardKpis extends StatelessWidget {
   const DashboardKpis({
     required this.totals,
     required this.scopeLabel,
+    this.onTransactions,
     super.key,
   });
 
   final DailyTotals totals;
   final String scopeLabel;
+
+  /// Where the transactions card goes. Null for a caller that cannot navigate
+  /// — a preview, or a role the list is not offered to.
+  final VoidCallback? onTransactions;
 
   /// Below this the four cards go two by two.
   static const double _rowBreakpoint = 720;
@@ -172,8 +182,11 @@ class DashboardKpis extends StatelessWidget {
       ),
       _Kpi(
         icon: Icons.receipt_long_outlined,
-        label: 'Transactions',
+        label: l10n.dashboardTransactionsLabel,
         value: '${totals.transactions}',
+        // A door, not a figure: the count is the question "who sold these?" and
+        // the list is the answer. Without a target the card stays inert.
+        onTap: onTransactions,
       ),
       _Kpi(
         icon: Icons.shopping_basket_outlined,
@@ -254,9 +267,14 @@ class _KpiCard extends StatelessWidget {
     final Color ink = hero ? colors.onAccentContainer : colors.onSurface;
     final Color quiet = hero ? colors.onAccentContainer : colors.onSurfaceMuted;
     final double size = hero ? (compact ? 22 : 32) : (compact ? 18 : 24);
+    final bool isDoor = kpi.onTap != null;
 
+    // A card that opens something says so, twice: once to a screen reader, and
+    // once as a chevron for everyone else. A count with no way in is a figure
+    // the reader then has to go hunting for.
     return Semantics(
       container: true,
+      button: isDoor,
       label: kpi.caption == null
           ? '${kpi.label}: ${kpi.value}'
           : '${kpi.label}: ${kpi.value}. ${kpi.caption}',
@@ -264,14 +282,17 @@ class _KpiCard extends StatelessWidget {
         child: SurfaceCard(
           color: hero ? colors.accentContainer : null,
           padding: EdgeInsets.all(spacing.xl),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            mainAxisSize: MainAxisSize.min,
+          onTap: kpi.onTap,
+          child: Stack(
             children: <Widget>[
-              Row(
+              Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                mainAxisSize: MainAxisSize.min,
                 children: <Widget>[
-                  Container(
-                    padding: EdgeInsets.all(spacing.xs),
+                  Row(
+                    children: <Widget>[
+                      Container(
+                        padding: EdgeInsets.all(spacing.xs),
                     decoration: BoxDecoration(
                       color: hero
                           ? colors.accent.withValues(alpha: 0.15)
@@ -314,6 +335,26 @@ class _KpiCard extends StatelessWidget {
                   style: type.bodySmall?.copyWith(color: quiet),
                 ),
               ],
+            ],
+              ),
+              // The affordance for a door: no icon colour change, one chevron
+              // in the corner — the label already says what the card is and the
+              // figure is why you would open it.
+              //
+              // `PositionedDirectional` puts it on the true leading edge, which
+              // is the whole of the RTL work: a direction-aware ICON would have
+              // to pick between two glyphs, and a chevron that points the way
+              // the layout reads is the same picture either way round here.
+              if (isDoor)
+                PositionedDirectional(
+                  top: spacing.xs,
+                  end: spacing.xs,
+                  child: Icon(
+                    Icons.chevron_right,
+                    size: 18,
+                    color: quiet,
+                  ),
+                ),
             ],
           ),
         ),

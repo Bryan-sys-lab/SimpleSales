@@ -55,6 +55,8 @@ List<AppDestination> visibleDestinations(AppState state) {
 class HomeShellTabs extends ChangeNotifier {
   HomeShellTabs(this._shell, this._state) {
     _state.addListener(_onAppStateChanged);
+    _catalogueListeners.add(_onCatalogueChange);
+    _catalogueGeneration = catalogueGeneration;
   }
 
   StatefulNavigationShell _shell;
@@ -92,7 +94,14 @@ class HomeShellTabs extends ChangeNotifier {
 
   int _catalogueGeneration = 0;
 
-  int get catalogueGeneration => _catalogueGeneration;
+  /// The catalogue's generation as this shell last saw it.
+  ///
+  /// Backed by the module-level [catalogueGeneration], which is the authority: a
+  /// screen pushed above the shell announces there and this follows it. There is
+  /// deliberately no `markCatalogueChanged` member on this class — a member of
+  /// that name shadows the module-level function inside the class and recurses
+  /// forever, which is an easy mistake to make.
+  int get catalogueGenerationSeen => _catalogueGeneration;
 
   /// Moves the shell to [destination].
   ///
@@ -111,16 +120,67 @@ class HomeShellTabs extends ChangeNotifier {
     );
   }
 
-  void markCatalogueChanged() {
-    _catalogueGeneration++;
-    notifyListeners();
-  }
-
   @override
   void dispose() {
     _disposed = true;
+    _catalogueListeners.remove(_onCatalogueChange);
     _state.removeListener(_onAppStateChanged);
     super.dispose();
+  }
+
+  void _onCatalogueChange() {
+    _catalogueGeneration = catalogueGeneration;
+    notifyListeners();
+  }
+}
+
+/// A catalogue change that happened ABOVE the shell.
+///
+/// Product detail, shot cups and the imports answer are pushed on the ROOT
+/// navigator, so they cover the whole shell — which means they sit OUTSIDE the
+/// subtree `ChangeNotifierProvider<HomeShellTabs>` is in, and
+/// `context.read<HomeShellTabs>()` throws `ProviderNotFoundException` where
+/// they stand. That is exactly what shot cups did: the cup was written, the
+/// notification threw, and neither the list nor the till ever saw it — "I
+/// created a cup and nothing happened".
+///
+/// So the generation count and its listeners live at module level, the shell
+/// subscribes to them, and any screen anywhere can announce. Same shape as
+/// [systemBackHandler]: state that has to outlive one subtree lives in one
+/// module-level place with a seam a test can reach.
+final Set<VoidCallback> _catalogueListeners = <VoidCallback>{};
+
+/// The module-level listeners, exposed for a test only.
+///
+/// Nothing in the app needs them: a screen that wants to announce calls
+/// [markCatalogueChanged] and a screen that wants to hear holds the provider.
+/// A test needs to prove an announcement travels from a screen ABOVE the shell
+/// to a listener inside it, and building a whole shell to do that is a lot of
+/// scaffolding for one fact.
+@visibleForTesting
+Set<VoidCallback> get catalogueListenersForTesting => _catalogueListeners;
+
+/// Puts the generation back to zero, for a test only.
+///
+/// The counter is module level on purpose — it has to outlive one subtree — so a
+/// test file that only reads it must be able to say which number it expects.
+@visibleForTesting
+void resetCatalogueGenerationForTesting() => catalogueGeneration = 0;
+
+/// The catalogue's generation: incremented on every change, for a listener that
+/// cannot use a callback — a late `addPostFrameCallback` that needs to know
+/// whether what it is about to read is still what it saw.
+int catalogueGeneration = 0;
+
+/// Announces that the catalogue changed, everywhere.
+///
+/// Safe to call from any screen, at any time, including before the shell has
+/// ever been built: with no shell there is nothing to notify, and the next
+/// screen to read the catalogue reads the database anyway.
+void markCatalogueChanged() {
+  catalogueGeneration++;
+  for (final VoidCallback listener in _catalogueListeners.toList()) {
+    listener();
   }
 }
 
