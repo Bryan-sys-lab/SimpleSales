@@ -18,6 +18,7 @@ import 'services/app_state.dart';
 import 'services/backend_service.dart';
 import 'services/app_update_service.dart';
 import 'services/live_channel_service.dart';
+import 'services/telemetry_service.dart';
 import 'services/failure_recorder.dart';
 import 'theme/app_theme.dart';
 import 'services/app_release.dart';
@@ -311,13 +312,37 @@ class _UpdateGate extends StatefulWidget {
   State<_UpdateGate> createState() => _UpdateGateState();
 }
 
-class _UpdateGateState extends State<_UpdateGate> {
+class _UpdateGateState extends State<_UpdateGate>
+    with WidgetsBindingObserver {
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
+    // Record the session start. Telemetry is lazy: the first touch boots it.
+    telemetry.recordAppOpen();
     // After the first frame, so the check runs against a mounted tree and any
     // prompt it raises has a navigator to sit above.
     WidgetsBinding.instance.addPostFrameCallback((_) => _check());
+  }
+
+  @override
+  void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    super.dispose();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    switch (state) {
+      case AppLifecycleState.resumed:
+        telemetry.recordAppOpen();
+      case AppLifecycleState.paused:
+      case AppLifecycleState.inactive:
+        telemetry.recordAppClose();
+      case AppLifecycleState.detached:
+      case AppLifecycleState.hidden:
+        break;
+    }
   }
 
   Future<void> _check() async {

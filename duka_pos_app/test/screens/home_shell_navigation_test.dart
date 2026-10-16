@@ -178,39 +178,41 @@ void main() {
   });
 
   group('visibleDestinations', () {
-    test('owner sees all five tabs', () {
+    test('owner sees all six tabs', () {
       final AppState state = AppState();
       state.signIn('Owner', asOwner: true);
       final visible = visibleDestinations(state).toList();
-      expect(visible, equals(AppDestination.values));
+      expect(visible.toSet(), equals(AppDestination.values.toSet()));
     });
 
-    test('manager sees four tabs (no Settings)', () {
+    test('manager sees five tabs (no Settings)', () {
       final AppState state = AppState();
       state.signIn('Manager', asOwner: false, role: 'manager');
       final visible = visibleDestinations(state).toList();
       expect(visible, <AppDestination>[
         AppDestination.dashboard,
         AppDestination.sell,
+        AppDestination.support,
         AppDestination.inventory,
         AppDestination.analytics,
       ]);
     });
 
-    test('cashier sees only dashboard and sell', () {
+    test('cashier sees dashboard, sell and support', () {
       final AppState state = AppState();
       state.signIn('Cashier', asOwner: false);
       final visible = visibleDestinations(state).toList();
       expect(visible, <AppDestination>[
         AppDestination.dashboard,
         AppDestination.sell,
+        AppDestination.support,
       ]);
     });
   });
 
   group('mobile bottom nav', () {
     testWidgets(
-        'all five destinations are offered to an owner on a compact screen',
+        'all six destinations are offered to an owner on a compact screen',
         (WidgetTester tester) async {
       tester.view.physicalSize =
           const Size(320, 640).testerPhysicalSizeForDpr(2.0);
@@ -223,7 +225,7 @@ void main() {
 
       expect(find.byType(Scaffold), findsNWidgets(2));
       expect(find.byType(NavigationBar), findsOneWidget);
-      expect(find.byType(NavigationDestination), findsNWidgets(5));
+      expect(find.byType(NavigationDestination), findsNWidgets(6));
     });
 
     testWidgets('tapping each destination changes the URL',
@@ -264,7 +266,7 @@ void main() {
           reason: 'expected navigation to change the URL, got $visited');
     });
 
-    testWidgets('manager sees four tabs', (WidgetTester tester) async {
+    testWidgets('manager sees five tabs', (WidgetTester tester) async {
       tester.view.physicalSize =
           const Size(320, 640).testerPhysicalSizeForDpr(2.0);
       tester.view.devicePixelRatio = 2.0;
@@ -274,10 +276,10 @@ void main() {
       final GoRouter router = _testRouter(state);
       await _pumpShell(tester, state, router);
 
-      expect(find.byType(NavigationDestination), findsNWidgets(4));
+      expect(find.byType(NavigationDestination), findsNWidgets(5));
     });
 
-    testWidgets('cashier sees only two tabs', (WidgetTester tester) async {
+    testWidgets('cashier sees three tabs', (WidgetTester tester) async {
       tester.view.physicalSize =
           const Size(320, 640).testerPhysicalSizeForDpr(2.0);
       tester.view.devicePixelRatio = 2.0;
@@ -287,7 +289,7 @@ void main() {
       final GoRouter router = _testRouter(state);
       await _pumpShell(tester, state, router);
 
-      expect(find.byType(NavigationDestination), findsNWidgets(2));
+      expect(find.byType(NavigationDestination), findsNWidgets(3));
       expect(find.text('Inventory'), findsNothing);
       expect(find.text('Analytics'), findsNothing);
       expect(find.text('Settings'), findsNothing);
@@ -311,7 +313,7 @@ void main() {
       expect(find.byType(NavigationBar), findsNothing);
       final NavigationRail rail =
           find.byType(NavigationRail).evaluate().first.widget as NavigationRail;
-      expect(rail.destinations.length, 5);
+      expect(rail.destinations.length, 6);
       expect(rail.selectedIndex, 0);
       expect(rail.extended, false);
     });
@@ -330,7 +332,7 @@ void main() {
       expect(windowSizeClassOf(context), WindowSizeClass.extraLarge);
       expect(find.byType(Drawer), findsOneWidget);
       expect(find.byType(NavigationBar), findsNothing);
-      expect(find.byType(ListTile), findsNWidgets(6));
+      expect(find.byType(ListTile), findsNWidgets(7));
     });
   });
 

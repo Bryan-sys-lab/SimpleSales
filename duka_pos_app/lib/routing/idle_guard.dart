@@ -31,7 +31,9 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
 import '../services/app_state.dart';
+import '../services/app_update_service.dart';
 import '../services/live_channel_service.dart';
+import '../services/telemetry_service.dart';
 
 /// How long a signed-in till may sit untouched before it signs itself out.
 ///
@@ -61,6 +63,7 @@ class IdleGuard extends StatefulWidget {
 class _IdleGuardState extends State<IdleGuard> with WidgetsBindingObserver {
   Timer? _timer;
   LiveChannelService? _channel;
+  bool _wasIdle = false;
 
   @override
   void initState() {
@@ -105,9 +108,18 @@ class _IdleGuardState extends State<IdleGuard> with WidgetsBindingObserver {
 
   void _reset() {
     if (!mounted) return;
+    if (_wasIdle) {
+      telemetry.recordIdleEnd();
+      _wasIdle = false;
+    }
     _timer?.cancel();
     _timer = Timer(widget.timeout, () {
       if (!mounted) return;
+      _wasIdle = true;
+      telemetry.recordIdleStart();
+      // An idle till is the right time to download an update silently, if the
+      // owner has allowed automatic updates.
+      unawaited(AppUpdateService().autoDownloadWhenIdle());
       // An idle sign-out is the same event as a deliberate one — same session
       // ended, same tokens to clear — so it goes through `signOut` rather than a
       // shortcut that would leave the online identity alive on the device. No

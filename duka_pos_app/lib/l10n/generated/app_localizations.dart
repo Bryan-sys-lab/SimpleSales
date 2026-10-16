@@ -893,6 +893,18 @@ abstract class AppLocalizations {
   /// **'Shop'**
   String get navSettingsShort;
 
+  /// No description provided for @navSupport.
+  ///
+  /// In en, this message translates to:
+  /// **'Support'**
+  String get navSupport;
+
+  /// No description provided for @navSupportShort.
+  ///
+  /// In en, this message translates to:
+  /// **'Help'**
+  String get navSupportShort;
+
   /// No description provided for @shellRoleOwner.
   ///
   /// In en, this message translates to:
@@ -2146,6 +2158,108 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'Version {version} is ready. Your shop\'s data is kept — this updates the app in place instead of replacing it.'**
   String settingsUpdatesPromptBody(Object version);
+
+  /// No description provided for @settingsUpdatesAutoLabel.
+  ///
+  /// In en, this message translates to:
+  /// **'Auto-update when idle'**
+  String get settingsUpdatesAutoLabel;
+
+  /// No description provided for @settingsUpdatesAutoSubtitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Downloads and installs updates while the till is quiet, so the shop never has to stop selling.'**
+  String get settingsUpdatesAutoSubtitle;
+
+  /// No description provided for @supportTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Support'**
+  String get supportTitle;
+
+  /// No description provided for @supportTicketsSection.
+  ///
+  /// In en, this message translates to:
+  /// **'Support tickets'**
+  String get supportTicketsSection;
+
+  /// No description provided for @supportTicketsSubtitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Tell us what is broken so we can fix it.'**
+  String get supportTicketsSubtitle;
+
+  /// No description provided for @supportNoTickets.
+  ///
+  /// In en, this message translates to:
+  /// **'No support tickets yet. File one below.'**
+  String get supportNoTickets;
+
+  /// No description provided for @supportFileTicketLabel.
+  ///
+  /// In en, this message translates to:
+  /// **'What is wrong?'**
+  String get supportFileTicketLabel;
+
+  /// No description provided for @supportTicketHint.
+  ///
+  /// In en, this message translates to:
+  /// **'Describe the problem — what you were doing, what happened, and what you expected instead.'**
+  String get supportTicketHint;
+
+  /// No description provided for @supportFileTicketAction.
+  ///
+  /// In en, this message translates to:
+  /// **'File ticket'**
+  String get supportFileTicketAction;
+
+  /// No description provided for @supportFeatureRequestsSection.
+  ///
+  /// In en, this message translates to:
+  /// **'Feature requests'**
+  String get supportFeatureRequestsSection;
+
+  /// No description provided for @supportFeatureRequestsSubtitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Tell us what you need next.'**
+  String get supportFeatureRequestsSubtitle;
+
+  /// No description provided for @supportNoRequests.
+  ///
+  /// In en, this message translates to:
+  /// **'No feature requests yet. File one below.'**
+  String get supportNoRequests;
+
+  /// No description provided for @supportFileRequestLabel.
+  ///
+  /// In en, this message translates to:
+  /// **'What would you like?'**
+  String get supportFileRequestLabel;
+
+  /// No description provided for @supportRequestHint.
+  ///
+  /// In en, this message translates to:
+  /// **'Describe the feature — what it should do, and when you would use it.'**
+  String get supportRequestHint;
+
+  /// No description provided for @supportFileRequestAction.
+  ///
+  /// In en, this message translates to:
+  /// **'File request'**
+  String get supportFileRequestAction;
+
+  /// No description provided for @supportDescriptionLabel.
+  ///
+  /// In en, this message translates to:
+  /// **'Description'**
+  String get supportDescriptionLabel;
+
+  /// No description provided for @supportDescriptionHint.
+  ///
+  /// In en, this message translates to:
+  /// **'More detail helps us fix it faster.'**
+  String get supportDescriptionHint;
 
   /// No description provided for @settingsCashMethod.
   ///

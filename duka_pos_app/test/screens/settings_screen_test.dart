@@ -174,7 +174,7 @@ void main() {
       // paper came out is looking for a sentence, not for the direction a
       // toggle happens to be pointing.
       expect(find.text(l10n.settingsPrintingOnSubtitle), findsOneWidget);
-      expect(find.byType(Switch), findsNWidgets(4));
+      expect(find.byType(Switch), findsNWidgets(5));
       tester.expectNoOverflow('settings printer section');
     });
 

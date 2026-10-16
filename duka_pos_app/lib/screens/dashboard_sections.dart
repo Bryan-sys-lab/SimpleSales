@@ -636,26 +636,15 @@ class _DashboardHourlySalesState extends State<DashboardHourlySales> {
     return DashboardPanel(
       sortKey: 1,
       title: l10n.dashboardSalesByHour,
+      trailing: hasData
+          ? _PeakHourBadge(
+              hour: _hourLabel(peak.hour, l10n),
+              amount: formatMoney(Money.fromMinor(peak.salesMinor)),
+            )
+          : null,
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Row(
-            children: [
-              Expanded(
-                child: Text(
-                  l10n.dashboardSalesByHour,
-                  style: AppTypography.of(context).titleMedium,
-                ),
-              ),
-              if (hasData) ...[
-                SizedBox(width: spacing.md),
-                _PeakHourBadge(
-                  hour: _hourLabel(peak.hour, l10n),
-                  amount: formatMoney(Money.fromMinor(peak.salesMinor)),
-                ),
-              ],
-            ],
-          ),
           SizedBox(height: spacing.lg),
           if (!hasData)
             Center(

@@ -49,6 +49,7 @@ import 'package:path_provider/path_provider.dart';
 
 import 'app_release.dart';
 import 'backend_service.dart';
+import 'telemetry_service.dart';
 
 /// How far the download has got, for a progress bar.
 @immutable
@@ -156,6 +157,33 @@ class AppUpdateService extends ChangeNotifier {
   /// The release waiting, if any.
   AppRelease? get pendingRelease =>
       _check is UpdateAvailable ? (_check as UpdateAvailable).release : null;
+
+  /// Whether the owner has allowed automatic updates (download + install when
+  /// the till is idle). Lives in telemetry so it survives a service restart.
+  bool get autoUpdateEnabled => telemetry.autoUpdateEnabled;
+
+  set autoUpdateEnabled(bool value) {
+    telemetry.autoUpdateEnabled = value;
+  }
+
+  /// Downloads the pending APK when the till is idle, if the owner has
+  /// allowed automatic updates.
+  ///
+  /// Called by the idle guard when the till goes quiet. If auto-update is not
+  /// enabled, or there is nothing to download, this is a silent no-op.
+  Future<void> autoDownloadWhenIdle() async {
+    if (!autoUpdateEnabled) return;
+    if (pendingRelease == null) return;
+    if (_busy) return;
+    if (!telemetry.isIdle) return;
+    try {
+      await download();
+    } on Object {
+      // A failed auto-download is not shown to the owner: the manual check in
+      // Settings is the visible path, and an unattended till must not surface
+      // errors nobody is there to act on.
+    }
+  }
 
   /// Asks the server what the current release is.
   ///

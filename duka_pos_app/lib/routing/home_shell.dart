@@ -23,6 +23,7 @@ List<AppDestination> visibleDestinations(AppState state) {
   return <AppDestination>[
     AppDestination.dashboard,
     AppDestination.sell,
+    AppDestination.support,
     // Inventory, Analytics and Reports report the whole shop. A cashier's
     // business is this counter, not the month.
     if (state.canManageStock) AppDestination.inventory,

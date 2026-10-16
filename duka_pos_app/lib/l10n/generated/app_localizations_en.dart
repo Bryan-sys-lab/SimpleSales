@@ -493,6 +493,12 @@ class AppLocalizationsEn extends AppLocalizations {
   String get navSettingsShort => 'Shop';
 
   @override
+  String get navSupport => 'Support';
+
+  @override
+  String get navSupportShort => 'Help';
+
+  @override
   String get shellRoleOwner => 'Owner';
 
   @override
@@ -1279,6 +1285,61 @@ class AppLocalizationsEn extends AppLocalizations {
   String settingsUpdatesPromptBody(Object version) {
     return 'Version $version is ready. Your shop\'s data is kept — this updates the app in place instead of replacing it.';
   }
+
+  @override
+  String get settingsUpdatesAutoLabel => 'Auto-update when idle';
+
+  @override
+  String get settingsUpdatesAutoSubtitle =>
+      'Downloads and installs updates while the till is quiet, so the shop never has to stop selling.';
+
+  @override
+  String get supportTitle => 'Support';
+
+  @override
+  String get supportTicketsSection => 'Support tickets';
+
+  @override
+  String get supportTicketsSubtitle =>
+      'Tell us what is broken so we can fix it.';
+
+  @override
+  String get supportNoTickets => 'No support tickets yet. File one below.';
+
+  @override
+  String get supportFileTicketLabel => 'What is wrong?';
+
+  @override
+  String get supportTicketHint =>
+      'Describe the problem — what you were doing, what happened, and what you expected instead.';
+
+  @override
+  String get supportFileTicketAction => 'File ticket';
+
+  @override
+  String get supportFeatureRequestsSection => 'Feature requests';
+
+  @override
+  String get supportFeatureRequestsSubtitle => 'Tell us what you need next.';
+
+  @override
+  String get supportNoRequests => 'No feature requests yet. File one below.';
+
+  @override
+  String get supportFileRequestLabel => 'What would you like?';
+
+  @override
+  String get supportRequestHint =>
+      'Describe the feature — what it should do, and when you would use it.';
+
+  @override
+  String get supportFileRequestAction => 'File request';
+
+  @override
+  String get supportDescriptionLabel => 'Description';
+
+  @override
+  String get supportDescriptionHint => 'More detail helps us fix it faster.';
 
   @override
   String get settingsCashMethod => 'Cash';

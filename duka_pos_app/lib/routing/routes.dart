@@ -41,6 +41,7 @@ abstract final class Routes {
   static const String imports = '/settings/imports';
   static const String taxSettings = '/settings/tax';
   static const String cameraScan = '/sell/scan';
+  static const String support = '/settings/support';
 
   // ------------------------------------------------------------- the doors
   // Outside the shell: no navigation affordance, because there is no session to
@@ -74,7 +75,8 @@ enum AppDestination {
           'assets/branding/stitch_simple_pos_launcher_icon/simple_pos_till_action_s_icon/screen.png'),
   inventory('navInventory', 'navInventoryShort'),
   analytics('navAnalytics', 'navAnalyticsShort'),
-  settings('navSettings', 'navSettingsShort');
+  settings('navSettings', 'navSettingsShort'),
+  support('navSupport', 'navSupportShort');
 
   const AppDestination(this.labelKey, this.shortLabelKey, {this.imageAsset});
 
@@ -105,6 +107,7 @@ enum AppDestination {
         AppDestination.inventory => Routes.inventory,
         AppDestination.analytics => Routes.analytics,
         AppDestination.settings => Routes.settings,
+        AppDestination.support => Routes.support,
       };
 
   /// The glyph.
@@ -118,6 +121,7 @@ enum AppDestination {
         AppDestination.inventory => Icons.inventory_2_outlined,
         AppDestination.analytics => Icons.insights_outlined,
         AppDestination.settings => Icons.tune_outlined,
+        AppDestination.support => Icons.help_outline,
       };
 
   static AppDestination? fromPath(String path) {

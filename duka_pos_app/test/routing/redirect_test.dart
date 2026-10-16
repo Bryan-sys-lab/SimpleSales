@@ -250,12 +250,12 @@ void main() {
       expect(AppDestination.fromPath('/nope'), isNull);
     });
 
-    test('there are exactly five branches, and Reports is not one of them', () {
-      expect(AppDestination.values.length, 5);
+    test('there are exactly six branches, and Reports is not one of them', () {
+      expect(AppDestination.values.length, 6);
       expect(
         AppDestination.values.map((AppDestination d) => d.path),
         isNot(contains(Routes.reports)),
-        reason: 'Reports is a view inside Analytics, not a sixth tab',
+        reason: 'Reports is a view inside Analytics, not a seventh tab',
       );
     });
   });

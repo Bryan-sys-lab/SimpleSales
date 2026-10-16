@@ -1546,6 +1546,19 @@ class _UpdateRows extends StatelessWidget {
             label: Text(l10n.settingsUpdatesInstall),
           ),
         ],
+        SizedBox(height: AppSpacing.of(context).md),
+        ListTile(
+          contentPadding: EdgeInsets.zero,
+          leading: const Icon(Icons.autorenew_outlined),
+          title: Text(l10n.settingsUpdatesAutoLabel),
+          subtitle: Text(l10n.settingsUpdatesAutoSubtitle),
+          trailing: Switch(
+            value: service.autoUpdateEnabled,
+            onChanged: service.busy
+                ? null
+                : (value) => service.autoUpdateEnabled = value,
+          ),
+        ),
         if (release != null) ...<Widget>[
           SizedBox(height: AppSpacing.of(context).md),
           Text(release.notes.isEmpty
