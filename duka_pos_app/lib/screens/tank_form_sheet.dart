@@ -127,7 +127,8 @@ class _TankFormSheetState extends State<TankFormSheet> {
       value != null && value.isFinite ? value : null;
 
   /// The tank's capacity in litres, or null when not a number yet.
-  double? get _capacity => _finite(double.tryParse(_capacityLitres.text.trim()));
+  double? get _capacity =>
+      _finite(double.tryParse(_capacityLitres.text.trim()));
 
   double? get _perKg {
     final text = _mlPerKg.text.trim();
@@ -347,8 +348,11 @@ class _TankFormSheetState extends State<TankFormSheet> {
             _field(_mlPerKg, l10n.tankFieldMlPerKg, l10n.tankFieldMlPerKgHint,
                 TextInputType.number),
             SizedBox(height: spacing.md),
-            _field(_cupPrice, l10n.tankFieldCupPrice,
-                l10n.tankFieldCupPriceHint, const TextInputType.numberWithOptions(decimal: true)),
+            _field(
+                _cupPrice,
+                l10n.tankFieldCupPrice,
+                l10n.tankFieldCupPriceHint,
+                const TextInputType.numberWithOptions(decimal: true)),
             SizedBox(height: spacing.lg),
             SurfaceCard(
               color: AppColors.of(context).surfaceSunken,
@@ -407,4 +411,3 @@ class _TankFormSheetState extends State<TankFormSheet> {
     );
   }
 }
-

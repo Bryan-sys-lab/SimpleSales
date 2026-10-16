@@ -13,8 +13,13 @@
 //   * Lists are one panel with a hairline between rows, never a card per item. A
 //     table of twenty low-stock lines rendered as twenty cards is a wall of
 //     borders with no scannable alignment.
+//
+// Traversal order is authored, not inherited: the shift card and the sales
+// figure outrank the top-products list even though they sit lower on screen, so
+// each panel carries an OrdinalSortKey a linear scanner can trust.
 
 import 'package:flutter/material.dart';
+import 'package:flutter/semantics.dart';
 import 'package:intl/intl.dart';
 
 import '../l10n/generated/app_localizations.dart';
@@ -26,6 +31,7 @@ import '../theme/app_spacing.dart';
 import '../theme/typography.dart';
 import '../ui/components/status.dart';
 import '../ui/components/surface.dart';
+import '../ui/brand/simple_pos_mark.dart';
 import '../utils/datetime_format.dart';
 import '../utils/money.dart';
 import '../widgets/chart.dart';
@@ -40,12 +46,17 @@ import '../widgets/chart.dart';
 /// rather than a stack of differently-dressed boxes. The header is a fixed
 /// minimum height — the same as a tap target — so a panel with an action in its
 /// header and a panel without one line up when they sit side by side.
+///
+/// [sortKey] authors traversal priority independent of layout: a panel that
+// matters more (the shift, the sales figure) is reached first by a linear
+/// scanner even when it is not the first panel on screen.
 class DashboardPanel extends StatelessWidget {
   const DashboardPanel({
     required this.title,
     required this.child,
     this.trailing,
     this.padChild = true,
+    this.sortKey,
     super.key,
   });
 
@@ -55,15 +66,16 @@ class DashboardPanel extends StatelessWidget {
   /// A status chip or a "See all" button, on the title's line.
   final Widget? trailing;
 
-  /// Off for a list that draws its own rows edge to edge.
   final bool padChild;
+
+  final double? sortKey;
 
   @override
   Widget build(BuildContext context) {
     final AppSpacing spacing = AppSpacing.of(context);
     final AppColors colors = AppColors.of(context);
 
-    return SurfaceCard(
+    final Widget card = SurfaceCard(
       padding: EdgeInsets.zero,
       clipContent: true,
       // A transparent Material INSIDE the card, so a tappable row's ripple is
@@ -109,6 +121,13 @@ class DashboardPanel extends StatelessWidget {
         ),
       ),
     );
+
+    if (sortKey == null) return card;
+
+    return Semantics(
+      sortKey: OrdinalSortKey(sortKey!),
+      child: card,
+    );
   }
 }
 
@@ -124,6 +143,7 @@ class _Kpi {
     this.caption,
     this.hero = false,
     this.onTap,
+    this.sortKey,
   });
 
   final IconData icon;
@@ -131,19 +151,13 @@ class _Kpi {
   final String value;
   final String? caption;
 
-  /// The one figure the shop is judged on. Bigger, and tinted.
   final bool hero;
 
-  /// Set when the card is a door: a count of transactions is the figure a
-  /// manager opens the list of.
   final VoidCallback? onTap;
+
+  final double? sortKey;
 }
 
-/// Today's four figures, in a row on a wide window and a 2 x 2 grid on a phone.
-///
-/// Sales is the emphasised one: it is larger and sits on the accent container.
-/// The cards in a row are stretched to the tallest, so a card with a caption and
-/// one without still share a top and a bottom edge.
 class DashboardKpis extends StatelessWidget {
   const DashboardKpis({
     required this.totals,
@@ -155,11 +169,8 @@ class DashboardKpis extends StatelessWidget {
   final DailyTotals totals;
   final String scopeLabel;
 
-  /// Where the transactions card goes. Null for a caller that cannot navigate
-  /// — a preview, or a role the list is not offered to.
   final VoidCallback? onTransactions;
 
-  /// Below this the four cards go two by two.
   static const double _rowBreakpoint = 720;
 
   @override
@@ -174,11 +185,13 @@ class DashboardKpis extends StatelessWidget {
         value: formatMoney(Money.fromMinor(totals.totalMinor)),
         caption: l10n.dashboardSalesToday(scopeLabel),
         hero: true,
+        sortKey: 0,
       ),
       _Kpi(
         icon: Icons.trending_up_outlined,
         label: l10n.dashboardProfitLabel,
         value: formatMoney(Money.fromMinor(totals.profitMinor)),
+        sortKey: 1,
       ),
       _Kpi(
         icon: Icons.receipt_long_outlined,
@@ -187,11 +200,13 @@ class DashboardKpis extends StatelessWidget {
         // A door, not a figure: the count is the question "who sold these?" and
         // the list is the answer. Without a target the card stays inert.
         onTap: onTransactions,
+        sortKey: 2,
       ),
       _Kpi(
         icon: Icons.shopping_basket_outlined,
         label: l10n.dashboardAverageSaleLabel,
         value: formatMoney(Money.fromMinor(totals.averageMinor)),
+        sortKey: 3,
       ),
     ];
 
@@ -253,8 +268,6 @@ class _KpiCard extends StatelessWidget {
 
   final _Kpi kpi;
 
-  /// Phone-width cards are ~160dp across, so the figure steps down a size
-  /// rather than wrapping a currency symbol onto its own line.
   final bool compact;
 
   @override
@@ -293,49 +306,49 @@ class _KpiCard extends StatelessWidget {
                     children: <Widget>[
                       Container(
                         padding: EdgeInsets.all(spacing.xs),
-                    decoration: BoxDecoration(
-                      color: hero
-                          ? colors.accent.withValues(alpha: 0.15)
-                          : colors.surfaceSunken,
-                      borderRadius: AppShapes.of(context).controlRadius,
-                    ),
-                    child: Icon(
-                      kpi.icon,
-                      size: hero ? 22 : 18,
-                      color: hero ? colors.accent : quiet,
-                    ),
+                        decoration: BoxDecoration(
+                          color: hero
+                              ? colors.accent.withValues(alpha: 0.15)
+                              : colors.surfaceSunken,
+                          borderRadius: AppShapes.of(context).controlRadius,
+                        ),
+                        child: Icon(
+                          kpi.icon,
+                          size: hero ? 22 : 18,
+                          color: hero ? colors.accent : quiet,
+                        ),
+                      ),
+                      SizedBox(width: spacing.md),
+                      Expanded(
+                        child: Text(
+                          kpi.label,
+                          style: type.labelMedium?.copyWith(color: quiet),
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                      ),
+                    ],
                   ),
-                  SizedBox(width: spacing.md),
-                  Expanded(
-                    child: Text(
-                      kpi.label,
-                      style: type.labelMedium?.copyWith(color: quiet),
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                    ),
+                  SizedBox(height: spacing.lg),
+                  // Not shrunk to fit and not truncated: a figure that wraps at 200%
+                  // text scale grows its card, because a clipped total is a wrong
+                  // total.
+                  Text(
+                    kpi.value,
+                    style: AppTypography.money(
+                      context,
+                      size: size,
+                      weight: hero ? FontWeight.w800 : FontWeight.w700,
+                    ).copyWith(color: ink),
                   ),
+                  if (kpi.caption != null) ...<Widget>[
+                    SizedBox(height: spacing.sm),
+                    Text(
+                      kpi.caption!,
+                      style: type.bodySmall?.copyWith(color: quiet),
+                    ),
+                  ],
                 ],
-              ),
-              SizedBox(height: spacing.lg),
-              // Not shrunk to fit and not truncated: a figure that wraps at 200%
-              // text scale grows its card, because a clipped total is a wrong
-              // total.
-              Text(
-                kpi.value,
-                style: AppTypography.money(
-                  context,
-                  size: size,
-                  weight: hero ? FontWeight.w800 : FontWeight.w700,
-                ).copyWith(color: ink),
-              ),
-              if (kpi.caption != null) ...<Widget>[
-                SizedBox(height: spacing.sm),
-                Text(
-                  kpi.caption!,
-                  style: type.bodySmall?.copyWith(color: quiet),
-                ),
-              ],
-            ],
               ),
               // The affordance for a door: no icon colour change, one chevron
               // in the corner — the label already says what the card is and the
@@ -367,11 +380,6 @@ class _KpiCard extends StatelessWidget {
 // The shift.
 // ---------------------------------------------------------------------------
 
-/// The open shift, and what the drawer should hold.
-///
-/// The expected figure is stated as a NUMBER, because the count the cashier will
-/// do is compared against it. A card that only said "shift open since 08:12"
-/// gives them nothing to reconcile against.
 class DashboardShiftCard extends StatelessWidget {
   const DashboardShiftCard({
     required this.shift,
@@ -393,24 +401,28 @@ class DashboardShiftCard extends StatelessWidget {
     final Shift? open = shift;
 
     if (open == null) {
-      return DashboardPanel(
-        title: 'Till shift',
-        // Two channels, never colour alone: the word, and the outlined shape a
-        // neutral chip has that a filled one does not.
-        trailing: const StatusChip(tone: StatusTone.neutral, text: 'No shift'),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: <Widget>[
-            Text(
-              l10n.dashboardNoShiftMessage,
-              style: type.bodyMedium?.copyWith(color: colors.onSurfaceMuted),
-            ),
-            SizedBox(height: spacing.xl),
-            FilledButton(
-              onPressed: onOpen,
-              child: Text(l10n.dashboardOpenShiftAction),
-            ),
-          ],
+      return Semantics(
+        sortKey: OrdinalSortKey(0),
+        child: DashboardPanel(
+          title: 'Till shift',
+          // Two channels, never colour alone: the word, and the outlined shape a
+          // neutral chip has that a filled one does not.
+          trailing:
+              const StatusChip(tone: StatusTone.neutral, text: 'No shift'),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: <Widget>[
+              Text(
+                l10n.dashboardNoShiftMessage,
+                style: type.bodyMedium?.copyWith(color: colors.onSurfaceMuted),
+              ),
+              SizedBox(height: spacing.xl),
+              FilledButton(
+                onPressed: onOpen,
+                child: Text(l10n.dashboardOpenShiftAction),
+              ),
+            ],
+          ),
         ),
       );
     }
@@ -418,57 +430,79 @@ class DashboardShiftCard extends StatelessWidget {
     // The stored value is an ISO instant; this is the owner's wording of it.
     final String since = formatInstant(open.startTime, locale: l10n.localeName);
 
-    return DashboardPanel(
-      title: 'Till shift',
-      // Three channels: the glyph's shape, the word "Open", and the accent. A
-      // cashier who cannot separate amber from green still hears the state.
-      trailing: const StatusChip(tone: StatusTone.success, text: 'Open'),
-      padChild: false,
-      child: Semantics(
-        button: true,
-        excludeSemantics: true,
-        label: l10n.dashboardOpenShiftSpoken(formatMoney(expected), since),
-        child: InkWell(
-          onTap: onOpen,
-          child: Padding(
-            padding: EdgeInsets.all(spacing.xl),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: <Widget>[
-                Text(
-                  l10n.dashboardStaffNameSince(open.staffName, since),
-                  style:
-                      type.bodyMedium?.copyWith(color: colors.onSurfaceMuted),
-                ),
-                SizedBox(height: spacing.xl),
-                Text(
-                  l10n.dashboardExpectedInDrawer,
-                  style: type.labelMedium?.copyWith(
-                    color: colors.onSurfaceMuted,
+    return Semantics(
+      sortKey: const OrdinalSortKey(0),
+      button: true,
+      label: l10n.dashboardOpenShiftSpoken(formatMoney(expected), since),
+      child: DashboardPanel(
+        title: 'Till shift',
+        // Brand mark first: the till's identity sits beside the shift it runs.
+        trailing: _ShiftBrand(),
+        padChild: false,
+        child: Semantics(
+          button: true,
+          excludeSemantics: true,
+          label: l10n.dashboardOpenShiftSpoken(formatMoney(expected), since),
+          child: InkWell(
+            onTap: onOpen,
+            child: Padding(
+              padding: EdgeInsets.all(spacing.xl),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: <Widget>[
+                  Text(
+                    l10n.dashboardStaffNameSince(open.staffName, since),
+                    style:
+                        type.bodyMedium?.copyWith(color: colors.onSurfaceMuted),
                   ),
-                ),
-                SizedBox(height: spacing.sm),
-                Row(
-                  children: <Widget>[
-                    Expanded(
-                      child: Text(
-                        formatMoney(expected),
-                        // The figure the count is measured against, so it is
-                        // the emphasised one.
-                        style: AppTypography.money(
-                          context,
-                          size: 24,
-                          weight: FontWeight.w800,
+                  SizedBox(height: spacing.xl),
+                  Text(
+                    l10n.dashboardExpectedInDrawer,
+                    style: type.labelMedium?.copyWith(
+                      color: colors.onSurfaceMuted,
+                    ),
+                  ),
+                  SizedBox(height: spacing.sm),
+                  Row(
+                    children: <Widget>[
+                      Expanded(
+                        child: Text(
+                          formatMoney(expected),
+                          // The figure the count is measured against, so it is
+                          // the emphasised one.
+                          style: AppTypography.money(
+                            context,
+                            size: 24,
+                            weight: FontWeight.w800,
+                          ),
                         ),
                       ),
-                    ),
-                    // Auto-mirrors under RTL.
-                    Icon(Icons.chevron_right, color: colors.onSurfaceMuted),
-                  ],
-                ),
-              ],
+                      // Auto-mirrors under RTL.
+                      Icon(Icons.chevron_right, color: colors.onSurfaceMuted),
+                    ],
+                  ),
+                ],
+              ),
             ),
           ),
+        ),
+      ),
+    );
+  }
+}
+
+class _ShiftBrand extends StatelessWidget {
+  const _ShiftBrand();
+
+  @override
+  Widget build(BuildContext context) {
+    return Semantics(
+      image: true,
+      label: 'SimpleSales',
+      child: ExcludeSemantics(
+        child: const SimplePosMark(
+          size: 22,
+          variant: SimplePosMarkVariant.full,
         ),
       ),
     );
@@ -479,12 +513,6 @@ class DashboardShiftCard extends StatelessWidget {
 // Sales.
 // ---------------------------------------------------------------------------
 
-/// A day with no sales at all.
-///
-/// Distinct from a day with no sales YET: a till that has never sold needs the
-/// words "no sales recorded yet", and a till that sold yesterday but has not
-/// today needs "nothing sold today". One screen saying "Sales today KSh 0" for
-/// both cannot tell them apart, and the first is a setup problem.
 class DashboardNoSalesCard extends StatelessWidget {
   const DashboardNoSalesCard({required this.hasEverSold, super.key});
 
@@ -496,14 +524,23 @@ class DashboardNoSalesCard extends StatelessWidget {
     final AppColors colors = AppColors.of(context);
     final AppLocalizations l10n = AppLocalizations.of(context);
 
-    return SurfaceCard(
-      padding: EdgeInsets.all(spacing.xxl),
+    return DashboardPanel(
+      sortKey: 1,
+      title: l10n.dashboardNoSalesTitle,
       child: Column(
         children: <Widget>[
-          Icon(
-            hasEverSold ? Icons.nightlight_outlined : Icons.storefront_outlined,
-            size: 32,
-            color: colors.onSurfaceMuted,
+          Semantics(
+            image: true,
+            label: l10n.dashboardNoSalesTitle,
+            child: ExcludeSemantics(
+              child: Icon(
+                hasEverSold
+                    ? Icons.nightlight_outlined
+                    : Icons.storefront_outlined,
+                size: 32,
+                color: colors.onSurfaceMuted,
+              ),
+            ),
           ),
           SizedBox(height: spacing.lg),
           Text(
@@ -531,24 +568,6 @@ class DashboardNoSalesCard extends StatelessWidget {
   }
 }
 
-/// Sales by hour.
-///
-/// The chart is a real element with a heading and a semantics label, not a
-/// painted decoration: a screen-reader user gets "Sales by hour. Busiest at 6pm
-/// with KSh 12,400" rather than silence where a picture should be.
-/// The hourly sales line chart, and the shape of the day.
-///
-/// StateFUL rather than stateless, and the reason is the cache below: it is a
-/// value derived from `buckets` that is expensive to compute (a locale
-/// formatter per bucket) and that must survive a rebuild. A `StatelessWidget`
-/// cannot hold it, and building it in `build()` is what the previous version
-/// did — the ~30-object allocation on every dashboard rebuild the cache exists
-/// to remove.
-/// Whether two bucket lists hold the same content.
-///
-/// Compares by value rather than identity because the caller rebuilds the list
-/// on every data load: `identity` would report an unchanged day as changed, and
-/// a cache that never hits is a cache that does nothing.
 bool _bucketsEqual(List<TimeBucket> a, List<TimeBucket> b) {
   if (a.length != b.length) return false;
   for (var i = 0; i < a.length; i++) {
@@ -569,21 +588,8 @@ class DashboardHourlySales extends StatefulWidget {
 }
 
 class _DashboardHourlySalesState extends State<DashboardHourlySales> {
-  /// Memoised points. Null until the first call to [_points].
   List<PosLinePoint>? _cachedPoints;
 
-  /// The points for the chart, formatted once.
-  ///
-  /// EVERY bucket in the window is included, including the hours that sold
-  /// nothing. The x axis is index-based — `_LineChartPainter._x` spaces points
-  /// evenly across the width — so dropping the empty hours would move every
-  /// later point left and flatten a day that sold at 9am and 5pm into one
-  /// adjacent pair, which is exactly the false "continuous sales" reading the
-  /// line chart exists to avoid. A zero hour plots at the baseline instead.
-  ///
-  /// Invalidated when the buckets themselves change, so a fresh day's data is
-  /// reformatted rather than shown with yesterday's labels — which is the
-  /// failure mode of any cache keyed on nothing.
   List<PosLinePoint> _points(AppLocalizations l10n) {
     _cachedPoints ??= <PosLinePoint>[
       for (final TimeBucket bucket in widget.buckets)
@@ -627,8 +633,9 @@ class _DashboardHourlySalesState extends State<DashboardHourlySales> {
 
     // Formatted once per widget instance, not once per build. See [_points].
     final List<PosLinePoint> points = _points(l10n);
-    return SurfaceCard(
-      padding: EdgeInsets.all(spacing.xl),
+    return DashboardPanel(
+      sortKey: 1,
+      title: l10n.dashboardSalesByHour,
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
@@ -656,10 +663,16 @@ class _DashboardHourlySalesState extends State<DashboardHourlySales> {
               padding: EdgeInsets.symmetric(vertical: spacing.xxl),
               child: Column(
                 children: [
-                  Icon(
-                    Icons.nightlight_outlined,
-                    size: 32,
-                    color: AppColors.of(context).onSurfaceMuted,
+                  Semantics(
+                    image: true,
+                    label: l10n.dashboardNoSalesTitle,
+                    child: ExcludeSemantics(
+                      child: Icon(
+                        Icons.nightlight_outlined,
+                        size: 32,
+                        color: AppColors.of(context).onSurfaceMuted,
+                      ),
+                    ),
                   ),
                   SizedBox(height: spacing.md),
                   Text(
@@ -705,23 +718,9 @@ class _DashboardHourlySalesState extends State<DashboardHourlySales> {
     );
   }
 
-  /// `14` -> `2:00 pm`, in the locale's own clock convention. The full form,
-  /// for the peak-hour badge a shop reads as a sentence.
-  ///
-  /// `intl` rather than three hand-written cases, because a 12-hour locale is not
-  /// the only difference: `DateFormat.jm` knows which locales put the meridiem
-  /// first, which use a dot, and which have no AM/PM at all.
   static String _hourLabel(int hour, AppLocalizations l10n) =>
       DateFormat.jm(l10n.localeName).format(DateTime(2000, 1, 1, hour));
 
-  /// `14` -> `2pm`, for the axis.
-  ///
-  /// The full form belongs in a sentence; across a phone's width, twenty-four of
-  /// them are the row of collisions this replaces. The ":00" every hour carries
-  /// no information — an hour is an hour — and dropping it is what lets the axis
-  /// sit at a readable interval instead of being thinned until it disappears.
-  /// The locale convention survives: the meridiem, the digit order, the dot,
-  /// and a 24-hour locale's shape are all still there.
   static String _axisHourLabel(int hour, AppLocalizations l10n) {
     final full = _hourLabel(hour, l10n);
     return full.replaceAll(':00 ', ' ').replaceAll(':00', '').trim();
@@ -752,10 +751,15 @@ class _PeakHourBadge extends StatelessWidget {
       child: Row(
         mainAxisSize: MainAxisSize.min,
         children: [
-          Icon(
-            Icons.trending_up,
-            size: 14,
-            color: colors.accent,
+          Semantics(
+            label: 'Peak hour $hour, $amount',
+            child: ExcludeSemantics(
+              child: Icon(
+                Icons.trending_up,
+                size: 14,
+                color: colors.accent,
+              ),
+            ),
           ),
           SizedBox(width: spacing.xs),
           Text(
@@ -771,10 +775,6 @@ class _PeakHourBadge extends StatelessWidget {
   }
 }
 
-/// What actually sold, most first.
-///
-/// Each row carries a bar scaled to the best seller, so the SHAPE of the day —
-/// one product carrying it, or five evenly — is visible without reading a number.
 class DashboardTopProducts extends StatelessWidget {
   const DashboardTopProducts({required this.rows, super.key});
 
@@ -790,6 +790,7 @@ class DashboardTopProducts extends StatelessWidget {
     }
 
     return DashboardPanel(
+      sortKey: 2,
       title: 'Top products',
       padChild: false,
       child: Column(
@@ -818,7 +819,6 @@ class _TopProductRow extends StatelessWidget {
   final int rank;
   final ProductSalesRow row;
 
-  /// 0..1, revenue relative to the best seller shown.
   final double share;
   final bool showDivider;
 
@@ -837,6 +837,7 @@ class _TopProductRow extends StatelessWidget {
 
     return Semantics(
       container: true,
+      button: true,
       label: '${row.productName}, $sold, $revenue',
       child: ExcludeSemantics(
         child: Column(
@@ -896,7 +897,6 @@ class _TopProductRow extends StatelessWidget {
   }
 }
 
-/// A thin proportional bar: a track, and a fill to [fraction] of it.
 class _ShareBar extends StatelessWidget {
   const _ShareBar({required this.fraction});
 
@@ -977,6 +977,7 @@ class DashboardLowStockList extends StatelessWidget {
 
     if (products.isEmpty) {
       return DashboardPanel(
+        sortKey: 3,
         title: l10n.dashboardReorderSection,
         trailing: StatusChip(
           tone: StatusTone.success,
@@ -990,10 +991,15 @@ class DashboardLowStockList extends StatelessWidget {
                 color: colors.successContainer,
                 borderRadius: AppShapes.of(context).controlRadius,
               ),
-              child: Icon(
-                Icons.check_circle_outline,
-                color: colors.success,
-                size: 24,
+              child: Semantics(
+                label: l10n.dashboardAllClear,
+                child: ExcludeSemantics(
+                  child: Icon(
+                    Icons.check_circle_outline,
+                    color: colors.success,
+                    size: 24,
+                  ),
+                ),
               ),
             ),
             SizedBox(width: spacing.lg),
@@ -1013,6 +1019,7 @@ class DashboardLowStockList extends StatelessWidget {
     final List<Product> shown = products.take(_cap).toList(growable: false);
 
     return DashboardPanel(
+      sortKey: 3,
       title: l10n.dashboardReorderSection,
       trailing: canOpen
           ? TextButton.icon(
@@ -1059,81 +1066,86 @@ class _LowStockRow extends StatelessWidget {
     final colors = AppColors.of(context);
     final spacing = AppSpacing.of(context);
     final type = AppTypography.of(context);
+    final l10n = AppLocalizations.of(context);
 
     final bool isOut = product.stockQty <= 0;
     final StatusTone tone = isOut ? StatusTone.danger : StatusTone.warning;
 
-    return InkWell(
-      key: key,
-      onTap: onTap,
-      child: Padding(
-        padding: EdgeInsets.symmetric(
-          horizontal: spacing.xl,
-          vertical: spacing.md,
-        ),
-        child: Row(
-          children: <Widget>[
-            Container(
-              padding: EdgeInsets.all(spacing.sm),
-              decoration: BoxDecoration(
-                color: tone.container(colors),
-                borderRadius: AppShapes.of(context).controlRadius,
-              ),
-              child: Icon(
-                tone.icon,
-                size: 20,
-                color: tone.onContainer(colors),
-              ),
-            ),
-            SizedBox(width: spacing.md),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                mainAxisSize: MainAxisSize.min,
-                children: <Widget>[
-                  Text(
-                    product.name,
-                    style: type.bodyMedium,
-                    // Wraps rather than ellipsises.
-                    //
-                    // This was `maxLines: 1` with an ellipsis, which shows
-                    // "Tusker Lager 500ml Returnab…" — a name cut at the point
-                    // where the product is least recognisable. The repo's own
-                    // stated policy for this exact case lives a file over, in
-                    // analytics_tables.dart: "Nothing is dropped and nothing
-                    // is truncated: a product name wraps instead of being
-                    // ellipsised, because a truncated product name in a report
-                    // is a defect, not a design." The dashboard is where an
-                    // owner acts on low stock, so it needs to be readable here
-                    // most of all.
-                    maxLines: 2,
-                    overflow: TextOverflow.ellipsis,
-                  ),
-                  SizedBox(height: 2),
-                  Text(
-                    '${product.stockQty.round()} in stock',
-                    style: type.bodySmall?.copyWith(
-                      color: colors.onSurfaceMuted,
+    return Semantics(
+      container: true,
+      button: canOpen,
+      label: '${product.name}, ${formatMoney(product.sellPrice)}, '
+          '${product.stockQty.round()} in stock, ${isOut ? l10n.inventoryOutOfStock : l10n.inventoryLowStock}',
+      child: InkWell(
+        key: key,
+        onTap: onTap,
+        child: Padding(
+          padding: EdgeInsets.symmetric(
+            horizontal: spacing.xl,
+            vertical: spacing.md,
+          ),
+          child: Row(
+            children: <Widget>[
+              Container(
+                padding: EdgeInsets.all(spacing.sm),
+                decoration: BoxDecoration(
+                  color: tone.container(colors),
+                  borderRadius: AppShapes.of(context).controlRadius,
+                ),
+                child: Semantics(
+                  label: tone.label,
+                  child: ExcludeSemantics(
+                    child: Icon(
+                      tone.icon,
+                      size: 20,
+                      color: tone.onContainer(colors),
                     ),
                   ),
-                ],
+                ),
               ),
-            ),
-            SizedBox(width: spacing.md),
-            StatusChip(
-              tone: tone,
-              text: isOut ? 'Out of stock' : 'Low stock',
-              dense: true,
-            ),
-            if (canOpen) ...[
-              SizedBox(width: spacing.sm),
-              Icon(
-                Icons.chevron_right,
-                color: colors.onSurfaceMuted,
-                size: 20,
+              SizedBox(width: spacing.md),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  mainAxisSize: MainAxisSize.min,
+                  children: <Widget>[
+                    Text(
+                      product.name,
+                      style: type.bodyMedium,
+                      // Wraps rather than ellipsises.
+                      //
+                      // The row's `Semantics` label carries the full name, so
+                      // this is a visual budget rather than a truncation of
+                      // the data.
+                      maxLines: 2,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                    SizedBox(height: 2),
+                    Text(
+                      '${product.stockQty.round()} in stock',
+                      style: type.bodySmall?.copyWith(
+                        color: colors.onSurfaceMuted,
+                      ),
+                    ),
+                  ],
+                ),
               ),
+              SizedBox(width: spacing.md),
+              StatusChip(
+                tone: tone,
+                text: isOut ? 'Out of stock' : 'Low stock',
+                dense: true,
+              ),
+              if (canOpen) ...[
+                SizedBox(width: spacing.sm),
+                Icon(
+                  Icons.chevron_right,
+                  color: colors.onSurfaceMuted,
+                  size: 20,
+                ),
+              ],
             ],
-          ],
+          ),
         ),
       ),
     );

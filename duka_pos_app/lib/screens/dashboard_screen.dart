@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/semantics.dart';
 import 'package:go_router/go_router.dart';
 import 'package:provider/provider.dart';
 
@@ -25,17 +26,6 @@ import '../widgets/backup_reminder_banner.dart';
 import 'dashboard_attention.dart';
 import 'dashboard_sections.dart';
 
-/// What a seller needs before they need anything else.
-///
-/// Ordered by what a shift actually goes wrong in: what will stop me selling
-/// (the attention list, first), what have I made (the KPIs and the hour chart),
-/// what should I reorder (low stock), and last the stock that is merely
-/// interesting. Everything on this screen is read in the seconds between
-/// customers, so it answers questions rather than reporting activity.
-///
-/// Every figure is scoped by `staff_id`, never by name: a cashier sees their
-/// own takings and a manager or owner sees the shop's. See
-/// `staffIdForCashier` for why the id is the only defensible filter.
 class DashboardScreen extends StatefulWidget {
   const DashboardScreen({super.key});
 
@@ -43,29 +33,18 @@ class DashboardScreen extends StatefulWidget {
   State<DashboardScreen> createState() => _DashboardScreenState();
 }
 
-/// One of exactly three outcomes, resolved in one switch.
-///
-/// Deliberately not a `bool loading` next to a `String? error` next to a
-/// `List<Product>`: those three can disagree, and every screen that has them
-/// eventually renders a spinner over a stale list, or an error over content that
-/// loaded fine. A sealed value cannot hold two answers at once.
 sealed class _DashboardState {
   const _DashboardState();
 }
 
-/// Nothing has arrived yet. The first load only: a REFRESH keeps the previous
-/// content on screen, because a cashier pulling to refresh mid-queue does not
-/// need their figures to vanish.
 final class _DashboardLoading extends _DashboardState {
   const _DashboardLoading();
 }
 
-/// The load failed. No figures, no chart, no list.
 final class _DashboardFailed extends _DashboardState {
   const _DashboardFailed();
 }
 
-/// Everything the screen shows, as one value.
 final class _DashboardReady extends _DashboardState {
   const _DashboardReady({
     required this.totals,
@@ -83,9 +62,6 @@ final class _DashboardReady extends _DashboardState {
 
   final DailyTotals totals;
 
-  /// Whether the ledger has *ever* held a sale. A zero-sales day and a till
-  /// that has never sold anything need different words, and one screen that
-  /// says "Sales today KSh 0" for both cannot tell them apart.
   final bool hasEverSold;
 
   final List<TimeBucket> hours;
@@ -94,19 +70,10 @@ final class _DashboardReady extends _DashboardState {
   final int lowStockCount;
   final AttentionSummary attention;
 
-  /// "the shop" or the cashier's own name — says out loud whose takings these
-  /// are, because the number itself cannot.
   final String scopeLabel;
 
-  /// Who is signed in and what they are looking at, resolved here rather than in
-  /// a `build` that would otherwise call the clock on every frame.
   final String greeting;
 
-  /// The signed-in person's open shift, and what the drawer should hold in it.
-  ///
-  /// Loaded with the rest rather than read when the card is built, because the
-  /// card needs a number — the expected cash — that only the database can
-  /// produce, and building it inline would mean a query per rebuild.
   final Shift? openShift;
   final Money expectedTill;
 }
@@ -115,13 +82,6 @@ class _DashboardScreenState extends State<DashboardScreen>
     with LiveRefresh<DashboardScreen>, SessionRefresh<DashboardScreen> {
   _DashboardState? _state;
 
-  /// Which load is the current one.
-  ///
-  /// A serial rather than a bool, because a load can be started by three
-  /// different things — entry, a live change, a session change — and the LAST
-  /// one started has to be the one whose figures land. An older load that
-  /// finished after a newer one would repaint the older read, so every result
-  /// is checked against this before it is allowed anywhere near the screen.
   int _loadSerial = 0;
 
   @override
@@ -137,13 +97,6 @@ class _DashboardScreenState extends State<DashboardScreen>
   @override
   Future<void> reloadFromLive() => _load();
 
-  /// The session that built the figures on screen has ended: drop them.
-  ///
-  /// The greeting, the shift card, the scope label and the takings are all
-  /// one person's answers, and a shell that outlives a sign-out would
-  /// otherwise keep showing them to whoever signs in next. Clearing to the
-  /// skeleton rather than to zeros is the honest state: nothing is known
-  /// about the new session yet, and "KSh 0" is a figure.
   @override
   void clearForSession() {
     _state = null;
@@ -341,16 +294,10 @@ class _DashboardScreenState extends State<DashboardScreen>
   /// Two ways a load can be overtaken, and both drop its result: a newer load
   /// started (which will deliver), or the session changed underneath it — in
   /// which case what it read is a mix of two sessions' scope and greeting and
-  /// is nobody's figures. The session case is not theoretical: this screen is
-  /// on shared till hardware, and an idle sign-out lands exactly when the
-  /// first load of the next session is in flight.
+
   bool _current(int serial, int session, AppState appState) =>
       mounted && serial == _loadSerial && appState.sessionGeneration == session;
 
-  /// "Good morning, Wanjiku · Cashier · showing the shop".
-  ///
-  /// Resolved once per load rather than per build: it reads the clock, and a
-  /// greeting that changes because a rebuild happened at 17:00 is a bug report.
   static String _greeting(
     AppLocalizations l10n, {
     required String shopName,
@@ -395,19 +342,11 @@ class _DashboardScreenState extends State<DashboardScreen>
   }
 
   /// Puts the shop's TIN and eTIMS device id in front of the owner.
-  ///
-  /// The tax settings screen rather than the Settings tab: a rejected receipt
-  /// has exactly one fix, and it is three fields down a screen the tab does not
-  /// even open. Pushed over the shell so Back returns to the dashboard the
-  /// problem was found on.
+
   void _openEtimsSettings() {
     context.push(Routes.taxSettings);
   }
 
-  /// Opens one product in the stock list, scrolled to and marked.
-  ///
-  /// The identity travels in the PATH, not in `extra`: a link shared from the
-  /// dashboard has to reconstruct this screen on a cold start.
   void _openProduct(Product product) {
     final int? id = product.id;
     if (id == null) return;
@@ -419,11 +358,6 @@ class _DashboardScreenState extends State<DashboardScreen>
     await ExcelService().shareFile(file);
   }
 
-  /// Retries the KRA upload queue, then re-reads the counts.
-  ///
-  /// The action is the one the situation actually needs: these receipts are
-  /// waiting because the till was offline, and a queue that only reports its
-  /// own size every morning is an outage nobody can end.
   Future<void> _retryEtims() async {
     final ScaffoldMessengerState messenger = ScaffoldMessenger.of(context);
     try {
@@ -467,11 +401,6 @@ class _DashboardScreenState extends State<DashboardScreen>
   }
 }
 
-/// The first paint, before anything has been read.
-///
-/// A skeleton of the screen's own shapes rather than a centred spinner: rows
-/// where the attention list will be, tiles where the figures will be. A spinner
-/// over an empty box means everything moves when the data lands.
 class _DashboardSkeleton extends StatelessWidget {
   const _DashboardSkeleton();
 
@@ -487,24 +416,10 @@ class _DashboardSkeleton extends StatelessWidget {
   }
 }
 
-/// The widest the dashboard grows. A manager on a desktop monitor gets two
-/// columns of panels, not one 1600px-wide row of numbers nobody can scan.
 const double _kDashboardMaxWidth = 1200;
 
-/// At and above this content width the panels split into a main column and a
-/// side column. Below it they stack in reading order.
 const double _kTwoColumnBreakpoint = 840;
 
-/// The screen's body, in reading order.
-///
-/// On a phone, one column:
-///
-///   header · what needs attention · today's figures · shift · sales by hour ·
-///   top products · reorder
-///
-/// On a tablet or desktop the same content is split so nothing is further than
-/// one glance away: the MAIN column (what happened — the hour chart and the top
-/// sellers) beside a SIDE column (what to do — the shift and the reorder list).
 class _DashboardContent extends StatelessWidget {
   const _DashboardContent({
     required this.data,
@@ -528,8 +443,6 @@ class _DashboardContent extends StatelessWidget {
   final ValueChanged<Product> onOpenProduct;
   final Future<void> Function() onRetryEtims;
 
-  /// [items] with the nulls dropped and [gap] put between what is left, so a
-  /// section that is absent today leaves no double gap behind it.
   static List<Widget> _spaced(List<Widget?> items, double gap) {
     final List<Widget> present = items.whereType<Widget>().toList();
     return <Widget>[
@@ -627,6 +540,7 @@ class _DashboardContent extends StatelessWidget {
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: <Widget>[
                 BackupReminderBanner(onBackupNow: onBackupNow),
+                SizedBox(height: spacing.section),
                 ..._spaced(
                   <Widget?>[
                     DashboardHeader(
@@ -637,15 +551,19 @@ class _DashboardContent extends StatelessWidget {
                     // First after the header because it is the only thing that
                     // stops a sale, and a section that is usually empty and
                     // occasionally urgent is read far more seriously than one
-                    // that is always on screen.
-                    attention,
+                    // that is always on screen. Traversal priority goes to the
+                    // attention list before every figure on screen.
+                    if (attention != null)
+                      Semantics(
+                        sortKey: const OrdinalSortKey(0),
+                        child: attention,
+                      ),
                     DashboardKpis(
                       totals: data.totals,
                       scopeLabel: data.scopeLabel,
                       // A count of transactions is a question — which ones, and
                       // by whom — so the card opens the list that answers it.
-                      onTransactions: () =>
-                          context.push(Routes.transactions),
+                      onTransactions: () => context.push(Routes.transactions),
                     ),
                   ],
                   gap,

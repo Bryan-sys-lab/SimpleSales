@@ -43,8 +43,8 @@ import '../theme/typography.dart';
 import '../ui/components/status.dart';
 import '../l10n/generated/app_localizations.dart';
 import '../services/product_image_store.dart';
+import '../ui/components/brand_header.dart';
 
-/// The account, as one screen an owner can read.
 class ProfileScreen extends StatelessWidget {
   const ProfileScreen({super.key});
 
@@ -52,7 +52,9 @@ class ProfileScreen extends StatelessWidget {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: Text(AppLocalizations.of(context).profileTitle),
+        title: BrandHeader(
+          title: Text(AppLocalizations.of(context).profileTitle),
+        ),
       ),
       body: Consumer<AppState>(
         builder: (BuildContext context, AppState state, __) {
@@ -69,7 +71,6 @@ class ProfileScreen extends StatelessWidget {
   }
 }
 
-/// Opens the account with the real data wired in.
 class ProfileScreenOpen extends ProfileScreen {
   const ProfileScreenOpen({super.key});
 }
@@ -242,9 +243,7 @@ class _ProfileBodyState extends State<_ProfileBody> {
 }
 
 /// The avatar, drawn from the file this account's photograph is stored at.
-///
-/// Falls back to the owner's initials rather than to a generic silhouette:
-/// an account with no photograph still reads as a person.
+
 class _AvatarRing extends StatelessWidget {
   const _AvatarRing({required this.size});
 
@@ -297,11 +296,6 @@ class _AvatarRing extends StatelessWidget {
   }
 }
 
-/// An account's initials, for one with no photograph yet.
-///
-/// Better than a generic silhouette: a shop owner looking at their own account
-/// reads their own name, and two accounts on one device are told apart at a
-/// glance rather than by size alone.
 class _Initials extends StatelessWidget {
   const _Initials({required this.name, required this.size});
 
@@ -332,7 +326,6 @@ class _Initials extends StatelessWidget {
   }
 }
 
-/// One label/value line of the account.
 class _ProfileRow extends StatelessWidget {
   const _ProfileRow({
     required this.label,

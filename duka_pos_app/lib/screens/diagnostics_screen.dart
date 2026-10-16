@@ -26,6 +26,7 @@ import '../l10n/generated/app_localizations.dart';
 import '../db/database_helper.dart';
 import '../models/crash_log.dart';
 import '../services/failure_recorder.dart';
+import '../ui/components/brand_header.dart';
 import '../theme/app_colors.dart';
 import '../theme/app_haptics.dart';
 import '../theme/app_spacing.dart';
@@ -312,13 +313,6 @@ class _FailureCardState extends State<_FailureCard> {
   }
 }
 
-/// Shows the failure log for the current screen.
-///
-/// Value-driven in one direction: it is given a loader and a clear callback,
-/// because the log lives in a database and a database is not something a
-/// widget should reach past its provider to find. Everything else — the
-/// report the clipboard receives, the confirmation before clearing — is the
-/// screen's own, and is asserted by its tests.
 class DiagnosticsScreen extends StatefulWidget {
   const DiagnosticsScreen({
     required this.loadEntries,
@@ -327,25 +321,16 @@ class DiagnosticsScreen extends StatefulWidget {
     super.key,
   });
 
-  /// The log, newest first. Called once on open and again after a refresh or
-  /// a clear.
   final Future<List<CrashLogEntry>> Function() loadEntries;
 
   final Future<void> Function() onClearLog;
 
-  /// Where the failure happened, which is the first question a developer asks.
-  /// The build and platform, so the answer travels with the report.
   final Map<String, String> environment;
 
   @override
   State<DiagnosticsScreen> createState() => _DiagnosticsScreenState();
 }
 
-/// The screen wired to this shop's own failure log.
-///
-/// A factory rather than constructor arguments, because the router should not
-/// have to know that a log is a database table: `buildAppRouter` decides where
-/// a screen goes, and a feature decides what its data is.
 class DiagnosticsScreenOpen extends DiagnosticsScreen {
   DiagnosticsScreenOpen({super.key})
       : super(
@@ -363,8 +348,6 @@ class _DiagnosticsScreenState extends State<DiagnosticsScreen> {
   List<CrashLogEntry> _entries = <CrashLogEntry>[];
   bool _loading = true;
 
-  /// True when the log could not be read, so the screen says so instead of
-  /// showing an empty state that reads as "nothing has gone wrong".
   bool _failed = false;
   String? _message;
 
@@ -435,11 +418,6 @@ class _DiagnosticsScreenState extends State<DiagnosticsScreen> {
     setState(() => _message = l10n.diagnosticsCleared);
   }
 
-  /// The text a support chat receives.
-  ///
-  /// Includes the environment first, because the first question back is always
-  /// "which build", and a report that puts it at the bottom is a report that
-  /// needs a second message.
   String _report() {
     final StringBuffer out = StringBuffer()
       ..writeln('SimpleSales failure report');
@@ -467,7 +445,11 @@ class _DiagnosticsScreenState extends State<DiagnosticsScreen> {
   Widget build(BuildContext context) {
     final AppLocalizations l10n = AppLocalizations.of(context);
     return Scaffold(
-      appBar: AppBar(title: Text(l10n.diagnosticsTitle)),
+      appBar: AppBar(
+        title: BrandHeader(
+          title: Text(l10n.diagnosticsTitle),
+        ),
+      ),
       // The whole screen: the panel scrolls, so the keyboard must not resize
       // it out from under an open card.
       body: DiagnosticsPanel(

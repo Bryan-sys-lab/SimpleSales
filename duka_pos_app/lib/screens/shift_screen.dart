@@ -45,6 +45,7 @@ import '../ui/components/surface.dart';
 import '../ui/layout/page.dart';
 import '../utils/datetime_format.dart';
 import '../utils/money.dart';
+import '../ui/components/brand_header.dart';
 import 'shift_close_sheet.dart';
 import 'shift_float_sheet.dart';
 import 'shift_history_card.dart';
@@ -52,46 +53,26 @@ import 'shift_ledger.dart';
 import 'shift_till_count_sheet.dart';
 import 'shift_variance.dart';
 
-/// What the screen is showing, as ONE value.
-///
-/// The four cases are not four booleans. "Loading", "nothing open", "open with
-/// a balanced count" and "open with a shortage" are genuinely different screens,
-/// and "open with a shortage" is also "has a shift" and "has reconciliations" at
-/// the same time — which is exactly the state a `bool loading` / `String? error`
-/// / `List<Shift>` trio gets wrong.
 sealed class _ShiftState {
   const _ShiftState();
 }
 
-/// Nothing has been read yet. The first load only.
 final class _ShiftLoading extends _ShiftState {
   const _ShiftLoading();
 }
 
-/// The read failed and there is nothing to show.
-///
-/// Distinct from a refresh that failed: this one has no content to keep, so it
-/// must offer a retry rather than an empty drawer.
 final class _ShiftFailed extends _ShiftState {
   const _ShiftFailed();
 }
 
-/// Everything the screen shows.
 final class _ShiftReady extends _ShiftState {
   const _ShiftReady({required this.ledger, required this.message});
 
   final ShiftLedger ledger;
 
-  /// A business message from the last attempt — "a shift is already open", "this
-  /// shift is not open and cannot be reconciled".
-  ///
-  /// A banner rather than a snackbar, and cleared by the next successful load
-  /// rather than by a timer: the statement is still true ten seconds later, and a
-  /// message that disappears under the user is a message that gets read wrong.
   final String? message;
 }
 
-/// Reconciles the till for the signed-in person.
 class ShiftScreen extends StatefulWidget {
   const ShiftScreen({super.key});
 
@@ -109,9 +90,6 @@ class _ShiftScreenState extends State<ShiftScreen>
     _load();
   }
 
-  /// A shift ledger is one person's reconciliation, read for the session that
-  /// just ended. Dropping it is the only honest answer: the expected figure
-  /// belongs to whoever is holding the till NOW.
   @override
   void clearForSession() {
     _state = null;
@@ -122,12 +100,6 @@ class _ShiftScreenState extends State<ShiftScreen>
 
   AppState get _appState => context.read<AppState>();
 
-  /// The person a shift will be recorded against.
-  ///
-  /// An owner has no `staff` row — the owner lives in the `owner` table — so
-  /// without one there is no id to attribute a shift to and no way to scope the
-  /// expected figure. Rather than invent an id, the screen offers to create the
-  /// staff row, which is the same thing the roster already does.
   int? get _staffId => _appState.currentStaffId;
 
   Future<void> _load() async {
@@ -207,9 +179,7 @@ class _ShiftScreenState extends State<ShiftScreen>
   ///
   /// One path for both callers, because the two places it used to be duplicated
   /// had already drifted. It asks for the figure and nothing else: the sheet's
-  /// title says what is wanted, and a sentence under a text field explaining why
-  /// the shop is being asked is one more thing to read before answering a
-  /// question that already reads clearly.
+
   Future<void> _openShiftForStaffId(int staffId, String name) async {
     final AppLocalizations l10n = AppLocalizations.of(context);
     final Money? openingFloat = await showFloatSheet(
@@ -312,7 +282,9 @@ class _ShiftScreenState extends State<ShiftScreen>
     // silently goes nowhere.
     return Scaffold(
       appBar: AppBar(
-        title: Text(AppLocalizations.of(context).shiftScreenTitle),
+        title: BrandHeader(
+          title: Text(AppLocalizations.of(context).shiftScreenTitle),
+        ),
       ),
       body: switch (_state) {
         null || _ShiftLoading() => const _ShiftSkeleton(),
@@ -333,11 +305,6 @@ class _ShiftScreenState extends State<ShiftScreen>
   }
 }
 
-/// The closed-shift sentence, said in words.
-///
-/// `short` and `over` are in the sentence rather than left to the sign alone,
-/// because a cashier reading a signed figure at the end of a long day reads the
-/// sign wrong often enough to be worth spending the words on.
 String describeClosedShift(AppLocalizations l10n, ShiftVariance variance) {
   if (variance.isZero) return l10n.shiftClosedBalanced;
   final String amount = formatMoney(variance.magnitude);
@@ -346,10 +313,6 @@ String describeClosedShift(AppLocalizations l10n, ShiftVariance variance) {
       : l10n.shiftClosedOver(amount);
 }
 
-/// The first paint, before anything has been read.
-///
-/// A skeleton of the screen's own shapes rather than a centred spinner: a
-/// spinner over an empty box means everything moves when the data lands.
 class _ShiftSkeleton extends StatelessWidget {
   const _ShiftSkeleton();
 
@@ -365,7 +328,6 @@ class _ShiftSkeleton extends StatelessWidget {
   }
 }
 
-/// The screen's body, in reading order.
 class _ShiftBody extends StatelessWidget {
   const _ShiftBody({
     required this.data,
@@ -456,13 +418,6 @@ class _ShiftBody extends StatelessWidget {
   }
 }
 
-/// The open shift: what the drawer should hold, what was last counted, and the
-/// two things that end it.
-///
-/// The EXPECTED figure is the emphasised one rather than the float they typed,
-/// because it is the figure the count is measured against. A card that led with
-/// the float lets the cashier confirm back to themselves the number they already
-/// knew.
 class OpenShiftCard extends StatelessWidget {
   const OpenShiftCard({
     required this.shift,
@@ -552,10 +507,6 @@ class OpenShiftCard extends StatelessWidget {
   }
 }
 
-/// No shift open for this person.
-///
-/// Said plainly, because the consequence is not obvious: without an open shift
-/// there is nothing to reconcile this cashier's cash against when they finish.
 class NoShiftCard extends StatelessWidget {
   const NoShiftCard({required this.canOpen, required this.onOpen, super.key});
 
@@ -602,12 +553,6 @@ class NoShiftCard extends StatelessWidget {
   }
 }
 
-/// What the app is about to do about an owner who has no staff entry.
-///
-/// A real decision with a consequence the user did not ask for, so it states the
-/// consequence, counts the thing being created, and makes the confirming button
-/// carry the verb. A bare "Add me" beside a paragraph is the shape of a dialog
-/// that gets dismissed without being read.
 class _AddRosterEntryDialog extends StatelessWidget {
   const _AddRosterEntryDialog({required this.name});
 
@@ -656,7 +601,6 @@ class _AddRosterEntryDialog extends StatelessWidget {
   }
 }
 
-/// What the roster dialog returned: the new staff id, or null if declined.
 class _RosterOffer {
   const _RosterOffer(this.staffId);
 

@@ -37,6 +37,7 @@ import '../models/models.dart';
 import '../services/import_review_service.dart';
 import '../services/import_row_parser.dart';
 import '../services/session_refresh_mixin.dart';
+import '../ui/components/brand_header.dart';
 import '../theme/app_shapes.dart';
 import '../theme/app_spacing.dart';
 import '../theme/typography.dart';
@@ -44,7 +45,6 @@ import '../ui/components/states.dart';
 import '../ui/components/surface.dart';
 import '../utils/validation_utils.dart';
 
-/// One problem row, plus the draft read out of it.
 class ImportProblemRow {
   const ImportProblemRow({required this.problem, required this.draft});
 
@@ -113,7 +113,11 @@ class _ImportsScreenState extends State<ImportsScreen>
     final spacing = AppSpacing.of(context);
 
     return Scaffold(
-      appBar: AppBar(title: Text(l10n.importsTitle)),
+      appBar: AppBar(
+        title: BrandHeader(
+          title: Text(l10n.importsTitle),
+        ),
+      ),
       body: switch ((_loading, _failed, _rows.isEmpty)) {
         (true, _, _) => const _ImportsSkeleton(),
         (_, true, _) => ErrorStateView(
@@ -142,7 +146,6 @@ class _ImportsScreenState extends State<ImportsScreen>
   }
 }
 
-/// Shaped like the list, so nothing jumps when the rows land.
 class _ImportsSkeleton extends StatelessWidget {
   const _ImportsSkeleton();
 
@@ -174,7 +177,6 @@ class _SkeletonLine extends StatelessWidget {
       );
 }
 
-/// One problem row, tappable to complete it.
 class _ProblemTile extends StatelessWidget {
   const _ProblemTile({required this.row, required this.onSaved});
 
@@ -226,8 +228,6 @@ class _ProblemTile extends StatelessWidget {
   }
 }
 
-/// The finish-the-row form: the draft's values, editable, with the missing ones
-/// required rather than silently defaulted.
 class _CompleteSheet extends StatefulWidget {
   const _CompleteSheet({required this.row, required this.onSaved});
 
@@ -255,8 +255,6 @@ class _CompleteSheetState extends State<_CompleteSheet> {
     _sell = TextEditingController(text: _majorText(widget.row.draft.sellMinor));
   }
 
-  /// Shillings as a human wrote them, never the minor units the store keeps:
-  /// 4055 in a price box is a figure nobody would type and nobody can check.
   static String _majorText(int? minor) =>
       minor == null ? '' : (minor / 100).toString();
 
@@ -339,8 +337,6 @@ class _CompleteSheetState extends State<_CompleteSheet> {
     );
   }
 
-  /// The import's own parser, so a price the sheet wrote is accepted here in
-  /// the same form it was written in.
   String? _priceValidator(String? value) {
     final AppLocalizations l10n = AppLocalizations.of(context);
     final String text = (value ?? '').trim();
@@ -350,13 +346,8 @@ class _CompleteSheetState extends State<_CompleteSheet> {
     return null;
   }
 
-  /// The shared validator's verdict, in the shop's language.
-  ///
-  /// [Product.validate] answers with a [ProductProblem] — a code, because the
-  /// model layer cannot reach `AppLocalizations`. [ValidationUtils] is where
-  /// that code becomes the words the owner reads, the same words the product
-  /// editor would show for the same broken rule.
-  String _localiseProblem(ProductProblem problem) => ValidationUtils.productProblem(
+  String _localiseProblem(ProductProblem problem) =>
+      ValidationUtils.productProblem(
         AppLocalizations.of(context),
         problem,
       );
@@ -413,8 +404,8 @@ class _CompleteSheetState extends State<_CompleteSheet> {
         bottleMl: product.bottleMl,
       );
       if (invalid != null) {
-        messenger.showSnackBar(
-            SnackBar(content: Text(_localiseProblem(invalid))));
+        messenger
+            .showSnackBar(SnackBar(content: Text(_localiseProblem(invalid))));
         return;
       }
 

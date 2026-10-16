@@ -15,20 +15,8 @@ import '../ui/components/status.dart';
 import '../ui/components/surface.dart';
 import '../utils/money.dart';
 
-/// How many shifts one load resolves figures for.
-///
-/// A Z-report table that silently stops at a row count reports a shorter
-/// history than the ledger holds, so the card says how many were left out
-/// rather than pretending the list ends there. Thirty is a month of shifts for
-/// a single till, which is what anyone actually reads.
 const int kShiftReportLimit = 30;
 
-/// One shift, with the figures a Z report is made of.
-///
-/// Resolved once at load time. Nothing here is summed in `build()`: the takings
-/// come from the ledger's own aggregate over the shift's window, and the
-/// expected balance comes from `expectedTillBalance`, which is the same figure
-/// the reconciliation screen compares a physical count against.
 @immutable
 class ShiftReportRow {
   const ShiftReportRow({
@@ -42,40 +30,24 @@ class ShiftReportRow {
 
   final Shift shift;
 
-  /// Every tender rung up inside the shift's window, not just cash: this is the
-  /// Z report's gross, and it is scoped on `staff_id` rather than the display
-  /// name, because a shared till can have someone else's sales in the same
-  /// window and attributing them to this cashier would hand them a variance
-  /// they did not cause.
   final Money grossSales;
 
-  /// What the drawer should hold: the opening float plus the verified cash.
   final Money expectedTill;
 
-  /// The most recent reconciliation's variance, or null while the shift is open
-  /// or was never counted.
   final Money? variance;
 
-  /// How many times the shift was reconciled. More than one means it was
-  /// re-counted, which an owner looking at a variance needs to know.
   final int reconciliationCount;
 
-  /// The most recent sale inside the window — the document a reprint prints.
   final Sale? latestSale;
 
   bool get isOpen => shift.status == 'open';
 
   int? get id => shift.id;
 
-  /// The catalogue comes in, because this is a value type built in a query loop
-  /// with no `Localizations` above it.
   String cashierLabel(AppLocalizations l10n) => shift.staffName.trim().isEmpty
       ? l10n.shiftHistoryUnknownCashier
       : shift.staffName;
 
-  /// "3 Jan, 2:00 pm – 6:30 pm", or the raw stored string when the timestamp
-  /// does not parse. A report that shows nothing for an unparseable date is
-  /// worse than one that shows the stored value.
   String get windowLabel {
     final DateTime? start = _parse(shift.startTime);
     if (start == null) return shift.startTime;
@@ -85,7 +57,6 @@ class ShiftReportRow {
         '${DateFormat('h:mm a').format(end)}';
   }
 
-  /// The day the shift opened, for grouping and for the export label.
   DateTime? get openedOn => _parse(shift.startTime);
 
   static DateTime? _parse(String? value) {
@@ -94,18 +65,6 @@ class ShiftReportRow {
   }
 }
 
-/// Resolves the Z-report figures for [shifts].
-///
-/// Three ledger reads per shift — the window's takings, the expected drawer
-/// balance, and the reconciliation history — each of which is a small indexed
-/// query. That is deliberately per-shift rather than one sweep in Dart: the
-/// scoping rules (`staff_id`, the verified-cash filter, the window boundaries)
-/// already exist in `DatabaseHelper`, and re-implementing them here to save a
-/// query is how a report and a reconciliation end up disagreeing.
-///
-/// [sales] is the sale list the screen has already loaded for the recent-sales
-/// section; the reprint action resolves its target from it instead of issuing a
-/// fourth query per row.
 Future<List<ShiftReportRow>> loadShiftReports(
   List<Shift> shifts,
   List<Sale> sales,
@@ -150,8 +109,6 @@ Future<List<ShiftReportRow>> loadShiftReports(
   return rows;
 }
 
-/// The newest sale that falls inside [shift]'s window and was rung by the same
-/// cashier, or null when the shift took nothing.
 Sale? _latestSaleIn(List<Sale> sales, Shift shift) {
   final DateTime? start = ShiftReportRow._parse(shift.startTime);
   final DateTime? end = ShiftReportRow._parse(shift.endTime);
@@ -166,7 +123,6 @@ Sale? _latestSaleIn(List<Sale> sales, Shift shift) {
   return null;
 }
 
-/// The shift ledger: one row per shift, newest first.
 class ShiftReportsCard extends StatelessWidget {
   const ShiftReportsCard({
     required this.rows,
@@ -178,10 +134,8 @@ class ShiftReportsCard extends StatelessWidget {
 
   final List<ShiftReportRow> rows;
 
-  /// Every shift on record, including any left out of [rows].
   final int totalShifts;
 
-  /// Resolved from a shift id, never from a captured figure.
   final void Function(int shiftId, Sale sale) onPrint;
   final void Function(Shift shift) onExport;
 
@@ -247,12 +201,6 @@ class ShiftReportsCard extends StatelessWidget {
   }
 }
 
-/// One shift: when and who on the first line, the figures on the second.
-///
-/// The two-line shape is what keeps five figures legible at a till's width. A
-/// single row of When / Cashier / Gross / Expected / Variance is unreadable
-/// below about 560 logical pixels, and a report whose columns cannot be read is
-/// a report nobody trusts.
 class _ShiftReportLine extends StatelessWidget {
   const _ShiftReportLine({
     required this.row,
@@ -354,7 +302,6 @@ class _ShiftReportLine extends StatelessWidget {
   }
 }
 
-/// "Expected in till KSh 26,600" and the variance, as glyph + word + figure.
 class _ExpectedCaption extends StatelessWidget {
   const _ExpectedCaption({required this.row});
 
@@ -419,7 +366,6 @@ class _ExpectedCaption extends StatelessWidget {
   }
 }
 
-/// The row's two real side effects: reprint, and export.
 class _ShiftActions extends StatelessWidget {
   const _ShiftActions({
     required this.row,
@@ -439,25 +385,34 @@ class _ShiftActions extends StatelessWidget {
     return Row(
       mainAxisSize: MainAxisSize.min,
       children: <Widget>[
-        IconButton(
-          tooltip: printable
+        Semantics(
+          button: true,
+          label: printable
               ? 'Reprint the last receipt in this shift'
               : 'No receipt to reprint in this shift',
-          onPressed: onPrint,
-          icon: const Icon(Icons.print_outlined),
+          child: IconButton(
+            tooltip: printable
+                ? 'Reprint the last receipt in this shift'
+                : 'No receipt to reprint in this shift',
+            onPressed: onPrint,
+            icon: const Icon(Icons.print_outlined),
+          ),
         ),
         SizedBox(width: spacing.xs),
-        IconButton(
-          tooltip: 'Export sales from this shift',
-          onPressed: onExport,
-          icon: const Icon(Icons.ios_share),
+        Semantics(
+          button: true,
+          label: 'Export sales from this shift',
+          child: IconButton(
+            tooltip: 'Export sales from this shift',
+            onPressed: onExport,
+            icon: const Icon(Icons.ios_share),
+          ),
         ),
       ],
     );
   }
 }
 
-/// Advice for a failed print, in terms the owner can act on.
 String printerAdviceFor(PrintResult result) => switch (result.failure) {
       PrinterFailure.notPaired =>
         'Pair the printer from this phone\'s Bluetooth settings.',

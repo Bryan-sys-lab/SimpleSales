@@ -30,21 +30,18 @@ import '../theme/typography.dart';
 import '../ui/components/states.dart';
 import '../ui/components/status.dart';
 import '../ui/layout/page.dart';
+import '../ui/components/brand_header.dart';
 
-/// How the owner wants the rows.
 enum ActivityView { merged, byShop }
 
-/// One row, already carrying the shop it came from.
 class ActivityRow {
   const ActivityRow({required this.entry, required this.shopName});
 
   final AuditLogEntry entry;
 
-  /// Null for the merged view, where the shop is a column rather than a group.
   final String shopName;
 }
 
-/// Every shop's activity, as one value.
 class ActivitySnapshot {
   const ActivitySnapshot({required this.perShop});
 
@@ -61,12 +58,6 @@ class ActivitySnapshot {
 
   bool get anyFailed => perShop.any((shop) => shop.failed);
 
-  /// Every row, merged and newest-first, each tagged with its shop.
-  ///
-  /// Cap, ordering and deduplication live in ONE place —
-  /// [CrossShopAuditReader.mergeNewestFirst] — because the service's `readMerged`
-  /// and this screen's merged tab used to sort and cap independently, and the
-  /// two silently disagreed about how many rows a shop could show.
   List<ActivityRow> get merged => CrossShopAuditReader.mergeNewestFirst(
         shops: perShop,
       )
@@ -74,7 +65,6 @@ class ActivitySnapshot {
           .toList();
 }
 
-/// The owner's activity view across every shop on this device.
 class ActivityScreen extends StatefulWidget {
   const ActivityScreen({super.key});
 
@@ -95,9 +85,6 @@ class _ActivityScreenState extends State<ActivityScreen>
     _load();
   }
 
-  /// The audit rows on screen were read for the session that just ended.
-  /// Back to loading with nothing behind it: an activity log left on screen
-  /// under a new session is the previous session's log.
   @override
   void clearForSession() {
     _snapshot = ActivitySnapshot.empty;
@@ -138,7 +125,11 @@ class _ActivityScreenState extends State<ActivityScreen>
   Widget build(BuildContext context) {
     final AppLocalizations l10n = AppLocalizations.of(context);
     return Scaffold(
-      appBar: AppBar(title: Text(l10n.activityTitle)),
+      appBar: AppBar(
+        title: BrandHeader(
+          title: Text(l10n.activityTitle),
+        ),
+      ),
       body: AdaptivePage(
         scrollable: false,
         maxContentWidth: 880,
@@ -164,7 +155,6 @@ class _ActivityScreenState extends State<ActivityScreen>
   }
 }
 
-/// The view itself, built from a value.
 class ActivityPanel extends StatelessWidget {
   const ActivityPanel({
     super.key,
@@ -256,7 +246,6 @@ class ActivityPanel extends StatelessWidget {
   }
 }
 
-/// Every row, newest-first, each carrying its shop's name.
 class _MergedList extends StatelessWidget {
   const _MergedList({required this.rows});
 
@@ -276,11 +265,6 @@ class _MergedList extends StatelessWidget {
       );
 }
 
-/// One line of the by-shop list, as DATA rather than as a widget.
-///
-/// The list resolves its whole shape once per snapshot and then builds only what
-/// is on screen, which is the difference between a 150-row list and 150 widgets
-/// being constructed on every rebuild.
 enum _ActivityLineKind { heading, unreadable, emptyShop, row }
 
 class _ActivityLine {
@@ -291,15 +275,12 @@ class _ActivityLine {
     this.index = 0,
   });
 
-  /// A shop's name, which is a heading rather than a group label.
   const _ActivityLine.heading(ShopActivity shop)
       : this._(kind: _ActivityLineKind.heading, shop: shop);
 
-  /// The shop's log could not be read at all.
   const _ActivityLine.unreadable(ShopActivity shop)
       : this._(kind: _ActivityLineKind.unreadable, shop: shop);
 
-  /// The shop's log is readable and simply holds nothing.
   const _ActivityLine.emptyShop(ShopActivity shop)
       : this._(kind: _ActivityLineKind.emptyShop, shop: shop);
 
@@ -315,15 +296,11 @@ class _ActivityLine {
 
   final ShopActivity shop;
 
-  /// Non-null only for [_ActivityLineKind.row].
   final AuditLogEntry? entry;
 
-  /// The entry's position within its own shop, so the divider can omit itself
-  /// after the last row.
   final int index;
 }
 
-/// Rows grouped by shop, each shop its own section.
 class _ByShopList extends StatelessWidget {
   const _ByShopList({required this.snapshot});
 
@@ -548,11 +525,6 @@ class _ActivityRow extends StatelessWidget {
     );
   }
 
-  /// The action, in words.
-  ///
-  /// Every string comes from the catalogue, and the detail is appended rather
-  /// than woven in — a sentence a shopkeeper reads is the sentence, and a
-  /// separate field is a separate fact.
   String _describe(AppLocalizations l10n) {
     final String action = switch (entry.action) {
       AuditAction.productCreated => l10n.activityProductCreated,
@@ -591,11 +563,6 @@ class _ActivityRow extends StatelessWidget {
     return detail.isEmpty ? action : '$action — $detail';
   }
 
-  /// The moment, relative where that is shorter.
-  ///
-  /// An absolute stamp is precise but far too long to scan; "2 hours ago" is
-  /// what an owner actually wants, and the full stamp is still there for the
-  /// row that turns out to matter.
   String _when(String iso) {
     final at = DateTime.tryParse(iso);
     if (at == null) return iso;
@@ -610,7 +577,6 @@ class _ActivityRow extends StatelessWidget {
   }
 }
 
-/// One of the two view choices.
 class _ViewSwitch extends StatelessWidget {
   const _ViewSwitch({
     required this.label,
@@ -655,7 +621,6 @@ class _ViewSwitch extends StatelessWidget {
   }
 }
 
-/// The first read, drawn as the rows it is about to become.
 class _ActivitySkeleton extends StatelessWidget {
   const _ActivitySkeleton();
 

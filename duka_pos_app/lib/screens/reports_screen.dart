@@ -23,12 +23,11 @@ import '../ui/components/states.dart';
 import '../ui/components/surface.dart';
 import '../ui/layout/page.dart';
 import '../utils/money.dart';
+import '../ui/components/brand_header.dart';
 import 'reports_shifts.dart';
 
-/// How many of the newest sales the recent-sales list shows.
 const int kRecentSalesLimit = 50;
 
-/// One cashier's takings, as the report aggregates them.
 @immutable
 class StaffTakings {
   const StaffTakings({
@@ -41,13 +40,10 @@ class StaffTakings {
   final String staffName;
   final int transactions;
 
-  /// Money in the accumulator, not a raw double: per-staff takings then sum to
-  /// the same figure as the day total, with no rounding to reconcile.
   final Money total;
   final Money profit;
 }
 
-/// Everything one load of this screen resolved to.
 @immutable
 class ReportsData {
   const ReportsData({
@@ -69,15 +65,11 @@ class ReportsData {
   final int totalShifts;
   final List<StaffTakings> staff;
 
-  /// True when this till has no ledger at all — not "nothing matches the
-  /// filter". The two are different screens with different actions.
   bool get isUnrecorded => sales.isEmpty && shifts.isEmpty;
 
-  /// The rows for the newest sales, which is all this section ever showed.
   List<Sale> get recent => sales.take(kRecentSalesLimit).toList();
 }
 
-/// Exactly one of these is on screen.
 sealed class ReportsView {
   const ReportsView();
 }
@@ -97,12 +89,6 @@ final class ReportsReady extends ReportsView {
   final ReportsData data;
 }
 
-/// The shift ledger, the takings per cashier, and the last fifty receipts.
-///
-/// Reports used to be a sixth tab reporting the same numbers Analytics already
-/// showed under a different name, so it became a view *inside* Analytics at
-/// `/analytics/reports`. It is always embedded there, so it draws no `Scaffold`
-/// and no `AppBar` — the branch page above it owns the chrome and the way back.
 class ReportsScreen extends StatefulWidget {
   const ReportsScreen({super.key});
 
@@ -119,8 +105,6 @@ class _ReportsScreenState extends State<ReportsScreen>
   ReportsData _shown = ReportsData.empty;
   String _query = '';
 
-  /// How many sales the load read before the search narrowed them. Held so the
-  /// filter can be cleared without a round trip.
   int _unfilteredCount = 0;
 
   @override
@@ -135,10 +119,6 @@ class _ReportsScreenState extends State<ReportsScreen>
     super.dispose();
   }
 
-  /// The ledger these rows came from was read for the session that just
-  /// ended, so the rows go with it. The filter goes too: it was built against
-  /// a cashier's own sales, and a shop-wide re-read that keeps it would
-  /// silently narrow the new session's view.
   @override
   void clearForSession() {
     _view = const ReportsLoading(ReportsData.empty);
@@ -189,10 +169,6 @@ class _ReportsScreenState extends State<ReportsScreen>
     }
   }
 
-  /// Per-cashier takings, biggest first.
-  ///
-  /// Accumulates in [Money] and sorts by it, so the column a manager compares
-  /// down is the same arithmetic the ledger uses.
   static List<StaffTakings> _takingsByStaff(List<Sale> sales) {
     final Map<String, Map<String, Object>> byStaff =
         <String, Map<String, Object>>{};
@@ -218,11 +194,6 @@ class _ReportsScreenState extends State<ReportsScreen>
     return rows;
   }
 
-  /// Narrows every table by the one search term.
-  ///
-  /// One filter applied to all three tables rather than one per table, so the
-  /// three can never disagree about what "Amina" means — a screen where the
-  /// shift table filtered and the sales table did not is a screen nobody trusts.
   static ReportsData _filter(ReportsData data) {
     return data;
   }
@@ -254,15 +225,6 @@ class _ReportsScreenState extends State<ReportsScreen>
       .where((StaffTakings s) => _matches(s.staffName))
       .toList();
 
-  /// Opens the real shift and reconciliation view.
-  ///
-  /// Replaced what used to be a "shift summary" dialog here. That dialog
-  /// filtered sales by the cashier's *display name* in Dart, compared date parts
-  /// one at a time, and — worst — printed the day's sales total under the
-  /// heading "Cash expected in till". It ignored the opening float, every
-  /// non-cash payment, and change given, so the one number an owner would take
-  /// from it to judge a cashier was wrong. Now that shifts are recorded, the
-  /// figure comes from `expectedTillBalance` and the variance is the ledger's.
   Future<void> _showShiftSummary() async {
     await context.push(Routes.shift);
     if (!mounted) return;
@@ -274,24 +236,12 @@ class _ReportsScreenState extends State<ReportsScreen>
     await _excel.shareFile(file);
   }
 
-  /// Exports from one shift's start to now.
-  ///
-  /// [ExcelService.exportSales] takes a `since` and no `until`, so the label
-  /// says "from this shift" rather than "this shift": a button that quietly
-  /// exports more than its own row is worse than one that names its scope.
   Future<void> _exportShift(Shift shift) async {
     final DateTime? start = DateTime.tryParse(shift.startTime);
     final file = await _excel.exportSales(since: start);
     await _excel.shareFile(file);
   }
 
-  /// Reprints the receipt for a past sale.
-  ///
-  /// Goes through the same [ReceiptPrinter] as print-after-sale, rendering the
-  /// *stored* sale rather than anything live — so a reprint is byte-identical
-  /// to the original except for nothing at all. In particular it does not go
-  /// anywhere near `recordSale`: reprinting must never decrement stock, and the
-  /// only way to be sure of that is for the code path to have no way to.
   Future<void> _reprint(Sale sale) async {
     final int? id = sale.id;
     if (id == null) return;
@@ -421,6 +371,27 @@ class _ReportsScreenState extends State<ReportsScreen>
             bottom: spacing.xxl,
           ),
           children: <Widget>[
+            // Brand wordmark at the head of the report: identity beside the
+            // figures, once.
+            Padding(
+              padding: EdgeInsetsDirectional.only(
+                start: spacing.md,
+                end: spacing.md,
+                top: spacing.sm,
+                bottom: spacing.sm,
+              ),
+              child: Semantics(
+                image: true,
+                label: 'SimpleSales',
+                child: ExcludeSemantics(
+                  child: BrandHeader(
+                    markSize: 22,
+                    gap: spacing.sm,
+                    showWordmark: true,
+                  ),
+                ),
+              ),
+            ),
             _ReportsActions(
               onOpenShift: _showShiftSummary,
               onExport: _exportSales,
@@ -464,8 +435,6 @@ class _ReportsScreenState extends State<ReportsScreen>
   }
 }
 
-/// The two things a manager does with a report: open the till's shift, or take
-/// the ledger away with them.
 class _ReportsActions extends StatelessWidget {
   const _ReportsActions({required this.onOpenShift, required this.onExport});
 
@@ -501,7 +470,6 @@ class _ReportsActions extends StatelessWidget {
   }
 }
 
-/// Per-cashier takings. Money in the accumulator, sorted biggest first.
 class _StaffTakingsCard extends StatelessWidget {
   const _StaffTakingsCard({required this.rows});
 
@@ -619,7 +587,6 @@ class _StaffTakingsRow extends StatelessWidget {
   }
 }
 
-/// The newest receipts, each reprintable.
 class _RecentSalesCard extends StatelessWidget {
   const _RecentSalesCard({required this.sales, required this.onReprint});
 
@@ -707,10 +674,16 @@ class _RecentSaleRow extends StatelessWidget {
             padding: EdgeInsetsDirectional.only(top: spacing.sm),
             child: MoneyText(amount: formatMoney(sale.total), size: 15),
           ),
-          IconButton(
-            tooltip: 'Reprint receipt',
-            onPressed: sale.id == null ? null : () => onReprint(sale),
-            icon: const Icon(Icons.print_outlined),
+          Semantics(
+            button: true,
+            label: sale.id == null
+                ? 'No receipt to reprint for this sale'
+                : 'Reprint receipt for ${sale.staffName}',
+            child: IconButton(
+              tooltip: 'Reprint receipt',
+              onPressed: sale.id == null ? null : () => onReprint(sale),
+              icon: const Icon(Icons.print_outlined),
+            ),
           ),
         ],
       ),
@@ -738,7 +711,6 @@ class _RecentSaleRow extends StatelessWidget {
   }
 }
 
-/// A one-line note inside a card, where a whole empty screen would be absurd.
 class _CardNote extends StatelessWidget {
   const _CardNote(this.message);
 
@@ -764,7 +736,6 @@ class _CardNote extends StatelessWidget {
   }
 }
 
-/// A small figure that a reader compares down a column: tabular.
 TextStyle _smallFigure(BuildContext context) =>
     (AppTypography.of(context).bodySmall ?? const TextStyle()).copyWith(
       fontFeatures: AppTypography.tabular,

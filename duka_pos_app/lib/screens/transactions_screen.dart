@@ -1,16 +1,3 @@
-/// Who sold what.
-///
-/// The dashboard's transactions count is a DOOR: a manager who sees "23" today
-/// is asking "which 23, and by whom". This is that list — each sale with the
-/// person who rang it, what they sold and when — and the audit entry recorded
-/// against it, because a ring-up is the one act that moves money and it is the
-/// one that has to be attributable afterwards.
-///
-/// Two records of the same act, deliberately. The sale row is the money
-/// (totals, items, tender); the audit row is the accountability (who, from
-/// which session). A list of only the money cannot answer "was this the
-/// cashier or the owner", and a list of only the audit lines cannot answer
-/// "what was in the basket".
 library;
 
 import 'package:flutter/material.dart';
@@ -28,6 +15,7 @@ import '../ui/components/controls.dart';
 import '../ui/components/states.dart';
 import '../ui/components/surface.dart';
 import '../utils/money.dart';
+import '../ui/components/brand_header.dart';
 
 class TransactionsScreen extends StatefulWidget {
   const TransactionsScreen({super.key});
@@ -36,7 +24,6 @@ class TransactionsScreen extends StatefulWidget {
   State<TransactionsScreen> createState() => _TransactionsScreenState();
 }
 
-/// What the ledger is showing, and whether it could be loaded at all.
 sealed class _LedgerState {}
 
 class _LedgerLoading extends _LedgerState {}
@@ -47,7 +34,6 @@ class _LedgerReady extends _LedgerState {
   final List<Sale> sales;
   final List<AuditLogEntry> audit;
 
-  /// Whether this session may read every seller, or only its own.
   final bool canSeeSellers;
 }
 
@@ -59,11 +45,6 @@ class _LedgerFailed extends _LedgerState {
 class _TransactionsScreenState extends State<TransactionsScreen> {
   _LedgerState _state = _LedgerLoading();
 
-  /// How far back the ledger reads.
-  ///
-  /// Bounded like every other shop-wide read: "everything ever" on a shop with
-  /// two years of trading is a list nobody scrolls, and two rows per
-  /// transaction is already twice the work of the count that opens it.
   static const int _days = 14;
 
   @override
@@ -88,11 +69,13 @@ class _TransactionsScreenState extends State<TransactionsScreen> {
       // dashboard and the reports guard use, and the reason the screen exists
       // for the person who can act on it and not for everyone who can sign in.
       // `canSeeSellers` below hides NAMES; this hides the ROWS.
-      final String? staff = state.canManageStock ? null : state.currentStaffName;
+      final String? staff =
+          state.canManageStock ? null : state.currentStaffName;
       final List<Sale> sales =
           await db.getSales(since: since, staffName: staff, limit: 200);
       final List<AuditLogEntry> audit = await db.auditLog(
-        AuditLogQuery(actions: <AuditAction>[AuditAction.saleRecorded], limit: 200),
+        AuditLogQuery(
+            actions: <AuditAction>[AuditAction.saleRecorded], limit: 200),
       );
       if (!mounted) return;
       setState(() => _state = _LedgerReady(sales, audit, staff == null));
@@ -112,7 +95,9 @@ class _TransactionsScreenState extends State<TransactionsScreen> {
 
     return Scaffold(
       appBar: AppBar(
-        title: Text(l10n.transactionsTitle),
+        title: BrandHeader(
+          title: Text(l10n.transactionsTitle),
+        ),
         actions: <Widget>[
           IconButton(
             onPressed: _load,
@@ -155,7 +140,6 @@ class _TransactionsScreenState extends State<TransactionsScreen> {
   }
 }
 
-/// The list itself, as one sliver list so the whole screen scrolls as one.
 class _Ledger extends StatelessWidget {
   const _Ledger({
     required this.sales,
@@ -166,8 +150,6 @@ class _Ledger extends StatelessWidget {
   final List<Sale> sales;
   final List<AuditLogEntry> audit;
 
-  /// The who-sold-it column is management-facing: a cashier's own shift is
-  /// theirs, a roster-wide ledger of everyone's is not.
   final bool canSeeSellers;
 
   @override
@@ -222,10 +204,6 @@ class _Ledger extends StatelessWidget {
   }
 }
 
-/// One sale, with the audit entry recorded against it.
-///
-/// Public so a test can render a row from constructed values: the pairing this
-/// screen exists for is per-row, and a row is the unit worth pinning.
 class TransactionsRow extends StatelessWidget {
   const TransactionsRow({
     required this.sale,
@@ -237,7 +215,6 @@ class TransactionsRow extends StatelessWidget {
   final Sale sale;
   final AuditLogEntry? audit;
 
-  /// See [_Ledger.canSeeSellers].
   final bool canSeeSellers;
 
   @override
@@ -330,8 +307,6 @@ class TransactionsRow extends StatelessWidget {
     );
   }
 
-  /// When, relative on a till: "2h ago" is what a manager scanning today needs,
-  /// and the date is what they need for a dispute.
   String _when(BuildContext context, String iso) {
     final DateTime? at = DateTime.tryParse(iso);
     if (at == null) return '';

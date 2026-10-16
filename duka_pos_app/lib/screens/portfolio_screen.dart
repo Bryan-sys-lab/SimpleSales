@@ -21,6 +21,7 @@ import 'package:provider/provider.dart';
 
 import '../l10n/generated/app_localizations.dart';
 import '../services/app_state.dart';
+import '../ui/components/brand_header.dart';
 import '../services/backend_service.dart';
 import '../services/portfolio_kpis.dart';
 import '../services/live_refresh_mixin.dart';
@@ -37,19 +38,9 @@ import '../ui/layout/page.dart';
 import '../utils/money.dart';
 import '../widgets/chart.dart';
 
-/// The windows an owner thinks in for a portfolio read.
 enum PortfolioRange { week, month, quarter }
 
 extension on PortfolioRange {
-  /// The window this range covers, as a START date.
-  ///
-  /// A day count, not calendar arithmetic. `month` used to be "the same day
-  /// last month" and `quarter` "the same day three months ago", which are 28–31
-  /// and 89–92 days — while the menu labels say "30 days" and "90 days", and a
-  /// calendar subtraction also CLAMPS on the 31st, so picking "30 days" on
-  /// 31 March silently returned 28. This now matches [AnalyticsRange], which
-  /// counts days including today, so the same label means the same window on
-  /// both screens.
   DateTime since(DateTime now) => switch (this) {
         PortfolioRange.week => DateTime(now.year, now.month, now.day - 6),
         PortfolioRange.month => DateTime(now.year, now.month, now.day - 29),
@@ -57,11 +48,6 @@ extension on PortfolioRange {
       };
 }
 
-/// Every shop the account runs.
-///
-/// Value-driven like [SettingsPanel] and [TaxSettingsPanel] so the whole view is
-/// renderable from a constructed value in a test — the load is async network I/O
-/// and cannot be exercised in a `testWidgets` body.
 class PortfolioScreen extends StatefulWidget {
   const PortfolioScreen({super.key});
 
@@ -74,12 +60,8 @@ class _PortfolioScreenState extends State<PortfolioScreen>
   PortfolioRange _range = PortfolioRange.week;
   _PortfolioView _view = const _PortfolioLoading();
 
-  /// True from the moment a re-read starts until it settles. Drives the panel's
-  /// own indicator rather than replacing the content, which is what keeps a
-  /// pull-to-refresh from reading as data loss.
   bool _loading = true;
 
-  /// Cross-shop by definition, so it re-reads on any change.
   @override
   Set<LiveReason> get liveReasons => const <LiveReason>{};
 
@@ -89,10 +71,6 @@ class _PortfolioScreenState extends State<PortfolioScreen>
   @override
   Future<void> reloadFromLive() => _load();
 
-  /// These KPIs are fetched as the signed-in shop's identity. Signing out
-  /// tears the tokens that produced them down, so nothing read under them may
-  /// outlive the session: back to loading, and the read that follows either
-  /// answers for the new session or fails honestly.
   @override
   void clearForSession() {
     _view = const _PortfolioLoading();
@@ -155,7 +133,11 @@ class _PortfolioScreenState extends State<PortfolioScreen>
   Widget build(BuildContext context) {
     final AppLocalizations l10n = AppLocalizations.of(context);
     return Scaffold(
-      appBar: AppBar(title: Text(l10n.portfolioTitle)),
+      appBar: AppBar(
+        title: BrandHeader(
+          title: Text(l10n.portfolioTitle),
+        ),
+      ),
       body: AdaptivePage(
         scrollable: false,
         maxContentWidth: 880,
@@ -361,11 +343,6 @@ class PortfolioPanel extends StatelessWidget {
     );
   }
 
-  /// The tint for the shop at [rank] in the revenue ranking.
-  ///
-  /// An accent-to-neutral ramp rather than a categorical palette: these are not
-  /// five unrelated categories, they are one shop standing out from four. The
-  /// legend names every slice, so the colour is decoration on top of the words.
   Color _rankColor(int rank, BuildContext context) {
     final AppColors colors = AppColors.of(context);
     return switch (rank) {
@@ -378,7 +355,6 @@ class PortfolioPanel extends StatelessWidget {
   }
 }
 
-/// The whole, and the one derived figure that changes behaviour.
 class _PortfolioTotalsCard extends StatelessWidget {
   const _PortfolioTotalsCard({required this.kpis});
 
@@ -458,7 +434,6 @@ class _PortfolioTotalsCard extends StatelessWidget {
   }
 }
 
-/// One shop in the ranking: rank, name, figures, and its share of the whole.
 class _ShopKpiRow extends StatelessWidget {
   const _ShopKpiRow({
     required this.kpi,

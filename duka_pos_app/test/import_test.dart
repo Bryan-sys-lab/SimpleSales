@@ -1084,7 +1084,8 @@ void main() {
       expect(await db.countOpenImportProblems(), 1);
     });
 
-    test('a refused import cannot clear a different file\'s problems', () async {
+    test('a refused import cannot clear a different file\'s problems',
+        () async {
       // The shipped bug's other half: the refusal resolved problems keyed on
       // the REFUSING file's tab name, which falls back to its first non-empty
       // tab. A broken workbook whose only tab shares a name with last week's

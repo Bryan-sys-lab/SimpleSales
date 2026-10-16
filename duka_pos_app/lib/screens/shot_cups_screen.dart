@@ -19,6 +19,7 @@ import '../db/database_helper.dart';
 import '../l10n/generated/app_localizations.dart';
 import '../models/models.dart';
 import '../services/app_state.dart';
+import '../ui/components/brand_header.dart';
 import '../theme/app_colors.dart';
 import '../theme/app_haptics.dart';
 import '../theme/app_shapes.dart';
@@ -48,8 +49,7 @@ final TextInputFormatter _amountDigitsOnly =
 /// The capacity rule, as one function returning one message.
 ///
 /// The field's inline validator and the submit guard both call this, so the two
-/// can never drift into disagreeing about what a rejected capacity looks like,
-/// and neither of them has to reach the other's strings.
+
 String? _capacityErrorOf(AppLocalizations l10n, int? capacityMl) {
   if (capacityMl == null) {
     return l10n.shotCupsCapacityWholeMl;
@@ -61,7 +61,6 @@ String? _capacityErrorOf(AppLocalizations l10n, int? capacityMl) {
   return null;
 }
 
-/// The price rule, as one function returning one message.
 String? _priceErrorOf(AppLocalizations l10n, double? price) {
   if (price == null || !Money.isValidMajor(price)) {
     return l10n.shotCupsPriceInvalid;
@@ -69,7 +68,6 @@ String? _priceErrorOf(AppLocalizations l10n, double? price) {
   return null;
 }
 
-/// The name rule, as one function returning one message.
 String? _labelErrorOf(AppLocalizations l10n, String? label) {
   if (label == null || label.trim().isEmpty) {
     return l10n.shotCupsNameRequired;
@@ -77,7 +75,6 @@ String? _labelErrorOf(AppLocalizations l10n, String? label) {
   return null;
 }
 
-/// Manages the shot cups a till can pour.
 class ShotCupsScreen extends StatefulWidget {
   const ShotCupsScreen({super.key});
 
@@ -85,10 +82,6 @@ class ShotCupsScreen extends StatefulWidget {
   State<ShotCupsScreen> createState() => _ShotCupsScreenState();
 }
 
-/// What the screen has to show.
-///
-/// One sealed value rather than a `loading` flag next to a list, which can be
-/// "loading and empty" and "loaded and empty" at the same time.
 sealed class _CupsLoadState {
   const _CupsLoadState();
 }
@@ -164,12 +157,6 @@ class _ShotCupsScreenState extends State<ShotCupsScreen> {
     await _load();
   }
 
-  /// Soft-deletes, after asking.
-  ///
-  /// Soft rather than hard because the cup is referenced by nothing that has to
-  /// be freed (a sale records the folded name and the capacity it was poured
-  /// at), so removing it costs only the ability to pour it again. A cup that
-  /// was sold from stays off the shelf and off the till.
   Future<void> _remove(ShotCup cup) async {
     final l10n = AppLocalizations.of(context);
     // The typed outcome, not a bare `showDialog` result: `showDialog` returns
@@ -195,19 +182,12 @@ class _ShotCupsScreenState extends State<ShotCupsScreen> {
     await _load();
   }
 
-  /// How many shots one container of [product] yields at [cup]'s capacity.
-  ///
-  /// Null when the arithmetic does not work: a countable product has no
-  /// millilitres to divide, and a cup bigger than its bottle yields nothing.
-  /// Returning null rather than zero is what lets the list say *why* instead of
-  /// showing a confident "0 shots per bottle".
   static int? shotsPerBottle(Product product, ShotCup cup) {
     if (cup.capacityMl <= 0 || product.bottleMl <= 0) return null;
     if (product.unit == ProductUnit.each) return null;
     return product.bottleMl ~/ cup.capacityMl;
   }
 
-  /// The product this cup is poured from, if it is still on the roster.
   Product? _productOf(ShotCup cup) =>
       _products.where((p) => p.id == cup.productId).firstOrNull;
 
@@ -216,7 +196,11 @@ class _ShotCupsScreenState extends State<ShotCupsScreen> {
     final bool canEdit = context.watch<AppState>().canManageStock;
     final AppLocalizations l10n = AppLocalizations.of(context);
     return Scaffold(
-      appBar: AppBar(title: Text(l10n.shotCupsTitle)),
+      appBar: AppBar(
+        title: BrandHeader(
+          title: Text(l10n.shotCupsTitle),
+        ),
+      ),
       floatingActionButton: canEdit
           ? FloatingActionButton(
               onPressed: () => _edit(),
@@ -246,7 +230,6 @@ class _ShotCupsScreenState extends State<ShotCupsScreen> {
   }
 }
 
-/// The first load, shaped like the cards that are coming.
 class _CupsLoadingView extends StatelessWidget {
   const _CupsLoadingView();
 
@@ -274,7 +257,6 @@ class _CupsLoadingView extends StatelessWidget {
   }
 }
 
-/// The configured cups, or the invitation to configure the first one.
 class _ShotCupsList extends StatelessWidget {
   const _ShotCupsList({
     required this.cups,
@@ -337,12 +319,6 @@ class _ShotCupsList extends StatelessWidget {
   }
 }
 
-/// One configured cup: the spirit, the size, the price, the yield.
-///
-/// Dense, one card per cup, because a shop has a handful of cups rather than a
-/// hundred products, and each of these rows carries four separate facts. The
-/// price is the only figure a cashier compares vertically, so it is the only one
-/// that gets tabular figures and an end-aligned column.
 class _ShotCupCard extends StatelessWidget {
   const _ShotCupCard({
     required this.cup,
@@ -354,18 +330,12 @@ class _ShotCupCard extends StatelessWidget {
 
   final ShotCup cup;
 
-  /// Null when the yield cannot be worked out, which is not the same as zero.
   final int? shotsPerBottle;
 
   final bool canEdit;
   final VoidCallback onEdit;
   final VoidCallback onStopSelling;
 
-  /// What the row says at the start, where the facts about the pour live.
-  ///
-  /// The yield is said only when it can be worked out: "0 shots in the bottle"
-  /// would look like an out-of-stock bar, while "the cup is bigger than the
-  /// bottle" is the truth and is fixable.
   String _detail(AppLocalizations l10n) {
     final int? perBottle = shotsPerBottle;
     return <String>[
@@ -569,9 +539,7 @@ class _ShotCupEditorState extends State<_ShotCupEditor> {
   /// configured would otherwise leave the field holding a value that is not in
   /// the list, which is an assertion rather than a message: the owner editing
   /// the cup's price would crash instead of being told why.
-  ///
-  /// Kept selectable so they can move the cup to a real drink; the warning is in
-  /// the label rather than in a disabled row, which would be a dead end.
+
   List<Product> get _options {
     final options = _drinkable;
     final currentId = widget.cup?.productId;
@@ -802,9 +770,6 @@ class _ShotCupEditorState extends State<_ShotCupEditor> {
   }
 }
 
-/// Said rather than an empty dropdown: a shop with nothing measured in
-/// millilitres cannot pour a shot, and that is worth saying once instead of
-/// leaving a control that accepts anything.
 class _NoDrinksNotice extends StatelessWidget {
   const _NoDrinksNotice();
 
@@ -825,11 +790,6 @@ class _NoDrinksNotice extends StatelessWidget {
   }
 }
 
-/// Which spirit the shot is poured from.
-///
-/// A validator rather than a plain dropdown: with nothing selected the sheet
-/// used to refuse at submit time with a line of text at the bottom, which reads
-/// as a failed save rather than as "you have not chosen yet".
 class _PourFromField extends StatelessWidget {
   const _PourFromField({
     required this.value,
@@ -877,7 +837,6 @@ class _PourFromField extends StatelessWidget {
   }
 }
 
-/// A refusal the user has to notice: a live region, in the danger tone.
 class _EditorError extends StatelessWidget {
   const _EditorError({required this.message});
 

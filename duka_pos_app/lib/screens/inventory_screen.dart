@@ -21,6 +21,7 @@ import '../ui/components/controls.dart';
 import '../utils/error_utils.dart';
 import '../utils/money.dart';
 import '../utils/units.dart';
+import '../ui/components/brand_header.dart';
 import '../widgets/variant_catalogue.dart';
 import '../widgets/variant_form_sheet.dart';
 import '../routing/home_shell.dart';
@@ -39,11 +40,6 @@ import 'tank_form_sheet.dart';
 class InventoryScreen extends StatefulWidget {
   const InventoryScreen({this.focusedProductId, super.key});
 
-  /// A product id from a deep link (`/inventory/product/:productId`).
-  ///
-  /// Identity comes from the PATH PARAMETER rather than `state.extra`, because
-  /// `extra` is `null` on a cold start from a deep link and after process death —
-  /// a low-stock link that only works once is worse than no link.
   final String? focusedProductId;
 
   @override
@@ -54,23 +50,12 @@ class _InventoryScreenState extends State<InventoryScreen>
     with LiveRefresh<InventoryScreen>, SessionRefresh<InventoryScreen> {
   List<Product> _products = [];
 
-  /// True until the first load resolves, so the list can tell "still loading"
-  /// from "nothing here yet" — an empty shop and a loading shop look identical
-  /// otherwise, and the empty state would flash at every cold start.
   bool _loading = true;
 
-  /// Which products are sold as variants, and what those variants are.
-  ///
-  /// Loaded with the products rather than per row: the list needs to know for
-  /// every tile whether it has variants to offer, and a query per tile is a
-  /// list that stutters on exactly the shops with the most stock.
   VariantCatalogue _variants = VariantCatalogue.empty;
 
-  /// The limit the sheet opens on. Not the source of truth — that is each
-  /// product's own `reorderLevel` — just the value the owner last agreed to.
   int _lowStockLimit = 5;
 
-  /// Re-reads on a product or stock change: both are what the list shows.
   @override
   Set<LiveReason> get liveReasons => const <LiveReason>{
         LiveReason.products,
@@ -83,10 +68,6 @@ class _InventoryScreenState extends State<InventoryScreen>
   @override
   Future<void> reloadFromLive() => _load();
 
-  /// The session that was reading the catalogue has ended: stop showing it
-  /// theirs. The list is re-read for whoever signs in next, and the skeleton
-  /// — not the "catalogue empty" panel — is what a shop with products and no
-  /// session yet must look like.
   @override
   void clearForSession() {
     _loading = true;
@@ -155,15 +136,6 @@ class _InventoryScreenState extends State<InventoryScreen>
     );
   }
 
-  /// Writes one audit row for an action this screen just took.
-  ///
-  /// Delegates to [recordActionAudit] so attribution is resolved one way for
-  /// the whole app — the screen and the editor sheet both write audit rows, and
-  /// two copies of "who is signed in" eventually disagree.
-  ///
-  /// A failure to write a log row never fails the action itself: a shop that
-  /// could not adjust its stock because a log insert failed is worse than a
-  /// shop with a gap in its log.
   Future<void> _audit(
     AuditAction action,
     AuditEntity entity, {
@@ -269,10 +241,7 @@ class _InventoryScreenState extends State<InventoryScreen>
   ///
   /// Deliberately not pushed to the backend: the adjustment API takes a product
   /// and adjusts *that* product's count, and this count belongs to a variant.
-  /// Pushing it as a product adjustment would move the server's aggregate by a
-  /// number that means something different there, so the correction stays on
-  /// this till and arrives with the variants themselves once the backend carries
-  /// them.
+
   Future<void> _adjustVariantStock(Product p) async {
     final variants = _variants.of(p);
     if (variants.isEmpty) {
@@ -430,90 +399,114 @@ class _InventoryScreenState extends State<InventoryScreen>
           : null,
       body: RefreshIndicator(
         onRefresh: _load,
-        child: _products.isEmpty && _loading
-            ? const _InventorySkeleton()
-            : ListView.separated(
-                itemCount: _products.isEmpty ? 1 : _products.length + 1,
-                separatorBuilder: (_, i) => Divider(
-                  height: 1,
-                  indent: _rowDividerInset(context),
-                  color: AppColors.of(context).outline,
-                ),
-                itemBuilder: (_, i) {
-                  // An empty catalogue is a setup problem, not an empty list:
-                  // say what is missing and offer the one action that fixes it.
-                  if (i == 0 && _products.isEmpty) {
-                    return _InventoryEmptyState(onAdd: () => _openEditor());
-                  }
-                  // Row zero is the shot-cup entry rather than a product: it is a
-                  // way of selling what is already in the catalogue, not another
-                  // line of it, and burying it under the first hundred sodas is
-                  // how a bar never finds the feature that makes it a bar.
-                  if (_products.isEmpty || i == 0) {
-                    return Column(
-                      children: <Widget>[
-                        Semantics(
-                          label: l10n.inventoryShotCupsSpoken,
-                          child: ListTile(
-                            leading: const Icon(Icons.local_drink_outlined),
-                            title: Text(l10n.inventoryShotCupsTitle),
-                            trailing: const Icon(Icons.chevron_right),
-                            onTap: () => context.push(Routes.shotCups),
-                          ),
-                        ),
-                        ListTile(
-                          leading: const Icon(Icons.tune),
-                          title: Text(l10n.inventoryLowStockLimitTitle),
-                          // The CURRENT limit, so a seller opening this sees what
-                          // the warning is set to rather than a blank field. A
-                          // policy nobody can read is a policy nobody sets.
-                          subtitle: Text(l10n
-                              .inventoryLowStockLimitSubtitle(_lowStockLimit)),
-                          trailing: const Icon(Icons.chevron_right),
-                          onTap: _setLowStockLimit,
-                        ),
-                      ],
-                    );
-                  }
-                  final p = _products[i - 1];
-                  final variantCount = _variants.of(p).length;
-                  return Semantics(
-                    label: l10n.inventoryNameStock(
-                        formatMoney(p.sellPrice), p.name, p.stockQty),
-                    child: _ProductListTile(
-                      // Stable identity: a filtered or refreshed list reuses the
-                      // row's element only when the key says it is the same
-                      // product, so state never bleeds between two rows.
-                      key: ValueKey('product-${p.id}'),
-                      product: p,
-                      variantCount: variantCount,
-                      tracksVariants: _variants.tracks(p),
-                      isOwner: isOwner,
-                      onEdit: () => _openEditor(p),
-                      onAdjust: () => _adjustStock(p),
-                      onDelete: () => _delete(p),
-                    ),
-                  );
-                },
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            // Brand strip at the head of the list: identity beside the stock,
+            // once, not repeated inside each row.
+            Padding(
+              padding: EdgeInsetsDirectional.only(
+                start: AppSpacing.of(context).xl,
+                end: AppSpacing.of(context).xl,
+                top: AppSpacing.of(context).sm,
+                bottom: AppSpacing.of(context).sm,
               ),
+              child: Semantics(
+                image: true,
+                label: 'SimpleSales',
+                child: ExcludeSemantics(
+                  child: BrandHeader(
+                    markSize: 26,
+                    gap: AppSpacing.of(context).md,
+                    showWordmark: true,
+                  ),
+                ),
+              ),
+            ),
+            Expanded(
+              child: _products.isEmpty && _loading
+                  ? const _InventorySkeleton()
+                  : ListView.separated(
+                      itemCount: _products.isEmpty ? 1 : _products.length + 1,
+                      separatorBuilder: (_, i) => Divider(
+                        height: 1,
+                        indent: _rowDividerInset(context),
+                        color: AppColors.of(context).outline,
+                      ),
+                      itemBuilder: (_, i) {
+                        // An empty catalogue is a setup problem, not an empty list:
+                        // say what is missing and offer the one action that fixes it.
+                        if (i == 0 && _products.isEmpty) {
+                          return _InventoryEmptyState(
+                              onAdd: () => _openEditor());
+                        }
+                        // Row zero is the shot-cup entry rather than a product: it is a
+                        // way of selling what is already in the catalogue, not another
+                        // line of it, and burying it under the first hundred sodas is
+                        // how a bar never finds the feature that makes it a bar.
+                        if (_products.isEmpty || i == 0) {
+                          return Column(
+                            children: <Widget>[
+                              Semantics(
+                                label: l10n.inventoryShotCupsSpoken,
+                                child: ListTile(
+                                  leading:
+                                      const Icon(Icons.local_drink_outlined),
+                                  title: Text(l10n.inventoryShotCupsTitle),
+                                  trailing: const Icon(Icons.chevron_right),
+                                  onTap: () => context.push(Routes.shotCups),
+                                ),
+                              ),
+                              ListTile(
+                                leading: const Icon(Icons.tune),
+                                title: Text(l10n.inventoryLowStockLimitTitle),
+                                // The CURRENT limit, so a seller opening this sees what
+                                // the warning is set to rather than a blank field. A
+                                // policy nobody can read is a policy nobody sets.
+                                subtitle: Text(
+                                    l10n.inventoryLowStockLimitSubtitle(
+                                        _lowStockLimit)),
+                                trailing: const Icon(Icons.chevron_right),
+                                onTap: _setLowStockLimit,
+                              ),
+                            ],
+                          );
+                        }
+                        final p = _products[i - 1];
+                        final variantCount = _variants.of(p).length;
+                        return Semantics(
+                          label: l10n.inventoryNameStock(
+                              formatMoney(p.sellPrice), p.name, p.stockQty),
+                          child: _ProductListTile(
+                            // Stable identity: a filtered or refreshed list reuses the
+                            // row's element only when the key says it is the same
+                            // product, so state never bleeds between two rows.
+                            key: ValueKey('product-${p.id}'),
+                            product: p,
+                            variantCount: variantCount,
+                            tracksVariants: _variants.tracks(p),
+                            isOwner: isOwner,
+                            onEdit: () => _openEditor(p),
+                            onAdjust: () => _adjustStock(p),
+                            onDelete: () => _delete(p),
+                          ),
+                        );
+                      },
+                    ),
+            ),
+          ],
+        ),
       ),
     );
   }
 
   /// Divider inset that lines the rule up with the product name rather than the
   /// screen edge — the badge is the row's anchor, the text is what the rule
-  /// separates.
+
   double _rowDividerInset(BuildContext context) =>
       AppSpacing.of(context).md + 40 + AppSpacing.of(context).md;
 }
 
-/// The first load, drawn as the rows it is about to become.
-///
-/// A skeleton rather than a spinner because the shape tells the shopkeeper what
-/// is coming — a list — and nothing moves when the content lands. The shimmer is
-/// deliberately absent: a pulsing placeholder on a till used in a bright shop is
-/// an animation nobody asked for, and this app's motion budget is spent on
-/// things that mean something.
 class _InventorySkeleton extends StatelessWidget {
   const _InventorySkeleton();
 
@@ -841,10 +834,7 @@ class _ProductActionMenu extends StatelessWidget {
 /// The photograph controls for one product.
 ///
 /// Its own widget rather than inline in the editor's `build` because it holds
-/// three pieces of local presentation state — what is stored, what was picked,
-/// what is marked for removal — and the editor already has six of those for its
-/// own fields. Keeping them in one place means the "removed" state cannot
-/// disagree with the preview.
+
 class _PhotoRow extends StatelessWidget {
   const _PhotoRow({
     required this.existingPath,
@@ -856,13 +846,10 @@ class _PhotoRow extends StatelessWidget {
     required this.onUndoRemove,
   });
 
-  /// The path already stored on the product, if it has one.
   final String? existingPath;
 
-  /// A file picked in this session, not yet imported.
   final File? picked;
 
-  /// Whether the stored photograph is marked for removal.
   final bool removed;
 
   final bool importing;
@@ -884,7 +871,7 @@ class _PhotoRow extends StatelessWidget {
       return Row(
         children: <Widget>[
           ClipRRect(
-            borderRadius: BorderRadius.circular(12),
+            borderRadius: AppShapes.of(context).controlRadius,
             child: Image.file(
               picked!,
               width: 72,
@@ -967,15 +954,6 @@ class _PhotoRow extends StatelessWidget {
   }
 }
 
-/// What the product is measured in, as one choice.
-///
-/// The product form's only unit control — until now `_unit` was read from the
-/// row and written back unchanged, so a product created here was always
-/// `each`, and a shop could not pour a shot cup, sell a litre, or stock a tank.
-///
-/// It sits immediately above the size field on purpose: the size field's label
-/// changes with the choice, and "750" means a different thing for a counted
-/// bottle, a litre unit, a millilitre unit and a cup.
 class _UnitPicker extends StatelessWidget {
   const _UnitPicker({required this.value, required this.onChanged});
 
@@ -1003,10 +981,6 @@ class _UnitPicker extends StatelessWidget {
   }
 }
 
-/// What the size field should be called for this unit.
-///
-/// One field, several names, because the number is the same shape in all of them
-/// but the thing it describes is not.
 String _sizeLabelOf(BuildContext context, ProductUnit unit) {
   final AppLocalizations l10n = AppLocalizations.of(context);
   return switch (unit) {
@@ -1167,7 +1141,7 @@ class _ProductEditorState extends State<_ProductEditor> {
   ///
   /// Hidden for a countable product: "750 ml" next to a thing with no size is
   /// a question nobody asked, and a countable product's field is a legacy
-  /// leftover that is ignored on save.
+
   List<CupSizeSuggestion> get _visibleSizeSuggestions =>
       _unit == ProductUnit.each ? const [] : _sizeSuggestions;
 
@@ -1190,9 +1164,6 @@ class _ProductEditorState extends State<_ProductEditor> {
         ),
       );
 
-  /// Reads everything about an existing product that the product row alone
-  /// cannot tell us: its variants, its codes at both levels, and the two
-  /// columns `Product.fromMap` leaves at their defaults.
   Future<void> _loadMeta() async {
     final existing = widget.existing;
     if (existing?.id == null) {
@@ -1227,12 +1198,6 @@ class _ProductEditorState extends State<_ProductEditor> {
     });
   }
 
-  /// Turns "sold as variants" on or off.
-  ///
-  /// On: the stock field becomes the variants' total (kept in sync on save), and
-  /// the variant list appears. Off: the stock field goes back to being this
-  /// product's own count. Any variants already added stay where they are — they
-  /// are the owner's data, and hiding them would look like losing them.
   void _setTrackVariants(bool value) {
     setState(() {
       _trackVariants = value;
@@ -1243,11 +1208,6 @@ class _ProductEditorState extends State<_ProductEditor> {
     });
   }
 
-  /// A money value as editable whole shillings, or empty when absent.
-  ///
-  /// Whole shillings rather than two decimals because that is what these fields
-  /// have always accepted and what a Kenyan shopkeeper types. The internal
-  /// representation stays integer cents; this is purely the display edge.
   static String _editAmount(Money? value) {
     if (value == null) return '';
     final major = value.minorUnits ~/ kMinorUnitsPerMajor;
@@ -1339,7 +1299,7 @@ class _ProductEditorState extends State<_ProductEditor> {
 
   /// Changes what a code is labelled as. Informational only, but a distributor
   /// code labelled "own" is the kind of thing that makes an import's duplicate
-  /// report unreadable three months later.
+
   Future<void> _cycleBarcodeKind(ProductCode code) async {
     final AppState state = context.read<AppState>();
     final index = BarcodeKind.kinds.indexOf(code.kind);
@@ -1358,13 +1318,6 @@ class _ProductEditorState extends State<_ProductEditor> {
 
   // ---------------- Variants ----------------
 
-  /// The parent as the form currently has it, for seeding a new variant.
-  ///
-  /// Read from the *fields* rather than from the stored product, so a variant
-  /// added after the owner has just corrected the price inherits the price they
-  /// are looking at. Every field falls back to the stored value rather than
-  /// failing, because seeding is a convenience and must never be the reason a
-  /// variant cannot be added.
   Product _draftParent() {
     final existing = widget.existing;
     double number(String text, double fallback) =>
@@ -1395,11 +1348,6 @@ class _ProductEditorState extends State<_ProductEditor> {
     );
   }
 
-  /// Imports, or removes, the photograph for [productId].
-  ///
-  /// Called after the product row is durable, so the id exists and the store
-  /// has a filename. A failure is REPORTED rather than propagated: the product
-  /// the owner just saved must not be rolled back because a photograph failed.
   Future<void> _flushPhoto(int productId, AppState state) async {
     final source = _pickedPhoto;
     final removed = _photoRemoved;
@@ -1515,12 +1463,6 @@ class _ProductEditorState extends State<_ProductEditor> {
     setState(() => _drafts[index] = draft);
   }
 
-  /// Stages a variant's removal, after asking.
-  ///
-  /// Asked, always, even for a variant that has never been written: a variant
-  /// holding the only barcode a supplier's label carries, removed by a
-  /// mis-tap, stops that label resolving at the till with nothing on screen to
-  /// say why.
   Future<void> _removeVariant(int index) async {
     final draft = _drafts[index];
     if (!draft.isNew) {
@@ -1565,12 +1507,6 @@ class _ProductEditorState extends State<_ProductEditor> {
     });
   }
 
-  /// One row in the variant list.
-  ///
-  /// Shows the four things that tell two variants apart: what it is called, how
-  /// big it is, what it costs and how many are left. Swipe removes it, the menu
-  /// does the same thing for anyone who cannot swipe, and both go through the
-  /// same confirmation.
   Widget _variantRow(int index) {
     final draft = _drafts[index];
     final low = draft.stockQty <= draft.reorderLevel;
@@ -1636,15 +1572,6 @@ class _ProductEditorState extends State<_ProductEditor> {
     );
   }
 
-  /// Writes the staged variants, in the same dialog session as the product.
-  ///
-  /// Removals first, so a barcode freed by a removed variant can be taken by one
-  /// added in the same save, and so the aggregate is computed from what is
-  /// actually left. Barcodes are written after their variant exists, because the
-  /// code points at the variant's row.
-  ///
-  /// All deletes + upserts are batched in one transaction (a single fsync for
-  /// N variants) rather than N separate transactions.
   Future<void> _saveVariants(int productId) async {
     final AppState state = context.read<AppState>();
     final db = DatabaseHelper.instance;
@@ -1770,17 +1697,6 @@ class _ProductEditorState extends State<_ProductEditor> {
     }
   }
 
-  /// Remembers the size the owner just used, so the chips above the field
-  /// improve the next time they are opened.
-  ///
-  /// Recorded shop-wide rather than against this product: a keg size is a fact
-  /// about the shop's bottles, not about one line of the catalogue, and a shop
-  /// that pours the same tank behind two different drinks should see the size
-  /// offered for both.
-  ///
-  /// Failures here are swallowed deliberately. The size is already written to
-  /// the product row, which is what the till sells; losing a suggestion is not
-  /// worth failing a save the owner can see succeed.
   Future<void> _rememberSize(int sizeMl) async {
     if (sizeMl <= 0) return;
     try {
@@ -1790,18 +1706,6 @@ class _ProductEditorState extends State<_ProductEditor> {
     }
   }
 
-  /// Reads an optional price field.
-  ///
-  /// The distinction that matters here is **empty** versus **unparseable**, and
-  /// conflating them is how prices silently disappeared.
-  ///
-  /// `double.tryParse` returns null for both. Treating a non-numeric entry as
-  /// "not set" meant that a field which failed to parse — which happened to
-  /// every existing product, because the field was seeded with `Money.toString()`
-  /// — was written back as NULL. Merely opening a product and saving an
-  /// unrelated field therefore erased its half and quarter prices, with no
-  /// error anywhere. An unparseable value is now an error the owner can see; only
-  /// a genuinely empty field means "this product is not sold in portions".
   Money? _optionalPrice(TextEditingController controller, String label) {
     final text = controller.text.trim();
     if (text.isEmpty) return null;
@@ -1875,8 +1779,8 @@ class _ProductEditorState extends State<_ProductEditor> {
       // The shared validator answers with a code — the model layer cannot reach
       // `AppLocalizations` — and the editor shows the shop's language for it,
       // exactly as the imports screen does.
-      setState(() => _error =
-          ValidationUtils.productProblem(AppLocalizations.of(context), problem));
+      setState(() => _error = ValidationUtils.productProblem(
+          AppLocalizations.of(context), problem));
       return;
     }
     if (price < cost) {
@@ -2005,8 +1909,6 @@ class _ProductEditorState extends State<_ProductEditor> {
     }
   }
 
-  /// Pushes the saved row to the backend, re-reading it so the local id and any
-  /// newly assigned remote id are included.
   static Future<void> _pushProductInBackground(Product saved) async {
     try {
       if (saved.id == null) return;
@@ -2082,8 +1984,7 @@ class _ProductEditorState extends State<_ProductEditor> {
               // cup, every litre of beer and every tank depends on this.
               _UnitPicker(
                 value: _unit,
-                onChanged: (ProductUnit unit) =>
-                    setState(() => _unit = unit),
+                onChanged: (ProductUnit unit) => setState(() => _unit = unit),
               ),
               SizedBox(height: spacing.md),
               TextField(
@@ -2105,8 +2006,9 @@ class _ProductEditorState extends State<_ProductEditor> {
                   ),
                   child: Text(
                     AppLocalizations.of(context).productUnitCupPourHint,
-                    style: AppTypography.of(context).bodySmall?.copyWith(
-                        color: AppColors.of(context).onSurfaceMuted),
+                    style: AppTypography.of(context)
+                        .bodySmall
+                        ?.copyWith(color: AppColors.of(context).onSurfaceMuted),
                   ),
                 ),
               if (_visibleSizeSuggestions.isNotEmpty) _sizeSuggestionChips(),
@@ -2308,11 +2210,6 @@ class _ProductEditorState extends State<_ProductEditor> {
   }
 }
 
-/// Asks for the shop-wide low-stock limit.
-///
-/// A number, not a switch: the whole point is that a shop's limit is a count of
-/// units it wants warning at, and "on" says nothing. The consequence is stated
-/// in the dialog because the write touches every active product.
 class _LowStockLimitDialog extends StatefulWidget {
   const _LowStockLimitDialog({required this.title, required this.initial});
 
@@ -2366,7 +2263,6 @@ class _LowStockLimitDialogState extends State<_LowStockLimitDialog> {
 class _AdjustDialog extends StatefulWidget {
   final Product product;
 
-  /// Set when the correction applies to one variant rather than the product.
   final ProductVariant? variant;
 
   const _AdjustDialog({required this.product, this.variant});
@@ -2418,22 +2314,11 @@ class _AdjustDialogState extends State<_AdjustDialog> {
   }
 }
 
-/// The stock count on a product or variant row.
-///
-/// Was a `CircleAvatar` tinted red or green by `isLow`. That is the
-/// colour-alone rule in its plainest form: a shopkeeper with deuteranopia, or a
-/// greyscale screenshot in a bug report, or a screen reader, learns nothing from
-/// a red circle. The count is still the number — but the TONE comes from
-/// [StatusTone], which carries a glyph and a word alongside the colour, and the
-/// badge is excluded from the row's own semantics because the row announces the
-/// count already.
 class _StockCountBadge extends StatelessWidget {
   const _StockCountBadge({required this.quantity, required this.tone});
 
   final int quantity;
 
-  /// The row's state, carried by the badge so the count and the state are read
-  /// as one thing at the leading edge of the list.
   final StatusTone tone;
 
   @override

@@ -8,6 +8,7 @@ import '../db/database_helper.dart';
 import '../l10n/generated/app_localizations.dart';
 import '../utils/money.dart';
 import '../utils/datetime_format.dart';
+import '../ui/components/brand_header.dart';
 import '../models/audit_log.dart';
 import '../models/models.dart';
 import '../services/app_state.dart';
@@ -33,6 +34,7 @@ import '../services/printer/receipt_builder.dart';
 import '../services/printer/esc_pos_printer.dart';
 import '../services/printer/esc_pos_encoder.dart';
 import '../theme/app_colors.dart';
+import '../theme/app_shapes.dart';
 import '../theme/app_spacing.dart';
 import '../theme/typography.dart';
 import '../ui/components/controls.dart';
@@ -52,11 +54,6 @@ class SettingsScreen extends StatefulWidget {
 
 class _SettingsScreenState extends State<SettingsScreen>
     with SessionRefresh<SettingsScreen> {
-  /// The lockout key for the owner's own PIN.
-  ///
-  /// The same literal the login pad uses for its owner entry, so a wrong PIN
-  /// here counts against the counter a wrong PIN there is already spending.
-  /// A different key would give this dialog its own private attempt budget.
   final _sync = SyncService();
   final _excel = ExcelService();
   List<Staff> _staff = [];
@@ -72,9 +69,6 @@ class _SettingsScreenState extends State<SettingsScreen>
   String _tillCode = '';
   String _tin = '';
 
-  /// Reference count, not a flag: pairing, test printing and the eTIMS upload
-  /// can all overlap, and a second boolean would let two of them each claim to
-  /// be the only busy one.
   int _printerBusyCount = 0;
 
   @override
@@ -83,10 +77,6 @@ class _SettingsScreenState extends State<SettingsScreen>
     _load();
   }
 
-  /// The roster on screen was read for the session that just ended, and staff
-  /// management is exactly what a sign-out can change. Drop the list rather
-  /// than leave the previous session's roster — with its PIN-reset buttons —
-  /// in front of whoever signs in next.
   @override
   void clearForSession() {
     _staff = const <Staff>[];
@@ -129,12 +119,6 @@ class _SettingsScreenState extends State<SettingsScreen>
     });
   }
 
-  /// Explains a printer failure in terms the owner can act on.
-  ///
-  /// Takes the catalogue rather than reading one: this is a `static` helper, so
-  /// there is no `BuildContext` to read from, and threading a captured context
-  /// into a static would be a use-after-dispose waiting for the phone to rotate
-  /// mid-pairing.
   static String _printerMessage(
     AppLocalizations l10n,
     PrinterFailure failure,
@@ -232,12 +216,6 @@ class _SettingsScreenState extends State<SettingsScreen>
     }
   }
 
-  /// A synthetic receipt, so pairing can be verified before the next customer.
-  ///
-  /// Uses the real builder and encoder, so what comes out of the printer is
-  /// byte-identical to a real receipt — a test print that only says "OK" proves
-  /// the link works but tells the owner nothing about the paper width or the
-  /// font their till will use all day.
   Future<void> _testPrint() async {
     if (!_printer.isConfigured) {
       _err(AppLocalizations.of(context).settingsPairAPrinterFirst);
@@ -774,14 +752,6 @@ class _SettingsScreenState extends State<SettingsScreen>
     return result;
   }
 
-  /// Completes the authoritative online link for an offline-created shop.
-  ///
-  /// Three steps, and each one is a separate failure the owner can act on:
-  /// the admin PIN (checked on the device first, so a wrong one never leaves
-  /// the phone), the emailed 6-digit code (which is what proves the address),
-  /// and the shop the code unlocks. The backend creates the online account
-  /// from the email and PIN already captured at setup, so there is no
-  /// registration form anywhere in this flow.
   Future<void> _verifyIdentityOnline() async {
     // Read before the first await: the audit row names the shop, and a
     // BuildContext held across a network call is exactly what this codebase
@@ -944,11 +914,6 @@ class _SettingsScreenState extends State<SettingsScreen>
     );
   }
 
-  /// Toggles the automatic backup/sync preference.
-  ///
-  /// Named rather than an inline closure so the switch's row can stay a dumb
-  /// widget with one `onChanged` callback, the same shape as every other
-  /// control on this screen.
   Future<void> _setAutoSync(bool value) async {
     // Read before the await: the preference write is the async gap, and the
     // audit row after it must not hold a BuildContext.
@@ -1071,12 +1036,7 @@ class _SettingsScreenState extends State<SettingsScreen>
   /// The shop switcher.
   ///
   /// Reads the LOCAL REGISTRY, not the backend's shop list. It used to call
-  /// `/tenant/shops`, which meant a shop added on this device without a tenant
-  /// link was unreachable — its database existed, the app was pointed at it, and
-  /// the one screen that changes between them could not see it. The registry is
-  /// the only authority on which shops are here, so it is the source of truth;
-  /// the backend still contributes the role and the online state where it has
-  /// them, but it can no longer be the reason a shop is missing.
+
   Future<void> _manageShops() async {
     // Read before the first await: the registry is local, but the dialog it
     // populates is built from it and the switch tears the screen down.
@@ -1142,13 +1102,6 @@ class _SettingsScreenState extends State<SettingsScreen>
     }
   }
 
-  /// Points the app at [shop] and rebuilds the session around it.
-  ///
-  /// Separated from the dialog so the dialog's lifetime and the screen's
-  /// lifetime are two explicit things: the dialog is popped first, then the
-  /// workspace switch tears down and rebuilds the subtree underneath it.
-  /// Reading the context after an await is safe here because [messageService]
-  /// captures the messaging subtree, which is not the thing being replaced.
   Future<void> _switchToShop(BuildContext dialogContext, LocalShop shop) async {
     final l10n = AppLocalizations.of(context);
     // Captured before the await, and used after it: `_err` needs a live
@@ -1181,17 +1134,6 @@ class _SettingsScreenState extends State<SettingsScreen>
     }
   }
 
-  /// Adds a second shop to this device and drops the admin straight into it.
-  ///
-  /// This used to register a workspace key, drop the tenant link and switch —
-  /// and then stop. The new workspace had no owner row, so the router resolved
-  /// it as "no shop on this device" and landed on the landing page asking for
-  /// an admin to be created again, which is exactly what it looks like from the
-  /// owner's side: the app forgot them.
-  ///
-  /// The fix is not a redirect, it is finishing the job. The new shop gets a
-  /// real owner row carrying the current admin's identity *and their existing PIN
-  /// hash*, so the same four digits work and no re-authentication is needed.
   Future<void> _addShopOnThisDevice() async {
     final previous = context.read<AppState>().owner;
     final l10n = AppLocalizations.of(context);
@@ -1425,6 +1367,7 @@ class SettingsPanel extends StatelessWidget {
     return SectionedPage(
       maxContentWidth: 880,
       sections: <Widget>[
+        const _SettingsBrandHeader(),
         if (identityLinkPending)
           _IdentityBanner(busy: verifyingIdentity, onVerify: onVerifyIdentity),
         _ShopsPanel(
@@ -1503,7 +1446,6 @@ class _AccountPanel extends StatelessWidget {
   /// Opens the owner's account.
   final VoidCallback onOpenProfile;
 
-  /// True while the erasure is running.
   final bool deleting;
 
   @override
@@ -1541,22 +1483,6 @@ class _AccountPanel extends StatelessWidget {
   }
 }
 
-/// Version, build, and attribution.
-///
-/// Last in the list and deliberately quiet. A merchant opening Settings is
-/// usually looking for a control, not to read who built the app — but a till
-/// that is out of date is worth telling, so the build number is on screen where
-/// a support conversation can start from it.
-/// Checks for a newer build, downloads it, and hands it to the installer.
-///
-/// The whole reason this screen exists: uninstalling to update would delete the
-/// app's private directory, and that directory is the shop's ledger. See
-/// `AppUpdateService` for the three conditions that make an in-place update
-/// possible at all.
-///
-/// The channel is an `InheritedWidget`-free lookup: this reads the service from
-/// the `Provider` the composition root installs, so there is one channel per app
-/// rather than one per screen.
 class _UpdatesPanel extends StatelessWidget {
   const _UpdatesPanel();
 
@@ -1697,7 +1623,7 @@ class _DownloadBar extends StatelessWidget {
       mainAxisSize: MainAxisSize.min,
       children: <Widget>[
         ClipRRect(
-          borderRadius: BorderRadius.circular(4),
+          borderRadius: AppShapes.of(context).barRadius,
           child: LinearProgressIndicator(
             value: fraction,
             minHeight: 6,
@@ -1715,13 +1641,6 @@ class _DownloadBar extends StatelessWidget {
   }
 }
 
-/// The paired-printer picker, which can rescan.
-///
-/// Its own stateful widget rather than a static `SimpleDialog`, because the
-/// device list is a LIVE thing: a printer that was off when the dialog opened is
-/// the most common reason the list is short, and the remedy is another scan.
-/// A static list means the only way to retry is to close the dialog, and by
-/// then the shop has usually given up and gone back to writing receipts by hand.
 class _PrinterChooser extends StatefulWidget {
   const _PrinterChooser({
     required this.printer,
@@ -2043,7 +1962,35 @@ class _SettingsSection extends StatelessWidget {
   }
 }
 
-/// The identity banner: the one condition on this screen the shop must act on.
+class _SettingsBrandHeader extends StatelessWidget {
+  const _SettingsBrandHeader();
+
+  @override
+  Widget build(BuildContext context) {
+    final AppSpacing spacing = AppSpacing.of(context);
+
+    return Padding(
+      padding: EdgeInsetsDirectional.only(
+        start: spacing.xl,
+        end: spacing.xl,
+        top: spacing.sm,
+        bottom: spacing.sm,
+      ),
+      child: Semantics(
+        image: true,
+        label: 'SimpleSales',
+        child: ExcludeSemantics(
+          child: BrandHeader(
+            markSize: 26,
+            gap: spacing.md,
+            showWordmark: true,
+          ),
+        ),
+      ),
+    );
+  }
+}
+
 class _IdentityBanner extends StatelessWidget {
   const _IdentityBanner({required this.busy, required this.onVerify});
 
@@ -2106,7 +2053,6 @@ class _IdentityBanner extends StatelessWidget {
   }
 }
 
-/// Shops on this device and the linked shop.
 class _ShopsPanel extends StatelessWidget {
   const _ShopsPanel({
     required this.onAddShop,
@@ -2160,7 +2106,6 @@ class _ShopsPanel extends StatelessWidget {
   }
 }
 
-/// The staff roster: who can sign in, and the controls to change that.
 class _StaffPanel extends StatelessWidget {
   const _StaffPanel({
     required this.staff,
@@ -2214,12 +2159,6 @@ class _StaffPanel extends StatelessWidget {
   }
 }
 
-/// One staff member: the name, the role, and the two things done to them.
-///
-/// The reset/remove pair was two buttons in a `Wrap` at the end of the row, so
-/// they were two sub-44px targets competing with the row's own tap area. They
-/// are a menu now — the same shape the inventory row uses, which is why it
-/// reads as one system rather than one screen's preference.
 class _StaffRow extends StatelessWidget {
   const _StaffRow({
     required this.staff,
@@ -2287,7 +2226,6 @@ class _StaffRow extends StatelessWidget {
   }
 }
 
-/// Payment methods: what this till accepts, and the M-Pesa link.
 class _PaymentsPanel extends StatelessWidget {
   const _PaymentsPanel({
     required this.mpesaEnabled,
@@ -2327,7 +2265,6 @@ class _PaymentsPanel extends StatelessWidget {
   }
 }
 
-/// The printer: pairing, and the two switches that decide what it prints.
 class _PrinterPanel extends StatelessWidget {
   const _PrinterPanel({
     required this.printer,
@@ -2468,7 +2405,7 @@ class _SyncPanel extends StatelessWidget {
 
   /// True once the emailed code has been presented. Everything that pushes a
   /// shop's data to the backend needs an authoritative online identity, so
-  /// until then automatic sync is offered switched off and says why.
+
   final bool identityVerified;
   final bool enabled;
   final bool syncing;
@@ -2529,7 +2466,6 @@ class _SyncPanel extends StatelessWidget {
   }
 }
 
-/// Backup and restore: the two directions that matter, plus erasure.
 class _BackupPanel extends StatelessWidget {
   const _BackupPanel({
     required this.onExportEncrypted,
@@ -2546,7 +2482,6 @@ class _BackupPanel extends StatelessWidget {
   final Future<void> Function() onImport;
   final Future<void> Function() onErase;
 
-  /// Where the phone's failure log lives.
   final Future<void> Function() onOpenDiagnostics;
 
   @override
@@ -2609,17 +2544,6 @@ class _BackupPanel extends StatelessWidget {
   }
 }
 
-/// The sentence a verification failure is worth.
-///
-/// A free function rather than a method on the screen: the copy is a locale
-/// decision, and a test can walk the whole taxonomy without building a
-/// SettingsScreen to do it.
-///
-/// Every branch ends in something the owner can act on — a new code, a
-/// resend, a wait, or a retry when the signal comes back. The branch that
-/// cannot is [VerificationFailure.unknown], which deliberately falls back to
-/// the generic link failure: an unrecognised cause is not a sentence worth
-/// inventing.
 String verificationMessage(
   AppLocalizations l10n,
   VerificationException error,

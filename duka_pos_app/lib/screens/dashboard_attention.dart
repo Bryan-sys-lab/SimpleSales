@@ -1,11 +1,14 @@
-// The two things a cashier looks at before anything else: who they are, and what
-// is wrong.
+// The top of the dashboard: today's date, the shop, whose takings these are, and
+// the one thing a till is for.
 //
-// `DashboardAttentionCard` sits ABOVE every number on this screen deliberately.
-// A section that is usually empty and occasionally urgent is read far more
-// seriously than a section that is always on screen — which is why the problems
-// go first and the sales figures follow.
-
+// `DashboardHeader` sits above every number deliberately. The scope line is here
+// rather than buried next to the totals because a cashier looking at
+// KSh 48,320 needs to know whether that is the shop's money or theirs — the
+// number cannot say.
+//
+// The Sell button is the screen's single primary action. Every other control is
+// either a drill-down into a figure or a fix for a problem; "start a sale" is
+// the only reason someone opens a POS.
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import 'package:provider/provider.dart';
@@ -21,17 +24,8 @@ import '../theme/app_spacing.dart';
 import '../theme/typography.dart';
 import '../ui/components/status.dart';
 import '../ui/components/surface.dart';
+import '../ui/components/brand_header.dart';
 
-/// The top of the dashboard: today's date, the shop, whose takings these are, and
-/// the one thing a till is for.
-///
-/// The scope line is here rather than buried next to the totals because a
-/// cashier looking at KSh 48,320 needs to know whether that is the shop's money or
-/// theirs. The number cannot say.
-///
-/// The Sell button is the screen's single primary action. Every other control on
-/// the dashboard is either a drill-down into a figure or a fix for a problem;
-/// "start a sale" is the only thing someone opens a POS in order to do.
 class DashboardHeader extends StatelessWidget {
   const DashboardHeader({
     required this.shopName,
@@ -57,6 +51,20 @@ class DashboardHeader extends StatelessWidget {
 
     final String date =
         DateFormat.MMMMEEEEd(l10n.localeName).format(DateTime.now());
+
+    // The brand mark and wordmark lead the header: the till's identity beside the
+    // shift it runs, on every screen the cashier opens.
+    final Widget brand = Semantics(
+      image: true,
+      label: 'SimpleSales',
+      child: ExcludeSemantics(
+        child: BrandHeader(
+          markSize: 28,
+          gap: spacing.md,
+          showWordmark: true,
+        ),
+      ),
+    );
 
     final Widget titles = Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -101,12 +109,14 @@ class DashboardHeader extends StatelessWidget {
 
     return LayoutBuilder(
       builder: (BuildContext context, BoxConstraints constraints) {
-        // A phone gets the button under the titles at full width, where a thumb
-        // reaches it; anything wider puts it beside them.
+        // A phone gets the brand, titles and button stacked at full width, where
+        // a thumb reaches them; anything wider puts them side by side.
         if (constraints.maxWidth < 560) {
           return Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: <Widget>[
+              brand,
+              SizedBox(height: spacing.md),
               titles,
               SizedBox(height: spacing.xl),
               sell,
@@ -116,6 +126,8 @@ class DashboardHeader extends StatelessWidget {
         return Row(
           crossAxisAlignment: CrossAxisAlignment.center,
           children: <Widget>[
+            brand,
+            SizedBox(width: spacing.xl),
             Expanded(child: titles),
             SizedBox(width: spacing.xl),
             sell,
@@ -126,16 +138,6 @@ class DashboardHeader extends StatelessWidget {
   }
 }
 
-/// The card of things that stop a sale.
-///
-/// Four problems, four different fixes, so they are four rows rather than one
-/// sentence with a number in it. "3 things need attention" sends a cashier
-/// hunting; "KRA refused 2 receipts, fix the PIN" tells them what to do.
-///
-/// Only the two eTIMS rows are actionable from here. Import problems and
-/// unverified payments are read-only on this screen because fixing either is a
-/// file-level operation, not a tap — offering a button that opens a dialog the
-/// user cannot complete is worse than offering none.
 class DashboardAttentionCard extends StatelessWidget {
   const DashboardAttentionCard({
     required this.summary,
@@ -147,8 +149,6 @@ class DashboardAttentionCard extends StatelessWidget {
 
   final AttentionSummary summary;
 
-  /// Whether this session may change the KRA configuration. A cashier can be told
-  /// what is broken; only the owner can fix it.
   final bool canFixEtims;
 
   final VoidCallback onRetryEtims;
@@ -273,7 +273,7 @@ class _AttentionAction {
 ///
 /// The count is in the LABEL, not only in the badge. That is deliberate: the
 /// three channels are the badge's tone (glyph + word + colour) and the sentence
-/// beside it, and neither depends on the reader distinguishing amber from red.
+
 class _AttentionRow extends StatelessWidget {
   const _AttentionRow({
     required this.attention,
@@ -368,10 +368,8 @@ class _AttentionRow extends StatelessWidget {
 }
 
 /// The live channel's state, as a quiet line of text.
-///
-/// Deliberately not a badge or a banner: this is ambient information for an
-/// owner who is already looking at the figures. It says whether the numbers on
-/// screen are current, which is a fact worth having and not worth shouting.
+
+// screen are current, which is a fact worth having and not worth shouting.
 class _LiveStatusLine extends StatelessWidget {
   const _LiveStatusLine({required this.service});
 
@@ -403,7 +401,6 @@ class _LiveStatusLine extends StatelessWidget {
   }
 }
 
-/// One quiet line of live status.
 class _StatusText extends StatelessWidget {
   const _StatusText({required this.text, this.tone});
 
@@ -436,12 +433,9 @@ class _StatusText extends StatelessWidget {
   }
 }
 
-/// "just now", "3 min ago" — the one date-relative string this screen needs.
-///
-/// Local rather than an intl relative formatter, because the app already ships
-/// `DateFormat` and adding a whole relative-time locale table for one label is
-/// more than the label is worth. Bumped to the minute because a second-level
-/// figure would churn on every message.
+// `DateFormat` and adding a whole relative-time locale table for one label is
+// more than the label is worth. Bumped to the minute because a second-level
+// figure would churn on every message.
 String _timeAgo(DateTime at, AppLocalizations l10n) {
   final seconds = DateTime.now().toUtc().difference(at).inSeconds;
   if (seconds < 60) return l10n.liveStatusJustNow;

@@ -616,9 +616,8 @@ class _WhoPicker extends StatelessWidget {
       ...byRole.keys,
       if (ownerName != null) ShopRole.admin,
     };
-    final List<ShopRole> ordered = ShopRole.values
-        .where(roles.contains)
-        .toList(growable: false);
+    final List<ShopRole> ordered =
+        ShopRole.values.where(roles.contains).toList(growable: false);
 
     final List<_RosterRow> rows = <_RosterRow>[];
     for (final ShopRole role in ordered) {
@@ -671,8 +670,7 @@ class _WhoPicker extends StatelessWidget {
             // per item turns a roster of thirty into thirty list rebuilds of
             // the whole roster.
             builder: (BuildContext context) {
-              final List<_RosterRow> rows =
-                  _rows(AppLocalizations.of(context));
+              final List<_RosterRow> rows = _rows(AppLocalizations.of(context));
               return ListView.builder(
                 padding: EdgeInsets.zero,
                 itemCount: rows.length,
@@ -1048,8 +1046,7 @@ const double _kPadWidth = 460;
 /// A plural rather than `'${role.label}s'`: the singular inflected with an `s`
 /// is English, and a heading is exactly the kind of string a translated build
 /// gets judged on.
-String roleSectionTitle(AppLocalizations l10n, ShopRole role) =>
-    switch (role) {
+String roleSectionTitle(AppLocalizations l10n, ShopRole role) => switch (role) {
       ShopRole.admin => l10n.loginRoleAdmins,
       ShopRole.manager => l10n.loginRoleManagers,
       ShopRole.cashier => l10n.loginRoleCashiers,
