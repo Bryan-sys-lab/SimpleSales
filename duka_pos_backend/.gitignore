@@ -1,7 +1,10 @@
 node_modules/
 dist/
 .env
+.env.local
 *.log
 .DS_Store
 prisma/*.db
 prisma/*.db-journal
+newman-e2e-report.json
+reports/*.json
