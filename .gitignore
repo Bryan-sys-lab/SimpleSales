@@ -24,3 +24,14 @@ Thumbs.db
 key.properties
 *.jks.bak*
 keystore-base64.txt
+
+# Dependency / build / artifact clutter — never source control
+node_modules/
+dist/
+.env
+*.log
+.dart_tool/
+.flutter-plugins
+build/
+*.zip
+session-ses_*.md
