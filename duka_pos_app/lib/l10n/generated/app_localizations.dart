@@ -4923,6 +4923,12 @@ abstract class AppLocalizations {
   /// **'Needs attention'**
   String get attentionSectionTitleNeedsAttention;
 
+  /// No description provided for @attentionDismissAction.
+  ///
+  /// In en, this message translates to:
+  /// **'Dismiss'**
+  String get attentionDismissAction;
+
   /// No description provided for @analyticsChartTitleSalesByDay.
   ///
   /// In en, this message translates to:

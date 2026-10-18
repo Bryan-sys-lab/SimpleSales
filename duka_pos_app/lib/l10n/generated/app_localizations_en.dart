@@ -3119,6 +3119,9 @@ class AppLocalizationsEn extends AppLocalizations {
   String get attentionSectionTitleNeedsAttention => 'Needs attention';
 
   @override
+  String get attentionDismissAction => 'Dismiss';
+
+  @override
   String get analyticsChartTitleSalesByDay => 'Sales by day';
 
   @override

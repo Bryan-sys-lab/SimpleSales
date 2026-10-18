@@ -144,6 +144,8 @@ class DashboardAttentionCard extends StatelessWidget {
     required this.canFixEtims,
     required this.onRetryEtims,
     required this.onOpenEtimsSettings,
+    this.dismissed = const <String>{},
+    this.onDismiss,
     super.key,
   });
 
@@ -154,11 +156,18 @@ class DashboardAttentionCard extends StatelessWidget {
   final VoidCallback onRetryEtims;
   final VoidCallback onOpenEtimsSettings;
 
+  /// Category ids the owner has dismissed. Those rows are not shown.
+  final Set<String> dismissed;
+
+  /// Fired when the owner taps the (X) on a category, with that category's id.
+  final void Function(String)? onDismiss;
+
   @override
   Widget build(BuildContext context) {
     final List<_Attention> items = <_Attention>[
       if (summary.rejectedEtims > 0)
         _Attention(
+          id: 'rejectedEtims',
           count: summary.rejectedEtims,
           tone: StatusTone.danger,
           label: 'KRA refused ${summary.rejectedEtims} receipt'
@@ -173,6 +182,7 @@ class DashboardAttentionCard extends StatelessWidget {
         ),
       if (summary.pendingEtims > 0)
         _Attention(
+          id: 'pendingEtims',
           count: summary.pendingEtims,
           tone: StatusTone.pending,
           label: 'Waiting on KRA for ${summary.pendingEtims} receipt'
@@ -182,6 +192,7 @@ class DashboardAttentionCard extends StatelessWidget {
         ),
       if (summary.unverifiedPayments > 0)
         _Attention(
+          id: 'unverifiedPayments',
           count: summary.unverifiedPayments,
           tone: StatusTone.warning,
           label: '${summary.unverifiedPayments} payment'
@@ -190,6 +201,7 @@ class DashboardAttentionCard extends StatelessWidget {
         ),
       if (summary.openImportProblems > 0)
         _Attention(
+          id: 'openImportProblems',
           count: summary.openImportProblems,
           tone: StatusTone.warning,
           label: '${summary.openImportProblems} row'
@@ -202,7 +214,7 @@ class DashboardAttentionCard extends StatelessWidget {
             context.push(Routes.imports);
           }),
         ),
-    ];
+    ].where((item) => !dismissed.contains(item.id)).toList();
 
     return SurfaceCard(
       // The one card on this screen with a filled danger container, because it is
@@ -239,6 +251,9 @@ class DashboardAttentionCard extends StatelessWidget {
               attention: items[i],
               isFirst: i == 0,
               isLast: i == items.length - 1,
+              onDismiss: onDismiss == null
+                  ? null
+                  : () => onDismiss!(items[i].id),
             ),
           ],
         ],
@@ -249,12 +264,17 @@ class DashboardAttentionCard extends StatelessWidget {
 
 class _Attention {
   const _Attention({
+    required this.id,
     required this.count,
     required this.tone,
     required this.label,
     required this.detail,
     this.action,
   });
+
+  /// Stable category id, used with [DashboardAttentionCard.dismissed] so an
+  /// owner can drop a row they have read.
+  final String id;
 
   final int count;
   final StatusTone tone;
@@ -279,11 +299,15 @@ class _AttentionRow extends StatelessWidget {
     required this.attention,
     required this.isFirst,
     required this.isLast,
+    this.onDismiss,
   });
 
   final _Attention attention;
   final bool isFirst;
   final bool isLast;
+
+  /// Fired when the owner taps the (X) to dismiss this category.
+  final void Function()? onDismiss;
 
   @override
   Widget build(BuildContext context) {
@@ -358,6 +382,20 @@ class _AttentionRow extends StatelessWidget {
               child: TextButton(
                 onPressed: attention.action!.onPressed,
                 child: Text(attention.action!.label),
+              ),
+            ),
+          ],
+          if (onDismiss != null) ...<Widget>[
+            SizedBox(width: spacing.sm),
+            ConstrainedBox(
+              constraints: BoxConstraints(minHeight: spacing.minTapTarget),
+              child: Tooltip(
+                message: AppLocalizations.of(context).attentionDismissAction,
+                child: IconButton(
+                  tooltip: AppLocalizations.of(context).attentionDismissAction,
+                  onPressed: onDismiss!,
+                  icon: const Icon(Icons.close, size: 20),
+                ),
               ),
             ),
           ],

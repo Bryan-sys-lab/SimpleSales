@@ -804,6 +804,7 @@
   "attentionCountBadge": "{count}",
   "attentionSpoken": "{label}. {detail}",
   "attentionSectionTitleNeedsAttention": "Needs attention",
+  "attentionDismissAction": "Dismiss",
   "analyticsChartTitleSalesByDay": "Sales by day",
   "loginNoAccountsYetTitle": "This till has no accounts yet",
   "reportsTransactionCaption": "{count, plural, =1{1 transaction} other{{count} transactions}}",
