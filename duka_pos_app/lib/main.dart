@@ -15,6 +15,7 @@ import 'models/crash_log.dart';
 import 'routing/app_router.dart';
 import 'routing/app_stage_controller.dart';
 import 'services/app_state.dart';
+import 'services/account_deletion_service.dart';
 import 'services/backend_service.dart';
 import 'services/app_update_service.dart';
 import 'services/live_channel_service.dart';
@@ -320,6 +321,11 @@ class _UpdateGateState extends State<_UpdateGate>
     WidgetsBinding.instance.addObserver(this);
     // Record the session start. Telemetry is lazy: the first touch boots it.
     telemetry.recordAppOpen();
+    // Retry any pending remote account deletion so the server-side account is
+    // eventually removed even if the first attempt failed — Play Store
+    // data-deletion compliance requires it. Safe to call when nothing is
+    // pending; it returns false immediately in that case.
+    unawaited(AccountDeletionService.retryPendingDeletion());
     // After the first frame, so the check runs against a mounted tree and any
     // prompt it raises has a navigator to sit above.
     WidgetsBinding.instance.addPostFrameCallback((_) => _check());

@@ -117,6 +117,15 @@ GoRouter _testRouter(AppState state) {
               ),
             ],
           ),
+          StatefulShellBranch(
+            routes: <RouteBase>[
+              GoRoute(
+                path: Routes.support,
+                builder: (BuildContext context, GoRouterState routerState) =>
+                    const _PlaceholderScreen(label: 'Support'),
+              ),
+            ],
+          ),
         ],
       ),
     ],

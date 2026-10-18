@@ -2486,7 +2486,7 @@ abstract class AppLocalizations {
   /// No description provided for @pinResetPinShape.
   ///
   /// In en, this message translates to:
-  /// **'A PIN is exactly four digits.'**
+  /// **'A PIN is exactly six digits.'**
   String get pinResetPinShape;
 
   /// No description provided for @pinResetCodeWrong.
@@ -3750,6 +3750,12 @@ abstract class AppLocalizations {
   /// **'A TIN is at least 4 characters'**
   String get taxSettingsTinTooShort;
 
+  /// No description provided for @taxSettingsTinInvalid.
+  ///
+  /// In en, this message translates to:
+  /// **'A KRA PIN is A or P, nine digits, then one letter.'**
+  String get taxSettingsTinInvalid;
+
   /// No description provided for @taxSettingsTitle.
   ///
   /// In en, this message translates to:
@@ -4891,6 +4897,36 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'Total'**
   String get analyticsPaymentMixTotal;
+
+  /// No description provided for @analyticsPaymentMethodCash.
+  ///
+  /// In en, this message translates to:
+  /// **'Cash'**
+  String get analyticsPaymentMethodCash;
+
+  /// No description provided for @analyticsPaymentMethodMpesa.
+  ///
+  /// In en, this message translates to:
+  /// **'M-Pesa'**
+  String get analyticsPaymentMethodMpesa;
+
+  /// No description provided for @analyticsPaymentMethodMobileMoney.
+  ///
+  /// In en, this message translates to:
+  /// **'Mobile money'**
+  String get analyticsPaymentMethodMobileMoney;
+
+  /// No description provided for @analyticsPaymentMethodCard.
+  ///
+  /// In en, this message translates to:
+  /// **'Card'**
+  String get analyticsPaymentMethodCard;
+
+  /// No description provided for @analyticsPaymentMethodBankTransfer.
+  ///
+  /// In en, this message translates to:
+  /// **'Bank transfer'**
+  String get analyticsPaymentMethodBankTransfer;
 
   /// No description provided for @analyticsPaymentRowSpoken.
   ///

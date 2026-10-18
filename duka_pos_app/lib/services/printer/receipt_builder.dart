@@ -131,7 +131,7 @@ enum ReceiptAlignment { left, center, right }
 /// the theme: that is what keeps [ReceiptBuilder] a pure function of its
 /// argument, and therefore testable without a till.
 @immutable
-class ReceiptInput {
+  class ReceiptInput {
   const ReceiptInput({
     required this.shopName,
     required this.receiptNumber,
@@ -144,6 +144,7 @@ class ReceiptInput {
     required this.changeGiven,
     this.paymentMethodLabel = 'Cash',
     this.vatRatePercent = kDefaultVatRatePercent,
+    this.pricesIncludeVat = true,
     this.etimsReceiptNumber,
     this.etimsVerificationPayload,
   });
@@ -165,6 +166,10 @@ class ReceiptInput {
 
   /// Whole percent. Zero is valid and means exempt.
   final int vatRatePercent;
+
+  /// Whether prices already include VAT. When false, VAT is added on top of
+  /// the printed line totals rather than extracted from them.
+  final bool pricesIncludeVat;
 
   final String? etimsReceiptNumber;
   final String? etimsVerificationPayload;
@@ -220,7 +225,8 @@ class ReceiptBuilder {
     var printedVatTotal = Money.zero;
     for (final item in input.items) {
       final lineTotal = item.total;
-      final vat = vatComponentOf(lineTotal, ratePercent: input.vatRatePercent);
+      final vat = vatComponentOf(lineTotal, ratePercent: input.vatRatePercent,
+          pricesIncludeVat: input.pricesIncludeVat);
       printedLineTotal = printedLineTotal + lineTotal;
       printedVatTotal = printedVatTotal + vat;
 

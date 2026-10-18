@@ -106,7 +106,7 @@ class DatabaseHelper {
   /// shipped — always add a new one, even for a one-line fix — because a
   /// shop's phone may be several versions behind and needs every step run
   /// in order to land on the current schema without data loss.
-  static const _schemaVersion = 22;
+  static const _schemaVersion = 23;
 
   /// Slack allowed when deciding whether a container has enough left for a sale.
   ///
@@ -316,7 +316,12 @@ SELECT name FROM staff GROUP BY name HAVING COUNT(*) = 1
       await _createCupSizeSuggestionsTable(db);
     }
     if (oldVersion < 16) {
-      await db.execute('ALTER TABLE staff ADD COLUMN username TEXT');
+      final staffCols16 =
+          await db.rawQuery('PRAGMA table_info(staff)');
+      final staffNames16 = staffCols16.map((r) => r['name'] as String?).toSet();
+      if (!staffNames16.contains('username')) {
+        await db.execute('ALTER TABLE staff ADD COLUMN username TEXT');
+      }
       await db.execute(
           'CREATE UNIQUE INDEX IF NOT EXISTS idx_staff_username ON staff (username) WHERE username IS NOT NULL');
     }
@@ -414,6 +419,99 @@ SELECT name FROM staff GROUP BY name HAVING COUNT(*) = 1
       if (!productColumns.any((row) => row['name'] == 'ml_per_kg')) {
         await db.execute(
             'ALTER TABLE products ADD COLUMN ml_per_kg REAL NOT NULL DEFAULT 0');
+      }
+    }
+    if (oldVersion < 23) {
+      // Repair migration: till(s) that reached v12 from the v12 helper got
+      // different column declarations than _onCreate (owner lost name/email,
+      // staff lost active/remote_id/username, stock_adjustments never existed).
+      // Add anything missing rather than assuming the shape on disk.
+      // Only tables that exist are touched; a till whose upgrade path never
+      // created one of these tables is left alone.
+      // owner
+      final ownerExists = await db.rawQuery(
+          "SELECT name FROM sqlite_master WHERE type='table' AND name='owner'");
+      if (ownerExists.isNotEmpty) {
+        final ownerCols =
+            await db.rawQuery('PRAGMA table_info(owner)');
+        final ownerNames = ownerCols.map((r) => r['name'] as String?).toSet();
+        if (!ownerNames.contains('name')) {
+          await db.execute(
+              'ALTER TABLE owner ADD COLUMN name TEXT NOT NULL DEFAULT \'\'');
+        }
+        if (!ownerNames.contains('email')) {
+          await db.execute(
+              'ALTER TABLE owner ADD COLUMN email TEXT NOT NULL DEFAULT \'\'');
+        }
+      }
+      // staff
+      final staffExists = await db.rawQuery(
+          "SELECT name FROM sqlite_master WHERE type='table' AND name='staff'");
+      if (staffExists.isNotEmpty) {
+        final staffCols =
+            await db.rawQuery('PRAGMA table_info(staff)');
+        final staffNames = staffCols.map((r) => r['name'] as String?).toSet();
+        if (!staffNames.contains('active')) {
+          await db.execute(
+              'ALTER TABLE staff ADD COLUMN active INTEGER NOT NULL DEFAULT 1');
+          // Backfill from the legacy is_active column left by the drifted
+          // v12 helper, so deactivated staff stay deactivated after the
+          // repair. The DEFAULT 1 above is overwritten per-row here.
+          if (staffNames.contains('is_active')) {
+            await db.execute('UPDATE staff SET active = is_active');
+          }
+        }
+        if (!staffNames.contains('remote_id')) {
+          await db.execute(
+              'ALTER TABLE staff ADD COLUMN remote_id TEXT');
+        }
+        if (!staffNames.contains('username')) {
+          await db.execute(
+              'ALTER TABLE staff ADD COLUMN username TEXT');
+        }
+      }
+      // stock_adjustments may not exist at all on an upgraded till.
+      final stockAdjExists = await db.rawQuery(
+          "SELECT name FROM sqlite_master WHERE type='table' AND name='stock_adjustments'");
+      if (stockAdjExists.isEmpty) {
+        await db.execute('''CREATE TABLE IF NOT EXISTS stock_adjustments (
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          product_id INTEGER NOT NULL,
+          product_name TEXT NOT NULL,
+          delta INTEGER NOT NULL,
+          reason TEXT,
+          staff_name TEXT NOT NULL,
+          staff_id INTEGER,
+          created_at TEXT NOT NULL
+        )''');
+      } else {
+        final adjCols =
+            await db.rawQuery('PRAGMA table_info(stock_adjustments)');
+        final adjNames = adjCols.map((r) => r['name'] as String?).toSet();
+        if (!adjNames.contains('product_name')) {
+          await db.execute(
+              'ALTER TABLE stock_adjustments ADD COLUMN product_name TEXT NOT NULL DEFAULT \'\'');
+        }
+        if (!adjNames.contains('staff_name')) {
+          await db.execute(
+              'ALTER TABLE stock_adjustments ADD COLUMN staff_name TEXT NOT NULL DEFAULT \'\'');
+        }
+        if (!adjNames.contains('staff_id')) {
+          await db.execute(
+              'ALTER TABLE stock_adjustments ADD COLUMN staff_id INTEGER');
+        }
+      }
+      // sales: the VAT rate in force when the sale was rung, so reprints,
+      // reports and eTIMS uploads of old sales use the rate that applied then.
+      final salesExists = await db.rawQuery(
+          "SELECT name FROM sqlite_master WHERE type='table' AND name='sales'");
+      if (salesExists.isNotEmpty) {
+        final salesCols = await db.rawQuery('PRAGMA table_info(sales)');
+        final salesNames = salesCols.map((r) => r['name'] as String?).toSet();
+        if (!salesNames.contains('vat_rate_percent')) {
+          await db.execute(
+              'ALTER TABLE sales ADD COLUMN vat_rate_percent INTEGER');
+        }
       }
     }
   }
@@ -592,29 +690,33 @@ SELECT name FROM staff GROUP BY name HAVING COUNT(*) = 1
   }
 
   Future<void> _createTablesMissingFromOlderMigrations(Database db) async {
-    // Byte-for-byte the declarations in `_onCreate`. `IF NOT EXISTS` throughout,
-    // because this runs for every till below v12 and most of them already have
-    // some of these.
+    // The same declarations as `_onCreate`, so a fresh install and an upgraded
+    // till can never diverge. `IF NOT EXISTS` throughout, because this runs for
+    // every till below v12 and most of them already have some of these.
     await db.execute('''CREATE TABLE IF NOT EXISTS owner (
-      id INTEGER PRIMARY KEY AUTOINCREMENT,
-      shop_name TEXT NOT NULL,
-      phone TEXT,
+      id INTEGER PRIMARY KEY CHECK (id = 1),
+      name TEXT NOT NULL,
       pin_hash TEXT NOT NULL,
+      email TEXT NOT NULL,
+      shop_name TEXT NOT NULL,
       created_at TEXT NOT NULL
     )''');
     await db.execute('''CREATE TABLE IF NOT EXISTS staff (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       name TEXT NOT NULL,
-      role TEXT NOT NULL DEFAULT 'cashier',
       pin_hash TEXT NOT NULL,
-      is_active INTEGER NOT NULL DEFAULT 1,
-      created_at TEXT NOT NULL
+      active INTEGER NOT NULL DEFAULT 1,
+      remote_id TEXT,
+      role TEXT NOT NULL DEFAULT 'cashier',
+      username TEXT
     )''');
     await db.execute('''CREATE TABLE IF NOT EXISTS stock_adjustments (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       product_id INTEGER NOT NULL,
-      delta REAL NOT NULL,
+      product_name TEXT NOT NULL,
+      delta INTEGER NOT NULL,
       reason TEXT,
+      staff_name TEXT NOT NULL,
       staff_id INTEGER,
       created_at TEXT NOT NULL
     )''');
@@ -1038,9 +1140,10 @@ SELECT name FROM staff GROUP BY name HAVING COUNT(*) = 1
         payment_reference TEXT,
         amount_tendered INTEGER NOT NULL DEFAULT 0,
         change_given INTEGER NOT NULL DEFAULT 0,
-        created_at TEXT NOT NULL
+        created_at TEXT NOT NULL,
+        vat_rate_percent INTEGER
       )
-    ''');
+''');
     await db.execute('''
       CREATE TABLE sale_items (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -1672,6 +1775,18 @@ SELECT name FROM staff GROUP BY name HAVING COUNT(*) = 1
     return parsed;
   }
 
+  /// The VAT rate that applied to a particular sale.
+  ///
+  /// Reads the rate stored on the sale row (`vat_rate_percent`), which is the
+  /// rate in force when the sale was committed. Falls back to the current
+  /// rate for legacy rows written before the column existed — a reprint of a
+  //  pre-v23 sale shows today's rate rather than crashing on a NULL column.
+  Future<int> vatRateForSale(Map<String, dynamic> saleRow, {int? fallback}) async {
+    final stored = saleRow['vat_rate_percent'] as int?;
+    if (stored != null && stored >= 0 && stored <= 100) return stored;
+    return fallback ?? await getVatRatePercent();
+  }
+
   Future<void> setVatRatePercent(int percent) {
     if (percent < 0 || percent > 100) {
       throw ArgumentError.value(percent, 'percent', 'must be 0 to 100');
@@ -2113,8 +2228,11 @@ SELECT name FROM staff GROUP BY name HAVING COUNT(*) = 1
     }
     final change = paid - total;
     final now = DateTime.now().toIso8601String();
-    // Resolved before the transaction opens: see allocateReceiptNumber.
+    // Resolved before the transaction opens: reads that touch the database must
+    // not happen inside the transaction, or sqflite_ffi deadlocks on a read
+    // inside a write transaction.
     final tillCode = await getTillCode();
+    final vatRatePercent = await getVatRatePercent();
 
     return db.transaction<int>((txn) async {
       // A line's fraction of its container. [containerMl] is the product's own
@@ -2197,6 +2315,7 @@ SELECT name FROM staff GROUP BY name HAVING COUNT(*) = 1
             etimsPending ? EtimsStatus.pending : EtimsStatus.notRequired,
         'payment_verified': paymentVerified ? 1 : 0,
         'payment_confirmed_at': paymentVerified ? now : null,
+        'vat_rate_percent': vatRatePercent,
       });
       for (final it in items) {
         final fraction = portionFactor(it, containerMlByProduct[it.productId]!);
@@ -2239,15 +2358,19 @@ SELECT name FROM staff GROUP BY name HAVING COUNT(*) = 1
   ///
   /// Oldest first so numbering is uploaded in the order it was issued. KRA
   /// rejects a batch whose sequence has a gap, so flushing newest-first would
-  /// trade a queue problem for a compliance one.
+  /// trade a queue problem for a compliance one. Rows whose sale has been
+  /// permanently rejected are excluded: retrying them achieves nothing and one
+  /// rejected row must not block every receipt behind it.
   Future<List<PendingEtimsReceipt>> getPendingEtimsReceipts({
     int limit = 200,
   }) async {
-    final rows = await (await database).query(
-      'pending_etims',
-      orderBy: 'created_at ASC',
-      limit: limit,
-    );
+    final rows = await (await database).rawQuery('''
+      SELECT p.* FROM pending_etims p
+      JOIN sales s ON s.id = p.sale_id
+      WHERE s.etims_status != ?
+      ORDER BY p.created_at ASC
+      LIMIT ?
+    ''', [EtimsStatus.rejected, limit]);
     return rows
         .map((row) => PendingEtimsReceipt(
               saleId: row['sale_id'] as int,
@@ -2262,8 +2385,11 @@ SELECT name FROM staff GROUP BY name HAVING COUNT(*) = 1
   }
 
   Future<int> countPendingEtimsReceipts() async {
-    final rows = await (await database)
-        .rawQuery('SELECT COUNT(*) AS c FROM pending_etims');
+    final rows = await (await database).rawQuery('''
+      SELECT COUNT(*) AS c FROM pending_etims p
+      JOIN sales s ON s.id = p.sale_id
+      WHERE s.etims_status != ?
+    ''', [EtimsStatus.rejected]);
     return (rows.first['c'] as int?) ?? 0;
   }
 

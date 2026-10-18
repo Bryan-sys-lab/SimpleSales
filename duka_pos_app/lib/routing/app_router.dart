@@ -24,6 +24,7 @@ import '../screens/transactions_screen.dart';
 import '../screens/shift_screen.dart';
 import '../screens/shot_cups_screen.dart';
 import '../screens/splash_screen.dart';
+import '../screens/support_screen.dart';
 import '../screens/tax_settings_screen.dart';
 import '../widgets/camera_scan_screen.dart';
 import '../screens/welcome_chooser_screen.dart';
@@ -39,7 +40,7 @@ import 'system_back_handler.dart';
 
 /// The keys that decide WHO owns a route's Navigator.
 ///
-/// The shell's branches each get their own navigator so `goBranch` keeps five
+/// The shell's branches each get their own navigator so `goBranch` keeps six
 /// independent stacks alive at once. Everything that must cover the shell — a
 /// sheet, the PIN pad, a 404 — declares the root key, or it renders inside a
 /// rail's 176dp column.
@@ -177,7 +178,7 @@ List<RouteBase> _doorRoutes(AppStageController stage, AppState appState) {
   ];
 }
 
-/// The shell and its five branches.
+/// The shell and its six branches.
 List<RouteBase> _shellRoutes() {
   return <RouteBase>[
     StatefulShellRoute.indexedStack(
@@ -366,13 +367,23 @@ List<RouteBase> _shellRoutes() {
                       (BuildContext context, GoRouterState routerState) =>
                           _fadeThrough(routerState, const ImportsScreen()),
                 ),
-              ],
+               ],
             ),
-          ],
-        ),
-      ],
-    ),
-  ];
+         ],
+         ),
+         StatefulShellBranch(
+           navigatorKey: branchNavigatorKeys[AppDestination.support.index],
+           routes: <RouteBase>[
+             GoRoute(
+               path: Routes.support,
+               pageBuilder: (BuildContext context, GoRouterState routerState) =>
+                   _fadeThrough(routerState, const SupportScreen()),
+             ),
+           ],
+         ),
+       ],
+     ),
+   ];
 }
 
 /// Watches navigation so the failure log has a trail.

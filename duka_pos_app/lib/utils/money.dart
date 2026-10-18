@@ -103,13 +103,17 @@ class Money implements Comparable<Money> {
 Money sumMoney(Iterable<Money> values) =>
     values.fold(Money.zero, (total, value) => total + value);
 
-/// The VAT *contained inside* a VAT-inclusive amount.
+/// The VAT *contained inside* a VAT-inclusive amount, or the VAT *on top of*
+/// a net amount when [pricesIncludeVat] is false.
 ///
-/// Prices in this app include VAT, so the tax is extracted, never added:
-/// `net = gross / (1 + rate)` and `vat = gross - net`. With money already in
-/// integer minor units and the rate in whole percent, `gross * rate / (100 +
+/// Prices in this app include VAT by default, so the tax is extracted, never
+/// added: `net = gross / (1 + rate)` and `vat = gross - net`. With money already
+/// in integer minor units and the rate in whole percent, `gross * rate / (100 +
 /// rate)` is exact rational arithmetic and the only rounding is the single
 /// quantisation to a whole cent.
+///
+/// When prices exclude VAT, the amount is already net and VAT is added on top:
+/// `vat = net * rate / 100`.
 ///
 /// Lives here, next to [sumMoney], rather than in the receipt builder: both the
 /// printed receipt and the eTIMS payload quote this figure, and two copies of
@@ -129,18 +133,19 @@ Money sumMoney(Iterable<Money> values) =>
 /// below a half and truncates against the shop: 29 cents over 2 baskets is
 /// exactly 14.5 cents, which is 15 half-up, but `0.29 / 2 * 100` is
 /// 14.499999999999998 and rounds to 14.
-int divideMoneyHalfUp(int numerator, int denominator) {
-  if (denominator == 0) return 0;
-  if (numerator < 0) {
-    return -divideMoneyHalfUp(-numerator, denominator);
+Money vatComponentOf(Money amount, {required int ratePercent, bool pricesIncludeVat = true}) {
+  if (ratePercent == 0 || amount.minorUnits == 0) return Money.zero;
+  int numerator;
+  int denominator;
+  if (pricesIncludeVat) {
+    // Extract the VAT contained inside a VAT-inclusive gross.
+    numerator = amount.minorUnits * ratePercent;
+    denominator = 100 + ratePercent;
+  } else {
+    // VAT on top of a net amount: net * rate / 100.
+    numerator = amount.minorUnits * ratePercent;
+    denominator = 100;
   }
-  return ((numerator * 2) + denominator) ~/ (denominator * 2);
-}
-
-Money vatComponentOf(Money vatInclusive, {required int ratePercent}) {
-  if (ratePercent == 0 || vatInclusive.minorUnits == 0) return Money.zero;
-  final numerator = vatInclusive.minorUnits * ratePercent;
-  final denominator = 100 + ratePercent;
   // Routes through the ONE public division primitive rather than a private
   // twin: two copies of the same half-up rule is how a receipt ends up
   // disagreeing with an average basket over the same cent.
@@ -148,6 +153,19 @@ Money vatComponentOf(Money vatInclusive, {required int ratePercent}) {
     return Money.fromMinor(-divideMoneyHalfUp(-numerator, denominator));
   }
   return Money.fromMinor(divideMoneyHalfUp(numerator, denominator));
+}
+
+/// `numerator / denominator` rounded half up, in integers only.
+///
+/// The ONE division path for money. `((n * 2) + d) ~/ (d * 2)` is
+/// `floor(n/d + 1/2)`, which is round-half-up for a non-negative ratio and needs
+/// no floating point to express.
+int divideMoneyHalfUp(int numerator, int denominator) {
+  if (denominator == 0) return 0;
+  if (numerator < 0) {
+    return -divideMoneyHalfUp(-numerator, denominator);
+  }
+  return ((numerator * 2) + denominator) ~/ (denominator * 2);
 }
 
 /// Quantises a raw major-unit figure. Retained for the places that still hold a

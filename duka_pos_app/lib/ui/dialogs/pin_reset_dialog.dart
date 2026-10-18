@@ -102,7 +102,7 @@ class PinResetDialogState extends State<PinResetDialog> {
       setState(() => _error = l10n.pinResetPinsDiffer);
       return;
     }
-    if (!RegExp(r'^\d{4}$').hasMatch(_pin.text.trim())) {
+    if (!RegExp(r'^\d{6}$').hasMatch(_pin.text.trim())) {
       setState(() => _error = l10n.pinResetPinShape);
       return;
     }
@@ -222,7 +222,7 @@ class PinResetDialogState extends State<PinResetDialog> {
                   keyboardType: TextInputType.number,
                   inputFormatters: <TextInputFormatter>[
                     FilteringTextInputFormatter.digitsOnly,
-                    LengthLimitingTextInputFormatter(4),
+                    LengthLimitingTextInputFormatter(6),
                   ],
                   decoration:
                       InputDecoration(labelText: l10n.pinResetNewPinLabel),
@@ -234,7 +234,7 @@ class PinResetDialogState extends State<PinResetDialog> {
                   keyboardType: TextInputType.number,
                   inputFormatters: <TextInputFormatter>[
                     FilteringTextInputFormatter.digitsOnly,
-                    LengthLimitingTextInputFormatter(4),
+                    LengthLimitingTextInputFormatter(6),
                   ],
                   decoration:
                       InputDecoration(labelText: l10n.pinResetNewPinAgainLabel),

@@ -10,6 +10,14 @@ import 'excel_service.dart';
 /// Best-effort, opt-in online sync. Offline work never waits for this timer
 /// and mobile OS background execution is not assumed; a retry occurs while
 /// the app is open and whenever it is started again.
+///
+/// The local backup is written *before* any network step, and each step is
+/// wrapped in its own `try` so a network failure never skips the local copy.
+/// Automatic backups use their own `duka-autobackup` prefix so rotation can
+/// never delete a manual encrypted export the owner has not shared yet.
+///
+/// Real scheduling should move to WorkManager so the cycle fires even when the
+/// app process is not alive; the timer below is the in-process fallback.
 class AutoSyncService {
   static const _enabledKey = 'automatic_backup_sync_enabled';
   static Timer? _timer;
@@ -43,6 +51,10 @@ class AutoSyncService {
   /// with encrypted snapshots.
   static const int _maxRetainedBackups = 12;
 
+  /// Prefix for automatic backups, distinct from manual `duka-inventory`
+  /// exports so rotation never deletes an export the owner may not have shared.
+  static const String _backupPrefix = 'duka-autobackup';
+
   static void _schedule() {
     _timer ??= Timer.periodic(_interval, (_) => runNow());
   }
@@ -51,31 +63,51 @@ class AutoSyncService {
     if (_running || !await enabled) return;
     _running = true;
     try {
-      // This call is intentionally best-effort. Dio timeouts make offline
-      // retries cheap and never interrupt an active sale.
+      // Network steps are best-effort: a failure here must never skip the
+      // local backup below. Each step has its own try so one failing step
+      // does not abort the whole cycle.
       if (await BackendService.isBackendLinked) {
-        await BackendService.syncProductsToBackend();
-        await BackendService.syncStaffToBackend();
+        try {
+          await BackendService.syncProductsToBackend();
+        } catch (error) {
+          debugPrint('Automatic product sync failed: $error');
+        }
+        try {
+          await BackendService.syncStaffToBackend();
+        } catch (error) {
+          debugPrint('Automatic staff sync failed: $error');
+        }
       }
-      // Runs on the main isolate on purpose: the catalogue read (sqflite) and
-      // the file write (path_provider) both need platform channels that are
-      // not available in a background isolate. Only the AES-GCM step is
-      // dispatched off-thread, from inside EncryptedBackupService. The
-      // "last backup" timestamp is recorded by the delegate itself, so a
-      // manual and an automatic backup stay consistent.
-      await writeAutomaticInventoryBackup(const InventoryBackupRequest());
-      await _rotateBackups();
-    } catch (error) {
-      // The next timer/app start retries; the local till remains available.
-      // Swallowing silently made a completely broken backup path look healthy,
-      // so at least record why nothing was written.
-      debugPrint('Automatic backup cycle failed: $error');
+
+      // The local backup is written even when the network steps failed: a
+      // till that cannot reach the server still needs a fresh encrypted copy.
+      try {
+        // Runs on the main isolate on purpose: the catalogue read (sqflite)
+        // and the file write (path_provider) both need platform channels that
+        // are not available in a background isolate. Only the AES-GCM step is
+        // dispatched off-thread, from inside EncryptedBackupService. The
+        // "last backup" timestamp is recorded by the delegate itself, so a
+        // manual and an automatic backup stay consistent.
+        await writeAutomaticInventoryBackup(const InventoryBackupRequest());
+      } catch (error) {
+        debugPrint('Automatic local backup failed: $error');
+      }
+
+      try {
+        await _rotateBackups();
+      } catch (error) {
+        // Rotation is housekeeping; never fail the sync because of it.
+        debugPrint('Backup rotation failed: $error');
+      }
     } finally {
       _running = false;
     }
   }
 
-  /// Deletes the oldest encrypted snapshots beyond [_maxRetainedBackups].
+  /// Deletes the oldest automatic backups beyond [_maxRetainedBackups].
+  ///
+  /// Matches only the `duka-autobackup` prefix, never the `duka-inventory`
+  /// prefix used by manual encrypted exports.
   static Future<void> _rotateBackups() async {
     try {
       final dir = await getApplicationDocumentsDirectory();
@@ -85,7 +117,7 @@ class AutoSyncService {
       final backups = entities
           .whereType<File>()
           .where((f) =>
-              f.path.contains('duka-inventory') && f.path.endsWith('.duka'))
+              f.path.contains(_backupPrefix) && f.path.endsWith('.duka'))
           .toList()
         ..sort((a, b) => b.path.compareTo(a.path));
       for (final stale in backups.skip(_maxRetainedBackups)) {

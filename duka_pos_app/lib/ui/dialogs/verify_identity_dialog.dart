@@ -32,7 +32,7 @@ import '../../theme/app_shapes.dart';
 import '../../theme/app_spacing.dart';
 import '../../theme/typography.dart';
 
-/// Step one: the 4-digit admin PIN, which proves the person at the till is the
+/// Step one: the 6-digit admin PIN, which proves the person at the till is the
 /// shop admin. Returns the PIN, or null if they backed out.
 Future<String?> showVerifyPinSheet(
   BuildContext context, {
@@ -173,7 +173,7 @@ class _VerifyIdentityPinSheetState extends State<VerifyIdentityPinSheet> {
             // letter in it is a typo the keyboard should not have offered.
             inputFormatters: <TextInputFormatter>[
               FilteringTextInputFormatter.digitsOnly,
-              LengthLimitingTextInputFormatter(4),
+              LengthLimitingTextInputFormatter(6),
             ],
             decoration: InputDecoration(
               labelText: AppLocalizations.of(context).settingsVerifyPinLabel,
@@ -182,7 +182,7 @@ class _VerifyIdentityPinSheetState extends State<VerifyIdentityPinSheet> {
             onFieldSubmitted: (_) => _submit(),
             validator: (String? value) {
               final String entered = value?.trim() ?? '';
-              if (entered.length != 4) {
+              if (entered.length != 6) {
                 return AppLocalizations.of(context).settingsVerifyPinLabel;
               }
               return null;

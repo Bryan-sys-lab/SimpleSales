@@ -63,12 +63,16 @@ class SyncService {
       final id =
           await _sheets.ensureSpreadsheet(await _spreadsheetId, shopName);
       await _saveSpreadsheetId(id);
-      // Advance the watermark to the newest sale the sheet now provably
-      // contains. Stamping `DateTime.now()` instead would jump the mark past
-      // any sale committed while the append was in flight, and because the
-      // mark only moves forward those sales would never be exported.
-      final newestExported =
-          await _sheets.appendSales(id, after: effectiveSince);
+      // Advance the watermark per batch so a partway failure never re-appends
+      // rows the sheet already received. `after` is exclusive so a batch
+      // boundary sale is appended exactly once.
+      final newestExported = await _sheets.appendSales(
+        id,
+        after: effectiveSince,
+        onBatch: (batchNewest) async {
+          await _saveSalesWatermark(batchNewest);
+        },
+      );
       if (newestExported != null) await _saveSalesWatermark(newestExported);
       return SyncResult.pushedToSheets;
     } catch (_) {

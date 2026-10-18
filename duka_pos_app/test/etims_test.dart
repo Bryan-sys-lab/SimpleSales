@@ -42,6 +42,7 @@ void main() {
     required List<SaleItem> items,
     required int vatRatePercent,
     required int saleId,
+    bool pricesIncludeVat = true,
   }) async {
     await db.setTillCode('T1');
     await db.recordSale(
@@ -60,6 +61,7 @@ void main() {
       tillCode: await db.getTillCode(),
       tin: 'P051234567X',
       vatRatePercent: vatRatePercent,
+      pricesIncludeVat: pricesIncludeVat,
     );
   }
 

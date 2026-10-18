@@ -20,6 +20,7 @@ Map<String, dynamic> buildEtimsPayload({
   required String tillCode,
   required String tin,
   required int vatRatePercent,
+  required bool pricesIncludeVat,
 }) {
   final receiptNumber = db.receiptNumberFor(saleRow);
   return {
@@ -34,14 +35,14 @@ Map<String, dynamic> buildEtimsPayload({
               'name': item.productName,
               'qty': item.qty,
               'unit_price': item.unitPrice.minorUnits,
-              'unit_cost': item.unitCost.minorUnits,
               'portion': item.portion,
               'portion_ml': item.portionMl,
               // The VAT contained in this line, in minor units. Sent rather
               // than recomputed server-side so the figure KRA records is
               // exactly the figure printed on the customer's receipt.
               'vat_amount':
-                  vatComponentOf(item.total, ratePercent: vatRatePercent)
+                  vatComponentOf(item.total, ratePercent: vatRatePercent,
+                      pricesIncludeVat: pricesIncludeVat)
                       .minorUnits,
               'line_total': item.total.minorUnits,
             })
@@ -58,9 +59,21 @@ Map<String, dynamic> buildEtimsPayload({
 /// exists. Inventing a second, differently-shaped reconciliation for the same
 /// problem is how offline sales end up unreconciled.
 class EtimsService {
-  EtimsService({BackendService? backend}) : _backend = backend;
+  EtimsService();
 
-  final BackendService? _backend;
+  /// Only one flush at a time: the sell flow, the dashboard and tax settings
+  /// can all call `flushPending` at once, and two runs must not read the same
+  /// pending rows before either resolves them — otherwise the same sale could
+  /// be issued to KRA twice.
+  static Future<void>? _flushInProgress;
+
+  static Future<T> _serialiseFlush<T>(Future<T> Function() body) async {
+    final previous = _flushInProgress;
+    if (previous != null) await previous;
+    final current = body();
+    _flushInProgress = current;
+    return current;
+  }
 
   DatabaseHelper get _db => DatabaseHelper.instance;
 
@@ -93,7 +106,10 @@ class EtimsService {
   /// Bounded per call: a till that has been offline for a week can have
   /// thousands of receipts, and a single unbounded request would time out and
   /// achieve nothing. The caller runs this again on the next reconnect.
-  Future<EtimsFlushResult> flushPending({int limit = 100}) async {
+  Future<EtimsFlushResult> flushPending({int limit = 100}) async =>
+      _serialiseFlush(() => _flushPendingInner(limit: limit));
+
+  Future<EtimsFlushResult> _flushPendingInner({int limit = 100}) async {
     if (!await isEnabledForSales()) {
       return const EtimsFlushResult(uploaded: 0, remaining: 0, skipped: true);
     }
@@ -103,19 +119,30 @@ class EtimsService {
     }
     final tin = (await _db.getSetting(DatabaseHelper.settingTin))?.trim() ?? '';
     final tillCode = await _db.getTillCode();
-    final vatRate = await _db.getVatRatePercent();
     final device =
         (await _db.getSetting(DatabaseHelper.settingEtimsDeviceId))?.trim() ??
             '';
+    final prefs = await SharedPreferences.getInstance();
+    final pricesIncludeVat = prefs.getBool('prices_include_vat') ?? true;
+    // Fetch the VAT rate once before the loop instead of per-entry, so legacy
+    // sales (NULL vat_rate_percent) that fall through to getVatRatePercent()
+    // do not each issue a separate database query.
+    final fallbackVatRate = await _db.getVatRatePercent();
 
     var uploaded = 0;
     for (final entry in pending) {
       final sale = await _db.getSaleById(entry.saleId);
       final row = await _db.getSaleRowById(entry.saleId);
-      if (sale == null || row == null || sale.items.isEmpty) {
+      if (sale == null || row == null) {
         // The sale is not in this ledger any more. Leave the row alone: it is
         // the only remaining record that this receipt is outstanding, and
         // silently dropping it would hide the gap from the owner.
+        continue;
+      }
+      if (sale.items.isEmpty) {
+        // Nothing was sold, so KRA has nothing to accept. Mark it rejected
+        // with a reason so the row stops being retried on every flush.
+        await _db.markEtimsRejected(entry.saleId, 'No items on sale');
         continue;
       }
       final payload = buildEtimsPayload(
@@ -124,7 +151,8 @@ class EtimsService {
         db: _db,
         tillCode: tillCode,
         tin: tin,
-        vatRatePercent: vatRate,
+        vatRatePercent: await _db.vatRateForSale(row, fallback: fallbackVatRate),
+        pricesIncludeVat: pricesIncludeVat,
       );
       try {
         final issued = await _upload(payload, device: device);
@@ -144,7 +172,12 @@ class EtimsService {
         );
         if (_isPermanent(error)) {
           await _db.markEtimsRejected(entry.saleId, _describe(error));
+          // A permanent refusal will be refused again forever: move on to the
+          // next receipt instead of letting one bad row block everything newer.
+          continue;
         }
+        // Transient (network) error: stop this pass and try again on the next
+        // reconnect. Newer receipts are not held behind a temporary outage.
         break;
       }
     }
@@ -157,9 +190,6 @@ class EtimsService {
     Map<String, dynamic> payload, {
     required String device,
   }) async {
-    if (_backend == null) {
-      throw StateError('eTIMS backend is not available');
-    }
     final result = await BackendService.issueEtimsReceipt(
       payload,
       deviceId: device.isEmpty ? null : device,

@@ -245,6 +245,7 @@ class _SettingsScreenState extends State<SettingsScreen>
         total: Money.fromMajor(100),
         amountTendered: Money.fromMajor(100),
         changeGiven: Money.zero,
+        pricesIncludeVat: true,
       );
       // The SAME budget for the layout and the encode, taken from the printer
       // the shop is actually configured for.
@@ -345,16 +346,16 @@ class _SettingsScreenState extends State<SettingsScreen>
     //    are not certain, cancel" rather than a reassurance.
     final confirmed = await showDialog<bool>(
       context: context,
-      builder: (_) => AlertDialog(
+      builder: (BuildContext dialogContext) => AlertDialog(
         title: Text(l10n.accountDeleteConfirmTitle),
         content: Text(l10n.accountDeleteConfirmMessage),
         actions: <Widget>[
           TextButton(
-            onPressed: () => Navigator.pop(context, false),
+            onPressed: () => Navigator.pop(dialogContext, false),
             child: Text(l10n.actionCancel),
           ),
           FilledButton(
-            onPressed: () => Navigator.pop(context, true),
+            onPressed: () => Navigator.pop(dialogContext, true),
             child: Text(l10n.accountDeleteConfirmAction),
           ),
         ],

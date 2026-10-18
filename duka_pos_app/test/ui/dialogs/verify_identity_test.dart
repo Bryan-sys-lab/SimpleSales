@@ -62,7 +62,7 @@ void main() {
         ),
       );
 
-      await tester.enterText(find.byType(TextFormField), '9999');
+      await tester.enterText(find.byType(TextFormField), '999999');
       await tester.tap(find.widgetWithText(FilledButton, l10n.actionContinue));
       await tester.pumpAndSettle();
 
@@ -72,7 +72,7 @@ void main() {
       expect(find.text(l10n.settingsVerifyPinWrong), findsOneWidget);
       // The digits are still there. Clearing them is what makes a retry feel
       // like a punishment on a phone keypad.
-      expect(find.text('9999'), findsOneWidget);
+      expect(find.text('999999'), findsOneWidget);
     });
 
     testWidgets('hands the PIN back and closes when it is accepted',
@@ -90,11 +90,11 @@ void main() {
         }),
       );
 
-      await tester.enterText(find.byType(TextFormField), '1234');
+      await tester.enterText(find.byType(TextFormField), '123456');
       await tester.tap(find.widgetWithText(FilledButton, l10n.actionContinue));
       await tester.pumpAndSettle();
 
-      expect(handedBack, '1234');
+      expect(handedBack, '123456');
       expect(find.byType(VerifyIdentityPinSheet), findsNothing);
     });
 
@@ -127,9 +127,9 @@ void main() {
 
       await tester.enterText(find.byType(TextFormField), '12ab34cd5678');
       await tester.pump();
-      // Digits, and only four of them: a PIN field that accepts letters is a
+      // Digits, and only six of them: a PIN field that accepts letters is a
       // PIN the backend cannot use.
-      expect(find.text('1234'), findsOneWidget);
+      expect(find.text('123456'), findsOneWidget);
     });
   });
 

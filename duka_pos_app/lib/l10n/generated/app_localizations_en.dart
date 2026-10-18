@@ -1469,7 +1469,7 @@ class AppLocalizationsEn extends AppLocalizations {
   String get pinResetPinsDiffer => 'The two PINs do not match.';
 
   @override
-  String get pinResetPinShape => 'A PIN is exactly four digits.';
+  String get pinResetPinShape => 'A PIN is exactly six digits.';
 
   @override
   String get pinResetCodeWrong =>
@@ -2282,6 +2282,10 @@ class AppLocalizationsEn extends AppLocalizations {
   String get taxSettingsTinTooShort => 'A TIN is at least 4 characters';
 
   @override
+  String get taxSettingsTinInvalid =>
+      'A KRA PIN is A or P, nine digits, then one letter.';
+
+  @override
   String get taxSettingsTitle => 'Tax settings';
 
   @override
@@ -3081,6 +3085,21 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get analyticsPaymentMixTotal => 'Total';
+
+  @override
+  String get analyticsPaymentMethodCash => 'Cash';
+
+  @override
+  String get analyticsPaymentMethodMpesa => 'M-Pesa';
+
+  @override
+  String get analyticsPaymentMethodMobileMoney => 'Mobile money';
+
+  @override
+  String get analyticsPaymentMethodCard => 'Card';
+
+  @override
+  String get analyticsPaymentMethodBankTransfer => 'Bank transfer';
 
   @override
   String analyticsPaymentRowSpoken(

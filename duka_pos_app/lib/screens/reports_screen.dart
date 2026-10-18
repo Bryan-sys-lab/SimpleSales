@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import 'package:intl/intl.dart';
 import 'package:provider/provider.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 import '../app_brand.dart';
 import '../db/database_helper.dart';
@@ -242,6 +243,12 @@ class _ReportsScreenState extends State<ReportsScreen>
     await _excel.shareFile(file);
   }
 
+  Future<int> _vatRateForSale(int saleId) async {
+    final row = await DatabaseHelper.instance.getSaleRowById(saleId);
+    if (row == null) return await DatabaseHelper.instance.getVatRatePercent();
+    return await DatabaseHelper.instance.vatRateForSale(row);
+  }
+
   Future<void> _reprint(Sale sale) async {
     final int? id = sale.id;
     if (id == null) return;
@@ -263,7 +270,9 @@ class _ReportsScreenState extends State<ReportsScreen>
       shopName: state.owner?.shopName ?? SimplePosBrand.appName,
       staffRole: state.isOwnerSession ? 'Owner' : state.currentRole,
       config: config,
-      vatRatePercent: await DatabaseHelper.instance.getVatRatePercent(),
+      vatRatePercent: await _vatRateForSale(id),
+      pricesIncludeVat: (await SharedPreferences.getInstance())
+          .getBool('prices_include_vat') ?? true,
     );
     if (!mounted) return;
     if (result.printed) {

@@ -566,7 +566,7 @@ class PaymentMixCard extends StatelessWidget {
     final slices = <PosPieSlice>[
       for (final row in rows)
         PosPieSlice(
-          label: row.label,
+          label: row.label(l10n: l10n),
           value: row.salesMinor,
           color: _tenderColor(row.method, colors),
           valueLabel: formatMoney(row.sales),
@@ -613,7 +613,7 @@ class PaymentMixCard extends StatelessWidget {
             child: PosPieChart(
               title: '',
               slices: slices,
-              semanticsLabel: describePaymentMix(rows, totals.totalMinor),
+              semanticsLabel: describePaymentMix(rows, totals.totalMinor, l10n),
               centerLabel: null,
               centerValue: null,
               size: pieSize,
@@ -685,7 +685,7 @@ class _PaymentMixRow extends StatelessWidget {
           // The key: the tender's name, and its share of the whole.
           Expanded(
             child: Text(
-              '${row.label}  $share',
+              '${row.label(l10n: l10n)}  $share',
               style: AppTypography.of(context).bodyMedium,
             ),
           ),
@@ -703,7 +703,7 @@ class _PaymentMixRow extends StatelessWidget {
       label: l10n.analyticsPaymentRowSpoken(
         formatMoney(row.sales),
         row.transactions,
-        row.label,
+        row.label(l10n: l10n),
         share,
       ),
       excludeSemantics: true,

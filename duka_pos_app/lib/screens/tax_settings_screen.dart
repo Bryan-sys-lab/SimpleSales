@@ -50,9 +50,11 @@ class TaxSettingsScreen extends StatefulWidget {
   /// placeholders — the old version spliced raw ASCII digits into a literal,
   /// which is simultaneously un-localizable and wrong in any locale that groups
   /// decimals differently.
-  static String workedExample(AppLocalizations l10n, int rate) {
+  static String workedExample(AppLocalizations l10n, int rate,
+      {bool pricesIncludeVat = true}) {
     final Money gross = Money.fromMajor(100);
-    final Money vat = vatComponentOf(gross, ratePercent: rate);
+    final Money vat =
+        vatComponentOf(gross, ratePercent: rate, pricesIncludeVat: pricesIncludeVat);
     // gen-l10n orders the generated parameters ALPHABETICALLY by placeholder
     // name, so `net` comes first and `vat` second regardless of the order they
     // appear in the ARB template. Passing them in the template's order prints
@@ -396,6 +398,13 @@ class _TaxSettingsScreenState extends State<TaxSettingsScreen> {
                                 .taxSettingsTinTooShort);
                         return;
                       }
+                      final kraPin = RegExp(r'^[AP]\d{9}[A-Z]$');
+                      if (!kraPin.hasMatch(value)) {
+                        setDialogState(() => error =
+                            AppLocalizations.of(context)
+                                .taxSettingsTinInvalid);
+                        return;
+                      }
                       setDialogState(() {
                         submitting = true;
                         error = null;
@@ -575,7 +584,8 @@ class TaxSettingsPanel extends StatelessWidget {
                 title: l10n.taxSettingsVatRateLine(vatRatePercent),
                 subtitle: vatRatePercent == 0
                     ? l10n.taxSettingsVatExempt
-                    : TaxSettingsScreen.workedExample(l10n, vatRatePercent),
+                    : TaxSettingsScreen.workedExample(l10n, vatRatePercent,
+                        pricesIncludeVat: pricesIncludeVat),
               ),
               // The rate is a slider plus Apply rather than a text field: a
               // shop picking between 0% and 25% is choosing, not typing, and a

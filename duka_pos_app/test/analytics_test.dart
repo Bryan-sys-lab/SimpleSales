@@ -650,16 +650,16 @@ void main() {
       expect(rows.length, 2);
       expect(rows.first.method, 'cash');
       expect(rows.first.salesMinor, 5000);
-      expect(rows.first.label, 'Cash');
+      expect(rows.first.label(), 'Cash');
       expect(rows.first.transactions, 1);
       expect(rows.last.method, 'mpesa');
       expect(rows.last.salesMinor, 4000);
       expect(rows.last.transactions, 2);
-      expect(rows.last.label, 'M-Pesa');
+      expect(rows.last.label(), 'M-Pesa');
       expect(rows.last.sharePct(9000), closeTo(44.44, 0.01));
       // A share of nothing is zero, not a NaN that renders as "NaN%".
       expect(rows.first.sharePct(0), 0);
-      expect(rows.last.label, isNot('mobile_money_manual'));
+      expect(rows.last.label(), isNot('mobile_money_manual'));
     });
   });
 
@@ -727,8 +727,10 @@ void main() {
         'created_at': midnight.toIso8601String(),
         'updated_at': midnight.toIso8601String(),
       });
-      // markEtimsRejected deliberately leaves the queue row behind, so the
-      // queue alone cannot tell "waiting for a network" from "refused forever".
+      // markEtimsRejected leaves the queue row behind, so the queue alone
+      // cannot tell "waiting for a network" from "refused forever". Rejected
+      // receipts are excluded from the pending count so one refused sale never
+      // blocks every newer one.
       await (await db.database).insert('pending_etims', {
         'sale_id': rejected,
         'receipt_number': 'POS-000002',
@@ -736,7 +738,7 @@ void main() {
         'updated_at': midnight.toIso8601String(),
       });
 
-      expect(await db.countPendingEtimsReceipts(), 2);
+      expect(await db.countPendingEtimsReceipts(), 1);
       expect(await db.countRejectedEtimsReceipts(), 1);
     });
 

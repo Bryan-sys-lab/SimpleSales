@@ -1,4 +1,5 @@
 import 'dart:convert';
+import 'dart:math';
 
 import 'package:cryptography/cryptography.dart';
 import 'package:flutter/foundation.dart'
@@ -165,27 +166,21 @@ class AccountDeletionService {
       throw const AccountDeletionException(AccountDeletionFailure.wrongPin);
     }
 
+    // A new deletion attempt supersedes any earlier pending one: the local
+    // data is about to be destroyed, so there is nothing left to retry.
+    await _clearPendingDeletion();
+
     final salt = await _erasureSalt();
     final derived = await compute(
       _deriveErasureKey,
       ErasureKeyRequest(salt, pin.trim(), _iterations),
     );
 
-    // COMPACT BEFORE ERASING, which is the change that makes the whole path
-    // safe.
-    //
-    // VACUUM cannot run inside a transaction, so it has to be either before the
-    // ciphertext is written or after. After is the natural reading and it is
-    // what the first version did — and it is a brick: on a full disk (the
-    // realistic cause on the low-storage phones this till targets) the rewrite
-    // fails, the `pin_hash` is already ciphertext, `verifyPin` can never match
-    // again, and the owner is locked out of a till that tells them nothing was
-    // destroyed.
-    //
-    // Running it FIRST inverts that: a failure here destroys nothing, leaves
-    // the PIN working, and the deletion can simply be retried. It also does
-    // real work — the ciphertext is longer than the plaintext it replaces, so
-    // reclaiming the free pages before writing gives the file room to grow.
+    // Pre-erasure compaction, fatal on failure. Reclaims free pages BEFORE the
+    // ciphertext is written — the ciphertext is longer than the plaintext it
+    // replaces, so a full disk cannot leave the file with nowhere to grow.
+    // On failure nothing is overwritten, the PIN still works, and the deletion
+    // can simply be retried.
     try {
       await (await DatabaseHelper.instance.database).execute('VACUUM');
     } on Object catch (error) {
@@ -199,10 +194,6 @@ class AccountDeletionService {
     try {
       deletionId = await _eraseLocalData(derived);
     } on Object catch (error) {
-      // The pre-erasure compaction succeeded, so this is a failure inside the
-      // ciphertext transaction and it ROLLS BACK: the columns are plaintext,
-      // the key material is still in the keystore, and the shop is exactly as
-      // it was. That is the only safe place to be.
       throw AccountDeletionException(
         AccountDeletionFailure.localErasureFailed,
         error,
@@ -212,28 +203,42 @@ class AccountDeletionService {
     // The key material is destroyed HERE, the moment the ciphertext has
     // committed, and before the network round trip.
     //
-    // The order used to be: erase, delete the remote account, then destroy. That
-    // left a window of up to 35 seconds (a 15s connect timeout plus a 20s
-    // receive) in which the personal columns were ciphertext, the salt was still
-    // in the keystore, the backup key was still alive — and the process could be
-    // killed by the low-memory conditions this app targets. The erasure is
-    // derived from a 4-digit PIN over a known `erased:` prefix that is a
-    // MAC-verifiable oracle, so file-plus-keystore is brute-forceable, and there
-    // was no resume path.
-    //
     // Destroying first means the window is the instant between the transaction
     // committing and the delete returning, which no remote call can straddle.
-    // The remote call is unaffected: it needs the bearer token, not the salt.
     await _destroyKeyMaterial();
+
+    // Follow-up compaction. Checkpoint the WAL first so the VACUUM can actually
+    // reclaim the pages that held the now-ciphertext values; without it the
+    // plaintext can linger in WAL frames.
+    try {
+      await (await DatabaseHelper.instance.database)
+          .execute('PRAGMA wal_checkpoint(TRUNCATE)');
+    } on Object catch (_) {
+      // WAL checkpoint is best-effort; VACUUM still rewrites the main file.
+    }
+    try {
+      await (await DatabaseHelper.instance.database).execute('VACUUM');
+      _compactionCompleted = true;
+    } on Object catch (_) {
+      _compactionCompleted = false;
+    }
 
     // The remote account is deleted after the data is unrecoverable, so a
     // failure to reach the server leaves the owner already protected rather than
-    // still online while the owner is told it is gone.
+    // still online while the owner is told it is gone. The failure is recorded
+    // as pending so it can be retried on launch.
     var remoteDeleted = false;
     try {
       remoteDeleted = await _deleteRemoteAccount(email: owner.email);
     } catch (_) {
       remoteDeleted = false;
+      // Persist a pending-deletion record so the next launch retries until the
+      // online account is gone — required for Play Store data-deletion compliance.
+      try {
+        await _savePendingDeletion(owner.email);
+      } catch (_) {
+        // Secure storage failure must not mask the fact the local erasure done.
+      }
     }
 
     return AccountDeletionReport(
@@ -270,6 +275,7 @@ class AccountDeletionService {
 
       await _eraseColumn(txn, 'staff', 'name', key);
       await _eraseColumn(txn, 'staff', 'pin_hash', key);
+      await _eraseColumn(txn, 'staff', 'username', key);
 
       // Names denormalised onto the ledger rows when the sale was written —
       // and onto the other three tables that record the same person. `shifts`
@@ -284,6 +290,10 @@ class AccountDeletionService {
       await _eraseColumn(txn, 'pending_payments', 'phone_number', key);
       await _eraseColumn(txn, 'pending_payments', 'staff_name', key);
       await _eraseColumn(txn, 'pending_payments', 'cart_json', key);
+
+      // The tombstone itself records the remote id of the deleted cashier;
+      // seal it too so a deleted account leaves no trace of who was removed.
+      await _eraseColumn(txn, 'staff_deletion_tombstones', 'remote_id', key);
 
       // Both logs name people in every row.
       await _eraseColumn(txn, 'audit_log', 'actor_name', key);
@@ -324,11 +334,12 @@ class AccountDeletionService {
     // Follow-up compaction, which is best-effort rather than fatal.
     //
     // By this point the columns are already ciphertext and the key material is
-    // about to be destroyed, so a failure here cannot brick anything the way
-    // the first version could — see [deleteAccount], which runs the PRE-erasure
-    // compaction for exactly that reason. All a failure leaves behind is
-    // plaintext in un-vacuumed free pages, which no reader can reach through
-    // SQL, and which the receipt below names so the shop can re-run it.
+    // about to be destroyed, so a failure here cannot brick anything: the
+    // pre-erasure compaction above already guaranteed disk headroom, and the
+    // key material is still alive until this point returns. All a failure
+    // leaves behind is plaintext in un-vacuumed free pages, which no reader can
+    // reach through SQL, and which the receipt below names so the shop can
+    // re-run it.
     try {
       await db.execute('VACUUM');
       _compactionCompleted = true;
@@ -457,8 +468,11 @@ class AccountDeletionService {
     return 'erased:${base64Url.encode(joined)}';
   }
 
-  static String _newDeletionId(String now) => 'del-${now.replaceAll(':', '')}'
-      '-${base64Url.encode(List<int>.generate(6, (i) => i * 37 + 11))}';
+static String _newDeletionId(String now) {
+  final random = Random.secure();
+  return 'del-${now.replaceAll(':', '')}'
+      '-${base64Url.encode(List<int>.generate(6, (_) => random.nextInt(256)))}';
+}
 
   static Future<List<int>> _erasureSalt() async {
     final existing = await _storage.read(key: _saltKey);
@@ -523,6 +537,42 @@ class AccountDeletionService {
       'email': email.trim(),
     });
     return response;
+  }
+
+  static const _pendingDeletionKey = 'duka_pending_account_deletion';
+
+  /// Persists an email whose remote account deletion failed, so the next launch
+  /// can retry until the server confirms it — required for Play Store
+  /// data-deletion compliance.
+  static Future<void> _savePendingDeletion(String email) async {
+    await _storage.write(key: _pendingDeletionKey, value: email.trim());
+  }
+
+  /// Clears any earlier pending-deletion record. A new deletion attempt
+  /// supersedes the old one because the local data is about to be destroyed.
+  static Future<void> _clearPendingDeletion() async {
+    await _storage.delete(key: _pendingDeletionKey);
+  }
+
+  /// The email of an account whose remote deletion is still pending, or null.
+  static Future<String?> pendingDeletionEmail() async {
+    return _storage.read(key: _pendingDeletionKey);
+  }
+
+  /// Retries the remote deletion of a pending account. Returns true when the
+  /// server confirms, and clears the pending record on success.
+  static Future<bool> retryPendingDeletion() async {
+    final email = await pendingDeletionEmail();
+    if (email == null || email.trim().isEmpty) return false;
+    try {
+      final ok = await _deleteRemoteAccount(email: email);
+      if (ok) {
+        await _storage.delete(key: _pendingDeletionKey);
+      }
+      return ok;
+    } catch (_) {
+      return false;
+    }
   }
 }
 

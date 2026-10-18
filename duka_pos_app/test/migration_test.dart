@@ -1788,4 +1788,156 @@ void main() {
       await upgraded.close();
     });
   });
+
+  group('v23: schema repair for the v12 helper drift', () {
+    /// Builds a database at v12 using the OLD helper declarations (the shape
+    /// the buggy v12 migration left on real tills): owner with `phone` instead
+    /// of `name`/`email`, staff with `is_active` instead of `active` and no
+    /// `remote_id`/`username`, and no `stock_adjustments` table at all.
+    Future<Database> atV12WithDriftedShape() async {
+      await _createV10Database(path);
+      final db = await databaseFactoryFfi.openDatabase(
+        path,
+        options: OpenDatabaseOptions(
+          version: 12,
+          onOpen: (db) async {
+            await db.execute('''CREATE TABLE IF NOT EXISTS owner (
+              id INTEGER PRIMARY KEY AUTOINCREMENT,
+              shop_name TEXT NOT NULL,
+              phone TEXT,
+              pin_hash TEXT NOT NULL,
+              created_at TEXT NOT NULL
+            )''');
+            await db.execute('''CREATE TABLE IF NOT EXISTS staff (
+              id INTEGER PRIMARY KEY AUTOINCREMENT,
+              name TEXT NOT NULL,
+              role TEXT NOT NULL DEFAULT 'cashier',
+              pin_hash TEXT NOT NULL,
+              is_active INTEGER NOT NULL DEFAULT 1,
+              created_at TEXT NOT NULL
+            )''');
+            await db.execute('''CREATE TABLE IF NOT EXISTS product_barcodes (
+              barcode TEXT PRIMARY KEY NOT NULL,
+              product_id INTEGER NOT NULL,
+              kind TEXT NOT NULL DEFAULT 'supplier'
+            )''');
+            await db.execute('''CREATE TABLE IF NOT EXISTS shop_settings (
+              key TEXT PRIMARY KEY NOT NULL, value TEXT
+            )''');
+            await db.execute('''CREATE TABLE IF NOT EXISTS
+              receipt_counters (
+              key TEXT PRIMARY KEY NOT NULL, value INTEGER NOT NULL
+            )''');
+            await db.execute('ALTER TABLE sales ADD COLUMN receipt_number TEXT');
+            await db.execute('''CREATE TABLE IF NOT EXISTS pending_etims (
+              sale_id INTEGER PRIMARY KEY,
+              receipt_number TEXT NOT NULL,
+              attempts INTEGER NOT NULL DEFAULT 0,
+              last_error TEXT,
+              created_at TEXT NOT NULL,
+              updated_at TEXT NOT NULL
+            )''');
+          },
+        ),
+      );
+      return db;
+    }
+
+    test('the repair adds name and email to owner', () async {
+      final db = await atV12WithDriftedShape();
+      await db.close();
+      final upgraded = await DatabaseHelper.openExistingForUpgradeTests(path);
+
+      final cols =
+          (await upgraded.rawQuery('PRAGMA table_info(owner)'))
+              .map((r) => r['name'] as String)
+              .toSet();
+      expect(cols, contains('name'));
+      expect(cols, contains('email'));
+      // The old phone column is not required by the current schema; the repair
+      // does not remove it, but the current columns must be present.
+      await upgraded.close();
+    });
+
+    test('the repair adds active, remote_id and username to staff', () async {
+      final db = await atV12WithDriftedShape();
+      await db.close();
+      final upgraded = await DatabaseHelper.openExistingForUpgradeTests(path);
+
+      final cols =
+          (await upgraded.rawQuery('PRAGMA table_info(staff)'))
+              .map((r) => r['name'] as String)
+              .toSet();
+      expect(cols, contains('active'));
+      expect(cols, contains('remote_id'));
+      expect(cols, contains('username'));
+      await upgraded.close();
+    });
+
+    test('the repair creates stock_adjustments with product_name and staff_name',
+        () async {
+      final db = await atV12WithDriftedShape();
+      await db.close();
+      final upgraded = await DatabaseHelper.openExistingForUpgradeTests(path);
+
+      final cols =
+          (await upgraded.rawQuery('PRAGMA table_info(stock_adjustments)'))
+              .map((r) => r['name'] as String)
+              .toSet();
+      expect(cols, contains('product_name'));
+      expect(cols, contains('staff_name'));
+      expect(cols, contains('staff_id'));
+      await upgraded.close();
+    });
+
+    test('fresh install and upgraded v12-drift install agree on columns',
+        () async {
+      // A fresh install goes through _onCreate, which now delegates to the same
+      // helper declarations the v23 repair targets. The two paths must agree.
+      await DatabaseHelper.openInMemoryForTests();
+      final freshHandle = await DatabaseHelper.instance.database;
+
+      final freshOwner =
+          (await freshHandle.rawQuery('PRAGMA table_info(owner)'))
+              .map((r) => r['name'] as String)
+              .toSet();
+      final freshStaff =
+          (await freshHandle.rawQuery('PRAGMA table_info(staff)'))
+              .map((r) => r['name'] as String)
+              .toSet();
+      final freshAdj =
+          (await freshHandle.rawQuery('PRAGMA table_info(stock_adjustments)'))
+              .map((r) => r['name'] as String)
+              .toSet();
+
+      await freshHandle.close();
+
+      final drifted = await atV12WithDriftedShape();
+      await drifted.close();
+      final upgraded =
+          await DatabaseHelper.openExistingForUpgradeTests(path);
+
+      final upgradedOwner =
+          (await upgraded.rawQuery('PRAGMA table_info(owner)'))
+              .map((r) => r['name'] as String)
+              .toSet();
+      final upgradedStaff =
+          (await upgraded.rawQuery('PRAGMA table_info(staff)'))
+              .map((r) => r['name'] as String)
+              .toSet();
+      final upgradedAdj =
+          (await upgraded.rawQuery('PRAGMA table_info(stock_adjustments)'))
+              .map((r) => r['name'] as String)
+              .toSet();
+
+      // The upgraded install must carry every column a fresh install has.
+      // Extra legacy columns (e.g. `phone` on owner) are harmless leftovers
+      // from the old v12 helper and are not removed by the repair.
+      expect(upgradedOwner, containsAll(freshOwner));
+      expect(upgradedStaff, containsAll(freshStaff));
+      expect(upgradedAdj, containsAll(freshAdj));
+
+      await upgraded.close();
+    });
+  });
 }

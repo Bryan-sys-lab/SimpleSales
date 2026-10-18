@@ -44,20 +44,30 @@ class PinResetService {
   /// never has to ask for one: a reset the owner has to retype the address for
   /// is a reset that fails for the person who most needs it.
   ///
+  /// [email] is only needed when a migrated till has no stored address; it is
+  /// saved so the next reset does not have to ask again.
+  ///
   /// Throws [PinResetException] with the cause.
-  static Future<PinResetOutcome> requestCode() async {
+  static Future<PinResetOutcome> requestCode({String? email}) async {
     final owner = await DatabaseHelper.instance.getOwner();
-    final email = owner?.email.trim() ?? '';
-    if (email.isEmpty) {
+    final stored = owner?.email.trim() ?? '';
+    final useEmail = (email ?? stored).trim();
+    if (useEmail.isEmpty) {
       // No address on the account means there is nothing to send the code to.
       throw const PinResetException(PinResetFailure.emailUnknown);
     }
-    final challengeId = await BackendService.requestPinReset(email: email);
+    if (stored.isEmpty && email != null && email.trim().isNotEmpty) {
+      // A migrated till with no email: remember it once so the next reset
+      // does not have to ask again.
+      await (await DatabaseHelper.instance.database)
+          .update('owner', {'email': useEmail}, where: 'id = 1');
+    }
+    final challengeId = await BackendService.requestPinReset(email: useEmail);
     // Kept on the device, not only in a server session, so the confirm step can
     // prove it is answering the challenge this owner was actually sent —
     // otherwise a code from an earlier attempt could be redeemed later.
     await DatabaseHelper.instance.setSetting(_challengeKey, challengeId);
-    return PinResetOutcome(maskedEmail: maskEmail(email));
+    return PinResetOutcome(maskedEmail: maskEmail(useEmail));
   }
 
   /// Completes the reset and installs the new PIN.
@@ -66,7 +76,7 @@ class PinResetService {
   /// attempt; throws [PinResetException] for the offline and rate-limited
   /// cases, which need different words on screen.
   ///
-  /// [newPin] must be four digits and is refused before the network is touched:
+  /// [newPin] must be six digits and is refused before the network is touched:
   /// a PIN that is not the shape the pad accepts would lock the owner straight
   /// back out on the next unlock.
   static Future<bool> confirm({
@@ -74,8 +84,8 @@ class PinResetService {
     required String newPin,
     required AppState state,
   }) async {
-    if (!RegExp(r'^\d{4}$').hasMatch(newPin)) {
-      throw StateError('A PIN is exactly four digits');
+    if (!RegExp(r'^\d{6}$').hasMatch(newPin)) {
+      throw StateError('A PIN is exactly six digits');
     }
     final owner = await DatabaseHelper.instance.getOwner();
     final email = owner?.email.trim() ?? '';
@@ -98,6 +108,9 @@ class PinResetService {
     // Installed only after the server accepted the code, so a wrong code
     // cannot be used to change the PIN it was protecting.
     await installPin(newPin);
+    // A successful reset clears the lockout so the owner who just reset their
+    // PIN is not locked out for up to 30 minutes by earlier failed attempts.
+    await AuthService.recordSuccess(AuthService.ownerLockoutKey);
     // The code has now been spent, so it must not stay redeemable.
     await forgetChallenge();
     // Attributed by the caller, which holds the session — the same rule every

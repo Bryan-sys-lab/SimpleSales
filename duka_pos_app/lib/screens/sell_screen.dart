@@ -5,6 +5,7 @@ import 'dart:convert';
 import 'package:flutter/services.dart';
 import 'package:flutter/semantics.dart';
 import 'package:provider/provider.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import '../routing/routes.dart';
 import '../models/audit_log.dart';
 import '../services/app_state.dart';
@@ -1007,12 +1008,20 @@ class _SellScreenState extends State<SellScreen>
 
   Future<PrintResult> _printReceipt(int saleId, PrinterConfig config) async {
     final state = context.read<AppState>();
+    final saleRow =
+        await DatabaseHelper.instance.getSaleRowById(saleId);
+    final vatRate = saleRow == null
+        ? await DatabaseHelper.instance.getVatRatePercent()
+        : await DatabaseHelper.instance.vatRateForSale(saleRow);
+    final prefs = await SharedPreferences.getInstance();
+    final pricesIncludeVat = prefs.getBool('prices_include_vat') ?? true;
     final result = await ReceiptPrinter().printSale(
       saleId: saleId,
       shopName: state.owner?.shopName ?? 'Duka POS',
       staffRole: state.isOwnerSession ? 'Owner' : state.currentRole,
       config: config,
-      vatRatePercent: await DatabaseHelper.instance.getVatRatePercent(),
+      vatRatePercent: vatRate,
+      pricesIncludeVat: pricesIncludeVat,
     );
     if (!mounted) return result;
     if (result.outcome == PrintOutcome.printed ||
@@ -1449,13 +1458,15 @@ class _SellScreenState extends State<SellScreen>
                     ),
                   ),
                 ),
-                Flex(
-                  direction: compact ? Axis.vertical : Axis.horizontal,
-                  children: [
+                   Flex(
+                      direction: compact ? Axis.vertical : Axis.horizontal,
+                      crossAxisAlignment: CrossAxisAlignment.stretch,
+                      children: [
                     // Product catalog
-                    Expanded(
+                     Expanded(
                       flex: 3,
                       child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.stretch,
                         children: [
                           Padding(
                             padding: const EdgeInsets.all(16),
@@ -1590,6 +1601,7 @@ class _SellScreenState extends State<SellScreen>
                     Expanded(
                       flex: 2,
                       child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.stretch,
                         children: [
                           Container(
                             padding: const EdgeInsets.all(16),

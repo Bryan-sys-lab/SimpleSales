@@ -17,7 +17,7 @@ abstract final class Routes {
   const Routes._();
 
   // ------------------------------------------------------------ the shell
-  // Five branches. Reports is not one of them: it was a sixth tab whose content
+   // Six branches. Reports is not one of them: it was a seventh tab whose content
   // overlapped Analytics closely enough that a cashier's "Reports" and a
   // manager's "Reports" opened different-looking screens with the same numbers.
   // It is now a view *inside* Analytics, at /analytics/reports.
@@ -41,7 +41,7 @@ abstract final class Routes {
   static const String imports = '/settings/imports';
   static const String taxSettings = '/settings/tax';
   static const String cameraScan = '/sell/scan';
-  static const String support = '/settings/support';
+  static const String support = '/support';
 
   // ------------------------------------------------------------- the doors
   // Outside the shell: no navigation affordance, because there is no session to

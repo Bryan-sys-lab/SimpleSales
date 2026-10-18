@@ -391,7 +391,7 @@ class SheetsService {
   /// advance its high-water mark to a value the sheet provably contains rather
   /// than to wall-clock time. Returns null when nothing was appended.
   Future<DateTime?> appendSales(String spreadsheetId,
-      {DateTime? after, int batchSize = 500}) async {
+      {DateTime? after, int batchSize = 500, Future<void> Function(DateTime)? onBatch}) async {
     final api = await _api();
     if (api == null) throw StateError('Not signed in to Google');
     var cursor = after;
@@ -416,6 +416,10 @@ class SheetsService {
         valueInputOption: 'RAW',
       );
       newest = batchNewest;
+      // Report progress so the caller can persist the watermark per batch and
+      // never re-append rows that already reached the sheet, even if a later
+      // batch fails.
+      await onBatch?.call(batchNewest!);
       // Rows come back newest-first, so a batch that did not fill up means the
       // tail is drained and another pass would only re-read the last batch.
       if (sales.length < batchSize || batchNewest == null) return newest;

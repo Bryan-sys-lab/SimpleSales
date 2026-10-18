@@ -67,7 +67,7 @@ void main() {
     // Appears twice on purpose — once in the ring's legend, once in the exact
     // figures below it — so this asserts presence rather than a count.
     for (final PaymentMixRow row in _rows) {
-      expect(find.text(row.label), findsWidgets);
+      expect(find.text(row.label()), findsWidgets);
     }
     tester.expectNoOverflow('payment mix ring and legend');
   });

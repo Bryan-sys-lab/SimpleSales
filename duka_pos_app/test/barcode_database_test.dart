@@ -375,9 +375,11 @@ void main() {
       await db.markEtimsRejected(id, 'invalid TIN');
 
       expect((await db.getSaleRowById(id))!['etims_status'], 'rejected');
-      // The queue row survives: the invoice is still outstanding and the owner
-      // has to be able to see it.
-      expect(await db.countPendingEtimsReceipts(), 1);
+      // A refused sale is excluded from the pending queue so it never blocks
+      // newer receipts (C2).
+      expect(await db.countPendingEtimsReceipts(), 0);
+      // But it remains visible as rejected.
+      expect(await db.countRejectedEtimsReceipts(), 1);
     });
   });
 }

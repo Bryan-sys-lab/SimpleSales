@@ -1786,20 +1786,20 @@ class _ProductEditorState extends State<_ProductEditor> {
     if (price < cost) {
       final proceed = await showDialog<bool>(
           context: context,
-          builder: (_) => AlertDialog(
+          builder: (BuildContext dialogContext) => AlertDialog(
                 title:
-                    Text(AppLocalizations.of(context).inventoryLowPriceTitle),
+                    Text(AppLocalizations.of(dialogContext).inventoryLowPriceTitle),
                 content: Text(
                     '$name would sell at a loss (KSh $price vs cost KSh $cost). Save anyway?'),
                 actions: [
                   TextButton(
-                      onPressed: () => Navigator.pop(context, false),
+                      onPressed: () => Navigator.pop(dialogContext, false),
                       child:
-                          Text(AppLocalizations.of(context).inventoryGoBack)),
+                          Text(AppLocalizations.of(dialogContext).inventoryGoBack)),
                   FilledButton(
-                      onPressed: () => Navigator.pop(context, true),
+                      onPressed: () => Navigator.pop(dialogContext, true),
                       child: Text(
-                          AppLocalizations.of(context).inventorySaveAnyway)),
+                          AppLocalizations.of(dialogContext).inventorySaveAnyway)),
                 ],
               ));
       if (proceed != true) return;

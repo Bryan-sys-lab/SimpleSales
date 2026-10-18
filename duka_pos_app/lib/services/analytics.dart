@@ -3,6 +3,7 @@ import 'dart:math' as math;
 import 'package:flutter/foundation.dart';
 import 'package:intl/intl.dart';
 
+import '../l10n/generated/app_localizations.dart';
 import '../models/models.dart';
 import '../utils/money.dart';
 
@@ -217,15 +218,15 @@ class PaymentMixRow {
 
   Money get sales => Money.fromMinor(salesMinor);
 
-  /// "Mobile money" rather than "mpesa": the column can hold
-  /// `mobile_money_manual` too, and a label that only names one of them is
-  /// quietly wrong for a shop taking both.
-  String get label => switch (method) {
-        'cash' => 'Cash',
-        'mpesa' => 'M-Pesa',
-        'mobile_money_manual' => 'Mobile money',
-        'card' => 'Card',
-        'bank_transfer' => 'Bank transfer',
+  /// The label for this tender type, localized when [l10n] is provided.
+  String label({AppLocalizations? l10n}) => switch (method) {
+        'cash' => l10n?.analyticsPaymentMethodCash ?? 'Cash',
+        'mpesa' => l10n?.analyticsPaymentMethodMpesa ?? 'M-Pesa',
+        'mobile_money_manual' =>
+            l10n?.analyticsPaymentMethodMobileMoney ?? 'Mobile money',
+        'card' => l10n?.analyticsPaymentMethodCard ?? 'Card',
+        'bank_transfer' =>
+            l10n?.analyticsPaymentMethodBankTransfer ?? 'Bank transfer',
         _ => method,
       };
 
@@ -448,11 +449,12 @@ String _unitsLabel(double units) {
 }
 
 /// The spoken equivalent of the payment mix.
-String describePaymentMix(List<PaymentMixRow> rows, int rangeTotalMinor) {
+String describePaymentMix(List<PaymentMixRow> rows, int rangeTotalMinor,
+    AppLocalizations l10n) {
   if (rows.isEmpty) return 'Payment methods. Nothing taken in this period.';
   final head = rows
       .map((row) =>
-          '${row.label} ${formatMoney(Money.fromMinor(row.salesMinor))} '
+          '${row.label(l10n: l10n)} ${formatMoney(Money.fromMinor(row.salesMinor))} '
           'across ${row.transactions} ${row.transactions == 1 ? 'sale' : 'sales'}, '
           '${row.sharePct(rangeTotalMinor).toStringAsFixed(0)} percent')
       .join('; ');

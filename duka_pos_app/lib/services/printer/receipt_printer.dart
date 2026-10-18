@@ -87,6 +87,7 @@ class ReceiptPrinter {
     required String staffRole,
     required PrinterConfig config,
     required int vatRatePercent,
+    required bool pricesIncludeVat,
     String? etimsReceiptNumber,
     String? etimsVerificationPayload,
   }) async {
@@ -119,6 +120,7 @@ class ReceiptPrinter {
       changeGiven: sale.changeGiven,
       paymentMethodLabel: paymentLabelFor(sale.paymentMethod),
       vatRatePercent: vatRatePercent,
+      pricesIncludeVat: pricesIncludeVat,
       etimsReceiptNumber:
           etimsReceiptNumber ?? row?['etims_receipt_number'] as String?,
       etimsVerificationPayload:

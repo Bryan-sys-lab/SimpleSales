@@ -185,7 +185,7 @@ void markCatalogueChanged() {
   }
 }
 
-/// The chrome around the five branches.
+/// The chrome around the six branches.
 ///
 /// One widget decides the navigation affordance for the whole app, from the
 /// window's width and nothing else. Deciding it per screen is how an app ends up

@@ -224,7 +224,10 @@ void main() {
       await AccountDeletionService.deleteAccount(pin: validPin);
 
       // Without this, a copy of the database is a copy of the plaintext.
-      expect(keystore.values, isEmpty);
+      // The erasure salt is gone; a pending-deletion record may remain so the
+      // remote deletion can be retried on launch (H6).
+      expect(keystore.values.keys.any((k) => k == 'duka_pin_erasure_salt_v1'),
+          isFalse);
     });
   });
 
@@ -267,8 +270,10 @@ void main() {
         reason: 'the cached credentials and their index must both be gone',
       );
       expect(await StaffCredentialCache.verifyCachedPin(1, '2222'), isFalse);
-      expect(keystore.values, isEmpty,
-          reason: 'the cache, the salt and the backup key all go');
+      // The salt is gone; a pending-deletion record may remain for retry (H6).
+      expect(keystore.values.keys.any((k) => k == 'duka_pin_erasure_salt_v1'),
+          isFalse,
+          reason: 'the salt and the backup key all go');
     });
 
     test('signing out clears the cache too, so the next person cannot reuse it',
