@@ -2229,6 +2229,10 @@ class AppLocalizationsEn extends AppLocalizations {
       'Couldn’t update eTIMS. Check your connection and try again.';
 
   @override
+  String get taxSettingsEtimsNotLinked =>
+      'Link this shop to the backend before switching eTIMS on.';
+
+  @override
   String get taxSettingsIssueEtimsTitle => 'Issue eTIMS receipts';
 
   @override

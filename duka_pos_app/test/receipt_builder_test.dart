@@ -38,6 +38,7 @@ ReceiptInput receipt({
   Money? change,
   String? etimsNumber,
   String? etimsPayload,
+  bool etimsPending = false,
   String shopName = 'Kijani Stores',
   String receiptNumber = 'T1-000001',
   String cashierName = 'Alice',
@@ -57,6 +58,7 @@ ReceiptInput receipt({
     vatRatePercent: vatRatePercent,
     etimsReceiptNumber: etimsNumber,
     etimsVerificationPayload: etimsPayload,
+    etimsPending: etimsPending,
   );
 }
 
@@ -325,6 +327,12 @@ void main() {
       expect(lines.whereType<ReceiptQr>(), isEmpty);
     });
 
+    test('an eTIMS pending notice is printed when the inline attempt timed out',
+        () {
+      final text = render(receipt(etimsPending: true)).join('\n');
+      expect(text, contains('eTIMS pending'));
+    });
+
     test('zero change does not print a change line', () {
       final text =
           render(receipt(tendered: Money.fromMajor(160), change: Money.zero));
@@ -438,7 +446,7 @@ void main() {
     });
   });
 
-  // The code-page command. A missing `ESC R n` means Latin-1 bytes are read as
+  // The code-page command. A missing `ESC t n` means Latin-1 bytes are read as
   // CP437, so `Café` printed as `CafΘ` — and `KSh` is ASCII, so nothing in the
   // existing fixtures ever caught it.
   group('the encoder character set', () {
@@ -447,7 +455,7 @@ void main() {
           const EscPosEncoder().encode(const ReceiptBuilder().build(receipt()));
       // `ESC @` resets the code page to the printer's own default, so the
       // selection must FOLLOW it rather than precede it.
-      expect(containsSequence(bytes, [0x1b, 0x40, 0x1b, 0x52, 0x10]), isTrue);
+      expect(containsSequence(bytes, [0x1b, 0x40, 0x1b, 0x74, 16]), isTrue);
     });
 
     test('a non-ASCII product name survives as the character it is', () {

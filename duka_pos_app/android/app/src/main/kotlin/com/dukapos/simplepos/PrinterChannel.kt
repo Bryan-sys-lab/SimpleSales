@@ -2,17 +2,21 @@ package com.dukapos.simplepos
 
 import android.Manifest
 import android.bluetooth.BluetoothAdapter
+import android.bluetooth.BluetoothClass
 import android.bluetooth.BluetoothDevice
 import android.bluetooth.BluetoothSocket
 import android.content.Context
 import android.content.pm.PackageManager
 import android.os.Build
+import android.os.Handler
+import android.os.Looper
 import io.flutter.plugin.common.BinaryMessenger
 import io.flutter.plugin.common.MethodCall
 import io.flutter.plugin.common.MethodChannel
 import java.io.IOException
 import java.io.OutputStream
 import java.util.UUID
+import java.util.concurrent.atomic.AtomicBoolean
 
 /**
  * Bluetooth ESC/POS over `BluetoothSocket`, behind a `MethodChannel`.
@@ -29,6 +33,10 @@ import java.util.UUID
  *     hard deadline and `send` writes on the same worker, because the caller is
  *     the checkout path and a wedged socket must degrade to "couldn't print",
  *     never to a hung till.
+ *
+ * Threading rule: every `result.success`/`result.error` is posted back to the
+ * main looper. The worker thread owns the socket, but Flutter requires channel
+ * replies on the main thread.
  */
 class PrinterChannel(
     private val context: Context,
@@ -44,52 +52,75 @@ class PrinterChannel(
         const val CHANNEL = "duka_pos/printer"
         const val SPP_UUID = "00001101-0000-1000-8000-00805F9B34FB"
 
-        // The SPP UUID is a fixed serial-port profile constant, so it is
-        // declared rather than discovered. Discovery would need an extra
-        // service query and a user-visible permission this app has no reason to
-        // ask for; every printer in this market advertises SPP.
-        private const val BUFFER_SIZE = 1024
         private const val DEFAULT_CONNECT_TIMEOUT_MS = 8000L
+
+        // Chunk size for writes. Small printer buffers truncate long receipts,
+        // especially once a QR code is on the paper, so the byte stream is
+        // dribbled out in 1 KB chunks with a short pause between them.
+        private const val WRITE_CHUNK_SIZE = 1024
+        private const val WRITE_CHUNK_PAUSE_MS = 5L
     }
 
     private val worker = ThreadPoolExecutorWithSingleThread()
+    private val mainHandler = Handler(Looper.getMainLooper())
 
     private var socket: BluetoothSocket? = null
     private var output: OutputStream? = null
+    private var connectedDevice: BluetoothDevice? = null
     private var pendingPermission: MethodChannel.Result? = null
+    private var connectDeadlineJob: Runnable? = null
 
     init {
         MethodChannel(messenger, CHANNEL).setMethodCallHandler(this)
     }
 
     fun dispose() {
+        removeConnectDeadline()
         closeSocket()
         worker.shutdown()
     }
 
     override fun onMethodCall(call: MethodCall, result: MethodChannel.Result) {
         when (call.method) {
-            "isAvailable" -> result.success(isBluetoothUsable())
-            "hasPermission" -> result.success(hasPermission())
+            "isAvailable" -> reply(result) { isBluetoothUsable() }
+            "hasPermission" -> reply(result) { hasPermission() }
             "requestPermission" -> requestPermission(result)
             "isPermissionPermanentlyDenied" ->
-                result.success(isPermissionPermanentlyDenied())
-            "pairedDevices" -> result.success(pairedDevices())
+                reply(result) { isPermissionPermanentlyDenied() }
+            "pairedDevices" -> reply(result) { pairedDevices() }
             "isPaired" -> {
                 val address = call.argument<String>("address")
-                result.success(address != null && adapter()?.bondedDevices
-                    ?.any { it.address == address.uppercase() } == true)
+                reply(result) {
+                    address != null &&
+                        adapter()?.bondedDevices?.any { it.address == address.uppercase() } == true
+                }
             }
-            "pair" -> result.success(pair(call.argument<String>("address")))
+            "pair" -> reply(result) { pair(call.argument<String>("address")) }
             "connect" -> connect(call, result)
             "send" -> send(call, result)
-            "isConnected" -> result.success(socket?.isConnected == true)
+            "isConnected" -> reply(result) { socket?.isConnected == true }
             "disconnect" -> {
                 closeSocket()
-                result.success(true)
+                reply(result) { true }
             }
             else -> result.notImplemented()
         }
+    }
+
+    /** Posts [result] to the main looper so Flutter never receives a channel
+     * reply from the printer worker thread. */
+    private inline fun reply(result: MethodChannel.Result, block: () -> Boolean) {
+        mainHandler.post { result.success(block()) }
+    }
+
+    /** Posts a success reply to the main looper. */
+    private fun succeed(result: MethodChannel.Result, value: Boolean = true) {
+        mainHandler.post { result.success(value) }
+    }
+
+    /** Posts an error reply to the main looper. */
+    private fun fail(result: MethodChannel.Result, code: String, message: String?) {
+        mainHandler.post { result.error(code, message, null) }
     }
 
     // ---------------- permissions ----------------
@@ -135,32 +166,31 @@ class PrinterChannel(
 
     private fun requestPermission(result: MethodChannel.Result) {
         if (hasPermission()) {
-            result.success(true)
+            succeed(result)
             return
         }
         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.S) {
-            // Pre-31 there is no runtime dialog to show; a false here would be a
-            // lie, but a true is also unearned. The platform cannot grant it, so
-            // the honest answer is false and the UI explains the manifest.
-            result.success(false)
+            succeed(result, false)
             return
         }
         val activity = context as? MainActivity
         if (activity == null) {
-            result.success(false)
+            succeed(result, false)
             return
         }
         // One in-flight prompt. A second request while the dialog is up would
         // replace the pending result and the first caller would hang forever.
         if (pendingPermission != null) {
-            result.success(false)
+            succeed(result, false)
             return
         }
         pendingPermission = result
         activity.requestBluetoothPermission { granted ->
-            val pending = pendingPermission
-            pendingPermission = null
-            pending?.success(granted)
+            mainHandler.post {
+                val pending = pendingPermission
+                pendingPermission = null
+                pending?.success(granted)
+            }
         }
     }
 
@@ -176,27 +206,44 @@ class PrinterChannel(
     private fun pairedDevices(): List<Map<String, String>> {
         val deviceAdapter = adapter() ?: return emptyList()
         return try {
-            deviceAdapter.bondedDevices.orEmpty().map { device ->
-                mapOf(
-                    "name" to (device.name ?: ""),
-                    "address" to device.address
-                )
-            }
+            deviceAdapter.bondedDevices.orEmpty()
+                // Earbuds, phones and watches share the bonded list. Keep only
+                // things that look like printers so the pairing sheet does not
+                // offer the cashier a headset as a receipt printer.
+                .filter { isLikelyPrinter(it) }
+                .map { device ->
+                    mapOf(
+                        "name" to (device.name ?: ""),
+                        "address" to device.address
+                    )
+                }
         } catch (_: SecurityException) {
             emptyList()
         }
+    }
+
+    /**
+     * Heuristic: a printer is unlikely to be an audio device (headset/
+     * headphones) or a phone. Thermal receipt printers typically report
+     * peripheral/imaging/miscellaneous, so we drop the obvious non-printers
+     * and keep everything else — including devices whose class is unknown.
+     */
+    private fun isLikelyPrinter(device: BluetoothDevice): Boolean {
+        val cls = device.bluetoothClass ?: return true
+        val major = cls.deviceClass
+        return major != BluetoothClass.Device.MAJOR_AUDIO &&
+            major != BluetoothClass.Device.MAJOR_PHONE
     }
 
     private fun pair(address: String?): Boolean {
         if (address == null) return false
         val device = findDevice(address) ?: return false
         return try {
-            // Bonding is a system flow; `createBond` is reflective because it is
-            // not on the public API below API 19 and is hidden above it. If the
-            // device is already bonded this is a no-op returning true.
             if (device.bondState == BluetoothDevice.BOND_BONDED) return true
-            val method = device.javaClass.getMethod("createBond")
-            method.invoke(device) as? Boolean ?: false
+            // `createBond` is public API on every supported level here; no
+            // reflection needed. It returns true once bonding has been
+            // initiated, not once it has completed.
+            device.createBond()
         } catch (_: Exception) {
             false
         }
@@ -216,66 +263,161 @@ class PrinterChannel(
 
     private fun connect(call: MethodCall, result: MethodChannel.Result) {
         val address = call.argument<String>("address")
-        val timeout =
-            (call.argument<Int>("timeoutMs") ?: DEFAULT_CONNECT_TIMEOUT_MS.toInt())
-                .toLong()
+        val timeoutMs =
+            (call.argument<Int>("timeoutMs") ?: DEFAULT_CONNECT_TIMEOUT_MS.toInt()).toLong()
         if (address == null || address.isBlank()) {
-            result.error("not_paired", "No printer address configured", null)
+            fail(result, "not_paired", "No printer address configured")
             return
         }
         val device = findDevice(address)
         if (device == null) {
-            result.error("not_paired", "Printer is not paired with this handset", null)
+            fail(result, "not_paired", "Printer is not paired with this handset")
             return
         }
         worker.execute {
+            removeConnectDeadline()
             try {
                 if (socket?.isConnected == true && socket?.remoteDevice?.address == device.address) {
-                    result.success(true)
+                    succeed(result)
                     return@execute
                 }
                 closeSocket()
-                // Insecure RFCOMM is the SPP channel. Secure SSP sockets are
-                // not supported by these printers and, where they are, refuse
-                // the connection rather than degrade.
-                val fresh = device.javaClass
-                    .getMethod("createRfcommSocketToServiceRecord", UUID::class.java)
-                    .invoke(device, UUID.fromString(SPP_UUID)) as BluetoothSocket
-                fresh.connect()
+                val fresh = openSocket(device)
+                // Enforce the hard connect deadline: if the handshake does not
+                // complete within [timeoutMs], close the socket so a wedged
+                // printer cannot hang the till forever.
+                val deadline = AtomicBoolean(false)
+                connectDeadlineJob = Runnable {
+                    if (!deadline.get()) {
+                        deadline.set(true)
+                        try { fresh.close() } catch (_: Exception) {}
+                    }
+                }
+                mainHandler.postDelayed(connectDeadlineJob, timeoutMs)
+                try {
+                    fresh.connect()
+                } finally {
+                    removeConnectDeadline()
+                }
+                deadline.set(true)
                 socket = fresh
                 output = fresh.outputStream
-                result.success(true)
+                connectedDevice = device
+                succeed(result)
+            } catch (e: SecurityException) {
+                closeSocket()
+                // A missing BLUETOOTH_CONNECT permission is a configuration
+                // problem the operator can fix, not a generic link failure.
+                fail(result, "permission_denied", "Bluetooth permission not granted")
             } catch (_: IOException) {
                 closeSocket()
-                result.error("connect_failed", "Could not open the printer link", null)
+                fail(result, "connect_failed", "Could not open the printer link")
             } catch (_: Exception) {
                 closeSocket()
-                result.error("connect_failed", "Could not open the printer link", null)
+                fail(result, "connect_failed", "Could not open the printer link")
             }
         }
+    }
+
+    /**
+     * Opens an RFCOMM socket to [device], trying the secure channel first and
+     * falling back through insecure RFCOMM to a raw channel-1 socket. Many
+     * cheap 58mm printers refuse secure SSP sockets and many refuse insecure
+     * ones, so all three are attempted in order.
+     *
+     * `createRfcommSocketToServiceRecord` and `createRfcommSocket(int)` are
+     * both public API, so no reflection is used.
+     */
+    private fun openSocket(device: BluetoothDevice): BluetoothSocket {
+        val exceptions = mutableListOf<Exception>()
+        val candidates = listOf(
+            { device.createRfcommSocketToServiceRecord(UUID.fromString(SPP_UUID)) },
+            { device.createInsecureRfcommSocketToServiceRecord(UUID.fromString(SPP_UUID)) },
+            { device.createRfcommSocket(1) },
+        )
+        for (factory in candidates) {
+            return try {
+                factory()
+            } catch (e: Exception) {
+                exceptions.add(e)
+                continue
+            }
+        }
+        throw exceptions.firstOrNull() ?: IOException("Could not open any RFCOMM socket")
     }
 
     private fun send(call: MethodCall, result: MethodChannel.Result) {
         @Suppress("UNCHECKED_CAST")
         val bytes = call.argument<ByteArray>("bytes")
         if (bytes == null || bytes.isEmpty()) {
-            result.success(true)
+            succeed(result)
             return
         }
         worker.execute {
-            try {
-                val stream = output ?: throw IOException("no link")
-                stream.write(bytes)
-                stream.flush()
-                result.success(true)
-            } catch (_: IOException) {
-                // A printer that powered itself off mid-shift leaves the socket
-                // open but dead. Drop it so the next print reconnects rather
-                // than writing into a void forever.
+            var sent = false
+            // A power-cycled printer leaves a dead socket that is only detected
+            // on write. Reconnect once and resend instead of failing outright.
+            for (attempt in 0 until 2) {
+                try {
+                    val stream = output ?: throw IOException("no link")
+                    // Dribble in chunks so small printer buffers cannot swallow
+                    // a long receipt (and its QR code).
+                    for (i in 0 until bytes.size step WRITE_CHUNK_SIZE) {
+                        val end = (i + WRITE_CHUNK_SIZE).coerceAtMost(bytes.size)
+                        stream.write(bytes, i, end - i)
+                        stream.flush()
+                        if (i + WRITE_CHUNK_SIZE < bytes.size) {
+                            Thread.sleep(WRITE_CHUNK_PAUSE_MS)
+                        }
+                    }
+                    sent = true
+                    break
+                } catch (e: IOException) {
+                    lastError = e
+                    // The socket died mid-shift. Drop it and retry once on the
+                    // next pass through the loop.
+                    closeSocket()
+                    try {
+                        val device = connectedDevice
+                        if (device != null) {
+                            val fresh = openSocket(device)
+                            val reconnectDeadline = AtomicBoolean(false)
+                            val reconnectJob = Runnable {
+                                if (!reconnectDeadline.get()) {
+                                    reconnectDeadline.set(true)
+                                    try { fresh.close() } catch (_: Exception) {}
+                                }
+                            }
+                            mainHandler.postDelayed(reconnectJob, DEFAULT_CONNECT_TIMEOUT_MS)
+                            try {
+                                fresh.connect()
+                                reconnectDeadline.set(true)
+                            } finally {
+                                mainHandler.removeCallbacks(reconnectJob)
+                            }
+                            socket = fresh
+                            output = fresh.outputStream
+                            connectedDevice = device
+                        } else {
+                            break
+                        }
+                    } catch (_: Exception) {
+                        break
+                    }
+                }
+            }
+            if (sent) {
+                succeed(result)
+            } else {
                 closeSocket()
-                result.error("print_failed", "The printer link dropped", null)
+                fail(result, "print_failed", "The printer link dropped")
             }
         }
+    }
+
+    private fun removeConnectDeadline() {
+        connectDeadlineJob?.let { mainHandler.removeCallbacks(it) }
+        connectDeadlineJob = null
     }
 
     private fun closeSocket() {
@@ -291,6 +433,7 @@ class PrinterChannel(
         }
         output = null
         socket = null
+        connectedDevice = null
     }
 
     /**

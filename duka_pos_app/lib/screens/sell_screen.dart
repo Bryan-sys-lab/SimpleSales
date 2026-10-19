@@ -64,6 +64,7 @@ class _SellScreenState extends State<SellScreen>
   String _searchQuery = '';
   bool _loading = true;
   bool _processingPayment = false;
+  EtimsIssuedReceipt? _pendingEtimsReceipt;
   bool _portionSheetOpen = false;
   bool _scanInFlight = false;
   String? _statusMessage;
@@ -996,17 +997,26 @@ class _SellScreenState extends State<SellScreen>
   /// failure touch the sale, which is already committed by the time this runs.
   Future<void> _afterSale(int saleId, {required bool etimsEnabled}) async {
     if (etimsEnabled) {
-      // Issue the receipt before printing, so the paper the customer walks away
-      // with carries KRA's number. A failure leaves the sale queued and prints
-      // without it rather than not printing at all.
-      await EtimsService().flushPending(limit: 1);
+      // Issue this sale's receipt before printing, so the customer's paper
+      // carries KRA's number. A failure leaves the sale queued and prints an
+      // "eTIMS pending" line rather than holding the customer at the counter.
+      final issued = await EtimsService().flushFor(saleId);
+      if (!mounted) return;
+      _pendingEtimsReceipt = issued;
     }
     final config = await PrinterConfig.load();
-    if (!config.printAfterSale) return;
-    await _printReceipt(saleId, config);
+    if (!config.printAfterSale) {
+      _pendingEtimsReceipt = null;
+      return;
+    }
+    await _printReceipt(saleId, config,
+        etimsPending: etimsEnabled && _pendingEtimsReceipt == null);
+    if (!mounted) return;
+    _pendingEtimsReceipt = null;
   }
 
-  Future<PrintResult> _printReceipt(int saleId, PrinterConfig config) async {
+  Future<PrintResult> _printReceipt(int saleId, PrinterConfig config,
+      {bool etimsPending = false}) async {
     final state = context.read<AppState>();
     final saleRow =
         await DatabaseHelper.instance.getSaleRowById(saleId);
@@ -1022,6 +1032,9 @@ class _SellScreenState extends State<SellScreen>
       config: config,
       vatRatePercent: vatRate,
       pricesIncludeVat: pricesIncludeVat,
+      etimsReceiptNumber: _pendingEtimsReceipt?.receiptNumber,
+      etimsVerificationPayload: _pendingEtimsReceipt?.verificationUrl,
+      etimsPending: etimsPending,
     );
     if (!mounted) return result;
     if (result.outcome == PrintOutcome.printed ||

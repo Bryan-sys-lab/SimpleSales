@@ -47,7 +47,8 @@ final class ReceiptText extends ReceiptLine {
   final int scale;
 
   @override
-  String render(int columnBudget) => _fit(text, columnBudget, alignment);
+  String render(int columnBudget) =>
+      _fit(text, columnBudget ~/ scale, alignment);
 }
 
 /// A left-hand label and a right-hand figure on the same physical line.
@@ -84,7 +85,8 @@ final class ReceiptColumns extends ReceiptLine {
     final rightWidth = shownRight.length;
     final room = columnBudget - rightWidth - 1;
     final trimmed = room <= 0 ? '' : _truncateEnd(left, room);
-    return trimmed.padRight(room) + shownRight.padLeft(rightWidth);
+    return trimmed.padRight(room.clamp(0, columnBudget)) +
+        shownRight.padLeft(rightWidth);
   }
 }
 
@@ -147,6 +149,7 @@ enum ReceiptAlignment { left, center, right }
     this.pricesIncludeVat = true,
     this.etimsReceiptNumber,
     this.etimsVerificationPayload,
+    this.etimsPending = false,
   });
 
   final String shopName;
@@ -173,6 +176,10 @@ enum ReceiptAlignment { left, center, right }
 
   final String? etimsReceiptNumber;
   final String? etimsVerificationPayload;
+
+  /// When the inline eTIMS attempt timed out, the receipt prints a pending
+  /// line instead of a QR so the customer knows the invoice is still coming.
+  final bool etimsPending;
 
   bool get isVatExempt => vatRatePercent == 0;
 }
@@ -267,7 +274,14 @@ class ReceiptBuilder {
         lines.add(const ReceiptText('Scan to verify',
             alignment: ReceiptAlignment.center));
         lines.add(ReceiptQr(input.etimsVerificationPayload!));
+      } else if (input.etimsPending) {
+        lines.add(const ReceiptText('eTIMS pending — official copy reprints',
+            alignment: ReceiptAlignment.center));
       }
+    } else if (input.etimsPending) {
+      lines.add(const ReceiptRule());
+      lines.add(const ReceiptText('eTIMS pending — official copy reprints',
+          alignment: ReceiptAlignment.center));
     }
 
     lines.add(const ReceiptFeed());
@@ -285,25 +299,21 @@ class ReceiptBuilder {
   static const int minimumColumnBudget = 12;
 
   String _lineLabel(SaleItem item) {
-    final portion = _portionSuffix(item.portion);
+    final portion = _portionSuffix(item);
     final raw =
         item.productName.trim().isEmpty ? 'Item' : item.productName.trim();
-    // `_oneLine`, for the same reason as the cashier's name below: an item
-    // imported from a spreadsheet cell containing Alt+Enter arrives with a
-    // raw newline in it. `ReceiptColumns` appends the figure AFTER the label,
-    // so the newline put the amount on its own physical line — orphaned from
-    // the item it belonged to. `Product.validate` checks only emptiness and
-    // length, so nothing upstream rejects it.
     final base = _oneLine(raw);
     return portion.isEmpty ? base : '$base ($portion)';
   }
 
-  static String _portionSuffix(String portion) {
-    switch (portion) {
+  static String _portionSuffix(SaleItem item) {
+    switch (item.portion) {
       case 'half':
         return 'half';
       case 'quarter':
         return 'quarter';
+      case 'measured':
+        return '${item.portionMl}ml';
       default:
         return '';
     }

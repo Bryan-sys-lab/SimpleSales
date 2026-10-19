@@ -593,6 +593,7 @@
   "taxSettingsEtimsOn": "eTIMS receipts switched on",
   "taxSettingsEtimsSection": "KRA eTIMS",
   "taxSettingsEtimsUpdateFailed": "Couldn’t update eTIMS. Check your connection and try again.",
+  "taxSettingsEtimsNotLinked": "Link this shop to the backend before switching eTIMS on.",
   "taxSettingsIssueEtimsTitle": "Issue eTIMS receipts",
   "taxSettingsKraPinTitle": "KRA taxpayer PIN",
   "taxSettingsKraUnreachable": "Couldn’t reach KRA. Check the shop is linked and you have a connection, then try again.",

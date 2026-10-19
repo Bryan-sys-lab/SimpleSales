@@ -1,5 +1,6 @@
 import 'dart:async';
 
+import 'package:dio/dio.dart';
 import 'package:flutter/foundation.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
@@ -100,6 +101,12 @@ class EtimsService {
     return (tin?.isNotEmpty ?? false) && (device?.isNotEmpty ?? false);
   }
 
+  /// The hardest deadline the inline post-sale attempt is allowed: the till
+  /// must not hold a customer at the counter while KRA is slow. Dio's own
+  /// timeouts (10s connect, 20s receive) can each elapse, so the cap is
+  /// shorter than either and the caller prints "eTIMS pending" when it fires.
+  static const Duration kInlineIssueCap = Duration(seconds: 5);
+
   /// Queues every pending sale, oldest first, and returns how many KRA
   /// accepted.
   ///
@@ -108,6 +115,81 @@ class EtimsService {
   /// achieve nothing. The caller runs this again on the next reconnect.
   Future<EtimsFlushResult> flushPending({int limit = 100}) async =>
       _serialiseFlush(() => _flushPendingInner(limit: limit));
+
+  /// Issues the receipt for one *specific* sale, inline, with a hard cap.
+  ///
+  /// Used right after a sale so the customer's paper carries KRA's number when
+  /// KRA answers in time. Any older stuck row cannot steal this sale's receipt,
+  /// and when the cap fires the caller prints an "eTIMS pending" line and
+  /// reprints the official copy once the background flush issues it.
+  Future<EtimsIssuedReceipt?> flushFor(int saleId,
+      {Duration cap = kInlineIssueCap}) async {
+    return _serialiseFlush(() async {
+      if (!await isEnabledForSales()) return null;
+      final entry = await _db.getPendingEtimsReceiptBySaleId(saleId);
+      if (entry == null) return null;
+      final sale = await _db.getSaleById(saleId);
+      final row = await _db.getSaleRowById(saleId);
+      if (sale == null || row == null || sale.items.isEmpty) return null;
+      final tin = (await _db.getSetting(DatabaseHelper.settingTin))?.trim() ?? '';
+      final tillCode = await _db.getTillCode();
+      final device =
+          (await _db.getSetting(DatabaseHelper.settingEtimsDeviceId))?.trim() ??
+              '';
+      final prefs = await SharedPreferences.getInstance();
+      final pricesIncludeVat = prefs.getBool('prices_include_vat') ?? true;
+      final fallbackVatRate = await _db.getVatRatePercent();
+      final payload = buildEtimsPayload(
+        sale: sale,
+        saleRow: row,
+        db: _db,
+        tillCode: tillCode,
+        tin: tin,
+        vatRatePercent: await _db.vatRateForSale(row, fallback: fallbackVatRate),
+        pricesIncludeVat: pricesIncludeVat,
+      );
+      try {
+        final issued = await _uploadWithCap(payload, device: device, cap: cap);
+        _lastIssued = issued;
+        await _db.resolveEtimsReceipt(
+          saleId: saleId,
+          kraReceiptNumber: issued.receiptNumber,
+          qrPayload: issued.verificationUrl,
+        );
+        return issued;
+      } catch (error) {
+        await _db.recordEtimsAttemptFailure(
+          saleId: saleId,
+          error: _describe(error),
+        );
+        if (_isPermanent(error, attempts: entry.attempts)) {
+          await _db.markEtimsRejected(saleId, _describe(error));
+        }
+        return null;
+      }
+    });
+  }
+
+  /// Like [_upload] but bounded by [cap] so the checkout path cannot hang.
+  ///
+  /// When the cap fires the receipt is left `pending` and the caller prints a
+  /// placeholder line; the background flush completes it later. The underlying
+  /// Dio request is cancelled immediately so it does not leak a socket for
+  /// another 15s until Dio's own receive timeout fires.
+  Future<EtimsIssuedReceipt> _uploadWithCap(
+    Map<String, dynamic> payload, {
+    required String device,
+    required Duration cap,
+  }) async {
+    final cancelToken = CancelToken();
+    try {
+      return await _upload(payload, device: device, cancelToken: cancelToken)
+          .timeout(cap);
+    } on TimeoutException {
+      cancelToken.cancel();
+      rethrow;
+    }
+  }
 
   Future<EtimsFlushResult> _flushPendingInner({int limit = 100}) async {
     if (!await isEnabledForSales()) {
@@ -160,6 +242,7 @@ class EtimsService {
         await _db.resolveEtimsReceipt(
           saleId: entry.saleId,
           kraReceiptNumber: issued.receiptNumber,
+          qrPayload: issued.verificationUrl,
         );
         uploaded++;
       } catch (error) {
@@ -170,7 +253,7 @@ class EtimsService {
           saleId: entry.saleId,
           error: _describe(error),
         );
-        if (_isPermanent(error)) {
+        if (_isPermanent(error, attempts: entry.attempts)) {
           await _db.markEtimsRejected(entry.saleId, _describe(error));
           // A permanent refusal will be refused again forever: move on to the
           // next receipt instead of letting one bad row block everything newer.
@@ -189,10 +272,12 @@ class EtimsService {
   Future<EtimsIssuedReceipt> _upload(
     Map<String, dynamic> payload, {
     required String device,
+    CancelToken? cancelToken,
   }) async {
     final result = await BackendService.issueEtimsReceipt(
       payload,
       deviceId: device.isEmpty ? null : device,
+      cancelToken: cancelToken,
     );
     // The QR payload is preferred over the plain verification URL: KRA's
     // verification page expects specific parameters, so encoding a URL built
@@ -224,10 +309,24 @@ class EtimsService {
     return '${result.uploaded} receipt(s) issued. ${result.remaining} still waiting.';
   }
 
-  static bool _isPermanent(Object error) => error is EtimsRejectedException;
+  static bool _isPermanent(Object error, {int attempts = 0}) {
+    if (error is EtimsRejectedException) return true;
+    // A 400/409/422 arrives as a DioException, not an EtimsRejectedException,
+    // and KRA will say the same thing on every retry — map it to permanent so
+    // the row is marked rejected and the owner sees it instead of being retried
+    // forever. But require a few attempts first so a deploy bug or a
+    // transient KRA-side 4xx doesn't mass-reject the entire backlog. 5xx,
+    // timeouts and offline stay transient.
+    if (error is DioException) {
+      final c = error.response?.statusCode ?? 0;
+      if (c == 400 || c == 409 || c == 422) return attempts >= 2;
+    }
+    return false;
+  }
 
   static String _describe(Object error) {
     if (error is EtimsRejectedException) return error.reason;
+    if (error is EtimsNotLinkedException) return error.reason;
     if (error is StateError) return error.message;
     return error.runtimeType.toString();
   }
@@ -276,6 +375,20 @@ class EtimsRejectedException implements Exception {
 
   @override
   String toString() => 'EtimsRejectedException: $reason';
+}
+
+/// The shop is not linked to the backend, so no receipt can be issued right
+/// now.
+///
+/// Deliberately *transient*: the sale stays queued and the flush retries on the
+/// next connection, instead of being marked rejected and hidden from the owner.
+class EtimsNotLinkedException implements Exception {
+  const EtimsNotLinkedException(this.reason);
+
+  final String reason;
+
+  @override
+  String toString() => 'EtimsNotLinkedException: $reason';
 }
 
 /// VAT contained inside a VAT-inclusive amount.

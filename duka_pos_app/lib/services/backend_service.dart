@@ -848,30 +848,44 @@ class BackendService {
   static Future<EtimsIssueResult> issueEtimsReceipt(
     Map<String, dynamic> payload, {
     String? deviceId,
+    CancelToken? cancelToken,
   }) async {
     await ensureInitialized();
     final tid = await tenantId;
     if (tid == null) {
-      // Not linked. This is a configuration problem, not a transient one, so
-      // it is surfaced as permanent and the till stops retrying it.
-      throw const EtimsRejectedException(
+      // Not linked: a configuration problem, but transient — the sale stays
+      // queued and retries once the shop links, instead of being rejected.
+      throw const EtimsNotLinkedException(
           'This shop is not linked to the backend, so receipts cannot be issued.');
     }
 
+    final receiptNumber = payload['receipt_number'] as String?;
     final response = await _dio.post(
       '$backendUrl/etims/receipts',
       data: {...payload, if (deviceId != null) 'device_id': deviceId},
+      options: Options(headers: {
+        if (receiptNumber != null && receiptNumber.trim().isNotEmpty)
+          'Idempotency-Key': receiptNumber.trim(),
+      }),
+      cancelToken: cancelToken,
     );
     final data = response.data as Map<String, dynamic>? ?? const {};
-    final receiptNumber = data['kra_receipt_number'];
-    if (receiptNumber is! String || receiptNumber.trim().isEmpty) {
+    // Respect the backend's own status: a returned number is not enough — KRA
+    // may return a number with status "pending" or "rejected", and the till
+    // must not treat it as issued.
+    final status = data['status'] as String?;
+    if (status != null && status != 'issued' && status != 'success') {
+      throw EtimsRejectedException(
+          'KRA has not issued this receipt (status: $status).');
+    }
+    final kraReceiptNumber = data['kra_receipt_number'];
+    if (kraReceiptNumber is! String || kraReceiptNumber.trim().isEmpty) {
       throw StateError('The backend returned no KRA receipt number');
     }
     return EtimsIssueResult(
-      kraReceiptNumber: receiptNumber.trim(),
+      kraReceiptNumber: kraReceiptNumber.trim(),
       verificationUrl: data['verification_url'] as String?,
       qrPayload: data['qr_payload'] as String?,
-      status: data['status'] as String?,
     );
   }
 
@@ -920,7 +934,10 @@ class BackendService {
   }) async {
     await ensureInitialized();
     final tid = await tenantId;
-    if (tid == null) throw StateError('Shop is not linked to backend');
+    if (tid == null) {
+      throw const EtimsNotLinkedException(
+          'Link your shop to the backend before registering an eTIMS device.');
+    }
     await _dio.post('$backendUrl/etims/device', data: {
       'tin': tin,
       'device_id': deviceId,
@@ -1177,7 +1194,6 @@ class EtimsIssueResult {
     required this.kraReceiptNumber,
     this.verificationUrl,
     this.qrPayload,
-    this.status,
   });
 
   /// KRA's own receipt number. This is the number an auditor asks for, and it
@@ -1195,8 +1211,6 @@ class EtimsIssueResult {
   /// page expects specific parameters; encoding a URL built locally is how a
   /// receipt ends up with a QR that scans to a 404.
   final String? qrPayload;
-
-  final String? status;
 }
 
 /// The shop's eTIMS posture, for the settings screen.

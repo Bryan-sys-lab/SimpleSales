@@ -106,7 +106,7 @@ class DatabaseHelper {
   /// shipped — always add a new one, even for a one-line fix — because a
   /// shop's phone may be several versions behind and needs every step run
   /// in order to land on the current schema without data loss.
-  static const _schemaVersion = 23;
+  static const _schemaVersion = 24;
 
   /// Slack allowed when deciding whether a container has enough left for a sale.
   ///
@@ -513,6 +513,43 @@ SELECT name FROM staff GROUP BY name HAVING COUNT(*) = 1
               'ALTER TABLE sales ADD COLUMN vat_rate_percent INTEGER');
         }
       }
+    }
+    if (oldVersion < 24) await _migrateEtimsQrPayload(db);
+  }
+
+  /// v24: persist KRA's own `qr_payload` on the sale so reprints scan to the
+  /// real verification page instead of a locally built URL.
+  ///
+  /// Added defensively with a `PRAGMA table_info` check so a till that already
+  /// carries the column (or a schema that diverged) does not throw.
+  Future<void> _migrateEtimsQrPayload(Database db) async {
+    final salesExists = await db.rawQuery(
+        "SELECT name FROM sqlite_master WHERE type='table' AND name='sales'");
+    if (salesExists.isEmpty) return;
+    final salesCols = await db.rawQuery('PRAGMA table_info(sales)');
+    final salesNames = salesCols.map((r) => r['name'] as String?).toSet();
+    if (!salesNames.contains('etims_qr_payload')) {
+      await db.execute(
+          'ALTER TABLE sales ADD COLUMN etims_qr_payload TEXT');
+    }
+    // Backfill: for receipts issued before v24, rebuild the old-style
+    // verification URL from the receipt number so reprints still carry a
+    // scannable QR code. New receipts get KRA's own qr_payload directly.
+    const backendUrl = String.fromEnvironment(
+      'BACKEND_URL',
+      defaultValue: 'https://localhost:3000/api',
+    );
+    final base = backendUrl.replaceAll(RegExp(r'/+$'), '');
+    if (base.isNotEmpty) {
+      await db.rawUpdate(
+        "UPDATE sales SET etims_qr_payload = ? || '/etims/verify/' || "
+        "TRIM(etims_receipt_number) "
+        "WHERE etims_qr_payload IS NULL "
+        "AND etims_receipt_number IS NOT NULL "
+        "AND TRIM(etims_receipt_number) != '' "
+        "AND etims_status = ?",
+        [base, EtimsStatus.issued],
+      );
     }
   }
 
@@ -2393,7 +2430,29 @@ SELECT name FROM staff GROUP BY name HAVING COUNT(*) = 1
     return (rows.first['c'] as int?) ?? 0;
   }
 
-  /// Records the KRA receipt number on the sale and clears the queue row.
+  /// The pending queue row for one sale, so the inline post-sale attempt can
+  /// target this customer's receipt instead of the oldest stuck one.
+  Future<PendingEtimsReceipt?> getPendingEtimsReceiptBySaleId(int saleId) async {
+    final rows = await (await database).rawQuery('''
+      SELECT p.* FROM pending_etims p
+      JOIN sales s ON s.id = p.sale_id
+      WHERE p.sale_id = ? AND s.etims_status != ?
+      LIMIT 1
+    ''', [saleId, EtimsStatus.rejected]);
+    if (rows.isEmpty) return null;
+    final row = rows.first;
+    return PendingEtimsReceipt(
+      saleId: row['sale_id'] as int,
+      receiptNumber: row['receipt_number'] as String,
+      attempts: (row['attempts'] as int?) ?? 0,
+      createdAt:
+          DateTime.tryParse(row['created_at'] as String? ?? '') ?? DateTime.fromMillisecondsSinceEpoch(0),
+      lastError: row['last_error'] as String?,
+    );
+  }
+
+  /// Records the KRA receipt number and KRA's own `qr_payload` on the sale and
+  /// clears the queue row.
   ///
   /// Idempotent: replaying an already-resolved upload is a no-op rather than a
   /// second invoice, because the queue row is what proves this sale has not
@@ -2401,6 +2460,7 @@ SELECT name FROM staff GROUP BY name HAVING COUNT(*) = 1
   Future<void> resolveEtimsReceipt({
     required int saleId,
     required String kraReceiptNumber,
+    String? qrPayload,
   }) async {
     final db = await database;
     await db.transaction((txn) async {
@@ -2409,6 +2469,7 @@ SELECT name FROM staff GROUP BY name HAVING COUNT(*) = 1
         {
           'etims_status': EtimsStatus.issued,
           'etims_receipt_number': kraReceiptNumber,
+          if (qrPayload != null) 'etims_qr_payload': qrPayload,
         },
         where: 'id = ?',
         whereArgs: [saleId],

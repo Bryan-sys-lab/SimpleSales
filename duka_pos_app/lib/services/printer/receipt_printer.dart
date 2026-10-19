@@ -4,7 +4,6 @@ import 'package:flutter/foundation.dart';
 
 import '../../db/database_helper.dart';
 import 'esc_pos_encoder.dart';
-import '../backend_service.dart';
 import 'esc_pos_printer.dart';
 import 'printer_config.dart';
 import 'printer_service.dart';
@@ -90,6 +89,7 @@ class ReceiptPrinter {
     required bool pricesIncludeVat,
     String? etimsReceiptNumber,
     String? etimsVerificationPayload,
+    bool etimsPending = false,
   }) async {
     if (!config.isConfigured) return const PrintResult(PrintOutcome.disabled);
 
@@ -125,6 +125,7 @@ class ReceiptPrinter {
           etimsReceiptNumber ?? row?['etims_receipt_number'] as String?,
       etimsVerificationPayload:
           etimsVerificationPayload ?? await verificationPayloadFor(row),
+      etimsPending: etimsPending,
     );
 
     if (input.items.isEmpty) {
@@ -165,23 +166,17 @@ class ReceiptPrinter {
 
   /// The eTIMS verification payload for a sale.
   ///
-  /// The URL a customer scans to check the receipt against KRA. Only used as a
-  /// fallback: the backend supplies the exact `qr_payload` with every issued
-  /// receipt, because KRA's verification page expects specific parameters and a
-  /// URL built locally is how a receipt ends up with a QR that scans to a 404.
-  /// A reprint has no backend to ask, so it rebuilds the URL from the same
-  /// public route the backend publishes.
-  static Future<String?> verificationPayloadFor(Map<String, dynamic>? row,
-      {String? fallbackBaseUrl}) async {
+  /// KRA's own `qr_payload`, persisted on the sale when the receipt was issued.
+  /// Only used as the QR: a URL built locally is how a receipt ends up with a QR
+  /// that scans to a 404. When nothing was stored — the shop is not linked, the
+  /// upload is still pending, or KRA returned no payload — this returns null and
+  /// the receipt prints the eTIMS number only, with no QR.
+  static Future<String?> verificationPayloadFor(
+      Map<String, dynamic>? row) async {
     if (row == null) return null;
-    final number = row['etims_receipt_number'] as String?;
-    if (number == null || number.trim().isEmpty) return null;
-    final base = (fallbackBaseUrl ?? BackendService.backendUrl)
-        .replaceAll(RegExp(r'/+$'), '');
-    if (base.isEmpty) return null;
-    // `backendUrl` already carries the `/api` prefix, so this is the same
-    // public route the backend mounts before its auth layer.
-    return '$base/etims/verify/${Uri.encodeComponent(number)}';
+    final payload = row['etims_qr_payload'] as String?;
+    if (payload != null && payload.trim().isNotEmpty) return payload.trim();
+    return null;
   }
 
   /// Customer-facing payment names.

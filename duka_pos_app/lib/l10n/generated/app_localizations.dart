@@ -3654,6 +3654,12 @@ abstract class AppLocalizations {
   /// **'Couldn’t update eTIMS. Check your connection and try again.'**
   String get taxSettingsEtimsUpdateFailed;
 
+  /// No description provided for @taxSettingsEtimsNotLinked.
+  ///
+  /// In en, this message translates to:
+  /// **'Link this shop to the backend before switching eTIMS on.'**
+  String get taxSettingsEtimsNotLinked;
+
   /// No description provided for @taxSettingsIssueEtimsTitle.
   ///
   /// In en, this message translates to:

@@ -1,6 +1,5 @@
-import 'dart:convert';
+import 'dart:math' show Random;
 
-import 'package:crypto/crypto.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
@@ -13,7 +12,6 @@ import '../models/audit_log.dart';
 import '../services/app_state.dart';
 import '../services/audit_actor.dart';
 import '../services/etims/etims_service.dart';
-import '../services/workspace_service.dart';
 import '../services/printer/receipt_builder.dart';
 import '../theme/app_colors.dart';
 import '../theme/app_shapes.dart';
@@ -130,6 +128,13 @@ class _TaxSettingsScreenState extends State<TaxSettingsScreen> {
     if (value && _tin.trim().isEmpty) {
       setState(() {
         _message = AppLocalizations.of(context).taxSettingsRegisterPinFirst;
+        _messageIsError = true;
+      });
+      return;
+    }
+    if (value && !(await BackendService.isBackendLinked)) {
+      setState(() {
+        _message = AppLocalizations.of(context).taxSettingsEtimsNotLinked;
         _messageIsError = true;
       });
       return;
@@ -388,46 +393,44 @@ class _TaxSettingsScreenState extends State<TaxSettingsScreen> {
                 onPressed: () => Navigator.pop(dialogContext),
                 child: Text(AppLocalizations.of(context).actionCancel)),
             FilledButton(
-              onPressed: submitting
-                  ? null
-                  : () async {
-                      final value = controller.text.trim().toUpperCase();
-                      if (value.length < 4) {
-                        setDialogState(() => error =
-                            AppLocalizations.of(context)
-                                .taxSettingsTinTooShort);
-                        return;
-                      }
-                      final kraPin = RegExp(r'^[AP]\d{9}[A-Z]$');
-                      if (!kraPin.hasMatch(value)) {
-                        setDialogState(() => error =
-                            AppLocalizations.of(context)
-                                .taxSettingsTinInvalid);
-                        return;
-                      }
-                      setDialogState(() {
-                        submitting = true;
-                        error = null;
-                      });
-                      try {
-                        final deviceId = await _deviceIdentifier();
-                        await BackendService.registerEtimsDevice(
-                            tin: value, deviceId: deviceId);
-                        await DatabaseHelper.instance
-                            .setSetting(DatabaseHelper.settingTin, value);
-                        await DatabaseHelper.instance.setSetting(
-                            DatabaseHelper.settingEtimsDeviceId, deviceId);
-                        if (dialogContext.mounted) {
-                          Navigator.pop(dialogContext, value);
-                        }
-                      } catch (_) {
-                        setDialogState(() {
-                          submitting = false;
-                          error = AppLocalizations.of(context)
-                              .taxSettingsKraUnreachable;
-                        });
-                      }
-                    },
+              onPressed: submitting ? null : () async {
+                final value = controller.text.trim().toUpperCase();
+                if (value.length < 4) {
+                  setDialogState(() => error = AppLocalizations.of(context).taxSettingsTinTooShort);
+                  return;
+                }
+                final kraPin = RegExp(r'^[AP]\d{9}[A-Z]$');
+                if (!kraPin.hasMatch(value)) {
+                  setDialogState(() => error = AppLocalizations.of(context).taxSettingsTinInvalid);
+                  return;
+                }
+                setDialogState(() {
+                  submitting = true;
+                  error = null;
+                });
+                try {
+                  final deviceId = await _deviceIdentifier();
+                  await BackendService.registerEtimsDevice(tin: value, deviceId: deviceId);
+                  await DatabaseHelper.instance.setSetting(DatabaseHelper.settingTin, value);
+                  await DatabaseHelper.instance.setSetting(
+                      DatabaseHelper.settingEtimsDeviceId, deviceId);
+                  if (dialogContext.mounted) {
+                    Navigator.pop(dialogContext, value);
+                  }
+                } catch (e) {
+                  setDialogState(() {
+                    submitting = false;
+                    // Not linked is a configuration problem, not a KRA outage: say so plainly.
+                    final l10n = AppLocalizations.of(context);
+                    if (e is EtimsNotLinkedException ||
+                        (e is StateError && e.message.contains('not linked to backend'))) {
+                      error = l10n.taxSettingsEtimsNotLinked;
+                    } else {
+                      error = l10n.taxSettingsKraUnreachable;
+                    }
+                  });
+                }
+              },
               child: submitting
                   ? const SizedBox(
                       width: 16,
@@ -469,15 +472,25 @@ class _TaxSettingsScreenState extends State<TaxSettingsScreen> {
     }
   }
 
-  /// A stable identifier for this till's eTIMS device.
+  /// An identifier that is unique to this installation.
   ///
-  /// Derived from the workspace rather than random per launch: KRA treats the
-  /// device as a registered installation, and an identifier that changed every
-  /// launch would look like a new device every day.
+  /// Derived from the workspace it collides across restores and second phones,
+  /// which makes two tills share one device id and collide on receipt numbers.
+  /// Generated once and kept in preferences so it survives restarts but not a
+  /// restore to a different handset — exactly the install-unique identity KRA
+  /// needs to keep receipt numbers distinct.
+  static const _etimsInstallDeviceIdKey = 'etims_install_device_id';
+
   Future<String> _deviceIdentifier() async {
-    final workspace = await WorkspaceService.activeWorkspaceKey();
-    final digest = sha256.convert(utf8.encode('simple-pos-etims:$workspace'));
-    return digest.toString().substring(0, 16).toUpperCase();
+    final prefs = await SharedPreferences.getInstance();
+    final stored = prefs.getString(_etimsInstallDeviceIdKey);
+    if (stored != null && stored.isNotEmpty) return stored;
+    final fresh = List.generate(16, (_) => Random.secure().nextInt(256))
+        .map((b) => b.toRadixString(16).padLeft(2, '0'))
+        .join()
+        .toUpperCase();
+    await prefs.setString(_etimsInstallDeviceIdKey, fresh);
+    return fresh;
   }
 }
 
