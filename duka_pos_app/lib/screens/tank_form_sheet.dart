@@ -239,7 +239,7 @@ class _TankFormSheetState extends State<TankFormSheet> {
           final bigPrice = double.tryParse(tap.bigPrice.text.trim()) ?? 0;
 
           final productId = await txn.insert('products', {
-            'name': '${name} — ${tap.name.text.trim()}',
+            'name': '$name — ${tap.name.text.trim()}',
             'category': 'Beer',
             'cost_price': Money.fromMajor(perTapCost).minorUnits,
             'sell_price': Money.fromMajor(bigPrice).minorUnits,
@@ -255,7 +255,7 @@ class _TankFormSheetState extends State<TankFormSheet> {
           // Small cup.
           await txn.insert('shot_cups', {
             'product_id': productId,
-            'product_name': '${name} — ${tap.name.text.trim()}',
+            'product_name': '$name — ${tap.name.text.trim()}',
             'capacity_ml': int.parse(tap.smallMl.text.trim()),
             'price': Money.fromMajor(smallPrice).minorUnits,
             'label': l10n.tankCupSmallLabel,
@@ -266,7 +266,7 @@ class _TankFormSheetState extends State<TankFormSheet> {
           // Big cup.
           await txn.insert('shot_cups', {
             'product_id': productId,
-            'product_name': '${name} — ${tap.name.text.trim()}',
+            'product_name': '$name — ${tap.name.text.trim()}',
             'capacity_ml': int.parse(tap.bigMl.text.trim()),
             'price': Money.fromMajor(bigPrice).minorUnits,
             'label': l10n.tankCupBigLabel,
