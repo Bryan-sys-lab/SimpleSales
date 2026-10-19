@@ -222,7 +222,6 @@ class _VariantFormSheetState extends State<VariantFormSheet> {
   late final TextEditingController _size;
   late final TextEditingController _sku;
   late final TextEditingController _barcode;
-  late ProductUnit _unit;
   String? _error;
   bool _saving = false;
 
@@ -256,7 +255,6 @@ class _VariantFormSheetState extends State<VariantFormSheet> {
     _size = TextEditingController(text: seed.sizeLabel);
     _sku = TextEditingController(text: seed.sku);
     _barcode = TextEditingController(text: seed.barcode);
-    _unit = seed.unit;
     _loadSuggestions();
   }
 
@@ -287,27 +285,16 @@ class _VariantFormSheetState extends State<VariantFormSheet> {
   ///
   /// A countable variant has no size, so offering ml chips under it would be
   /// offering an answer to a question nobody asked. Cups and litres get them.
-  List<CupSizeSuggestion> get _visibleSuggestions =>
-      _unit == ProductUnit.each ? const [] : _suggestions;
+  List<CupSizeSuggestion> get _visibleSuggestions => _suggestions;
 
   /// A remembered size as the owner reads it, using the same renderer the
   /// serving-size field parses, so tapping a chip and typing it agree.
   String _suggestionLabel(CupSizeSuggestion s) =>
       Volume(s.sizeMl.toDouble()).display;
 
-  /// What the unit picker offers for [unit].
-  ///
-  /// Mapped here rather than read from `ProductUnit.label`, because that label
-  /// is part of the stored vocabulary and translating it would change the words
-  /// the database agrees with. The picker is the presentation edge, so this is
-  /// where the copy is localized.
-  String _unitLabel(AppLocalizations l10n, ProductUnit unit) => switch (unit) {
-        ProductUnit.each => l10n.variantUnitEach,
-        ProductUnit.millilitre => l10n.variantUnitMillilitre,
-        ProductUnit.litre => l10n.variantUnitLitre,
-        ProductUnit.cup => l10n.variantUnitCup,
-        ProductUnit.kilogram => l10n.variantUnitKilogram,
-      };
+  /// The derived unit: volumetric when a size is set, countable otherwise.
+  ProductUnit _unitFor(int sizeMl) =>
+      sizeMl > 0 ? ProductUnit.millilitre : ProductUnit.each;
 
   void _useSuggestion(CupSizeSuggestion s) {
     final text = _suggestionLabel(s);
@@ -389,21 +376,22 @@ class _VariantFormSheetState extends State<VariantFormSheet> {
     }
 
     var sizeMl = widget.seed.sizeMl;
-    if (_unit != ProductUnit.each) {
-      final raw = _size.text.trim();
-      if (raw.isEmpty) {
-        setState(() => _error = l10n.variantSizeRequired);
-        return;
-      }
+    final raw = _size.text.trim();
+    if (raw.isEmpty) {
+      sizeMl = 0;
+    } else {
       // The owner's own words, through the one parser the importers and the
-      // till share: "500ml", "0.5 L" and "0.5litre" all mean the same size, and
-      // `declared` decides what a bare number in a litre column means.
-      final volume = Volume.parse(raw, declared: _unit);
+      // till share: "500ml", "0.5 L" and "0.5litre" all mean the same size.
+      final volume = Volume.parse(raw, declared: ProductUnit.millilitre);
       if (!volume.isValid) {
         setState(() => _error = l10n.variantSizeInvalid);
         return;
       }
       sizeMl = volume.rounded;
+      if (sizeMl < Product.minBottleMl || sizeMl > Product.maxBottleMl) {
+        setState(() => _error = l10n.variantSizeInvalid);
+        return;
+      }
     }
 
     var barcode = '';
@@ -418,11 +406,9 @@ class _VariantFormSheetState extends State<VariantFormSheet> {
       barcode = code;
     }
 
-    // The size is remembered before the sheet closes, not after: a suggestion
-    // list that only updates on the next open still works, but a save that
-    // fails to record means the size is offered once and then forgotten, which
-    // is how the list quietly stops being useful.
-    if (_unit != ProductUnit.each && sizeMl > 0) {
+    // Remember any non-zero size so it resurfaces as a one-tap chip. A blank
+    // size means countable — nothing to remember.
+    if (sizeMl > 0) {
       try {
         await DatabaseHelper.instance.upsertCupSizeSuggestion(
           productId: widget.parentProductId,
@@ -435,12 +421,13 @@ class _VariantFormSheetState extends State<VariantFormSheet> {
     }
 
     if (!mounted) return;
+    final unit = _unitFor(sizeMl);
     Navigator.pop(
       context,
       widget.seed.copyWith(
         name: name,
         sku: _sku.text.trim(),
-        unit: _unit,
+        unit: unit,
         sizeMl: sizeMl,
         sellPrice: Money.fromMajor(price),
         costPrice: cost,
@@ -451,15 +438,13 @@ class _VariantFormSheetState extends State<VariantFormSheet> {
     );
   }
 
-  /// The serving-size field, shown only for a variant that has one.
+  /// The serving-size field, always shown: blank means countable.
   Widget _sizeField(AppLocalizations l10n) => TextField(
         controller: _size,
         textInputAction: TextInputAction.next,
         decoration: InputDecoration(
           labelText: l10n.variantSizeLabel,
-          hintText: _unit == ProductUnit.litre
-              ? l10n.variantSizeHintLitre
-              : l10n.variantSizeHintMillilitre,
+          hintText: l10n.variantSizeHintMillilitre,
           helperText: l10n.variantSizeHelper,
         ),
         keyboardType:
@@ -527,36 +512,11 @@ class _VariantFormSheetState extends State<VariantFormSheet> {
               ),
             ),
             const SizedBox(height: 8),
-            DropdownButtonFormField<ProductUnit>(
-              initialValue: _unit,
-              decoration: InputDecoration(labelText: l10n.variantUnitLabel),
-              items: [
-                for (final unit in ProductUnit.values)
-                  DropdownMenuItem(
-                    value: unit,
-                    child: Text(_unitLabel(l10n, unit)),
-                  ),
-              ],
-              onChanged: (unit) {
-                if (unit != null) setState(() => _unit = unit);
-              },
-            ),
-            const SizedBox(height: 8),
-            if (_unit == ProductUnit.each)
-              // Said rather than shown-and-disabled: an empty box the owner
-              // cannot type in looks broken, and "countable" is a real answer
-              // to "how big is it".
-              Padding(
-                padding: const EdgeInsets.only(top: 4, bottom: 4),
-                child: Text(
-                  l10n.variantCountableNote,
-                  style: theme.textTheme.bodySmall,
-                ),
-              )
-            else ...[
-              _sizeField(l10n),
-              if (_visibleSuggestions.isNotEmpty) _suggestionChips(theme, l10n),
-            ],
+            // The serving-size field is always shown: blank means countable,
+            // any value means volumetric (millilitres). A unit dropdown is no
+            // longer offered — the unit is derived from whether a size exists.
+            _sizeField(l10n),
+            if (_visibleSuggestions.isNotEmpty) _suggestionChips(theme, l10n),
             Row(children: [
               Expanded(
                 child: TextField(

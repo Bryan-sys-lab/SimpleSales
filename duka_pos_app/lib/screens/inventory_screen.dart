@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import 'package:flutter/semantics.dart';
 import 'package:flutter/services.dart';
+import 'package:sqflite/sqflite.dart';
 import 'package:provider/provider.dart';
 import '../db/database_helper.dart';
 import '../l10n/generated/app_localizations.dart';
@@ -1123,7 +1124,8 @@ class _ProductEditorState extends State<_ProductEditor> {
     _stock = TextEditingController(text: _editQuantity(e?.stockQty));
     _reorder = TextEditingController(text: e?.reorderLevel.toString() ?? '5');
     _stamp = TextEditingController(text: e?.exciseStampBatch ?? '');
-    _bottleMl = TextEditingController(text: e?.bottleMl.toString() ?? '750');
+    final bottleMlText = e == null ? '' : e.bottleMl.toString();
+    _bottleMl = TextEditingController(text: bottleMlText);
     _halfPrice = TextEditingController(text: _editAmount(e?.halfPrice));
     _quarterPrice = TextEditingController(text: _editAmount(e?.quarterPrice));
     _barcode = TextEditingController();
@@ -1338,8 +1340,7 @@ class _ProductEditorState extends State<_ProductEditor> {
       stockQty: number(_stock.text, existing?.stockQty ?? 0),
       reorderLevel:
           int.tryParse(_reorder.text.trim()) ?? existing?.reorderLevel ?? 0,
-      bottleMl:
-          int.tryParse(_bottleMl.text.trim()) ?? existing?.bottleMl ?? 750,
+      bottleMl: int.tryParse(_bottleMl.text.trim()) ?? existing?.bottleMl ?? 0,
       unit: _unit,
       trackVariants: _trackVariants,
       active: existing?.active ?? true,
@@ -1572,26 +1573,31 @@ class _ProductEditorState extends State<_ProductEditor> {
     );
   }
 
-  Future<void> _saveVariants(int productId) async {
+  Future<void> _saveVariants(int productId, {Transaction? txn}) async {
     final AppState state = context.read<AppState>();
     final db = DatabaseHelper.instance;
     final l10n = AppLocalizations.of(context);
-    final rawDb = await db.database;
     final savedIds = <int>[];
-    await rawDb.transaction((txn) async {
+    Future<void> run(Transaction t) async {
       for (final removedId in _removedVariantIds) {
         // Also frees that variant's barcodes.
-        await db.deleteVariantInTransaction(txn, removedId);
+        await db.deleteVariantInTransaction(t, removedId);
       }
       for (var i = 0; i < _drafts.length; i++) {
         final draft = _drafts[i];
         // Position follows the order on screen, so reordering is reordering and
         // the till offers Dark before Regular because the owner put it there.
         final variantId = await db.upsertVariantInTransaction(
-            txn, draft.copyWith(position: i).toVariant(productId));
+            t, draft.copyWith(position: i).toVariant(productId));
         savedIds.add(variantId);
       }
-    });
+    }
+    if (txn != null) {
+      await run(txn);
+    } else {
+      final rawDb = await db.database;
+      await rawDb.transaction(run);
+    }
     // Variants are logged after the transaction that committed them, and the
     // row says which product — a variant id on its own means nothing to anyone
     // reading the log six months later. Every row this gesture produces is
@@ -1697,15 +1703,6 @@ class _ProductEditorState extends State<_ProductEditor> {
     }
   }
 
-  Future<void> _rememberSize(int sizeMl) async {
-    if (sizeMl <= 0) return;
-    try {
-      await DatabaseHelper.instance.upsertCupSizeSuggestion(sizeMl: sizeMl);
-    } catch (_) {
-      // Intentionally ignored — see above.
-    }
-  }
-
   Money? _optionalPrice(TextEditingController controller, String label) {
     final text = controller.text.trim();
     if (text.isEmpty) return null;
@@ -1755,10 +1752,10 @@ class _ProductEditorState extends State<_ProductEditor> {
 
     if (cost == null || price == null || stock == null) {
       setState(() => _error = cost == null
-          ? 'Cost price must be a number'
+          ? AppLocalizations.of(context).inventoryCostPriceNotANumber
           : price == null
-              ? 'Sell price must be a number'
-              : 'Stock must be a number');
+              ? AppLocalizations.of(context).inventorySellPriceNotANumber
+              : AppLocalizations.of(context).inventoryStockNotANumber);
       return;
     }
 
@@ -1787,19 +1784,19 @@ class _ProductEditorState extends State<_ProductEditor> {
       final proceed = await showDialog<bool>(
           context: context,
           builder: (BuildContext dialogContext) => AlertDialog(
-                title:
-                    Text(AppLocalizations.of(dialogContext).inventoryLowPriceTitle),
-                content: Text(
-                    '$name would sell at a loss (KSh $price vs cost KSh $cost). Save anyway?'),
+                title: Text(
+                    AppLocalizations.of(dialogContext).inventoryLowPriceTitle),
+                content: Text(AppLocalizations.of(dialogContext)
+                    .inventoryLowPriceMessage(name, price, cost)),
                 actions: [
                   TextButton(
                       onPressed: () => Navigator.pop(dialogContext, false),
-                      child:
-                          Text(AppLocalizations.of(dialogContext).inventoryGoBack)),
+                      child: Text(
+                          AppLocalizations.of(dialogContext).inventoryGoBack)),
                   FilledButton(
                       onPressed: () => Navigator.pop(dialogContext, true),
-                      child: Text(
-                          AppLocalizations.of(dialogContext).inventorySaveAnyway)),
+                      child: Text(AppLocalizations.of(dialogContext)
+                          .inventorySaveAnyway)),
                 ],
               ));
       if (proceed != true) return;
@@ -1814,6 +1811,11 @@ class _ProductEditorState extends State<_ProductEditor> {
           'Give every variant a name — one of them has none (position ${unnamed + 1}).');
       return;
     }
+    if (_trackVariants && _drafts.isEmpty) {
+      setState(
+          () => _error = AppLocalizations.of(context).inventoryNoVariantsYet);
+      return;
+    }
 
     setState(() => _error = null);
     final product = Product(
@@ -1826,7 +1828,7 @@ class _ProductEditorState extends State<_ProductEditor> {
       sellPrice: Money.fromMajor(price),
       stockQty: stock,
       reorderLevel: reorder ?? 0,
-      bottleMl: bottleMl ?? 750,
+      bottleMl: bottleMl ?? 0,
       // Both read from the row rather than from the passed-in product, because
       // `Product.fromMap` leaves them at their defaults — writing them from a
       // product that came out of the database would switch off "sold as
@@ -1847,9 +1849,16 @@ class _ProductEditorState extends State<_ProductEditor> {
       imagePath: widget.existing?.imagePath,
     );
     try {
-      // The product first: `product_variants.product_id` is NOT NULL, so a
-      // variant has nowhere to point until this row exists.
-      final productId = await DatabaseHelper.instance.upsertProduct(product);
+      // Product and variants commit in one transaction: a variant save that
+      // fails after the product insert must not leave a product the editor
+      // still thinks is new, because the next Save would insert it again.
+      final rawDb = await DatabaseHelper.instance.database;
+      final productId = await rawDb.transaction((txn) async {
+        final id = await DatabaseHelper.instance
+            .upsertProductInTransaction(txn, product);
+        await _saveVariants(id, txn: txn);
+        return id;
+      });
       // The product's existence is now durable, so "who changed it" is safe to
       // record: writing the audit row after the write it describes means a
       // crash between the two leaves a product with no audit row, never an
@@ -1870,7 +1879,6 @@ class _ProductEditorState extends State<_ProductEditor> {
       // saving half of it would leave the till offering something the catalogue
       // does not have.
       await _saveVariants(productId);
-      await _rememberSize(_unit == ProductUnit.each ? 0 : (bottleMl ?? 0));
       // Then the photograph, now that there is an id to name its file after.
       //
       // Flushed here rather than before the insert because the store names a
@@ -1903,8 +1911,8 @@ class _ProductEditorState extends State<_ProductEditor> {
       if (mounted) setState(() => _error = error.message);
     } catch (e) {
       if (mounted) {
-        setState(() => _error =
-            "Couldn't save — check the phone has storage space free, then try again.");
+        setState(
+            () => _error = AppLocalizations.of(context).inventorySaveFailed);
       }
     }
   }

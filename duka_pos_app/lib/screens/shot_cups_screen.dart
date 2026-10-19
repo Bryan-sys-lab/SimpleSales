@@ -184,7 +184,6 @@ class _ShotCupsScreenState extends State<ShotCupsScreen> {
 
   static int? shotsPerBottle(Product product, ShotCup cup) {
     if (cup.capacityMl <= 0 || product.bottleMl <= 0) return null;
-    if (product.unit == ProductUnit.each) return null;
     return product.bottleMl ~/ cup.capacityMl;
   }
 

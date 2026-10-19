@@ -1803,16 +1803,6 @@ class _SellScreenState extends State<SellScreen>
   double available,
 ) {
   final containerMl = product.bottleMl;
-  if (product.unit == ProductUnit.each) {
-    // Countable, so there is nothing to measure a pour against. A spirit
-    // switched to "each" after its cup was configured reaches here — the cup
-    // row still exists, and without this the till would cheerfully offer 25
-    // shots of something that has no volume.
-    return (
-      canPour: false,
-      reason: '${product.name} is counted, not measured, so it cannot be poured'
-    );
-  }
   if (containerMl <= 0) {
     return (
       canPour: false,

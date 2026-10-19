@@ -637,6 +637,7 @@
   "variantSellPriceNotANumber": "Selling price must be a number",
   "variantSellPriceNotNegative": "Selling price must be 0 or more",
   "variantSizeHelper": "Millilitres or litres — 500ml, 0.5L, 1.5 L.",
+  "variantSizeLeaveBlankHelper": "Leave blank if it isn't sold by volume",
   "variantSizeHintLitre": "0.5L",
   "variantSizeHintMillilitre": "500ml",
   "variantSizeInvalid": "Size must be a number, optionally with ml or L — for example 500ml",

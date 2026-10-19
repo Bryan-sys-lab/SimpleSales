@@ -8,6 +8,7 @@ import '../models/audit_log.dart';
 import '../models/crash_log.dart';
 import '../models/models.dart';
 import '../utils/money.dart';
+import '../utils/units.dart';
 // The aggregate result types (DailyTotals, ProductSalesRow, TimeBucket,
 // DateBucket, PaymentMixRow, AttentionSummary). They live in services/ rather
 // than here so this file stays a data layer: it produces rows, it does not
@@ -1919,6 +1920,27 @@ SELECT name FROM staff GROUP BY name HAVING COUNT(*) = 1
     }
   }
 
+  /// Same as [upsertProduct] but inside an already-open transaction, so a
+  /// product row and its variants commit in one all-or-nothing unit. Without
+  /// this a variant save that fails after the product insert leaves a product
+  /// the editor still thinks is new — and the next Save inserts it again.
+  Future<int> upsertProductInTransaction(
+      Transaction txn, Product p) async {
+    if (p.id == null) {
+      return txn.insert('products', p.toMap());
+    } else {
+      final values = p.toMap();
+      if (p.remoteId == null) values.remove('remote_id');
+      final updated = await txn
+          .update('products', values, where: 'id = ?', whereArgs: [p.id]);
+      if (updated == 0) {
+        values.remove('id');
+        return txn.insert('products', values);
+      }
+      return p.id!;
+    }
+  }
+
   /// Runs [action] in one transaction, and gives back the rows it wrote.
   ///
   /// The seam a multi-row save uses so that N rows are one journal commit and
@@ -3299,12 +3321,23 @@ SELECT name FROM staff GROUP BY name HAVING COUNT(*) = 1
       throw StateError(
           'Shot cup product ${cup.productId} does not exist in the catalogue');
     }
-    if (cup.id == null) {
-      return db.insert('shot_cups', cup.toMap()..remove('id'));
-    }
-    await db
-        .update('shot_cups', cup.toMap(), where: 'id = ?', whereArgs: [cup.id]);
-    return cup.id!;
+    // A cup exists only because something can be poured from it, so the
+    // product must be volumetric. Derive the unit instead of asking: a product
+    // that was once "each" becomes "ml" the moment its first cup is saved.
+    return db.transaction((txn) async {
+      final row = await txn.query('products',
+          columns: ['unit'], where: 'id = ?', whereArgs: [cup.productId], limit: 1);
+      final currentUnit = row.isNotEmpty ? row.first['unit'] as String? : null;
+      if (currentUnit == ProductUnit.each.wire) {
+        await txn.update('products',
+            {'unit': ProductUnit.millilitre.wire}, where: 'id = ?', whereArgs: [cup.productId]);
+      }
+      if (cup.id == null) {
+        return txn.insert('shot_cups', cup.toMap()..remove('id'));
+      }
+      await txn.update('shot_cups', cup.toMap(), where: 'id = ?', whereArgs: [cup.id]);
+      return cup.id!;
+    });
   }
 
   /// Active shot cups, ordered by label then product name.

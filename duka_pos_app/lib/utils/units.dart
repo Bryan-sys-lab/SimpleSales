@@ -207,7 +207,7 @@ class Volume {
     if (text.isEmpty) return invalid;
 
     final match = RegExp(r'^(-?\d+(?:\.\d+)?)\s*'
-            r'(ml|millilitres?|millilitres|l|litres?|liters?)?')
+            r'(ml|millilitre?s?|milliliter?s?|l|litre?s?|liter?s?)\s*$')
         .firstMatch(text);
     if (match == null) return invalid;
 
@@ -220,7 +220,7 @@ class Volume {
     final ml = switch (suffix) {
       'ml' ||
       'millilitre' ||
-      'milliltres' ||
+      'millilitres' ||
       'milliliter' ||
       'milliliters' =>
         amount,
@@ -231,13 +231,14 @@ class Volume {
       return ml < 0 ? invalid : Volume(ml);
     }
 
-    if (declared == ProductUnit.litre || declared == ProductUnit.cup) {
+    if (declared == ProductUnit.litre) {
       // The column declared itself as litres, so a bare number is litres even
       // if it is large — a 50-litre keg is a real thing and must not become
       // 50 millilitres.
       return amount < 0 ? invalid : Volume(amount * 1000);
     }
-    return amount < 0 ? invalid : Volume(amount < 10 ? amount * 1000 : amount);
+    // Declared millilitre or cup (or undeclared): a bare number is millilitres.
+    return amount < 0 ? invalid : Volume(amount);
   }
 
   /// Renders millilitres the way the editor and a supplier sheet both prefer:

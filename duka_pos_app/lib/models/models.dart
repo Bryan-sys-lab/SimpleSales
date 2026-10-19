@@ -471,7 +471,7 @@ class Product {
       return ProductProblem.stockQty;
     }
     if (reorderLevel < 0) return ProductProblem.reorderLevel;
-    if (bottleMl < minBottleMl || bottleMl > maxBottleMl) {
+    if (bottleMl > 0 && (bottleMl < minBottleMl || bottleMl > maxBottleMl)) {
       return ProductProblem.size;
     }
     if (halfPrice != null && !Money.isValidMajor(halfPrice)) {
