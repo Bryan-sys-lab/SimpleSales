@@ -31,6 +31,7 @@ import '../theme/app_spacing.dart';
 import '../theme/typography.dart';
 import '../ui/components/status.dart';
 import '../ui/components/surface.dart';
+import '../ui/layout/page.dart';
 import '../ui/brand/simple_pos_mark.dart';
 import '../utils/datetime_format.dart';
 import '../utils/money.dart';
@@ -114,7 +115,10 @@ class DashboardPanel extends StatelessWidget {
             ),
             Divider(height: 1, color: colors.outline),
             if (padChild)
-              Padding(padding: EdgeInsets.all(spacing.xl), child: child)
+              // The card's own padding, from the shared gutter: the page's
+              // padding and the card's are the SAME distance to the text, and
+              // on a phone they are both smaller.
+              Padding(padding: PageGutter.card(context), child: child)
             else
               child,
           ],

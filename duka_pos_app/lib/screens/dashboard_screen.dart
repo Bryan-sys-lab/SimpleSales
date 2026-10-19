@@ -496,7 +496,10 @@ class _DashboardContent extends StatelessWidget {
       child: AdaptivePage(
         scrollable: true,
         maxContentWidth: _kDashboardMaxWidth,
-        padding: EdgeInsets.all(spacing.xl),
+        // The page's gutter, from the shared helper: a phone gets a smaller
+        // one, because 16dp of page padding plus 16dp of card padding plus a
+        // border is 33dp of nothing before the first word.
+        padding: PageGutter.of(context),
         child: LayoutBuilder(
           builder: (BuildContext context, BoxConstraints constraints) {
             final bool twoColumns =

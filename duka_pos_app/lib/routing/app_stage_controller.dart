@@ -67,6 +67,44 @@ class AppStageController extends ChangeNotifier {
     notifyListeners();
   }
 
+  /// How long a retry waits before it gives up and says so.
+  static const Duration retryTimeout = Duration(seconds: 15);
+
+  /// Tries the database again, and reports whether it worked.
+  ///
+  /// The recovery screen was a dead end without this. It told the owner their
+  /// data could not be opened and then offered no way to find out whether that
+  /// was still true — and the condition is often temporary: a full disk
+  /// freed, a restored backup, a different working directory after an update.
+  /// A screen that can only report a failure is a screen that has given up.
+  ///
+  /// The stage stays on the recovery screen until the attempt ANSWERS. It
+  /// does not clear the failure the moment the retry starts, because that
+  /// would navigate the owner away from the screen while the question is still
+  /// open — and if the retry then fails, they would be on the chooser with no
+  /// idea why.
+  Future<bool> retry() async {
+    if (_disposed) return false;
+    try {
+      // Bounded, because opening the database is file I/O on a phone that may
+      // be the very thing that is broken. A retry that waits forever is a
+      // spinner that never stops: a dead end with an animation on it. Fifteen
+      // seconds is an order of magnitude longer than a healthy open takes.
+      await _state.loadOwner().timeout(retryTimeout);
+      await _state.loadRememberedStaff();
+      if (_disposed) return false;
+      _databaseFailed = false;
+      notifyListeners();
+      return true;
+    } catch (error, stack) {
+      debugPrint('Retry failed: $error\n$stack');
+      if (_disposed) return false;
+      _databaseFailed = true;
+      notifyListeners();
+      return false;
+    }
+  }
+
   @override
   void dispose() {
     _state.removeListener(notifyListeners);

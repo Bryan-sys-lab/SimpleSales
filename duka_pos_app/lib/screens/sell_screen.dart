@@ -18,17 +18,13 @@ import '../services/etims/etims_service.dart';
 import '../services/printer/printer_config.dart';
 import '../services/printer/receipt_printer.dart';
 import '../widgets/sign_out_sheet.dart';
+import '../widgets/product_tile.dart';
+import '../widgets/sell_page.dart';
 import '../routing/home_shell.dart';
 import '../widgets/variant_catalogue.dart';
 import '../l10n/generated/app_localizations.dart';
-import '../theme/app_colors.dart';
-import '../theme/app_shapes.dart';
 import '../theme/app_spacing.dart';
-import '../theme/typography.dart';
-import '../ui/components/status.dart';
-import '../ui/components/product_photo.dart';
 import '../ui/layout/page.dart';
-import '../ui/components/surface.dart';
 import '../models/models.dart';
 import '../db/database_helper.dart';
 import '../utils/money.dart';
@@ -476,6 +472,36 @@ class _SellScreenState extends State<SellScreen>
     }
   }
 
+  /// What the till grid needs to draw one product.
+  ///
+  /// Assembled here rather than inside the grid, because the rules — what
+  /// counts as in the cart, whether the tile can be tapped, which price is the
+  /// cheapest variant's — belong to the screen that owns the cart and the
+  /// catalogue, not to a widget that draws a list.
+  ProductTileData _tileDataFor(Product product) {
+    final List<ProductVariant> variants = _variants.of(product);
+    final bool sellsAsVariants = _variants.sellsAsVariants(product);
+    final Money? fromPrice = sellsAsVariants && variants.isNotEmpty
+        ? _variants.cheapestVariant(product)!.sellPrice
+        : null;
+
+    final double inCart = _cart
+        .where((CartItem item) => item.product.id == product.id)
+        .fold<double>(
+          0,
+          (double sum, CartItem item) => sum + item.stockUnits,
+        );
+
+    return ProductTileData(
+      product: product,
+      inCart: inCart,
+      sellsAsVariants: sellsAsVariants,
+      variantCount: variants.length,
+      cheapestPrice: fromPrice,
+      canTap: product.stockQty > 0 || sellsAsVariants,
+    );
+  }
+
   Future<void> _addToCart(Product product) async {
     // Re-entrancy guard. `_addToCart` is async and opens a modal; a fast
     // double-tap on a product tile, or a wedge scan landing mid-sheet, would
@@ -492,7 +518,7 @@ class _SellScreenState extends State<SellScreen>
         builder: (sheetContext) => SafeArea(
             child: Column(mainAxisSize: MainAxisSize.min, children: [
           Padding(
-              padding: const EdgeInsets.all(16),
+              padding: EdgeInsets.all(AppSpacing.of(context).xl),
               child: Text(
                   AppLocalizations.of(context)
                       .sellChooseServingTitle(product.name),
@@ -1417,6 +1443,9 @@ class _SellScreenState extends State<SellScreen>
     // reading it in the sheet's own `build` would be equally current.
     context.read<CartLineCount>().set(_cart.length);
 
+    final AppLocalizations l10n = AppLocalizations.of(context);
+    final AppSpacing spacing = AppSpacing.of(context);
+
     final query = _searchQuery.trim().toLowerCase();
     final filteredProducts = _products
         .where((p) =>
@@ -1426,7 +1455,7 @@ class _SellScreenState extends State<SellScreen>
         .toList();
 
     return LayoutBuilder(
-      builder: (context, constraints) {
+      builder: (BuildContext context, BoxConstraints constraints) {
         final compact = constraints.maxWidth < 720;
         // `autofocus: true` is not a nicety, it is what makes the scanner work.
         //
@@ -1449,15 +1478,17 @@ class _SellScreenState extends State<SellScreen>
           child: SafeArea(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: [
+              children: <Widget>[
                 // Brand strip at the head of the till: identity beside the sale,
-                // once, not repeated inside each column.
+                // once, not repeated inside every pane.
                 Padding(
+                  // The page's gutter, from the shared helper, so the till's
+                  // chrome lines up with the dashboard's.
                   padding: EdgeInsetsDirectional.only(
-                    start: AppSpacing.of(context).xl,
-                    end: AppSpacing.of(context).xl,
-                    top: AppSpacing.of(context).sm,
-                    bottom: AppSpacing.of(context).sm,
+                    start: PageGutter.of(context).left,
+                    end: PageGutter.of(context).right,
+                    top: spacing.sm,
+                    bottom: spacing.sm,
                   ),
                   child: Semantics(
                     image: true,
@@ -1465,320 +1496,54 @@ class _SellScreenState extends State<SellScreen>
                     child: ExcludeSemantics(
                       child: BrandHeader(
                         markSize: 26,
-                        gap: AppSpacing.of(context).md,
+                        gap: spacing.md,
                         showWordmark: true,
                       ),
                     ),
                   ),
                 ),
-                   Flex(
-                      direction: compact ? Axis.vertical : Axis.horizontal,
-                      crossAxisAlignment: CrossAxisAlignment.stretch,
-                      children: [
-                    // Product catalog
-                     Expanded(
-                      flex: 3,
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.stretch,
-                        children: [
-                          Padding(
-                            padding: const EdgeInsets.all(16),
-                            child: TextField(
-                              controller: _searchController,
-                              focusNode: _searchFocus,
-                              decoration: InputDecoration(
-                                labelText: AppLocalizations.of(context)
-                                    .sellSearchProducts,
-                                hintText: AppLocalizations.of(context)
-                                    .sellScanHintSearchProducts,
-                                prefixIcon: const Icon(Icons.search),
-                                border: const OutlineInputBorder(),
-                                suffixIcon: _searchQuery.isEmpty
-                                    ? null
-                                    : IconButton(
-                                        tooltip: AppLocalizations.of(context)
-                                            .sellClearSearchTooltip,
-                                        icon: const Icon(Icons.clear),
-                                        onPressed: () {
-                                          _searchController.clear();
-                                          setState(() => _searchQuery = '');
-                                        },
-                                      ),
-                              ),
-                              onChanged: (v) =>
-                                  setState(() => _searchQuery = v),
-                            ),
-                          ),
-                          // Camera scanning is an explicit action, never an automatic
-                          // one: a till with a wedge scanner needs nothing from the
-                          // camera, and a phone held over the counter should not open
-                          // a camera view on its own.
-                          Padding(
-                            padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
-                            child: Row(
-                              children: [
-                                Expanded(
-                                  child: Semantics(
-                                    button: true,
-                                    label: AppLocalizations.of(context)
-                                        .sellScanCameraLabel,
-                                    hint: AppLocalizations.of(context)
-                                        .sellScanCameraHint,
-                                    child: OutlinedButton.icon(
-                                      onPressed: _scanInFlight
-                                          ? null
-                                          : _scanWithCamera,
-                                      icon: const Icon(Icons.qr_code_scanner),
-                                      label: Text(AppLocalizations.of(context)
-                                          .sellScanBarcode),
-                                    ),
-                                  ),
-                                ),
-                              ],
-                            ),
-                          ),
-                          Expanded(
-                            child: _loading
-                                ? const Center(
-                                    child: CircularProgressIndicator())
-                                : GridView.builder(
-                                    padding: const EdgeInsets.all(8),
-                                    gridDelegate:
-                                        SliverGridDelegateWithFixedCrossAxisCount(
-                                      // From the shared breakpoint vocabulary, so the
-                                      // catalogue grid breaks at the SAME widths as
-                                      // the shell's navigation affordance. A local
-                                      // `maxWidth < 480` is how a phone gets three
-                                      // columns while the bottom bar says it is a
-                                      // small phone.
-                                      crossAxisCount: AdaptiveGrid.columnsFor(
-                                        available: constraints.maxWidth,
-                                        gap: 8,
-                                        minCellWidth: 170,
-                                        maxColumns: 3,
-                                      ),
-                                      // 1.2 rather than 1.0 because the tile reserves
-                                      // TWO lines of name, and a square cell clips the
-                                      // second one. The aspect ratio is what makes the
-                                      // name budget real rather than aspirational.
-                                      childAspectRatio: 1.2,
-                                      crossAxisSpacing: 8,
-                                      mainAxisSpacing: 8,
-                                    ),
-                                    itemCount: filteredProducts.length,
-                                    itemBuilder: (ctx, i) {
-                                      final p = filteredProducts[i];
-                                      final variants = _variants.of(p);
-                                      final sellsAsVariants =
-                                          _variants.sellsAsVariants(p);
-                                      final fromPrice =
-                                          sellsAsVariants && variants.isNotEmpty
-                                              ? _variants
-                                                  .cheapestVariant(p)!
-                                                  .sellPrice
-                                              : null;
-                                      final matchingCart = _cart
-                                          .where((c) => c.product.id == p.id);
-                                      final double inCart =
-                                          matchingCart.fold<double>(
-                                        0,
-                                        (double sum, item) =>
-                                            sum + item.stockUnits,
-                                      );
-                                      final bool canTap =
-                                          p.stockQty > 0 || sellsAsVariants;
-
-                                      return _ProductTile(
-                                        product: p,
-                                        inCart: inCart,
-                                        sellsAsVariants: sellsAsVariants,
-                                        variantCount: variants.length,
-                                        cheapestPrice: fromPrice,
-                                        canTap: canTap,
-                                        onTap:
-                                            canTap ? () => _addToCart(p) : null,
-                                      );
-                                    },
-                                  ),
-                          ),
-                        ],
-                      ),
+                // The two panes.
+                //
+                // Inside an `Expanded`, and that word is the whole fix: a
+                // Column hands its non-flexible children an UNBOUNDED height,
+                // and the pane layout divides a height. Given an unbounded one
+                // it divided infinity, the grid's scroll extent became
+                // infinite, and the sliver's index arithmetic threw "Infinity
+                // or NaN to Int" the moment the till opened on a phone.
+                Expanded(
+                  child: SellPaneLayout(
+                    compact: compact,
+                    catalogue: SellCataloguePane(
+                      controller: _searchController,
+                      focusNode: _searchFocus,
+                      query: _searchQuery,
+                      onQueryChanged: (String value) =>
+                          setState(() => _searchQuery = value),
+                      onClearQuery: () {
+                        _searchController.clear();
+                        setState(() => _searchQuery = '');
+                      },
+                      onScan: _scanWithCamera,
+                      scanning: _scanInFlight,
+                      loading: _loading,
+                      items: <ProductTileData>[
+                        for (final Product p in filteredProducts) _tileDataFor(p),
+                      ],
+                      onProduct: _addToCart,
                     ),
-
-                    // Vertical divider
-                    compact
-                        ? const Divider(height: 1)
-                        : const VerticalDivider(width: 1),
-
-                    // Cart
-                    Expanded(
-                      flex: 2,
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.stretch,
-                        children: [
-                          Container(
-                            padding: const EdgeInsets.all(16),
-                            child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.stretch,
-                              children: [
-                                if (_statusMessage != null)
-                                  Semantics(
-                                    liveRegion: true,
-                                    container: true,
-                                    label: _statusMessage,
-                                    child: Padding(
-                                      padding: const EdgeInsets.only(bottom: 8),
-                                      child: Text(_statusMessage!,
-                                          style: Theme.of(context)
-                                              .textTheme
-                                              .bodySmall),
-                                    ),
-                                  ),
-                                Row(
-                                  mainAxisAlignment:
-                                      MainAxisAlignment.spaceBetween,
-                                  children: [
-                                    Semantics(
-                                        header: true,
-                                        child: Text(
-                                            AppLocalizations.of(context)
-                                                .sellCartTitle,
-                                            style: AppTypography.of(context)
-                                                .titleLarge!)),
-                                    Text(AppLocalizations.of(context)
-                                        .sellCartItemCount(_cart.length)),
-                                  ],
-                                ),
-                              ],
-                            ),
-                          ),
-                          Expanded(
-                            child: _cart.isEmpty
-                                ? Center(
-                                    child: Text(AppLocalizations.of(context)
-                                        .sellCartEmptyHint))
-                                : ListView.builder(
-                                    itemCount: _cart.length,
-                                    itemBuilder: (ctx, i) {
-                                      final item = _cart[i];
-                                      return ListTile(
-                                        title: Text(item.cartTitle),
-                                        subtitle: Text(item.cartSubtitle),
-                                        trailing: Row(
-                                          mainAxisSize: MainAxisSize.min,
-                                          children: [
-                                            Semantics(
-                                              button: true,
-                                              label: AppLocalizations.of(
-                                                      context)
-                                                  .sellDecreaseItem(item.label),
-                                              child: IconButton(
-                                                icon: const Icon(Icons.remove),
-                                                tooltip:
-                                                    AppLocalizations.of(context)
-                                                        .sellDecreaseItem(
-                                                            item.label),
-                                                onPressed: () =>
-                                                    _updateQty(i, -1),
-                                              ),
-                                            ),
-                                            Text(
-                                                '${item.qty % 1 == 0 ? item.qty.toInt() : item.qty}'),
-                                            Semantics(
-                                              button: true,
-                                              label: AppLocalizations.of(
-                                                      context)
-                                                  .sellIncreaseItem(item.label),
-                                              child: IconButton(
-                                                icon: const Icon(Icons.add),
-                                                tooltip:
-                                                    AppLocalizations.of(context)
-                                                        .sellIncreaseItem(
-                                                            item.label),
-                                                onPressed: () =>
-                                                    _updateQty(i, 1),
-                                              ),
-                                            ),
-                                            Semantics(
-                                              button: true,
-                                              label: AppLocalizations.of(
-                                                      context)
-                                                  .sellRemoveItem(item.label),
-                                              child: IconButton(
-                                                icon: const Icon(Icons.delete),
-                                                tooltip: AppLocalizations.of(
-                                                        context)
-                                                    .sellRemoveItem(item.label),
-                                                onPressed: () =>
-                                                    _removeFromCart(i),
-                                              ),
-                                            ),
-                                          ],
-                                        ),
-                                      );
-                                    },
-                                  ),
-                          ),
-                          Container(
-                            padding: const EdgeInsets.all(16),
-                            child: Column(
-                              children: [
-                                Row(
-                                  mainAxisAlignment:
-                                      MainAxisAlignment.spaceBetween,
-                                  children: [
-                                    Text(
-                                        AppLocalizations.of(context)
-                                            .sellTotalOnly,
-                                        style: AppTypography.of(context)
-                                            .titleLarge),
-                                    Text(
-                                      formatMoney(_total),
-                                      style: AppTypography.of(context)
-                                          .headlineSmall,
-                                    ),
-                                  ],
-                                ),
-                                const SizedBox(height: 16),
-                                Row(
-                                  children: [
-                                    Expanded(
-                                      child: ElevatedButton.icon(
-                                        onPressed:
-                                            _cart.isEmpty || _processingPayment
-                                                ? null
-                                                : _checkoutOffline,
-                                        icon: const Icon(Icons.payments),
-                                        label: Text(AppLocalizations.of(context)
-                                            .sellOfflinePaymentAction),
-                                      ),
-                                    ),
-                                    const SizedBox(width: 8),
-                                    Expanded(
-                                      child: ElevatedButton.icon(
-                                        onPressed:
-                                            _cart.isEmpty || _processingPayment
-                                                ? null
-                                                : _checkoutMpesa,
-                                        icon: const Icon(Icons.phone_iphone),
-                                        label: Text(AppLocalizations.of(context)
-                                            .settingsMpesaMethod),
-                                        style: ElevatedButton.styleFrom(
-                                          backgroundColor: Theme.of(context)
-                                              .colorScheme
-                                              .secondary,
-                                        ),
-                                      ),
-                                    ),
-                                  ],
-                                ),
-                              ],
-                            ),
-                          ),
-                        ],
-                      ),
+                    cart: SellCartPane(
+                      lines: _cartLines(l10n),
+                      itemCountLabel: l10n.sellCartItemCount(_cart.length),
+                      totalLabel: formatMoney(_total),
+                      emptyHint: l10n.sellCartEmptyHint,
+                      offlineLabel: l10n.sellOfflinePaymentAction,
+                      mpesaLabel: l10n.settingsMpesaMethod,
+                      onOffline: _checkoutOffline,
+                      onMpesa: _checkoutMpesa,
+                      processing: _processingPayment,
+                      statusMessage: _statusMessage,
                     ),
-                  ],
+                  ),
                 ),
               ],
             ),
@@ -1787,6 +1552,33 @@ class _SellScreenState extends State<SellScreen>
       },
     );
   }
+
+  /// The cart, as the pane draws it.
+  ///
+  /// Built here rather than passed in, because the pane is a view and the
+  /// cart is the screen's business.
+  List<SellCartLine> _cartLines(AppLocalizations l10n) {
+    return <SellCartLine>[
+      for (int i = 0; i < _cart.length; i++)
+        SellCartLine(
+          title: _cart[i].cartTitle,
+          subtitle: _cart[i].cartSubtitle,
+          quantity: _quantityText(_cart[i].qty),
+          decreaseLabel: l10n.sellDecreaseItem(_cart[i].label),
+          increaseLabel: l10n.sellIncreaseItem(_cart[i].label),
+          removeLabel: l10n.sellRemoveItem(_cart[i].label),
+          onDecrease: () => _updateQty(i, -1),
+          onIncrease: () => _updateQty(i, 1),
+          onRemove: () => _removeFromCart(i),
+        ),
+    ];
+  }
+
+  /// A quantity, as the cashier reads it.
+  ///
+  /// 2, or 0.5 — never 0.5 written as "1" and never 0.4 written as "0".
+  static String _quantityText(double qty) =>
+      qty % 1 == 0 ? '${qty.toInt()}' : qty.toStringAsFixed(1);
 }
 
 /// One line in the cart.
@@ -1904,227 +1696,4 @@ class CartItem {
   }
 
   Money get total => unitPrice.times(qty);
-}
-
-class _ProductTile extends StatelessWidget {
-  const _ProductTile({
-    required this.product,
-    required this.inCart,
-    required this.sellsAsVariants,
-    required this.variantCount,
-    required this.cheapestPrice,
-    required this.canTap,
-    required this.onTap,
-  });
-
-  final Product product;
-
-  final double inCart;
-
-  final bool sellsAsVariants;
-  final int variantCount;
-  final Money? cheapestPrice;
-  final bool canTap;
-  final VoidCallback? onTap;
-
-  static const int _nameLines = 2;
-
-  @override
-  Widget build(BuildContext context) {
-    final AppColors colors = AppColors.of(context);
-    final AppSpacing spacing = AppSpacing.of(context);
-    final TextTheme type = AppTypography.of(context);
-
-    final String priceLine = sellsAsVariants
-        ? (cheapestPrice == null
-            ? 'No variants yet'
-            : 'From ${formatMoney(cheapestPrice!)}')
-        : formatMoney(product.sellPrice);
-
-    // The stock line carries a WORD as well as a tone. It used to carry only a
-    // red colour, which is invisible to a deuteranopic cashier, to a greyscale
-    // screenshot, and to a screen reader.
-    final String stockLine = '${product.stockQty.round()} in stock';
-
-    return Semantics(
-      button: canTap,
-      // One node carrying the whole tile: a cashier stepping through the grid with
-      // TalkBack should hear "Kenyatta bread, KSh 60, 12 in stock, add to cart",
-      // not four separate stops for name, price, count and action.
-      label: sellsAsVariants
-          ? '${product.name}, from '
-              '${cheapestPrice == null ? 'no variants' : formatMoney(cheapestPrice!)}, '
-              '$variantCount variants, $stockLine'
-          : '${product.name}, ${formatMoney(product.sellPrice)}, $stockLine',
-      hint: !canTap
-          ? AppLocalizations.of(context).sellOutOfStock
-          : sellsAsVariants
-              ? 'Double tap to choose a variant'
-              : 'Double tap to add to the cart',
-      excludeSemantics: true,
-      child: ExcludeSemantics(
-        child: SurfaceCard(
-          onTap: onTap,
-          child: Stack(
-            children: <Widget>[
-              Padding(
-                padding: EdgeInsets.all(spacing.sm),
-                child: Column(
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  children: <Widget>[
-                    // The photograph, when there is one.
-                    //
-                    // Only here. A product is a row in a list on every other
-                    // screen, and a photograph in a list makes it slower to scan
-                    // and slower to render for no gain. At the till it is the
-                    // thing a cashier matches against the shelf.
-                    //
-                    // Sized from the tile rather than hardcoded: the tile grows
-                    // on a tablet, and a fixed 64px image would strand a
-                    // half-width cell.
-                    if (product.imagePath != null) ...<Widget>[
-                      LayoutBuilder(
-                        builder:
-                            (BuildContext context, BoxConstraints constraints) {
-                          final edge = (constraints.maxWidth - spacing.sm * 2)
-                              .clamp(40.0, 96.0);
-                          return ProductPhoto(
-                            imagePath: product.imagePath,
-                            size: edge,
-                          );
-                        },
-                      ),
-                      SizedBox(height: spacing.xs),
-                    ],
-                    Flexible(
-                      child: Text(
-                        product.name,
-                        textAlign: TextAlign.center,
-                        maxLines: _nameLines,
-                        // Ellipsis, not `visible`.
-                        //
-                        // `visible` was defended in a comment as "no ellipsis
-                        // here, the product would be spelled with a trailing
-                        // dot", and it pointed at the overflow matrix as the
-                        // guard. But that matrix only exercises
-                        // ui/components/ and page.dart — nothing in this file.
-                        // So a 120-character name (the editor's own limit,
-                        // models.dart) rendered as `maxLines` lines with NO
-                        // ellipsis at all: `TextPainter` silently drops lines
-                        // past `maxLines`, and a cashier saw a name cut
-                        // mid-word with nothing saying text was lost.
-                        //
-                        // An ellipsis IS the signal. It is read by screen
-                        // readers as "text truncated", which is exactly the
-                        // truth, and the tile's `Semantics` label above carries
-                        // the full name for whoever needs it spoken.
-                        overflow: TextOverflow.ellipsis,
-                        style: type.titleSmall,
-                      ),
-                    ),
-                    SizedBox(height: spacing.xs),
-                    Text(
-                      priceLine,
-                      textAlign: TextAlign.center,
-                      // Tabular figures: a column of prices that shifts sideways
-                      // as the digit count changes cannot be scanned.
-                      style: AppTypography.money(
-                        context,
-                        size: 14,
-                        weight: FontWeight.w700,
-                      ),
-                    ),
-                    SizedBox(height: 2),
-                    Row(
-                      mainAxisSize: MainAxisSize.min,
-                      children: <Widget>[
-                        Icon(
-                          product.isLow
-                              ? StatusTone.warning.icon
-                              : StatusTone.success.icon,
-                          size: 12,
-                          color:
-                              product.isLow ? colors.warning : colors.success,
-                        ),
-                        SizedBox(width: spacing.xs),
-                        Text(
-                          stockLine,
-                          style: type.labelSmall?.copyWith(
-                            color: product.isLow
-                                ? colors.warning
-                                : colors.onSurfaceMuted,
-                          ),
-                        ),
-                      ],
-                    ),
-                  ],
-                ),
-              ),
-              if (inCart > 0)
-                PositionedDirectional(
-                  top: spacing.xs,
-                  end: spacing.xs,
-                  child: _CartCountPip(count: inCart),
-                ),
-              if (!canTap)
-                Positioned.fill(
-                  child: DecoratedBox(
-                    // A scrim rather than a disabled colour on the text: the
-                    // contents stay legible so the cashier can still read WHAT is
-                    // out of stock, which is the information they need.
-                    decoration: BoxDecoration(
-                      color: colors.canvas.withValues(alpha: 0.72),
-                      borderRadius: AppShapes.of(context).controlRadius,
-                    ),
-                    child: Center(
-                      child: StatusChip(
-                        tone: StatusTone.danger,
-                        text: AppLocalizations.of(context).sellOutOfStock,
-                        dense: true,
-                      ),
-                    ),
-                  ),
-                ),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
-}
-
-class _CartCountPip extends StatelessWidget {
-  const _CartCountPip({required this.count});
-
-  final double count;
-
-  @override
-  Widget build(BuildContext context) {
-    final AppColors colors = AppColors.of(context);
-    final String label = count == count.roundToDouble()
-        ? '${count.toInt()}'
-        : count.toStringAsFixed(1);
-
-    return Semantics(
-      label: '$label in the cart',
-      excludeSemantics: true,
-      child: Container(
-        constraints: const BoxConstraints(minWidth: 20, minHeight: 20),
-        alignment: Alignment.center,
-        padding: const EdgeInsets.symmetric(horizontal: 5),
-        decoration: BoxDecoration(
-          color: colors.accent,
-          shape: BoxShape.circle,
-        ),
-        child: Text(
-          label,
-          style: AppTypography.of(context).labelSmall?.copyWith(
-                color: colors.onAccent,
-                fontWeight: FontWeight.w700,
-                height: 1,
-              ),
-        ),
-      ),
-    );
-  }
 }

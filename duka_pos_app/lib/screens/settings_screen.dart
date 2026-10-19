@@ -1068,7 +1068,14 @@ class _SettingsScreenState extends State<SettingsScreen>
                                   : Icons.store_mall_directory_outlined,
                             ),
                           ),
-                          title: Text(shop.shopName),
+                          title: Text(
+                      // A shop name is typed by a human. Two lines, then an
+                      // ellipsis: one long name must not make the list of
+                      // shops a scroll of six-line rows.
+                      shop.shopName,
+                      maxLines: 2,
+                      overflow: TextOverflow.ellipsis,
+                    ),
                           // The role, not the tenant id: a shopkeeper
                           // switching shops wants to know what they are, and a
                           // UUID is not that.

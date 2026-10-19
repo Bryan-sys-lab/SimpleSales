@@ -204,3 +204,44 @@ class AdaptiveGrid extends StatelessWidget {
 /// gets the two-pane layout and a foldable's cover display does not.
 bool canSplitPanes(BuildContext context) =>
     windowSizeClassOf(context).splitsTwoPanes;
+
+/// The page's edge gutter, and the padding inside a card on the page.
+///
+/// WHY THIS IS A FUNCTION OF THE WINDOW
+///
+/// The depth of a page is built from three things stacked on each other: the
+/// page's own padding, the card's border, and the card's padding. At 16 + 1 +
+/// 16 that is 33dp before a single word is written — a tenth of a 360dp
+/// screen, spent on nothing, and it is the same tenth on every screen in the
+/// app because every screen hard-codes 16.
+///
+/// A phone has no room to spare, so a phone gets a smaller gutter and a
+/// smaller card padding, and the text lands about 21dp from the edge. A
+/// tablet keeps the roomy one, because on a tablet the room is there to be
+/// used and a cramped card reads as a mistake.
+///
+/// It is a FUNCTION of the window rather than a flag, so a resized desktop
+/// window and a split-screen tablet both get the answer their width implies.
+class PageGutter {
+  const PageGutter._();
+
+  /// The padding between the window edge and the page's content.
+  static EdgeInsets of(BuildContext context) {
+    final AppSpacing tokens = AppSpacing.of(context);
+    return windowSizeClassOf(context).isCompact
+        ? EdgeInsets.all(tokens.lg)
+        : EdgeInsets.all(tokens.xl);
+  }
+
+  /// The padding inside a card that sits on the page.
+  ///
+  /// The same reasoning as [of], one level down: the card's own padding is
+  /// part of the same distance, so it shrinks with the gutter rather than
+  /// cancelling it out.
+  static EdgeInsets card(BuildContext context) {
+    final AppSpacing tokens = AppSpacing.of(context);
+    return windowSizeClassOf(context).isCompact
+        ? EdgeInsets.all(tokens.md)
+        : EdgeInsets.all(tokens.xl);
+  }
+}

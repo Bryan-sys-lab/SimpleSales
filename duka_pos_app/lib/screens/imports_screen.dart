@@ -159,22 +159,43 @@ class _ImportsSkeleton extends StatelessWidget {
       );
 }
 
+/// The placeholder for a row of imports that has not arrived yet.
+///
+/// SHAPED like the row it stands in for, at the text scale in force. A fixed
+/// 72dp skeleton is shorter than the card that replaces it at 200% text, so
+/// the list jumps when the data lands — a skeleton is a promise about what is
+/// coming, and a promise that changes shape is worse than no promise.
 class _SkeletonLine extends StatelessWidget {
   const _SkeletonLine();
 
   @override
-  Widget build(BuildContext context) => Container(
-        height: 72,
-        alignment: AlignmentDirectional.centerStart,
-        child: Container(
-          height: 12,
-          width: 180,
-          decoration: BoxDecoration(
-            color: Theme.of(context).colorScheme.surfaceContainerHighest,
-            borderRadius: AppShapes.of(context).barRadius,
-          ),
+  Widget build(BuildContext context) {
+    final AppSpacing spacing = AppSpacing.of(context);
+    final TextTheme type = AppTypography.of(context);
+    final TextScaler scaler = MediaQuery.textScalerOf(context);
+
+    double line(TextStyle? style, double fallback) {
+      final TextStyle resolved = style ?? const TextStyle();
+      return scaler.scale(resolved.fontSize ?? fallback) *
+          (resolved.height ?? 1.3);
+    }
+
+    final double title = line(type.titleSmall, 13);
+    final double body = line(type.bodySmall, 12);
+
+    return Container(
+      height: spacing.md * 2 + title + spacing.xs + body,
+      alignment: AlignmentDirectional.centerStart,
+      child: Container(
+        height: body,
+        width: 180,
+        decoration: BoxDecoration(
+          color: Theme.of(context).colorScheme.surfaceContainerHighest,
+          borderRadius: AppShapes.of(context).barRadius,
         ),
-      );
+      ),
+    );
+  }
 }
 
 class _ProblemTile extends StatelessWidget {

@@ -187,15 +187,15 @@ class AppColors extends ThemeExtension<AppColors> {
         dangerContainer = Primitives.red95Light,
         onDangerContainer = Primitives.red42Light,
         info = Primitives.blue47Light,
-        scrim = const Color(0x991A1816),
-        shadow = const Color(0x1A1A1816),
-        mediaScrim = const Color(0xB3000000),
+        scrim = Primitives.scrimInk60,
+        shadow = Primitives.shadowInk10,
+        mediaScrim = Primitives.scrimNight70,
         onMediaScrim = Primitives.neutral100,
         mediaFrame = Primitives.botanical38,
-        mpesaGreen = Primitives.mpesaGreen,
+        mpesaGreen = Primitives.mpesaGreenLight,
         airtelRed = Primitives.airtelRed,
-        equitelBlue = Primitives.equitelBlue,
-        cashNeutral = Primitives.cashNeutral;
+        equitelBlue = Primitives.equitelBlueLight,
+        cashNeutral = Primitives.cashNeutralLight;
 
   /// The dark slots, hand-authored rather than flipped.
   const AppColors.dark()
@@ -225,15 +225,15 @@ class AppColors extends ThemeExtension<AppColors> {
         dangerContainer = Primitives.red22Dark,
         onDangerContainer = Primitives.red92Dark,
         info = Primitives.blue66,
-        scrim = const Color(0xB3000000),
-        shadow = const Color(0x66000000),
-        mediaScrim = const Color(0xB3000000),
+        scrim = Primitives.scrimNight70,
+        shadow = Primitives.shadowNight40,
+        mediaScrim = Primitives.scrimNight70,
         onMediaScrim = Primitives.neutral100,
         mediaFrame = Primitives.botanical58,
-        mpesaGreen = Primitives.mpesaGreen,
+        mpesaGreen = Primitives.mpesaGreenDark,
         airtelRed = Primitives.airtelRed,
-        equitelBlue = Primitives.equitelBlue,
-        cashNeutral = Primitives.cashNeutral;
+        equitelBlue = Primitives.equitelBlueDark,
+        cashNeutral = Primitives.cashNeutralDark;
 
   @override
   AppColors copyWith({

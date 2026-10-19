@@ -209,7 +209,12 @@ void main() {
       await tester.pump();
 
       expect(submissions, 0);
-      expect(find.text(l10n.settingsVerifyCodeLabel), findsWidgets);
+      // The error says what to DO, not what the field is called.
+      //
+      // It used to show the field's own label — "6-digit code" — as the
+      // error, which is the one piece of information the person filling it in
+      // already had, and says nothing they can act on.
+      expect(find.text(l10n.settingsVerifyCodeInvalid), findsOneWidget);
     });
 
     testWidgets('offers a new code without restarting the flow',

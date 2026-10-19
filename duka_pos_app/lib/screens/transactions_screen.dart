@@ -242,6 +242,12 @@ class TransactionsRow extends StatelessWidget {
                       const SizedBox(height: 2),
                       Text(
                         l10n.transactionsSoldBy(sale.staffName),
+                        // A staff name is typed by a human, and a name can be
+                        // long. Two lines, then an ellipsis: a row that grows
+                        // to fit its longest name is a ledger that cannot be
+                        // scanned down.
+                        maxLines: 2,
+                        overflow: TextOverflow.ellipsis,
                         style: type.bodySmall?.copyWith(
                           color: colors.onSurfaceMuted,
                         ),
@@ -293,10 +299,18 @@ class TransactionsRow extends StatelessWidget {
                 Icon(Icons.how_to_reg_outlined,
                     size: 16, color: colors.onSurfaceMuted),
                 SizedBox(width: spacing.xs),
-                Text(
-                  l10n.transactionsAuditBy(audit!.actorName),
-                  style: type.labelMedium?.copyWith(
-                    color: colors.onSurfaceMuted,
+                // Flexible, because a Row hands its non-flexible children an
+                // UNBOUNDED width: a long staff name here did not wrap, it
+                // overflowed the row and pushed the layout into an error the
+                // owner saw as the ledger breaking.
+                Flexible(
+                  child: Text(
+                    l10n.transactionsAuditBy(audit!.actorName),
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: type.labelMedium?.copyWith(
+                      color: colors.onSurfaceMuted,
+                    ),
                   ),
                 ),
               ],

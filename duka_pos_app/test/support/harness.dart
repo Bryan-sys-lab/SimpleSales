@@ -6,6 +6,7 @@ import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:provider/provider.dart';
 import 'dart:math' as math;
+import 'package:duka_pos/routing/app_stage_controller.dart';
 import 'package:duka_pos/services/app_state.dart';
 import 'package:duka_pos/services/live_channel_service.dart';
 import 'package:duka_pos/services/app_update_service.dart';
@@ -148,6 +149,17 @@ extension TestHarness on WidgetTester {
       // harness that cannot render the real app is not a harness.
       providers: [
         ChangeNotifierProvider<AppState>(create: (_) => AppState()),
+        // The boot gate. It reads the session above it, and the recovery
+        // screen reaches for it: a screen that cannot open its data offers a
+        // way to try again, and that button asks the gate to try.
+        //
+        // It is NOT booted here. `boot()` touches the database and the
+        // preferences, and a harness that booted the app would make every
+        // widget test depend on both.
+        ChangeNotifierProvider<AppStageController>(
+          create: (BuildContext context) =>
+              AppStageController(context.read<AppState>()),
+        ),
         ChangeNotifierProvider<LiveChannelService>(
             create: (_) => LiveChannelService(random: _FakeRandomForHarness())),
         ChangeNotifierProvider<AppUpdateService>(

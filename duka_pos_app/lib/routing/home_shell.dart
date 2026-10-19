@@ -366,7 +366,18 @@ class _ShellAppBar extends StatelessWidget implements PreferredSizeWidget {
         // the reverse of the sentence "{title}, signed in as {role}".
         label: l10n.shellSignedInAs(role, title),
         child: ExcludeSemantics(
-          child: Text(title, overflow: TextOverflow.ellipsis),
+          // ONE line.
+          //
+          // The ellipsis alone was not enough: a `Text` with an overflow and
+          // no `maxLines` still wraps, and a shop name long enough to wrap
+          // gave the app bar a second line it had no height for. A shop name
+          // is typed by a human, and this is the one place on the till that
+          // says which shop you are in.
+          child: Text(
+            title,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+          ),
         ),
       ),
       actions: <Widget>[
@@ -383,7 +394,18 @@ class _ShellAppBar extends StatelessWidget implements PreferredSizeWidget {
               isOwner ? Icons.workspace_premium_outlined : Icons.person_outline,
               size: 18,
             ),
-            label: Text(role, overflow: TextOverflow.ellipsis),
+            // Bounded, because a Row hands its non-flexible children an
+            // UNBOUNDED width: a long staff name made the button as wide as
+            // the name, and the app bar's actions pushed the title off the
+            // screen. The full name is in the semantics label above.
+            label: ConstrainedBox(
+              constraints: const BoxConstraints(maxWidth: 140),
+              child: Text(
+                role,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+              ),
+            ),
             style: TextButton.styleFrom(
               foregroundColor: Theme.of(context).colorScheme.onPrimary,
             ),

@@ -6,6 +6,7 @@ import 'app_haptics.dart';
 import 'app_motion.dart';
 import 'app_shapes.dart';
 import 'app_spacing.dart';
+import 'primitives.dart';
 import 'typography.dart';
 
 /// The one place a `ThemeData` is built.
@@ -503,12 +504,17 @@ ColorScheme _colorScheme(Brightness brightness, AppColors c) {
     onSurfaceVariant: c.onSurfaceVariant,
     // The container ladder. Material's own defaults would derive these from a
     // seed and land nowhere near the paper/canvas ladder this app is built on.
-    surfaceContainerLowest: light ? const Color(0xFFFFFFFF) : c.surfaceSunken,
-    surfaceContainerLow: light ? c.canvas : const Color(0xFF1A1816),
-    surfaceContainer: light ? c.canvas : const Color(0xFF1E1C1A),
+    //
+    // Every value below is a TOKEN, never a literal. A colour literal in this
+    // file is a colour that exists in no other file: nothing can check it,
+    // nothing can change it in one place, and a palette that has two sources
+    // of truth has no source of truth at all.
+    surfaceContainerLowest: light ? Primitives.neutral100 : c.surfaceSunken,
+    surfaceContainerLow: light ? c.canvas : Primitives.neutral10,
+    surfaceContainer: light ? c.canvas : Primitives.neutral12,
     surfaceContainerHigh: light ? c.surfaceSunken : c.surfaceRaised,
-    surfaceContainerHighest: light ? c.surfaceSunken : const Color(0xFF3A3633),
-    surfaceDim: light ? c.surfaceSunken : const Color(0xFF1A1816),
+    surfaceContainerHighest: light ? c.surfaceSunken : Primitives.neutral25,
+    surfaceDim: light ? c.surfaceSunken : Primitives.neutral10,
     surfaceBright: light ? c.surface : c.surfaceRaised,
     surfaceTint: c.accent,
     // Hairline, and its stronger sibling for meaningful boundaries.
@@ -518,6 +524,9 @@ ColorScheme _colorScheme(Brightness brightness, AppColors c) {
     scrim: c.scrim,
     inverseSurface: c.onSurface,
     onInverseSurface: c.canvas,
-    inversePrimary: light ? const Color(0xFF4ADE7E) : const Color(0xFF1B6B3A),
+    // The brand green, inverted: the dark theme's accent in the light theme
+    // and the light theme's accent in the dark one. It is the same brand
+    // ramp, read from the other end — not a green that belongs to nothing.
+    inversePrimary: light ? Primitives.botanical58 : Primitives.botanical38,
   );
 }

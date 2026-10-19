@@ -173,6 +173,10 @@ class _VerifyIdentityPinSheetState extends State<VerifyIdentityPinSheet> {
             // letter in it is a typo the keyboard should not have offered.
             inputFormatters: <TextInputFormatter>[
               FilteringTextInputFormatter.digitsOnly,
+              // SIX digits, because the OWNER's PIN is six digits: the reset
+              // service refuses anything else, and the pad that sets it takes
+              // six. (A STAFF pin is four — that is a different PIN, and the
+              // one the till asks for at sign-in.)
               LengthLimitingTextInputFormatter(6),
             ],
             decoration: InputDecoration(
@@ -181,9 +185,9 @@ class _VerifyIdentityPinSheetState extends State<VerifyIdentityPinSheet> {
             textInputAction: TextInputAction.done,
             onFieldSubmitted: (_) => _submit(),
             validator: (String? value) {
-              final String entered = value?.trim() ?? '';
+              final String entered = (value ?? '').trim();
               if (entered.length != 6) {
-                return AppLocalizations.of(context).settingsVerifyPinLabel;
+                return AppLocalizations.of(context).settingsVerifyPinInvalid;
               }
               return null;
             },
@@ -237,8 +241,14 @@ class _VerifyIdentityCodeSheetState extends State<VerifyIdentityCodeSheet> {
     final String entered = _code.text.trim();
     if (entered.length != 6) {
       HapticTheme.of(context).fire(HapticEvent.reject);
-      setState(
-          () => _error = AppLocalizations.of(context).settingsVerifyCodeLabel);
+      // The prompt, not the label.
+      //
+      // "6-digit code" is the name of the field. An error that repeats the
+      // field's name tells the person filling it in nothing they can act on:
+      // it is the one piece of information they already have. What they need
+      // is to be told what to do.
+      setState(() => _error =
+          AppLocalizations.of(context).settingsVerifyCodeInvalid);
       return;
     }
     setState(() {

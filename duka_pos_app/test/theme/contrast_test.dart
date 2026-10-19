@@ -189,6 +189,12 @@ abstract final class AppColorsLight {
   static const danger = Color(0xFFC0392B);
   static const dangerContainer = Color(0xFFFDEDEA);
   static const onDangerContainer = Color(0xFF8B2518);
+  // The payment-mix ring's slices: a GRAPHICAL object, held to 3:1 and not to
+  // the 4.5:1 of text. See the tender group below.
+  static const mpesaGreen = Color(0xFF009C4E);
+  static const airtelRed = Color(0xFFEC1C24);
+  static const equitelBlue = Color(0xFF0066CC);
+  static const cashNeutral = Color(0xFF6B635A);
 }
 
 /// The dark palette, likewise.
@@ -214,6 +220,13 @@ abstract final class AppColorsDark {
   static const danger = Color(0xFFFF6B5B);
   static const dangerContainer = Color(0xFF3D1814);
   static const onDangerContainer = Color(0xFFFFB3A8);
+  // The payment-mix ring's slices. The dark values are not the light values:
+  // Equitel's #0066CC is 2.85:1 on the dark surface, which is a ring slice
+  // whose edge nobody can find.
+  static const mpesaGreen = Color(0xFF00A651);
+  static const airtelRed = Color(0xFFEC1C24);
+  static const equitelBlue = Color(0xFF3E90E8);
+  static const cashNeutral = Color(0xFF8A8075);
 }
 
 /// The dark equivalents of [kContrastPairs], same slots and same minimums.
@@ -418,6 +431,83 @@ void main() {
       expect(colors.danger, AppColorsDark.danger);
       expect(colors.dangerContainer, AppColorsDark.dangerContainer);
       expect(colors.onDangerContainer, AppColorsDark.onDangerContainer);
+    });
+  });
+
+  group('the payment-mix ring is a graphical object, so 3:1', () {
+    // A ring slice is not text. WCAG 1.4.11 holds a graphical object to 3:1
+    // against what is behind it, and the ring is drawn on the page canvas and
+    // on a card.
+    //
+    // These four are somebody else's brand — M-Pesa green, Airtel red,
+    // Equitel blue — and a provider's identity colour is the colour on their
+    // logo, which is not the colour that survives a dark surface. The legend
+    // names every slice, so colour is never the ONLY channel, and that is not
+    // a licence to draw a slice the eye cannot find.
+    const Map<String, Color> lightTenders = <String, Color>{
+      'mpesa': AppColorsLight.mpesaGreen,
+      'airtel': AppColorsLight.airtelRed,
+      'equitel': AppColorsLight.equitelBlue,
+      'cash': AppColorsLight.cashNeutral,
+    };
+    const Map<String, Color> darkTenders = <String, Color>{
+      'mpesa': AppColorsDark.mpesaGreen,
+      'airtel': AppColorsDark.airtelRed,
+      'equitel': AppColorsDark.equitelBlue,
+      'cash': AppColorsDark.cashNeutral,
+    };
+
+    for (final MapEntry<String, Color> entry in lightTenders.entries) {
+      test('light · ${entry.key} clears 3:1 on the canvas', () {
+        final double ratio = wcagContrast(entry.value, AppColorsLight.canvas);
+        expect(
+          ratio,
+          greaterThanOrEqualTo(3.0),
+          reason: 'light · ${entry.key} is ${ratio.toStringAsFixed(2)}:1 on the '
+              'canvas',
+        );
+      });
+
+      test('light · ${entry.key} clears 3:1 on a card', () {
+        final double ratio = wcagContrast(entry.value, AppColorsLight.surface);
+        expect(
+          ratio,
+          greaterThanOrEqualTo(3.0),
+          reason: 'light · ${entry.key} is ${ratio.toStringAsFixed(2)}:1 on a card',
+        );
+      });
+    }
+
+    for (final MapEntry<String, Color> entry in darkTenders.entries) {
+      test('dark · ${entry.key} clears 3:1 on the canvas', () {
+        final double ratio = wcagContrast(entry.value, AppColorsDark.canvas);
+        expect(
+          ratio,
+          greaterThanOrEqualTo(3.0),
+          reason: 'dark · ${entry.key} is ${ratio.toStringAsFixed(2)}:1 on the '
+              'canvas',
+        );
+      });
+
+      test('dark · ${entry.key} clears 3:1 on a card', () {
+        final double ratio = wcagContrast(entry.value, AppColorsDark.surface);
+        expect(
+          ratio,
+          greaterThanOrEqualTo(3.0),
+          reason: 'dark · ${entry.key} is ${ratio.toStringAsFixed(2)}:1 on a card',
+        );
+      });
+    }
+
+    test('the shipped tender colours ARE the ones the theme declares', () {
+      expect(const AppColors.light().mpesaGreen, AppColorsLight.mpesaGreen);
+      expect(const AppColors.light().airtelRed, AppColorsLight.airtelRed);
+      expect(const AppColors.light().equitelBlue, AppColorsLight.equitelBlue);
+      expect(const AppColors.light().cashNeutral, AppColorsLight.cashNeutral);
+      expect(const AppColors.dark().mpesaGreen, AppColorsDark.mpesaGreen);
+      expect(const AppColors.dark().airtelRed, AppColorsDark.airtelRed);
+      expect(const AppColors.dark().equitelBlue, AppColorsDark.equitelBlue);
+      expect(const AppColors.dark().cashNeutral, AppColorsDark.cashNeutral);
     });
   });
 

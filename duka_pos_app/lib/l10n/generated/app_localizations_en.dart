@@ -541,6 +541,20 @@ class AppLocalizationsEn extends AppLocalizations {
       'This usually follows a crash or a low-storage event. If you have a recent backup file, reinstalling the app and restoring that backup from Settings is the safest way forward.';
 
   @override
+  String get databaseErrorRetryAction => 'Try again';
+
+  @override
+  String get databaseErrorShareAction => 'Copy diagnostics';
+
+  @override
+  String get databaseErrorSharedMessage =>
+      'Diagnostics copied. Send them to support.';
+
+  @override
+  String get databaseErrorRetryFailed =>
+      'Still cannot open the data. Free some storage, then try again.';
+
+  @override
   String get sellBrowseProductsAction => 'Browse products';
 
   @override
@@ -555,6 +569,41 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get sellCartTitle => 'Cart';
+
+  @override
+  String sellTileStockCount(Object quantity) {
+    return '$quantity in stock';
+  }
+
+  @override
+  String get sellTileNoVariants => 'No variants yet';
+
+  @override
+  String sellTileFromPrice(Object price) {
+    return 'From $price';
+  }
+
+  @override
+  String sellTileSpokenProduct(Object name, Object price, Object stock) {
+    return '$name, $price, $stock';
+  }
+
+  @override
+  String sellTileSpokenVariants(
+      Object name, Object price, Object stock, Object variants) {
+    return '$name, from $price, $variants, $stock';
+  }
+
+  @override
+  String get sellTileHintAddsToCart => 'Adds it to the cart';
+
+  @override
+  String get sellTileHintChoosesVariant => 'Opens the variants';
+
+  @override
+  String sellTileCartCount(Object count) {
+    return '$count in the cart';
+  }
 
   @override
   String get sellCatalogueEmptyMessage =>
@@ -1536,7 +1585,7 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String settingsVerifyPinMessage(Object email) {
-    return 'Confirm you are the shop admin with your 4-digit PIN. Your online account is created for $email, and we will send a 6-digit code to that address to prove it is yours.';
+    return 'Confirm you are the shop admin with your 6-digit PIN. Your online account is created for $email, and we will send a 6-digit code to that address to prove it is yours.';
   }
 
   @override
@@ -1544,7 +1593,10 @@ class AppLocalizationsEn extends AppLocalizations {
       'That is not the admin PIN for this shop.';
 
   @override
-  String get settingsVerifyPinLabel => '4-digit admin PIN';
+  String get settingsVerifyPinLabel => '6-digit admin PIN';
+
+  @override
+  String get settingsVerifyPinInvalid => 'Enter the 6-digit admin PIN';
 
   @override
   String get settingsVerifyCodeTitle => 'Enter the code we emailed';
@@ -1561,6 +1613,9 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get settingsVerifyCodeLabel => '6-digit code';
+
+  @override
+  String get settingsVerifyCodeInvalid => 'Enter the 6-digit code';
 
   @override
   String settingsVerifyCodeSent(Object email) {

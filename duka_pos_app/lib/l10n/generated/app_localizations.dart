@@ -977,6 +977,30 @@ abstract class AppLocalizations {
   /// **'This usually follows a crash or a low-storage event. If you have a recent backup file, reinstalling the app and restoring that backup from Settings is the safest way forward.'**
   String get databaseErrorAdvice;
 
+  /// No description provided for @databaseErrorRetryAction.
+  ///
+  /// In en, this message translates to:
+  /// **'Try again'**
+  String get databaseErrorRetryAction;
+
+  /// No description provided for @databaseErrorShareAction.
+  ///
+  /// In en, this message translates to:
+  /// **'Copy diagnostics'**
+  String get databaseErrorShareAction;
+
+  /// No description provided for @databaseErrorSharedMessage.
+  ///
+  /// In en, this message translates to:
+  /// **'Diagnostics copied. Send them to support.'**
+  String get databaseErrorSharedMessage;
+
+  /// No description provided for @databaseErrorRetryFailed.
+  ///
+  /// In en, this message translates to:
+  /// **'Still cannot open the data. Free some storage, then try again.'**
+  String get databaseErrorRetryFailed;
+
   /// No description provided for @sellBrowseProductsAction.
   ///
   /// In en, this message translates to:
@@ -1006,6 +1030,55 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'Cart'**
   String get sellCartTitle;
+
+  /// No description provided for @sellTileStockCount.
+  ///
+  /// In en, this message translates to:
+  /// **'{quantity} in stock'**
+  String sellTileStockCount(Object quantity);
+
+  /// No description provided for @sellTileNoVariants.
+  ///
+  /// In en, this message translates to:
+  /// **'No variants yet'**
+  String get sellTileNoVariants;
+
+  /// No description provided for @sellTileFromPrice.
+  ///
+  /// In en, this message translates to:
+  /// **'From {price}'**
+  String sellTileFromPrice(Object price);
+
+  /// No description provided for @sellTileSpokenProduct.
+  ///
+  /// In en, this message translates to:
+  /// **'{name}, {price}, {stock}'**
+  String sellTileSpokenProduct(Object name, Object price, Object stock);
+
+  /// No description provided for @sellTileSpokenVariants.
+  ///
+  /// In en, this message translates to:
+  /// **'{name}, from {price}, {variants}, {stock}'**
+  String sellTileSpokenVariants(
+      Object name, Object price, Object stock, Object variants);
+
+  /// No description provided for @sellTileHintAddsToCart.
+  ///
+  /// In en, this message translates to:
+  /// **'Adds it to the cart'**
+  String get sellTileHintAddsToCart;
+
+  /// No description provided for @sellTileHintChoosesVariant.
+  ///
+  /// In en, this message translates to:
+  /// **'Opens the variants'**
+  String get sellTileHintChoosesVariant;
+
+  /// No description provided for @sellTileCartCount.
+  ///
+  /// In en, this message translates to:
+  /// **'{count} in the cart'**
+  String sellTileCartCount(Object count);
 
   /// No description provided for @sellCatalogueEmptyMessage.
   ///
@@ -2594,7 +2667,7 @@ abstract class AppLocalizations {
   /// No description provided for @settingsVerifyPinMessage.
   ///
   /// In en, this message translates to:
-  /// **'Confirm you are the shop admin with your 4-digit PIN. Your online account is created for {email}, and we will send a 6-digit code to that address to prove it is yours.'**
+  /// **'Confirm you are the shop admin with your 6-digit PIN. Your online account is created for {email}, and we will send a 6-digit code to that address to prove it is yours.'**
   String settingsVerifyPinMessage(Object email);
 
   /// No description provided for @settingsVerifyPinWrong.
@@ -2606,8 +2679,14 @@ abstract class AppLocalizations {
   /// No description provided for @settingsVerifyPinLabel.
   ///
   /// In en, this message translates to:
-  /// **'4-digit admin PIN'**
+  /// **'6-digit admin PIN'**
   String get settingsVerifyPinLabel;
+
+  /// No description provided for @settingsVerifyPinInvalid.
+  ///
+  /// In en, this message translates to:
+  /// **'Enter the 6-digit admin PIN'**
+  String get settingsVerifyPinInvalid;
 
   /// No description provided for @settingsVerifyCodeTitle.
   ///
@@ -2632,6 +2711,12 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'6-digit code'**
   String get settingsVerifyCodeLabel;
+
+  /// No description provided for @settingsVerifyCodeInvalid.
+  ///
+  /// In en, this message translates to:
+  /// **'Enter the 6-digit code'**
+  String get settingsVerifyCodeInvalid;
 
   /// No description provided for @settingsVerifyCodeSent.
   ///

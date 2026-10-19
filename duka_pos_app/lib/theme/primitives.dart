@@ -20,6 +20,10 @@ abstract final class Primitives {
   /// Dark-theme canvas — warm charcoal base.
   static const neutral10 = Color(0xFF1A1816);
 
+  /// Dark-theme surface one step above the canvas: the Material container
+  /// ladder's middle rung.
+  static const neutral12 = Color(0xFF1E1C1A);
+
   /// Dark-theme raised surface (cards, sheets, menus).
   static const neutral14 = Color(0xFF242220);
 
@@ -67,6 +71,25 @@ abstract final class Primitives {
 
   /// Card and sheet surface. Soft white.
   static const neutral100 = Color(0xFFFFFFFF);
+
+  // -------------------------------------------------------------------- veils and shadows
+  //
+  // Alphas over the page. Named for the value they hold — the ink and the
+  // alpha — because a scrim has no role of its own: it is the shadow of the
+  // sheet over the sheet below it.
+
+  /// A 60% warm-ink veil: the light theme's scrim.
+  static const scrimInk60 = Color(0x991A1816);
+
+  /// A 10% warm-ink shadow: the light theme's shadow. Warm ink rather than
+  /// pure black, because a black shadow on warm paper reads as a grey smudge.
+  static const shadowInk10 = Color(0x1A1A1816);
+
+  /// A 70% black veil: the dark theme's scrim, and the veil over a photograph.
+  static const scrimNight70 = Color(0xB3000000);
+
+  /// A 40% black shadow: the dark theme's shadow.
+  static const shadowNight40 = Color(0x66000000);
 
   // -------------------------------------------------------------------- botanical green (primary brand)
   /// Dark-theme primary container fill.
@@ -154,15 +177,42 @@ abstract final class Primitives {
   static const blue66 = Color(0xFF6AB0F5);
 
   // -------------------------------------------------------------------- external payment identities (NOT brand colors)
-  /// M-PESA / Safaricom green. Provider identity only.
-  static const mpesaGreen = Color(0xFF00A651);
+  //
+  // These are the only colours in the app that are somebody else's brand, and
+  // they are used to draw the payment-mix RING — a graphical object, which
+  // WCAG holds to 3:1 against what is behind it, not the 4.5:1 of text.
+  //
+  // A provider's identity green is the colour on its logo, and it is not the
+  // colour that survives a dark surface: #0066CC is 2.85:1 on the dark
+  // surface, which is a ring slice nobody can see the edge of. So each
+  // identity has a value per appearance, both holding the identity and both
+  // clearing 3:1 on the canvas AND the surface they are drawn on.
+  //
+  // The legend underneath names every slice, so colour is never the only thing
+  // identifying a tender — but "never the only channel" is not a licence to
+  // draw a slice in a colour the eye cannot find.
 
-  /// Airtel Money red. Provider identity only.
+  /// M-PESA / Safaricom green on the light canvas. Provider identity only.
+  static const mpesaGreenLight = Color(0xFF009C4E);
+
+  /// M-PESA / Safaricom green on the dark canvas. Provider identity only.
+  static const mpesaGreenDark = Color(0xFF00A651);
+
+  /// Airtel Money red. Provider identity only. One value: it clears 3:1 on
+  /// both canvases already.
   static const airtelRed = Color(0xFFEC1C24);
 
-  /// Equitel blue. Provider identity only.
-  static const equitelBlue = Color(0xFF0066CC);
+  /// Equitel blue on the light canvas. Provider identity only.
+  static const equitelBlueLight = Color(0xFF0066CC);
 
-  /// Cash neutral.
-  static const cashNeutral = Color(0xFF6B635A);
+  /// Equitel blue on the dark canvas. Provider identity only.
+  static const equitelBlueDark = Color(0xFF3E90E8);
+
+  /// Cash neutral on the light canvas.
+  static const cashNeutralLight = Color(0xFF6B635A);
+
+  /// Cash neutral on the dark canvas. The light theme's meaningful boundary:
+  /// it clears 3:1 on the dark surface, and a slice of cash that cannot be
+  /// found is a slice of cash that cannot be read.
+  static const cashNeutralDark = Color(0xFF8A8075);
 }
