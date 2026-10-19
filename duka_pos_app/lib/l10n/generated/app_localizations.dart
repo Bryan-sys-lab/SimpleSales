@@ -5390,7 +5390,7 @@ abstract class AppLocalizations {
   /// No description provided for @tankFormSubtitle.
   ///
   /// In en, this message translates to:
-  /// **'A tank is stocked by weight and poured by the cup. Add it once, then pour from it on Shot cups.'**
+  /// **'A tank is stocked by weight and poured by the keg cup. Add it once, then pour from it on keg cups.'**
   String get tankFormSubtitle;
 
   /// No description provided for @tankFieldName.
@@ -5404,18 +5404,6 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'Tusker, Balozi, Guinness — the beer, not the keg'**
   String get tankFieldNameHint;
-
-  /// No description provided for @tankFieldWeightKg.
-  ///
-  /// In en, this message translates to:
-  /// **'Stock on hand (kg)'**
-  String get tankFieldWeightKg;
-
-  /// No description provided for @tankFieldWeightKgHint.
-  ///
-  /// In en, this message translates to:
-  /// **'What the delivery note and the scale say. The app works out the litres from it.'**
-  String get tankFieldWeightKgHint;
 
   /// No description provided for @tankFieldMlPerKg.
   ///
@@ -5441,101 +5429,17 @@ abstract class AppLocalizations {
   /// **'How much the tank holds when full. A 50-litre keg is 50.'**
   String get tankFieldCapacityLHint;
 
-  /// No description provided for @tankFieldCupPrice.
+  /// No description provided for @tankFieldTankCount.
   ///
   /// In en, this message translates to:
-  /// **'Price per cup'**
-  String get tankFieldCupPrice;
+  /// **'Tanks on hand'**
+  String get tankFieldTankCount;
 
-  /// No description provided for @tankFieldCupPriceHint.
+  /// No description provided for @tankFieldTankCountHint.
   ///
   /// In en, this message translates to:
-  /// **'What a cup of this beer sells for. Set the same for both so the two cannot drift, or price each separately.'**
-  String get tankFieldCupPriceHint;
-
-  /// No description provided for @tankVariantsTitle.
-  ///
-  /// In en, this message translates to:
-  /// **'What is in the tank'**
-  String get tankVariantsTitle;
-
-  /// No description provided for @tankVariantDark.
-  ///
-  /// In en, this message translates to:
-  /// **'Dark'**
-  String get tankVariantDark;
-
-  /// No description provided for @tankVariantRegular.
-  ///
-  /// In en, this message translates to:
-  /// **'Regular'**
-  String get tankVariantRegular;
-
-  /// No description provided for @tankVariantHint.
-  ///
-  /// In en, this message translates to:
-  /// **'Two taps from one body of beer: each is poured and priced separately, and the tank\'s stock is the two added together.'**
-  String get tankVariantHint;
-
-  /// No description provided for @tankCreated.
-  ///
-  /// In en, this message translates to:
-  /// **'{name} added. Pour from it on Shot cups.'**
-  String tankCreated(Object name);
-
-  /// No description provided for @tankWeightInvalid.
-  ///
-  /// In en, this message translates to:
-  /// **'Enter the weight in kilograms — a number, not a word.'**
-  String get tankWeightInvalid;
-
-  /// No description provided for @tankCapacityInvalid.
-  ///
-  /// In en, this message translates to:
-  /// **'Enter how much the tank holds in litres.'**
-  String get tankCapacityInvalid;
-
-  /// No description provided for @tankMlPerKgInvalid.
-  ///
-  /// In en, this message translates to:
-  /// **'Enter how many millilitres one kilogram of it holds.'**
-  String get tankMlPerKgInvalid;
-
-  /// No description provided for @tankNameRequired.
-  ///
-  /// In en, this message translates to:
-  /// **'Give the tank a name — the beer it holds.'**
-  String get tankNameRequired;
-
-  /// No description provided for @tankWeightOverCapacity.
-  ///
-  /// In en, this message translates to:
-  /// **'{weight} kg is more than the tank holds.'**
-  String tankWeightOverCapacity(Object weight);
-
-  /// No description provided for @tankWeightLitres.
-  ///
-  /// In en, this message translates to:
-  /// **'{litres} L on hand'**
-  String tankWeightLitres(Object litres);
-
-  /// No description provided for @tankAddAction.
-  ///
-  /// In en, this message translates to:
-  /// **'Add the tank'**
-  String get tankAddAction;
-
-  /// No description provided for @tankPriceInvalid.
-  ///
-  /// In en, this message translates to:
-  /// **'Enter the price of a cup.'**
-  String get tankPriceInvalid;
-
-  /// No description provided for @tankSaveFailed.
-  ///
-  /// In en, this message translates to:
-  /// **'That tank could not be saved. Your numbers are still here — try again.'**
-  String get tankSaveFailed;
+  /// **'How many full tanks you are starting with. Each cup poured counts down from this number.'**
+  String get tankFieldTankCountHint;
 
   /// No description provided for @tankFieldTankCost.
   ///
@@ -5594,7 +5498,7 @@ abstract class AppLocalizations {
   /// No description provided for @tankCupSmallLabel.
   ///
   /// In en, this message translates to:
-  /// **'Small cup'**
+  /// **'Small keg cup'**
   String get tankCupSmallLabel;
 
   /// No description provided for @tankFieldSmallMl.
@@ -5618,13 +5522,13 @@ abstract class AppLocalizations {
   /// No description provided for @tankFieldSmallPriceHint.
   ///
   /// In en, this message translates to:
-  /// **'What one small cup sells for.'**
+  /// **'What one small keg cup sells for.'**
   String get tankFieldSmallPriceHint;
 
   /// No description provided for @tankCupBigLabel.
   ///
   /// In en, this message translates to:
-  /// **'Big cup'**
+  /// **'Big keg cup'**
   String get tankCupBigLabel;
 
   /// No description provided for @tankFieldBigMl.
@@ -5648,7 +5552,7 @@ abstract class AppLocalizations {
   /// No description provided for @tankFieldBigPriceHint.
   ///
   /// In en, this message translates to:
-  /// **'What one big cup sells for.'**
+  /// **'What one big keg cup sells for.'**
   String get tankFieldBigPriceHint;
 
   /// No description provided for @tankTapNameRequired.
@@ -5672,26 +5576,74 @@ abstract class AppLocalizations {
   /// No description provided for @tankSmallCupInvalid.
   ///
   /// In en, this message translates to:
-  /// **'Set a small cup size within the tank\'s capacity.'**
+  /// **'Set a small keg cup size within the tank\'s capacity.'**
   String get tankSmallCupInvalid;
 
   /// No description provided for @tankBigCupInvalid.
   ///
   /// In en, this message translates to:
-  /// **'Set a big cup size within the tank\'s capacity.'**
+  /// **'Set a big keg cup size within the tank\'s capacity.'**
   String get tankBigCupInvalid;
 
   /// No description provided for @tankSmallPriceInvalid.
   ///
   /// In en, this message translates to:
-  /// **'Set a small cup price.'**
+  /// **'Set a small keg cup price.'**
   String get tankSmallPriceInvalid;
 
   /// No description provided for @tankBigPriceInvalid.
   ///
   /// In en, this message translates to:
-  /// **'Set a big cup price.'**
+  /// **'Set a big keg cup price.'**
   String get tankBigPriceInvalid;
+
+  /// No description provided for @tankCapacityInvalid.
+  ///
+  /// In en, this message translates to:
+  /// **'Enter how much the tank holds in litres.'**
+  String get tankCapacityInvalid;
+
+  /// No description provided for @tankCountRequired.
+  ///
+  /// In en, this message translates to:
+  /// **'Enter how many tanks you have.'**
+  String get tankCountRequired;
+
+  /// No description provided for @tankMlPerKgInvalid.
+  ///
+  /// In en, this message translates to:
+  /// **'Enter how many millilitres one kilogram of it holds.'**
+  String get tankMlPerKgInvalid;
+
+  /// No description provided for @tankNameRequired.
+  ///
+  /// In en, this message translates to:
+  /// **'Give the tank a name — the beer it holds.'**
+  String get tankNameRequired;
+
+  /// No description provided for @tankAddAction.
+  ///
+  /// In en, this message translates to:
+  /// **'Add the tank'**
+  String get tankAddAction;
+
+  /// No description provided for @tankPriceInvalid.
+  ///
+  /// In en, this message translates to:
+  /// **'Enter the cost of a tank.'**
+  String get tankPriceInvalid;
+
+  /// No description provided for @tankSaveFailed.
+  ///
+  /// In en, this message translates to:
+  /// **'That tank could not be saved. Your numbers are still here — try again.'**
+  String get tankSaveFailed;
+
+  /// No description provided for @tankCreated.
+  ///
+  /// In en, this message translates to:
+  /// **'{name} added. Pour from it on keg cups.'**
+  String tankCreated(Object name);
 }
 
 class _AppLocalizationsDelegate

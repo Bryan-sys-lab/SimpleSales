@@ -3402,7 +3402,7 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get tankFormSubtitle =>
-      'A tank is stocked by weight and poured by the cup. Add it once, then pour from it on Shot cups.';
+      'A tank is stocked by weight and poured by the keg cup. Add it once, then pour from it on keg cups.';
 
   @override
   String get tankFieldName => 'Tank name';
@@ -3410,13 +3410,6 @@ class AppLocalizationsEn extends AppLocalizations {
   @override
   String get tankFieldNameHint =>
       'Tusker, Balozi, Guinness — the beer, not the keg';
-
-  @override
-  String get tankFieldWeightKg => 'Stock on hand (kg)';
-
-  @override
-  String get tankFieldWeightKgHint =>
-      'What the delivery note and the scale say. The app works out the litres from it.';
 
   @override
   String get tankFieldMlPerKg => 'Litres per kilogram';
@@ -3433,63 +3426,11 @@ class AppLocalizationsEn extends AppLocalizations {
       'How much the tank holds when full. A 50-litre keg is 50.';
 
   @override
-  String get tankFieldCupPrice => 'Price per cup';
+  String get tankFieldTankCount => 'Tanks on hand';
 
   @override
-  String get tankFieldCupPriceHint =>
-      'What a cup of this beer sells for. Set the same for both so the two cannot drift, or price each separately.';
-
-  @override
-  String get tankVariantsTitle => 'What is in the tank';
-
-  @override
-  String get tankVariantDark => 'Dark';
-
-  @override
-  String get tankVariantRegular => 'Regular';
-
-  @override
-  String get tankVariantHint =>
-      'Two taps from one body of beer: each is poured and priced separately, and the tank\'s stock is the two added together.';
-
-  @override
-  String tankCreated(Object name) {
-    return '$name added. Pour from it on Shot cups.';
-  }
-
-  @override
-  String get tankWeightInvalid =>
-      'Enter the weight in kilograms — a number, not a word.';
-
-  @override
-  String get tankCapacityInvalid => 'Enter how much the tank holds in litres.';
-
-  @override
-  String get tankMlPerKgInvalid =>
-      'Enter how many millilitres one kilogram of it holds.';
-
-  @override
-  String get tankNameRequired => 'Give the tank a name — the beer it holds.';
-
-  @override
-  String tankWeightOverCapacity(Object weight) {
-    return '$weight kg is more than the tank holds.';
-  }
-
-  @override
-  String tankWeightLitres(Object litres) {
-    return '$litres L on hand';
-  }
-
-  @override
-  String get tankAddAction => 'Add the tank';
-
-  @override
-  String get tankPriceInvalid => 'Enter the price of a cup.';
-
-  @override
-  String get tankSaveFailed =>
-      'That tank could not be saved. Your numbers are still here — try again.';
+  String get tankFieldTankCountHint =>
+      'How many full tanks you are starting with. Each cup poured counts down from this number.';
 
   @override
   String get tankFieldTankCost => 'Tank cost (KSh)';
@@ -3523,7 +3464,7 @@ class AppLocalizationsEn extends AppLocalizations {
   String get tankUnitKg => 'Kg';
 
   @override
-  String get tankCupSmallLabel => 'Small cup';
+  String get tankCupSmallLabel => 'Small keg cup';
 
   @override
   String get tankFieldSmallMl => 'Size (ml)';
@@ -3535,10 +3476,10 @@ class AppLocalizationsEn extends AppLocalizations {
   String get tankFieldSmallPrice => 'Price';
 
   @override
-  String get tankFieldSmallPriceHint => 'What one small cup sells for.';
+  String get tankFieldSmallPriceHint => 'What one small keg cup sells for.';
 
   @override
-  String get tankCupBigLabel => 'Big cup';
+  String get tankCupBigLabel => 'Big keg cup';
 
   @override
   String get tankFieldBigMl => 'Size (ml)';
@@ -3550,7 +3491,7 @@ class AppLocalizationsEn extends AppLocalizations {
   String get tankFieldBigPrice => 'Price';
 
   @override
-  String get tankFieldBigPriceHint => 'What one big cup sells for.';
+  String get tankFieldBigPriceHint => 'What one big keg cup sells for.';
 
   @override
   String get tankTapNameRequired => 'Give every tap a name.';
@@ -3563,15 +3504,43 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get tankSmallCupInvalid =>
-      'Set a small cup size within the tank\'s capacity.';
+      'Set a small keg cup size within the tank\'s capacity.';
 
   @override
   String get tankBigCupInvalid =>
-      'Set a big cup size within the tank\'s capacity.';
+      'Set a big keg cup size within the tank\'s capacity.';
 
   @override
-  String get tankSmallPriceInvalid => 'Set a small cup price.';
+  String get tankSmallPriceInvalid => 'Set a small keg cup price.';
 
   @override
-  String get tankBigPriceInvalid => 'Set a big cup price.';
+  String get tankBigPriceInvalid => 'Set a big keg cup price.';
+
+  @override
+  String get tankCapacityInvalid => 'Enter how much the tank holds in litres.';
+
+  @override
+  String get tankCountRequired => 'Enter how many tanks you have.';
+
+  @override
+  String get tankMlPerKgInvalid =>
+      'Enter how many millilitres one kilogram of it holds.';
+
+  @override
+  String get tankNameRequired => 'Give the tank a name — the beer it holds.';
+
+  @override
+  String get tankAddAction => 'Add the tank';
+
+  @override
+  String get tankPriceInvalid => 'Enter the cost of a tank.';
+
+  @override
+  String get tankSaveFailed =>
+      'That tank could not be saved. Your numbers are still here — try again.';
+
+  @override
+  String tankCreated(Object name) {
+    return '$name added. Pour from it on keg cups.';
+  }
 }
