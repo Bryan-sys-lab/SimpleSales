@@ -69,6 +69,7 @@ class PrinterChannel(
     private var connectedDevice: BluetoothDevice? = null
     private var pendingPermission: MethodChannel.Result? = null
     private var connectDeadlineJob: Runnable? = null
+    private var lastError: Exception? = null
 
     init {
         MethodChannel(messenger, CHANNEL).setMethodCallHandler(this)
@@ -293,7 +294,7 @@ class PrinterChannel(
                         try { fresh.close() } catch (_: Exception) {}
                     }
                 }
-                mainHandler.postDelayed(connectDeadlineJob, timeoutMs)
+                 mainHandler.postDelayed(connectDeadlineJob!!, timeoutMs)
                 try {
                     fresh.connect()
                 } finally {
@@ -333,7 +334,13 @@ class PrinterChannel(
         val candidates = listOf(
             { device.createRfcommSocketToServiceRecord(UUID.fromString(SPP_UUID)) },
             { device.createInsecureRfcommSocketToServiceRecord(UUID.fromString(SPP_UUID)) },
-            { device.createRfcommSocket(1) },
+            {
+                val method = device.javaClass.getMethod(
+                    "createRfcommSocket",
+                    java.lang.Integer.TYPE
+                )
+                method.invoke(device, 1) as BluetoothSocket
+            },
         )
         for (factory in candidates) {
             return try {
