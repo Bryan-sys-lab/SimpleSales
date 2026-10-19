@@ -2,7 +2,6 @@ package com.dukapos.simplepos
 
 import android.Manifest
 import android.bluetooth.BluetoothAdapter
-import android.bluetooth.BluetoothClass
 import android.bluetooth.BluetoothDevice
 import android.bluetooth.BluetoothSocket
 import android.content.Context
@@ -110,7 +109,7 @@ class PrinterChannel(
 
     /** Posts [result] to the main looper so Flutter never receives a channel
      * reply from the printer worker thread. */
-    private inline fun reply(result: MethodChannel.Result, block: () -> Boolean) {
+    private inline fun reply(result: MethodChannel.Result, crossinline block: () -> Any?) {
         mainHandler.post { result.success(block()) }
     }
 
@@ -232,8 +231,10 @@ class PrinterChannel(
     private fun isLikelyPrinter(device: BluetoothDevice): Boolean {
         val cls = device.bluetoothClass ?: return true
         val major = cls.deviceClass
-        return major != BluetoothClass.Device.MAJOR_AUDIO &&
-            major != BluetoothClass.Device.MAJOR_PHONE
+        // MAJOR_PHONE (0x02) and MAJOR_AUDIO (0x04) constants were removed
+        // from the public BluetoothClass.Device API in newer compileSdk levels.
+        // Use the raw values: https://source.android.com/docs/core/connections/bluetooth/BluetoothClass
+        return major != 0x04 && major != 0x02
     }
 
     private fun pair(address: String?): Boolean {
