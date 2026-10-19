@@ -44,8 +44,24 @@ class OidcService {
 
   static const _appAuth = FlutterAppAuth();
 
+  /// Single-flight guard: only one refresh can be in flight at a time, so
+  /// concurrent callers do not each rotate the token and the second does not
+  /// get `invalid_grant` and wipe the session.
+  static Future<String?>? _refreshing;
+
   static bool get isConfigured =>
       !_issuer.contains('example.com') && _clientId.isNotEmpty;
+
+  /// Fails loudly in release when the issuer is still the placeholder: a build
+  /// without `--dart-define=OIDC_ISSUER_URL=...` can never verify, and silent
+  /// failure means a shop that thinks it is online but is not.
+  static void assertConfigured() {
+    assert(() {
+      if (!_issuer.contains('example.com') && _clientId.isNotEmpty) return true;
+      throw AssertionError(
+          'OIDC is not configured: set OIDC_ISSUER_URL and OIDC_CLIENT_ID');
+    }());
+  }
 
   static Future<bool> get isAuthenticated async =>
       (await accessToken) != null || (await appSessionAccessToken) != null;
@@ -126,6 +142,17 @@ class OidcService {
 
     final refreshToken = await _storage.read(key: _refreshTokenKey);
     if (refreshToken == null || !isConfigured) return null;
+
+    // Single-flight: only one refresh at a time. Concurrent callers wait on
+    // the same future instead of each rotating the token — the second caller
+    // would otherwise get `invalid_grant` from a already-used refresh token
+    // and wipe the session.
+    return _refreshing ??= _refresh().whenComplete(() => _refreshing = null);
+  }
+
+  static Future<String?> _refresh() async {
+    final refreshToken = await _storage.read(key: _refreshTokenKey);
+    if (refreshToken == null || !isConfigured) return null;
     try {
       final result = await _appAuth.token(TokenRequest(
         _clientId,
@@ -141,8 +168,17 @@ class OidcService {
         expiry: result.accessTokenExpirationDateTime,
       );
       return result.accessToken;
+    } on FlutterAppAuthPlatformException catch (e) {
+      // Only a real rejection (`invalid_grant`) means the refresh token is
+      // dead and the session must be cleared. A network drop, a 5xx, or a
+      // timeout means the tokens are still valid — keep them and let the
+      // caller retry later.
+      final d = '${e.platformErrorDetails} ${e.message}'.toLowerCase();
+      if (d.contains('invalid_grant')) {
+        await _clearStoredTokens();
+      }
+      return null;
     } catch (_) {
-      await _clearStoredTokens();
       return null;
     }
   }

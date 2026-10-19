@@ -21,6 +21,10 @@
 /// an isolate boundary per shop — would be more machinery, not less work.
 library;
 
+import 'dart:io';
+
+import 'package:sqflite/sqflite.dart';
+
 import '../db/database_helper.dart';
 import '../models/audit_log.dart';
 import 'workspace_service.dart';
@@ -84,22 +88,15 @@ class CrossShopAuditReader {
   ///
   /// ## Why this is gated, not merely guarded
   ///
-  /// The walk repoints the process-global `DatabaseHelper` at each shop in turn,
-  /// and that singleton is what every other part of the app reads and writes
-  /// through. Anything that runs DURING the walk therefore sees whichever shop
-  /// was last opened: the `AutoSyncService` six-hour timer, an in-flight
-  /// `recordSale`, the failure recorder's own write. A `finally` restore fixes
-  /// the caller of this method and fixes nothing else.
-  ///
-  /// So the walk takes one lock and holds it for its whole duration, and the
-  /// restore is skipped if the owner changed shops while the walk was in
-  /// flight — that switch is newer information than ours, and overwriting it
-  /// would leave the till on a shop the owner has left.
+  /// The walk takes one lock and holds it for its whole duration, so nothing
+  /// else can move the process-global `DatabaseHelper` while it runs. Each shop
+  /// is read through its own read-only handle, so the walk never repoints the
+  /// singleton and nothing running during the walk — the auto-backup timer,
+  /// an in-flight `recordSale`, the failure recorder's own write — can land
+  /// in the wrong shop's database.
   static Future<List<ShopActivity>> readAllShops({
     int limitPerShop = 50,
   }) async {
-    // One holder for the whole tour: nothing else may move the database while
-    // we are walking every shop on the device.
     return DatabaseHelper.instance
         .withWorkspaceGate(() => _walkShops(limitPerShop: limitPerShop));
   }
@@ -121,17 +118,38 @@ class CrossShopAuditReader {
         // anything to say. A shop registered but never opened — one whose
         // owner tapped Verify and abandoned the flow — has no file at all.
         try {
-          // Holding the gate, so this switch cannot be interleaved with a
-          // user's or the tour's own: [switchWorkspaceHoldingGate].
-          await DatabaseHelper.instance
-              .switchWorkspaceHoldingGate(shop.workspaceKey);
-          final entries = await DatabaseHelper.instance
-              .ownerRelevantAudit(limit: limitPerShop);
-          results.add(ShopActivity(
-            shopName: shop.shopName,
-            workspaceKey: shop.workspaceKey,
-            entries: entries,
-          ));
+          // Each shop gets its own read-only handle: the cross-shop tour does
+          // not repoint this process-global `DatabaseHelper`, so the auto-backup
+          // timer, eTIMS flush, live refresh or an in-flight sale can never run
+          // against the wrong shop mid-tour.
+          final path = await DatabaseHelper.databasePathFor(shop.workspaceKey);
+          final file = File(path);
+          if (!(await file.exists())) {
+            // A registered shop whose database was never created — the owner
+            // tapped Verify and abandoned the flow. It contributes nothing,
+            // and it is not broken.
+            results.add(ShopActivity(
+              shopName: shop.shopName,
+              workspaceKey: shop.workspaceKey,
+              entries: const <AuditLogEntry>[],
+            ));
+            continue;
+          }
+          final db = await openDatabase(path,
+              readOnly: true, singleInstance: false);
+          try {
+            final entries = await ownerRelevantAuditForDb(
+              db,
+              limit: limitPerShop,
+            );
+            results.add(ShopActivity(
+              shopName: shop.shopName,
+              workspaceKey: shop.workspaceKey,
+              entries: entries,
+            ));
+          } finally {
+            await db.close();
+          }
         } catch (_) {
           // A shop that could not be read still gets a row, marked failed: an
           // owner who cannot see that a shop is unreadable will assume the
@@ -150,11 +168,6 @@ class CrossShopAuditReader {
       // screen: without it, a screen that read every shop would leave the till
       // pointed at the last one it happened to visit.
       //
-      // The key is the DATABASE's own, not the registry's, because the database
-      // is what this walk moved. A diff against the registry would miss every
-      // caller that pointed the database directly — which is what several tests
-      // and `AppState.loadOwner` do — and leave the till on the last shop.
-      //
       // A user switch that arrives while the walk runs cannot interleave with
       // it: the switch is gated, so it either runs before the walk or is queued
       // behind it, and a queued switch lands after this restore and wins — which
@@ -165,6 +178,45 @@ class CrossShopAuditReader {
     }
     return results;
   }
+
+  /// Runs `ownerRelevantAudit` against a specific, already-open read-only handle.
+  ///
+  /// The cross-shop tour uses this instead of repointing the global
+  /// `DatabaseHelper`, so a tour cannot strand the till on the wrong shop.
+  static Future<List<AuditLogEntry>> ownerRelevantAuditForDb(
+    Database db, {
+    required int limit,
+  }) async {
+    final placeholders =
+        List<String>.filled(_ownerVisibleActions.length, '?').join(', ');
+    final rows = await db.query(
+      'audit_log',
+      where: 'action IN ($placeholders)',
+      whereArgs: _ownerVisibleActions.map((a) => a.wire).toList(),
+      orderBy: 'created_at DESC, id DESC',
+      limit: limit,
+    );
+    return rows.map(AuditLogEntry.fromMap).toList();
+  }
+
+  /// The actions the owner's cross-shop view shows — sales and other noise are
+  /// excluded, just as `DatabaseHelper.ownerRelevantAudit` excludes them.
+  static const List<AuditAction> _ownerVisibleActions = <AuditAction>[
+    AuditAction.staffAdded,
+    AuditAction.staffRemoved,
+    AuditAction.staffPinReset,
+    AuditAction.productVariantRemoved,
+    AuditAction.barcodeRemoved,
+    AuditAction.barcodeKindChanged,
+    AuditAction.taxSettingsChanged,
+    AuditAction.paymentMethodChanged,
+    AuditAction.printerSaved,
+    AuditAction.backupErased,
+    AuditAction.backupRestored,
+    AuditAction.shopCreated,
+    AuditAction.shopSwitched,
+    AuditAction.identityLinked,
+  ];
 
   /// Every audit row on this device, merged and sorted newest-first.
   ///

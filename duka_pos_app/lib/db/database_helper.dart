@@ -154,6 +154,17 @@ class DatabaseHelper {
         version: _schemaVersion, onCreate: _onCreate, onUpgrade: _onUpgrade);
   }
 
+  /// The file path a workspace's database lives at, computed the same way
+  /// `_initDb` computes it — so a cross-shop reader can open its own read-only
+  /// handle instead of repointing this process-global singleton.
+  static Future<String> databasePathFor(String workspaceKey) async {
+    final dbPath = await getDatabasesPath();
+    final safeKey = workspaceKey.replaceAll(RegExp(r'[^A-Za-z0-9_-]'), '_');
+    return workspaceKey == 'legacy'
+        ? join(dbPath, 'duka_pos.db')
+        : join(dbPath, 'duka_pos_$safeKey.db');
+  }
+
   /// Test-only: a fresh, isolated in-memory instance with the real schema,
   /// bypassing getDatabasesPath() (which needs a platform channel that
   /// doesn't exist in a plain `flutter test` run). Pair with
@@ -536,6 +547,9 @@ SELECT name FROM staff GROUP BY name HAVING COUNT(*) = 1
     // Backfill: for receipts issued before v24, rebuild the old-style
     // verification URL from the receipt number so reprints still carry a
     // scannable QR code. New receipts get KRA's own qr_payload directly.
+    // etims_receipt_number only exists on newer schemas; skip the backfill
+    // on legacy databases where that column was never added.
+    if (!salesNames.contains('etims_receipt_number')) return;
     const backendUrl = String.fromEnvironment(
       'BACKEND_URL',
       defaultValue: 'https://localhost:3000/api',
@@ -2660,6 +2674,58 @@ SELECT name FROM staff GROUP BY name HAVING COUNT(*) = 1
       for (final item in itemRows) {
         (itemsBySale[item['sale_id']] ??= []).add(item);
       }
+    }
+    final sales = <Sale>[];
+    for (final r in rows) {
+      sales.add(Sale.fromMap(r).let((s) => Sale(
+            id: s.id,
+            staffName: s.staffName,
+            total: s.total,
+            profit: s.profit,
+            createdAt: s.createdAt,
+            paymentMethod: s.paymentMethod,
+            paymentReference: s.paymentReference,
+            amountTendered: s.amountTendered,
+            changeGiven: s.changeGiven,
+            items: (itemsBySale[r['id']] ?? const <Map<String, dynamic>>[])
+                .map(SaleItem.fromMap)
+                .toList(),
+          )));
+    }
+    return sales;
+  }
+
+  /// Ascending sales after [after], used by Sheets sync so a shop with more
+  /// than one batch's worth of unsynced sales does not lose the older ones.
+  ///
+  /// Returns oldest first so `appendSales` can walk the backlog in bounded
+  /// batches without skipping the tail.
+  Future<List<Sale>> getSalesAfter(DateTime? after, {required int limit}) async {
+    final db = await database;
+    final where = <String>[];
+    final args = <dynamic>[];
+    if (after != null) {
+      where.add('created_at > ?');
+      args.add(after.toIso8601String());
+    }
+    final rows = await db.query(
+      'sales',
+      where: where.isEmpty ? null : where.join(' AND '),
+      whereArgs: args,
+      orderBy: 'created_at ASC, id ASC',
+      limit: limit,
+    );
+    if (rows.isEmpty) return [];
+    Map<dynamic, List<Map<String, dynamic>>> itemsBySale =
+        <dynamic, List<Map<String, dynamic>>>{};
+    final saleIds = rows.map((row) => row['id']).toList();
+    final itemRows = await db.query(
+      'sale_items',
+      where: 'sale_id IN (${List.filled(saleIds.length, '?').join(',')})',
+      whereArgs: saleIds,
+    );
+    for (final item in itemRows) {
+      (itemsBySale[item['sale_id']] ??= []).add(item);
     }
     final sales = <Sale>[];
     for (final r in rows) {

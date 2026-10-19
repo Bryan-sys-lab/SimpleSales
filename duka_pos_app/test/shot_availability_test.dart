@@ -111,15 +111,24 @@ void main() {
   });
 
   group('shots per bottle', () {
-    test('a countable drink is never pourable into a cup', () {
-      // Sanity on the input the screens actually pass: a shot needs a volume,
-      // and `each` has none.
+    test('a countable drink with no volume is not pourable', () {
+      // A countable drink has nothing to measure against unless a size exists.
       final verdict = shotAvailability(
-        spirit(unit: ProductUnit.each, bottleMl: 750),
+        spirit(unit: ProductUnit.each, bottleMl: 0),
         cup(),
         5,
       );
       expect(verdict.canPour, isFalse);
+    });
+
+    test('a volumetric drink with volume is pourable', () {
+      // Once upsertShotCup has derived a product to millilitres, it pours.
+      final verdict = shotAvailability(
+        spirit(unit: ProductUnit.millilitre, bottleMl: 750),
+        cup(),
+        5,
+      );
+      expect(verdict.canPour, isTrue);
     });
   });
 }

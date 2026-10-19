@@ -18,6 +18,7 @@ import '../services/backend_service.dart';
 import '../services/live_refresh_mixin.dart';
 import '../services/live_channel_service.dart';
 import '../services/session_refresh_mixin.dart';
+import '../services/workspace_service.dart';
 import '../ui/components/controls.dart';
 import '../utils/error_utils.dart';
 import '../utils/money.dart';
@@ -1357,12 +1358,16 @@ class _ProductEditorState extends State<_ProductEditor> {
     final l10n = AppLocalizations.of(context);
     try {
       if (removed) {
-        await ProductImageStore.delete(productId);
+        await ProductImageStore.delete(
+          productId,
+          workspaceKey: await WorkspaceService.activeWorkspaceKey(),
+        );
         await DatabaseHelper.instance.setProductImage(null, productId);
       } else {
         final relative = await ProductImageStore.save(
           source!,
           productId: productId,
+          workspaceKey: await WorkspaceService.activeWorkspaceKey(),
         );
         await DatabaseHelper.instance.setProductImage(relative, productId);
       }

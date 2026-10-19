@@ -1046,6 +1046,10 @@ class AppLocalizationsEn extends AppLocalizations {
   String get importsPriceLabel => 'This price';
 
   @override
+  String get importSaveFailed =>
+      'That row could not be saved. Try again; if it keeps happening, contact support.';
+
+  @override
   String inventoryLowPriceMessage(Object cost, Object name, Object price) {
     return '$name would sell at a loss (KSh $price vs cost KSh $cost). Save anyway?';
   }
@@ -2379,6 +2383,10 @@ class AppLocalizationsEn extends AppLocalizations {
   String get variantSizeHelper => 'Millilitres or litres — 500ml, 0.5L, 1.5 L.';
 
   @override
+  String get variantSizeLeaveBlankHelper =>
+      'Leave blank if it isn\'t sold by volume';
+
+  @override
   String get variantSizeHintLitre => '0.5L';
 
   @override
@@ -3482,4 +3490,88 @@ class AppLocalizationsEn extends AppLocalizations {
   @override
   String get tankSaveFailed =>
       'That tank could not be saved. Your numbers are still here — try again.';
+
+  @override
+  String get tankFieldTankCost => 'Tank cost (KSh)';
+
+  @override
+  String get tankFieldTankCostHint =>
+      'What the whole tank cost to fill. Split evenly across each tap.';
+
+  @override
+  String tankTapLabel(Object n) {
+    return 'Tap $n';
+  }
+
+  @override
+  String get tankFieldTapName => 'Tap name';
+
+  @override
+  String get tankFieldTapNameHint =>
+      'Dark, Regular, IPA — what this tap is called.';
+
+  @override
+  String get tankFieldTapAmount => 'Loaded';
+
+  @override
+  String get tankFieldTapAmountHint => 'How much is in this tap right now.';
+
+  @override
+  String get tankUnitLitres => 'Litres';
+
+  @override
+  String get tankUnitKg => 'Kg';
+
+  @override
+  String get tankCupSmallLabel => 'Small cup';
+
+  @override
+  String get tankFieldSmallMl => 'Size (ml)';
+
+  @override
+  String get tankFieldSmallMlHint => '330 for a standard serving.';
+
+  @override
+  String get tankFieldSmallPrice => 'Price';
+
+  @override
+  String get tankFieldSmallPriceHint => 'What one small cup sells for.';
+
+  @override
+  String get tankCupBigLabel => 'Big cup';
+
+  @override
+  String get tankFieldBigMl => 'Size (ml)';
+
+  @override
+  String get tankFieldBigMlHint => '500 for a large serving.';
+
+  @override
+  String get tankFieldBigPrice => 'Price';
+
+  @override
+  String get tankFieldBigPriceHint => 'What one big cup sells for.';
+
+  @override
+  String get tankTapNameRequired => 'Give every tap a name.';
+
+  @override
+  String get tankTapAmountInvalid => 'Enter how much is loaded in this tap.';
+
+  @override
+  String get tankTapOverCapacity => 'This tap holds more than the tank does.';
+
+  @override
+  String get tankSmallCupInvalid =>
+      'Set a small cup size within the tank\'s capacity.';
+
+  @override
+  String get tankBigCupInvalid =>
+      'Set a big cup size within the tank\'s capacity.';
+
+  @override
+  String get tankSmallPriceInvalid => 'Set a small cup price.';
+
+  @override
+  String get tankBigPriceInvalid => 'Set a big cup price.';
 }

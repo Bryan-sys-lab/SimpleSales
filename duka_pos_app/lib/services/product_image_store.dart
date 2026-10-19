@@ -93,10 +93,15 @@ class ProductImageStore {
   /// The relative path a product's photograph is stored under, or null when the
   /// product has none.
   ///
+  /// Namespaced by workspace so product #5 in shop B cannot overwrite shop A's.
   /// Null is a real answer — most products will never have a photo, and a blank
   /// placeholder must not be mistaken for a broken image.
-  static String? relativePathFor(int productId) =>
-      '$_folder/$productId.$_extension';
+  static String? relativePathFor(int productId, {String? workspaceKey}) {
+    final folder = workspaceKey == null
+        ? _folder
+        : '$_folder/${workspaceKey.replaceAll(RegExp(r'[^A-Za-z0-9_-]'), '_')}';
+    return '$folder/$productId.$_extension';
+  }
 
   /// The relative path this shop's avatar is stored under.
   ///
@@ -116,7 +121,11 @@ class ProductImageStore {
   static Future<String> saveAvatar(File source) =>
       _saveAs(source, avatarRelativePath);
 
-  static Future<String> save(File source, {required int productId}) async {
+  static Future<String> save(
+    File source, {
+    required int productId,
+    String? workspaceKey,
+  }) async {
     if (!await source.exists()) {
       throw const ProductImageException(ProductImageFailure.missing);
     }
@@ -132,7 +141,7 @@ class ProductImageStore {
     // from a phone camera does not arrive sideways.
     final encoded = img.encodeJpg(resized, quality: _quality);
 
-    return _saveEncoded(encoded, relativePathFor(productId)!);
+    return _saveEncoded(encoded, relativePathFor(productId, workspaceKey: workspaceKey)!);
   }
 
   /// Re-encodes [source] into [relativePath], under its own folder.
@@ -170,14 +179,38 @@ class ProductImageStore {
   ///
   /// Safe to call for a product that never had one: removing a photo that is
   /// already absent is the state the caller asked for, not an error.
-  static Future<void> delete(int productId) async {
+  static Future<void> delete(int productId, {String? workspaceKey}) async {
     try {
-      final file = await _fileFor(productId);
+      final file = await _fileFor(productId, workspaceKey: workspaceKey);
       if (await file.exists()) await file.delete();
     } on FileSystemException {
       // A photo that cannot be deleted is a photo this device will keep showing.
       // Nothing useful can be done about it here, and the caller has already
       // recorded the intent to remove it.
+    }
+  }
+
+  /// Deletes every photograph under [workspaceKey], and the account avatar.
+  /// Used by account deletion so a deleted shop leaves no photographs behind.
+  static Future<void> deleteAllForWorkspace(String workspaceKey) async {
+    final safeKey = workspaceKey.replaceAll(RegExp(r'[^A-Za-z0-9_-]'), '_');
+    final folder = '$_folder/$safeKey';
+    final docs = await getApplicationDocumentsDirectory();
+    final dir = Directory('${docs.path}/$folder');
+    if (await dir.exists()) {
+      try {
+        await dir.delete(recursive: true);
+      } on FileSystemException {
+        // Best effort — the account is already erased; leftover photos are
+        // unreadable without the key anyway.
+      }
+    }
+    // Also erase the per-device avatar: a deleted account leaves no face.
+    try {
+      final avatar = await _fileForPath(avatarRelativePath);
+      if (await avatar.exists()) await avatar.delete();
+    } on FileSystemException {
+      // Best effort.
     }
   }
 
@@ -205,8 +238,8 @@ class ProductImageStore {
     return File('${docs.path}/$relativePath');
   }
 
-  static Future<File> _fileFor(int productId) async =>
-      _fileForPath(relativePathFor(productId)!);
+  static Future<File> _fileFor(int productId, {String? workspaceKey}) async =>
+      _fileForPath(relativePathFor(productId, workspaceKey: workspaceKey)!);
 
   /// Scales [source] so its longest edge is at most [_maxEdge].
   ///

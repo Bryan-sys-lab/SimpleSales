@@ -14,6 +14,7 @@ import 'auth_service.dart';
 import 'backend_service.dart';
 import 'encrypted_backup_service.dart';
 import 'oidc_service.dart';
+import 'product_image_store.dart';
 import 'staff_credential_cache.dart';
 import 'workspace_service.dart';
 
@@ -524,6 +525,17 @@ static String _newDeletionId(String now) {
       // this is defensive rather than load-bearing. Nothing here may throw.
     }
     await OidcService.clearAppSession();
+
+    // Erase every product photograph and the account avatar: a deleted account
+    // leaves no photographs behind, in any workspace.
+    try {
+      final activeKey = await WorkspaceService.activeWorkspaceKey();
+      await ProductImageStore.deleteAllForWorkspace(activeKey);
+    } catch (_) {
+      // Best effort — the account is already erased; leftover photos are
+      // unreadable without the key anyway.
+    }
+
     await WorkspaceService.register(
       workspaceKey: await WorkspaceService.activeWorkspaceKey(),
       tenantId: null,

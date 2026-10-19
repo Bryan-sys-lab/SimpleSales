@@ -367,15 +367,14 @@ class _CompleteSheetState extends State<_CompleteSheet> {
       // the form supplies the values the owner edited.
       final ImportDraft draft = widget.row.draft;
 
-      // An attention-severity problem sits NEXT TO a product the import already
-      // wrote, and the screen cannot tell those rows from refused ones. So the
-      // row is completed against the product it describes — matched on the name
-      // the file used, not on the name now in the field — instead of inserting a
-      // second row for the same product.
+      // Match on the name the file used — but only against active products.
+      // A repaired row must not land on an inactive duplicate and vanish from
+      // the till; inactive products are not matched at all, so a name that
+      // exists only among inactive rows gets a new active product instead.
       final DatabaseHelper db = DatabaseHelper.instance;
       final String fileNamed = draft.name.trim().toLowerCase();
       Product? existing;
-      for (final Product candidate in await db.getProducts(activeOnly: false)) {
+      for (final Product candidate in await db.getProducts(activeOnly: true)) {
         if (candidate.name.trim().toLowerCase() == fileNamed) {
           existing = candidate;
           break;
@@ -410,11 +409,38 @@ class _CompleteSheetState extends State<_CompleteSheet> {
       }
 
       await db.upsertProduct(product);
+
+      // Carry the existing product's barcodes over: a repaired row describes
+      // the same product the import already wrote, and its codes are the
+      // product's identity at the till. `upsertProduct` rewrites the whole
+      // product row but does not touch `product_barcodes`, which lives in its
+      // own table — so the codes survive on the existing row, but only if we
+      // do not lose the existing row to a name-match against an inactive one.
+      if (existing != null) {
+        final codes = await db.getBarcodesForProduct(existing.id!);
+        if (codes.isNotEmpty) {
+          await db.addBarcodes(codes.map((c) => ProductBarcode(
+            productId: product.id!,
+            barcode: c.barcode,
+            kind: c.kind,
+          )).toList());
+        }
+      }
+
       await db.resolveImportProblem(widget.row.problem.id!);
 
       if (!mounted) return;
       Navigator.of(context).pop();
       await widget.onSaved();
+    } catch (error) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            AppLocalizations.of(context).importSaveFailed,
+          ),
+        ),
+      );
     } finally {
       if (mounted) setState(() => _saving = false);
     }

@@ -1763,6 +1763,12 @@ abstract class AppLocalizations {
   /// **'This price'**
   String get importsPriceLabel;
 
+  /// No description provided for @importSaveFailed.
+  ///
+  /// In en, this message translates to:
+  /// **'That row could not be saved. Try again; if it keeps happening, contact support.'**
+  String get importSaveFailed;
+
   /// No description provided for @inventoryLowPriceMessage.
   ///
   /// In en, this message translates to:
@@ -3918,6 +3924,12 @@ abstract class AppLocalizations {
   /// **'Millilitres or litres — 500ml, 0.5L, 1.5 L.'**
   String get variantSizeHelper;
 
+  /// No description provided for @variantSizeLeaveBlankHelper.
+  ///
+  /// In en, this message translates to:
+  /// **'Leave blank if it isn\'t sold by volume'**
+  String get variantSizeLeaveBlankHelper;
+
   /// No description provided for @variantSizeHintLitre.
   ///
   /// In en, this message translates to:
@@ -5524,6 +5536,162 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'That tank could not be saved. Your numbers are still here — try again.'**
   String get tankSaveFailed;
+
+  /// No description provided for @tankFieldTankCost.
+  ///
+  /// In en, this message translates to:
+  /// **'Tank cost (KSh)'**
+  String get tankFieldTankCost;
+
+  /// No description provided for @tankFieldTankCostHint.
+  ///
+  /// In en, this message translates to:
+  /// **'What the whole tank cost to fill. Split evenly across each tap.'**
+  String get tankFieldTankCostHint;
+
+  /// No description provided for @tankTapLabel.
+  ///
+  /// In en, this message translates to:
+  /// **'Tap {n}'**
+  String tankTapLabel(Object n);
+
+  /// No description provided for @tankFieldTapName.
+  ///
+  /// In en, this message translates to:
+  /// **'Tap name'**
+  String get tankFieldTapName;
+
+  /// No description provided for @tankFieldTapNameHint.
+  ///
+  /// In en, this message translates to:
+  /// **'Dark, Regular, IPA — what this tap is called.'**
+  String get tankFieldTapNameHint;
+
+  /// No description provided for @tankFieldTapAmount.
+  ///
+  /// In en, this message translates to:
+  /// **'Loaded'**
+  String get tankFieldTapAmount;
+
+  /// No description provided for @tankFieldTapAmountHint.
+  ///
+  /// In en, this message translates to:
+  /// **'How much is in this tap right now.'**
+  String get tankFieldTapAmountHint;
+
+  /// No description provided for @tankUnitLitres.
+  ///
+  /// In en, this message translates to:
+  /// **'Litres'**
+  String get tankUnitLitres;
+
+  /// No description provided for @tankUnitKg.
+  ///
+  /// In en, this message translates to:
+  /// **'Kg'**
+  String get tankUnitKg;
+
+  /// No description provided for @tankCupSmallLabel.
+  ///
+  /// In en, this message translates to:
+  /// **'Small cup'**
+  String get tankCupSmallLabel;
+
+  /// No description provided for @tankFieldSmallMl.
+  ///
+  /// In en, this message translates to:
+  /// **'Size (ml)'**
+  String get tankFieldSmallMl;
+
+  /// No description provided for @tankFieldSmallMlHint.
+  ///
+  /// In en, this message translates to:
+  /// **'330 for a standard serving.'**
+  String get tankFieldSmallMlHint;
+
+  /// No description provided for @tankFieldSmallPrice.
+  ///
+  /// In en, this message translates to:
+  /// **'Price'**
+  String get tankFieldSmallPrice;
+
+  /// No description provided for @tankFieldSmallPriceHint.
+  ///
+  /// In en, this message translates to:
+  /// **'What one small cup sells for.'**
+  String get tankFieldSmallPriceHint;
+
+  /// No description provided for @tankCupBigLabel.
+  ///
+  /// In en, this message translates to:
+  /// **'Big cup'**
+  String get tankCupBigLabel;
+
+  /// No description provided for @tankFieldBigMl.
+  ///
+  /// In en, this message translates to:
+  /// **'Size (ml)'**
+  String get tankFieldBigMl;
+
+  /// No description provided for @tankFieldBigMlHint.
+  ///
+  /// In en, this message translates to:
+  /// **'500 for a large serving.'**
+  String get tankFieldBigMlHint;
+
+  /// No description provided for @tankFieldBigPrice.
+  ///
+  /// In en, this message translates to:
+  /// **'Price'**
+  String get tankFieldBigPrice;
+
+  /// No description provided for @tankFieldBigPriceHint.
+  ///
+  /// In en, this message translates to:
+  /// **'What one big cup sells for.'**
+  String get tankFieldBigPriceHint;
+
+  /// No description provided for @tankTapNameRequired.
+  ///
+  /// In en, this message translates to:
+  /// **'Give every tap a name.'**
+  String get tankTapNameRequired;
+
+  /// No description provided for @tankTapAmountInvalid.
+  ///
+  /// In en, this message translates to:
+  /// **'Enter how much is loaded in this tap.'**
+  String get tankTapAmountInvalid;
+
+  /// No description provided for @tankTapOverCapacity.
+  ///
+  /// In en, this message translates to:
+  /// **'This tap holds more than the tank does.'**
+  String get tankTapOverCapacity;
+
+  /// No description provided for @tankSmallCupInvalid.
+  ///
+  /// In en, this message translates to:
+  /// **'Set a small cup size within the tank\'s capacity.'**
+  String get tankSmallCupInvalid;
+
+  /// No description provided for @tankBigCupInvalid.
+  ///
+  /// In en, this message translates to:
+  /// **'Set a big cup size within the tank\'s capacity.'**
+  String get tankBigCupInvalid;
+
+  /// No description provided for @tankSmallPriceInvalid.
+  ///
+  /// In en, this message translates to:
+  /// **'Set a small cup price.'**
+  String get tankSmallPriceInvalid;
+
+  /// No description provided for @tankBigPriceInvalid.
+  ///
+  /// In en, this message translates to:
+  /// **'Set a big cup price.'**
+  String get tankBigPriceInvalid;
 }
 
 class _AppLocalizationsDelegate

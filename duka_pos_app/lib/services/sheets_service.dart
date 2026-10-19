@@ -397,7 +397,10 @@ class SheetsService {
     var cursor = after;
     DateTime? newest;
     while (true) {
-      final sales = await _db.getSales(after: cursor, limit: batchSize);
+      // Oldest first so the tail is never skipped: with more than one batch of
+      // unsynced sales, a newest-first query returns only the head and the
+      // cursor then jumps past everything older.
+      final sales = await _db.getSalesAfter(cursor, limit: batchSize);
       if (sales.isEmpty) return newest;
       final rows = <List<dynamic>>[];
       DateTime? batchNewest;
@@ -416,12 +419,8 @@ class SheetsService {
         valueInputOption: 'RAW',
       );
       newest = batchNewest;
-      // Report progress so the caller can persist the watermark per batch and
-      // never re-append rows that already reached the sheet, even if a later
-      // batch fails.
       await onBatch?.call(batchNewest!);
-      // Rows come back newest-first, so a batch that did not fill up means the
-      // tail is drained and another pass would only re-read the last batch.
+      // A batch that did not fill up means the tail is drained.
       if (sales.length < batchSize || batchNewest == null) return newest;
       cursor = batchNewest;
     }

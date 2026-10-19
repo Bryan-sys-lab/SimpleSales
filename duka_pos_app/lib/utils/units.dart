@@ -207,7 +207,7 @@ class Volume {
     if (text.isEmpty) return invalid;
 
     final match = RegExp(r'^(-?\d+(?:\.\d+)?)\s*'
-            r'(ml|millilitre?s?|milliliter?s?|l|litre?s?|liter?s?)\s*$')
+            r'(ml|millilitre?s?|milliliter?s?|l|litre?s?|liter?s?)?\s*$')
         .firstMatch(text);
     if (match == null) return invalid;
 
@@ -237,8 +237,20 @@ class Volume {
       // 50 millilitres.
       return amount < 0 ? invalid : Volume(amount * 1000);
     }
-    // Declared millilitre or cup (or undeclared): a bare number is millilitres.
-    return amount < 0 ? invalid : Volume(amount);
+    // Declared millilitre or cup: a bare number stays millilitres — no litre
+    // guess, so a 5 ml shot cup does not become 5 litres.
+    if (declared == ProductUnit.millilitre ||
+        declared == ProductUnit.cup) {
+      return amount < 0 ? invalid : Volume(amount);
+    }
+    // Declared countable, or no declaration at all: a bare number under 10 is
+    // plausibly litres typed without the suffix ("0.5"), while anything at or
+    // above 10 is plausibly millilitres ("750"). This guess is the one the
+    // existing convention relies on, and keeping it means every existing export
+    // still reads back unchanged.
+    return amount < 0
+        ? invalid
+        : Volume(amount < 10 ? amount * 1000 : amount);
   }
 
   /// Renders millilitres the way the editor and a supplier sheet both prefer:
