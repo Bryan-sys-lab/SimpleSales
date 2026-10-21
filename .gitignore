@@ -14,6 +14,14 @@
 Thumbs.db
 *.swp
 
+# Partially-downloaded files. Chrome names a download whose filename it has
+# not confirmed yet "Unconfirmed <n>.crdownload" and drops it wherever the
+# user was browsing — which, in this repo, is inside an ASSETS folder. It is
+# not a source file and it is not small: one of these was 10MB.
+*.crdownload
+*.part
+*.tmp
+
 # Signing material — defence in depth. duka_pos_app/android/.gitignore already
 # covers these; the rules are repeated at the repo root so a keystore generated
 # anywhere else in the tree (a scratch copy, a keytool run from the home

@@ -7,6 +7,15 @@ publish_to: 'none'
 # The build number must increase on every release: Android refuses to install a
 # build whose code is not higher than the installed one.
 #
+# 2.0.0+28 — the build number 27 was spent by the v2.0.0+27 tag, whose release
+# never published: the tag was minted from the release HISTORY (highest + 1)
+# onto a commit whose pubspec still declared 26, so the APK that built from
+# that commit carried versionCode 26 and the release refused to publish it
+# under a tag naming 27. The tag outlived the failed release, and the
+# auto-release — which now takes its number from pubspec, so the tag and the
+# APK can never disagree — correctly refuses to hand 27 out twice. 28 is the
+# next number, and this commit is the one it is released from.
+#
 # 2.0.0+1 — the app was renamed to Simple POS and given a NEW package id
 # (com.dukapos.simplepos; the previous id was com.dukapos.duka_pos).
 #
@@ -17,7 +26,7 @@ publish_to: 'none'
 # carries over automatically — hence a major version rather than a patch.
 # It also means the release key and the update checker's identity both need
 # to be read as new, so do not expect 1.1.0 devices to see this as an update.
-version: 2.0.0+27
+version: 2.0.0+28
 
 environment:
   sdk: '>=3.0.0 <4.0.0'
