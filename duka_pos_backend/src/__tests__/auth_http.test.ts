@@ -47,7 +47,7 @@ describe('the verify flow is reachable before any token exists', () => {
     const request = await http();
     const response = await request.post('/api/auth/link').send({
       email: 'owner@example.com',
-      pin: '1234',
+      pin: '123456',
       shopName: 'Amina Duka',
       ownerName: 'Amina',
     });
@@ -61,7 +61,7 @@ describe('the verify flow is reachable before any token exists', () => {
     const request = await http();
     const response = await request.post('/api/auth/link').send({
       email: 'owner@example.com',
-      pin: '1234',
+      pin: '123456',
       shopName: 'Amina Duka',
       ownerName: 'Amina',
     });
@@ -69,7 +69,7 @@ describe('the verify flow is reachable before any token exists', () => {
     expect(response.body.code).toBe('VERIFICATION_NOT_CONFIGURED');
   });
 
-  it('rejects a body that is not a 4-digit PIN before it reaches any of that', async () => {
+  it('rejects a body that is not a 6-digit PIN before it reaches any of that', async () => {
     const request = await http();
     const response = await request.post('/api/auth/link').send({
       email: 'owner@example.com',
@@ -81,11 +81,33 @@ describe('the verify flow is reachable before any token exists', () => {
     expect(response.body.error).toBe('Invalid request');
   });
 
+  it('refuses a four-digit admin PIN, because the admin PIN is six', async () => {
+    // The owner's PIN is an ADMIN PIN: it is asked for in front of the things
+    // it guards — deleting the account, changing the shop's settings — and a
+    // four-digit admin PIN is a password somebody can guess while they wait
+    // for the till to think.
+    //
+    // A STAFF PIN is still four digits. It is a different PIN, typed forty
+    // times a day at a counter, and it never comes here.
+    const request = await http();
+    // Its OWN address: the link route is rate-limited per address, and this
+    // is a test about the body, not about the limit. Sharing an address with
+    // the cases above would make it the case that trips the limit.
+    const response = await request.post('/api/auth/link').send({
+      email: 'four-digits@example.com',
+      pin: '1234',
+      shopName: 'Amina Duka',
+      ownerName: 'Amina',
+    });
+    expect(response.status).toBe(400);
+    expect(response.body.error).toBe('Invalid request');
+  });
+
   it('rejects a body that is not an email address', async () => {
     const request = await http();
     const response = await request.post('/api/auth/link').send({
       email: 'not-an-email',
-      pin: '1234',
+      pin: '123456',
       shopName: 'Amina Duka',
       ownerName: 'Amina',
     });
@@ -96,7 +118,7 @@ describe('the verify flow is reachable before any token exists', () => {
     const request = await http();
     const response = await request.post('/api/auth/verify').send({
       email: 'owner@example.com',
-      pin: '1234',
+      pin: '123456',
       code: '12345',
     });
     expect(response.status).toBe(400);

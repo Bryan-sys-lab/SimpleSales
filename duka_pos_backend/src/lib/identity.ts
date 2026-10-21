@@ -2,7 +2,7 @@
  * Authoritative online identity rules.
  *
  * Duka POS has exactly one online identity: the self-hosted Keycloak/OIDC
- * account. The local 4-digit PIN is a device-bound offline unlock for the till
+ * account. The local 6-digit admin PIN is a device-bound offline unlock for the till
  * and is never a second identity. To stop an app from claiming a shop it does
  * not own, provisioning requires the email in the verified OIDC token to match
  * the email the operator typed during local setup.

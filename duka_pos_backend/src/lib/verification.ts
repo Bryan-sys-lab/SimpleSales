@@ -16,7 +16,7 @@
  *     the shop owner pays for.
  *
  * The PIN is hashed by the same function as the code, deliberately: the local
- * 4-digit admin PIN is what binds the two halves of the flow to the same
+ * 6-digit admin PIN is what binds the two halves of the flow to the same
  * person, so it is compared by the same constant-time path rather than held
  * aside as a "trusted" input.
  */

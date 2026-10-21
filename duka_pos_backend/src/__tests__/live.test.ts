@@ -107,7 +107,19 @@ describe('tenant scoping', () => {
 
 describe('reasons', () => {
   it('is a closed set, so the phone never meets a reason it has not seen', () => {
-    expect([...LIVE_REASONS].sort()).toEqual(['products', 'sales', 'settings', 'stock']);
+    // The set grew when the till started writing its own records: a drawer
+    // that was counted, a sale that came back, a delivery that arrived and a
+    // cup that was set up are all changes the phone has a screen for.
+    expect([...LIVE_REASONS].sort()).toEqual([
+      'products',
+      'purchases',
+      'returns',
+      'sales',
+      'settings',
+      'shifts',
+      'shot-cups',
+      'stock',
+    ]);
     expect(isLiveReason('sales')).toBe(true);
     expect(isLiveReason('everything')).toBe(false);
     expect(isLiveReason(7)).toBe(false);

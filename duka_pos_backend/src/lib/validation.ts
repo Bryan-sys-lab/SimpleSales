@@ -17,12 +17,19 @@ export const settingsSchema = z.object({
 /**
  * The shop's own admin PIN, as the till sends it.
  *
- * Exactly four digits, and nothing else, because that is the only thing the
+ * Exactly SIX digits, and nothing else, because that is the only thing the
  * local account asks for. The backend cannot verify it against a local
  * database it does not have — it is bound into the challenge instead, so the
  * person who started the link is the person who finishes it.
+ *
+ * It was FOUR digits, and the app made it six: the owner's PIN is an ADMIN
+ * PIN, asked for in front of the things it guards — deleting the account,
+ * changing the shop's settings — and a four-digit admin PIN is a password
+ * somebody can guess while they wait for the till to think. A STAFF PIN is
+ * still four digits; it is a different PIN, typed forty times a day at a
+ * counter, and it never comes here.
  */
-const adminPin = z.string().regex(/^\d{4}$/, 'The admin PIN is exactly 4 digits');
+const adminPin = z.string().regex(/^\d{6}$/, 'The admin PIN is exactly 6 digits');
 
 export const linkSchema = z.object({
   email: z.string().trim().toLowerCase().email().max(254),
@@ -200,3 +207,157 @@ export const etimsDeviceSchema = z.object({
 export function parseBody<S extends z.ZodTypeAny>(schema: S, body: unknown): z.infer<S> {
   return schema.parse(body) as z.infer<S>;
 }
+
+// ---------------------------------------------------------------------------
+// The till's records: sales, shifts, returns, purchases, shot cups.
+//
+// THE MONEY CONVENTION AT THIS BOUNDARY
+//
+// These endpoints take money in MINOR UNITS — the integer cents a till keeps
+// its ledger in. The stored columns are DECIMAL major units, so the
+// conversion happens ONCE, on the way in.
+//
+// The alternative — taking doubles of shillings — loses a cent the moment a
+// price like 40.55 shillings becomes a float, and a ledger that is a cent out
+// is a ledger that does not reconcile against the drawer.
+//
+// The conversion is `minor / 100` in DECIMAL arithmetic, which is exact for
+// every integer number of minor units.
+// ---------------------------------------------------------------------------
+
+/** Money in minor units: the integer cents a till counts in. */
+const minorAmount = z.number().int().min(-100_000_000).max(100_000_000);
+
+/** A quantity of stock, to three places: 1.5 bottles, 0.25 of a portion. */
+const stockAmount = z.number().finite().min(0).max(1_000_000);
+
+/** How a line was poured: the whole thing, half, a quarter, or a measured shot. */
+const portion = z.enum(['full', 'half', 'quarter', 'measured']).default('full');
+
+/**
+ * The ledger, pushed from a till.
+ *
+ * A till writes its sales OFFLINE, so the same sale arrives more than once
+ * unless the server can tell it from the first one. `localId` is that: the
+ * till's own id for the sale, unique within a shop.
+ */
+export const saleSyncSchema = z.object({
+  sales: z.array(z.object({
+    localId: z.number().int().positive(),
+    staffName: boundedName,
+    staffProfileId: z.string().uuid().optional().nullable(),
+    paymentMethod: z.string().trim().min(1).max(40).default('cash'),
+    paymentReference: z.string().trim().max(200).optional().nullable(),
+    /** The whole sale, in minor units. */
+    total: minorAmount,
+    /** The margin on the sale, in minor units. */
+    profit: minorAmount,
+    /** The cash handed over, in minor units. */
+    amountTendered: minorAmount.optional(),
+    /** The change given back, in minor units. */
+    changeGiven: minorAmount.optional(),
+    createdAt: z.string().datetime(),
+    items: z.array(z.object({
+      productId: z.string().uuid().optional().nullable(),
+      productName: boundedName,
+      qty: stockAmount.positive(),
+      unitPrice: minorAmount,
+      unitCost: minorAmount,
+      portion,
+      portionMl: z.number().int().min(0).max(100_000).default(0),
+    })).min(1).max(200),
+  })).max(1_000),
+}).strict();
+
+/**
+ * A shift, pushed from a till.
+ *
+ * A shift is opened OFFLINE: a shop with one device and its staff on it has
+ * no signal half the time, and a shift that needs a server is a shift nobody
+ * opens.
+ */
+export const shiftSyncSchema = z.object({
+  shifts: z.array(z.object({
+    localId: z.number().int().positive(),
+    staffName: boundedName,
+    staffProfileId: z.string().uuid().optional().nullable(),
+    startTime: z.string().datetime(),
+    endTime: z.string().datetime().optional().nullable(),
+    startFloat: minorAmount,
+    endFloat: minorAmount,
+    expectedCash: minorAmount,
+    countedCash: minorAmount,
+    status: z.enum(['open', 'closed']).default('open'),
+  })).max(500),
+}).strict();
+
+/**
+ * A return or a credit note.
+ *
+ * `kind` says what happened to the money: a refund hands it back, a credit
+ * note leaves the customer holding the goods and the shop owing them.
+ */
+export const returnSchema = z.object({
+  localId: z.number().int().positive(),
+  /** The till's id for the sale being returned, when there was one. */
+  originalSaleLocalId: z.number().int().positive().optional().nullable(),
+  kind: z.enum(['refund', 'credit_note']).default('refund'),
+  reason: z.string().trim().min(1).max(240),
+  /** The money given back, in minor units. */
+  total: minorAmount,
+  /** The margin given back, in minor units. */
+  profit: minorAmount,
+  staffName: boundedName,
+  staffProfileId: z.string().uuid().optional().nullable(),
+  createdAt: z.string().datetime(),
+  items: z.array(z.object({
+    productId: z.string().uuid().optional().nullable(),
+    productName: boundedName,
+    qty: stockAmount.positive(),
+    unitPrice: minorAmount,
+    unitCost: minorAmount,
+    portion,
+    portionMl: z.number().int().min(0).max(100_000).default(0),
+  })).min(1).max(200),
+}).strict();
+
+/**
+ * A purchase: stock arriving at the shop, and what it cost.
+ */
+export const purchaseSchema = z.object({
+  localId: z.number().int().positive(),
+  supplierName: z.string().trim().min(1).max(120),
+  invoiceNumber: z.string().trim().max(80).optional().nullable(),
+  /** What the whole delivery cost, in minor units. */
+  total: minorAmount,
+  staffName: boundedName,
+  staffProfileId: z.string().uuid().optional().nullable(),
+  createdAt: z.string().datetime(),
+  items: z.array(z.object({
+    productId: z.string().uuid().optional().nullable(),
+    productName: boundedName,
+    qty: stockAmount.positive(),
+    /** What one unit cost the shop, in minor units. */
+    unitCost: minorAmount,
+  })).min(1).max(500),
+}).strict();
+
+/**
+ * A shot cup: a named serving poured from a drink.
+ *
+ * `capacityMl` is OPTIONAL, and zero means "the size is not known": a cup
+ * with a size earns its cost exactly, and a cup without one is counted at its
+ * full price. A negative size is a mistake and is refused.
+ */
+export const shotCupSyncSchema = z.object({
+  shotCups: z.array(z.object({
+    localId: z.number().int().positive(),
+    productId: z.string().uuid().optional().nullable(),
+    productName: boundedName,
+    label: z.string().trim().min(1).max(80),
+    capacityMl: z.number().int().min(0).max(100_000).default(0),
+    /** What one of these sells for, in minor units. */
+    price: minorAmount,
+    active: z.boolean().default(true),
+  })).max(1_000),
+}).strict();

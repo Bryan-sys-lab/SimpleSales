@@ -18,6 +18,11 @@ import etimsRoutes, { publicEtimsRouter } from './routes/etims';
 import authRoutes from './routes/auth';
 import appReleaseRoutes from './routes/app-release';
 import dashboardRoutes from './routes/dashboard';
+import saleRoutes from './routes/sale';
+import shiftRoutes from './routes/shift';
+import returnRoutes from './routes/return';
+import purchaseRoutes from './routes/purchase';
+import shotCupRoutes from './routes/shotcup';
 
 dotenv.config();
 
@@ -81,6 +86,11 @@ app.use('/api/tenant', tenantRoutes);
 app.use('/api/payments', paymentRoutes);
 app.use('/api/products', productRoutes);
 app.use('/api/reports', reportRoutes);
+app.use('/api/sales', saleRoutes);
+app.use('/api/shifts', shiftRoutes);
+app.use('/api/returns', returnRoutes);
+app.use('/api/purchases', purchaseRoutes);
+app.use('/api/shot-cups', shotCupRoutes);
 app.use('/api/etims', etimsRoutes);
 
 app.use((req, res) => res.status(404).json({ error: 'Not found', requestId: req.requestId }));

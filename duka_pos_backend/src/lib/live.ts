@@ -105,8 +105,22 @@ export function concerns(event: LiveEvent, tenantIds: ReadonlySet<string>): bool
 }
 
 /** The reasons a client may be told to re-read. A closed set, so the phone's
- * UI never has to guess at a string nobody has seen before. */
-export const LIVE_REASONS = ['products', 'stock', 'sales', 'settings'] as const;
+ * UI never has to guess at a string nobody has seen before.
+ *
+ * `shifts`, `returns`, `purchases` and `shot-cups` are here because the till
+ * now writes all four: a drawer that was counted, a sale that came back, a
+ * delivery that arrived, and a cup that was set up. Each is a change the
+ * phone has a screen for, so each is a reason to re-read. */
+export const LIVE_REASONS = [
+  'products',
+  'stock',
+  'sales',
+  'settings',
+  'shifts',
+  'returns',
+  'purchases',
+  'shot-cups',
+] as const;
 
 export type LiveReason = (typeof LIVE_REASONS)[number];
 
