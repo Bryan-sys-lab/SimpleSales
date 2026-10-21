@@ -235,6 +235,17 @@ class _ShiftReportLine extends StatelessWidget {
           Row(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: <Widget>[
+              // A round badge on the leading edge. A shift that is still open
+              // carries a state, so its badge is the pending tone and its own
+              // glyph; a closed shift is a plain marker.
+              IconBadge(
+                icon: row.isOpen
+                    ? StatusTone.pending.icon
+                    : Icons.receipt_long_outlined,
+                tone: row.isOpen ? StatusTone.pending : StatusTone.neutral,
+                size: 32,
+              ),
+              SizedBox(width: spacing.md),
               Expanded(
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,

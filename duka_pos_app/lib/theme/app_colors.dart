@@ -79,8 +79,13 @@ class AppColors extends ThemeExtension<AppColors> {
   /// resting state. Clears WCAG 1.4.11 (3:1) in both brightnesses.
   final Color outlineStrong;
 
-  /// The single brand accent: deep botanical green.
-  /// One per app, locked — not a seed: every role here is authored.
+  /// The single brand accent: emerald.
+  ///
+  /// One per app, locked — not a seed: every role here is authored. In daylight
+  /// it is a deep botanical green that carries text; at night it is a bright
+  /// emerald that carries text on the near-black canvas. It is also the ONLY
+  /// saturated colour in the app, which is what lets the eye find the one thing
+  /// the screen is asking the user to press.
   final Color accent;
 
   /// Text and icons on an [accent] fill.
@@ -131,7 +136,7 @@ class AppColors extends ThemeExtension<AppColors> {
   final Color mediaFrame;
 
   /// The shadow colour for elevation. Deliberately the ink hue rather than pure
-  /// black: a pure-black shadow on warm paper reads as a grey smudge.
+  /// black: a pure-black shadow on a pale canvas reads as a grey smudge.
   final Color shadow;
 
   /// M-PESA provider identity green. Not a semantic color.
@@ -199,9 +204,9 @@ class AppColors extends ThemeExtension<AppColors> {
 
   /// The dark slots, hand-authored rather than flipped.
   const AppColors.dark()
-      : canvas = Primitives.neutral10,
-        surface = Primitives.neutral14,
-        surfaceSunken = Primitives.neutral06,
+      : canvas = Primitives.neutral08,
+        surface = Primitives.neutral16,
+        surfaceSunken = Primitives.neutral04,
         surfaceRaised = Primitives.neutral20,
         onSurface = Primitives.neutral95,
         onSurfaceVariant = Primitives.neutral79,
@@ -210,10 +215,10 @@ class AppColors extends ThemeExtension<AppColors> {
         outlineStrong = Primitives.neutral45,
         accent = Primitives.botanical58,
         // The brand ink, not the dark canvas: the accent fill inverts to a
-        // bright green at night, and the ink that identifies the brand is the
-        // value its label is painted in. Contrast on #4ADE7E is 10.9:1.
+        // bright emerald at night, and the ink that identifies the brand is the
+        // value its label is painted in. Contrast on #4ADE7E is 8.2:1.
         onAccent = Primitives.neutral23,
-        accentContainer = Primitives.botanical26,
+        accentContainer = Primitives.botanical20,
         onAccentContainer = Primitives.botanical90,
         success = Primitives.green66,
         successContainer = Primitives.green18Dark,

@@ -30,6 +30,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
+import '../services/app_busy.dart';
 import '../services/app_state.dart';
 import '../services/app_update_service.dart';
 import '../services/live_channel_service.dart';
@@ -115,6 +116,14 @@ class _IdleGuardState extends State<IdleGuard> with WidgetsBindingObserver {
     _timer?.cancel();
     _timer = Timer(widget.timeout, () {
       if (!mounted) return;
+      // Something long is in flight — an import, an update download. The owner
+      // is watching it happen, not leaving the till unattended, and a session
+      // that ends in the middle of it is a half-done job and a locked screen.
+      // So the clock starts again instead of the session ending.
+      if (AppBusy.isBusy) {
+        _reset();
+        return;
+      }
       _wasIdle = true;
       telemetry.recordIdleStart();
       // An idle till is the right time to download an update silently, if the

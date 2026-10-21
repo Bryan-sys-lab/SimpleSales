@@ -9,6 +9,8 @@
 /// they drifted into disagreeing about what "imported" meant.
 library;
 
+import 'package:flutter/foundation.dart';
+
 import '../db/database_helper.dart';
 import '../models/models.dart';
 import '../utils/money.dart';
@@ -317,6 +319,43 @@ Money? _money(dynamic cell) {
   return value == null ? null : Money.fromMajor(value);
 }
 
+/// Where an import is, for the owner watching a bar.
+///
+/// An import is the longest thing the app does on a tap, and a button that
+/// goes quiet for eight seconds is a button the owner presses again. The bar
+/// is not decoration: it is the answer to "is it working, or has it died?".
+enum ImportStage {
+  /// Reading the workbook off the disk.
+  reading,
+
+  /// Reading the rows out of it.
+  parsing,
+
+  /// Writing the products.
+  writing,
+
+  /// Attaching the barcodes.
+  barcodes,
+
+  /// Attaching the variants.
+  variants,
+
+  /// Done.
+  done,
+}
+
+/// One step of an import, and how far through it is.
+@immutable
+class ImportProgress {
+  const ImportProgress(this.stage, [this.fraction]);
+
+  final ImportStage stage;
+
+  /// How far through this stage, 0 to 1. Null when the stage has no natural
+  /// measure — reading a file is either happening or not.
+  final double? fraction;
+}
+
 /// Writes parsed rows and reports exactly what happened.
 class InventoryImporter {
   InventoryImporter(this._db);
@@ -337,9 +376,27 @@ class InventoryImporter {
     List<PendingBarcode> barcodes = const [],
     List<PendingVariant> variants = const [],
     List<String> skippedSheets = const [],
+    void Function(ImportProgress)? onProgress,
   }) async {
     final cols = columns ?? SheetColumns.positional;
     var needsAttention = 0;
+
+    // The progress reporter, throttled.
+    //
+    // The parse loop runs once per row, and a supplier's price list has
+    // hundreds of them: reporting every row would rebuild the owner watching
+    // it hundreds of times, and the bar would spend longer updating than the
+    // import spends importing. So a step is reported only when the PERCENTAGE
+    // moves — a hundred and one reports for a thousand rows.
+    int lastPercent = -1;
+    void report(ImportStage stage, double? fraction) {
+      if (onProgress == null) return;
+      final int percent =
+          fraction == null ? -1 : (fraction.clamp(0.0, 1.0) * 100).floor();
+      if (percent == lastPercent) return;
+      lastPercent = percent;
+      onProgress(ImportProgress(stage, fraction));
+    }
 
     // This import supersedes every problem the last import of this sheet left.
     // Without it the list only grows: re-importing a fixed file would keep the
@@ -373,7 +430,13 @@ class InventoryImporter {
     }
 
     final pending = <PendingProduct>[];
-    for (final row in rows) {
+    report(ImportStage.parsing, 0);
+    for (var rowIndex = 0; rowIndex < rows.length; rowIndex++) {
+      final row = rows[rowIndex];
+      report(
+        ImportStage.parsing,
+        rows.isEmpty ? 1 : rowIndex / rows.length,
+      );
       if (SheetColumns.isBlankRow(row.cells)) continue;
       final parsed = ImportRowParser.parseProductRow(row.cells,
           parseId: _parseId, columns: cols, section: row.section);
@@ -400,6 +463,7 @@ class InventoryImporter {
       await _db.ensureCategory(category);
     }
 
+    report(ImportStage.writing, 0);
     final written = await _write(pending);
 
     final idByName = <String, int>{};
@@ -419,6 +483,7 @@ class InventoryImporter {
       return idByName[entry.product.name.toLowerCase()];
     }
 
+    report(ImportStage.barcodes, 0);
     final localIdBySheetId = <int, int>{};
     final refusedBarcodes = <String, String>{};
     final codes = <ProductBarcode>[];
@@ -489,6 +554,7 @@ class InventoryImporter {
       refusedBarcodes[code] = owner?.name ?? 'another product';
     }
 
+    report(ImportStage.variants, 0);
     needsAttention += await _writeVariants(
       source: source,
       sheetName: sheetName,
@@ -496,6 +562,7 @@ class InventoryImporter {
       localIdBySheetId: localIdBySheetId,
     );
 
+    report(ImportStage.done, 1);
     return InventoryImportResult(
       imported: written.entries.length,
       created: written.inserted,

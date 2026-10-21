@@ -9,8 +9,10 @@ import 'app_colors.dart';
 /// makes a radius change a one-file diff, and what stops the same control
 /// picking up three different radii in three screens.
 ///
-/// One radius system per app. Cards cap at 12: past that a small surface starts
-/// reading as a pill and the density of an Operate surface falls apart.
+/// One radius system per app. Cards sit at 16: a card is a surface you point at
+/// across a counter, and a soft silhouette reads as a panel rather than as a
+/// row of data. Sheets sit one step rounder still, because a sheet is a layer
+/// ABOVE the page and should not be confused with the cards on it.
 @immutable
 class AppShapes extends ThemeExtension<AppShapes> {
   const AppShapes({
@@ -18,6 +20,7 @@ class AppShapes extends ThemeExtension<AppShapes> {
     required this.sm,
     required this.md,
     required this.lg,
+    required this.xl,
     required this.pill,
     required this.raisedShadow,
     required this.floatingShadow,
@@ -26,14 +29,17 @@ class AppShapes extends ThemeExtension<AppShapes> {
   /// 4 — the inside of a chip, a small badge.
   final double xs;
 
-  /// 6 — a table cell's well, a segmented-control segment.
+  /// 8 — a table cell's well, a segmented-control segment.
   final double sm;
 
-  /// 8 — a text field, a button.
+  /// 12 — a text field, a button.
   final double md;
 
-  /// 12 — a card. The cap.
+  /// 16 — a card.
   final double lg;
+
+  /// 24 — a sheet, a dialog. A layer above the page.
+  final double xl;
 
   /// Fully rounded, for a chip or an avatar. The only value that is a shape
   /// category rather than a design decision.
@@ -53,7 +59,7 @@ class AppShapes extends ThemeExtension<AppShapes> {
   BorderRadius get controlRadius => BorderRadius.circular(md);
 
   /// A sheet or a dialog — rounder than a card so it reads as a layer above it.
-  BorderRadius get sheetRadius => BorderRadius.circular(lg);
+  BorderRadius get sheetRadius => BorderRadius.circular(xl);
 
   /// A chip or a badge.
   BorderRadius get chipRadius => BorderRadius.circular(pill);
@@ -63,8 +69,8 @@ class AppShapes extends ThemeExtension<AppShapes> {
   BorderRadius get barRadius => BorderRadius.circular(xs);
 
   /// The card silhouette. Pass the ambient colours when the card needs an edge,
-  /// which on the warm canvas is the default: a shadow alone is too soft to
-  /// separate paper from paper.
+  /// which on a near-black canvas is the default: a shadow alone is too soft to
+  /// separate one surface from another.
   RoundedRectangleBorder card(AppColors colors, {bool outlined = true}) =>
       RoundedRectangleBorder(
         borderRadius: cardRadius,
@@ -96,6 +102,7 @@ class AppShapes extends ThemeExtension<AppShapes> {
     double? sm,
     double? md,
     double? lg,
+    double? xl,
     double? pill,
     List<BoxShadow>? raisedShadow,
     List<BoxShadow>? floatingShadow,
@@ -105,6 +112,7 @@ class AppShapes extends ThemeExtension<AppShapes> {
       sm: sm ?? this.sm,
       md: md ?? this.md,
       lg: lg ?? this.lg,
+      xl: xl ?? this.xl,
       pill: pill ?? this.pill,
       raisedShadow: raisedShadow ?? this.raisedShadow,
       floatingShadow: floatingShadow ?? this.floatingShadow,
@@ -126,22 +134,32 @@ class AppShapes extends ThemeExtension<AppShapes> {
           other.sm == sm &&
           other.md == md &&
           other.lg == lg &&
+          other.xl == xl &&
           other.pill == pill &&
           other.raisedShadow == raisedShadow &&
           other.floatingShadow == floatingShadow;
 
   @override
-  int get hashCode =>
-      Object.hash(xs, sm, md, lg, pill, raisedShadow, floatingShadow);
+  int get hashCode => Object.hash(
+        xs,
+        sm,
+        md,
+        lg,
+        xl,
+        pill,
+        raisedShadow,
+        floatingShadow,
+      );
 }
 
 /// The single shape scale. Only the shadow colour follows the theme — a
 /// silhouette is a structural constant and must not drift between brightnesses.
 AppShapes buildAppShapes(AppColors colors) => AppShapes(
       xs: 4,
-      sm: 6,
-      md: 8,
-      lg: 12,
+      sm: 8,
+      md: 12,
+      lg: 16,
+      xl: 24,
       pill: 999,
       raisedShadow: <BoxShadow>[
         BoxShadow(

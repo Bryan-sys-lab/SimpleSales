@@ -38,9 +38,27 @@ class PinResetResult {
 /// [ownerEmail] is the address on the account, shown masked. The dialog does
 /// not send anything until the owner asks it to.
 class PinResetDialog extends StatefulWidget {
-  const PinResetDialog({required this.ownerEmail, super.key});
+  const PinResetDialog({
+    required this.ownerEmail,
+    this.requestCode,
+    this.confirm,
+    super.key,
+  });
 
   final String ownerEmail;
+
+  /// Asks the server for a code.
+  ///
+  /// INJECTED rather than called statically, so the dialog can be pumped in a
+  /// test: the real request needs a live backend, and a widget whose only path
+  /// to its behaviour is the network is a widget nobody can test. Null means
+  /// "ask the service", which is what the app does.
+  final Future<PinResetOutcome> Function()? requestCode;
+
+  /// Exchanges the mailed code for a new PIN.
+  ///
+  /// Injected for the same reason. Null means "ask the service".
+  final Future<bool> Function(String code, String newPin)? confirm;
 
   @override
   State<PinResetDialog> createState() => PinResetDialogState();
@@ -80,7 +98,8 @@ class PinResetDialogState extends State<PinResetDialog> {
       _error = null;
     });
     try {
-      final outcome = await PinResetService.requestCode();
+      final outcome =
+          await (widget.requestCode?.call() ?? PinResetService.requestCode());
       if (!mounted) return;
       setState(() {
         _maskedEmail = outcome.maskedEmail;
@@ -92,6 +111,17 @@ class PinResetDialogState extends State<PinResetDialog> {
       setState(() {
         _requesting = false;
         _error = _messageFor(e);
+      });
+    } catch (e, stack) {
+      // Anything that is NOT a typed failure — a raw socket error, a storage
+      // exception, a bug — must still take the button out of its "Sending…"
+      // state. Without this the owner is left staring at a button that says
+      // it is working, forever, with no way to tell that it stopped.
+      debugPrint('PIN reset request failed: $e\n$stack');
+      if (!mounted) return;
+      setState(() {
+        _requesting = false;
+        _error = AppLocalizations.of(context).errorUnknown;
       });
     }
   }
@@ -111,11 +141,14 @@ class PinResetDialogState extends State<PinResetDialog> {
       _error = null;
     });
     try {
-      final done = await PinResetService.confirm(
-        code: _code.text.trim(),
-        newPin: _pin.text.trim(),
-        state: _stateForAudit,
-      );
+      final String code = _code.text.trim();
+      final String newPin = _pin.text.trim();
+      final done = await (widget.confirm?.call(code, newPin) ??
+          PinResetService.confirm(
+            code: code,
+            newPin: newPin,
+            state: _stateForAudit,
+          ));
       if (!mounted) return;
       if (done) {
         Navigator.of(context).pop(const PinResetResult.completed());
@@ -131,7 +164,26 @@ class PinResetDialogState extends State<PinResetDialog> {
         _confirming = false;
         _error = _messageFor(e);
       });
+    } catch (e, stack) {
+      // As above: an untyped failure must not leave the button reading
+      // "Saving…" for the rest of the session.
+      debugPrint('PIN reset confirm failed: $e\n$stack');
+      if (!mounted) return;
+      setState(() {
+        _confirming = false;
+        _error = AppLocalizations.of(context).errorUnknown;
+      });
     }
+  }
+
+  /// Asks for another code, without losing the step.
+  ///
+  /// The code field is cleared: the code that was mailed is now spent, and
+  /// leaving it in the field invites the owner to redeem a code the server
+  /// has already thrown away.
+  Future<void> _resendCode() async {
+    _code.clear();
+    await _requestCode();
   }
 
   /// The session the audit row is attributed by.
@@ -210,9 +262,27 @@ class PinResetDialogState extends State<PinResetDialog> {
                     FilteringTextInputFormatter.digitsOnly,
                     LengthLimitingTextInputFormatter(6),
                   ],
+                  // So the code can arrive by SMS and be offered to the field
+                  // by the platform, instead of the owner reading six digits
+                  // off a phone in one hand and typing them with the other.
+                  autofillHints: const <String>[AutofillHints.oneTimeCode],
                   decoration: InputDecoration(
                     labelText: l10n.pinResetCodeLabel,
                     hintText: '000000',
+                  ),
+                ),
+                SizedBox(height: spacing.sm),
+                // A RESEND, in the step that needs one.
+                //
+                // The owner who did not get the email had exactly one way out
+                // before: close the dialog, which drops the challenge, and
+                // start again — losing the code they had already typed. Asking
+                // for another code is a thing this step should be able to do.
+                Align(
+                  alignment: AlignmentDirectional.centerStart,
+                  child: TextButton(
+                    onPressed: _requesting ? null : _resendCode,
+                    child: Text(l10n.pinResetResend),
                   ),
                 ),
                 SizedBox(height: spacing.md),

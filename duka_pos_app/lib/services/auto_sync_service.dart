@@ -116,8 +116,8 @@ class AutoSyncService {
       final entities = await dir.list().toList();
       final backups = entities
           .whereType<File>()
-          .where((f) =>
-              f.path.contains(_backupPrefix) && f.path.endsWith('.duka'))
+          .where(
+              (f) => f.path.contains(_backupPrefix) && f.path.endsWith('.duka'))
           .toList()
         ..sort((a, b) => b.path.compareTo(a.path));
       for (final stale in backups.skip(_maxRetainedBackups)) {

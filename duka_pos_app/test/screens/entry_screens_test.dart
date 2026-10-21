@@ -237,40 +237,45 @@ void main() {
     });
   });
 
-  group('the PIN pad, which is the only way into a till', () {
-    testWidgets('keys are 44px, individually labelled, and work',
+  group('the PIN field, which is the only way into a till', () {
+    testWidgets('is a field, and it says how many digits are in',
         (WidgetTester tester) async {
       tester.useDevice(Device.compact);
       final SemanticsHandle handle = tester.ensureSemantics();
       await tester.pumpApp(home: _wrap(_loginWithRoster(), seeded));
       await tester.pump(const Duration(milliseconds: 50));
 
-      // Every digit reachable by screen reader AND big enough to hit on a counter
-      // where the user is also holding a scanner.
-      for (final String digit in <String>['1', '4', '7', '0']) {
-        final Size size = tester.getSize(
-          find.ancestor(of: find.text(digit), matching: find.byType(InkWell)),
-        );
-        expect(size.height, greaterThanOrEqualTo(44.0), reason: 'key $digit');
-        expect(
-          find.bySemanticsLabel('Digit $digit'),
-          findsOneWidget,
-          reason: 'key $digit is unlabelled',
-        );
-      }
-      expect(find.bySemanticsLabel('Delete the last digit'), findsOneWidget);
+      // The PIN is typed into a FIELD with the system's own numeric keyboard.
+      //
+      // It used to be a keypad drawn by the app: four rows of keys taking half
+      // the screen of a phone that also has to show the roster, impossible to
+      // fill with a barcode scanner or a keyboard case, and a widget with its
+      // own hit targets, accessibility and layout at every text scale.
+      final Finder field = find.byType(TextField);
+      expect(field, findsOneWidget);
+
+      // The keyboard is the system's, and it is a NUMBER keyboard.
+      final TextField pin = tester.widget<TextField>(field);
+      expect(pin.keyboardType, TextInputType.number);
+      expect(pin.obscureText, isTrue);
+      expect(pin.autofocus, isTrue);
+
+      // A field, so it is the field's own size — the 44dp floor is the
+      // framework's, not the app's.
+      expect(tester.getSize(field).height, greaterThanOrEqualTo(44.0));
+
       expect(find.bySemanticsLabel('Amina, Admin'), findsOneWidget);
 
       // The progress is announced, not just drawn: a non-sighted user needs to
       // know how many digits are in before they can tell they are done.
-      await tester.tap(find.text('4'));
+      await tester.enterText(field, '4');
       await tester.pump();
       expect(
         find.bySemanticsLabel('1 of 4 PIN digits entered'),
         findsOneWidget,
       );
 
-      await tester.tap(find.byIcon(Icons.backspace_outlined));
+      await tester.enterText(field, '');
       await tester.pump();
       expect(
         find.bySemanticsLabel('0 of 4 PIN digits entered'),
@@ -278,6 +283,19 @@ void main() {
       );
 
       handle.dispose();
+    });
+
+    testWidgets('takes four digits and no more', (WidgetTester tester) async {
+      tester.useDevice(Device.compact);
+      await tester.pumpApp(home: _wrap(_loginWithRoster(), seeded));
+      await tester.pump(const Duration(milliseconds: 50));
+
+      await tester.enterText(find.byType(TextField), '123456');
+      await tester.pump();
+
+      // A PIN is four digits. The field takes four and refuses the rest.
+      expect(tester.widget<TextField>(find.byType(TextField)).controller!.text,
+          '1234');
     });
 
     testWidgets('an empty till offers the way forward, not a dead end',

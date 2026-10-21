@@ -247,8 +247,8 @@ class _VerifyIdentityCodeSheetState extends State<VerifyIdentityCodeSheet> {
       // field's name tells the person filling it in nothing they can act on:
       // it is the one piece of information they already have. What they need
       // is to be told what to do.
-      setState(() => _error =
-          AppLocalizations.of(context).settingsVerifyCodeInvalid);
+      setState(() =>
+          _error = AppLocalizations.of(context).settingsVerifyCodeInvalid);
       return;
     }
     setState(() {

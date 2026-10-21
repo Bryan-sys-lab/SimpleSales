@@ -21,7 +21,6 @@ import 'package:provider/provider.dart';
 
 import '../l10n/generated/app_localizations.dart';
 import '../services/app_state.dart';
-import '../ui/components/brand_header.dart';
 import '../services/backend_service.dart';
 import '../services/portfolio_kpis.dart';
 import '../services/live_refresh_mixin.dart';
@@ -134,17 +133,19 @@ class _PortfolioScreenState extends State<PortfolioScreen>
     final AppLocalizations l10n = AppLocalizations.of(context);
     return Scaffold(
       appBar: AppBar(
-        title: BrandHeader(
-          title: Text(l10n.portfolioTitle),
-        ),
+        // The screen's NAME, not the brand lockup. The app bar is a title on
+        // the canvas now — no filled band, no logo — and the brand mark lives
+        // in the shell's bar.
+        title: Text(l10n.portfolioTitle),
       ),
       body: AdaptivePage(
         scrollable: false,
         maxContentWidth: 880,
         child: switch (_view) {
-          _PortfolioLoading() => const Center(
-              child: CircularProgressIndicator(),
-            ),
+          // A skeleton shaped like the shop rows that are about to arrive,
+          // rather than a spinner over an empty box: the figure the owner came
+          // for arrives as rows, so the wait looks like the rows.
+          _PortfolioLoading() => const SkeletonList(itemCount: 5),
           _PortfolioFailure() => _PortfolioFailureView(onRetry: _load),
           _PortfolioEmpty() => const _PortfolioEmptyView(),
           _PortfolioContent(:final PortfolioKpis kpis) => PortfolioPanel(
@@ -408,11 +409,15 @@ class _PortfolioTotalsCard extends StatelessWidget {
               liveRegion: true,
               child: Row(
                 children: <Widget>[
+                  // The same arrow, size and tone a `StatTile` delta uses: an
+                  // up arrow in the success tone, so "the busiest shop" reads
+                  // as the same kind of up as every other rise in the app and
+                  // the word beside it says which shop it is.
                   ExcludeSemantics(
                     child: Icon(
                       Icons.arrow_upward,
-                      size: 16,
-                      color: AppColors.of(context).onSurfaceMuted,
+                      size: 14,
+                      color: AppColors.of(context).success,
                     ),
                   ),
                   SizedBox(width: spacing.sm),
@@ -466,9 +471,11 @@ class _ShopKpiRow extends StatelessWidget {
       ),
       child: Row(
         children: <Widget>[
-          // The rank, as a number rather than as a medal: 1st is the fact, and
-          // an icon that says the same thing is a channel a screen reader
-          // cannot use.
+          // A round tonal badge on the leading edge: a marker, the way every
+          // other row in this app is marked. The rank beside it is the fact —
+          // 1st is the number, not a medal, and a screen reader can use it.
+          const IconBadge(icon: Icons.storefront_outlined),
+          SizedBox(width: spacing.sm),
           ExcludeSemantics(
             child: SizedBox(
               width: 24,

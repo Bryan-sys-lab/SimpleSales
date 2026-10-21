@@ -241,7 +241,7 @@ class PageGutter {
   static EdgeInsets card(BuildContext context) {
     final AppSpacing tokens = AppSpacing.of(context);
     return windowSizeClassOf(context).isCompact
-        ? EdgeInsets.all(tokens.md)
+        ? EdgeInsets.all(tokens.lg)
         : EdgeInsets.all(tokens.xl);
   }
 }

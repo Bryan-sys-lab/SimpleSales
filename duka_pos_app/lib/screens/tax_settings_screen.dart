@@ -5,7 +5,6 @@ import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
-import '../app_brand.dart';
 import '../db/database_helper.dart';
 import '../l10n/generated/app_localizations.dart';
 import '../models/audit_log.dart';
@@ -17,7 +16,9 @@ import '../theme/app_colors.dart';
 import '../theme/app_shapes.dart';
 import '../theme/app_spacing.dart';
 import '../theme/typography.dart';
+import '../ui/brand/nerva_wordmark.dart';
 import '../ui/components/controls.dart';
+import '../ui/components/screen_title.dart';
 import '../ui/components/surface.dart';
 import '../ui/layout/page.dart';
 import '../utils/money.dart';
@@ -51,8 +52,8 @@ class TaxSettingsScreen extends StatefulWidget {
   static String workedExample(AppLocalizations l10n, int rate,
       {bool pricesIncludeVat = true}) {
     final Money gross = Money.fromMajor(100);
-    final Money vat =
-        vatComponentOf(gross, ratePercent: rate, pricesIncludeVat: pricesIncludeVat);
+    final Money vat = vatComponentOf(gross,
+        ratePercent: rate, pricesIncludeVat: pricesIncludeVat);
     // gen-l10n orders the generated parameters ALPHABETICALLY by placeholder
     // name, so `net` comes first and `vat` second regardless of the order they
     // appear in the ARB template. Passing them in the template's order prints
@@ -321,7 +322,7 @@ class _TaxSettingsScreenState extends State<TaxSettingsScreen> {
               if (error != null)
                 Text(error!,
                     style: TextStyle(
-                        color: Theme.of(dialogContext).colorScheme.error)),
+                        color: AppColors.of(context).danger)),
             ],
           ),
           actions: [
@@ -383,7 +384,7 @@ class _TaxSettingsScreenState extends State<TaxSettingsScreen> {
                     padding: const EdgeInsets.only(top: 8),
                     child: Text(error!,
                         style: TextStyle(
-                            color: Theme.of(dialogContext).colorScheme.error)),
+                            color: AppColors.of(context).danger)),
                   ),
               ],
             ),
@@ -393,44 +394,53 @@ class _TaxSettingsScreenState extends State<TaxSettingsScreen> {
                 onPressed: () => Navigator.pop(dialogContext),
                 child: Text(AppLocalizations.of(context).actionCancel)),
             FilledButton(
-              onPressed: submitting ? null : () async {
-                final value = controller.text.trim().toUpperCase();
-                if (value.length < 4) {
-                  setDialogState(() => error = AppLocalizations.of(context).taxSettingsTinTooShort);
-                  return;
-                }
-                final kraPin = RegExp(r'^[AP]\d{9}[A-Z]$');
-                if (!kraPin.hasMatch(value)) {
-                  setDialogState(() => error = AppLocalizations.of(context).taxSettingsTinInvalid);
-                  return;
-                }
-                setDialogState(() {
-                  submitting = true;
-                  error = null;
-                });
-                try {
-                  final deviceId = await _deviceIdentifier();
-                  await BackendService.registerEtimsDevice(tin: value, deviceId: deviceId);
-                  await DatabaseHelper.instance.setSetting(DatabaseHelper.settingTin, value);
-                  await DatabaseHelper.instance.setSetting(
-                      DatabaseHelper.settingEtimsDeviceId, deviceId);
-                  if (dialogContext.mounted) {
-                    Navigator.pop(dialogContext, value);
-                  }
-                } catch (e) {
-                  setDialogState(() {
-                    submitting = false;
-                    // Not linked is a configuration problem, not a KRA outage: say so plainly.
-                    final l10n = AppLocalizations.of(context);
-                    if (e is EtimsNotLinkedException ||
-                        (e is StateError && e.message.contains('not linked to backend'))) {
-                      error = l10n.taxSettingsEtimsNotLinked;
-                    } else {
-                      error = l10n.taxSettingsKraUnreachable;
-                    }
-                  });
-                }
-              },
+              onPressed: submitting
+                  ? null
+                  : () async {
+                      final value = controller.text.trim().toUpperCase();
+                      if (value.length < 4) {
+                        setDialogState(() => error =
+                            AppLocalizations.of(context)
+                                .taxSettingsTinTooShort);
+                        return;
+                      }
+                      final kraPin = RegExp(r'^[AP]\d{9}[A-Z]$');
+                      if (!kraPin.hasMatch(value)) {
+                        setDialogState(() => error =
+                            AppLocalizations.of(context).taxSettingsTinInvalid);
+                        return;
+                      }
+                      setDialogState(() {
+                        submitting = true;
+                        error = null;
+                      });
+                      try {
+                        final deviceId = await _deviceIdentifier();
+                        await BackendService.registerEtimsDevice(
+                            tin: value, deviceId: deviceId);
+                        await DatabaseHelper.instance
+                            .setSetting(DatabaseHelper.settingTin, value);
+                        await DatabaseHelper.instance.setSetting(
+                            DatabaseHelper.settingEtimsDeviceId, deviceId);
+                        if (dialogContext.mounted) {
+                          Navigator.pop(dialogContext, value);
+                        }
+                      } catch (e) {
+                        setDialogState(() {
+                          submitting = false;
+                          // Not linked is a configuration problem, not a KRA outage: say so plainly.
+                          final l10n = AppLocalizations.of(context);
+                          if (e is EtimsNotLinkedException ||
+                              (e is StateError &&
+                                  e.message
+                                      .contains('not linked to backend'))) {
+                            error = l10n.taxSettingsEtimsNotLinked;
+                          } else {
+                            error = l10n.taxSettingsKraUnreachable;
+                          }
+                        });
+                      }
+                    },
               child: submitting
                   ? const SizedBox(
                       width: 16,
@@ -564,20 +574,44 @@ class TaxSettingsPanel extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final AppLocalizations l10n = AppLocalizations.of(context);
+    final AppSpacing spacing = AppSpacing.of(context);
+
+    // The screen names itself on the canvas. It used to open straight into a
+    // VAT slider with no title anywhere on it, which is the one place in the
+    // app where the figures on screen belong to a legal document and the
+    // reader needs to know which document they are configuring.
+    final Widget title = ScreenTitle(
+      title: l10n.taxSettingsTitle,
+      // The page already insets its content by `md`; the title's own default
+      // inset would push it off the gutter the cards sit on.
+      padding: EdgeInsetsDirectional.only(bottom: spacing.md),
+    );
 
     // Defence in depth. Settings does not show the tab to a non-admin, but a
     // screen that mints a TIN should not depend on that alone.
     if (!isAdmin) {
-      return const AdaptivePage(
+      return AdaptivePage(
         scrollable: true,
-        child: AdminOnlyNotice(),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: <Widget>[
+            title,
+            const AdminOnlyNotice(),
+          ],
+        ),
       );
     }
 
     if (loading) {
-      return const AdaptivePage(
+      return AdaptivePage(
         scrollable: true,
-        child: TaxSkeleton(),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: <Widget>[
+            title,
+            const TaxSkeleton(),
+          ],
+        ),
       );
     }
 
@@ -587,6 +621,7 @@ class TaxSettingsPanel extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: <Widget>[
+          title,
           // VAT: the rate, what it does to a real price, and whether shelf
           // prices already contain it.
           TaxSection(
@@ -728,8 +763,7 @@ class TaxSettingsPanel extends StatelessWidget {
           ],
           SizedBox(height: AppSpacing.of(context).lg),
           Center(
-            child: Text(
-              SimplePosBrand.poweredByTag,
+            child: PoweredByNerva(
               style: AppTypography.of(context).bodySmall,
             ),
           ),

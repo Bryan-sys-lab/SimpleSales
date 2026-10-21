@@ -8,11 +8,18 @@ import '../app_brand.dart';
 import '../l10n/generated/app_localizations.dart';
 import '../l10n/l10n_keys.dart';
 import '../services/app_state.dart';
+import '../services/roles.dart';
+import '../theme/app_colors.dart';
 import '../theme/app_spacing.dart';
+import '../theme/typography.dart';
+import '../ui/components/brand_header.dart';
+import '../ui/components/status_bar.dart';
+import '../ui/components/support_bubble.dart';
 import '../ui/layout/window_size_class.dart';
 import '../widgets/sign_out_sheet.dart';
 import 'idle_guard.dart';
 import 'routes.dart';
+import 'shell_nav_bar.dart';
 
 /// The destinations this session may see.
 ///
@@ -20,15 +27,23 @@ import 'routes.dart';
 /// drawer that disagree about who is an admin is how a cashier ends up with a
 /// Settings tile that opens a dashboard.
 List<AppDestination> visibleDestinations(AppState state) {
+  // The order is the ORDER THE BAR SHOWS THEM IN, and the sell button sits in
+  // the middle of it.
+  //
+  // So the destinations divide around it: the ones before sell on the left
+  // shoulder, the ones after on the right. The order is chosen so that the
+  // split is as even as each role can make it — a cashier gets one on each
+  // side, a manager two and two, an owner two and three — and so the
+  // everyday destinations are the ones nearest the ball.
   return <AppDestination>[
     AppDestination.dashboard,
-    AppDestination.sell,
-    AppDestination.support,
     // Inventory, Analytics and Reports report the whole shop. A cashier's
     // business is this counter, not the month.
     if (state.canManageStock) AppDestination.inventory,
+    AppDestination.sell,
     if (state.canManageStock) AppDestination.analytics,
     if (state.isAdmin) AppDestination.settings,
+    AppDestination.support,
   ];
 }
 
@@ -273,48 +288,106 @@ class _ShellScaffold extends StatelessWidget {
             windowSizeClassFor(constraints.maxWidth);
         final Widget body = navigationShell;
 
+        // The SUPPORT leaves the bottom bar and becomes a floating bubble.
+        //
+        // The bar's shape is a horseshoe with the sell button in the middle,
+        // and the destinations divide evenly around it — which the support
+        // item broke every time: one more on one shoulder than the other, in
+        // every role. As a bubble it is also where a person who needs help
+        // expects it: not a tab they have to find, but a corner they can reach
+        // from wherever they are.
+        //
+        // The rail and the drawer KEEP it: they have room, and they are the
+        // wider screens' affordance.
+        final List<AppDestination> barDestinations = <AppDestination>[
+          for (final AppDestination destination in destinations)
+            if (destination != AppDestination.support) destination,
+        ];
+
         return Scaffold(
           appBar: _ShellAppBar(
             title: state.owner?.shopName ?? SimplePosBrand.appName,
-            isOwner: state.isAdmin,
-            staffName: state.currentStaffName ?? '',
+            roleLabel: _roleLabel(context, state),
             onSignOut: () => _signOut(context),
           ),
-          body: switch (sizeClass) {
-            WindowSizeClass.compact => body,
-            WindowSizeClass.extraLarge => Row(
+          // The body, with the bubble FLOATING over it.
+          //
+          // A sibling in the stack, not a parent: the bubble never rebuilds
+          // the page behind it, and the page behind it never rebuilds the
+          // bubble. A help widget that made the till redraw would cost money
+          // at the counter.
+          body: Stack(
+            children: <Widget>[
+              // The status strip, ABOVE the content and BELOW the bar.
+              //
+              // A column, so the strip is the first thing the content sits
+              // under and the content never overlaps it. And it is here rather
+              // than on the dashboard because a cashier is rarely on the
+              // dashboard, and a till that cannot reach the server is exactly
+              // where the owner needs to know.
+              Column(
                 children: <Widget>[
-                  _ShellDrawer(
-                    destinations: destinations,
-                    selected: selected,
-                    onSelect: tabs.goTo,
+                  const TillStatusBar(),
+                  Expanded(
+                    // The branch, once.
+                    //
+                    // ONE `body` in the tree: the strip is a COLUMN above it,
+                    // so the branch is the column's only child. Putting the
+                    // branch in the column AND in the size switch built it
+                    // twice, and a `StatefulNavigationShell` carries a
+                    // GlobalKey — so the tree had the same key twice and the
+                    // whole shell failed to mount.
+                    child: switch (sizeClass) {
+                      WindowSizeClass.compact => body,
+                      WindowSizeClass.extraLarge => Row(
+                          children: <Widget>[
+                            _ShellDrawer(
+                              destinations: destinations,
+                              selected: selected,
+                              onSelect: tabs.goTo,
+                            ),
+                            VerticalDivider(
+                              width: 1,
+                              color:
+                                  Theme.of(context).colorScheme.outlineVariant,
+                            ),
+                            Expanded(child: body),
+                          ],
+                        ),
+                      _ => Row(
+                          children: <Widget>[
+                            _ShellRail(
+                              destinations: destinations,
+                              selected: selected,
+                              extended: sizeClass != WindowSizeClass.medium,
+                              onSelect: tabs.goTo,
+                            ),
+                            VerticalDivider(
+                              width: 1,
+                              color:
+                                  Theme.of(context).colorScheme.outlineVariant,
+                            ),
+                            Expanded(child: body),
+                          ],
+                        ),
+                    },
                   ),
-                  VerticalDivider(
-                    width: 1,
-                    color: Theme.of(context).colorScheme.outlineVariant,
-                  ),
-                  Expanded(child: body),
                 ],
               ),
-            _ => Row(
-                children: <Widget>[
-                  _ShellRail(
-                    destinations: destinations,
-                    selected: selected,
-                    extended: sizeClass != WindowSizeClass.medium,
-                    onSelect: tabs.goTo,
-                  ),
-                  VerticalDivider(
-                    width: 1,
-                    color: Theme.of(context).colorScheme.outlineVariant,
-                  ),
-                  Expanded(child: body),
-                ],
+              // The bubble, in the corner, over everything.
+              PositionedDirectional(
+                end: AppSpacing.of(context).md,
+                bottom: AppSpacing.of(context).md,
+                child: SupportBubble(
+                  label: AppLocalizations.of(context).navSupport,
+                  onTap: () => tabs.goTo(AppDestination.support),
+                ),
               ),
-          },
+            ],
+          ),
           bottomNavigationBar: sizeClass == WindowSizeClass.compact
-              ? _ShellNavigationBar(
-                  destinations: destinations,
+              ? ShellNavBar(
+                  destinations: barDestinations,
                   selected: selected,
                   onSelect: tabs.goTo,
                 )
@@ -333,18 +406,45 @@ class _ShellScaffold extends StatelessWidget {
   }
 }
 
-/// The shell's own app bar: which shop this is, and the way out of it.
+/// The role of whoever is signed in, in the app's own words.
+///
+/// "Owner", "Manager" or "Cashier" — the ROLE, not the name. The name is in
+/// the dashboard's welcome, where a person is greeted by it, and the role is a
+/// fact about this session, which is what belongs beside the way out of it.
+String _roleLabel(BuildContext context, AppState state) {
+  final AppLocalizations l10n = AppLocalizations.of(context);
+  return switch (state.role) {
+    ShopRole.admin => l10n.shellRoleOwner,
+    ShopRole.manager => l10n.settingsRoleManager,
+    ShopRole.cashier => l10n.settingsRoleCashier,
+  };
+}
+
+/// The shell's own bar: the session, and the way out of it.
+///
+/// NOT a coloured band. It is the canvas, with the brand mark at the leading
+/// edge and the session at the trailing edge — the app-level furniture, kept
+/// quiet so that the screen's own large title stays the biggest thing on it.
+///
+/// The screen's NAME belongs to the screen: every branch opens with a
+/// [ScreenTitle] on the canvas below this bar, which is why the shop name is
+/// not repeated up here.
 class _ShellAppBar extends StatelessWidget implements PreferredSizeWidget {
   const _ShellAppBar({
     required this.title,
-    required this.isOwner,
-    required this.staffName,
+    required this.roleLabel,
     required this.onSignOut,
   });
 
   final String title;
-  final bool isOwner;
-  final String staffName;
+
+  /// Who is signed in: "Owner", "Manager" or "Cashier".
+  ///
+  /// The ROLE, not the name. The name is in the dashboard's welcome, where a
+  /// person is greeted by it, and the role is a fact about this session —
+  /// which is what belongs beside the way out of the session.
+  final String roleLabel;
+
   final VoidCallback onSignOut;
 
   @override
@@ -353,62 +453,46 @@ class _ShellAppBar extends StatelessWidget implements PreferredSizeWidget {
   @override
   Widget build(BuildContext context) {
     final AppSpacing spacing = AppSpacing.of(context);
+    final AppColors colors = AppColors.of(context);
     final AppLocalizations l10n = AppLocalizations.of(context);
-    final String role = isOwner ? l10n.shellRoleOwner : staffName;
+    final String role = roleLabel;
 
     return AppBar(
-      title: Semantics(
-        header: true,
-        // The header a screen reader announces is the shop AND the session, not
-        // just the shop: on a till with four staff, "which shop am I in and as
-        // whom" is the first question after every sign-in.
-        // gen-l10n sorts the parameters ALPHABETICALLY — role, title — which is
-        // the reverse of the sentence "{title}, signed in as {role}".
-        label: l10n.shellSignedInAs(role, title),
-        child: ExcludeSemantics(
-          // ONE line.
-          //
-          // The ellipsis alone was not enough: a `Text` with an overflow and
-          // no `maxLines` still wraps, and a shop name long enough to wrap
-          // gave the app bar a second line it had no height for. A shop name
-          // is typed by a human, and this is the one place on the till that
-          // says which shop you are in.
+      titleSpacing: spacing.lg,
+      title: BrandHeader(markSize: spacing.xl),
+      actions: <Widget>[
+        // Who is signed in, quietly. The full name is on the dashboard's own
+        // title block and in Settings, so this is a reminder rather than the
+        // only place the answer lives.
+        ConstrainedBox(
+          constraints: const BoxConstraints(maxWidth: 140),
           child: Text(
-            title,
+            role,
             maxLines: 1,
             overflow: TextOverflow.ellipsis,
+            style: AppTypography.of(context)
+                .labelMedium
+                ?.copyWith(color: colors.onSurfaceMuted),
           ),
         ),
-      ),
-      actions: <Widget>[
-        // Tapping the name opens the sign-out sheet rather than signing out
-        // straight away: the name is the easiest thing on the bar to hit by
+        SizedBox(width: spacing.xs),
+        // Tapping the account opens the sign-out sheet rather than signing out
+        // straight away: the account is the easiest thing on the bar to hit by
         // accident, and an accidental sign-out on a busy till is a customer
         // waiting.
         Semantics(
           button: true,
-          label: l10n.shellAccountMenuLabel,
-          child: TextButton.icon(
+          // The header a screen reader announces is the shop AND the session,
+          // not just the shop: on a till with four staff, "which shop am I in
+          // and as whom" is the first question after every sign-in.
+          //
+          // gen-l10n sorts the parameters ALPHABETICALLY — role, title — which
+          // is the reverse of the sentence "{title}, signed in as {role}".
+          label: l10n.shellSignedInAs(role, title),
+          child: IconButton(
+            tooltip: l10n.shellAccountMenuLabel,
             onPressed: onSignOut,
-            icon: Icon(
-              isOwner ? Icons.workspace_premium_outlined : Icons.person_outline,
-              size: 18,
-            ),
-            // Bounded, because a Row hands its non-flexible children an
-            // UNBOUNDED width: a long staff name made the button as wide as
-            // the name, and the app bar's actions pushed the title off the
-            // screen. The full name is in the semantics label above.
-            label: ConstrainedBox(
-              constraints: const BoxConstraints(maxWidth: 140),
-              child: Text(
-                role,
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-              ),
-            ),
-            style: TextButton.styleFrom(
-              foregroundColor: Theme.of(context).colorScheme.onPrimary,
-            ),
+            icon: const Icon(Icons.person_outline),
           ),
         ),
         IconButton(
@@ -418,53 +502,6 @@ class _ShellAppBar extends StatelessWidget implements PreferredSizeWidget {
         ),
         SizedBox(width: spacing.xs),
       ],
-    );
-  }
-}
-
-/// Compact: a bottom bar.
-class _ShellNavigationBar extends StatelessWidget {
-  const _ShellNavigationBar({
-    required this.destinations,
-    required this.selected,
-    required this.onSelect,
-  });
-
-  final List<AppDestination> destinations;
-  final AppDestination selected;
-  final ValueChanged<AppDestination> onSelect;
-
-  @override
-  Widget build(BuildContext context) {
-    final AppLocalizations l10n = AppLocalizations.of(context);
-
-    return DecoratedBox(
-      decoration: BoxDecoration(
-        border: Border(
-          top: BorderSide(
-            color: Theme.of(context).colorScheme.outlineVariant,
-          ),
-        ),
-      ),
-      child: NavigationBar(
-        selectedIndex: destinations.indexOf(selected),
-        onDestinationSelected: (int i) => onSelect(destinations[i]),
-        destinations: <Widget>[
-          for (final AppDestination destination in destinations)
-            NavigationDestination(
-              icon: destination.imageAsset != null
-                  ? Image.asset(
-                      destination.imageAsset!,
-                      width: 24,
-                      height: 24,
-                      fit: BoxFit.contain,
-                    )
-                  : Icon(destination.icon),
-              label: destination.label(l10n),
-              tooltip: destination.label(l10n),
-            ),
-        ],
-      ),
     );
   }
 }
@@ -497,14 +534,7 @@ class _ShellRail extends StatelessWidget {
       destinations: <NavigationRailDestination>[
         for (final AppDestination destination in destinations)
           NavigationRailDestination(
-            icon: destination.imageAsset != null
-                ? Image.asset(
-                    destination.imageAsset!,
-                    width: 24,
-                    height: 24,
-                    fit: BoxFit.contain,
-                  )
-                : Icon(destination.icon),
+            icon: Icon(destination.icon),
             // `extended` renders its own label beside the icon; supplying one
             // here too would double it.
             label: Text(

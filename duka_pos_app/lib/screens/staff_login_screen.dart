@@ -13,8 +13,8 @@ import '../services/auth_service.dart';
 import '../services/backend_service.dart';
 import '../services/staff_credential_cache.dart';
 import '../theme/app_spacing.dart';
-import '../theme/typography.dart';
 import '../ui/components/controls.dart';
+import '../ui/components/screen_title.dart';
 import '../ui/components/status.dart';
 
 /// The username + password entry point for staff.
@@ -167,7 +167,6 @@ class _StaffLoginScreenState extends State<StaffLoginScreen> {
   @override
   Widget build(BuildContext context) {
     final AppSpacing spacing = AppSpacing.of(context);
-    final TextTheme type = AppTypography.of(context);
     final AppLocalizations l10n = AppLocalizations.of(context);
 
     return Scaffold(
@@ -184,10 +183,11 @@ class _StaffLoginScreenState extends State<StaffLoginScreen> {
                   mainAxisSize: MainAxisSize.min,
                   crossAxisAlignment: CrossAxisAlignment.stretch,
                   children: <Widget>[
-                    Text(
-                      l10n.staffLoginTitle,
-                      textAlign: TextAlign.center,
-                      style: type.headlineSmall,
+                    // The screen's NAME, large and on the canvas, left aligned —
+                    // the same title block every other screen opens with.
+                    ScreenTitle(
+                      title: l10n.staffLoginTitle,
+                      padding: EdgeInsets.zero,
                     ),
                     SizedBox(height: spacing.lg),
                     TextFormField(

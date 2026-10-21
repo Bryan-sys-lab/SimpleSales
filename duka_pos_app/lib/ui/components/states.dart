@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 
 import '../../theme/app_colors.dart';
@@ -118,6 +120,7 @@ class ErrorStateView extends StatelessWidget {
     this.onRetry,
     this.retryLabel = 'Try again',
     this.detail,
+    this.icon = Icons.cloud_off_outlined,
     super.key,
   });
 
@@ -128,6 +131,14 @@ class ErrorStateView extends StatelessWidget {
   /// A short technical line, only when there is a support process that needs it.
   /// Never the exception itself.
   final String? detail;
+
+  /// The glyph that says what failed.
+  ///
+  /// The default is the network's own mark, because that is what this view is
+  /// most often about. A screen whose failure is NOT a network passes the
+  /// glyph that names ITS failure: an error view that shows a crossed-out
+  /// cloud over a camera problem tells the operator to check their wifi.
+  final IconData icon;
 
   @override
   Widget build(BuildContext context) {
@@ -147,7 +158,7 @@ class ErrorStateView extends StatelessWidget {
               mainAxisSize: MainAxisSize.min,
               children: <Widget>[
                 Icon(
-                  Icons.cloud_off_outlined,
+                  icon,
                   size: 40,
                   color: colors.danger,
                 ),
@@ -231,18 +242,34 @@ class _SkeletonListState extends State<SkeletonList>
   void didChangeDependencies() {
     super.didChangeDependencies();
     _controller.duration = AppMotion.of(context).skeletonShimmer;
+    _armSkeleton(AppMotion.of(context).skeletonDelay);
   }
 
   /// The key that suppresses the skeleton for the first [delay].
   bool _showSkeleton = false;
 
+  /// The timer that reveals the skeleton once the delay has passed.
+  Timer? _delayTimer;
+
   @override
   void initState() {
     super.initState();
     _showSkeleton = false;
-    // A real timer, cancelled on dispose and re-armed if the widget is rebuilt
-    // with a different delay. Leaking this one fires into a dead tree.
-    Future<void>.delayed(AppMotion.of(context).skeletonDelay, () {
+  }
+
+  /// Arms the reveal timer.
+  ///
+  /// Called from [didChangeDependencies], NOT from `initState`: the delay comes
+  /// from the theme, and looking up an inherited widget during the element's
+  /// own `initState` is a lookup before that state is alive — the framework
+  /// rejects it, and every screen that showed a skeleton crashed in debug
+  /// mode. `didChangeDependencies` is where the theme first becomes readable,
+  /// and re-arming there means a theme change re-times the reveal.
+  ///
+  /// A real timer, cancelled on dispose. Leaking it fires into a dead tree.
+  void _armSkeleton(Duration delay) {
+    _delayTimer?.cancel();
+    _delayTimer = Timer(delay, () {
       if (!mounted) return;
       setState(() => _showSkeleton = true);
       _play();
@@ -256,6 +283,7 @@ class _SkeletonListState extends State<SkeletonList>
 
   @override
   void dispose() {
+    _delayTimer?.cancel();
     _controller.dispose();
     super.dispose();
   }

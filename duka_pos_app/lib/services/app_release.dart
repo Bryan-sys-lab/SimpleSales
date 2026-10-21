@@ -110,10 +110,33 @@ class UpdateAvailable extends UpdateCheck {
   final AppRelease release;
 }
 
+/// Why a check could not be completed.
+enum UpdateCheckFailure {
+  /// The server could not be reached at all.
+  ///
+  /// No answer, a timeout, a socket error: the till is offline or the server
+  /// is down. Nothing about the release is known.
+  unreachable,
+
+  /// The server answered, but not with something that describes a release.
+  ///
+  /// A proxy's error page, a stale response, a manifest that does not parse.
+  /// The server IS reachable; what it said is not usable.
+  malformed,
+}
+
 /// The check could not be completed.
 class UpdateCheckFailed extends UpdateCheck {
-  const UpdateCheckFailed(this.reason);
+  const UpdateCheckFailed(this.failure, [this.detail]);
 
-  /// Already-localised text, or a short cause for a log line.
-  final String reason;
+  /// What went wrong, in terms the screen can put in a sentence.
+  ///
+  /// A TYPE rather than a string, because a raw reason — "manifest 404",
+  /// "manifest not JSON", a socket exception's own words — is a line of
+  /// technical text handed to a shopkeeper, and nobody can act on it. The
+  /// detail belongs in the log, where a developer can read it.
+  final UpdateCheckFailure failure;
+
+  /// The technical cause, for the log. Never shown to the owner.
+  final String? detail;
 }

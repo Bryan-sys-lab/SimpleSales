@@ -164,9 +164,9 @@ void main() {
       // order, so a header-named file whose columns sit elsewhere offered the
       // owner its selling price as a cost. The mapping the import parsed with
       // is stored with the row and read back here.
-      final reordered = SheetColumns.fromJson(
-          '{"id":0,"name":1,"category":2,"sell_price":3,'
-          '"cost_price":4,"stock_qty":5}');
+      final reordered =
+          SheetColumns.fromJson('{"id":0,"name":1,"category":2,"sell_price":3,'
+              '"cost_price":4,"stock_qty":5}');
 
       final draft = ImportReviewService.draftFromRow(
           <dynamic>['', 'Bond 7', '', '250', '169', '4'],
@@ -196,7 +196,8 @@ void main() {
       expect(SheetColumns.fromJson('not json'), isA<SheetColumns>());
     });
 
-    test('a stored problem with no mapping falls back to the canonical order', () {
+    test('a stored problem with no mapping falls back to the canonical order',
+        () {
       // Rows recorded before the mapping was kept, and any other writer.
       final stored = ImportNeedsAttention(
         source: 'excel',

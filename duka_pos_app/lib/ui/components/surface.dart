@@ -4,13 +4,14 @@ import '../../theme/app_colors.dart';
 import '../../theme/app_shapes.dart';
 import '../../theme/app_spacing.dart';
 import '../../theme/typography.dart';
+import 'status.dart';
 
 /// A page card.
 ///
 /// One component for every raised surface in the app, so "what does a panel look
 /// like" is answered once. It is a hairline edge on [AppColors.surface], not a
-/// shadow: on a warm canvas a 1px `#D6C9C4` edge draws the boundary, while a
-/// shadow alone at this elevation reads as a grey smudge.
+/// shadow: on a near-black canvas a 1px edge draws the boundary, while a shadow
+/// alone at this elevation reads as a grey smudge.
 ///
 /// No `elevation` parameter. A card's job in this app is to group; where
 /// something genuinely floats above the page it is a dialog or a sheet, and those
@@ -55,7 +56,7 @@ class SurfaceCard extends StatelessWidget {
     final AppSpacing spacing = AppSpacing.of(context);
 
     final Widget body = Padding(
-      padding: padding ?? EdgeInsets.all(spacing.md),
+      padding: padding ?? EdgeInsets.all(spacing.lg),
       child: child,
     );
 
@@ -294,6 +295,11 @@ class KeyValueRow extends StatelessWidget {
 /// The unit of a dashboard. Tabular figures, because a row of KPIs whose numbers
 /// shift horizontally as they load is unreadable.
 ///
+/// The three lines are LABEL / VALUE / DELTA: a muted label, a large figure,
+/// and a small change with a direction. The delta is not decoration — it is the
+/// third channel that makes a figure mean something ("KSh 12,480" alone is a
+/// number; "KSh 12,480, up 18%" is a trend).
+///
 /// [emphasis] is a MONOTONIC channel independent of colour: the primary figure on
 /// a screen is bigger. That is what keeps a KPI legible in greyscale, to a
 /// screen-reader user, and under `invertColors`.
@@ -302,6 +308,7 @@ class StatTile extends StatelessWidget {
     required this.label,
     required this.value,
     this.caption,
+    this.delta,
     this.emphasis = StatEmphasis.normal,
     this.onTap,
     super.key,
@@ -310,6 +317,10 @@ class StatTile extends StatelessWidget {
   final String label;
   final String value;
   final String? caption;
+
+  /// The change, with its direction. Null for a figure with nothing to compare
+  /// it against.
+  final StatDelta? delta;
 
   /// Monotonic weight in the visual hierarchy, never a colour-only distinction.
   final StatEmphasis emphasis;
@@ -322,15 +333,18 @@ class StatTile extends StatelessWidget {
     final AppColors colors = AppColors.of(context);
     final TextTheme type = AppTypography.of(context);
 
+    // The two value sizes are STEPS IN THE SCALE, not numbers invented here:
+    // `titleLarge` for a figure in a row, `headlineMedium` for the one figure
+    // the screen is about.
     final double valueSize = switch (emphasis) {
-      StatEmphasis.normal => 18,
-      StatEmphasis.strong => 24,
+      StatEmphasis.normal => type.titleLarge?.fontSize ?? 18,
+      StatEmphasis.strong => type.headlineMedium?.fontSize ?? 26,
     };
 
     return Semantics(
       button: onTap != null,
-      label: '$label: $value',
-      excludeSemantics: caption != null,
+      label: '$label: $value${delta == null ? '' : ', ${delta!.spoken}'}',
+      excludeSemantics: caption != null || delta != null,
       child: ExcludeSemantics(
         child: InkWell(
           onTap: onTap,
@@ -339,7 +353,7 @@ class StatTile extends StatelessWidget {
           child: ConstrainedBox(
             constraints: BoxConstraints(minHeight: spacing.minTapTarget),
             child: Padding(
-              padding: EdgeInsets.all(spacing.md),
+              padding: EdgeInsets.all(spacing.lg),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 mainAxisSize: MainAxisSize.min,
@@ -364,6 +378,10 @@ class StatTile extends StatelessWidget {
                           : FontWeight.w700,
                     ),
                   ),
+                  if (delta != null) ...<Widget>[
+                    SizedBox(height: spacing.xs),
+                    _DeltaLine(delta: delta!),
+                  ],
                   if (caption != null) ...<Widget>[
                     SizedBox(height: spacing.xs),
                     Text(caption!, style: type.bodySmall),
@@ -375,6 +393,119 @@ class StatTile extends StatelessWidget {
         ),
       ),
     );
+  }
+}
+
+/// A change, and the direction it went.
+///
+/// The direction is a GLYPH, not just a colour: an arrow up is still an arrow
+/// up with the colour removed, which is what keeps a rise from reading as a
+/// fall to a greyscale user or under `invertColors`.
+class StatDelta {
+  const StatDelta({required this.text, required this.direction});
+
+  /// The change, already formatted — "18%", "-3 orders".
+  final String text;
+
+  final DeltaDirection direction;
+
+  /// What a screen reader hears. The direction is a word, because "up 18%" and
+  /// "down 18%" are not the same sentence.
+  String get spoken =>
+      direction == DeltaDirection.up ? 'up $text' : 'down $text';
+}
+
+/// Which way a figure moved.
+enum DeltaDirection { up, down }
+
+class _DeltaLine extends StatelessWidget {
+  const _DeltaLine({required this.delta});
+
+  final StatDelta delta;
+
+  @override
+  Widget build(BuildContext context) {
+    final AppColors colors = AppColors.of(context);
+    final TextTheme type = AppTypography.of(context);
+
+    // A rise is the success tone and a fall the danger tone, but the GLYPH is
+    // what actually carries it.
+    final bool up = delta.direction == DeltaDirection.up;
+    final Color tone = up ? colors.success : colors.danger;
+
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      children: <Widget>[
+        Icon(
+          up ? Icons.arrow_upward : Icons.arrow_downward,
+          size: 14,
+          color: tone,
+        ),
+        SizedBox(width: AppSpacing.of(context).xs),
+        Text(
+          delta.text,
+          style: type.labelMedium?.copyWith(color: tone),
+        ),
+      ],
+    );
+  }
+}
+
+/// A round badge holding an icon.
+///
+/// The row pattern of this app: a coloured circle on the leading side, the
+/// thing it belongs to next to it, and the value on the trailing side. The
+/// badge is TONAL by default — a sunken well with a muted glyph — so the one
+/// saturated colour in the app stays the one action. Pass a [StatusTone] to
+/// let a row carry a state.
+///
+/// It is a circle and not a rounded square because a circle reads as a MARKER
+/// and a rounded square reads as a FIELD: the eye goes to it, reads it as a
+/// glyph, and moves on.
+class IconBadge extends StatelessWidget {
+  const IconBadge({
+    required this.icon,
+    this.tone = StatusTone.neutral,
+    this.size = 36,
+    this.semanticLabel,
+    super.key,
+  });
+
+  final IconData icon;
+
+  /// The state the badge carries. Neutral is a marker, not a status.
+  final StatusTone tone;
+
+  /// The circle's diameter.
+  final double size;
+
+  /// What a screen reader hears for the badge alone. Null excludes it — the
+  /// row's own text then carries the meaning.
+  final String? semanticLabel;
+
+  @override
+  Widget build(BuildContext context) {
+    final AppColors colors = AppColors.of(context);
+
+    final Widget badge = Container(
+      width: size,
+      height: size,
+      decoration: BoxDecoration(
+        color: tone.container(colors),
+        shape: BoxShape.circle,
+      ),
+      alignment: Alignment.center,
+      child: Icon(
+        icon,
+        size: size * 0.5,
+        color: tone.onContainer(colors),
+      ),
+    );
+
+    if (semanticLabel == null) {
+      return ExcludeSemantics(child: badge);
+    }
+    return Semantics(label: semanticLabel, child: badge);
   }
 }
 

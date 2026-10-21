@@ -15,15 +15,15 @@ name: Auto release
 #
 # Why this cannot run away:
 #
-#   Every version this workflow produces is derived from what has already been
-#   released, and it commits nothing. No commit means no new push to main, which
-#   means no new green CI run, which means no new auto-release. The loop that a
-#   "bump pubspec, commit, release" design walks straight into has nothing to
-#   grip here.
+#   Every version this workflow produces is copied out of pubspec.yaml, and it
+#   commits nothing. No commit means no new push to main, which means no new
+#   green CI run, which means no new auto-release. The loop that a "bump
+#   pubspec, commit, release" design walks straight into has nothing to grip
+#   here.
 #
-#   Two further guards, because "cannot loop" is not the same as "cannot repeat":
-#   a tag already pointing at this commit ends the run, and the release is a
-#   draft until it has built and verified successfully.
+#   Two further guards, because "cannot loop" is not the same to "cannot
+#   repeat": a tag already pointing at this commit ends the run, and the release
+#   is a draft until it has built and verified successfully.
 on:
   workflow_run:
     workflows: [CI]
@@ -122,9 +122,32 @@ jobs:
           fi
           echo "pubspec declares ${semver}+${declared}"
 
-          # One tag per commit. If this commit is already tagged, the release for
-          # it exists or is in flight and there is nothing to do. This is what
-          # makes a re-run of the whole pipeline idempotent.
+          # THE TAG IS EXACTLY WHAT pubspec DECLARES.
+          #
+          # Flutter reads the Android versionCode out of pubspec
+          # (android/app/build.gradle.kts: `versionCode = flutter.versionCode`),
+          # so an APK built from this commit can only ever carry build
+          # ${declared}. A tag naming any other build number describes an APK
+          # that no build of this commit can produce.
+          #
+          # This step used to derive the build number from release history
+          # instead — `next = highest + 1` — which is how v2.0.0+27 came to be
+          # tagged on a commit whose pubspec said 2.0.0+26. The tag said 27, the
+          # APK said 26, and release.yml failed on "APK versionCode '26' does
+          # not match the tag's build number '27'" after spending ten minutes
+          # building it. The gap between "the number the tag names" and "the
+          # number the build produces" is the whole bug, and it can only be
+          # closed by taking the number from the one place the build reads it.
+          #
+          # The build number still has to be monotonic, and that is enforced
+          # below — by refusing, loudly, to reuse one. It is not enforced by
+          # inventing a different one.
+          tag="v${semver}+${declared}"
+
+          # One tag per commit. If this commit is already tagged with exactly
+          # this version, the release for it exists or is in flight and there is
+          # nothing to do. This is what makes a re-run of the whole pipeline
+          # idempotent.
           # `git tag --points-at`, and only that.
           #
           # An earlier version of this also tried
@@ -134,28 +157,48 @@ jobs:
           # does not glob, so the condition was always false. A guard that reads
           # like a guard and silently never fires is worse than none, because it
           # is the reason somebody believes re-runs are safe.
-          if git tag --points-at "$sha" | grep -q .; then
-            existing="$(git tag --points-at "$sha" | tr '\n' ' ')"
-            echo "::notice::Commit ${sha} is already tagged (${existing}). Nothing to release."
-            echo "already_tagged=true" >> "$GITHUB_OUTPUT"
-            exit 0
+          existing="$(git tag --points-at "$sha" | tr '\n' ' ')"
+          if [ -n "$existing" ]; then
+            if printf '%s\n' $existing | grep -qxF "$tag"; then
+              echo "::notice::Commit ${sha} is already tagged (${tag}). Nothing to release."
+              echo "::notice::If that tag's release failed, re-run it with:"
+              echo "::notice::  gh workflow run release.yml --ref ${tag}"
+              echo "already_tagged=true" >> "$GITHUB_OUTPUT"
+              echo "tag=${tag}" >> "$GITHUB_OUTPUT"
+              echo "semver=${semver}" >> "$GITHUB_OUTPUT"
+              echo "code=${declared}" >> "$GITHUB_OUTPUT"
+              exit 0
+            fi
+            # The commit carries a tag that does not match pubspec. This is
+            # the shape of the v2.0.0+27 failure, caught before a tag is
+            # minted rather than after an APK is built.
+            echo "::error::Commit ${sha} is already tagged (${existing% }) but pubspec declares ${semver}+${declared}."
+            echo "::error::The APK built from this commit would carry versionCode ${declared}, so it can never be the release named by that tag."
+            echo "::error::Bump the build number in duka_pos_app/pubspec.yaml to match the tag, or release from a commit with no tag."
+            exit 1
           fi
 
-          # The build number comes from release history, not from pubspec, so it
-          # is monotonic by construction. Android refuses to install over an
+          # A build number is spent once. Android refuses to install over an
           # equal or lower versionCode, so reusing a number is not a cosmetic
           # problem: it produces an APK that silently will not update a till.
+          #
+          # Tags are the source of truth rather than published releases: a tag
+          # survives a failed or abandoned release, which is exactly when a
+          # number must not be reused. A release list would let a failed
+          # release's number be handed out again, and the handset that
+          # installed the failed build would refuse the replacement.
           highest=0
-          for tag in $(git tag --list "v${semver}+*"); do
-            code="${tag##*+}"
+          for t in $(git tag --list "v${semver}+*"); do
+            code="${t##*+}"
             if [[ "$code" =~ ^[0-9]+$ ]] && [ "$code" -gt "$highest" ]; then
               highest="$code"
             fi
           done
-          # Tags are the source of truth rather than releases: a tag survives a
-          # failed or abandoned release, which is exactly when a number must not
-          # be reused.
-          for release in $(gh release list --limit 200 --json tagName --jq '.[].tagName' 2>/dev/null || true); do
+          # `gh release list` needs a token of its own; GITHUB_TOKEN is the
+          # workflow's own and carries the `contents: write` this workflow
+          # already declares. Without it the command fails and the release
+          # history contributes nothing to `highest`.
+          for release in $(GH_TOKEN="${{ github.token }}" gh release list --limit 200 --json tagName --jq '.[].tagName' 2>/dev/null || true); do
             case "$release" in
               v${semver}+*)
                 code="${release##*+}"
@@ -166,18 +209,18 @@ jobs:
             esac
           done
 
-          next=$(( highest + 1 ))
-          # Never below the number pubspec already carries: a human who wrote
-          # 2.0.0+7 means seven builds exist.
-          if [ "$declared" -gt "$next" ]; then
-            next="$declared"
+          if [ "$declared" -le "$highest" ]; then
+            echo "::error::pubspec declares build ${declared} of ${semver}, but ${highest} has already been used."
+            echo "::error::A build number is released once: Android refuses to install an APK whose versionCode is not higher than the installed one."
+            echo "::error::Bump the build number in duka_pos_app/pubspec.yaml to $(( highest + 1 )) to release this commit."
+            exit 1
           fi
 
-          echo "highest released build for ${semver}: ${highest}"
-          echo "next release tag: v${semver}+${next}"
-          echo "tag=v${semver}+${next}" >> "$GITHUB_OUTPUT"
+          echo "highest used build for ${semver}: ${highest}"
+          echo "release tag: ${tag}"
+          echo "tag=${tag}" >> "$GITHUB_OUTPUT"
           echo "semver=${semver}" >> "$GITHUB_OUTPUT"
-          echo "code=${next}" >> "$GITHUB_OUTPUT"
+          echo "code=${declared}" >> "$GITHUB_OUTPUT"
           echo "already_tagged=false" >> "$GITHUB_OUTPUT"
 
       # Pushed with a PAT, not the default GITHUB_TOKEN.

@@ -194,6 +194,9 @@ class AppLocalizationsEn extends AppLocalizations {
   String get actionContinue => 'Continue';
 
   @override
+  String get poweredBy => 'Powered by';
+
+  @override
   String get actionDone => 'Done';
 
   @override
@@ -556,6 +559,26 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get sellBrowseProductsAction => 'Browse products';
+
+  @override
+  String get sellCompleteTitle => 'Sale recorded';
+
+  @override
+  String get sellCompletePaidCash => 'Paid in cash';
+
+  @override
+  String get sellCompletePaidMpesa => 'Paid by M-Pesa';
+
+  @override
+  String sellCompleteChange(Object amount) {
+    return 'Change due $amount';
+  }
+
+  @override
+  String get sellCompleteNext => 'Next sale';
+
+  @override
+  String get sellCompleteReceiptPending => 'The receipt is still printing.';
 
   @override
   String get sellCartEmptyHint => 'Tap products to add';
@@ -1107,6 +1130,9 @@ class AppLocalizationsEn extends AppLocalizations {
   String get inventoryLowPriceTitle => 'Sell price is below cost';
 
   @override
+  String get inventoryInStock => 'In stock';
+
+  @override
   String get inventoryLowStock => 'low stock';
 
   @override
@@ -1238,6 +1264,42 @@ class AppLocalizationsEn extends AppLocalizations {
   String get profileNoAccountYet => 'No account is set up yet.';
 
   @override
+  String get profileEditAction => 'Edit';
+
+  @override
+  String get profileEditTitle => 'Edit your details';
+
+  @override
+  String get profileEditNameLabel => 'Your name';
+
+  @override
+  String get profileEditNameHelp => 'Shown on the till and on the receipts.';
+
+  @override
+  String get profileEditShopNameLabel => 'Shop name';
+
+  @override
+  String get profileEditEmailLabel => 'Email';
+
+  @override
+  String get profileEditEmailHelp =>
+      'Where PIN-recovery and verification codes are sent.';
+
+  @override
+  String get profileEditEmailWarning =>
+      'Changing the email moves where recovery codes are sent. A new address has to be verified before it can be used to recover the PIN, and until it is, keep the old one working.';
+
+  @override
+  String get profileEditSave => 'Save';
+
+  @override
+  String get profileEditSaved => 'Your details were saved.';
+
+  @override
+  String get profileEditFailed =>
+      'Your details could not be saved. Nothing was changed.';
+
+  @override
   String get profilePhotoLabel => 'Photograph';
 
   @override
@@ -1272,6 +1334,120 @@ class AppLocalizationsEn extends AppLocalizations {
   String get profileBackToSettings => 'Back to settings';
 
   @override
+  String get statusDeletionPending =>
+      'Your online account could not be deleted yet. It will be deleted the next time this till can reach the server.';
+
+  @override
+  String get statusBackupOverdue =>
+      'This phone has not been backed up for a while.';
+
+  @override
+  String get statusOffline =>
+      'This till is offline. Sales are still being recorded.';
+
+  @override
+  String get statusConnecting => 'Reconnecting to the server.';
+
+  @override
+  String get importRepairedTitle => 'Row repaired';
+
+  @override
+  String get importRepairFailedTitle => 'The row was not repaired';
+
+  @override
+  String get profileEditSavedTitle => 'Details saved';
+
+  @override
+  String get profileEditFailedTitle => 'The details were not saved';
+
+  @override
+  String get inventoryProductSavedTitle => 'Product saved';
+
+  @override
+  String get inventoryProductUpdatedTitle => 'Product updated';
+
+  @override
+  String get inventoryStockSavedTitle => 'Stock updated';
+
+  @override
+  String get settingsBackupsErasedTitle => 'Backups erased';
+
+  @override
+  String get settingsBackupsEraseFailedTitle =>
+      'Some backups could not be erased';
+
+  @override
+  String get settingsMpesaUpdateFailedTitle => 'The setting was not saved';
+
+  @override
+  String get settingsIdentityVerifiedTitle => 'Identity verified';
+
+  @override
+  String get settingsSyncDoneTitle => 'Sync finished';
+
+  @override
+  String get settingsStaffSavedTitle => 'Cashier saved';
+
+  @override
+  String get settingsStaffSaveFailedTitle => 'The cashier was not saved';
+
+  @override
+  String get settingsStaffRemovedTitle => 'Cashier removed';
+
+  @override
+  String get settingsStaffRemoveFailedTitle => 'The cashier was not removed';
+
+  @override
+  String get settingsPinResetTitle => 'PIN reset';
+
+  @override
+  String get settingsBackupDoneTitle => 'Backup made';
+
+  @override
+  String get settingsBackupDone =>
+      'The encrypted backup was made and is ready to share.';
+
+  @override
+  String get settingsBackupFailedTitle => 'The backup failed';
+
+  @override
+  String get settingsBackupFailed =>
+      'The backup could not be made. The data on this phone is unchanged, and nothing was shared.';
+
+  @override
+  String get settingsExportDoneTitle => 'Export ready';
+
+  @override
+  String get settingsExportEncryptedDone =>
+      'The encrypted backup file is ready to share.';
+
+  @override
+  String get settingsExportInventoryDone =>
+      'The inventory workbook is ready to share.';
+
+  @override
+  String get settingsExportFailedTitle => 'The export failed';
+
+  @override
+  String get settingsExportFailed =>
+      'The file could not be made. Nothing was shared.';
+
+  @override
+  String get settingsRestoreDoneTitle => 'Backup restored';
+
+  @override
+  String get settingsRestoreFailedTitle => 'The backup was not restored';
+
+  @override
+  String get settingsImportDoneTitle => 'Import complete';
+
+  @override
+  String get settingsImportFailedTitle => 'The import failed';
+
+  @override
+  String get settingsUpdateFailedTitle => 'The update was not installed';
+
+  @override
   String get settingsAccountSection => 'Your account';
 
   @override
@@ -1290,8 +1466,16 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String settingsUpdatesFailed(Object reason) {
-    return 'Could not check ($reason)';
+    return 'Could not check for updates: $reason';
   }
+
+  @override
+  String get settingsUpdatesReasonUnreachable =>
+      'the server could not be reached';
+
+  @override
+  String get settingsUpdatesReasonMalformed =>
+      'the server did not send a release';
 
   @override
   String settingsUpdatesCurrent(Object version) {
@@ -1448,6 +1632,44 @@ class AppLocalizationsEn extends AppLocalizations {
   String get settingsDeleteAccountAction => 'Delete account';
 
   @override
+  String get accountDeleteLocalAccountsTitle =>
+      'Delete the cashier logins on this phone?';
+
+  @override
+  String get accountDeleteLocalAccountsMessage =>
+      'The cashiers’ sign-in details are removed from this phone, so nobody can sign in to this till afterwards. Their names on past sales stay, because those are the shop’s records.';
+
+  @override
+  String get accountDeleteLocalAccountsDelete => 'Delete them';
+
+  @override
+  String get accountDeleteLocalAccountsKeep => 'Keep them';
+
+  @override
+  String get accountDeleteLocalAccountsRemoved =>
+      'The cashier logins on this phone were deleted. Nobody can sign in to this till.';
+
+  @override
+  String get accountDeleteLocalAccountsSealed =>
+      'The cashier logins on this phone were sealed: they cannot be used, but the records of them were kept.';
+
+  @override
+  String settingsBackupsErasedCount(num count) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: '$count backup files were erased.',
+      one: 'One backup file was erased.',
+      zero: 'No backup files were on this phone.',
+    );
+    return '$_temp0';
+  }
+
+  @override
+  String get settingsBackupsEraseFailed =>
+      'The backup files could not all be erased. The key is gone, so anything left cannot be read, but there may be a file left on the phone.';
+
+  @override
   String get accountDeleteConfirmTitle => 'Delete this account for good?';
 
   @override
@@ -1500,6 +1722,9 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get pinResetSending => 'Sending…';
+
+  @override
+  String get pinResetResend => 'Send another code';
 
   @override
   String get pinResetSaving => 'Saving…';
@@ -1736,6 +1961,29 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get settingsImportInventory => 'Import inventory (.xlsx)';
+
+  @override
+  String get settingsImportStageReading => 'Reading the workbook…';
+
+  @override
+  String get settingsImportStageParsing => 'Reading the rows…';
+
+  @override
+  String get settingsImportStageWriting => 'Writing the products…';
+
+  @override
+  String get settingsImportStageBarcodes => 'Attaching the barcodes…';
+
+  @override
+  String get settingsImportStageVariants => 'Attaching the variants…';
+
+  @override
+  String get settingsImportStageDone => 'Done.';
+
+  @override
+  String settingsImportProgressPercent(Object percent, Object stage) {
+    return '$stage $percent%';
+  }
 
   @override
   String get settingsImportWorkbookFailed =>
@@ -2565,6 +2813,11 @@ class AppLocalizationsEn extends AppLocalizations {
   }
 
   @override
+  String chartSpokenBar(Object label, Object value) {
+    return '$label, $value';
+  }
+
+  @override
   String get variantAllSizesLabel => 'All sizes';
 
   @override
@@ -2598,6 +2851,55 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get scanRetryCamera => 'Try camera again';
+
+  @override
+  String get scanPointAtBarcode => 'Point the camera at the barcode';
+
+  @override
+  String scanCodesRead(num count) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: '$count codes read',
+      one: '1 code read',
+    );
+    return '$_temp0';
+  }
+
+  @override
+  String get scanDone => 'Done';
+
+  @override
+  String get scanEnterCodeManually => 'Enter code manually';
+
+  @override
+  String get scanFlashOnTooltip => 'Turn the flash on';
+
+  @override
+  String get scanFlashOffTooltip => 'Turn the flash off';
+
+  @override
+  String get scanPermissionDeniedTitle => 'Camera access is off';
+
+  @override
+  String get scanPermissionDeniedMessage =>
+      'The camera needs permission to read a barcode. Turn camera access on for this app in your phone\'s settings, then try again.';
+
+  @override
+  String get scanManualTitle => 'Enter barcode';
+
+  @override
+  String get scanManualLabel => 'Barcode';
+
+  @override
+  String get scanManualHint => 'Type the digits printed under the barcode';
+
+  @override
+  String get scanManualAdd => 'Add';
+
+  @override
+  String get scanManualInvalidCode =>
+      'That is not a barcode this till can read';
 
   @override
   String signOutTitleNamed(Object name) {
@@ -2796,6 +3098,9 @@ class AppLocalizationsEn extends AppLocalizations {
   String get loginSignInAction => 'Sign in';
 
   @override
+  String get loginPinLabel => 'PIN';
+
+  @override
   String get backToPinPadAction => 'Back to PIN pad';
 
   @override
@@ -2812,6 +3117,43 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get loginNetworkError => 'Could not reach the shop server. Try again.';
+
+  @override
+  String get permissionsTitle => 'Set up your till';
+
+  @override
+  String get permissionsSubtitle =>
+      'These two let the till do its job. You can skip either one and change it later in Settings.';
+
+  @override
+  String get permissionsCameraTitle => 'Camera';
+
+  @override
+  String get permissionsCameraWhy =>
+      'Scan barcodes with the handset camera, and photograph a product for its tile.';
+
+  @override
+  String get permissionsBluetoothTitle => 'Bluetooth';
+
+  @override
+  String get permissionsBluetoothWhy =>
+      'Send receipts to a Bluetooth receipt printer.';
+
+  @override
+  String get permissionsAllow => 'Allow';
+
+  @override
+  String get permissionsAllowed => 'Allowed';
+
+  @override
+  String get permissionsOpenSettings => 'Open Settings';
+
+  @override
+  String get permissionsContinue => 'Continue';
+
+  @override
+  String get permissionsOptionalNote =>
+      'None of these are required. A till with a barcode scanner and no camera can still sell everything.';
 
   @override
   String onboardingImportedProducts(Object products) {
@@ -2904,15 +3246,20 @@ class AppLocalizationsEn extends AppLocalizations {
   }
 
   @override
-  String dashboardGreetingAnonymous(Object greeting, Object scope) {
-    return '$greeting · $scope';
+  String dashboardGreetingAnonymous(Object greeting) {
+    return '$greeting.';
   }
 
   @override
-  String dashboardGreetingNamed(
-      Object greeting, Object name, Object role, Object scope) {
-    return '$greeting, $name · $role · $scope';
+  String dashboardGreetingNamed(Object greeting, Object name) {
+    return '$greeting, $name.';
   }
+
+  @override
+  String get dashboardScopeShop => 'the whole shop';
+
+  @override
+  String get dashboardScopeOwn => 'just you';
 
   @override
   String get dashboardGreetingMorning => 'Good morning';
@@ -3015,6 +3362,42 @@ class AppLocalizationsEn extends AppLocalizations {
       one: '1 product sold',
     );
     return '$_temp0';
+  }
+
+  @override
+  String get saleDetailsTitle => 'Sale details';
+
+  @override
+  String get saleDetailsWhen => 'When';
+
+  @override
+  String get saleDetailsWhere => 'Where';
+
+  @override
+  String get saleDetailsHow => 'How it was paid';
+
+  @override
+  String get saleDetailsWho => 'Who sold it';
+
+  @override
+  String get saleDetailsWhat => 'What was sold';
+
+  @override
+  String get saleDetailsNoItems => 'No items were recorded on this sale.';
+
+  @override
+  String saleDetailsReference(Object reference) {
+    return 'Reference $reference';
+  }
+
+  @override
+  String saleDetailsTendered(Object change, Object tendered) {
+    return 'Tendered $tendered · change $change';
+  }
+
+  @override
+  String saleDetailsQuantity(Object quantity) {
+    return '$quantity ×';
   }
 
   @override

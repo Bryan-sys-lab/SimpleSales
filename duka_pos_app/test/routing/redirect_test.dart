@@ -259,4 +259,48 @@ void main() {
       );
     });
   });
+
+  group('the permissions step', () {
+    // The step that asks the owner for the camera and for Bluetooth, once,
+    // after the walkthrough.
+    //
+    // The rules: an admin who has not been asked lands on it, a cashier never
+    // does, and a step that has been answered is stale.
+
+    test('an admin who has not been asked is sent to the step', () {
+      expect(
+        guard(AppStage.permissions, Routes.dashboard),
+        Routes.permissions,
+      );
+    });
+
+    test('the step is allowed to sit where it is', () {
+      expect(guard(AppStage.permissions, Routes.permissions), isNull);
+    });
+
+    test('a cashier is sent to the shop, not to the step', () {
+      // The copy is addressed to whoever set the shop up.
+      expect(
+        guard(AppStage.permissions, Routes.dashboard, isAdmin: false),
+        Routes.dashboard,
+      );
+    });
+
+    test('a finished step is stale', () {
+      expect(
+        guard(AppStage.ready, Routes.permissions),
+        Routes.dashboard,
+      );
+    });
+
+    test('a signed-out user cannot reach the step at all', () {
+      // The sign-in check outranks everything but the boot gate: a cashier
+      // with a valid PIN must always be able to reach it, and the permissions
+      // step is never on the way to the PIN pad.
+      expect(
+        guard(AppStage.signingIn, Routes.permissions),
+        Routes.welcome,
+      );
+    });
+  });
 }

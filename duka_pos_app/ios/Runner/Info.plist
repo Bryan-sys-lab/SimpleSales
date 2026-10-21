@@ -11,7 +11,17 @@
 	<key>NSPhotoLibraryUsageDescription</key>
 	<string>Choose a photograph of a product from your library, so a cashier can match the shelf at the till.</string>
 	<key>NSCameraUsageDescription</key>
-	<string>Take a photograph of a product, so a cashier can match the shelf at the till.</string>
+	<string>Scan barcodes and photograph products, so a cashier can match the shelf at the till.</string>
+	<!-- Bluetooth, for the receipt printer.
+	     Required from iOS 13. WITHOUT this key the app TERMINATES the moment it
+	     first touches CoreBluetooth: the system raises an exception rather
+	     than showing a prompt, so a till that paired a printer on iOS would
+	     have crashed the first time a receipt was printed.
+
+	     The string is what the system prompt shows, so it says what the SHOP
+	     gets out of it rather than naming an API. -->
+	<key>NSBluetoothAlwaysUsageDescription</key>
+	<string>Send receipts to your Bluetooth receipt printer.</string>
 	<key>CFBundleExecutable</key>
 	<string>$(EXECUTABLE_NAME)</string>
 	<key>CFBundleIdentifier</key>

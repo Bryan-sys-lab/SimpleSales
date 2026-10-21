@@ -29,6 +29,18 @@ enum AppStage {
   /// Signed in, and this till has not yet seen the first-run walkthrough.
   onboarding,
 
+  /// Signed in, past the walkthrough, and the till has not yet asked for the
+  /// permissions it can use.
+  ///
+  /// AFTER the walkthrough and BEFORE the shop, and it is where the app asks
+  /// for the camera and for Bluetooth — once, in one place, where the owner is
+  /// not in the middle of a sale.
+  ///
+  /// It CANNOT BLOCK: it is admin-only, it is asked once per workspace, and
+  /// the screen's own "Continue" is always there. A till that cannot sell
+  /// because nobody granted a permission it does not need is a broken till.
+  permissions,
+
   /// Signed in and past the walkthrough. The shop itself.
   ready,
 }
@@ -54,6 +66,13 @@ enum AppStage {
 ///   The chooser screen itself decides whether to offer shop setup, because that
 ///   depends on whether a shop exists — a fact the router already knows but that
 ///   is not part of the security-relevant ordering.
+///
+/// * The permissions step comes AFTER the walkthrough and is ADMIN-ONLY, like
+///   the walkthrough. Its copy is addressed to whoever set the shop up, and a
+///   cashier must never be routed into a step that talks about "your till".
+///   It is also asked ONCE per workspace: a permission the owner has already
+///   answered is a decision, and a till that asks again every morning is a till
+///   people learn to dismiss without reading.
 AppStage resolveAppStage({
   required bool isLoading,
   required bool hasDatabaseFailure,
@@ -61,6 +80,7 @@ AppStage resolveAppStage({
   required bool isSignedIn,
   required bool isAdmin,
   required bool onboardingComplete,
+  bool permissionsAsked = true,
   AppChooserIntent chooserIntent = AppChooserIntent.signIn,
 }) {
   if (isLoading) return AppStage.loading;
@@ -82,6 +102,7 @@ AppStage resolveAppStage({
   }
 
   if (!onboardingComplete && isAdmin) return AppStage.onboarding;
+  if (!permissionsAsked && isAdmin) return AppStage.permissions;
   return AppStage.ready;
 }
 

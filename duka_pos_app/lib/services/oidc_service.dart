@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart' show visibleForTesting;
 import 'package:flutter_appauth/flutter_appauth.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 
@@ -184,6 +185,11 @@ class OidcService {
   }
 
   static Future<void> logout() async {
+    // Counted, so a test can prove that a flow which must not open a browser
+    // did not open one. Ending the provider's session launches the system
+    // browser, and on a Keycloak deployment that lands the owner on a LOGIN
+    // page — with a "Register" option beside it.
+    browserSessionsEnded++;
     final idToken = await _storage.read(key: _idTokenKey);
     try {
       if (idToken != null && isConfigured) {
@@ -198,6 +204,36 @@ class OidcService {
     } finally {
       await _clearStoredTokens();
     }
+  }
+
+  /// How many times a provider session has been ended in a browser.
+  ///
+  /// For tests only: the count is how a test proves that the ACCOUNT ERASURE
+  /// did not open the provider's logout page, which is the one way that flow
+  /// could show the owner a sign-up form in the middle of deleting their
+  /// account.
+  @visibleForTesting
+  static int browserSessionsEnded = 0;
+
+  /// Ends the session LOCALLY, without opening the provider's logout page.
+  ///
+  /// ## WHY THIS EXISTS
+  ///
+  /// [logout] asks the identity provider to end the session, which means
+  /// opening the SYSTEM BROWSER at the provider's end-session endpoint with a
+  /// redirect back into this app. On a Keycloak deployment that lands the
+  /// owner on a LOGIN page — with a "Register" option beside it — in the
+  /// middle of deleting their account. An app that is wiping itself must not
+  /// answer that with a sign-up form.
+  ///
+  /// ## WHY IT IS SAFE
+  ///
+  /// The provider session outlives the account only until the account is
+  /// deleted, which is what the caller is doing. The tokens on THIS device are
+  /// the part that matters, and they are gone either way.
+  static Future<void> clearLocalSession() async {
+    await _clearStoredTokens();
+    await clearAppSession();
   }
 
   static Future<void> clearAccessToken() async {

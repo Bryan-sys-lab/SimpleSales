@@ -313,8 +313,7 @@ class _UpdateGate extends StatefulWidget {
   State<_UpdateGate> createState() => _UpdateGateState();
 }
 
-class _UpdateGateState extends State<_UpdateGate>
-    with WidgetsBindingObserver {
+class _UpdateGateState extends State<_UpdateGate> with WidgetsBindingObserver {
   @override
   void initState() {
     super.initState();

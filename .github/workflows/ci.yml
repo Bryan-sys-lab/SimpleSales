@@ -126,11 +126,35 @@ jobs:
         if: ${{ env.BUILD_RELEASE == 'true' }}
         run: flutter build apk --release
 
+      # The version this build carries, read from the same place Flutter reads
+      # it. It labels the artefact below, because an APK that reports
+      # versionCode 26 is not interchangeable with one that reports 27, and an
+      # unlabelled `duka-pos-release-apk` in a run list says neither. The
+      # release workflow publishes the same version as `duka-pos-<tag>-apk`,
+      # so the two names together say which build is which.
+      - name: Read the declared version
+        id: version
+        shell: bash
+        run: |
+          set -euo pipefail
+          line="$(awk '/^version:/{print $2; exit}' pubspec.yaml)"
+          if [ -z "$line" ]; then
+            echo "::error::Could not read 'version:' from pubspec.yaml."
+            exit 1
+          fi
+          echo "version=v${line}" >> "$GITHUB_OUTPUT"
+          echo "This build carries ${line}."
+
       - name: Upload release APK artifact
         if: ${{ env.BUILD_RELEASE == 'true' }}
         uses: actions/upload-artifact@v4
         with:
-          name: duka-pos-release-apk
+          # `ci` in the name, because this is not the published artefact. It is
+          # the same signed build of the same version, but built without the
+          # release dart-defines (no BACKEND_URL, no OIDC_ISSUER_URL), so it is
+          # an offline-only APK. The published one is the release workflow's
+          # `duka-pos-<tag>-apk`, and it is wired.
+          name: duka-pos-ci-${{ steps.version.outputs.version }}-apk
           path: duka_pos_app/build/app/outputs/flutter-apk/app-release.apk
           retention-days: 30
 

@@ -27,10 +27,11 @@ import '../theme/app_colors.dart';
 import '../theme/app_shapes.dart';
 import '../theme/app_spacing.dart';
 import '../theme/typography.dart';
+import '../ui/components/controls.dart';
 import '../ui/components/states.dart';
 import '../ui/components/status.dart';
+import '../ui/components/surface.dart';
 import '../ui/layout/page.dart';
-import '../ui/components/brand_header.dart';
 
 enum ActivityView { merged, byShop }
 
@@ -126,9 +127,7 @@ class _ActivityScreenState extends State<ActivityScreen>
     final AppLocalizations l10n = AppLocalizations.of(context);
     return Scaffold(
       appBar: AppBar(
-        title: BrandHeader(
-          title: Text(l10n.activityTitle),
-        ),
+        title: Text(l10n.activityTitle),
       ),
       body: AdaptivePage(
         scrollable: false,
@@ -201,23 +200,23 @@ class ActivityPanel extends StatelessWidget {
         SizedBox(height: spacing.sm),
         // The two ways to read it. Only offered when there is more than one
         // shop: a single-shop owner has nothing to switch between.
+        //
+        // A `Wrap`, not a `Row` of two halves: at 200% text on a 320dp phone
+        // the two labels do not fit side by side, and a segmented control that
+        // overflows is a broken control.
         if (snapshot.shopCount > 1)
-          Row(
+          Wrap(
+            spacing: spacing.sm,
             children: <Widget>[
-              Expanded(
-                child: _ViewSwitch(
-                  label: l10n.activityViewMerged,
-                  selected: view == ActivityView.merged,
-                  onTap: () => onViewChanged(ActivityView.merged),
-                ),
+              SelectablePill(
+                label: l10n.activityViewMerged,
+                selected: view == ActivityView.merged,
+                onTap: () => onViewChanged(ActivityView.merged),
               ),
-              SizedBox(width: spacing.sm),
-              Expanded(
-                child: _ViewSwitch(
-                  label: l10n.activityViewByShop,
-                  selected: view == ActivityView.byShop,
-                  onTap: () => onViewChanged(ActivityView.byShop),
-                ),
+              SelectablePill(
+                label: l10n.activityViewByShop,
+                selected: view == ActivityView.byShop,
+                onTap: () => onViewChanged(ActivityView.byShop),
               ),
             ],
           ),
@@ -482,15 +481,10 @@ class _ActivityRow extends StatelessWidget {
                 children: <Widget>[
                   // The glyph is the first of three channels: the sentence is
                   // the second, the actor the third. Colour is never alone.
-                  Container(
-                    padding: EdgeInsets.all(spacing.sm),
-                    decoration: BoxDecoration(
-                      color: tone.container(colors),
-                      borderRadius: AppShapes.of(context).controlRadius,
-                    ),
-                    child: Icon(tone.icon,
-                        size: 18, color: tone.onContainer(colors)),
-                  ),
+                  //
+                  // A CIRCLE, not a rounded square: the badge is a marker, and
+                  // a marker reads as a mark.
+                  IconBadge(icon: tone.icon, tone: tone),
                   SizedBox(width: spacing.md),
                   Expanded(
                     child: Column(
@@ -574,50 +568,6 @@ class _ActivityRow extends StatelessWidget {
     if (difference.inDays < 1) return '${difference.inHours} h ago';
     if (difference.inDays < 30) return '${difference.inDays} d ago';
     return iso.substring(0, 10);
-  }
-}
-
-class _ViewSwitch extends StatelessWidget {
-  const _ViewSwitch({
-    required this.label,
-    required this.selected,
-    required this.onTap,
-  });
-
-  final String label;
-  final bool selected;
-  final VoidCallback onTap;
-
-  @override
-  Widget build(BuildContext context) {
-    final AppColors colors = AppColors.of(context);
-    return Semantics(
-      button: true,
-      selected: selected,
-      label: label,
-      child: InkWell(
-        onTap: onTap,
-        borderRadius: AppShapes.of(context).controlRadius,
-        child: Container(
-          padding: EdgeInsets.symmetric(vertical: AppSpacing.of(context).sm),
-          decoration: BoxDecoration(
-            color: selected ? colors.surfaceSunken : colors.surface,
-            borderRadius: AppShapes.of(context).controlRadius,
-            border: Border.all(
-              color: selected ? colors.accent : colors.outline,
-            ),
-          ),
-          child: Center(
-            child: Text(
-              label,
-              style: AppTypography.of(context).labelLarge?.copyWith(
-                    color: selected ? colors.accent : colors.onSurfaceVariant,
-                  ),
-            ),
-          ),
-        ),
-      ),
-    );
   }
 }
 

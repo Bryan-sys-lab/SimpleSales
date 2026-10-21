@@ -14,6 +14,7 @@ import 'package:sqflite_common_ffi/sqflite_ffi.dart';
 import 'package:duka_pos/db/database_helper.dart';
 import 'package:duka_pos/models/models.dart';
 import 'package:duka_pos/services/excel_service.dart';
+import 'package:duka_pos/services/inventory_importer.dart';
 import 'package:duka_pos/services/import_row_parser.dart';
 import 'package:duka_pos/utils/money.dart';
 import 'package:duka_pos/utils/units.dart';
@@ -137,6 +138,62 @@ void main() {
   });
 
   tearDown(() => DatabaseHelper.resetForTests());
+
+  group('the import says what it is doing', () {
+    // The owner watching an import needs to know it is WORKING, and the
+    // import is the only thing the app does with no button to press while it
+    // happens. A silent import reads as a broken app, and the answer to that
+    // is the owner pressing the button again.
+    test('it reports every stage, and finishes', () async {
+      final List<ImportStage> stages = <ImportStage>[];
+
+      final result = await ExcelService().importInventoryBytes(
+        _workbook(<String, List<List<dynamic>>>{
+          'Inventory': <List<dynamic>>[
+            _inventoryHeader,
+            _row(id: 1, name: 'Kenya Lager', category: 'BEER'),
+            _row(id: 2, name: 'Maziwa', category: 'Milk & Dairy'),
+          ],
+        }),
+        onProgress: (ImportProgress progress) => stages.add(progress.stage),
+      );
+
+      expect(result.imported, greaterThan(0));
+      expect(stages, contains(ImportStage.reading));
+      expect(stages, contains(ImportStage.parsing));
+      expect(stages, contains(ImportStage.writing));
+      expect(stages.last, ImportStage.done);
+    });
+
+    test('it reports the same result with and without a listener', () async {
+      final List<ImportStage> stages = <ImportStage>[];
+      final bytes = _workbook(<String, List<List<dynamic>>>{
+        'Inventory': <List<dynamic>>[
+          _inventoryHeader,
+          _row(id: 1, name: 'Kenya Lager', category: 'BEER'),
+          _row(id: 2, name: 'Maziwa', category: 'Milk & Dairy'),
+        ],
+      });
+
+      final withProgress = await ExcelService().importInventoryBytes(
+        bytes,
+        onProgress: (ImportProgress progress) => stages.add(progress.stage),
+      );
+
+      // A fresh catalogue, so the second import CREATES what the first one
+      // created rather than updating it — otherwise the comparison would be
+      // measuring the first import, not the listener.
+      DatabaseHelper.resetForTests();
+      db = await DatabaseHelper.openInMemoryForTests();
+
+      final without = await ExcelService().importInventoryBytes(bytes);
+
+      expect(withProgress.imported, without.imported);
+      expect(withProgress.created, without.created);
+      expect(withProgress.updated, without.updated);
+      expect(stages, isNotEmpty);
+    });
+  });
 
   Future<Product?> productNamed(String name) async {
     for (final product in await db.getProducts(activeOnly: false)) {

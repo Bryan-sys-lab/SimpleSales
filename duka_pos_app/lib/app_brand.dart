@@ -17,6 +17,14 @@ abstract final class SimplePosBrand {
   /// sentence without a hyphen appearing in the middle of it.
   static const String appName = 'SimpleSales';
 
-  /// Attribution footer. "Nerva" is the vendor, not the app.
-  static const String poweredByTag = 'Powered by Nerva';
+  /// The vendor's name. "Nerva" is the vendor, not the app.
+  static const String vendorName = 'Nerva';
+
+  /// The attribution, as plain text.
+  ///
+  /// The app does NOT draw these words: the footer shows the vendor's MARK —
+  /// see `lib/ui/brand/nerva_wordmark.dart` — because a brand set in the app's
+  /// typeface looks like a line of the app's own copy. This stays as the
+  /// plain-text form of the attribution, for anything that needs it as text.
+  static const String poweredByTag = 'Powered by $vendorName';
 }

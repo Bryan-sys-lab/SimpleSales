@@ -265,4 +265,97 @@ void main() {
           reason: 'choosing the same intent again should notify');
     });
   });
+
+  group('the permissions step', () {
+    // The step that asks for the camera and for Bluetooth, once, after the
+    // walkthrough.
+    //
+    // The rules it has to keep, all of which are about NOT stranding anybody:
+    // a cashier is never routed into it, a sign-out is never held on it, and
+    // an owner who has already answered is never asked again.
+
+    test('comes after the walkthrough, not before it', () {
+      expect(
+        resolveAppStage(
+          isLoading: false,
+          hasDatabaseFailure: false,
+          hasShop: true,
+          isSignedIn: true,
+          isAdmin: true,
+          onboardingComplete: false,
+          permissionsAsked: false,
+        ),
+        AppStage.onboarding,
+        reason: 'the walkthrough is guidance and comes first; the permissions '
+            'step asks about the till, and the till is not set up until the '
+            'owner has been walked through',
+      );
+    });
+
+    test('is offered to an owner who has not been asked', () {
+      expect(
+        resolveAppStage(
+          isLoading: false,
+          hasDatabaseFailure: false,
+          hasShop: true,
+          isSignedIn: true,
+          isAdmin: true,
+          onboardingComplete: true,
+          permissionsAsked: false,
+        ),
+        AppStage.permissions,
+      );
+    });
+
+    test('is never offered to a cashier', () {
+      // The copy is addressed to whoever set the shop up. A cashier must go
+      // straight to the shop, or they are held on a screen about a till that
+      // is not theirs.
+      expect(
+        resolveAppStage(
+          isLoading: false,
+          hasDatabaseFailure: false,
+          hasShop: true,
+          isSignedIn: true,
+          isAdmin: false,
+          onboardingComplete: true,
+          permissionsAsked: false,
+        ),
+        AppStage.ready,
+      );
+    });
+
+    test('is asked once: an owner who has answered is not asked again', () {
+      expect(
+        resolveAppStage(
+          isLoading: false,
+          hasDatabaseFailure: false,
+          hasShop: true,
+          isSignedIn: true,
+          isAdmin: true,
+          onboardingComplete: true,
+          permissionsAsked: true,
+        ),
+        AppStage.ready,
+      );
+    });
+
+    test('never holds a signed-out user on it', () {
+      // The sign-in check outranks everything that is not the boot gate. A
+      // cashier with a valid PIN must be able to reach it whatever else the
+      // till has not done yet.
+      expect(
+        resolveAppStage(
+          isLoading: false,
+          hasDatabaseFailure: false,
+          hasShop: true,
+          isSignedIn: false,
+          isAdmin: true,
+          onboardingComplete: true,
+          permissionsAsked: false,
+        ),
+        AppStage.signingIn,
+      );
+    });
+  });
 }

@@ -13,6 +13,9 @@ class MainActivity : FlutterActivity() {
     /** The platform half of an in-app update. */
     private var updates: UpdateChannel? = null
 
+    /** The camera permission, for the permissions step after onboarding. */
+    private var permissions: PermissionChannel? = null
+
     /**
      * Bridges the Bluetooth permission prompt.
      *
@@ -29,6 +32,13 @@ class MainActivity : FlutterActivity() {
         // channel needs to raise the permission dialog and read the bonding
         // state, and neither is available from the application context.
         printer = PrinterChannel(this, flutterEngine.dartExecutor.binaryMessenger)
+
+        // Same messenger, same Activity. The camera permission, for the
+        // permissions step the owner walks through after onboarding.
+        PermissionChannel(this).also {
+            permissions = it
+            it.register(flutterEngine.dartExecutor.binaryMessenger)
+        }
 
         // Same messenger, same Activity. Registered here rather than lazily on
         // first use because a method channel that arrives before its handler is
@@ -84,6 +94,11 @@ class MainActivity : FlutterActivity() {
         grantResults: IntArray,
     ) {
         super.onRequestPermissionsResult(requestCode, permissions, grantResults)
+        // The camera first: it owns a request code of its own, and it answers
+        // with true when the result was its own.
+        if (this.permissions?.onPermissionResult(requestCode, grantResults) == true) {
+            return
+        }
         if (requestCode != REQUEST_CODE_BLUETOOTH) return
         val granted = grantResults.isNotEmpty() &&
             grantResults[0] == PackageManager.PERMISSION_GRANTED

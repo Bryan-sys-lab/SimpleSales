@@ -319,8 +319,7 @@ class Product {
         trackVariants: ((m['track_variants'] as num?)?.toInt() ?? 0) == 1,
         // 0 for a row written before tanks existed, and for every product that
         // is not stocked by weight — see the field's doc.
-        millilitresPerKilogram:
-            (m['ml_per_kg'] as num?)?.toDouble() ?? 0,
+        millilitresPerKilogram: (m['ml_per_kg'] as num?)?.toDouble() ?? 0,
         halfPrice: (m['half_price'] as num?) == null
             ? null
             : Money.fromMinor((m['half_price'] as num).toInt()),
@@ -465,9 +464,7 @@ class Product {
     if (!Money.isValidMajor(sellPrice)) {
       return ProductProblem.sellPrice;
     }
-    if (stockQty.isNaN ||
-        stockQty.isInfinite ||
-        stockQty < 0) {
+    if (stockQty.isNaN || stockQty.isInfinite || stockQty < 0) {
       return ProductProblem.stockQty;
     }
     if (reorderLevel < 0) return ProductProblem.reorderLevel;

@@ -23,7 +23,6 @@ import '../ui/components/controls.dart';
 import '../utils/error_utils.dart';
 import '../utils/money.dart';
 import '../utils/units.dart';
-import '../ui/components/brand_header.dart';
 import '../widgets/variant_catalogue.dart';
 import '../widgets/variant_form_sheet.dart';
 import '../routing/home_shell.dart';
@@ -32,6 +31,8 @@ import '../theme/app_colors.dart';
 import '../theme/app_shapes.dart';
 import '../theme/app_spacing.dart';
 import '../theme/typography.dart';
+import '../ui/components/screen_title.dart';
+import '../ui/components/operation_result.dart';
 import '../ui/components/status.dart';
 import 'package:image_picker/image_picker.dart';
 import '../services/product_image_store.dart';
@@ -217,9 +218,15 @@ class _InventoryScreenState extends State<InventoryScreen>
           staffProfileId: staffRemoteId,
         );
         if (!pushed && mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-              content: Text(
-                  AppLocalizations.of(context).inventoryStockSavedLocally)));
+          // Saved on this phone, not on the server. Said plainly, because a
+          // till that shows the same message for a success and a partial
+          // success cannot be trusted with either.
+          await showOperationSuccess(
+            context,
+            title: AppLocalizations.of(context).inventoryStockSavedTitle,
+            message: AppLocalizations.of(context).inventoryStockSavedLocally,
+            detailIcon: Icons.cloud_off_outlined,
+          );
         }
       }
     } on StateError catch (error) {
@@ -404,25 +411,19 @@ class _InventoryScreenState extends State<InventoryScreen>
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            // Brand strip at the head of the list: identity beside the stock,
-            // once, not repeated inside each row.
-            Padding(
+            // The screen's own title, large, on the canvas.
+            //
+            // It used to be a brand strip: a logo and the wordmark, and no
+            // name for the screen itself. A screen that opens with a logo has
+            // spent its first line on the product instead of on the stock, and
+            // the shell's bar already carries the mark.
+            ScreenTitle(
+              title: l10n.navInventory,
               padding: EdgeInsetsDirectional.only(
                 start: AppSpacing.of(context).xl,
                 end: AppSpacing.of(context).xl,
                 top: AppSpacing.of(context).sm,
                 bottom: AppSpacing.of(context).sm,
-              ),
-              child: Semantics(
-                image: true,
-                label: 'SimpleSales',
-                child: ExcludeSemantics(
-                  child: BrandHeader(
-                    markSize: 26,
-                    gap: AppSpacing.of(context).md,
-                    showWordmark: true,
-                  ),
-                ),
               ),
             ),
             Expanded(
@@ -663,14 +664,19 @@ class _ProductListTile extends StatelessWidget {
     final bool isOut = product.stockQty <= 0;
     final bool isLow = !isOut && product.isLow;
 
-    // The state, resolved ONCE from the value. Normal is quiet on purpose: a
-    // till where every in-stock product wears a green chip is a till where the
-    // amber ones no longer stand out.
+    // The state, resolved ONCE from the value.
+    //
+    // EVERY row wears a state, including the ones that are fine. A shopkeeper
+    // scanning for what to reorder is looking for the amber row, and a green
+    // chip on every other row is what makes the amber one findable — the same
+    // way one alarm in a room of quiet indicators is the only thing anybody
+    // looks at. It is not a second green badge: the COUNT on the leading edge
+    // is neutral, and the chip beside the name carries the state.
     final StatusTone tone = isOut
         ? StatusTone.danger
         : isLow
             ? StatusTone.warning
-            : StatusTone.neutral;
+            : StatusTone.success;
 
     // One line, three facts, in the order a shopkeeper scans them. The count is
     // deliberately NOT repeated here — the badge on the leading edge is the
@@ -699,9 +705,33 @@ class _ProductListTile extends StatelessWidget {
             constraints: const BoxConstraints(minHeight: 56),
             child: Row(
               children: [
+                // The photograph, when the product has one.
+                //
+                // The row is where the owner MANAGES photographs, so a row
+                // with a picture and a row without one have to be told apart
+                // at a glance: the picture is the thing that says "this is
+                // the one with the photograph". It is decoration — the row
+                // itself is the button — so it stays out of the semantics,
+                // where the row's own label already names the product.
+                //
+                // The row's `updated_at` comes with it: a photograph that was
+                // replaced is written over the file at the SAME path, and the
+                // row would otherwise go on drawing the old picture.
+                if (product.imagePath != null) ...<Widget>[
+                  ExcludeSemantics(
+                    child: ProductPhoto(
+                      imagePath: product.imagePath,
+                      size: 40,
+                      revision: product.updatedAt,
+                    ),
+                  ),
+                  SizedBox(width: spacing.md),
+                ],
                 _StockCountBadge(
                   quantity: product.stockQty.round(),
-                  tone: tone,
+                  // The COUNT is a number, not a state: it stays neutral so the
+                  // only coloured thing on the row is the state chip.
+                  tone: StatusTone.neutral,
                 ),
                 SizedBox(width: spacing.md),
                 Expanded(
@@ -723,8 +753,6 @@ class _ProductListTile extends StatelessWidget {
                         // The row's `Semantics` label carries the full name, so
                         // this is a visual budget rather than a truncation of
                         // the data.
-                        maxLines: 2,
-                        overflow: TextOverflow.ellipsis,
                         style: type.titleSmall,
                       ),
                       SizedBox(height: spacing.xs),
@@ -734,16 +762,21 @@ class _ProductListTile extends StatelessWidget {
                           color: colors.onSurfaceMuted,
                         ),
                       ),
-                      if (isOut || isLow) ...[
-                        SizedBox(height: spacing.xs),
-                        StatusChip(
-                          tone: tone,
-                          text: isOut
-                              ? l10n.inventoryOutOfStock
-                              : l10n.inventoryLowStock,
-                        ),
-                      ],
-                    ],
+                      // The state chip, on EVERY row.
+                      //
+                      // The green one is a deep, quiet wash and the amber one
+                      // is bright, so the row that needs attention is the row
+                      // the eye lands on — which is the whole point of a
+                      // stock list.
+                      SizedBox(height: spacing.xs),
+                      StatusChip(
+                        tone: tone,
+                        text: isOut
+                            ? l10n.inventoryOutOfStock
+                            : isLow
+                                ? l10n.inventoryLowStock
+                                : l10n.inventoryInStock,
+                      ),                    ],
                   ),
                 ),
                 _ProductActionMenu(
@@ -1597,6 +1630,7 @@ class _ProductEditorState extends State<_ProductEditor> {
         savedIds.add(variantId);
       }
     }
+
     if (txn != null) {
       await run(txn);
     } else {
@@ -1903,6 +1937,26 @@ class _ProductEditorState extends State<_ProductEditor> {
       // shell reaches the till too.
       if (mounted) markCatalogueChanged();
       widget.onSaved();
+      if (!mounted) return;
+      // THE SAVE, CONFIRMED.
+      //
+      // A product save used to close the editor and say nothing. The owner
+      // was left wondering whether it had saved, and a price that did not save
+      // is a price the till keeps selling at. So the save ends on a screen
+      // that says it worked and what it saved.
+      //
+      // The editor stays open UNDER the sheet, and the sheet's button closes
+      // it — so the flow is Save, confirm, Done, and the list behind is
+      // already refreshed.
+      await showOperationSuccess(
+        context,
+        title: widget.existing == null
+            ? AppLocalizations.of(context).inventoryProductSavedTitle
+            : AppLocalizations.of(context).inventoryProductUpdatedTitle,
+        message: product.name,
+        detailIcon: Icons.inventory_2_outlined,
+      );
+      if (!mounted) return;
       if (mounted) Navigator.pop(context);
       // Push just this row to the backend after the editor closes. A price
       // change left only on the till would let the next till — or the web

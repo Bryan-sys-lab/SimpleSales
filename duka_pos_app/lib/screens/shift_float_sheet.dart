@@ -119,7 +119,7 @@ class _FloatSheetState extends State<_FloatSheet> {
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: <Widget>[
             Padding(
-              padding: EdgeInsets.fromLTRB(
+              padding: EdgeInsetsDirectional.fromSTEB(
                 spacing.md,
                 spacing.md,
                 spacing.md,

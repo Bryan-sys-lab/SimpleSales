@@ -16,6 +16,7 @@
 import 'package:duka_pos/l10n/generated/app_localizations.dart';
 import 'package:duka_pos/models/models.dart';
 import 'package:duka_pos/screens/settings_screen.dart';
+import 'package:duka_pos/services/inventory_importer.dart';
 import 'package:duka_pos/ui/components/controls.dart';
 import 'package:duka_pos/services/printer/printer_config.dart';
 import 'package:flutter/material.dart';
@@ -55,6 +56,8 @@ Widget _panel({
       onRestoreEncrypted: () async {},
       onExport: () async {},
       onImport: () async {},
+      importing: false,
+      importProgress: ValueNotifier<ImportProgress?>(null),
       onEraseBackups: () async {},
       onDeleteAccount: () async {},
       accountDeleting: false,

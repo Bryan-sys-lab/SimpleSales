@@ -26,7 +26,6 @@ import '../l10n/generated/app_localizations.dart';
 import '../db/database_helper.dart';
 import '../models/crash_log.dart';
 import '../services/failure_recorder.dart';
-import '../ui/components/brand_header.dart';
 import '../theme/app_colors.dart';
 import '../theme/app_haptics.dart';
 import '../theme/app_spacing.dart';
@@ -34,6 +33,7 @@ import '../theme/typography.dart';
 import '../ui/components/states.dart';
 import '../ui/components/surface.dart';
 import '../ui/layout/page.dart';
+import '../app_brand.dart';
 
 /// The panel, value-driven so it can be pumped without a database.
 class DiagnosticsPanel extends StatelessWidget {
@@ -85,17 +85,14 @@ class DiagnosticsPanel extends StatelessWidget {
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: <Widget>[
           if (loading)
-            // A spinner, not the shared skeleton list: the skeleton is built
-            // for a list that is about to arrive, and it reads an inherited
-            // widget during its own initState, which the framework rejects
-            // when the skeleton appears on a frame that also rebuilds its
-            // ancestors. A plain indicator is the honest "one moment".
-            const Center(
-              child: Padding(
-                padding: EdgeInsets.all(24),
-                child: CircularProgressIndicator(),
-              ),
-            )
+            // The shared skeleton, shaped like the failure cards that are about
+            // to arrive, rather than a spinner over an empty box: a spinner
+            // makes everything jump when the content lands, a skeleton does
+            // not.
+            //
+            // Expanded, because the skeleton IS a list — a scroll view — and a
+            // Column hands a non-flex child an unbounded height to scroll in.
+            Expanded(child: SkeletonList(itemCount: 4))
           else if (failed)
             // A log that could not be read must not read as an empty one: the
             // whole point of this screen is to say what broke, and an
@@ -420,7 +417,7 @@ class _DiagnosticsScreenState extends State<DiagnosticsScreen> {
 
   String _report() {
     final StringBuffer out = StringBuffer()
-      ..writeln('SimpleSales failure report');
+      ..writeln('${SimplePosBrand.appName} failure report');
     for (final MapEntry<String, String> field in widget.environment.entries) {
       out.writeln('${field.key}: ${field.value}');
     }
@@ -446,9 +443,10 @@ class _DiagnosticsScreenState extends State<DiagnosticsScreen> {
     final AppLocalizations l10n = AppLocalizations.of(context);
     return Scaffold(
       appBar: AppBar(
-        title: BrandHeader(
-          title: Text(l10n.diagnosticsTitle),
-        ),
+        // The screen's NAME, not the brand lockup. The app bar is a title on
+        // the canvas now — no filled band, no logo — and the brand mark lives
+        // in the shell's bar.
+        title: Text(l10n.diagnosticsTitle),
       ),
       // The whole screen: the panel scrolls, so the keyboard must not resize
       // it out from under an open card.

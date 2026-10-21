@@ -193,8 +193,7 @@ abstract final class ValidationUtils {
       case ProductProblem.nameTooLong:
         return l10n.validationProductNameTooLong(Product.maxNameLength);
       case ProductProblem.categoryTooLong:
-        return l10n.validationProductCategoryTooLong(
-            Product.maxCategoryLength);
+        return l10n.validationProductCategoryTooLong(Product.maxCategoryLength);
       case ProductProblem.costPrice:
         return l10n.validationProductCostPrice;
       case ProductProblem.sellPrice:

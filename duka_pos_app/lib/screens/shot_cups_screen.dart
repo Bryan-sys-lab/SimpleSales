@@ -19,7 +19,6 @@ import '../db/database_helper.dart';
 import '../l10n/generated/app_localizations.dart';
 import '../models/models.dart';
 import '../services/app_state.dart';
-import '../ui/components/brand_header.dart';
 import '../theme/app_colors.dart';
 import '../theme/app_haptics.dart';
 import '../theme/app_shapes.dart';
@@ -196,9 +195,7 @@ class _ShotCupsScreenState extends State<ShotCupsScreen> {
     final AppLocalizations l10n = AppLocalizations.of(context);
     return Scaffold(
       appBar: AppBar(
-        title: BrandHeader(
-          title: Text(l10n.shotCupsTitle),
-        ),
+        title: Text(l10n.shotCupsTitle),
       ),
       floatingActionButton: canEdit
           ? FloatingActionButton(

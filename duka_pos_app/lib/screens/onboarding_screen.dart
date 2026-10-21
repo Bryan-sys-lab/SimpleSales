@@ -12,6 +12,7 @@ import '../theme/app_haptics.dart';
 import '../theme/app_shapes.dart';
 import '../theme/app_spacing.dart';
 import '../theme/typography.dart';
+import '../ui/components/screen_title.dart';
 
 /// First-run walkthrough. Shown once per shop workspace, after local account
 /// creation and before the shell.
@@ -317,10 +318,10 @@ class _InfoStep extends StatelessWidget {
           semanticLabel: '',
         ),
         SizedBox(height: spacing.xl),
-        Semantics(
-          header: true,
-          child: Text(title, style: type.headlineSmall),
-        ),
+        // The step's NAME, large and on the canvas — the same title treatment
+        // every other screen opens with, so the walkthrough does not read as a
+        // different app.
+        ScreenTitle(title: title, padding: EdgeInsets.zero),
         SizedBox(height: spacing.md),
         Text(body, style: type.bodyLarge),
       ],
@@ -469,10 +470,11 @@ class _Footer extends StatelessWidget {
           if (!isFirst)
             TextButton.icon(
               onPressed: locked ? null : onBack,
-              // Adaptive, because "back" is a direction and this app is read
-              // right to left as readily as left to right. Not const: the
-              // adaptive set resolves per platform at build time.
-              icon: ExcludeSemantics(child: Icon(Icons.adaptive.arrow_back)),
+              // `arrow_back` is declared by Flutter with `matchTextDirection:
+              // true`, so the glyph mirrors itself under an RTL locale — the
+              // control points the way the reader does without the screen
+              // having to choose a second icon.
+              icon: ExcludeSemantics(child: Icon(Icons.arrow_back)),
               label: const Text('Back'),
             )
           else

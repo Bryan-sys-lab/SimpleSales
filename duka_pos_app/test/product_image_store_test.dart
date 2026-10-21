@@ -99,6 +99,30 @@ void main() {
           reason: 'an import that grows the file is not an import');
     });
 
+    test('writes the file when the path has a folder in it', () async {
+      // A product's photograph is stored under a folder PER WORKSPACE, so
+      // product #5 in shop B cannot overwrite shop A's. That makes the path two
+      // segments deep, and only the first segment was ever created — so the
+      // write failed with "no such directory", the editor reported it as "the
+      // phone is full", the path was never stored, and the till never showed a
+      // photograph at all.
+      final source = await writeJpeg('shop.jpg', width: 400, height: 400);
+
+      final relative = await ProductImageStore.save(
+        source,
+        productId: 5,
+        workspaceKey: 'shop-b',
+      );
+
+      expect(relative, 'product_photos/shop-b/5.jpg');
+
+      final stored = File('${docs.path}/$relative');
+      expect(await stored.exists(), isTrue,
+          reason: 'the whole folder has to exist before the file can be '
+              'written into it');
+      expect(img.decodeImage(await stored.readAsBytes()), isNotNull);
+    });
+
     test('leaves the gallery file exactly as it was', () async {
       final source = await writeJpeg('kept.jpg', width: 300, height: 300);
       final before = await source.readAsBytes();

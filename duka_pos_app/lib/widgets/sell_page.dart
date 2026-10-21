@@ -34,6 +34,7 @@ import '../l10n/generated/app_localizations.dart';
 import '../models/models.dart';
 import '../theme/app_spacing.dart';
 import '../theme/typography.dart';
+import '../ui/components/states.dart';
 import '../ui/layout/page.dart';
 import 'product_tile.dart';
 
@@ -83,12 +84,27 @@ class SellPaneLayout extends StatelessWidget {
         );
 
         if (compact) {
+          // The cart's share of the page grows with the text.
+          //
+          // The cart holds the one part of the till that CANNOT scroll away:
+          // the total, and the button that takes the money. Its pinned block
+          // is measured in lines of text, so at 200% text it is twice as tall
+          // — while the catalogue above it is a grid that can scroll forever.
+          //
+          // Splitting the page evenly is what overflowed: the cart's pinned
+          // block outgrew its share, and the overflow came out of the money
+          // and the payment button — the two things a cashier is looking at
+          // the moment they matter.
+          final double scale = MediaQuery.textScalerOf(context).scale(1);
+          final int catalogueFlex = scale > 1.3 ? 2 : 3;
+          final int cartFlex = scale > 1.3 ? 3 : 2;
+
           return Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: <Widget>[
-              Expanded(flex: 3, child: catalogue),
+              Expanded(flex: catalogueFlex, child: catalogue),
               const Divider(height: 1),
-              Expanded(flex: 2, child: cart),
+              Expanded(flex: cartFlex, child: cart),
             ],
           );
         }
@@ -119,6 +135,8 @@ class SellCataloguePane extends StatelessWidget {
     required this.loading,
     required this.items,
     required this.onProduct,
+    this.error,
+    this.onRetry,
     super.key,
   });
 
@@ -143,6 +161,16 @@ class SellCataloguePane extends StatelessWidget {
   final List<ProductTileData> items;
 
   final void Function(Product product) onProduct;
+
+  /// Why the catalogue could not be read, or null when it was.
+  ///
+  /// The till cannot sell without a catalogue, so this is not a small problem
+  /// and it is not a toast: it takes the pane over, says what happened, and
+  /// offers the one thing that can fix it.
+  final String? error;
+
+  /// Reads the catalogue again.
+  final VoidCallback? onRetry;
 
   @override
   Widget build(BuildContext context) {
@@ -212,9 +240,23 @@ class SellCataloguePane extends StatelessWidget {
           ),
         ),
         Expanded(
-          child: loading
-              ? const Center(child: CircularProgressIndicator())
-              : ProductTileGrid(items: items, onTap: onProduct),
+          child: error != null
+              // THE ERROR SCREEN, taking the pane over.
+              //
+              // Selling needs the catalogue. A till that cannot read it cannot
+              // sell, and a spinner that never stops is the least honest
+              // thing a till can show: it says "wait", when there is nothing
+              // to wait FOR. The error says what happened, and the retry
+              // button is the one thing that can fix it.
+              ? ErrorStateView(
+                  message: error!,
+                  detail: l10n.sellCatalogueLoadFailedDetail,
+                  icon: Icons.inventory_2_outlined,
+                  onRetry: onRetry,
+                )
+              : loading
+                  ? const Center(child: CircularProgressIndicator())
+                  : ProductTileGrid(items: items, onTap: onProduct),
         ),
       ],
     );
@@ -336,8 +378,6 @@ class SellCartPane extends StatelessWidget {
                       child: Text(
                         l10n.sellCartTitle,
                         style: type.titleLarge,
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
                       ),
                     ),
                   ),
@@ -366,24 +406,28 @@ class SellCartPane extends StatelessWidget {
                   itemBuilder: (BuildContext context, int index) {
                     final SellCartLine line = lines[index];
                     return ListTile(
-                      // Two lines, then an ellipsis.
+                      // The name WRAPS, all the way.
                       //
                       // A product name is the cashier's typing — up to 120
                       // characters, and a shop that names its products for the
-                      // shelf. Without a bound, one long name grows a cart
-                      // row to six lines and pushes the money off the screen.
+                      // shelf. The old bound here was two lines and an
+                      // ellipsis, on the theory that a long name "pushed the
+                      // money off the screen" — but the cart rows are their
+                      // OWN scrollable, and the total and the payment buttons
+                      // are pinned BELOW that scrollable. A six-line row
+                      // scrolls; it does not move the money.
+                      //
+                      // So the name is whole. A name cut in half is a product
+                      // the cashier cannot find.
                       title: Text(
                         line.title,
-                        maxLines: 2,
-                        overflow: TextOverflow.ellipsis,
                       ),
                       subtitle: Text(
-                        // It WRAPS, and it is never ellipsized.
+                        // It WRAPS too, and it is never ellipsized.
                         //
                         // The subtitle carries the price — "500ml · KSh
                         // 1,240.00" — and a truncated price is a WRONG price.
-                        // A product name may be cut short with an ellipsis; a
-                        // number may not, so the row grows instead.
+                        // A number may not be cut, so the row grows instead.
                         line.subtitle,
                       ),
                       trailing: Row(
@@ -440,8 +484,6 @@ class SellCartPane extends StatelessWidget {
                   Text(
                     l10n.sellTotalOnly,
                     style: type.titleLarge,
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
                   ),
                   SizedBox(width: spacing.sm),
                   // Flexible, so the amount WRAPS rather than overflowing the
@@ -452,42 +494,52 @@ class SellCartPane extends StatelessWidget {
                     child: Text(
                       totalLabel,
                       textAlign: TextAlign.end,
-                      style: type.headlineSmall,
+                      style: type.headlineMedium,
                     ),
                   ),
                 ],
               ),
               SizedBox(height: spacing.md),
-              Row(
-                children: <Widget>[
-                  Expanded(
-                    child: ElevatedButton.icon(
-                      onPressed: lines.isEmpty || processing ? null : onOffline,
-                      icon: const Icon(Icons.payments),
-                      label: Text(
-                        offlineLabel,
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
+              // THE TWO PAYMENT METHODS, SIDE BY SIDE.
+              //
+              // They were a Row before, and they stay a Row: the cart is a
+              // FIXED share of the page, and two buttons stacked are twice as
+              // tall as one. The label is not truncated to fit — it wraps
+              // instead, and the pane's share of the page grows with the text
+              // to make room (see `SellPaneLayout`).
+              //
+              // M-Pesa is the FILLED button because it is the path almost every
+              // customer takes, and it is the one green thing on the till. The
+              // offline fallback is quiet, because two saturated buttons on one
+              // screen would spend the accent twice and leave the eye with
+              // nothing to choose.
+              //
+              // `IntrinsicHeight` so both buttons are the SAME height even when
+              // one label wraps to two lines and the other does not: a row of
+              // two buttons of different heights is a row that looks broken.
+              IntrinsicHeight(
+                child: Row(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: <Widget>[
+                    Expanded(
+                      child: ElevatedButton.icon(
+                        onPressed:
+                            lines.isEmpty || processing ? null : onOffline,
+                        icon: const Icon(Icons.payments),
+                        label: Text(offlineLabel),
                       ),
                     ),
-                  ),
-                  SizedBox(width: spacing.sm),
-                  Expanded(
-                    child: ElevatedButton.icon(
-                      onPressed: lines.isEmpty || processing ? null : onMpesa,
-                      icon: const Icon(Icons.phone_iphone),
-                      label: Text(
-                        mpesaLabel,
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                      ),
-                      style: ElevatedButton.styleFrom(
-                        backgroundColor:
-                            Theme.of(context).colorScheme.secondary,
+                    SizedBox(width: spacing.sm),
+                    Expanded(
+                      child: FilledButton.icon(
+                        onPressed:
+                            lines.isEmpty || processing ? null : onMpesa,
+                        icon: const Icon(Icons.phone_iphone),
+                        label: Text(mpesaLabel),
                       ),
                     ),
-                  ),
-                ],
+                  ],
+                ),
               ),
             ],
           ),

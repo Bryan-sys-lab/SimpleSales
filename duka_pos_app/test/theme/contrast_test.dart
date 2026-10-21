@@ -169,19 +169,19 @@ const Map<String, ({Color fg, Color bg, double minimum, String note})>
 /// nothing. These are the intended VALUES; if a palette change breaks one of them,
 /// this file is supposed to notice.
 abstract final class AppColorsLight {
-  static const canvas = Color(0xFFFAF6F0);
+  static const canvas = Color(0xFFF2F4F7);
   static const surface = Color(0xFFFFFFFF);
-  static const surfaceSunken = Color(0xFFF3EDE6);
+  static const surfaceSunken = Color(0xFFE8ECF1);
   static const onSurface = Color(0xFF2D2A26);
-  static const onSurfaceVariant = Color(0xFF4A433C);
-  static const onSurfaceMuted = Color(0xFF6B635A);
-  static const outlineStrong = Color(0xFF8A8075);
+  static const onSurfaceVariant = Color(0xFF414954);
+  static const onSurfaceMuted = Color(0xFF5C6673);
+  static const outlineStrong = Color(0xFF6B7480);
   static const accent = Color(0xFF1B6B3A);
   static const onAccent = Color(0xFFFFFFFF);
-  static const accentContainer = Color(0xFFE8F5EC);
+  static const accentContainer = Color(0xFFE4F3E9);
   static const onAccentContainer = Color(0xFF0D3D1E);
   static const success = Color(0xFF1A7A3A);
-  static const successContainer = Color(0xFFE8F5EC);
+  static const successContainer = Color(0xFFE4F3E9);
   static const onSuccessContainer = Color(0xFF0D4D1E);
   static const warning = Color(0xFF8A6508);
   static const warningContainer = Color(0xFFFFF3E0);
@@ -194,31 +194,31 @@ abstract final class AppColorsLight {
   static const mpesaGreen = Color(0xFF009C4E);
   static const airtelRed = Color(0xFFEC1C24);
   static const equitelBlue = Color(0xFF0066CC);
-  static const cashNeutral = Color(0xFF6B635A);
+  static const cashNeutral = Color(0xFF5F6873);
 }
 
 /// The dark palette, likewise.
 abstract final class AppColorsDark {
-  static const canvas = Color(0xFF1A1816);
-  static const surface = Color(0xFF242220);
-  static const surfaceSunken = Color(0xFF0F0E0D);
-  static const surfaceRaised = Color(0xFF2E2B28);
-  static const onSurface = Color(0xFFF5F0EB);
-  static const onSurfaceVariant = Color(0xFFD4CAC0);
-  static const onSurfaceMuted = Color(0xFFAA9F97);
-  static const outlineStrong = Color(0xFF7A736D);
+  static const canvas = Color(0xFF0B0F14);
+  static const surface = Color(0xFF151A21);
+  static const surfaceSunken = Color(0xFF070A0E);
+  static const surfaceRaised = Color(0xFF1C222B);
+  static const onSurface = Color(0xFFF2F5F8);
+  static const onSurfaceVariant = Color(0xFFC4CDD8);
+  static const onSurfaceMuted = Color(0xFF97A3B2);
+  static const outlineStrong = Color(0xFF606B7A);
   static const accent = Color(0xFF4ADE7E);
   static const onAccent = Color(0xFF2D2A26);
-  static const accentContainer = Color(0xFF244A30);
-  static const onAccentContainer = Color(0xFFA8F5C4);
+  static const accentContainer = Color(0xFF163A22);
+  static const onAccentContainer = Color(0xFF9FF0C0);
   static const success = Color(0xFF5CE68A);
-  static const successContainer = Color(0xFF0E2A16);
-  static const onSuccessContainer = Color(0xFFA8F5C4);
+  static const successContainer = Color(0xFF123520);
+  static const onSuccessContainer = Color(0xFF8DE8AE);
   static const warning = Color(0xFFFFB84D);
-  static const warningContainer = Color(0xFF3D2A0A);
+  static const warningContainer = Color(0xFF3A2A0C);
   static const onWarningContainer = Color(0xFFFFE0A0);
   static const danger = Color(0xFFFF6B5B);
-  static const dangerContainer = Color(0xFF3D1814);
+  static const dangerContainer = Color(0xFF3A1814);
   static const onDangerContainer = Color(0xFFFFB3A8);
   // The payment-mix ring's slices. The dark values are not the light values:
   // Equitel's #0066CC is 2.85:1 on the dark surface, which is a ring slice
@@ -226,7 +226,7 @@ abstract final class AppColorsDark {
   static const mpesaGreen = Color(0xFF00A651);
   static const airtelRed = Color(0xFFEC1C24);
   static const equitelBlue = Color(0xFF3E90E8);
-  static const cashNeutral = Color(0xFF8A8075);
+  static const cashNeutral = Color(0xFF8E97A3);
 }
 
 /// The dark equivalents of [kContrastPairs], same slots and same minimums.
@@ -463,7 +463,8 @@ void main() {
         expect(
           ratio,
           greaterThanOrEqualTo(3.0),
-          reason: 'light · ${entry.key} is ${ratio.toStringAsFixed(2)}:1 on the '
+          reason:
+              'light · ${entry.key} is ${ratio.toStringAsFixed(2)}:1 on the '
               'canvas',
         );
       });
@@ -473,7 +474,8 @@ void main() {
         expect(
           ratio,
           greaterThanOrEqualTo(3.0),
-          reason: 'light · ${entry.key} is ${ratio.toStringAsFixed(2)}:1 on a card',
+          reason:
+              'light · ${entry.key} is ${ratio.toStringAsFixed(2)}:1 on a card',
         );
       });
     }
@@ -494,7 +496,8 @@ void main() {
         expect(
           ratio,
           greaterThanOrEqualTo(3.0),
-          reason: 'dark · ${entry.key} is ${ratio.toStringAsFixed(2)}:1 on a card',
+          reason:
+              'dark · ${entry.key} is ${ratio.toStringAsFixed(2)}:1 on a card',
         );
       });
     }

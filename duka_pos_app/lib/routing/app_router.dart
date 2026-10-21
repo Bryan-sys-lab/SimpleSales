@@ -3,6 +3,7 @@ import 'package:go_router/go_router.dart';
 import 'package:provider/provider.dart';
 
 import '../services/failure_recorder.dart';
+import '../services/barcode/scan_input_service.dart';
 
 import '../screens/analytics_screen.dart';
 import '../screens/dashboard_screen.dart';
@@ -12,6 +13,8 @@ import '../screens/inventory_screen.dart';
 import '../screens/login_screen.dart';
 import '../screens/staff_login_screen.dart';
 import '../screens/onboarding_screen.dart';
+import '../screens/permissions_screen.dart';
+import '../services/permission_service.dart';
 import '../screens/owner_setup_screen.dart';
 import '../screens/portfolio_screen.dart';
 import '../screens/reports_screen.dart';
@@ -175,6 +178,20 @@ List<RouteBase> _doorRoutes(AppStageController stage, AppState appState) {
         OnboardingScreen(onComplete: stage.completeOnboarding),
       ),
     ),
+    GoRoute(
+      path: Routes.permissions,
+      parentNavigatorKey: rootNavigatorKey,
+      pageBuilder: (BuildContext context, GoRouterState routerState) =>
+          _fadeThrough(
+        routerState,
+        // The permissions step, AFTER the walkthrough. It is asked once and it
+        // never blocks: "Continue" is on the screen whatever the answer was.
+        PermissionsScreen(
+          permissions: PlatformPermissionService(),
+          onComplete: stage.completePermissions,
+        ),
+      ),
+    ),
   ];
 }
 
@@ -189,29 +206,28 @@ List<RouteBase> _shellRoutes() {
       ) =>
           HomeShell(navigationShell: navigationShell),
       branches: <StatefulShellBranch>[
-         StatefulShellBranch(
-           navigatorKey: branchNavigatorKeys[AppDestination.dashboard.index],
-           routes: <RouteBase>[
-             GoRoute(
-               path: Routes.dashboard,
-               pageBuilder: (BuildContext context, GoRouterState routerState) =>
-                   _fadeThrough(routerState, const DashboardScreen()),
-               routes: <RouteBase>[
-                 // Who sold what. The dashboard's transactions count is the
-                 // door into it, so it sits under the same branch it is opened
-                 // from and comes back to the day the manager was looking at.
-                 GoRoute(
-                   path: 'transactions',
-                   parentNavigatorKey: rootNavigatorKey,
-                   pageBuilder:
-                       (BuildContext context, GoRouterState routerState) =>
-                           _fadeThrough(
-                               routerState, const TransactionsScreen()),
-                 ),
-               ],
-             ),
-           ],
-         ),
+        StatefulShellBranch(
+          navigatorKey: branchNavigatorKeys[AppDestination.dashboard.index],
+          routes: <RouteBase>[
+            GoRoute(
+              path: Routes.dashboard,
+              pageBuilder: (BuildContext context, GoRouterState routerState) =>
+                  _fadeThrough(routerState, const DashboardScreen()),
+              routes: <RouteBase>[
+                // Who sold what. The dashboard's transactions count is the
+                // door into it, so it sits under the same branch it is opened
+                // from and comes back to the day the manager was looking at.
+                GoRoute(
+                  path: 'transactions',
+                  parentNavigatorKey: rootNavigatorKey,
+                  pageBuilder:
+                      (BuildContext context, GoRouterState routerState) =>
+                          _fadeThrough(routerState, const TransactionsScreen()),
+                ),
+              ],
+            ),
+          ],
+        ),
         StatefulShellBranch(
           navigatorKey: branchNavigatorKeys[AppDestination.sell.index],
           routes: <RouteBase>[
@@ -227,7 +243,19 @@ List<RouteBase> _shellRoutes() {
                   parentNavigatorKey: rootNavigatorKey,
                   pageBuilder:
                       (BuildContext context, GoRouterState routerState) =>
-                          _fadeThrough(routerState, const CameraScanScreen()),
+                          _fadeThrough(
+                    routerState,
+                    // The till hands the scanner a session to write its codes
+                    // into, so the scanner can keep reading while the till
+                    // adds each code to the cart. A route opened WITHOUT one
+                    // — a deep link — still scans; it just has nobody to hand
+                    // the codes to.
+                    CameraScanScreen(
+                      session: routerState.extra is ScanSession
+                          ? routerState.extra! as ScanSession
+                          : null,
+                    ),
+                  ),
                 ),
               ],
             ),
@@ -367,23 +395,23 @@ List<RouteBase> _shellRoutes() {
                       (BuildContext context, GoRouterState routerState) =>
                           _fadeThrough(routerState, const ImportsScreen()),
                 ),
-               ],
+              ],
             ),
-         ],
-         ),
-         StatefulShellBranch(
-           navigatorKey: branchNavigatorKeys[AppDestination.support.index],
-           routes: <RouteBase>[
-             GoRoute(
-               path: Routes.support,
-               pageBuilder: (BuildContext context, GoRouterState routerState) =>
-                   _fadeThrough(routerState, const SupportScreen()),
-             ),
-           ],
-         ),
-       ],
-     ),
-   ];
+          ],
+        ),
+        StatefulShellBranch(
+          navigatorKey: branchNavigatorKeys[AppDestination.support.index],
+          routes: <RouteBase>[
+            GoRoute(
+              path: Routes.support,
+              pageBuilder: (BuildContext context, GoRouterState routerState) =>
+                  _fadeThrough(routerState, const SupportScreen()),
+            ),
+          ],
+        ),
+      ],
+    ),
+  ];
 }
 
 /// Watches navigation so the failure log has a trail.

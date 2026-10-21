@@ -181,6 +181,28 @@ class AppState extends ChangeNotifier {
     notifyListeners();
   }
 
+  /// Records that the address is NO LONGER a verified one.
+  ///
+  /// Used when the owner changes the address on the profile: a typed-in
+  /// address has not been proven, so the flag is cleared until a code is sent
+  /// to it and accepted.
+  ///
+  /// The flag is about "this address can receive mail". An old address that
+  /// was verified yesterday is not proof about a new one typed today, and
+  /// leaving the flag set would let the app send recovery codes to an address
+  /// nobody has proved they own.
+  Future<void> clearIdentityVerified() async {
+    identityVerified = false;
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setBool(identityVerifiedKeyFor(workspaceKey), false);
+    } catch (_) {
+      // The in-memory flag is what this session acts on; the next start will
+      // offer verification again rather than lose anything.
+    }
+    notifyListeners();
+  }
+
   Future<void> rememberStaff(Staff staff) async {
     rememberedStaffUsername = staff.username ?? staff.name;
     rememberedStaffId = staff.id;

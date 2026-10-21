@@ -18,6 +18,8 @@
 // figure outrank the top-products list even though they sit lower on screen, so
 // each panel carries an OrdinalSortKey a linear scanner can trust.
 
+import 'dart:math' as math;
+
 import 'package:flutter/material.dart';
 import 'package:flutter/semantics.dart';
 import 'package:intl/intl.dart';
@@ -36,6 +38,7 @@ import '../ui/brand/simple_pos_mark.dart';
 import '../utils/datetime_format.dart';
 import '../utils/money.dart';
 import '../widgets/chart.dart';
+import '../app_brand.dart';
 
 // ---------------------------------------------------------------------------
 // The panel every section sits in.
@@ -281,8 +284,15 @@ class _KpiCard extends StatelessWidget {
     final TextTheme type = AppTypography.of(context);
 
     final bool hero = kpi.hero;
-    final Color ink = hero ? colors.onAccentContainer : colors.onSurface;
-    final Color quiet = hero ? colors.onAccentContainer : colors.onSurfaceMuted;
+    // The hero is a DARK card with a WHITE figure, not a green block.
+    //
+    // Filling the one card the eye lands on with the app's only saturated
+    // colour spends the accent on a container instead of on an action, and a
+    // large green field is the loudest thing on a screen that is supposed to
+    // be calm. The accent on this card is the GLYPH and the figure — small,
+    // and unmistakably the mark of the number that matters.
+    final Color ink = colors.onSurface;
+    final Color quiet = colors.onSurfaceMuted;
     final double size = hero ? (compact ? 22 : 32) : (compact ? 18 : 24);
     final bool isDoor = kpi.onTap != null;
 
@@ -297,7 +307,6 @@ class _KpiCard extends StatelessWidget {
           : '${kpi.label}: ${kpi.value}. ${kpi.caption}',
       child: ExcludeSemantics(
         child: SurfaceCard(
-          color: hero ? colors.accentContainer : null,
           padding: EdgeInsets.all(spacing.xl),
           onTap: kpi.onTap,
           child: Stack(
@@ -311,9 +320,10 @@ class _KpiCard extends StatelessWidget {
                       Container(
                         padding: EdgeInsets.all(spacing.xs),
                         decoration: BoxDecoration(
-                          color: hero
-                              ? colors.accent.withValues(alpha: 0.15)
-                              : colors.surfaceSunken,
+                          // A tonal well, not a tinted green block: the badge
+                          // is a MARKER for the figure, and the marker's job is
+                          // to be found, not to shout.
+                          color: colors.surfaceSunken,
                           borderRadius: AppShapes.of(context).controlRadius,
                         ),
                         child: Icon(
@@ -327,8 +337,6 @@ class _KpiCard extends StatelessWidget {
                         child: Text(
                           kpi.label,
                           style: type.labelMedium?.copyWith(color: quiet),
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
                         ),
                       ),
                     ],
@@ -502,7 +510,7 @@ class _ShiftBrand extends StatelessWidget {
   Widget build(BuildContext context) {
     return Semantics(
       image: true,
-      label: 'SimpleSales',
+      label: SimplePosBrand.appName,
       child: ExcludeSemantics(
         child: const SimplePosMark(
           size: 22,
@@ -594,15 +602,55 @@ class DashboardHourlySales extends StatefulWidget {
 class _DashboardHourlySalesState extends State<DashboardHourlySales> {
   List<PosLinePoint>? _cachedPoints;
 
+  /// The locale the cached labels were built in.
+  String? _cachedLocale;
+
+  /// The hours worth plotting.
+  ///
+  /// The query answers with all twenty-four hours, and a shop that opens at
+  /// eight and closes at six leaves sixteen of them empty. Those empty columns
+  /// take a quarter of the chart's width and say nothing at all, which is why
+  /// the bars were nine pixels wide.
+  ///
+  /// So the plotted range starts an hour before the first sale and ends an
+  /// hour after the last, which roughly doubles the width of the bars that
+  /// carry the money. A day with no sales at all keeps all twenty-four: the
+  /// chart is not drawn then anyway, and the empty state says the day.
+  List<TimeBucket> _plottedBuckets() {
+    int? first;
+    int? last;
+    for (final TimeBucket bucket in widget.buckets) {
+      if (bucket.salesMinor <= 0) continue;
+      first = first == null ? bucket.hour : math.min(first, bucket.hour);
+      last = last == null ? bucket.hour : math.max(last, bucket.hour);
+    }
+    if (first == null || last == null) return widget.buckets;
+    final int from = math.max(0, first - 1);
+    final int to = math.min(23, last + 1);
+    return widget.buckets
+        .where((TimeBucket b) => b.hour >= from && b.hour <= to)
+        .toList();
+  }
+
   List<PosLinePoint> _points(AppLocalizations l10n) {
-    _cachedPoints ??= <PosLinePoint>[
-      for (final TimeBucket bucket in widget.buckets)
-        PosLinePoint(
-          label: _axisHourLabel(bucket.hour, l10n),
-          value: bucket.salesMinor,
-          valueLabel: formatMoney(Money.fromMinor(bucket.salesMinor)),
-        ),
-    ];
+    // The LABELS are localised — "9 AM" in one locale, "09" in another — so
+    // the cache is only valid for the locale it was built in.
+    //
+    // It used to be invalidated when the NUMBERS changed and nothing else, so
+    // a language change left the old labels on the chart: hours in a format
+    // the rest of the screen had stopped using, next to a page that had
+    // stopped using it too.
+    if (_cachedPoints == null || _cachedLocale != l10n.localeName) {
+      _cachedPoints = <PosLinePoint>[
+        for (final TimeBucket bucket in _plottedBuckets())
+          PosLinePoint(
+            label: _axisHourLabel(bucket.hour, l10n),
+            value: bucket.salesMinor,
+            valueLabel: formatMoney(Money.fromMinor(bucket.salesMinor)),
+          ),
+      ];
+      _cachedLocale = l10n.localeName;
+    }
     return _cachedPoints!;
   }
 
@@ -685,25 +733,37 @@ class _DashboardHourlySalesState extends State<DashboardHourlySales> {
               ),
             ))
           else
-            // One bar per hour, and the money figure only when a bar is tapped.
+            // ONE LINE, SMOOTH, ACROSS THE HOURS.
             //
-            // Bars, because an hourly total is a MAGNITUDE at a moment, not a
-            // trajectory through one: "which hour was best" is a comparison of
-            // lengths, which a bar answers at a glance and a line only after
-            // being traced. The figure is hidden until a tap, because a painted
-            // peak value over a picture of the answer is the one label most
-            // likely to collide with the hour beneath it — and it is the answer
-            // to a question the shop has not asked yet.
+            // It used to be a bar per hour. A bar is the right instrument for
+            // "which single hour was best" — a comparison of lengths — but it
+            // is the wrong one for what a shopkeeper actually looks at: the
+            // SHAPE of the day. When did it start, when did it peak, when did
+            // it fall off. A line draws that shape in one gesture, and the
+            // smooth curve reads as a shape rather than as a row of corners.
             //
-            // No force-unwrap: `hasData` is DERIVED from `peak != null`, so
-            // flow analysis already knows the peak exists in this branch.
-            PosBarChart(
-              title: '',
+            // The line is MONOTONE — it passes through every hour's reading and
+            // never leaves the range of the data, so the curve cannot invent a
+            // peak the shop never had.
+            //
+            // The axis reads at an INTERVAL. Twenty-four hour labels across a
+            // 320dp phone is a row of collisions rather than an axis; every
+            // third hour is morning, midday, evening, and it breathes.
+            //
+            // The figure is revealed by touch, and the peak's is on the card
+            // beside it in words — so the answer is never only in the picture.
+            PosLineChart(
+              title: l10n.dashboardSalesByHour,
+              // The panel above already says "Sales by hour"; an empty title
+              // still renders a heading, in the heading style, and leaves a
+              // line of nothing where a line of something should be.
+              showTitle: false,
               semanticsLabel: l10n.dashboardPeakHourSpoken(
                 formatMoney(Money.fromMinor(peak.salesMinor)),
                 _hourLabel(peak.hour, l10n),
               ),
               height: 132,
+              minStride: kPosChartMinStride,
               points: points,
             ),
         ],
@@ -1105,13 +1165,9 @@ class _LowStockRow extends StatelessWidget {
                     Text(
                       product.name,
                       style: type.bodyMedium,
-                      // Wraps rather than ellipsises.
-                      //
-                      // The row's `Semantics` label carries the full name, so
-                      // this is a visual budget rather than a truncation of
-                      // the data.
-                      maxLines: 2,
-                      overflow: TextOverflow.ellipsis,
+                      // Wraps rather than ellipsises: a product name is the
+                      // cashier's typing, and a name cut in half is a product
+                      // nobody can find.
                     ),
                     SizedBox(height: 2),
                     Text(

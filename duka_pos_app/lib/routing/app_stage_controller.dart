@@ -32,6 +32,18 @@ class AppStageController extends ChangeNotifier {
   bool _loading = true;
   bool _databaseFailed = false;
   bool _onboardingComplete = false;
+
+  /// Whether the till has already asked for its permissions.
+  ///
+  /// FALSE until the owner has been through the step and moved on. It is asked
+  /// once per workspace: a permission the owner has already answered — granted
+  /// OR refused — is a decision, and a till that asks again every morning is a
+  /// till people learn to dismiss without reading.
+  ///
+  /// True before [boot] answers, so the pre-boot stage is not the permissions
+  /// step: the stage is `loading` until then anyway.
+  bool _permissionsAsked = true;
+
   AppChooserIntent _intent = AppChooserIntent.signIn;
 
   AppChooserIntent get intent => _intent;
@@ -55,6 +67,11 @@ class AppStageController extends ChangeNotifier {
       final SharedPreferences prefs = await SharedPreferences.getInstance();
       _onboardingComplete =
           prefs.getBool('onboarding_completed_${_state.workspaceKey}') ?? false;
+      // The permissions step is asked once. A till that has never been asked
+      // has NOT been asked — the flag is only set when the owner has been
+      // through the step and moved on.
+      _permissionsAsked =
+          prefs.getBool('permissions_asked_${_state.workspaceKey}') ?? false;
       if (_disposed) return;
       await AutoSyncService.start();
     } catch (error, stack) {
@@ -163,6 +180,22 @@ class AppStageController extends ChangeNotifier {
     notifyListeners();
   }
 
+  /// Records that the owner has been asked for the till's permissions.
+  ///
+  /// Called when they move on, whether they granted anything or not: the
+  /// question was asked, and asking it again every morning is worse than
+  /// asking it once.
+  Future<void> completePermissions() async {
+    final SharedPreferences prefs = await SharedPreferences.getInstance();
+    await prefs.setBool(
+      'permissions_asked_${_state.workspaceKey}',
+      true,
+    );
+    if (_disposed) return;
+    _permissionsAsked = true;
+    notifyListeners();
+  }
+
   /// Everything the redirect reads, captured as a value.
   ///
   /// A redirect must be a pure function of a snapshot, never of live widgets or
@@ -178,6 +211,7 @@ class AppStageController extends ChangeNotifier {
           isSignedIn: _state.isSignedIn,
           isAdmin: _state.isAdmin,
           onboardingComplete: _onboardingComplete,
+          permissionsAsked: _permissionsAsked,
           chooserIntent: _intent,
         ),
         canManageStock: _state.canManageStock,

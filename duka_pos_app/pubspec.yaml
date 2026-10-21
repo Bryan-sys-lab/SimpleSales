@@ -17,7 +17,7 @@ publish_to: 'none'
 # carries over automatically — hence a major version rather than a patch.
 # It also means the release key and the update checker's identity both need
 # to be read as new, so do not expect 1.1.0 devices to see this as an update.
-version: 2.0.0+26
+version: 2.0.0+27
 
 environment:
   sdk: '>=3.0.0 <4.0.0'
@@ -157,5 +157,10 @@ flutter:
     - assets/branding/simple_pos_icon_1024.png
     - assets/branding/simple_pos_foreground_512.png
     - assets/branding/simple_pos_icon_monochrome_512.png
+    # The Nerva wordmark, in the two variants the app's surfaces need.
+    # Rendered by assets/branding/generate_nerva_logo.py from the generated
+    # master; do not hand-edit the PNGs.
+    - assets/branding/nerva_wordmark_dark.png
+    - assets/branding/nerva_wordmark_light.png
     - assets/branding/stitch_simple_pos_launcher_icon/simple_pos_geometric_s_icon/screen.png
     - assets/branding/stitch_simple_pos_launcher_icon/simple_pos_till_action_s_icon/screen.png

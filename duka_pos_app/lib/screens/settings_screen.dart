@@ -1,5 +1,6 @@
 import 'dart:async';
 
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import 'package:provider/provider.dart';
@@ -8,7 +9,6 @@ import '../db/database_helper.dart';
 import '../l10n/generated/app_localizations.dart';
 import '../utils/money.dart';
 import '../utils/datetime_format.dart';
-import '../ui/components/brand_header.dart';
 import '../models/audit_log.dart';
 import '../models/models.dart';
 import '../services/app_state.dart';
@@ -18,7 +18,9 @@ import '../services/auth_service.dart';
 import '../services/session_refresh_mixin.dart';
 import '../services/staff_credential_cache.dart';
 import '../services/sync_service.dart';
+import '../services/app_busy.dart';
 import '../services/excel_service.dart';
+import '../services/inventory_importer.dart';
 import '../services/import_row_parser.dart';
 import '../routing/routes.dart';
 import '../services/roles.dart';
@@ -27,6 +29,8 @@ import 'package:package_info_plus/package_info_plus.dart';
 import '../services/backend_service.dart';
 import '../services/auto_sync_service.dart';
 import '../services/encrypted_backup_service.dart';
+import '../ui/brand/nerva_wordmark.dart';
+import '../ui/components/operation_result.dart';
 import '../services/workspace_service.dart';
 import '../services/printer/printer_config.dart';
 import '../services/printer/printer_service.dart';
@@ -38,6 +42,7 @@ import '../theme/app_shapes.dart';
 import '../theme/app_spacing.dart';
 import '../theme/typography.dart';
 import '../ui/components/controls.dart';
+import '../ui/components/screen_title.dart';
 import '../ui/components/status.dart';
 import '../ui/components/surface.dart';
 import '../ui/dialogs/verify_identity_dialog.dart';
@@ -57,6 +62,21 @@ class _SettingsScreenState extends State<SettingsScreen>
   final _sync = SyncService();
   final _excel = ExcelService();
   List<Staff> _staff = [];
+
+  /// Whether an import is running.
+  ///
+  /// The button is disabled while it is: an import that is started twice runs
+  /// twice, and the owner has no way to tell that from an import that is
+  /// simply slow.
+  bool _importing = false;
+
+  /// Where the import has got to, for the bar.
+  ///
+  /// A notifier, not a field: the settings screen is a big tree, and a
+  /// progress step that rebuilt all of it a hundred times would be the jank
+  /// the progress bar was meant to prevent. Only the bar listens.
+  final ValueNotifier<ImportProgress?> _importProgress =
+      ValueNotifier<ImportProgress?>(null);
   bool _syncing = false;
   String? _syncStatus;
   bool _verifyingIdentity = false;
@@ -363,9 +383,28 @@ class _SettingsScreenState extends State<SettingsScreen>
     );
     if (confirmed != true || !mounted) return;
 
+    // 3. The LOCAL accounts, asked about separately.
+    //
+    //    The erasure seals the cashiers' sign-in details, which makes them
+    //    unusable. It does not remove the rows, and a row that says "there was
+    //    a cashier here" is a fact the owner asked to have erased. So the
+    //    owner is asked, once, in words, and the answer decides whether the
+    //    rows go.
+    //
+    //    The question is separate because the two promises are different: a
+    //    till whose cashiers can still sign in is a till somebody else can
+    //    use. Deleting the account and keeping the logins is a legitimate
+    //    choice — it is what an owner does when they are handing the till to
+    //    someone else — and it is not one to be made by omission.
+    final bool deleteLocalAccounts = await _confirmLocalAccountDeletion();
+    if (!mounted) return;
+
     setState(() => _deletingAccount = true);
     try {
-      final report = await AccountDeletionService.deleteAccount(pin: pin);
+      final report = await AccountDeletionService.deleteAccount(
+        pin: pin,
+        deleteLocalAccounts: deleteLocalAccounts,
+      );
       if (!mounted) return;
       // The receipt is offered for keeping, because the owner will need to show
       // someone that the account is gone.
@@ -380,6 +419,16 @@ class _SettingsScreenState extends State<SettingsScreen>
               Text(report.remoteDeleted
                   ? l10n.accountDeleteDoneRemote
                   : l10n.accountDeleteDoneLocalOnly),
+              SizedBox(height: AppSpacing.of(context).sm),
+              // What happened to the cashier logins on this phone, said
+              // plainly: either they are gone, or they are sealed and still
+              // there, and the owner needs to know which.
+              Text(
+                report.localAccountsDeleted
+                    ? l10n.accountDeleteLocalAccountsRemoved
+                    : l10n.accountDeleteLocalAccountsSealed,
+                style: AppTypography.of(context).bodySmall,
+              ),
               SizedBox(height: AppSpacing.of(context).md),
               Text(
                 l10n.accountDeleteReceipt(
@@ -396,7 +445,7 @@ class _SettingsScreenState extends State<SettingsScreen>
                 Text(
                   l10n.accountDeleteCompactionPending,
                   style: AppTypography.of(context).bodySmall?.copyWith(
-                        color: Theme.of(context).colorScheme.error,
+                        color: AppColors.of(context).danger,
                       ),
                 ),
               ],
@@ -427,6 +476,40 @@ class _SettingsScreenState extends State<SettingsScreen>
     } finally {
       if (mounted) setState(() => _deletingAccount = false);
     }
+  }
+
+  /// Asks whether the cashier logins on this phone should be deleted too.
+  ///
+  /// Returns true to delete them. The destructive answer is the one on the
+  /// filled button, because the owner has come here to delete their account
+  /// and a till that still accepts a cashier's PIN is not a deleted till.
+  ///
+  /// Cancelled is treated as "keep them": a dialog dismissed is a question
+  /// that was not answered, and the answer that changes least is the safe
+  /// one for the data.
+  Future<bool> _confirmLocalAccountDeletion() async {
+    final l10n = AppLocalizations.of(context);
+    final result = await showDialog<bool>(
+      context: context,
+      builder: (BuildContext dialogContext) => AlertDialog(
+        title: Text(l10n.accountDeleteLocalAccountsTitle),
+        content: Text(l10n.accountDeleteLocalAccountsMessage),
+        actions: <Widget>[
+          TextButton(
+            onPressed: () => Navigator.pop(dialogContext, false),
+            child: Text(l10n.accountDeleteLocalAccountsKeep),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(dialogContext, true),
+            style: FilledButton.styleFrom(
+              backgroundColor: AppColors.of(context).danger,
+            ),
+            child: Text(l10n.accountDeleteLocalAccountsDelete),
+          ),
+        ],
+      ),
+    );
+    return result ?? false;
   }
 
   /// The owner PIN, checked against the local hash with the till-wide lockout
@@ -460,26 +543,52 @@ class _SettingsScreenState extends State<SettingsScreen>
   Future<void> _eraseEncryptedBackups() async {
     // Read before the dialog's async gap.
     final AppState state = context.read<AppState>();
+    // Read ONCE, before the dialog's async gap. A `BuildContext` does not
+    // survive an await, and reading it afterwards is how a screen ends up
+    // building a string in a language that is no longer the one on the device.
+    final l10n = AppLocalizations.of(context);
     final confirmed = await showDialog<bool>(
         context: context,
         builder: (_) => AlertDialog(
-              title:
-                  Text(AppLocalizations.of(context).settingsEraseBackupsTitle),
-              content: Text(
-                  AppLocalizations.of(context).settingsEraseBackupsMessage),
+              title: Text(l10n.settingsEraseBackupsTitle),
+              content: Text(l10n.settingsEraseBackupsMessage),
               actions: [
                 TextButton(
                     onPressed: () => Navigator.pop(context, false),
-                    child: Text(AppLocalizations.of(context).actionCancel)),
+                    child: Text(l10n.actionCancel)),
                 FilledButton(
                     onPressed: () => Navigator.pop(context, true),
-                    child: Text(AppLocalizations.of(context)
-                        .settingsEraseBackupsConfirm)),
+                    child: Text(l10n.settingsEraseBackupsConfirm)),
               ],
             ));
     if (confirmed != true) return;
-    await EncryptedBackupService.cryptographicEraseLocalBackups();
-    if (mounted) _err(AppLocalizations.of(context).settingsBackupsErased);
+    final BackupErasureResult result =
+        await EncryptedBackupService.cryptographicEraseLocalBackups();
+    if (!mounted) return;
+    // The outcome, in a number the owner can check — and NOT through the
+    // error helper, because a successful erasure is not an error.
+    //
+    // "The backups are erased" is a claim nobody can check. "Three backup
+    // files were erased" is a claim they can, and on a till the whole point
+    // of pressing the button is to be sure.
+    // The outcome, on a screen: this is the most destructive action in the
+    // app, and "the backups are erased" in a snackbar that vanishes in four
+    // seconds is not a receipt.
+    if (result.complete) {
+      await showOperationSuccess(
+        context,
+        title: l10n.settingsBackupsErasedTitle,
+        message: l10n.settingsBackupsErasedCount(result.filesErased),
+        detailIcon: Icons.backup_outlined,
+      );
+    } else {
+      await showOperationFailure(
+        context,
+        title: l10n.settingsBackupsEraseFailedTitle,
+        message: l10n.settingsBackupsEraseFailed,
+        icon: Icons.backup_outlined,
+      );
+    }
     // The single most destructive action in the app, and the one an exclusion
     // the log exists for: after this, the device holds no restorable backup.
     await recordActionAudit(
@@ -531,12 +640,33 @@ class _SettingsScreenState extends State<SettingsScreen>
         try {
           await BackendService.syncStaffToBackend();
         } catch (_) {
-          _err(l10n.settingsStaffSavedOffline);
+          if (!mounted) return;
+          // Saved here, not on the server yet. Said plainly, because a till
+          // that shows the same message for a success and a partial success
+          // cannot be trusted with either.
+          await showOperationSuccess(
+            context,
+            title: l10n.settingsStaffSavedTitle,
+            message: l10n.settingsStaffSavedOffline,
+            detailIcon: Icons.cloud_off_outlined,
+          );
         }
       }
       await _load();
+      if (!mounted) return;
+      await showOperationSuccess(
+        context,
+        title: l10n.settingsStaffSavedTitle,
+        message: name,
+        detailIcon: Icons.person_add_outlined,
+      );
     } catch (e) {
-      _err(l10n.settingsAddStaffFailed);
+      if (!mounted) return;
+      await showOperationFailure(
+        context,
+        title: l10n.settingsStaffSaveFailedTitle,
+        message: l10n.settingsAddStaffFailed,
+      );
     }
   }
 
@@ -554,7 +684,14 @@ class _SettingsScreenState extends State<SettingsScreen>
     try {
       await DatabaseHelper.instance
           .resetStaffPin(s.id!, await AuthService.hashPin(result['pin']!));
-      _err(l10n.settingsPinResetFor(s.name));
+      if (!mounted) return;
+      await showOperationSuccess(
+        context,
+        title: l10n.settingsPinResetTitle,
+        message: l10n.settingsPinResetFor(s.name),
+        detailIcon: Icons.pin_outlined,
+      );
+      if (!mounted) return;
       // A reset is how a locked-out cashier gets back in, so a PIN changed at
       // 11pm by someone who is not the named cashier is worth having recorded.
       await recordActionAudit(
@@ -565,7 +702,12 @@ class _SettingsScreenState extends State<SettingsScreen>
         detail: 'PIN reset',
       );
     } catch (e) {
-      _err(l10n.settingsResetPinFailed);
+      if (!mounted) return;
+      await showOperationFailure(
+        context,
+        title: l10n.settingsPinResetTitle,
+        message: l10n.settingsResetPinFailed,
+      );
     }
   }
 
@@ -612,12 +754,30 @@ class _SettingsScreenState extends State<SettingsScreen>
         try {
           await BackendService.syncStaffToBackend();
         } catch (_) {
-          _err(l10n.settingsStaffRemovedOffline);
+          if (!mounted) return;
+          await showOperationSuccess(
+            context,
+            title: l10n.settingsStaffRemovedTitle,
+            message: l10n.settingsStaffRemovedOffline,
+            detailIcon: Icons.cloud_off_outlined,
+          );
         }
       }
       await _load();
+      if (!mounted) return;
+      await showOperationSuccess(
+        context,
+        title: l10n.settingsStaffRemovedTitle,
+        message: s.name,
+        detailIcon: Icons.person_remove_outlined,
+      );
     } catch (e) {
-      _err(l10n.settingsRemoveStaffFailed);
+      if (!mounted) return;
+      await showOperationFailure(
+        context,
+        title: l10n.settingsStaffRemoveFailedTitle,
+        message: l10n.settingsRemoveStaffFailed,
+      );
     }
   }
 
@@ -655,7 +815,12 @@ class _SettingsScreenState extends State<SettingsScreen>
         });
       }
     } catch (e) {
-      _err(l10n.settingsMpesaUpdateFailed);
+      if (!mounted) return;
+      await showOperationFailure(
+        context,
+        title: l10n.settingsMpesaUpdateFailedTitle,
+        message: l10n.settingsMpesaUpdateFailed,
+      );
     } finally {
       if (mounted) setState(() => _savingToggle = false);
     }
@@ -696,7 +861,7 @@ class _SettingsScreenState extends State<SettingsScreen>
                   padding: const EdgeInsets.only(top: 8),
                   child: Text(error!,
                       style: TextStyle(
-                          color: Theme.of(context).colorScheme.error)),
+                          color: AppColors.of(context).danger)),
                 ),
             ]),
           ),
@@ -861,7 +1026,15 @@ class _SettingsScreenState extends State<SettingsScreen>
         detail: 'email verified for this shop',
       );
       if (!mounted) return;
-      _err(AppLocalizations.of(context).settingsIdentityVerified);
+      // The shop's identity is verified. Said on a screen, because this is a
+      // thing the owner waited for a code to happen, and a snackbar that
+      // vanishes in four seconds is not a record of it.
+      await showOperationSuccess(
+        context,
+        title: AppLocalizations.of(context).settingsIdentityVerifiedTitle,
+        message: AppLocalizations.of(context).settingsIdentityVerified,
+        detailIcon: Icons.verified_outlined,
+      );
     } finally {
       if (mounted) setState(() => _verifyingIdentity = false);
     }
@@ -913,6 +1086,16 @@ class _SettingsScreenState extends State<SettingsScreen>
       entity: AuditEntity.settings,
       detail: 'manual sync: $statusLabel',
     );
+    if (!mounted) return;
+    // And the owner is told, on a screen. A sync that pushed nothing and one
+    // that pushed everything are very different facts, and the owner pressed
+    // the button to find out which.
+    await showOperationSuccess(
+      context,
+      title: l10n.settingsSyncDoneTitle,
+      message: statusLabel,
+      detailIcon: Icons.cloud_sync_outlined,
+    );
   }
 
   Future<void> _setAutoSync(bool value) async {
@@ -932,30 +1115,66 @@ class _SettingsScreenState extends State<SettingsScreen>
   }
 
   Future<void> _exportEncryptedInventory() async {
+    final l10n = AppLocalizations.of(context);
     final state = context.read<AppState>();
-    final f = await _excel.exportEncryptedInventory();
-    await _excel.shareFile(f);
-    // The share has already left the device, so the row says a backup WAS
-    // produced — the audit is the last thing standing after the share sheet
-    // closes.
-    await recordActionAudit(
-      state,
-      action: AuditAction.backupExported,
-      entity: AuditEntity.backup,
-      detail: 'encrypted',
-    );
+    try {
+      final f = await _excel.exportEncryptedInventory();
+      await _excel.shareFile(f);
+      // The share has already left the device, so the row says a backup WAS
+      // produced — the audit is the last thing standing after the share sheet
+      // closes.
+      await recordActionAudit(
+        state,
+        action: AuditAction.backupExported,
+        entity: AuditEntity.backup,
+        detail: 'encrypted',
+      );
+      if (!mounted) return;
+      await showOperationSuccess(
+        context,
+        title: l10n.settingsExportDoneTitle,
+        message: l10n.settingsExportEncryptedDone,
+        detailIcon: Icons.lock_outline,
+      );
+    } on Object {
+      if (!mounted) return;
+      await showOperationFailure(
+        context,
+        title: l10n.settingsExportFailedTitle,
+        message: l10n.settingsExportFailed,
+        onRetry: _exportEncryptedInventory,
+      );
+    }
   }
 
   Future<void> _exportInventory() async {
+    final l10n = AppLocalizations.of(context);
     final state = context.read<AppState>();
-    final f = await _excel.exportInventory();
-    await _excel.shareFile(f);
-    await recordActionAudit(
-      state,
-      action: AuditAction.backupExported,
-      entity: AuditEntity.backup,
-      detail: 'plain workbook',
-    );
+    try {
+      final f = await _excel.exportInventory();
+      await _excel.shareFile(f);
+      await recordActionAudit(
+        state,
+        action: AuditAction.backupExported,
+        entity: AuditEntity.backup,
+        detail: 'plain workbook',
+      );
+      if (!mounted) return;
+      await showOperationSuccess(
+        context,
+        title: l10n.settingsExportDoneTitle,
+        message: l10n.settingsExportInventoryDone,
+        detailIcon: Icons.table_chart_outlined,
+      );
+    } on Object {
+      if (!mounted) return;
+      await showOperationFailure(
+        context,
+        title: l10n.settingsExportFailedTitle,
+        message: l10n.settingsExportFailed,
+        onRetry: _exportInventory,
+      );
+    }
   }
 
   /// Restores an encrypted backup, reporting how many products came back.
@@ -969,7 +1188,13 @@ class _SettingsScreenState extends State<SettingsScreen>
     try {
       final n = await _excel.importEncryptedInventory();
       if (!mounted) return;
-      _err(l10n.settingsRestoredProducts(n));
+      await showOperationSuccess(
+        context,
+        title: l10n.settingsRestoreDoneTitle,
+        message: l10n.settingsRestoredProducts(n),
+        detailIcon: Icons.restore_outlined,
+      );
+      if (!mounted) return;
       // Logged with the count, because a restore that brought back three
       // products of four hundred is the most important row this screen writes.
       await recordActionAudit(
@@ -980,19 +1205,46 @@ class _SettingsScreenState extends State<SettingsScreen>
       );
     } on FormatException {
       if (!mounted) return;
-      _err(l10n.settingsInvalidEncryptedBackup);
+      await showOperationFailure(
+        context,
+        title: l10n.settingsRestoreFailedTitle,
+        message: l10n.settingsInvalidEncryptedBackup,
+        // A malformed file will be malformed again: there is nothing to
+        // retry, and a "Try again" button that cannot help is worse than none.
+      );
     } catch (_) {
       if (!mounted) return;
-      _err(l10n.settingsDecryptBackupFailed);
+      await showOperationFailure(
+        context,
+        title: l10n.settingsRestoreFailedTitle,
+        message: l10n.settingsDecryptBackupFailed,
+        onRetry: _restoreEncryptedInventory,
+      );
     }
   }
 
   /// Imports a plain workbook, naming any barcode it refused and why.
+  ///
+  /// The owner WATCHES this one. An import is the longest thing the app does
+  /// on a tap and the only one with nothing to press while it happens, so a
+  /// silent import reads as a broken app — and the owner presses the button
+  /// again, which is how an import used to be started twice.
   Future<void> _importInventory() async {
+    if (_importing) return;
     final l10n = AppLocalizations.of(context);
     final state = context.read<AppState>();
+    setState(() => _importing = true);
+    _importProgress.value = null;
     try {
-      final result = await _excel.importInventory();
+      final result = await AppBusy.during(
+        () => _excel.importInventory(
+          onProgress: (ImportProgress progress) {
+            if (!mounted) return;
+            _importProgress.value = progress;
+          },
+        ),
+      );
+      if (!mounted) return;
       if (!mounted) return;
       final refused = result.refusedBarcodes;
       // One sentence either way. The refusal count is part of the audit row,
@@ -1002,18 +1254,29 @@ class _SettingsScreenState extends State<SettingsScreen>
           ? '${result.products} products'
           : '${result.products} products, ${refused.length} barcodes refused';
       if (refused.isEmpty) {
-        _err(l10n.settingsImportedProducts(result.products));
+        await showOperationSuccess(
+          context,
+          title: l10n.settingsImportDoneTitle,
+          message: l10n.settingsImportedProducts(result.products),
+          detailIcon: Icons.upload_file_outlined,
+        );
       } else {
         // Each code paired with the product that already owns it, so the owner
         // can fix the workbook instead of guessing which rows were skipped.
         // Alphabetical order, as gen-l10n emits the generated parameters:
         // detail, products, refused.
-        _err(l10n.settingsImportedProductsWithRefused(
-          detail,
-          result.products,
-          l10n.settingsBarcodesRefusedList(refused.length),
-        ));
+        await showOperationSuccess(
+          context,
+          title: l10n.settingsImportDoneTitle,
+          message: l10n.settingsImportedProductsWithRefused(
+            detail,
+            result.products,
+            l10n.settingsBarcodesRefusedList(refused.length),
+          ),
+          detailIcon: Icons.upload_file_outlined,
+        );
       }
+      if (!mounted) return;
       await recordActionAudit(
         state,
         action: AuditAction.backupRestored,
@@ -1024,13 +1287,34 @@ class _SettingsScreenState extends State<SettingsScreen>
       // The one workbook problem with an actionable answer, so it gets its own
       // sentence instead of the generic invalid-workbook one.
       if (!mounted) return;
-      _err(l10n.importNotOurFormat);
+      await showOperationFailure(
+        context,
+        title: l10n.settingsImportFailedTitle,
+        message: l10n.importNotOurFormat,
+      );
     } on FormatException {
       if (!mounted) return;
-      _err(l10n.settingsInvalidWorkbook);
+      await showOperationFailure(
+        context,
+        title: l10n.settingsImportFailedTitle,
+        message: l10n.settingsInvalidWorkbook,
+      );
     } catch (_) {
       if (!mounted) return;
-      _err(l10n.settingsImportWorkbookFailed);
+      await showOperationFailure(
+        context,
+        title: l10n.settingsImportFailedTitle,
+        message: l10n.settingsImportWorkbookFailed,
+        onRetry: _importInventory,
+      );
+    } finally {
+      // The state is cleared whatever happened, so a failed import leaves the
+      // button ready for another try. And the screen may be gone by now — the
+      // owner walked away — in which case there is nothing to clear.
+      _importProgress.value = null;
+      if (mounted) {
+        setState(() => _importing = false);
+      }
     }
   }
 
@@ -1069,13 +1353,12 @@ class _SettingsScreenState extends State<SettingsScreen>
                             ),
                           ),
                           title: Text(
-                      // A shop name is typed by a human. Two lines, then an
-                      // ellipsis: one long name must not make the list of
-                      // shops a scroll of six-line rows.
-                      shop.shopName,
-                      maxLines: 2,
-                      overflow: TextOverflow.ellipsis,
-                    ),
+                            // A shop name is typed by a human, and it WRAPS.
+                            // Two lines and an ellipsis is a name the owner
+                            // cannot read — and the name is how they know which
+                            // shop they are about to switch into.
+                            shop.shopName,
+                          ),
                           // The role, not the tenant id: a shopkeeper
                           // switching shops wants to know what they are, and a
                           // UUID is not that.
@@ -1255,6 +1538,8 @@ class _SettingsScreenState extends State<SettingsScreen>
       onRestoreEncrypted: _restoreEncryptedInventory,
       onExport: _exportInventory,
       onImport: _importInventory,
+      importing: _importing,
+      importProgress: _importProgress,
       onEraseBackups: _eraseEncryptedBackups,
       onDeleteAccount: _deleteOnlineAccount,
       accountDeleting: _deletingAccount,
@@ -1304,6 +1589,8 @@ class SettingsPanel extends StatelessWidget {
     required this.onRestoreEncrypted,
     required this.onExport,
     required this.onImport,
+    required this.importing,
+    required this.importProgress,
     required this.onEraseBackups,
     required this.onDeleteAccount,
     required this.accountDeleting,
@@ -1353,6 +1640,13 @@ class SettingsPanel extends StatelessWidget {
   final Future<void> Function() onRestoreEncrypted;
   final Future<void> Function() onExport;
   final Future<void> Function() onImport;
+
+  /// Whether an import is running.
+  final bool importing;
+
+  /// Where it has got to.
+  final ValueListenable<ImportProgress?> importProgress;
+
   final Future<void> Function() onEraseBackups;
 
   /// Deletes the online account and erases what this shop held.
@@ -1369,13 +1663,21 @@ class SettingsPanel extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final AppLocalizations l10n = AppLocalizations.of(context);
+
     // An unverified identity is the one condition on this screen that is the
     // shop's problem rather than the phone's, so it leads instead of sitting in
     // its own section to be scrolled past.
     return SectionedPage(
       maxContentWidth: 880,
       sections: <Widget>[
-        const _SettingsBrandHeader(),
+        // The screen's NAME, large and on the canvas.
+        //
+        // It used to be a brand lockup: the product's own name, in small caps,
+        // where the screen's name should have been. A person who opened
+        // Settings to find one thing had to read past the branding to find out
+        // where they were.
+        ScreenTitle(title: l10n.navSettings),
         if (identityLinkPending)
           _IdentityBanner(busy: verifyingIdentity, onVerify: onVerifyIdentity),
         _ShopsPanel(
@@ -1423,6 +1725,8 @@ class SettingsPanel extends StatelessWidget {
           onExport: onExport,
           onImport: onImport,
           onErase: onEraseBackups,
+          importing: importing,
+          importProgress: importProgress,
         ),
         _AccountPanel(
           onDeleteAccount: onDeleteAccount,
@@ -1459,7 +1763,7 @@ class _AccountPanel extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final l10n = AppLocalizations.of(context);
-    final theme = Theme.of(context);
+    final AppColors colors = AppColors.of(context);
     return _SettingsSection(
       title: l10n.settingsAccountSection,
       child: Column(
@@ -1477,10 +1781,10 @@ class _AccountPanel extends StatelessWidget {
           // (see `_LoginScreenState._forgotPin`), behind nothing.
           ListTile(
             leading: Icon(Icons.delete_forever_outlined,
-                color: theme.colorScheme.error),
+                color: colors.danger),
             title: Text(
               l10n.settingsDeleteAccountAction,
-              style: TextStyle(color: theme.colorScheme.error),
+              style: TextStyle(color: colors.danger),
             ),
             enabled: !deleting,
             onTap: deleting ? null : onDeleteAccount,
@@ -1585,7 +1889,17 @@ class _UpdateRows extends StatelessWidget {
       return l10n.settingsUpdatesAvailable(check.release.versionName);
     }
     if (check is UpdateCheckFailed) {
-      return l10n.settingsUpdatesFailed(check.reason);
+      // A reason the owner can act on, not the server's own words.
+      //
+      // It used to be the raw cause: "manifest 404", "manifest not JSON", or
+      // a socket exception's own sentence, handed to a shopkeeper in the one
+      // place they might look for help. The technical detail is in the log,
+      // where a developer can read it.
+      return l10n.settingsUpdatesFailed(
+        check.failure == UpdateCheckFailure.unreachable
+            ? l10n.settingsUpdatesReasonUnreachable
+            : l10n.settingsUpdatesReasonMalformed,
+      );
     }
     if (service.downloadedApk != null) {
       return l10n.settingsUpdatesReady;
@@ -1626,6 +1940,87 @@ class _UpdateRows extends StatelessWidget {
         SnackBar(content: Text(l10n.settingsUpdatesRefused)),
       );
     }
+  }
+}
+
+/// The import's progress: what it is doing, and how far.
+///
+/// The stage is named, because "38%" on its own says nothing about whether
+/// the app is reading the file or writing the products — and those are
+/// different failures if it stops there.
+class _ImportProgressBar extends StatelessWidget {
+  const _ImportProgressBar({required this.progress});
+
+  final ValueListenable<ImportProgress?> progress;
+
+  @override
+  Widget build(BuildContext context) {
+    return ValueListenableBuilder<ImportProgress?>(
+      valueListenable: progress,
+      builder: (
+        BuildContext context,
+        ImportProgress? step,
+        Widget? child,
+      ) =>
+          _bar(context, step),
+    );
+  }
+
+  Widget _bar(BuildContext context, ImportProgress? step) {
+    final AppLocalizations l10n = AppLocalizations.of(context);
+    final AppColors colors = AppColors.of(context);
+    final AppSpacing spacing = AppSpacing.of(context);
+
+    final String stage = step == null
+        ? l10n.settingsImportStageReading
+        : switch (step.stage) {
+            ImportStage.reading => l10n.settingsImportStageReading,
+            ImportStage.parsing => l10n.settingsImportStageParsing,
+            ImportStage.writing => l10n.settingsImportStageWriting,
+            ImportStage.barcodes => l10n.settingsImportStageBarcodes,
+            ImportStage.variants => l10n.settingsImportStageVariants,
+            ImportStage.done => l10n.settingsImportStageDone,
+          };
+    final double? fraction = step?.fraction;
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: <Widget>[
+        Semantics(
+          liveRegion: true,
+          label: fraction == null
+              ? stage
+              : l10n.settingsImportProgressPercent(
+                  stage, (fraction * 100).round()),
+          child: ExcludeSemantics(
+            child: ClipRRect(
+              // The chip radius from the shape scale, not a literal: 999 is a
+              // magic number that means "as round as it goes" and belongs to
+              // the scale, where a designer can change it once.
+              borderRadius: AppShapes.of(context).chipRadius,
+              child: LinearProgressIndicator(
+                // An indeterminate bar for the stages that have no measure,
+                // and a real one for the stages that do.
+                value: fraction,
+                minHeight: 6,
+                backgroundColor: colors.surfaceSunken,
+                valueColor: AlwaysStoppedAnimation<Color>(colors.accent),
+              ),
+            ),
+          ),
+        ),
+        SizedBox(height: spacing.sm),
+        Text(
+          fraction == null
+              ? stage
+              : l10n.settingsImportProgressPercent(
+                  stage, (fraction * 100).round()),
+          style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                color: colors.onSurfaceMuted,
+              ),
+        ),
+      ],
+    );
   }
 }
 
@@ -1676,24 +2071,60 @@ class _PrinterChooser extends StatefulWidget {
 }
 
 class _PrinterChooserState extends State<_PrinterChooser> {
+  /// The scan in flight.
+  ///
+  /// HELD HERE, not handed to a `FutureBuilder`: a builder is given a new
+  /// future on every build and starts over, so the scan would re-run — and the
+  /// dialog would flicker between "scanning" and "found" — on every rebuild.
+  /// The future is attached to ONCE, and its answer arrives through
+  /// [_onScanned].
   late Future<List<PrinterDevice>> _devices;
+
+  /// What the scan found. Null until it answers, and empty when it answered
+  /// with nothing.
+  List<PrinterDevice>? _found;
+
+  /// True when the scan FAILED, as opposed to finding nothing.
+  ///
+  /// Two different facts: a shop with no printer paired is told how to pair
+  /// one, and a shop whose scan broke is told to try again.
+  bool _failed = false;
 
   @override
   void initState() {
     super.initState();
     _devices = widget.printer.pairedDevices();
+    _devices.then(_onScanned, onError: _onFailed);
   }
 
   void _rescan() {
     setState(() {
+      _found = null;
+      _failed = false;
       _devices = widget.printer.pairedDevices();
     });
+    _devices.then(_onScanned, onError: _onFailed);
+  }
+
+  /// The scan's answer, applied once.
+  ///
+  /// `mounted` first: the dialog can be dismissed while the scan is in
+  /// flight, and a widget that is already gone must not be told about it.
+  void _onScanned(List<PrinterDevice> devices) {
+    if (!mounted) return;
+    setState(() => _found = devices);
+  }
+
+  void _onFailed(Object _) {
+    if (!mounted) return;
+    setState(() => _failed = true);
   }
 
   @override
   Widget build(BuildContext context) {
     final AppLocalizations l10n = AppLocalizations.of(context);
     final AppSpacing spacing = AppSpacing.of(context);
+    final List<PrinterDevice>? found = _found;
 
     return AlertDialog(
       title: Text(l10n.settingsChoosePrinter),
@@ -1701,66 +2132,58 @@ class _PrinterChooserState extends State<_PrinterChooser> {
           EdgeInsetsDirectional.only(top: spacing.md, bottom: spacing.sm),
       content: SizedBox(
         width: double.maxFinite,
-        child: FutureBuilder<List<PrinterDevice>>(
-          future: _devices,
-          builder:
-              (BuildContext context, AsyncSnapshot<List<PrinterDevice>> snap) {
-            if (snap.connectionState == ConnectionState.waiting) {
-              return const Padding(
-                padding: EdgeInsets.all(24),
-                child: Center(child: CircularProgressIndicator()),
-              );
-            }
-            if (snap.hasError) {
-              return Padding(
+        child: _failed
+            ? Padding(
                 padding: EdgeInsets.all(spacing.md),
                 child: Text(l10n.settingsPrinterScanFailed),
-              );
-            }
-            final devices = snap.data ?? const <PrinterDevice>[];
-            if (devices.isEmpty) {
-              return Padding(
-                padding: EdgeInsets.all(spacing.md),
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: <Widget>[
-                    Text(l10n.settingsNoPairedPrinters),
-                    SizedBox(height: spacing.sm),
-                    // Says what to DO, not just what is wrong. The printer is
-                    // paired in Android's own Bluetooth settings, and pointing
-                    // at that is the difference between a dead end and an
-                    // instruction.
-                    Text(
-                      l10n.settingsNoPairedPrintersHint,
-                      style: AppTypography.of(context).bodySmall?.copyWith(
-                          color: AppColors.of(context).onSurfaceMuted),
-                    ),
-                  ],
-                ),
-              );
-            }
-            return ListView.builder(
-              shrinkWrap: true,
-              itemCount: devices.length,
-              itemBuilder: (BuildContext context, int i) {
-                final device = devices[i];
-                return SimpleDialogOption(
-                  onPressed: () => Navigator.pop(context, device),
-                  child: ListTile(
-                    contentPadding: EdgeInsets.zero,
-                    leading: const Icon(Icons.print_outlined),
-                    title: Text(device.label),
-                    subtitle: Text(device.address),
-                    trailing: widget.selectedAddress == device.address
-                        ? const Icon(Icons.check)
-                        : null,
-                  ),
-                );
-              },
-            );
-          },
-        ),
+              )
+            : found == null
+                ? Padding(
+                    padding: EdgeInsets.all(spacing.xl),
+                    child: Center(child: CircularProgressIndicator()),
+                  )
+                : found.isEmpty
+                    ? Padding(
+                        padding: EdgeInsets.all(spacing.md),
+                        child: Column(
+                          mainAxisSize: MainAxisSize.min,
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: <Widget>[
+                            Text(l10n.settingsNoPairedPrinters),
+                            SizedBox(height: spacing.sm),
+                            // Says what to DO, not just what is wrong. The
+                            // printer is paired in Android's own Bluetooth
+                            // settings, and pointing at that is the difference
+                            // between a dead end and an instruction.
+                            Text(
+                              l10n.settingsNoPairedPrintersHint,
+                              style:
+                                  AppTypography.of(context).bodySmall?.copyWith(
+                                      color: AppColors.of(context)
+                                          .onSurfaceMuted),
+                            ),
+                          ],
+                        ),
+                      )
+                    : ListView.builder(
+                        shrinkWrap: true,
+                        itemCount: found.length,
+                        itemBuilder: (BuildContext context, int i) {
+                          final device = found[i];
+                          return SimpleDialogOption(
+                            onPressed: () => Navigator.pop(context, device),
+                            child: ListTile(
+                              contentPadding: EdgeInsets.zero,
+                              leading: const Icon(Icons.print_outlined),
+                              title: Text(device.label),
+                              subtitle: Text(device.address),
+                              trailing: widget.selectedAddress == device.address
+                                  ? const Icon(Icons.check)
+                                  : null,
+                            ),
+                          );
+                        },
+                      ),
       ),
       actions: <Widget>[
         TextButton.icon(
@@ -1829,9 +2252,12 @@ class _AboutFooterState extends State<_AboutFooter> {
           ),
         ),
         SizedBox(height: AppSpacing.of(context).xs),
-        Text(
-          SimplePosBrand.poweredByTag,
-          style: AppTypography.of(context).bodySmall,
+        Align(
+          alignment: AlignmentDirectional.centerStart,
+          child: PoweredByNerva(
+            style: AppTypography.of(context).bodySmall,
+            alignment: CrossAxisAlignment.center,
+          ),
         ),
       ],
     );
@@ -1979,35 +2405,6 @@ class _SettingsSection extends StatelessWidget {
           ),
         ),
       ],
-    );
-  }
-}
-
-class _SettingsBrandHeader extends StatelessWidget {
-  const _SettingsBrandHeader();
-
-  @override
-  Widget build(BuildContext context) {
-    final AppSpacing spacing = AppSpacing.of(context);
-
-    return Padding(
-      padding: EdgeInsetsDirectional.only(
-        start: spacing.xl,
-        end: spacing.xl,
-        top: spacing.sm,
-        bottom: spacing.sm,
-      ),
-      child: Semantics(
-        image: true,
-        label: 'SimpleSales',
-        child: ExcludeSemantics(
-          child: BrandHeader(
-            markSize: 26,
-            gap: spacing.md,
-            showWordmark: true,
-          ),
-        ),
-      ),
     );
   }
 }
@@ -2495,7 +2892,15 @@ class _BackupPanel extends StatelessWidget {
     required this.onImport,
     required this.onErase,
     required this.onOpenDiagnostics,
+    required this.importing,
+    required this.importProgress,
   });
+
+  /// Whether an import is running.
+  final bool importing;
+
+  /// Where it has got to.
+  final ValueListenable<ImportProgress?> importProgress;
 
   final Future<void> Function() onExportEncrypted;
   final Future<void> Function() onRestoreEncrypted;
@@ -2535,11 +2940,23 @@ class _BackupPanel extends StatelessWidget {
                 child: Text(l10n.settingsExportInventory),
               ),
               OutlinedButton(
-                onPressed: () => onImport(),
+                // Disabled while an import runs: an import that is started
+                // twice runs twice.
+                onPressed: importing ? null : () => onImport(),
                 child: Text(l10n.settingsImportInventory),
               ),
             ],
           ),
+          // The import's progress.
+          //
+          // An import is the longest thing the app does on a tap and the only
+          // one with nothing to press while it happens. Without this the
+          // button goes quiet for eight seconds and the owner presses it
+          // again.
+          if (importing) ...<Widget>[
+            SizedBox(height: spacing.md),
+            _ImportProgressBar(progress: importProgress),
+          ],
           SizedBox(height: spacing.sm),
           // Erasure is destructive and separate from the four reversible
           // buttons, so it is a text button in the danger colour rather than a

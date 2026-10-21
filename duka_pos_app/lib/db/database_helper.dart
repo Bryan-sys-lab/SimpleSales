@@ -14,6 +14,7 @@ import '../utils/units.dart';
 // than here so this file stays a data layer: it produces rows, it does not
 // define what a chart or a screen does with them.
 import '../services/analytics.dart';
+import '../services/workspace_service.dart';
 
 /// Single source of truth for local storage. Every screen reads/writes
 /// through here rather than touching sqflite directly, so the schema only
@@ -328,8 +329,7 @@ SELECT name FROM staff GROUP BY name HAVING COUNT(*) = 1
       await _createCupSizeSuggestionsTable(db);
     }
     if (oldVersion < 16) {
-      final staffCols16 =
-          await db.rawQuery('PRAGMA table_info(staff)');
+      final staffCols16 = await db.rawQuery('PRAGMA table_info(staff)');
       final staffNames16 = staffCols16.map((r) => r['name'] as String?).toSet();
       if (!staffNames16.contains('username')) {
         await db.execute('ALTER TABLE staff ADD COLUMN username TEXT');
@@ -426,8 +426,7 @@ SELECT name FROM staff GROUP BY name HAVING COUNT(*) = 1
       // Defaults to 0, which is the field's way of saying "not stocked by
       // weight" — every existing row answers 0 and stays a volume product, so
       // nothing about the shop's current catalogue changes shape on upgrade.
-      final productColumns =
-          await db.rawQuery('PRAGMA table_info(products)');
+      final productColumns = await db.rawQuery('PRAGMA table_info(products)');
       if (!productColumns.any((row) => row['name'] == 'ml_per_kg')) {
         await db.execute(
             'ALTER TABLE products ADD COLUMN ml_per_kg REAL NOT NULL DEFAULT 0');
@@ -444,8 +443,7 @@ SELECT name FROM staff GROUP BY name HAVING COUNT(*) = 1
       final ownerExists = await db.rawQuery(
           "SELECT name FROM sqlite_master WHERE type='table' AND name='owner'");
       if (ownerExists.isNotEmpty) {
-        final ownerCols =
-            await db.rawQuery('PRAGMA table_info(owner)');
+        final ownerCols = await db.rawQuery('PRAGMA table_info(owner)');
         final ownerNames = ownerCols.map((r) => r['name'] as String?).toSet();
         if (!ownerNames.contains('name')) {
           await db.execute(
@@ -460,8 +458,7 @@ SELECT name FROM staff GROUP BY name HAVING COUNT(*) = 1
       final staffExists = await db.rawQuery(
           "SELECT name FROM sqlite_master WHERE type='table' AND name='staff'");
       if (staffExists.isNotEmpty) {
-        final staffCols =
-            await db.rawQuery('PRAGMA table_info(staff)');
+        final staffCols = await db.rawQuery('PRAGMA table_info(staff)');
         final staffNames = staffCols.map((r) => r['name'] as String?).toSet();
         if (!staffNames.contains('active')) {
           await db.execute(
@@ -474,12 +471,10 @@ SELECT name FROM staff GROUP BY name HAVING COUNT(*) = 1
           }
         }
         if (!staffNames.contains('remote_id')) {
-          await db.execute(
-              'ALTER TABLE staff ADD COLUMN remote_id TEXT');
+          await db.execute('ALTER TABLE staff ADD COLUMN remote_id TEXT');
         }
         if (!staffNames.contains('username')) {
-          await db.execute(
-              'ALTER TABLE staff ADD COLUMN username TEXT');
+          await db.execute('ALTER TABLE staff ADD COLUMN username TEXT');
         }
       }
       // stock_adjustments may not exist at all on an upgraded till.
@@ -521,8 +516,8 @@ SELECT name FROM staff GROUP BY name HAVING COUNT(*) = 1
         final salesCols = await db.rawQuery('PRAGMA table_info(sales)');
         final salesNames = salesCols.map((r) => r['name'] as String?).toSet();
         if (!salesNames.contains('vat_rate_percent')) {
-          await db.execute(
-              'ALTER TABLE sales ADD COLUMN vat_rate_percent INTEGER');
+          await db
+              .execute('ALTER TABLE sales ADD COLUMN vat_rate_percent INTEGER');
         }
       }
     }
@@ -541,8 +536,7 @@ SELECT name FROM staff GROUP BY name HAVING COUNT(*) = 1
     final salesCols = await db.rawQuery('PRAGMA table_info(sales)');
     final salesNames = salesCols.map((r) => r['name'] as String?).toSet();
     if (!salesNames.contains('etims_qr_payload')) {
-      await db.execute(
-          'ALTER TABLE sales ADD COLUMN etims_qr_payload TEXT');
+      await db.execute('ALTER TABLE sales ADD COLUMN etims_qr_payload TEXT');
     }
     // Backfill: for receipts issued before v24, rebuild the old-style
     // verification URL from the receipt number so reprints still carry a
@@ -1289,6 +1283,37 @@ SELECT name FROM staff GROUP BY name HAVING COUNT(*) = 1
         .update('owner', {'pin_hash': pinHash}, where: 'id = 1');
   }
 
+  /// Updates the owner's own details: the name, the shop's name, and the
+  /// address the emailed codes go to.
+  ///
+  /// The PIN is NOT touched: it has its own flow, with its own confirmation and
+  /// its own lockout, and a profile edit is not a way to change it.
+  ///
+  /// The shop name is written to the `owner` row AND to the workspace
+  /// registry, because the registry is what the shell bar and the receipt
+  /// header read. Updating one and not the other is how a shop ends up with two
+  /// names on one screen.
+  Future<void> updateOwnerProfile({
+    required String name,
+    required String shopName,
+    required String email,
+  }) async {
+    final db = await database;
+    await db.update(
+      'owner',
+      <String, Object?>{'name': name, 'shop_name': shopName, 'email': email},
+      where: 'id = 1',
+    );
+    await WorkspaceService.register(
+      workspaceKey: await WorkspaceService.activeWorkspaceKey(),
+      // The tenant binding is untouched: a shop that is linked to the backend
+      // stays linked, and a shop that is not stays unlinked. A name change is
+      // not a linking change.
+      tenantId: await WorkspaceService.activeTenantId(),
+      shopName: shopName,
+    );
+  }
+
   /// Re-derives a staff PIN hash in place (used when upgrading a legacy
   /// single-round SHA-256 hash to PBKDF2 on successful sign-in).
   Future<void> updateStaffPin(int id, String pinHash) async {
@@ -1833,7 +1858,8 @@ SELECT name FROM staff GROUP BY name HAVING COUNT(*) = 1
   /// rate in force when the sale was committed. Falls back to the current
   /// rate for legacy rows written before the column existed — a reprint of a
   //  pre-v23 sale shows today's rate rather than crashing on a NULL column.
-  Future<int> vatRateForSale(Map<String, dynamic> saleRow, {int? fallback}) async {
+  Future<int> vatRateForSale(Map<String, dynamic> saleRow,
+      {int? fallback}) async {
     final stored = saleRow['vat_rate_percent'] as int?;
     if (stored != null && stored >= 0 && stored <= 100) return stored;
     return fallback ?? await getVatRatePercent();
@@ -1938,8 +1964,7 @@ SELECT name FROM staff GROUP BY name HAVING COUNT(*) = 1
   /// product row and its variants commit in one all-or-nothing unit. Without
   /// this a variant save that fails after the product insert leaves a product
   /// the editor still thinks is new — and the next Save inserts it again.
-  Future<int> upsertProductInTransaction(
-      Transaction txn, Product p) async {
+  Future<int> upsertProductInTransaction(Transaction txn, Product p) async {
     if (p.id == null) {
       return txn.insert('products', p.toMap());
     } else {
@@ -1999,6 +2024,7 @@ SELECT name FROM staff GROUP BY name HAVING COUNT(*) = 1
       return tankId;
     });
   }
+
   ///
   /// Bulk import previously called [upsertProduct] per row, which meant one
   /// implicit transaction and one journal fsync per product. This makes an
@@ -2130,16 +2156,26 @@ SELECT name FROM staff GROUP BY name HAVING COUNT(*) = 1
 
   /// Sets (or clears, with null) a product's photograph path.
   ///
-  /// Only this one column is written. `upsertProduct` rewrites the whole row,
-  /// so routing a photograph through it would let every unrelated edit
-  /// overwrite the path with whatever was in the product object that happened
-  /// to be passed — and the editor's product object is built before the
-  /// photograph is imported.
+  /// Only the photograph and the row's freshness are written. `upsertProduct`
+  /// rewrites the whole row, so routing a photograph through it would let every
+  /// unrelated edit overwrite the path with whatever was in the product object
+  /// that happened to be passed — and the editor's product object is built
+  /// before the photograph is imported.
+  ///
+  /// `updated_at` moves with the photograph, and it has to: a photograph is
+  /// REPLACED by writing a new picture OVER the file at the same path, so the
+  /// path in the column does not change and cannot tell the tile that what it
+  /// is drawing is out of date. The till and the inventory row pass this
+  /// timestamp to the photo widget as its revision, so a row whose timestamp
+  /// has not moved is a row whose photograph is known to be the old one.
   Future<void> setProductImage(String? relativePath, int productId) async {
     final db = await database;
     await db.update(
       'products',
-      <String, Object?>{'image_path': relativePath},
+      <String, Object?>{
+        'image_path': relativePath,
+        'updated_at': DateTime.now().toIso8601String(),
+      },
       where: 'id = ?',
       whereArgs: <Object?>[productId],
     );
@@ -2468,7 +2504,8 @@ SELECT name FROM staff GROUP BY name HAVING COUNT(*) = 1
 
   /// The pending queue row for one sale, so the inline post-sale attempt can
   /// target this customer's receipt instead of the oldest stuck one.
-  Future<PendingEtimsReceipt?> getPendingEtimsReceiptBySaleId(int saleId) async {
+  Future<PendingEtimsReceipt?> getPendingEtimsReceiptBySaleId(
+      int saleId) async {
     final rows = await (await database).rawQuery('''
       SELECT p.* FROM pending_etims p
       JOIN sales s ON s.id = p.sale_id
@@ -2481,8 +2518,8 @@ SELECT name FROM staff GROUP BY name HAVING COUNT(*) = 1
       saleId: row['sale_id'] as int,
       receiptNumber: row['receipt_number'] as String,
       attempts: (row['attempts'] as int?) ?? 0,
-      createdAt:
-          DateTime.tryParse(row['created_at'] as String? ?? '') ?? DateTime.fromMillisecondsSinceEpoch(0),
+      createdAt: DateTime.tryParse(row['created_at'] as String? ?? '') ??
+          DateTime.fromMillisecondsSinceEpoch(0),
       lastError: row['last_error'] as String?,
     );
   }
@@ -2700,7 +2737,8 @@ SELECT name FROM staff GROUP BY name HAVING COUNT(*) = 1
   ///
   /// Returns oldest first so `appendSales` can walk the backlog in bounded
   /// batches without skipping the tail.
-  Future<List<Sale>> getSalesAfter(DateTime? after, {required int limit}) async {
+  Future<List<Sale>> getSalesAfter(DateTime? after,
+      {required int limit}) async {
     final db = await database;
     final where = <String>[];
     final args = <dynamic>[];
@@ -2952,8 +2990,17 @@ SELECT name FROM staff GROUP BY name HAVING COUNT(*) = 1
   }) async {
     final from = DateTime(since.year, since.month, since.day);
     final today = DateTime.now();
-    final until = DateTime(today.year, today.month, today.day)
-        .add(const Duration(days: 1));
+    // Midnight arithmetic, NOT `+ Duration(days: 1)`.
+    //
+    // A day is not always 24 hours: in a timezone with daylight saving, the
+    // day the clocks go forward is 23 hours long and the day they go back is
+    // 25. Adding a day to local midnight lands on 01:00 or 23:00 of the
+    // neighbouring day, and the loop then skips a day or visits one twice —
+    // so the chart shows a day twice, or not at all, exactly twice a year.
+    //
+    // Kenya has no daylight saving, so this changes nothing here. It changes
+    // everything the day this app is sold in a place that does.
+    final until = DateTime(today.year, today.month, today.day + 1);
     final where = _salesRangeWhere(since: from, until: until, staffId: staffId);
     final rows = await (await database).rawQuery('''
       SELECT
@@ -2972,7 +3019,7 @@ SELECT name FROM staff GROUP BY name HAVING COUNT(*) = 1
     final buckets = <DateBucket>[];
     for (var cursor = from;
         cursor.isBefore(until);
-        cursor = cursor.add(const Duration(days: 1))) {
+        cursor = DateTime(cursor.year, cursor.month, cursor.day + 1)) {
       final key = '${cursor.year.toString().padLeft(4, '0')}-'
           '${cursor.month.toString().padLeft(2, '0')}-'
           '${cursor.day.toString().padLeft(2, '0')}';
@@ -3392,16 +3439,20 @@ SELECT name FROM staff GROUP BY name HAVING COUNT(*) = 1
     // that was once "each" becomes "ml" the moment its first cup is saved.
     return db.transaction((txn) async {
       final row = await txn.query('products',
-          columns: ['unit'], where: 'id = ?', whereArgs: [cup.productId], limit: 1);
+          columns: ['unit'],
+          where: 'id = ?',
+          whereArgs: [cup.productId],
+          limit: 1);
       final currentUnit = row.isNotEmpty ? row.first['unit'] as String? : null;
       if (currentUnit == ProductUnit.each.wire) {
-        await txn.update('products',
-            {'unit': ProductUnit.millilitre.wire}, where: 'id = ?', whereArgs: [cup.productId]);
+        await txn.update('products', {'unit': ProductUnit.millilitre.wire},
+            where: 'id = ?', whereArgs: [cup.productId]);
       }
       if (cup.id == null) {
         return txn.insert('shot_cups', cup.toMap()..remove('id'));
       }
-      await txn.update('shot_cups', cup.toMap(), where: 'id = ?', whereArgs: [cup.id]);
+      await txn.update('shot_cups', cup.toMap(),
+          where: 'id = ?', whereArgs: [cup.id]);
       return cup.id!;
     });
   }

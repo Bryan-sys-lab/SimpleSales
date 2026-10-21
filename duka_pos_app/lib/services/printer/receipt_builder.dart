@@ -133,7 +133,7 @@ enum ReceiptAlignment { left, center, right }
 /// the theme: that is what keeps [ReceiptBuilder] a pure function of its
 /// argument, and therefore testable without a till.
 @immutable
-  class ReceiptInput {
+class ReceiptInput {
   const ReceiptInput({
     required this.shopName,
     required this.receiptNumber,
@@ -232,7 +232,8 @@ class ReceiptBuilder {
     var printedVatTotal = Money.zero;
     for (final item in input.items) {
       final lineTotal = item.total;
-      final vat = vatComponentOf(lineTotal, ratePercent: input.vatRatePercent,
+      final vat = vatComponentOf(lineTotal,
+          ratePercent: input.vatRatePercent,
           pricesIncludeVat: input.pricesIncludeVat);
       printedLineTotal = printedLineTotal + lineTotal;
       printedVatTotal = printedVatTotal + vat;

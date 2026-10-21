@@ -23,6 +23,7 @@ lib/routing/home_shell.dart:ellipsis — the shop name in a 48px app bar, announ
 lib/routing/home_shell.dart:ellipsis — also the role/name in the trailing action, announced as 'Account and sign out'. The same name appears in full on the dashboard greeting and in Settings.
 lib/routing/not_found_screen.dart:ellipsis — the unmatched URL, announced in full by the `Semantics(label: 'Requested path: $location')` above it. This screen exists to show a path for a bug report; wrapping a URL onto four lines is worse than losing the middle of it.
 lib/screens/shot_cups_screen.dart:ellipsis — a product name in a list row that already carries `semanticsLabel: '${p.name}, …'`, and in full on the shot's own detail row.
+lib/widgets/product_tile.dart:ellipsis — a product name on a till TILE, which sits in a grid whose cell height is a fixed ratio of its width: there is no cell height that fits a 120-character name, and `maxLines` without an ellipsis would drop the overflow lines SILENTLY, so the name would be cut mid-word with nothing saying text was lost. The ellipsis IS that signal, and the tile's own `Semantics` label announces the full name for anyone who needs it spoken. The same name appears in full in the cart line and in the inventory row.
 
 # POLICY TIMEOUTS. The duration rule governs MOTION. A value that is a security or
 # network POLICY — how long a till stays signed in, how long an HTTP call waits —
@@ -31,3 +32,5 @@ lib/screens/shot_cups_screen.dart:ellipsis — a product name in a list row that
 
 lib/routing/home_shell.dart:duration — the 4-minute idle sign-out. Security policy, stated as a named constant beside the code that enforces it, not a design token.
 lib/screens/sell_screen.dart:duration — the 20-second PayHero network timeout on a mobile connection. Also policy; a design token for it would be a category error.
+lib/routing/app_stage_controller.dart:duration — the 15-second cap on reopening the shop's own database file. A recovery POLICY, not motion: it bounds how long a broken phone waits before the recovery screen is allowed to say so. Putting it in the motion scale would claim it is a transition somebody can tune, and would invite the app to shorten it the way a designer shortens an animation.
+lib/routing/system_back_handler.dart:duration — the 2-second window in which "press back again to exit" stays armed. A SAFETY policy on an irreversible action (leaving the till), not motion: the value decides whether a second accidental back press can close the app, and no easing curve has any bearing on that. It stays beside the code that enforces it.

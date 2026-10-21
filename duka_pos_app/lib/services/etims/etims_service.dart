@@ -41,10 +41,10 @@ Map<String, dynamic> buildEtimsPayload({
               // The VAT contained in this line, in minor units. Sent rather
               // than recomputed server-side so the figure KRA records is
               // exactly the figure printed on the customer's receipt.
-              'vat_amount':
-                  vatComponentOf(item.total, ratePercent: vatRatePercent,
+              'vat_amount': vatComponentOf(item.total,
+                      ratePercent: vatRatePercent,
                       pricesIncludeVat: pricesIncludeVat)
-                      .minorUnits,
+                  .minorUnits,
               'line_total': item.total.minorUnits,
             })
         .toList(),
@@ -131,7 +131,8 @@ class EtimsService {
       final sale = await _db.getSaleById(saleId);
       final row = await _db.getSaleRowById(saleId);
       if (sale == null || row == null || sale.items.isEmpty) return null;
-      final tin = (await _db.getSetting(DatabaseHelper.settingTin))?.trim() ?? '';
+      final tin =
+          (await _db.getSetting(DatabaseHelper.settingTin))?.trim() ?? '';
       final tillCode = await _db.getTillCode();
       final device =
           (await _db.getSetting(DatabaseHelper.settingEtimsDeviceId))?.trim() ??
@@ -145,7 +146,8 @@ class EtimsService {
         db: _db,
         tillCode: tillCode,
         tin: tin,
-        vatRatePercent: await _db.vatRateForSale(row, fallback: fallbackVatRate),
+        vatRatePercent:
+            await _db.vatRateForSale(row, fallback: fallbackVatRate),
         pricesIncludeVat: pricesIncludeVat,
       );
       try {
@@ -233,7 +235,8 @@ class EtimsService {
         db: _db,
         tillCode: tillCode,
         tin: tin,
-        vatRatePercent: await _db.vatRateForSale(row, fallback: fallbackVatRate),
+        vatRatePercent:
+            await _db.vatRateForSale(row, fallback: fallbackVatRate),
         pricesIncludeVat: pricesIncludeVat,
       );
       try {

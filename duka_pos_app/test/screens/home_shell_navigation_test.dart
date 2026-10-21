@@ -13,6 +13,9 @@ import 'package:duka_pos/routing/app_redirect.dart';
 import 'package:duka_pos/routing/app_stage_controller.dart';
 import 'package:duka_pos/routing/home_shell.dart';
 import 'package:duka_pos/routing/routes.dart';
+import 'package:duka_pos/theme/app_theme.dart';
+import 'package:duka_pos/ui/components/support_bubble.dart';
+import 'package:duka_pos/routing/shell_nav_bar.dart';
 import 'package:duka_pos/services/app_state.dart';
 import 'package:duka_pos/services/live_channel_service.dart';
 import 'package:duka_pos/services/app_stage.dart';
@@ -38,6 +41,30 @@ class _PlaceholderScreen extends StatelessWidget {
 /// branch alive inside an `IndexedStack`, offstage, so a finder that saw
 /// offstage widgets would pass even with the dashboard still showing.
 Finder _screen(String label) => find.byKey(ValueKey<String>('screen-$label'));
+
+/// A destination on the bar, found by its ICON rather than by its word.
+///
+/// The bar shows the FULL label when the cell is wide enough and the SHORT
+/// one when it is not — "Dashboard" on a tablet, "Home" on a 320dp phone —
+/// because a word cut to "Dashbo…" is worse than a shorter word that is
+/// COMPLETE. The ICON is the destination's identity and does not change with
+/// the width of the cell, so it is what a test should look for.
+Finder _destination(AppDestination destination) => find.descendant(
+      of: find.byType(ShellNavBar),
+      matching: find.byIcon(destination.icon),
+    );
+
+/// The destination a tab label in this test refers to.
+AppDestination _destinationFor(String label) => switch (label) {
+      'Dashboard' => AppDestination.dashboard,
+      'Sell' => AppDestination.sell,
+      'Inventory' => AppDestination.inventory,
+      'Analytics' => AppDestination.analytics,
+      'Settings' => AppDestination.settings,
+      'Support' => AppDestination.support,
+      _ => throw ArgumentError.value(label, 'label', 'no such tab'),
+    };
+
 
 class _FakeStage extends ChangeNotifier {
   _FakeStage(this._snapshot);
@@ -147,7 +174,10 @@ Future<void> _pumpShell(
       ],
       child: MaterialApp.router(
         routerConfig: router,
-        theme: ThemeData.light(),
+        // The app's own theme, not a hand-made one: the shell's components
+        // read the theme's extensions, and a hand-made theme renders
+        // unstyled.
+        theme: buildDukaLightTheme(),
         localizationsDelegates: AppLocalizations.localizationsDelegates,
         supportedLocales: AppLocalizations.supportedLocales,
         locale: const Locale('en'),
@@ -156,6 +186,24 @@ Future<void> _pumpShell(
   );
   await tester.pump();
   await tester.pump(const Duration(milliseconds: 50));
+}
+
+/// Taps a destination in the bottom bar.
+///
+/// The sell button is the BALL, and it carries no text label of its own — it
+/// is a mark in a circle — so it is found by what it says.
+Future<void> _tapTab(WidgetTester tester, String label) async {
+  if (label == 'Sell') {
+    final SemanticsHandle handle = tester.ensureSemantics();
+    await tester.tap(find.bySemanticsLabel('Sell').first);
+    handle.dispose();
+  } else {
+    // Found by the ICON, not by the word: the bar spells a destination in full
+    // when its cell is wide enough and in short form when it is not, and the
+    // icon is the same either way. See [_destination].
+    await tester.tap(_destination(_destinationFor(label)));
+  }
+  await tester.pumpAndSettle();
 }
 
 void main() {
@@ -198,12 +246,14 @@ void main() {
       final AppState state = AppState();
       state.signIn('Manager', asOwner: false, role: 'manager');
       final visible = visibleDestinations(state).toList();
+      // The order is the order the bar shows them in, and the sell button sits
+      // in the middle of it.
       expect(visible, <AppDestination>[
         AppDestination.dashboard,
-        AppDestination.sell,
-        AppDestination.support,
         AppDestination.inventory,
+        AppDestination.sell,
         AppDestination.analytics,
+        AppDestination.support,
       ]);
     });
 
@@ -233,8 +283,26 @@ void main() {
       await _pumpShell(tester, state, router);
 
       expect(find.byType(Scaffold), findsNWidgets(2));
-      expect(find.byType(NavigationBar), findsOneWidget);
-      expect(find.byType(NavigationDestination), findsNWidgets(6));
+      expect(find.byType(ShellNavBar), findsOneWidget);
+      // The support left the bar and became the floating bubble, so the bar
+      // carries the other five — with the sell button in the middle.
+      expect(
+        _destination(AppDestination.dashboard),
+        findsOneWidget,
+      );
+      expect(
+        _destination(AppDestination.inventory),
+        findsOneWidget,
+      );
+      expect(
+        _destination(AppDestination.analytics),
+        findsOneWidget,
+      );
+      expect(
+        _destination(AppDestination.settings),
+        findsOneWidget,
+      );
+      expect(find.byType(SupportBubble), findsOneWidget);
     });
 
     testWidgets('tapping each destination changes the URL',
@@ -254,19 +322,23 @@ void main() {
 
       visited.add(location());
 
-      await tester.tap(find.text('Sell').first);
+      // The sell button is the BALL, and it has no text label of its own — it
+      // is a mark in a circle. It is found by what it says.
+      final SemanticsHandle handle = tester.ensureSemantics();
+      await tester.tap(find.bySemanticsLabel('Sell').first);
+      await tester.pump(const Duration(milliseconds: 50));
+      visited.add(location());
+      handle.dispose();
+
+      await tester.tap(_destination(AppDestination.inventory));
       await tester.pump(const Duration(milliseconds: 50));
       visited.add(location());
 
-      await tester.tap(find.text('Inventory').first);
+      await tester.tap(_destination(AppDestination.analytics));
       await tester.pump(const Duration(milliseconds: 50));
       visited.add(location());
 
-      await tester.tap(find.text('Analytics').first);
-      await tester.pump(const Duration(milliseconds: 50));
-      visited.add(location());
-
-      await tester.tap(find.text('Settings').first);
+      await tester.tap(_destination(AppDestination.settings));
       await tester.pump(const Duration(milliseconds: 50));
       visited.add(location());
 
@@ -285,7 +357,24 @@ void main() {
       final GoRouter router = _testRouter(state);
       await _pumpShell(tester, state, router);
 
-      expect(find.byType(NavigationDestination), findsNWidgets(5));
+      // Four in the bar — the support is the bubble.
+      expect(find.byType(ShellNavBar), findsOneWidget);
+      expect(
+        _destination(AppDestination.dashboard),
+        findsOneWidget,
+      );
+      expect(
+        _destination(AppDestination.inventory),
+        findsOneWidget,
+      );
+      expect(
+        _destination(AppDestination.analytics),
+        findsOneWidget,
+      );
+      expect(
+        _destination(AppDestination.settings),
+        findsNothing,
+      );
     });
 
     testWidgets('cashier sees three tabs', (WidgetTester tester) async {
@@ -298,10 +387,25 @@ void main() {
       final GoRouter router = _testRouter(state);
       await _pumpShell(tester, state, router);
 
-      expect(find.byType(NavigationDestination), findsNWidgets(3));
-      expect(find.text('Inventory'), findsNothing);
-      expect(find.text('Analytics'), findsNothing);
-      expect(find.text('Settings'), findsNothing);
+      // Two in the bar: the dashboard and the ball. The support is the bubble.
+      expect(find.byType(ShellNavBar), findsOneWidget);
+      expect(
+        _destination(AppDestination.dashboard),
+        findsOneWidget,
+      );
+      expect(
+        _destination(AppDestination.inventory),
+        findsNothing,
+      );
+      expect(
+        _destination(AppDestination.analytics),
+        findsNothing,
+      );
+      expect(
+        _destination(AppDestination.settings),
+        findsNothing,
+      );
+      expect(find.byType(SupportBubble), findsOneWidget);
     });
   });
 
@@ -319,7 +423,7 @@ void main() {
 
       expect(find.byType(Scaffold), findsNWidgets(2));
       expect(find.byType(NavigationRail), findsOneWidget);
-      expect(find.byType(NavigationBar), findsNothing);
+      expect(find.byType(ShellNavBar), findsNothing);
       final NavigationRail rail =
           find.byType(NavigationRail).evaluate().first.widget as NavigationRail;
       expect(rail.destinations.length, 6);
@@ -340,7 +444,7 @@ void main() {
       final BuildContext context = tester.element(find.byType(Scaffold).first);
       expect(windowSizeClassOf(context), WindowSizeClass.extraLarge);
       expect(find.byType(Drawer), findsOneWidget);
-      expect(find.byType(NavigationBar), findsNothing);
+      expect(find.byType(ShellNavBar), findsNothing);
       expect(find.byType(ListTile), findsNWidgets(7));
     });
   });
@@ -371,13 +475,7 @@ void main() {
         'Dashboard',
       ];
       for (final String label in tabs) {
-        await tester.tap(find
-            .descendant(
-              of: find.byType(NavigationBar),
-              matching: find.text(label),
-            )
-            .first);
-        await tester.pumpAndSettle();
+        await _tapTab(tester, label);
 
         expect(_screen(label), findsOneWidget,
             reason: 'tapped $label but its screen is not showing');
@@ -451,7 +549,7 @@ void main() {
 
       // What the dashboard's "12 items low" tile does.
       tester
-          .element(find.byType(NavigationBar))
+          .element(find.byType(ShellNavBar))
           .read<HomeShellTabs>()
           .goTo(AppDestination.inventory);
       await tester.pumpAndSettle();
@@ -472,7 +570,7 @@ void main() {
       await _pumpShell(tester, state, router);
 
       tester
-          .element(find.byType(NavigationBar))
+          .element(find.byType(ShellNavBar))
           .read<HomeShellTabs>()
           .goTo(AppDestination.inventory);
       await tester.pumpAndSettle();

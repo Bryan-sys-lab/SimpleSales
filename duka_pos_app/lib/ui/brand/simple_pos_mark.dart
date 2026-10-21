@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../../theme/primitives.dart';
 import '../../theme/typography.dart';
+import '../../app_brand.dart';
 
 /// The SimpleSales mark, drawn as vectors.
 ///
@@ -99,7 +100,7 @@ class SimplePosMark extends StatelessWidget {
 
     return Semantics(
       image: true,
-      label: decorative ? null : 'SimpleSales',
+      label: decorative ? null : SimplePosBrand.appName,
       child: ExcludeSemantics(
         child: SizedBox.square(
           dimension: size,
@@ -228,7 +229,7 @@ class SimplePosWordmark extends StatelessWidget {
   const SimplePosWordmark({
     this.fontSize = 20,
     this.color,
-    this.semanticLabel = 'SimpleSales',
+    this.semanticLabel = SimplePosBrand.appName,
     super.key,
   });
 
@@ -242,7 +243,7 @@ class SimplePosWordmark extends StatelessWidget {
       label: semanticLabel,
       child: ExcludeSemantics(
         child: Text(
-          'SimpleSales',
+          SimplePosBrand.appName,
           style: TextStyle(
             fontFamily: AppTypography.family,
             fontSize: fontSize,

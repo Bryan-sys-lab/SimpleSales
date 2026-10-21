@@ -223,10 +223,10 @@ class PaymentMixRow {
         'cash' => l10n?.analyticsPaymentMethodCash ?? 'Cash',
         'mpesa' => l10n?.analyticsPaymentMethodMpesa ?? 'M-Pesa',
         'mobile_money_manual' =>
-            l10n?.analyticsPaymentMethodMobileMoney ?? 'Mobile money',
+          l10n?.analyticsPaymentMethodMobileMoney ?? 'Mobile money',
         'card' => l10n?.analyticsPaymentMethodCard ?? 'Card',
         'bank_transfer' =>
-            l10n?.analyticsPaymentMethodBankTransfer ?? 'Bank transfer',
+          l10n?.analyticsPaymentMethodBankTransfer ?? 'Bank transfer',
         _ => method,
       };
 
@@ -388,13 +388,33 @@ List<DateBucket> mergeDateBuckets(List<DateBucket> buckets, int maxBars) {
       day: slice.first.day,
       label: slice.length == 1
           ? slice.first.label
-          : '${slice.first.label} – ${slice.last.label}',
+          : mergedRangeLabel(slice.first, slice.last),
       salesMinor: sales,
       profitMinor: profit,
       transactions: count,
     ));
   }
   return merged;
+}
+
+/// The label for a merged range: "12–13 Oct".
+///
+/// The long form — "12 Oct – 13 Oct" — is twice the width an axis label gets
+/// on a phone, and it reads like a single day with a dash in the middle of
+/// it. The short form names the two days and the month once.
+///
+/// A range that crosses a month keeps the long form: "28–2 Nov" would put
+/// November next to the twenty-eighth, and the month the axis says is the
+/// month the eye believes.
+String mergedRangeLabel(DateBucket first, DateBucket last) {
+  final DateTime? a = DateTime.tryParse(first.day);
+  final DateTime? b = DateTime.tryParse(last.day);
+  if (a == null || b == null || a.year != b.year || a.month != b.month) {
+    return '${first.label} – ${last.label}';
+  }
+  final int space = last.label.indexOf(' ');
+  if (space < 0) return '${a.day}–${b.day}';
+  return '${a.day}–${b.day} ${last.label.substring(space + 1)}';
 }
 
 /// The spoken equivalent of a bar chart.
@@ -449,8 +469,8 @@ String _unitsLabel(double units) {
 }
 
 /// The spoken equivalent of the payment mix.
-String describePaymentMix(List<PaymentMixRow> rows, int rangeTotalMinor,
-    AppLocalizations l10n) {
+String describePaymentMix(
+    List<PaymentMixRow> rows, int rangeTotalMinor, AppLocalizations l10n) {
   if (rows.isEmpty) return 'Payment methods. Nothing taken in this period.';
   final head = rows
       .map((row) =>

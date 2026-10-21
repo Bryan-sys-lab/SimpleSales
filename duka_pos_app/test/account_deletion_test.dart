@@ -25,6 +25,7 @@ import 'package:duka_pos/models/models.dart';
 import 'package:duka_pos/services/account_deletion_service.dart';
 import 'package:duka_pos/services/app_state.dart';
 import 'package:duka_pos/services/auth_service.dart';
+import 'package:duka_pos/services/oidc_service.dart';
 import 'package:duka_pos/services/staff_credential_cache.dart';
 import 'package:duka_pos/utils/money.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -50,6 +51,13 @@ class _FakePathProvider extends PathProviderPlatform {
 class _InMemorySecureStorage extends FlutterSecureStoragePlatform {
   final Map<String, String> values = <String, String>{};
 
+  /// When true, every delete throws.
+  ///
+  /// The shape of a keystore that refuses: a locked keychain, a keystore
+  /// corrupted by an OS update, a device that has run out of entropy. The
+  /// erasure must survive it.
+  bool failOnDelete = false;
+
   @override
   Future<String?> read({
     required String key,
@@ -71,6 +79,9 @@ class _InMemorySecureStorage extends FlutterSecureStoragePlatform {
     required String key,
     required Map<String, String> options,
   }) async {
+    if (failOnDelete) {
+      throw StateError('the keystore refused to delete $key');
+    }
     values.remove(key);
   }
 
@@ -444,6 +455,105 @@ void main() {
       }
       expect(leaked, isEmpty,
           reason: 'plaintext personal data survived the erasure');
+    });
+  });
+
+  group('the local accounts', () {
+    // The owner is asked whether the cashier logins on this phone should go
+    // too, and the answer decides. Sealing makes them unusable; deleting
+    // removes the rows — and a row that says "there was a cashier here" is a
+    // fact the owner asked to have erased.
+
+    test('are kept, and sealed, when the owner does not ask for them',
+        () async {
+      await seed();
+      await AccountDeletionService.deleteAccount(pin: validPin);
+
+      // The row is still there, and it is ciphertext.
+      final rows = await db.database
+          .then((d) => d.query('staff', columns: <String>['name', 'pin_hash']));
+      expect(rows, hasLength(1));
+      expect(looksErased(rows.first['name']), isTrue);
+      expect(looksErased(rows.first['pin_hash']), isTrue);
+    });
+
+    test('are deleted when the owner asks for them', () async {
+      await seed();
+      final report = await AccountDeletionService.deleteAccount(
+        pin: validPin,
+        deleteLocalAccounts: true,
+      );
+
+      expect(report.localAccountsDeleted, isTrue);
+
+      // No rows: the cashiers are gone from this phone, and so are the PIN
+      // hashes that would otherwise still sit in the file.
+      //
+      // The books surviving is a separate promise, and it has its own test.
+      final rows = await db.database
+          .then((d) => d.query('staff', columns: <String>['id']));
+      expect(rows, isEmpty);
+    });
+  });
+
+  group('the deletion does not open a browser', () {
+    // The bug: ending the identity provider's session means opening the SYSTEM
+    // BROWSER at the provider's logout page, which on a Keycloak deployment
+    // lands the owner on a LOGIN screen — with a "Register" option — in the
+    // middle of deleting their account.
+    test('no provider session is ended while the account is erased',
+        () async {
+      await seed();
+      OidcService.browserSessionsEnded = 0;
+
+      await AccountDeletionService.deleteAccount(pin: validPin);
+
+      expect(
+        OidcService.browserSessionsEnded,
+        0,
+        reason: 'the erasure must clear the session LOCALLY. Ending the '
+            'provider\'s session opens the browser, and that browser lands '
+            'the owner on a sign-up form.',
+      );
+    });
+
+    test('the session is still cleared', () async {
+      await seed();
+      // A token on the device, as a signed-in shop would have.
+      keystore.values['oidc_access_token'] = 'an-access-token';
+      keystore.values['oidc_refresh_token'] = 'a-refresh-token';
+
+      await AccountDeletionService.deleteAccount(pin: validPin);
+
+      expect(keystore.values['oidc_access_token'], isNull);
+      expect(keystore.values['oidc_refresh_token'], isNull);
+    });
+  });
+
+  group('a failure in the cleanup does not abort the deletion', () {
+    // The bug: the personal data is erased BEFORE the key material is
+    // destroyed, and the destruction used to be able to throw. The owner was
+    // left with a till that could no longer sign anybody in, no receipt, and
+    // an error saying "nothing was changed" — which was a lie.
+    test('the deletion still completes when the keystore refuses', () async {
+      await seed();
+      // The keystore refuses every delete from now on, which is the shape of
+      // the failure: the salt, the credential cache and the backup key all
+      // live there.
+      keystore.failOnDelete = true;
+
+      AccountDeletionReport report;
+      try {
+        report = await AccountDeletionService.deleteAccount(pin: validPin);
+      } on AccountDeletionException catch (e) {
+        fail('the deletion must not abort: ${e.reason}');
+      }
+
+      // A receipt, and the data erased.
+      expect(report.deletionId, isNotEmpty);
+      final owner = await db.database
+          .then((d) => d.query('owner', columns: <String>['name', 'pin_hash']));
+      expect(looksErased(owner.first['name']), isTrue);
     });
   });
 }

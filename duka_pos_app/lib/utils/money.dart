@@ -133,7 +133,8 @@ Money sumMoney(Iterable<Money> values) =>
 /// below a half and truncates against the shop: 29 cents over 2 baskets is
 /// exactly 14.5 cents, which is 15 half-up, but `0.29 / 2 * 100` is
 /// 14.499999999999998 and rounds to 14.
-Money vatComponentOf(Money amount, {required int ratePercent, bool pricesIncludeVat = true}) {
+Money vatComponentOf(Money amount,
+    {required int ratePercent, bool pricesIncludeVat = true}) {
   if (ratePercent == 0 || amount.minorUnits == 0) return Money.zero;
   int numerator;
   int denominator;

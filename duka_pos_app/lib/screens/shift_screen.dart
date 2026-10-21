@@ -45,7 +45,6 @@ import '../ui/components/surface.dart';
 import '../ui/layout/page.dart';
 import '../utils/datetime_format.dart';
 import '../utils/money.dart';
-import '../ui/components/brand_header.dart';
 import 'shift_close_sheet.dart';
 import 'shift_float_sheet.dart';
 import 'shift_history_card.dart';
@@ -282,9 +281,7 @@ class _ShiftScreenState extends State<ShiftScreen>
     // silently goes nowhere.
     return Scaffold(
       appBar: AppBar(
-        title: BrandHeader(
-          title: Text(AppLocalizations.of(context).shiftScreenTitle),
-        ),
+        title: Text(AppLocalizations.of(context).shiftScreenTitle),
       ),
       body: switch (_state) {
         null || _ShiftLoading() => const _ShiftSkeleton(),

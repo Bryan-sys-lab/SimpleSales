@@ -19,6 +19,7 @@ import '../services/excel_service.dart';
 import '../theme/app_haptics.dart';
 import '../theme/app_spacing.dart';
 import '../ui/components/controls.dart';
+import '../ui/components/operation_result.dart';
 import '../ui/components/states.dart';
 import '../ui/layout/page.dart';
 import '../utils/money.dart';
@@ -114,6 +115,11 @@ class _DashboardScreenState extends State<DashboardScreen>
   Future<void> _load() async {
     final int serial = ++_loadSerial;
     final AppState appState = context.read<AppState>();
+    // The localisations are read ONCE, up front, and carried through the
+    // awaits below: a `BuildContext` does not survive an await, and reading it
+    // afterwards is how a screen ends up building a string in a language that
+    // is no longer the one on the device.
+    final AppLocalizations l10n = AppLocalizations.of(context);
     // Which session this load answers. A load reads the session in pieces
     // across several awaits — the role up front, the name and the id later —
     // so a sign-out or sign-in landing mid-load would otherwise be answered
@@ -162,8 +168,7 @@ class _DashboardScreenState extends State<DashboardScreen>
         // Re-checked: the greeting below reads the session again, and the read
         // that follows it is enough time for an idle sign-out to land.
         if (!_current(serial, session, appState)) return;
-        final String scopeLabel =
-            ownOnly ? (appState.currentStaffName ?? 'you') : 'the shop';
+        final String scopeLabel = _scopeLabel(l10n, ownOnly: ownOnly);
         setState(() {
           _state = _DashboardReady(
             totals: totalsToday,
@@ -180,11 +185,8 @@ class _DashboardScreenState extends State<DashboardScreen>
             ),
             scopeLabel: scopeLabel,
             greeting: _greeting(
-              AppLocalizations.of(context),
-              shopName: appState.owner?.shopName ?? SimplePosBrand.appName,
-              staffName: appState.currentStaffName,
-              role: appState.currentRole,
-              scopeLabel: scopeLabel,
+              l10n,
+              staffName: appState.currentStaffName ?? '',
             ),
             openShift: shift,
             expectedTill: Money.zero,
@@ -251,11 +253,8 @@ class _DashboardScreenState extends State<DashboardScreen>
           lowStock: low,
           scopeLabel: scopeLabel,
           greeting: _greeting(
-            AppLocalizations.of(context),
-            shopName: appState.owner?.shopName ?? SimplePosBrand.appName,
-            staffName: appState.currentStaffName,
-            role: appState.currentRole,
-            scopeLabel: scopeLabel,
+            l10n,
+            staffName: appState.currentStaffName ?? '',
           ),
           openShift: shift,
           expectedTill: Money.zero,
@@ -298,12 +297,26 @@ class _DashboardScreenState extends State<DashboardScreen>
   bool _current(int serial, int session, AppState appState) =>
       mounted && serial == _loadSerial && appState.sessionGeneration == session;
 
+  /// The welcome line.
+  ///
+  /// A SENTENCE, and only a sentence: "Good morning, Wanjiru."
+  ///
+  /// It used to be "Good morning, Wanjiru · Cashier · you" — the greeting, the
+  /// name, the role and the scope, run together with dots. That is a database
+  /// row printed as a welcome, and it read as robotic because it was one: a
+  /// comma-spliced list of four facts, two of which ("Cashier") were the same
+  /// information the shell's bar already carried, and one of which ("you") was
+  /// a pronoun with nothing to refer to.
+  ///
+  /// The three facts now live where each of them belongs. The NAME is here,
+  /// because a greeting that does not say who it is for is not a greeting. The
+  /// ROLE is in the shell's bar, beside the sign-out. The SCOPE is on the
+  /// figure it qualifies — "Sales today · the whole shop" — because it is a
+  /// statement about whose takings are on screen, not about the person
+  /// reading them.
   static String _greeting(
     AppLocalizations l10n, {
-    required String shopName,
-    required String? staffName,
-    required String role,
-    required String scopeLabel,
+    required String staffName,
   }) {
     final int hour = DateTime.now().hour;
     final String greeting = hour < 12
@@ -311,18 +324,23 @@ class _DashboardScreenState extends State<DashboardScreen>
         : hour < 17
             ? l10n.dashboardGreetingAfternoon
             : l10n.dashboardGreetingEvening;
-    final String name = staffName ?? '';
-    // An admin is the OWNER, not a manager, and the dashboard says so: this is
-    // the line that tells someone whether the till they are holding is theirs.
-    final String roleLabel = switch (role) {
-      'admin' => l10n.shellRoleOwner,
-      'manager' => l10n.settingsRoleManager,
-      _ => l10n.settingsRoleCashier,
-    };
+    final String name = staffName.trim();
     return name.isEmpty
-        ? l10n.dashboardGreetingAnonymous(greeting, scopeLabel)
-        : l10n.dashboardGreetingNamed(greeting, name, roleLabel, scopeLabel);
+        ? l10n.dashboardGreetingAnonymous(greeting)
+        : l10n.dashboardGreetingNamed(greeting, name);
   }
+
+  /// Whose takings the screen is showing.
+  ///
+  /// A cashier sees their OWN; an owner or a manager sees the whole shop. The
+  /// words are a phrase that finishes "Sales today · …", and they are
+  /// localised — they used to be the English literals "the shop" and the
+  /// staff's own name, in an app that localises everything else.
+  static String _scopeLabel(
+    AppLocalizations l10n, {
+    required bool ownOnly,
+  }) =>
+      ownOnly ? l10n.dashboardScopeOwn : l10n.dashboardScopeShop;
 
   Future<void> _openShift() async {
     await context.push(Routes.shift);
@@ -353,9 +371,33 @@ class _DashboardScreenState extends State<DashboardScreen>
     context.push(Routes.product(AppLocalizations.of(context).dashboardId(id)));
   }
 
+  /// Backs up now, and says what happened.
+  ///
+  /// The owner pressed this because they were worried, and a backup that
+  /// quietly failed leaves them MORE worried, not less. So both outcomes are a
+  /// screen: what was made, or why there was not one.
   Future<void> _backupNow() async {
-    final file = await ExcelService().exportEncryptedInventory();
-    await ExcelService().shareFile(file);
+    final l10n = AppLocalizations.of(context);
+    try {
+      final file = await ExcelService().exportEncryptedInventory();
+      await ExcelService().shareFile(file);
+      if (!mounted) return;
+      await showOperationSuccess(
+        context,
+        title: l10n.settingsBackupDoneTitle,
+        message: l10n.settingsBackupDone,
+        detailIcon: Icons.backup_outlined,
+      );
+    } on Object {
+      if (!mounted) return;
+      await showOperationFailure(
+        context,
+        title: l10n.settingsBackupFailedTitle,
+        message: l10n.settingsBackupFailed,
+        icon: Icons.backup_outlined,
+        onRetry: _backupNow,
+      );
+    }
   }
 
   Future<void> _retryEtims() async {
@@ -547,7 +589,8 @@ class _DashboardContent extends StatelessWidget {
                 ..._spaced(
                   <Widget?>[
                     DashboardHeader(
-                      shopName: appState.owner?.shopName ?? 'SimpleSales',
+                      shopName:
+                          appState.owner?.shopName ?? SimplePosBrand.appName,
                       subtitle: data.greeting,
                       onSell: onOpenSell,
                     ),

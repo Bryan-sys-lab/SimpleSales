@@ -79,7 +79,8 @@ void main() {
       expect(find.textContaining('KSh'), findsWidgets);
     });
 
-    testWidgets('a sale whose log entry was pruned still says everything it can',
+    testWidgets(
+        'a sale whose log entry was pruned still says everything it can',
         (WidgetTester tester) async {
       // The audit counter is dropped on retention, and a pruned log must not
       // turn a sale into a blank row — the money is still the money.

@@ -166,6 +166,33 @@ class ExcelService {
   /// `getProducts`/`getSales` need on the main isolate.
   static List<int> _encodeWorkbook(xl.Excel book) => book.encode()!;
 
+  /// Decodes a workbook off the main thread.
+  ///
+  /// THE BUG THIS FIXES. The import used to decode on the UI isolate, and
+  /// decoding a workbook is ZIP inflation plus XML parsing of every sheet —
+  /// pure CPU, no I/O, seconds on a supplier price list.
+  ///
+  /// On Android that is two ways to lose the session:
+  ///
+  ///   * the UI isolate blocks, the system shows "SimpleSales isn't
+  ///     responding", and the owner taps "Close app" — which kills the
+  ///     process. A process that restarts comes back SIGNED OUT, because the
+  ///     session is deliberately not persisted across restarts. That is what
+  ///     "importing logged me out" is;
+  ///   * the workbook, the inflated archive, the parsed sheets and the raw
+  ///     cell copies are all in memory at once, and a cheap handset's
+  ///     low-memory killer ends it the same way.
+  ///
+  /// The EXPORT already did this (see [_encodeWorkbook]). The import did not,
+  /// and it is the heavier of the two: an export writes the app's own
+  /// catalogue, and an import reads whatever a supplier sent.
+  static Future<xl.Excel> _decodeWorkbook(List<int> bytes) =>
+      compute(_decodeWorkbookSync, bytes);
+
+  /// The isolate's half of the decode.
+  static xl.Excel _decodeWorkbookSync(List<int> bytes) =>
+      xl.Excel.decodeBytes(bytes);
+
   Future<File> _save(xl.Excel book, String prefix) async {
     final dir = await getApplicationDocumentsDirectory();
     final filename =
@@ -255,7 +282,9 @@ class ExcelService {
   /// upserts every row. Existing products are matched by id when present,
   /// otherwise treated as new — lets the owner bulk-edit prices in Excel
   /// and re-import rather than editing 40 products one at a time on a phone.
-  Future<InventoryImportResult> importInventory() async {
+  Future<InventoryImportResult> importInventory({
+    void Function(ImportProgress)? onProgress,
+  }) async {
     final files = await FilePicker.pickFiles(
         type: FileType.custom, allowedExtensions: ['xlsx']);
     if (files.isEmpty) {
@@ -266,7 +295,7 @@ class ExcelService {
     if (bytes.isEmpty) {
       throw const FormatException('The selected workbook could not be read');
     }
-    return importInventoryBytes(bytes);
+    return importInventoryBytes(bytes, onProgress: onProgress);
   }
 
   /// The whole import, from the bytes of a workbook.
@@ -277,10 +306,16 @@ class ExcelService {
   /// only exist in the code between the bytes and the database, and a test that
   /// mocks that away is testing nothing.
   @visibleForTesting
-  Future<InventoryImportResult> importInventoryBytes(List<int> bytes) async {
+  Future<InventoryImportResult> importInventoryBytes(
+    List<int> bytes, {
+    void Function(ImportProgress)? onProgress,
+  }) async {
+    onProgress?.call(const ImportProgress(ImportStage.reading));
     final xl.Excel book;
     try {
-      book = xl.Excel.decodeBytes(bytes);
+      // Off the UI isolate. See [_decodeWorkbook] for why that is the
+      // difference between an import and a signed-out till.
+      book = await _decodeWorkbook(bytes);
     } catch (_) {
       // A .csv renamed to .xlsx lands here, and "could not be opened as a
       // workbook" is actionable where the decoder's own error is not.
@@ -289,7 +324,16 @@ class ExcelService {
         '"Save As" to save a new .xlsx, then import that.',
       );
     }
-    if (book.tables.isEmpty) {
+    try {
+      if (book.tables.isEmpty) {
+        throw const FormatException('The workbook has no worksheets');
+      }
+    } on ArgumentError {
+      // `Excel.tables` throws rather than returning an empty map when the
+      // workbook is damaged, and an `ArgumentError` is neither a
+      // `FormatException` nor an `UnreadableLayoutException` — so a corrupt
+      // file used to be reported as a generic failure instead of the message
+      // that says what is wrong with it.
       throw const FormatException('The workbook has no worksheets');
     }
 
@@ -317,6 +361,7 @@ class ExcelService {
       barcodes: readBarcodeRows(_rawRowsOf(book, barcodesSheetName)),
       variants: readVariantRows(_rawRowsOf(book, variantsSheetName)),
       skippedSheets: _skippedSheets(book),
+      onProgress: onProgress,
     );
   }
 

@@ -29,6 +29,8 @@ import '../theme/app_spacing.dart';
 import '../theme/typography.dart';
 import '../utils/money.dart';
 import '../utils/units.dart';
+import '../ui/components/controls.dart';
+import '../ui/components/screen_title.dart';
 
 /// How many taps a tank has.
 const int kTankTapCount = 2;
@@ -61,9 +63,11 @@ class TankFormSheet extends StatefulWidget {
 class _TapState {
   final TextEditingController name = TextEditingController();
   final TextEditingController amount = TextEditingController();
-  final TextEditingController smallMl = TextEditingController(text: kSmallCupMl.toString());
+  final TextEditingController smallMl =
+      TextEditingController(text: kSmallCupMl.toString());
   final TextEditingController smallPrice = TextEditingController();
-  final TextEditingController bigMl = TextEditingController(text: kBigCupMl.toString());
+  final TextEditingController bigMl =
+      TextEditingController(text: kBigCupMl.toString());
   final TextEditingController bigPrice = TextEditingController();
   bool isLitres = true;
 
@@ -329,29 +333,37 @@ class _TankFormSheetState extends State<TankFormSheet> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: <Widget>[
-            Text(l10n.tankFormTitle, style: type.headlineSmall),
-            SizedBox(height: spacing.xs),
-            Text(
-              l10n.tankFormSubtitle,
-              style: type.bodySmall
-                  ?.copyWith(color: AppColors.of(context).onSurfaceMuted),
+            // The sheet's NAME, large and on the canvas — the same title block
+            // every other screen opens with.
+            ScreenTitle(
+              title: l10n.tankFormTitle,
+              subtitle: l10n.tankFormSubtitle,
+              padding: EdgeInsets.zero,
             ),
             SizedBox(height: spacing.lg),
             _field(_tankNameCtrl, l10n.tankFieldName, l10n.tankFieldNameHint),
             SizedBox(height: spacing.md),
-            _field(_capacityLitresCtrl, l10n.tankFieldCapacityL,
+            _field(
+                _capacityLitresCtrl,
+                l10n.tankFieldCapacityL,
                 l10n.tankFieldCapacityLHint,
                 const TextInputType.numberWithOptions(decimal: true)),
             SizedBox(height: spacing.md),
-            _field(_tankCountCtrl, l10n.tankFieldTankCount,
+            _field(
+                _tankCountCtrl,
+                l10n.tankFieldTankCount,
                 l10n.tankFieldTankCountHint,
                 const TextInputType.numberWithOptions(decimal: false)),
             SizedBox(height: spacing.md),
-            _field(_mlPerKgCtrl, l10n.tankFieldMlPerKg,
+            _field(
+                _mlPerKgCtrl,
+                l10n.tankFieldMlPerKg,
                 l10n.tankFieldMlPerKgHint,
                 const TextInputType.numberWithOptions(decimal: true)),
             SizedBox(height: spacing.md),
-            _field(_tankCostCtrl, l10n.tankFieldTankCost,
+            _field(
+                _tankCostCtrl,
+                l10n.tankFieldTankCost,
                 l10n.tankFieldTankCostHint,
                 const TextInputType.numberWithOptions(decimal: true)),
             SizedBox(height: spacing.lg),
@@ -384,16 +396,16 @@ class _TankFormSheetState extends State<TankFormSheet> {
     );
   }
 
-  void tapStack(BuildContext context, AppLocalizations l10n,
-      AppSpacing spacing, TextTheme type, int i, List<Widget> out) {
+  void tapStack(BuildContext context, AppLocalizations l10n, AppSpacing spacing,
+      TextTheme type, int i, List<Widget> out) {
     final tap = _taps[i];
     out.add(Text(
       '${l10n.tankTapLabel} ${i + 1}',
       style: type.titleMedium,
     ));
     out.add(SizedBox(height: spacing.xs));
-    out.add(_field(_taps[i].name, l10n.tankFieldTapName,
-        l10n.tankFieldTapNameHint));
+    out.add(_field(
+        _taps[i].name, l10n.tankFieldTapName, l10n.tankFieldTapNameHint));
     out.add(SizedBox(height: spacing.xs));
     out.add(Row(
       children: <Widget>[
@@ -406,16 +418,19 @@ class _TankFormSheetState extends State<TankFormSheet> {
           ),
         ),
         SizedBox(width: spacing.sm),
-        ChoiceChip(
-          label: Text(l10n.tankUnitLitres),
+        // The unit is a SELECTION, so the selected one is a solid accent fill
+        // with the accent's own ink on it. A border around the chosen option
+        // reads as an outline, not as "this is the one you picked".
+        SelectablePill(
+          label: l10n.tankUnitLitres,
           selected: tap.isLitres,
-          onSelected: (v) => setState(() => tap.isLitres = v),
+          onTap: () => setState(() => tap.isLitres = true),
         ),
         SizedBox(width: spacing.sm),
-        ChoiceChip(
-          label: Text(l10n.tankUnitKg),
+        SelectablePill(
+          label: l10n.tankUnitKg,
           selected: !tap.isLitres,
-          onSelected: (v) => setState(() => tap.isLitres = !v),
+          onTap: () => setState(() => tap.isLitres = false),
         ),
       ],
     ));
@@ -428,14 +443,17 @@ class _TankFormSheetState extends State<TankFormSheet> {
             children: <Widget>[
               Text(l10n.tankCupSmallLabel, style: type.labelSmall),
               SizedBox(height: spacing.xs),
-              _field(tap.smallMl, l10n.tankFieldSmallMl,
+              _field(
+                  tap.smallMl,
+                  l10n.tankFieldSmallMl,
                   l10n.tankFieldSmallMlHint,
                   const TextInputType.numberWithOptions(decimal: true)),
               SizedBox(height: spacing.xs),
-              _field(tap.smallPrice, l10n.tankFieldSmallPrice,
+              _field(
+                  tap.smallPrice,
+                  l10n.tankFieldSmallPrice,
                   l10n.tankFieldSmallPriceHint,
-                  const TextInputType.numberWithOptions(
-                      decimal: true)),
+                  const TextInputType.numberWithOptions(decimal: true)),
             ],
           ),
         ),
@@ -446,14 +464,14 @@ class _TankFormSheetState extends State<TankFormSheet> {
             children: <Widget>[
               Text(l10n.tankCupBigLabel, style: type.labelSmall),
               SizedBox(height: spacing.xs),
-              _field(tap.bigMl, l10n.tankFieldBigMl,
-                  l10n.tankFieldBigMlHint,
+              _field(tap.bigMl, l10n.tankFieldBigMl, l10n.tankFieldBigMlHint,
                   const TextInputType.numberWithOptions(decimal: true)),
               SizedBox(height: spacing.xs),
-              _field(tap.bigPrice, l10n.tankFieldBigPrice,
+              _field(
+                  tap.bigPrice,
+                  l10n.tankFieldBigPrice,
                   l10n.tankFieldBigPriceHint,
-                  const TextInputType.numberWithOptions(
-                      decimal: true)),
+                  const TextInputType.numberWithOptions(decimal: true)),
             ],
           ),
         ),

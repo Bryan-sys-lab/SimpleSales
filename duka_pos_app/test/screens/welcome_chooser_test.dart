@@ -112,8 +112,21 @@ void main() {
     await pumpChooser(tester);
 
     expect(find.byType(SimplePosMark), findsOneWidget);
-    expect(find.byType(Image), findsNothing,
-        reason: 'no raster lockup on a screen with a vector mark available');
+
+    // Scoped to the APP'S OWN brand, which is the point of the rule.
+    //
+    // The VENDOR's wordmark at the foot of this screen IS a raster asset: it
+    // is a different company's logo, drawn by them, and this app does not draw
+    // it as paths. What must never happen is the app's OWN mark arriving as a
+    // PNG — that is the launcher icon and the app disagreeing about the brand.
+    for (final Image image in tester.widgetList<Image>(find.byType(Image))) {
+      final AssetImage? asset = image.image as AssetImage?;
+      expect(
+        asset?.assetName,
+        isNot(startsWith('assets/branding/simple_pos')),
+        reason: 'the app\'s own brand is drawn as paths, never shipped as a PNG',
+      );
+    }
   });
 
   testWidgets('a shop that is already set up says so',

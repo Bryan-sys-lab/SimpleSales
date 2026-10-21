@@ -24,7 +24,7 @@ import '../ui/components/states.dart';
 import '../ui/components/surface.dart';
 import '../ui/layout/page.dart';
 import '../utils/money.dart';
-import '../ui/components/brand_header.dart';
+import '../ui/components/screen_title.dart';
 import 'reports_shifts.dart';
 
 const int kRecentSalesLimit = 50;
@@ -272,7 +272,8 @@ class _ReportsScreenState extends State<ReportsScreen>
       config: config,
       vatRatePercent: await _vatRateForSale(id),
       pricesIncludeVat: (await SharedPreferences.getInstance())
-          .getBool('prices_include_vat') ?? true,
+              .getBool('prices_include_vat') ??
+          true,
     );
     if (!mounted) return;
     if (result.printed) {
@@ -380,26 +381,17 @@ class _ReportsScreenState extends State<ReportsScreen>
             bottom: spacing.xxl,
           ),
           children: <Widget>[
-            // Brand wordmark at the head of the report: identity beside the
-            // figures, once.
-            Padding(
-              padding: EdgeInsetsDirectional.only(
-                start: spacing.md,
-                end: spacing.md,
-                top: spacing.sm,
-                bottom: spacing.sm,
-              ),
-              child: Semantics(
-                image: true,
-                label: 'SimpleSales',
-                child: ExcludeSemantics(
-                  child: BrandHeader(
-                    markSize: 22,
-                    gap: spacing.sm,
-                    showWordmark: true,
-                  ),
-                ),
-              ),
+            // The screen names itself on the canvas.
+            //
+            // It used to open with the brand wordmark, which said the app's
+            // name twice — once in the shell's bar and once here — and said
+            // nothing about which screen this was. The brand mark lives in the
+            // shell bar now; the title belongs to the screen.
+            ScreenTitle(
+              title: AppLocalizations.of(context).navAnalyticsShort,
+              // The list already insets its content by `md`; the title's own
+              // default inset would push it off the gutter the cards sit on.
+              padding: EdgeInsetsDirectional.only(bottom: spacing.md),
             ),
             _ReportsActions(
               onOpenShift: _showShiftSummary,
@@ -545,6 +537,11 @@ class _StaffTakingsRow extends StatelessWidget {
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: <Widget>[
+          // A round tonal badge on the leading edge, the way every other row in
+          // the app is marked: a marker, not a status — the row's own name
+          // carries the meaning, so the badge carries none.
+          const IconBadge(icon: Icons.person_outline),
+          SizedBox(width: spacing.md),
           Expanded(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,

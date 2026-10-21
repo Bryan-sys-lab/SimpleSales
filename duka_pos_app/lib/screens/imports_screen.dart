@@ -37,10 +37,11 @@ import '../models/models.dart';
 import '../services/import_review_service.dart';
 import '../services/import_row_parser.dart';
 import '../services/session_refresh_mixin.dart';
-import '../ui/components/brand_header.dart';
+import '../theme/app_colors.dart';
 import '../theme/app_shapes.dart';
 import '../theme/app_spacing.dart';
 import '../theme/typography.dart';
+import '../ui/components/operation_result.dart';
 import '../ui/components/states.dart';
 import '../ui/components/surface.dart';
 import '../utils/validation_utils.dart';
@@ -114,9 +115,10 @@ class _ImportsScreenState extends State<ImportsScreen>
 
     return Scaffold(
       appBar: AppBar(
-        title: BrandHeader(
-          title: Text(l10n.importsTitle),
-        ),
+        // The screen's NAME, not the brand lockup. The app bar is a title on
+        // the canvas now — no filled band, no logo — and the brand mark lives
+        // in the shell's bar.
+        title: Text(l10n.importsTitle),
       ),
       body: switch ((_loading, _failed, _rows.isEmpty)) {
         (true, _, _) => const _ImportsSkeleton(),
@@ -190,7 +192,10 @@ class _SkeletonLine extends StatelessWidget {
         height: body,
         width: 180,
         decoration: BoxDecoration(
-          color: Theme.of(context).colorScheme.surfaceContainerHighest,
+          // The semantic tier, not the Material container ladder: a sunken well
+          // is what this placeholder is, and `surfaceSunken` is the token that
+          // says so in both themes.
+          color: AppColors.of(context).surfaceSunken,
           borderRadius: AppShapes.of(context).barRadius,
         ),
       ),
@@ -440,11 +445,13 @@ class _CompleteSheetState extends State<_CompleteSheet> {
       if (existing != null) {
         final codes = await db.getBarcodesForProduct(existing.id!);
         if (codes.isNotEmpty) {
-          await db.addBarcodes(codes.map((c) => ProductBarcode(
-            productId: product.id!,
-            barcode: c.barcode,
-            kind: c.kind,
-          )).toList());
+          await db.addBarcodes(codes
+              .map((c) => ProductBarcode(
+                    productId: product.id!,
+                    barcode: c.barcode,
+                    kind: c.kind,
+                  ))
+              .toList());
         }
       }
 
@@ -453,14 +460,22 @@ class _CompleteSheetState extends State<_CompleteSheet> {
       if (!mounted) return;
       Navigator.of(context).pop();
       await widget.onSaved();
+      if (!mounted) return;
+      // The row was repaired and saved. Said on a screen, because the owner
+      // came here to fix ONE row and wants to know that it is fixed and can
+      // move on to the next.
+      await showOperationSuccess(
+        context,
+        title: AppLocalizations.of(context).importRepairedTitle,
+        message: product.name,
+        detailIcon: Icons.build_outlined,
+      );
     } catch (error) {
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(
-            AppLocalizations.of(context).importSaveFailed,
-          ),
-        ),
+      await showOperationFailure(
+        context,
+        title: AppLocalizations.of(context).importRepairFailedTitle,
+        message: AppLocalizations.of(context).importSaveFailed,
       );
     } finally {
       if (mounted) setState(() => _saving = false);

@@ -14,62 +14,83 @@ abstract final class Primitives {
   const Primitives._();
 
   // ---------------------------------------------------------------- neutrals
-  /// Near-black with a trace of warmth. Dark theme deepest surface.
-  static const neutral06 = Color(0xFF0F0E0D);
+  //
+  // A COOL ramp, on purpose. A warm sepia ramp is the single loudest way an app
+  // stops reading as an instrument and starts reading as a scrapbook: warm
+  // greys pull the eye toward the paper rather than toward the numbers, and they
+  // make every saturated colour on screen look dirtier than it is. The night
+  // ramp runs from a near-black with a blue cast up to a cool off-white, so
+  // elevation is read as LUMINANCE — a surface gets LIGHTER as it comes
+  // forward — rather than as a shadow smeared over a dark page.
+  //
+  // The numbers are lightness steps, not hues: 04 is the deepest value in the
+  // app and 100 the lightest. Nothing in `lib/` outside this file names a
+  // colour.
 
-  /// Dark-theme canvas — warm charcoal base.
-  static const neutral10 = Color(0xFF1A1816);
+  /// The deepest value in the app: a sunken well below the canvas.
+  static const neutral04 = Color(0xFF070A0E);
 
-  /// Dark-theme surface one step above the canvas: the Material container
-  /// ladder's middle rung.
-  static const neutral12 = Color(0xFF1E1C1A);
+  /// The night canvas. Near-black with a blue cast.
+  static const neutral08 = Color(0xFF0B0F14);
 
-  /// Dark-theme raised surface (cards, sheets, menus).
-  static const neutral14 = Color(0xFF242220);
+  /// One step above the canvas: the Material container ladder's low rung.
+  static const neutral12 = Color(0xFF11161D);
 
-  /// Dark-theme elevated surface (dialogs, bottom sheets).
-  static const neutral20 = Color(0xFF2E2B28);
+  /// The night surface: a card, a tile, a panel resting on the canvas.
+  static const neutral16 = Color(0xFF151A21);
 
-  /// Dark-theme control surface (input fields, chips).
-  static const neutral25 = Color(0xFF3A3633);
+  /// A surface resting on another surface: a dialog, a dropdown, a snackbar.
+  static const neutral20 = Color(0xFF1C222B);
 
-  /// Dark-theme hairline. Decorative only: below 3:1.
-  static const neutral32 = Color(0xFF4A4541);
+  /// A control surface: an input field, a chip, a track.
+  static const neutral25 = Color(0xFF242C37);
 
-  /// Dark-theme meaningful boundary: clears 3:1 on neutral10.
-  static const neutral45 = Color(0xFF7A736D);
+  /// The hairline. Decorative only: below 3:1.
+  static const neutral32 = Color(0xFF2E3742);
 
-  /// Dark-theme muted text: clears 4.5:1.
-  static const neutral63 = Color(0xFFAA9F97);
+  /// A meaningful boundary: an input edge, a focus ring. Clears 3:1 on the
+  /// night canvas and on the night surface.
+  static const neutral45 = Color(0xFF606B7A);
 
-  /// Dark-theme secondary text.
-  static const neutral79 = Color(0xFFD4CAC0);
+  /// Muted text on a night surface: clears 4.5:1.
+  static const neutral63 = Color(0xFF97A3B2);
 
-  /// Dark-theme body text: warm off-white.
-  static const neutral95 = Color(0xFFF5F0EB);
+  /// Secondary text on a night surface.
+  static const neutral79 = Color(0xFFC4CDD8);
 
-  /// Light-theme body ink: warm charcoal (not pure black).
+  /// Body text on a night surface. A cool off-white, never pure white — pure
+  /// white on a near-black canvas blooms.
+  static const neutral95 = Color(0xFFF2F5F8);
+
+  /// Light-theme body ink: the brand ink, and not pure black.
+  ///
+  /// PINNED. This value is the launcher icon's plate, the Android `brand_ink`
+  /// colour resource, the splash background and the mark's ink — see
+  /// `assets/branding/generate_launcher_icon.py`. Changing it here without
+  /// regenerating those artefacts is how an app ends up with two logos.
   static const neutral23 = Color(0xFF2D2A26);
 
   /// Light-theme tertiary body text.
-  static const neutral47 = Color(0xFF6B635A);
+  static const neutral47 = Color(0xFF5C6673);
 
   /// Light-theme secondary body text.
-  static const neutral34 = Color(0xFF4A433C);
+  static const neutral34 = Color(0xFF414954);
 
-  /// Light-theme meaningful boundary: clears 3:1.
-  static const neutral54 = Color(0xFF8A8075);
+  /// Light-theme meaningful boundary: clears 3:1 on the canvas and on a card.
+  static const neutral54 = Color(0xFF6B7480);
 
   /// Light-theme hairline. Decorative only.
-  static const neutral84 = Color(0xFFE8E0D6);
+  static const neutral84 = Color(0xFFDCE1E8);
 
-  /// Sunken wells, chips, table stripes. Warm ivory.
-  static const neutral94 = Color(0xFFF3EDE6);
+  /// Sunken wells, chips, table stripes.
+  static const neutral94 = Color(0xFFE8ECF1);
 
-  /// App canvas behind cards. Warm cream/ivory.
-  static const neutral97 = Color(0xFFFAF6F0);
+  /// The app canvas behind cards. A cool near-white, not cream: a tinted
+  /// canvas carries a hue through every surface above it, and cream is the
+  /// hue that makes a green accent look like moss.
+  static const neutral97 = Color(0xFFF2F4F7);
 
-  /// Card and sheet surface. Soft white.
+  /// Card and sheet surface. White.
   static const neutral100 = Color(0xFFFFFFFF);
 
   // -------------------------------------------------------------------- veils and shadows
@@ -78,12 +99,12 @@ abstract final class Primitives {
   // alpha — because a scrim has no role of its own: it is the shadow of the
   // sheet over the sheet below it.
 
-  /// A 60% warm-ink veil: the light theme's scrim.
-  static const scrimInk60 = Color(0x991A1816);
+  /// A 60% cool-ink veil: the light theme's scrim.
+  static const scrimInk60 = Color(0x990A0E13);
 
-  /// A 10% warm-ink shadow: the light theme's shadow. Warm ink rather than
-  /// pure black, because a black shadow on warm paper reads as a grey smudge.
-  static const shadowInk10 = Color(0x1A1A1816);
+  /// A 10% cool-ink shadow: the light theme's shadow. Ink rather than pure
+  /// black, because a black shadow on a pale canvas reads as a grey smudge.
+  static const shadowInk10 = Color(0x1A0A0E13);
 
   /// A 70% black veil: the dark theme's scrim, and the veil over a photograph.
   static const scrimNight70 = Color(0xB3000000);
@@ -92,22 +113,27 @@ abstract final class Primitives {
   static const shadowNight40 = Color(0x66000000);
 
   // -------------------------------------------------------------------- botanical green (primary brand)
-  /// Dark-theme primary container fill.
-  static const botanical26 = Color(0xFF244A30);
+  /// The night accent container: a deep emerald wash. Tonal, never solid —
+  /// the SOLID emerald is [botanical58], and having both is what lets a
+  /// selected row glow while a selected chip announces itself.
+  static const botanical20 = Color(0xFF163A22);
 
-  /// Dark-theme accent green: clears 4.5:1 on neutral10.
+  /// The night accent green: the emerald. Clears 4.5:1 on the night canvas.
   static const botanical58 = Color(0xFF4ADE7E);
 
-  /// Dark-theme on-accent text.
-  static const botanical90 = Color(0xFFA8F5C4);
+  /// The night on-accent-container text.
+  static const botanical90 = Color(0xFF9FF0C0);
 
-  /// Light-theme brand green: deep botanical. Clears 4.5:1 on neutral97.
+  /// The light brand green: deep botanical. Clears 4.5:1 on the light canvas.
+  ///
+  /// PINNED. This value is painted into the launcher icon and the brand hero
+  /// artwork — see `assets/branding/generate_launcher_icon.py`.
   static const botanical38 = Color(0xFF1B6B3A);
 
-  /// Light-theme primary container fill.
-  static const botanical96 = Color(0xFFE8F5EC);
+  /// The light accent container.
+  static const botanical96 = Color(0xFFE4F3E9);
 
-  /// Light-theme on-primary-container text.
+  /// The light on-accent-container text.
   static const botanical29 = Color(0xFF0D3D1E);
 
   // -------------------------------------------------------------------- status semantics
@@ -118,23 +144,24 @@ abstract final class Primitives {
   static const green47Light = Color(0xFF1A7A3A);
 
   /// Light-theme success container.
-  static const green95Light = Color(0xFFE8F5EC);
+  static const green95Light = Color(0xFFE4F3E9);
 
   /// Text on green95Light.
   static const green35Light = Color(0xFF0D4D1E);
 
-  /// Dark-theme success text.
+  /// The night success text.
   static const green66 = Color(0xFF5CE68A);
 
-  /// Dark-theme success container.
-  static const green18Dark = Color(0xFF0E2A16);
+  /// The night success container: a deep green wash, not a near-black one.
+  static const green18Dark = Color(0xFF123520);
 
   /// Text on green18Dark.
-  static const green90Dark = Color(0xFFA8F5C4);
+  static const green90Dark = Color(0xFF8DE8AE);
 
-  /// Light-theme warning text. Warm amber, darkened to clear 4.5:1 on paper —
-  /// a lighter gold fails AA as text on a white card (3.25:1), so the text
-  /// tone is this bronze-gold and the container below carries the bright tint.
+  /// Light-theme warning text. Warm amber, darkened to clear 4.5:1 on the
+  /// light canvas — a lighter gold fails AA as text on a white card (3.25:1),
+  /// so the text tone is this bronze-gold and the container below carries the
+  /// bright tint.
   static const amber53Light = Color(0xFF8A6508);
 
   /// Light-theme warning container.
@@ -143,11 +170,11 @@ abstract final class Primitives {
   /// Text on amber93Light.
   static const amber45Light = Color(0xFF7A5A00);
 
-  /// Dark-theme warning text.
+  /// The night warning text.
   static const amber72 = Color(0xFFFFB84D);
 
-  /// Dark-theme warning container.
-  static const amber22Dark = Color(0xFF3D2A0A);
+  /// The night warning container.
+  static const amber22Dark = Color(0xFF3A2A0C);
 
   /// Text on amber22Dark.
   static const amber93Dark = Color(0xFFFFE0A0);
@@ -161,11 +188,11 @@ abstract final class Primitives {
   /// Text on red95Light.
   static const red42Light = Color(0xFF8B2518);
 
-  /// Dark-theme error text.
+  /// The night error text.
   static const red68 = Color(0xFFFF6B5B);
 
-  /// Dark-theme error container.
-  static const red22Dark = Color(0xFF3D1814);
+  /// The night error container.
+  static const red22Dark = Color(0xFF3A1814);
 
   /// Text on red22Dark.
   static const red92Dark = Color(0xFFFFB3A8);
@@ -209,10 +236,9 @@ abstract final class Primitives {
   static const equitelBlueDark = Color(0xFF3E90E8);
 
   /// Cash neutral on the light canvas.
-  static const cashNeutralLight = Color(0xFF6B635A);
+  static const cashNeutralLight = Color(0xFF5F6873);
 
-  /// Cash neutral on the dark canvas. The light theme's meaningful boundary:
-  /// it clears 3:1 on the dark surface, and a slice of cash that cannot be
-  /// found is a slice of cash that cannot be read.
-  static const cashNeutralDark = Color(0xFF8A8075);
+  /// Cash neutral on the night canvas: the night theme's meaningful boundary,
+  /// cooled to sit in the same ramp as everything else around it.
+  static const cashNeutralDark = Color(0xFF8E97A3);
 }

@@ -15,7 +15,7 @@ import '../ui/components/controls.dart';
 import '../ui/components/states.dart';
 import '../ui/components/surface.dart';
 import '../utils/money.dart';
-import '../ui/components/brand_header.dart';
+import '../widgets/sale_details_sheet.dart';
 
 class TransactionsScreen extends StatefulWidget {
   const TransactionsScreen({super.key});
@@ -95,9 +95,7 @@ class _TransactionsScreenState extends State<TransactionsScreen> {
 
     return Scaffold(
       appBar: AppBar(
-        title: BrandHeader(
-          title: Text(l10n.transactionsTitle),
-        ),
+        title: Text(l10n.transactionsTitle),
         actions: <Widget>[
           IconButton(
             onPressed: _load,
@@ -226,6 +224,23 @@ class TransactionsRow extends StatelessWidget {
 
     return SurfaceCard(
       padding: EdgeInsets.all(spacing.md),
+      // The row OPENS.
+      //
+      // A ledger row is a summary — an amount, a relative time, a method — and
+      // a summary cannot answer "what happened at 14:32". The exact time,
+      // which till, what actually moved and who rang it are all real facts
+      // about the sale that the row does not have room for, so a tap opens
+      // the record. A row that is not tappable is a dead end: the person
+      // standing in front of the till has to write the answer down instead.
+      onTap: () => showSaleDetails(
+        context,
+        sale: sale,
+        audit: audit,
+        canSeeSellers: canSeeSellers,
+        // The shop the sale was rung in: the session's own, which is the only
+        // place this till can ring a sale.
+        shopName: context.read<AppState>().owner?.shopName ?? '',
+      ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: <Widget>[
@@ -242,12 +257,10 @@ class TransactionsRow extends StatelessWidget {
                       const SizedBox(height: 2),
                       Text(
                         l10n.transactionsSoldBy(sale.staffName),
-                        // A staff name is typed by a human, and a name can be
-                        // long. Two lines, then an ellipsis: a row that grows
-                        // to fit its longest name is a ledger that cannot be
-                        // scanned down.
-                        maxLines: 2,
-                        overflow: TextOverflow.ellipsis,
+                        // A staff name is typed by a human and it can be long.
+                        // It WRAPS: a truncated name is a name the owner cannot
+                        // read, and a row that grows to fit it is a ledger that
+                        // can still be scanned down.
                         style: type.bodySmall?.copyWith(
                           color: colors.onSurfaceMuted,
                         ),
@@ -302,12 +315,11 @@ class TransactionsRow extends StatelessWidget {
                 // Flexible, because a Row hands its non-flexible children an
                 // UNBOUNDED width: a long staff name here did not wrap, it
                 // overflowed the row and pushed the layout into an error the
-                // owner saw as the ledger breaking.
+                // owner saw as the ledger breaking. It WRAPS now, rather than
+                // being cut off at the end of the line.
                 Flexible(
                   child: Text(
                     l10n.transactionsAuditBy(audit!.actorName),
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
                     style: type.labelMedium?.copyWith(
                       color: colors.onSurfaceMuted,
                     ),

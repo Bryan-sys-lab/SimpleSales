@@ -201,17 +201,26 @@ class AppUpdateService extends ChangeNotifier {
           .get(Uri.parse(_manifestUrl))
           .timeout(const Duration(seconds: 15));
       if (response.statusCode != 200) {
-        return _finish(UpdateCheckFailed('manifest ${response.statusCode}'));
+        return _finish(UpdateCheckFailed(
+          UpdateCheckFailure.malformed,
+          'manifest ${response.statusCode}',
+        ));
       }
 
       final decoded = _decode(response.body);
       if (decoded == null) {
-        return _finish(const UpdateCheckFailed('manifest not JSON'));
+        return _finish(const UpdateCheckFailed(
+          UpdateCheckFailure.malformed,
+          'manifest not JSON',
+        ));
       }
 
       final release = AppRelease.tryParse(decoded);
       if (release == null) {
-        return _finish(const UpdateCheckFailed('manifest malformed'));
+        return _finish(const UpdateCheckFailed(
+          UpdateCheckFailure.malformed,
+          'manifest malformed',
+        ));
       }
 
       final current = await _buildNumber();
@@ -226,16 +235,24 @@ class AppUpdateService extends ChangeNotifier {
       // running. The shop is told that rather than handed an APK that will
       // open a database it cannot read.
       if (release.minimumBuild != null && current < release.minimumBuild!) {
-        return _finish(
-          const UpdateCheckFailed('this build is too old to update in place'),
-        );
+        return _finish(const UpdateCheckFailed(
+          UpdateCheckFailure.malformed,
+          'this build is too old to update in place',
+        ));
       }
 
       return _finish(UpdateAvailable(release));
     } on Object catch (error) {
       // Includes the timeout and every socket error. Swallowed so a dead
       // network is not a crash on launch.
-      return _finish(UpdateCheckFailed('$error'));
+      //
+      // The owner's sentence is "we could not reach the server"; the
+      // exception's own words are for the log, where they say WHY.
+      debugPrint('Update check failed: $error');
+      return _finish(UpdateCheckFailed(
+        UpdateCheckFailure.unreachable,
+        '$error',
+      ));
     } finally {
       _busy = false;
     }

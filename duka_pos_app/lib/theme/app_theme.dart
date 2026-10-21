@@ -18,7 +18,7 @@ import 'typography.dart';
 /// identity means stating every role that is read — below, that is all of them —
 /// and letting Material's own defaults cover the rest.
 ///
-/// The light theme: warm cream canvas, deep botanical green accent.
+/// The light theme: a cool near-white canvas and the deep brand green.
 ThemeData buildDukaLightTheme() => _buildTheme(
       brightness: Brightness.light,
       colors: const AppColors.light(),
@@ -26,9 +26,14 @@ ThemeData buildDukaLightTheme() => _buildTheme(
 
 /// The dark theme: authored, not flipped.
 ///
-/// The accent moves to a brighter botanical green and the accent fill inverts
-/// to a deep green container, because the light brand green on a dark surface
-/// would not clear 4.5:1. Both themes pass AA independently;
+/// This is the app's SIGNATURE surface. The canvas is a cool near-black, every
+/// surface above it is a step LIGHTER rather than a shadow darker, and the
+/// accent is a bright emerald — the only saturated colour anywhere in the app,
+/// reserved for the one action the screen is asking the user to take.
+///
+/// The accent moves to a brighter green and the accent fill inverts to a deep
+/// green container, because the light brand green on a dark surface would not
+/// clear 4.5:1. Both themes pass AA independently;
 /// `test/theme/contrast_test.dart` is the proof, not this comment.
 ThemeData buildDukaDarkTheme() => _buildTheme(
       brightness: Brightness.dark,
@@ -81,10 +86,12 @@ ThemeData _buildTheme({
     cardColor: colors.surface,
     dividerColor: colors.outline,
     disabledColor: colors.outlineStrong,
-    focusColor: colors.accentContainer,
-    highlightColor: colors.accentContainer.withValues(alpha: 0.06),
-    hoverColor: colors.accentContainer.withValues(alpha: 0.04),
-    splashColor: colors.accentContainer.withValues(alpha: 0.10),
+    // Every overlay tint is the ONE accent, at a low alpha. A second hue for
+    // hover would be a second brand.
+    focusColor: colors.accent.withValues(alpha: 0.12),
+    highlightColor: colors.accent.withValues(alpha: 0.08),
+    hoverColor: colors.accent.withValues(alpha: 0.05),
+    splashColor: colors.accent.withValues(alpha: 0.14),
     shadowColor: colors.shadow,
     extensions: <ThemeExtension<dynamic>>[
       colors,
@@ -95,34 +102,36 @@ ThemeData _buildTheme({
     ],
 
     // ------------------------------------------------------------ app bar
-    // The app bar is the shell's identity line, so it carries the accent rather
-    // than the canvas: it is the one chrome element that says which till this
-    // is from across the counter.
+    // NO FILL. The app bar is a TITLE on the canvas, not a coloured band.
+    //
+    // A saturated bar across the top of every screen spends the app's only
+    // accent on chrome — the one colour in the app then means "this is
+    // SimpleSales" instead of "this is the thing to press", and the eye stops
+    // looking for the action. The title sits on the canvas at the same size as
+    // the rest of the type, and the screen's own content starts underneath it.
     appBarTheme: AppBarTheme(
-      backgroundColor: colors.accent,
-      foregroundColor: colors.onAccent,
+      backgroundColor: colors.canvas,
+      foregroundColor: colors.onSurface,
       surfaceTintColor: Colors.transparent,
       elevation: 0,
       scrolledUnderElevation: 0,
       centerTitle: false,
-      titleTextStyle: text.titleLarge?.copyWith(color: colors.onAccent),
-      // 48 not 56: this bar sits above a dense data set and every pixel of it is
-      // a pixel not spent on a row.
-      toolbarHeight: 48,
+      titleTextStyle: text.headlineSmall?.copyWith(color: colors.onSurface),
+      toolbarHeight: 56,
       titleSpacing: spacing.lg,
       systemOverlayStyle: brightness == Brightness.light
-          ? SystemUiOverlayStyle.light.copyWith(
+          ? SystemUiOverlayStyle.dark.copyWith(
               statusBarColor: Colors.transparent,
               systemNavigationBarColor: colors.surface,
               systemNavigationBarIconBrightness: Brightness.dark,
             )
-          : SystemUiOverlayStyle.dark.copyWith(
+          : SystemUiOverlayStyle.light.copyWith(
               statusBarColor: Colors.transparent,
               systemNavigationBarColor: colors.surface,
               systemNavigationBarIconBrightness: Brightness.light,
             ),
-      iconTheme: IconThemeData(color: colors.onAccent, size: 22),
-      actionsIconTheme: IconThemeData(color: colors.onAccent, size: 22),
+      iconTheme: IconThemeData(color: colors.onSurface, size: 22),
+      actionsIconTheme: IconThemeData(color: colors.onSurface, size: 22),
     ),
 
     // ------------------------------------------------------------- cards
@@ -138,9 +147,12 @@ ThemeData _buildTheme({
     ),
 
     // ------------------------------------------------------------- inputs
+    // A field is a WELL: a sunken surface, not a raised one. The fill is a step
+    // darker than the card it sits on, so the shape of the input is read from
+    // the value inside it rather than from a heavy outline drawn around it.
     inputDecorationTheme: InputDecorationTheme(
       filled: true,
-      fillColor: colors.surface,
+      fillColor: colors.surfaceSunken,
       // `outlineStrong` clears 3:1 against the surface, which is what an input
       // edge is: a meaningful boundary the user must find. `outline` would not.
       hintStyle: text.bodyMedium?.copyWith(color: colors.onSurfaceMuted),
@@ -199,6 +211,11 @@ ThemeData _buildTheme({
         textStyle: WidgetStatePropertyAll<TextStyle?>(text.labelLarge),
         shape: WidgetStatePropertyAll<OutlinedBorder>(
             RoundedRectangleBorder(borderRadius: shapes.controlRadius)),
+        // The filled button IS the accent. Stated here rather than inherited
+        // from the scheme so that the one colour that means "press this" is
+        // declared in exactly one place.
+        backgroundColor: WidgetStatePropertyAll<Color>(colors.accent),
+        foregroundColor: WidgetStatePropertyAll<Color>(colors.onAccent),
         elevation: const WidgetStatePropertyAll<double>(0),
       ),
     ),
@@ -213,7 +230,10 @@ ThemeData _buildTheme({
         textStyle: WidgetStatePropertyAll<TextStyle?>(text.labelLarge),
         shape: WidgetStatePropertyAll<OutlinedBorder>(
             RoundedRectangleBorder(borderRadius: shapes.controlRadius)),
-        backgroundColor: WidgetStatePropertyAll<Color>(colors.surface),
+        // A raised button is a SECONDARY action, so it is a quiet raised
+        // surface rather than another green field. Two green buttons on one
+        // screen is one too many.
+        backgroundColor: WidgetStatePropertyAll<Color>(colors.surfaceRaised),
         foregroundColor: WidgetStatePropertyAll<Color>(colors.onSurface),
         elevation: WidgetStatePropertyAll<double>(0),
       ),
@@ -263,16 +283,35 @@ ThemeData _buildTheme({
         textStyle: WidgetStatePropertyAll<TextStyle?>(text.labelMedium),
         shape: WidgetStatePropertyAll<OutlinedBorder>(
             RoundedRectangleBorder(borderRadius: shapes.controlRadius)),
+        // The selected segment is the ACCENT, solid. A tonal wash of the same
+        // hue reads as "slightly on" and cannot be found at a glance.
+        backgroundColor: WidgetStateProperty.resolveWith<Color?>(
+          (Set<WidgetState> states) => states.contains(WidgetState.selected)
+              ? colors.accent
+              : Colors.transparent,
+        ),
+        foregroundColor: WidgetStateProperty.resolveWith<Color?>(
+          (Set<WidgetState> states) => states.contains(WidgetState.selected)
+              ? colors.onAccent
+              : colors.onSurfaceVariant,
+        ),
       ),
     ),
     floatingActionButtonTheme: FloatingActionButtonThemeData(
-      backgroundColor: colors.accent,
-      foregroundColor: colors.onAccent,
-      elevation: 2,
-      focusElevation: 2,
-      hoverElevation: 3,
+      // NOT the accent. The floating button is a way to ADD something; the one
+      // saturated thing on screen is the action the screen is asking the user to
+      // take, and a green button next to the green Sell ball spends the colour
+      // twice on the same screen.
+      backgroundColor: colors.surfaceRaised,
+      foregroundColor: colors.onSurface,
+      elevation: 0,
+      focusElevation: 0,
+      hoverElevation: 0,
       highlightElevation: 0,
-      shape: RoundedRectangleBorder(borderRadius: shapes.cardRadius),
+      shape: RoundedRectangleBorder(
+        borderRadius: shapes.cardRadius,
+        side: BorderSide(color: colors.outline),
+      ),
     ),
 
     // ------------------------------------------------------- navigation
@@ -325,16 +364,22 @@ ThemeData _buildTheme({
     ),
 
     // ---------------------------------------------------------- overlays
+    // A toast is an ELEVATED CARD, not an inverted slab. Inverting it — white
+    // on a dark app — makes the least important thing on screen the brightest,
+    // and a till shows several toasts a day.
     snackBarTheme: SnackBarThemeData(
       behavior: SnackBarBehavior.floating,
-      backgroundColor: colors.onSurface,
-      contentTextStyle: text.bodyMedium?.copyWith(color: colors.canvas),
-      actionTextColor: colors.onSurface,
+      backgroundColor: colors.surfaceRaised,
+      contentTextStyle: text.bodyMedium?.copyWith(color: colors.onSurface),
+      actionTextColor: colors.accent,
       // The floating snackbar sits above the nav bar on a compact layout; this
       // is the minimum clear space it needs to not cover a thumb target.
       insetPadding: EdgeInsets.all(spacing.lg),
       elevation: 0,
-      shape: RoundedRectangleBorder(borderRadius: shapes.cardRadius),
+      shape: RoundedRectangleBorder(
+        borderRadius: shapes.cardRadius,
+        side: BorderSide(color: colors.outline),
+      ),
     ),
     dialogTheme: DialogThemeData(
       backgroundColor: colors.surfaceRaised,
@@ -353,7 +398,7 @@ ThemeData _buildTheme({
       showDragHandle: true,
       dragHandleColor: colors.outlineStrong,
       shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(shapes.lg)),
+        borderRadius: BorderRadius.vertical(top: Radius.circular(shapes.xl)),
       ),
     ),
     menuTheme: MenuThemeData(
@@ -375,10 +420,11 @@ ThemeData _buildTheme({
     ),
     tooltipTheme: TooltipThemeData(
       decoration: BoxDecoration(
-        color: colors.onSurface,
+        color: colors.surfaceRaised,
         borderRadius: BorderRadius.circular(shapes.sm),
+        border: Border.all(color: colors.outline),
       ),
-      textStyle: text.bodySmall?.copyWith(color: colors.canvas),
+      textStyle: text.bodySmall?.copyWith(color: colors.onSurface),
       // Short: a tooltip on a till should name the control, not explain it.
       waitDuration: const Duration(milliseconds: 600),
     ),
@@ -510,11 +556,11 @@ ColorScheme _colorScheme(Brightness brightness, AppColors c) {
     // nothing can change it in one place, and a palette that has two sources
     // of truth has no source of truth at all.
     surfaceContainerLowest: light ? Primitives.neutral100 : c.surfaceSunken,
-    surfaceContainerLow: light ? c.canvas : Primitives.neutral10,
+    surfaceContainerLow: light ? c.canvas : Primitives.neutral08,
     surfaceContainer: light ? c.canvas : Primitives.neutral12,
     surfaceContainerHigh: light ? c.surfaceSunken : c.surfaceRaised,
     surfaceContainerHighest: light ? c.surfaceSunken : Primitives.neutral25,
-    surfaceDim: light ? c.surfaceSunken : Primitives.neutral10,
+    surfaceDim: light ? c.surfaceSunken : Primitives.neutral08,
     surfaceBright: light ? c.surface : c.surfaceRaised,
     surfaceTint: c.accent,
     // Hairline, and its stronger sibling for meaningful boundaries.

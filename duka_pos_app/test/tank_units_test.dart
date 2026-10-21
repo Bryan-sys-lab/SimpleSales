@@ -19,8 +19,8 @@ void main() {
       expect(kilogramsToMillilitres(50), 50000,
           reason: 'a 50-kg tank holds 50 litres; that is the whole point');
       expect(kilogramsToMillilitres(1), 1000);
-      expect(
-          kilogramsToMillilitres(0), 0, reason: 'an empty tank reads as 0 kg');
+      expect(kilogramsToMillilitres(0), 0,
+          reason: 'an empty tank reads as 0 kg');
     });
 
     test('a tank with its own factor converts at that factor', () {
@@ -51,7 +51,8 @@ void main() {
       expect(millilitresToKilograms(50000), 50);
       expect(millilitresToKilograms(0), 0);
       expect(millilitresToKilograms(1750), 1.75);
-      expect(millilitresToKilograms(10000, millilitresPerKilogram: 850), 10000 / 850);
+      expect(millilitresToKilograms(10000, millilitresPerKilogram: 850),
+          10000 / 850);
     });
   });
 
@@ -62,7 +63,8 @@ void main() {
       expect(ProductUnit.kilogram.isVolumetric, isTrue);
       expect(ProductUnit.kilogram.isMeasuredByWeight, isTrue);
       expect(ProductUnit.kilogram.millilitresPerUnit, 0,
-          reason: 'a kilogram is not a fixed volume; the factor is per product');
+          reason:
+              'a kilogram is not a fixed volume; the factor is per product');
     });
 
     test('only a tank is measured by weight', () {
@@ -95,8 +97,8 @@ void main() {
         sellPrice: Money.zero,
         // What the form writes: the kg, converted, into the same volume column
         // every other product uses.
-        stockQty: kilogramsToMillilitres(weightKg,
-            millilitresPerKilogram: perKg),
+        stockQty:
+            kilogramsToMillilitres(weightKg, millilitresPerKilogram: perKg),
         reorderLevel: 5,
         bottleMl: 50000,
         unit: ProductUnit.kilogram,
@@ -176,8 +178,7 @@ void main() {
         unit: ProductUnit.litre,
       );
 
-      expect(
-          tank.unit.isMeasuredByWeight && tank.millilitresPerKilogram > 0,
+      expect(tank.unit.isMeasuredByWeight && tank.millilitresPerKilogram > 0,
           isTrue);
       expect(litre.unit.isMeasuredByWeight && litre.millilitresPerKilogram > 0,
           isFalse);

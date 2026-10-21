@@ -39,8 +39,9 @@ String? appRedirect({
     return gate;
   }
 
-  final bool signedIn =
-      snapshot.stage == AppStage.ready || snapshot.stage == AppStage.onboarding;
+  final bool signedIn = snapshot.stage == AppStage.ready ||
+      snapshot.stage == AppStage.onboarding ||
+      snapshot.stage == AppStage.permissions;
 
   // 2. The session door.
   if (!signedIn) {
@@ -52,7 +53,10 @@ String? appRedirect({
       AppStage.signingIn =>
         Routes.welcome, // Sign-out lands on chooser, not PIN pad
       AppStage.settingUp => Routes.setup,
-      AppStage.onboarding || AppStage.ready => Routes.dashboard,
+      AppStage.onboarding ||
+      AppStage.permissions ||
+      AppStage.ready =>
+        Routes.dashboard,
       _ => Routes.welcome,
     };
     return location == door ? null : door;
@@ -73,6 +77,11 @@ String? appRedirect({
     return Routes.dashboard;
   }
 
+  // So is a finished permissions step.
+  if (snapshot.stage == AppStage.ready && location == Routes.permissions) {
+    return Routes.dashboard;
+  }
+
   // 4. The walkthrough is guidance, not a gate — but an admin who has not seen
   //    it is the only one who should be held on it.
   if (snapshot.stage == AppStage.onboarding) {
@@ -80,7 +89,18 @@ String? appRedirect({
     return location == Routes.onboarding ? null : Routes.onboarding;
   }
 
-  // 5. Role gating on the branch itself.
+  // 5. The permissions step — guidance, not a gate, and admin-only like the
+  //    walkthrough it follows.
+  //
+  //    It is never allowed to strand somebody: a cashier goes straight to the
+  //    dashboard, and the step's own "Continue" is always there, so the only
+  //    way past it is through it.
+  if (snapshot.stage == AppStage.permissions) {
+    if (!snapshot.isAdmin) return Routes.dashboard;
+    return location == Routes.permissions ? null : Routes.permissions;
+  }
+
+  // 6. Role gating on the branch itself.
   // The shift sub-route is explicitly NOT in this set: it reconciles the
   // signed-in person's own till and is reachable from the dashboard's "Open
   // Shift" card for cashiers too. Only the full-shop branches are gated.

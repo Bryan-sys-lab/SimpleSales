@@ -6,6 +6,7 @@ import '../../theme/app_shapes.dart';
 import '../../theme/app_spacing.dart';
 import '../../theme/typography.dart';
 import 'status.dart';
+import 'surface.dart';
 
 /// A money value, rendered as money.
 ///
@@ -136,6 +137,10 @@ class ActionBar extends StatelessWidget {
 /// `TextField` with a real label, never a placeholder-as-label: a placeholder
 /// disappears the moment there is a value, so the user loses the only description
 /// of what they are searching.
+///
+/// The field is a WELL, not a box drawn around a hole: the theme's input
+/// decoration fills it with the sunken surface, so the field reads as pressed
+/// INTO the page rather than as a heavy outline laid over it.
 class SearchField extends StatelessWidget {
   const SearchField({
     required this.controller,
@@ -158,6 +163,7 @@ class SearchField extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final AppSpacing spacing = AppSpacing.of(context);
+    final AppShapes shapes = AppShapes.of(context);
 
     return ConstrainedBox(
       // A minimum, never a maximum: this must never be the thing that overflows.
@@ -172,6 +178,99 @@ class SearchField extends StatelessWidget {
           prefixIcon: const Icon(Icons.search, size: 20),
           isDense: true,
           contentPadding: EdgeInsets.symmetric(vertical: spacing.md),
+          // The theme's own border is a meaningful boundary (3:1); this keeps
+          // that edge and only replaces the silhouette.
+          border: OutlineInputBorder(
+            borderRadius: shapes.controlRadius,
+            borderSide: BorderSide(color: AppColors.of(context).outlineStrong),
+          ),
+          enabledBorder: OutlineInputBorder(
+            borderRadius: shapes.controlRadius,
+            borderSide: BorderSide(color: AppColors.of(context).outlineStrong),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+/// A filter pill: the shape a filter row is made of.
+///
+/// SELECTED is a solid accent fill with the accent's own ink on top. A tonal
+/// wash of the same hue is what Material ships, and it reads as "slightly on"
+/// rather than "this is the filter you have applied" — which on a till
+/// filtering the day's takings is the difference between a filter and a
+/// decoration.
+///
+/// Unselected is a sunken well with a hairline edge, so the row of pills reads
+/// as a set of options rather than as one highlighted pill floating in space.
+class SelectablePill extends StatelessWidget {
+  const SelectablePill({
+    required this.label,
+    required this.selected,
+    this.onTap,
+    this.icon,
+    super.key,
+  });
+
+  final String label;
+  final bool selected;
+  final VoidCallback? onTap;
+  final IconData? icon;
+
+  @override
+  Widget build(BuildContext context) {
+    final AppColors colors = AppColors.of(context);
+    final AppSpacing spacing = AppSpacing.of(context);
+    final AppShapes shapes = AppShapes.of(context);
+    final TextTheme type = AppTypography.of(context);
+
+    final Color fill = selected ? colors.accent : colors.surfaceSunken;
+    final Color ink = selected ? colors.onAccent : colors.onSurfaceVariant;
+
+    return Semantics(
+      button: true,
+      selected: selected,
+      label: label,
+      excludeSemantics: true,
+      child: ExcludeSemantics(
+        child: Material(
+          color: fill,
+          borderRadius: shapes.chipRadius,
+          clipBehavior: Clip.antiAlias,
+          child: InkWell(
+            onTap: onTap,
+            child: Container(
+              constraints: const BoxConstraints(minHeight: 32),
+              padding: EdgeInsets.symmetric(
+                horizontal: spacing.md,
+                vertical: spacing.xs,
+              ),
+              decoration: BoxDecoration(
+                borderRadius: shapes.chipRadius,
+                border: Border.all(
+                  color: selected ? colors.accent : colors.outline,
+                ),
+              ),
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: <Widget>[
+                  if (icon != null) ...<Widget>[
+                    Icon(icon, size: 14, color: ink),
+                    SizedBox(width: spacing.xs),
+                  ],
+                  Text(
+                    label,
+                    style: type.labelMedium?.copyWith(
+                      color: ink,
+                      fontWeight:
+                          selected ? FontWeight.w700 : FontWeight.w600,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
         ),
       ),
     );
@@ -228,12 +327,12 @@ class SegmentedChoice<T> extends StatelessWidget {
           style: ButtonStyle(
             foregroundColor: WidgetStateProperty.resolveWith<Color?>(
               (Set<WidgetState> states) => states.contains(WidgetState.selected)
-                  ? colors.onAccentContainer
+                  ? colors.onAccent
                   : colors.onSurfaceVariant,
             ),
             backgroundColor: WidgetStateProperty.resolveWith<Color?>(
               (Set<WidgetState> states) => states.contains(WidgetState.selected)
-                  ? colors.accentContainer
+                  ? colors.accent
                   : Colors.transparent,
             ),
             side: WidgetStatePropertyAll<BorderSide>(
@@ -519,9 +618,7 @@ class SettingsInfoRow extends StatelessWidget {
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: <Widget>[
-          ExcludeSemantics(
-            child: Icon(icon, size: 20, color: colors.onSurfaceVariant),
-          ),
+          IconBadge(icon: icon),
           SizedBox(width: AppSpacing.of(context).md),
           Expanded(
             child: Column(
@@ -609,9 +706,7 @@ class SettingsNavRow extends StatelessWidget {
               constraints: const BoxConstraints(minHeight: 48),
               child: Row(
                 children: <Widget>[
-                  ExcludeSemantics(
-                    child: Icon(icon, size: 20, color: colors.onSurfaceVariant),
-                  ),
+                  IconBadge(icon: icon),
                   SizedBox(width: AppSpacing.of(context).md),
                   Expanded(
                     child: Column(
@@ -696,15 +791,11 @@ class SettingsSwitchRow extends StatelessWidget {
           constraints: const BoxConstraints(minHeight: 48),
           child: Row(
             children: <Widget>[
-              ExcludeSemantics(
-                child: Icon(
-                  icon,
-                  size: 20,
-                  // Dimmed with the control: an icon at full strength beside a
-                  // switch that cannot move reads as a switch that can.
-                  color:
-                      enabled ? colors.onSurfaceVariant : colors.onSurfaceMuted,
-                ),
+              Opacity(
+                // Dimmed with the control: a badge at full strength beside a
+                // switch that cannot move reads as a switch that can.
+                opacity: enabled ? 1 : 0.5,
+                child: IconBadge(icon: icon),
               ),
               SizedBox(width: AppSpacing.of(context).md),
               Expanded(

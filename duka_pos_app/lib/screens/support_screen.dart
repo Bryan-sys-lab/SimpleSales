@@ -26,7 +26,7 @@ import '../services/telemetry_service.dart';
 import '../theme/app_colors.dart';
 import '../theme/app_spacing.dart';
 import '../theme/typography.dart';
-import '../ui/components/brand_header.dart';
+import '../ui/components/screen_title.dart';
 import '../ui/components/status.dart';
 import '../ui/components/surface.dart';
 import '../ui/layout/page.dart';
@@ -101,14 +101,16 @@ class SupportService extends ChangeNotifier {
     final prefs = await _prefsFuture;
     for (final raw in (prefs.getStringList(_kSupportTickets) ?? <String>[])) {
       try {
-        _tickets.add(SupportItem.fromMap(jsonDecode(raw) as Map<String, dynamic>));
+        _tickets
+            .add(SupportItem.fromMap(jsonDecode(raw) as Map<String, dynamic>));
       } on Object {
         // A corrupt ticket is skipped, not fatal.
       }
     }
     for (final raw in (prefs.getStringList(_kFeatureRequests) ?? <String>[])) {
       try {
-        _requests.add(SupportItem.fromMap(jsonDecode(raw) as Map<String, dynamic>));
+        _requests
+            .add(SupportItem.fromMap(jsonDecode(raw) as Map<String, dynamic>));
       } on Object {
         // A corrupt request is skipped, not fatal.
       }
@@ -231,13 +233,16 @@ class _SupportScreenState extends State<SupportScreen> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: <Widget>[
-          BrandHeader(
-            markSize: 28,
-            gap: spacing.md,
-            showWordmark: true,
-            title: Text(l10n.supportTitle, style: AppTypography.of(context).headlineSmall),
+          // The screen's NAME, large and on the canvas. The brand lockup that
+          // used to sit here spent the first line of the screen on the
+          // product's name instead of on the thing the shopkeeper came to do.
+          ScreenTitle(
+            title: l10n.supportTitle,
+            padding: EdgeInsetsDirectional.only(
+              top: spacing.sm,
+              bottom: spacing.lg,
+            ),
           ),
-          SizedBox(height: spacing.xl),
           // ---- Support tickets ----
           _SectionCard(
             title: l10n.supportTicketsSection,
@@ -257,7 +262,8 @@ class _SupportScreenState extends State<SupportScreen> {
                 submitting: _submittingTicket,
                 onSubmit: (title, description) async {
                   setState(() => _submittingTicket = true);
-                  await support.fileTicket(title: title, description: description);
+                  await support.fileTicket(
+                      title: title, description: description);
                   if (mounted) setState(() => _submittingTicket = false);
                 },
               ),
@@ -283,7 +289,8 @@ class _SupportScreenState extends State<SupportScreen> {
                 submitting: _submittingRequest,
                 onSubmit: (title, description) async {
                   setState(() => _submittingRequest = true);
-                  await support.fileRequest(title: title, description: description);
+                  await support.fileRequest(
+                      title: title, description: description);
                   if (mounted) setState(() => _submittingRequest = false);
                 },
               ),
@@ -329,7 +336,9 @@ class _SectionCard extends StatelessWidget {
             ),
             child: Row(
               children: <Widget>[
-                Icon(icon, size: 20, color: colors.onSurfaceMuted),
+                // The tonal badge that marks a section: a circle, so the eye
+                // reads it as a marker and moves on to the words.
+                IconBadge(icon: icon),
                 SizedBox(width: spacing.md),
                 Expanded(
                   child: Column(
@@ -472,12 +481,10 @@ class _ItemRow extends StatelessWidget {
                       Text(
                         item.description,
                         style: type.bodySmall?.copyWith(
-                              color: resolved ? colors.onSurfaceMuted : null,
-                              decoration:
-                                  resolved ? TextDecoration.lineThrough : null,
-                            ),
-                        maxLines: 2,
-                        overflow: TextOverflow.ellipsis,
+                          color: resolved ? colors.onSurfaceMuted : null,
+                          decoration:
+                              resolved ? TextDecoration.lineThrough : null,
+                        ),
                       ),
                     ],
                   ),
@@ -496,7 +503,10 @@ class _ItemRow extends StatelessWidget {
             if (!resolved) ...<Widget>[
               SizedBox(height: spacing.md),
               Align(
-                alignment: Alignment.centerRight,
+                // Directional, so the action sits on the END side of the row in
+                // every locale — a physically-right-aligned button is a button
+                // in the wrong corner for half the world's readers.
+                alignment: AlignmentDirectional.centerEnd,
                 child: TextButton(
                   onPressed: () => onResolve(item.id),
                   child: Text('Mark resolved'),

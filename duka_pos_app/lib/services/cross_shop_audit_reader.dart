@@ -135,8 +135,8 @@ class CrossShopAuditReader {
             ));
             continue;
           }
-          final db = await openDatabase(path,
-              readOnly: true, singleInstance: false);
+          final db =
+              await openDatabase(path, readOnly: true, singleInstance: false);
           try {
             final entries = await ownerRelevantAuditForDb(
               db,

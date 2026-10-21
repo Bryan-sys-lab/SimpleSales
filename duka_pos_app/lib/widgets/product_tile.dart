@@ -295,10 +295,13 @@ class ProductTile extends StatelessWidget {
                   children: <Widget>[
                     // The photograph, when there is one.
                     //
-                    // Only here. A product is a row in a list on every other
-                    // screen, and a photograph in a list makes it slower to
-                    // scan and slower to render for no gain. At the till it is
-                    // the thing a cashier matches against the shelf.
+                    // At the till it is the thing a cashier matches against
+                    // the shelf, so it is the biggest thing on the tile.
+                    //
+                    // The row's `updated_at` comes with it: a photograph that
+                    // was replaced is written over the file at the SAME path,
+                    // and the tile would otherwise go on drawing the old
+                    // picture. The row is what says the file is new.
                     if (data.product.imagePath != null) ...<Widget>[
                       LayoutBuilder(
                         builder:
@@ -310,6 +313,7 @@ class ProductTile extends StatelessWidget {
                           return ProductPhoto(
                             imagePath: data.product.imagePath,
                             size: edge,
+                            revision: data.product.updatedAt,
                           );
                         },
                       ),
@@ -439,8 +443,6 @@ class _StockLine extends StatelessWidget {
               constraints: BoxConstraints(maxWidth: textWidth),
               child: Text(
                 text,
-                maxLines: ProductTile.stockLines,
-                overflow: TextOverflow.ellipsis,
                 textAlign: TextAlign.center,
                 style: type.labelSmall?.copyWith(
                   color: isLow ? colors.warning : colors.onSurfaceMuted,

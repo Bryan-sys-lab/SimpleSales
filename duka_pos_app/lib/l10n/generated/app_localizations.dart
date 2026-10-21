@@ -406,6 +406,12 @@ abstract class AppLocalizations {
   /// **'Continue'**
   String get actionContinue;
 
+  /// No description provided for @poweredBy.
+  ///
+  /// In en, this message translates to:
+  /// **'Powered by'**
+  String get poweredBy;
+
   /// No description provided for @actionDone.
   ///
   /// In en, this message translates to:
@@ -1006,6 +1012,42 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'Browse products'**
   String get sellBrowseProductsAction;
+
+  /// No description provided for @sellCompleteTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Sale recorded'**
+  String get sellCompleteTitle;
+
+  /// No description provided for @sellCompletePaidCash.
+  ///
+  /// In en, this message translates to:
+  /// **'Paid in cash'**
+  String get sellCompletePaidCash;
+
+  /// No description provided for @sellCompletePaidMpesa.
+  ///
+  /// In en, this message translates to:
+  /// **'Paid by M-Pesa'**
+  String get sellCompletePaidMpesa;
+
+  /// No description provided for @sellCompleteChange.
+  ///
+  /// In en, this message translates to:
+  /// **'Change due {amount}'**
+  String sellCompleteChange(Object amount);
+
+  /// No description provided for @sellCompleteNext.
+  ///
+  /// In en, this message translates to:
+  /// **'Next sale'**
+  String get sellCompleteNext;
+
+  /// No description provided for @sellCompleteReceiptPending.
+  ///
+  /// In en, this message translates to:
+  /// **'The receipt is still printing.'**
+  String get sellCompleteReceiptPending;
 
   /// No description provided for @sellCartEmptyHint.
   ///
@@ -1854,6 +1896,12 @@ abstract class AppLocalizations {
   /// **'Sell price is below cost'**
   String get inventoryLowPriceTitle;
 
+  /// No description provided for @inventoryInStock.
+  ///
+  /// In en, this message translates to:
+  /// **'In stock'**
+  String get inventoryInStock;
+
   /// No description provided for @inventoryLowStock.
   ///
   /// In en, this message translates to:
@@ -2064,6 +2112,72 @@ abstract class AppLocalizations {
   /// **'No account is set up yet.'**
   String get profileNoAccountYet;
 
+  /// No description provided for @profileEditAction.
+  ///
+  /// In en, this message translates to:
+  /// **'Edit'**
+  String get profileEditAction;
+
+  /// No description provided for @profileEditTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Edit your details'**
+  String get profileEditTitle;
+
+  /// No description provided for @profileEditNameLabel.
+  ///
+  /// In en, this message translates to:
+  /// **'Your name'**
+  String get profileEditNameLabel;
+
+  /// No description provided for @profileEditNameHelp.
+  ///
+  /// In en, this message translates to:
+  /// **'Shown on the till and on the receipts.'**
+  String get profileEditNameHelp;
+
+  /// No description provided for @profileEditShopNameLabel.
+  ///
+  /// In en, this message translates to:
+  /// **'Shop name'**
+  String get profileEditShopNameLabel;
+
+  /// No description provided for @profileEditEmailLabel.
+  ///
+  /// In en, this message translates to:
+  /// **'Email'**
+  String get profileEditEmailLabel;
+
+  /// No description provided for @profileEditEmailHelp.
+  ///
+  /// In en, this message translates to:
+  /// **'Where PIN-recovery and verification codes are sent.'**
+  String get profileEditEmailHelp;
+
+  /// No description provided for @profileEditEmailWarning.
+  ///
+  /// In en, this message translates to:
+  /// **'Changing the email moves where recovery codes are sent. A new address has to be verified before it can be used to recover the PIN, and until it is, keep the old one working.'**
+  String get profileEditEmailWarning;
+
+  /// No description provided for @profileEditSave.
+  ///
+  /// In en, this message translates to:
+  /// **'Save'**
+  String get profileEditSave;
+
+  /// No description provided for @profileEditSaved.
+  ///
+  /// In en, this message translates to:
+  /// **'Your details were saved.'**
+  String get profileEditSaved;
+
+  /// No description provided for @profileEditFailed.
+  ///
+  /// In en, this message translates to:
+  /// **'Your details could not be saved. Nothing was changed.'**
+  String get profileEditFailed;
+
   /// No description provided for @profilePhotoLabel.
   ///
   /// In en, this message translates to:
@@ -2130,6 +2244,216 @@ abstract class AppLocalizations {
   /// **'Back to settings'**
   String get profileBackToSettings;
 
+  /// No description provided for @statusDeletionPending.
+  ///
+  /// In en, this message translates to:
+  /// **'Your online account could not be deleted yet. It will be deleted the next time this till can reach the server.'**
+  String get statusDeletionPending;
+
+  /// No description provided for @statusBackupOverdue.
+  ///
+  /// In en, this message translates to:
+  /// **'This phone has not been backed up for a while.'**
+  String get statusBackupOverdue;
+
+  /// No description provided for @statusOffline.
+  ///
+  /// In en, this message translates to:
+  /// **'This till is offline. Sales are still being recorded.'**
+  String get statusOffline;
+
+  /// No description provided for @statusConnecting.
+  ///
+  /// In en, this message translates to:
+  /// **'Reconnecting to the server.'**
+  String get statusConnecting;
+
+  /// No description provided for @importRepairedTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Row repaired'**
+  String get importRepairedTitle;
+
+  /// No description provided for @importRepairFailedTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'The row was not repaired'**
+  String get importRepairFailedTitle;
+
+  /// No description provided for @profileEditSavedTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Details saved'**
+  String get profileEditSavedTitle;
+
+  /// No description provided for @profileEditFailedTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'The details were not saved'**
+  String get profileEditFailedTitle;
+
+  /// No description provided for @inventoryProductSavedTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Product saved'**
+  String get inventoryProductSavedTitle;
+
+  /// No description provided for @inventoryProductUpdatedTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Product updated'**
+  String get inventoryProductUpdatedTitle;
+
+  /// No description provided for @inventoryStockSavedTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Stock updated'**
+  String get inventoryStockSavedTitle;
+
+  /// No description provided for @settingsBackupsErasedTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Backups erased'**
+  String get settingsBackupsErasedTitle;
+
+  /// No description provided for @settingsBackupsEraseFailedTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Some backups could not be erased'**
+  String get settingsBackupsEraseFailedTitle;
+
+  /// No description provided for @settingsMpesaUpdateFailedTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'The setting was not saved'**
+  String get settingsMpesaUpdateFailedTitle;
+
+  /// No description provided for @settingsIdentityVerifiedTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Identity verified'**
+  String get settingsIdentityVerifiedTitle;
+
+  /// No description provided for @settingsSyncDoneTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Sync finished'**
+  String get settingsSyncDoneTitle;
+
+  /// No description provided for @settingsStaffSavedTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Cashier saved'**
+  String get settingsStaffSavedTitle;
+
+  /// No description provided for @settingsStaffSaveFailedTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'The cashier was not saved'**
+  String get settingsStaffSaveFailedTitle;
+
+  /// No description provided for @settingsStaffRemovedTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Cashier removed'**
+  String get settingsStaffRemovedTitle;
+
+  /// No description provided for @settingsStaffRemoveFailedTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'The cashier was not removed'**
+  String get settingsStaffRemoveFailedTitle;
+
+  /// No description provided for @settingsPinResetTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'PIN reset'**
+  String get settingsPinResetTitle;
+
+  /// No description provided for @settingsBackupDoneTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Backup made'**
+  String get settingsBackupDoneTitle;
+
+  /// No description provided for @settingsBackupDone.
+  ///
+  /// In en, this message translates to:
+  /// **'The encrypted backup was made and is ready to share.'**
+  String get settingsBackupDone;
+
+  /// No description provided for @settingsBackupFailedTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'The backup failed'**
+  String get settingsBackupFailedTitle;
+
+  /// No description provided for @settingsBackupFailed.
+  ///
+  /// In en, this message translates to:
+  /// **'The backup could not be made. The data on this phone is unchanged, and nothing was shared.'**
+  String get settingsBackupFailed;
+
+  /// No description provided for @settingsExportDoneTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Export ready'**
+  String get settingsExportDoneTitle;
+
+  /// No description provided for @settingsExportEncryptedDone.
+  ///
+  /// In en, this message translates to:
+  /// **'The encrypted backup file is ready to share.'**
+  String get settingsExportEncryptedDone;
+
+  /// No description provided for @settingsExportInventoryDone.
+  ///
+  /// In en, this message translates to:
+  /// **'The inventory workbook is ready to share.'**
+  String get settingsExportInventoryDone;
+
+  /// No description provided for @settingsExportFailedTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'The export failed'**
+  String get settingsExportFailedTitle;
+
+  /// No description provided for @settingsExportFailed.
+  ///
+  /// In en, this message translates to:
+  /// **'The file could not be made. Nothing was shared.'**
+  String get settingsExportFailed;
+
+  /// No description provided for @settingsRestoreDoneTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Backup restored'**
+  String get settingsRestoreDoneTitle;
+
+  /// No description provided for @settingsRestoreFailedTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'The backup was not restored'**
+  String get settingsRestoreFailedTitle;
+
+  /// No description provided for @settingsImportDoneTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Import complete'**
+  String get settingsImportDoneTitle;
+
+  /// No description provided for @settingsImportFailedTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'The import failed'**
+  String get settingsImportFailedTitle;
+
+  /// No description provided for @settingsUpdateFailedTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'The update was not installed'**
+  String get settingsUpdateFailedTitle;
+
   /// No description provided for @settingsAccountSection.
   ///
   /// In en, this message translates to:
@@ -2163,8 +2487,20 @@ abstract class AppLocalizations {
   /// No description provided for @settingsUpdatesFailed.
   ///
   /// In en, this message translates to:
-  /// **'Could not check ({reason})'**
+  /// **'Could not check for updates: {reason}'**
   String settingsUpdatesFailed(Object reason);
+
+  /// No description provided for @settingsUpdatesReasonUnreachable.
+  ///
+  /// In en, this message translates to:
+  /// **'the server could not be reached'**
+  String get settingsUpdatesReasonUnreachable;
+
+  /// No description provided for @settingsUpdatesReasonMalformed.
+  ///
+  /// In en, this message translates to:
+  /// **'the server did not send a release'**
+  String get settingsUpdatesReasonMalformed;
 
   /// No description provided for @settingsUpdatesCurrent.
   ///
@@ -2436,6 +2772,54 @@ abstract class AppLocalizations {
   /// **'Delete account'**
   String get settingsDeleteAccountAction;
 
+  /// No description provided for @accountDeleteLocalAccountsTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Delete the cashier logins on this phone?'**
+  String get accountDeleteLocalAccountsTitle;
+
+  /// No description provided for @accountDeleteLocalAccountsMessage.
+  ///
+  /// In en, this message translates to:
+  /// **'The cashiers’ sign-in details are removed from this phone, so nobody can sign in to this till afterwards. Their names on past sales stay, because those are the shop’s records.'**
+  String get accountDeleteLocalAccountsMessage;
+
+  /// No description provided for @accountDeleteLocalAccountsDelete.
+  ///
+  /// In en, this message translates to:
+  /// **'Delete them'**
+  String get accountDeleteLocalAccountsDelete;
+
+  /// No description provided for @accountDeleteLocalAccountsKeep.
+  ///
+  /// In en, this message translates to:
+  /// **'Keep them'**
+  String get accountDeleteLocalAccountsKeep;
+
+  /// No description provided for @accountDeleteLocalAccountsRemoved.
+  ///
+  /// In en, this message translates to:
+  /// **'The cashier logins on this phone were deleted. Nobody can sign in to this till.'**
+  String get accountDeleteLocalAccountsRemoved;
+
+  /// No description provided for @accountDeleteLocalAccountsSealed.
+  ///
+  /// In en, this message translates to:
+  /// **'The cashier logins on this phone were sealed: they cannot be used, but the records of them were kept.'**
+  String get accountDeleteLocalAccountsSealed;
+
+  /// No description provided for @settingsBackupsErasedCount.
+  ///
+  /// In en, this message translates to:
+  /// **'{count, plural, =0{No backup files were on this phone.} =1{One backup file was erased.} other{{count} backup files were erased.}}'**
+  String settingsBackupsErasedCount(num count);
+
+  /// No description provided for @settingsBackupsEraseFailed.
+  ///
+  /// In en, this message translates to:
+  /// **'The backup files could not all be erased. The key is gone, so anything left cannot be read, but there may be a file left on the phone.'**
+  String get settingsBackupsEraseFailed;
+
   /// No description provided for @accountDeleteConfirmTitle.
   ///
   /// In en, this message translates to:
@@ -2525,6 +2909,12 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'Sending…'**
   String get pinResetSending;
+
+  /// No description provided for @pinResetResend.
+  ///
+  /// In en, this message translates to:
+  /// **'Send another code'**
+  String get pinResetResend;
 
   /// No description provided for @pinResetSaving.
   ///
@@ -2897,6 +3287,48 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'Import inventory (.xlsx)'**
   String get settingsImportInventory;
+
+  /// No description provided for @settingsImportStageReading.
+  ///
+  /// In en, this message translates to:
+  /// **'Reading the workbook…'**
+  String get settingsImportStageReading;
+
+  /// No description provided for @settingsImportStageParsing.
+  ///
+  /// In en, this message translates to:
+  /// **'Reading the rows…'**
+  String get settingsImportStageParsing;
+
+  /// No description provided for @settingsImportStageWriting.
+  ///
+  /// In en, this message translates to:
+  /// **'Writing the products…'**
+  String get settingsImportStageWriting;
+
+  /// No description provided for @settingsImportStageBarcodes.
+  ///
+  /// In en, this message translates to:
+  /// **'Attaching the barcodes…'**
+  String get settingsImportStageBarcodes;
+
+  /// No description provided for @settingsImportStageVariants.
+  ///
+  /// In en, this message translates to:
+  /// **'Attaching the variants…'**
+  String get settingsImportStageVariants;
+
+  /// No description provided for @settingsImportStageDone.
+  ///
+  /// In en, this message translates to:
+  /// **'Done.'**
+  String get settingsImportStageDone;
+
+  /// No description provided for @settingsImportProgressPercent.
+  ///
+  /// In en, this message translates to:
+  /// **'{stage} {percent}%'**
+  String settingsImportProgressPercent(Object percent, Object stage);
 
   /// No description provided for @settingsImportWorkbookFailed.
   ///
@@ -4207,6 +4639,12 @@ abstract class AppLocalizations {
   /// **'{title}. Selected {label}. {value}.'**
   String chartSpokenSelected(Object label, Object title, Object value);
 
+  /// No description provided for @chartSpokenBar.
+  ///
+  /// In en, this message translates to:
+  /// **'{label}, {value}'**
+  String chartSpokenBar(Object label, Object value);
+
   /// No description provided for @variantAllSizesLabel.
   ///
   /// In en, this message translates to:
@@ -4272,6 +4710,84 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'Try camera again'**
   String get scanRetryCamera;
+
+  /// No description provided for @scanPointAtBarcode.
+  ///
+  /// In en, this message translates to:
+  /// **'Point the camera at the barcode'**
+  String get scanPointAtBarcode;
+
+  /// No description provided for @scanCodesRead.
+  ///
+  /// In en, this message translates to:
+  /// **'{count, plural, =1{1 code read} other{{count} codes read}}'**
+  String scanCodesRead(num count);
+
+  /// No description provided for @scanDone.
+  ///
+  /// In en, this message translates to:
+  /// **'Done'**
+  String get scanDone;
+
+  /// No description provided for @scanEnterCodeManually.
+  ///
+  /// In en, this message translates to:
+  /// **'Enter code manually'**
+  String get scanEnterCodeManually;
+
+  /// No description provided for @scanFlashOnTooltip.
+  ///
+  /// In en, this message translates to:
+  /// **'Turn the flash on'**
+  String get scanFlashOnTooltip;
+
+  /// No description provided for @scanFlashOffTooltip.
+  ///
+  /// In en, this message translates to:
+  /// **'Turn the flash off'**
+  String get scanFlashOffTooltip;
+
+  /// No description provided for @scanPermissionDeniedTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Camera access is off'**
+  String get scanPermissionDeniedTitle;
+
+  /// No description provided for @scanPermissionDeniedMessage.
+  ///
+  /// In en, this message translates to:
+  /// **'The camera needs permission to read a barcode. Turn camera access on for this app in your phone\'s settings, then try again.'**
+  String get scanPermissionDeniedMessage;
+
+  /// No description provided for @scanManualTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Enter barcode'**
+  String get scanManualTitle;
+
+  /// No description provided for @scanManualLabel.
+  ///
+  /// In en, this message translates to:
+  /// **'Barcode'**
+  String get scanManualLabel;
+
+  /// No description provided for @scanManualHint.
+  ///
+  /// In en, this message translates to:
+  /// **'Type the digits printed under the barcode'**
+  String get scanManualHint;
+
+  /// No description provided for @scanManualAdd.
+  ///
+  /// In en, this message translates to:
+  /// **'Add'**
+  String get scanManualAdd;
+
+  /// No description provided for @scanManualInvalidCode.
+  ///
+  /// In en, this message translates to:
+  /// **'That is not a barcode this till can read'**
+  String get scanManualInvalidCode;
 
   /// No description provided for @signOutTitleNamed.
   ///
@@ -4549,6 +5065,12 @@ abstract class AppLocalizations {
   /// **'Sign in'**
   String get loginSignInAction;
 
+  /// No description provided for @loginPinLabel.
+  ///
+  /// In en, this message translates to:
+  /// **'PIN'**
+  String get loginPinLabel;
+
   /// No description provided for @backToPinPadAction.
   ///
   /// In en, this message translates to:
@@ -4584,6 +5106,72 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'Could not reach the shop server. Try again.'**
   String get loginNetworkError;
+
+  /// No description provided for @permissionsTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Set up your till'**
+  String get permissionsTitle;
+
+  /// No description provided for @permissionsSubtitle.
+  ///
+  /// In en, this message translates to:
+  /// **'These two let the till do its job. You can skip either one and change it later in Settings.'**
+  String get permissionsSubtitle;
+
+  /// No description provided for @permissionsCameraTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Camera'**
+  String get permissionsCameraTitle;
+
+  /// No description provided for @permissionsCameraWhy.
+  ///
+  /// In en, this message translates to:
+  /// **'Scan barcodes with the handset camera, and photograph a product for its tile.'**
+  String get permissionsCameraWhy;
+
+  /// No description provided for @permissionsBluetoothTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Bluetooth'**
+  String get permissionsBluetoothTitle;
+
+  /// No description provided for @permissionsBluetoothWhy.
+  ///
+  /// In en, this message translates to:
+  /// **'Send receipts to a Bluetooth receipt printer.'**
+  String get permissionsBluetoothWhy;
+
+  /// No description provided for @permissionsAllow.
+  ///
+  /// In en, this message translates to:
+  /// **'Allow'**
+  String get permissionsAllow;
+
+  /// No description provided for @permissionsAllowed.
+  ///
+  /// In en, this message translates to:
+  /// **'Allowed'**
+  String get permissionsAllowed;
+
+  /// No description provided for @permissionsOpenSettings.
+  ///
+  /// In en, this message translates to:
+  /// **'Open Settings'**
+  String get permissionsOpenSettings;
+
+  /// No description provided for @permissionsContinue.
+  ///
+  /// In en, this message translates to:
+  /// **'Continue'**
+  String get permissionsContinue;
+
+  /// No description provided for @permissionsOptionalNote.
+  ///
+  /// In en, this message translates to:
+  /// **'None of these are required. A till with a barcode scanner and no camera can still sell everything.'**
+  String get permissionsOptionalNote;
 
   /// No description provided for @onboardingImportedProducts.
   ///
@@ -4696,15 +5284,26 @@ abstract class AppLocalizations {
   /// No description provided for @dashboardGreetingAnonymous.
   ///
   /// In en, this message translates to:
-  /// **'{greeting} · {scope}'**
-  String dashboardGreetingAnonymous(Object greeting, Object scope);
+  /// **'{greeting}.'**
+  String dashboardGreetingAnonymous(Object greeting);
 
   /// No description provided for @dashboardGreetingNamed.
   ///
   /// In en, this message translates to:
-  /// **'{greeting}, {name} · {role} · {scope}'**
-  String dashboardGreetingNamed(
-      Object greeting, Object name, Object role, Object scope);
+  /// **'{greeting}, {name}.'**
+  String dashboardGreetingNamed(Object greeting, Object name);
+
+  /// No description provided for @dashboardScopeShop.
+  ///
+  /// In en, this message translates to:
+  /// **'the whole shop'**
+  String get dashboardScopeShop;
+
+  /// No description provided for @dashboardScopeOwn.
+  ///
+  /// In en, this message translates to:
+  /// **'just you'**
+  String get dashboardScopeOwn;
 
   /// No description provided for @dashboardGreetingMorning.
   ///
@@ -4831,6 +5430,66 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'{count, plural, =1{1 product sold} other{{count} products sold}}'**
   String analyticsTopProductsCount(num count);
+
+  /// No description provided for @saleDetailsTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Sale details'**
+  String get saleDetailsTitle;
+
+  /// No description provided for @saleDetailsWhen.
+  ///
+  /// In en, this message translates to:
+  /// **'When'**
+  String get saleDetailsWhen;
+
+  /// No description provided for @saleDetailsWhere.
+  ///
+  /// In en, this message translates to:
+  /// **'Where'**
+  String get saleDetailsWhere;
+
+  /// No description provided for @saleDetailsHow.
+  ///
+  /// In en, this message translates to:
+  /// **'How it was paid'**
+  String get saleDetailsHow;
+
+  /// No description provided for @saleDetailsWho.
+  ///
+  /// In en, this message translates to:
+  /// **'Who sold it'**
+  String get saleDetailsWho;
+
+  /// No description provided for @saleDetailsWhat.
+  ///
+  /// In en, this message translates to:
+  /// **'What was sold'**
+  String get saleDetailsWhat;
+
+  /// No description provided for @saleDetailsNoItems.
+  ///
+  /// In en, this message translates to:
+  /// **'No items were recorded on this sale.'**
+  String get saleDetailsNoItems;
+
+  /// No description provided for @saleDetailsReference.
+  ///
+  /// In en, this message translates to:
+  /// **'Reference {reference}'**
+  String saleDetailsReference(Object reference);
+
+  /// No description provided for @saleDetailsTendered.
+  ///
+  /// In en, this message translates to:
+  /// **'Tendered {tendered} · change {change}'**
+  String saleDetailsTendered(Object change, Object tendered);
+
+  /// No description provided for @saleDetailsQuantity.
+  ///
+  /// In en, this message translates to:
+  /// **'{quantity} ×'**
+  String saleDetailsQuantity(Object quantity);
 
   /// No description provided for @transactionsTitle.
   ///

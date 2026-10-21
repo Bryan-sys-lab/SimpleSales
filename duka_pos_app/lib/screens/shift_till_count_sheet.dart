@@ -185,7 +185,7 @@ class _TillCountSheetState extends State<_TillCountSheet> {
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: <Widget>[
             Padding(
-              padding: EdgeInsets.fromLTRB(
+              padding: EdgeInsetsDirectional.fromSTEB(
                 spacing.md,
                 spacing.sm,
                 spacing.md,
@@ -325,7 +325,8 @@ class TillDenominationRow extends StatelessWidget {
               decoration: InputDecoration(
                 isDense: true,
                 labelText: AppLocalizations.of(context).shiftCountPileLabel,
-                contentPadding: const EdgeInsets.symmetric(horizontal: 12),
+                contentPadding:
+                    EdgeInsets.symmetric(horizontal: spacing.md),
               ),
               onChanged: (_) => onChanged(),
             ),

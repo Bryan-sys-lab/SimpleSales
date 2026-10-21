@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:go_router/go_router.dart';
 import 'package:provider/provider.dart';
 
@@ -20,6 +21,7 @@ import '../theme/app_spacing.dart';
 import '../theme/typography.dart';
 import '../ui/components/controls.dart';
 import '../ui/dialogs/pin_reset_dialog.dart';
+import '../ui/components/screen_title.dart';
 import '../ui/components/status.dart';
 import '../ui/components/surface.dart';
 
@@ -84,7 +86,22 @@ class _LoginScreenState extends State<LoginScreen> {
   /// the selection by name silently signed in the wrong one.
   String? _selected; // '__owner__' or 'staff:<id>'
 
-  String _pin = '';
+  /// The PIN being typed.
+  ///
+  /// A controller rather than a string, because the PIN is now typed into a
+  /// FIELD: the system's own numeric keyboard, not a keypad drawn by the app.
+  ///
+  /// The keypad it replaced was not better. It was four rows of keys that
+  /// took half the screen of a phone that also has to show the roster, it
+  /// could not be filled by a barcode scanner or a keyboard case, and it had
+  /// to be maintained as a widget with its own hit targets, its own
+  /// accessibility and its own layout at every text scale. The system's
+  /// keyboard is faster, is already the right shape for a number, and comes
+  /// with the user's own language and input method.
+  final TextEditingController _pin = TextEditingController();
+
+  final FocusNode _pinFocus = FocusNode();
+
   String? _error;
   bool _loading = true;
 
@@ -99,6 +116,16 @@ class _LoginScreenState extends State<LoginScreen> {
   void initState() {
     super.initState();
     _load();
+  }
+
+  @override
+  void dispose() {
+    // The controller and the focus node hold native resources — a text
+    // connection and an input connection — and neither is collected while the
+    // screen is alive. A leak here is a leak on every sign-in.
+    _pin.dispose();
+    _pinFocus.dispose();
+    super.dispose();
   }
 
   /// Stable selection tag for a staff row.
@@ -159,31 +186,26 @@ class _LoginScreenState extends State<LoginScreen> {
     });
   }
 
-  void _pressDigit(String digit) {
-    if (_verifying || _pin.length >= _pinLength) return;
-    setState(() {
-      _error = null;
-      _pin += digit;
-    });
-    HapticTheme.of(context).fire(HapticEvent.select);
-    if (_pin.length == _pinLength) _tryLogin();
-  }
-
-  void _deleteDigit() {
+  /// The PIN field changed.
+  ///
+  /// It submits ITSELF when the fourth digit lands, because a PIN is a fixed
+  /// length and the owner has nothing to press: the same reason the keypad
+  /// submitted rather than waiting for an OK.
+  void _onPinChanged(String value) {
     if (_verifying) return;
-    setState(() {
-      _error = null;
-      if (_pin.isNotEmpty) _pin = _pin.substring(0, _pin.length - 1);
-    });
-    HapticTheme.of(context).fire(HapticEvent.select);
+    if (_error != null) setState(() => _error = null);
+    if (value.length == _pinLength) {
+      HapticTheme.of(context).fire(HapticEvent.select);
+      _tryLogin();
+    }
   }
 
   void _selectIdentity(String? tag) {
     setState(() {
       _selected = tag;
-      _pin = '';
       _error = null;
     });
+    _pin.clear();
     HapticTheme.of(context).fire(HapticEvent.select);
   }
 
@@ -215,10 +237,8 @@ class _LoginScreenState extends State<LoginScreen> {
     // The PIN is new, so the pad clears and the owner types it fresh. Leaving
     // the old four digits in the dots would invite a fifth tap that submits
     // them as the new PIN.
-    setState(() {
-      _pin = '';
-      _error = null;
-    });
+    setState(() => _error = null);
+    _pin.clear();
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(content: Text(AppLocalizations.of(context).pinResetDone)),
     );
@@ -255,8 +275,9 @@ class _LoginScreenState extends State<LoginScreen> {
 
       bool ok = false;
       final Owner? owner = state.owner;
+      final String pin = _pin.text;
       if (_selected == _ownerValue && owner != null) {
-        ok = await AuthService.verifyPin(_pin, owner.pinHash);
+        ok = await AuthService.verifyPin(pin, owner.pinHash);
         if (!mounted) return;
         if (ok) {
           await AuthService.recordSuccess(userKey);
@@ -265,7 +286,7 @@ class _LoginScreenState extends State<LoginScreen> {
           final String hash = owner.pinHash;
           if (AuthService.needsUpgrade(hash)) {
             await DatabaseHelper.instance
-                .updateOwnerPin(await AuthService.hashPin(_pin));
+                .updateOwnerPin(await AuthService.hashPin(pin));
           }
           state.signInAsOwner();
           return;
@@ -273,16 +294,16 @@ class _LoginScreenState extends State<LoginScreen> {
       } else {
         final Staff? staff = _selectedStaff;
         if (staff != null) {
-          ok = await AuthService.verifyPin(_pin, staff.pinHash);
+          ok = await AuthService.verifyPin(pin, staff.pinHash);
           if (!ok && staff.id != null) {
-            ok = await StaffCredentialCache.verifyCachedPin(staff.id!, _pin);
+            ok = await StaffCredentialCache.verifyCachedPin(staff.id!, pin);
           }
           if (!mounted) return;
           if (ok) {
             await AuthService.recordSuccess(userKey);
             if (AuthService.needsUpgrade(staff.pinHash) && staff.id != null) {
               await DatabaseHelper.instance
-                  .updateStaffPin(staff.id!, await AuthService.hashPin(_pin));
+                  .updateStaffPin(staff.id!, await AuthService.hashPin(pin));
             }
             // `signInAsStaff` carries the id through, which is what lets
             // analytics scope a cashier to their own sales by `staff_id`
@@ -311,10 +332,8 @@ class _LoginScreenState extends State<LoginScreen> {
   /// the next attempt starts clean.
   void _refuse(String message) {
     HapticTheme.of(context).fire(HapticEvent.reject);
-    setState(() {
-      _error = message;
-      _pin = '';
-    });
+    setState(() => _error = message);
+    _pin.clear();
   }
 
   /// The way out of a till with no accounts on it. Offered here rather than
@@ -331,6 +350,7 @@ class _LoginScreenState extends State<LoginScreen> {
     final AppColors colors = AppColors.of(context);
     final AppSpacing spacing = AppSpacing.of(context);
     final TextTheme type = AppTypography.of(context);
+    final AppLocalizations l10n = AppLocalizations.of(context);
 
     final Owner? owner = _owner;
     final String shopName = owner?.shopName ?? SimplePosBrand.appName;
@@ -375,16 +395,55 @@ class _LoginScreenState extends State<LoginScreen> {
                     ),
                   ],
                   SizedBox(height: spacing.md),
-                  _PinDots(filled: _pin.length, length: _pinLength),
-                  SizedBox(height: spacing.sm),
-                  _PinPad(
-                    enabled: !_verifying,
-                    onDigit: _pressDigit,
-                    onDelete: _deleteDigit,
+                  // The PIN, typed into a field with the system's own numeric
+                  // keyboard.
+                  //
+                  // The keypad this replaced took half the screen of a phone
+                  // that also has to show the roster, and it could not be
+                  // filled by a barcode scanner or a keyboard case. The
+                  // system's keyboard is faster, is already the right shape for
+                  // a number, and comes with the owner's own input method.
+                  // The label follows the field, through the controller — so it
+                  // updates on every keystroke without rebuilding the screen
+                  // around it. A setState here would redraw the whole login
+                  // page for every digit.
+                  ValueListenableBuilder<TextEditingValue>(
+                    valueListenable: _pin,
+                    builder: (
+                      BuildContext context,
+                      TextEditingValue value,
+                      Widget? field,
+                    ) =>
+                        Semantics(
+                      label: l10n.loginFilledPINDigitsEntered(
+                        value.text.length.clamp(0, _pinLength),
+                        _pinLength,
+                      ),
+                      child: ExcludeSemantics(child: field),
+                    ),
+                    child: TextField(
+                      controller: _pin,
+                      focusNode: _pinFocus,
+                      autofocus: true,
+                      obscureText: true,
+                      keyboardType: TextInputType.number,
+                      textAlign: TextAlign.center,
+                      inputFormatters: <TextInputFormatter>[
+                        FilteringTextInputFormatter.digitsOnly,
+                        LengthLimitingTextInputFormatter(_pinLength),
+                      ],
+                      onChanged: _onPinChanged,
+                      onSubmitted: (_) => _tryLogin(),
+                      enabled: !_verifying,
+                      decoration: InputDecoration(
+                        labelText: l10n.loginPinLabel,
+                        hintText: '0' * _pinLength,
+                      ),
+                    ),
                   ),
-                  SizedBox(height: spacing.xs),
-                  // The pad is disabled while a PIN is being checked, so this is
-                  // where that is stated rather than being a dead pad.
+                  SizedBox(height: spacing.sm),
+                  // The field is disabled while a PIN is being checked, so this
+                  // is where that is stated rather than being a dead field.
                   Text(
                     _verifying ? 'Checking this PIN' : '',
                     textAlign: TextAlign.center,
@@ -432,9 +491,13 @@ class _SignInHeader extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final AppSpacing spacing = AppSpacing.of(context);
-    final TextTheme type = AppTypography.of(context);
 
-    return Row(
+    // The mark ABOVE the name rather than beside it: the name is the large
+    // title on the canvas, and a mark sitting beside it would either fight the
+    // title for the first line or push the name down to the app-bar size.
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      crossAxisAlignment: CrossAxisAlignment.start,
       children: <Widget>[
         const Image(
           image: AssetImage(
@@ -444,13 +507,8 @@ class _SignInHeader extends StatelessWidget {
           height: 36,
           fit: BoxFit.contain,
         ),
-        SizedBox(width: spacing.md),
-        Expanded(
-          child: Semantics(
-            header: true,
-            child: Text(shopName, style: type.headlineSmall),
-          ),
-        ),
+        SizedBox(height: spacing.md),
+        ScreenTitle(title: shopName, padding: EdgeInsets.zero),
       ],
     );
   }
@@ -851,189 +909,6 @@ class _WhoTile extends StatelessWidget {
 ///
 /// The dots are a visual echo of a keystroke, so the count is published as a
 /// value rather than left to four circles: four shapes is not something anyone
-/// can read at arm's length with confidence.
-class _PinDots extends StatelessWidget {
-  const _PinDots({required this.filled, required this.length});
-
-  final int filled;
-  final int length;
-
-  @override
-  Widget build(BuildContext context) {
-    final AppColors colors = AppColors.of(context);
-    final AppSpacing spacing = AppSpacing.of(context);
-
-    return Semantics(
-      liveRegion: true,
-      label: AppLocalizations.of(context)
-          .loginFilledPINDigitsEntered(filled, length),
-      child: ExcludeSemantics(
-        child: Row(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: <Widget>[
-            for (int index = 0; index < length; index++)
-              Padding(
-                padding: EdgeInsets.symmetric(horizontal: spacing.sm),
-                child: Container(
-                  width: spacing.xl,
-                  height: spacing.xl,
-                  decoration: BoxDecoration(
-                    shape: BoxShape.circle,
-                    color: index < filled ? colors.accent : Colors.transparent,
-                    border: Border.all(
-                      color:
-                          index < filled ? colors.accent : colors.outlineStrong,
-                      width: 2,
-                    ),
-                  ),
-                ),
-              ),
-          ],
-        ),
-      ),
-    );
-  }
-}
-
-/// The twelve keys, three across, laid out as rows rather than a grid.
-///
-/// A grid needs a fixed cell extent to know how tall it is, and a fixed extent
-/// on the one control that has to survive a 200% text scale is how digits get
-/// clipped. Rows of `Expanded` keys grow with the label instead.
-class _PinPad extends StatelessWidget {
-  const _PinPad({
-    required this.enabled,
-    required this.onDigit,
-    required this.onDelete,
-  });
-
-  /// False while a PIN is being checked, so the pad cannot queue a second
-  /// verification behind the first.
-  final bool enabled;
-
-  final ValueChanged<String> onDigit;
-  final VoidCallback onDelete;
-
-  /// Row-major. `null` is the empty fourth key of the last row: the pad is ten
-  /// digits plus delete, and a gap where a key is missing reads as a key that
-  /// failed to load.
-  static const List<List<String?>> _layout = <List<String?>>[
-    <String?>['1', '2', '3'],
-    <String?>['4', '5', '6'],
-    <String?>['7', '8', '9'],
-    <String?>[null, '0', 'del'],
-  ];
-
-  @override
-  Widget build(BuildContext context) {
-    final AppSpacing spacing = AppSpacing.of(context);
-
-    return Column(
-      children: <Widget>[
-        for (final List<String?> row in _layout)
-          Padding(
-            padding: EdgeInsets.only(bottom: spacing.sm),
-            child: Row(
-              children: <Widget>[
-                for (int index = 0; index < row.length; index++)
-                  Expanded(
-                    child: Padding(
-                      // The gap goes BETWEEN keys, not after the last one, so
-                      // the pad stays square inside its column.
-                      padding: index == row.length - 1
-                          ? EdgeInsets.zero
-                          : EdgeInsetsDirectional.only(end: spacing.sm),
-                      child: switch (row[index]) {
-                        null => const SizedBox.shrink(),
-                        'del' => _PinKey(
-                            semanticLabel: 'Delete the last digit',
-                            onPressed: enabled ? onDelete : null,
-                            isDelete: true,
-                          ),
-                        final String digit => _PinKey(
-                            // The label is the DISPLAY label plus the thing it
-                            // is: "Digit 4", not "4" and not "the fourth key".
-                            semanticLabel:
-                                AppLocalizations.of(context).loginDigit(digit),
-                            onPressed: enabled ? () => onDigit(digit) : null,
-                            digit: digit,
-                          ),
-                      },
-                    ),
-                  ),
-              ],
-            ),
-          ),
-      ],
-    );
-  }
-}
-
-/// One key.
-///
-/// The semantics node carries the label, the role, and the action, and the
-/// visual child is excluded. That is deliberate: a node that only has a label
-/// is a node a screen reader reads but cannot activate, and leaving the button's
-/// own semantics in place as well produces two nodes for one key.
-class _PinKey extends StatelessWidget {
-  const _PinKey({
-    required this.semanticLabel,
-    required this.onPressed,
-    this.digit,
-    this.isDelete = false,
-  });
-
-  final String semanticLabel;
-  final VoidCallback? onPressed;
-  final String? digit;
-  final bool isDelete;
-
-  @override
-  Widget build(BuildContext context) {
-    final AppColors colors = AppColors.of(context);
-    final AppShapes shapes = AppShapes.of(context);
-    final AppSpacing spacing = AppSpacing.of(context);
-    final TextTheme type = AppTypography.of(context);
-
-    final Widget glyph = isDelete
-        ? Icon(
-            Icons.backspace_outlined,
-            size: 22,
-            color: colors.onSurfaceVariant,
-            // Decorative: the parent node already says what this key does.
-            semanticLabel: '',
-          )
-        : Text(digit!, style: type.headlineSmall);
-
-    return Semantics(
-      button: true,
-      label: semanticLabel,
-      enabled: onPressed != null,
-      onTap: onPressed,
-      excludeSemantics: true,
-      child: ConstrainedBox(
-        constraints: BoxConstraints(minHeight: spacing.minTapTarget),
-        child: Material(
-          color: colors.surface,
-          shape: RoundedRectangleBorder(
-            borderRadius: shapes.controlRadius,
-            side: BorderSide(color: colors.outlineStrong),
-          ),
-          clipBehavior: Clip.antiAlias,
-          child: InkWell(
-            onTap: onPressed,
-            child: Center(
-              child: Padding(
-                padding: EdgeInsets.symmetric(vertical: spacing.md),
-                child: glyph,
-              ),
-            ),
-          ),
-        ),
-      ),
-    );
-  }
-}
 
 /// The measure of the pad and the roster above it.
 ///

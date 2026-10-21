@@ -17,6 +17,7 @@ import '../theme/app_spacing.dart';
 import '../theme/typography.dart';
 import '../ui/brand/simple_pos_mark.dart';
 import '../ui/components/controls.dart';
+import '../ui/components/screen_title.dart';
 import '../ui/components/status.dart';
 
 /// Creates the shop and its admin account, or adds a second shop to a device
@@ -345,7 +346,7 @@ class _SetupLockup extends StatelessWidget {
     // layout giving up something. Clamping the scale or shrinking the type would
     // defeat the very setting that caused the problem.
     return Wrap(
-      alignment: WrapAlignment.center,
+      alignment: WrapAlignment.start,
       crossAxisAlignment: WrapCrossAlignment.center,
       spacing: spacing.md,
       children: const <Widget>[
@@ -383,14 +384,13 @@ class _SetupHeading extends StatelessWidget {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: <Widget>[
-        Semantics(
-          header: true,
-          child: Text(
-            isAdditionalShop
-                ? AppLocalizations.of(context).settingsAddShopTitle
-                : 'Set up your shop',
-            style: type.headlineSmall,
-          ),
+        // The screen's NAME, large and on the canvas — the same title block
+        // every other screen opens with, left aligned rather than centred.
+        ScreenTitle(
+          title: isAdditionalShop
+              ? AppLocalizations.of(context).settingsAddShopTitle
+              : 'Set up your shop',
+          padding: EdgeInsets.zero,
         ),
         SizedBox(height: AppSpacing.of(context).sm),
         Text(
@@ -459,11 +459,11 @@ class _BackRow extends StatelessWidget {
       alignment: AlignmentDirectional.centerStart,
       child: TextButton.icon(
         onPressed: onBack,
-        // Adaptive: the same control points the way the reader does, and a
-        // hard-coded arrow is a screen that is wrong in half the world's
-        // languages. Not const: the adaptive set resolves per platform at
-        // build time.
-        icon: ExcludeSemantics(child: Icon(Icons.adaptive.arrow_back)),
+        // `arrow_back` is declared by Flutter with `matchTextDirection: true`,
+        // so the glyph mirrors itself under an RTL locale — the same control
+        // points the way the reader does, and the screen never has to choose
+        // between two icons.
+        icon: ExcludeSemantics(child: Icon(Icons.arrow_back)),
         label: const Text('Back'),
       ),
     );

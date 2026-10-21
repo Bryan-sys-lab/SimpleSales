@@ -10,6 +10,7 @@ import '../theme/app_spacing.dart';
 import '../theme/typography.dart';
 import '../ui/components/status.dart';
 import '../ui/components/surface.dart';
+import '../app_brand.dart';
 
 /// The last screen, when the app cannot open its own data.
 ///
@@ -73,8 +74,9 @@ class _DatabaseErrorScreenState extends State<DatabaseErrorScreen> {
     final FailureRecorder recorder = failureRecorder;
 
     final StringBuffer report = StringBuffer()
-      ..writeln('SimpleSales failure report');
-    for (final MapEntry<String, String> field in recorder.environment().entries) {
+      ..writeln('${SimplePosBrand.appName} failure report');
+    for (final MapEntry<String, String> field
+        in recorder.environment().entries) {
       report.writeln('${field.key}: ${field.value}');
     }
     report.writeln('trail: ${recorder.trail.crumbs.join(' > ')}');

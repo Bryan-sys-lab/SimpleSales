@@ -132,16 +132,80 @@ class EncryptedBackupService {
   /// Irreversibly removes the local decryption key and generated encrypted
   /// backup files. Shared/off-device copies may still exist and require KMS
   /// key destruction plus restore filtering for legal cryptographic erasure.
-  static Future<void> cryptographicEraseLocalBackups() async {
-    await _storage.delete(key: _keyName);
-    final dir = await getApplicationDocumentsDirectory();
-    // Async enumeration: `listSync` walks the whole directory synchronously
-    // and would stall the frame loop on a till with many retained backups.
-    final entities = await dir.list().toList();
-    for (final entity in entities) {
-      if (entity is File && entity.path.endsWith('.duka')) {
-        await entity.delete();
-      }
+  ///
+  /// ## WHY IT RETURNS A COUNT
+  ///
+  /// "The backups are erased" is a claim the owner cannot check. "Three
+  /// backup files were erased" is a claim they can, and the difference matters
+  /// on a till where the whole point of pressing the button is to be sure.
+  ///
+  /// ## WHY IT NEVER THROWS
+  ///
+  /// A missing documents directory, a file the OS has locked, a keystore that
+  /// refuses a delete: none of those is a reason to fail the whole operation
+  /// with nothing erased and nothing said. Each is counted and reported, and
+  /// the key — the part that actually makes the files unreadable — is deleted
+  /// first, so a failure part-way through still leaves the backups
+  /// undecryptable.
+  static Future<BackupErasureResult> cryptographicEraseLocalBackups() async {
+    // The key first. It is what makes every `.duka` file unreadable, and it is
+    // the part that cannot be recovered by restoring a file.
+    bool keyDeleted = true;
+    try {
+      await _storage.delete(key: _keyName);
+    } on Object catch (_) {
+      keyDeleted = false;
     }
+
+    int filesErased = 0;
+    final List<String> failures = <String>[];
+    try {
+      final dir = await getApplicationDocumentsDirectory();
+      // Async enumeration: `listSync` walks the whole directory synchronously
+      // and would stall the frame loop on a till with many retained backups.
+      final entities = await dir.list().toList();
+      for (final entity in entities) {
+        if (entity is File && entity.path.endsWith('.duka')) {
+          try {
+            await entity.delete();
+            filesErased++;
+          } on Object catch (_) {
+            failures.add(entity.path);
+          }
+        }
+      }
+    } on Object catch (_) {
+      // The directory could not be listed — a device with no documents folder,
+      // or a storage error. The key is already gone, so anything in there is
+      // unreadable regardless.
+      failures.add('directory');
+    }
+
+    return BackupErasureResult(
+      filesErased: filesErased,
+      keyDeleted: keyDeleted,
+      failures: failures.length,
+    );
   }
+}
+
+/// What an erasure of the local backups actually did.
+class BackupErasureResult {
+  const BackupErasureResult({
+    required this.filesErased,
+    required this.keyDeleted,
+    required this.failures,
+  });
+
+  /// How many `.duka` files were deleted.
+  final int filesErased;
+
+  /// Whether the decryption key was destroyed.
+  final bool keyDeleted;
+
+  /// How many things could not be removed.
+  final int failures;
+
+  /// Whether the operation fully succeeded.
+  bool get complete => keyDeleted && failures == 0;
 }

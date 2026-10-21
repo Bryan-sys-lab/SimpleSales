@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
 
@@ -257,6 +259,102 @@ class ScanOutcome {
     required String reason,
   }) =>
       ScanOutcome._(raw: raw, normalised: normalised, reason: reason);
+}
+
+/// The live channel between a camera scan and the till that opened it.
+///
+/// The camera screen does not stop to ask the till what to do with a code: it
+/// reads one, hands it over, and keeps reading. That means the till has to
+/// receive codes WHILE the scanner is open, not as a bundle when it closes —
+/// so the two share a session, and the session IS the channel.
+///
+/// The till creates the session, hands it to the scanner route, and adds each
+/// code to the cart as it arrives. The scanner never writes to the cart: it
+/// does not know what a code means, and a scanner that resolved products would
+/// give the app two answers to "what does this barcode mean?".
+class ScanSession {
+  ScanSession();
+
+  final StreamController<ScanResult> _codes =
+      StreamController<ScanResult>.broadcast();
+
+  /// The codes, as they are read.
+  Stream<ScanResult> get codes => _codes.stream;
+
+  int _count = 0;
+
+  /// How many codes have been read through this session.
+  int get count => _count;
+
+  /// Hands a code to the till.
+  ///
+  /// A code handed over after the session is closed is dropped rather than
+  /// thrown: the scanner may still be shutting down when the till gives up on
+  /// it, and a scan that arrives after the till stopped listening is a scan
+  /// nobody wants.
+  void add(ScanResult result) {
+    if (_codes.isClosed) return;
+    _count++;
+    _codes.add(result);
+  }
+
+  /// Closes the channel. The till owns the session, so the till closes it.
+  Future<void> dispose() => _codes.close();
+}
+
+/// How long a scanned code must be OUT OF VIEW before the camera will read it
+/// again.
+///
+/// Half a second, and the reason is the platform's own throttle: a camera
+/// reports the same label every 250ms for as long as that label stays in
+/// frame. Half a second is twice that interval, so a label held in frame is
+/// read exactly once and stays read-once however fast the frames come — and it
+/// is still short enough that a till reads two items a second, three times
+/// faster than the one item a second a till actually needs.
+const Duration kScanRereadWindow = Duration(milliseconds: 500);
+
+/// The camera's re-read guard.
+///
+/// A camera reports the same label over and over: the platform's throttle lets
+/// a code through every 250ms for as long as the label stays in frame. A till
+/// that added every one of those would charge the customer three times for one
+/// item, so a code is only accepted again after it has been OUT OF VIEW for
+/// [window].
+///
+/// The rule is deliberately about being SEEN rather than about being ACCEPTED:
+/// a code still in frame is seen on every frame, and that is exactly what
+/// keeps it suppressed until the cashier takes it away.
+class ScanGate {
+  ScanGate({this.window = kScanRereadWindow, DateTime Function()? clock})
+      : _clock = clock ?? DateTime.now;
+
+  /// How long a code must be out of view before it counts again.
+  final Duration window;
+
+  final DateTime Function() _clock;
+
+  /// When each code was last SEEN.
+  final Map<String, DateTime> _lastSeen = <String, DateTime>{};
+
+  /// Whether [code] is a NEW reading, rather than the same label again.
+  bool accept(String code) {
+    final DateTime now = _clock();
+    _forget(now);
+    final DateTime? seen = _lastSeen[code];
+    _lastSeen[code] = now;
+    if (seen == null) return true;
+    return now.difference(seen) >= window;
+  }
+
+  /// Drops the codes that have been out of view long enough to be forgotten.
+  ///
+  /// Without this the map would grow for as long as the till is open, holding
+  /// one entry per code the shop has ever scanned.
+  void _forget(DateTime now) {
+    _lastSeen.removeWhere(
+      (String code, DateTime seen) => now.difference(seen) >= window,
+    );
+  }
 }
 
 /// Resolves codes against the local catalogue.

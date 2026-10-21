@@ -47,6 +47,7 @@ class AccountDeletionReport {
     required this.completedAt,
     required this.remoteDeleted,
     required this.compacted,
+    this.localAccountsDeleted = false,
   });
 
   /// A random identifier, so two deletions are distinguishable.
@@ -64,6 +65,14 @@ class AccountDeletionReport {
   /// plaintext may still sit in free pages — a materially different situation
   /// from a clean erasure, and reported rather than hidden.
   final bool compacted;
+
+  /// Whether the local cashier logins were DELETED, rather than only sealed.
+  ///
+  /// Sealing makes them unusable; deleting removes the rows, and with them the
+  /// PIN hashes that would otherwise still sit in the file. The owner chooses
+  /// this, because the two are not the same promise: a till whose cashiers can
+  /// still sign in is a till somebody else can use.
+  final bool localAccountsDeleted;
 }
 
 /// Thrown when a deletion cannot start, before anything has been erased.
@@ -147,6 +156,7 @@ class AccountDeletionService {
   /// not know the admin PIN. Nothing is erased unless that check passes.
   static Future<AccountDeletionReport> deleteAccount({
     required String pin,
+    bool deleteLocalAccounts = false,
   }) async {
     if (pin.trim().isEmpty) {
       throw const AccountDeletionException(AccountDeletionFailure.wrongPin);
@@ -193,7 +203,10 @@ class AccountDeletionService {
 
     final String deletionId;
     try {
-      deletionId = await _eraseLocalData(derived);
+      deletionId = await _eraseLocalData(
+        derived,
+        deleteLocalAccounts: deleteLocalAccounts,
+      );
     } on Object catch (error) {
       throw AccountDeletionException(
         AccountDeletionFailure.localErasureFailed,
@@ -202,10 +215,15 @@ class AccountDeletionService {
     }
 
     // The key material is destroyed HERE, the moment the ciphertext has
-    // committed, and before the network round trip.
+    // committed.
     //
     // Destroying first means the window is the instant between the transaction
     // committing and the delete returning, which no remote call can straddle.
+    //
+    // It must not THROW, though: by this point the data is already erased, so
+    // a failure in the cleanup would abort the deletion halfway and leave the
+    // owner with a blanked app, no receipt and no explanation — which is
+    // exactly the failure this ordering was written to avoid.
     await _destroyKeyMaterial();
 
     // Follow-up compaction. Checkpoint the WAL first so the VACUUM can actually
@@ -228,6 +246,11 @@ class AccountDeletionService {
     // failure to reach the server leaves the owner already protected rather than
     // still online while the owner is told it is gone. The failure is recorded
     // as pending so it can be retried on launch.
+    //
+    // The SESSION is still alive here, and that is deliberate: the delete
+    // request carries the bearer token, and a deletion sent without it is a
+    // request the server is entitled to refuse. The session is torn down
+    // locally AFTER the request, not before it.
     var remoteDeleted = false;
     try {
       remoteDeleted = await _deleteRemoteAccount(email: owner.email);
@@ -242,12 +265,37 @@ class AccountDeletionService {
       }
     }
 
+    // The session goes LAST, and LOCALLY.
+    //
+    // Locally, because ending the provider's session means opening the system
+    // browser at the provider's logout page, which lands the owner on a LOGIN
+    // screen — with a "Register" option — in the middle of deleting the
+    // account they are trying to close. An app that is erasing itself must not
+    // answer that with a sign-up form.
+    //
+    // Last, because the delete request above needs the token.
+    await _clearSessionLocally();
+
     return AccountDeletionReport(
       deletionId: deletionId,
       completedAt: DateTime.now().toUtc(),
       remoteDeleted: remoteDeleted,
       compacted: _compactionCompleted,
+      localAccountsDeleted: deleteLocalAccounts,
     );
+  }
+
+  /// Tears down the session without opening the provider's logout page.
+  ///
+  /// Best effort: the account is already deleted and the local data is already
+  /// unreadable, so a failure here cannot brick anything — it can only leave a
+  /// token on a device whose account no longer exists.
+  static Future<void> _clearSessionLocally() async {
+    try {
+      await OidcService.clearLocalSession();
+    } catch (_) {
+      // Nothing here may throw. The deletion has already happened.
+    }
   }
 
   /// The deletion id, which is also the row written to the audit log so the
@@ -262,7 +310,10 @@ class AccountDeletionService {
   /// walks the real schema after a deletion asserting that no column in ANY
   /// table still holds one of the plaintext values. A column added later that
   /// is not declared here fails that test rather than surviving quietly.
-  static Future<String> _eraseLocalData(List<int> keyBytes) async {
+  static Future<String> _eraseLocalData(
+    List<int> keyBytes, {
+    required bool deleteLocalAccounts,
+  }) async {
     final db = await DatabaseHelper.instance.database;
     final key = await _cipher.newSecretKeyFromBytes(keyBytes);
     final now = DateTime.now().toUtc().toIso8601String();
@@ -277,6 +328,22 @@ class AccountDeletionService {
       await _eraseColumn(txn, 'staff', 'name', key);
       await _eraseColumn(txn, 'staff', 'pin_hash', key);
       await _eraseColumn(txn, 'staff', 'username', key);
+
+      // AND THEN THE LOGINS THEMSELVES, when the owner asked for it.
+      //
+      // Sealing the columns above makes the logins unusable: the PIN hash is
+      // ciphertext and the credential cache is destroyed with the key material.
+      // But the ROWS are still there, and a row that says "there was a cashier
+      // here" is a fact the owner asked to have erased.
+      //
+      // So the rows go too. The delete happens after the sealing, not instead
+      // of it: a `DELETE` leaves the bytes in the file until something
+      // overwrites that page, and the vacuum that follows this transaction is
+      // what reclaims them. Doing both means the row is gone AND the bytes it
+      // left behind are unreadable in the window before the vacuum.
+      if (deleteLocalAccounts) {
+        await txn.delete('staff');
+      }
 
       // Names denormalised onto the ledger rows when the sale was written —
       // and onto the other three tables that record the same person. `shifts`
@@ -469,11 +536,11 @@ class AccountDeletionService {
     return 'erased:${base64Url.encode(joined)}';
   }
 
-static String _newDeletionId(String now) {
-  final random = Random.secure();
-  return 'del-${now.replaceAll(':', '')}'
-      '-${base64Url.encode(List<int>.generate(6, (_) => random.nextInt(256)))}';
-}
+  static String _newDeletionId(String now) {
+    final random = Random.secure();
+    return 'del-${now.replaceAll(':', '')}'
+        '-${base64Url.encode(List<int>.generate(6, (_) => random.nextInt(256)))}';
+  }
 
   static Future<List<int>> _erasureSalt() async {
     final existing = await _storage.read(key: _saltKey);
@@ -495,13 +562,34 @@ static String _newDeletionId(String now) {
   /// unreadable — by this device, by a later restore, and by anyone who took a
   /// copy.
   ///
-  /// The session is cleared for the same reason. Without it the shop still
-  /// holds a valid bearer token and a tenant binding for an account that no
-  /// longer exists, `isBackendLinked` stays true, and the six-hourly auto-sync
-  /// keeps posting the shop's inventory and staff under it. A deleted account
-  /// must be unreachable, not merely unlinked.
+  /// ## WHY IT MUST NOT THROW
+  ///
+  /// By the time this runs, the personal data is ALREADY erased. A failure
+  /// here used to abort the whole deletion: the owner was left with a till
+  /// that could no longer sign anybody in, no receipt, and an error saying
+  /// "nothing was changed" — which was a lie, because everything had been.
+  ///
+  /// So every step here is best-effort and the whole thing is wrapped. The
+  /// erasure has happened; the cleanup cannot un-happen it.
+  ///
+  /// ## THE SESSION
+  ///
+  /// The session is cleared for the same reason the key material is destroyed:
+  /// without it the shop still holds a valid bearer token and a tenant binding
+  /// for an account that no longer exists, `isBackendLinked` stays true, and
+  /// the six-hourly auto-sync keeps posting the shop's inventory and staff
+  /// under it. A deleted account must be unreachable, not merely unlinked.
+  ///
+  /// It is cleared LOCALLY — see [_clearSessionLocally] — and not by ending the
+  /// provider's session, which would open a browser.
   static Future<void> _destroyKeyMaterial() async {
-    await _storage.delete(key: _saltKey);
+    try {
+      await _storage.delete(key: _saltKey);
+    } on Object catch (_) {
+      // Best effort. The salt's absence is what makes the ciphertext
+      // unreadable, but a keystore that refuses a delete cannot be allowed to
+      // undo the erasure that has already happened.
+    }
     // The offline staff credential cache holds a PBKDF2 hash of every staff PIN
     // PLUS each username in the clear, in the OS keystore. `login_screen`
     // verifies against it as a fallback after `AuthService.verifyPin` fails, so
@@ -510,21 +598,18 @@ static String _newDeletionId(String now) {
     // which nothing did, so it was a live credential store no path cleaned.
     // The erasure now names it, and the sign-out clearing it claims is a
     // separate gap for the owner session.
-    await StaffCredentialCache.clearAll();
+    try {
+      await StaffCredentialCache.clearAll();
+    } on Object catch (_) {
+      // Best effort, as above.
+    }
     // Also destroys the key the local encrypted backups were written with,
     // which is what makes those files unreadable too.
-    await EncryptedBackupService.cryptographicEraseLocalBackups();
-
-    // The session first, then the tenant binding: `OidcService.logout` tells
-    // the provider to drop it and clears the stored tokens, and clearing the
-    // tenant makes the shop visibly unlinked rather than quietly still linked.
     try {
-      await OidcService.logout();
-    } catch (_) {
-      // The local credential clearing inside `logout` runs in a `finally`, so
-      // this is defensive rather than load-bearing. Nothing here may throw.
+      await EncryptedBackupService.cryptographicEraseLocalBackups();
+    } on Object catch (_) {
+      // Best effort. The backups are unreadable without the key either way.
     }
-    await OidcService.clearAppSession();
 
     // Erase every product photograph and the account avatar: a deleted account
     // leaves no photographs behind, in any workspace.
@@ -536,11 +621,15 @@ static String _newDeletionId(String now) {
       // unreadable without the key anyway.
     }
 
-    await WorkspaceService.register(
-      workspaceKey: await WorkspaceService.activeWorkspaceKey(),
-      tenantId: null,
-      shopName: (await WorkspaceService.activeShopName()) ?? 'Shop',
-    );
+    try {
+      await WorkspaceService.register(
+        workspaceKey: await WorkspaceService.activeWorkspaceKey(),
+        tenantId: null,
+        shopName: (await WorkspaceService.activeShopName()) ?? 'Shop',
+      );
+    } catch (_) {
+      // Best effort, as above.
+    }
   }
 
   static Future<bool> _deleteRemoteAccount({required String email}) async {
@@ -562,8 +651,16 @@ static String _newDeletionId(String now) {
 
   /// Clears any earlier pending-deletion record. A new deletion attempt
   /// supersedes the old one because the local data is about to be destroyed.
+  ///
+  /// Best effort, and it happens BEFORE anything is erased: a keystore that
+  /// refuses a delete must not stop the owner from deleting their account.
   static Future<void> _clearPendingDeletion() async {
-    await _storage.delete(key: _pendingDeletionKey);
+    try {
+      await _storage.delete(key: _pendingDeletionKey);
+    } on Object catch (_) {
+      // Nothing here may throw. The deletion has not started yet, and refusing
+      // to clear an old record is not a reason to refuse the new one.
+    }
   }
 
   /// The email of an account whose remote deletion is still pending, or null.

@@ -1,10 +1,10 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
-import '../app_brand.dart';
 import '../theme/app_colors.dart';
 import '../theme/app_spacing.dart';
 import '../theme/typography.dart';
+import '../ui/brand/nerva_wordmark.dart';
 import '../ui/brand/simple_pos_mark.dart';
 
 /// The startup page.
@@ -25,16 +25,21 @@ class SplashScreen extends StatelessWidget {
   Widget build(BuildContext context) {
     final AppSpacing spacing = AppSpacing.of(context);
     final TextTheme type = AppTypography.of(context);
+    final AppColors colors = AppColors.of(context);
 
     return AnnotatedRegion<SystemUiOverlayStyle>(
-      // The one dark surface in the app, and the only place the status bar's
-      // icon brightness has to be stated by hand: the theme derives it from
-      // `Theme.brightness`, which on the light theme means dark icons drawn on
-      // an ink background. Every other screen sits on the canvas and inherits
-      // the right answer; this one does not.
-      value: SystemUiOverlayStyle.light,
+      // Stated by hand because the splash paints the CANVAS, and the canvas is
+      // near-black at night and near-white by day: the icon brightness has to
+      // follow the theme rather than be pinned to one.
+      value: Theme.of(context).brightness == Brightness.dark
+          ? SystemUiOverlayStyle.light
+          : SystemUiOverlayStyle.dark,
       child: Scaffold(
-        backgroundColor: kBrandInk,
+        // The THEME's canvas, not a brand ink constant. The splash is the first
+        // frame of the app and it has to be the same surface every other screen
+        // sits on — a splash in a different colour from the app it introduces
+        // reads as two products.
+        backgroundColor: colors.canvas,
         body: SafeArea(
           child: Center(
             child: SingleChildScrollView(
@@ -58,23 +63,26 @@ class SplashScreen extends StatelessWidget {
                       fit: BoxFit.contain,
                     ),
                     SizedBox(height: spacing.xl),
-                    const SimplePosWordmark(color: kBrandPaper),
+                    SimplePosWordmark(color: colors.onSurface),
                     SizedBox(height: spacing.sm),
                     Text(
                       'Point of sale, built for the till it runs on',
                       textAlign: TextAlign.center,
                       style: type.bodyMedium?.copyWith(
-                        color: kBrandPaper.withValues(alpha: 0.78),
+                        color: colors.onSurface.withValues(alpha: 0.78),
                       ),
                     ),
                     SizedBox(height: spacing.xxl),
                     const _SplashProgress(),
                     SizedBox(height: spacing.xxl),
-                    Text(
-                      SimplePosBrand.poweredByTag,
-                      textAlign: TextAlign.center,
-                      style: type.labelSmall?.copyWith(
-                        color: kBrandPaper.withValues(alpha: 0.55),
+                    // The VENDOR'S MARK, not the vendor's name in the app's
+                    // typeface: a brand set in the wrong face is a line of
+                    // somebody else's copy.
+                    Center(
+                      child: PoweredByNerva(
+                        style: type.labelSmall?.copyWith(
+                          color: colors.onSurface.withValues(alpha: 0.55),
+                        ),
                       ),
                     ),
                   ],
@@ -121,7 +129,7 @@ class _SplashProgress extends StatelessWidget {
         child: LinearProgressIndicator(
           value: reduced ? _restingFraction : null,
           color: colors.accent,
-          backgroundColor: kBrandPaper.withValues(alpha: 0.22),
+          backgroundColor: colors.onSurface.withValues(alpha: 0.22),
         ),
       ),
     );

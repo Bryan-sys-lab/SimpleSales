@@ -23,13 +23,14 @@ import '../widgets/sell_page.dart';
 import '../routing/home_shell.dart';
 import '../widgets/variant_catalogue.dart';
 import '../l10n/generated/app_localizations.dart';
+import '../ui/components/success_view.dart';
 import '../theme/app_spacing.dart';
+import '../theme/typography.dart';
 import '../ui/layout/page.dart';
 import '../models/models.dart';
 import '../db/database_helper.dart';
 import '../utils/money.dart';
 import '../utils/units.dart';
-import '../ui/components/brand_header.dart';
 
 class SellScreen extends StatefulWidget {
   const SellScreen({super.key});
@@ -129,13 +130,35 @@ class _SellScreenState extends State<SellScreen>
     super.dispose();
   }
 
+  /// Why the catalogue could not be read, or null.
+  ///
+  /// A till cannot sell without a catalogue, so this takes the pane over
+  /// rather than being a toast: the error says what happened, and the retry
+  /// button is the one thing that can fix it.
+  String? _catalogueError;
+
   Future<void> _loadProducts() async {
     final db = DatabaseHelper.instance;
-    final results = await Future.wait([
-      db.getProducts(),
-      VariantCatalogue.load(),
-      db.getShotCups(),
-    ]);
+    final List<Object> results;
+    try {
+      results = await Future.wait<Object>([
+        db.getProducts(),
+        VariantCatalogue.load(),
+        db.getShotCups(),
+      ]);
+    } on Object {
+      // The read failed. Without this the loader's future ended in an
+      // unhandled error and `_loading` stayed true FOREVER, so the pane
+      // showed a spinner that never stopped — a till telling the cashier to
+      // wait for something that was never going to arrive.
+      if (!mounted) return;
+      setState(() {
+        _catalogueError =
+            AppLocalizations.of(context).sellCatalogueLoadFailedMessage;
+        _loading = false;
+      });
+      return;
+    }
     final products = results[0] as List<Product>;
     final catalogue = results[1] as VariantCatalogue;
     final cups = results[2] as List<ShotCup>;
@@ -147,6 +170,8 @@ class _SellScreenState extends State<SellScreen>
         _variants = catalogue;
         _shots = shots;
         _loading = false;
+        // The catalogue is readable again, so the error has gone.
+        _catalogueError = null;
       });
     }
   }
@@ -368,65 +393,85 @@ class _SellScreenState extends State<SellScreen>
     }
   }
 
+  /// The codes waiting to be added to the cart.
+  ///
+  /// A camera that keeps reading produces codes faster than a database lookup
+  /// can answer, so they queue here rather than being dropped: the second
+  /// scan of a trolley must not be the one that is lost.
+  final List<ScanResult> _scanQueue = <ScanResult>[];
+
   /// Handles a code that arrived from a wedge scanner or the camera.
   ///
   /// Both sources funnel through here so a product added by scan is
   /// indistinguishable from one added by tapping the tile — same portion
   /// default, same stock re-validation, same merge into an existing line.
   ///
+  /// The codes are applied ONE AT A TIME, in the order they were read. A
+  /// camera reading continuously hands over the next code while the previous
+  /// one is still being looked up, and that code waits its turn instead of
+  /// being dropped on the floor.
+  Future<void> _handleScan(ScanResult scan) async {
+    _scanQueue.add(scan);
+    if (_scanInFlight) return;
+    _scanInFlight = true;
+    try {
+      while (_scanQueue.isNotEmpty) {
+        await _applyScan(_scanQueue.removeAt(0));
+      }
+    } finally {
+      _scanInFlight = false;
+    }
+  }
+
+  /// Adds ONE scanned code to the cart.
+  ///
   /// Resolved through `getScanTarget` rather than by barcode alone, because a
   /// code can belong to the product *or* to one of its variants and the two sell
   /// differently: a variant's code must add that variant, at the variant's price,
   /// out of the variant's stock. Resolving to the product and stopping there is
-
-  Future<void> _handleScan(ScanResult scan) async {
-    if (_scanInFlight) return;
-    _scanInFlight = true;
-    try {
-      final target =
-          await DatabaseHelper.instance.getScanTarget(scan.normalised);
-      if (!mounted) return;
-      if (target == null) {
-        final problem = Barcode.rejectionReason(scan.normalised);
-        // Names the variant case in the same message, because a code that was
-        // never attached to anything is usually a code the owner typed into the
-        // wrong field — a variant's code belongs on that variant.
-        final message =
-            problem ?? AppLocalizations.of(context).sellScanNoProductBarcode;
-        _announceStatus(message);
-        ScaffoldMessenger.of(context)
-            .showSnackBar(SnackBar(content: Text(message)));
-        return;
-      }
-      final product = target.product;
-      final variant = target.variant;
-      if (variant == null && _variants.sellsAsVariants(product)) {
-        // The product's own code on a product that is only sellable as one of
-        // its variants. Refused out loud: adding the parent here would charge
-        // the parent's price for something the owner never priced, and the
-        // cashier would only find out at the stock count.
-        final message = AppLocalizations.of(context)
-            .sellScanVariantOnlyMessage(product.name);
-        _announceStatus(message);
-        ScaffoldMessenger.of(context)
-            .showSnackBar(SnackBar(content: Text(message)));
-        return;
-      }
-      if (variant != null && variant.stockQty <= 0) {
-        final message = AppLocalizations.of(context)
-            .sellScanVariantOutOfStockMessage(variant.label);
-        _announceStatus(message);
-        ScaffoldMessenger.of(context)
-            .showSnackBar(SnackBar(content: Text(message)));
-        return;
-      }
-      // A scan is a whole unit of whatever it resolved to. A sheet of choices
-      // would cost one modal per label, which is unusable at a till; a half or
-      // a different size is changed on the cart line instead.
-      await _addToCartDirect(product, 'full', variant: variant);
-    } finally {
-      _scanInFlight = false;
+  /// charging the wrong price for the wrong thing.
+  Future<void> _applyScan(ScanResult scan) async {
+    final target =
+        await DatabaseHelper.instance.getScanTarget(scan.normalised);
+    if (!mounted) return;
+    if (target == null) {
+      final problem = Barcode.rejectionReason(scan.normalised);
+      // Names the variant case in the same message, because a code that was
+      // never attached to anything is usually a code the owner typed into the
+      // wrong field — a variant's code belongs on that variant.
+      final message =
+          problem ?? AppLocalizations.of(context).sellScanNoProductBarcode;
+      _announceStatus(message);
+      ScaffoldMessenger.of(context)
+          .showSnackBar(SnackBar(content: Text(message)));
+      return;
     }
+    final product = target.product;
+    final variant = target.variant;
+    if (variant == null && _variants.sellsAsVariants(product)) {
+      // The product's own code on a product that is only sellable as one of
+      // its variants. Refused out loud: adding the parent here would charge
+      // the parent's price for something the owner never priced, and the
+      // cashier would only find out at the stock count.
+      final message = AppLocalizations.of(context)
+          .sellScanVariantOnlyMessage(product.name);
+      _announceStatus(message);
+      ScaffoldMessenger.of(context)
+          .showSnackBar(SnackBar(content: Text(message)));
+      return;
+    }
+    if (variant != null && variant.stockQty <= 0) {
+      final message = AppLocalizations.of(context)
+          .sellScanVariantOutOfStockMessage(variant.label);
+      _announceStatus(message);
+      ScaffoldMessenger.of(context)
+          .showSnackBar(SnackBar(content: Text(message)));
+      return;
+    }
+    // A scan is a whole unit of whatever it resolved to. A sheet of choices
+    // would cost one modal per label, which is unusable at a till; a half or
+    // a different size is changed on the cart line instead.
+    await _addToCartDirect(product, 'full', variant: variant);
   }
 
   /// Screen-level key handler for hardware wedge scanners.
@@ -451,13 +496,26 @@ class _SellScreenState extends State<SellScreen>
     // The camera surface itself is deliberately a ROUTE rather than a pushed
     // `Navigator` page, so deep linking can reach it and the back button from
     // inside the viewfinder leaves the till.
+    //
+    // The scanner keeps reading until the operator closes it, so the codes
+    // arrive WHILE it is open. The session is the channel between the two:
+    // the scanner writes each code into it as it is read, and the till adds
+    // each code to the cart as it lands. A scanner that stopped to hand back
+    // one code and waited to be asked again would make a trolley take a
+    // hundred taps.
+    final ScanSession session = ScanSession();
+    final StreamSubscription<ScanResult> subscription =
+        session.codes.listen((ScanResult scan) {
+      unawaited(_handleScan(scan));
+    });
+
     try {
       final GoRouter router = GoRouter.of(context);
-      final ScanResult? scan = await router.push<ScanResult>(Routes.cameraScan);
-      // A null result is the user backing out, which is its own outcome and not a
-      // failed scan. There is nothing to add to the cart.
-      if (scan == null) return;
-      await _handleScan(scan);
+      // The popped copy is ignored ON PURPOSE: it is the list the scanner
+      // hands back on its way out, for a route opened without a till behind
+      // it. This till has already had every code live, and adding them again
+      // would sell the same item twice.
+      await router.push<List<ScanResult>>(Routes.cameraScan, extra: session);
     } catch (e) {
       if (!mounted) return;
       // The message names what to do NEXT, not what broke: a cashier mid-sale
@@ -469,6 +527,9 @@ class _SellScreenState extends State<SellScreen>
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text(l10n.sellScanCameraError)),
       );
+    } finally {
+      await subscription.cancel();
+      await session.dispose();
     }
   }
 
@@ -990,11 +1051,17 @@ class _SellScreenState extends State<SellScreen>
         });
         _loadProducts(); // Refresh stock
         if (!mounted) return;
-        ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-          content: Text(!change.isNegative
-              ? 'Sale recorded: ${formatMoney(_total)} · Change ${formatMoney(change)}'
-              : 'Sale recorded: ${formatMoney(_total)}'),
-        ));
+        // The sale's own screen, with the amount and the change.
+        //
+        // A snackbar says "done" and vanishes in four seconds, and it
+        // overlays the till: the cashier is looking at the money they owe,
+        // not at a card in the corner. The change has to be HANDED OVER, and
+        // the amount has to be READ, and both of those take longer than a
+        // snackbar lives.
+        await _showSaleComplete(
+          method: AppLocalizations.of(context).sellCompletePaidCash,
+          change: change.isNegative ? null : formatMoney(change),
+        );
       }
       // The sale is committed. Everything below is best-effort and must not be
       // able to fail the checkout it is reporting on — a till that has taken the
@@ -1013,6 +1080,41 @@ class _SellScreenState extends State<SellScreen>
     } finally {
       if (mounted) setState(() => _processingPayment = false);
     }
+  }
+
+  /// The moment the sale is done: the amount, the change, and one button.
+  ///
+  /// A SHEET rather than a route: it is the end of a transaction, not a
+  /// place. The cashier taps "Next sale" and is back on the till with an
+  /// empty cart in one tap — a route would put a back button between the
+  /// cashier and the next customer.
+  ///
+  /// Dismissable by tapping outside it and by dragging it down, so a sheet
+  /// that somehow cannot be dismissed can never hold the till hostage.
+  Future<void> _showSaleComplete({
+    required String method,
+    String? change,
+  }) async {
+    final l10n = AppLocalizations.of(context);
+    if (!mounted) return;
+    await showModalBottomSheet<void>(
+      context: context,
+      isScrollControlled: true,
+      // The sheet covers most of the screen: the amount is the answer to the
+      // question the cashier came here for, and it is read at arm's length
+      // while they count the change out.
+      constraints: const BoxConstraints(maxWidth: 560),
+      builder: (BuildContext sheetContext) => SafeArea(
+        child: SuccessView(
+          title: l10n.sellCompleteTitle,
+          message: method,
+          amountLabel: formatMoney(_total),
+          detail: change == null ? null : l10n.sellCompleteChange(change),
+          onNext: () => Navigator.pop(sheetContext),
+          nextLabel: l10n.sellCompleteNext,
+        ),
+      ),
+    );
   }
 
   /// Prints the receipt and reconciles the tax invoice for a committed sale.
@@ -1044,8 +1146,7 @@ class _SellScreenState extends State<SellScreen>
   Future<PrintResult> _printReceipt(int saleId, PrinterConfig config,
       {bool etimsPending = false}) async {
     final state = context.read<AppState>();
-    final saleRow =
-        await DatabaseHelper.instance.getSaleRowById(saleId);
+    final saleRow = await DatabaseHelper.instance.getSaleRowById(saleId);
     final vatRate = saleRow == null
         ? await DatabaseHelper.instance.getVatRatePercent()
         : await DatabaseHelper.instance.vatRateForSale(saleRow);
@@ -1389,16 +1490,22 @@ class _SellScreenState extends State<SellScreen>
           }
           _announceStatus('M-Pesa payment successful. Sale recorded.');
           if (!mounted) return;
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(
-                content: Text(
-                    AppLocalizations.of(context).sellMpesaPaymentSuccessful)),
-          );
           setState(() {
             _cart.clear();
             _rebuildReservations();
           });
           _loadProducts();
+          if (!mounted) return;
+          // The same success screen the cash route shows.
+          //
+          // The M-Pesa branch had its own confirmation, which is how two
+          // checkout routes end up looking like two different apps. There is
+          // one moment at the end of a sale, and it looks the same whichever
+          // way the money moved.
+          await _showSaleComplete(
+            method: AppLocalizations.of(context).sellCompletePaidMpesa,
+            change: null,
+          );
         } else {
           // Only a definitive decline means the push can safely be retried, so
           // only then does the guard row go. On a timeout the outcome is still
@@ -1479,8 +1586,12 @@ class _SellScreenState extends State<SellScreen>
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: <Widget>[
-                // Brand strip at the head of the till: identity beside the sale,
-                // once, not repeated inside every pane.
+                // The screen's own name, on the canvas.
+                //
+                // It used to be a brand strip — a logo and the wordmark, and
+                // no name for the screen. The shell's bar carries the mark
+                // now, and the till needs its rows: this line is the one
+                // thing above the catalogue that says what the screen is.
                 Padding(
                   // The page's gutter, from the shared helper, so the till's
                   // chrome lines up with the dashboard's.
@@ -1491,14 +1602,10 @@ class _SellScreenState extends State<SellScreen>
                     bottom: spacing.sm,
                   ),
                   child: Semantics(
-                    image: true,
-                    label: 'SimpleSales',
-                    child: ExcludeSemantics(
-                      child: BrandHeader(
-                        markSize: 26,
-                        gap: spacing.md,
-                        showWordmark: true,
-                      ),
+                    header: true,
+                    child: Text(
+                      l10n.navSell,
+                      style: AppTypography.of(context).titleLarge,
                     ),
                   ),
                 ),
@@ -1527,9 +1634,12 @@ class _SellScreenState extends State<SellScreen>
                       scanning: _scanInFlight,
                       loading: _loading,
                       items: <ProductTileData>[
-                        for (final Product p in filteredProducts) _tileDataFor(p),
+                        for (final Product p in filteredProducts)
+                          _tileDataFor(p),
                       ],
                       onProduct: _addToCart,
+                      error: _catalogueError,
+                      onRetry: _loadProducts,
                     ),
                     cart: SellCartPane(
                       lines: _cartLines(l10n),

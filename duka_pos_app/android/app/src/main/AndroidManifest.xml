@@ -59,11 +59,21 @@
     </queries>
 
     <!-- Letting the OS install an APK this app downloaded.
-         Needed only from API 26, which is why it is capped: on older releases
-         the permission exists and is granted implicitly at install time. -->
+         Needed only FROM API 26, which is why the floor is 26 and there is no
+         ceiling: below API 26 the permission does not exist and the user
+         granted "unknown sources" as a global setting, so there is nothing to
+         declare.
+
+         The direction of that bound is load-bearing and was previously
+         inverted. `maxSdkVersion="25"` declared the permission for the devices
+         that do NOT enforce it and withheld it from every device that does:
+         Android 8.0 and up, which is effectively all of them. The in-app
+         updater's `canRequestPackageInstalls()` then answered false on every
+         modern handset and the updater could never install anything — a
+         feature that looked present in the code and was dead in the field. -->
 
     <uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES"
-        android:maxSdkVersion="25"/>
+        android:minSdkVersion="26"/>
 
     <application
         android:label="SimpleSales"

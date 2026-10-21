@@ -17,7 +17,7 @@ abstract final class Routes {
   const Routes._();
 
   // ------------------------------------------------------------ the shell
-   // Six branches. Reports is not one of them: it was a seventh tab whose content
+  // Six branches. Reports is not one of them: it was a seventh tab whose content
   // overlapped Analytics closely enough that a cashier's "Reports" and a
   // manager's "Reports" opened different-looking screens with the same numbers.
   // It is now a view *inside* Analytics, at /analytics/reports.
@@ -54,6 +54,9 @@ abstract final class Routes {
   static const String setup = '/setup';
   static const String onboarding = '/onboarding';
 
+  /// The permissions step, after the walkthrough.
+  static const String permissions = '/permissions';
+
   /// Deep-link identity that must survive process death.
   static String product(String id) => '/inventory/product/$id';
 
@@ -70,15 +73,13 @@ abstract final class Routes {
 /// with the session. An index is how a low-stock tile ends up opening Settings.
 enum AppDestination {
   dashboard('navDashboard', 'navDashboardShort'),
-  sell('navSell', 'navSellShort',
-      imageAsset:
-          'assets/branding/stitch_simple_pos_launcher_icon/simple_pos_till_action_s_icon/screen.png'),
+  sell('navSell', 'navSellShort'),
   inventory('navInventory', 'navInventoryShort'),
   analytics('navAnalytics', 'navAnalyticsShort'),
   settings('navSettings', 'navSettingsShort'),
   support('navSupport', 'navSupportShort');
 
-  const AppDestination(this.labelKey, this.shortLabelKey, {this.imageAsset});
+  const AppDestination(this.labelKey, this.shortLabelKey);
 
   /// The ARB key for the permanent label.
   ///
@@ -92,8 +93,6 @@ enum AppDestination {
 
   /// The ARB key for the collapsed rail, where three words do not fit.
   final String shortLabelKey;
-
-  final String? imageAsset;
 
   /// The permanent label, in the active locale.
   String label(AppLocalizations l10n) => l10n.byKey(labelKey);
@@ -117,7 +116,9 @@ enum AppDestination {
   /// and a second silhouette adds nothing a screen reader can announce.
   IconData get icon => switch (this) {
         AppDestination.dashboard => Icons.space_dashboard_outlined,
-        AppDestination.sell => Icons.point_of_sale_outlined,
+        // A trolley, because that is what "sell" means to a shopkeeper, and
+        // because it reads at 21dp where a till icon does not.
+        AppDestination.sell => Icons.shopping_cart_outlined,
         AppDestination.inventory => Icons.inventory_2_outlined,
         AppDestination.analytics => Icons.insights_outlined,
         AppDestination.settings => Icons.tune_outlined,

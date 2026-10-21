@@ -91,7 +91,8 @@ void main() {
       expect(find.text('KRA refused 1 receipt'), findsNothing);
     });
 
-    testWidgets('the cancel (X) button dismisses one category while '
+    testWidgets(
+        'the cancel (X) button dismisses one category while '
         'leaving the others', (tester) async {
       tester.useDevice(Device.small);
       await tester.pumpApp(

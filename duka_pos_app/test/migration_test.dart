@@ -1623,7 +1623,8 @@ void main() {
       return db;
     }
 
-    test('the column exists after the upgrade, and old rows read as 0', () async {
+    test('the column exists after the upgrade, and old rows read as 0',
+        () async {
       final db = await atV21WithoutMlPerKg();
       await db.insert('products', {
         'name': 'Keg',
@@ -1706,8 +1707,8 @@ void main() {
               )''');
             final columns =
                 await db.rawQuery('PRAGMA table_info(import_needs_attention)');
-            expect(columns.map((r) => r['name']),
-                isNot(contains('column_map')));
+            expect(
+                columns.map((r) => r['name']), isNot(contains('column_map')));
           },
         ),
       );
@@ -1828,7 +1829,8 @@ void main() {
               receipt_counters (
               key TEXT PRIMARY KEY NOT NULL, value INTEGER NOT NULL
             )''');
-            await db.execute('ALTER TABLE sales ADD COLUMN receipt_number TEXT');
+            await db
+                .execute('ALTER TABLE sales ADD COLUMN receipt_number TEXT');
             await db.execute('''CREATE TABLE IF NOT EXISTS pending_etims (
               sale_id INTEGER PRIMARY KEY,
               receipt_number TEXT NOT NULL,
@@ -1848,10 +1850,9 @@ void main() {
       await db.close();
       final upgraded = await DatabaseHelper.openExistingForUpgradeTests(path);
 
-      final cols =
-          (await upgraded.rawQuery('PRAGMA table_info(owner)'))
-              .map((r) => r['name'] as String)
-              .toSet();
+      final cols = (await upgraded.rawQuery('PRAGMA table_info(owner)'))
+          .map((r) => r['name'] as String)
+          .toSet();
       expect(cols, contains('name'));
       expect(cols, contains('email'));
       // The old phone column is not required by the current schema; the repair
@@ -1864,17 +1865,17 @@ void main() {
       await db.close();
       final upgraded = await DatabaseHelper.openExistingForUpgradeTests(path);
 
-      final cols =
-          (await upgraded.rawQuery('PRAGMA table_info(staff)'))
-              .map((r) => r['name'] as String)
-              .toSet();
+      final cols = (await upgraded.rawQuery('PRAGMA table_info(staff)'))
+          .map((r) => r['name'] as String)
+          .toSet();
       expect(cols, contains('active'));
       expect(cols, contains('remote_id'));
       expect(cols, contains('username'));
       await upgraded.close();
     });
 
-    test('the repair creates stock_adjustments with product_name and staff_name',
+    test(
+        'the repair creates stock_adjustments with product_name and staff_name',
         () async {
       final db = await atV12WithDriftedShape();
       await db.close();
@@ -1914,8 +1915,7 @@ void main() {
 
       final drifted = await atV12WithDriftedShape();
       await drifted.close();
-      final upgraded =
-          await DatabaseHelper.openExistingForUpgradeTests(path);
+      final upgraded = await DatabaseHelper.openExistingForUpgradeTests(path);
 
       final upgradedOwner =
           (await upgraded.rawQuery('PRAGMA table_info(owner)'))

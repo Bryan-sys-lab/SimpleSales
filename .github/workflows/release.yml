@@ -65,9 +65,12 @@ jobs:
 
       # The tag carries both halves of the version: `v<semver>+<build>`.
       #
-      # The semver is a human's decision — it is whatever pubspec.yaml says and
-      # this workflow never changes it. The build number is derived from release
-      # history by auto-release.yml, which never commits either half.
+      # Both halves come from pubspec.yaml, and both are a human's decision:
+      # this workflow never changes either, and neither does auto-release.yml,
+      # which only copies them into a tag. That is not tidiness — it is the
+      # only way the tag and the APK can agree, because Flutter reads the
+      # versionName and the versionCode out of pubspec and puts nothing else
+      # into the APK.
       #
       # Both halves are in the tag because Android keys the install on
       # versionCode alone: two releases of 2.0.0 at builds 7 and 8 are different
@@ -125,9 +128,21 @@ jobs:
             echo "::error::pubspec build number '${pubspec_code}' is not a positive integer."
             exit 1
           fi
-          if [ "$tag_code" -lt "$pubspec_code" ]; then
-            echo "::error::Tag build number ${tag_code} is below the pubspec build number ${pubspec_code}."
-            echo "::error::A handset that already has build ${pubspec_code} will refuse to install this one."
+          # Exact equality, not "the tag may be higher".
+          #
+          # Flutter reads the APK's versionCode from pubspec, so this build can
+          # only ever carry ${pubspec_code}. A tag naming a different number
+          # describes an APK that cannot exist, and the release would spend
+          # ten minutes building one before failing at the version check and
+          # publishing nothing — which is exactly how v2.0.0+27 failed: the tag
+          # said 27, the APK said 26.
+          #
+          # Failing here instead means the mismatch costs seconds, and the
+          # message says what to change.
+          if [ "$tag_code" != "$pubspec_code" ]; then
+            echo "::error::Tag build number ${tag_code} does not match the pubspec build number ${pubspec_code}."
+            echo "::error::This APK is built from pubspec, so it carries versionCode ${pubspec_code} and can never be published as build ${tag_code}."
+            echo "::error::Set the build number in duka_pos_app/pubspec.yaml to ${tag_code}, or release it as v${pubspec_name}+${pubspec_code}."
             exit 1
           fi
           echo "Tag ${GITHUB_REF_NAME} matches pubspec ${pubspec_line}."

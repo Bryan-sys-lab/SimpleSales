@@ -24,7 +24,7 @@ import '../theme/app_spacing.dart';
 import '../theme/typography.dart';
 import '../ui/components/status.dart';
 import '../ui/components/surface.dart';
-import '../ui/components/brand_header.dart';
+import '../ui/components/screen_title.dart';
 
 class DashboardHeader extends StatelessWidget {
   const DashboardHeader({
@@ -44,62 +44,40 @@ class DashboardHeader extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final AppColors colors = AppColors.of(context);
     final AppSpacing spacing = AppSpacing.of(context);
-    final TextTheme type = AppTypography.of(context);
     final AppLocalizations l10n = AppLocalizations.of(context);
 
     final String date =
         DateFormat.MMMMEEEEd(l10n.localeName).format(DateTime.now());
 
-    // The brand mark and wordmark lead the header: the till's identity beside the
-    // shift it runs, on every screen the cashier opens.
-    final Widget brand = Semantics(
-      image: true,
-      label: 'SimpleSales',
-      child: ExcludeSemantics(
-        child: BrandHeader(
-          markSize: 28,
-          gap: spacing.md,
-          showWordmark: true,
-        ),
-      ),
+    // The title sits DIRECTLY on the canvas, large and left-aligned, the way
+    // the shop's name sits at the top of the reference design.
+    //
+    // The brand mark used to lead this header. It does not any more: the
+    // shell's bar carries the mark, and a screen that opens with a logo has
+    // spent its first line on the product instead of on the shop.
+    final Widget title = ScreenTitle(
+      eyebrow: date.toUpperCase(),
+      title: shopName,
+      subtitle: subtitle,
+      // The page already insets its content; the title block does not add a
+      // second gutter on top of it.
+      padding: EdgeInsetsDirectional.only(top: spacing.sm, bottom: spacing.xs),
     );
 
-    final Widget titles = Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: <Widget>[
-        Text(
-          date.toUpperCase(),
-          style: type.labelSmall?.copyWith(
-            color: colors.onSurfaceMuted,
-            letterSpacing: 0.6,
-          ),
-        ),
-        SizedBox(height: spacing.sm),
-        Semantics(
-          header: true,
-          child: Text(shopName, style: type.headlineSmall),
-        ),
-        SizedBox(height: spacing.sm),
-        Text(
-          subtitle,
-          style: type.bodyMedium?.copyWith(color: colors.onSurfaceMuted),
-        ),
-        // The live status, only when the channel is doing something.
-        //
-        // Shown under the subtitle rather than as a badge of its own, because
-        // the moment it is useful is when a shop is waiting for the other
-        // terminal to finish a sale. An `off` channel is not shown at all: an
-        // offline-only build has no channel, and telling every such shop
-        // "not connected" is noise about a state they chose.
-        //
-        // Watching the service rebuilds this header on every live change, which
-        // is also how the dashboard itself notices one — see
-        // `_DashboardScreenState.didChangeDependencies`.
-        _LiveStatusLine(service: context.watch<LiveChannelService>()),
-      ],
-    );
+    // The live status, only when the channel is doing something.
+    //
+    // Shown under the subtitle rather than as a badge of its own, because the
+    // moment it is useful is when a shop is waiting for the other terminal to
+    // finish a sale. An `off` channel is not shown at all: an offline-only
+    // build has no channel, and telling every such shop "not connected" is
+    // noise about a state they chose.
+    //
+    // Watching the service rebuilds this header on every live change, which
+    // is also how the dashboard itself notices one — see
+    // `_DashboardScreenState.didChangeDependencies`.
+    final Widget status =
+        _LiveStatusLine(service: context.watch<LiveChannelService>());
 
     final Widget sell = FilledButton.icon(
       onPressed: onSell,
@@ -109,16 +87,15 @@ class DashboardHeader extends StatelessWidget {
 
     return LayoutBuilder(
       builder: (BuildContext context, BoxConstraints constraints) {
-        // A phone gets the brand, titles and button stacked at full width, where
-        // a thumb reaches them; anything wider puts them side by side.
+        // A phone gets the title and button stacked at full width, where a
+        // thumb reaches them; anything wider puts them side by side.
         if (constraints.maxWidth < 560) {
           return Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: <Widget>[
-              brand,
-              SizedBox(height: spacing.md),
-              titles,
-              SizedBox(height: spacing.xl),
+              title,
+              status,
+              SizedBox(height: spacing.lg),
               sell,
             ],
           );
@@ -126,9 +103,12 @@ class DashboardHeader extends StatelessWidget {
         return Row(
           crossAxisAlignment: CrossAxisAlignment.center,
           children: <Widget>[
-            brand,
-            SizedBox(width: spacing.xl),
-            Expanded(child: titles),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: <Widget>[title, status],
+              ),
+            ),
             SizedBox(width: spacing.xl),
             sell,
           ],
@@ -251,9 +231,8 @@ class DashboardAttentionCard extends StatelessWidget {
               attention: items[i],
               isFirst: i == 0,
               isLast: i == items.length - 1,
-              onDismiss: onDismiss == null
-                  ? null
-                  : () => onDismiss!(items[i].id),
+              onDismiss:
+                  onDismiss == null ? null : () => onDismiss!(items[i].id),
             ),
           ],
         ],

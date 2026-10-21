@@ -13,6 +13,9 @@ import '../db/database_helper.dart';
 import '../l10n/generated/app_localizations.dart';
 import '../models/models.dart';
 import '../services/barcode/barcode_service.dart';
+import '../theme/app_colors.dart';
+import '../theme/app_spacing.dart';
+import '../ui/components/screen_title.dart';
 import '../utils/money.dart';
 import '../utils/units.dart';
 
@@ -458,49 +461,57 @@ class _VariantFormSheetState extends State<VariantFormSheet> {
   /// as the group it is. Wrapping rather than scrolling horizontally, because a
   /// horizontally scrolled row hides the sizes the shop uses most — the ones at
   /// the far end are the least used, so hiding them costs nothing.
-  Widget _suggestionChips(ThemeData theme, AppLocalizations l10n) => Padding(
-        padding: const EdgeInsets.only(top: 8),
-        child: Semantics(
-          container: true,
-          label: l10n.variantSizeSuggestionsSpoken,
-          child: Wrap(
-            spacing: 8,
-            runSpacing: 4,
-            children: [
-              for (final s in _visibleSuggestions.take(_maxSuggestions))
-                ActionChip(
-                  label: Text(_suggestionLabel(s)),
-                  onPressed: () => _useSuggestion(s),
-                ),
-            ],
-          ),
+  Widget _suggestionChips(AppLocalizations l10n) {
+    final AppSpacing spacing = AppSpacing.of(context);
+    return Padding(
+      padding: EdgeInsetsDirectional.only(top: spacing.md),
+      child: Semantics(
+        container: true,
+        label: l10n.variantSizeSuggestionsSpoken,
+        child: Wrap(
+          spacing: spacing.md,
+          runSpacing: spacing.sm,
+          children: [
+            for (final s in _visibleSuggestions.take(_maxSuggestions))
+              ActionChip(
+                label: Text(_suggestionLabel(s)),
+                onPressed: () => _useSuggestion(s),
+              ),
+          ],
         ),
-      );
+      ),
+    );
+  }
 
   @override
   Widget build(BuildContext context) {
-    final theme = Theme.of(context);
     final l10n = AppLocalizations.of(context);
+    final AppSpacing spacing = AppSpacing.of(context);
     return Padding(
-      padding: EdgeInsets.only(
+      // Directional, so the form sits the same way from the reader's side in
+      // every locale: a physically-padded sheet is a sheet whose margins are
+      // wrong for half the world's readers.
+      padding: EdgeInsetsDirectional.only(
         bottom: MediaQuery.viewInsetsOf(context).bottom,
-        left: 16,
-        right: 16,
-        top: 16,
+        start: spacing.xl,
+        end: spacing.xl,
+        top: spacing.xl,
       ),
       child: SingleChildScrollView(
         child: Column(
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            Text(
-              widget.title ??
+            // The sheet's NAME, large and on the canvas — the same title block
+            // every other screen opens with.
+            ScreenTitle(
+              title: widget.title ??
                   (widget.seed.isNew
                       ? l10n.variantAddTitle
                       : l10n.variantEditTitle),
-              style: theme.textTheme.titleLarge,
+              padding: EdgeInsets.zero,
             ),
-            const SizedBox(height: 12),
+            SizedBox(height: spacing.lg),
             TextField(
               controller: _name,
               autofocus: widget.seed.isNew,
@@ -511,12 +522,12 @@ class _VariantFormSheetState extends State<VariantFormSheet> {
                 hintText: l10n.variantNameHint,
               ),
             ),
-            const SizedBox(height: 8),
+            SizedBox(height: spacing.md),
             // The serving-size field is always shown: blank means countable,
             // any value means volumetric (millilitres). A unit dropdown is no
             // longer offered — the unit is derived from whether a size exists.
             _sizeField(l10n),
-            if (_visibleSuggestions.isNotEmpty) _suggestionChips(theme, l10n),
+            if (_visibleSuggestions.isNotEmpty) _suggestionChips(l10n),
             Row(children: [
               Expanded(
                 child: TextField(
@@ -527,7 +538,7 @@ class _VariantFormSheetState extends State<VariantFormSheet> {
                       InputDecoration(labelText: l10n.variantSellPriceLabel),
                 ),
               ),
-              const SizedBox(width: 8),
+              SizedBox(width: spacing.md),
               Expanded(
                 child: TextField(
                   controller: _cost,
@@ -555,7 +566,7 @@ class _VariantFormSheetState extends State<VariantFormSheet> {
                   ),
                 ),
               ),
-              const SizedBox(width: 8),
+              SizedBox(width: spacing.md),
               Expanded(
                 child: TextField(
                   controller: _reorder,
@@ -589,20 +600,20 @@ class _VariantFormSheetState extends State<VariantFormSheet> {
             ),
             if (_error != null)
               Padding(
-                padding: const EdgeInsets.only(top: 8),
+                padding: EdgeInsetsDirectional.only(top: spacing.md),
                 child: Text(
                   _error!,
-                  style: TextStyle(color: theme.colorScheme.error),
+                  style: TextStyle(color: AppColors.of(context).danger),
                 ),
               ),
-            const SizedBox(height: 16),
+            SizedBox(height: spacing.xl),
             FilledButton(
               onPressed: _submit,
               child: Text(widget.seed.isNew
                   ? l10n.variantAddTitle
                   : l10n.variantSaveAction),
             ),
-            const SizedBox(height: 16),
+            SizedBox(height: spacing.xl),
           ],
         ),
       ),

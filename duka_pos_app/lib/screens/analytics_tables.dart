@@ -7,6 +7,7 @@ import '../theme/app_colors.dart';
 import '../theme/app_spacing.dart';
 import '../theme/typography.dart';
 import '../ui/components/controls.dart';
+import '../ui/components/states.dart';
 import '../ui/components/status.dart';
 import '../ui/components/surface.dart';
 import '../utils/money.dart';
@@ -583,19 +584,15 @@ class PaymentMixCard extends StatelessWidget {
       children: <Widget>[
         SectionHeader(label: l10n.analyticsPaymentMethodsSection),
         if (rows.isEmpty)
-          Padding(
-            padding: EdgeInsetsDirectional.only(
-              start: spacing.md,
-              end: spacing.md,
-              top: spacing.sm,
-              bottom: spacing.md,
-            ),
-            child: Text(
-              l10n.analyticsNothingTaken,
-              style: AppTypography.of(context).bodyMedium?.copyWith(
-                    color: colors.onSurfaceMuted,
-                  ),
-            ),
+          // The shared empty state, not a line of grey text: "nothing here" is a
+          // state every screen in this app answers the same way, and a bare
+          // sentence in the middle of a section reads as a layout accident.
+          EmptyStateView(
+            title: l10n.analyticsNothingTaken,
+            // The dashboard's own words for the same fact: takings appear here
+            // as soon as a sale goes through the till. Reused rather than
+            // re-invented — the ARB is not mine to edit.
+            message: l10n.dashboardNoSalesFirstBody,
           )
         else ...<Widget>[
           // The ring, ENLARGED and centred.
@@ -612,6 +609,10 @@ class PaymentMixCard extends StatelessWidget {
           Center(
             child: PosPieChart(
               title: '',
+              // The section header above already says "Payment methods"; an
+              // empty title still renders a heading, in the heading style, and
+              // leaves a line of nothing where a line of something should be.
+              showTitle: false,
               slices: slices,
               semanticsLabel: describePaymentMix(rows, totals.totalMinor, l10n),
               centerLabel: null,
@@ -839,6 +840,11 @@ class _StockList extends StatelessWidget {
             child: Row(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: <Widget>[
+                // The band this row belongs to, as a badge: the tone's own glyph
+                // in a tonal circle, so the row states its urgency in shape and
+                // colour, and the words beside it still say it in plain text.
+                IconBadge(icon: tone.icon, tone: tone, size: 28),
+                SizedBox(width: spacing.sm),
                 Expanded(child: Text(product.name)),
                 SizedBox(width: spacing.sm),
                 Text(

@@ -611,6 +611,76 @@ void main() {
       expect(merged.first.label, contains('–'));
     });
 
+    test('a merged range is labelled in the short form', () {
+      // "12 Oct – 13 Oct" is twice the width an axis label gets on a phone,
+      // and it reads like a single day with a dash in the middle of it.
+      final buckets = <DateBucket>[
+        for (int i = 12; i <= 13; i++)
+          DateBucket(
+            day: '2026-10-${i.toString().padLeft(2, '0')}',
+            label: '$i Oct',
+            salesMinor: 100,
+            profitMinor: 40,
+            transactions: 2,
+          ),
+      ];
+
+      final merged = mergeDateBuckets(buckets, 1);
+      expect(merged.single.label, '12–13 Oct');
+    });
+
+    test('a merged range that crosses a month keeps the long form', () {
+      // "28–2 Nov" would put November next to the twenty-eighth, and the
+      // month the axis says is the month the eye believes.
+      final buckets = <DateBucket>[
+        const DateBucket(
+          day: '2026-10-28',
+          label: '28 Oct',
+          salesMinor: 100,
+          profitMinor: 40,
+          transactions: 2,
+        ),
+        const DateBucket(
+          day: '2026-10-29',
+          label: '29 Oct',
+          salesMinor: 100,
+          profitMinor: 40,
+          transactions: 2,
+        ),
+        const DateBucket(
+          day: '2026-10-30',
+          label: '30 Oct',
+          salesMinor: 100,
+          profitMinor: 40,
+          transactions: 2,
+        ),
+        const DateBucket(
+          day: '2026-10-31',
+          label: '31 Oct',
+          salesMinor: 100,
+          profitMinor: 40,
+          transactions: 2,
+        ),
+        const DateBucket(
+          day: '2026-11-01',
+          label: '1 Nov',
+          salesMinor: 100,
+          profitMinor: 40,
+          transactions: 2,
+        ),
+        const DateBucket(
+          day: '2026-11-02',
+          label: '2 Nov',
+          salesMinor: 100,
+          profitMinor: 40,
+          transactions: 2,
+        ),
+      ];
+
+      final merged = mergeDateBuckets(buckets, 1);
+      expect(merged.single.label, '28 Oct – 2 Nov');
+    });
+
     test('a range that already fits is returned untouched', () {
       final buckets = List<DateBucket>.generate(
         3,

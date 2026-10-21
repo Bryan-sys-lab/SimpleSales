@@ -391,7 +391,9 @@ class SheetsService {
   /// advance its high-water mark to a value the sheet provably contains rather
   /// than to wall-clock time. Returns null when nothing was appended.
   Future<DateTime?> appendSales(String spreadsheetId,
-      {DateTime? after, int batchSize = 500, Future<void> Function(DateTime)? onBatch}) async {
+      {DateTime? after,
+      int batchSize = 500,
+      Future<void> Function(DateTime)? onBatch}) async {
     final api = await _api();
     if (api == null) throw StateError('Not signed in to Google');
     var cursor = after;

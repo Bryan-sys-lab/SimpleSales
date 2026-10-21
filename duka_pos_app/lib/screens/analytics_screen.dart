@@ -18,6 +18,7 @@ import '../services/workspace_service.dart';
 import '../services/live_refresh_mixin.dart';
 import '../services/live_channel_service.dart';
 import '../services/session_refresh_mixin.dart';
+import '../ui/components/screen_title.dart';
 import '../ui/components/states.dart';
 import '../ui/components/surface.dart';
 import '../widgets/chart.dart';
@@ -473,6 +474,15 @@ class _AnalyticsScaffold extends StatelessWidget {
             bottom: spacing.xl + bottomInset,
           ),
           children: <Widget>[
+            // The screen names itself on the canvas: a large left-aligned title
+            // under the shell's brand bar, not a coloured app bar that spends
+            // the app's only accent on chrome.
+            ScreenTitle(
+              title: AppLocalizations.of(context).navAnalytics,
+              // The list already insets its content by `md`; the title's own
+              // default inset would push it off the gutter the cards sit on.
+              padding: EdgeInsetsDirectional.only(bottom: spacing.md),
+            ),
             _RangeBar(range: range, onChanged: onRangeChanged),
             if (showPortfolioLink && onOpenPortfolio != null) ...<Widget>[
               SizedBox(height: spacing.md),
@@ -498,7 +508,11 @@ class _AnalyticsScaffold extends StatelessWidget {
   List<Widget> _content(BuildContext context, AnalyticsSnapshot shown) {
     final AppSpacing spacing = AppSpacing.of(context);
     return <Widget>[
-      _RangeKpis(totals: shown.totals, range: range),
+      _RangeKpis(
+        totals: shown.totals,
+        previous: shown.previousTotals,
+        range: range,
+      ),
       SizedBox(height: spacing.md),
       _GrowthLine(
         current: shown.totals,
@@ -571,9 +585,17 @@ class _RangeBar extends StatelessWidget {
 /// than a [Row]: a value that wraps at 200% text scale makes a taller tile
 /// rather than a clipped number, and the second row simply reflows.
 class _RangeKpis extends StatelessWidget {
-  const _RangeKpis({required this.totals, required this.range});
+  const _RangeKpis({
+    required this.totals,
+    required this.previous,
+    required this.range,
+  });
 
   final DailyTotals totals;
+
+  /// The window before this one, so a tile can say which way it moved.
+  final DailyTotals previous;
+
   final AnalyticsRange range;
 
   @override
@@ -626,6 +648,7 @@ class _RangeKpis extends StatelessWidget {
         label: l10n.analyticsTransactionsLabel,
         value: l10n.analyticsTransactionCaption(totals.transactions),
         emphasis: StatEmphasis.strong,
+        delta: _transactionDelta,
       ),
       StatTile(
         label: l10n.analyticsAvgBasketLabel,
@@ -633,6 +656,26 @@ class _RangeKpis extends StatelessWidget {
         caption: l10n.analyticsAvgBasketCaption,
       ),
     ];
+  }
+
+  /// How the transaction count moved against the window before.
+  ///
+  /// Null when there is nothing to compare against and null when nothing moved:
+  /// a "0%" carrying an up arrow is a claim about a direction that did not
+  /// happen, and [DeltaDirection] has no flat to say it honestly.
+  ///
+  /// The takings comparison is a row of its own ([_GrowthLine]); this is the
+  /// count beside it, so the two figures answer different questions instead of
+  /// repeating one.
+  StatDelta? get _transactionDelta {
+    final int before = previous.transactions;
+    final int now = totals.transactions;
+    if (before <= 0 || now == before) return null;
+    final double percent = ((now - before) / before) * 100;
+    return StatDelta(
+      text: '${percent > 0 ? '+' : '−'}${percent.abs().toStringAsFixed(0)}%',
+      direction: percent > 0 ? DeltaDirection.up : DeltaDirection.down,
+    );
   }
 }
 
@@ -695,7 +738,10 @@ class _GrowthLine extends StatelessWidget {
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.center,
         children: <Widget>[
-          Icon(glyph, size: 18, color: tone, semanticLabel: word),
+          // The same glyph, size and tone a `StatTile` delta uses: a rise is an
+          // up arrow in the success tone, a fall a down arrow in the danger
+          // tone, and the word beside it says which in words as well.
+          Icon(glyph, size: 14, color: tone, semanticLabel: word),
           SizedBox(width: spacing.sm),
           Text(
             word,

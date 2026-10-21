@@ -69,7 +69,8 @@ class ChurnAnalysis {
   String get message => switch (risk) {
         ChurnRisk.none => 'Still going — keep the streak alive.',
         ChurnRisk.low => 'A few quiet days. The streak is still yours.',
-        ChurnRisk.medium => 'It has been a while. The till is ready when you are.',
+        ChurnRisk.medium =>
+          'It has been a while. The till is ready when you are.',
         ChurnRisk.high => 'We have missed you. The till is still here.',
       };
 
@@ -98,13 +99,17 @@ class ChurnAnalytics {
 
     final daysSince = lastActive == null
         ? 999
-        : _now.difference(DateTime(lastActive.year, lastActive.month, lastActive.day)).inDays;
+        : _now
+            .difference(
+                DateTime(lastActive.year, lastActive.month, lastActive.day))
+            .inDays;
 
     // --- Score (0.0 to 1.0) ---
     //
     // Streak component: a long streak lowers risk. Streak of 7+ is near-zero
     // streak risk; streak of 0 or 1 is full streak risk.
-    final streakRisk = streak >= 7 ? 0.0 : (1.0 - (streak / 7.0).clamp(0.0, 1.0));
+    final streakRisk =
+        streak >= 7 ? 0.0 : (1.0 - (streak / 7.0).clamp(0.0, 1.0));
 
     // Silence component: days since last active. A week of silence is
     // significant risk; a month is near-certain churn.
@@ -112,11 +117,13 @@ class ChurnAnalytics {
 
     // Frequency component: total sessions. A shop that has opened once is
     // riskier than one that has opened a hundred times.
-    final frequencyRisk = sessions >= 50 ? 0.0 : (1.0 - (sessions / 50.0).clamp(0.0, 1.0));
+    final frequencyRisk =
+        sessions >= 50 ? 0.0 : (1.0 - (sessions / 50.0).clamp(0.0, 1.0));
 
     // Weighted: silence matters most (a silent shop is gone), then streak,
     // then frequency. Weights sum to 1.0.
-    final score = (silenceRisk * 0.5) + (streakRisk * 0.3) + (frequencyRisk * 0.2);
+    final score =
+        (silenceRisk * 0.5) + (streakRisk * 0.3) + (frequencyRisk * 0.2);
 
     // --- Risk level ---
     final risk = switch (score) {

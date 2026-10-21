@@ -197,7 +197,7 @@ class _CloseShiftSheetState extends State<_CloseShiftSheet> {
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: <Widget>[
             Padding(
-              padding: EdgeInsets.fromLTRB(
+              padding: EdgeInsetsDirectional.fromSTEB(
                 spacing.md,
                 spacing.md,
                 spacing.md,

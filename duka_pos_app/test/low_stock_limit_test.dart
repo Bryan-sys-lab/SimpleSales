@@ -90,8 +90,7 @@ void main() {
 
     expect(await db.setLowStockLimit(2), 1);
 
-    final Product after =
-        (await db.getProducts(activeOnly: false)).single;
+    final Product after = (await db.getProducts(activeOnly: false)).single;
     expect(after.reorderLevel, 2, reason: 'the limit itself moved');
     expect(after.unit, ProductUnit.litre,
         reason: 'a limit is not a statement about how the product is sold');

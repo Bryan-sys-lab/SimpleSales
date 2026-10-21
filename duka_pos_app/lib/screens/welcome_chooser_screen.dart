@@ -2,12 +2,12 @@ import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import 'package:provider/provider.dart';
 
-import '../app_brand.dart';
 import '../routing/app_stage_controller.dart';
 import '../routing/routes.dart';
 import '../services/app_stage.dart';
 import '../l10n/generated/app_localizations.dart';
 import '../theme/app_colors.dart';
+import '../ui/brand/nerva_wordmark.dart';
 import '../theme/app_haptics.dart';
 import '../theme/app_spacing.dart';
 import '../theme/typography.dart';
@@ -206,11 +206,11 @@ class WelcomeChooserScreen extends StatelessWidget {
                         type.bodySmall?.copyWith(color: colors.onSurfaceMuted),
                   ),
                   SizedBox(height: spacing.lg),
-                  Text(
-                    SimplePosBrand.poweredByTag,
-                    textAlign: TextAlign.center,
-                    style: type.labelSmall?.copyWith(
-                      color: colors.onSurfaceMuted,
+                  Center(
+                    child: PoweredByNerva(
+                      style: type.labelSmall?.copyWith(
+                        color: colors.onSurfaceMuted,
+                      ),
                     ),
                   ),
                 ],

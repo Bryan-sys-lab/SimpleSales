@@ -141,7 +141,8 @@ class ProductImageStore {
     // from a phone camera does not arrive sideways.
     final encoded = img.encodeJpg(resized, quality: _quality);
 
-    return _saveEncoded(encoded, relativePathFor(productId, workspaceKey: workspaceKey)!);
+    return _saveEncoded(
+        encoded, relativePathFor(productId, workspaceKey: workspaceKey)!);
   }
 
   /// Re-encodes [source] into [relativePath], under its own folder.
@@ -160,9 +161,15 @@ class ProductImageStore {
   }
 
   static Future<String> _saveEncoded(List<int> encoded, String relative) async {
-    final folder = relative.split('/').first;
     final docs = await getApplicationDocumentsDirectory();
-    final dir = Directory('${docs.path}/$folder');
+    // The file's OWN folder, all the way down.
+    //
+    // A product's photograph is stored under a folder per workspace — so
+    // product #5 in shop B cannot overwrite shop A's — and only the FIRST
+    // segment of that path was ever created. The write then failed with "no
+    // such directory", which the editor reported as "the phone is full", the
+    // path was never stored, and the till never showed a photograph at all.
+    final dir = Directory('${docs.path}/${_folderOf(relative)}');
     if (!await dir.exists()) await dir.create(recursive: true);
     try {
       final target = File('${docs.path}/$relative');
@@ -173,6 +180,16 @@ class ProductImageStore {
       // rather than being shown a silent failure to save a product.
       throw ProductImageException(ProductImageFailure.storage, error);
     }
+  }
+
+  /// The folder a relative path lives in.
+  ///
+  /// "product_photos/shop-a/5.jpg" lives in "product_photos/shop-a", and the
+  /// folder is created before the file is written — all of it, because a
+  /// missing folder is a failed write, not a missing directory.
+  static String _folderOf(String relative) {
+    final int slash = relative.lastIndexOf('/');
+    return slash <= 0 ? '' : relative.substring(0, slash);
   }
 
   /// Deletes the photograph for [productId], if there is one.

@@ -1,6 +1,7 @@
 import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
+import 'package:flutter/semantics.dart';
 
 import '../l10n/generated/app_localizations.dart';
 import '../theme/app_colors.dart';
@@ -33,7 +34,78 @@ class PosLinePoint {
   String get displayValue => valueLabel ?? '$value';
 }
 
+/// A smooth path through [points].
+///
+/// MONOTONE cubic interpolation — the Fritsch–Carlson construction — and not a
+/// Catmull-Rom spline. A Catmull-Rom spline through noisy readings invents a
+/// peak between two points and swings past the ends of the data: a chart of a
+/// shop's takings that invents a peak is not smoothing the data, it is
+/// misreporting it.
+///
+/// Monotone interpolation passes through EVERY reading and never leaves the
+/// range of the data. The shape gets softer; the values do not move.
+///
+/// The construction: the secants give the local slope, each tangent is the
+/// weighted harmonic mean of the two secants around its point, and a point
+/// whose secants disagree in sign — a local maximum or a local minimum — gets
+/// a tangent of zero, so the curve flattens there instead of swinging past it.
+Path smoothPathThrough(List<Offset> points) {
+  final Path path = Path();
+  if (points.isEmpty) return path;
+  path.moveTo(points.first.dx, points.first.dy);
+  if (points.length == 1) return path;
+  if (points.length == 2) {
+    path.lineTo(points[1].dx, points[1].dy);
+    return path;
+  }
+
+  final int n = points.length;
+  final List<double> spans = <double>[];
+  final List<double> secants = <double>[];
+  for (int i = 0; i < n - 1; i++) {
+    final double h = points[i + 1].dx - points[i].dx;
+    spans.add(h);
+    secants.add(h == 0 ? 0 : (points[i + 1].dy - points[i].dy) / h);
+  }
+
+  final List<double> tangent = List<double>.filled(n, 0);
+  tangent[0] = secants.first;
+  tangent[n - 1] = secants.last;
+  for (int i = 1; i < n - 1; i++) {
+    if (secants[i - 1] * secants[i] <= 0) {
+      // A local extremum. No tangent, so no overshoot past the peak.
+      tangent[i] = 0;
+    } else {
+      final double w1 = 2 * spans[i] + spans[i - 1];
+      final double w2 = spans[i] + 2 * spans[i - 1];
+      tangent[i] = (w1 + w2) / (w1 / secants[i - 1] + w2 / secants[i]);
+    }
+  }
+
+  for (int i = 0; i < n - 1; i++) {
+    final double h = spans[i];
+    path.cubicTo(
+      points[i].dx + h / 3,
+      points[i].dy + tangent[i] * h / 3,
+      points[i + 1].dx - h / 3,
+      points[i + 1].dy - tangent[i + 1] * h / 3,
+      points[i + 1].dx,
+      points[i + 1].dy,
+    );
+  }
+  return path;
+}
+
 /// A line chart, for a series the eye reads as a SEQUENCE.
+///
+/// The line is SMOOTH — a monotone cubic through the readings, so the shape of
+/// the day is drawn as one gesture rather than as a row of corners, and no
+/// reading is invented between two points.
+///
+/// The axis reads at an INTERVAL, not one label per reading: a trading day is
+/// twenty-four hours, and twenty-four labels across a 320dp phone is a row of
+/// collisions rather than an axis. The interval is a floor, and a narrower
+/// phone or a wider label widens it further.
 ///
 /// The bar chart this replaces was the wrong instrument: twelve vertical bars
 /// for twelve hours asks the reader to compare twelve heights to find a shape,
@@ -54,6 +126,8 @@ class PosLineChart extends StatefulWidget {
     this.semanticsLabel,
     this.height = 148,
     this.emphasis,
+    this.minStride = 1,
+    this.showTitle = true,
   });
 
   final String title;
@@ -65,11 +139,33 @@ class PosLineChart extends StatefulWidget {
 
   final String? emphasis;
 
+  /// Whether to render the title above the plot.
+  ///
+  /// False when the panel the chart sits in already says what the chart is —
+  /// an empty title still renders a heading, in the heading style, and leaves
+  /// a line of nothing where a line of something should be.
+  final bool showTitle;
+
+  /// The smallest gap, in readings, between two axis labels.
+  ///
+  /// One is "label every reading", and on a phone that is a row of
+  /// collisions. Three reads as morning, midday, evening — the interval a
+  /// trading day is actually read at — and it is a FLOOR: a wider label or a
+  /// narrower phone widens the stride further, so the axis can never become a
+  /// wall of text.
+  final int minStride;
+
   @override
   State<PosLineChart> createState() => _PosLineChartState();
 }
 
 class _PosLineChartState extends State<PosLineChart> {
+  /// The reading the finger revealed, or null for none.
+  ///
+  /// State rather than nothing: this is the one piece of the chart that a tap
+  /// creates, and it belongs to the chart.
+  int? _selected;
+
   /// Label measurements, owned HERE so they outlive the painter.
   ///
   /// A painter is built on every `build()`, so widths cached inside one are
@@ -110,8 +206,60 @@ class _PosLineChartState extends State<PosLineChart> {
     if (widget.points.isEmpty) return l10n.chartSpokenNoValues(widget.title);
     final peak = widget.points
         .reduce((PosLinePoint a, PosLinePoint b) => b.value > a.value ? b : a);
-    return l10n.chartSpokenPeak(widget.points.length, peak.label, widget.title,
-        peak.displayValue);
+    return l10n.chartSpokenPeak(
+        widget.points.length, peak.label, widget.title, peak.displayValue);
+  }
+
+  @override
+  void didUpdateWidget(covariant PosLineChart oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    // A fresh series makes the previous selection meaningless: the reading the
+    // owner tapped is a different hour's money now.
+    if (!identical(oldWidget.points, widget.points) &&
+        oldWidget.points != widget.points) {
+      _selected = null;
+      _labelWidths.clear();
+    }
+  }
+
+  /// Selects the reading nearest [localX].
+  ///
+  /// [toggle] is false for a drag: sliding a finger along the chart MOVES the
+  /// selection, and it does not clear it when the finger passes over the
+  /// reading that is already selected — which is what a tap does.
+  void _selectAt(double localX, double width, {bool toggle = true}) {
+    final List<PosLinePoint> points = widget.points;
+    if (points.isEmpty || width <= 0) return;
+    // The readings sit on a line, not in slots: the first is at one edge and
+    // the last at the other, with the step between them.
+    final double step =
+        points.length > 1 ? width / (points.length - 1) : width;
+    // Mirrored in RTL, because the painter mirrors the series: without this, a
+    // tap on the right of the chart picks the reading at the OTHER end.
+    final double fromStart = Directionality.of(context) == TextDirection.rtl
+        ? width - localX
+        : localX;
+    final int index = (fromStart / step).round().clamp(0, points.length - 1);
+    if (!toggle) {
+      if (_selected == index) return;
+      setState(() => _selected = index);
+      return;
+    }
+    setState(() => _selected = _selected == index ? null : index);
+  }
+
+  /// What a screen reader says for this chart right now.
+  ///
+  /// The caller's description when it gave one, the series summary otherwise,
+  /// and the tapped reading's figure APPENDED while one is tapped — so the
+  /// announcement always carries the fact the finger just produced.
+  String _announcement(AppLocalizations l10n) {
+    final String base = widget.semanticsLabel ?? _fallbackSemantics(l10n);
+    final int? at = _selected;
+    if (at == null || at >= widget.points.length) return base;
+    final PosLinePoint point = widget.points[at];
+    if (point.value <= 0) return base;
+    return '$base. ${l10n.chartSpokenSelected(point.label, widget.title, point.displayValue)}';
   }
 
   @override
@@ -123,13 +271,16 @@ class _PosLineChartState extends State<PosLineChart> {
     final l10n = AppLocalizations.of(context);
 
     return Semantics(
-      label: widget.semanticsLabel ?? _fallbackSemantics(l10n),
+      label: _announcement(l10n),
       container: true,
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         mainAxisSize: MainAxisSize.min,
         children: <Widget>[
-          Text(widget.title, style: type.titleMedium),
+          if (widget.showTitle) ...[
+            Text(widget.title, style: type.titleMedium),
+            SizedBox(height: spacing.sm),
+          ],
           if (widget.emphasis != null) ...[
             const SizedBox(height: 2),
             Text(widget.emphasis!, style: labelStyle),
@@ -138,18 +289,46 @@ class _PosLineChartState extends State<PosLineChart> {
           if (widget.points.isEmpty)
             Text(l10n.chartNothingToShow, style: labelStyle)
           else
-            // Excluded so a painted canvas with no text nodes cannot announce
-            // anything: the series is already stated as a sentence on the
-            // [Semantics] node above, and this is what keeps it from being
-            // announced twice.
-            ExcludeSemantics(
-              child: _LineCanvas(
-                points: widget.points,
-                height: widget.height,
-                accent: colors.accent,
-                gap: spacing.sm,
-                labels: _labelsFor(labelStyle),
-              ),
+            // The width the readings are cut from is the CANVAS's width, so the
+            // selection is computed from the width the painter used and not
+            // from the width of whatever contains the chart.
+            LayoutBuilder(
+              builder: (BuildContext context, BoxConstraints constraints) {
+                final double width = constraints.maxWidth.isFinite
+                    ? constraints.maxWidth
+                    : constraints.biggest.width;
+                final painter = _LineChartPainter(
+                  points: widget.points,
+                  plotHeight: widget.height,
+                  selected: _selected,
+                  accent: colors.accent,
+                  grid: colors.outline,
+                  gap: spacing.sm,
+                  labels: _labelsFor(labelStyle),
+                  minStride: widget.minStride,
+                );
+                return SizedBox(
+                  width: width,
+                  height: painter.totalHeight(widget.height),
+                  child: GestureDetector(
+                    // The whole plot is the target, not one reading: a finger
+                    // between two readings still selects the nearer one, and a
+                    // shop working through a queue should not have to aim.
+                    onTapUp: (TapUpDetails details) =>
+                        _selectAt(details.localPosition.dx, width),
+                    // A DRAG selects too: on a phone each reading is a few
+                    // pixels wide, and a finger can slide along the chart with
+                    // the selection following it.
+                    onHorizontalDragUpdate: (DragUpdateDetails details) =>
+                        _selectAt(details.localPosition.dx, width,
+                            toggle: false),
+                    // The gesture layer is not a reading; the series is.
+                    excludeFromSemantics: true,
+                    behavior: HitTestBehavior.opaque,
+                    child: ExcludeSemantics(child: CustomPaint(painter: painter)),
+                  ),
+                );
+              },
             ),
         ],
       ),
@@ -157,49 +336,86 @@ class _PosLineChartState extends State<PosLineChart> {
   }
 }
 
-/// The painted part, kept separate so the [Semantics] wrapper can exclude it in
-/// one place.
-class _LineCanvas extends StatelessWidget {
-  const _LineCanvas({
-    required this.points,
+/// The vertical budget of a chart: the axis strip, the headroom, the plot.
+///
+/// WHY THE HEADROOM EXISTS
+///
+/// The plot used to run to the very top of the canvas, so the tallest point
+/// and the figure above it were drawn on the same pixels — and the figure's y
+/// was clamped to zero, which pinned it ON the point. The number and the dot
+/// it described, in the same place.
+///
+/// So the plot is shorter than the canvas by one label's height, and the
+/// baseline stays exactly where it was. The figure then lands a couple of
+/// pixels below the top edge.
+///
+/// Public because the invariant is the whole point, and a painted canvas is
+/// not something a test can measure. A test can measure this.
+@immutable
+class ChartBudget {
+  const ChartBudget({
     required this.height,
-    required this.accent,
-    required this.gap,
-    required this.labels,
+    required this.axisHeight,
+    required this.headroom,
+    required this.plotHeight,
+    required this.baseline,
   });
 
-  final List<PosLinePoint> points;
+  /// The whole canvas.
   final double height;
-  final Color accent;
-  final double gap;
 
-  /// Shared label measurement and axis rules. Owned by [_PosLineChartState] so
-  /// its measurements outlive the painter this build creates.
-  final _ChartLabels labels;
+  /// The strip under the plot that carries the axis labels.
+  final double axisHeight;
 
-  @override
-  Widget build(BuildContext context) {
-    return LayoutBuilder(
-      builder: (BuildContext context, BoxConstraints constraints) {
-        final width = constraints.maxWidth.isFinite
-            ? constraints.maxWidth
-            : constraints.biggest.width;
-        final painter = _LineChartPainter(
-          points: points,
-          plotHeight: height,
-          accent: accent,
-          gap: gap,
-          labels: labels,
-        );
-        return SizedBox(
-          width: width,
-          height: painter.totalHeight(height),
-          child: CustomPaint(painter: painter),
-        );
-      },
+  /// The room a figure needs above the tallest point.
+  final double headroom;
+
+  /// The room the data itself gets.
+  final double plotHeight;
+
+  /// Where the data sits on the canvas. Unchanged by the headroom: the shape
+  /// still stands on the same floor.
+  final double baseline;
+
+  /// The budget for a canvas of [height] with an [axisHeight] strip and
+  /// figures of [labelHeight].
+  factory ChartBudget.of({
+    required double height,
+    required double axisHeight,
+    required double labelHeight,
+  }) {
+    final double headroom = labelHeight + 6;
+    final double baseline = height - axisHeight;
+    return ChartBudget(
+      height: height,
+      axisHeight: axisHeight,
+      headroom: headroom,
+      plotHeight: math.max(0, baseline - headroom),
+      baseline: baseline,
     );
   }
+
+  /// Where a figure of [figureHeight] sits above the point it belongs to.
+  ///
+  /// [pointTop] is the top of the point — the top of the plot for the tallest
+  /// one. The answer is never negative: a figure that would be clamped to the
+  /// top of the canvas is a figure drawn on the data.
+  double figureTop(double pointTop, double figureHeight, {double gap = 4}) =>
+      pointTop - figureHeight - gap;
 }
+
+/// The horizontal rules a chart draws under its data.
+///
+/// The zero baseline and the mid gridline. A line chart with neither is a
+/// shape with nothing under it: two readings can be compared by eye but not
+/// read, and "did it really double" has no answer.
+///
+/// Public because the rule is the point, and a painted line is not something a
+/// test can see.
+List<double> gridLinesFor(ChartBudget budget) => <double>[
+      budget.baseline,
+      budget.baseline - budget.plotHeight / 2,
+    ];
 
 /// ONE place both charts measure their labels.
 ///
@@ -296,8 +512,7 @@ class _ChartLabels {
   }
 
   /// One line of label-size text, measured once per helper instance.
-  double lineHeight() =>
-      _lineHeightValue ??= painterFor('Ag').height;
+  double lineHeight() => _lineHeightValue ??= painterFor('Ag').height;
 
   /// The widest label, capped at [cap] so a label wider than its slot does not
   /// set the stride.
@@ -329,8 +544,7 @@ class _ChartLabels {
     required int minStride,
   }) {
     final widestLabel = widest(points, math.max(slot, 12.0));
-    final needed =
-        (widestLabel * collisionFactor / math.max(slot, 1)).ceil();
+    final needed = (widestLabel * collisionFactor / math.max(slot, 1)).ceil();
     return math.max(minStride, needed).clamp(1, points.length);
   }
 
@@ -350,20 +564,33 @@ class _LineChartPainter extends CustomPainter {
   _LineChartPainter({
     required this.points,
     required this.plotHeight,
+    required this.selected,
     required this.accent,
+    required this.grid,
     required this.gap,
     required this.labels,
+    required this.minStride,
   });
 
   final List<PosLinePoint> points;
   final double plotHeight;
+
+  /// The reading the finger revealed, or null for none.
+  final int? selected;
+
   final Color accent;
+
+  /// The colour of the baseline and the gridlines.
+  final Color grid;
   final double gap;
 
   /// Shared label measurement and axis rules — see [_ChartLabels]. It carries
   /// the style, direction and scaler this painter paints with, so a change of
   /// any of them changes the helper and with it [shouldRepaint]'s answer.
   final _ChartLabels labels;
+
+  /// The smallest gap, in readings, between two axis labels.
+  final int minStride;
 
   bool get _isRtl => labels.isRtl;
 
@@ -387,12 +614,43 @@ class _LineChartPainter extends CustomPainter {
     if (points.isEmpty || size.width <= 0 || size.height <= 0) return;
 
     final axisHeight = _axisHeight(size.height);
-    final plotHeight = size.height - axisHeight;
-    final baseline = size.height - axisHeight;
+    final budget = ChartBudget.of(
+      height: size.height,
+      axisHeight: axisHeight,
+      labelHeight: labels.lineHeight(),
+    );
+    final baseline = budget.baseline;
+    final plotHeight = budget.plotHeight;
     final maxValue = math.max(_maxValue, 1);
 
     double yOf(int value) =>
         baseline - (value <= 0 ? 0 : (value / maxValue) * plotHeight);
+
+    // The scale the shape is drawn against.
+    //
+    // A line chart with no baseline and no gridline is a shape with nothing
+    // under it: two readings can be compared by eye but not read, and "did it
+    // really double" has no answer. A hairline at zero says where the floor
+    // is, and the mid gridline gives the eye something to measure a reading
+    // against. Both are hairlines in the hairline colour — they are structure,
+    // not content.
+    final gridPaint = Paint()
+      ..color = grid
+      ..strokeWidth = 1;
+    final faintGridPaint = Paint()
+      ..color = grid.withValues(alpha: 0.55)
+      ..strokeWidth = 1;
+    final List<double> rules = gridLinesFor(budget);
+    canvas.drawLine(
+      Offset(0, rules[0].roundToDouble()),
+      Offset(size.width, rules[0].roundToDouble()),
+      gridPaint,
+    );
+    canvas.drawLine(
+      Offset(0, rules[1].roundToDouble()),
+      Offset(size.width, rules[1].roundToDouble()),
+      faintGridPaint,
+    );
 
     final line = Paint()
       ..color = accent
@@ -401,10 +659,20 @@ class _LineChartPainter extends CustomPainter {
       ..strokeCap = StrokeCap.round
       ..strokeJoin = StrokeJoin.round;
 
-    final path = Path()..moveTo(_x(0, size.width), yOf(points[0].value));
-    for (var i = 1; i < points.length; i++) {
-      path.lineTo(_x(i, size.width), yOf(points[i].value));
-    }
+    // The series, as points.
+    final List<Offset> geometry = <Offset>[
+      for (var i = 0; i < points.length; i++)
+        Offset(_x(i, size.width), yOf(points[i].value)),
+    ];
+
+    // The line itself: SMOOTH, and monotone.
+    //
+    // A monotone cubic through the readings, so the shape of the day is drawn
+    // as one gesture rather than as a row of corners — and so the curve never
+    // leaves the range of the data, which a Catmull-Rom spline does the
+    // moment the readings are noisy. A curve that invents a peak the shop
+    // never had is not smoothing the data; it is misreporting it.
+    final path = smoothPathThrough(geometry);
 
     // The area under the line, so the shape reads as a quantity and not just a
     // trajectory. Filled at low alpha: the line stays the signal.
@@ -432,25 +700,61 @@ class _LineChartPainter extends CustomPainter {
     // across it.
     final dot = Paint()..color = accent;
     for (var i = 0; i < points.length; i++) {
-      canvas.drawCircle(
-          Offset(_x(i, size.width), yOf(points[i].value)), 2.5, dot);
+      canvas.drawCircle(geometry[i], 2.5, dot);
     }
 
-    // The peak, stated in text. A colour difference would be the only other cue
-    // that one reading matters, and colour alone is not a signal.
+    // The reading the finger revealed, marked a little larger than the rest.
+    final int? revealed = selected;
+    if (revealed != null && revealed >= 0 && revealed < points.length) {
+      canvas.drawCircle(
+        geometry[revealed],
+        4.5,
+        Paint()
+          ..color = accent
+          ..style = PaintingStyle.stroke
+          ..strokeWidth = 2,
+      );
+    }
+
+    // The figure on the chart: the reading the finger revealed, and the PEAK
+    // when nothing is revealed.
+    //
+    // A colour difference would be the only other cue that one reading
+    // matters, and colour alone is not a signal.
     var peakIndex = 0;
     for (var i = 1; i < points.length; i++) {
       if (points[i].value > points[peakIndex].value) peakIndex = i;
     }
-    final peak = points[peakIndex];
+    final int figureIndex = revealed ?? peakIndex;
+    final peak = points[figureIndex];
     if (peak.value > 0) {
       // One TextPainter for the caption: laid out once, reused for its width,
       // its height and the paint. Snapped through the shared rule.
       final value = labels.painterFor(peak.displayValue);
       final valueWidth = value.width;
-      final x = labels.snapCenter(
-          _x(peakIndex, size.width), valueWidth, size.width);
-      final y = (yOf(peak.value) - value.height - 6)
+
+      // The scale's maximum, in the headroom the plot gave up.
+      //
+      // It is the same figure as the peak's — the peak IS the maximum — but it
+      // answers a different question: not "which reading was highest" but "how
+      // high is high". Without it the only number on the chart is the peak's,
+      // and there is nothing to compare a smaller reading against.
+      value.paint(canvas, Offset(0, 0));
+
+      // The figure's own value, above its point — and clear of the scale's
+      // label, which shares the top of the chart with it. The two are the same
+      // number, so they would sit on the same pixels whenever the figure is the
+      // first reading; the scale's label keeps the corner and the figure's
+      // starts after it.
+      final double minX = valueWidth + 6;
+      final double snapped =
+          labels.snapCenter(_x(figureIndex, size.width), valueWidth, size.width);
+      final double x = math
+          .max(snapped, math.min(minX, size.width - valueWidth))
+          .clamp(0.0, math.max(0.0, size.width - valueWidth))
+          .toDouble();
+      final double y = budget
+          .figureTop(yOf(peak.value), value.height)
           .clamp(0.0, math.max(0.0, size.height))
           .roundToDouble();
       value.paint(canvas, Offset(x, y));
@@ -464,7 +768,11 @@ class _LineChartPainter extends CustomPainter {
     // The stride comes from the shared rule in [_ChartLabels]; the widest label
     // is read from its cache rather than measured here.
     final slot = size.width / math.max(points.length, 1);
-    final stride = labels.stride(slot: slot, points: points, minStride: 1);
+    final stride = labels.stride(
+      slot: slot,
+      points: points,
+      minStride: minStride,
+    );
     final baselineY = baseline + gap;
 
     for (var i = 0; i < points.length; i += stride) {
@@ -500,21 +808,26 @@ class _LineChartPainter extends CustomPainter {
   bool shouldRepaint(covariant _LineChartPainter old) =>
       old.points != points ||
       old.labels != labels ||
-      old.accent != accent;
+      old.accent != accent ||
+      old.selected != selected ||
+      old.minStride != minStride;
 }
 
 // ---------------------------------------------------------------------------
 // Magnitude per bucket
 // ---------------------------------------------------------------------------
 
-/// How far apart the axis labels sit, in bars.
+/// How far apart the axis labels sit, in readings.
 ///
 /// Three is the sensible interval for a trading day: a shop that opens at 8am
 /// and closes at 11pm reads the axis as morning, midday, evening without
 /// counting bars, and eight labels fit a 320dp phone without touching. It is a
 /// floor, not a cap — a wider label or a narrower phone still widens the stride,
 /// so the axis can never read as a row of collisions.
-const int kPosBarChartMinStride = 3;
+const int kPosChartMinStride = 3;
+
+/// The old name, kept so the bar chart's constant still reads.
+const int kPosBarChartMinStride = kPosChartMinStride;
 
 /// A bar chart, for a total PER BUCKET: money taken in each hour of the day.
 ///
@@ -543,12 +856,29 @@ class PosBarChart extends StatefulWidget {
     required this.points,
     this.semanticsLabel,
     this.height = 148,
+    this.showTitle = true,
   });
 
   final String title;
   final List<PosLinePoint> points;
   final String? semanticsLabel;
   final double height;
+
+  /// Whether the title is drawn.
+  ///
+  /// A chart inside a panel that already has a heading does not need a second
+  /// one — and an EMPTY title still renders a heading, in the heading style, so
+  /// it leaves a line of nothing where a line of something should be.
+  final bool showTitle;
+
+  /// The colour of a quiet hour's mark.
+  ///
+  /// The MEANINGFUL boundary colour, not the hairline: at 35% of the hairline
+  /// the mark was about 1.1:1 against the card, which is a 1.5dp line nobody
+  /// can see — and a closed day then looked like missing data, which is a
+  /// different and more worrying claim.
+  static Color emptySlotColor(BuildContext context) =>
+      AppColors.of(context).outlineStrong;
 
   @override
   State<PosBarChart> createState() => _PosBarChartState();
@@ -613,11 +943,27 @@ class _PosBarChartState extends State<PosBarChart> {
     }
   }
 
-  void _selectAt(double localX, double width) {
+  /// Selects the bar under [localX].
+  ///
+  /// [toggle] is false for a drag: sliding a finger along the chart MOVES the
+  /// selection, and it does not clear it when the finger passes over the bar
+  /// that is already selected — which is what a tap does.
+  void _selectAt(double localX, double width, {bool toggle = true}) {
     final points = widget.points;
     if (points.isEmpty || width <= 0) return;
     final slot = width / points.length;
-    final index = (localX / slot).floor().clamp(0, points.length - 1);
+    // Mirrored in RTL, because the painter mirrors the bars: without this, a
+    // tap on the right of the chart picks the hour at the OTHER end of the
+    // day.
+    final double fromStart = Directionality.of(context) == TextDirection.rtl
+        ? width - localX
+        : localX;
+    final index = (fromStart / slot).floor().clamp(0, points.length - 1);
+    if (!toggle) {
+      if (_selected == index) return;
+      setState(() => _selected = index);
+      return;
+    }
     setState(() => _selected = _selected == index ? null : index);
   }
 
@@ -635,6 +981,17 @@ class _PosBarChartState extends State<PosBarChart> {
     // the chart alone knows, so the two are composed rather than one
     // overriding the other — which is how the selected-bar sentence ended up
     // unreachable on the one screen that passes a label of its own.
+    // What each bar says, for the screen reader that cannot see it.
+    //
+    // The canvas is NOT excluded from semantics any more: the painter gives
+    // every bar its own node, and a chart of readings that cannot be stepped
+    // through is a chart that cannot be read. The gesture layer is excluded
+    // instead, so the tap action does not become a second, unlabelled stop.
+    final List<String> barLabels = <String>[
+      for (final PosLinePoint point in widget.points)
+        l10n.chartSpokenBar(point.label, point.displayValue),
+    ];
+
     return Semantics(
       label: _announcement(l10n),
       container: true,
@@ -642,43 +999,57 @@ class _PosBarChartState extends State<PosBarChart> {
         crossAxisAlignment: CrossAxisAlignment.start,
         mainAxisSize: MainAxisSize.min,
         children: <Widget>[
-          Text(widget.title, style: type.titleMedium),
-          SizedBox(height: spacing.sm),
+          if (widget.showTitle) ...<Widget>[
+            Text(widget.title, style: type.titleMedium),
+            SizedBox(height: spacing.sm),
+          ],
           if (widget.points.isEmpty)
             Text(l10n.chartNothingToShow, style: labelStyle)
           else
-            ExcludeSemantics(
-              child: GestureDetector(
-                // The whole plot is the target, not one bar: a finger between
-                // two bars still selects the nearer hour, and a shop working
-                // through a queue should not have to aim.
-                onTapUp: (TapUpDetails details) => _selectAt(
-                  details.localPosition.dx,
-                  context.size?.width ?? 0,
-                ),
-                behavior: HitTestBehavior.opaque,
-                child: LayoutBuilder(
-                  builder: (BuildContext context, BoxConstraints constraints) {
-                    final width = constraints.maxWidth.isFinite
-                        ? constraints.maxWidth
-                        : constraints.biggest.width;
-                    final painter = _BarChartPainter(
-                      points: widget.points,
-                      plotHeight: widget.height,
-                      selected: selected,
-                      accent: colors.accent,
-                      emptySlot: colors.outline.withValues(alpha: 0.35),
-                      gap: spacing.sm,
-                      labels: _labelsFor(labelStyle),
-                    );
-                    return SizedBox(
-                      width: width,
-                      height: painter.totalHeight(widget.height),
-                      child: CustomPaint(painter: painter),
-                    );
-                  },
-                ),
-              ),
+            // The width the slots are cut from is the CANVAS's width, so the
+            // selection is computed from the width the painter used and not
+            // from the width of whatever contains the chart.
+            LayoutBuilder(
+              builder: (BuildContext context, BoxConstraints constraints) {
+                final width = constraints.maxWidth.isFinite
+                    ? constraints.maxWidth
+                    : constraints.biggest.width;
+                final painter = _BarChartPainter(
+                  points: widget.points,
+                  plotHeight: widget.height,
+                  selected: selected,
+                  accent: colors.accent,
+                  emptySlot: PosBarChart.emptySlotColor(context),
+                  gap: spacing.sm,
+                  labels: _labelsFor(labelStyle),
+                  semanticsLabels: barLabels,
+                );
+                return SizedBox(
+                  width: width,
+                  height: painter.totalHeight(widget.height),
+                  child: GestureDetector(
+                    // The whole plot is the target, not one bar: a finger
+                    // between two bars still selects the nearer hour, and a
+                    // shop working through a queue should not have to aim.
+                    onTapUp: (TapUpDetails details) =>
+                        _selectAt(details.localPosition.dx, width),
+                    // A DRAG selects too.
+                    //
+                    // On a 24-hour chart on a 328dp phone each slot is about
+                    // 14dp wide and the bar about 9dp — well under the 44dp a
+                    // tap is supposed to be comfortable on. A finger can slide
+                    // along the chart and the selection follows it, so nobody
+                    // has to hit a 9dp target with a fingertip.
+                    onHorizontalDragUpdate: (DragUpdateDetails details) =>
+                        _selectAt(details.localPosition.dx, width,
+                            toggle: false),
+                    // The gesture layer is not a reading; the bars are.
+                    excludeFromSemantics: true,
+                    behavior: HitTestBehavior.opaque,
+                    child: CustomPaint(painter: painter),
+                  ),
+                );
+              },
             ),
         ],
       ),
@@ -721,6 +1092,7 @@ class _BarChartPainter extends CustomPainter {
     required this.emptySlot,
     required this.gap,
     required this.labels,
+    required this.semanticsLabels,
   });
 
   final List<PosLinePoint> points;
@@ -737,6 +1109,12 @@ class _BarChartPainter extends CustomPainter {
   /// Shared label measurement and axis rules — see [_ChartLabels]. Owned by the
   /// chart's state so its measurements outlive this painter.
   final _ChartLabels labels;
+
+  /// What each bar says, in the same order as [points].
+  ///
+  /// Built by the chart, which has the localisations; the painter only paints
+  /// and places them.
+  final List<String> semanticsLabels;
 
   /// A bar never fills its slot: two bars touching read as one column of
   /// matched height rather than as separate hours.
@@ -785,8 +1163,13 @@ class _BarChartPainter extends CustomPainter {
     if (points.isEmpty || size.width <= 0 || size.height <= 0) return;
 
     final axisHeight = labels.axisHeight(size.height, gap);
-    final plotHeight = size.height - axisHeight;
-    final baseline = size.height - axisHeight;
+    final budget = ChartBudget.of(
+      height: size.height,
+      axisHeight: axisHeight,
+      labelHeight: labels.lineHeight(),
+    );
+    final baseline = budget.baseline;
+    final plotHeight = budget.plotHeight;
     final slot = _slot(size.width);
     final barWidth = _barWidth(slot);
 
@@ -829,7 +1212,10 @@ class _BarChartPainter extends CustomPainter {
           _barLeft(selected!, size.width) + barWidth / 2,
           valueWidth,
           size.width);
-      final y = (baseline - _heightOf(at.value, plotHeight) - value.height - 4)
+      // Four pixels below the top of the bar, which the headroom makes room
+      // for: the figure is a label ON the chart, not a cap over it.
+      final y = budget
+          .figureTop(baseline - _heightOf(at.value, plotHeight), value.height)
           .clamp(0.0, math.max(0.0, size.height))
           .roundToDouble();
       value.paint(canvas, Offset(x, y));
@@ -857,8 +1243,7 @@ class _BarChartPainter extends CustomPainter {
     if (previous < 0 || previous >= index) return true;
     final slot = _slot(width);
     final widest = labels.widest(points, math.max(slot, 12.0));
-    return (index - previous) * slot >=
-        widest * _ChartLabels.collisionFactor;
+    return (index - previous) * slot >= widest * _ChartLabels.collisionFactor;
   }
 
   void _paintAxisLabel(Canvas canvas, Size size, int index, double baselineY) {
@@ -874,12 +1259,48 @@ class _BarChartPainter extends CustomPainter {
     painter.paint(canvas, Offset(x, baselineY.roundToDouble()));
   }
 
+  /// One semantics node per bar.
+  ///
+  /// A painted canvas has no text nodes, so without this a screen reader
+  /// hears the chart's summary and NOTHING else: it cannot step through the
+  /// bars, and a bar chart is a list of readings, so a list of readings it
+  /// cannot reach is a chart it cannot read.
+  ///
+  /// The node covers the bar's whole SLOT, not just the bar: a 9dp-wide
+  /// rectangle is a poor thing to ask a finger to find, and the slots tile the
+  /// chart without gaps, so the nodes do too.
+  @override
+  SemanticsBuilderCallback get semanticsBuilder => (Size size) {
+        final double slot = _slot(size.width);
+        final List<CustomPainterSemantics> nodes = <CustomPainterSemantics>[];
+        for (var i = 0; i < points.length; i++) {
+          if (i >= semanticsLabels.length) break;
+          final String label = semanticsLabels[i];
+          if (label.isEmpty) continue;
+          final double raw = i * slot;
+          final double x = _isRtl ? size.width - raw - slot : raw;
+          nodes.add(CustomPainterSemantics(
+            key: ValueKey<int>(i),
+            rect: Rect.fromLTWH(x, 0, slot, size.height),
+            properties: SemanticsProperties(
+              label: label,
+              textDirection: labels.direction,
+            ),
+          ));
+        }
+        return nodes;
+      };
+
   @override
   bool shouldRepaint(covariant _BarChartPainter old) =>
       old.points != points ||
       old.selected != selected ||
       old.labels != labels ||
       old.accent != accent;
+
+  @override
+  bool shouldRebuildSemantics(covariant _BarChartPainter old) =>
+      old.semanticsLabels != semanticsLabels || old.selected != selected;
 }
 
 // ---------------------------------------------------------------------------
@@ -930,11 +1351,20 @@ class PosPieChart extends StatelessWidget {
     this.centerLabel,
     this.centerValue,
     this.size = 132,
+    this.showTitle = true,
   });
 
   final String title;
   final List<PosPieSlice> slices;
   final String? semanticsLabel;
+
+  /// Whether the title is drawn.
+  ///
+  /// A chart inside a section that already has a heading does not need a
+  /// second one — and an EMPTY title still renders a heading, in the heading
+  /// style, so it leaves a line of nothing where a line of something should
+  /// be.
+  final bool showTitle;
 
   /// Small word over the figure in the hole — "Total", "Taken".
   final String? centerLabel;
@@ -959,8 +1389,10 @@ class PosPieChart extends StatelessWidget {
         crossAxisAlignment: CrossAxisAlignment.start,
         mainAxisSize: MainAxisSize.min,
         children: <Widget>[
-          Text(title, style: type.titleMedium),
-          SizedBox(height: spacing.sm),
+          if (showTitle) ...<Widget>[
+            Text(title, style: type.titleMedium),
+            SizedBox(height: spacing.sm),
+          ],
           if (slices.isEmpty)
             Text(
               AppLocalizations.of(context).chartNothingToShow,
@@ -972,14 +1404,16 @@ class PosPieChart extends StatelessWidget {
               children: <Widget>[
                 // The ring, with the total inside it as real text over a hole.
                 //
-                // `IntrinsicHeight` is not a trick to force; the ring is sized
-                // by its own [size], and the centre figure is painted as real
-                // text, so the ROW grows to whichever is taller. A fixed-height
-                // `SizedBox` here overflowed by 12px at 2.0× text, which is the
-                // one failure mode the brief bans.
-                SizedBox(
-                  width: size,
-                  height: size,
+                // The ring is a MINIMUM, not a fixed box. The centre figure is
+                // real text, and at 200% text scale it is TALLER than the ring:
+                // a fixed-height box clipped it, and a clipped number is worse
+                // than a taller row. The box grows with the text instead, and
+                // the ring stays a circle drawn at its own size.
+                ConstrainedBox(
+                  constraints: BoxConstraints(
+                    minWidth: size,
+                    minHeight: size,
+                  ),
                   child: Stack(
                     alignment: Alignment.center,
                     children: <Widget>[
@@ -1003,20 +1437,25 @@ class PosPieChart extends StatelessWidget {
                               if (centerLabel != null)
                                 Text(
                                   centerLabel!,
-                                  maxLines: 2,
                                   textAlign: TextAlign.center,
                                   style: type.bodySmall?.copyWith(
                                     color: AppColors.of(context).onSurfaceMuted,
                                   ),
                                 ),
-                              FittedBox(
-                                child: Text(
-                                  centerValue!,
-                                  style: AppTypography.money(
-                                    context,
-                                    size: 16,
-                                    weight: FontWeight.w700,
-                                  ),
+                              // Real text, at the size the scale asks for.
+                              //
+                              // NOT a `FittedBox`: scaling the figure down to
+                              // fit would quietly defeat the user's text-scale
+                              // setting, which is the one thing this chart must
+                              // not do. The figure wraps inside the hole's
+                              // width instead, and the ring grows around it.
+                              Text(
+                                centerValue!,
+                                textAlign: TextAlign.center,
+                                style: AppTypography.money(
+                                  context,
+                                  size: 16,
+                                  weight: FontWeight.w700,
                                 ),
                               ),
                             ],
@@ -1080,9 +1519,47 @@ class PosPieChart extends StatelessWidget {
 
   String _fallbackSemantics(AppLocalizations l10n, int total) {
     if (slices.isEmpty) return l10n.chartSpokenNoValues(title);
-    return describeSlices(l10n, title, slices, total);
+    // The centre figure IS the total, already formatted. Speaking the raw
+    // minor-unit integer instead would read "KSh 12,500.00" as "one million
+    // two hundred fifty thousand" — the money spoken as a number of cents.
+    return describeSlices(l10n, title, slices, total, totalLabel: centerValue);
   }
 }
+
+/// The arc each slice of a ring is given, in radians, in the order given.
+///
+/// Every slice is given at least a sliver, and that sliver is BIGGER than the
+/// slice's share: a tender with one sale against a hundred is inflated to
+/// something visible, and nothing takes that back. Inflate a few of those and
+/// the arcs add up to more than a full turn — so the last arc paints over the
+/// first, and the ring shows a slice twice.
+///
+/// So the slices that are not inflated give back exactly what the inflated
+/// ones borrowed: the big ones are scaled down by the amount the small ones
+/// took, and the arcs then sum to a full turn.
+///
+/// Public because that sum is the invariant, and a painted ring is not
+/// something a test can measure.
+List<double> pieSweeps(List<PosPieSlice> slices, int total) {
+  final List<PosPieSlice> live = <PosPieSlice>[
+    for (final PosPieSlice slice in slices)
+      if (slice.value > 0) slice,
+  ];
+  if (live.isEmpty || total <= 0) return const <double>[];
+  final List<double> raw = <double>[
+    for (final PosPieSlice slice in live) 2 * math.pi * slice.value / total,
+  ];
+  final int small = raw.where((double r) => r < _pieMinSweep).length;
+  final double big =
+      raw.where((double r) => r >= _pieMinSweep).fold(0.0, (a, b) => a + b);
+  final double k = big <= 0 ? 1.0 : (2 * math.pi - small * _pieMinSweep) / big;
+  return <double>[
+    for (final double r in raw) r < _pieMinSweep ? _pieMinSweep : r * k,
+  ];
+}
+
+/// The smallest arc a slice of a ring may have, in radians.
+const double _pieMinSweep = 0.04;
 
 /// The ring. Painted only — the total and the legend are widgets above it.
 class _PiePainter extends CustomPainter {
@@ -1096,6 +1573,24 @@ class _PiePainter extends CustomPainter {
   /// length of arc.
   static const double _holeFraction = 0.58;
 
+  /// The smallest arc a slice may have, in radians.
+  ///
+  /// A tender that took one sale is a fact the ring is being asked to show, and
+  /// a gap would read as "not counted".
+  static const double _minSweep = _pieMinSweep;
+
+  /// The gap between two slices, in radians. A degree and a half.
+  ///
+  /// Without it, two similar hues — the success green and the accent green —
+  /// blur into one arc, and the boundary between "M-Pesa" and "bank transfer"
+  /// is a line nobody can find. A degree and a half is enough to separate them
+  /// and small enough that the ring still reads as a whole.
+  static const double _sliceGap = 0.026;
+
+  /// The arc each slice gets — see [pieSweeps].
+  static List<double> _sweeps(List<PosPieSlice> live, int total) =>
+      pieSweeps(live, total);
+
   @override
   void paint(Canvas canvas, Size size) {
     if (slices.isEmpty || total <= 0) return;
@@ -1106,17 +1601,26 @@ class _PiePainter extends CustomPainter {
       ..style = PaintingStyle.stroke
       ..strokeWidth = stroke;
 
+    final List<PosPieSlice> live = <PosPieSlice>[
+      for (final PosPieSlice slice in slices)
+        if (slice.value > 0) slice,
+    ];
+    if (live.isEmpty) return;
+    final int liveTotal =
+        live.fold<int>(0, (int sum, PosPieSlice slice) => sum + slice.value);
+    final List<double> sweeps = _sweeps(live, liveTotal);
+
     var start = -math.pi / 2;
-    for (final PosPieSlice slice in slices) {
-      if (slice.value <= 0) continue;
-      // At least a sliver: a tender that took one sale is a fact the ring is
-      // being asked to show, and a gap would read as "not counted".
-      final sweep = math.max(2 * math.pi * (slice.value / total), 0.04);
-      ringPaint.color = slice.color;
+    for (var i = 0; i < live.length; i++) {
+      final double sweep = sweeps[i];
+      // The gap is taken OUT of the slice, so the ring still closes and the
+      // separation is a space rather than a shortening of the last arc.
+      final double drawn = math.max(sweep - _sliceGap, _minSweep * 0.4);
+      ringPaint.color = live[i].color;
       canvas.drawArc(
         rect.deflate(stroke / 2),
         start,
-        sweep,
+        drawn,
         false,
         ringPaint,
       );
@@ -1135,8 +1639,9 @@ String describeSlices(
   AppLocalizations l10n,
   String title,
   List<PosPieSlice> slices,
-  int total,
-) {
+  int total, {
+  String? totalLabel,
+}) {
   if (slices.isEmpty) return l10n.chartSpokenNoValues(title);
   final ordered = List<PosPieSlice>.from(slices)
     ..sort((a, b) => b.value.compareTo(a.value));
@@ -1144,5 +1649,15 @@ String describeSlices(
       .map((s) => '${s.label} ${s.displayValue}, '
           '${(s.value * 100 / math.max(total, 1)).round()} percent')
       .join('; ');
-  return '$title, total ${ordered.fold<int>(0, (sum, s) => sum + s.value)}. $parts.';
+  // The total, SPOKEN AS A FIGURE.
+  //
+  // The slices' own values are formatted — "KSh 4,200.00" — and the total
+  // was the raw integer, so "KSh 12,500.00" was announced as "total one
+  // million two hundred fifty thousand": the money read as a number of cents,
+  // and a cashier hearing it has no idea what it is.
+  //
+  // When no formatted total is available the sentence leaves it out, because
+  // a wrong total is worse than no total.
+  final String head = totalLabel == null ? title : '$title, total $totalLabel';
+  return '$head. $parts.';
 }
