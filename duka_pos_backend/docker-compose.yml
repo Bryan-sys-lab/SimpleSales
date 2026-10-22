@@ -31,8 +31,17 @@ services:
       POSTGRES_USER: ${POSTGRES_USER:-duka_pos}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?POSTGRES_PASSWORD is required}
       POSTGRES_DB: ${POSTGRES_DB:-duka_pos}
+      # The identity provider's own password, so the first-run script can
+      # create its role with it.
+      KEYCLOAK_DB_PASSWORD: ${KEYCLOAK_DB_PASSWORD:?KEYCLOAK_DB_PASSWORD is required}
     volumes:
       - duka_pos_db_data:/var/lib/postgresql/data
+      # The first-run setup: the identity provider's own role and database.
+      # Keycloak connects to an EXISTING database with a role that can log in —
+      # it creates neither — so without this the stack fails with "password
+      # authentication failed for user keycloak", which reads like a wrong
+      # password and is actually a missing role.
+      - ./scripts/init-db.sh:/docker-entrypoint-initdb.d/init-db.sh:ro
     ports:
       - "5432:5432"
     healthcheck:
