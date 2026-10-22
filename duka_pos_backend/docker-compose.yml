@@ -64,16 +64,34 @@ services:
       KC_DB_PASSWORD: ${KEYCLOAK_DB_PASSWORD:?KEYCLOAK_DB_PASSWORD is required}
       KEYCLOAK_ADMIN: ${KEYCLOAK_ADMIN:-admin}
       KEYCLOAK_ADMIN_PASSWORD: ${KEYCLOAK_ADMIN_PASSWORD:?KEYCLOAK_ADMIN_PASSWORD is required}
+      # The health endpoints, on the management port.
+      KC_HEALTH_ENABLED: "true"
     ports:
       - "8080:8080"
     depends_on:
       db:
         condition: service_healthy
+    # NOT curl.
+    #
+    # The Keycloak image is ubi9-MINIMAL and has no curl in it, so a health
+    # check that shells out to curl fails with "executable file not found" and
+    # the container is called unhealthy while the server is running perfectly
+    # well — the stack then never starts, and the reason is a line of YAML
+    # that looks fine.
+    #
+    # So the check speaks HTTP itself, over bash's /dev/tcp, against the
+    # management port where the health endpoints live.
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:8080/health/ready"]
+      test:
+        - CMD-SHELL
+        - >-
+          exec 3<>/dev/tcp/localhost/9000;
+          echo -e 'GET /health/ready HTTP/1.1\r\nHost: localhost\r\nConnection: close\r\n\r\n' >&3;
+          cat <&3 | grep -m 1 'HTTP/1.1 200'
       interval: 10s
       timeout: 5s
-      retries: 10
+      retries: 20
+      start_period: 30s
 
   # ------------------------------------------------------------------
   # Keycloak init - creates realm, client, and test user
