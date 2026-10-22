@@ -1,6 +1,19 @@
-FROM quay.io/keycloak/keycloak:24.0.1
+# The Keycloak initializer: creates the realm, the client and the test user.
+#
+# ## WHY IT IS NOT BUILT ON THE KEYCLOAK IMAGE
+#
+# It used to be, and it tried to install curl and jq with `microdnf` — which
+# the Keycloak 24.0.1 image does not have. The build died on the second
+# step, which meant the stack could never start, which meant the CI could
+# never exercise it.
+#
+# The script talks to Keycloak over HTTP and uses nothing else: no kcadm, no
+# Keycloak jars, no realm files. So it does not need the Keycloak image at
+# all, and an ALPINE base with curl and jq is both smaller and honest about
+# what it does.
+FROM alpine:3.20
 
-RUN microdnf install -y curl jq && microdnf clean all
+RUN apk add --no-cache bash curl jq
 
 WORKDIR /opt/keycloak-init
 COPY keycloak-init.sh /opt/keycloak-init/keycloak-init.sh
