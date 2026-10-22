@@ -209,19 +209,126 @@ jobs:
             esac
           done
 
+          # THE NUMBER IN PUBSPEC IS SPENT. BUMP IT AND CARRY ON.
+          #
+          # It used to fail here, and it failed every single time: the build
+          # number in pubspec is the number the last release consumed, so the
+          # commit AFTER a release always found its own number already used
+          # and every release needed a human to remember to bump it. A release
+          # pipeline that needs remembering is a release pipeline that is
+          # sometimes skipped, and a skipped release is a till that does not
+          # get the fix.
+          #
+          # So the pipeline bumps it itself. The next free number is
+          # ${highest}+1, and the commit that carries it is the commit that
+          # gets released — the tested commit plus a version bump, which is
+          # exactly the change that has to be in a release anyway.
+          #
+          # The bump is a real commit on main, so the repository always says
+          # what was released. The APK is built from that commit and therefore
+          # carries its number, so the tag and the APK cannot disagree — which
+          # is the bug that spent 27 in the first place.
           if [ "$declared" -le "$highest" ]; then
-            echo "::error::pubspec declares build ${declared} of ${semver}, but ${highest} has already been used."
-            echo "::error::A build number is released once: Android refuses to install an APK whose versionCode is not higher than the installed one."
-            echo "::error::Bump the build number in duka_pos_app/pubspec.yaml to $(( highest + 1 )) to release this commit."
-            exit 1
+            next=$(( highest + 1 ))
+            echo "::notice::Build ${declared} of ${semver} was already released. Bumping to ${next}."
+            echo "stale=true" >> "$GITHUB_OUTPUT"
+            echo "next=${next}" >> "$GITHUB_OUTPUT"
+            echo "sha=${sha}" >> "$GITHUB_OUTPUT"
+            echo "tag=v${semver}+${next}" >> "$GITHUB_OUTPUT"
+            echo "semver=${semver}" >> "$GITHUB_OUTPUT"
+            echo "code=${next}" >> "$GITHUB_OUTPUT"
+            echo "already_tagged=false" >> "$GITHUB_OUTPUT"
+            exit 0
           fi
 
           echo "highest used build for ${semver}: ${highest}"
           echo "release tag: ${tag}"
+          echo "stale=false" >> "$GITHUB_OUTPUT"
+          echo "sha=${sha}" >> "$GITHUB_OUTPUT"
           echo "tag=${tag}" >> "$GITHUB_OUTPUT"
           echo "semver=${semver}" >> "$GITHUB_OUTPUT"
           echo "code=${declared}" >> "$GITHUB_OUTPUT"
           echo "already_tagged=false" >> "$GITHUB_OUTPUT"
+
+      # THE BUMP: one commit, one line, on top of the tested commit.
+      #
+      # It has to be pushed with the PAT, like the tag. A push made with the
+      # default GITHUB_TOKEN does not start a workflow run, and this push has
+      # to start one: the release is built from the commit this produces, and
+      # the CI that blesses it is what stands behind it.
+      #
+      # It is pushed on top of the TESTED commit, not on top of main's head.
+      # Main's head may have moved since the CI run, and those commits have
+      # not been through CI — releasing them would release code nobody
+      # tested. If main HAS moved, this push is rejected as a
+      # non-fast-forward, and that is not a failure: the run for the newer
+      # commit is already queued and will do the same bump on top of itself.
+      - name: Bump the build number
+        id: bump
+        if: steps.plan.outputs.stale == 'true'
+        shell: bash
+        env:
+          GH_TOKEN: ${{ secrets.RELEASE_TAG_TOKEN }}
+        run: |
+          set -euo pipefail
+          if [ -z "$GH_TOKEN" ]; then
+            echo "::error::Secret RELEASE_TAG_TOKEN is not set."
+            echo "::error::The bump has to be pushed by a credential GitHub will run workflows for."
+            echo "::error::The automatic GITHUB_TOKEN cannot be used: GitHub does not start a workflow"
+            echo "::error::for a push made with it, so the commit that carries the build number"
+            echo "::error::would never be CI'd, and the release would ship an untested commit."
+            exit 1
+          fi
+
+          semver="${{ steps.plan.outputs.semver }}"
+          next="${{ steps.plan.outputs.next }}"
+
+          # The version line, and only the version line. `sed` on the exact
+          # `version:` key rather than on the first number in the file, so a
+          # version elsewhere in the pubspec cannot be rewritten by accident.
+          sed -i "s|^version: ${semver}+[0-9]*$|version: ${semver}+${next}|" duka_pos_app/pubspec.yaml
+
+          bumped="$(awk '/^version:/{print $2; exit}' duka_pos_app/pubspec.yaml)"
+          if [ "$bumped" != "${semver}+${next}" ]; then
+            echo "::error::Could not bump the build number: pubspec now says '${bumped}', expected '${semver}+${next}'."
+            exit 1
+          fi
+          echo "pubspec now declares ${bumped}"
+
+          # The commit needs an identity. `actions/checkout` leaves the
+          # repository with none, and a commit without one is refused.
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add duka_pos_app/pubspec.yaml
+          # Two -m arguments rather than a multi-line string: a message
+          # wrapped across lines inside a YAML block scalar is a YAML key, and
+          # the YAML error is a long way from the shell error it causes.
+          git commit -m "chore(release): bump the build number to ${next}" -m "The build number in pubspec is the number the last release consumed, so every commit after a release found its own number already used, and every release needed somebody to remember to bump it by hand. The pipeline does it now: the next free number is carried by a commit on top of the tested one, and that commit is what gets built and tagged, so the tag and the APK can never disagree."
+
+          # The PAT in an extra header rather than in the remote URL: a URL
+          # with the token in it is written to .git/config and can be read
+          # off the machine by anything that can read the repository.
+          auth="$(printf 'x-access-token:%s' "$GH_TOKEN" | base64 -w0)"
+          if ! git -c http.extraheader="AUTHORIZATION: basic ${auth}" push origin HEAD:main; then
+            # FAILED, not "nothing to do".
+            #
+            # The push is rejected when main has moved on since this run
+            # started, and the run for that newer commit is already queued: it
+            # will bump on top of itself and release that. So this run has
+            # released nothing, and it says so by FAILING.
+            #
+            # It used to exit 0 here, which was the worst of both: a green run
+            # that released nothing. The whole point of this workflow is that
+            # a release is either there or announced, and "merely late" must
+            # not look like "done".
+            echo "::error::Could not push the build-number bump: main has moved on since this run started."
+            echo "::error::This run released nothing. The run for the newer commit will bump and release it."
+            echo "::error::Nothing was tagged, so no APK is in flight from here."
+            exit 1
+          fi
+
+          echo "bumped=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
+          echo "::notice::Bumped the build number to ${next} in $(git rev-parse --short HEAD)."
 
       # Pushed with a PAT, not the default GITHUB_TOKEN.
       #
@@ -253,7 +360,10 @@ jobs:
             exit 1
           fi
           tag="${{ steps.plan.outputs.tag }}"
-          sha="${{ github.event.workflow_run.head_sha }}"
+          # The commit that carries the version. Normally the tested one; after
+          # a bump, the commit the bump produced — because THAT is the commit
+          # whose pubspec declares the number, and the APK is built from it.
+          sha="${{ steps.bump.outputs.bumped || steps.plan.outputs.sha }}"
 
           # Lightweight and local-only until the push succeeds: a tag object
           # created but never pushed is harmless, whereas a half-applied remote
@@ -322,6 +432,12 @@ jobs:
         run: |
           if [ "${{ steps.plan.outputs.already_tagged }}" = "true" ]; then
             echo "Nothing to do: this commit was already released."
+          elif [ "${{ steps.plan.outputs.stale }}" = "true" ]; then
+            echo "Requested release ${{ steps.plan.outputs.tag }}."
+            echo "The build number in pubspec was already used, so the pipeline bumped it"
+            echo "to ${{ steps.plan.outputs.next }} in a commit of its own, and that commit is"
+            echo "what is being built and tagged."
+            echo "It appears as a DRAFT until the signed APK has built and verified."
           else
             echo "Requested release ${{ steps.plan.outputs.tag }}."
             echo "It appears as a DRAFT until the signed APK has built and verified."
