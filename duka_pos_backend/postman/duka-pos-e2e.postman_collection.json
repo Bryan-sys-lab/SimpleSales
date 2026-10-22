@@ -1,89 +1,22 @@
 {
   "info": {
-    "name": "Duka POS - Complete E2E User Journey",
-    "description": "End-to-end test collection covering the complete user journey: shop provisioning, verification, eTIMS, stock adjustment, sales, reports, staff auth, and auto-updates.\n\nFlow order:\n1. Health Check\n2. Shop Provisioning (auth/link)\n3. Verification (auth/verify)\n4. Session Refresh (auth/refresh)\n5. eTIMS Device Registration\n6. eTIMS Receipt Issuance\n7. eTIMS Status\n8. eTIMS Z-Report\n9. Stock Adjustment\n10. Product Listing\n11. Portfolio Reports\n12. Staff Authentication\n13. Update Manifest\n\nEach request saves response data to collection variables for the next request.",
-    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json",
-    "_postman_variable_scope": "variables",
-    "_postman_exported_at": "2026-10-16T00:00:00.000Z"
+    "name": "Duka POS backend — end to end",
+    "description": "The whole flow, against a live stack, with a real Keycloak token.\n\nIt is the end-to-end story of one shop being created and used:\n\n  1. the owner asks for a code — the account is created in Keycloak, dark;\n  2. the code comes back — the account is activated and the shop is linked;\n  3. the owner signs in to KEYCLOAK with their email and their 6-digit admin PIN\n     (the PIN IS the password — there is no second secret to remember);\n  4. the till pushes its ledger, its drawer, a return, a delivery and a shot cup;\n  5. the reports answer with the shop's own figures.\n\nStep 3 is the part that makes this collection worth running: it is the only\nplace the whole credential story is exercised, from the emailed code to a\nbearer token the API accepts.",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
   },
-  "variable": [
-    { "key": "base_url", "value": "http://localhost:3000", "type": "string" },
-    { "key": "challenge_id", "value": "", "type": "string" },
-    { "key": "verification_code", "value": "123456", "type": "string" },
-    { "key": "access_token", "value": "", "type": "string" },
-    { "key": "refresh_token", "value": "", "type": "string" },
-    { "key": "tenant_id", "value": "", "type": "string" },
-    { "key": "shop_name", "value": "", "type": "string" },
-    { "key": "device_id", "value": "device-001", "type": "string" },
-    { "key": "tin", "value": "P051234567L", "type": "string" },
-    { "key": "product_id", "value": "", "type": "string" },
-    { "key": "kra_receipt_number", "value": "", "type": "string" },
-    { "key": "staff_id", "value": "", "type": "string" }
-  ],
   "item": [
     {
-      "name": "1. Health Check",
-      "item": [
-        {
-          "name": "GET /health",
-          "request": {
-            "method": "GET",
-            "header": [],
-            "url": { "raw": "{{base_url}}/health", "host": ["{{base_url}}"], "path": ["health"] },
-            "description": "Verify the backend is running"
-          },
-          "event": [
-            {
-              "listen": "test",
-              "script": {
-                "type": "text/javascript",
-                "exec": [
-                  "pm.test(\"Status is 200\", function () { pm.response.to.have.status(200); });",
-                  "pm.test(\"Body has status ok\", function () { var d = pm.response.json(); pm.expect(d.status).to.eql(\"ok\"); });",
-                  "pm.test(\"Security header X-Content-Type-Options\", function () { pm.expect(pm.response.headers.get(\"X-Content-Type-Options\")).to.eql(\"nosniff\"); });",
-                  "pm.test(\"Security header X-Frame-Options\", function () { pm.expect(pm.response.headers.get(\"X-Frame-Options\")).to.eql(\"DENY\"); });",
-                  "pm.test(\"X-Request-ID header present\", function () { pm.expect(pm.response.headers.get(\"X-Request-ID\")).to.not.be.null; });",
-                  "pm.test(\"No X-Powered-By header\", function () { pm.expect(pm.response.headers.get(\"X-Powered-By\")).to.be.undefined; });"
-                ]
-              }
-            }
-          ]
-        }
-      ]
-    },
-    {
-      "name": "2. Shop Provisioning",
+      "name": "1 — the owner asks for a code",
       "item": [
         {
           "name": "POST /api/auth/link",
           "request": {
             "method": "POST",
             "header": [{ "key": "Content-Type", "value": "application/json" }],
-            "body": { "mode": "raw", "raw": "{\n  \"email\": \"e2e@example.com\",\n  \"pin\": \"1234\",\n  \"shopName\": \"E2E Test Shop\",\n  \"ownerName\": \"E2E Owner\"\n}" },
-            "url": { "raw": "{{base_url}}/api/auth/link", "host": ["{{base_url}}"], "path": ["api", "auth", "link"] },
-            "description": "Create tenant and owner profile, send verification code"
-          },
-          "event": [
-            {
-              "listen": "test",
-              "script": {
-                "type": "text/javascript",
-                "exec": [
-                  "pm.test(\"Status is 200\", function () { pm.response.to.have.status(200); });",
-                  "pm.test(\"Has challenge_id\", function () { var d = pm.response.json(); pm.expect(d).to.have.property(\"challenge_id\"); pm.collectionVariables.set(\"challenge_id\", d.challenge_id); });",
-                  "pm.test(\"Email matches\", function () { var d = pm.response.json(); pm.expect(d.email).to.eql(\"e2e@example.com\"); });",
-                  "pm.test(\"Expires in seconds is positive\", function () { var d = pm.response.json(); pm.expect(d.expires_in_seconds).to.be.greaterThan(0); });"
-                ]
-              }
-            }
-          ]
-        },
-        {
-          "name": "POST /api/auth/link - duplicate shop",
-          "request": {
-            "method": "POST",
-            "header": [{ "key": "Content-Type", "value": "application/json" }],
-            "body": { "mode": "raw", "raw": "{\n  \"email\": \"e2e@example.com\",\n  \"pin\": \"1234\",\n  \"shopName\": \"E2E Test Shop\",\n  \"ownerName\": \"E2E Owner\"\n}" },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"{{owner_email}}\",\n  \"pin\": \"{{owner_pin}}\",\n  \"shopName\": \"E2E Test Shop\",\n  \"ownerName\": \"E2E Owner\"\n}"
+            },
             "url": { "raw": "{{base_url}}/api/auth/link", "host": ["{{base_url}}"], "path": ["api", "auth", "link"] }
           },
           "event": [
@@ -92,8 +25,15 @@
               "script": {
                 "type": "text/javascript",
                 "exec": [
-                  "pm.test(\"Status is 409\", function () { pm.response.to.have.status(409); });",
-                  "pm.test(\"Error mentions already linked\", function () { var d = pm.response.json(); pm.expect(d.error).to.include(\"already linked\"); });"
+                  "pm.test('Status is 200', function () { pm.response.to.have.status(200); });",
+                  "pm.test('The account was created in Keycloak, dark', function () {",
+                  "  pm.expect(pm.response.json().status).to.eql('code_sent');",
+                  "});",
+                  "pm.test('The code comes back with the response in this build', function () {",
+                  "  var code = pm.response.json().debug_code;",
+                  "  pm.expect(code, 'the stack runs with VERIFICATION_DEBUG_CODES').to.be.a('string');",
+                  "  pm.environment.set('owner_code', code);",
+                  "});"
                 ]
               }
             }
@@ -102,40 +42,17 @@
       ]
     },
     {
-      "name": "3. Verification",
+      "name": "2 — the code comes back",
       "item": [
         {
           "name": "POST /api/auth/verify",
           "request": {
             "method": "POST",
             "header": [{ "key": "Content-Type", "value": "application/json" }],
-            "body": { "mode": "raw", "raw": "{\n  \"email\": \"e2e@example.com\",\n  \"pin\": \"1234\",\n  \"code\": \"{{verification_code}}\"\n}" },
-            "url": { "raw": "{{base_url}}/api/auth/verify", "host": ["{{base_url}}"], "path": ["api", "auth", "verify"] },
-            "description": "Confirm verification code and mint session tokens"
-          },
-          "event": [
-            {
-              "listen": "test",
-              "script": {
-                "type": "text/javascript",
-                "exec": [
-                  "pm.test(\"Status is 200\", function () { pm.response.to.have.status(200); });",
-                  "pm.test(\"Has access_token\", function () { var d = pm.response.json(); pm.expect(d).to.have.property(\"access_token\"); pm.collectionVariables.set(\"access_token\", d.access_token); });",
-                  "pm.test(\"Has refresh_token\", function () { var d = pm.response.json(); pm.expect(d).to.have.property(\"refresh_token\"); pm.collectionVariables.set(\"refresh_token\", d.refresh_token); });",
-                  "pm.test(\"Has tenant_id\", function () { var d = pm.response.json(); pm.expect(d).to.have.property(\"tenant_id\"); pm.collectionVariables.set(\"tenant_id\", d.tenant_id); });",
-                  "pm.test(\"Has shop_name\", function () { var d = pm.response.json(); pm.expect(d).to.have.property(\"shop_name\"); pm.collectionVariables.set(\"shop_name\", d.shop_name); });",
-                  "pm.test(\"Expires in seconds is 86400\", function () { var d = pm.response.json(); pm.expect(d.expires_in_seconds).to.eql(86400); });"
-                ]
-              }
-            }
-          ]
-        },
-        {
-          "name": "POST /api/auth/verify - invalid code",
-          "request": {
-            "method": "POST",
-            "header": [{ "key": "Content-Type", "value": "application/json" }],
-            "body": { "mode": "raw", "raw": "{\n  \"email\": \"e2e@example.com\",\n  \"pin\": \"1234\",\n  \"code\": \"000000\"\n}" },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"{{owner_email}}\",\n  \"pin\": \"{{owner_pin}}\",\n  \"code\": \"{{owner_code}}\"\n}"
+            },
             "url": { "raw": "{{base_url}}/api/auth/verify", "host": ["{{base_url}}"], "path": ["api", "auth", "verify"] }
           },
           "event": [
@@ -144,31 +61,18 @@
               "script": {
                 "type": "text/javascript",
                 "exec": [
-                  "pm.test(\"Status is 400\", function () { pm.response.to.have.status(400); });",
-                  "pm.test(\"Error code is VERIFICATION_INVALID\", function () { var d = pm.response.json(); pm.expect(d.code).to.eql(\"VERIFICATION_INVALID\"); });"
-                ]
-              }
-            }
-          ]
-        },
-        {
-          "name": "POST /api/auth/refresh",
-          "request": {
-            "method": "POST",
-            "header": [{ "key": "Content-Type", "value": "application/json" }],
-            "body": { "mode": "raw", "raw": "{\n  \"refreshToken\": \"{{refresh_token}}\"\n}" },
-            "url": { "raw": "{{base_url}}/api/auth/refresh", "host": ["{{base_url}}"], "path": ["api", "auth", "refresh"] },
-            "description": "Exchange refresh token for new session"
-          },
-          "event": [
-            {
-              "listen": "test",
-              "script": {
-                "type": "text/javascript",
-                "exec": [
-                  "pm.test(\"Status is 200\", function () { pm.response.to.have.status(200); });",
-                  "pm.test(\"Has new access_token\", function () { var d = pm.response.json(); pm.expect(d).to.have.property(\"access_token\"); pm.collectionVariables.set(\"access_token\", d.access_token); });",
-                  "pm.test(\"Has new refresh_token\", function () { var d = pm.response.json(); pm.expect(d).to.have.property(\"refresh_token\"); pm.collectionVariables.set(\"refresh_token\", d.refresh_token); });"
+                  "pm.test('Status is 200', function () { pm.response.to.have.status(200); });",
+                  "pm.test('The shop is linked', function () {",
+                  "  var body = pm.response.json();",
+                  "  pm.expect(body.status).to.eql('verified');",
+                  "  pm.expect(body.tenant_id).to.be.a('string').and.not.empty;",
+                  "  pm.environment.set('tenant_id', body.tenant_id);",
+                  "});",
+                  "pm.test('And it mints NO token of its own', function () {",
+                  "  var body = pm.response.json();",
+                  "  pm.expect(body.access_token).to.be.undefined;",
+                  "  pm.expect(body.sign_in_required).to.eql(true);",
+                  "});"
                 ]
               }
             }
@@ -177,19 +81,55 @@
       ]
     },
     {
-      "name": "4. eTIMS - KRA Tax Compliance",
+      "name": "3 — the owner signs in to Keycloak",
       "item": [
         {
-          "name": "POST /api/etims/device",
+          "name": "POST the realm's token endpoint",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/x-www-form-urlencoded" }],
+            "body": {
+              "mode": "raw",
+              "raw": "grant_type=password&client_id={{keycloak_client_id}}&username={{owner_email}}&password={{owner_pin}}"
+            },
+            "url": { "raw": "{{keycloak_url}}/realms/{{keycloak_realm}}/protocol/openid-connect/token", "host": ["{{keycloak_url}}"], "path": ["realms", "{{keycloak_realm}}", "protocol", "openid-connect", "token"] }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status is 200', function () { pm.response.to.have.status(200); });",
+                  "pm.test('The admin PIN IS the password', function () {",
+                  "  var body = pm.response.json();",
+                  "  pm.expect(body.access_token, 'the owner signed in with their 6-digit PIN').to.be.a('string').and.not.empty;",
+                  "  pm.environment.set('access_token', body.access_token);",
+                  "});"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "4 — the till pushes its records",
+      "item": [
+        {
+          "name": "POST /api/sales/sync — the ledger",
           "request": {
             "method": "POST",
             "header": [
               { "key": "Content-Type", "value": "application/json" },
+              { "key": "Authorization", "value": "Bearer {{access_token}}" },
               { "key": "x-tenant-id", "value": "{{tenant_id}}" }
             ],
-            "body": { "mode": "raw", "raw": "{\n  \"tin\": \"{{tin}}\",\n  \"deviceId\": \"{{device_id}}\",\n  \"deviceName\": \"E2E Till Device\"\n}" },
-            "url": { "raw": "{{base_url}}/api/etims/device", "host": ["{{base_url}}"], "path": ["api", "etims", "device"] },
-            "description": "Register TIN and eTIMS device"
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"sales\": [\n    {\n      \"localId\": 1,\n      \"staffName\": \"E2E Owner\",\n      \"paymentMethod\": \"cash\",\n      \"total\": 10000,\n      \"profit\": 4000,\n      \"createdAt\": \"2026-01-01T00:00:00.000Z\",\n      \"items\": [\n        { \"productName\": \"Test Beer\", \"qty\": 1, \"unitPrice\": 10000, \"unitCost\": 6000, \"portion\": \"full\", \"portionMl\": 0 }\n      ]\n    }\n  ]"
+            },
+            "url": { "raw": "{{base_url}}/api/sales/sync", "host": ["{{base_url}}"], "path": ["api", "sales", "sync"] }
           },
           "event": [
             {
@@ -197,26 +137,32 @@
               "script": {
                 "type": "text/javascript",
                 "exec": [
-                  "pm.test(\"Status is 200\", function () { pm.response.to.have.status(200); });",
-                  "pm.test(\"Has tin\", function () { var d = pm.response.json(); pm.expect(d.tin).to.eql(pm.collectionVariables.get(\"tin\")); });",
-                  "pm.test(\"Has device_id\", function () { var d = pm.response.json(); pm.expect(d.device_id).to.eql(pm.collectionVariables.get(\"device_id\")); });",
-                  "pm.test(\"Registered is true\", function () { var d = pm.response.json(); pm.expect(d.registered).to.eql(true); });"
+                  "pm.test('Status is 200', function () { pm.response.to.have.status(200); });",
+                  "pm.test('The sale is confirmed, with a remote id', function () {",
+                  "  var synced = pm.response.json().synced;",
+                  "  pm.expect(synced).to.be.an('array').with.lengthOf(1);",
+                  "  pm.expect(synced[0].remoteId).to.be.a('string').and.not.empty;",
+                  "  pm.environment.set('first_remote_id', synced[0].remoteId);",
+                  "});"
                 ]
               }
             }
           ]
         },
         {
-          "name": "POST /api/etims/receipts",
+          "name": "POST /api/sales/sync — the SAME sale again, and it is not doubled",
           "request": {
             "method": "POST",
             "header": [
               { "key": "Content-Type", "value": "application/json" },
+              { "key": "Authorization", "value": "Bearer {{access_token}}" },
               { "key": "x-tenant-id", "value": "{{tenant_id}}" }
             ],
-            "body": { "mode": "raw", "raw": "{\n  \"payload\": {\n    \"sale_id\": \"e2e-sale-001\",\n    \"total\": 1500.00,\n    \"items\": [{\"product\": \"Coca Cola\", \"qty\": 2, \"price\": 750.00}]\n  },\n  \"deviceId\": \"{{device_id}}\"\n}" },
-            "url": { "raw": "{{base_url}}/api/etims/receipts", "host": ["{{base_url}}"], "path": ["api", "etims", "receipts"] },
-            "description": "Issue a KRA receipt for a committed sale"
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"sales\": [\n    {\n      \"localId\": 1,\n      \"staffName\": \"E2E Owner\",\n      \"paymentMethod\": \"cash\",\n      \"total\": 10000,\n      \"profit\": 4000,\n      \"createdAt\": \"2026-01-01T00:00:00.000Z\",\n      \"items\": [\n        { \"productName\": \"Test Beer\", \"qty\": 1, \"unitPrice\": 10000, \"unitCost\": 6000, \"portion\": \"full\", \"portionMl\": 0 }\n      ]\n    }\n  ]"
+            },
+            "url": { "raw": "{{base_url}}/api/sales/sync", "host": ["{{base_url}}"], "path": ["api", "sales", "sync"] }
           },
           "event": [
             {
@@ -224,75 +170,33 @@
               "script": {
                 "type": "text/javascript",
                 "exec": [
-                  "pm.test(\"Status is 200\", function () { pm.response.to.have.status(200); });",
-                  "pm.test(\"Has kra_receipt_number\", function () { var d = pm.response.json(); pm.expect(d.kra_receipt_number).to.match(/^KRA-/); pm.collectionVariables.set(\"kra_receipt_number\", d.kra_receipt_number); });",
-                  "pm.test(\"Has verification_url\", function () { var d = pm.response.json(); pm.expect(d).to.have.property(\"verification_url\"); });",
-                  "pm.test(\"Has qr_payload\", function () { var d = pm.response.json(); pm.expect(d).to.have.property(\"qr_payload\"); });",
-                  "pm.test(\"Status is ISSUED\", function () { var d = pm.response.json(); pm.expect(d.status).to.eql(\"ISSUED\"); });"
+                  "pm.test('Status is 200', function () { pm.response.to.have.status(200); });",
+                  "pm.test('The same remote id comes back', function () {",
+                  "  var synced = pm.response.json().synced;",
+                  "  pm.expect(synced[0].remoteId).to.be.a('string').and.not.empty;",
+                  "});",
+                  "pm.test('And it is the SAME remote id, so the ledger did not double', function () {",
+                  "  pm.expect(pm.response.json().synced[0].remoteId).to.eql(pm.environment.get('first_remote_id'));",
+                  "});"
                 ]
               }
             }
           ]
         },
         {
-          "name": "GET /api/etims/status",
-          "request": {
-            "method": "GET",
-            "header": [{ "key": "x-tenant-id", "value": "{{tenant_id}}" }],
-            "url": { "raw": "{{base_url}}/api/etims/status", "host": ["{{base_url}}"], "path": ["api", "etims", "status"] },
-            "description": "Check eTIMS queue status"
-          },
-          "event": [
-            {
-              "listen": "test",
-              "script": {
-                "type": "text/javascript",
-                "exec": [
-                  "pm.test(\"Status is 200\", function () { pm.response.to.have.status(200); });",
-                  "pm.test(\"Has configured field\", function () { var d = pm.response.json(); pm.expect(d).to.have.property(\"configured\"); pm.expect(d).to.have.property(\"pending_upload\"); pm.expect(d).to.have.property(\"rejected\"); pm.expect(d).to.have.property(\"device_status\"); pm.expect(d).to.have.property(\"tin\"); });"
-                ]
-              }
-            }
-          ]
-        },
-        {
-          "name": "GET /api/etims/z-report",
-          "request": {
-            "method": "GET",
-            "header": [{ "key": "x-tenant-id", "value": "{{tenant_id}}" }],
-            "url": { "raw": "{{base_url}}/api/etims/z-report?date=2024-01-15", "host": ["{{base_url}}"], "path": ["api", "etims", "z-report"], "query": [{ "key": "date", "value": "2024-01-15" }] },
-            "description": "Get server-generated Z-report for a day"
-          },
-          "event": [
-            {
-              "listen": "test",
-              "script": {
-                "type": "text/javascript",
-                "exec": [
-                  "pm.test(\"Status is 200\", function () { pm.response.to.have.status(200); });",
-                  "pm.test(\"Has date field\", function () { var d = pm.response.json(); pm.expect(d.date).to.eql(\"2024-01-15\"); });",
-                  "pm.test(\"Has totals\", function () { var d = pm.response.json(); pm.expect(d).to.have.property(\"totalSales\"); pm.expect(d).to.have.property(\"totalProfit\"); pm.expect(d).to.have.property(\"receiptCount\"); pm.expect(d.sales).to.be.an(\"array\"); });"
-                ]
-              }
-            }
-          ]
-        }
-      ]
-    },
-    {
-      "name": "5. Products - Stock Adjust & Listing",
-      "item": [
-        {
-          "name": "POST /api/products/stock-adjust",
+          "name": "POST /api/shifts/sync — the drawer",
           "request": {
             "method": "POST",
             "header": [
               { "key": "Content-Type", "value": "application/json" },
+              { "key": "Authorization", "value": "Bearer {{access_token}}" },
               { "key": "x-tenant-id", "value": "{{tenant_id}}" }
             ],
-            "body": { "mode": "raw", "raw": "{\n  \"product_id\": \"00000000-0000-0000-0000-000000000001\",\n  \"delta\": 10,\n  \"reason\": \"E2E test delivery\",\n  \"staff_profile_id\": \"00000000-0000-0000-0000-000000000002\"\n}" },
-            "url": { "raw": "{{base_url}}/api/products/stock-adjust", "host": ["{{base_url}}"], "path": ["api", "products", "stock-adjust"] },
-            "description": "Adjust stock for a single product immediately"
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"shifts\": [\n    {\n      \"localId\": 1,\n      \"staffName\": \"E2E Owner\",\n      \"startTime\": \"2026-01-01T08:00:00.000Z\",\n      \"endTime\": \"2026-01-01T18:00:00.000Z\",\n      \"startFloat\": 100000,\n      \"endFloat\": 95000,\n      \"expectedCash\": 100000,\n      \"countedCash\": 95000,\n      \"status\": \"closed\"\n    }\n  ]"
+            },
+            "url": { "raw": "{{base_url}}/api/shifts/sync", "host": ["{{base_url}}"], "path": ["api", "shifts", "sync"] }
           },
           "event": [
             {
@@ -300,78 +204,29 @@
               "script": {
                 "type": "text/javascript",
                 "exec": [
-                  "pm.test(\"Status is 200 or 404\", function () { pm.expect(pm.response.code).to.be.oneOf([200, 404]); });",
-                  "pm.test(\"If 200, has stock fields\", function () { if (pm.response.code === 200) { var d = pm.response.json(); pm.expect(d).to.have.property(\"product_id\"); pm.expect(d).to.have.property(\"stockQty\"); pm.expect(d).to.have.property(\"delta\", 10); pm.collectionVariables.set(\"product_id\", d.product_id); } });",
-                  "pm.test(\"If 404, product not found error\", function () { if (pm.response.code === 404) { var d = pm.response.json(); pm.expect(d.error).to.eql(\"Product not found\"); } });"
+                  "pm.test('Status is 200', function () { pm.response.to.have.status(200); });",
+                  "pm.test('The shift is confirmed', function () {",
+                  "  pm.expect(pm.response.json().synced[0].remoteId).to.be.a('string').and.not.empty;",
+                  "});"
                 ]
               }
             }
           ]
         },
         {
-          "name": "GET /api/products - list products",
-          "request": {
-            "method": "GET",
-            "header": [{ "key": "x-tenant-id", "value": "{{tenant_id}}" }],
-            "url": { "raw": "{{base_url}}/api/products", "host": ["{{base_url}}"], "path": ["api", "products"] },
-            "description": "List all products for the tenant"
-          },
-          "event": [
-            {
-              "listen": "test",
-              "script": {
-                "type": "text/javascript",
-                "exec": [
-                  "pm.test(\"Status is 200\", function () { pm.response.to.have.status(200); });",
-                  "pm.test(\"Body is an array\", function () { var d = pm.response.json(); pm.expect(d).to.be.an(\"array\"); });"
-                ]
-              }
-            }
-          ]
-        }
-      ]
-    },
-    {
-      "name": "6. Reports - Portfolio",
-      "item": [
-        {
-          "name": "GET /api/tenant/portfolio",
-          "request": {
-            "method": "GET",
-            "header": [{ "key": "x-tenant-id", "value": "{{tenant_id}}" }],
-            "url": { "raw": "{{base_url}}/api/tenant/portfolio?from=2024-01-01&to=2024-01-31", "host": ["{{base_url}}"], "path": ["api", "tenant", "portfolio"], "query": [{ "key": "from", "value": "2024-01-01" }, { "key": "to", "value": "2024-01-31" }] },
-            "description": "Get aggregated portfolio KPIs across linked tenants"
-          },
-          "event": [
-            {
-              "listen": "test",
-              "script": {
-                "type": "text/javascript",
-                "exec": [
-                  "pm.test(\"Status is 200\", function () { pm.response.to.have.status(200); });",
-                  "pm.test(\"Has totals\", function () { var d = pm.response.json(); pm.expect(d.totals).to.have.property(\"count\"); pm.expect(d.totals).to.have.property(\"total\"); pm.expect(d.totals).to.have.property(\"profit\"); pm.expect(d.totals).to.have.property(\"byPaymentMethod\"); pm.expect(d.sales).to.be.an(\"array\"); });",
-                  "pm.test(\"Has date range\", function () { var d = pm.response.json(); pm.expect(d.from).to.contain(\"2024-01-01\"); pm.expect(d.to).to.contain(\"2024-01-31\"); });"
-                ]
-              }
-            }
-          ]
-        }
-      ]
-    },
-    {
-      "name": "7. Staff Authentication",
-      "item": [
-        {
-          "name": "POST /api/tenant/staff/authenticate",
+          "name": "POST /api/returns — a return, in minor units",
           "request": {
             "method": "POST",
             "header": [
               { "key": "Content-Type", "value": "application/json" },
+              { "key": "Authorization", "value": "Bearer {{access_token}}" },
               { "key": "x-tenant-id", "value": "{{tenant_id}}" }
             ],
-            "body": { "mode": "raw", "raw": "{\n  \"username\": \"nonexistent\",\n  \"pin\": \"1234\"\n}" },
-            "url": { "raw": "{{base_url}}/api/tenant/staff/authenticate", "host": ["{{base_url}}"], "path": ["api", "tenant", "staff", "authenticate"] },
-            "description": "Authenticate staff PIN against backend"
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"localId\": 1,\n  \"kind\": \"refund\",\n  \"reason\": \"The customer changed their mind\",\n  \"total\": 5000,\n  \"profit\": 3000,\n  \"staffName\": \"E2E Owner\",\n  \"createdAt\": \"2026-01-01T12:00:00.000Z\",\n  \"items\": [\n    { \"productName\": \"Test Beer\", \"qty\": 1, \"unitPrice\": 5000, \"unitCost\": 3000, \"portion\": \"full\", \"portionMl\": 0 }\n  ]"
+            },
+            "url": { "raw": "{{base_url}}/api/returns", "host": ["{{base_url}}"], "path": ["api", "returns"] }
           },
           "event": [
             {
@@ -379,20 +234,29 @@
               "script": {
                 "type": "text/javascript",
                 "exec": [
-                  "pm.test(\"Status is 401\", function () { pm.response.to.have.status(401); });",
-                  "pm.test(\"Error message\", function () { var d = pm.response.json(); pm.expect(d.error).to.eql(\"Staff not found or inactive\"); });"
+                  "pm.test('Status is 200', function () { pm.response.to.have.status(200); });",
+                  "pm.test('The return is confirmed', function () {",
+                  "  pm.expect(pm.response.json().returnId).to.be.a('string').and.not.empty;",
+                  "});"
                 ]
               }
             }
           ]
         },
         {
-          "name": "POST /api/tenant/staff/authenticate - missing fields",
+          "name": "POST /api/purchases — a delivery, and what it cost",
           "request": {
             "method": "POST",
-            "header": [{ "key": "Content-Type", "value": "application/json" }, { "key": "x-tenant-id", "value": "{{tenant_id}}" }],
-            "body": { "mode": "raw", "raw": "{}" },
-            "url": { "raw": "{{base_url}}/api/tenant/staff/authenticate", "host": ["{{base_url}}"], "path": ["api", "tenant", "staff", "authenticate"] }
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "Authorization", "value": "Bearer {{access_token}}" },
+              { "key": "x-tenant-id", "value": "{{tenant_id}}" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"localId\": 1,\n  \"supplierName\": \"Kentex\",\n  \"invoiceNumber\": \"INV-1\",\n  \"total\": 54000,\n  \"staffName\": \"E2E Owner\",\n  \"createdAt\": \"2026-01-02T08:00:00.000Z\",\n  \"items\": [\n    { \"productName\": \"Test Beer\", \"qty\": 12, \"unitCost\": 9000 }\n  ]"
+            },
+            "url": { "raw": "{{base_url}}/api/purchases", "host": ["{{base_url}}"], "path": ["api", "purchases"] }
           },
           "event": [
             {
@@ -400,7 +264,40 @@
               "script": {
                 "type": "text/javascript",
                 "exec": [
-                  "pm.test(\"Status is 400\", function () { pm.response.to.have.status(400); });"
+                  "pm.test('Status is 200', function () { pm.response.to.have.status(200); });",
+                  "pm.test('The delivery is confirmed', function () {",
+                  "  pm.expect(pm.response.json().purchaseId).to.be.a('string').and.not.empty;",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "POST /api/shot-cups/sync — a cup with NO size",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "Authorization", "value": "Bearer {{access_token}}" },
+              { "key": "x-tenant-id", "value": "{{tenant_id}}" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"shotCups\": [\n    { \"localId\": 1, \"productName\": \"Test Beer\", \"label\": \"One shot\", \"capacityMl\": 0, \"price\": 5000, \"active\": true }\n  ]"
+            },
+            "url": { "raw": "{{base_url}}/api/shot-cups/sync", "host": ["{{base_url}}"], "path": ["api", "shot-cups", "sync"] }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status is 200', function () { pm.response.to.have.status(200); });",
+                  "pm.test('A cup with no size is a legal cup', function () {",
+                  "  pm.expect(pm.response.json().synced[0].remoteId).to.be.a('string').and.not.empty;",
+                  "});"
                 ]
               }
             }
@@ -409,15 +306,17 @@
       ]
     },
     {
-      "name": "8. Updates - Manifest",
+      "name": "5 — the reports answer",
       "item": [
         {
-          "name": "GET /api/app/latest",
+          "name": "GET /api/tenant/portfolio — in the app's own shape",
           "request": {
             "method": "GET",
-            "header": [],
-            "url": { "raw": "{{base_url}}/api/app/latest", "host": ["{{base_url}}"], "path": ["api", "app", "latest"] },
-            "description": "Get update manifest for auto-updates"
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{access_token}}" },
+              { "key": "x-tenant-id", "value": "{{tenant_id}}" }
+            ],
+            "url": { "raw": "{{base_url}}/api/tenant/portfolio", "host": ["{{base_url}}"], "path": ["api", "tenant", "portfolio"] }
           },
           "event": [
             {
@@ -425,8 +324,47 @@
               "script": {
                 "type": "text/javascript",
                 "exec": [
-                  "pm.test(\"Status is 200\", function () { pm.response.to.have.status(200); });",
-                  "pm.test(\"Has version fields\", function () { var d = pm.response.json(); pm.expect(d).to.have.property(\"version_name\"); pm.expect(d).to.have.property(\"version_code\"); pm.expect(d).to.have.property(\"download_url\"); pm.expect(d).to.have.property(\"required\"); pm.expect(d).to.have.property(\"release_notes\"); pm.expect(d.version_code).to.be.a(\"number\"); pm.expect(d.required).to.be.a(\"boolean\"); });"
+                  "pm.test('Status is 200', function () { pm.response.to.have.status(200); });",
+                  "pm.test('It answers in the shape the app reads', function () {",
+                  "  var body = pm.response.json();",
+                  "  pm.expect(body).to.have.property('shops').and.to.be.an('array');",
+                  "  if (body.shops.length) {",
+                  "    var shop = body.shops[0];",
+                  "    pm.expect(shop).to.have.property('tenantId');",
+                  "    pm.expect(shop).to.have.property('shopName');",
+                  "    pm.expect(shop).to.have.property('revenue').and.to.be.a('number');",
+                  "    pm.expect(shop).to.have.property('profit').and.to.be.a('number');",
+                  "    pm.expect(shop).to.have.property('transactions').and.to.be.a('number');",
+                  "  }",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "GET /api/shifts — the drawer, and the variance",
+          "request": {
+            "method": "GET",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{access_token}}" },
+              { "key": "x-tenant-id", "value": "{{tenant_id}}" }
+            ],
+            "url": { "raw": "{{base_url}}/api/shifts", "host": ["{{base_url}}"], "path": ["api", "shifts"] }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status is 200', function () { pm.response.to.have.status(200); });",
+                  "pm.test('It answers with the shifts and their totals', function () {",
+                  "  var body = pm.response.json();",
+                  "  pm.expect(body.shifts).to.be.an('array');",
+                  "  pm.expect(body.totals).to.be.an('object');",
+                  "  pm.expect(body.totals).to.have.property('variance').and.to.be.a('number');",
+                  "});"
                 ]
               }
             }
@@ -434,5 +372,13 @@
         }
       ]
     }
+  ],
+  "variable": [
+    { "key": "base_url", "value": "http://localhost:3000" },
+    { "key": "keycloak_url", "value": "http://localhost:8080" },
+    { "key": "keycloak_realm", "value": "duka" },
+    { "key": "keycloak_client_id", "value": "duka-app" },
+    { "key": "owner_email", "value": "owner@example.com" },
+    { "key": "owner_pin", "value": "123456" }
   ]
 }

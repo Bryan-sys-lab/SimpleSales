@@ -1,0 +1,19 @@
+# The build context.
+#
+# Without this file, `COPY . .` in the Dockerfile sends EVERYTHING to the
+# daemon: node_modules (hundreds of megabytes), the compiled output, the
+# local .env with the stack's secrets, and the git history. The image build
+# then spends longer moving files than compiling TypeScript, and the local
+# secrets are shipped into a build context that may be cached.
+node_modules
+dist
+coverage
+.git
+.gitignore
+.env
+.env.local
+*.log
+*.tsbuildinfo
+Dockerfile*
+docker-compose*.yml
+postman/newman-*.json

@@ -1,5 +1,25 @@
-version: '3.8'
-
+# The whole stack: the database, the identity provider, the API, and the
+# tests that run against it.
+#
+# ## THE SECRETS COME FROM THE ENVIRONMENT
+#
+# They are not in this file. A compose file that carries a password is a
+# password in git, and this one had placeholder secrets in it that could not
+# even be parsed — `[REDACTED]` is a YAML LIST, not a string, and the PayHero
+# token contained a `#`, which YAML reads as the start of a comment. So the
+# file could not start the stack at all.
+#
+# Every secret below is REQUIRED and named: a missing one stops the stack with
+# a message that says which, rather than starting with a blank password and
+# failing somewhere less obvious. Copy `.env.example` to `.env` and the stack
+# starts.
+#
+# ## THE MIGRATIONS RUN BEFORE THE API
+#
+# The API container applies the migrations and THEN starts. A stack that
+# starts the API against an empty database serves 500s for every query, and
+# the first symptom is a test that fails for a reason that looks like a bug in
+# the test.
 services:
   # ------------------------------------------------------------------
   # PostgreSQL - application database
@@ -8,15 +28,15 @@ services:
     image: postgres:15-alpine
     container_name: duka_pos_db
     environment:
-      POSTGRES_USER: duka_pos
-      POSTGRES_PASSWORD: [REDACTED]
-      POSTGRES_DB: duka_pos
+      POSTGRES_USER: ${POSTGRES_USER:-duka_pos}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?POSTGRES_PASSWORD is required}
+      POSTGRES_DB: ${POSTGRES_DB:-duka_pos}
     volumes:
       - duka_pos_db_data:/var/lib/postgresql/data
     ports:
       - "5432:5432"
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U duka_pos -d duka_pos"]
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-duka_pos} -d ${POSTGRES_DB:-duka_pos}"]
       interval: 5s
       timeout: 5s
       retries: 5
@@ -31,10 +51,10 @@ services:
     environment:
       KC_DB: postgres
       KC_DB_URL: jdbc:postgresql://db:5432/keycloak
-      KC_DB_USERNAME: keycloak
-      KC_DB_PASSWORD: [REDACTED]
-      KEYCLOAK_ADMIN: admin
-      KEYCLOAK_ADMIN_PASSWORD: [REDACTED]
+      KC_DB_USERNAME: ${KEYCLOAK_DB_USERNAME:-keycloak}
+      KC_DB_PASSWORD: ${KEYCLOAK_DB_PASSWORD:?KEYCLOAK_DB_PASSWORD is required}
+      KEYCLOAK_ADMIN: ${KEYCLOAK_ADMIN:-admin}
+      KEYCLOAK_ADMIN_PASSWORD: ${KEYCLOAK_ADMIN_PASSWORD:?KEYCLOAK_ADMIN_PASSWORD is required}
     ports:
       - "8080:8080"
     depends_on:
@@ -56,13 +76,13 @@ services:
     container_name: duka_pos_keycloak_init
     environment:
       KEYCLOAK_URL: http://keycloak:8080
-      KEYCLOAK_ADMIN: admin
-      KEYCLOAK_ADMIN_PASSWORD: [REDACTED]
-      REALM_NAME: duka
-      CLIENT_ID: duka-app
-      TEST_USER: test-user
-      TEST_USER_PASSWORD: [REDACTED]
-      TEST_USER_EMAIL: test-user@example.com
+      KEYCLOAK_ADMIN: ${KEYCLOAK_ADMIN:-admin}
+      KEYCLOAK_ADMIN_PASSWORD: ${KEYCLOAK_ADMIN_PASSWORD:?KEYCLOAK_ADMIN_PASSWORD is required}
+      REALM_NAME: ${REALM_NAME:-duka}
+      CLIENT_ID: ${CLIENT_ID:-duka-app}
+      TEST_USER: ${TEST_USER:-test-user}
+      TEST_USER_PASSWORD: ${TEST_USER_PASSWORD:?TEST_USER_PASSWORD is required}
+      TEST_USER_EMAIL: ${TEST_USER_EMAIL:-test-user@example.com}
     depends_on:
       keycloak:
         condition: service_healthy
@@ -77,18 +97,31 @@ services:
     container_name: duka_pos_backend
     environment:
       NODE_ENV: production
-      DATABASE_URL: postgresql://duka_pos:[REDACTED]@db:5432/duka_pos?schema=public
-      OIDC_ISSUER_URL: http://keycloak:8080/realms/duka
-      OIDC_AUDIENCE: duka-api
-      OIDC_JWKS_URI: http://keycloak:8080/realms/duka/protocol/openid-connect/certs
-      PAYHERO_AUTH_TOKEN: payhero_live_token_2024_#L9nX4vW7!
-      SYSTEM_ADMIN_SUBJECTS: admin-subject
-      FRONTEND_URL: http://localhost:3000
-      APP_VERSION_NAME: 2.0.0
-      APP_VERSION_CODE: "23"
-      APP_DOWNLOAD_URL: https://cdn.duka-pos.example.com/app.apk
-      APP_UPDATE_REQUIRED: "false"
-      APP_RELEASE_NOTES: "Auto-update manifest"
+      DATABASE_URL: postgresql://${POSTGRES_USER:-duka_pos}:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB:-duka_pos}?schema=public
+      OIDC_ISSUER_URL: ${OIDC_ISSUER_URL:-http://keycloak:8080/realms/duka}
+      OIDC_AUDIENCE: ${OIDC_AUDIENCE:-duka-api}
+      OIDC_JWKS_URI: ${OIDC_JWKS_URI:-http://keycloak:8080/realms/duka/protocol/openid-connect/certs}
+      PAYHERO_AUTH_TOKEN: "${PAYHERO_AUTH_TOKEN:-}"
+      SYSTEM_ADMIN_SUBJECTS: ${SYSTEM_ADMIN_SUBJECTS:-admin-subject}
+      FRONTEND_URL: ${FRONTEND_URL:-http://localhost:3000}
+      APP_VERSION_NAME: ${APP_VERSION_NAME:-2.0.0}
+      APP_VERSION_CODE: ${APP_VERSION_CODE:-23}
+      APP_DOWNLOAD_URL: ${APP_DOWNLOAD_URL:-}
+      APP_UPDATE_REQUIRED: ${APP_UPDATE_REQUIRED:-false}
+      APP_RELEASE_NOTES: ${APP_RELEASE_NOTES:-Auto-update manifest}
+      # The verify flow's own secrets. Without them /api/auth/* answers 503
+      # rather than pretending an account was created.
+      EMAIL_VERIFICATION_SECRET: ${EMAIL_VERIFICATION_SECRET:-}
+      KEYCLOAK_ADMIN_CLIENT_ID: ${KEYCLOAK_ADMIN_CLIENT_ID:-}
+      KEYCLOAK_ADMIN_CLIENT_SECRET: ${KEYCLOAK_ADMIN_CLIENT_SECRET:-}
+      KEYCLOAK_REALM: ${KEYCLOAK_REALM:-}
+      KEYCLOAK_BASE_URL: ${KEYCLOAK_BASE_URL:-}
+      EMAILJS_SERVICE_ID: ${EMAILJS_SERVICE_ID:-}
+      EMAILJS_TEMPLATE_ID: ${EMAILJS_TEMPLATE_ID:-}
+      EMAILJS_PUBLIC_KEY: ${EMAILJS_PUBLIC_KEY:-}
+      EMAILJS_PRIVATE_KEY: ${EMAILJS_PRIVATE_KEY:-}
+      VERIFICATION_DEBUG_CODES: ${VERIFICATION_DEBUG_CODES:-false}
+      APP_NAME: ${APP_NAME:-SimpleSales}
     ports:
       - "3000:3000"
     depends_on:
@@ -98,6 +131,10 @@ services:
         condition: service_healthy
       keycloak-init:
         condition: service_completed_successfully
+    # The migrations, and THEN the API. A stack that starts the API against
+    # an empty database serves 500s for every query, and the first symptom is
+    # a test that fails for a reason that looks like a bug in the test.
+    command: ["sh", "-c", "npx prisma migrate deploy && node dist/index.js"]
     healthcheck:
       test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://localhost:3000/health"]
       interval: 10s
@@ -115,19 +152,19 @@ services:
     container_name: duka_pos_tests
     environment:
       NODE_ENV: test
-      DATABASE_URL: postgresql://duka_pos:[REDACTED]@db:5432/duka_pos?schema=public
-      OIDC_ISSUER_URL: http://keycloak:8080/realms/duka
-      OIDC_AUDIENCE: duka-api
-      OIDC_JWKS_URI: http://keycloak:8080/realms/duka/protocol/openid-connect/certs
-      PAYHERO_AUTH_TOKEN: payhero_live_token_2024_#L9nX4vW7!
-      SYSTEM_ADMIN_SUBJECTS: admin-subject
+      DATABASE_URL: postgresql://${POSTGRES_USER:-duka_pos}:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB:-duka_pos}?schema=public
+      OIDC_ISSUER_URL: ${OIDC_ISSUER_URL:-http://keycloak:8080/realms/duka}
+      OIDC_AUDIENCE: ${OIDC_AUDIENCE:-duka-api}
+      OIDC_JWKS_URI: ${OIDC_JWKS_URI:-http://keycloak:8080/realms/duka/protocol/openid-connect/certs}
+      PAYHERO_AUTH_TOKEN: "${PAYHERO_AUTH_TOKEN:-}"
+      SYSTEM_ADMIN_SUBJECTS: ${SYSTEM_ADMIN_SUBJECTS:-admin-subject}
       KEYCLOAK_URL: http://keycloak:8080
-      KEYCLOAK_ADMIN: admin
-      KEYCLOAK_ADMIN_PASSWORD: [REDACTED]
-      REALM_NAME: duka
-      CLIENT_ID: duka-app
-      TEST_USER: test-user
-      TEST_USER_PASSWORD: [REDACTED]
+      KEYCLOAK_ADMIN: ${KEYCLOAK_ADMIN:-admin}
+      KEYCLOAK_ADMIN_PASSWORD: ${KEYCLOAK_ADMIN_PASSWORD:?KEYCLOAK_ADMIN_PASSWORD is required}
+      REALM_NAME: ${REALM_NAME:-duka}
+      CLIENT_ID: ${CLIENT_ID:-duka-app}
+      TEST_USER: ${TEST_USER:-test-user}
+      TEST_USER_PASSWORD: ${TEST_USER_PASSWORD:?TEST_USER_PASSWORD is required}
       BACKEND_URL: http://backend:3000/api
     depends_on:
       backend:

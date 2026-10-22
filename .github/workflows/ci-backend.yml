@@ -94,3 +94,95 @@ jobs:
           OIDC_ISSUER_URL: https://id.example.test/realms/duka
           OIDC_AUDIENCE: duka-api
         run: npm test
+
+  # ------------------------------------------------------------------
+  # The whole stack, started for real.
+  #
+  # The job above proves the code compiles and its arithmetic is right. It
+  # proves NOTHING about whether the service actually runs: not that the
+  # migrations apply to a real database, not that the identity provider is
+  # reachable, not that the routes answer.
+  #
+  # This job starts the stack the way it is meant to run — Postgres, Keycloak,
+  # the API, the migrations — and then exercises it from the outside: the
+  # smoke collection, the end-to-end collection, and the API's own health and
+  # readiness probes.
+  #
+  # It is a separate job because it needs Docker and a database, and because a
+  # failure here means something different from a failure there: this one says
+  # the SERVICE does not start.
+  # ------------------------------------------------------------------
+  stack:
+    name: The whole stack, started and exercised
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    defaults:
+      run:
+        working-directory: duka_pos_backend
+
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v4
+
+      - name: Start the stack
+        # The environment comes from `.env.ci`, which holds throwaway values
+        # for a stack that lives for this one run.
+        run: docker compose --env-file .env.ci up -d --build
+
+      - name: Wait for the API to be healthy
+        # The stack's own health check is the gate, and the wait is for the
+        # thing the health check measures: the API answering /health. Without
+        # this the smoke test races the server and fails for a reason that
+        # looks like a broken endpoint.
+        run: |
+          for attempt in $(seq 1 60); do
+            if curl --silent --fail http://localhost:3000/health > /dev/null; then
+              echo "The API is up."
+              exit 0
+            fi
+            echo "Waiting for the API ($attempt)..."
+            sleep 5
+          done
+          echo "::error::The API did not become healthy in five minutes."
+          docker compose --env-file .env.ci logs
+          exit 1
+
+      - name: The migrations applied
+        # The API container applies them before it starts, so an empty schema
+        # is a failure of the build and not a mystery at the first query.
+        run: |
+          docker compose --env-file .env.ci exec -T db \
+            psql -U duka_pos -d duka_pos -c '\dt' | head -30
+
+      - name: The API is ready
+        run: |
+          curl --silent --fail http://localhost:3000/ready
+          echo
+
+      - name: The test suite, against the live stack
+        # The same suite, run in the stack with the stack's environment: a
+        # real DATABASE_URL, the real issuer, the real audience. The unit
+        # assertions do not need any of it, and that is the point — a suite
+        # that only passes with a fake database URL is a suite that has never
+        # met the real one.
+        run: docker compose --env-file .env.ci run --rm tests
+
+      - name: The smoke collection
+        # The collection walks the routes a person can reach without a token:
+        # the health probe, the verify flow, the public eTIMS check, and the
+        # endpoints that are gone — each one asserted to be GONE, because a
+        # route that was removed and still answers is a route that was only
+        # half removed.
+        run: npm run test:postman
+
+      - name: The end-to-end collection
+        run: npm run test:postman:e2e
+
+      - name: The stack's logs, whatever happened
+        # Written on the way out, so a failure can be read without a rerun.
+        if: always()
+        run: docker compose --env-file .env.ci logs --no-color | tail -200
+
+      - name: Tear the stack down
+        if: always()
+        run: docker compose --env-file .env.ci down -v
