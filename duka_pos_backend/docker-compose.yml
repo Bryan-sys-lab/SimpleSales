@@ -71,27 +71,21 @@ services:
     depends_on:
       db:
         condition: service_healthy
-    # NOT curl.
+    # NO HEALTH CHECK, AND THAT IS DELIBERATE.
     #
-    # The Keycloak image is ubi9-MINIMAL and has no curl in it, so a health
+    # Two things fight here. The image is ubi9-MINIMAL and has no curl, so a
     # check that shells out to curl fails with "executable file not found" and
     # the container is called unhealthy while the server is running perfectly
-    # well — the stack then never starts, and the reason is a line of YAML
-    # that looks fine.
+    # well. And the health endpoints live on the MANAGEMENT port in Keycloak
+    # 24, so a check against the main port answers 404.
     #
-    # So the check speaks HTTP itself, over bash's /dev/tcp, against the
-    # management port where the health endpoints live.
-    healthcheck:
-      test:
-        - CMD-SHELL
-        - >-
-          exec 3<>/dev/tcp/localhost/9000;
-          echo -e 'GET /health/ready HTTP/1.1\r\nHost: localhost\r\nConnection: close\r\n\r\n' >&3;
-          cat <&3 | grep -m 1 'HTTP/1.1 200'
-      interval: 10s
-      timeout: 5s
-      retries: 20
-      start_period: 30s
+    # Neither is worth a fight. The init container already waits for
+    # Keycloak — by asking it for an admin token, which is the thing the init
+    # needs anyway — and its successful completion is the gate the API waits
+    # for. So the readiness gate is the one that tests the thing that
+    # matters, and there is no health check to get wrong.
+    #
+    # The API waits for the init container, not for this one.
 
   # ------------------------------------------------------------------
   # Keycloak init - creates realm, client, and test user
@@ -112,7 +106,10 @@ services:
       TEST_USER_EMAIL: ${TEST_USER_EMAIL:-test-user@example.com}
     depends_on:
       keycloak:
-        condition: service_healthy
+        # Started, not healthy: Keycloak has no health check (see above), and
+        # this container IS the readiness gate — it waits for the server by
+        # asking it for an admin token.
+        condition: service_started
 
   # ------------------------------------------------------------------
   # Backend API - Express + Prisma
@@ -155,7 +152,7 @@ services:
       db:
         condition: service_healthy
       keycloak:
-        condition: service_healthy
+        condition: service_started
       keycloak-init:
         condition: service_completed_successfully
     # The migrations, and THEN the API. A stack that starts the API against

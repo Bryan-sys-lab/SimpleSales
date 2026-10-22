@@ -10,9 +10,27 @@ TEST_USER="${TEST_USER:-test-user}"
 TEST_USER_PASSWORD="${TEST_USER_PASSWORD:-test-password}"
 TEST_USER_EMAIL="${TEST_USER_EMAIL:-test-user@example.com}"
 
+# Waiting for Keycloak, by asking for the thing this script needs.
+#
+# It used to probe /health/ready, which is where the health endpoint LIVES in
+# Keycloak 24 — on the MANAGEMENT port, 9000 — while the script talks to the
+# main port, 8080. So the probe never succeeded, the loop ran its full five
+# minutes, and the script went on to fail for a reason that had nothing to do
+# with the cause.
+#
+# So the probe is the TOKEN ENDPOINT on the port this script uses: if it can
+# get a token, Keycloak is up and the admin password works. That tests
+# exactly what the script is about to do, instead of a health endpoint on
+# another port.
 echo "Waiting for Keycloak to be ready at ${KEYCLOAK_URL}..."
+ADMIN_TOKEN=""
 for i in $(seq 1 60); do
-  if curl -sf "${KEYCLOAK_URL}/health/ready" > /dev/null 2>&1; then
+  ADMIN_TOKEN=$(curl -s -X POST "${KEYCLOAK_URL}/realms/master/protocol/openid-connect/token" \
+    -d "grant_type=password" \
+    -d "client_id=admin-cli" \
+    -d "username=${KEYCLOAK_ADMIN}" \
+    -d "password=${KEYCLOAK_ADMIN_PASSWORD}" | jq -r '.access_token // empty' 2>/dev/null || true)
+  if [ -n "$ADMIN_TOKEN" ]; then
     echo "Keycloak is ready!"
     break
   fi
@@ -20,16 +38,8 @@ for i in $(seq 1 60); do
   sleep 5
 done
 
-# Get admin access token
-echo "Getting admin access token..."
-ADMIN_TOKEN=$(curl -s -X POST "${KEYCLOAK_URL}/realms/master/protocol/openid-connect/token" \
-  -d "grant_type=password" \
-  -d "client_id=admin-cli" \
-  -d "username=${KEYCLOAK_ADMIN}" \
-  -d "password=${KEYCLOAK_ADMIN_PASSWORD}" | jq -r '.access_token')
-
-if [ -z "$ADMIN_TOKEN" ] || [ "$ADMIN_TOKEN" = "null" ]; then
-  echo "Failed to get admin token!"
+if [ -z "$ADMIN_TOKEN" ]; then
+  echo "Failed to get admin token: Keycloak did not become ready."
   exit 1
 fi
 
