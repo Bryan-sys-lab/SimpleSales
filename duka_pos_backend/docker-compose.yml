@@ -112,6 +112,33 @@ services:
         condition: service_started
 
   # ------------------------------------------------------------------
+  # Migrations - its own service, so the API never runs a CLI
+  # ------------------------------------------------------------------
+  # The schema is applied HERE, once, before the API starts.
+  #
+  # It used to be applied by the API container, as `prisma migrate deploy &&
+  # node dist/index.js`. That put a package-manager's job inside the service's
+  # start-up, where it fails in ways that look like the service failing: the
+  # Prisma CLI wants to write into node_modules, and the runtime image runs
+  # as a user that cannot.
+  #
+  # As its own service, the CLI runs as the image's own user, the API starts
+  # knowing the schema is right, and the two failures are separable: a
+  # migration that will not apply is a migration's failure, and not the API's.
+  migrate:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: duka_pos_migrate
+    environment:
+      DATABASE_URL: postgresql://${POSTGRES_USER:-duka_pos}:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB:-duka_pos}?schema=public
+    depends_on:
+      db:
+        condition: service_healthy
+    command: ["npx", "prisma", "migrate", "deploy"]
+    restart: "no"
+
+  # ------------------------------------------------------------------
   # Backend API - Express + Prisma
   # ------------------------------------------------------------------
   backend:
@@ -155,10 +182,10 @@ services:
         condition: service_started
       keycloak-init:
         condition: service_completed_successfully
-    # The migrations, and THEN the API. A stack that starts the API against
-    # an empty database serves 500s for every query, and the first symptom is
-    # a test that fails for a reason that looks like a bug in the test.
-    command: ["sh", "-c", "npx prisma migrate deploy && node dist/index.js"]
+      # The schema, applied by the migration service. The API starts knowing
+      # the database is right, rather than discovering it one query at a time.
+      migrate:
+        condition: service_completed_successfully
     healthcheck:
       test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://localhost:3000/health"]
       interval: 10s
