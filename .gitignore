@@ -38,6 +38,10 @@ node_modules/
 dist/
 .env
 *.log
+
+# A built release APK is a build artifact, not source. One of these is 94MB,
+# and a repository that carries it carries every historical build with it.
+*.apk
 .dart_tool/
 .flutter-plugins
 build/

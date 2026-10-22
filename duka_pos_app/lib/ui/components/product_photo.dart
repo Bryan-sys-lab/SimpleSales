@@ -196,8 +196,8 @@ class _ProductPhotoState extends State<ProductPhoto> {
     if (path == null || path.trim().isEmpty) {
       return null;
     }
-    final String? resolved = await (widget.resolve?.call(path) ??
-        ProductImageStore.resolve(path));
+    final String? resolved =
+        await (widget.resolve?.call(path) ?? ProductImageStore.resolve(path));
     final int? width = _cacheWidth;
     if (resolved != null && width != null) {
       // The file at this path may be a DIFFERENT photograph from the one the

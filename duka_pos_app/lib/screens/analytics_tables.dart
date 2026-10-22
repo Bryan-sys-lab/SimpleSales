@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../models/models.dart';
 import '../services/analytics.dart';
+import '../services/shift_analytics.dart';
 import '../l10n/generated/app_localizations.dart';
 import '../theme/app_colors.dart';
 import '../theme/app_spacing.dart';
@@ -13,6 +14,7 @@ import '../ui/components/surface.dart';
 import '../utils/money.dart';
 import '../widgets/chart.dart';
 import 'analytics_screen.dart';
+import 'shift_variance.dart';
 
 /// Below this width five columns of figures stop being readable and the table
 /// turns into two lines per product.
@@ -898,6 +900,112 @@ class _StockList extends StatelessWidget {
         ),
         rows,
         if (showDivider) Divider(height: 1, color: colors.outline),
+      ],
+    );
+  }
+}
+
+/// The shifts over the window, and what the drawers did.
+///
+/// ## WHY IT IS HERE
+///
+/// A shift screen answers "how is MY drawer doing" — one shift, one drawer,
+/// one count. It does not answer the question an owner has after a week:
+/// "were my drawers coming out right?"
+///
+/// A week of shifts has a figure in it that no single shift has — the
+/// DIFFERENCE between the cash the ledger says should have been in the drawer
+/// and the cash that was actually counted. One drawer being short by KSh 50 is
+/// an accident. Every drawer being short by KSh 50, every day, is a problem
+/// with the till, and it is invisible until the differences are added up.
+///
+/// ## THE DIFFERENCE IS THE POINT
+///
+/// The word for it — "Short", "Over", "Balanced" — comes from
+/// [ShiftVariance], the same resolver the shift screen uses. A difference
+/// that reads green in one place and amber in another is a shortage that gets
+/// argued about instead of fixed.
+class ShiftAnalyticsCard extends StatelessWidget {
+  const ShiftAnalyticsCard({required this.shifts, super.key});
+
+  /// The shifts over the window.
+  final ShiftAnalytics shifts;
+
+  @override
+  Widget build(BuildContext context) {
+    final AppLocalizations l10n = AppLocalizations.of(context);
+    final AppSpacing spacing = AppSpacing.of(context);
+    final AppColors colors = AppColors.of(context);
+    final TextTheme type = AppTypography.of(context);
+
+    if (!shifts.hasShifts) {
+      // A window with no shifts says so, and says nothing else. It is not the
+      // same as a window whose shifts balanced, and the card does not
+      // pretend it is.
+      return Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        mainAxisSize: MainAxisSize.min,
+        children: <Widget>[
+          SectionHeader(label: l10n.analyticsShiftsSection),
+          EmptyStateView(
+            title: l10n.analyticsNoShifts,
+            message: l10n.analyticsNoShiftsHint,
+          ),
+        ],
+      );
+    }
+
+    // A shift that was closed but never counted has no figure, and the card
+    // must not present a variance that only covers part of the shifts.
+    final ShiftVariance variance = shifts.hasCounts
+        ? ShiftVariance.between(l10n, shifts.counted, shifts.expected)
+        : ShiftVariance.notCounted(l10n);
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      mainAxisSize: MainAxisSize.min,
+      children: <Widget>[
+        SectionHeader(label: l10n.analyticsShiftsSection),
+        Wrap(
+          spacing: spacing.md,
+          runSpacing: spacing.md,
+          children: <Widget>[
+            StatTile(
+              label: l10n.analyticsShiftsCount,
+              value: '${shifts.shifts}',
+              caption: l10n.analyticsShiftsClosed(shifts.closed),
+            ),
+            StatTile(
+              label: l10n.analyticsShiftsExpected,
+              value: formatMoney(shifts.expected),
+            ),
+            StatTile(
+              label: l10n.analyticsShiftsCounted,
+              value: shifts.hasCounts ? formatMoney(shifts.counted) : '—',
+            ),
+          ],
+        ),
+        SizedBox(height: spacing.sm),
+        // The difference, with the word that names it.
+        Semantics(
+          label: variance.spoken,
+          child: ExcludeSemantics(
+            child: Row(
+              children: <Widget>[
+                StatusChip(tone: variance.tone, text: variance.word),
+                SizedBox(width: spacing.sm),
+                Expanded(
+                  child: Text(
+                    formatMoney(variance.difference.abs),
+                    style: type.titleMedium?.copyWith(
+                      color: colors.onSurface,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
       ],
     );
   }

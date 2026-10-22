@@ -4,6 +4,7 @@ import '../services/app_state.dart';
 import 'audit_actor.dart';
 import 'auth_service.dart';
 import 'backend_service.dart';
+import 'staff_credential_cache.dart';
 import 'package:flutter/foundation.dart' show immutable;
 
 /// What a completed PIN reset produced.
@@ -130,9 +131,15 @@ class PinResetService {
   ///
   /// Public so a test can assert the stored hash really changed, and so the
   /// dialog can install it in the one place the owner is watching.
+  ///
+  /// The cached offline credentials go with it. The cache holds a hash of each
+  /// staff member's PIN, and the till falls back to it when the backend is
+  /// unreachable — so a PIN that has just been changed must not still be
+  /// accepted through a copy that was made before the change.
   static Future<void> installPin(String pin) async {
     final hash = await AuthService.hashPin(pin);
     await DatabaseHelper.instance.updateOwnerPin(hash);
+    await StaffCredentialCache.clearAll();
   }
 
   /// Masks an address for display.

@@ -195,7 +195,8 @@ void main() {
       expect(find.textContaining('Try camera again'), findsNothing);
     });
 
-    testWidgets('a label held in frame is read once, and read again once it '
+    testWidgets(
+        'a label held in frame is read once, and read again once it '
         'has been out of view', (WidgetTester tester) async {
       tester.useDevice(Device.small);
 
@@ -243,9 +244,10 @@ void main() {
         (WidgetTester tester) async {
       tester.useDevice(Device.small);
 
-      final _FakeCamera camera = _FakeCamera()..fail(
-        CameraFailure.permissionDenied,
-      );
+      final _FakeCamera camera = _FakeCamera()
+        ..fail(
+          CameraFailure.permissionDenied,
+        );
       addTearDown(camera.dispose);
 
       await tester.pumpApp(
@@ -308,7 +310,8 @@ void main() {
       expect(find.text('Try camera again'), findsOneWidget);
     });
 
-    testWidgets('the retry opens the camera again', (WidgetTester tester) async {
+    testWidgets('the retry opens the camera again',
+        (WidgetTester tester) async {
       tester.useDevice(Device.small);
 
       final _FakeCamera camera = _FakeCamera(failsToStart: true);
@@ -380,7 +383,7 @@ void main() {
         tester,
         camera,
         '1234567890123456789012345678901234567890123456789012345678'
-            '901234',
+        '901234',
       );
 
       tester.expectNoOverflow('the scanner with a long code at 2x text');

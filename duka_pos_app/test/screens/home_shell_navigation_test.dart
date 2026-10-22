@@ -65,7 +65,6 @@ AppDestination _destinationFor(String label) => switch (label) {
       _ => throw ArgumentError.value(label, 'label', 'no such tab'),
     };
 
-
 class _FakeStage extends ChangeNotifier {
   _FakeStage(this._snapshot);
   final AppStageSnapshot _snapshot;
@@ -257,13 +256,18 @@ void main() {
       ]);
     });
 
-    test('cashier sees dashboard, sell and support', () {
+    test('cashier sees dashboard, sell, analytics and support', () {
+      // The cashier gets ANALYTICS, and the figures on it are their own: the
+      // screen is scoped to the rows they sold, so "how am I doing?" has an
+      // answer instead of a closed door. Inventory and Settings stay behind
+      // the manager's and the owner's doors.
       final AppState state = AppState();
       state.signIn('Cashier', asOwner: false);
       final visible = visibleDestinations(state).toList();
       expect(visible, <AppDestination>[
         AppDestination.dashboard,
         AppDestination.sell,
+        AppDestination.analytics,
         AppDestination.support,
       ]);
     });
@@ -377,7 +381,7 @@ void main() {
       );
     });
 
-    testWidgets('cashier sees three tabs', (WidgetTester tester) async {
+    testWidgets('cashier sees four tabs', (WidgetTester tester) async {
       tester.view.physicalSize =
           const Size(320, 640).testerPhysicalSizeForDpr(2.0);
       tester.view.devicePixelRatio = 2.0;
@@ -397,9 +401,11 @@ void main() {
         _destination(AppDestination.inventory),
         findsNothing,
       );
+      // The analytics tab IS there, and every figure on it is the cashier's
+      // own.
       expect(
         _destination(AppDestination.analytics),
-        findsNothing,
+        findsOneWidget,
       );
       expect(
         _destination(AppDestination.settings),

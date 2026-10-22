@@ -501,8 +501,7 @@ void main() {
     // BROWSER at the provider's logout page, which on a Keycloak deployment
     // lands the owner on a LOGIN screen — with a "Register" option — in the
     // middle of deleting their account.
-    test('no provider session is ended while the account is erased',
-        () async {
+    test('no provider session is ended while the account is erased', () async {
       await seed();
       OidcService.browserSessionsEnded = 0;
 

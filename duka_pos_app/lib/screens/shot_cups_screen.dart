@@ -48,12 +48,20 @@ final TextInputFormatter _amountDigitsOnly =
 /// The capacity rule, as one function returning one message.
 ///
 /// The field's inline validator and the submit guard both call this, so the two
-
+/// cannot disagree.
+///
+/// The size is OPTIONAL. A shot cup is a name for a serving — "Single",
+/// "Double" — and the size in millilitres is the owner's business. It is what
+/// lets the app work out what the shot cost to pour, so a cup WITH a size
+/// earns its cost and a cup WITHOUT one is counted at its full price.
+///
+/// An empty field is not a mistake; a NEGATIVE one is; and a size bigger than
+/// any bottle in the shop is a typo.
 String? _capacityErrorOf(AppLocalizations l10n, int? capacityMl) {
   if (capacityMl == null) {
-    return l10n.shotCupsCapacityWholeMl;
+    return null;
   }
-  if (capacityMl <= 0) return l10n.shotCupsCapacityPositive;
+  if (capacityMl < 0) return l10n.shotCupsCapacityPositive;
   if (capacityMl > Product.maxBottleMl) {
     return l10n.shotCupsCapacityMax(Product.maxBottleMl);
   }
@@ -586,6 +594,8 @@ class _ShotCupEditorState extends State<_ShotCupEditor> {
       return;
     }
     final productId = _productId;
+    // An EMPTY size is allowed, and means "not known". It is stored as zero,
+    // and zero is what the till reads as "no size".
     final int? capacity = int.tryParse(_capacity.text.trim());
     final double? price = double.tryParse(_price.text.trim());
     final String label = _label.text.trim();
@@ -615,7 +625,7 @@ class _ShotCupEditorState extends State<_ShotCupEditor> {
       // The name is stored, not joined, so the cup survives the spirit being
       // renamed or removed and the till can still explain what it poured.
       productName: product?.name ?? widget.cup?.productName ?? '',
-      capacityMl: capacity!,
+      capacityMl: capacity ?? 0,
       price: Money.fromMajor(price!),
       label: label,
       // Editing a cup that was stopped selling brings it back, rather than

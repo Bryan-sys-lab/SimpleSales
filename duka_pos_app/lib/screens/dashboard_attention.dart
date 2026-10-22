@@ -124,6 +124,7 @@ class DashboardAttentionCard extends StatelessWidget {
     required this.canFixEtims,
     required this.onRetryEtims,
     required this.onOpenEtimsSettings,
+    this.onRetryRejectedEtims,
     this.dismissed = const <String>{},
     this.onDismiss,
     super.key,
@@ -136,6 +137,14 @@ class DashboardAttentionCard extends StatelessWidget {
   final VoidCallback onRetryEtims;
   final VoidCallback onOpenEtimsSettings;
 
+  /// Puts the receipts KRA refused back in the queue.
+  ///
+  /// A refusal is permanent for the receipt that caused it and not for the
+  /// shop: once the cause is fixed — a wrong TIN, a buyer PIN that does not
+  /// verify — those invoices still have to be filed. Without this action a
+  /// refusal is a dead end, and a dead end is where a shop stops complying.
+  final VoidCallback? onRetryRejectedEtims;
+
   /// Category ids the owner has dismissed. Those rows are not shown.
   final Set<String> dismissed;
 
@@ -144,53 +153,58 @@ class DashboardAttentionCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final AppLocalizations l10n = AppLocalizations.of(context);
     final List<_Attention> items = <_Attention>[
       if (summary.rejectedEtims > 0)
         _Attention(
           id: 'rejectedEtims',
           count: summary.rejectedEtims,
           tone: StatusTone.danger,
-          label: 'KRA refused ${summary.rejectedEtims} receipt'
-              '${summary.rejectedEtims == 1 ? '' : 's'}',
+          label: l10n.attentionKraRefused(summary.rejectedEtims),
           // The distinction that matters: retrying a REFUSED receipt achieves
           // nothing until the configuration is right. Sending a cashier to tap
           // Retry is sending them in circles.
-          detail: 'The shop details KRA is using need correcting.',
+          detail: l10n.attentionKraRefusedDetail,
           action: canFixEtims
-              ? _AttentionAction('Fix details', onOpenEtimsSettings)
+              ? _AttentionAction(
+                  l10n.attentionKraRefusedFixAction, onOpenEtimsSettings)
               : null,
+          // Offered second, and only to the people who can fix the cause: once
+          // the details are right, the refused receipts are filed without
+          // anyone having to re-ring a single sale.
+          secondaryAction: onRetryRejectedEtims == null
+              ? null
+              : _AttentionAction(
+                  l10n.attentionKraRefusedRetryAction, onRetryRejectedEtims!),
         ),
       if (summary.pendingEtims > 0)
         _Attention(
           id: 'pendingEtims',
           count: summary.pendingEtims,
           tone: StatusTone.pending,
-          label: 'Waiting on KRA for ${summary.pendingEtims} receipt'
-              '${summary.pendingEtims == 1 ? '' : 's'}',
-          detail: 'These are recorded locally. They will issue on their own.',
-          action: _AttentionAction('Retry now', onRetryEtims),
+          label: l10n.attentionKraPending(summary.pendingEtims),
+          detail: l10n.attentionKraPendingDetail,
+          action: _AttentionAction(l10n.attentionKraRetryAction, onRetryEtims),
         ),
       if (summary.unverifiedPayments > 0)
         _Attention(
           id: 'unverifiedPayments',
           count: summary.unverifiedPayments,
           tone: StatusTone.warning,
-          label: '${summary.unverifiedPayments} payment'
-              '${summary.unverifiedPayments == 1 ? '' : 's'} not confirmed',
-          detail: 'Taken while offline. Check each one against the till roll.',
+          label: l10n.attentionUnverifiedPayments(summary.unverifiedPayments),
+          detail: l10n.attentionUnverifiedPaymentsDetail,
         ),
       if (summary.openImportProblems > 0)
         _Attention(
           id: 'openImportProblems',
           count: summary.openImportProblems,
           tone: StatusTone.warning,
-          label: '${summary.openImportProblems} row'
-              '${summary.openImportProblems == 1 ? '' : 's'} failed to import',
+          label: l10n.attentionImportProblems(summary.openImportProblems),
           // The rows are answerable HERE, on the phone. The advice used to be to
           // re-import the spreadsheet — which would not have cleared them, and
           // which assumed a desktop and the supplier's file.
-          detail: 'Fill in what the file was missing and they are imported.',
-          action: _AttentionAction('Finish now', () {
+          detail: l10n.attentionImportProblemsDetail,
+          action: _AttentionAction(l10n.attentionImportProblemsAction, () {
             context.push(Routes.imports);
           }),
         ),
@@ -249,6 +263,7 @@ class _Attention {
     required this.label,
     required this.detail,
     this.action,
+    this.secondaryAction,
   });
 
   /// Stable category id, used with [DashboardAttentionCard.dismissed] so an
@@ -260,6 +275,15 @@ class _Attention {
   final String label;
   final String detail;
   final _AttentionAction? action;
+
+  /// A second way out of the same problem.
+  ///
+  /// One action per row is the usual rule, and it holds everywhere else. Here
+  /// it does not: a refused receipt has TWO remedies — correct the details
+  /// that KRA refused, or simply try again now that they are corrected — and
+  /// offering only the first leaves the owner unable to file the invoices
+  /// they have already fixed the cause for.
+  final _AttentionAction? secondaryAction;
 }
 
 class _AttentionAction {
@@ -352,15 +376,32 @@ class _AttentionRow extends StatelessWidget {
               ],
             ),
           ),
-          if (attention.action != null) ...<Widget>[
+          if (attention.action != null ||
+              attention.secondaryAction != null) ...<Widget>[
             SizedBox(width: spacing.sm),
             // 44px tall: this is a real target on a real till, not a text link
             // pretending to be one.
+            //
+            // Two actions stack: side by side they would squeeze their labels
+            // onto two lines on a 320dp phone, and a squashed button is a
+            // button people miss.
             ConstrainedBox(
               constraints: BoxConstraints(minHeight: spacing.minTapTarget),
-              child: TextButton(
-                onPressed: attention.action!.onPressed,
-                child: Text(attention.action!.label),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.end,
+                mainAxisSize: MainAxisSize.min,
+                children: <Widget>[
+                  if (attention.action != null)
+                    TextButton(
+                      onPressed: attention.action!.onPressed,
+                      child: Text(attention.action!.label),
+                    ),
+                  if (attention.secondaryAction != null)
+                    TextButton(
+                      onPressed: attention.secondaryAction!.onPressed,
+                      child: Text(attention.secondaryAction!.label),
+                    ),
+                ],
               ),
             ),
           ],

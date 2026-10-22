@@ -25,15 +25,206 @@ import 'package:flutter/services.dart';
 import '../l10n/generated/app_localizations.dart';
 import '../db/database_helper.dart';
 import '../models/crash_log.dart';
+import '../models/stock_movement.dart';
+import '../services/build_configuration.dart';
 import '../services/failure_recorder.dart';
 import '../theme/app_colors.dart';
 import '../theme/app_haptics.dart';
 import '../theme/app_spacing.dart';
 import '../theme/typography.dart';
+import '../ui/components/build_configuration_notice.dart';
 import '../ui/components/states.dart';
 import '../ui/components/surface.dart';
 import '../ui/layout/page.dart';
+import '../utils/units.dart';
 import '../app_brand.dart';
+
+/// The stock ledger check.
+///
+/// The one place a shop can ask "does the number on the shelf agree with the
+/// history of how it got there?" — and be told the truth.
+///
+/// A difference is never a rounding curiosity. One of the two numbers is a
+/// lie, and the shop has to know which. So the check says both numbers, names
+/// the product, and offers the fix: a correction that moves the history to
+/// the count, because the count is what the shop has been selling from.
+class StockLedgerCheck extends StatefulWidget {
+  const StockLedgerCheck({
+    required this.loadDifferences,
+    required this.repair,
+    this.canRepair = false,
+    super.key,
+  });
+
+  /// The products whose count and history disagree.
+  final Future<List<LedgerDifference>> Function() loadDifferences;
+
+  /// Writes the correction. Returns true when it landed.
+  final Future<bool> Function(LedgerDifference) repair;
+
+  /// Only the owner may correct the books.
+  final bool canRepair;
+
+  @override
+  State<StockLedgerCheck> createState() => _StockLedgerCheckState();
+}
+
+class _StockLedgerCheckState extends State<StockLedgerCheck> {
+  List<LedgerDifference> _differences = <LedgerDifference>[];
+  bool _checking = true;
+  bool _failed = false;
+  String? _message;
+
+  @override
+  void initState() {
+    super.initState();
+    unawaited(_check());
+  }
+
+  Future<void> _check() async {
+    setState(() {
+      _checking = true;
+      _failed = false;
+    });
+    try {
+      final List<LedgerDifference> differences = await widget.loadDifferences();
+      if (!mounted) return;
+      setState(() => _differences = differences);
+    } catch (_) {
+      if (!mounted) return;
+      setState(() => _failed = true);
+    } finally {
+      if (mounted) setState(() => _checking = false);
+    }
+  }
+
+  Future<void> _repair(LedgerDifference difference) async {
+    final AppLocalizations l10n = AppLocalizations.of(context);
+    final bool repaired = await widget.repair(difference);
+    if (!mounted) return;
+    HapticTheme.of(context).fire(
+      repaired ? HapticEvent.commit : HapticEvent.reject,
+    );
+    setState(() {
+      _message = repaired
+          ? l10n.diagnosticsLedgerRepaired(difference.productName)
+          : l10n.diagnosticsLedgerRepairFailed(difference.productName);
+    });
+    await _check();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final AppLocalizations l10n = AppLocalizations.of(context);
+    final AppColors colors = AppColors.of(context);
+    final AppSpacing spacing = AppSpacing.of(context);
+    final TextTheme type = AppTypography.of(context);
+
+    return SurfaceCard(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: <Widget>[
+          Row(
+            children: <Widget>[
+              Icon(
+                _checking
+                    ? Icons.hourglass_empty
+                    : _differences.isEmpty
+                        ? Icons.verified_outlined
+                        : Icons.report_problem_outlined,
+                size: 20,
+                color: _differences.isEmpty && !_checking
+                    ? colors.success
+                    : colors.warning,
+              ),
+              SizedBox(width: spacing.sm),
+              Expanded(
+                child: Text(
+                  l10n.diagnosticsLedgerCheckTitle,
+                  style: type.titleSmall,
+                ),
+              ),
+              IconButton(
+                tooltip: l10n.actionRefresh,
+                onPressed: _checking ? null : () => _check(),
+                icon: const Icon(Icons.refresh, size: 20),
+              ),
+            ],
+          ),
+          SizedBox(height: spacing.xs),
+          Text(
+            l10n.diagnosticsLedgerCheckSubtitle,
+            style: type.bodySmall?.copyWith(color: colors.onSurfaceMuted),
+          ),
+          SizedBox(height: spacing.sm),
+          if (_checking)
+            Text(
+              l10n.diagnosticsLedgerChecking,
+              style: type.bodySmall,
+            )
+          else if (_failed)
+            Text(
+              l10n.diagnosticsUnreadableMessage,
+              style: type.bodySmall?.copyWith(color: colors.danger),
+            )
+          else if (_differences.isEmpty)
+            // Good news, said plainly. A check that reports nothing is only
+            // good news if the owner can tell it from a check that did not
+            // run.
+            Text(
+              l10n.diagnosticsLedgerHealthy,
+              style: type.bodyMedium?.copyWith(color: colors.success),
+            )
+          else ...<Widget>[
+            Text(
+              l10n.diagnosticsLedgerDifferences(_differences.length),
+              style: type.bodyMedium?.copyWith(color: colors.warning),
+            ),
+            SizedBox(height: spacing.sm),
+            for (final LedgerDifference difference in _differences)
+              Padding(
+                padding: EdgeInsetsDirectional.only(bottom: spacing.xs),
+                child: Row(
+                  crossAxisAlignment: CrossAxisAlignment.center,
+                  children: <Widget>[
+                    Expanded(
+                      child: Text(
+                        // gen-l10n sorts the placeholders ALPHABETICALLY —
+                        // counted, ledger, name — so the arguments follow that
+                        // order or the sentence comes out scrambled.
+                        l10n.diagnosticsLedgerDifferenceRow(
+                          stockCountLabel(difference.counted),
+                          stockCountLabel(difference.ledger),
+                          difference.productName,
+                        ),
+                        style: type.bodySmall,
+                      ),
+                    ),
+                    if (widget.canRepair)
+                      ConstrainedBox(
+                        constraints:
+                            BoxConstraints(minHeight: spacing.minTapTarget),
+                        child: TextButton(
+                          onPressed: () => _repair(difference),
+                          child: Text(l10n.diagnosticsLedgerRepairAction),
+                        ),
+                      ),
+                  ],
+                ),
+              ),
+          ],
+          if (_message != null) ...<Widget>[
+            SizedBox(height: spacing.sm),
+            Semantics(
+              liveRegion: true,
+              child: Text(_message!, style: type.bodySmall),
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+}
 
 /// The panel, value-driven so it can be pumped without a database.
 class DiagnosticsPanel extends StatelessWidget {
@@ -46,6 +237,8 @@ class DiagnosticsPanel extends StatelessWidget {
     this.retainedRows = 200,
     this.message,
     this.failed = false,
+    this.ledgerCheck,
+    this.buildNotice,
     super.key,
   });
 
@@ -74,6 +267,20 @@ class DiagnosticsPanel extends StatelessWidget {
   /// will not load needs to hear that, not "nothing has gone wrong".
   final bool failed;
 
+  /// The stock ledger check, shown above the log.
+  ///
+  /// Above the log because it is the thing an owner opens this screen FOR.
+  /// The failure log is what a developer asks for afterwards.
+  final Widget? ledgerCheck;
+
+  /// What this build cannot do, when the build is missing something.
+  ///
+  /// Shown above everything else: it is the reason the rest of the screen
+  /// looks the way it does — a till with no server has no KRA receipts, no
+  /// M-Pesa and no sync, and an owner staring at a queue of receipts that
+  /// never got issued needs to know that before they need to.
+  final Widget? buildNotice;
+
   @override
   Widget build(BuildContext context) {
     final AppLocalizations l10n = AppLocalizations.of(context);
@@ -84,6 +291,14 @@ class DiagnosticsPanel extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: <Widget>[
+          if (buildNotice != null) ...<Widget>[
+            buildNotice!,
+            SizedBox(height: AppSpacing.of(context).md),
+          ],
+          if (ledgerCheck != null) ...<Widget>[
+            ledgerCheck!,
+            SizedBox(height: AppSpacing.of(context).md),
+          ],
           if (loading)
             // The shared skeleton, shaped like the failure cards that are about
             // to arrive, rather than a spinner over an empty box: a spinner
@@ -315,6 +530,9 @@ class DiagnosticsScreen extends StatefulWidget {
     required this.loadEntries,
     required this.onClearLog,
     required this.environment,
+    this.loadLedgerDifferences,
+    this.repairLedgerDifference,
+    this.canRepairLedger = false,
     super.key,
   });
 
@@ -324,16 +542,31 @@ class DiagnosticsScreen extends StatefulWidget {
 
   final Map<String, String> environment;
 
+  /// The products whose count and history disagree, if the check is wired.
+  final Future<List<LedgerDifference>> Function()? loadLedgerDifferences;
+
+  /// Writes the correction that makes a count and its history agree.
+  final Future<bool> Function(LedgerDifference)? repairLedgerDifference;
+
+  /// Only the owner may correct the books.
+  final bool canRepairLedger;
+
   @override
   State<DiagnosticsScreen> createState() => _DiagnosticsScreenState();
 }
 
 class DiagnosticsScreenOpen extends DiagnosticsScreen {
-  DiagnosticsScreenOpen({super.key})
+  DiagnosticsScreenOpen({super.canRepairLedger = false, super.key})
       : super(
           loadEntries: () async =>
               DatabaseHelper.instance.crashLog(const CrashLogQuery(limit: 200)),
           onClearLog: () async => DatabaseHelper.instance.clearCrashLog(),
+          loadLedgerDifferences: () =>
+              DatabaseHelper.instance.findLedgerDifferences(),
+          repairLedgerDifference: (LedgerDifference difference) async {
+            await DatabaseHelper.instance.repairLedgerDifference(difference);
+            return true;
+          },
           // Not const, and deliberately so: the environment is read from the
           // platform at build time, and a const map of platform facts is a map
           // of whatever was true when the app started.
@@ -461,6 +694,20 @@ class _DiagnosticsScreenState extends State<DiagnosticsScreen> {
         onCopyReport: _copyReport,
         onClear: _clear,
         onRefresh: _load,
+        ledgerCheck: widget.loadLedgerDifferences == null
+            ? null
+            : StockLedgerCheck(
+                loadDifferences: widget.loadLedgerDifferences!,
+                repair: widget.repairLedgerDifference ??
+                    (LedgerDifference _) async => false,
+                canRepair: widget.canRepairLedger,
+              ),
+        // The build's own gaps, when it has any. Pure: it is a question about
+        // compile-time constants, so the answer cannot change while the
+        // screen is open.
+        buildNotice: BuildConfiguration.problem == null
+            ? null
+            : BuildConfigurationNotice(problem: BuildConfiguration.problem!),
       ),
     );
   }

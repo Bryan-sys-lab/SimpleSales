@@ -13,9 +13,10 @@
 //      rather than to the parent, but `ProductBarcode` has no field for it and
 //      `addBarcode` has no parameter for it. [codesForProduct] and
 //      [addVariantCode] reach the column so the editor can show which is which.
-//   3. `recordSale` checks and decrements `products.stock_qty`, so a variant's
-//      own count is never touched by a sale. [deductVariantStock] and
-//      [adjustVariantStock] keep it honest, and [writeAggregateStock] keeps the
+//   3. `recordSale` used to check and decrement `products.stock_qty` only, so
+//      a variant's own count was never touched by a sale. It now moves the
+//      variant row itself, inside the sale's transaction; [adjustVariantStock]
+//      keeps the manual corrections honest, and [writeAggregateStock] keeps the
 //      parent's row — which the ledger does check — equal to the sum of the
 //      variants.
 //
@@ -252,21 +253,6 @@ class VariantCatalogue {
     final next = variant.stockQty + delta;
     if (next < 0) throw StateError('Stock cannot go below zero');
     await db.upsertVariant(withStock(variant, next));
-    await _refreshAggregateIfTracked(variant.productId);
-  }
-
-  /// Takes [qty] off a variant's stock after its sale is committed.
-  ///
-  /// Clamped at zero rather than refused: the money is already taken, and a
-  /// clamped count that needs a stock take beats a till that refuses to hand
-  /// over change.
-  static Future<void> deductVariantStock(int variantId, double qty) async {
-    if (qty <= 0) return;
-    final db = DatabaseHelper.instance;
-    final variant = await db.getVariantById(variantId);
-    if (variant == null) return;
-    final next = variant.stockQty - qty;
-    await db.upsertVariant(withStock(variant, next < 0 ? 0 : next));
     await _refreshAggregateIfTracked(variant.productId);
   }
 

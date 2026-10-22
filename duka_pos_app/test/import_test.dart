@@ -552,6 +552,85 @@ void main() {
     });
   });
 
+  group('a file with a letterhead above its header', () {
+    // "I used the same BlackBee xlsx I used to make the parser with and it
+    // failed to import."
+    //
+    // The file opens with its own title — "BLACKBEE LTD — STOCK REPORT", the
+    // date it was printed, a blank row — and only THEN the column names. Only
+    // row 1 was looked at, so a file like that was read as if it had no header
+    // at all, and the category check refused it as "not in this app's
+    // inventory format": the owner's own supplier's price list, refused.
+    //
+    // The header is found wherever it is in the first few rows now, and the
+    // rows above it are the letterhead.
+
+    /// The file as a supplier sends it: a title, a date, a blank line, and
+    /// then the columns.
+    List<List<dynamic>> blackbeeFile() => <List<dynamic>>[
+          <dynamic>['BLACKBEE LTD — STOCK REPORT'],
+          <dynamic>['Printed 12/03/2026'],
+          <dynamic>[],
+          <dynamic>[
+            'Item',
+            'Category',
+            'Cost',
+            'Selling Price',
+            'Qty',
+            'Size',
+          ],
+          <dynamic>['Tusker Lager', 'Beer', '60', '100', '24', '500'],
+          <dynamic>['Balozi spirit', 'Spirits', '400', '650', '6', '750'],
+        ];
+
+    test('the header is found below the letterhead', () {
+      final SheetLayout layout = SheetLayout.fromRawRows(blackbeeFile());
+      expect(layout.refusal, isNull,
+          reason: 'the file HAS a header, two rows down');
+      expect(layout.headerRowDetected, isTrue);
+      expect(layout.rows, hasLength(2));
+    });
+
+    test('the letterhead is not imported as a product', () async {
+      final bytes = _workbook({'Inventory': blackbeeFile()});
+      final result = await ExcelService().importInventoryBytes(bytes);
+
+      expect(result.imported, 2);
+      final product = await productNamed('Tusker Lager');
+      expect(product, isNotNull);
+      expect(product!.sellPrice, Money.fromMajor(100));
+      expect(product.costPrice, Money.fromMajor(60));
+      expect(product.stockQty, 24);
+      expect(product.bottleMl, 500);
+      expect(product.category, 'Beer');
+    });
+
+    test('the row numbers still point at the sheet', () {
+      // "Row 5" in the report has to mean row 5 of the FILE, letterhead and
+      // all — the owner is looking at their spreadsheet when they read it.
+      final SheetLayout layout = SheetLayout.fromRawRows(blackbeeFile());
+      expect(layout.rows.first.number, 5);
+      expect(layout.rows.last.number, 6);
+    });
+
+    test('a file whose first row is a product is still read positionally', () {
+      // The search must not mistake a product for a header: a row of product
+      // words and prices is not a header however many of its words are field
+      // names.
+      //
+      // The rows are in this app's own export order — id first — because a
+      // header-less file is read by position and the promise is that it is
+      // OUR order.
+      final SheetLayout layout = SheetLayout.fromRawRows(<List<dynamic>>[
+        <dynamic>[1, 'Tusker Lager', 'Beer', '60', '100', '24'],
+        <dynamic>[2, 'Balozi spirit', 'Spirits', '400', '650', '6'],
+      ]);
+      expect(layout.headerRowDetected, isFalse);
+      expect(layout.refusal, isNull);
+      expect(layout.rows, hasLength(2));
+    });
+  });
+
   group('optional prices are never destroyed', () {
     // The confirmed bug: a non-numeric half_price became null and was written,
     // destroying a real price. Then the till quietly charged half the sell price

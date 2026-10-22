@@ -104,10 +104,21 @@ String? appRedirect({
   // The shift sub-route is explicitly NOT in this set: it reconciles the
   // signed-in person's own till and is reachable from the dashboard's "Open
   // Shift" card for cashiers too. Only the full-shop branches are gated.
-  final bool stockBranch = location.startsWith(Routes.inventory) ||
-      (location.startsWith(Routes.analytics) && location != Routes.shift) ||
-      location == Routes.reports;
+  //
+  // ANALYTICS is a half-gate, and the half is the point. A cashier may open
+  // the analytics screen, because their OWN takings are theirs to read — but
+  // every figure on it is scoped to the rows they sold, so it is their
+  // numbers and not the shop's. The REPORTS view underneath it is the whole
+  // shop's, so it stays behind the manager's door.
+  final bool stockBranch =
+      location.startsWith(Routes.inventory) || location == Routes.reports;
   if (stockBranch && !snapshot.canManageStock) return Routes.dashboard;
+
+  // The all-shops view is the owner's: it reads across every shop on the
+  // device, which is nobody's business but the owner's.
+  if (location == Routes.portfolio && !snapshot.isAdmin) {
+    return Routes.dashboard;
+  }
 
   if (location.startsWith(Routes.settings) && !snapshot.isAdmin) {
     return Routes.dashboard;

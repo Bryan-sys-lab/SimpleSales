@@ -12,7 +12,7 @@
 import 'package:flutter_test/flutter_test.dart';
 
 import 'package:duka_pos/models/models.dart';
-import 'package:duka_pos/screens/sell_screen.dart';
+import 'package:duka_pos/widgets/serving_choice_sheet.dart';
 import 'package:duka_pos/utils/money.dart';
 import 'package:duka_pos/utils/units.dart';
 
@@ -67,6 +67,24 @@ void main() {
           '15 shots in the bottle');
       expect(shotAvailability(spirit(), cup(capacityMl: 750), 2).reason,
           '1 shots in the bottle');
+    });
+  });
+
+  group('a shot whose size is not known', () {
+    test('it is still pourable', () {
+      // The size of a shot cup is optional, so a cup can have none. The
+      // owner did not say how big the shot is, and the app does not guess —
+      // but refusing to sell it would be worse: the shot is still a shot, and
+      // it still has a price.
+      final verdict = shotAvailability(spirit(), cup(capacityMl: 0), 5);
+      expect(verdict.canPour, isTrue);
+      expect(verdict.reason, contains('size of this shot is not set'));
+    });
+
+    test('an empty bottle still stops it', () {
+      final verdict = shotAvailability(spirit(), cup(capacityMl: 0), 0);
+      expect(verdict.canPour, isFalse);
+      expect(verdict.reason, 'No AAA Vodka left to pour');
     });
   });
 

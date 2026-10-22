@@ -24,12 +24,14 @@ import '../ui/dialogs/pin_reset_dialog.dart';
 import '../ui/components/screen_title.dart';
 import '../ui/components/status.dart';
 import '../ui/components/surface.dart';
+import '../utils/pin_rules.dart';
+import '../services/workspace_service.dart';
 
 /// The PIN pad. The only way into the shop.
 ///
 /// This is the highest-consequence screen in the app: every sale, every
-/// report, and every price edit in the session is behind four digits and the
-/// identity they are checked against. So the pad is built for the two people
+/// report, and every price edit in the session is behind a PIN and the
+/// identity it is checked against. So the pad is built for the two people
 /// most likely to be using it badly rather than for the one person who will use
 /// it perfectly:
 ///
@@ -38,7 +40,7 @@ import '../ui/components/surface.dart';
 ///    looks like. Nothing here is a gesture-only target.
 ///  * **The identity is confirmable before the digits.** The roster is above the
 ///    pad and the selection is echoed under it, on a live region, so a mis-pick
-///    is visible *and* announced before four digits are committed.
+///    is visible *and* announced before the digits are committed.
 ///  * **Failures are announced, not just coloured.** Every error is a live
 ///    region with a glyph and a sentence, because "Wrong PIN" as red text is
 ///    silence to a screen-reader user.
@@ -73,11 +75,35 @@ enum _RosterState { loading, noAccounts, ready }
 class _LoginScreenState extends State<LoginScreen> {
   static const String _ownerValue = '__owner__';
 
-  /// The PIN length the shop's hashes are built for. A fifth digit cannot be
-  /// entered, which is why the pad submits rather than waiting for an OK.
-  static const int _pinLength = 4;
+  /// The length of the PIN being asked for.
+  ///
+  /// A staff member's PIN is four digits. The owner's is an ADMIN PIN, and an
+  /// admin PIN is six — so the pad asks for six when the owner is the picked
+  /// identity and four for anybody else.
+  ///
+  /// There is no third case and nothing to choose: the owner's PIN is six
+  /// digits, everywhere it is asked for. The setup screen makes it six, the
+  /// sheet that proves ownership asks for six, and the sign-in pad asks for
+  /// six — so an owner has exactly one PIN, and it is the one the app expects.
+  int get _pinLength =>
+      _selected == _ownerValue ? PinRules.adminLength : PinRules.staffLength;
 
   List<Staff> _staff = [];
+
+  /// The shops on this device.
+  ///
+  /// Read from the LOCAL registry, not from the backend: a shop that has
+  /// never been online is still a shop on this phone, and it has to be
+  /// sign-in-able without a network.
+  List<LocalShop> _shops = <LocalShop>[];
+
+  /// True while the person is choosing which shop to open.
+  ///
+  /// Only ever true when the phone holds MORE THAN ONE shop. With one shop
+  /// there is nothing to choose, and a chooser over a single entry is a
+  /// screen that makes the person tap something to get to where they were
+  /// going anyway.
+  bool _choosingShop = false;
 
   /// The identity currently picked, as a tag string.
   ///
@@ -175,15 +201,45 @@ class _LoginScreenState extends State<LoginScreen> {
     final Owner? owner = context.read<AppState>().owner;
     final List<Staff> staff = await (widget.staffLoader?.call() ??
         DatabaseHelper.instance.getStaff());
+    // The shops on this device. Read here rather than in the build, because
+    // the roster and the shop list have to agree about WHICH shop the roster
+    // belongs to — and the only one that decides that is the active shop.
+    final List<LocalShop> shops = await WorkspaceServiceShops.localShops();
     if (!mounted) return;
     setState(() {
       _staff = staff;
+      _shops = shops;
+      // More than one shop on the phone means the person has to say which
+      // one they are opening. The roster below belongs to ONE shop, and
+      // without being asked, they are looking at the wrong shop's people.
+      _choosingShop = shops.length > 1;
       // Default to the owner only when there is one.
       _selected = owner != null
           ? _ownerValue
           : (staff.isEmpty ? null : _tagFor(staff.first));
       _loading = false;
     });
+  }
+
+  /// Opens the chosen shop, and signs in to it.
+  ///
+  /// The switch happens BEFORE the roster is read again, so the people on
+  /// screen are that shop's people and nobody else's.
+  Future<void> _chooseShop(LocalShop shop) async {
+    if (_verifying) return;
+    final AppState state = context.read<AppState>();
+    setState(() {
+      _choosingShop = false;
+      _loading = true;
+      _error = null;
+    });
+    // `signIn: false` — this is a CHOOSER, not a sign-in. The person is on
+    // their way to typing a PIN; signing them in as the owner here would
+    // skip the very thing they came to do.
+    await state.switchWorkspace(shop.workspaceKey, signIn: false);
+    if (!mounted) return;
+    _pin.clear();
+    await _load();
   }
 
   /// The PIN field changed.
@@ -373,19 +429,47 @@ class _LoginScreenState extends State<LoginScreen> {
                   _SignInHeader(shopName: shopName),
                   SizedBox(height: spacing.md),
                   Expanded(
-                    child: switch (_rosterState) {
-                      _RosterState.loading => const _RosterLoading(),
-                      _RosterState.noAccounts => _NoAccountsPanel(
-                          onSetUp: _setUpShop,
-                        ),
-                      _RosterState.ready => _WhoPicker(
-                          ownerName: owner?.name,
-                          staff: _staff,
-                          selected: _selected,
-                          onChanged: _selectIdentity,
-                        ),
-                    },
+                    child: _choosingShop
+                        // The shop chooser, FIRST.
+                        //
+                        // The roster below belongs to ONE shop. On a phone
+                        // with several, the person has to say which one they
+                        // are opening — otherwise they are reading one shop's
+                        // people and typing one shop's PIN at another shop's
+                        // counter, and neither shop is wrong about anything.
+                        ? _ShopChooser(
+                            shops: _shops,
+                            onChosen: _chooseShop,
+                          )
+                        : switch (_rosterState) {
+                            _RosterState.loading => const _RosterLoading(),
+                            _RosterState.noAccounts => _NoAccountsPanel(
+                                onSetUp: _setUpShop,
+                              ),
+                            _RosterState.ready => _WhoPicker(
+                                ownerName: owner?.name,
+                                staff: _staff,
+                                selected: _selected,
+                                onChanged: _selectIdentity,
+                              ),
+                          },
                   ),
+                  // A way BACK to the chooser, once a shop is open.
+                  //
+                  // Without it, a person who picked the wrong shop has to
+                  // sign out of this one to pick the other — and signing out
+                  // to change your mind is a poor trade for a tap.
+                  if (!_choosingShop && _shops.length > 1)
+                    Align(
+                      alignment: AlignmentDirectional.centerStart,
+                      child: TextButton.icon(
+                        onPressed: () => setState(
+                          () => _choosingShop = true,
+                        ),
+                        icon: const Icon(Icons.storefront_outlined),
+                        label: Text(l10n.loginChooseShopAction),
+                      ),
+                    ),
                   if (_error != null) ...<Widget>[
                     SizedBox(height: spacing.md),
                     PersistentBanner(
@@ -510,6 +594,122 @@ class _SignInHeader extends StatelessWidget {
         SizedBox(height: spacing.md),
         ScreenTitle(title: shopName, padding: EdgeInsets.zero),
       ],
+    );
+  }
+}
+
+/// The shops on this phone, and the one to open.
+///
+/// ## WHY IT IS A SEPARATE SCREEN-FULL OF THINGS
+///
+/// A till that belongs to one shop has nothing to choose, and a chooser over
+/// a single entry is a tap that gets you to where you were going anyway. So
+/// this only appears when the phone holds more than one shop.
+///
+/// ## WHY IT IS BEFORE THE ROSTER
+///
+/// The roster is a list of PEOPLE, and people belong to a shop. Showing the
+/// roster before the shop is chosen means showing the staff of whichever shop
+/// happened to be active — and the person would have no way of knowing that
+/// the names in front of them are not the names of the shop they are standing
+/// in.
+class _ShopChooser extends StatelessWidget {
+  const _ShopChooser({required this.shops, required this.onChosen});
+
+  /// The shops on this device.
+  final List<LocalShop> shops;
+
+  /// What was chosen.
+  final Future<void> Function(LocalShop shop) onChosen;
+
+  @override
+  Widget build(BuildContext context) {
+    final AppLocalizations l10n = AppLocalizations.of(context);
+    final AppSpacing spacing = AppSpacing.of(context);
+    final AppColors colors = AppColors.of(context);
+    final TextTheme type = AppTypography.of(context);
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: <Widget>[
+        Semantics(
+          header: true,
+          child: Text(l10n.loginChooseShopTitle, style: type.titleMedium),
+        ),
+        SizedBox(height: spacing.xs),
+        Text(
+          l10n.loginChooseShopSubtitle(shops.length),
+          style: type.bodySmall?.copyWith(color: colors.onSurfaceMuted),
+        ),
+        SizedBox(height: spacing.md),
+        Expanded(
+          child: ListView.separated(
+            itemCount: shops.length,
+            separatorBuilder: (_, __) => SizedBox(height: spacing.sm),
+            itemBuilder: (BuildContext context, int index) {
+              final LocalShop shop = shops[index];
+              return _ShopTile(
+                shop: shop,
+                onTap: () => onChosen(shop),
+              );
+            },
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+/// One shop in the chooser.
+class _ShopTile extends StatelessWidget {
+  const _ShopTile({required this.shop, required this.onTap});
+
+  final LocalShop shop;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final AppLocalizations l10n = AppLocalizations.of(context);
+    final AppColors colors = AppColors.of(context);
+    final AppSpacing spacing = AppSpacing.of(context);
+    final TextTheme type = AppTypography.of(context);
+
+    return Material(
+      color: colors.surface,
+      borderRadius: AppShapes.of(context).controlRadius,
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: AppShapes.of(context).controlRadius,
+        child: Padding(
+          padding: EdgeInsets.all(spacing.md),
+          child: Row(
+            children: <Widget>[
+              Icon(Icons.storefront_outlined, color: colors.onSurfaceMuted),
+              SizedBox(width: spacing.md),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  mainAxisSize: MainAxisSize.min,
+                  children: <Widget>[
+                    // The name WRAPS: a shop name is typed by a human, and a
+                    // name cut off is a name the owner cannot recognise.
+                    Text(shop.shopName, style: type.titleSmall),
+                    SizedBox(height: spacing.xs),
+                    Text(
+                      shop.isBackendLinked
+                          ? l10n.settingsLinkedShop
+                          : l10n.settingsLocalOnlyShop,
+                      style: type.bodySmall
+                          ?.copyWith(color: colors.onSurfaceMuted),
+                    ),
+                  ],
+                ),
+              ),
+              Icon(Icons.chevron_right, color: colors.onSurfaceMuted),
+            ],
+          ),
+        ),
+      ),
     );
   }
 }

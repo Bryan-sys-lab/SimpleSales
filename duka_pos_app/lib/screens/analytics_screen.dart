@@ -8,6 +8,8 @@ import '../models/models.dart';
 import '../routing/home_shell.dart';
 import '../routing/routes.dart';
 import '../services/analytics.dart';
+import '../services/app_state.dart';
+import '../services/shift_analytics.dart';
 import '../theme/app_colors.dart';
 import '../theme/app_haptics.dart';
 import '../theme/app_shapes.dart';
@@ -97,6 +99,7 @@ class AnalyticsSnapshot {
     required this.payments,
     required this.outOfStock,
     required this.lowStock,
+    this.shifts = const ShiftAnalytics.empty(),
   });
 
   /// What an empty range aggregates to, so the first frame renders real zeros
@@ -109,6 +112,7 @@ class AnalyticsSnapshot {
     payments: <PaymentMixRow>[],
     outOfStock: <Product>[],
     lowStock: <Product>[],
+    shifts: ShiftAnalytics.empty(),
   );
 
   final DailyTotals totals;
@@ -118,6 +122,9 @@ class AnalyticsSnapshot {
   final List<PaymentMixRow> payments;
   final List<Product> outOfStock;
   final List<Product> lowStock;
+
+  /// The shifts over the window, and what the drawers did.
+  final ShiftAnalytics shifts;
 
   bool get isEmpty =>
       !totals.hasSales &&
@@ -240,14 +247,30 @@ class _AnalyticsScreenState extends State<AnalyticsScreen>
     // queries that could straddle a sale landing between them.
     final AnalyticsRange range = _range;
     final DateTime since = range.since;
+    // WHOSE figures these are.
+    //
+    // Null for the owner and the manager: they read the whole shop. For a
+    // cashier it is their own staff id, and every aggregate below is asked
+    // with it, so the screen shows the takings of the counter they were
+    // standing at and nothing else.
+    //
+    // It used to be a whole-shop screen that cashiers could not open at all,
+    // which answered the question "how am I doing?" with "you may not look".
+    // Their own numbers are theirs to read.
+    final int? staffId = context.read<AppState>().analyticsStaffId;
     try {
       final List<Object> results = await Future.wait(<Future<Object>>[
-        db.salesTotalsFor(since: since),
-        db.salesByDay(since: since),
-        db.topProducts(since: since, limit: 20),
-        db.salesByPaymentMethod(since: since),
+        db.salesTotalsFor(since: since, staffId: staffId),
+        db.salesByDay(since: since, staffId: staffId),
+        db.topProducts(since: since, limit: 20, staffId: staffId),
+        db.salesByPaymentMethod(since: since, staffId: staffId),
         db.getProducts(),
-        db.salesTotalsFor(since: range.previousSince, until: since),
+        db.salesTotalsFor(
+          since: range.previousSince,
+          until: since,
+          staffId: staffId,
+        ),
+        loadShiftAnalytics(from: since, to: DateTime.now(), staffId: staffId),
       ]);
       if (!mounted) return;
       final List<Product> products = results[4] as List<Product>;
@@ -275,6 +298,7 @@ class _AnalyticsScreenState extends State<AnalyticsScreen>
                 .toList()
               ..sort(
                   (Product a, Product b) => a.stockQty.compareTo(b.stockQty)),
+            shifts: results[6] as ShiftAnalytics,
           ),
         );
       });
@@ -358,6 +382,12 @@ class _AnalyticsScreenState extends State<AnalyticsScreen>
   @override
   Widget build(BuildContext context) {
     final AppSpacing spacing = AppSpacing.of(context);
+    // Whose figures this is. The owner and the manager read the whole shop;
+    // a cashier reads their own counter, and the screen says so, because a
+    // screen called "Analytics" that quietly means "your own takings" is a
+    // screen nobody trusts.
+    final AppState state = context.watch<AppState>();
+    final bool ownScope = !state.seesAllSales;
 
     return switch (_view) {
       AnalyticsLoading(previous: final AnalyticsSnapshot previous) =>
@@ -395,7 +425,12 @@ class _AnalyticsScreenState extends State<AnalyticsScreen>
               : null,
           bottomInset: spacing.xl,
           onOpenPortfolio: () => context.push(Routes.portfolio),
-          showPortfolioLink: _canShowPortfolio,
+          // The all-shops view reads across every shop on the device, which
+          // is the owner's business and nobody else's.
+          showPortfolioLink: _canShowPortfolio && state.isAdmin,
+          title: ownScope
+              ? AppLocalizations.of(context).analyticsYourSalesTitle
+              : AppLocalizations.of(context).navAnalytics,
         ),
     };
   }
@@ -424,6 +459,7 @@ class _AnalyticsScaffold extends StatelessWidget {
     this.bottomInset = 0,
     this.onOpenPortfolio,
     this.showPortfolioLink = false,
+    this.title,
   });
 
   final AnalyticsRange range;
@@ -452,6 +488,9 @@ class _AnalyticsScaffold extends StatelessWidget {
   /// screen they use every day.
   final bool showPortfolioLink;
 
+  /// The screen's own name, which depends on whose figures it is showing.
+  final String? title;
+
   @override
   Widget build(BuildContext context) {
     final AppSpacing spacing = AppSpacing.of(context);
@@ -478,7 +517,7 @@ class _AnalyticsScaffold extends StatelessWidget {
             // under the shell's brand bar, not a coloured app bar that spends
             // the app's only accent on chrome.
             ScreenTitle(
-              title: AppLocalizations.of(context).navAnalytics,
+              title: title ?? AppLocalizations.of(context).navAnalytics,
               // The list already insets its content by `md`; the title's own
               // default inset would push it off the gutter the cards sit on.
               padding: EdgeInsetsDirectional.only(bottom: spacing.md),
@@ -547,6 +586,13 @@ class _AnalyticsScaffold extends StatelessWidget {
       ),
       SizedBox(height: spacing.lg),
       PaymentMixCard(rows: shown.payments, totals: shown.totals),
+      SizedBox(height: spacing.lg),
+      // The shifts, and what the drawers did over the window.
+      //
+      // Between the payment mix and the stock: both are about the shop's
+      // money and the shift figures are the ones that say whether the money
+      // in the drawer is the money the ledger expects.
+      ShiftAnalyticsCard(shifts: shown.shifts),
       SizedBox(height: spacing.lg),
       StockSection(outOfStock: shown.outOfStock, lowStock: shown.lowStock),
     ];

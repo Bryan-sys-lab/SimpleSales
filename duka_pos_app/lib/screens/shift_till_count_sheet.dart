@@ -325,8 +325,7 @@ class TillDenominationRow extends StatelessWidget {
               decoration: InputDecoration(
                 isDense: true,
                 labelText: AppLocalizations.of(context).shiftCountPileLabel,
-                contentPadding:
-                    EdgeInsets.symmetric(horizontal: spacing.md),
+                contentPadding: EdgeInsets.symmetric(horizontal: spacing.md),
               ),
               onChanged: (_) => onChanged(),
             ),

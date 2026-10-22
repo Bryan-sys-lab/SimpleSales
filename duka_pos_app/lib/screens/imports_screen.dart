@@ -464,7 +464,7 @@ class _CompleteSheetState extends State<_CompleteSheet> {
       // The row was repaired and saved. Said on a screen, because the owner
       // came here to fix ONE row and wants to know that it is fixed and can
       // move on to the next.
-      await showOperationSuccess(
+      showOperationSuccess(
         context,
         title: AppLocalizations.of(context).importRepairedTitle,
         message: product.name,
@@ -472,7 +472,7 @@ class _CompleteSheetState extends State<_CompleteSheet> {
       );
     } catch (error) {
       if (!mounted) return;
-      await showOperationFailure(
+      showOperationFailure(
         context,
         title: AppLocalizations.of(context).importRepairFailedTitle,
         message: AppLocalizations.of(context).importSaveFailed,

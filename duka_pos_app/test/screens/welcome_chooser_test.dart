@@ -124,7 +124,8 @@ void main() {
       expect(
         asset?.assetName,
         isNot(startsWith('assets/branding/simple_pos')),
-        reason: 'the app\'s own brand is drawn as paths, never shipped as a PNG',
+        reason:
+            'the app\'s own brand is drawn as paths, never shipped as a PNG',
       );
     }
   });

@@ -116,8 +116,7 @@ void main() {
     expect(find.text('Item 0'), findsOneWidget);
   });
 
-  testWidgets('a cash sale says what moved, not just "cash"',
-      (tester) async {
+  testWidgets('a cash sale says what moved, not just "cash"', (tester) async {
     tester.useDevice(Device.small);
     await tester.pumpApp(
       home: _withShop(
@@ -143,7 +142,8 @@ void main() {
     await tester.pumpApp(
       home: _withShop(
         TransactionsRow(
-          sale: _sale(method: 'mpesa', reference: 'QJG7X2K9AB', tenderedMinor: 0),
+          sale:
+              _sale(method: 'mpesa', reference: 'QJG7X2K9AB', tenderedMinor: 0),
           audit: null,
           canSeeSellers: true,
         ),

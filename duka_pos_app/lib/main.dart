@@ -17,6 +17,7 @@ import 'routing/app_stage_controller.dart';
 import 'services/app_state.dart';
 import 'services/account_deletion_service.dart';
 import 'services/backend_service.dart';
+import 'services/build_configuration.dart';
 import 'services/app_update_service.dart';
 import 'services/live_channel_service.dart';
 import 'services/telemetry_service.dart';
@@ -39,6 +40,33 @@ Future<void> main() async {
   // native platforms keep their own factory.
   if (kIsWeb) {
     databaseFactory = databaseFactoryFfiWeb;
+  }
+
+  // The build's own configuration, checked before anything else runs.
+  //
+  // A release build that was never given a real backend URL points every
+  // shop's till at a server on the builder's own machine. The check still
+  // runs — but it no longer STOPS the app.
+  //
+  // It used to: the build refused to open and showed a dead-end screen. The
+  // reasoning was sound (a till that cannot reach a server cannot issue a
+  // KRA receipt) and the consequence was not: the build could not be shown to
+  // anyone, so the person shipping it never saw the app, and the shop could
+  // not try it before the backend work landed.
+  //
+  // The till is offline-first. A build with no server is a LOCAL-ONLY build,
+  // and that is a perfectly good thing to be able to run and hand to a shop
+  // while the APIs are still in flight. So the app starts, the till sells,
+  // and Diagnostics says which parts will not work until the addresses are
+  // supplied.
+  final String? configurationProblem = BuildConfiguration.problem;
+  if (configurationProblem != null) {
+    // Recorded, so the phone's own log knows the build was incomplete — but
+    // NOT as a failure: nothing failed. The build is a local-only build.
+    failureRecorder.record(
+      kind: CrashKind.warning,
+      message: configurationProblem,
+    );
   }
 
   // The phone's own failure log. The framework hook is set HERE rather than

@@ -491,12 +491,26 @@ class SheetLayout {
         headerRow: null,
       );
     }
-    final first = raw.first;
-    final detected = SheetColumns.fromHeaderRow(first);
-    if (detected != null) {
+
+    // THE HEADER IS NOT ALWAYS IN ROW ONE.
+    //
+    // A supplier's file opens with its own letterhead: "BLACKBEE LTD — STOCK
+    // REPORT", the date it was printed, maybe a blank row, and then the
+    // column names. Only row 1 was looked at, so a file like that was read
+    // as if it had no header at all — positionally — and then refused by the
+    // category check below, because a file read positionally has numbers where
+    // a category should be. The owner was told "this is not our format" about
+    // a file that HAD our format, sitting two rows down.
+    //
+    // So the first few rows are searched for a header, and the rows above it
+    // are treated as what they are: the letterhead.
+    final int headerIndex = _findHeaderRow(raw);
+    if (headerIndex >= 0) {
+      final List<dynamic> first = raw[headerIndex];
+      final detected = SheetColumns.fromHeaderRow(first)!;
       return SheetLayout(
         columns: detected,
-        rows: _rowsFrom(raw, 1, detected),
+        rows: _rowsFrom(raw, headerIndex + 1, detected),
         headerRow: List<dynamic>.of(first),
       );
     }
@@ -552,6 +566,27 @@ class SheetLayout {
       rows: _rowsFrom(raw, 0, columns),
       headerRow: null,
     );
+  }
+
+  /// How many rows at the top of the sheet are searched for a header.
+  ///
+  /// Ten is a letterhead and a couple of blank lines, and a file whose header
+  /// is further down than that is a file with a table in it, not an inventory
+  /// list — and the positional read is the honest thing to try there.
+  static const int headerSearchDepth = 10;
+
+  /// The index of the header row, or -1 when there is not one.
+  ///
+  /// The FIRST row that reads as a header wins. A supplier sheet that has a
+  /// title in row 1 and its column names in row 2 is read from row 2, and the
+  /// title is left where it is — it is the letterhead, not a product.
+  static int _findHeaderRow(List<List<dynamic>> raw) {
+    final int limit =
+        raw.length < headerSearchDepth ? raw.length : headerSearchDepth;
+    for (var i = 0; i < limit; i++) {
+      if (SheetColumns.fromHeaderRow(raw[i]) != null) return i;
+    }
+    return -1;
   }
 
   /// Every row from [start], each carrying the section title in force above it.

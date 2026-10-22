@@ -1253,6 +1253,87 @@ void main() {
       db = await DatabaseHelper.openInMemoryForTests();
     });
 
+    test('a shot with no size takes nothing from the bottle', () async {
+      // The size of a shot is optional, so a cup can have none — and a shot
+      // whose size is not known must not empty the bottle.
+      //
+      // The old answer was a WHOLE container for any measured pour that could
+      // not be read, which came from the days when every shot had a size. One
+      // unsized shot emptied the shelf.
+      final int productId = await db.upsertProduct(Product(
+        name: 'AAA Unsized Spirit',
+        category: 'Spirits',
+        costPrice: Money.fromMajor(500),
+        sellPrice: Money.fromMajor(1000),
+        stockQty: 10,
+        reorderLevel: 2,
+        bottleMl: 750,
+        updatedAt: DateTime.now().toIso8601String(),
+      ));
+
+      await db.recordSale(
+        staffName: 'Test Staff',
+        items: <SaleItem>[
+          SaleItem(
+            saleId: 0,
+            productId: productId,
+            productName: 'AAA Unsized Spirit',
+            qty: 1,
+            unitPrice: Money.fromMajor(100),
+            unitCost: Money.zero,
+            portion: SalePortion.measured,
+            portionMl: 0,
+          ),
+        ],
+        paymentMethod: 'cash',
+      );
+
+      final Product after =
+          (await db.getProducts()).firstWhere((p) => p.id == productId);
+      expect(
+        after.stockQty,
+        10,
+        reason: 'an unsized shot takes nothing that can be measured, so the '
+            'bottle is still full',
+      );
+    });
+
+    test('a shot with a size takes exactly that much from the bottle',
+        () async {
+      final int productId = await db.upsertProduct(Product(
+        name: 'AAA Sized Spirit',
+        category: 'Spirits',
+        costPrice: Money.fromMajor(500),
+        sellPrice: Money.fromMajor(1000),
+        stockQty: 10,
+        reorderLevel: 2,
+        bottleMl: 750,
+        updatedAt: DateTime.now().toIso8601String(),
+      ));
+
+      await db.recordSale(
+        staffName: 'Test Staff',
+        items: <SaleItem>[
+          SaleItem(
+            saleId: 0,
+            productId: productId,
+            productName: 'AAA Sized Spirit',
+            qty: 1,
+            unitPrice: Money.fromMajor(100),
+            unitCost: Money.fromMajor(20),
+            portion: SalePortion.measured,
+            portionMl: 30,
+          ),
+        ],
+        paymentMethod: 'cash',
+      );
+
+      final Product after =
+          (await db.getProducts()).firstWhere((p) => p.id == productId);
+      // 30 ml out of a 750 ml bottle is 0.04 of a bottle.
+      expect(after.stockQty, closeTo(9.96, 0.0001));
+    });
+
     test('Upsert creates a new shot cup', () async {
       final productId = await db.upsertProduct(Product(
         name: 'AAA Vodka',
@@ -1384,9 +1465,44 @@ void main() {
       expect(await db.getShotCups(activeOnly: false), isEmpty);
     });
 
-    test('A cup needs a capacity it is possible to pour', () async {
+    test('A cup with no size is allowed, because the size is optional',
+        () async {
+      // The size of a shot cup is the OWNER's business: a cup is a name for a
+      // serving, and the owner may not know or care how big it is. With a size
+      // the app works out what the shot cost to pour; without one the shot is
+      // counted at its full price.
+      //
+      // It used to be refused outright, which meant a shop that did not know
+      // its shot sizes could not set up a shot at all.
       final productId = await db.upsertProduct(Product(
-        name: 'AAA Zero Vodka',
+        name: 'AAA Unsized Vodka',
+        category: 'Spirits',
+        costPrice: Money.fromMajor(500),
+        sellPrice: Money.fromMajor(1000),
+        stockQty: 10,
+        reorderLevel: 2,
+        bottleMl: 750,
+        updatedAt: DateTime.now().toIso8601String(),
+      ));
+
+      final id = await db.upsertShotCup(ShotCup(
+        productId: productId,
+        productName: 'AAA Unsized Vodka',
+        capacityMl: 0,
+        price: Money.fromMajor(100),
+        updatedAt: DateTime.now().toIso8601String(),
+      ));
+      expect(id, greaterThan(0));
+
+      final loaded = (await db.getShotCups(activeOnly: false))
+          .singleWhere((c) => c.id == id);
+      expect(loaded.capacityMl, 0);
+      expect(loaded.price.minorUnits, 10000);
+    });
+
+    test('A cup with a negative size is refused', () async {
+      final productId = await db.upsertProduct(Product(
+        name: 'AAA Negative Vodka',
         category: 'Spirits',
         costPrice: Money.fromMajor(500),
         sellPrice: Money.fromMajor(1000),
@@ -1399,8 +1515,8 @@ void main() {
       await expectLater(
         db.upsertShotCup(ShotCup(
           productId: productId,
-          productName: 'AAA Zero Vodka',
-          capacityMl: 0,
+          productName: 'AAA Negative Vodka',
+          capacityMl: -30,
           price: Money.fromMajor(100),
           updatedAt: DateTime.now().toIso8601String(),
         )),

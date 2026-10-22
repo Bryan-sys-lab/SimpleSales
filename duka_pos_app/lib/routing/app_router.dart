@@ -371,7 +371,16 @@ List<RouteBase> _shellRoutes() {
                   parentNavigatorKey: rootNavigatorKey,
                   pageBuilder:
                       (BuildContext context, GoRouterState routerState) =>
-                          _fadeThrough(routerState, DiagnosticsScreenOpen()),
+                          _fadeThrough(
+                    routerState,
+                    DiagnosticsScreenOpen(
+                      // Only the owner may correct the books. A manager can
+                      // SEE that the ledger disagrees — the difference is
+                      // information they need — but writing the correction is
+                      // the owner's call.
+                      canRepairLedger: context.read<AppState>().isOwnerSession,
+                    ),
+                  ),
                 ),
                 // The shop's own account: who is signed in, where it is
                 // verified, and the avatar. A child of Settings for the same

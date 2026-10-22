@@ -136,8 +136,7 @@ void main() {
   });
 
   group('the permissions the app does NOT ask for', () {
-    test('no location, because the app never derives a place from a radio',
-        () {
+    test('no location, because the app never derives a place from a radio', () {
       // A till that wanted location would be a till asking for something a
       // shop should not have to explain.
       expect(permissionElement('ACCESS_FINE_LOCATION'), isEmpty);

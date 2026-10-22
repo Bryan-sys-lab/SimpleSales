@@ -34,7 +34,8 @@ void main() {
     String shopName = 'Amina Duka',
     String email = 'amina@duka.co.ke',
   }) async {
-    final ValueNotifier<ProfileEdit?> result = ValueNotifier<ProfileEdit?>(null);
+    final ValueNotifier<ProfileEdit?> result =
+        ValueNotifier<ProfileEdit?>(null);
     await tester.pumpApp(
       home: Scaffold(
         body: Builder(

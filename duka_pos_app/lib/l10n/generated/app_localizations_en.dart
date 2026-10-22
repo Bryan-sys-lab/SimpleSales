@@ -145,6 +145,34 @@ class AppLocalizationsEn extends AppLocalizations {
   String get validationPinNotFourDigits => 'PIN must be exactly 4 digits';
 
   @override
+  String get validationPinNotSixDigits => 'PIN must be exactly 6 digits';
+
+  @override
+  String get validationPinConfirmRequired => 'Enter the PIN again';
+
+  @override
+  String get validationPinMismatch => 'PINs do not match';
+
+  @override
+  String get ownerSetupNameLabel => 'Your name (shop admin)';
+
+  @override
+  String get ownerSetupEmailLabel => 'Owner email';
+
+  @override
+  String get ownerSetupPinLabel => 'Set a 6-digit PIN';
+
+  @override
+  String get ownerSetupPinConfirmLabel => 'Confirm PIN';
+
+  @override
+  String get ownerSetupMissingDetails =>
+      'Enter your name, email, and shop name';
+
+  @override
+  String get ownerSetupInvalidEmail => 'Enter a valid email address';
+
+  @override
   String get validationEmailRequired => 'Email is required';
 
   @override
@@ -554,6 +582,33 @@ class AppLocalizationsEn extends AppLocalizations {
       'Diagnostics copied. Send them to support.';
 
   @override
+  String get configurationErrorTitle => 'This build is not configured';
+
+  @override
+  String get configurationErrorBody =>
+      'The app cannot reach your shop\'s server, so it cannot issue KRA receipts, take M-Pesa payments or sync.';
+
+  @override
+  String get configurationNoticeBody =>
+      'This build has no server address, so KRA receipts, M-Pesa payments and syncing will not work. Selling, stock and reports work as usual, on this phone.';
+
+  @override
+  String get configurationErrorAdvice =>
+      'This is a problem with how the app was built, not with your data. Your sales, stock and settings are safe on this phone.';
+
+  @override
+  String configurationErrorDetail(Object detail) {
+    return 'Technical detail: $detail';
+  }
+
+  @override
+  String get configurationErrorShareAction => 'Copy the details';
+
+  @override
+  String get configurationErrorSharedMessage =>
+      'Details copied. Send them to whoever builds your app releases.';
+
+  @override
   String get databaseErrorRetryFailed =>
       'Still cannot open the data. Free some storage, then try again.';
 
@@ -568,6 +623,23 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get sellCompletePaidMpesa => 'Paid by M-Pesa';
+
+  @override
+  String get sellCompletePaidCard => 'Paid by card';
+
+  @override
+  String get sellCompletePaidBank => 'Paid by bank transfer';
+
+  @override
+  String get sellCompletePaidMobileMoney => 'Paid by mobile money';
+
+  @override
+  String get sellCompletePaidOtherGeneric => 'Paid';
+
+  @override
+  String sellCompletePaidOther(Object amount, Object method) {
+    return '$method · $amount';
+  }
 
   @override
   String sellCompleteChange(Object amount) {
@@ -932,6 +1004,11 @@ class AppLocalizationsEn extends AppLocalizations {
   String get inventoryDeleteAction => 'Delete';
 
   @override
+  String inventoryDeleteMessage(Object name) {
+    return 'Remove $name from inventory? Its past sales stay on record.';
+  }
+
+  @override
   String inventoryDeactivatedProduct(Object name) {
     return 'deactivated $name';
   }
@@ -967,6 +1044,10 @@ class AppLocalizationsEn extends AppLocalizations {
   String get inventoryFieldHalfPriceOptional => 'Half price (optional)';
 
   @override
+  String get inventoryFieldHalfPriceHelper =>
+      'Only products with a half price are sold in halves. Leave it empty and the till will not offer a half.';
+
+  @override
   String get inventoryFieldName => 'Name';
 
   @override
@@ -974,6 +1055,10 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get inventoryFieldQuarterPriceOptional => 'Quarter price (optional)';
+
+  @override
+  String get inventoryFieldQuarterPriceHelper =>
+      'Only products with a quarter price are sold in quarters. Leave it empty and the till will not offer a quarter.';
 
   @override
   String get inventoryPhotoSection => 'Photograph';
@@ -1795,7 +1880,7 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get settingsIdentityVerified =>
-      'Email verified. Auto-backups, analytics and auto-update are now on.';
+      'Signed in. Auto-backups, analytics and auto-update are now on.';
 
   @override
   String get settingsIdentityNotLinkedMessage =>
@@ -1828,7 +1913,7 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String settingsVerifyCodeMessage(Object email, Object minutes) {
-    return 'We sent a 6-digit code to $email. It expires in $minutes minutes.';
+    return 'We sent a 6-digit code to $email. It expires in $minutes minutes.\n\nAfter you enter it, sign in with your email and the same 6-digit PIN you use on this till.';
   }
 
   @override
@@ -1928,6 +2013,49 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get diagnosticsCopyReport => 'Copy report';
+
+  @override
+  String get diagnosticsLedgerCheckTitle => 'Stock ledger';
+
+  @override
+  String get diagnosticsLedgerCheckSubtitle =>
+      'Every stock count, checked against the history that produced it.';
+
+  @override
+  String get diagnosticsLedgerHealthy => 'Every count agrees with its history.';
+
+  @override
+  String get diagnosticsLedgerChecking => 'Checking the stock ledger…';
+
+  @override
+  String diagnosticsLedgerDifferences(num count) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: '$count products do not agree',
+      one: '1 product does not agree',
+    );
+    return '$_temp0';
+  }
+
+  @override
+  String diagnosticsLedgerDifferenceRow(
+      Object counted, Object ledger, Object name) {
+    return '$name: the till says $counted, the history says $ledger';
+  }
+
+  @override
+  String get diagnosticsLedgerRepairAction => 'Fix';
+
+  @override
+  String diagnosticsLedgerRepaired(Object name) {
+    return '$name now agrees with its history.';
+  }
+
+  @override
+  String diagnosticsLedgerRepairFailed(Object name) {
+    return 'Could not correct $name. Try again.';
+  }
 
   @override
   String get diagnosticsClear => 'Clear log';
@@ -2341,13 +2469,14 @@ class AppLocalizationsEn extends AppLocalizations {
   String get shotCupsAddAction => 'Add a shot cup';
 
   @override
-  String get shotCupsCapacityHelper => 'Fixed for this cup';
+  String get shotCupsCapacityHelper =>
+      'Leave it empty if you do not know the size. With a size, the app works out what each shot cost you to pour.';
 
   @override
   String get shotCupsCapacityHint => '30';
 
   @override
-  String get shotCupsCapacityLabel => 'Capacity (ml)';
+  String get shotCupsCapacityLabel => 'Size in ml (optional)';
 
   @override
   String shotCupsCapacityMax(Object max) {
@@ -2355,7 +2484,7 @@ class AppLocalizationsEn extends AppLocalizations {
   }
 
   @override
-  String get shotCupsCapacityPositive => 'Capacity must be more than zero.';
+  String get shotCupsCapacityPositive => 'The size cannot be less than zero.';
 
   @override
   String shotCupsCapacityValue(Object capacity) {
@@ -3101,6 +3230,198 @@ class AppLocalizationsEn extends AppLocalizations {
   String get loginPinLabel => 'PIN';
 
   @override
+  String get analyticsYourSalesTitle => 'Your sales';
+
+  @override
+  String get receiveTitle => 'Receive stock';
+
+  @override
+  String get receiveSubtitle => 'Record what arrived and what you paid for it.';
+
+  @override
+  String get receiveSupplierLabel => 'Supplier';
+
+  @override
+  String get receiveNoSupplier => 'No supplier';
+
+  @override
+  String get receiveSupplierRefLabel => 'Invoice or delivery note number';
+
+  @override
+  String get receiveSupplierRefHint => 'The number on the supplier\'s paper.';
+
+  @override
+  String get receiveLinesLabel => 'What arrived';
+
+  @override
+  String get receiveAddProductAction => 'Add a product';
+
+  @override
+  String get receiveQtyLabel => 'How many';
+
+  @override
+  String get receiveUnitCostLabel => 'Cost each (KSh)';
+
+  @override
+  String receiveLineTotal(Object total) {
+    return 'Line total: $total';
+  }
+
+  @override
+  String get receiveTotalLabel => 'What the delivery cost';
+
+  @override
+  String get receivePostAction => 'Post it';
+
+  @override
+  String get receiveRemoveLineAction => 'Remove this line';
+
+  @override
+  String get receiveSearchLabel => 'Search the catalogue';
+
+  @override
+  String receiveAlreadyOn(Object count) {
+    return 'Already on this delivery: $count';
+  }
+
+  @override
+  String get receiveNoLines => 'Add at least one thing that arrived.';
+
+  @override
+  String get receiveFailed =>
+      'The delivery could not be recorded. Nothing has changed.';
+
+  @override
+  String get receiveDone =>
+      'The stock is on the shelf and the costs are up to date.';
+
+  @override
+  String get transactionsReturnedBadge => 'Returned';
+
+  @override
+  String get transactionsPartlyReturnedBadge => 'Partly returned';
+
+  @override
+  String get returnTitle => 'Return items';
+
+  @override
+  String get returnHistoryLabel => 'Already returned';
+
+  @override
+  String get returnSubtitle =>
+      'Choose what is coming back, say why, and choose how the money goes back.';
+
+  @override
+  String get returnReasonLabel => 'Why is it coming back?';
+
+  @override
+  String get returnReasonHint =>
+      'For example: the customer changed their mind.';
+
+  @override
+  String get returnMethodLabel => 'How should the money go back?';
+
+  @override
+  String get returnMethodCash => 'Cash';
+
+  @override
+  String get returnMethodMpesa => 'M-Pesa';
+
+  @override
+  String get returnRefundLabel => 'Money to give back';
+
+  @override
+  String get returnConfirmAction => 'Give it back';
+
+  @override
+  String get returnNoLines => 'Choose at least one thing to give back.';
+
+  @override
+  String get returnReasonRequired => 'Say why it is coming back.';
+
+  @override
+  String get returnFailed =>
+      'The return could not be recorded. Nothing has changed.';
+
+  @override
+  String get returnNoShiftOpen =>
+      'Open a shift first, so the money can come out of the drawer.';
+
+  @override
+  String get returnUnverifiedPayment =>
+      'That payment was never confirmed, so it cannot be given back yet.';
+
+  @override
+  String get returnMoreThanSold =>
+      'More was returned than was sold on that line.';
+
+  @override
+  String get returnLineGone => 'That line is no longer on the sale.';
+
+  @override
+  String get returnLineAllReturned => 'All returned';
+
+  @override
+  String returnLineRemaining(Object qty) {
+    return '$qty left';
+  }
+
+  @override
+  String get returnRestockLabel => 'Put it back on the shelf';
+
+  @override
+  String get returnWriteOffLabel => 'Write it off (damaged or expired)';
+
+  @override
+  String get returnLessAction => 'Return less';
+
+  @override
+  String get returnMoreAction => 'Return more';
+
+  @override
+  String get returnDone => 'Returned. The money is on its way back.';
+
+  @override
+  String get analyticsShiftsSection => 'Shifts';
+
+  @override
+  String get analyticsShiftsCount => 'Shifts';
+
+  @override
+  String analyticsShiftsClosed(Object closed) {
+    return '$closed closed';
+  }
+
+  @override
+  String get analyticsShiftsExpected => 'Cash expected';
+
+  @override
+  String get analyticsShiftsCounted => 'Cash counted';
+
+  @override
+  String get analyticsNoShifts => 'No shifts in this period';
+
+  @override
+  String get analyticsNoShiftsHint =>
+      'When a shift is opened and counted, it appears here with what the drawer should have held and what was actually in it.';
+
+  @override
+  String get loginChooseShopTitle => 'Which shop are you opening?';
+
+  @override
+  String loginChooseShopSubtitle(Object count) {
+    return 'This phone has $count shops. Choose the one you are working in.';
+  }
+
+  @override
+  String get loginChooseShopAction => 'Choose a different shop';
+
+  @override
+  String loginCurrentShopLabel(Object shop) {
+    return 'Now signing in to $shop';
+  }
+
+  @override
   String get backToPinPadAction => 'Back to PIN pad';
 
   @override
@@ -3591,6 +3912,82 @@ class AppLocalizationsEn extends AppLocalizations {
   String get attentionDismissAction => 'Dismiss';
 
   @override
+  String attentionKraRefused(num count) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: '$count receipts',
+      one: '1 receipt',
+    );
+    return 'KRA refused $_temp0';
+  }
+
+  @override
+  String get attentionKraRefusedDetail =>
+      'The shop details KRA is using need correcting.';
+
+  @override
+  String get attentionKraRefusedFixAction => 'Fix details';
+
+  @override
+  String get attentionKraRefusedRetryAction => 'Try again';
+
+  @override
+  String attentionKraPending(num count) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: '$count receipts',
+      one: '1 receipt',
+    );
+    return 'Waiting on KRA for $_temp0';
+  }
+
+  @override
+  String get attentionKraPendingDetail =>
+      'These are recorded locally. They will issue on their own.';
+
+  @override
+  String get attentionKraRetryAction => 'Retry now';
+
+  @override
+  String get attentionKraRetryFailed =>
+      'Could not reach KRA. The receipts stay queued and will go up on the next connection.';
+
+  @override
+  String attentionUnverifiedPayments(num count) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: '$count payments',
+      one: '1 payment',
+    );
+    return '$_temp0 not confirmed';
+  }
+
+  @override
+  String get attentionUnverifiedPaymentsDetail =>
+      'Taken while offline. Check each one against the till roll.';
+
+  @override
+  String attentionImportProblems(num count) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: '$count rows',
+      one: '1 row',
+    );
+    return '$_temp0 failed to import';
+  }
+
+  @override
+  String get attentionImportProblemsDetail =>
+      'Fill in what the file was missing and they are imported.';
+
+  @override
+  String get attentionImportProblemsAction => 'Finish now';
+
+  @override
   String get analyticsChartTitleSalesByDay => 'Sales by day';
 
   @override
@@ -3836,46 +4233,46 @@ class AppLocalizationsEn extends AppLocalizations {
   String get variantUnitKilogram => 'Tank (kg)';
 
   @override
-  String get tankFormTitle => 'Beer tank';
+  String get tankFormTitle => 'Add a beer tank';
 
   @override
   String get tankFormSubtitle =>
-      'A tank is stocked by weight and poured by the keg cup. Add it once, then pour from it on keg cups.';
+      'A tank is a drum of beer. You fill it, and then you sell the beer by the cup. Add the tank once, and then sell from it like any other drink.';
 
   @override
-  String get tankFieldName => 'Tank name';
+  String get tankFieldName => 'Name of the beer';
 
   @override
   String get tankFieldNameHint =>
-      'Tusker, Balozi, Guinness — the beer, not the keg';
+      'For example Tusker or Balozi. Write the name of the beer, not of the drum.';
 
   @override
-  String get tankFieldMlPerKg => 'Litres per kilogram';
+  String get tankFieldMlPerKg => 'How many millilitres one kilogram holds';
 
   @override
   String get tankFieldMlPerKgHint =>
-      '1000 for beer. A syrup or a liqueur holds a different amount.';
+      'Beer is 1000. A syrup or a liqueur holds less. If you are not sure, leave 1000.';
 
   @override
-  String get tankFieldCapacityL => 'Tank capacity (L)';
+  String get tankFieldCapacityL => 'How much the tank holds (litres)';
 
   @override
   String get tankFieldCapacityLHint =>
-      'How much the tank holds when full. A 50-litre keg is 50.';
+      'How full it is when it is brand new. A 50-litre tank? Write 50.';
 
   @override
-  String get tankFieldTankCount => 'Tanks on hand';
+  String get tankFieldTankCount => 'How many full tanks you have now';
 
   @override
   String get tankFieldTankCountHint =>
-      'How many full tanks you are starting with. Each cup poured counts down from this number.';
+      'If you have one full tank, write 1. Every cup you pour is counted down from this number.';
 
   @override
-  String get tankFieldTankCost => 'Tank cost (KSh)';
+  String get tankFieldTankCost => 'What one full tank cost you (KSh)';
 
   @override
   String get tankFieldTankCostHint =>
-      'What the whole tank cost to fill. Split evenly across each tap.';
+      'The price of the whole tank, not of one cup. We share this cost between the taps.';
 
   @override
   String tankTapLabel(Object n) {
@@ -3883,17 +4280,18 @@ class AppLocalizationsEn extends AppLocalizations {
   }
 
   @override
-  String get tankFieldTapName => 'Tap name';
+  String get tankFieldTapName => 'Name of this tap';
 
   @override
   String get tankFieldTapNameHint =>
-      'Dark, Regular, IPA — what this tap is called.';
+      'For example Dark or Regular. This is the drink that comes out of it.';
 
   @override
-  String get tankFieldTapAmount => 'Loaded';
+  String get tankFieldTapAmount => 'How much is in it now';
 
   @override
-  String get tankFieldTapAmountHint => 'How much is in this tap right now.';
+  String get tankFieldTapAmountHint =>
+      'How much of the tank is filled right now. Write 0 if it is empty.';
 
   @override
   String get tankUnitLitres => 'Litres';
@@ -3902,76 +4300,80 @@ class AppLocalizationsEn extends AppLocalizations {
   String get tankUnitKg => 'Kg';
 
   @override
-  String get tankCupSmallLabel => 'Small keg cup';
+  String get tankCupSmallLabel => 'Small cup';
 
   @override
-  String get tankFieldSmallMl => 'Size (ml)';
+  String get tankFieldSmallMl => 'How much is in one cup (ml)';
 
   @override
-  String get tankFieldSmallMlHint => '330 for a standard serving.';
+  String get tankFieldSmallMlHint => 'A normal small cup is 330.';
 
   @override
-  String get tankFieldSmallPrice => 'Price';
+  String get tankFieldSmallPrice => 'Price of one cup (KSh)';
 
   @override
-  String get tankFieldSmallPriceHint => 'What one small keg cup sells for.';
+  String get tankFieldSmallPriceHint => 'What one small cup sells for.';
 
   @override
-  String get tankCupBigLabel => 'Big keg cup';
+  String get tankCupBigLabel => 'Big cup';
 
   @override
-  String get tankFieldBigMl => 'Size (ml)';
+  String get tankFieldBigMl => 'How much is in one cup (ml)';
 
   @override
-  String get tankFieldBigMlHint => '500 for a large serving.';
+  String get tankFieldBigMlHint => 'A large cup is 500.';
 
   @override
-  String get tankFieldBigPrice => 'Price';
+  String get tankFieldBigPrice => 'Price of one cup (KSh)';
 
   @override
-  String get tankFieldBigPriceHint => 'What one big keg cup sells for.';
+  String get tankFieldBigPriceHint => 'What one big cup sells for.';
 
   @override
-  String get tankTapNameRequired => 'Give every tap a name.';
+  String get tankTapNameRequired => 'Give this tap a name.';
 
   @override
-  String get tankTapAmountInvalid => 'Enter how much is loaded in this tap.';
+  String get tankTapAmountInvalid => 'Write how much is in this tap.';
 
   @override
-  String get tankTapOverCapacity => 'This tap holds more than the tank does.';
+  String get tankTapOverCapacity =>
+      'This tap holds more than the whole tank. Write less.';
+
+  @override
+  String get tankTapsOverCapacity =>
+      'The taps together hold more than the tank. Write less.';
 
   @override
   String get tankSmallCupInvalid =>
-      'Set a small keg cup size within the tank\'s capacity.';
+      'The small cup must be smaller than the tank.';
 
   @override
-  String get tankBigCupInvalid =>
-      'Set a big keg cup size within the tank\'s capacity.';
+  String get tankBigCupInvalid => 'The big cup must be smaller than the tank.';
 
   @override
-  String get tankSmallPriceInvalid => 'Set a small keg cup price.';
+  String get tankSmallPriceInvalid => 'Write the price of one small cup.';
 
   @override
-  String get tankBigPriceInvalid => 'Set a big keg cup price.';
+  String get tankBigPriceInvalid => 'Write the price of one big cup.';
 
   @override
-  String get tankCapacityInvalid => 'Enter how much the tank holds in litres.';
+  String get tankCapacityInvalid => 'Write how much the tank holds, in litres.';
 
   @override
-  String get tankCountRequired => 'Enter how many tanks you have.';
+  String get tankCountRequired => 'Write how many full tanks you have.';
 
   @override
   String get tankMlPerKgInvalid =>
-      'Enter how many millilitres one kilogram of it holds.';
+      'Write how many millilitres one kilogram holds. Beer is 1000.';
 
   @override
-  String get tankNameRequired => 'Give the tank a name — the beer it holds.';
+  String get tankNameRequired => 'Give the beer a name.';
 
   @override
-  String get tankAddAction => 'Add the tank';
+  String get tankAddAction => 'Save this tank';
 
   @override
-  String get tankPriceInvalid => 'Enter the cost of a tank.';
+  String get tankPriceInvalid => 'Write what one full tank cost you.';
 
   @override
   String get tankSaveFailed =>
@@ -3979,6 +4381,6 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String tankCreated(Object name) {
-    return '$name added. Pour from it on keg cups.';
+    return '$name added. You can now sell it by the cup.';
   }
 }

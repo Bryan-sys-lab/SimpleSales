@@ -13,6 +13,7 @@ import '../theme/app_spacing.dart';
 import '../theme/typography.dart';
 import '../ui/components/controls.dart';
 import '../ui/components/states.dart';
+import '../ui/components/status.dart';
 import '../ui/components/surface.dart';
 import '../utils/money.dart';
 import '../widgets/sale_details_sheet.dart';
@@ -29,12 +30,20 @@ sealed class _LedgerState {}
 class _LedgerLoading extends _LedgerState {}
 
 class _LedgerReady extends _LedgerState {
-  _LedgerReady(this.sales, this.audit, this.canSeeSellers);
+  _LedgerReady(
+    this.sales,
+    this.audit,
+    this.canSeeSellers,
+    this.returnedFractions,
+  );
 
   final List<Sale> sales;
   final List<AuditLogEntry> audit;
 
   final bool canSeeSellers;
+
+  /// How much of each sale has come back, by sale id.
+  final Map<int, double> returnedFractions;
 }
 
 class _LedgerFailed extends _LedgerState {
@@ -77,8 +86,21 @@ class _TransactionsScreenState extends State<TransactionsScreen> {
         AuditLogQuery(
             actions: <AuditAction>[AuditAction.saleRecorded], limit: 200),
       );
+      // How much of each sale has come back, in ONE query for the whole list.
+      // The row says so — "Returned", "Partly returned" — because a sale that
+      // has been given back is not a sale like the others, and a list that
+      // does not say so reads as if the money was taken twice.
+      final Map<int, double> returnedFractions =
+          await db.getReturnedFractionsForSales(
+        sales.map((Sale s) => s.id).whereType<int>().toList(growable: false),
+      );
       if (!mounted) return;
-      setState(() => _state = _LedgerReady(sales, audit, staff == null));
+      setState(() => _state = _LedgerReady(
+            sales,
+            audit,
+            staff == null,
+            returnedFractions,
+          ));
     } catch (_) {
       if (!mounted) return;
       // The typed failure, never `toString()`: an owner reading "Garbage state
@@ -115,6 +137,7 @@ class _TransactionsScreenState extends State<TransactionsScreen> {
           :final List<Sale> sales,
           :final List<AuditLogEntry> audit,
           :final bool canSeeSellers,
+          :final Map<int, double> returnedFractions,
         ) =>
           sales.isEmpty
               ? EmptyStateView(
@@ -131,6 +154,7 @@ class _TransactionsScreenState extends State<TransactionsScreen> {
                     sales: sales,
                     audit: audit,
                     canSeeSellers: canSeeSellers,
+                    returnedFractions: returnedFractions,
                   ),
                 ),
       },
@@ -143,12 +167,16 @@ class _Ledger extends StatelessWidget {
     required this.sales,
     required this.audit,
     required this.canSeeSellers,
+    required this.returnedFractions,
   });
 
   final List<Sale> sales;
   final List<AuditLogEntry> audit;
 
   final bool canSeeSellers;
+
+  /// How much of each sale has come back, by sale id.
+  final Map<int, double> returnedFractions;
 
   @override
   Widget build(BuildContext context) {
@@ -194,6 +222,7 @@ class _Ledger extends StatelessWidget {
             sale: sales[index],
             audit: bySale[sales[index].id],
             canSeeSellers: canSeeSellers,
+            returnedFraction: returnedFractions[sales[index].id] ?? 0,
           ),
         ),
         SliverToBoxAdapter(child: SizedBox(height: spacing.xxl)),
@@ -207,6 +236,7 @@ class TransactionsRow extends StatelessWidget {
     required this.sale,
     required this.audit,
     required this.canSeeSellers,
+    this.returnedFraction = 0,
     super.key,
   });
 
@@ -214,6 +244,14 @@ class TransactionsRow extends StatelessWidget {
   final AuditLogEntry? audit;
 
   final bool canSeeSellers;
+
+  /// How much of this sale has come back, from 0 to 1.
+  ///
+  /// Zero is a sale that has not been touched; one is a sale that has been
+  /// given back in full; anything between is PARTLY returned — which is the
+  /// case a badge has to distinguish, because a part-returned sale is still
+  /// money the shop took.
+  final double returnedFraction;
 
   @override
   Widget build(BuildContext context) {
@@ -281,6 +319,24 @@ class TransactionsRow extends StatelessWidget {
                       color: colors.onSurfaceMuted,
                     ),
                   ),
+                  // The badge, when the money went back.
+                  //
+                  // "Returned" and "Partly returned" are DIFFERENT facts and
+                  // the row has to say which: a sale given back in full is not
+                  // money the shop took, and a part-returned sale is money the
+                  // shop took for most of it. A list that does not say so
+                  // reads as if the money was taken twice.
+                  if (returnedFraction > 0) ...<Widget>[
+                    SizedBox(height: spacing.xs),
+                    StatusChip(
+                      tone: returnedFraction >= 1
+                          ? StatusTone.danger
+                          : StatusTone.warning,
+                      text: returnedFraction >= 1
+                          ? l10n.transactionsReturnedBadge
+                          : l10n.transactionsPartlyReturnedBadge,
+                    ),
+                  ],
                 ],
               ),
             ],

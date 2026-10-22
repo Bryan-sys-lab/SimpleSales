@@ -248,6 +248,30 @@ class Product {
           : 1;
   int mlFor(String portion) => (bottleMl * fractionFor(portion)).round();
 
+  /// Whether this product is sold in halves.
+  ///
+  /// A product is sold in halves when the owner has given the half a price.
+  /// The price IS the setting: there is no separate switch to forget, and a
+  /// product with no half price is not a product the shop sells in halves.
+  ///
+  /// The till used to offer "Half" for EVERY product, at a price it worked out
+  /// on the spot — a quarter of the bottle price, or half. That put an option
+  /// on the screen that most of the shop's products do not sell, and the
+  /// price it charged was one the owner had never agreed to.
+  bool get sellsHalf => halfPrice != null;
+
+  /// Whether this product is sold in quarters.
+  ///
+  /// The same rule as [sellsHalf], for the same reason.
+  bool get sellsQuarter => quarterPrice != null;
+
+  /// Whether this product is sold whole.
+  ///
+  /// A tank's tap is not: the beer is sold by the cup, and the tap has no
+  /// price of its own, so a "Full" row on a tap would be a row that charges
+  /// nothing.
+  bool get sellsWhole => sellPrice.minorUnits > 0;
+
   Product copyWith({
     String? name,
     String? category,
@@ -516,6 +540,39 @@ class SaleItem {
   final String portion;
   final int portionMl;
 
+  /// The variant this line was sold as, when it was sold as one.
+  ///
+  /// Null for a whole product. Recorded on the line so the stock ledger can
+  /// move the variant's OWN count inside the sale transaction — a variant's
+  /// count used to be adjusted after the sale had already been committed, which
+  /// left a window where a crash sold a bottle and kept the count.
+  final int? variantId;
+
+  /// The variant's name as it was at the time of the sale.
+  ///
+  /// A snapshot, like the product name: the owner renames "Dark" to "Black"
+  /// tomorrow, and a reprint of today's receipt must still say "Dark".
+  final String variantName;
+
+  /// The KRA tax class the line was taxed under.
+  ///
+  /// A snapshot: the owner changes a product's class tomorrow, and today's
+  /// receipt must still show the class it was actually taxed at.
+  final String taxClass;
+
+  /// The VAT rate the line was taxed at, in basis points.
+  ///
+  /// 1600 is 16%. Stored as basis points because a rate of 16.5% is 1650 and
+  /// a percentage with a decimal point is not a number an integer column can
+  /// hold without losing it.
+  final int? vatRateBps;
+
+  /// The VAT on this line, in minor units.
+  final int? vatMinor;
+
+  /// The part of the line's total that is not VAT, in minor units.
+  final int? taxableMinor;
+
   SaleItem({
     this.id,
     required this.saleId,
@@ -526,6 +583,12 @@ class SaleItem {
     required this.unitCost,
     this.portion = 'full',
     this.portionMl = 0,
+    this.variantId,
+    this.variantName = '',
+    this.taxClass = 'standard',
+    this.vatRateBps,
+    this.vatMinor,
+    this.taxableMinor,
   });
 
   Map<String, dynamic> toMap() => {
@@ -538,6 +601,12 @@ class SaleItem {
         'unit_cost': unitCost.minorUnits,
         'portion': portion,
         'portion_ml': portionMl,
+        'variant_id': variantId,
+        'variant_name': variantName,
+        'tax_class': taxClass,
+        'vat_rate_bps': vatRateBps,
+        'vat_minor': vatMinor,
+        'taxable_minor': taxableMinor,
       };
 
   /// The line's amount: unit price scaled by quantity, quantised to whole
@@ -554,6 +623,168 @@ class SaleItem {
         unitCost: Money.fromMinor((m['unit_cost'] as num?)?.toInt() ?? 0),
         portion: m['portion'] ?? 'full',
         portionMl: (m['portion_ml'] as num?)?.toInt() ?? 0,
+        variantId: (m['variant_id'] as num?)?.toInt(),
+        variantName: (m['variant_name'] as String?) ?? '',
+        taxClass: (m['tax_class'] as String?) ?? 'standard',
+        vatRateBps: (m['vat_rate_bps'] as num?)?.toInt(),
+        vatMinor: (m['vat_minor'] as num?)?.toInt(),
+        taxableMinor: (m['taxable_minor'] as num?)?.toInt(),
+      );
+}
+
+/// One line of a return: what came back, and what was done with it.
+///
+/// A line is a COPY of the sale line it reverses — the name, the price and
+/// the tax rate as they were AT THE TIME OF THE SALE. That is the whole
+/// reason a return carries them: masters change, and a return that read
+/// today's price for a bottle sold last month would refund the wrong money.
+class SaleReturnItem {
+  const SaleReturnItem({
+    this.id,
+    required this.returnId,
+    required this.saleItemId,
+    required this.productId,
+    required this.productName,
+    required this.qty,
+    required this.unitPrice,
+    required this.unitCost,
+    required this.refund,
+    this.vatMinor = 0,
+    this.portion = 'full',
+    this.portionMl = 0,
+    this.restock = true,
+    this.restockReason,
+  });
+
+  final int? id;
+  final int returnId;
+
+  /// The line of the sale this reverses.
+  final int saleItemId;
+
+  final int productId;
+  final String productName;
+
+  /// How much came back. A fraction of the sold quantity is legal: half a
+  /// bottle came back.
+  final double qty;
+
+  final Money unitPrice;
+  final Money unitCost;
+
+  /// The money this line refunds.
+  ///
+  /// The line total scaled by the returned fraction, rounded HALF-UP, and
+  /// computed ONCE — when the return was recorded — and then stored. It is
+  /// not derived on read, because a refund that changed when the price
+  /// changed would be a refund nobody can reconcile.
+  final Money refund;
+
+  /// The tax that came back with it, in minor units.
+  final int vatMinor;
+
+  final String portion;
+  final int portionMl;
+
+  /// Whether the goods went back on the shelf.
+  ///
+  /// True puts them back. False writes them off — damaged, expired, spilled —
+  /// and the shelf does NOT get them back, because they are not sellable.
+  final bool restock;
+
+  /// Why the goods were written off, when they were.
+  final String? restockReason;
+
+  factory SaleReturnItem.fromMap(Map<String, dynamic> m) => SaleReturnItem(
+        id: m['id'] as int?,
+        returnId: m['return_id'] as int,
+        saleItemId: m['sale_item_id'] as int,
+        productId: m['product_id'] as int,
+        productName: m['product_name'] as String,
+        qty: (m['qty'] as num).toDouble(),
+        unitPrice: Money.fromMinor((m['unit_price'] as num).toInt()),
+        unitCost: Money.fromMinor((m['unit_cost'] as num).toInt()),
+        refund: Money.fromMinor((m['refund_minor'] as num).toInt()),
+        vatMinor: (m['vat_minor'] as num?)?.toInt() ?? 0,
+        portion: (m['portion'] as String?) ?? 'full',
+        portionMl: (m['portion_ml'] as num?)?.toInt() ?? 0,
+        restock: ((m['restock'] as num?)?.toInt() ?? 1) == 1,
+        restockReason: m['restock_reason'] as String?,
+      );
+}
+
+/// A return: money and stock going back to the shop.
+///
+/// Two kinds, because the till treats them differently and so does the tax
+/// authority:
+///
+///  * `refund` — the money goes back to the customer now.
+///  * `credit_note` — the customer keeps the goods and the shop owes them.
+class SaleReturn {
+  const SaleReturn({
+    this.id,
+    required this.saleId,
+    this.kind = 'refund',
+    required this.reason,
+    required this.total,
+    this.vatTotal = 0,
+    this.profit = Money.zero,
+    this.refundMethod = 'cash',
+    this.paymentReference,
+    this.staffId,
+    required this.staffName,
+    required this.createdAt,
+    this.items = const <SaleReturnItem>[],
+  });
+
+  final int? id;
+
+  /// The sale being reversed.
+  final int saleId;
+
+  /// 'refund' or 'credit_note'.
+  final String kind;
+
+  /// Why the goods came back, in one sentence.
+  final String reason;
+
+  /// The money given back.
+  final Money total;
+
+  /// The tax that came back with it, in minor units.
+  final int vatTotal;
+
+  /// The margin given back — what the return actually cost the shop.
+  final Money profit;
+
+  /// How the money goes back: 'cash', 'mpesa', or the original method.
+  final String refundMethod;
+
+  /// The provider's reference, for a manual reversal.
+  final String? paymentReference;
+
+  final int? staffId;
+  final String staffName;
+  final String createdAt;
+
+  final List<SaleReturnItem> items;
+
+  /// Whether this is a credit note rather than a refund.
+  bool get isCreditNote => kind == 'credit_note';
+
+  factory SaleReturn.fromMap(Map<String, dynamic> m) => SaleReturn(
+        id: m['id'] as int?,
+        saleId: m['sale_id'] as int,
+        kind: (m['kind'] as String?) ?? 'refund',
+        reason: m['reason'] as String,
+        total: Money.fromMinor((m['total'] as num).toInt()),
+        vatTotal: (m['vat_total'] as num?)?.toInt() ?? 0,
+        profit: Money.fromMinor((m['profit'] as num?)?.toInt() ?? 0),
+        refundMethod: (m['refund_method'] as String?) ?? 'cash',
+        paymentReference: m['payment_reference'] as String?,
+        staffId: m['staff_id'] as int?,
+        staffName: m['staff_name'] as String,
+        createdAt: m['created_at'] as String,
       );
 }
 
@@ -1143,6 +1374,13 @@ class ShotCup {
   final String productName;
 
   /// The capacity of one shot cup, in millilitres.
+  ///
+  /// ZERO means the size is not known, which is allowed: a shot cup is a name
+  /// for a serving, and the size is the owner's business. A cup WITH a size
+  /// lets the app work out what that shot cost to pour — the drink's cost per
+  /// millilitre times the size — so the profit on the shot is exact. A cup
+  /// WITHOUT one is counted at its full price, because the drink that went
+  /// into it is not being measured.
   final int capacityMl;
 
   /// The price of one shot, in minor units.
@@ -1263,5 +1501,191 @@ class StockAdjustment {
         reason: m['reason'] ?? '',
         staffName: m['staff_name'],
         createdAt: m['created_at'],
+      );
+}
+
+/// One line of a return, as the flow asks for it.
+///
+/// A DRAFT, not a record: it is what the person chose before the return
+/// exists, and the write path turns it into a [SaleReturnItem] with the money
+/// worked out.
+class ReturnLineDraft {
+  const ReturnLineDraft({
+    required this.saleItemId,
+    required this.qty,
+    this.restock = true,
+    this.restockReason,
+  });
+
+  /// The line of the sale being reversed.
+  final int saleItemId;
+
+  /// How much of it came back. A fraction is legal: half a bottle came back.
+  final double qty;
+
+  /// Whether the goods go back on the shelf.
+  ///
+  /// True puts them back. False writes them off — damaged, expired, spilled —
+  /// and the shelf does NOT get them, because they are not sellable.
+  final bool restock;
+
+  /// Why the goods were written off, when they were.
+  final String? restockReason;
+}
+
+/// One line of a delivery: what arrived, and what it cost.
+///
+/// A DRAFT, until the delivery is posted.
+class StockReceiptLine {
+  const StockReceiptLine({
+    required this.productId,
+    required this.productName,
+    required this.qty,
+    required this.unitCost,
+    this.variantId,
+  });
+
+  final int productId;
+  final String productName;
+
+  /// How much arrived, in the selling unit. A fraction is legal: 1.5 cases.
+  final double qty;
+
+  /// What one unit cost the shop.
+  final Money unitCost;
+
+  final int? variantId;
+}
+
+/// One line of a posted delivery.
+class StockReceiptItem {
+  const StockReceiptItem({
+    this.id,
+    required this.receiptId,
+    required this.productId,
+    required this.productName,
+    required this.qty,
+    required this.unitCost,
+    required this.lineCost,
+    this.oldCost,
+    this.newCost,
+    this.variantId,
+  });
+
+  final int? id;
+  final int receiptId;
+  final int productId;
+  final int? variantId;
+  final String productName;
+  final double qty;
+
+  /// What one unit cost.
+  final Money unitCost;
+
+  /// What the whole line cost.
+  final Money lineCost;
+
+  /// The cost before this delivery, when it was recorded.
+  final Money? oldCost;
+
+  /// The cost after this delivery, when it was recorded.
+  final Money? newCost;
+
+  factory StockReceiptItem.fromMap(Map<String, dynamic> m) => StockReceiptItem(
+        id: m['id'] as int?,
+        receiptId: m['receipt_id'] as int,
+        productId: m['product_id'] as int,
+        variantId: (m['variant_id'] as num?)?.toInt(),
+        productName: m['product_name'] as String,
+        qty: (m['qty'] as num).toDouble(),
+        unitCost: Money.fromMinor((m['unit_cost_minor'] as num).toInt()),
+        lineCost: Money.fromMinor((m['line_cost_minor'] as num).toInt()),
+        oldCost: (m['old_cost_minor'] as num?) == null
+            ? null
+            : Money.fromMinor((m['old_cost_minor'] as num).toInt()),
+        newCost: (m['new_cost_minor'] as num?) == null
+            ? null
+            : Money.fromMinor((m['new_cost_minor'] as num).toInt()),
+      );
+}
+
+/// A delivery: stock arriving at the shop, and what it cost.
+class StockReceipt {
+  const StockReceipt({
+    this.id,
+    this.supplierId,
+    this.supplierRef,
+    required this.receivedAt,
+    this.staffId,
+    required this.staffName,
+    required this.totalCost,
+    this.status = 'posted',
+    this.note,
+    this.items = const <StockReceiptItem>[],
+  });
+
+  final int? id;
+
+  /// The supplier, when one was named.
+  final int? supplierId;
+
+  /// The supplier's own invoice or delivery note number.
+  final String? supplierRef;
+
+  final String receivedAt;
+  final int? staffId;
+  final String staffName;
+
+  /// What the whole delivery cost.
+  final Money totalCost;
+
+  /// 'draft', 'posted' or 'voided'.
+  final String status;
+
+  final String? note;
+
+  final List<StockReceiptItem> items;
+
+  factory StockReceipt.fromMap(Map<String, dynamic> m) => StockReceipt(
+        id: m['id'] as int?,
+        supplierId: (m['supplier_id'] as num?)?.toInt(),
+        supplierRef: m['supplier_ref'] as String?,
+        receivedAt: m['received_at'] as String,
+        staffId: (m['staff_id'] as num?)?.toInt(),
+        staffName: m['staff_name'] as String,
+        totalCost: Money.fromMinor((m['total_cost_minor'] as num).toInt()),
+        status: (m['status'] as String?) ?? 'posted',
+        note: m['note'] as String?,
+      );
+}
+
+/// A supplier: who the shop buys from.
+class Supplier {
+  const Supplier({
+    this.id,
+    required this.name,
+    this.phone,
+    this.contactPerson,
+    this.notes,
+    this.active = true,
+    this.createdAt,
+  });
+
+  final int? id;
+  final String name;
+  final String? phone;
+  final String? contactPerson;
+  final String? notes;
+  final bool active;
+  final String? createdAt;
+
+  factory Supplier.fromMap(Map<String, dynamic> m) => Supplier(
+        id: m['id'] as int?,
+        name: m['name'] as String,
+        phone: m['phone'] as String?,
+        contactPerson: m['contact_person'] as String?,
+        notes: m['notes'] as String?,
+        active: ((m['active'] as num?)?.toInt() ?? 1) == 1,
+        createdAt: m['created_at'] as String?,
       );
 }

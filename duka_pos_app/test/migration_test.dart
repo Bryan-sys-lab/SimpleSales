@@ -751,6 +751,47 @@ void main() {
       expect(freshTables, migratedTables,
           reason: 'a new till and an upgraded one must not diverge');
     });
+
+    test('both have exactly the same columns on every table', () async {
+      // Table names alone are not parity. A column that exists on an upgraded
+      // till and not on a fresh one is the exact bug this catches: the v24
+      // step added `sales.etims_qr_payload` on the UPGRADE path only, so a
+      // till installed fresh at v24 never had it and every KRA receipt
+      // resolution on it failed with "no such column".
+      await DatabaseHelper.openInMemoryForTests();
+      final fresh = await DatabaseHelper.instance.database;
+      final migratedDb = await migrated();
+
+      Future<Map<String, Set<String>>> columnsOf(Database db) async {
+        final tables = await db.rawQuery(
+            "SELECT name FROM sqlite_master WHERE type='table' ORDER BY name");
+        final result = <String, Set<String>>{};
+        for (final table in tables) {
+          final name = table['name'] as String;
+          final cols = await db.rawQuery('PRAGMA table_info($name)');
+          result[name] = {for (final c in cols) c['name'] as String};
+        }
+        return result;
+      }
+
+      final freshColumns = await columnsOf(fresh);
+      final migratedColumns = await columnsOf(migratedDb);
+      await migratedDb.close();
+      await fresh.close();
+
+      // Every table both databases have must carry the same columns.
+      for (final table in freshColumns.keys) {
+        expect(migratedColumns[table], isNotNull,
+            reason: 'table $table is missing from the upgraded database');
+        expect(migratedColumns[table], freshColumns[table],
+            reason: 'table $table has different columns on a fresh and an '
+                'upgraded till');
+      }
+      for (final table in migratedColumns.keys) {
+        expect(freshColumns[table], isNotNull,
+            reason: 'table $table is missing from the fresh database');
+      }
+    });
   });
 
   group('v14 -> v15: shifts, till counts, shot cups, cup sizes', () {

@@ -140,7 +140,8 @@ class SuccessView extends StatelessWidget {
                       mainAxisSize: MainAxisSize.min,
                       children: <Widget>[
                         ExcludeSemantics(
-                          child: Icon(detailIcon, size: 16, color: colors.onSurfaceMuted),
+                          child: Icon(detailIcon,
+                              size: 16, color: colors.onSurfaceMuted),
                         ),
                         SizedBox(width: spacing.sm),
                         Flexible(

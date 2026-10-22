@@ -65,8 +65,7 @@ void main() {
     final DatabaseHelper db = await withProduct();
 
     await db.setProductImage('product_photos/legacy/5.jpg', 1);
-    final Product afterFirst =
-        (await db.getProducts(activeOnly: false)).single;
+    final Product afterFirst = (await db.getProducts(activeOnly: false)).single;
     expect(afterFirst.imagePath, 'product_photos/legacy/5.jpg');
 
     // The path is the same string — that is the whole point of a replaced
@@ -86,8 +85,7 @@ void main() {
     final DatabaseHelper db = await withProduct();
 
     await db.setProductImage('product_photos/legacy/5.jpg', 1);
-    final Product afterFirst =
-        (await db.getProducts(activeOnly: false)).single;
+    final Product afterFirst = (await db.getProducts(activeOnly: false)).single;
 
     await db.setProductImage(null, 1);
     final Product afterSecond =

@@ -263,8 +263,7 @@ class SelectablePill extends StatelessWidget {
                     label,
                     style: type.labelMedium?.copyWith(
                       color: ink,
-                      fontWeight:
-                          selected ? FontWeight.w700 : FontWeight.w600,
+                      fontWeight: selected ? FontWeight.w700 : FontWeight.w600,
                     ),
                   ),
                 ],

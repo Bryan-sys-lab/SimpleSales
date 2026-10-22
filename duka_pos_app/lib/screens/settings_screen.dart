@@ -2,6 +2,7 @@ import 'dart:async';
 
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:go_router/go_router.dart';
 import 'package:provider/provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -50,11 +51,27 @@ import '../ui/layout/page.dart';
 import '../services/app_update_service.dart';
 import '../services/app_release.dart';
 import '../services/pin_reset_service.dart';
+import '../utils/pin_rules.dart';
 
 class SettingsScreen extends StatefulWidget {
   const SettingsScreen({super.key});
   @override
   State<SettingsScreen> createState() => _SettingsScreenState();
+}
+
+/// What the "add a shop on this device" dialog handed back.
+///
+/// A value rather than two loose strings, because the two always travel
+/// together and it is not possible to have one without the other: a shop
+/// without a PIN has no way in, and a PIN without a shop has nothing to open.
+class _NewShopDetails {
+  const _NewShopDetails({required this.name, required this.pin});
+
+  /// The shop's name, as typed.
+  final String name;
+
+  /// The PIN that opens THIS shop.
+  final String pin;
 }
 
 class _SettingsScreenState extends State<SettingsScreen>
@@ -364,24 +381,18 @@ class _SettingsScreenState extends State<SettingsScreen>
     // 2. The confirmation, which has to be explicit about irreversibility.
     //    This is the only screen in the app where the honest advice is "if you
     //    are not certain, cancel" rather than a reassurance.
-    final confirmed = await showDialog<bool>(
-      context: context,
-      builder: (BuildContext dialogContext) => AlertDialog(
-        title: Text(l10n.accountDeleteConfirmTitle),
-        content: Text(l10n.accountDeleteConfirmMessage),
-        actions: <Widget>[
-          TextButton(
-            onPressed: () => Navigator.pop(dialogContext, false),
-            child: Text(l10n.actionCancel),
-          ),
-          FilledButton(
-            onPressed: () => Navigator.pop(dialogContext, true),
-            child: Text(l10n.accountDeleteConfirmAction),
-          ),
-        ],
-      ),
+    //
+    //    The SHARED dialog, not a hand-rolled one: a hand-rolled dialog is
+    //    where the wrong navigator gets popped, and a dismissal is its own
+    //    outcome rather than a silent "yes".
+    final ConfirmOutcome outcome = await confirmIrreversible(
+      context,
+      title: l10n.accountDeleteConfirmTitle,
+      message: l10n.accountDeleteConfirmMessage,
+      confirmLabel: l10n.accountDeleteConfirmAction,
+      cancelLabel: l10n.actionCancel,
     );
-    if (confirmed != true || !mounted) return;
+    if (outcome is! ConfirmAccepted || !mounted) return;
 
     // 3. The LOCAL accounts, asked about separately.
     //
@@ -410,7 +421,7 @@ class _SettingsScreenState extends State<SettingsScreen>
       // someone that the account is gone.
       await showDialog<void>(
         context: context,
-        builder: (_) => AlertDialog(
+        builder: (BuildContext dialogContext) => AlertDialog(
           title: Text(l10n.accountDeleteDoneTitle),
           content: Column(
             mainAxisSize: MainAxisSize.min,
@@ -453,7 +464,10 @@ class _SettingsScreenState extends State<SettingsScreen>
           ),
           actions: <Widget>[
             FilledButton(
-              onPressed: () => Navigator.pop(context),
+              // The DIALOG's own context. `showDialog` pushes onto the root
+              // navigator, so popping with the screen's context closed the
+              // screen behind the receipt instead of the receipt itself.
+              onPressed: () => Navigator.of(dialogContext).pop(),
               child: Text(l10n.actionDone),
             ),
           ],
@@ -547,21 +561,16 @@ class _SettingsScreenState extends State<SettingsScreen>
     // survive an await, and reading it afterwards is how a screen ends up
     // building a string in a language that is no longer the one on the device.
     final l10n = AppLocalizations.of(context);
-    final confirmed = await showDialog<bool>(
-        context: context,
-        builder: (_) => AlertDialog(
-              title: Text(l10n.settingsEraseBackupsTitle),
-              content: Text(l10n.settingsEraseBackupsMessage),
-              actions: [
-                TextButton(
-                    onPressed: () => Navigator.pop(context, false),
-                    child: Text(l10n.actionCancel)),
-                FilledButton(
-                    onPressed: () => Navigator.pop(context, true),
-                    child: Text(l10n.settingsEraseBackupsConfirm)),
-              ],
-            ));
-    if (confirmed != true) return;
+    // The SHARED dialog. This one used to pop the SETTINGS branch instead of
+    // the dialog, which closed the whole screen behind it.
+    final ConfirmOutcome outcome = await confirmIrreversible(
+      context,
+      title: l10n.settingsEraseBackupsTitle,
+      message: l10n.settingsEraseBackupsMessage,
+      confirmLabel: l10n.settingsEraseBackupsConfirm,
+      cancelLabel: l10n.actionCancel,
+    );
+    if (outcome is! ConfirmAccepted) return;
     final BackupErasureResult result =
         await EncryptedBackupService.cryptographicEraseLocalBackups();
     if (!mounted) return;
@@ -575,14 +584,14 @@ class _SettingsScreenState extends State<SettingsScreen>
     // app, and "the backups are erased" in a snackbar that vanishes in four
     // seconds is not a receipt.
     if (result.complete) {
-      await showOperationSuccess(
+      showOperationSuccess(
         context,
         title: l10n.settingsBackupsErasedTitle,
         message: l10n.settingsBackupsErasedCount(result.filesErased),
         detailIcon: Icons.backup_outlined,
       );
     } else {
-      await showOperationFailure(
+      showOperationFailure(
         context,
         title: l10n.settingsBackupsEraseFailedTitle,
         message: l10n.settingsBackupsEraseFailed,
@@ -644,7 +653,7 @@ class _SettingsScreenState extends State<SettingsScreen>
           // Saved here, not on the server yet. Said plainly, because a till
           // that shows the same message for a success and a partial success
           // cannot be trusted with either.
-          await showOperationSuccess(
+          showOperationSuccess(
             context,
             title: l10n.settingsStaffSavedTitle,
             message: l10n.settingsStaffSavedOffline,
@@ -654,7 +663,7 @@ class _SettingsScreenState extends State<SettingsScreen>
       }
       await _load();
       if (!mounted) return;
-      await showOperationSuccess(
+      showOperationSuccess(
         context,
         title: l10n.settingsStaffSavedTitle,
         message: name,
@@ -662,7 +671,7 @@ class _SettingsScreenState extends State<SettingsScreen>
       );
     } catch (e) {
       if (!mounted) return;
-      await showOperationFailure(
+      showOperationFailure(
         context,
         title: l10n.settingsStaffSaveFailedTitle,
         message: l10n.settingsAddStaffFailed,
@@ -684,8 +693,14 @@ class _SettingsScreenState extends State<SettingsScreen>
     try {
       await DatabaseHelper.instance
           .resetStaffPin(s.id!, await AuthService.hashPin(result['pin']!));
+      // The cached offline credential goes with it. The cache holds a hash of
+      // the OLD pin, and the till falls back to it when the backend is
+      // unreachable — so without this the cashier who just had their PIN
+      // changed keeps signing in with the old one until the next online
+      // sign-in overwrites the cache.
+      await StaffCredentialCache.clearStaffCredentials(s.id!);
       if (!mounted) return;
-      await showOperationSuccess(
+      showOperationSuccess(
         context,
         title: l10n.settingsPinResetTitle,
         message: l10n.settingsPinResetFor(s.name),
@@ -703,7 +718,7 @@ class _SettingsScreenState extends State<SettingsScreen>
       );
     } catch (e) {
       if (!mounted) return;
-      await showOperationFailure(
+      showOperationFailure(
         context,
         title: l10n.settingsPinResetTitle,
         message: l10n.settingsResetPinFailed,
@@ -714,23 +729,14 @@ class _SettingsScreenState extends State<SettingsScreen>
   Future<void> _removeStaff(Staff s) async {
     final l10n = AppLocalizations.of(context);
     final state = context.read<AppState>();
-    final confirmed = await showDialog<bool>(
-        context: context,
-        builder: (_) => AlertDialog(
-              title:
-                  Text(AppLocalizations.of(context).settingsRemoveStaffTitle),
-              content: Text(l10n.settingsRemoveStaffMessage(s.name)),
-              actions: [
-                TextButton(
-                    onPressed: () => Navigator.pop(context, false),
-                    child: Text(AppLocalizations.of(context).actionCancel)),
-                FilledButton(
-                    onPressed: () => Navigator.pop(context, true),
-                    child: Text(
-                        AppLocalizations.of(context).settingsRemoveAction)),
-              ],
-            ));
-    if (confirmed != true) return;
+    final ConfirmOutcome outcome = await confirmIrreversible(
+      context,
+      title: l10n.settingsRemoveStaffTitle,
+      message: l10n.settingsRemoveStaffMessage(s.name),
+      confirmLabel: l10n.settingsRemoveAction,
+      cancelLabel: l10n.actionCancel,
+    );
+    if (outcome is! ConfirmAccepted) return;
     try {
       await DatabaseHelper.instance.deleteStaffWithTombstone(s);
       // And the cached offline credential, which survives the roster row being
@@ -755,7 +761,7 @@ class _SettingsScreenState extends State<SettingsScreen>
           await BackendService.syncStaffToBackend();
         } catch (_) {
           if (!mounted) return;
-          await showOperationSuccess(
+          showOperationSuccess(
             context,
             title: l10n.settingsStaffRemovedTitle,
             message: l10n.settingsStaffRemovedOffline,
@@ -765,7 +771,7 @@ class _SettingsScreenState extends State<SettingsScreen>
       }
       await _load();
       if (!mounted) return;
-      await showOperationSuccess(
+      showOperationSuccess(
         context,
         title: l10n.settingsStaffRemovedTitle,
         message: s.name,
@@ -773,7 +779,7 @@ class _SettingsScreenState extends State<SettingsScreen>
       );
     } catch (e) {
       if (!mounted) return;
-      await showOperationFailure(
+      showOperationFailure(
         context,
         title: l10n.settingsStaffRemoveFailedTitle,
         message: l10n.settingsRemoveStaffFailed,
@@ -816,7 +822,7 @@ class _SettingsScreenState extends State<SettingsScreen>
       }
     } catch (e) {
       if (!mounted) return;
-      await showOperationFailure(
+      showOperationFailure(
         context,
         title: l10n.settingsMpesaUpdateFailedTitle,
         message: l10n.settingsMpesaUpdateFailed,
@@ -860,8 +866,7 @@ class _SettingsScreenState extends State<SettingsScreen>
                 Padding(
                   padding: const EdgeInsets.only(top: 8),
                   child: Text(error!,
-                      style: TextStyle(
-                          color: AppColors.of(context).danger)),
+                      style: TextStyle(color: AppColors.of(context).danger)),
                 ),
             ]),
           ),
@@ -1029,7 +1034,7 @@ class _SettingsScreenState extends State<SettingsScreen>
       // The shop's identity is verified. Said on a screen, because this is a
       // thing the owner waited for a code to happen, and a snackbar that
       // vanishes in four seconds is not a record of it.
-      await showOperationSuccess(
+      showOperationSuccess(
         context,
         title: AppLocalizations.of(context).settingsIdentityVerifiedTitle,
         message: AppLocalizations.of(context).settingsIdentityVerified,
@@ -1090,7 +1095,7 @@ class _SettingsScreenState extends State<SettingsScreen>
     // And the owner is told, on a screen. A sync that pushed nothing and one
     // that pushed everything are very different facts, and the owner pressed
     // the button to find out which.
-    await showOperationSuccess(
+    showOperationSuccess(
       context,
       title: l10n.settingsSyncDoneTitle,
       message: statusLabel,
@@ -1130,7 +1135,7 @@ class _SettingsScreenState extends State<SettingsScreen>
         detail: 'encrypted',
       );
       if (!mounted) return;
-      await showOperationSuccess(
+      showOperationSuccess(
         context,
         title: l10n.settingsExportDoneTitle,
         message: l10n.settingsExportEncryptedDone,
@@ -1138,7 +1143,7 @@ class _SettingsScreenState extends State<SettingsScreen>
       );
     } on Object {
       if (!mounted) return;
-      await showOperationFailure(
+      showOperationFailure(
         context,
         title: l10n.settingsExportFailedTitle,
         message: l10n.settingsExportFailed,
@@ -1160,7 +1165,7 @@ class _SettingsScreenState extends State<SettingsScreen>
         detail: 'plain workbook',
       );
       if (!mounted) return;
-      await showOperationSuccess(
+      showOperationSuccess(
         context,
         title: l10n.settingsExportDoneTitle,
         message: l10n.settingsExportInventoryDone,
@@ -1168,7 +1173,7 @@ class _SettingsScreenState extends State<SettingsScreen>
       );
     } on Object {
       if (!mounted) return;
-      await showOperationFailure(
+      showOperationFailure(
         context,
         title: l10n.settingsExportFailedTitle,
         message: l10n.settingsExportFailed,
@@ -1188,7 +1193,7 @@ class _SettingsScreenState extends State<SettingsScreen>
     try {
       final n = await _excel.importEncryptedInventory();
       if (!mounted) return;
-      await showOperationSuccess(
+      showOperationSuccess(
         context,
         title: l10n.settingsRestoreDoneTitle,
         message: l10n.settingsRestoredProducts(n),
@@ -1205,7 +1210,7 @@ class _SettingsScreenState extends State<SettingsScreen>
       );
     } on FormatException {
       if (!mounted) return;
-      await showOperationFailure(
+      showOperationFailure(
         context,
         title: l10n.settingsRestoreFailedTitle,
         message: l10n.settingsInvalidEncryptedBackup,
@@ -1214,7 +1219,7 @@ class _SettingsScreenState extends State<SettingsScreen>
       );
     } catch (_) {
       if (!mounted) return;
-      await showOperationFailure(
+      showOperationFailure(
         context,
         title: l10n.settingsRestoreFailedTitle,
         message: l10n.settingsDecryptBackupFailed,
@@ -1254,7 +1259,7 @@ class _SettingsScreenState extends State<SettingsScreen>
           ? '${result.products} products'
           : '${result.products} products, ${refused.length} barcodes refused';
       if (refused.isEmpty) {
-        await showOperationSuccess(
+        showOperationSuccess(
           context,
           title: l10n.settingsImportDoneTitle,
           message: l10n.settingsImportedProducts(result.products),
@@ -1265,7 +1270,7 @@ class _SettingsScreenState extends State<SettingsScreen>
         // can fix the workbook instead of guessing which rows were skipped.
         // Alphabetical order, as gen-l10n emits the generated parameters:
         // detail, products, refused.
-        await showOperationSuccess(
+        showOperationSuccess(
           context,
           title: l10n.settingsImportDoneTitle,
           message: l10n.settingsImportedProductsWithRefused(
@@ -1287,21 +1292,21 @@ class _SettingsScreenState extends State<SettingsScreen>
       // The one workbook problem with an actionable answer, so it gets its own
       // sentence instead of the generic invalid-workbook one.
       if (!mounted) return;
-      await showOperationFailure(
+      showOperationFailure(
         context,
         title: l10n.settingsImportFailedTitle,
         message: l10n.importNotOurFormat,
       );
     } on FormatException {
       if (!mounted) return;
-      await showOperationFailure(
+      showOperationFailure(
         context,
         title: l10n.settingsImportFailedTitle,
         message: l10n.settingsInvalidWorkbook,
       );
     } catch (_) {
       if (!mounted) return;
-      await showOperationFailure(
+      showOperationFailure(
         context,
         title: l10n.settingsImportFailedTitle,
         message: l10n.settingsImportWorkbookFailed,
@@ -1396,8 +1401,10 @@ class _SettingsScreenState extends State<SettingsScreen>
   Future<void> _switchToShop(BuildContext dialogContext, LocalShop shop) async {
     final l10n = AppLocalizations.of(context);
     // Captured before the await, and used after it: `_err` needs a live
-    // ScaffoldMessenger, which the workspace switch tears down.
+    // ScaffoldMessenger, and the router has to be reachable even if this
+    // screen is gone by the time the switch finishes.
     final AppState state = context.read<AppState>();
+    final GoRouter router = GoRouter.of(context);
     try {
       if (dialogContext.mounted) Navigator.pop(dialogContext);
       if (!mounted) return;
@@ -1412,11 +1419,15 @@ class _SettingsScreenState extends State<SettingsScreen>
         entityId: shop.workspaceKey,
         detail: shop.shopName,
       );
-      // Switching tears the session down and reloads from the new shop's own
-      // database, so the next screen is that shop's owner, staff and stock.
+      // Switching reads the new shop's own data, replaces the session with
+      // that shop's owner, and announces the change ONCE — so the app is
+      // never caught between shops with nobody signed in.
       await state.switchWorkspace(shop.workspaceKey);
-      if (!mounted) return;
-      state.signInAsOwner();
+      // And the person lands on the DASHBOARD, not wherever they happened to
+      // be. The shop they were in is gone; its settings, its inventory and
+      // its reports all belong to the shop they just left, and staying on
+      // that branch is how the app ends up showing an empty page.
+      router.go(Routes.dashboard);
       if (!mounted) return;
       _err(l10n.settingsSwitchedToShop(shop.shopName));
     } catch (_) {
@@ -1428,34 +1439,84 @@ class _SettingsScreenState extends State<SettingsScreen>
   Future<void> _addShopOnThisDevice() async {
     final previous = context.read<AppState>().owner;
     final l10n = AppLocalizations.of(context);
+    // Read before the dialog's async gap: a `BuildContext` does not survive an
+    // await, and the reason for a bad PIN has to be said in the language the
+    // owner is actually reading.
+    final ScaffoldMessengerState messenger = ScaffoldMessenger.of(context);
     if (previous == null) {
       _err(l10n.settingsSignInBeforeAddingShop);
       return;
     }
 
     final name = TextEditingController();
-    final shop = await showDialog<String>(
+    final pin = TextEditingController();
+    // The shop's name AND the PIN that opens it.
+    //
+    // The PIN is asked for because each shop has its own. One PIN for every
+    // shop on the device means a till in the back office opens the till at
+    // the counter, and a PIN that is typed forty times a day is worth keeping
+    // to the shop it belongs to.
+    final _NewShopDetails? details = await showDialog<_NewShopDetails>(
         context: context,
         builder: (context) => AlertDialog(
               title: Text(AppLocalizations.of(context).settingsAddShopTitle),
-              content: TextField(
-                  controller: name,
-                  autofocus: true,
-                  decoration: InputDecoration(
-                      labelText:
-                          AppLocalizations.of(context).settingsShopNameLabel),
-                  autofillHints: const [AutofillHints.organizationName]),
+              content: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: <Widget>[
+                  TextField(
+                      controller: name,
+                      autofocus: true,
+                      decoration: InputDecoration(
+                          labelText: AppLocalizations.of(context)
+                              .settingsShopNameLabel),
+                      autofillHints: const [AutofillHints.organizationName]),
+                  SizedBox(height: AppSpacing.of(context).md),
+                  TextField(
+                      controller: pin,
+                      obscureText: true,
+                      keyboardType: TextInputType.number,
+                      maxLength: PinRules.adminLength,
+                      decoration: InputDecoration(
+                          labelText:
+                              AppLocalizations.of(context).ownerSetupPinLabel),
+                      inputFormatters: <TextInputFormatter>[
+                        FilteringTextInputFormatter.digitsOnly,
+                        LengthLimitingTextInputFormatter(PinRules.adminLength),
+                      ],
+                      autofillHints: const [
+                        AutofillHints.newPassword
+                      ]),
+                ],
+              ),
               actions: [
                 TextButton(
                     onPressed: () => Navigator.pop(context),
                     child: Text(AppLocalizations.of(context).actionCancel)),
                 FilledButton(
-                    onPressed: () => Navigator.pop(context, name.text.trim()),
+                    onPressed: () => Navigator.pop(
+                        context,
+                        _NewShopDetails(
+                          name: name.text.trim(),
+                          pin: pin.text.trim(),
+                        )),
                     child: Text(AppLocalizations.of(context).actionContinue))
               ],
             ));
     name.dispose();
-    if (shop == null || shop.isEmpty || !mounted) return;
+    pin.dispose();
+    if (details == null ||
+        details.name.isEmpty ||
+        !PinRules.isAdminPin(details.pin)) {
+      if (details != null && details.name.isNotEmpty) {
+        // The shop name was given but the PIN was not six digits. The dialog
+        // is gone, so the reason is said where the owner is still looking.
+        messenger.showSnackBar(
+          SnackBar(content: Text(l10n.validationPinNotSixDigits)),
+        );
+      }
+      return;
+    }
+    final String shop = details.name;
 
     final key = 'local-${DateTime.now().microsecondsSinceEpoch}';
     // A brand-new shop registers with NO tenant. That is the point: the new
@@ -1464,23 +1525,29 @@ class _SettingsScreenState extends State<SettingsScreen>
     await WorkspaceService.register(workspaceKey: key, shopName: shop);
     if (!mounted) return;
 
-    // Point the app at the new shop *first*, so the owner row is written into
-    // the new shop's database rather than the one being left behind.
-    await context.read<AppState>().switchWorkspace(key);
-    if (!mounted) return;
-
+    // The switch, the new shop's owner row, and the sign-in happen in ONE
+    // operation. It used to be three, with a `if (!mounted) return;` between
+    // them — and the redirect that the dropped session caused had already
+    // unmounted this screen, so the owner row was never written. The shop
+    // existed in the registry with nothing in it, and the next launch said
+    // "no account on this device".
+    final AppState state = context.read<AppState>();
+    final GoRouter router = GoRouter.of(context);
     try {
-      await DatabaseHelper.instance.createOwner(Owner(
-        id: 1,
-        name: previous.name,
-        // Carried, not retyped. The same person, the same PIN, every shop on
-        // this device.
-        pinHash: previous.pinHash,
-        email: previous.email,
-        shopName: shop,
-        createdAt: DateTime.now().toIso8601String(),
-      ));
+      await state.switchWorkspace(
+        key,
+        createOwnerFor: Owner(
+          id: 1,
+          name: previous.name,
+          // The new shop's own PIN, not the old shop's: each shop has its own.
+          pinHash: await AuthService.hashPin(details.pin),
+          email: previous.email,
+          shopName: shop,
+          createdAt: DateTime.now().toIso8601String(),
+        ),
+      );
     } catch (e) {
+      if (!mounted) return;
       _err(l10n.settingsCreateShopFailed);
       return;
     }
@@ -1494,10 +1561,8 @@ class _SettingsScreenState extends State<SettingsScreen>
       // Deliberately swallowed. Losing the signal must not lose the shop.
     }
 
-    if (!mounted) return;
-    await context.read<AppState>().loadOwner();
-    if (!mounted) return;
-    context.read<AppState>().signInAsOwner();
+    // The person lands on the DASHBOARD of the shop they just made.
+    router.go(Routes.dashboard);
     if (!mounted) return;
     _err(l10n.settingsShopReady(shop));
   }
@@ -1780,8 +1845,7 @@ class _AccountPanel extends StatelessWidget {
           // unlocking it needs the PIN — so recovery has to be on the login pad
           // (see `_LoginScreenState._forgotPin`), behind nothing.
           ListTile(
-            leading: Icon(Icons.delete_forever_outlined,
-                color: colors.danger),
+            leading: Icon(Icons.delete_forever_outlined, color: colors.danger),
             title: Text(
               l10n.settingsDeleteAccountAction,
               style: TextStyle(color: colors.danger),
@@ -2157,10 +2221,11 @@ class _PrinterChooserState extends State<_PrinterChooser> {
                             // between a dead end and an instruction.
                             Text(
                               l10n.settingsNoPairedPrintersHint,
-                              style:
-                                  AppTypography.of(context).bodySmall?.copyWith(
-                                      color: AppColors.of(context)
-                                          .onSurfaceMuted),
+                              style: AppTypography.of(context)
+                                  .bodySmall
+                                  ?.copyWith(
+                                      color:
+                                          AppColors.of(context).onSurfaceMuted),
                             ),
                           ],
                         ),
@@ -2233,6 +2298,20 @@ class _AboutFooterState extends State<_AboutFooter> {
     return Column(
       children: <Widget>[
         SizedBox(height: AppSpacing.of(context).sm),
+        // "Powered by Nerva" FIRST, and the app name under it.
+        //
+        // The attribution is the line that says who built the thing, and the
+        // app name is the thing being built. Reading them in that order says
+        // "this is Nerva's app" before it says what the app is called — which
+        // is the order a person reads a credit in.
+        Align(
+          alignment: AlignmentDirectional.centerStart,
+          child: PoweredByNerva(
+            style: AppTypography.of(context).bodySmall,
+            alignment: CrossAxisAlignment.center,
+          ),
+        ),
+        SizedBox(height: AppSpacing.of(context).xs),
         // The app name and the version as one labelled line rather than two
         // text runs merged with spaces: a screen reader stops after the name
         // and a reader comparing versions stops in the right place.
@@ -2249,14 +2328,6 @@ class _AboutFooterState extends State<_AboutFooter> {
                   style: AppTypography.of(context).labelMedium,
                 ),
             ],
-          ),
-        ),
-        SizedBox(height: AppSpacing.of(context).xs),
-        Align(
-          alignment: AlignmentDirectional.centerStart,
-          child: PoweredByNerva(
-            style: AppTypography.of(context).bodySmall,
-            alignment: CrossAxisAlignment.center,
           ),
         ),
       ],

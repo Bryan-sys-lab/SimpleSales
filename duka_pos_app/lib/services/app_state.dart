@@ -77,6 +77,23 @@ class AppState extends ChangeNotifier {
   /// so the credential cache can be keyed correctly.
   int? rememberedStaffId;
 
+  /// The preference key for the remembered cashier IN ONE SHOP.
+  ///
+  /// Scoped by the shop, because staff ids are per-shop and a name is not
+  /// unique to a person across shops. A device-wide key meant the cashier
+  /// remembered at shop A was offered at shop B — a phone that says a
+  /// stranger's name before the password box.
+  static String _rememberedKeyFor(String workspaceKey, String field) =>
+      'remembered_staff_$field@$workspaceKey';
+
+  /// The one global key the remembered cashier used to live under.
+  ///
+  /// Read once, as a fallback, so a till that remembered a cashier before the
+  /// key was scoped keeps the name it had. Absent afterwards it has already
+  /// been adopted.
+  static const _legacyRememberedUsernameKey = 'remembered_staff_username';
+  static const _legacyRememberedIdKey = 'remembered_staff_id';
+
   /// Advances by one on every sign-in and every sign-out.
   ///
   /// The counter exists because a session is a *fact about the data a screen
@@ -208,10 +225,16 @@ class AppState extends ChangeNotifier {
     rememberedStaffId = staff.id;
     try {
       final prefs = await SharedPreferences.getInstance();
+      final String key = workspaceKey;
       await prefs.setString(
-          'remembered_staff_username', rememberedStaffUsername!);
+        _rememberedKeyFor(key, 'username'),
+        rememberedStaffUsername!,
+      );
       if (staff.id != null) {
-        await prefs.setInt('remembered_staff_id', staff.id!);
+        await prefs.setInt(
+          _rememberedKeyFor(key, 'id'),
+          staff.id!,
+        );
       }
     } catch (_) {
       // SharedPreferences is unavailable in some test environments; the
@@ -223,8 +246,15 @@ class AppState extends ChangeNotifier {
   Future<void> loadRememberedStaff() async {
     try {
       final prefs = await SharedPreferences.getInstance();
-      rememberedStaffUsername = prefs.getString('remembered_staff_username');
-      rememberedStaffId = prefs.getInt('remembered_staff_id');
+      final String key = workspaceKey;
+      rememberedStaffUsername =
+          prefs.getString(_rememberedKeyFor(key, 'username')) ??
+              // The one-time adoption of the pre-scoping global key. Only for
+              // the shop that is loading, and only when it has nothing of its
+              // own yet, so shop B does not inherit shop A's cashier.
+              prefs.getString(_legacyRememberedUsernameKey);
+      rememberedStaffId = prefs.getInt(_rememberedKeyFor(key, 'id')) ??
+          prefs.getInt(_legacyRememberedIdKey);
     } catch (_) {
       // SharedPreferences is unavailable in some test environments; leave
       // the in-memory fields null.
@@ -232,41 +262,123 @@ class AppState extends ChangeNotifier {
     notifyListeners();
   }
 
-  Future<void> clearRememberedStaff() async {
+  /// Forgets the remembered cashier.
+  ///
+  /// [notify] is false when the caller is about to announce a bigger change
+  /// anyway: a shop switch replaces the whole session, and a notification in
+  /// the middle of it is a frame in which the app believes nobody is signed
+  /// in — which is the one thing the router acts on.
+  Future<void> clearRememberedStaff({bool notify = true}) async {
     rememberedStaffUsername = null;
     rememberedStaffId = null;
     try {
       final prefs = await SharedPreferences.getInstance();
-      await prefs.remove('remembered_staff_username');
-      await prefs.remove('remembered_staff_id');
+      final String key = workspaceKey;
+      await prefs.remove(_rememberedKeyFor(key, 'username'));
+      await prefs.remove(_rememberedKeyFor(key, 'id'));
     } catch (_) {
       // SharedPreferences is unavailable in some test environments; the
-      // in-memory fields above are enough.
+      // in-memory fields are enough.
     }
-    notifyListeners();
+    if (notify) notifyListeners();
   }
 
-  /// Moves to another shop on this device.
+  /// Moves to another shop on this device, and signs in to it.
   ///
-  /// The session is dropped *after* the database has been repointed, not
-  /// before. Sign-out notifies listeners, so signing out first made the router
-  /// rebuild once with the new shop's name and the old shop still loaded — a
-  /// PIN pad for the shop the user was just leaving, for one frame. Reading
-  /// after writing means the intermediate state is a coherent "signed out of
-  /// the shop you are now in", which is the only state that was ever true.
-  Future<void> switchWorkspace(String key) async {
+  /// ## WHY THE SWITCH IS ATOMIC
+  ///
+  /// The stage — and therefore the router — decides where the person is from
+  /// ONE thing: whether anybody is signed in. So a switch that drops the
+  /// session before it has the next shop's data announces "signed out" in
+  /// between, and the guard answers it by throwing the person out of the app
+  /// and onto the welcome screen.
+  ///
+  /// That is what used to happen, and it had two faces:
+  ///
+  ///   * switching from Settings left the shell with an EMPTY BODY, and the
+  ///     content only came back when a nav icon was tapped — the shell's
+  ///     branch navigator had been disposed and nothing asked for it again;
+  ///   * adding a shop did the same thing, and because the step that creates
+  ///     the new shop's owner row sat AFTER a `if (!mounted) return;` that the
+  ///     redirect had already triggered, the new shop was created with NO
+  ///     owner at all. The next launch found an empty shop and said "no
+  ///     account on this device".
+  ///
+  /// So the order is: read the new shop FIRST, swap the session, and announce
+  /// it ONCE. There is no frame in which the app believes nobody is signed in.
+  ///
+  /// ## WHY THE CREDENTIAL CACHE IS CLEARED
+  ///
+  /// The cache holds a hash of each staff member's PIN so a till can still
+  /// take a sale when the server cannot be reached. Its keys are staff ids,
+  /// and staff ids are per-shop — shop A's cashier #1 and shop B's cashier #1
+  /// are different people with the same number. Carrying the cache across a
+  /// switch would let shop A's PIN open shop B's till. A PIN belongs to the
+  /// shop it was set in.
+  ///
+  /// ## [createOwnerFor]
+  ///
+  /// When the shop being switched to has no owner yet, this is the owner to
+  /// write for it — in the same operation, so the shop is never briefly
+  /// switched to with nobody in charge of it.
+  ///
+  /// ## [signIn]
+  ///
+  /// False when the switch is a CHOOSER rather than a change of hands: the
+  /// shop chooser on the sign-in screen moves the app to another shop so the
+  /// person can type that shop's PIN, and signing them in as its owner there
+  /// would skip the very thing they came to do.
+  Future<void> switchWorkspace(
+    String key, {
+    Owner? createOwnerFor,
+    bool signIn = true,
+  }) async {
     await WorkspaceService.setActiveWorkspace(key);
-    currentStaffName = null;
+
+    // The new shop's data, read BEFORE the session is touched. The database
+    // is repointed here, so everything after this line reads the new shop.
+    workspaceKey = key;
+    await DatabaseHelper.instance.initializeWorkspace(key);
+    Owner? nextOwner = await DatabaseHelper.instance.getOwner();
+    if (nextOwner == null && createOwnerFor != null) {
+      await DatabaseHelper.instance.createOwner(createOwnerFor);
+      nextOwner = createOwnerFor;
+    }
+
+    // The session is replaced, not ended: the person switching shops is the
+    // owner of the shop they are switching to, and a session that briefly
+    // does not exist is a session the router will act on.
+    //
+    // Unless this is a CHOOSER, in which case there is no session yet and
+    // there is not supposed to be one.
+    currentStaffName = signIn ? nextOwner?.name : null;
     currentStaffId = null;
-    isOwnerSession = false;
-    _role = ShopRole.cashier;
+    isOwnerSession = signIn && nextOwner != null;
+    _role = (signIn && nextOwner != null) ? ShopRole.admin : ShopRole.cashier;
     _advanceSession();
-    unawaited(clearRememberedStaff());
-    // Tear down the previous shop's online identity too. Like signOut, this
-    // must not block the workspace switch — the tokens are cleared in the
-    // background and the local session is already gone.
+
+    owner = nextOwner;
+    identityLinkPending =
+        owner != null && (await BackendService.tenantId) == null;
+    identityVerified = false;
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      identityVerified = prefs.getBool(identityVerifiedKeyFor(key)) ?? false;
+    } catch (_) {
+      identityVerified = false;
+    }
+
+    // The remembered cashier belongs to the shop that is being left.
+    await clearRememberedStaff(notify: false);
+    // And so does the cached copy of their PIN.
+    await StaffCredentialCache.clearAll();
+    // The previous shop's online identity goes too, in the background: the
+    // tokens are cleared without blocking the switch, and the local session
+    // for the new shop is already in place.
     unawaited(tearDownOnlineSession());
-    await loadOwner();
+
+    if (_disposed) return;
+    notifyListeners();
   }
 
   /// Signs in as the shop owner.

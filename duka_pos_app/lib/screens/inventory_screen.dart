@@ -20,6 +20,7 @@ import '../services/live_channel_service.dart';
 import '../services/session_refresh_mixin.dart';
 import '../services/workspace_service.dart';
 import '../ui/components/controls.dart';
+import '../screens/receive_stock_sheet.dart';
 import '../utils/error_utils.dart';
 import '../utils/money.dart';
 import '../utils/units.dart';
@@ -210,24 +211,35 @@ class _InventoryScreenState extends State<InventoryScreen>
       // be pushed as an adjustment rather than folded into the next catalogue
       // sync. Reported, not silent: the local count is already correct, but the
       // shop's other devices will not see this change until it lands.
+      //
+      // The push is in its OWN try, outside the adjustment's. The local write
+      // has already succeeded by this point, so an exception from the push
+      // must never be reported as a failed adjustment — the natural response
+      // to "the adjustment failed" is to run it again, and running it again
+      // applies the delta twice.
+      var pushed = false;
       if (mounted) {
-        final pushed = await BackendService.adjustStockOnBackend(
-          product: p,
-          delta: delta,
-          reason: result['reason'],
-          staffProfileId: staffRemoteId,
-        );
-        if (!pushed && mounted) {
-          // Saved on this phone, not on the server. Said plainly, because a
-          // till that shows the same message for a success and a partial
-          // success cannot be trusted with either.
-          await showOperationSuccess(
-            context,
-            title: AppLocalizations.of(context).inventoryStockSavedTitle,
-            message: AppLocalizations.of(context).inventoryStockSavedLocally,
-            detailIcon: Icons.cloud_off_outlined,
+        try {
+          pushed = await BackendService.adjustStockOnBackend(
+            product: p,
+            delta: delta,
+            reason: result['reason'],
+            staffProfileId: staffRemoteId,
           );
+        } catch (_) {
+          pushed = false;
         }
+      }
+      if (!pushed && mounted) {
+        // Saved on this phone, not on the server. Said plainly, because a
+        // till that shows the same message for a success and a partial
+        // success cannot be trusted with either.
+        showOperationSuccess(
+          context,
+          title: AppLocalizations.of(context).inventoryStockSavedTitle,
+          message: AppLocalizations.of(context).inventoryStockSavedLocally,
+          detailIcon: Icons.cloud_off_outlined,
+        );
       }
     } on StateError catch (error) {
       if (mounted) {
@@ -321,34 +333,33 @@ class _InventoryScreenState extends State<InventoryScreen>
     // Captured before the first await: the dialog is built from it, and a
     // BuildContext must not be read after it has been awaited away.
     final AppLocalizations l10n = AppLocalizations.of(context);
-    final confirmed = await showDialog<bool>(
-      context: context,
-      builder: (_) => AlertDialog(
-        title: Text(l10n.inventoryDeleteTitle),
-        content: Text('Remove ${p.name} from inventory?'),
-        actions: [
-          TextButton(
-              onPressed: () => Navigator.pop(context, false),
-              child: const Text('Cancel')),
-          FilledButton(
-              onPressed: () => Navigator.pop(context, true),
-              child: Text(AppLocalizations.of(context).inventoryDeleteAction)),
-        ],
-      ),
+    // The SHARED dialog, not a hand-rolled one. A hand-rolled dialog is where
+    // the wrong navigator gets popped: `showDialog` pushes onto the root
+    // navigator, so `Navigator.pop` with the SCREEN's context closes the
+    // screen behind the dialog instead of the dialog itself — which is how
+    // "delete product" used to leave the whole inventory screen.
+    final ConfirmOutcome outcome = await confirmIrreversible(
+      context,
+      title: l10n.inventoryDeleteTitle,
+      message: l10n.inventoryDeleteMessage(p.name),
+      confirmLabel: l10n.inventoryDeleteAction,
+      cancelLabel: l10n.actionCancel,
+      // A deactivation is not a destruction: the row stays, the past sales
+      // still point at it, and the owner can bring it back.
+      isDestructive: false,
     );
-    if (confirmed == true) {
-      await DatabaseHelper.instance.deactivateProduct(p.id!);
-      // A deactivated product is still in the history — the till's past sales
-      // point at it — so the row says deactivated rather than deleted, and
-      // carries the name because the id will stop resolving.
-      await _audit(
-        AuditAction.productUpdated,
-        AuditEntity.product,
-        entityId: 'id-${p.id}',
-        detail: l10n.inventoryDeactivatedProduct(p.name),
-      );
-      await _load();
-    }
+    if (outcome is! ConfirmAccepted) return;
+    await DatabaseHelper.instance.deactivateProduct(p.id!);
+    // A deactivated product is still in the history — the till's past sales
+    // point at it — so the row says deactivated rather than deleted, and
+    // carries the name because the id will stop resolving.
+    await _audit(
+      AuditAction.productUpdated,
+      AuditEntity.product,
+      entityId: 'id-${p.id}',
+      detail: l10n.inventoryDeactivatedProduct(p.name),
+    );
+    await _load();
   }
 
   /// Sets the low-stock limit for every active product at once.
@@ -384,6 +395,37 @@ class _InventoryScreenState extends State<InventoryScreen>
     await _load();
   }
 
+  /// Records a delivery: what arrived, and what it cost.
+  ///
+  /// The products, the suppliers and the last costs are read HERE, before the
+  /// sheet opens, because a sheet that reads the database while it is building
+  /// itself does its I/O in the middle of a build.
+  Future<void> _receiveStock() async {
+    final AppState state = context.read<AppState>();
+    final DatabaseHelper db = DatabaseHelper.instance;
+    final List<Product> products = await db.getProducts();
+    final List<Supplier> suppliers = await db.getSuppliers();
+    if (!mounted) return;
+    final int? receiptId = await showReceiveStockSheet(
+      context,
+      products: products,
+      suppliers: suppliers,
+      lastCostFor: db.lastCostForProduct,
+      staffName: state.currentStaffName ?? '',
+      staffId: state.currentStaffId,
+    );
+    if (receiptId == null || !mounted) return;
+    await _load();
+    if (!mounted) return;
+    // The outcome is a POPUP, not a screen: the till is not blocked.
+    final AppLocalizations l10n = AppLocalizations.of(context);
+    showOperationSuccess(
+      context,
+      title: l10n.receiveTitle,
+      message: l10n.receiveDone,
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final isOwner = context.watch<AppState>().isOwnerSession;
@@ -397,15 +439,25 @@ class _InventoryScreenState extends State<InventoryScreen>
       // A tank is not another kind of bottle: it is stocked by weight, has two
       // named taps, and is poured by the cup, so it gets its own form rather
       // than one more option on this screen's product editor.
-      persistentFooterButtons: isOwner
-          ? <Widget>[
-              TextButton.icon(
-                onPressed: () => showTankFormSheet(context),
-                icon: const Icon(Icons.propane_tank_outlined, size: 18),
-                label: Text(l10n.tankAddAction),
-              ),
-            ]
-          : null,
+      // The footer's two actions: record a delivery, and set up a tank.
+      //
+      // Receiving stock is for managers AND owners — it is the shop's stock
+      // coming in, and the money it cost. A tank is the owner's own setup
+      // decision, so it stays behind the owner's door.
+      persistentFooterButtons: <Widget>[
+        if (context.watch<AppState>().canManageStock)
+          TextButton.icon(
+            onPressed: () => _receiveStock(),
+            icon: const Icon(Icons.local_shipping_outlined, size: 18),
+            label: Text(l10n.receiveTitle),
+          ),
+        if (isOwner)
+          TextButton.icon(
+            onPressed: () => showTankFormSheet(context),
+            icon: const Icon(Icons.propane_tank_outlined, size: 18),
+            label: Text(l10n.tankAddAction),
+          ),
+      ],
       body: RefreshIndicator(
         onRefresh: _load,
         child: Column(
@@ -776,7 +828,8 @@ class _ProductListTile extends StatelessWidget {
                             : isLow
                                 ? l10n.inventoryLowStock
                                 : l10n.inventoryInStock,
-                      ),                    ],
+                      ),
+                    ],
                   ),
                 ),
                 _ProductActionMenu(
@@ -1820,25 +1873,22 @@ class _ProductEditorState extends State<_ProductEditor> {
       return;
     }
     if (price < cost) {
-      final proceed = await showDialog<bool>(
-          context: context,
-          builder: (BuildContext dialogContext) => AlertDialog(
-                title: Text(
-                    AppLocalizations.of(dialogContext).inventoryLowPriceTitle),
-                content: Text(AppLocalizations.of(dialogContext)
-                    .inventoryLowPriceMessage(name, price, cost)),
-                actions: [
-                  TextButton(
-                      onPressed: () => Navigator.pop(dialogContext, false),
-                      child: Text(
-                          AppLocalizations.of(dialogContext).inventoryGoBack)),
-                  FilledButton(
-                      onPressed: () => Navigator.pop(dialogContext, true),
-                      child: Text(AppLocalizations.of(dialogContext)
-                          .inventorySaveAnyway)),
-                ],
-              ));
-      if (proceed != true) return;
+      // The shared dialog, so the buttons and the dismissal case are handled
+      // the same way everywhere. A tap outside the dialog is a DECISION NOT TO
+      // SAVE, never a silent "save anyway".
+      final AppLocalizations l10n = AppLocalizations.of(context);
+      final ConfirmOutcome outcome = await confirmIrreversible(
+        context,
+        title: l10n.inventoryLowPriceTitle,
+        message: l10n.inventoryLowPriceMessage(name, price, cost),
+        confirmLabel: l10n.inventorySaveAnyway,
+        cancelLabel: l10n.inventoryGoBack,
+        // A warning, not a destruction: the owner is answering a question
+        // about their own margin, and the button that carries the answer is
+        // "Save anyway", not "Delete".
+        isDestructive: false,
+      );
+      if (outcome is! ConfirmAccepted) return;
     }
 
     // A variant with no name cannot be sold, priced or scanned, and one that
@@ -1948,7 +1998,7 @@ class _ProductEditorState extends State<_ProductEditor> {
       // The editor stays open UNDER the sheet, and the sheet's button closes
       // it — so the flow is Save, confirm, Done, and the list behind is
       // already refreshed.
-      await showOperationSuccess(
+      showOperationSuccess(
         context,
         title: widget.existing == null
             ? AppLocalizations.of(context).inventoryProductSavedTitle
@@ -2085,7 +2135,9 @@ class _ProductEditorState extends State<_ProductEditor> {
                         controller: _halfPrice,
                         decoration: InputDecoration(
                             labelText: AppLocalizations.of(context)
-                                .inventoryFieldHalfPriceOptional),
+                                .inventoryFieldHalfPriceOptional,
+                            helperText: AppLocalizations.of(context)
+                                .inventoryFieldHalfPriceHelper),
                         keyboardType: const TextInputType.numberWithOptions(
                             decimal: true))),
                 SizedBox(width: spacing.md),
@@ -2094,7 +2146,9 @@ class _ProductEditorState extends State<_ProductEditor> {
                         controller: _quarterPrice,
                         decoration: InputDecoration(
                             labelText: AppLocalizations.of(context)
-                                .inventoryFieldQuarterPriceOptional),
+                                .inventoryFieldQuarterPriceOptional,
+                            helperText: AppLocalizations.of(context)
+                                .inventoryFieldQuarterPriceHelper),
                         keyboardType: const TextInputType.numberWithOptions(
                             decimal: true))),
               ]),

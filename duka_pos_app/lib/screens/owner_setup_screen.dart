@@ -10,15 +10,14 @@ import '../services/app_state.dart';
 import '../services/auth_service.dart';
 import '../services/backend_service.dart';
 import '../services/workspace_service.dart';
-import '../theme/app_colors.dart';
 import '../theme/app_haptics.dart';
-import '../theme/app_shapes.dart';
 import '../theme/app_spacing.dart';
 import '../theme/typography.dart';
 import '../ui/brand/simple_pos_mark.dart';
 import '../ui/components/controls.dart';
 import '../ui/components/screen_title.dart';
 import '../ui/components/status.dart';
+import '../utils/pin_rules.dart';
 
 /// Creates the shop and its admin account, or adds a second shop to a device
 /// that already runs one.
@@ -77,17 +76,6 @@ class _OwnerSetupScreenState extends State<OwnerSetupScreen> {
   /// the person not pressing it twice.
   bool _saving = false;
 
-  /// True when the PIN fields are hidden because the existing admin's hash is
-  /// being reused.
-  ///
-  /// The plaintext is never needed and never held: the new owner's row is given
-  /// the *existing hash*, so the same four digits the owner already uses keep
-  /// working on the new shop. Asking them to retype it would make adding a
-  /// branch feel like registering from scratch, which is the thing they were
-  /// avoiding.
-  bool get _reusingPin =>
-      widget.isAdditionalShop && widget.carryOverFrom != null;
-
   @override
   void initState() {
     super.initState();
@@ -118,7 +106,15 @@ class _OwnerSetupScreenState extends State<OwnerSetupScreen> {
   // still there for fields an autofill filled in without ever being focused.
 
   static final RegExp _emailPattern = RegExp(r'^[^\s@]+@[^\s@]+\.[^\s@]+$');
-  static final RegExp _pinPattern = RegExp(r'^\d{4}$');
+
+  /// The owner's PIN is an ADMIN PIN, and an admin PIN is six digits.
+  ///
+  /// It used to be four, which meant the owner could not prove ownership
+  /// anywhere: the sheet that asks for the admin PIN — the one in front of
+  /// account deletion — asked for six, and there was no six-digit PIN in the
+  /// shop. The shop's cashiers keep their four-digit PINs; the owner's is
+  /// longer because it is asked for less often and guards more.
+  static final RegExp _pinPattern = PinRules.adminPattern;
 
   String? _required(String? value, String label) =>
       (value == null || value.trim().isEmpty)
@@ -128,23 +124,31 @@ class _OwnerSetupScreenState extends State<OwnerSetupScreen> {
   String? _validateShop(String? value) =>
       _required(value, AppLocalizations.of(context).settingsShopNameLabel);
 
-  String? _validateName(String? value) => _required(value, 'Your name');
+  String? _validateName(String? value) =>
+      _required(value, AppLocalizations.of(context).ownerSetupNameLabel);
 
   String? _validateEmail(String? value) {
-    if (value == null || value.trim().isEmpty) return 'Owner email is required';
+    final AppLocalizations l10n = AppLocalizations.of(context);
+    if (value == null || value.trim().isEmpty) {
+      return l10n.ownerSetupEmailLabel;
+    }
     return _emailPattern.hasMatch(value.trim().toLowerCase())
         ? null
-        : 'Enter a valid email address';
+        : l10n.ownerSetupInvalidEmail;
   }
 
   String? _validatePin(String? value) {
-    if (value == null || value.isEmpty) return 'PIN is required';
-    return _pinPattern.hasMatch(value) ? null : 'PIN must be exactly 4 digits';
+    final AppLocalizations l10n = AppLocalizations.of(context);
+    if (value == null || value.isEmpty) return l10n.validationPinRequired;
+    return _pinPattern.hasMatch(value) ? null : l10n.validationPinNotSixDigits;
   }
 
   String? _validatePinConfirm(String? value) {
-    if (value == null || value.isEmpty) return 'Enter the PIN again';
-    return value == _pin.text ? null : 'PINs do not match';
+    final AppLocalizations l10n = AppLocalizations.of(context);
+    if (value == null || value.isEmpty) {
+      return l10n.validationPinConfirmRequired;
+    }
+    return value == _pin.text ? null : l10n.validationPinMismatch;
   }
 
   Future<void> _create() async {
@@ -157,28 +161,34 @@ class _OwnerSetupScreenState extends State<OwnerSetupScreen> {
     if (_name.text.trim().isEmpty ||
         _shop.text.trim().isEmpty ||
         email.isEmpty) {
-      setState(() => _error = 'Enter your name, email, and shop name');
+      setState(
+        () => _error = AppLocalizations.of(context).ownerSetupMissingDetails,
+      );
       HapticTheme.of(context).fire(HapticEvent.reject);
       return;
     }
     if (!_emailPattern.hasMatch(email)) {
-      setState(() => _error = 'Enter a valid email address');
+      setState(
+        () => _error = AppLocalizations.of(context).ownerSetupInvalidEmail,
+      );
       HapticTheme.of(context).fire(HapticEvent.reject);
       return;
     }
-    // The PIN is only asked for when there is nothing to inherit. Re-asking for
-    // it on a second shop is what made this flow feel like signing up again.
-    if (!_reusingPin) {
-      if (!_pinPattern.hasMatch(_pin.text)) {
-        setState(() => _error = 'PIN must be exactly 4 digits');
-        HapticTheme.of(context).fire(HapticEvent.reject);
-        return;
-      }
-      if (_pin.text != _pin2.text) {
-        setState(() => _error = 'PINs do not match');
-        HapticTheme.of(context).fire(HapticEvent.reject);
-        return;
-      }
+    // The PIN is ALWAYS asked for. It used to be skipped on a second shop, so
+    // that adding a branch did not feel like registering from scratch — and
+    // the cost was that one PIN opened every shop on the phone. Each shop has
+    // its own admin PIN now.
+    if (!_pinPattern.hasMatch(_pin.text)) {
+      setState(() =>
+          _error = AppLocalizations.of(context).validationPinNotSixDigits);
+      HapticTheme.of(context).fire(HapticEvent.reject);
+      return;
+    }
+    if (_pin.text != _pin2.text) {
+      setState(
+          () => _error = AppLocalizations.of(context).validationPinMismatch);
+      HapticTheme.of(context).fire(HapticEvent.reject);
+      return;
     }
     // Then the same rules again, per field, for anything the gate above let
     // through but the field has not seen.
@@ -195,9 +205,8 @@ class _OwnerSetupScreenState extends State<OwnerSetupScreen> {
       final Owner owner = Owner(
         id: 1,
         name: _name.text.trim(),
-        pinHash: _reusingPin
-            ? widget.carryOverFrom!.pinHash
-            : await AuthService.hashPin(_pin.text),
+        // The new shop's own admin PIN. Never the old shop's.
+        pinHash: await AuthService.hashPin(_pin.text),
         email: email,
         shopName: _shop.text.trim(),
         createdAt: DateTime.now().toIso8601String(),
@@ -268,15 +277,8 @@ class _OwnerSetupScreenState extends State<OwnerSetupScreen> {
                       _BackRow(onBack: widget.onCancel!),
                     const _SetupLockup(),
                     SizedBox(height: spacing.lg),
-                    _SetupHeading(
-                      isAdditionalShop: widget.isAdditionalShop,
-                      reusingPin: _reusingPin,
-                    ),
+                    _SetupHeading(isAdditionalShop: widget.isAdditionalShop),
                     SizedBox(height: spacing.md),
-                    if (_reusingPin) ...<Widget>[
-                      const _CarriedPinNote(),
-                      SizedBox(height: spacing.md),
-                    ],
                     _SetupFields(
                       formKey: _formKey,
                       shop: _shop,
@@ -284,7 +286,6 @@ class _OwnerSetupScreenState extends State<OwnerSetupScreen> {
                       email: _email,
                       pin: _pin,
                       pin2: _pin2,
-                      reusingPin: _reusingPin,
                       validateShop: _validateShop,
                       validateName: _validateName,
                       validateEmail: _validateEmail,
@@ -366,16 +367,9 @@ class _SetupLockup extends StatelessWidget {
 
 /// The heading and what this screen is for.
 class _SetupHeading extends StatelessWidget {
-  const _SetupHeading({
-    required this.isAdditionalShop,
-    required this.reusingPin,
-  });
+  const _SetupHeading({required this.isAdditionalShop});
 
   final bool isAdditionalShop;
-
-  /// Branches on the PIN being carried rather than on the intent alone: an
-  /// "additional shop" with nothing to carry is still a first-time setup.
-  final bool reusingPin;
 
   @override
   Widget build(BuildContext context) {
@@ -394,55 +388,15 @@ class _SetupHeading extends StatelessWidget {
         ),
         SizedBox(height: AppSpacing.of(context).sm),
         Text(
-          reusingPin
-              ? 'This shop reuses the admin account and PIN you already use. '
-                  'Give the new shop its own name and you will go straight into '
-                  'it.'
+          isAdditionalShop
+              ? 'This shop gets its own admin PIN, so a PIN that opens one '
+                  'shop on this phone does not open another. Give the new '
+                  'shop its name and you will go straight into it.'
               : 'Create the shop admin account. The admin can create managers '
                   'and cashiers, manage stock, and connect optional services.',
           style: type.bodyMedium,
         ),
       ],
-    );
-  }
-}
-
-/// The one thing a person cannot see on this screen, said out loud.
-class _CarriedPinNote extends StatelessWidget {
-  const _CarriedPinNote();
-
-  @override
-  Widget build(BuildContext context) {
-    final AppColors colors = AppColors.of(context);
-    final AppSpacing spacing = AppSpacing.of(context);
-    final TextTheme type = AppTypography.of(context);
-
-    return Container(
-      padding: EdgeInsets.all(spacing.md),
-      decoration: BoxDecoration(
-        color: colors.accentContainer,
-        borderRadius: AppShapes.of(context).controlRadius,
-      ),
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: <Widget>[
-          Icon(
-            Icons.lock_outline,
-            size: 18,
-            color: colors.onAccentContainer,
-            // Decorative: the sentence beside it carries the meaning.
-            semanticLabel: '',
-          ),
-          SizedBox(width: spacing.sm),
-          Expanded(
-            child: Text(
-              'The PIN already set on this device stays the same on this shop. '
-              'You will not be asked for it again.',
-              style: type.bodySmall?.copyWith(color: colors.onAccentContainer),
-            ),
-          ),
-        ],
-      ),
     );
   }
 }
@@ -482,7 +436,6 @@ class _SetupFields extends StatelessWidget {
     required this.email,
     required this.pin,
     required this.pin2,
-    required this.reusingPin,
     required this.validateShop,
     required this.validateName,
     required this.validateEmail,
@@ -497,7 +450,6 @@ class _SetupFields extends StatelessWidget {
   final TextEditingController email;
   final TextEditingController pin;
   final TextEditingController pin2;
-  final bool reusingPin;
   final String? Function(String?) validateShop;
   final String? Function(String?) validateName;
   final String? Function(String?) validateEmail;
@@ -526,42 +478,40 @@ class _SetupFields extends StatelessWidget {
           SizedBox(height: spacing.md),
           _SetupField(
             controller: name,
-            label: 'Your name (shop admin)',
+            label: AppLocalizations.of(context).ownerSetupNameLabel,
             autofillHints: const <String>[AutofillHints.name],
             validator: validateName,
           ),
           SizedBox(height: spacing.md),
           _SetupField(
             controller: email,
-            label: 'Owner email',
+            label: AppLocalizations.of(context).ownerSetupEmailLabel,
             keyboardType: TextInputType.emailAddress,
             autofillHints: const <String>[AutofillHints.email],
             validator: validateEmail,
           ),
-          if (!reusingPin) ...<Widget>[
-            SizedBox(height: spacing.md),
-            _SetupField(
-              controller: pin,
-              label: 'Set a 4-digit PIN',
-              keyboardType: TextInputType.number,
-              obscure: true,
-              maxLength: 4,
-              autofillHints: const <String>[AutofillHints.newPassword],
-              validator: validatePin,
-            ),
-            SizedBox(height: spacing.md),
-            _SetupField(
-              controller: pin2,
-              label: 'Confirm PIN',
-              keyboardType: TextInputType.number,
-              obscure: true,
-              maxLength: 4,
-              isLast: true,
-              onSubmitted: onSubmit,
-              autofillHints: const <String>[AutofillHints.newPassword],
-              validator: validatePinConfirm,
-            ),
-          ],
+          SizedBox(height: spacing.md),
+          _SetupField(
+            controller: pin,
+            label: AppLocalizations.of(context).ownerSetupPinLabel,
+            keyboardType: TextInputType.number,
+            obscure: true,
+            maxLength: PinRules.adminLength,
+            autofillHints: const <String>[AutofillHints.newPassword],
+            validator: validatePin,
+          ),
+          SizedBox(height: spacing.md),
+          _SetupField(
+            controller: pin2,
+            label: AppLocalizations.of(context).ownerSetupPinConfirmLabel,
+            keyboardType: TextInputType.number,
+            obscure: true,
+            maxLength: PinRules.adminLength,
+            isLast: true,
+            onSubmitted: onSubmit,
+            autofillHints: const <String>[AutofillHints.newPassword],
+            validator: validatePinConfirm,
+          ),
         ],
       ),
     );

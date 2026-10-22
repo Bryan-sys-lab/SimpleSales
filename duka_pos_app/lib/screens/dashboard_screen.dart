@@ -382,7 +382,7 @@ class _DashboardScreenState extends State<DashboardScreen>
       final file = await ExcelService().exportEncryptedInventory();
       await ExcelService().shareFile(file);
       if (!mounted) return;
-      await showOperationSuccess(
+      showOperationSuccess(
         context,
         title: l10n.settingsBackupDoneTitle,
         message: l10n.settingsBackupDone,
@@ -390,7 +390,7 @@ class _DashboardScreenState extends State<DashboardScreen>
       );
     } on Object {
       if (!mounted) return;
-      await showOperationFailure(
+      showOperationFailure(
         context,
         title: l10n.settingsBackupFailedTitle,
         message: l10n.settingsBackupFailed,
@@ -418,6 +418,29 @@ class _DashboardScreenState extends State<DashboardScreen>
     }
   }
 
+  /// Puts the receipts KRA refused back in the queue and tries again.
+  ///
+  /// The owner has just fixed the cause — a wrong TIN, a buyer PIN — and the
+  /// invoices still have to be filed. This is the action that makes a refusal
+  /// a thing to resolve rather than a thing to stare at.
+  Future<void> _retryRejectedEtims() async {
+    final ScaffoldMessengerState messenger = ScaffoldMessenger.of(context);
+    final AppLocalizations l10n = AppLocalizations.of(context);
+    try {
+      final EtimsFlushResult result = await EtimsService().retryRejected();
+      if (!mounted) return;
+      HapticTheme.of(context).fire(HapticEvent.commit);
+      showAppSnackBar(context, message: EtimsService.describeResult(result));
+      await _load();
+    } catch (_) {
+      if (!mounted) return;
+      HapticTheme.of(context).fire(HapticEvent.reject);
+      messenger.showSnackBar(SnackBar(
+        content: Text(l10n.attentionKraRetryFailed),
+      ));
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     return switch (_state) {
@@ -438,6 +461,7 @@ class _DashboardScreenState extends State<DashboardScreen>
           onOpenEtimsSettings: _openEtimsSettings,
           onOpenProduct: _openProduct,
           onRetryEtims: _retryEtims,
+          onRetryRejectedEtims: _retryRejectedEtims,
         ),
     };
   }
@@ -473,6 +497,7 @@ class _DashboardContent extends StatelessWidget {
     required this.onOpenEtimsSettings,
     required this.onOpenProduct,
     required this.onRetryEtims,
+    required this.onRetryRejectedEtims,
   });
 
   final _DashboardReady data;
@@ -484,6 +509,7 @@ class _DashboardContent extends StatelessWidget {
   final VoidCallback onOpenEtimsSettings;
   final ValueChanged<Product> onOpenProduct;
   final Future<void> Function() onRetryEtims;
+  final Future<void> Function() onRetryRejectedEtims;
 
   static List<Widget> _spaced(List<Widget?> items, double gap) {
     final List<Widget> present = items.whereType<Widget>().toList();
@@ -510,6 +536,11 @@ class _DashboardContent extends StatelessWidget {
             canFixEtims: appState.isAdmin,
             onRetryEtims: onRetryEtims,
             onOpenEtimsSettings: onOpenEtimsSettings,
+            // Only the people who can fix the cause may put the refused
+            // receipts back: a cashier tapping "Try again" on a shop whose TIN
+            // is still wrong gets the same refusal and a lot less patience.
+            onRetryRejectedEtims:
+                appState.isAdmin ? onRetryRejectedEtims : null,
           );
 
     final Widget shift = DashboardShiftCard(

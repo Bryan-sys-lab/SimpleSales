@@ -316,6 +316,60 @@ abstract class AppLocalizations {
   /// **'PIN must be exactly 4 digits'**
   String get validationPinNotFourDigits;
 
+  /// No description provided for @validationPinNotSixDigits.
+  ///
+  /// In en, this message translates to:
+  /// **'PIN must be exactly 6 digits'**
+  String get validationPinNotSixDigits;
+
+  /// No description provided for @validationPinConfirmRequired.
+  ///
+  /// In en, this message translates to:
+  /// **'Enter the PIN again'**
+  String get validationPinConfirmRequired;
+
+  /// No description provided for @validationPinMismatch.
+  ///
+  /// In en, this message translates to:
+  /// **'PINs do not match'**
+  String get validationPinMismatch;
+
+  /// No description provided for @ownerSetupNameLabel.
+  ///
+  /// In en, this message translates to:
+  /// **'Your name (shop admin)'**
+  String get ownerSetupNameLabel;
+
+  /// No description provided for @ownerSetupEmailLabel.
+  ///
+  /// In en, this message translates to:
+  /// **'Owner email'**
+  String get ownerSetupEmailLabel;
+
+  /// No description provided for @ownerSetupPinLabel.
+  ///
+  /// In en, this message translates to:
+  /// **'Set a 6-digit PIN'**
+  String get ownerSetupPinLabel;
+
+  /// No description provided for @ownerSetupPinConfirmLabel.
+  ///
+  /// In en, this message translates to:
+  /// **'Confirm PIN'**
+  String get ownerSetupPinConfirmLabel;
+
+  /// No description provided for @ownerSetupMissingDetails.
+  ///
+  /// In en, this message translates to:
+  /// **'Enter your name, email, and shop name'**
+  String get ownerSetupMissingDetails;
+
+  /// No description provided for @ownerSetupInvalidEmail.
+  ///
+  /// In en, this message translates to:
+  /// **'Enter a valid email address'**
+  String get ownerSetupInvalidEmail;
+
   /// No description provided for @validationEmailRequired.
   ///
   /// In en, this message translates to:
@@ -1001,6 +1055,48 @@ abstract class AppLocalizations {
   /// **'Diagnostics copied. Send them to support.'**
   String get databaseErrorSharedMessage;
 
+  /// No description provided for @configurationErrorTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'This build is not configured'**
+  String get configurationErrorTitle;
+
+  /// No description provided for @configurationErrorBody.
+  ///
+  /// In en, this message translates to:
+  /// **'The app cannot reach your shop\'s server, so it cannot issue KRA receipts, take M-Pesa payments or sync.'**
+  String get configurationErrorBody;
+
+  /// No description provided for @configurationNoticeBody.
+  ///
+  /// In en, this message translates to:
+  /// **'This build has no server address, so KRA receipts, M-Pesa payments and syncing will not work. Selling, stock and reports work as usual, on this phone.'**
+  String get configurationNoticeBody;
+
+  /// No description provided for @configurationErrorAdvice.
+  ///
+  /// In en, this message translates to:
+  /// **'This is a problem with how the app was built, not with your data. Your sales, stock and settings are safe on this phone.'**
+  String get configurationErrorAdvice;
+
+  /// No description provided for @configurationErrorDetail.
+  ///
+  /// In en, this message translates to:
+  /// **'Technical detail: {detail}'**
+  String configurationErrorDetail(Object detail);
+
+  /// No description provided for @configurationErrorShareAction.
+  ///
+  /// In en, this message translates to:
+  /// **'Copy the details'**
+  String get configurationErrorShareAction;
+
+  /// No description provided for @configurationErrorSharedMessage.
+  ///
+  /// In en, this message translates to:
+  /// **'Details copied. Send them to whoever builds your app releases.'**
+  String get configurationErrorSharedMessage;
+
   /// No description provided for @databaseErrorRetryFailed.
   ///
   /// In en, this message translates to:
@@ -1030,6 +1126,36 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'Paid by M-Pesa'**
   String get sellCompletePaidMpesa;
+
+  /// No description provided for @sellCompletePaidCard.
+  ///
+  /// In en, this message translates to:
+  /// **'Paid by card'**
+  String get sellCompletePaidCard;
+
+  /// No description provided for @sellCompletePaidBank.
+  ///
+  /// In en, this message translates to:
+  /// **'Paid by bank transfer'**
+  String get sellCompletePaidBank;
+
+  /// No description provided for @sellCompletePaidMobileMoney.
+  ///
+  /// In en, this message translates to:
+  /// **'Paid by mobile money'**
+  String get sellCompletePaidMobileMoney;
+
+  /// No description provided for @sellCompletePaidOtherGeneric.
+  ///
+  /// In en, this message translates to:
+  /// **'Paid'**
+  String get sellCompletePaidOtherGeneric;
+
+  /// No description provided for @sellCompletePaidOther.
+  ///
+  /// In en, this message translates to:
+  /// **'{method} · {amount}'**
+  String sellCompletePaidOther(Object amount, Object method);
 
   /// No description provided for @sellCompleteChange.
   ///
@@ -1566,6 +1692,12 @@ abstract class AppLocalizations {
   /// **'Delete'**
   String get inventoryDeleteAction;
 
+  /// No description provided for @inventoryDeleteMessage.
+  ///
+  /// In en, this message translates to:
+  /// **'Remove {name} from inventory? Its past sales stay on record.'**
+  String inventoryDeleteMessage(Object name);
+
   /// No description provided for @inventoryDeactivatedProduct.
   ///
   /// In en, this message translates to:
@@ -1632,6 +1764,12 @@ abstract class AppLocalizations {
   /// **'Half price (optional)'**
   String get inventoryFieldHalfPriceOptional;
 
+  /// No description provided for @inventoryFieldHalfPriceHelper.
+  ///
+  /// In en, this message translates to:
+  /// **'Only products with a half price are sold in halves. Leave it empty and the till will not offer a half.'**
+  String get inventoryFieldHalfPriceHelper;
+
   /// No description provided for @inventoryFieldName.
   ///
   /// In en, this message translates to:
@@ -1649,6 +1787,12 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'Quarter price (optional)'**
   String get inventoryFieldQuarterPriceOptional;
+
+  /// No description provided for @inventoryFieldQuarterPriceHelper.
+  ///
+  /// In en, this message translates to:
+  /// **'Only products with a quarter price are sold in quarters. Leave it empty and the till will not offer a quarter.'**
+  String get inventoryFieldQuarterPriceHelper;
 
   /// No description provided for @inventoryPhotoSection.
   ///
@@ -3033,7 +3177,7 @@ abstract class AppLocalizations {
   /// No description provided for @settingsIdentityVerified.
   ///
   /// In en, this message translates to:
-  /// **'Email verified. Auto-backups, analytics and auto-update are now on.'**
+  /// **'Signed in. Auto-backups, analytics and auto-update are now on.'**
   String get settingsIdentityVerified;
 
   /// No description provided for @settingsIdentityNotLinkedMessage.
@@ -3087,7 +3231,7 @@ abstract class AppLocalizations {
   /// No description provided for @settingsVerifyCodeMessage.
   ///
   /// In en, this message translates to:
-  /// **'We sent a 6-digit code to {email}. It expires in {minutes} minutes.'**
+  /// **'We sent a 6-digit code to {email}. It expires in {minutes} minutes.\n\nAfter you enter it, sign in with your email and the same 6-digit PIN you use on this till.'**
   String settingsVerifyCodeMessage(Object email, Object minutes);
 
   /// No description provided for @settingsVerifyPinLocked.
@@ -3227,6 +3371,61 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'Copy report'**
   String get diagnosticsCopyReport;
+
+  /// No description provided for @diagnosticsLedgerCheckTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Stock ledger'**
+  String get diagnosticsLedgerCheckTitle;
+
+  /// No description provided for @diagnosticsLedgerCheckSubtitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Every stock count, checked against the history that produced it.'**
+  String get diagnosticsLedgerCheckSubtitle;
+
+  /// No description provided for @diagnosticsLedgerHealthy.
+  ///
+  /// In en, this message translates to:
+  /// **'Every count agrees with its history.'**
+  String get diagnosticsLedgerHealthy;
+
+  /// No description provided for @diagnosticsLedgerChecking.
+  ///
+  /// In en, this message translates to:
+  /// **'Checking the stock ledger…'**
+  String get diagnosticsLedgerChecking;
+
+  /// No description provided for @diagnosticsLedgerDifferences.
+  ///
+  /// In en, this message translates to:
+  /// **'{count, plural, =1{1 product does not agree} other{{count} products do not agree}}'**
+  String diagnosticsLedgerDifferences(num count);
+
+  /// No description provided for @diagnosticsLedgerDifferenceRow.
+  ///
+  /// In en, this message translates to:
+  /// **'{name}: the till says {counted}, the history says {ledger}'**
+  String diagnosticsLedgerDifferenceRow(
+      Object counted, Object ledger, Object name);
+
+  /// No description provided for @diagnosticsLedgerRepairAction.
+  ///
+  /// In en, this message translates to:
+  /// **'Fix'**
+  String get diagnosticsLedgerRepairAction;
+
+  /// No description provided for @diagnosticsLedgerRepaired.
+  ///
+  /// In en, this message translates to:
+  /// **'{name} now agrees with its history.'**
+  String diagnosticsLedgerRepaired(Object name);
+
+  /// No description provided for @diagnosticsLedgerRepairFailed.
+  ///
+  /// In en, this message translates to:
+  /// **'Could not correct {name}. Try again.'**
+  String diagnosticsLedgerRepairFailed(Object name);
 
   /// No description provided for @diagnosticsClear.
   ///
@@ -3868,7 +4067,7 @@ abstract class AppLocalizations {
   /// No description provided for @shotCupsCapacityHelper.
   ///
   /// In en, this message translates to:
-  /// **'Fixed for this cup'**
+  /// **'Leave it empty if you do not know the size. With a size, the app works out what each shot cost you to pour.'**
   String get shotCupsCapacityHelper;
 
   /// No description provided for @shotCupsCapacityHint.
@@ -3880,7 +4079,7 @@ abstract class AppLocalizations {
   /// No description provided for @shotCupsCapacityLabel.
   ///
   /// In en, this message translates to:
-  /// **'Capacity (ml)'**
+  /// **'Size in ml (optional)'**
   String get shotCupsCapacityLabel;
 
   /// No description provided for @shotCupsCapacityMax.
@@ -3892,7 +4091,7 @@ abstract class AppLocalizations {
   /// No description provided for @shotCupsCapacityPositive.
   ///
   /// In en, this message translates to:
-  /// **'Capacity must be more than zero.'**
+  /// **'The size cannot be less than zero.'**
   String get shotCupsCapacityPositive;
 
   /// No description provided for @shotCupsCapacityValue.
@@ -5071,6 +5270,348 @@ abstract class AppLocalizations {
   /// **'PIN'**
   String get loginPinLabel;
 
+  /// No description provided for @analyticsYourSalesTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Your sales'**
+  String get analyticsYourSalesTitle;
+
+  /// No description provided for @receiveTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Receive stock'**
+  String get receiveTitle;
+
+  /// No description provided for @receiveSubtitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Record what arrived and what you paid for it.'**
+  String get receiveSubtitle;
+
+  /// No description provided for @receiveSupplierLabel.
+  ///
+  /// In en, this message translates to:
+  /// **'Supplier'**
+  String get receiveSupplierLabel;
+
+  /// No description provided for @receiveNoSupplier.
+  ///
+  /// In en, this message translates to:
+  /// **'No supplier'**
+  String get receiveNoSupplier;
+
+  /// No description provided for @receiveSupplierRefLabel.
+  ///
+  /// In en, this message translates to:
+  /// **'Invoice or delivery note number'**
+  String get receiveSupplierRefLabel;
+
+  /// No description provided for @receiveSupplierRefHint.
+  ///
+  /// In en, this message translates to:
+  /// **'The number on the supplier\'s paper.'**
+  String get receiveSupplierRefHint;
+
+  /// No description provided for @receiveLinesLabel.
+  ///
+  /// In en, this message translates to:
+  /// **'What arrived'**
+  String get receiveLinesLabel;
+
+  /// No description provided for @receiveAddProductAction.
+  ///
+  /// In en, this message translates to:
+  /// **'Add a product'**
+  String get receiveAddProductAction;
+
+  /// No description provided for @receiveQtyLabel.
+  ///
+  /// In en, this message translates to:
+  /// **'How many'**
+  String get receiveQtyLabel;
+
+  /// No description provided for @receiveUnitCostLabel.
+  ///
+  /// In en, this message translates to:
+  /// **'Cost each (KSh)'**
+  String get receiveUnitCostLabel;
+
+  /// No description provided for @receiveLineTotal.
+  ///
+  /// In en, this message translates to:
+  /// **'Line total: {total}'**
+  String receiveLineTotal(Object total);
+
+  /// No description provided for @receiveTotalLabel.
+  ///
+  /// In en, this message translates to:
+  /// **'What the delivery cost'**
+  String get receiveTotalLabel;
+
+  /// No description provided for @receivePostAction.
+  ///
+  /// In en, this message translates to:
+  /// **'Post it'**
+  String get receivePostAction;
+
+  /// No description provided for @receiveRemoveLineAction.
+  ///
+  /// In en, this message translates to:
+  /// **'Remove this line'**
+  String get receiveRemoveLineAction;
+
+  /// No description provided for @receiveSearchLabel.
+  ///
+  /// In en, this message translates to:
+  /// **'Search the catalogue'**
+  String get receiveSearchLabel;
+
+  /// No description provided for @receiveAlreadyOn.
+  ///
+  /// In en, this message translates to:
+  /// **'Already on this delivery: {count}'**
+  String receiveAlreadyOn(Object count);
+
+  /// No description provided for @receiveNoLines.
+  ///
+  /// In en, this message translates to:
+  /// **'Add at least one thing that arrived.'**
+  String get receiveNoLines;
+
+  /// No description provided for @receiveFailed.
+  ///
+  /// In en, this message translates to:
+  /// **'The delivery could not be recorded. Nothing has changed.'**
+  String get receiveFailed;
+
+  /// No description provided for @receiveDone.
+  ///
+  /// In en, this message translates to:
+  /// **'The stock is on the shelf and the costs are up to date.'**
+  String get receiveDone;
+
+  /// No description provided for @transactionsReturnedBadge.
+  ///
+  /// In en, this message translates to:
+  /// **'Returned'**
+  String get transactionsReturnedBadge;
+
+  /// No description provided for @transactionsPartlyReturnedBadge.
+  ///
+  /// In en, this message translates to:
+  /// **'Partly returned'**
+  String get transactionsPartlyReturnedBadge;
+
+  /// No description provided for @returnTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Return items'**
+  String get returnTitle;
+
+  /// No description provided for @returnHistoryLabel.
+  ///
+  /// In en, this message translates to:
+  /// **'Already returned'**
+  String get returnHistoryLabel;
+
+  /// No description provided for @returnSubtitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Choose what is coming back, say why, and choose how the money goes back.'**
+  String get returnSubtitle;
+
+  /// No description provided for @returnReasonLabel.
+  ///
+  /// In en, this message translates to:
+  /// **'Why is it coming back?'**
+  String get returnReasonLabel;
+
+  /// No description provided for @returnReasonHint.
+  ///
+  /// In en, this message translates to:
+  /// **'For example: the customer changed their mind.'**
+  String get returnReasonHint;
+
+  /// No description provided for @returnMethodLabel.
+  ///
+  /// In en, this message translates to:
+  /// **'How should the money go back?'**
+  String get returnMethodLabel;
+
+  /// No description provided for @returnMethodCash.
+  ///
+  /// In en, this message translates to:
+  /// **'Cash'**
+  String get returnMethodCash;
+
+  /// No description provided for @returnMethodMpesa.
+  ///
+  /// In en, this message translates to:
+  /// **'M-Pesa'**
+  String get returnMethodMpesa;
+
+  /// No description provided for @returnRefundLabel.
+  ///
+  /// In en, this message translates to:
+  /// **'Money to give back'**
+  String get returnRefundLabel;
+
+  /// No description provided for @returnConfirmAction.
+  ///
+  /// In en, this message translates to:
+  /// **'Give it back'**
+  String get returnConfirmAction;
+
+  /// No description provided for @returnNoLines.
+  ///
+  /// In en, this message translates to:
+  /// **'Choose at least one thing to give back.'**
+  String get returnNoLines;
+
+  /// No description provided for @returnReasonRequired.
+  ///
+  /// In en, this message translates to:
+  /// **'Say why it is coming back.'**
+  String get returnReasonRequired;
+
+  /// No description provided for @returnFailed.
+  ///
+  /// In en, this message translates to:
+  /// **'The return could not be recorded. Nothing has changed.'**
+  String get returnFailed;
+
+  /// No description provided for @returnNoShiftOpen.
+  ///
+  /// In en, this message translates to:
+  /// **'Open a shift first, so the money can come out of the drawer.'**
+  String get returnNoShiftOpen;
+
+  /// No description provided for @returnUnverifiedPayment.
+  ///
+  /// In en, this message translates to:
+  /// **'That payment was never confirmed, so it cannot be given back yet.'**
+  String get returnUnverifiedPayment;
+
+  /// No description provided for @returnMoreThanSold.
+  ///
+  /// In en, this message translates to:
+  /// **'More was returned than was sold on that line.'**
+  String get returnMoreThanSold;
+
+  /// No description provided for @returnLineGone.
+  ///
+  /// In en, this message translates to:
+  /// **'That line is no longer on the sale.'**
+  String get returnLineGone;
+
+  /// No description provided for @returnLineAllReturned.
+  ///
+  /// In en, this message translates to:
+  /// **'All returned'**
+  String get returnLineAllReturned;
+
+  /// No description provided for @returnLineRemaining.
+  ///
+  /// In en, this message translates to:
+  /// **'{qty} left'**
+  String returnLineRemaining(Object qty);
+
+  /// No description provided for @returnRestockLabel.
+  ///
+  /// In en, this message translates to:
+  /// **'Put it back on the shelf'**
+  String get returnRestockLabel;
+
+  /// No description provided for @returnWriteOffLabel.
+  ///
+  /// In en, this message translates to:
+  /// **'Write it off (damaged or expired)'**
+  String get returnWriteOffLabel;
+
+  /// No description provided for @returnLessAction.
+  ///
+  /// In en, this message translates to:
+  /// **'Return less'**
+  String get returnLessAction;
+
+  /// No description provided for @returnMoreAction.
+  ///
+  /// In en, this message translates to:
+  /// **'Return more'**
+  String get returnMoreAction;
+
+  /// No description provided for @returnDone.
+  ///
+  /// In en, this message translates to:
+  /// **'Returned. The money is on its way back.'**
+  String get returnDone;
+
+  /// No description provided for @analyticsShiftsSection.
+  ///
+  /// In en, this message translates to:
+  /// **'Shifts'**
+  String get analyticsShiftsSection;
+
+  /// No description provided for @analyticsShiftsCount.
+  ///
+  /// In en, this message translates to:
+  /// **'Shifts'**
+  String get analyticsShiftsCount;
+
+  /// No description provided for @analyticsShiftsClosed.
+  ///
+  /// In en, this message translates to:
+  /// **'{closed} closed'**
+  String analyticsShiftsClosed(Object closed);
+
+  /// No description provided for @analyticsShiftsExpected.
+  ///
+  /// In en, this message translates to:
+  /// **'Cash expected'**
+  String get analyticsShiftsExpected;
+
+  /// No description provided for @analyticsShiftsCounted.
+  ///
+  /// In en, this message translates to:
+  /// **'Cash counted'**
+  String get analyticsShiftsCounted;
+
+  /// No description provided for @analyticsNoShifts.
+  ///
+  /// In en, this message translates to:
+  /// **'No shifts in this period'**
+  String get analyticsNoShifts;
+
+  /// No description provided for @analyticsNoShiftsHint.
+  ///
+  /// In en, this message translates to:
+  /// **'When a shift is opened and counted, it appears here with what the drawer should have held and what was actually in it.'**
+  String get analyticsNoShiftsHint;
+
+  /// No description provided for @loginChooseShopTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Which shop are you opening?'**
+  String get loginChooseShopTitle;
+
+  /// No description provided for @loginChooseShopSubtitle.
+  ///
+  /// In en, this message translates to:
+  /// **'This phone has {count} shops. Choose the one you are working in.'**
+  String loginChooseShopSubtitle(Object count);
+
+  /// No description provided for @loginChooseShopAction.
+  ///
+  /// In en, this message translates to:
+  /// **'Choose a different shop'**
+  String get loginChooseShopAction;
+
+  /// No description provided for @loginCurrentShopLabel.
+  ///
+  /// In en, this message translates to:
+  /// **'Now signing in to {shop}'**
+  String loginCurrentShopLabel(Object shop);
+
   /// No description provided for @backToPinPadAction.
   ///
   /// In en, this message translates to:
@@ -5727,6 +6268,84 @@ abstract class AppLocalizations {
   /// **'Dismiss'**
   String get attentionDismissAction;
 
+  /// No description provided for @attentionKraRefused.
+  ///
+  /// In en, this message translates to:
+  /// **'KRA refused {count, plural, =1{1 receipt} other{{count} receipts}}'**
+  String attentionKraRefused(num count);
+
+  /// No description provided for @attentionKraRefusedDetail.
+  ///
+  /// In en, this message translates to:
+  /// **'The shop details KRA is using need correcting.'**
+  String get attentionKraRefusedDetail;
+
+  /// No description provided for @attentionKraRefusedFixAction.
+  ///
+  /// In en, this message translates to:
+  /// **'Fix details'**
+  String get attentionKraRefusedFixAction;
+
+  /// No description provided for @attentionKraRefusedRetryAction.
+  ///
+  /// In en, this message translates to:
+  /// **'Try again'**
+  String get attentionKraRefusedRetryAction;
+
+  /// No description provided for @attentionKraPending.
+  ///
+  /// In en, this message translates to:
+  /// **'Waiting on KRA for {count, plural, =1{1 receipt} other{{count} receipts}}'**
+  String attentionKraPending(num count);
+
+  /// No description provided for @attentionKraPendingDetail.
+  ///
+  /// In en, this message translates to:
+  /// **'These are recorded locally. They will issue on their own.'**
+  String get attentionKraPendingDetail;
+
+  /// No description provided for @attentionKraRetryAction.
+  ///
+  /// In en, this message translates to:
+  /// **'Retry now'**
+  String get attentionKraRetryAction;
+
+  /// No description provided for @attentionKraRetryFailed.
+  ///
+  /// In en, this message translates to:
+  /// **'Could not reach KRA. The receipts stay queued and will go up on the next connection.'**
+  String get attentionKraRetryFailed;
+
+  /// No description provided for @attentionUnverifiedPayments.
+  ///
+  /// In en, this message translates to:
+  /// **'{count, plural, =1{1 payment} other{{count} payments}} not confirmed'**
+  String attentionUnverifiedPayments(num count);
+
+  /// No description provided for @attentionUnverifiedPaymentsDetail.
+  ///
+  /// In en, this message translates to:
+  /// **'Taken while offline. Check each one against the till roll.'**
+  String get attentionUnverifiedPaymentsDetail;
+
+  /// No description provided for @attentionImportProblems.
+  ///
+  /// In en, this message translates to:
+  /// **'{count, plural, =1{1 row} other{{count} rows}} failed to import'**
+  String attentionImportProblems(num count);
+
+  /// No description provided for @attentionImportProblemsDetail.
+  ///
+  /// In en, this message translates to:
+  /// **'Fill in what the file was missing and they are imported.'**
+  String get attentionImportProblemsDetail;
+
+  /// No description provided for @attentionImportProblemsAction.
+  ///
+  /// In en, this message translates to:
+  /// **'Finish now'**
+  String get attentionImportProblemsAction;
+
   /// No description provided for @analyticsChartTitleSalesByDay.
   ///
   /// In en, this message translates to:
@@ -6128,73 +6747,73 @@ abstract class AppLocalizations {
   /// No description provided for @tankFormTitle.
   ///
   /// In en, this message translates to:
-  /// **'Beer tank'**
+  /// **'Add a beer tank'**
   String get tankFormTitle;
 
   /// No description provided for @tankFormSubtitle.
   ///
   /// In en, this message translates to:
-  /// **'A tank is stocked by weight and poured by the keg cup. Add it once, then pour from it on keg cups.'**
+  /// **'A tank is a drum of beer. You fill it, and then you sell the beer by the cup. Add the tank once, and then sell from it like any other drink.'**
   String get tankFormSubtitle;
 
   /// No description provided for @tankFieldName.
   ///
   /// In en, this message translates to:
-  /// **'Tank name'**
+  /// **'Name of the beer'**
   String get tankFieldName;
 
   /// No description provided for @tankFieldNameHint.
   ///
   /// In en, this message translates to:
-  /// **'Tusker, Balozi, Guinness — the beer, not the keg'**
+  /// **'For example Tusker or Balozi. Write the name of the beer, not of the drum.'**
   String get tankFieldNameHint;
 
   /// No description provided for @tankFieldMlPerKg.
   ///
   /// In en, this message translates to:
-  /// **'Litres per kilogram'**
+  /// **'How many millilitres one kilogram holds'**
   String get tankFieldMlPerKg;
 
   /// No description provided for @tankFieldMlPerKgHint.
   ///
   /// In en, this message translates to:
-  /// **'1000 for beer. A syrup or a liqueur holds a different amount.'**
+  /// **'Beer is 1000. A syrup or a liqueur holds less. If you are not sure, leave 1000.'**
   String get tankFieldMlPerKgHint;
 
   /// No description provided for @tankFieldCapacityL.
   ///
   /// In en, this message translates to:
-  /// **'Tank capacity (L)'**
+  /// **'How much the tank holds (litres)'**
   String get tankFieldCapacityL;
 
   /// No description provided for @tankFieldCapacityLHint.
   ///
   /// In en, this message translates to:
-  /// **'How much the tank holds when full. A 50-litre keg is 50.'**
+  /// **'How full it is when it is brand new. A 50-litre tank? Write 50.'**
   String get tankFieldCapacityLHint;
 
   /// No description provided for @tankFieldTankCount.
   ///
   /// In en, this message translates to:
-  /// **'Tanks on hand'**
+  /// **'How many full tanks you have now'**
   String get tankFieldTankCount;
 
   /// No description provided for @tankFieldTankCountHint.
   ///
   /// In en, this message translates to:
-  /// **'How many full tanks you are starting with. Each cup poured counts down from this number.'**
+  /// **'If you have one full tank, write 1. Every cup you pour is counted down from this number.'**
   String get tankFieldTankCountHint;
 
   /// No description provided for @tankFieldTankCost.
   ///
   /// In en, this message translates to:
-  /// **'Tank cost (KSh)'**
+  /// **'What one full tank cost you (KSh)'**
   String get tankFieldTankCost;
 
   /// No description provided for @tankFieldTankCostHint.
   ///
   /// In en, this message translates to:
-  /// **'What the whole tank cost to fill. Split evenly across each tap.'**
+  /// **'The price of the whole tank, not of one cup. We share this cost between the taps.'**
   String get tankFieldTankCostHint;
 
   /// No description provided for @tankTapLabel.
@@ -6206,25 +6825,25 @@ abstract class AppLocalizations {
   /// No description provided for @tankFieldTapName.
   ///
   /// In en, this message translates to:
-  /// **'Tap name'**
+  /// **'Name of this tap'**
   String get tankFieldTapName;
 
   /// No description provided for @tankFieldTapNameHint.
   ///
   /// In en, this message translates to:
-  /// **'Dark, Regular, IPA — what this tap is called.'**
+  /// **'For example Dark or Regular. This is the drink that comes out of it.'**
   String get tankFieldTapNameHint;
 
   /// No description provided for @tankFieldTapAmount.
   ///
   /// In en, this message translates to:
-  /// **'Loaded'**
+  /// **'How much is in it now'**
   String get tankFieldTapAmount;
 
   /// No description provided for @tankFieldTapAmountHint.
   ///
   /// In en, this message translates to:
-  /// **'How much is in this tap right now.'**
+  /// **'How much of the tank is filled right now. Write 0 if it is empty.'**
   String get tankFieldTapAmountHint;
 
   /// No description provided for @tankUnitLitres.
@@ -6242,139 +6861,145 @@ abstract class AppLocalizations {
   /// No description provided for @tankCupSmallLabel.
   ///
   /// In en, this message translates to:
-  /// **'Small keg cup'**
+  /// **'Small cup'**
   String get tankCupSmallLabel;
 
   /// No description provided for @tankFieldSmallMl.
   ///
   /// In en, this message translates to:
-  /// **'Size (ml)'**
+  /// **'How much is in one cup (ml)'**
   String get tankFieldSmallMl;
 
   /// No description provided for @tankFieldSmallMlHint.
   ///
   /// In en, this message translates to:
-  /// **'330 for a standard serving.'**
+  /// **'A normal small cup is 330.'**
   String get tankFieldSmallMlHint;
 
   /// No description provided for @tankFieldSmallPrice.
   ///
   /// In en, this message translates to:
-  /// **'Price'**
+  /// **'Price of one cup (KSh)'**
   String get tankFieldSmallPrice;
 
   /// No description provided for @tankFieldSmallPriceHint.
   ///
   /// In en, this message translates to:
-  /// **'What one small keg cup sells for.'**
+  /// **'What one small cup sells for.'**
   String get tankFieldSmallPriceHint;
 
   /// No description provided for @tankCupBigLabel.
   ///
   /// In en, this message translates to:
-  /// **'Big keg cup'**
+  /// **'Big cup'**
   String get tankCupBigLabel;
 
   /// No description provided for @tankFieldBigMl.
   ///
   /// In en, this message translates to:
-  /// **'Size (ml)'**
+  /// **'How much is in one cup (ml)'**
   String get tankFieldBigMl;
 
   /// No description provided for @tankFieldBigMlHint.
   ///
   /// In en, this message translates to:
-  /// **'500 for a large serving.'**
+  /// **'A large cup is 500.'**
   String get tankFieldBigMlHint;
 
   /// No description provided for @tankFieldBigPrice.
   ///
   /// In en, this message translates to:
-  /// **'Price'**
+  /// **'Price of one cup (KSh)'**
   String get tankFieldBigPrice;
 
   /// No description provided for @tankFieldBigPriceHint.
   ///
   /// In en, this message translates to:
-  /// **'What one big keg cup sells for.'**
+  /// **'What one big cup sells for.'**
   String get tankFieldBigPriceHint;
 
   /// No description provided for @tankTapNameRequired.
   ///
   /// In en, this message translates to:
-  /// **'Give every tap a name.'**
+  /// **'Give this tap a name.'**
   String get tankTapNameRequired;
 
   /// No description provided for @tankTapAmountInvalid.
   ///
   /// In en, this message translates to:
-  /// **'Enter how much is loaded in this tap.'**
+  /// **'Write how much is in this tap.'**
   String get tankTapAmountInvalid;
 
   /// No description provided for @tankTapOverCapacity.
   ///
   /// In en, this message translates to:
-  /// **'This tap holds more than the tank does.'**
+  /// **'This tap holds more than the whole tank. Write less.'**
   String get tankTapOverCapacity;
+
+  /// No description provided for @tankTapsOverCapacity.
+  ///
+  /// In en, this message translates to:
+  /// **'The taps together hold more than the tank. Write less.'**
+  String get tankTapsOverCapacity;
 
   /// No description provided for @tankSmallCupInvalid.
   ///
   /// In en, this message translates to:
-  /// **'Set a small keg cup size within the tank\'s capacity.'**
+  /// **'The small cup must be smaller than the tank.'**
   String get tankSmallCupInvalid;
 
   /// No description provided for @tankBigCupInvalid.
   ///
   /// In en, this message translates to:
-  /// **'Set a big keg cup size within the tank\'s capacity.'**
+  /// **'The big cup must be smaller than the tank.'**
   String get tankBigCupInvalid;
 
   /// No description provided for @tankSmallPriceInvalid.
   ///
   /// In en, this message translates to:
-  /// **'Set a small keg cup price.'**
+  /// **'Write the price of one small cup.'**
   String get tankSmallPriceInvalid;
 
   /// No description provided for @tankBigPriceInvalid.
   ///
   /// In en, this message translates to:
-  /// **'Set a big keg cup price.'**
+  /// **'Write the price of one big cup.'**
   String get tankBigPriceInvalid;
 
   /// No description provided for @tankCapacityInvalid.
   ///
   /// In en, this message translates to:
-  /// **'Enter how much the tank holds in litres.'**
+  /// **'Write how much the tank holds, in litres.'**
   String get tankCapacityInvalid;
 
   /// No description provided for @tankCountRequired.
   ///
   /// In en, this message translates to:
-  /// **'Enter how many tanks you have.'**
+  /// **'Write how many full tanks you have.'**
   String get tankCountRequired;
 
   /// No description provided for @tankMlPerKgInvalid.
   ///
   /// In en, this message translates to:
-  /// **'Enter how many millilitres one kilogram of it holds.'**
+  /// **'Write how many millilitres one kilogram holds. Beer is 1000.'**
   String get tankMlPerKgInvalid;
 
   /// No description provided for @tankNameRequired.
   ///
   /// In en, this message translates to:
-  /// **'Give the tank a name — the beer it holds.'**
+  /// **'Give the beer a name.'**
   String get tankNameRequired;
 
   /// No description provided for @tankAddAction.
   ///
   /// In en, this message translates to:
-  /// **'Add the tank'**
+  /// **'Save this tank'**
   String get tankAddAction;
 
   /// No description provided for @tankPriceInvalid.
   ///
   /// In en, this message translates to:
-  /// **'Enter the cost of a tank.'**
+  /// **'Write what one full tank cost you.'**
   String get tankPriceInvalid;
 
   /// No description provided for @tankSaveFailed.
@@ -6386,7 +7011,7 @@ abstract class AppLocalizations {
   /// No description provided for @tankCreated.
   ///
   /// In en, this message translates to:
-  /// **'{name} added. Pour from it on keg cups.'**
+  /// **'{name} added. You can now sell it by the cup.'**
   String tankCreated(Object name);
 }
 

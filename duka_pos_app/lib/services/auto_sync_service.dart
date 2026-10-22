@@ -77,6 +77,44 @@ class AutoSyncService {
         } catch (error) {
           debugPrint('Automatic staff sync failed: $error');
         }
+        // The LEDGER, the drawers and the shot cups.
+        //
+        // These three were missing, and the ledger is the one that matters:
+        // the till writes its sales offline and the server had no way to
+        // learn about any of them, so the owner's account and the all-shops
+        // view were reading a ledger with holes in it. The push is keyed on
+        // the till's own ids, so a phone that was offline pushes the same
+        // records again without doubling them.
+        try {
+          await BackendService.syncSalesToBackend();
+        } catch (error) {
+          debugPrint('Automatic sales sync failed: $error');
+        }
+        try {
+          await BackendService.syncShiftsToBackend();
+        } catch (error) {
+          debugPrint('Automatic shift sync failed: $error');
+        }
+        try {
+          await BackendService.syncShotCupsToBackend();
+        } catch (error) {
+          debugPrint('Automatic shot cup sync failed: $error');
+        }
+        // The returns and the deliveries.
+        //
+        // A return is money going back and a delivery is money going in; both
+        // are records the shop's books are made of, and both are written
+        // offline on the till that made them.
+        try {
+          await BackendService.syncReturnsToBackend();
+        } catch (error) {
+          debugPrint('Automatic return sync failed: $error');
+        }
+        try {
+          await BackendService.syncReceiptsToBackend();
+        } catch (error) {
+          debugPrint('Automatic delivery sync failed: $error');
+        }
       }
 
       // The local backup is written even when the network steps failed: a

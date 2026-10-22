@@ -37,11 +37,16 @@ List<AppDestination> visibleDestinations(AppState state) {
   // everyday destinations are the ones nearest the ball.
   return <AppDestination>[
     AppDestination.dashboard,
-    // Inventory, Analytics and Reports report the whole shop. A cashier's
-    // business is this counter, not the month.
+    // Inventory and Reports report the whole shop. A cashier's business is
+    // this counter, not the month.
     if (state.canManageStock) AppDestination.inventory,
     AppDestination.sell,
-    if (state.canManageStock) AppDestination.analytics,
+    // Analytics is open to everybody, and it shows each person their OWN
+    // takings. A cashier may read how their counter is doing without being
+    // shown what the shop is doing — so the figures are scoped to the rows
+    // they sold, and the manager's whole-shop view is the same screen with
+    // the scope opened up.
+    AppDestination.analytics,
     if (state.isAdmin) AppDestination.settings,
     AppDestination.support,
   ];
@@ -309,14 +314,18 @@ class _ShellScaffold extends StatelessWidget {
             title: state.owner?.shopName ?? SimplePosBrand.appName,
             roleLabel: _roleLabel(context, state),
             onSignOut: () => _signOut(context),
+            onOpenProfile: () => context.push(Routes.profile),
+            onOpenSupport: () => tabs.goTo(AppDestination.support),
           ),
-          // The body, with the bubble FLOATING over it.
+          // The body.
           //
-          // A sibling in the stack, not a parent: the bubble never rebuilds
-          // the page behind it, and the page behind it never rebuilds the
-          // bubble. A help widget that made the till redraw would cost money
-          // at the counter.
-          body: Stack(
+          // The support bubble used to FLOAT over the bottom-right corner of
+          // the body. It was a `PositionedDirectional` in a Stack, so when the
+          // keyboard opened the Scaffold shrank the body and the bubble rode
+          // up with it — landing on top of the buttons at the far end of the
+          // screen, exactly where a cashier's thumb was reaching. It lives in
+          // the app bar now, where it cannot move and cannot cover anything.
+          body: Column(
             children: <Widget>[
               // The status strip, ABOVE the content and BELOW the bar.
               //
@@ -325,63 +334,48 @@ class _ShellScaffold extends StatelessWidget {
               // than on the dashboard because a cashier is rarely on the
               // dashboard, and a till that cannot reach the server is exactly
               // where the owner needs to know.
-              Column(
-                children: <Widget>[
-                  const TillStatusBar(),
-                  Expanded(
-                    // The branch, once.
-                    //
-                    // ONE `body` in the tree: the strip is a COLUMN above it,
-                    // so the branch is the column's only child. Putting the
-                    // branch in the column AND in the size switch built it
-                    // twice, and a `StatefulNavigationShell` carries a
-                    // GlobalKey — so the tree had the same key twice and the
-                    // whole shell failed to mount.
-                    child: switch (sizeClass) {
-                      WindowSizeClass.compact => body,
-                      WindowSizeClass.extraLarge => Row(
-                          children: <Widget>[
-                            _ShellDrawer(
-                              destinations: destinations,
-                              selected: selected,
-                              onSelect: tabs.goTo,
-                            ),
-                            VerticalDivider(
-                              width: 1,
-                              color:
-                                  Theme.of(context).colorScheme.outlineVariant,
-                            ),
-                            Expanded(child: body),
-                          ],
+              const TillStatusBar(),
+              Expanded(
+                // The branch, once.
+                //
+                // ONE `body` in the tree: the strip is a COLUMN above it,
+                // so the branch is the column's only child. Putting the
+                // branch in the column AND in the size switch built it
+                // twice, and a `StatefulNavigationShell` carries a
+                // GlobalKey — so the tree had the same key twice and the
+                // whole shell failed to mount.
+                child: switch (sizeClass) {
+                  WindowSizeClass.compact => body,
+                  WindowSizeClass.extraLarge => Row(
+                      children: <Widget>[
+                        _ShellDrawer(
+                          destinations: destinations,
+                          selected: selected,
+                          onSelect: tabs.goTo,
                         ),
-                      _ => Row(
-                          children: <Widget>[
-                            _ShellRail(
-                              destinations: destinations,
-                              selected: selected,
-                              extended: sizeClass != WindowSizeClass.medium,
-                              onSelect: tabs.goTo,
-                            ),
-                            VerticalDivider(
-                              width: 1,
-                              color:
-                                  Theme.of(context).colorScheme.outlineVariant,
-                            ),
-                            Expanded(child: body),
-                          ],
+                        VerticalDivider(
+                          width: 1,
+                          color: Theme.of(context).colorScheme.outlineVariant,
                         ),
-                    },
-                  ),
-                ],
-              ),
-              // The bubble, in the corner, over everything.
-              PositionedDirectional(
-                end: AppSpacing.of(context).md,
-                bottom: AppSpacing.of(context).md,
-                child: SupportBubble(
-                  label: AppLocalizations.of(context).navSupport,
-                  onTap: () => tabs.goTo(AppDestination.support),
-                ),
+                        Expanded(child: body),
+                      ],
+                    ),
+                  _ => Row(
+                      children: <Widget>[
+                        _ShellRail(
+                          destinations: destinations,
+                          selected: selected,
+                          extended: sizeClass != WindowSizeClass.medium,
+                          onSelect: tabs.goTo,
+                        ),
+                        VerticalDivider(
+                          width: 1,
+                          color: Theme.of(context).colorScheme.outlineVariant,
+                        ),
+                        Expanded(child: body),
+                      ],
+                    ),
+                },
               ),
             ],
           ),
@@ -434,6 +428,8 @@ class _ShellAppBar extends StatelessWidget implements PreferredSizeWidget {
     required this.title,
     required this.roleLabel,
     required this.onSignOut,
+    required this.onOpenProfile,
+    required this.onOpenSupport,
   });
 
   final String title;
@@ -446,6 +442,17 @@ class _ShellAppBar extends StatelessWidget implements PreferredSizeWidget {
   final String roleLabel;
 
   final VoidCallback onSignOut;
+
+  /// Opens the person's own account.
+  ///
+  /// A VIEWER, not an editor and not a way out: the account icon is the
+  /// person icon, and a person icon that signs you out is a trap. Editing
+  /// lives on the profile screen itself, where there is room to say what
+  /// editing does.
+  final VoidCallback onOpenProfile;
+
+  /// Opens support.
+  final VoidCallback onOpenSupport;
 
   @override
   Size get preferredSize => const Size.fromHeight(48);
@@ -476,10 +483,22 @@ class _ShellAppBar extends StatelessWidget implements PreferredSizeWidget {
           ),
         ),
         SizedBox(width: spacing.xs),
-        // Tapping the account opens the sign-out sheet rather than signing out
-        // straight away: the account is the easiest thing on the bar to hit by
-        // accident, and an accidental sign-out on a busy till is a customer
-        // waiting.
+        // Support, beside the other two.
+        //
+        // It was a bubble floating over the bottom-right of the body, which
+        // meant it rode up with the keyboard and landed on the buttons at the
+        // far end of the screen. Up here it is out of the way of every
+        // thumb, and it is where a person looks for help anyway.
+        SupportBubble(
+          label: l10n.navSupport,
+          onTap: onOpenSupport,
+        ),
+        // The account: a VIEWER of who is signed in.
+        //
+        // It used to open the sign-out sheet, which is a trap: the person
+        // icon means "this is me", and a person icon that ends the session is
+        // the easiest button on the bar to hit by accident. On a busy till an
+        // accidental sign-out is a customer waiting.
         Semantics(
           button: true,
           // The header a screen reader announces is the shop AND the session,
@@ -491,7 +510,7 @@ class _ShellAppBar extends StatelessWidget implements PreferredSizeWidget {
           label: l10n.shellSignedInAs(role, title),
           child: IconButton(
             tooltip: l10n.shellAccountMenuLabel,
-            onPressed: onSignOut,
+            onPressed: onOpenProfile,
             icon: const Icon(Icons.person_outline),
           ),
         ),

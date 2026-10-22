@@ -22,6 +22,7 @@ import 'package:provider/provider.dart';
 import '../l10n/generated/app_localizations.dart';
 import '../services/app_state.dart';
 import '../services/backend_service.dart';
+import '../services/local_portfolio_service.dart';
 import '../services/portfolio_kpis.dart';
 import '../services/live_refresh_mixin.dart';
 import '../services/live_channel_service.dart';
@@ -97,10 +98,7 @@ class _PortfolioScreenState extends State<PortfolioScreen>
       if (_view is! _PortfolioContent) _view = const _PortfolioLoading();
     });
     try {
-      final PortfolioKpis kpis = await BackendService.portfolioKpis(
-        from: range.since(now),
-        to: now,
-      );
+      final PortfolioKpis kpis = await _read(range, now, session);
       if (!_current(session)) return;
       setState(() {
         _loading = false;
@@ -115,6 +113,55 @@ class _PortfolioScreenState extends State<PortfolioScreen>
         _view = const _PortfolioFailure();
       });
     }
+  }
+
+  /// The figures, from wherever they can be had.
+  ///
+  /// The DEVICE FIRST. Every shop on this phone has its own database file
+  /// with its own sales in it, so the screen can answer the question it was
+  /// opened to answer with no connection at all — which is the normal state of
+  /// a shop's till.
+  ///
+  /// The backend is then asked for anything the device does not have: a shop
+  /// the owner runs from another phone, or one that has been online since the
+  /// last sync. A shop is counted ONCE — the device's own file is the truth
+  /// about the shop it holds, and the backend's copy of that same shop is
+  /// skipped rather than added to it.
+  Future<PortfolioKpis> _read(
+    PortfolioRange range,
+    DateTime now,
+    int session,
+  ) async {
+    final DateTime from = range.since(now);
+    final PortfolioKpis local =
+        await LocalPortfolioService.read(from: from, to: now);
+
+    PortfolioKpis remote = const PortfolioKpis.empty();
+    try {
+      remote = await BackendService.portfolioKpis(from: from, to: now);
+    } catch (_) {
+      // No connection, or the server said no. The device's own figures are
+      // the answer, and a phone with one shop is never empty.
+      if (local.shops.isEmpty) rethrow;
+    }
+    if (!_current(session)) return local;
+
+    // The shops the device holds are the shops the backend also knows about,
+    // in every normal case — the same shop, counted twice.
+    final Set<String> held = local.shops
+        .map((ShopKpi kpi) => kpi.shopName.trim().toLowerCase())
+        .toSet();
+    final List<ShopKpi> merged = <ShopKpi>[
+      ...local.shops,
+      ...remote.shops.where(
+        (ShopKpi kpi) => !held.contains(kpi.shopName.trim().toLowerCase()),
+      ),
+    ];
+    return PortfolioKpis(
+      shops: merged,
+      windowStart: from,
+      windowEnd: now,
+    );
   }
 
   /// Whether the session this load started under is still the session.

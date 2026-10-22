@@ -4,6 +4,7 @@ import 'dart:math';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 
 import 'auth_service.dart';
+import 'workspace_service.dart';
 
 /// Offline credential cache for staff sign-in.
 ///
@@ -14,6 +15,18 @@ import 'auth_service.dart';
 ///
 /// The cache is populated on successful backend authentication and cleared
 /// on sign-out. It is never the source of truth; it is only a fallback.
+///
+/// ## WHY THE KEY NAMES THE SHOP
+///
+/// Staff ids are PER SHOP. Shop A's cashier #1 and shop B's cashier #1 are
+/// different people who happen to share a number, because each shop numbers
+/// its own roster from one.
+///
+/// A key of the staff id alone therefore collided: the PIN cached for shop
+/// A's cashier #1 was found again for shop B's cashier #1, and a till that
+/// could not reach the server accepted one shop's PIN in another shop. The
+/// key names the shop as well as the person, so a PIN belongs to the shop it
+/// was set in and to nobody else.
 class StaffCredentialCache {
   static const _storage = FlutterSecureStorage();
   static const _prefix = 'duka_staff_cred_';
@@ -27,6 +40,27 @@ class StaffCredentialCache {
   /// everywhere, and never has to guess at other apps' storage.
   static const _indexKey = '${_prefix}index';
 
+  /// The key for one staff member in one shop.
+  ///
+  /// The workspace key is part of it because staff ids are not unique across
+  /// shops, and the workspace key is the part that says WHICH shop.
+  static Future<String> _keyFor(int staffId) async {
+    // The shop, when it can be read.
+    //
+    // It cannot always be: the preferences are a platform channel, and a
+    // credential cache that REFUSES to store a PIN because a platform channel
+    // is missing is a cache that never helps anybody. So the key falls back
+    // to a single shop, and the cache is still a cache.
+    String workspace = 'default';
+    try {
+      workspace = await WorkspaceService.activeWorkspaceKey();
+    } catch (_) {
+      // No preferences: the till has one shop as far as this can tell.
+    }
+    final String safe = workspace.replaceAll(RegExp(r'[^A-Za-z0-9_-]'), '_');
+    return '$_prefix$safe#$staffId';
+  }
+
   static Future<void> cacheStaffCredentials(
       int staffId, String username, String pin) async {
     final salt = _randomBytes(16);
@@ -37,13 +71,14 @@ class StaffCredentialCache {
       'hash': hash,
       'salt': base64Url.encode(salt),
     });
-    final key = '$_prefix$staffId';
+    final key = await _keyFor(staffId);
     await _storage.write(key: key, value: payload);
-    await _index(staffId);
+    await _index(key);
   }
 
   static Future<bool> verifyCachedPin(int staffId, String pin) async {
-    final raw = await _storage.read(key: '$_prefix$staffId');
+    final key = await _keyFor(staffId);
+    final raw = await _storage.read(key: key);
     if (raw == null) return false;
     try {
       final data = jsonDecode(raw) as Map<String, dynamic>;
@@ -54,15 +89,15 @@ class StaffCredentialCache {
     }
   }
 
-  /// Records [staffId] in the index, without duplicates.
-  static Future<void> _index(int staffId) async {
+  /// Records [key] in the index, without duplicates.
+  static Future<void> _index(String key) async {
     try {
       final raw = await _storage.read(key: _indexKey);
-      final ids = raw == null || raw.isEmpty
+      final keys = raw == null || raw.isEmpty
           ? <String>{}
-          : raw.split(',').where((s) => s.isNotEmpty).toSet();
-      if (ids.add('$staffId')) {
-        await _storage.write(key: _indexKey, value: ids.join(','));
+          : raw.split('\n').where((s) => s.isNotEmpty).toSet();
+      if (keys.add(key)) {
+        await _storage.write(key: _indexKey, value: keys.join('\n'));
       }
     } catch (_) {
       // The index is a convenience, not a credential. Failing to record it only
@@ -73,17 +108,17 @@ class StaffCredentialCache {
   }
 
   static Future<void> clearStaffCredentials(int staffId) async {
-    await _storage.delete(key: '$_prefix$staffId');
+    await _storage.delete(key: await _keyFor(staffId));
   }
 
   static Future<void> clearAll() async {
     try {
       final raw = await _storage.read(key: _indexKey);
-      final ids = raw == null || raw.isEmpty
+      final keys = raw == null || raw.isEmpty
           ? const <String>[]
-          : raw.split(',').where((s) => s.isNotEmpty);
-      for (final id in ids) {
-        await _storage.delete(key: '$_prefix$id');
+          : raw.split('\n').where((s) => s.isNotEmpty);
+      for (final key in keys) {
+        await _storage.delete(key: key);
       }
       await _storage.delete(key: _indexKey);
     } catch (_) {

@@ -232,8 +232,7 @@ class _PosLineChartState extends State<PosLineChart> {
     if (points.isEmpty || width <= 0) return;
     // The readings sit on a line, not in slots: the first is at one edge and
     // the last at the other, with the step between them.
-    final double step =
-        points.length > 1 ? width / (points.length - 1) : width;
+    final double step = points.length > 1 ? width / (points.length - 1) : width;
     // Mirrored in RTL, because the painter mirrors the series: without this, a
     // tap on the right of the chart picks the reading at the OTHER end.
     final double fromStart = Directionality.of(context) == TextDirection.rtl
@@ -325,7 +324,8 @@ class _PosLineChartState extends State<PosLineChart> {
                     // The gesture layer is not a reading; the series is.
                     excludeFromSemantics: true,
                     behavior: HitTestBehavior.opaque,
-                    child: ExcludeSemantics(child: CustomPaint(painter: painter)),
+                    child:
+                        ExcludeSemantics(child: CustomPaint(painter: painter)),
                   ),
                 );
               },
@@ -747,8 +747,8 @@ class _LineChartPainter extends CustomPainter {
       // first reading; the scale's label keeps the corner and the figure's
       // starts after it.
       final double minX = valueWidth + 6;
-      final double snapped =
-          labels.snapCenter(_x(figureIndex, size.width), valueWidth, size.width);
+      final double snapped = labels.snapCenter(
+          _x(figureIndex, size.width), valueWidth, size.width);
       final double x = math
           .max(snapped, math.min(minX, size.width - valueWidth))
           .clamp(0.0, math.max(0.0, size.width - valueWidth))

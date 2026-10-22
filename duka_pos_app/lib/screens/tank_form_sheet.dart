@@ -19,6 +19,7 @@
 library;
 
 import 'package:flutter/material.dart';
+import 'package:sqflite/sqflite.dart' show Database;
 
 import '../db/database_helper.dart';
 import '../l10n/generated/app_localizations.dart';
@@ -79,6 +80,144 @@ class _TapState {
     bigMl.dispose();
     bigPrice.dispose();
   }
+}
+
+/// One tap of a tank, as the numbers the form collected.
+class TankTapValues {
+  const TankTapValues({
+    required this.name,
+    required this.loadMl,
+    required this.smallMl,
+    required this.smallPrice,
+    required this.bigMl,
+    required this.bigPrice,
+  });
+
+  /// What this tap is called.
+  final String name;
+
+  /// How much of the tank is in this tap, in millilitres.
+  final double loadMl;
+
+  /// How much is in one small cup, in millilitres.
+  final int smallMl;
+
+  /// What one small cup sells for.
+  final double smallPrice;
+
+  /// How much is in one big cup, in millilitres.
+  final int bigMl;
+
+  /// What one big cup sells for.
+  final double bigPrice;
+}
+
+/// A whole tank, as the numbers the form collected.
+class TankValues {
+  const TankValues({
+    required this.name,
+    required this.capacityMl,
+    required this.tankCount,
+    required this.cost,
+    required this.taps,
+  });
+
+  /// The beer the tank holds.
+  final String name;
+
+  /// How much the tank holds when it is full.
+  final int capacityMl;
+
+  /// How many full tanks the shop has.
+  final int tankCount;
+
+  /// What one full tank cost.
+  final double cost;
+
+  /// The taps it is tapped into.
+  final List<TankTapValues> taps;
+}
+
+/// Writes a tank: one product per tap, and two cup rows per tap.
+///
+/// ## ONE TRANSACTION, OR NOTHING
+///
+/// A tank is several rows that only mean anything together: the tap product,
+/// its small cup and its big cup. A half-written tank is a product with no
+/// cups, or a cup pointing at a product that is not there — and the shop
+/// finds out at the till, when the drink it has sold cannot be poured.
+///
+/// ## THE LOAD IS THE POINT
+///
+/// A tap holds PART of the tank. Two taps on one tank split the beer between
+/// them, and a tap that has been emptied holds none.
+///
+/// So the stock of a tap is the share of the tank that is in it: a tap with
+/// half a tank in it can pour half as many cups as a tap with a whole one,
+/// and a tap with nothing in it can pour none. The cost follows the beer for
+/// the same reason — the money is in the millilitres, so a tap holding a
+/// quarter of the tank carries a quarter of the tank's cost. It comes out
+/// the same as an even split whenever the taps are even, and it is right when
+/// they are not.
+///
+/// The stock is in TANKS, because that is what a cup sale deducts from: a
+/// 330 ml cup out of a 50-litre tank takes 330/50000 of a tank, and the
+/// ledger, the reports and the stock count all speak in tanks.
+Future<void> saveTank(
+  Database database,
+  TankValues values, {
+  required String smallCupLabel,
+  required String bigCupLabel,
+}) async {
+  await database.transaction((txn) async {
+    for (final TankTapValues tap in values.taps) {
+      final double share =
+          values.capacityMl == 0 ? 0.0 : tap.loadMl / values.capacityMl;
+      final double stockQty = values.tankCount * share;
+      final double perTapCost = values.cost * share;
+      final String productName = '${values.name} — ${tap.name}';
+
+      final int productId = await txn.insert('products', <String, Object?>{
+        'name': productName,
+        'category': 'Beer',
+        'cost_price': Money.fromMajor(perTapCost).minorUnits,
+        // A tank is never sold whole — only keg cups are sold at the small
+        // or big cup price. sell_price stays 0; profit is per cup.
+        'sell_price': 0,
+        'stock_qty': stockQty,
+        'reorder_level': 0,
+        'bottle_ml': values.capacityMl,
+        'unit': ProductUnit.millilitre.wire,
+        // 0, not false: sqflite carries no boolean, and a bool handed to it
+        // is a type error at the moment of the write.
+        'track_variants': 0,
+        'active': 1,
+        'updated_at': DateTime.now().toIso8601String(),
+      });
+
+      // Small cup.
+      await txn.insert('shot_cups', <String, Object?>{
+        'product_id': productId,
+        'product_name': productName,
+        'capacity_ml': tap.smallMl,
+        'price': Money.fromMajor(tap.smallPrice).minorUnits,
+        'label': smallCupLabel,
+        'active': 1,
+        'updated_at': DateTime.now().toIso8601String(),
+      });
+
+      // Big cup.
+      await txn.insert('shot_cups', <String, Object?>{
+        'product_id': productId,
+        'product_name': productName,
+        'capacity_ml': tap.bigMl,
+        'price': Money.fromMajor(tap.bigPrice).minorUnits,
+        'label': bigCupLabel,
+        'active': 1,
+        'updated_at': DateTime.now().toIso8601String(),
+      });
+    }
+  });
 }
 
 class _TankFormSheetState extends State<TankFormSheet> {
@@ -194,7 +333,7 @@ class _TankFormSheetState extends State<TankFormSheet> {
     }
 
     // Validate every tap before touching the database.
-    final tapLoads = <double?>[];
+    final tapLoads = <double>[];
     for (final tap in _taps) {
       final tapName = tap.name.text.trim();
       if (tapName.isEmpty) {
@@ -204,6 +343,18 @@ class _TankFormSheetState extends State<TankFormSheet> {
       final tapMl = _tapMl(tap);
       if (tapMl == null || tapMl < 0) {
         setState(() => _error = l10n.tankTapAmountInvalid);
+        return;
+      }
+      // A tap cannot hold more than the tank it is part of.
+      //
+      // It is not a strange thing to type: a tap is filled from the tank, and
+      // a person who has just written "50" for the tank and "50" for the tap
+      // has made a mistake the form can catch in a second. Without the check
+      // the tank is saved with a tap that holds more beer than the tank does,
+      // and the error only shows up later as a stock count that will not add
+      // up.
+      if (tapMl > capacityMl) {
+        setState(() => _error = l10n.tankTapOverCapacity);
         return;
       }
       tapLoads.add(tapMl);
@@ -230,6 +381,20 @@ class _TankFormSheetState extends State<TankFormSheet> {
       }
     }
 
+    // The taps together cannot hold more than the tank does.
+    //
+    // A tank of beer is tapped into taps, and the beer in them is the same
+    // beer. Two taps each holding "50" in a 50-litre tank is one full tank
+    // counted twice, and it would let the shop pour twice what it owns.
+    final double loaded = tapLoads.fold<double>(
+      0,
+      (double sum, double ml) => sum + ml,
+    );
+    if (loaded > capacityMl) {
+      setState(() => _error = l10n.tankTapsOverCapacity);
+      return;
+    }
+
     setState(() {
       _saving = true;
       _error = null;
@@ -237,61 +402,29 @@ class _TankFormSheetState extends State<TankFormSheet> {
 
     try {
       final db = DatabaseHelper.instance;
-      final perTapCost = tankCost / kTankTapCount;
-
-      // One transaction: each tap is its own product, each with two keg-cup
-      // rows pouring from one shared tank stock. Stock quantity is the number
-      // of tanks; each cup sale decrements by cup ml ÷ tank capacity ml.
       final database = await db.database;
-      await database.transaction((txn) async {
-        for (var i = 0; i < kTankTapCount; i++) {
-          final tap = _taps[i];
-          final bottleMl = capacityMl;
-          final stockQty = tankCount.toDouble();
-          final smallPrice = double.tryParse(tap.smallPrice.text.trim()) ?? 0;
-          final bigPrice = double.tryParse(tap.bigPrice.text.trim()) ?? 0;
-          final smallCupMl = int.tryParse(tap.smallMl.text.trim())!;
-          final bigCupMl = int.tryParse(tap.bigMl.text.trim())!;
-
-          final productId = await txn.insert('products', {
-            'name': '$name — ${tap.name.text.trim()}',
-            'category': 'Beer',
-            'cost_price': Money.fromMajor(perTapCost).minorUnits,
-            // A tank is never sold whole — only keg cups are sold at the small
-            // or big cup price. sell_price stays 0; profit is per cup.
-            'sell_price': 0,
-            'stock_qty': stockQty,
-            'reorder_level': 0,
-            'bottle_ml': bottleMl,
-            'unit': ProductUnit.millilitre.wire,
-            'track_variants': false,
-            'active': 1,
-            'updated_at': DateTime.now().toIso8601String(),
-          });
-
-          // Small keg cup.
-          await txn.insert('shot_cups', {
-            'product_id': productId,
-            'product_name': '$name — ${tap.name.text.trim()}',
-            'capacity_ml': smallCupMl,
-            'price': Money.fromMajor(smallPrice).minorUnits,
-            'label': l10n.tankCupSmallLabel,
-            'active': 1,
-            'updated_at': DateTime.now().toIso8601String(),
-          });
-
-          // Big keg cup.
-          await txn.insert('shot_cups', {
-            'product_id': productId,
-            'product_name': '$name — ${tap.name.text.trim()}',
-            'capacity_ml': bigCupMl,
-            'price': Money.fromMajor(bigPrice).minorUnits,
-            'label': l10n.tankCupBigLabel,
-            'active': 1,
-            'updated_at': DateTime.now().toIso8601String(),
-          });
-        }
-      });
+      await saveTank(
+        database,
+        TankValues(
+          name: name,
+          capacityMl: capacityMl,
+          tankCount: tankCount,
+          cost: tankCost,
+          taps: <TankTapValues>[
+            for (var i = 0; i < kTankTapCount; i++)
+              TankTapValues(
+                name: _taps[i].name.text.trim(),
+                loadMl: tapLoads[i],
+                smallMl: int.parse(_taps[i].smallMl.text.trim()),
+                smallPrice: double.parse(_taps[i].smallPrice.text.trim()),
+                bigMl: int.parse(_taps[i].bigMl.text.trim()),
+                bigPrice: double.parse(_taps[i].bigPrice.text.trim()),
+              ),
+          ],
+        ),
+        smallCupLabel: l10n.tankCupSmallLabel,
+        bigCupLabel: l10n.tankCupBigLabel,
+      );
 
       markCatalogueChanged();
 
@@ -400,7 +533,12 @@ class _TankFormSheetState extends State<TankFormSheet> {
       TextTheme type, int i, List<Widget> out) {
     final tap = _taps[i];
     out.add(Text(
-      '${l10n.tankTapLabel} ${i + 1}',
+      // The l10n CALL, not the key: `tankTapLabel` is "Tap {n}", a template
+      // with a hole in it. Interpolating the getter instead of calling it put
+      // the template's own machinery on the screen —
+      // "Closure: (Object) => String from Function 'tankTapLabel':. 1" — which
+      // is what the shop was looking at.
+      l10n.tankTapLabel(i + 1),
       style: type.titleMedium,
     ));
     out.add(SizedBox(height: spacing.xs));

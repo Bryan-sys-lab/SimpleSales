@@ -353,7 +353,8 @@ class _ProfileBodyState extends State<_ProfileBody> {
     if (edit == null || !mounted) return;
 
     final String email = edit.email.trim();
-    final bool emailChanged = email.toLowerCase() != owner.email.trim().toLowerCase();
+    final bool emailChanged =
+        email.toLowerCase() != owner.email.trim().toLowerCase();
 
     try {
       await DatabaseHelper.instance.updateOwnerProfile(
@@ -363,7 +364,7 @@ class _ProfileBodyState extends State<_ProfileBody> {
       );
     } on Object {
       if (!mounted) return;
-      await showOperationFailure(
+      showOperationFailure(
         context,
         title: l10n.profileEditFailedTitle,
         message: l10n.profileEditFailed,
@@ -391,7 +392,7 @@ class _ProfileBodyState extends State<_ProfileBody> {
     //
     // A profile edit is not a tap the owner makes fifty times a day, and the
     // one thing they need to know is that the till now knows their name.
-    await showOperationSuccess(
+    showOperationSuccess(
       context,
       title: l10n.profileEditSavedTitle,
       message: edit.name,
@@ -702,9 +703,9 @@ class _Initials extends StatelessWidget {
     return Text(
       initials,
       style: AppTypography.of(context).headlineMedium?.copyWith(
-        color: colors.onSurface,
-        fontWeight: FontWeight.w700,
-      ),
+            color: colors.onSurface,
+            fontWeight: FontWeight.w700,
+          ),
     );
   }
 }

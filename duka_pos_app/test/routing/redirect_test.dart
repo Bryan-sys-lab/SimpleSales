@@ -134,16 +134,12 @@ void main() {
       );
     });
 
-    test('a cashier deep-linked to analytics is sent to the dashboard', () {
+    test('a cashier may open ANALYTICS, because it is their own takings', () {
+      // The screen's figures are scoped to the rows the cashier sold, so what
+      // it shows is their own counter and not the shop's. Sending them to the
+      // dashboard answered "how am I doing?" with "you may not look".
       expect(
         guard(AppStage.ready, Routes.analytics, canManageStock: false),
-        Routes.dashboard,
-      );
-    });
-
-    test('a cashier can reach their own shift screen for reconciliation', () {
-      expect(
-        guard(AppStage.ready, Routes.shift, canManageStock: false),
         isNull,
       );
     });
@@ -152,6 +148,41 @@ void main() {
       expect(
         guard(AppStage.ready, Routes.reports, canManageStock: false),
         Routes.dashboard,
+      );
+    });
+
+    test('a cashier deep-linked to the all-shops view is sent to the dashboard',
+        () {
+      expect(
+        guard(
+          AppStage.ready,
+          Routes.portfolio,
+          canManageStock: false,
+          isAdmin: false,
+        ),
+        Routes.dashboard,
+      );
+    });
+
+    test('a manager may not open the all-shops view either', () {
+      // The all-shops view reads across every shop on the device, which is
+      // the OWNER's business. A manager is not the owner, even when they run
+      // the shop the owner is looking at.
+      expect(
+        guard(
+          AppStage.ready,
+          Routes.portfolio,
+          canManageStock: true,
+          isAdmin: false,
+        ),
+        Routes.dashboard,
+      );
+    });
+
+    test('a cashier can reach their own shift screen for reconciliation', () {
+      expect(
+        guard(AppStage.ready, Routes.shift, canManageStock: false),
+        isNull,
       );
     });
 

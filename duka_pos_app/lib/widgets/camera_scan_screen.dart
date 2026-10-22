@@ -456,9 +456,8 @@ class _CameraScanScreenState extends State<CameraScanScreen>
     return ValueListenableBuilder<CameraStatus>(
       valueListenable: _camera.status,
       builder: (BuildContext context, CameraStatus status, Widget? child) {
-        final String label = status.torchOn
-            ? l10n.scanFlashOffTooltip
-            : l10n.scanFlashOnTooltip;
+        final String label =
+            status.torchOn ? l10n.scanFlashOffTooltip : l10n.scanFlashOnTooltip;
         return _QuietIconButton(
           icon: status.torchOn ? Icons.flash_on : Icons.flash_off,
           tooltip: label,

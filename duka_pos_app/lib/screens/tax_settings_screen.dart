@@ -321,8 +321,7 @@ class _TaxSettingsScreenState extends State<TaxSettingsScreen> {
               ),
               if (error != null)
                 Text(error!,
-                    style: TextStyle(
-                        color: AppColors.of(context).danger)),
+                    style: TextStyle(color: AppColors.of(context).danger)),
             ],
           ),
           actions: [
@@ -383,8 +382,7 @@ class _TaxSettingsScreenState extends State<TaxSettingsScreen> {
                   Padding(
                     padding: const EdgeInsets.only(top: 8),
                     child: Text(error!,
-                        style: TextStyle(
-                            color: AppColors.of(context).danger)),
+                        style: TextStyle(color: AppColors.of(context).danger)),
                   ),
               ],
             ),

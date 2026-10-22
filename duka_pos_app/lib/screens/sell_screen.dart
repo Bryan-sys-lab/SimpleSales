@@ -20,9 +20,11 @@ import '../services/printer/receipt_printer.dart';
 import '../widgets/sign_out_sheet.dart';
 import '../widgets/product_tile.dart';
 import '../widgets/sell_page.dart';
+import '../widgets/serving_choice_sheet.dart';
 import '../routing/home_shell.dart';
 import '../widgets/variant_catalogue.dart';
 import '../l10n/generated/app_localizations.dart';
+import '../ui/components/controls.dart';
 import '../ui/components/success_view.dart';
 import '../theme/app_spacing.dart';
 import '../theme/typography.dart';
@@ -316,10 +318,9 @@ class _SellScreenState extends State<SellScreen>
       final decoded = jsonDecode(pending['cart_json'] as String? ?? '[]');
       if (decoded is! List) return false;
       final items = <SaleItem>[];
-      // Units per variant, so the variant's own stock moves too. The names in
-      // the snapshot are already folded, so nothing here needs the variant
-      // itself — only the count, which is what stock is.
-      final variantUnits = <int, double>{};
+      // The variant each line was sold as, so the sale's own transaction moves
+      // that variant's count. It used to be a second, later deduction — a
+      // window in which a crash sold a bottle and kept the count.
       for (final line in decoded) {
         if (line is! Map) continue;
         items.add(SaleItem(
@@ -331,12 +332,9 @@ class _SellScreenState extends State<SellScreen>
           unitCost: Money.fromMinor((line['unitCost'] as num?)?.toInt() ?? 0),
           portion: line['portion'] as String? ?? 'full',
           portionMl: (line['portionMl'] as num?)?.toInt() ?? 0,
+          variantId: (line['variantId'] as num?)?.toInt(),
+          variantName: line['variantName'] as String? ?? '',
         ));
-        final variantId = (line['variantId'] as num?)?.toInt();
-        if (variantId != null) {
-          variantUnits[variantId] = (variantUnits[variantId] ?? 0) +
-              ((line['qty'] as num?)?.toDouble() ?? 0);
-        }
       }
       if (items.isEmpty) return false;
       await DatabaseHelper.instance.recordSale(
@@ -360,14 +358,6 @@ class _SellScreenState extends State<SellScreen>
         entityId: reference,
         detail: '${items.length} line(s), M-Pesa, reconciled',
       );
-      for (final entry in variantUnits.entries) {
-        try {
-          await VariantCatalogue.deductVariantStock(entry.key, entry.value);
-        } catch (_) {
-          // The sale is booked; a variant count to correct at the next stock
-          // take is not worth failing a reconciliation over.
-        }
-      }
       await DatabaseHelper.instance.resolvePendingPayment(reference);
       _announceStatus('Reconciled payment $reference and recorded the sale.');
       if (!mounted) return true;
@@ -431,8 +421,7 @@ class _SellScreenState extends State<SellScreen>
   /// out of the variant's stock. Resolving to the product and stopping there is
   /// charging the wrong price for the wrong thing.
   Future<void> _applyScan(ScanResult scan) async {
-    final target =
-        await DatabaseHelper.instance.getScanTarget(scan.normalised);
+    final target = await DatabaseHelper.instance.getScanTarget(scan.normalised);
     if (!mounted) return;
     if (target == null) {
       final problem = Barcode.rejectionReason(scan.normalised);
@@ -453,8 +442,8 @@ class _SellScreenState extends State<SellScreen>
       // its variants. Refused out loud: adding the parent here would charge
       // the parent's price for something the owner never priced, and the
       // cashier would only find out at the stock count.
-      final message = AppLocalizations.of(context)
-          .sellScanVariantOnlyMessage(product.name);
+      final message =
+          AppLocalizations.of(context).sellScanVariantOnlyMessage(product.name);
       _announceStatus(message);
       ScaffoldMessenger.of(context)
           .showSnackBar(SnackBar(content: Text(message)));
@@ -572,97 +561,68 @@ class _SellScreenState extends State<SellScreen>
     final variants = _variants.of(product);
     final sellsAsVariants = _variants.sellsAsVariants(product);
     final shots = _shotsFor(product);
-    String? choice;
+    ServingChoice? choice;
     try {
-      choice = await showModalBottomSheet<String>(
+      choice = await showModalBottomSheet<ServingChoice>(
         context: context,
-        builder: (sheetContext) => SafeArea(
-            child: Column(mainAxisSize: MainAxisSize.min, children: [
-          Padding(
-              padding: EdgeInsets.all(AppSpacing.of(context).xl),
-              child: Text(
-                  AppLocalizations.of(context)
-                      .sellChooseServingTitle(product.name),
-                  style: Theme.of(context).textTheme.titleMedium)),
-          if (sellsAsVariants && variants.isEmpty)
-            // Said rather than silently offering full/half/quarter: on a
-            // variant product those portions are the parent's, and charging
-            // them for "Dark" is a price nobody set.
-            ListTile(
-              leading: const Icon(Icons.info_outline),
-              title: Text(AppLocalizations.of(context)
-                  .sellNoVariantsYetTitle(product.name)),
-              subtitle: Text(
-                AppLocalizations.of(context).sellNoVariantsYetHint,
-              ),
-              enabled: false,
-            )
-          else if (sellsAsVariants)
-            // The variants replace the portions rather than joining them: a
-            // half of "Dark" is not something the shop sells, and offering both
-            // would put eight rows on a phone screen.
-            for (final variant in variants)
-              _variantOption(sheetContext, variant)
-          else ...[
-            _portionOption(
-                sheetContext, product, 'full', 'Full', product.sellPrice),
-            _portionOption(sheetContext, product, 'half', 'Half',
-                product.priceFor('half')),
-            _portionOption(sheetContext, product, 'quarter', 'Quarter',
-                product.priceFor('quarter')),
-          ],
-          // Shots sit under the portions rather than replacing them: a bar sells
-          // a whole bottle *and* shots of the same spirit, and a sheet that
-          // offered one or the other would hide half the shelf.
-          if (shots.isNotEmpty) ...[
-            const Divider(height: 24),
-            Padding(
-              padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
-              child: Text(AppLocalizations.of(context).sellShotsSection,
-                  style: Theme.of(context).textTheme.labelLarge),
-            ),
-            for (final cup in shots) _shotOption(sheetContext, product, cup),
-          ],
-        ])),
+        // The sheet scrolls now. It used to be a column in a sheet limited to
+        // half the screen, and the quarter — the last portion before the
+        // shots — was the first thing to go when the sheet was too short. On a
+        // phone held sideways it always went.
+        isScrollControlled: true,
+        builder: (sheetContext) => ServingChoiceSheet(
+          product: product,
+          variants: variants,
+          sellsAsVariants: sellsAsVariants,
+          shots: shots,
+          remainingStock: product.stockQty - _cartUnitsFor(product),
+        ),
       );
     } finally {
       _portionSheetOpen = false;
     }
     if (choice == null || !mounted) return;
-    if (choice.startsWith(_shotChoicePrefix)) {
-      final cupId = int.tryParse(choice.substring(_shotChoicePrefix.length));
-      final cup = _shots.where((c) => c.id == cupId).firstOrNull;
-      if (cup == null) {
-        // The cup was removed while the sheet was open. Say so rather than
-        // falling back to the whole bottle, which would charge full price for a
-        // shot.
-        _say('That shot cup is no longer available. Try again.');
-        return;
-      }
+    // The sheet had the focus, and the focus goes back to the till — NOT to
+    // the search field, which is a text field and would open the keyboard over
+    // the catalogue with the cashier's half-typed name in it.
+    _returnFocusToTill();
+    if (choice is ServingChoiceShot) {
+      final ShotCup cup = choice.cup;
       await _addToCartDirect(product, SalePortion.measured, shotCup: cup);
       return;
     }
-    if (choice.startsWith(_variantChoicePrefix)) {
-      final variant = _variants
-          .byId(int.tryParse(choice.substring(_variantChoicePrefix.length)));
-      if (variant == null) {
-        // The variant was deleted while the sheet was open. Say so rather than
-        // falling back to the parent.
-        _say('That variant is no longer on ${product.name}. Try again.');
-        return;
-      }
+    if (choice is ServingChoiceVariant) {
+      final ProductVariant variant = choice.variant;
       await _addToCartDirect(product, 'full', variant: variant);
       return;
     }
-    await _addToCartDirect(product, choice);
+    await _addToCartDirect(
+      product,
+      switch (choice) {
+        ServingChoiceHalf() => 'half',
+        ServingChoiceQuarter() => 'quarter',
+        _ => 'full',
+      },
+    );
   }
 
-  /// Marker for a variant choice in the sheet's result.
-
-  static const String _variantChoicePrefix = 'v:';
-
-  static String _qtyLabel(double qty) =>
-      qty % 1 == 0 ? qty.toInt().toString() : '$qty';
+  /// Gives the focus back to the till's own input.
+  ///
+  /// The scanner's listener is the till's focus when nothing else is: it is
+  /// the thing that hears a barcode. A modal sheet takes the focus while it
+  /// is open, and on the way out the framework gives it to the next focusable
+  /// it can find — which is the SEARCH FIELD, because a text field wants the
+  /// keyboard and the keyboard covers the catalogue.
+  ///
+  /// So the till says where the focus goes.
+  void _returnFocusToTill() {
+    if (_searchFocus.hasFocus) {
+      _searchFocus.unfocus();
+    }
+    if (_wedgeFocus.canRequestFocus) {
+      _wedgeFocus.requestFocus();
+    }
+  }
 
   void _say(String message) {
     _announceStatus(message);
@@ -706,8 +666,11 @@ class _SellScreenState extends State<SellScreen>
       // against the parent — not against a count of its own, which it has none
       // of. The amount reserved is the poured volume as a fraction of the
       // bottle, so twenty-five shots of a 750 ml spirit are one bottle.
+      // A cup with NO size takes nothing that can be measured, so nothing is
+      // reserved against the bottle: the owner did not say how big the shot
+      // is, and the app does not guess. The shot is still sold, at its price.
       final needed = shotCup.capacityMl <= 0 || current.bottleMl <= 0
-          ? 1.0
+          ? 0.0
           : (shotCup.capacityMl / current.bottleMl).clamp(0.0, 1.0);
       final available = current.stockQty - _cartUnitsFor(current);
       if (available < needed) {
@@ -755,76 +718,6 @@ class _SellScreenState extends State<SellScreen>
     });
   }
 
-  Widget _portionOption(BuildContext context, Product product, String portion,
-      String label, Money price) {
-    final needed = product.fractionFor(portion);
-    final available = product.stockQty - _cartUnitsFor(product);
-    final canAdd = available >= needed;
-    return ListTile(
-      leading: const Icon(Icons.local_bar_outlined),
-      title: Text(
-        AppLocalizations.of(context)
-            .sellPourOptionTitle(label, '${product.mlFor(portion)}'),
-      ),
-      trailing: Text(formatMoney(price)),
-      enabled: canAdd,
-      subtitle: !canAdd
-          ? Text(available <= 0
-              ? 'All stock for this product is already in the cart'
-              : 'Only $available of a bottle left')
-          : null,
-      onTap: canAdd ? () => Navigator.pop(context, portion) : null,
-    );
-  }
-
-  Widget _shotOption(BuildContext sheetContext, Product product, ShotCup cup) {
-    final verdict = shotAvailability(product, cup, product.stockQty);
-    return ListTile(
-      leading: Icon(verdict.canPour
-          ? Icons.local_drink_outlined
-          : Icons.warning_amber_outlined),
-      title: Text(
-        AppLocalizations.of(context)
-            .sellPourOptionTitle(cup.label, '${cup.capacityMl}'),
-      ),
-      trailing: Text(formatMoney(cup.price)),
-      enabled: verdict.canPour,
-      // Each blocked reason names its own cause. "Not available" would leave a
-      // cashier guessing, and the causes need different fixes: add stock, count
-      // the drawer down, or change the cup.
-      subtitle: Text(verdict.reason),
-      onTap: verdict.canPour
-          ? () => Navigator.pop(sheetContext, '$_shotChoicePrefix${cup.id}')
-          : null,
-    );
-  }
-
-  static const String _shotChoicePrefix = 's:';
-
-  Widget _variantOption(BuildContext sheetContext, ProductVariant variant) {
-    final available = variant.stockQty - _cartUnitsForVariant(variant);
-    final canAdd = available >= 1;
-    return ListTile(
-      leading: Icon(variant.isLow
-          ? Icons.warning_amber_outlined
-          : Icons.local_bar_outlined),
-      title: Text(variant.label),
-      trailing: Text(formatMoney(variant.sellPrice)),
-      enabled: canAdd,
-      subtitle: Text(!canAdd
-          ? (available <= 0
-              ? 'All stock is already in the cart'
-              : 'No stock left')
-          : (variant.isLow
-              ? '${_qtyLabel(variant.stockQty)} in stock · low'
-              : '${_qtyLabel(variant.stockQty)} in stock')),
-      onTap: canAdd
-          ? () =>
-              Navigator.pop(sheetContext, '$_variantChoicePrefix${variant.id}')
-          : null,
-    );
-  }
-
   void _updateQty(int index, double delta) {
     setState(() {
       _cart[index].qty = (_cart[index].qty + delta).clamp(0, 999).toDouble();
@@ -849,6 +742,27 @@ class _SellScreenState extends State<SellScreen>
     'mobile_money_manual': 'Mobile money (manual)',
   };
 
+  /// The name of a payment method, in the app's own words.
+  ///
+  /// The same names the receipt prints, so the screen and the paper cannot
+  /// disagree about how a sale was paid for.
+  String _paymentLabel(String method) {
+    switch (method) {
+      case 'cash':
+        return AppLocalizations.of(context).sellCompletePaidCash;
+      case 'mpesa':
+        return AppLocalizations.of(context).sellCompletePaidMpesa;
+      case 'card':
+        return AppLocalizations.of(context).sellCompletePaidCard;
+      case 'bank_transfer':
+        return AppLocalizations.of(context).sellCompletePaidBank;
+      case 'mobile_money_manual':
+        return AppLocalizations.of(context).sellCompletePaidMobileMoney;
+      default:
+        return AppLocalizations.of(context).sellCompletePaidOtherGeneric;
+    }
+  }
+
   SaleItem _saleItemFor(CartItem line) => SaleItem(
         saleId: 0,
         productId: line.product.id!,
@@ -861,24 +775,12 @@ class _SellScreenState extends State<SellScreen>
         // "Dark 500 ml" is 500ml however big the parent bottle is. A shot's is
         // its cup's fixed capacity, which is the same idea.
         portionMl: line.portionMl,
+        // Which variant was sold, so the sale transaction can move that
+        // variant's OWN count. The deduction happens inside the sale's
+        // transaction, not after it — see [DatabaseHelper.recordSale].
+        variantId: line.variant?.id,
+        variantName: line.variant?.name ?? '',
       );
-
-  Future<void> _deductVariantStockForSale(Iterable<CartItem> lines) async {
-    final sold = <int, double>{};
-    for (final line in lines) {
-      final id = line.variant?.id;
-      if (id == null) continue;
-      sold[id] = (sold[id] ?? 0) + line.qty;
-    }
-    for (final entry in sold.entries) {
-      try {
-        await VariantCatalogue.deductVariantStock(entry.key, entry.value);
-      } catch (_) {
-        // Deliberately swallowed — see above. The next stock adjustment or
-        // reload reconciles the count.
-      }
-    }
-  }
 
   Future<void> _checkoutOffline() async {
     if (_cart.isEmpty || _processingPayment) return;
@@ -1038,9 +940,9 @@ class _SellScreenState extends State<SellScreen>
         detail: '${items.length} line(s), $paymentMethod',
       );
 
-      // Before the cart is emptied, while the lines that were sold are still
-      // readable, and only once the sale is committed.
-      await _deductVariantStockForSale(_cart);
+      // The variant counts moved with the sale itself, inside its transaction.
+      // Nothing is deducted here: a second, later deduction was the window in
+      // which a crash sold a bottle and kept the count.
 
       if (mounted) {
         _announceStatus('Sale recorded: ${formatMoney(_total)}');
@@ -1051,17 +953,33 @@ class _SellScreenState extends State<SellScreen>
         });
         _loadProducts(); // Refresh stock
         if (!mounted) return;
-        // The sale's own screen, with the amount and the change.
+        // CASH gets the full screen. Everything else gets a popup.
         //
-        // A snackbar says "done" and vanishes in four seconds, and it
-        // overlays the till: the cashier is looking at the money they owe,
-        // not at a card in the corner. The change has to be HANDED OVER, and
-        // the amount has to be READ, and both of those take longer than a
-        // snackbar lives.
-        await _showSaleComplete(
-          method: AppLocalizations.of(context).sellCompletePaidCash,
-          change: change.isNegative ? null : formatMoney(change),
-        );
+        // The reason is the CHANGE. A cash sale has change to hand over, and
+        // a person counting money out of a drawer needs the amount and the
+        // change on screen while they count. A card, a bank transfer and a
+        // manual mobile-money entry have no change — the money left in one
+        // piece — so there is nothing to hold the cashier on a screen, and
+        // a screen there is a screen between the cashier and the next
+        // customer.
+        if (paymentMethod == 'cash') {
+          await _showSaleComplete(
+            method: AppLocalizations.of(context).sellCompletePaidCash,
+            change: change.isNegative ? null : formatMoney(change),
+          );
+        } else {
+          // The method is NAMED, not assumed. This used to say "Paid in cash"
+          // for a card payment, and "Change due KSh 0.00" under it — two
+          // statements that were both false on a sale where no cash changed
+          // hands.
+          showAppSnackBar(
+            context,
+            message: AppLocalizations.of(context).sellCompletePaidOther(
+              _paymentLabel(paymentMethod),
+              formatMoney(_total),
+            ),
+          );
+        }
       }
       // The sale is committed. Everything below is best-effort and must not be
       // able to fail the checkout it is reporting on — a till that has taken the
@@ -1384,6 +1302,7 @@ class _SellScreenState extends State<SellScreen>
                 // customer was charged for.
                 'productName': c.foldedName,
                 'variantId': c.variant?.id,
+                'variantName': c.variant?.name ?? '',
                 'qty': c.qty,
                 // Minor units, not the Money object. jsonEncode throws on
                 // anything it cannot encode, so writing `c.unitPrice` here
@@ -1405,26 +1324,36 @@ class _SellScreenState extends State<SellScreen>
         staffId: state.isOwnerSession ? null : cashierProfile?.id,
       );
 
-      // Show waiting dialog
+      // Show waiting dialog.
+      //
+      // `showDialog` pushes onto the ROOT navigator, so popping it with the
+      // screen's own context closed the SELL SCREEN and left the spinner
+      // hanging over the next route. The dialog also refuses the back button,
+      // so the only way out of it is the one that pops it — which makes the
+      // root navigator's top route unambiguously this dialog.
       if (mounted) {
-        showDialog(
+        showDialog<void>(
           context: context,
           barrierDismissible: false,
-          builder: (ctx) => AlertDialog(
-            title: Text(AppLocalizations.of(context).sellProcessingMpesaTitle),
-            content: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                const CircularProgressIndicator(),
-                const SizedBox(height: 16),
-                Text(
-                  AppLocalizations.of(context)
-                      .sellCheckPhoneForStk('${result['phone']}'),
-                ),
-                const SizedBox(height: 8),
-                Text(
-                    AppLocalizations.of(context).sellReferenceValue(reference)),
-              ],
+          builder: (BuildContext dialogContext) => PopScope(
+            canPop: false,
+            child: AlertDialog(
+              title:
+                  Text(AppLocalizations.of(context).sellProcessingMpesaTitle),
+              content: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  const CircularProgressIndicator(),
+                  const SizedBox(height: 16),
+                  Text(
+                    AppLocalizations.of(context)
+                        .sellCheckPhoneForStk('${result['phone']}'),
+                  ),
+                  const SizedBox(height: 8),
+                  Text(AppLocalizations.of(context)
+                      .sellReferenceValue(reference)),
+                ],
+              ),
             ),
           ),
         );
@@ -1434,7 +1363,8 @@ class _SellScreenState extends State<SellScreen>
       final outcome = await BackendService.pollPaymentStatus(reference);
 
       if (mounted) {
-        Navigator.pop(context); // Close waiting dialog
+        Navigator.of(context, rootNavigator: true)
+            .pop(); // Close waiting dialog
 
         if (outcome == PaymentOutcome.success) {
           final state = context.read<AppState>();
@@ -1462,7 +1392,6 @@ class _SellScreenState extends State<SellScreen>
               entityId: 'id-$saleId',
               detail: '${localItems.length} line(s), M-Pesa, confirmed',
             );
-            await _deductVariantStockForSale(_cart);
             await DatabaseHelper.instance.resolvePendingPayment(reference);
             // Same post-sale path as the cash route. Forgetting it here is the
             // easiest mistake in this file to make: the M-Pesa branch has its
@@ -1496,15 +1425,18 @@ class _SellScreenState extends State<SellScreen>
           });
           _loadProducts();
           if (!mounted) return;
-          // The same success screen the cash route shows.
+          // A POPUP, not the sale-complete screen.
           //
-          // The M-Pesa branch had its own confirmation, which is how two
-          // checkout routes end up looking like two different apps. There is
-          // one moment at the end of a sale, and it looks the same whichever
-          // way the money moved.
-          await _showSaleComplete(
-            method: AppLocalizations.of(context).sellCompletePaidMpesa,
-            change: null,
+          // The screen is for a cash sale, where there is change to count
+          // out. An M-Pesa payment has no change and no cash to hand over —
+          // the customer has already paid — so there is nothing to hold the
+          // cashier on a screen while the next customer waits.
+          showAppSnackBar(
+            context,
+            message: AppLocalizations.of(context).sellCompletePaidOther(
+              AppLocalizations.of(context).sellCompletePaidMpesa,
+              formatMoney(_total),
+            ),
           );
         } else {
           // Only a definitive decline means the push can safely be retried, so
@@ -1699,33 +1631,6 @@ class _SellScreenState extends State<SellScreen>
 /// removing a line, reordering, or reading a line after a rebuild would silently
 /// attach the wrong variant's price to the wrong bottle. Holding it on the line
 
-({bool canPour, String reason}) shotAvailability(
-  Product product,
-  ShotCup cup,
-  double available,
-) {
-  final containerMl = product.bottleMl;
-  if (containerMl <= 0) {
-    return (
-      canPour: false,
-      reason: '${product.name} has no volume set, so it cannot be poured'
-    );
-  }
-  final perBottle =
-      cup.capacityMl > 0 ? (containerMl / cup.capacityMl).floor() : 0;
-  if (perBottle <= 0) {
-    return (
-      canPour: false,
-      reason: 'The cup is bigger than the $containerMl ml bottle'
-    );
-  }
-  final needed = cup.capacityMl / containerMl;
-  if (available < needed) {
-    return (canPour: false, reason: 'No ${product.name} left to pour');
-  }
-  return (canPour: true, reason: '$perBottle shots in the bottle');
-}
-
 class CartItem {
   final Product product;
   final String portion;
@@ -1754,7 +1659,10 @@ class CartItem {
       // Capped at one container for the same reason `recordSale` caps it: a
       // capacity larger than the bottle is a configuration mistake, and
       // emptying that bottle is the least wrong reading of it.
-      if (shot.capacityMl <= 0 || product.bottleMl <= 0) return 1;
+      // A shot with no size takes nothing that can be measured, so it costs
+      // the drink nothing and reserves nothing: the whole price is the
+      // profit, because the drink that went into it is not being counted.
+      if (shot.capacityMl <= 0 || product.bottleMl <= 0) return 0;
       final f = shot.capacityMl / product.bottleMl;
       return f > 1 ? 1 : f;
     }

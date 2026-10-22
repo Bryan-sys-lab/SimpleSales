@@ -90,21 +90,28 @@ void main() {
         final String full = destination.label(l10n);
         final String short = destination.shortLabel(l10n);
         expect(
-          find.descendant(
-            of: find.byType(ShellNavBar),
-            matching: find.text(full),
-          ).evaluate().isNotEmpty ||
-              find.descendant(
-                of: find.byType(ShellNavBar),
-                matching: find.text(short),
-              ).evaluate().isNotEmpty,
+          find
+                  .descendant(
+                    of: find.byType(ShellNavBar),
+                    matching: find.text(full),
+                  )
+                  .evaluate()
+                  .isNotEmpty ||
+              find
+                  .descendant(
+                    of: find.byType(ShellNavBar),
+                    matching: find.text(short),
+                  )
+                  .evaluate()
+                  .isNotEmpty,
           isTrue,
           reason: '${destination.name} is on the bar, whole',
         );
       }
     });
 
-    testWidgets('the labels are never cut in half', (WidgetTester tester) async {
+    testWidgets('the labels are never cut in half',
+        (WidgetTester tester) async {
       tester.useDevice(Device.compact);
 
       await tester.pumpApp(
@@ -181,16 +188,16 @@ void main() {
       // square in the middle of it.
       final Iterable<Container> circles = tester
           .widgetList<Container>(
-            find.descendant(
-              of: find.byType(ShellNavBar),
-              matching: find.byType(Container),
-            ),
-          )
+        find.descendant(
+          of: find.byType(ShellNavBar),
+          matching: find.byType(Container),
+        ),
+      )
           .where((Container container) {
-            final Decoration? decoration = container.decoration;
-            return decoration is BoxDecoration &&
-                decoration.shape == BoxShape.circle;
-          });
+        final Decoration? decoration = container.decoration;
+        return decoration is BoxDecoration &&
+            decoration.shape == BoxShape.circle;
+      });
 
       expect(circles, isNotEmpty);
     });

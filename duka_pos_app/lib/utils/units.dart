@@ -276,3 +276,13 @@ class Volume {
   @override
   String toString() => isValid ? '${millilitres.round()} ml' : 'invalid';
 }
+
+/// A stock count, said the way a shop says it.
+///
+/// "20" and "0.5", never "20.0". A count with a pointless decimal reads as a
+/// different number from the one the owner is looking at, and a diagnostic
+/// that says "20.0 against 24.0" makes the owner check the arithmetic instead
+/// of reading the difference.
+String stockCountLabel(double value) => value == value.roundToDouble()
+    ? value.toStringAsFixed(0)
+    : value.toStringAsFixed(1);

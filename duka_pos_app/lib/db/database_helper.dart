@@ -7,6 +7,8 @@ import 'package:sqflite/sqflite.dart';
 import '../models/audit_log.dart';
 import '../models/crash_log.dart';
 import '../models/models.dart';
+import '../models/stock_movement.dart';
+import '../utils/crypto_utils.dart';
 import '../utils/money.dart';
 import '../utils/units.dart';
 // The aggregate result types (DailyTotals, ProductSalesRow, TimeBucket,
@@ -108,7 +110,7 @@ class DatabaseHelper {
   /// shipped — always add a new one, even for a one-line fix — because a
   /// shop's phone may be several versions behind and needs every step run
   /// in order to land on the current schema without data loss.
-  static const _schemaVersion = 24;
+  static const _schemaVersion = 29;
 
   /// Slack allowed when deciding whether a container has enough left for a sale.
   ///
@@ -522,6 +524,723 @@ SELECT name FROM staff GROUP BY name HAVING COUNT(*) = 1
       }
     }
     if (oldVersion < 24) await _migrateEtimsQrPayload(db);
+    if (oldVersion < 25) await _repairEtimsQrPayloadColumn(db);
+    if (oldVersion < 26) await _migrateFoundation(db);
+    if (oldVersion < 27) await _migrateTillSyncFlags(db);
+    if (oldVersion < 28) await _migrateReturns(db);
+    if (oldVersion < 29) await _migrateReceipts(db);
+  }
+
+  // ---------------- Receiving stock, and what it cost (v29) ----------------
+
+  /// The tables a delivery is written to.
+  ///
+  /// Additive only. A till that upgrades has stock on it that was bought at
+  /// a price, and none of this touches it: the cost history starts with the
+  /// delivery that comes next, and the products keep the cost they had.
+  Future<void> _migrateReceipts(Database db) async {
+    await _createReceiptTables(db);
+  }
+
+  /// The tables a delivery is written to — ONE definition, used by the
+  /// migration and by a fresh install.
+  ///
+  /// ## WHY THERE IS A SUPPLIER TABLE
+  ///
+  /// A shop buys from a handful of people, and the purchase history is worth
+  /// much more when it says WHO. A supplier is soft-deleted rather than
+  /// removed, because a receipt from a supplier who has gone is still a fact
+  /// about the stock.
+  ///
+  /// ## WHY THERE IS A COST HISTORY
+  ///
+  /// "Today cost is a static field, so profit drifts from reality." The cost
+  /// on the product is the cost as it stands; the history is how it got there.
+  /// Without it, a price that moved in March cannot be told from one that
+  /// moved last Tuesday, and the profit on the stock bought in between is a
+  /// guess.
+  Future<void> _createReceiptTables(Database db) async {
+    await db.execute('''
+      CREATE TABLE IF NOT EXISTS suppliers (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        name TEXT NOT NULL,
+        phone TEXT,
+        contact_person TEXT,
+        notes TEXT,
+        active INTEGER NOT NULL DEFAULT 1,
+        created_at TEXT NOT NULL
+      )
+    ''');
+    await db.execute(
+        'CREATE INDEX IF NOT EXISTS idx_suppliers_name ON suppliers (name)');
+
+    await db.execute('''
+      CREATE TABLE IF NOT EXISTS stock_receipts (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        supplier_id INTEGER,
+        supplier_ref TEXT,
+        received_at TEXT NOT NULL,
+        staff_id INTEGER,
+        staff_name TEXT NOT NULL,
+        total_cost_minor INTEGER NOT NULL DEFAULT 0,
+        status TEXT NOT NULL DEFAULT 'posted',
+        note TEXT,
+        synced_to_backend INTEGER NOT NULL DEFAULT 0
+      )
+    ''');
+
+    await db.execute('''
+      CREATE TABLE IF NOT EXISTS stock_receipt_items (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        receipt_id INTEGER NOT NULL,
+        product_id INTEGER NOT NULL,
+        variant_id INTEGER,
+        product_name TEXT NOT NULL,
+        qty REAL NOT NULL,
+        unit_cost_minor INTEGER NOT NULL DEFAULT 0,
+        line_cost_minor INTEGER NOT NULL DEFAULT 0,
+        old_cost_minor INTEGER,
+        new_cost_minor INTEGER,
+        FOREIGN KEY (receipt_id) REFERENCES stock_receipts (id) ON DELETE CASCADE
+      )
+    ''');
+    await db
+        .execute('CREATE INDEX IF NOT EXISTS idx_stock_receipt_items_receipt '
+            'ON stock_receipt_items (receipt_id)');
+
+    await db.execute('''
+      CREATE TABLE IF NOT EXISTS product_cost_history (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        product_id INTEGER NOT NULL,
+        variant_id INTEGER,
+        effective_at TEXT NOT NULL,
+        old_cost_minor INTEGER NOT NULL DEFAULT 0,
+        new_cost_minor INTEGER NOT NULL DEFAULT 0,
+        reason TEXT NOT NULL DEFAULT 'receipt',
+        receipt_id INTEGER
+      )
+    ''');
+    await db
+        .execute('CREATE INDEX IF NOT EXISTS idx_product_cost_history_product '
+            'ON product_cost_history (product_id, effective_at)');
+  }
+
+  // ---------------- Returns and credit notes (v28) ----------------
+
+  /// The tables a return is written to.
+  ///
+  /// Additive only, and additive for a reason: a till that upgrades has sales
+  /// on it that have already been returned against by hand, and nothing here
+  /// touches those.
+  ///
+  /// The LINES carry a copy of the sale line's name, price and tax rate, and
+  /// the refund figure itself. A return is a historical document: it says what
+  /// the goods were worth ON THE DAY THEY WERE SOLD, because the price on the
+  /// shelf today is not the money that went back.
+  Future<void> _migrateReturns(Database db) async {
+    await _createReturnTables(db);
+  }
+
+  /// The tables a return is written to.
+  ///
+  /// ONE definition, used by both paths: the migration for a till that
+  /// upgrades, and the fresh install for a till that does not. Two copies of
+  /// a CREATE TABLE is two places for them to disagree.
+  Future<void> _createReturnTables(Database db) async {
+    await db.execute('''
+      CREATE TABLE IF NOT EXISTS sale_returns (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        sale_id INTEGER NOT NULL,
+        kind TEXT NOT NULL DEFAULT 'refund',
+        reason TEXT NOT NULL,
+        total INTEGER NOT NULL DEFAULT 0,
+        vat_total INTEGER NOT NULL DEFAULT 0,
+        profit INTEGER NOT NULL DEFAULT 0,
+        refund_method TEXT NOT NULL DEFAULT 'cash',
+        payment_reference TEXT,
+        -- The drawer the money left, for a cash refund. The shift that was
+        -- OPEN at the time of the return, not the one the sale was rung in.
+        shift_id INTEGER,
+        staff_id INTEGER,
+        staff_name TEXT NOT NULL,
+        created_at TEXT NOT NULL,
+        synced_to_backend INTEGER NOT NULL DEFAULT 0
+      )
+    ''');
+    await db.execute(
+        'CREATE INDEX IF NOT EXISTS idx_sale_returns_sale ON sale_returns (sale_id)');
+    await db.execute('''
+      CREATE TABLE IF NOT EXISTS sale_return_items (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        return_id INTEGER NOT NULL,
+        sale_item_id INTEGER NOT NULL,
+        product_id INTEGER NOT NULL,
+        product_name TEXT NOT NULL,
+        qty REAL NOT NULL,
+        unit_price INTEGER NOT NULL,
+        unit_cost INTEGER NOT NULL,
+        refund_minor INTEGER NOT NULL DEFAULT 0,
+        vat_minor INTEGER NOT NULL DEFAULT 0,
+        portion TEXT NOT NULL DEFAULT 'full',
+        portion_ml INTEGER NOT NULL DEFAULT 0,
+        restock INTEGER NOT NULL DEFAULT 1,
+        restock_reason TEXT,
+        FOREIGN KEY (return_id) REFERENCES sale_returns (id) ON DELETE CASCADE
+      )
+    ''');
+    await db.execute(
+        'CREATE INDEX IF NOT EXISTS idx_sale_return_items_return ON sale_return_items (return_id)');
+  }
+
+  // ---------------- The till's records, and their push (v27) ----------------
+
+  /// Marks the records that have reached the server.
+  ///
+  /// The till writes its ledger, its drawers and its shot cups OFFLINE, and
+  /// pushes them when the phone can reach the server. A phone that was
+  /// offline pushes the same records again — that is the whole mechanism — so
+  /// the app has to know which ones the server already has, or a week's
+  /// takings become two weeks of takings the moment the signal comes back.
+  ///
+  /// A FLAG, not a deletion: the record is the shop's own history and it stays
+  /// on the phone whether the server has seen it or not. What the flag says is
+  /// "the server has this one", and only the push reads it.
+  Future<void> _migrateTillSyncFlags(Database db) async {
+    for (final String table in <String>['sales', 'shifts', 'shot_cups']) {
+      // Only a table that IS THERE.
+      //
+      // A migration runs against whatever the phone has, and a phone whose
+      // database predates the shifts table — or a hand-made copy of one — must
+      // not be brought to its knees by an ALTER against a table that was never
+      // created. A table that does not exist yet is created by the migration
+      // that owns it, and that one has the column in its CREATE.
+      final List<Map<String, Object?>> tables = await db.rawQuery(
+        "SELECT name FROM sqlite_master WHERE type = 'table' AND name = ?",
+        <Object?>[table],
+      );
+      if (tables.isEmpty) continue;
+      final List<Map<String, Object?>> columns =
+          await db.rawQuery('PRAGMA table_info($table)');
+      final bool alreadyThere = columns.any(
+        (Map<String, Object?> column) => column['name'] == 'synced_to_backend',
+      );
+      if (!alreadyThere) {
+        await db.execute(
+          'ALTER TABLE $table ADD COLUMN synced_to_backend INTEGER NOT NULL DEFAULT 0',
+        );
+      }
+    }
+  }
+
+  // ---------------- Foundation: ledger, payments, tax (v26) ----------------
+
+  /// The three foundations, as one migration.
+  ///
+  /// They ship together because they are one idea seen from three sides: a
+  /// sale is a document with lines, a payment and a tax figure, and every
+  /// change to stock is a row that says who moved it and why. Splitting them
+  /// would mean touching the same tables three times and migrating the same
+  /// shop's data three times.
+  ///
+  /// The DDL lives in [_createFoundationTables] so a fresh install and an
+  /// upgraded one cannot diverge — the exact defect the v24 step introduced
+  /// and the v25 step had to repair.
+  Future<void> _migrateFoundation(Database db) async {
+    await _createFoundationTables(db);
+    await _backfillOpeningStockMovements(db);
+    await _backfillHistoricAdjustments(db);
+    await _backfillSalePayments(db);
+    await _backfillTaxSnapshots(db);
+  }
+
+  /// The ledger, the payment table and the tax columns.
+  ///
+  /// Additive only. Nothing is dropped or rewritten, so the columns the old
+  /// code writes are still there for the two releases the spec allows, and a
+  /// downgrade still opens the database.
+  Future<void> _createFoundationTables(Database db) async {
+    // Every stock change becomes an immutable, attributable row.
+    //
+    // The product's own `stock_qty` stays as a cached balance, updated in the
+    // same transaction as the movement that caused it. Two copies of the
+    // truth, one of them derived — which is why there is a check that says
+    // when they disagree.
+    //
+    // `uuid` is there from day one, not added when multi-device sync arrives:
+    // a stable identity cannot be backfilled onto a table that already has
+    // rows, because two of them would have to be given the same value.
+    await db.execute('''
+      CREATE TABLE IF NOT EXISTS stock_movements (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        uuid TEXT NOT NULL UNIQUE,
+        created_at TEXT NOT NULL,
+        product_id INTEGER NOT NULL,
+        variant_id INTEGER,
+        movement_type TEXT NOT NULL,
+        qty_delta REAL NOT NULL,
+        unit_cost_minor INTEGER,
+        reference_type TEXT,
+        reference_id INTEGER,
+        batch_id INTEGER,
+        staff_id INTEGER,
+        staff_name TEXT,
+        note TEXT,
+        balance_after REAL NOT NULL
+      )
+    ''');
+    await db.execute(
+        'CREATE INDEX IF NOT EXISTS idx_stock_movements_product ON stock_movements (product_id, created_at)');
+    await db.execute(
+        'CREATE INDEX IF NOT EXISTS idx_stock_movements_variant ON stock_movements (variant_id, created_at)');
+    await db.execute(
+        'CREATE INDEX IF NOT EXISTS idx_stock_movements_reference ON stock_movements (reference_type, reference_id)');
+
+    // One sale can be paid in several parts. The sale's own `payment_method`
+    // stays as a summary for the code that reads it today.
+    await db.execute('''
+      CREATE TABLE IF NOT EXISTS sale_payments (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        uuid TEXT NOT NULL UNIQUE,
+        sale_id INTEGER NOT NULL,
+        method TEXT NOT NULL,
+        amount_minor INTEGER NOT NULL,
+        tendered_minor INTEGER,
+        change_minor INTEGER,
+        reference TEXT,
+        status TEXT NOT NULL DEFAULT 'confirmed',
+        pending_payment_id INTEGER,
+        created_at TEXT NOT NULL,
+        FOREIGN KEY (sale_id) REFERENCES sales (id) ON DELETE CASCADE
+      )
+    ''');
+    await db.execute(
+        'CREATE INDEX IF NOT EXISTS idx_sale_payments_sale ON sale_payments (sale_id)');
+
+    await _addColumnIfMissing(
+        db, 'products', 'tax_class', "TEXT NOT NULL DEFAULT 'standard'");
+    await _addColumnIfMissing(db, 'sale_items', 'tax_class', 'TEXT');
+    await _addColumnIfMissing(db, 'sale_items', 'vat_rate_bps', 'INTEGER');
+    await _addColumnIfMissing(db, 'sale_items', 'vat_minor', 'INTEGER');
+    await _addColumnIfMissing(db, 'sale_items', 'taxable_minor', 'INTEGER');
+    await _addColumnIfMissing(db, 'sales', 'vat_minor', 'INTEGER');
+    await _addColumnIfMissing(db, 'sales', 'taxable_minor', 'INTEGER');
+    await _addColumnIfMissing(
+        db, 'sales', 'document_type', "TEXT NOT NULL DEFAULT 'sale'");
+    // A legacy sale's VAT was backfilled, not computed from what was on the
+    // invoice. The flag says so, so a report can note it rather than present
+    // a guess as a measurement.
+    await _addColumnIfMissing(
+        db, 'sales', 'vat_estimated', 'INTEGER NOT NULL DEFAULT 0');
+    await _addColumnIfMissing(
+        db, 'pending_etims', 'document_type', "TEXT NOT NULL DEFAULT 'sale'");
+    await _addColumnIfMissing(db, 'pending_etims', 'return_id', 'INTEGER');
+  }
+
+  /// Adds a column when the table is there and the column is not.
+  ///
+  /// Guarded, so the same helper serves a fresh install, an upgrade from any
+  /// older schema, and a schema that has already diverged — which is the only
+  /// way one DDL definition can be applied twice without a "duplicate column
+  /// name" on every fresh install.
+  Future<void> _addColumnIfMissing(
+    Database db,
+    String table,
+    String column,
+    String definition,
+  ) async {
+    final exists = await db.rawQuery(
+        "SELECT name FROM sqlite_master WHERE type='table' AND name = ?",
+        [table]);
+    if (exists.isEmpty) return;
+    final columns = await db.rawQuery('PRAGMA table_info($table)');
+    final names = columns.map((r) => r['name'] as String?).toSet();
+    if (names.contains(column)) return;
+    await db.execute('ALTER TABLE $table ADD COLUMN $column $definition');
+  }
+
+  /// The columns a table actually has.
+  ///
+  /// A migration reads tables that older code built, and older code built
+  /// some of them differently — a `stock_adjustments` without an `id`, a
+  /// `products` without `track_variants`. The backfills read what is there
+  /// rather than what they expect, because a migration that fails halfway
+  /// leaves a shop that cannot open its till.
+  Future<Set<String>> _columnsOf(Database db, String table) async {
+    final exists = await db.rawQuery(
+        "SELECT name FROM sqlite_master WHERE type='table' AND name = ?",
+        [table]);
+    if (exists.isEmpty) return const <String>{};
+    final columns = await db.rawQuery('PRAGMA table_info($table)');
+    return columns.map((r) => r['name'] as String?).whereType<String>().toSet();
+  }
+
+  /// The opening balance of every product and every variant.
+  ///
+  /// A ledger that starts from nothing cannot be checked: every product's
+  /// balance would read as "wrong" because the history that made it is not
+  /// there. So the migration writes one opening movement per product and per
+  /// variant, equal to the count the shop has today, dated now.
+  ///
+  /// Written in batches so a shop with ten thousand products does not build
+  /// ten thousand rows in memory at once.
+  Future<void> _backfillOpeningStockMovements(Database db) async {
+    const int batchSize = 1000;
+    final now = DateTime.now().toIso8601String();
+    final productColumns = await _columnsOf(db, 'products');
+    if (productColumns.isEmpty) return;
+    final variantColumns = await _columnsOf(db, 'product_variants');
+    // A database old enough not to track variants has no variants, and one
+    // old enough to have them without the flag treats every product as
+    // untracked.
+    final bool tracksVariants = productColumns.contains('track_variants');
+    final bool variantsHaveActive = variantColumns.contains('active');
+
+    // A product that is sold as variants holds an AGGREGATE, so its own count
+    // is the sum of its variants' counts and must not be opened a second time.
+    // The variant movements are the real ones; the parent's opening row is
+    // what makes the parent's count traceable to the ledger as well.
+    final products = await db.rawQuery('''
+      SELECT id, stock_qty, name FROM products
+      WHERE ${tracksVariants ? 'COALESCE(track_variants, 0) = 0' : '1 = 1'}
+      ORDER BY id
+    ''');
+    for (var offset = 0; offset < products.length; offset += batchSize) {
+      final end = (offset + batchSize > products.length)
+          ? products.length
+          : offset + batchSize;
+      for (final row in products.sublist(offset, end)) {
+        final double balance = (row['stock_qty'] as num?)?.toDouble() ?? 0;
+        await db.insert('stock_movements', {
+          'uuid': _newUuid(),
+          'created_at': now,
+          'product_id': row['id'],
+          'variant_id': null,
+          'movement_type': StockMovementType.opening.wire,
+          'qty_delta': balance,
+          'unit_cost_minor': null,
+          'reference_type': null,
+          'reference_id': null,
+          'batch_id': null,
+          'staff_id': null,
+          'staff_name': null,
+          'note': 'Opening balance',
+          'balance_after': balance,
+        });
+      }
+    }
+
+    if (variantColumns.isEmpty) return;
+
+    final variants = await db.rawQuery('''
+      SELECT v.id, v.product_id, v.stock_qty FROM product_variants v
+      JOIN products p ON p.id = v.product_id
+      WHERE ${tracksVariants ? 'COALESCE(p.track_variants, 0) = 1' : '1 = 1'}
+      ORDER BY v.id
+    ''');
+    for (var offset = 0; offset < variants.length; offset += batchSize) {
+      final end = (offset + batchSize > variants.length)
+          ? variants.length
+          : offset + batchSize;
+      for (final row in variants.sublist(offset, end)) {
+        final double balance = (row['stock_qty'] as num?)?.toDouble() ?? 0;
+        await db.insert('stock_movements', {
+          'uuid': _newUuid(),
+          'created_at': now,
+          'product_id': row['product_id'],
+          'variant_id': row['id'],
+          'movement_type': StockMovementType.opening.wire,
+          'qty_delta': balance,
+          'unit_cost_minor': null,
+          'reference_type': null,
+          'reference_id': null,
+          'batch_id': null,
+          'staff_id': null,
+          'staff_name': null,
+          'note': 'Opening balance',
+          'balance_after': balance,
+        });
+      }
+    }
+
+    // A product sold as variants still needs a parent row, because the
+    // parent's count is the aggregate and the ledger has to be able to check
+    // it. Its opening movement is the aggregate at the moment of the
+    // migration.
+    if (!tracksVariants) return;
+    final tracked = await db.rawQuery('''
+      SELECT p.id,
+             (SELECT COALESCE(SUM(v.stock_qty), 0) FROM product_variants v
+              WHERE v.product_id = p.id ${variantsHaveActive ? 'AND v.active = 1' : ''}) AS aggregate
+        FROM products p
+       WHERE COALESCE(p.track_variants, 0) = 1
+       ORDER BY p.id
+    ''');
+    for (var offset = 0; offset < tracked.length; offset += batchSize) {
+      final end = (offset + batchSize > tracked.length)
+          ? tracked.length
+          : offset + batchSize;
+      for (final row in tracked.sublist(offset, end)) {
+        final double balance = (row['aggregate'] as num?)?.toDouble() ?? 0;
+        await db.insert('stock_movements', {
+          'uuid': _newUuid(),
+          'created_at': now,
+          'product_id': row['id'],
+          'variant_id': null,
+          'movement_type': StockMovementType.opening.wire,
+          'qty_delta': balance,
+          'unit_cost_minor': null,
+          'reference_type': null,
+          'reference_id': null,
+          'batch_id': null,
+          'staff_id': null,
+          'staff_name': null,
+          'note': 'Opening balance',
+          'balance_after': balance,
+        });
+      }
+    }
+  }
+
+  /// The stock adjustments the shop already made, as ledger rows.
+  ///
+  /// The old table stays for two releases — the app still writes it — but the
+  /// ledger needs the history, and the history is here. Only the adjustments
+  /// whose date and amount are known are copied: an adjustment with no date
+  /// cannot be placed in a ledger that is ordered by time.
+  Future<void> _backfillHistoricAdjustments(Database db) async {
+    final columns = await _columnsOf(db, 'stock_adjustments');
+    if (columns.isEmpty) return;
+    if (!columns.contains('delta') ||
+        !columns.contains('created_at') ||
+        !columns.contains('product_id')) {
+      return;
+    }
+    // `rowid` stands in for a missing `id`: every SQLite table has one, and
+    // the order it gives is the order the rows were written in.
+    final String orderColumn = columns.contains('id') ? 'id' : 'rowid';
+    final rows = await db.rawQuery('''
+      SELECT product_id, delta, created_at,
+             ${columns.contains('staff_id') ? 'staff_id' : 'NULL AS staff_id'},
+             ${columns.contains('staff_name') ? 'staff_name' : 'NULL AS staff_name'},
+             ${columns.contains('reason') ? 'reason' : 'NULL AS reason'}
+        FROM stock_adjustments
+       WHERE created_at IS NOT NULL AND delta IS NOT NULL
+       ORDER BY $orderColumn
+    ''');
+    for (final row in rows) {
+      final int productId = row['product_id'] as int;
+      final double delta = (row['delta'] as num).toDouble();
+      final double balance = await _stockBalanceAfter(db, productId, delta);
+      await db.insert('stock_movements', {
+        'uuid': _newUuid(),
+        'created_at': row['created_at'] as String,
+        'product_id': productId,
+        'variant_id': null,
+        'movement_type': StockMovementType.adjustment.wire,
+        'qty_delta': delta,
+        'unit_cost_minor': null,
+        'reference_type': 'adjustment',
+        'reference_id': null,
+        'staff_id': row['staff_id'] as int?,
+        'staff_name': row['staff_name'] as String?,
+        'note': row['reason'] as String?,
+        'balance_after': balance,
+      });
+    }
+  }
+
+  /// The balance a product would have after [delta], read from the ledger.
+  ///
+  /// Used while backfilling history, where the rows are written in the order
+  /// they happened and each one carries the balance at that moment — the
+  /// `balance_after` column is what makes a ledger readable without summing
+  /// it.
+  Future<double> _stockBalanceAfter(
+    Database db,
+    int productId,
+    double delta,
+  ) async {
+    final rows = await db.rawQuery(
+      'SELECT COALESCE(SUM(qty_delta), 0) AS total FROM stock_movements '
+      'WHERE product_id = ? AND variant_id IS NULL',
+      [productId],
+    );
+    final double current = (rows.first['total'] as num?)?.toDouble() ?? 0;
+    return current + delta;
+  }
+
+  /// One payment row per sale that already exists.
+  ///
+  /// The sale's own summary method becomes a single confirmed payment, with
+  /// the tendered amount and the change it produced. A sale paid by M-Pesa
+  /// that was never confirmed keeps that fact: the payment is `unverified`, so
+  /// the reconciliation queue can still find it.
+  Future<void> _backfillSalePayments(Database db) async {
+    const int batchSize = 1000;
+    final columns = await _columnsOf(db, 'sales');
+    if (columns.isEmpty) return;
+    // A sales table old enough not to have the tendered amount or the
+    // verification flag still has a payment, and it is the method and the
+    // total that say what it was.
+    String column(String name, String fallback) =>
+        columns.contains(name) ? name : fallback;
+    final rows = await db.rawQuery('''
+      SELECT id,
+             ${column('payment_method', "'cash' AS payment_method")},
+             ${column('payment_reference', 'NULL AS payment_reference')},
+             ${column('amount_tendered', '0 AS amount_tendered')},
+             ${column('change_given', '0 AS change_given')},
+             ${column('payment_verified', '1 AS payment_verified')},
+             created_at
+        FROM sales
+       ORDER BY id
+    ''');
+    for (var offset = 0; offset < rows.length; offset += batchSize) {
+      final end =
+          (offset + batchSize > rows.length) ? rows.length : offset + batchSize;
+      for (final row in rows.sublist(offset, end)) {
+        final int saleId = row['id'] as int;
+        final bool exists = await _hasPaymentFor(db, saleId);
+        if (exists) continue;
+        // The amounts are numbers, not necessarily integers: a database older
+        // than the money migration stored them as REAL. The payment table
+        // holds minor units, so they are read as numbers and rounded once,
+        // here.
+        final int tendered = (row['amount_tendered'] as num?)?.toInt() ?? 0;
+        final int change = (row['change_given'] as num?)?.toInt() ?? 0;
+        final bool verified =
+            ((row['payment_verified'] as num?)?.toInt() ?? 1) == 1;
+        await db.insert('sale_payments', {
+          'uuid': _newUuid(),
+          'sale_id': saleId,
+          'method': row['payment_method'] as String? ?? 'cash',
+          'amount_minor': tendered - change,
+          'tendered_minor': tendered,
+          'change_minor': change,
+          'reference': row['payment_reference'] as String?,
+          'status': verified ? 'confirmed' : 'unverified',
+          'pending_payment_id': null,
+          'created_at': row['created_at'] as String,
+        });
+      }
+    }
+  }
+
+  Future<bool> _hasPaymentFor(Database db, int saleId) async {
+    final rows = await db.rawQuery(
+        'SELECT COUNT(*) AS c FROM sale_payments WHERE sale_id = ?', [saleId]);
+    return ((rows.first['c'] as int?) ?? 0) > 0;
+  }
+
+  /// The VAT on the sales that predate the tax columns.
+  ///
+  /// Backfilled with the shop's VAT rate at the time of the migration, and
+  /// marked as estimated: the figure was never on the receipt, so a report
+  /// that shows it must say where it came from. A sale's own stored rate is
+  /// used when it has one, because a shop that changed its rate changed it for
+  /// a reason.
+  Future<void> _backfillTaxSnapshots(Database db) async {
+    const int batchSize = 1000;
+    final rate = await _shopVatRatePercent(db);
+    final columns = await _columnsOf(db, 'sales');
+    if (columns.isEmpty) return;
+    final rows = await db.rawQuery('''
+      SELECT id, total,
+             ${columns.contains('vat_rate_percent') ? 'vat_rate_percent' : 'NULL AS vat_rate_percent'}
+        FROM sales
+       WHERE vat_minor IS NULL
+       ORDER BY id
+    ''');
+    for (var offset = 0; offset < rows.length; offset += batchSize) {
+      final end =
+          (offset + batchSize > rows.length) ? rows.length : offset + batchSize;
+      for (final row in rows.sublist(offset, end)) {
+        final int saleId = row['id'] as int;
+        final int total = (row['total'] as num?)?.toInt() ?? 0;
+        final int saleRate = (row['vat_rate_percent'] as num?)?.toInt() ?? rate;
+        final int vat = _vatFromInclusive(total, saleRate);
+        await db.update(
+          'sales',
+          {
+            'vat_minor': vat,
+            'taxable_minor': total - vat,
+            'vat_estimated': 1,
+          },
+          where: 'id = ?',
+          whereArgs: [saleId],
+        );
+      }
+    }
+  }
+
+  /// The shop's VAT rate, in percent.
+  ///
+  /// The shop's own setting, read the same way the rest of the app reads it.
+  /// A database old enough not to have the settings table yet has no rate
+  /// either, so the statutory default stands in.
+  Future<int> _shopVatRatePercent(Database db) async {
+    final exists = await db.rawQuery(
+        "SELECT name FROM sqlite_master WHERE type='table' AND name = 'shop_settings'");
+    if (exists.isEmpty) return 16;
+    final rows = await db.query('shop_settings',
+        columns: ['value'],
+        where: 'key = ?',
+        whereArgs: ['vat_rate_percent'],
+        limit: 1);
+    if (rows.isEmpty) return 16;
+    return int.tryParse(rows.first['value'] as String? ?? '') ?? 16;
+  }
+
+  /// The VAT contained in a VAT-inclusive amount.
+  ///
+  /// The same rule the receipt prints and the eTIMS payload sends, so the
+  /// figure in the ledger, on the paper and with KRA are the same cent.
+  static int _vatFromInclusive(int amountMinor, int ratePercent) {
+    if (amountMinor <= 0 || ratePercent <= 0) return 0;
+    // amount = net * (1 + rate)  =>  vat = amount - amount / (1 + rate)
+    final int net = (amountMinor * 100) ~/ (100 + ratePercent);
+    return amountMinor - net;
+  }
+
+  /// A fresh identity for a ledger row.
+  ///
+  /// A UUID v4, so two tills that make the same movement never mint the same
+  /// one and a synchronised row can be recognised as the same row.
+  static String _newUuid() => generateUuid();
+
+  /// v25: repair the one column a fresh install never had.
+  ///
+  /// `sales.etims_qr_payload` was introduced by the v24 step, which only runs
+  /// on an UPGRADE. A till that was installed fresh while the app was already
+  /// at v24 therefore never received it — the v24 step was skipped, because
+  /// there was nothing to upgrade from. On such a till every KRA receipt
+  /// resolution failed with "no such column: etims_qr_payload", so no receipt
+  /// was ever issued and no QR was ever printed.
+  ///
+  /// The column is now also added by [_createEtimsTables], which runs on every
+  /// fresh install, so this step only has to catch the tills that were
+  /// installed during the window when it was missing.
+  ///
+  /// The v24 step does the work: it is idempotent — it adds the column only
+  /// when it is missing, and its backfill only touches receipts that have no
+  /// payload yet — so one code path serves both the upgrade and the repair.
+  Future<void> _repairEtimsQrPayloadColumn(Database db) async {
+    await _migrateEtimsQrPayload(db);
+  }
+
+  /// Adds `sales.etims_qr_payload` when the column is not already there.
+  ///
+  /// Guarded, so it is safe to call from the fresh-install path, from the v13
+  /// upgrade and from the v24 step: whichever runs first adds the column and
+  /// the others see it and do nothing.
+  Future<void> _ensureEtimsQrPayloadColumn(Database db) async {
+    final salesExists = await db.rawQuery(
+        "SELECT name FROM sqlite_master WHERE type='table' AND name='sales'");
+    if (salesExists.isEmpty) return;
+    final salesCols = await db.rawQuery('PRAGMA table_info(sales)');
+    final salesNames = salesCols.map((r) => r['name'] as String?).toSet();
+    if (salesNames.contains('etims_qr_payload')) return;
+    await db.execute('ALTER TABLE sales ADD COLUMN etims_qr_payload TEXT');
   }
 
   /// v24: persist KRA's own `qr_payload` on the sale so reprints scan to the
@@ -530,14 +1249,12 @@ SELECT name FROM staff GROUP BY name HAVING COUNT(*) = 1
   /// Added defensively with a `PRAGMA table_info` check so a till that already
   /// carries the column (or a schema that diverged) does not throw.
   Future<void> _migrateEtimsQrPayload(Database db) async {
+    await _ensureEtimsQrPayloadColumn(db);
     final salesExists = await db.rawQuery(
         "SELECT name FROM sqlite_master WHERE type='table' AND name='sales'");
     if (salesExists.isEmpty) return;
     final salesCols = await db.rawQuery('PRAGMA table_info(sales)');
     final salesNames = salesCols.map((r) => r['name'] as String?).toSet();
-    if (!salesNames.contains('etims_qr_payload')) {
-      await db.execute('ALTER TABLE sales ADD COLUMN etims_qr_payload TEXT');
-    }
     // Backfill: for receipts issued before v24, rebuild the old-style
     // verification URL from the receipt number so reprints still carry a
     // scannable QR code. New receipts get KRA's own qr_payload directly.
@@ -666,7 +1383,10 @@ SELECT name FROM staff GROUP BY name HAVING COUNT(*) = 1
       end_time TEXT,
       start_float INTEGER NOT NULL,
       end_float INTEGER NOT NULL DEFAULT 0,
-      status TEXT NOT NULL DEFAULT 'open'
+      status TEXT NOT NULL DEFAULT 'open',
+      -- Whether the server has this shift. A shift is opened OFFLINE and
+      -- pushed later, and a re-push must not count the drawer twice.
+      synced_to_backend INTEGER NOT NULL DEFAULT 0
     )''');
     await db.execute(
         'CREATE INDEX IF NOT EXISTS idx_shifts_staff ON shifts (staff_id)');
@@ -711,6 +1431,9 @@ SELECT name FROM staff GROUP BY name HAVING COUNT(*) = 1
       label TEXT NOT NULL DEFAULT 'Shot',
       active INTEGER NOT NULL DEFAULT 1,
       updated_at TEXT NOT NULL,
+      -- Whether the server has this cup. A cup is set up ONCE, on one phone,
+      -- and it is the whole shop's shelf after that.
+      synced_to_backend INTEGER NOT NULL DEFAULT 0,
       FOREIGN KEY (product_id) REFERENCES products (id) ON DELETE CASCADE
     )''');
     await db.execute(
@@ -846,6 +1569,14 @@ SELECT name FROM staff GROUP BY name HAVING COUNT(*) = 1
     await db.execute(
         "ALTER TABLE sales ADD COLUMN etims_status TEXT NOT NULL DEFAULT 'not_required'");
     await db.execute('ALTER TABLE sales ADD COLUMN etims_receipt_number TEXT');
+    // KRA's own QR payload lives on the sale, so a reprint scans to the real
+    // verification page.
+    //
+    // It is added HERE, not in a versioned migration, because this helper runs
+    // on BOTH a fresh install and the v13 upgrade. A column added only in a
+    // versioned step would exist on every upgraded till and on no fresh one —
+    // and the fresh one would fail to write a receipt KRA had already issued.
+    await _ensureEtimsQrPayloadColumn(db);
 
     // The offline queue, shaped exactly like `pending_payments`: written before
     // the network call, uploaded when a connection exists, deleted only once
@@ -1130,6 +1861,8 @@ SELECT name FROM staff GROUP BY name HAVING COUNT(*) = 1
   }
 
   Future<void> _onCreate(Database db, int version) async {
+    await _createReturnTables(db);
+    await _createReceiptTables(db);
     await db.execute('''
       CREATE TABLE owner (
         id INTEGER PRIMARY KEY CHECK (id = 1),
@@ -1187,7 +1920,12 @@ SELECT name FROM staff GROUP BY name HAVING COUNT(*) = 1
         amount_tendered INTEGER NOT NULL DEFAULT 0,
         change_given INTEGER NOT NULL DEFAULT 0,
         created_at TEXT NOT NULL,
-        vat_rate_percent INTEGER
+        vat_rate_percent INTEGER,
+        -- Whether the server has this sale. The till writes its ledger
+        -- offline and pushes it when the phone can reach the server, and a
+        -- phone that was offline pushes the same sale again — so the app has
+        -- to know which ones the server already has.
+        synced_to_backend INTEGER NOT NULL DEFAULT 0
       )
 ''');
     await db.execute('''
@@ -1255,6 +1993,10 @@ SELECT name FROM staff GROUP BY name HAVING COUNT(*) = 1
     await _createCupSizeSuggestionsTable(db);
     await _createAuditLogTable(db);
     await _createCrashLogTable(db);
+    // The ledger, the payments and the tax columns. Declared in the same
+    // helper the v26 upgrade uses, so a new till and an upgraded one cannot
+    // diverge — the defect the v24 step introduced and v25 had to repair.
+    await _createFoundationTables(db);
 
     // Indexes for query hotspots not covered by the core set above. Created
     // after the helper calls so the columns they add (payment_verified,
@@ -1577,6 +2319,190 @@ SELECT name FROM staff GROUP BY name HAVING COUNT(*) = 1
     return rows.isEmpty ? null : ProductVariant.fromMap(rows.first);
   }
 
+  /// Writes an opening movement: the count a product or variant had when it
+  /// entered the ledger.
+  ///
+  /// The opening row is what makes the ledger checkable: without it, every
+  /// product's balance would read as wrong because the history that made it
+  /// is not there.
+  Future<void> _writeOpeningMovement(
+    DatabaseExecutor db, {
+    required int productId,
+    int? variantId,
+    required double balance,
+  }) async {
+    await db.insert('stock_movements', {
+      'uuid': _newUuid(),
+      'created_at': DateTime.now().toIso8601String(),
+      'product_id': productId,
+      'variant_id': variantId,
+      'movement_type': StockMovementType.opening.wire,
+      'qty_delta': balance,
+      'unit_cost_minor': null,
+      'reference_type': null,
+      'reference_id': null,
+      'batch_id': null,
+      'staff_id': null,
+      'staff_name': null,
+      'note': 'Opening balance',
+      'balance_after': balance,
+    });
+  }
+
+  /// Writes one row of the stock ledger.
+  ///
+  /// [qtyDelta] is signed: negative for goods that left, positive for goods
+  /// that arrived. [balanceAfter] is the count the row leaves behind, so a
+  /// reader can follow the ledger without summing it — and the check that
+  /// compares the two is what catches a writer that forgot to write a row.
+  ///
+  /// The movement is written by the same transaction as the change it
+  /// describes. A movement and a count that disagree are worse than neither:
+  /// one of them is a lie, and nothing says which.
+  Future<void> _writeStockMovement(
+    DatabaseExecutor db, {
+    required int productId,
+    int? variantId,
+    required StockMovementType type,
+    required double qtyDelta,
+    int? unitCostMinor,
+    String? referenceType,
+    int? referenceId,
+    int? batchId,
+    int? staffId,
+    String? staffName,
+    String? note,
+    required double balanceAfter,
+    String? createdAt,
+  }) async {
+    await db.insert('stock_movements', {
+      'uuid': _newUuid(),
+      'created_at': createdAt ?? DateTime.now().toIso8601String(),
+      'product_id': productId,
+      'variant_id': variantId,
+      'movement_type': type.wire,
+      'qty_delta': qtyDelta,
+      'unit_cost_minor': unitCostMinor,
+      'reference_type': referenceType,
+      'reference_id': referenceId,
+      'batch_id': batchId,
+      'staff_id': staffId,
+      'staff_name': staffName,
+      'note': note,
+      'balance_after': balanceAfter,
+    });
+  }
+
+  /// The count a product's ledger says it should have.
+  ///
+  /// The sum of the movements, which is the truth the cached count has to
+  /// agree with.
+  Future<double> ledgerBalance(
+    int productId, {
+    int? variantId,
+  }) async {
+    final rows = await (await database).rawQuery(
+      'SELECT COALESCE(SUM(qty_delta), 0) AS total FROM stock_movements '
+      'WHERE product_id = ? AND variant_id IS ?',
+      [productId, variantId],
+    );
+    return (rows.first['total'] as num?)?.toDouble() ?? 0;
+  }
+
+  /// The ledger rows for one product, newest first.
+  ///
+  /// The stock history on a product's page, and what the ledger check reads.
+  Future<List<StockMovement>> getStockMovements(
+    int productId, {
+    int? variantId,
+    int limit = 100,
+  }) async {
+    final rows = await (await database).rawQuery(
+      'SELECT * FROM stock_movements WHERE product_id = ? '
+      'AND variant_id IS ? ORDER BY id DESC LIMIT ?',
+      [productId, variantId, limit],
+    );
+    return rows.map(StockMovement.fromMap).toList();
+  }
+
+  /// Writes a correction so a count and its ledger agree again.
+  ///
+  /// The correction is a NEW row, never an edit. The ledger is append-only,
+  /// so the mistake that caused the difference is still there to be read — and
+  /// "the ledger was wrong, and here is the truth" is a claim a shop can
+  /// check later.
+  ///
+  /// The count is what the shop has been selling from, so it is what the
+  /// ledger is corrected TO. The owner has looked at the difference before
+  /// this is called; this is the part where the books are made to agree.
+  Future<void> repairLedgerDifference(LedgerDifference difference) async {
+    final db = await database;
+    await db.transaction((txn) async {
+      await txn.rawUpdate(
+        'UPDATE products SET stock_qty = ?, updated_at = ? WHERE id = ?',
+        [
+          difference.counted,
+          DateTime.now().toIso8601String(),
+          difference.productId,
+        ],
+      );
+      await _writeStockMovement(
+        txn,
+        productId: difference.productId,
+        variantId: difference.variantId,
+        type: StockMovementType.correction,
+        qtyDelta: difference.counted - difference.ledger,
+        note: 'Ledger corrected to match the count',
+        balanceAfter: difference.counted,
+      );
+    });
+  }
+
+  /// The parts a sale was paid in.
+  ///
+  /// The order is the order they were taken, so a split sale reads the way
+  /// the customer paid it.
+  Future<List<SalePayment>> getSalePayments(int saleId) async {
+    final rows = await (await database).query('sale_payments',
+        where: 'sale_id = ?', whereArgs: [saleId], orderBy: 'id');
+    return rows.map(SalePayment.fromMap).toList();
+  }
+
+  /// Every product whose count disagrees with its ledger.
+  ///
+  /// The check the owner can run. An empty list is the answer a healthy
+  /// database gives, and it is the answer the migration has to produce on a
+  /// shop with years of history.
+  Future<List<LedgerDifference>> findLedgerDifferences() async {
+    final rows = await (await database).rawQuery('''
+      SELECT p.id AS product_id,
+             p.name AS product_name,
+             p.stock_qty AS counted,
+             COALESCE((
+               SELECT SUM(m.qty_delta) FROM stock_movements m
+                WHERE m.product_id = p.id AND m.variant_id IS NULL
+             ), 0) AS ledger
+        FROM products p
+    ''');
+    final differences = <LedgerDifference>[];
+    for (final row in rows) {
+      final double counted = (row['counted'] as num?)?.toDouble() ?? 0;
+      final double ledger = (row['ledger'] as num?)?.toDouble() ?? 0;
+      // A tenth of a unit is the tolerance: a measured pour is a ratio, and
+      // 25 x (30/750) is 1.0000000000000002 in binary floating point.
+      if ((counted - ledger).abs() > 0.1) {
+        differences.add(LedgerDifference(
+          productId: row['product_id'] as int,
+          productName: row['product_name'] as String? ?? '',
+          variantId: null,
+          counted: counted,
+          ledger: ledger,
+        ));
+      }
+    }
+    return differences;
+  }
+
   /// Writes a variant, insert or update by id.
   ///
   /// Money is not defaulted to the parent on update. A variant with its own
@@ -1585,15 +2511,88 @@ SELECT name FROM staff GROUP BY name HAVING COUNT(*) = 1
   Future<int> upsertVariant(ProductVariant variant) async {
     final map = variant.toMap();
     if (variant.id == null) {
-      final id =
-          await (await database).insert('product_variants', map..remove('id'));
-      // Position defaults to "after the ones already there" so a newly added
-      // variant lands at the bottom without the caller computing an index.
+      final db = await database;
+      final id = await db.insert('product_variants', map..remove('id'));
+      await _recordNewVariantCount(db, variant.productId, id, variant.stockQty);
       return id;
     }
     await (await database).update('product_variants', map,
         where: 'id = ?', whereArgs: [variant.id]);
     return variant.id!;
+  }
+
+  /// A new variant's count, and the product's count beside it.
+  ///
+  /// A variant that joins a product changes the product's aggregate, and the
+  /// aggregate is what the till checks and the dashboard shows. So the
+  /// product's count is rewritten from the variants, and the product's ledger
+  /// gets a row that mirrors the variant's — because a product sold as
+  /// variants and a variant are two views of ONE fact, and the ledger has to
+  /// say so in both places. Without this the product's history and the
+  /// variant's history disagree, and one of them is a lie.
+  ///
+  /// A product that does NOT track its variants keeps its own count, and the
+  /// variant's count is beside it rather than inside it: nothing moves.
+  Future<void> _recordNewVariantCount(
+    DatabaseExecutor db,
+    int productId,
+    int variantId,
+    double stockQty,
+  ) async {
+    await _writeOpeningMovement(
+      db,
+      productId: productId,
+      variantId: variantId,
+      balance: stockQty,
+    );
+    if (!await _productTracksVariants(db, productId)) return;
+    final double aggregate = await _aggregateStock(db, productId);
+    final double previous = await _productCount(db, productId);
+    await db.rawUpdate(
+      'UPDATE products SET stock_qty = ?, updated_at = ? WHERE id = ?',
+      [aggregate, DateTime.now().toIso8601String(), productId],
+    );
+    await _writeStockMovement(
+      db,
+      productId: productId,
+      type: StockMovementType.opening,
+      qtyDelta: aggregate - previous,
+      note: 'Variant added',
+      balanceAfter: aggregate,
+    );
+  }
+
+  /// Whether a product's count is the aggregate of its variants.
+  Future<bool> _productTracksVariants(
+      DatabaseExecutor db, int productId) async {
+    final rows = await db.query('products',
+        columns: ['track_variants'],
+        where: 'id = ?',
+        whereArgs: [productId],
+        limit: 1);
+    if (rows.isEmpty) return false;
+    return ((rows.first['track_variants'] as num?)?.toInt() ?? 0) == 1;
+  }
+
+  /// The sum of a product's active variants' counts.
+  Future<double> _aggregateStock(DatabaseExecutor db, int productId) async {
+    final rows = await db.rawQuery(
+      'SELECT COALESCE(SUM(stock_qty), 0) AS total FROM product_variants '
+      'WHERE product_id = ? AND active = 1',
+      [productId],
+    );
+    return (rows.first['total'] as num?)?.toDouble() ?? 0;
+  }
+
+  /// The count a product's row holds.
+  Future<double> _productCount(DatabaseExecutor db, int productId) async {
+    final rows = await db.query('products',
+        columns: ['stock_qty'],
+        where: 'id = ?',
+        whereArgs: [productId],
+        limit: 1);
+    if (rows.isEmpty) return 0;
+    return (rows.first['stock_qty'] as num?)?.toDouble() ?? 0;
   }
 
   Future<void> deleteVariant(int id) async {
@@ -1612,6 +2611,12 @@ SELECT name FROM staff GROUP BY name HAVING COUNT(*) = 1
     final map = variant.toMap();
     if (variant.id == null) {
       final id = await txn.insert('product_variants', map..remove('id'));
+      await _recordNewVariantCount(
+        txn,
+        variant.productId,
+        id,
+        variant.stockQty,
+      );
       return id;
     }
     await txn.update('product_variants', map,
@@ -1941,7 +2946,13 @@ SELECT name FROM staff GROUP BY name HAVING COUNT(*) = 1
   Future<int> upsertProduct(Product p) async {
     final db = await database;
     if (p.id == null) {
-      return db.insert('products', p.toMap());
+      final int id = await db.insert('products', p.toMap());
+      // A product that arrives with stock arrives with a reason for having
+      // it, and the ledger records that reason. Without this row the count
+      // would have no history, and the ledger check would read every product
+      // as wrong.
+      await _writeOpeningMovement(db, productId: id, balance: p.stockQty);
+      return id;
     } else {
       final values = p.toMap();
       // Older imports and editor forms may not carry the backend ID. Never
@@ -2253,6 +3264,21 @@ SELECT name FROM staff GROUP BY name HAVING COUNT(*) = 1
         'UPDATE products SET stock_qty = stock_qty + ?, updated_at = ? WHERE id = ?',
         [adj.delta, DateTime.now().toIso8601String(), adj.productId],
       );
+      // The ledger row, in the same transaction as the correction. A count
+      // that moved without saying why is the exact thing the ledger exists to
+      // prevent.
+      final double balance = await _productBalanceAfter(txn, adj.productId);
+      await _writeStockMovement(
+        txn,
+        productId: adj.productId,
+        type: StockMovementType.adjustment,
+        qtyDelta: adj.delta.toDouble(),
+        referenceType: 'adjustment',
+        staffId: staffId,
+        staffName: adj.staffName,
+        note: adj.reason,
+        balanceAfter: balance,
+      );
     });
   }
 
@@ -2344,28 +3370,17 @@ SELECT name FROM staff GROUP BY name HAVING COUNT(*) = 1
     final vatRatePercent = await getVatRatePercent();
 
     return db.transaction<int>((txn) async {
-      // A line's fraction of its container. [containerMl] is the product's own
-      // bottle/keg size, which only a measured pour needs.
-      //
-      // A measured pour is capped at one whole container: a capacity typed
-      // larger than the bottle it is poured from is a mistake in the shop's
-      // configuration, and the least wrong answer to it is to empty that
-      // bottle rather than to drive stock negative.
-      double portionFactor(SaleItem item, double containerMl) {
-        if (item.portion == SalePortion.half) return 0.5;
-        if (item.portion == SalePortion.quarter) return 0.25;
-        if (item.portion == SalePortion.measured) {
-          if (item.portionMl <= 0 || containerMl <= 0) return 1.0;
-          final fraction = item.portionMl / containerMl;
-          return fraction > 1 ? 1.0 : fraction;
-        }
-        return 1.0;
-      }
+      // A line's fraction of its container — the shared rule, so a sale and a
+      // return agree on what a portion of a bottle is.
+      double portionFactor(SaleItem item, double containerMl) =>
+          _portionFactor(item, containerMl);
 
       // Read every product this sale touches once: its stock is needed for the
-      // availability check and its container size for the fraction.
+      // availability check, its container size for the fraction, and its tax
+      // class for the line's VAT snapshot.
       final stockByProduct = <int, double>{};
       final containerMlByProduct = <int, double>{};
+      final taxClassByProduct = <int, String>{};
       for (final productId in items.map((it) => it.productId).toSet()) {
         final current = await txn.query('products',
             where: 'id = ?', whereArgs: [productId], limit: 1);
@@ -2377,16 +3392,69 @@ SELECT name FROM staff GROUP BY name HAVING COUNT(*) = 1
             (current.first['stock_qty'] as num).toDouble();
         containerMlByProduct[productId] =
             (current.first['bottle_ml'] as num?)?.toDouble() ?? 0;
+        taxClassByProduct[productId] =
+            current.first['tax_class'] as String? ?? 'standard';
       }
 
-      final requiredUnits = <int, double>{};
+      // The variants this sale sells, read inside the transaction.
+      //
+      // A variant's own count used to be adjusted in a SECOND transaction
+      // after the sale had already been committed. A crash, a flat battery or
+      // a killed process in that window left a sold bottle and an unchanged
+      // count — and the error was swallowed, so nothing was ever reported.
+      // Reading the row here and deducting it below means the sale, the count
+      // and the parent's aggregate either all land or none of them do.
+      final variantRowsById = <int, Map<String, dynamic>>{};
+      final variantProducts = <int>{};
+      for (final variantId
+          in items.map((it) => it.variantId).whereType<int>().toSet()) {
+        final variantRows = await txn.query('product_variants',
+            where: 'id = ?', whereArgs: [variantId], limit: 1);
+        if (variantRows.isEmpty) {
+          final offending = items.firstWhere((it) => it.variantId == variantId);
+          throw StateError('Variant not found: ${offending.productName}');
+        }
+        variantRowsById[variantId] = variantRows.first;
+        variantProducts.add(variantRows.first['product_id'] as int);
+      }
+
+      // The units each line takes, split by where they come from.
+      //
+      // A line that names a variant takes from the VARIANT's count; a line
+      // that does not takes from the product's own count. The two are
+      // different, and the product's count is only an aggregate of the
+      // variants' when the product tracks variants — so a sale of a variant
+      // must be checked against the variant, or a product whose aggregate has
+      // drifted refuses a sale the till can actually make.
+      final variantUnitsByProduct = <int, double>{};
+      final directUnitsByProduct = <int, double>{};
+      final requiredByVariant = <int, double>{};
       for (final item in items) {
-        requiredUnits[item.productId] = (requiredUnits[item.productId] ?? 0) +
-            item.qty *
-                portionFactor(item, containerMlByProduct[item.productId]!);
+        final units = item.qty *
+            portionFactor(item, containerMlByProduct[item.productId]!);
+        final variantId = item.variantId;
+        if (variantId == null) {
+          directUnitsByProduct[item.productId] =
+              (directUnitsByProduct[item.productId] ?? 0) + units;
+        } else {
+          variantUnitsByProduct[item.productId] =
+              (variantUnitsByProduct[item.productId] ?? 0) + units;
+          requiredByVariant[variantId] =
+              (requiredByVariant[variantId] ?? 0) + units;
+        }
       }
       if (enforceStock) {
-        for (final entry in requiredUnits.entries) {
+        for (final entry in requiredByVariant.entries) {
+          final double available =
+              (variantRowsById[entry.key]!['stock_qty'] as num?)?.toDouble() ??
+                  0;
+          if (available + _volumeTolerance < entry.value) {
+            final offending =
+                items.firstWhere((it) => it.variantId == entry.key);
+            throw StateError('Not enough stock for ${offending.productName}');
+          }
+        }
+        for (final entry in directUnitsByProduct.entries) {
           // Compared with a tolerance because these are volumes, and a
           // measured pour is a ratio: 25 shots of 30 ml from a 750 ml bottle is
           // exactly one bottle, but 25 x (30/750) evaluates to
@@ -2403,8 +3471,25 @@ SELECT name FROM staff GROUP BY name HAVING COUNT(*) = 1
           }
         }
       }
+
       final receiptNumber =
           await allocateReceiptNumber(txn, tillCode: tillCode);
+
+      // The VAT on this sale, computed once from the lines and stored.
+      //
+      // Prices are VAT-inclusive, so the VAT is extracted from the discounted
+      // gross rather than added to it. It is computed HERE, at the moment of
+      // sale, and never recomputed: a reprint, a report and the eTIMS payload
+      // all read the stored figure, so the paper and the tax filing can never
+      // disagree about the same transaction.
+      final int saleVatMinor = items.fold<int>(
+        0,
+        (sum, it) =>
+            sum +
+            vatComponentOf(it.total, ratePercent: vatRatePercent).minorUnits,
+      );
+      final int saleTaxableMinor = total.minorUnits - saleVatMinor;
+
       final saleId = await txn.insert('sales', {
         'staff_name': staffName,
         'staff_id': staffId,
@@ -2425,9 +3510,14 @@ SELECT name FROM staff GROUP BY name HAVING COUNT(*) = 1
         'payment_verified': paymentVerified ? 1 : 0,
         'payment_confirmed_at': paymentVerified ? now : null,
         'vat_rate_percent': vatRatePercent,
+        'vat_minor': saleVatMinor,
+        'taxable_minor': saleTaxableMinor,
+        'document_type': 'sale',
       });
       for (final it in items) {
         final fraction = portionFactor(it, containerMlByProduct[it.productId]!);
+        final int lineVatMinor =
+            vatComponentOf(it.total, ratePercent: vatRatePercent).minorUnits;
         await txn.insert('sale_items', {
           'sale_id': saleId,
           'product_id': it.productId,
@@ -2437,12 +3527,137 @@ SELECT name FROM staff GROUP BY name HAVING COUNT(*) = 1
           'unit_cost': it.unitCost.minorUnits,
           'portion': it.portion,
           'portion_ml': it.portionMl,
+          // The variant the line was sold as. Recorded as a snapshot, because
+          // the owner renames "Dark" to "Black" next month and a reprint of
+          // today's receipt must still say which size was sold.
+          'variant_id': it.variantId,
+          'variant_name': it.variantName,
+          // The tax on this line, snapshotted at the moment of sale. The
+          // product's own tax class can change tomorrow; today's receipt must
+          // still carry today's figure.
+          'tax_class': taxClassByProduct[it.productId] ?? 'standard',
+          'vat_rate_bps': vatRatePercent * 100,
+          'vat_minor': lineVatMinor,
+          'taxable_minor': it.total.minorUnits - lineVatMinor,
         });
-        await txn.rawUpdate(
-          'UPDATE products SET stock_qty = MAX(0, stock_qty - ?), updated_at = ? WHERE id = ?',
-          [it.qty * fraction, now, it.productId],
+        final variantId = it.variantId;
+        if (variantId != null) {
+          // The variant's own count, in the same transaction as the sale.
+          // Clamped at zero for the same reason the parent's is: the money is
+          // already taken, and a clamped count that needs a stock take beats a
+          // till that refuses to hand over change.
+          await txn.rawUpdate(
+            'UPDATE product_variants SET stock_qty = MAX(0, stock_qty - ?) WHERE id = ?',
+            [it.qty * fraction, variantId],
+          );
+        }
+      }
+
+      // The product's own count, set rather than decremented.
+      //
+      // For a product that tracks variants, its count IS the aggregate of its
+      // active variants, and it is that number the till checks and the
+      // dashboard shows. Rewriting it from the variants — inside the same
+      // transaction as the deduction it is correcting — keeps the parent
+      // honest, and it also HEALS an aggregate that had drifted: a variant
+      // added after the last reconciliation, or one an older till deducted
+      // outside the sale.
+      //
+      // A product with variants that does NOT track them keeps its own count,
+      // and both counts move: the product's for what the shop thinks it sold,
+      // the variant's for what it really sold.
+      for (final productId in items.map((it) => it.productId).toSet()) {
+        final flagRows = await txn.query('products',
+            columns: ['track_variants'],
+            where: 'id = ?',
+            whereArgs: [productId],
+            limit: 1);
+        final tracks = flagRows.isNotEmpty &&
+            ((flagRows.first['track_variants'] as num?)?.toInt() ?? 0) == 1;
+        final double directUnits = directUnitsByProduct[productId] ?? 0;
+        if (tracks) {
+          await txn.rawUpdate(
+            'UPDATE products SET stock_qty = MAX(0, (SELECT COALESCE(SUM(stock_qty), 0) '
+            'FROM product_variants WHERE product_id = ? AND active = 1) - ?), '
+            'updated_at = ? WHERE id = ?',
+            [productId, directUnits, now, productId],
+          );
+        } else {
+          final double variantUnits = variantUnitsByProduct[productId] ?? 0;
+          await txn.rawUpdate(
+            'UPDATE products SET stock_qty = MAX(0, stock_qty - ?), updated_at = ? WHERE id = ?',
+            [directUnits + variantUnits, now, productId],
+          );
+        }
+      }
+      // The stock ledger.
+      //
+      // One row per stock row this sale touched, written in the same
+      // transaction as the deduction. A product sold as variants gets a row
+      // for the variant that was sold AND a row for the product's aggregate,
+      // because both counts are real and both have to be explainable.
+      //
+      // The balance on each row is the count the row leaves behind, read back
+      // from the count the transaction has just written — so the ledger is
+      // never a second, separately-maintained truth.
+      for (final it in items) {
+        final fraction = portionFactor(it, containerMlByProduct[it.productId]!);
+        final double units = it.qty * fraction;
+        final variantId = it.variantId;
+        if (variantId != null) {
+          final double balance = await _variantBalanceAfter(txn, variantId);
+          await _writeStockMovement(
+            txn,
+            productId: it.productId,
+            variantId: variantId,
+            type: StockMovementType.sale,
+            qtyDelta: -units,
+            unitCostMinor: it.unitCost.minorUnits,
+            referenceType: 'sale',
+            referenceId: saleId,
+            staffId: staffId,
+            staffName: staffName,
+            balanceAfter: balance,
+            createdAt: now,
+          );
+        }
+        final double productBalance =
+            await _productBalanceAfter(txn, it.productId);
+        await _writeStockMovement(
+          txn,
+          productId: it.productId,
+          variantId: null,
+          type: StockMovementType.sale,
+          qtyDelta: -units,
+          unitCostMinor: it.unitCost.minorUnits,
+          referenceType: 'sale',
+          referenceId: saleId,
+          staffId: staffId,
+          staffName: staffName,
+          balanceAfter: productBalance,
+          createdAt: now,
         );
       }
+
+      // The payment.
+      //
+      // One row per part of the tender. A sale paid in one go has one row; a
+      // sale paid in several has several, and the sum of their amounts is the
+      // sale's total. That sum is an invariant, and a test holds it.
+      await txn.insert('sale_payments', {
+        'uuid': _newUuid(),
+        'sale_id': saleId,
+        'method': paymentMethod,
+        // What was paid, without the change. The change is not payment.
+        'amount_minor': paid.minorUnits - change.minorUnits,
+        'tendered_minor': paid.minorUnits,
+        'change_minor': change.minorUnits,
+        'reference': paymentReference,
+        'status': paymentVerified ? 'confirmed' : 'unverified',
+        'pending_payment_id': null,
+        'created_at': now,
+      });
+
       // The queue row is written in the same transaction as the sale. Writing
       // it afterwards would leave a window where a crash leaves a committed sale
       // that KRA will never be told about — an unissued tax invoice for money
@@ -2455,10 +3670,35 @@ SELECT name FROM staff GROUP BY name HAVING COUNT(*) = 1
           'attempts': 0,
           'created_at': now,
           'updated_at': now,
+          'document_type': 'sale',
         });
       }
       return saleId;
     });
+  }
+
+  /// The count a variant is left with, read from the row the transaction has
+  /// just written.
+  Future<double> _variantBalanceAfter(Transaction txn, int variantId) async {
+    final rows = await txn.query('product_variants',
+        columns: ['stock_qty'],
+        where: 'id = ?',
+        whereArgs: [variantId],
+        limit: 1);
+    if (rows.isEmpty) return 0;
+    return (rows.first['stock_qty'] as num?)?.toDouble() ?? 0;
+  }
+
+  /// The count a product is left with, read from the row the transaction has
+  /// just written.
+  Future<double> _productBalanceAfter(Transaction txn, int productId) async {
+    final rows = await txn.query('products',
+        columns: ['stock_qty'],
+        where: 'id = ?',
+        whereArgs: [productId],
+        limit: 1);
+    if (rows.isEmpty) return 0;
+    return (rows.first['stock_qty'] as num?)?.toDouble() ?? 0;
   }
 
   // ---------------- eTIMS issuance queue ----------------
@@ -2632,6 +3872,39 @@ SELECT name FROM staff GROUP BY name HAVING COUNT(*) = 1
     });
   }
 
+  /// Puts rejected receipts back in the queue.
+  ///
+  /// A permanent rejection is permanent for the receipt that caused it: the
+  /// same payload will be refused the same way. It is NOT permanent for the
+  /// shop — the owner fixes the cause (a wrong TIN, a bad buyer PIN, a KRA
+  /// outage that briefly answered 400) and then wants those invoices filed.
+  ///
+  /// So a rejection is not a dead end: it is a receipt waiting for someone to
+  /// say "try again". The attempt count is reset, because the attempts that
+  /// led to the refusal say nothing about the next attempt.
+  ///
+  /// Returns how many receipts were put back, so the caller can say "3
+  /// receipts queued" rather than "something happened".
+  Future<int> requeueRejectedEtimsReceipts() async {
+    final db = await database;
+    return db.transaction((txn) async {
+      final now = DateTime.now().toIso8601String();
+      final sales = await txn.update(
+        'sales',
+        {'etims_status': EtimsStatus.pending},
+        where: 'etims_status = ?',
+        whereArgs: [EtimsStatus.rejected],
+      );
+      await txn.rawUpdate(
+        '''UPDATE pending_etims
+              SET attempts = 0, last_error = NULL, updated_at = ?
+            WHERE sale_id IN (SELECT id FROM sales WHERE etims_status = ?)''',
+        [now, EtimsStatus.pending],
+      );
+      return sales;
+    });
+  }
+
   /// The raw sale row, for the receipt number and eTIMS state that [Sale] does
   /// not carry.
   ///
@@ -2737,6 +4010,880 @@ SELECT name FROM staff GROUP BY name HAVING COUNT(*) = 1
   ///
   /// Returns oldest first so `appendSales` can walk the backlog in bounded
   /// batches without skipping the tail.
+  /// The sales the server has not seen yet, oldest first.
+  ///
+  /// The push reads these and the server keys them on the sale's own id, so
+  /// the same sale pushed twice is one sale on the server. The order matters:
+  /// the ledger is a story, and a story read from the end is not a story.
+  Future<List<Sale>> getUnsyncedSales({int limit = 500}) async {
+    final db = await database;
+    final rows = await db.query(
+      'sales',
+      where: 'synced_to_backend = 0',
+      orderBy: 'created_at ASC, id ASC',
+      limit: limit,
+    );
+    if (rows.isEmpty) return [];
+    Map<dynamic, List<Map<String, dynamic>>> itemsBySale =
+        <dynamic, List<Map<String, dynamic>>>{};
+    final saleIds = rows.map((row) => row['id']).toList();
+    final itemRows = await db.query(
+      'sale_items',
+      where: 'sale_id IN (${List.filled(saleIds.length, '?').join(',')})',
+      whereArgs: saleIds,
+    );
+    for (final item in itemRows) {
+      (itemsBySale[item['sale_id']] ??= []).add(item);
+    }
+    final sales = <Sale>[];
+    for (final r in rows) {
+      final Sale sale = Sale.fromMap(r);
+      sales.add(Sale(
+        id: sale.id,
+        staffName: sale.staffName,
+        total: sale.total,
+        profit: sale.profit,
+        createdAt: sale.createdAt,
+        paymentMethod: sale.paymentMethod,
+        paymentReference: sale.paymentReference,
+        amountTendered: sale.amountTendered,
+        changeGiven: sale.changeGiven,
+        items: (itemsBySale[r['id']] ?? const <Map<String, dynamic>>[])
+            .map(SaleItem.fromMap)
+            .toList(),
+      ));
+    }
+    return sales;
+  }
+
+  /// Marks these sales as pushed.
+  ///
+  /// Only the ids the server confirmed. A sale the server did not accept is
+  /// still unsynced, and the next push tries it again — which is the whole
+  /// point of keeping the flag on the row.
+  Future<void> markSalesSynced(List<int> ids) async {
+    if (ids.isEmpty) return;
+    final db = await database;
+    await db.rawUpdate(
+      'UPDATE sales SET synced_to_backend = 1 WHERE id IN '
+      '(${List.filled(ids.length, '?').join(',')})',
+      ids,
+    );
+  }
+
+  /// The shifts the server has not seen yet.
+  ///
+  /// The cash figures come from the shift's own reconciliation — the LAST
+  /// one, because a drawer can be counted twice while the person checks the
+  /// figure, and the later count replaces the earlier one.
+  Future<List<Map<String, dynamic>>> getUnsyncedShifts({
+    int limit = 200,
+  }) async {
+    final db = await database;
+    final rows = await db.query(
+      'shifts',
+      where: 'synced_to_backend = 0',
+      orderBy: 'start_time ASC, id ASC',
+      limit: limit,
+    );
+    if (rows.isEmpty) return [];
+    final ids = rows.map((row) => row['id']).toList();
+    final placeholders = List.filled(ids.length, '?').join(',');
+    final reconciliations = await db.query(
+      'reconciliations',
+      where: 'shift_id IN ($placeholders)',
+      whereArgs: ids,
+      orderBy: 'recorded_at DESC, id DESC',
+    );
+    final latestByShift = <int, Map<String, dynamic>>{};
+    for (final row in reconciliations) {
+      final int shiftId = row['shift_id'] as int;
+      latestByShift.putIfAbsent(shiftId, () => row);
+    }
+    return rows.map((row) {
+      final int shiftId = row['id'] as int;
+      final Map<String, dynamic>? reconciliation = latestByShift[shiftId];
+      return <String, dynamic>{
+        ...row,
+        'expected_cash': reconciliation?['expected_cash'] ?? 0,
+        'counted_cash': reconciliation?['counted_cash'] ?? 0,
+      };
+    }).toList();
+  }
+
+  /// Marks these shifts as pushed.
+  Future<void> markShiftsSynced(List<int> ids) async {
+    if (ids.isEmpty) return;
+    final db = await database;
+    await db.rawUpdate(
+      'UPDATE shifts SET synced_to_backend = 1 WHERE id IN '
+      '(${List.filled(ids.length, '?').join(',')})',
+      ids,
+    );
+  }
+
+  /// The shot cups the server has not seen yet.
+  Future<List<ShotCup>> getUnsyncedShotCups({int limit = 500}) async {
+    final rows = await (await database).query(
+      'shot_cups',
+      where: 'synced_to_backend = 0',
+      orderBy: 'id ASC',
+      limit: limit,
+    );
+    return rows.map(ShotCup.fromMap).toList();
+  }
+
+  /// Marks these shot cups as pushed.
+  Future<void> markShotCupsSynced(List<int> ids) async {
+    if (ids.isEmpty) return;
+    final db = await database;
+    await db.rawUpdate(
+      'UPDATE shot_cups SET synced_to_backend = 1 WHERE id IN '
+      '(${List.filled(ids.length, '?').join(',')})',
+      ids,
+    );
+  }
+
+  /// Records a return: goods going back to the shop, and money going back to
+  /// the customer.
+  ///
+  /// ## WHAT IT IS ONE TRANSACTION FOR
+  ///
+  /// The return, its lines, the stock movements and the drawer's cash all move
+  /// together, or none of them move. A return that wrote the record and then
+  /// failed to put the goods back would leave the shelf short and the customer
+  /// refunded — and nothing in the app would say so.
+  ///
+  /// ## THE RULES
+  ///
+  /// * **The cumulative returned quantity per sale line never exceeds the sold
+  ///   quantity.** A bottle can be returned once. The check is against what
+  ///   has ALREADY been returned, not just against this return, so the same
+  ///   bottle cannot be returned twice by two returns.
+  /// * **The refund per line is the line total scaled by the returned
+  ///   fraction, rounded half-up**, and the return's total is the SUM of the
+  ///   line refunds. Not the sale's total scaled — the sum of the lines, so
+  ///   there is no rounding drift between the two.
+  /// * **Restocking puts the goods back at the sale line's cost.** A write-off
+  ///   does not: the goods are damaged or expired, and the shelf does not get
+  ///   them.
+  /// * **A cash refund reduces the expected cash of the shift that is open
+  ///   NOW**, not the shift the sale was rung in. The money left the drawer
+  ///   that is open today. With no shift open, a cash refund is refused —
+  ///   there is no drawer to take the money out of.
+  /// * **A sale with an unverified mobile-money payment cannot be returned**,
+  ///   because the money may never have arrived.
+  Future<int> recordReturn({
+    required Sale sale,
+    required List<ReturnLineDraft> lines,
+    required String reason,
+    String kind = 'refund',
+    String refundMethod = 'cash',
+    String? paymentReference,
+    required String staffName,
+    int? staffId,
+  }) async {
+    if (lines.isEmpty) {
+      throw StateError('A return must contain at least one line');
+    }
+    if (reason.trim().isEmpty) {
+      throw StateError('A return must say why');
+    }
+    if (sale.id == null) {
+      throw StateError('That sale cannot be returned');
+    }
+
+    final db = await database;
+    return db.transaction<int>((txn) async {
+      // What has already come back, per sale line.
+      final previous = await txn.rawQuery(
+        'SELECT sale_item_id, COALESCE(SUM(qty), 0) AS returned_qty '
+        'FROM sale_return_items WHERE sale_item_id IN '
+        '(${List.filled(lines.length, '?').join(',')}) '
+        'GROUP BY sale_item_id',
+        lines.map((ReturnLineDraft l) => l.saleItemId).toList(),
+      );
+      final returnedByItem = <int, double>{
+        for (final row in previous)
+          row['sale_item_id'] as int: (row['returned_qty'] as num).toDouble(),
+      };
+
+      // The sale's own lines, so the returned quantity can be checked against
+      // what was sold and the refund scaled by what was sold.
+      final saleItems = <int, SaleItem>{
+        for (final SaleItem item in sale.items)
+          if (item.id != null) item.id!: item,
+      };
+
+      // A mobile-money sale whose payment was never confirmed cannot be
+      // returned: the money may never have arrived.
+      if (sale.paymentMethod == 'mpesa' &&
+          !await _paymentIsVerified(txn, sale.id!)) {
+        throw StateError(
+          'That sale was never confirmed as paid, so it cannot be returned',
+        );
+      }
+
+      // A cash refund needs a drawer to take the money out of.
+      final bool isCashRefund = refundMethod == 'cash';
+      int? openShiftId;
+      if (isCashRefund) {
+        final shift = await txn.query(
+          'shifts',
+          where: 'status = ?',
+          whereArgs: ['open'],
+          orderBy: 'start_time DESC',
+          limit: 1,
+        );
+        if (shift.isEmpty) {
+          throw StateError(
+            'Open a shift before giving cash back, so the drawer can be counted',
+          );
+        }
+        openShiftId = shift.first['id'] as int;
+      }
+
+      int totalMinor = 0;
+      int vatMinor = 0;
+      int profitMinor = 0;
+      final now = DateTime.now().toIso8601String();
+
+      for (final ReturnLineDraft draft in lines) {
+        final SaleItem? sold = saleItems[draft.saleItemId];
+        if (sold == null) {
+          throw StateError('That line is not on the sale');
+        }
+        final double soldQty = sold.qty;
+        final double already = returnedByItem[draft.saleItemId] ?? 0;
+        if (draft.qty <= 0) {
+          throw StateError('A returned quantity must be more than zero');
+        }
+        if (already + draft.qty > soldQty + _qtyEpsilon) {
+          throw StateError(
+            'More was returned than was sold on that line',
+          );
+        }
+
+        // The refund for the line: the line total scaled by the returned
+        // fraction, rounded half-up. The line total is the UNIT price times
+        // the quantity sold, so a half-bottle returns half the line.
+        final int lineTotal = _roundHalfUp(sold.unitPrice.minorUnits * soldQty);
+        final int refund = _roundHalfUp(lineTotal * (draft.qty / soldQty));
+        final int soldVat = sold.vatMinor ?? 0;
+        final int lineVat = _roundHalfUp(soldVat * (draft.qty / soldQty));
+        totalMinor += refund;
+        vatMinor += lineVat;
+        profitMinor += _roundHalfUp(
+          sold.unitCost.minorUnits * soldQty * (draft.qty / soldQty),
+        );
+
+        // The goods: back on the shelf, or written off.
+        //
+        // A write-off writes a row too — the ledger is append-only, and the
+        // missing bottle has to be somewhere. It just does not put the
+        // quantity back on the shelf.
+        final double units = draft.qty * _portionFactor(sold, 0);
+        if (draft.restock) {
+          final double balance =
+              await _productBalanceAfter(txn, sold.productId);
+          await _writeStockMovement(
+            txn,
+            productId: sold.productId,
+            variantId: sold.variantId,
+            type: StockMovementType.saleReturn,
+            qtyDelta: units,
+            unitCostMinor: sold.unitCost.minorUnits,
+            referenceType: 'sale_return',
+            referenceId: null,
+            staffId: staffId,
+            staffName: staffName,
+            note: 'Returned',
+            balanceAfter: balance,
+            createdAt: now,
+          );
+          // The COUNT, in the same transaction as the movement.
+          //
+          // The product's own `stock_qty` is a cached balance, and the rule
+          // in this app is that it is updated in the same transaction as the
+          // movement that caused it. A movement with no count behind it is a
+          // ledger that disagrees with the shelf, and the check that compares
+          // the two is what catches it — but only if the count is moved here.
+          await _restoreStockCount(
+            txn,
+            productId: sold.productId,
+            variantId: sold.variantId,
+            units: units,
+          );
+        } else {
+          final double balance =
+              await _productBalanceAfter(txn, sold.productId);
+          await _writeStockMovement(
+            txn,
+            productId: sold.productId,
+            variantId: sold.variantId,
+            type: StockMovementType.writeoff,
+            qtyDelta: -units,
+            unitCostMinor: sold.unitCost.minorUnits,
+            referenceType: 'sale_return',
+            referenceId: null,
+            staffId: staffId,
+            staffName: staffName,
+            note: draft.restockReason ?? 'Written off',
+            balanceAfter: balance,
+            createdAt: now,
+          );
+        }
+      }
+
+      final int returnId = await txn.insert('sale_returns', {
+        'sale_id': sale.id,
+        'kind': kind,
+        'reason': reason.trim(),
+        'total': totalMinor,
+        'vat_total': vatMinor,
+        'profit': profitMinor,
+        'refund_method': refundMethod,
+        'payment_reference': paymentReference,
+        'shift_id': openShiftId,
+        'staff_id': staffId,
+        'staff_name': staffName,
+        'created_at': now,
+        'synced_to_backend': 0,
+      });
+
+      for (final ReturnLineDraft draft in lines) {
+        final SaleItem sold = saleItems[draft.saleItemId]!;
+        final int lineTotal =
+            _roundHalfUp(sold.unitPrice.minorUnits * sold.qty);
+        await txn.insert('sale_return_items', {
+          'return_id': returnId,
+          'sale_item_id': draft.saleItemId,
+          'product_id': sold.productId,
+          'product_name': sold.productName,
+          'qty': draft.qty,
+          'unit_price': sold.unitPrice.minorUnits,
+          'unit_cost': sold.unitCost.minorUnits,
+          'refund_minor': _roundHalfUp(lineTotal * (draft.qty / sold.qty)),
+          'vat_minor': _roundHalfUp(
+            (sold.vatMinor ?? 0) * (draft.qty / sold.qty),
+          ),
+          'portion': sold.portion,
+          'portion_ml': sold.portionMl,
+          'restock': draft.restock ? 1 : 0,
+          'restock_reason': draft.restockReason,
+        });
+      }
+
+      return returnId;
+    });
+  }
+
+  /// Puts [units] back on the shelf, in the same transaction as the movement.
+  ///
+  /// The shape mirrors the sale's deduction exactly, in reverse: a variant
+  /// gets its own count back, and a product that tracks variants has its
+  /// aggregate REWRITTEN from its variants — the same healing the sale does,
+  /// so a return cannot leave a parent that has drifted.
+  Future<void> _restoreStockCount(
+    DatabaseExecutor txn, {
+    required int productId,
+    int? variantId,
+    required double units,
+  }) async {
+    final String now = DateTime.now().toIso8601String();
+    if (variantId != null) {
+      await txn.rawUpdate(
+        'UPDATE product_variants SET stock_qty = MAX(0, stock_qty + ?) WHERE id = ?',
+        [units, variantId],
+      );
+    }
+    final flagRows = await txn.query(
+      'products',
+      columns: <String>['track_variants'],
+      where: 'id = ?',
+      whereArgs: [productId],
+      limit: 1,
+    );
+    final bool tracks = flagRows.isNotEmpty &&
+        ((flagRows.first['track_variants'] as num?)?.toInt() ?? 0) == 1;
+    if (tracks) {
+      await txn.rawUpdate(
+        'UPDATE products SET stock_qty = (SELECT COALESCE(SUM(stock_qty), 0) '
+        'FROM product_variants WHERE product_id = ? AND active = 1), '
+        'updated_at = ? WHERE id = ?',
+        [productId, now, productId],
+      );
+    } else {
+      await txn.rawUpdate(
+        'UPDATE products SET stock_qty = MAX(0, stock_qty + ?), updated_at = ? '
+        'WHERE id = ?',
+        [units, now, productId],
+      );
+    }
+  }
+
+  /// Whether the money for this sale ever arrived.
+  ///
+  /// A mobile-money sale taken while the phone was offline is a real sale —
+  /// the customer paid — but the payment was never confirmed, and a refund
+  /// against money that never arrived is money the shop does not have.
+  Future<bool> _paymentIsVerified(DatabaseExecutor txn, int saleId) async {
+    // The flag is on the SALE, not on the payment row: a sale taken while the
+    // phone was offline was recorded with `payment_verified = 0`, and that is
+    // the flag the return has to read.
+    final rows = await txn.rawQuery(
+      'SELECT payment_verified FROM sales WHERE id = ? LIMIT 1',
+      [saleId],
+    );
+    if (rows.isEmpty) return true;
+    return ((rows.first['payment_verified'] as num?)?.toInt() ?? 1) == 1;
+  }
+
+  /// A tiny allowance for the arithmetic of a fraction of a bottle.
+  ///
+  /// A third of a bottle is not exactly representable, and a customer who
+  /// returns "a third" should not be refused because 0.333 + 0.333 is a hair
+  /// short of 1.
+  static const double _qtyEpsilon = 0.0001;
+
+  /// Rounds half away from zero, in minor units.
+  ///
+  /// The money rule everywhere in this app: a half rounds UP, because
+  /// rounding a refund DOWN is how a shop quietly keeps a cent of every
+  /// return.
+  static int _roundHalfUp(double value) {
+    if (value >= 0) {
+      return value.floor() + (value - value.floor() >= 0.5 ? 1 : 0);
+    }
+    final int truncated = value.ceil();
+    return truncated - (truncated - value >= 0.5 ? 1 : 0);
+  }
+
+  /// The returns recorded against a sale, newest first.
+  Future<List<SaleReturn>> getReturnsForSale(int saleId) async {
+    final db = await database;
+    final rows = await db.query(
+      'sale_returns',
+      where: 'sale_id = ?',
+      whereArgs: [saleId],
+      orderBy: 'created_at DESC, id DESC',
+    );
+    final returns = <SaleReturn>[];
+    for (final row in rows) {
+      final itemRows = await db.query(
+        'sale_return_items',
+        where: 'return_id = ?',
+        whereArgs: [row['id']],
+        orderBy: 'id ASC',
+      );
+      returns.add(
+        SaleReturn.fromMap(row).let(
+          (r) => SaleReturn(
+            id: r.id,
+            saleId: r.saleId,
+            kind: r.kind,
+            reason: r.reason,
+            total: r.total,
+            vatTotal: r.vatTotal,
+            profit: r.profit,
+            refundMethod: r.refundMethod,
+            paymentReference: r.paymentReference,
+            staffId: r.staffId,
+            staffName: r.staffName,
+            createdAt: r.createdAt,
+            items: itemRows.map(SaleReturnItem.fromMap).toList(),
+          ),
+        ),
+      );
+    }
+    return returns;
+  }
+
+  /// How much of each sale line has already come back.
+  ///
+  /// The stepper in the return flow is limited by this: a bottle can be
+  /// returned once, and the second time round there is nothing left to
+  /// return.
+  Future<Map<int, double>> getReturnedQuantitiesForSale(int saleId) async {
+    final rows = await (await database).rawQuery(
+      'SELECT ri.sale_item_id, COALESCE(SUM(ri.qty), 0) AS returned_qty '
+      'FROM sale_return_items ri '
+      'JOIN sale_returns r ON r.id = ri.return_id '
+      'WHERE r.sale_id = ? '
+      'GROUP BY ri.sale_item_id',
+      [saleId],
+    );
+    return <int, double>{
+      for (final row in rows)
+        row['sale_item_id'] as int: (row['returned_qty'] as num).toDouble(),
+    };
+  }
+
+  /// How much of each of several sales has already come back.
+  ///
+  /// ONE query for the whole list, because the ledger shows a row per sale
+  /// and a row that asked for its own figures would be a query per row.
+  ///
+  /// The answer is a map from sale id to the fraction of it that has come
+  /// back: 0 for a sale that has not been touched, and anything above 0 for
+  /// one that has.
+  Future<Map<int, double>> getReturnedFractionsForSales(
+    List<int> saleIds,
+  ) async {
+    if (saleIds.isEmpty) return <int, double>{};
+    final rows = await (await database).rawQuery(
+      'SELECT r.sale_id AS sale_id, COALESCE(SUM(i.qty), 0) AS returned_qty, '
+      'COALESCE(SUM(s.qty), 0) AS sold_qty '
+      'FROM sale_return_items i '
+      'JOIN sale_returns r ON r.id = i.return_id '
+      'JOIN sale_items s ON s.id = i.sale_item_id '
+      'WHERE r.sale_id IN (${List.filled(saleIds.length, '?').join(',')}) '
+      'GROUP BY r.sale_id',
+      saleIds,
+    );
+    final Map<int, double> fractions = <int, double>{};
+    for (final row in rows) {
+      final int saleId = row['sale_id'] as int;
+      final double sold = (row['sold_qty'] as num?)?.toDouble() ?? 0;
+      final double returned = (row['returned_qty'] as num?)?.toDouble() ?? 0;
+      if (sold <= 0) continue;
+      fractions[saleId] = returned / sold;
+    }
+    return fractions;
+  }
+
+  /// Records a delivery: stock arriving, and what it cost.
+  ///
+  /// ## WHAT IT IS ONE TRANSACTION FOR
+  ///
+  /// The receipt, its lines, the stock movements, the cost history and the
+  /// products' costs all move together, or none of them move. A delivery that
+  /// put the stock on the shelf and then failed to record the cost would leave
+  /// the shop selling at a margin it never agreed to.
+  ///
+  /// ## WHAT THE COST DOES
+  ///
+  /// The product's own cost becomes the cost THIS delivery paid, and the
+  /// previous cost is kept in the history. That is the point of the feature:
+  /// "today cost is a static field, so profit drifts from reality" — a bottle
+  /// bought at 90 and a bottle bought at 110 are the same bottle and different
+  /// money, and the profit on every later sale is measured against the price
+  /// the shop actually paid.
+  ///
+  /// ## THE MARGIN IS NOT CHECKED HERE
+  ///
+  /// A line that arrives below the selling price is a decision, not a
+  /// mistake, and the review before posting is where the owner sees it. This
+  /// writes what it is told.
+  Future<int> postStockReceipt({
+    required List<StockReceiptLine> lines,
+    int? supplierId,
+    String? supplierRef,
+    String? note,
+    required String staffName,
+    int? staffId,
+    DateTime? receivedAt,
+  }) async {
+    if (lines.isEmpty) {
+      throw StateError('A delivery must contain at least one line');
+    }
+    final db = await database;
+    return db.transaction<int>((txn) async {
+      final String now = (receivedAt ?? DateTime.now()).toIso8601String();
+      int totalCost = 0;
+      final List<({StockReceiptLine line, int oldCost, int newCost})> costs =
+          <({StockReceiptLine line, int oldCost, int newCost})>[];
+
+      for (final StockReceiptLine line in lines) {
+        if (line.qty <= 0) {
+          throw StateError('A received quantity must be more than zero');
+        }
+        final List<Map<String, Object?>> product = await txn.query(
+          'products',
+          columns: <String>['id', 'cost_price', 'stock_qty', 'track_variants'],
+          where: 'id = ?',
+          whereArgs: [line.productId],
+          limit: 1,
+        );
+        if (product.isEmpty) {
+          throw StateError('That product is not in the catalogue');
+        }
+        final int oldCost = (product.first['cost_price'] as num?)?.toInt() ?? 0;
+        final int newCost = line.unitCost.minorUnits;
+        final int lineCost = (newCost * line.qty).round();
+        totalCost += lineCost;
+        costs.add((line: line, oldCost: oldCost, newCost: newCost));
+
+        // The stock, in the same transaction as the movement that describes
+        // it — the same rule every other stock change in this app follows.
+        final double balance = await _productBalanceAfter(txn, line.productId);
+        await _writeStockMovement(
+          txn,
+          productId: line.productId,
+          variantId: line.variantId,
+          type: StockMovementType.receipt,
+          qtyDelta: line.qty,
+          unitCostMinor: newCost,
+          referenceType: 'stock_receipt',
+          referenceId: null,
+          staffId: staffId,
+          staffName: staffName,
+          note: 'Received',
+          balanceAfter: balance,
+          createdAt: now,
+        );
+        await _restoreStockCount(
+          txn,
+          productId: line.productId,
+          variantId: line.variantId,
+          units: line.qty,
+        );
+      }
+
+      final int receiptId = await txn.insert('stock_receipts', {
+        'supplier_id': supplierId,
+        'supplier_ref': supplierRef,
+        'received_at': now,
+        'staff_id': staffId,
+        'staff_name': staffName,
+        'total_cost_minor': totalCost,
+        'status': 'posted',
+        'note': note,
+        'synced_to_backend': 0,
+      });
+
+      for (final ({StockReceiptLine line, int oldCost, int newCost}) cost
+          in costs) {
+        await txn.insert('stock_receipt_items', {
+          'receipt_id': receiptId,
+          'product_id': cost.line.productId,
+          'variant_id': cost.line.variantId,
+          'product_name': cost.line.productName,
+          'qty': cost.line.qty,
+          'unit_cost_minor': cost.newCost,
+          'line_cost_minor': (cost.newCost * cost.line.qty).round(),
+          'old_cost_minor': cost.oldCost,
+          'new_cost_minor': cost.newCost,
+        });
+        // The history: how the cost got to be what it is.
+        await txn.insert('product_cost_history', {
+          'product_id': cost.line.productId,
+          'variant_id': cost.line.variantId,
+          'effective_at': now,
+          'old_cost_minor': cost.oldCost,
+          'new_cost_minor': cost.newCost,
+          'reason': 'receipt',
+          'receipt_id': receiptId,
+        });
+        // The product's cost is now the cost this delivery paid.
+        await txn.rawUpdate(
+          'UPDATE products SET cost_price = ?, updated_at = ? WHERE id = ?',
+          <Object?>[cost.newCost, now, cost.line.productId],
+        );
+      }
+
+      return receiptId;
+    });
+  }
+
+  /// The deliveries, newest first.
+  Future<List<StockReceipt>> getStockReceipts({int limit = 100}) async {
+    final db = await database;
+    final rows = await db.query(
+      'stock_receipts',
+      orderBy: 'received_at DESC, id DESC',
+      limit: limit,
+    );
+    final receipts = <StockReceipt>[];
+    for (final row in rows) {
+      final itemRows = await db.query(
+        'stock_receipt_items',
+        where: 'receipt_id = ?',
+        whereArgs: [row['id']],
+        orderBy: 'id ASC',
+      );
+      receipts.add(
+        StockReceipt.fromMap(row).let(
+          (r) => StockReceipt(
+            id: r.id,
+            supplierId: r.supplierId,
+            supplierRef: r.supplierRef,
+            receivedAt: r.receivedAt,
+            staffId: r.staffId,
+            staffName: r.staffName,
+            totalCost: r.totalCost,
+            status: r.status,
+            note: r.note,
+            items: itemRows.map(StockReceiptItem.fromMap).toList(),
+          ),
+        ),
+      );
+    }
+    return receipts;
+  }
+
+  /// The cost a product last arrived at, so the next delivery can be
+  /// prefilled with it.
+  ///
+  /// The LAST delivery's cost, not the average and not the product's own
+  /// field: the number the owner is about to replace is the number they last
+  /// paid.
+  Future<Money?> lastCostForProduct(int productId) async {
+    final rows = await (await database).rawQuery(
+      'SELECT new_cost_minor FROM product_cost_history '
+      'WHERE product_id = ? ORDER BY effective_at DESC, id DESC LIMIT 1',
+      [productId],
+    );
+    if (rows.isEmpty) return null;
+    return Money.fromMinor(
+        (rows.first['new_cost_minor'] as num?)?.toInt() ?? 0);
+  }
+
+  /// The suppliers, active ones first.
+  Future<List<Supplier>> getSuppliers({bool activeOnly = true}) async {
+    final rows = await (await database).query(
+      'suppliers',
+      where: activeOnly ? 'active = 1' : null,
+      orderBy: 'name ASC',
+    );
+    return rows.map(Supplier.fromMap).toList();
+  }
+
+  /// Adds a supplier.
+  ///
+  /// The name is unique among the ACTIVE ones, case-insensitively: two
+  /// suppliers called "Kentex" and "kentex" are one supplier, and a history
+  /// that splits them is a history nobody can read.
+  Future<int> addSupplier({
+    required String name,
+    String? phone,
+    String? contactPerson,
+    String? notes,
+  }) async {
+    final String trimmed = name.trim();
+    if (trimmed.isEmpty) {
+      throw StateError('A supplier needs a name');
+    }
+    final db = await database;
+    final existing = await db.query(
+      'suppliers',
+      columns: <String>['id'],
+      where: 'active = 1 AND LOWER(name) = ?',
+      whereArgs: [trimmed.toLowerCase()],
+      limit: 1,
+    );
+    if (existing.isNotEmpty) {
+      throw StateError('That supplier is already on the list');
+    }
+    return db.insert('suppliers', <String, Object?>{
+      'name': trimmed,
+      'phone': phone,
+      'contact_person': contactPerson,
+      'notes': notes,
+      'active': 1,
+      'created_at': DateTime.now().toIso8601String(),
+    });
+  }
+
+  /// The deliveries the server has not seen yet.
+  Future<List<StockReceipt>> getUnsyncedReceipts({int limit = 100}) async {
+    final db = await database;
+    final rows = await db.query(
+      'stock_receipts',
+      where: 'synced_to_backend = 0',
+      orderBy: 'received_at ASC, id ASC',
+      limit: limit,
+    );
+    final receipts = <StockReceipt>[];
+    for (final row in rows) {
+      final itemRows = await db.query(
+        'stock_receipt_items',
+        where: 'receipt_id = ?',
+        whereArgs: [row['id']],
+        orderBy: 'id ASC',
+      );
+      receipts.add(
+        StockReceipt.fromMap(row).let(
+          (r) => StockReceipt(
+            id: r.id,
+            supplierId: r.supplierId,
+            supplierRef: r.supplierRef,
+            receivedAt: r.receivedAt,
+            staffId: r.staffId,
+            staffName: r.staffName,
+            totalCost: r.totalCost,
+            status: r.status,
+            note: r.note,
+            items: itemRows.map(StockReceiptItem.fromMap).toList(),
+          ),
+        ),
+      );
+    }
+    return receipts;
+  }
+
+  /// Marks these deliveries as pushed.
+  Future<void> markReceiptsSynced(List<int> ids) async {
+    if (ids.isEmpty) return;
+    final db = await database;
+    await db.rawUpdate(
+      'UPDATE stock_receipts SET synced_to_backend = 1 WHERE id IN '
+      '(${List.filled(ids.length, '?').join(',')})',
+      ids,
+    );
+  }
+
+  /// The returns the server has not seen yet.
+  Future<List<SaleReturn>> getUnsyncedReturns({int limit = 200}) async {
+    final db = await database;
+    final rows = await db.query(
+      'sale_returns',
+      where: 'synced_to_backend = 0',
+      orderBy: 'created_at ASC, id ASC',
+      limit: limit,
+    );
+    final returns = <SaleReturn>[];
+    for (final row in rows) {
+      final itemRows = await db.query(
+        'sale_return_items',
+        where: 'return_id = ?',
+        whereArgs: [row['id']],
+        orderBy: 'id ASC',
+      );
+      returns.add(
+        SaleReturn.fromMap(row).let(
+          (r) => SaleReturn(
+            id: r.id,
+            saleId: r.saleId,
+            kind: r.kind,
+            reason: r.reason,
+            total: r.total,
+            vatTotal: r.vatTotal,
+            profit: r.profit,
+            refundMethod: r.refundMethod,
+            paymentReference: r.paymentReference,
+            staffId: r.staffId,
+            staffName: r.staffName,
+            createdAt: r.createdAt,
+            items: itemRows.map(SaleReturnItem.fromMap).toList(),
+          ),
+        ),
+      );
+    }
+    return returns;
+  }
+
+  /// Marks these returns as pushed.
+  Future<void> markReturnsSynced(List<int> ids) async {
+    if (ids.isEmpty) return;
+    final db = await database;
+    await db.rawUpdate(
+      'UPDATE sale_returns SET synced_to_backend = 1 WHERE id IN '
+      '(${List.filled(ids.length, '?').join(',')})',
+      ids,
+    );
+  }
+
   Future<List<Sale>> getSalesAfter(DateTime? after,
       {required int limit}) async {
     final db = await database;
@@ -3382,7 +5529,27 @@ SELECT name FROM staff GROUP BY name HAVING COUNT(*) = 1
       [shift.staffId, since.toIso8601String(), until.toIso8601String()],
     );
     final minor = (rows.first['total_minor'] as num?)?.toInt() ?? 0;
-    return Money.fromMinor(minor);
+
+    // MINUS the cash that was given back out of THIS drawer.
+    //
+    // A cash refund takes money out of the drawer that is open when the
+    // return happens — not the drawer the sale was rung in, which was closed
+    // hours ago. So the return names the drawer it emptied, and that drawer
+    // is the one whose expected cash falls.
+    //
+    // Without this the drawer would be judged against money that had already
+    // gone out of it, and every refund would look like a shortage of exactly
+    // the amount refunded.
+    final refunds = await (await database).rawQuery(
+      '''SELECT COALESCE(SUM(total), 0) AS total_minor
+         FROM sale_returns
+         WHERE shift_id = ?
+           AND refund_method = 'cash' ''',
+      [shift.id],
+    );
+    final refunded = (refunds.first['total_minor'] as num?)?.toInt() ?? 0;
+
+    return Money.fromMinor(minor - refunded);
   }
 
   /// What the drawer should hold for [shift]: the float it opened with plus
@@ -3425,8 +5592,18 @@ SELECT name FROM staff GROUP BY name HAVING COUNT(*) = 1
   /// customer's money already in hand.
   Future<int> upsertShotCup(ShotCup cup) async {
     final db = await database;
-    if (cup.capacityMl <= 0) {
-      throw StateError('A shot cup needs a capacity greater than zero');
+    // A capacity of ZERO means "the size is not known", which is allowed.
+    //
+    // A shot cup is a NAME for a serving — "Single", "Double", "One shot" —
+    // and the size in millilitres is the owner's business, not the app's. It
+    // is what lets the app work out the cost of one shot exactly, so a cup
+    // with a size earns its cost and a cup without one is counted as profit
+    // the whole way through.
+    //
+    // A NEGATIVE capacity is still a mistake and is still refused: a cup of
+    // minus thirty millilitres is not a serving.
+    if (cup.capacityMl < 0) {
+      throw StateError('A shot cup cannot have a negative size');
     }
     final exists = await db.query('products',
         columns: ['id'], where: 'id = ?', whereArgs: [cup.productId], limit: 1);
@@ -4006,4 +6183,30 @@ class _AsyncGate {
     });
     return result.future;
   }
+}
+
+/// A line's fraction of its container. [containerMl] is the product's own
+/// bottle/keg size, which only a measured pour needs.
+///
+/// A measured pour is capped at one whole container: a capacity typed larger
+/// than the bottle it is poured from is a mistake in the shop's configuration,
+/// and the least wrong answer to it is to empty that bottle rather than to
+/// drive stock negative.
+///
+/// A measured pour with NO size takes nothing that can be measured. The old
+/// answer was a whole container, which came from the days when a shot always
+/// had a size: a shot of 30 ml out of a 750 ml bottle, and anything unreadable
+/// was a whole bottle. With the size now optional, "unreadable" means the
+/// owner did not say how big the shot is — and taking the whole bottle for it
+/// would empty the shelf after one shot.
+double _portionFactor(SaleItem item, double containerMl) {
+  if (item.portion == SalePortion.half) return 0.5;
+  if (item.portion == SalePortion.quarter) return 0.25;
+  if (item.portion == SalePortion.measured) {
+    if (item.portionMl <= 0) return 0.0;
+    if (containerMl <= 0) return 1.0;
+    final double fraction = item.portionMl / containerMl;
+    return fraction > 1 ? 1.0 : fraction;
+  }
+  return 1.0;
 }

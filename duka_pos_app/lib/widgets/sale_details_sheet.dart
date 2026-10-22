@@ -30,16 +30,21 @@
 // deliberately does not push a route for a thing that is a panel over a list.
 
 import 'package:flutter/material.dart';
+import 'package:provider/provider.dart';
 
+import '../db/database_helper.dart';
 import '../l10n/generated/app_localizations.dart';
 import '../models/audit_log.dart';
+import '../services/app_state.dart';
 import '../models/models.dart';
 import '../theme/app_colors.dart';
 import '../theme/app_shapes.dart';
 import '../theme/app_spacing.dart';
 import '../theme/typography.dart';
 import '../ui/components/controls.dart';
+import '../ui/components/operation_result.dart';
 import '../utils/datetime_format.dart';
+import '../screens/return_sale_sheet.dart';
 import '../utils/money.dart';
 
 /// Shows the details of [sale].
@@ -206,6 +211,9 @@ class _SaleDetailsSheet extends StatelessWidget {
                       ],
                     ),
                   ),
+                SizedBox(height: spacing.md),
+                // WHAT CAME BACK, and the button that gives something back.
+                _ReturnSection(sale: sale),
               ],
             ),
           ),
@@ -329,6 +337,68 @@ class _SaleLineRow extends StatelessWidget {
         SizedBox(width: spacing.md),
         MoneyText(amount: formatMoney(item.total), size: 14),
       ],
+    );
+  }
+}
+
+/// The button that gives something back.
+///
+/// ## WHY IT DOES NO READING
+///
+/// A widget that reads the database while it is building itself does its I/O
+/// in the middle of a build — slow, and untestable, because a query in an
+/// initState cannot be awaited by anything. The figures the return flow needs
+/// are read by the CALLER, at the moment the flow is opened, which is a
+/// moment a person asked for.
+///
+/// So this is a button and nothing else.
+class _ReturnSection extends StatelessWidget {
+  const _ReturnSection({required this.sale});
+
+  final Sale sale;
+
+  @override
+  Widget build(BuildContext context) {
+    final AppLocalizations l10n = AppLocalizations.of(context);
+    final AppSpacing spacing = AppSpacing.of(context);
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      mainAxisSize: MainAxisSize.min,
+      children: <Widget>[
+        SizedBox(height: spacing.sm),
+        OutlinedButton.icon(
+          onPressed: () => _startReturn(context),
+          icon: const Icon(Icons.undo_outlined),
+          label: Text(l10n.returnTitle),
+        ),
+      ],
+    );
+  }
+
+  /// Opens the return flow, with the figures it needs already read.
+  Future<void> _startReturn(BuildContext context) async {
+    final AppState state = context.read<AppState>();
+    final int? saleId = sale.id;
+    if (saleId == null) return;
+    // Read BEFORE the sheet opens: an await between reading the context and
+    // using it is a context used across an async gap.
+    final Map<int, double> alreadyReturned =
+        await DatabaseHelper.instance.getReturnedQuantitiesForSale(saleId);
+    if (!context.mounted) return;
+    final int? returnId = await showReturnSheet(
+      context,
+      sale: sale,
+      staffName: state.currentStaffName ?? '',
+      staffId: state.currentStaffId,
+      alreadyReturned: alreadyReturned,
+    );
+    if (returnId == null || !context.mounted) return;
+    // The outcome is a POPUP, not a screen: the till is not blocked.
+    showOperationSuccess(
+      context,
+      title: AppLocalizations.of(context).returnTitle,
+      message: AppLocalizations.of(context).returnDone,
     );
   }
 }

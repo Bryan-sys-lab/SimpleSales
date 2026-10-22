@@ -62,11 +62,18 @@ Map<String, dynamic> buildEtimsPayload({
 class EtimsService {
   EtimsService();
 
-  /// Only one flush at a time: the sell flow, the dashboard and tax settings
-  /// can all call `flushPending` at once, and two runs must not read the same
-  /// pending rows before either resolves them — otherwise the same sale could
-  /// be issued to KRA twice.
+  /// Only one BACKGROUND flush at a time: the sell flow, the dashboard and tax
+  /// settings can all call `flushPending` at once, and two runs must not read
+  /// the same pending rows before either resolves them — otherwise the same
+  /// sale could be issued to KRA twice.
   static Future<void>? _flushInProgress;
+
+  /// The sales an inline attempt is issuing right now.
+  ///
+  /// The background flush skips them. The inline attempt is already talking to
+  /// KRA about that sale, and the backend's idempotency key would resolve a
+  /// double upload — but a race that can be avoided is better avoided.
+  static final Set<int> _inlineInFlight = <int>{};
 
   static Future<T> _serialiseFlush<T>(Future<T> Function() body) async {
     final previous = _flushInProgress;
@@ -122,15 +129,28 @@ class EtimsService {
   /// KRA answers in time. Any older stuck row cannot steal this sale's receipt,
   /// and when the cap fires the caller prints an "eTIMS pending" line and
   /// reprints the official copy once the background flush issues it.
+  ///
+  /// The inline attempt does NOT queue behind a background flush. It used to:
+  /// the customer's receipt was issued behind whatever the background flush was
+  /// working through, so a till with a backlog held the customer at the
+  /// counter for as long as the backlog took — long past the deadline this
+  /// method promises. The current sale is now issued on its own, and the
+  /// background flush steps around any sale an inline attempt is dealing with.
+  ///
+  /// The cap covers the WHOLE attempt, not just the upload: a caller that
+  /// promised the customer five seconds must not spend six of them on a slow
+  /// database read and then start the upload anyway.
   Future<EtimsIssuedReceipt?> flushFor(int saleId,
       {Duration cap = kInlineIssueCap}) async {
-    return _serialiseFlush(() async {
-      if (!await isEnabledForSales()) return null;
-      final entry = await _db.getPendingEtimsReceiptBySaleId(saleId);
-      if (entry == null) return null;
-      final sale = await _db.getSaleById(saleId);
-      final row = await _db.getSaleRowById(saleId);
-      if (sale == null || row == null || sale.items.isEmpty) return null;
+    final DateTime deadline = DateTime.now().add(cap);
+    if (!await isEnabledForSales()) return null;
+    final entry = await _db.getPendingEtimsReceiptBySaleId(saleId);
+    if (entry == null) return null;
+    final sale = await _db.getSaleById(saleId);
+    final row = await _db.getSaleRowById(saleId);
+    if (sale == null || row == null || sale.items.isEmpty) return null;
+    _inlineInFlight.add(saleId);
+    try {
       final tin =
           (await _db.getSetting(DatabaseHelper.settingTin))?.trim() ?? '';
       final tillCode = await _db.getTillCode();
@@ -151,7 +171,11 @@ class EtimsService {
         pricesIncludeVat: pricesIncludeVat,
       );
       try {
-        final issued = await _uploadWithCap(payload, device: device, cap: cap);
+        final issued = await _uploadWithCap(
+          payload,
+          device: device,
+          cap: _remaining(deadline),
+        );
         _lastIssued = issued;
         await _db.resolveEtimsReceipt(
           saleId: saleId,
@@ -164,13 +188,44 @@ class EtimsService {
           saleId: saleId,
           error: _describe(error),
         );
-        if (_isPermanent(error, attempts: entry.attempts)) {
+        if (_isPermanent(error)) {
           await _db.markEtimsRejected(saleId, _describe(error));
         }
         return null;
       }
-    });
+    } finally {
+      _inlineInFlight.remove(saleId);
+    }
   }
+
+  /// How much of the deadline is left, floored so a spent deadline still
+  /// produces a real (if tiny) timeout rather than an immediate one.
+  static Duration _remaining(DateTime deadline) {
+    final Duration left = deadline.difference(DateTime.now());
+    if (left <= Duration.zero) return const Duration(milliseconds: 1);
+    return left;
+  }
+
+  /// Puts every refused receipt back in the queue and tries again.
+  ///
+  /// A refusal is permanent for the receipt that caused it and not for the
+  /// shop: the owner fixes the cause — a wrong TIN, a buyer PIN that does not
+  /// verify, a KRA scheme that was briefly misbehaving — and then wants those
+  /// invoices filed. This is the action that makes a refusal a thing to
+  /// resolve rather than a thing to stare at.
+  ///
+  /// The queue is re-armed first and flushed second, so the receipts are
+  /// uploaded in the order they were taken.
+  Future<EtimsFlushResult> retryRejected() async {
+    final int requeued = await _db.requeueRejectedEtimsReceipts();
+    if (requeued == 0) {
+      return const EtimsFlushResult(uploaded: 0, remaining: 0);
+    }
+    return flushPending();
+  }
+
+  /// How many receipts KRA has refused and nobody has put back.
+  Future<int> countRejected() => _db.countRejectedEtimsReceipts();
 
   /// Like [_upload] but bounded by [cap] so the checkout path cannot hang.
   ///
@@ -215,6 +270,9 @@ class EtimsService {
 
     var uploaded = 0;
     for (final entry in pending) {
+      // An inline attempt is already talking to KRA about this sale. Stepping
+      // around it keeps the two from racing for the same receipt.
+      if (_inlineInFlight.contains(entry.saleId)) continue;
       final sale = await _db.getSaleById(entry.saleId);
       final row = await _db.getSaleRowById(entry.saleId);
       if (sale == null || row == null) {
@@ -256,7 +314,7 @@ class EtimsService {
           saleId: entry.saleId,
           error: _describe(error),
         );
-        if (_isPermanent(error, attempts: entry.attempts)) {
+        if (_isPermanent(error)) {
           await _db.markEtimsRejected(entry.saleId, _describe(error));
           // A permanent refusal will be refused again forever: move on to the
           // next receipt instead of letting one bad row block everything newer.
@@ -312,17 +370,26 @@ class EtimsService {
     return '${result.uploaded} receipt(s) issued. ${result.remaining} still waiting.';
   }
 
-  static bool _isPermanent(Object error, {int attempts = 0}) {
+  /// Whether this error will be refused again, exactly as it was refused now.
+  ///
+  /// A 400, a 409 and a 422 are the server saying "this receipt is not
+  /// acceptable" — a wrong TIN, a buyer PIN that does not verify, a line the
+  /// KRA scheme cannot accept. The same payload gets the same answer, so
+  /// retrying it forever achieves nothing but hides the problem.
+  ///
+  /// A 5xx, a timeout and an unreachable KRA are different: they say nothing
+  /// about the receipt, and the same payload may well be accepted a minute
+  /// later. Those stay transient and are retried on the next connection.
+  ///
+  /// A shop that is not linked to the backend is transient too. It is a
+  /// temporary state of the shop, not a fault in the receipt, and the receipt
+  /// must not be marked as refused for it.
+  static bool _isPermanent(Object error) {
     if (error is EtimsRejectedException) return true;
-    // A 400/409/422 arrives as a DioException, not an EtimsRejectedException,
-    // and KRA will say the same thing on every retry — map it to permanent so
-    // the row is marked rejected and the owner sees it instead of being retried
-    // forever. But require a few attempts first so a deploy bug or a
-    // transient KRA-side 4xx doesn't mass-reject the entire backlog. 5xx,
-    // timeouts and offline stay transient.
+    if (error is EtimsNotLinkedException) return false;
     if (error is DioException) {
       final c = error.response?.statusCode ?? 0;
-      if (c == 400 || c == 409 || c == 422) return attempts >= 2;
+      if (c == 400 || c == 409 || c == 422) return true;
     }
     return false;
   }

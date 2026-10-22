@@ -5,6 +5,8 @@ import 'package:cryptography/cryptography.dart' show Hmac, Pbkdf2, SecretKey;
 import 'package:flutter/foundation.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 
+import 'workspace_service.dart';
+
 /// Arguments for a PBKDF2-HMAC-SHA256 derivation, sent to a background isolate.
 ///
 /// Plain data only: the PIN, its salt and the work factor. Nothing here needs a
@@ -206,6 +208,34 @@ class AuthService {
   static Future<bool> isLockedOut(String userKey) async =>
       _isLockedOut(await _readLockout(userKey));
 
+  /// The storage key for one person's failed attempts IN ONE SHOP.
+  ///
+  /// The shop is part of the key because the same person can be an owner of
+  /// two shops on one phone, and because the owner key — `'__owner__'` — is
+  /// the same literal in every shop. Without the shop in the key, five wrong
+  /// PINs at shop A locked the owner out of shop B, which is one shop's
+  /// mistake refusing another shop's till.
+  ///
+  /// The till-wide throttle is deliberately NOT scoped this way: it is about
+  /// somebody with the handset in their hands, and that is the same physical
+  /// risk whichever shop the phone is opened on.
+  static Future<String> _lockoutKeyFor(String userKey) async {
+    // The shop, when it can be read.
+    //
+    // It cannot always be: the preferences are a platform channel, and a
+    // lockout that REFUSES to be written because a platform channel is
+    // missing is a lockout that does not lock anybody out. So the key falls
+    // back to a single shop, and the lockout is still a lockout.
+    String workspace = 'default';
+    try {
+      workspace = await WorkspaceService.activeWorkspaceKey();
+    } catch (_) {
+      // No preferences: the till has one shop as far as this can tell.
+    }
+    final String safe = workspace.replaceAll(RegExp(r'[^A-Za-z0-9_-]'), '_');
+    return '$_lockoutPrefix$safe#$userKey';
+  }
+
   /// True when *any* sign-in attempt is currently refused, regardless of which
   /// user was selected.
   ///
@@ -250,7 +280,7 @@ class AuthService {
   /// Call sites only ever need this one method: forgetting the till-wide half
   /// at a call site would silently reopen the bypass it exists to close.
   static Future<void> recordFailure(String userKey) async {
-    await _registerFailure('$_lockoutPrefix$userKey');
+    await _registerFailure(await _lockoutKeyFor(userKey));
     await _registerFailure(_tillThrottleKey);
   }
 
@@ -279,12 +309,12 @@ class AuthService {
   /// has no reason to keep guessing. Without this, one mistyped PIN from a
   /// legitimate cashier would eventually lock the whole shop out of its till.
   static Future<void> recordSuccess(String userKey) async {
-    await _clearRecord('$_lockoutPrefix$userKey');
+    await _clearRecord(await _lockoutKeyFor(userKey));
     await _clearRecord(_tillThrottleKey);
   }
 
   static Future<Map<String, dynamic>?> _readLockout(String userKey) async =>
-      _readRecord('$_lockoutPrefix$userKey');
+      _readRecord(await _lockoutKeyFor(userKey));
 
   static Future<Map<String, dynamic>?> _readRecord(String storageKey) async {
     final raw = await _storage.read(key: storageKey);

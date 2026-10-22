@@ -281,7 +281,8 @@ class _PermissionCard extends StatelessWidget {
                 ),
                 SizedBox(height: spacing.md),
                 if (granted)
-                  StatusChip(tone: StatusTone.success, text: l10n.permissionsAllowed)
+                  StatusChip(
+                      tone: StatusTone.success, text: l10n.permissionsAllowed)
                 else
                   // The button's LABEL says what it will do, and says the
                   // difference between asking again and sending somebody to

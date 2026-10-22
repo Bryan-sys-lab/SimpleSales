@@ -132,6 +132,11 @@ dev_dependencies:
   # direct dependency already, so this is its platform interface, declared for
   # the same reason as the one above.
   flutter_secure_storage_platform_interface: ^2.1.1
+  # The release pipeline's own logic, read out of the workflow and run against a
+  # scratch repository. It is in the lock file already, as a transitive
+  # dependency of the build tooling, and the same rule applies: a package the
+  # code imports is a package the code declares.
+  yaml: ^3.1.4
 
 flutter:
   uses-material-design: true

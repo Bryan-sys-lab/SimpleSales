@@ -181,7 +181,7 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
                           title: 'Your account and your shop',
                           body:
                               'The email you entered identifies this shop to the '
-                              'online services. Your 4-digit PIN is what unlocks '
+                              'online services. Your 6-digit PIN is what unlocks '
                               'the till on this device, and it never leaves the '
                               'phone.\n\nM-Pesa and analytics need an internet '
                               'connection the first time. Until then, cash sales '

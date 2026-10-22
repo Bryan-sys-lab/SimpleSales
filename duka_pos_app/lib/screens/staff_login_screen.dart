@@ -96,6 +96,20 @@ class _StaffLoginScreenState extends State<StaffLoginScreen> {
           backendResponse['staff'] is Map<String, dynamic>) {
         final Map<String, dynamic> staffMap =
             backendResponse['staff'] as Map<String, dynamic>;
+        final bool active = staffMap['active'] as bool? ?? true;
+        if (!active) {
+          // A removed cashier must not be able to sign in on a till that still
+          // has their credentials cached. The server says the account is
+          // closed; that is the end of it, and the message is deliberately the
+          // same as a wrong PIN — "this account exists but is closed" is
+          // information an attacker can use.
+          if (mounted) {
+            setState(() {
+              _error = AppLocalizations.of(context).loginWrongCredentials;
+            });
+          }
+          return;
+        }
         staff = Staff(
           id: staffMap['id'] as int? ?? staffMap['localId'] as int?,
           name: staffMap['name'] as String? ?? username,
@@ -103,7 +117,7 @@ class _StaffLoginScreenState extends State<StaffLoginScreen> {
           pinHash: staffMap['pinHash'] as String? ?? '',
           role: staffMap['role'] as String? ?? 'cashier',
           remoteId: staffMap['remoteId'] as String?,
-          active: staffMap['active'] as bool? ?? true,
+          active: active,
         );
         if (staff.id != null) {
           await DatabaseHelper.instance.updateStaffPin(
@@ -112,8 +126,11 @@ class _StaffLoginScreenState extends State<StaffLoginScreen> {
           );
         }
       } else {
-        final List<Staff> localStaff =
-            await DatabaseHelper.instance.getStaff(activeOnly: false);
+        // Only an ACTIVE member of staff can sign in. The roster is read with
+        // the inactive ones left out, so a removed cashier's row is never even
+        // a candidate — their name and their PIN hash stay on the phone, but
+        // neither can open the till.
+        final List<Staff> localStaff = await DatabaseHelper.instance.getStaff();
         staff = localStaff.cast<Staff?>().firstWhere(
               (Staff? s) =>
                   s?.username?.toLowerCase() == username.toLowerCase(),

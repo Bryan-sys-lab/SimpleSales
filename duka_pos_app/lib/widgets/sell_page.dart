@@ -532,8 +532,7 @@ class SellCartPane extends StatelessWidget {
                     SizedBox(width: spacing.sm),
                     Expanded(
                       child: FilledButton.icon(
-                        onPressed:
-                            lines.isEmpty || processing ? null : onMpesa,
+                        onPressed: lines.isEmpty || processing ? null : onMpesa,
                         icon: const Icon(Icons.phone_iphone),
                         label: Text(mpesaLabel),
                       ),

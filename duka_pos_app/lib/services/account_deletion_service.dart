@@ -355,6 +355,10 @@ class AccountDeletionService {
       await _eraseColumn(txn, 'shifts', 'staff_name', key);
       await _eraseColumn(txn, 'stock_adjustments', 'staff_name', key);
       await _eraseColumn(txn, 'stock_adjustments', 'reason', key);
+      // The stock ledger names the same people, in the same two places: the
+      // snapshot of who moved the count, and the free-text note beside it.
+      await _eraseColumn(txn, 'stock_movements', 'staff_name', key);
+      await _eraseColumn(txn, 'stock_movements', 'note', key);
       await _eraseColumn(txn, 'pending_payments', 'phone_number', key);
       await _eraseColumn(txn, 'pending_payments', 'staff_name', key);
       await _eraseColumn(txn, 'pending_payments', 'cart_json', key);

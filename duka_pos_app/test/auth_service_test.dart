@@ -1,6 +1,8 @@
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import 'package:duka_pos/services/auth_service.dart';
+import 'package:duka_pos/services/workspace_service.dart';
 
 /// These cover the credential-derivation and lockout behaviour that used to be
 /// a single unstretched SHA-256 round with an in-memory throttle.
@@ -166,6 +168,43 @@ void main() {
       await AuthService.recordSuccess(user);
       expect(await AuthService.isLockedOut(user), isFalse);
       expect(await AuthService.isTillLockedOut(), isFalse);
+    }, timeout: kdfTimeout);
+  });
+
+  group('One shop does not lock out another', () {
+    // The owner key is the SAME LITERAL in every shop — '__owner__' — because
+    // the owner of a shop is the owner of it, whoever is holding the phone.
+    // So a lockout keyed on the name alone was one shop's mistake refusing
+    // another shop's till: five wrong PINs at shop A locked the owner out of
+    // shop B on the same phone.
+    //
+    // The key names the shop as well as the person.
+
+    const user = 'cross-shop-owner';
+
+    setUp(() async {
+      SharedPreferences.setMockInitialValues(<String, Object>{});
+    });
+
+    tearDown(() async {
+      await AuthService.recordSuccess(user);
+    });
+
+    test('a lockout in one shop is not a lockout in the other', () async {
+      await WorkspaceService.setActiveWorkspace('shop-a');
+      for (var i = 0; i < AuthService.maxAttempts; i++) {
+        await AuthService.recordFailure(user);
+      }
+      expect(await AuthService.isLockedOut(user), isTrue,
+          reason: 'the shop the attempts were made in is locked out');
+
+      await WorkspaceService.setActiveWorkspace('shop-b');
+      expect(
+        await AuthService.isLockedOut(user),
+        isFalse,
+        reason: 'and the other shop is not: one shop mistake must not '
+            'refuse another shop till',
+      );
     }, timeout: kdfTimeout);
   });
 
