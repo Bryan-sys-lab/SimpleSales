@@ -32,7 +32,13 @@ import rateLimit, { ipKeyGenerator } from 'express-rate-limit';
 import { randomBytes } from 'node:crypto';
 import { prisma } from '../lib/prisma.js';
 import { asyncHandler } from '../lib/http.js';
-import { linkSchema, parseBody, verificationCodeSchema } from '../lib/validation.js';
+import {
+  linkSchema,
+  parseBody,
+  pinResetConfirmSchema,
+  pinResetRequestSchema,
+  verificationCodeSchema,
+} from '../lib/validation.js';
 import { log } from '../lib/observability.js';
 import {
   CODE_REQUEST_WINDOW_MINUTES,
@@ -119,6 +125,23 @@ const linkLimiter = rateLimit({
 const verifyLimiter = rateLimit({
   windowMs: 10 * 60_000,
   limit: 20,
+  standardHeaders: 'draft-7',
+  legacyHeaders: false,
+  keyGenerator: addressKey,
+});
+
+/**
+ * The reset request gets its OWN budget.
+ *
+ * Sharing the link limiter looked tidy — one budget per address — but it made
+ * two unrelated actions spend each other's: an owner who had just tried to
+ * link a shop could be told to wait fifteen minutes before asking for a reset
+ * code, and the reset is the flow somebody reaches for when the till is stuck.
+ * Same shape, separate counter.
+ */
+const pinResetLimiter = rateLimit({
+  windowMs: CODE_REQUEST_WINDOW_MINUTES * 60_000,
+  limit: MAX_CODES_PER_WINDOW,
   standardHeaders: 'draft-7',
   legacyHeaders: false,
   keyGenerator: addressKey,
@@ -402,6 +425,261 @@ router.post('/verify', verifyLimiter, asyncHandler(async (req: Request, res: Res
       // the password.
       sign_in_required: true,
     });
+}));
+
+// ---------------------------------------------------------------- PIN reset
+
+/**
+ * Step one of Forgot PIN: email a code to the address on the account.
+ *
+ * ## WHY THIS DOES NOT NEED THE OLD PIN
+ *
+ * Every other auth endpoint here needs the admin PIN. This one cannot: the
+ * owner asking is the owner who forgot it. The proof is possession of the
+ * verified mailbox, which is the same proof /link uses.
+ *
+ * ## WHY IT NEVER SAYS "NO SUCH ACCOUNT"
+ *
+ * The answer is the same whether or not the address has an account. A reset
+ * form that answers "that email is not registered" is an oracle for which
+ * addresses shop with this service, and that is exactly what /link refuses to
+ * be. An address with no account gets a challenge that no code can satisfy,
+ * and the person trying sees the same "check your email" screen.
+ */
+router.post('/pin-reset/request', pinResetLimiter, asyncHandler(async (req: Request, res: Response) => {
+  const requestId = req.requestId;
+  const { email } = parseBody(pinResetRequestSchema, req.body);
+
+  if (!identityConfigured() || (!mailerConfigured() && !debugCodesEnabled())) {
+    return notConfigured(res, requestId);
+  }
+
+  // The same per-mailbox ceiling /link enforces, counting sent codes so it
+  // cannot be reset by spending them.
+  const recent = await prisma.emailVerification.count({
+    where: { email, createdAt: { gte: codeRequestWindowStart(new Date()) } },
+  });
+  if (recent >= MAX_CODES_PER_WINDOW) {
+    log('warn', 'auth.pin_reset_rate_limited', { requestId, email: maskEmail(email) });
+    return res.status(429).json({
+      error: `Too many codes requested. Wait ${CODE_REQUEST_WINDOW_MINUTES} minutes and try again.`,
+      code: 'TOO_MANY_CODES',
+      requestId,
+    });
+  }
+
+  const keycloak = createKeycloakAdminClient({ ...keycloakAdminOptionsFromEnv(process.env)! });
+  const secret = verificationSecret();
+
+  let subject = '';
+  try {
+    const user = await keycloak.findUserByEmail(email);
+    subject = user?.id ?? '';
+  } catch (error) {
+    log('error', 'auth.keycloak_unreachable', {
+      requestId,
+      message: error instanceof Error ? error.message : 'unknown',
+    });
+    return res.status(502).json({
+      error: 'Could not reach the identity server',
+      code: 'IDENTITY_UNAVAILABLE',
+      requestId,
+    });
+  }
+
+  // One live code at a time, exactly as /link does.
+  await prisma.emailVerification.updateMany({
+    where: { email, consumedAt: null },
+    data: { consumedAt: new Date() },
+  });
+
+  const code = generateVerificationCode();
+  const salt = newSalt();
+  const challenge = await prisma.emailVerification.create({
+    data: {
+      email,
+      // Empty when there is no account: the confirm step refuses to set a
+      // password for nobody.
+      subject,
+      salt,
+      codeHash: hashCodeSecret(code, salt, secret),
+      // A reset is the flow where the PIN is NOT known, so there is nothing to
+      // bind. Random bytes keep the column meaningful and make it impossible
+      // for anything the owner types to match on this path.
+      pinHash: hashCodeSecret(randomBytes(16).toString('hex'), salt, secret),
+      expiresAt: new Date(Date.now() + VERIFICATION_TTL_MINUTES * 60_000),
+    },
+  });
+
+  if (subject && mailerConfigured()) {
+    // The email names the shop, so the owner recognises which till is asking
+    // even when they run more than one. The address proves the account; the
+    // shop name is only there to make the message readable.
+    const profile = await prisma.profile.findFirst({
+      where: { oidcSubject: subject, deletedAt: null },
+      include: { tenant: true },
+      orderBy: { createdAt: 'asc' },
+    });
+    try {
+      await buildMailer()({
+        to: email,
+        code,
+        shopName: profile?.tenant.shopName ?? process.env.APP_NAME ?? 'SimpleSales',
+        ttlMinutes: VERIFICATION_TTL_MINUTES,
+      });
+    } catch (error) {
+      await prisma.emailVerification.update({
+        where: { id: challenge.id },
+        data: { consumedAt: new Date() },
+      });
+      log('error', 'auth.email_failed', {
+        requestId,
+        message: error instanceof Error ? error.message : 'unknown',
+      });
+      return res.status(502).json({
+        error: 'The verification email could not be sent',
+        code: 'EMAIL_UNAVAILABLE',
+        requestId,
+      });
+    }
+  }
+
+  log('info', 'auth.pin_reset_code_sent', {
+    requestId,
+    email: maskEmail(email),
+    accountFound: Boolean(subject),
+  });
+
+  res.json({
+    status: 'code_sent',
+    // The field name the till reads. Snake_case matches the rest of this
+    // service's responses; `challengeId` is accepted by the client's own
+    // reader for the older spelling.
+    challengeId: challenge.id,
+    challenge_id: challenge.id,
+    email: maskEmail(email),
+    expires_in_seconds: VERIFICATION_TTL_MINUTES * 60,
+    ...(debugCodesEnabled() && subject ? { debug_code: code } : {}),
+  });
+}));
+
+/**
+ * Step two of Forgot PIN: spend the code and set the new PIN.
+ *
+ * ## THE NEW PIN IS ALSO THE KEYCLOAK PASSWORD
+ *
+ * The admin PIN is the account's password (see the file header). A reset that
+ * changed only the phone's copy would leave the identity server expecting the
+ * PIN the owner has forgotten, so the next cloud sign-in — and the receipt
+ * that depends on it — would fail with the credential the app had just told
+ * them to use. Both copies move together, here.
+ *
+ * ## WHAT FAILURE LOOKS LIKE
+ *
+ * A wrong code burns one attempt and answers 400, the same shape /verify uses.
+ * An unknown challenge answers 400 too, never 404: the till reads 404 as "that
+ * email has no account", and this endpoint is not an enumeration oracle.
+ */
+router.post('/pin-reset/confirm', verifyLimiter, asyncHandler(async (req: Request, res: Response) => {
+  const requestId = req.requestId;
+  const { email, challengeId, code, newPin } = parseBody(pinResetConfirmSchema, req.body);
+
+  if (!identityConfigured()) {
+    return notConfigured(res, requestId);
+  }
+
+  const secret = verificationSecret();
+  const now = new Date();
+
+  const challenge = await prisma.emailVerification.findUnique({ where: { id: challengeId } });
+  if (!challenge || challenge.email !== email) {
+    return res.status(400).json({
+      error: 'That code has expired. Ask for a new one.',
+      code: 'RESET_EXPIRED',
+      requestId,
+    });
+  }
+  if (challenge.consumedAt) {
+    return res.status(400).json({
+      error: 'That code has already been used. Ask for a new one.',
+      code: 'RESET_SPENT',
+      requestId,
+    });
+  }
+  if (isVerificationExpired(challenge.expiresAt, now)) {
+    await prisma.emailVerification.update({ where: { id: challenge.id }, data: { consumedAt: now } });
+    return res.status(400).json({
+      error: 'That code has expired. Ask for a new one.',
+      code: 'RESET_EXPIRED',
+      requestId,
+    });
+  }
+  if (attemptsRemaining(challenge.attempts) <= 0) {
+    await prisma.emailVerification.update({ where: { id: challenge.id }, data: { consumedAt: now } });
+    log('warn', 'auth.pin_reset_burnt', { requestId, email: maskEmail(email) });
+    return res.status(429).json({
+      error: 'Too many wrong attempts. Ask for a new code.',
+      code: 'TOO_MANY_ATTEMPTS',
+      requestId,
+    });
+  }
+
+  const codeCorrect = hashesMatch(
+    hashCodeSecret(code, challenge.salt, secret),
+    challenge.codeHash,
+  );
+  if (!codeCorrect) {
+    const updated = await prisma.emailVerification.update({
+      where: { id: challenge.id },
+      data: { attempts: { increment: 1 } },
+    });
+    log('warn', 'auth.pin_reset_rejected', {
+      requestId,
+      email: maskEmail(email),
+      attemptsRemaining: attemptsRemaining(updated.attempts),
+    });
+    return res.status(400).json({
+      error: 'That code is not right.',
+      code: 'RESET_INVALID',
+      attempts_remaining: attemptsRemaining(updated.attempts),
+      requestId,
+    });
+  }
+
+  if (!challenge.subject) {
+    // The code was right but there was never an account to reset. It cannot
+    // happen through the mailbox, but it can through a fabricated challenge.
+    return res.status(400).json({
+      error: 'That code is not right.',
+      code: 'RESET_INVALID',
+      requestId,
+    });
+  }
+
+  // Spent before the password moves: a retry must not get a second chance to
+  // set a different PIN from the same code.
+  await prisma.emailVerification.updateMany({
+    where: { email, consumedAt: null },
+    data: { consumedAt: now },
+  });
+
+  const keycloak = createKeycloakAdminClient({ ...keycloakAdminOptionsFromEnv(process.env)! });
+  try {
+    await keycloak.setPassword(challenge.subject, newPin);
+  } catch (error) {
+    log('error', 'auth.pin_reset_keycloak_failed', {
+      requestId,
+      message: error instanceof Error ? error.message : 'unknown',
+    });
+    return res.status(502).json({
+      error: 'Could not reach the identity server',
+      code: 'IDENTITY_UNAVAILABLE',
+      requestId,
+    });
+  }
+
+  log('info', 'auth.pin_reset', { requestId, email: maskEmail(email) });
+  res.json({ status: 'reset' });
 }));
 
 export default router;

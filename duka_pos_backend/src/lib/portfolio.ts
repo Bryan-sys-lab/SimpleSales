@@ -24,6 +24,12 @@ export interface ShopKpi {
    * NOT the mean of these — see [rollUpPortfolio]. */
   averageBasket: number;
   topPaymentMethod: string | null;
+  /** Shifts counted (closed) in the window, and any still open now. */
+  shiftsClosed: number;
+  shiftsOpen: number;
+  /** Counted cash minus expected cash across the closed shifts, in minor
+   * units. Negative means the drawer was short. */
+  cashVariance: number;
 }
 
 /** The whole the shops divide, plus the shops themselves. */

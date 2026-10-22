@@ -16,6 +16,9 @@ describe('portfolio roll-up', () => {
     transactions: 0,
     averageBasket: 0,
     topPaymentMethod: null,
+    shiftsClosed: 0,
+    shiftsOpen: 0,
+    cashVariance: 0,
     ...over,
   });
 

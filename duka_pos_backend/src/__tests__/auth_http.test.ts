@@ -128,3 +128,76 @@ describe('the verify flow is reachable before any token exists', () => {
     expect(response.body.refresh_token).toBeUndefined();
   });
 });
+
+describe('the PIN reset is reachable before any token exists', () => {
+  // A reset is used by exactly one person: the owner who has forgotten the PIN
+  // that would have got them a token. It therefore lives beside /link, ahead
+  // of the auth middleware, and the same three questions apply — is it
+  // mounted, does it refuse a bad body at the door, and is it honest about a
+  // server with no realm.
+
+  it('answers /auth/pin-reset/request rather than 401-ing it', async () => {
+    const request = await http();
+    const response = await request
+      .post('/api/auth/pin-reset/request')
+      .send({ email: 'owner@example.com' });
+    expect(response.status).not.toBe(401);
+  });
+
+  it('answers /auth/pin-reset/confirm rather than 401-ing it', async () => {
+    const request = await http();
+    const response = await request.post('/api/auth/pin-reset/confirm').send({
+      email: 'owner@example.com',
+      challengeId: '9f1d7c1e-3a0f-4a5a-9f4b-2b8f0f6a1c11',
+      code: '123456',
+      newPin: '123456',
+    });
+    expect(response.status).not.toBe(401);
+  });
+
+  it('says verification is not configured instead of pretending to send', async () => {
+    // No realm credentials and no EmailJS keys here, so the only honest answer
+    // is 503. A 200 would send the owner to a mailbox that will never get the
+    // code, and the reset would look broken for a reason they cannot see.
+    const request = await http();
+    const response = await request
+      .post('/api/auth/pin-reset/request')
+      .send({ email: 'owner@example.com' });
+    expect(response.status).toBe(503);
+    expect(response.body.code).toBe('VERIFICATION_NOT_CONFIGURED');
+  });
+
+  it('refuses an address that is not an address', async () => {
+    const request = await http();
+    const response = await request
+      .post('/api/auth/pin-reset/request')
+      .send({ email: 'not-an-address' });
+    expect(response.status).toBe(400);
+  });
+
+  it('refuses a new PIN that is not six digits, before any lookup', async () => {
+    // The admin PIN is six digits everywhere else in this service, and a reset
+    // that accepted four would install a credential the rest of the system
+    // regards as invalid — a reset that locks the owner out twice.
+    const request = await http();
+    const response = await request.post('/api/auth/pin-reset/confirm').send({
+      email: 'owner@example.com',
+      challengeId: '9f1d7c1e-3a0f-4a5a-9f4b-2b8f0f6a1c11',
+      code: '123456',
+      newPin: '1234',
+    });
+    expect(response.status).toBe(400);
+    expect(response.body.error).toBe('Invalid request');
+  });
+
+  it('refuses a challenge id that is not an id', async () => {
+    const request = await http();
+    const response = await request.post('/api/auth/pin-reset/confirm').send({
+      email: 'owner@example.com',
+      challengeId: 'not-a-uuid',
+      code: '123456',
+      newPin: '123456',
+    });
+    expect(response.status).toBe(400);
+  });
+});

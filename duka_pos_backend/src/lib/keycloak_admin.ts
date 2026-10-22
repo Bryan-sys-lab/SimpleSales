@@ -174,6 +174,54 @@ export function createKeycloakAdminClient(options: KeycloakAdminOptions) {
         throw new Error(`Keycloak refused to verify the email (${response.status})`);
       }
     },
+
+    /**
+     * The account for an email address, or null.
+     *
+     * Used by the PIN reset, which must work for an account whose password the
+     * owner has forgotten: there is nothing to authenticate with, so the
+     * address is looked up rather than proved. The caller must not turn the
+     * answer into "this email has an account" — see the reset route.
+     */
+    async findUserByEmail(email: string): Promise<KeycloakUser | null> {
+      const token = await adminToken();
+      const response = await http(
+        `${adminBase}/users?username=${encodeURIComponent(email)}&exact=true`,
+        { method: 'GET', headers: authHeaders(token) },
+      );
+      if (response.status < 200 || response.status >= 300) {
+        throw new Error(`Keycloak refused to look up the account (${response.status})`);
+      }
+      const users = response.body as Array<{ id?: unknown }> | null;
+      const id = users?.[0]?.id;
+      return typeof id === 'string' && id ? { id, created: false } : null;
+    },
+
+    /**
+     * Sets the account's password.
+     *
+     * The password IS the owner's admin PIN (see the file header), so a PIN
+     * reset on the till is also a password change here — otherwise the PIN the
+     * owner just set would be unknown to the identity server and the next
+     * cloud sign-in would fail with the credential the app had just told them
+     * to use.
+     *
+     * `temporary: false`: the owner chose it on their own device.
+     */
+    async setPassword(userId: string, password: string): Promise<void> {
+      const token = await adminToken();
+      const response = await http(
+        `${adminBase}/users/${encodeURIComponent(userId)}/reset-password`,
+        {
+          method: 'PUT',
+          headers: authHeaders(token),
+          body: JSON.stringify({ type: 'password', value: password, temporary: false }),
+        },
+      );
+      if (response.status < 200 || response.status >= 300) {
+        throw new Error(`Keycloak refused the new password (${response.status})`);
+      }
+    },
   };
 }
 

@@ -58,7 +58,13 @@ export async function readPortfolio(
   const shops = await Promise.all(
     owned.map(async (profile): Promise<ShopKpi> => {
       const where = { tenantId: profile.tenantId, createdAt: { gte: window.from, lte: window.to } };
-      const [sales, byPaymentMethod] = await Promise.all([
+      // A shift belongs to the window it STARTED in: a drawer opened before
+      // midnight and counted after it is that day's takings.
+      const shiftWhere = {
+        tenantId: profile.tenantId,
+        startTime: { gte: window.from, lte: window.to },
+      };
+      const [sales, byPaymentMethod, shiftsClosed, shiftsOpen] = await Promise.all([
         prisma.sale.aggregate({
           where,
           _count: { _all: true },
@@ -76,6 +82,16 @@ export async function readPortfolio(
           orderBy: { _sum: { total: 'desc' } },
           take: 1,
         }),
+        // The money the drawer should have held against the money that was
+        // actually in it — the one figure a shop's shift has to report.
+        prisma.shift.aggregate({
+          where: { ...shiftWhere, status: 'closed' },
+          _count: { _all: true },
+          _sum: { expectedCash: true, countedCash: true },
+        }),
+        prisma.shift.count({
+          where: { tenantId: profile.tenantId, status: 'open' },
+        }),
       ]);
 
       const transactions = sales._count._all;
@@ -91,6 +107,13 @@ export async function readPortfolio(
         // An empty shop has no dominant tender, and inventing 'cash' would
         // claim a fact that is not in the data.
         topPaymentMethod: byPaymentMethod[0]?.paymentMethod ?? null,
+        shiftsClosed: shiftsClosed._count._all,
+        shiftsOpen,
+        // Minor units, matching every other money figure on the wire.
+        cashVariance: Math.round(
+          (Number(shiftsClosed._sum.countedCash ?? 0) -
+            Number(shiftsClosed._sum.expectedCash ?? 0)) * 100,
+        ),
       };
     }),
   );

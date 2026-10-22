@@ -53,6 +53,30 @@ export const verificationCodeSchema = z.object({
   ownerName: boundedName.optional(),
 }).strict();
 
+/**
+ * Asking for a reset code. One field: the address the account was verified
+ * with. The PIN is precisely what the caller has forgotten, so it cannot be
+ * part of the ask.
+ */
+export const pinResetRequestSchema = z.object({
+  email: z.string().trim().toLowerCase().email().max(254),
+}).strict();
+
+/**
+ * Spending the reset code, and naming the new PIN.
+ *
+ * `newPin` is sent in the clear over TLS for the same reason the original PIN
+ * is: Keycloak's password IS the admin PIN, and a reset that changed only the
+ * phone's copy would leave the identity server expecting the old one. The
+ * server hashes it into Keycloak and keeps nothing.
+ */
+export const pinResetConfirmSchema = z.object({
+  email: z.string().trim().toLowerCase().email().max(254),
+  challengeId: z.string().uuid(),
+  code: z.string().regex(/^\d{6}$/, 'The reset code is exactly 6 digits'),
+  newPin: adminPin,
+}).strict();
+
 export const productSyncSchema = z.object({
   products: z.array(z.object({
     id: z.number().int().positive().optional(),
