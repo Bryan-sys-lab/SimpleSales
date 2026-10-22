@@ -1,0 +1,9 @@
+# Test runner image - runs vitest integration tests against live backend
+FROM node:20-alpine AS test
+WORKDIR /app
+COPY package.json package-lock.json* ./
+RUN npm ci --include=dev
+COPY . .
+RUN npx prisma generate
+ENV NODE_ENV=test
+CMD ["npx", "vitest", "run"]

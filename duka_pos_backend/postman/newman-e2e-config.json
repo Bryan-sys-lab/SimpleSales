@@ -1,0 +1,30 @@
+{
+  "newman": {
+    "timeout": 30000,
+    "delay": 0,
+    "color": "on",
+    "stopOnError": false
+  },
+  "reporters": ["cli", "html", "json"],
+  "reporter": {
+    "cli": {},
+    "html": {
+      "export": "./newman-e2e-report.html",
+      "template": "default"
+    },
+    "json": {
+      "export": "./newman-e2e-report.json"
+    }
+  },
+  "environments": {
+    "local": {
+      "base_url": "http://localhost:3000"
+    },
+    "docker": {
+      "base_url": "http://backend:3000"
+    },
+    "ci": {
+      "base_url": "http://localhost:3000"
+    }
+  }
+}

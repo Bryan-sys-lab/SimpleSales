@@ -1,0 +1,349 @@
+// Duka POS Prisma Schema
+// Run: npx prisma generate
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model Tenant {
+  id            String    @id @default(cuid())
+  shopName      String
+  mpesaEnabled  Boolean   @default(false)
+  etimsEnabled  Boolean   @default(false)
+  payheroChannelId Int?
+  payheroCredentialId String?
+  tin           String?
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+
+  profiles      Profile[]
+  products      Product[]
+  sales         Sale[]
+  saleItems     SaleItem[]
+  stockAdjustments StockAdjustment[]
+  payments      Payment[]
+  deletionLedgers DeletionLedger[]
+  verificationChallenges VerificationChallenge[]
+  appSessions     AppSession[]
+  etimsDevices    EtimsDevice[]
+  etimsReceipts   EtimsReceipt[]
+  telemetryEvents TelemetryEvent[] @relation("TenantTelemetryEvents")
+  churnSnapshots  ChurnSnapshot[] @relation("TenantChurnSnapshots")
+  supportTickets  SupportTicket[]
+
+  @@map("tenants")
+}
+
+model Profile {
+  id            String   @id @default(cuid())
+  oidcSubject   String?
+  tenantId      String
+  localId       Int?
+  name          String
+  email         String?
+  photoUrl      String?
+  role          String   @default("cashier")
+  active        Boolean  @default(true)
+  deletedAt     DateTime?
+  createdAt     DateTime @default(now())
+
+  tenant        Tenant   @relation(fields: [tenantId], references: [id])
+  sales         Sale[]   @relation("ProfileSales")
+  stockAdjustments StockAdjustment[] @relation("ProfileStockAdjustments")
+  payments      Payment[] @relation("ProfilePayments")
+
+  @@map("profiles")
+  @@index([tenantId])
+  @@index([oidcSubject])
+}
+
+model Product {
+  id              String   @id @default(cuid())
+  tenantId        String
+  remoteId        String?
+  name            String
+  category        String   @default("General")
+  costPrice       Decimal  @default(0)
+  sellPrice       Decimal  @default(0)
+  stockQty        Decimal  @default(0)
+  reorderLevel    Int      @default(0)
+  bottleMl        Int      @default(750)
+  halfPrice       Decimal?
+  quarterPrice    Decimal?
+  exciseStampBatch String?
+  active          Boolean  @default(true)
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  tenant          Tenant   @relation(fields: [tenantId], references: [id])
+  stockAdjustments StockAdjustment[]
+  saleItems       SaleItem[]
+
+  @@map("products")
+  @@index([tenantId])
+}
+
+model Sale {
+  id              String   @id @default(cuid())
+  tenantId        String
+  staffId         String
+  staffName       String
+  paymentMethod   String   @default("cash")
+  paymentReference String?
+  total           Decimal  @default(0)
+  profit          Decimal  @default(0)
+  createdAt       DateTime @default(now())
+
+  tenant          Tenant   @relation(fields: [tenantId], references: [id])
+  profile         Profile? @relation("ProfileSales", fields: [staffId], references: [id])
+  items           SaleItem[]
+
+  @@map("sales")
+  @@index([tenantId])
+  @@index([createdAt])
+}
+
+model SaleItem {
+  id          String   @id @default(cuid())
+  tenantId    String
+  saleId      String
+  productId   String
+  productName String
+  qty         Decimal
+  unitPrice   Decimal
+  unitCost    Decimal
+  portion     String     @default("full")
+  portionMl   Int        @default(0)
+
+  tenant      Tenant   @relation(fields: [tenantId], references: [id])
+  sale        Sale     @relation(fields: [saleId], references: [id])
+  product     Product  @relation(fields: [productId], references: [id])
+
+  @@map("sale_items")
+  @@index([tenantId])
+  @@index([saleId])
+}
+
+model StockAdjustment {
+  id        String   @id @default(cuid())
+  tenantId  String
+  productId String
+  delta     Decimal
+  reason    String?
+  staffId   String?
+  createdAt DateTime @default(now())
+
+  tenant    Tenant   @relation(fields: [tenantId], references: [id])
+  product   Product  @relation(fields: [productId], references: [id])
+  profile   Profile? @relation("ProfileStockAdjustments", fields: [staffId], references: [id])
+
+  @@map("stock_adjustments")
+  @@index([tenantId])
+}
+
+model Payment {
+  id               String   @id @default(cuid())
+  tenantId         String
+  initiatedBy      String
+  staffName        String
+  reference        String   @unique
+  phoneNumber      String
+  amount           Decimal
+  cartSnapshot     Json
+  status           String   @default("QUEUED")
+  checkoutRequestId String?
+  saleId           String?
+  createdAt        DateTime @default(now())
+
+  tenant           Tenant   @relation(fields: [tenantId], references: [id])
+  profile          Profile? @relation("ProfilePayments", fields: [initiatedBy], references: [id])
+
+  @@map("payments")
+  @@index([tenantId])
+  @@index([reference])
+}
+
+model DeletionLedger {
+  id          String   @id @default(cuid())
+  tenantId    String
+  subjectType String
+  subjectId   String
+  reason      String?
+  completedAt DateTime @default(now())
+
+  tenant      Tenant   @relation(fields: [tenantId], references: [id])
+
+  @@map("deletion_ledgers")
+  @@index([tenantId])
+}
+
+// ---------------------------------------------------------------------------
+// New models for integrated features
+// ---------------------------------------------------------------------------
+
+model VerificationChallenge {
+  id          String   @id @default(cuid())
+  tenantId    String?
+  email       String
+  code        String
+  expiresAt   DateTime
+  used        Boolean   @default(false)
+  createdAt   DateTime @default(now())
+
+  tenant      Tenant?   @relation(fields: [tenantId], references: [id])
+
+  @@map("verification_challenges")
+  @@index([email])
+  @@index([code])
+  @@index([expiresAt])
+}
+
+model AppSession {
+  id            String   @id @default(cuid())
+  tenantId      String
+  accessToken   String
+  refreshToken  String   @unique
+  expiresAt     DateTime
+  createdAt     DateTime @default(now())
+
+  tenant        Tenant   @relation(fields: [tenantId], references: [id])
+
+  @@map("app_sessions")
+  @@index([refreshToken])
+  @@index([expiresAt])
+}
+
+model EtimsDevice {
+  id           String   @id @default(cuid())
+  tenantId     String
+  tin          String
+  deviceId     String   @unique
+  deviceName   String?
+  registeredAt DateTime @default(now())
+
+  tenant       Tenant   @relation(fields: [tenantId], references: [id])
+
+  @@map("etims_devices")
+  @@index([tenantId])
+  @@index([deviceId])
+}
+
+model EtimsReceipt {
+  id             String   @id @default(cuid())
+  tenantId       String
+  kraReceiptNumber String   @unique
+  verificationUrl String?
+  qrPayload      String?
+  status         String   @default("ISSUED")
+  payload        Json
+  deviceId       String?
+  issuedAt       DateTime @default(now())
+
+  tenant         Tenant   @relation(fields: [tenantId], references: [id])
+
+  @@map("etims_receipts")
+  @@index([tenantId])
+  @@index([kraReceiptNumber])
+  @@index([deviceId])
+}
+
+// ---------------------------------------------------------------------------
+// Systems admin + churn analytics (new in v2.1)
+// ---------------------------------------------------------------------------
+
+/// Raw telemetry event pushed from a till phone. Never contains secrets/PII
+/// (rule 3 of TelemetryService: route names, feature names, timestamps only).
+model TelemetryEvent {
+  id          String   @id @default(cuid())
+  tenantId    String
+  deviceId    String?    // phone device identifier
+  name        String   // app_open | app_close | screen_view | feature_use | sale_recorded | idle_start | idle_end
+  at          DateTime @default(now())  // when the event occurred on the device, UTC
+  route       String?
+  detail      String?  // non-user-controlled identifier only
+  createdAt   DateTime @default(now())
+
+  tenant      Tenant   @relation("TenantTelemetryEvents", fields: [tenantId], references: [id])
+
+  @@map("telemetry_events")
+  @@index([tenantId])
+  @@index([name])
+  @@index([at])
+  @@index([createdAt])
+}
+
+/// Pre-computed churn snapshot pushed from a till phone (phone computes the
+/// ChurnAnalysis locally; backend only stores/delivers the snapshot).
+model ChurnSnapshot {
+  id               String   @id @default(cuid())
+  tenantId         String
+  deviceId         String?
+  date             DateTime // calendar date this snapshot describes
+  streakDays       Int
+  daysSinceLastActive Int
+  totalSessions    Int
+  risk             String   // none | low | medium | high
+  score            Float    // 0.0 to 1.0
+  computedAt       DateTime @default(now())
+
+  tenant           Tenant   @relation("TenantChurnSnapshots", fields: [tenantId], references: [id])
+
+  @@map("churn_snapshots")
+  @@index([tenantId])
+  @@index([date])
+  @@index([computedAt])
+}
+
+/// Audit log of systems-admin actions (global admin viewing/editing any tenant).
+model AdminAuditLog {
+  id        String   @id @default(cuid())
+  adminId   String   // profile id of the system admin who acted
+  action    String   // e.g. view_churn, update_tenant_settings, purge_telemetry
+  targetType String? // e.g. tenant, sale, profile, telemetry_event
+  targetId  String?
+  tenantId  String?  // which tenant was affected; null for cross-tenant actions
+  at        DateTime @default(now())
+
+  @@map("admin_audit_logs")
+  @@index([adminId])
+  @@index([tenantId])
+  @@index([at])
+}
+
+/// Platform-wide settings key/value store.
+model SystemSettings {
+  id          String   @id @default(cuid())
+  key         String   @unique
+  value       String
+  description String?
+  updatedAt   DateTime @updatedAt
+
+  @@map("system_settings")
+  @@index([key])
+}
+
+/// Support ticket or feature request pushed from a till phone.
+model SupportTicket {
+  id          String   @id @default(cuid())
+  tenantId    String
+  deviceId    String?
+  type        String   // ticket | request
+  title       String
+  description String
+  status      String   // open | in_progress | resolved
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  tenant      Tenant   @relation(fields: [tenantId], references: [id])
+
+  @@map("support_tickets")
+  @@index([tenantId])
+  @@index([type])
+  @@index([status])
+  @@index([createdAt])
+}

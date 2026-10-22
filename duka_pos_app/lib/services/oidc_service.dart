@@ -2,6 +2,8 @@ import 'package:flutter/foundation.dart' show visibleForTesting;
 import 'package:flutter_appauth/flutter_appauth.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 
+import '../models/session_renewal.dart';
+
 /// Self-hosted OIDC authentication for optional backend features.
 ///
 /// The till does not depend on this service for local PIN login, inventory,
@@ -32,80 +34,59 @@ class OidcService {
   static const _expiryKey = 'oidc_token_expiry';
   static const _idTokenKey = 'oidc_id_token';
 
-  /// The session the backend mints after the emailed code is presented.
-  ///
-  /// Stored beside the OIDC tokens rather than through them: this one is
-  /// signed by our own server, so it is refreshed by `/auth/refresh` and not
-  /// by the browser flow. Keeping the keys separate means a browser sign-in
-  /// and a device-linked session can never be mistaken for one another,
-  /// and clearing one never silently clears the other.
-  static const _appSessionAccessKey = 'app_session_access_token';
-  static const _appSessionRefreshKey = 'app_session_refresh_token';
-  static const _appSessionExpiryKey = 'app_session_expiry';
+  // There is ONE credential: the Keycloak access token below.
+  //
+  // It used to be two. The till also held a session minted by our own
+  // server after an emailed code was presented, signed with a secret that
+  // lived in the server process. That is gone: two credentials means two
+  // things to revoke, two expiry clocks, and a class of token the identity
+  // server has never heard of. The verify flow still proves the address and
+  // still creates the account; the credential afterwards is Keycloak's, and
+  // Keycloak refreshes it.
 
   static const _appAuth = FlutterAppAuth();
 
   /// Single-flight guard: only one refresh can be in flight at a time, so
   /// concurrent callers do not each rotate the token and the second does not
   /// get `invalid_grant` and wipe the session.
-  static Future<String?>? _refreshing;
+  static Future<SessionRenewal>? _refreshing;
 
   static bool get isConfigured =>
       !_issuer.contains('example.com') && _clientId.isNotEmpty;
 
-  /// Fails loudly in release when the issuer is still the placeholder: a build
-  /// without `--dart-define=OIDC_ISSUER_URL=...` can never verify, and silent
-  /// failure means a shop that thinks it is online but is not.
-  static void assertConfigured() {
-    assert(() {
-      if (!_issuer.contains('example.com') && _clientId.isNotEmpty) return true;
-      throw AssertionError(
-          'OIDC is not configured: set OIDC_ISSUER_URL and OIDC_CLIENT_ID');
-    }());
-  }
-
-  static Future<bool> get isAuthenticated async =>
-      (await accessToken) != null || (await appSessionAccessToken) != null;
-
-  /// Saves the session returned by `/auth/verify` or `/auth/refresh`.
-  static Future<void> storeAppSession({
-    required String accessToken,
-    required String refreshToken,
-    required DateTime expiresAt,
-  }) async {
-    await _storage.write(key: _appSessionAccessKey, value: accessToken);
-    await _storage.write(key: _appSessionRefreshKey, value: refreshToken);
-    await _storage.write(
-        key: _appSessionExpiryKey, value: expiresAt.toIso8601String());
-  }
-
-  /// The device session while it is still valid, or null.
+  /// The issuer this build was compiled with.
   ///
-  /// Not refreshed here: expiring it is the point of a twelve-hour lifetime,
-  /// and the refresh that replaces it is an authenticated call with its own
-  /// failure mode, which [`BackendService`] owns.
-  static Future<String?> get appSessionAccessToken async {
-    final token = await _storage.read(key: _appSessionAccessKey);
-    if (token == null) return null;
-    final rawExpiry = await _storage.read(key: _appSessionExpiryKey);
-    final expiry = rawExpiry == null ? null : DateTime.tryParse(rawExpiry);
-    if (expiry == null || !expiry.isAfter(DateTime.now())) return null;
-    return token;
+  /// Exposed so the release-configuration check can be asked as a question
+  /// about the build, rather than only as a side effect inside the service.
+  static String get issuerForChecks => _issuer;
+
+  /// The client id this build was compiled with.
+  static String get clientIdForChecks => _clientId;
+
+  /// Why this build may not be able to sign anyone in, or null when it may.
+  ///
+  /// Pure, and separate from the rest of the service, because the constants
+  /// are fixed at compile time: a test cannot change them, so the RULE has to
+  /// be testable on its own.
+  static String? releaseConfigurationProblem({
+    required String issuer,
+    required String clientId,
+    required bool isRelease,
+  }) {
+    if (!isRelease) return null;
+    if (issuer.trim().isEmpty || issuer.contains('example.com')) {
+      return 'OIDC_ISSUER_URL was never set, so this build points at '
+          'https://id.example.com/realms/duka. Rebuild with '
+          '--dart-define=OIDC_ISSUER_URL=https://your-idp/realms/duka';
+    }
+    if (clientId.trim().isEmpty) {
+      return 'OIDC_CLIENT_ID was never set. Rebuild with '
+          '--dart-define=OIDC_CLIENT_ID=your-client-id';
+    }
+    return null;
   }
 
-  static Future<String?> get appSessionRefreshToken async =>
-      _storage.read(key: _appSessionRefreshKey);
-
-  static Future<void> clearAppSession() async {
-    await _storage.delete(key: _appSessionAccessKey);
-    await _storage.delete(key: _appSessionRefreshKey);
-    await _storage.delete(key: _appSessionExpiryKey);
-  }
-
-  /// True once the till has a session, valid or not — the caller is asking
-  /// whether it is worth attempting a refresh, not whether it is still live.
-  static Future<bool> get hasAppSession async =>
-      (await _storage.read(key: _appSessionRefreshKey)) != null;
+  static Future<bool> get isAuthenticated async => (await accessToken) != null;
 
   /// Opens the system browser and completes OIDC Authorization Code + PKCE.
   static Future<bool> login() async {
@@ -132,6 +113,17 @@ class OidcService {
   }
 
   static Future<String?> get accessToken async {
+    final cached = await _cachedAccessToken();
+    if (cached != null) return cached;
+    final outcome = await renewBrowserSession();
+    return outcome is SessionRenewed ? await _cachedAccessToken() : null;
+  }
+
+  /// The stored access token, when it is still fresh.
+  ///
+  /// Sixty seconds of margin, so a token cannot expire between the check and
+  /// the request that uses it.
+  static Future<String?> _cachedAccessToken() async {
     final token = await _storage.read(key: _accessTokenKey);
     final rawExpiry = await _storage.read(key: _expiryKey);
     final expiry = rawExpiry == null ? null : DateTime.tryParse(rawExpiry);
@@ -140,20 +132,28 @@ class OidcService {
         expiry.isAfter(DateTime.now().add(const Duration(seconds: 60)))) {
       return token;
     }
-
-    final refreshToken = await _storage.read(key: _refreshTokenKey);
-    if (refreshToken == null || !isConfigured) return null;
-
-    // Single-flight: only one refresh at a time. Concurrent callers wait on
-    // the same future instead of each rotating the token — the second caller
-    // would otherwise get `invalid_grant` from a already-used refresh token
-    // and wipe the session.
-    return _refreshing ??= _refresh().whenComplete(() => _refreshing = null);
+    return null;
   }
 
-  static Future<String?> _refresh() async {
+  /// Renews the browser session and says what happened.
+  ///
+  /// [accessToken] answers "give me a token or nothing", which cannot tell a
+  /// dead session from a dead network. This one can, and the difference
+  /// decides whether the till signs its cashier out or simply fails the
+  /// request and keeps trading.
+  ///
+  /// Single-flight: only one refresh at a time. Concurrent callers wait on the
+  /// same future instead of each rotating the token — the second caller would
+  /// otherwise get `invalid_grant` from an already-used refresh token and
+  /// wipe the session.
+  static Future<SessionRenewal> renewBrowserSession() async {
+    return _refreshing ??= _renew().whenComplete(() => _refreshing = null);
+  }
+
+  static Future<SessionRenewal> _renew() async {
     final refreshToken = await _storage.read(key: _refreshTokenKey);
-    if (refreshToken == null || !isConfigured) return null;
+    if (refreshToken == null) return const SessionAbsent();
+    if (!isConfigured) return const SessionUnreachable();
     try {
       final result = await _appAuth.token(TokenRequest(
         _clientId,
@@ -168,7 +168,7 @@ class OidcService {
         idToken: result.idToken,
         expiry: result.accessTokenExpirationDateTime,
       );
-      return result.accessToken;
+      return const SessionRenewed();
     } on FlutterAppAuthPlatformException catch (e) {
       // Only a real rejection (`invalid_grant`) means the refresh token is
       // dead and the session must be cleared. A network drop, a 5xx, or a
@@ -177,10 +177,11 @@ class OidcService {
       final d = '${e.platformErrorDetails} ${e.message}'.toLowerCase();
       if (d.contains('invalid_grant')) {
         await _clearStoredTokens();
+        return const SessionRejected();
       }
-      return null;
+      return const SessionUnreachable();
     } catch (_) {
-      return null;
+      return const SessionUnreachable();
     }
   }
 
@@ -233,7 +234,6 @@ class OidcService {
   /// the part that matters, and they are gone either way.
   static Future<void> clearLocalSession() async {
     await _clearStoredTokens();
-    await clearAppSession();
   }
 
   static Future<void> clearAccessToken() async {
@@ -263,6 +263,5 @@ class OidcService {
     await _storage.delete(key: _refreshTokenKey);
     await _storage.delete(key: _expiryKey);
     await _storage.delete(key: _idTokenKey);
-    await clearAppSession();
   }
 }

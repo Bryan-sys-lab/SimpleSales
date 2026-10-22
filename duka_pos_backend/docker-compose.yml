@@ -1,0 +1,138 @@
+version: '3.8'
+
+services:
+  # ------------------------------------------------------------------
+  # PostgreSQL - application database
+  # ------------------------------------------------------------------
+  db:
+    image: postgres:15-alpine
+    container_name: duka_pos_db
+    environment:
+      POSTGRES_USER: duka_pos
+      POSTGRES_PASSWORD: [REDACTED]
+      POSTGRES_DB: duka_pos
+    volumes:
+      - duka_pos_db_data:/var/lib/postgresql/data
+    ports:
+      - "5432:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U duka_pos -d duka_pos"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  # ------------------------------------------------------------------
+  # Keycloak - OIDC identity provider
+  # ------------------------------------------------------------------
+  keycloak:
+    image: quay.io/keycloak/keycloak:24.0.1
+    container_name: duka_pos_keycloak
+    command: start-dev
+    environment:
+      KC_DB: postgres
+      KC_DB_URL: jdbc:postgresql://db:5432/keycloak
+      KC_DB_USERNAME: keycloak
+      KC_DB_PASSWORD: [REDACTED]
+      KEYCLOAK_ADMIN: admin
+      KEYCLOAK_ADMIN_PASSWORD: [REDACTED]
+    ports:
+      - "8080:8080"
+    depends_on:
+      db:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8080/health/ready"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
+  # ------------------------------------------------------------------
+  # Keycloak init - creates realm, client, and test user
+  # ------------------------------------------------------------------
+  keycloak-init:
+    build:
+      context: .
+      dockerfile: Dockerfile.keycloak-init
+    container_name: duka_pos_keycloak_init
+    environment:
+      KEYCLOAK_URL: http://keycloak:8080
+      KEYCLOAK_ADMIN: admin
+      KEYCLOAK_ADMIN_PASSWORD: [REDACTED]
+      REALM_NAME: duka
+      CLIENT_ID: duka-app
+      TEST_USER: test-user
+      TEST_USER_PASSWORD: [REDACTED]
+      TEST_USER_EMAIL: test-user@example.com
+    depends_on:
+      keycloak:
+        condition: service_healthy
+
+  # ------------------------------------------------------------------
+  # Backend API - Express + Prisma
+  # ------------------------------------------------------------------
+  backend:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: duka_pos_backend
+    environment:
+      NODE_ENV: production
+      DATABASE_URL: postgresql://duka_pos:[REDACTED]@db:5432/duka_pos?schema=public
+      OIDC_ISSUER_URL: http://keycloak:8080/realms/duka
+      OIDC_AUDIENCE: duka-api
+      OIDC_JWKS_URI: http://keycloak:8080/realms/duka/protocol/openid-connect/certs
+      PAYHERO_AUTH_TOKEN: payhero_live_token_2024_#L9nX4vW7!
+      SYSTEM_ADMIN_SUBJECTS: admin-subject
+      FRONTEND_URL: http://localhost:3000
+      APP_VERSION_NAME: 2.0.0
+      APP_VERSION_CODE: "23"
+      APP_DOWNLOAD_URL: https://cdn.duka-pos.example.com/app.apk
+      APP_UPDATE_REQUIRED: "false"
+      APP_RELEASE_NOTES: "Auto-update manifest"
+    ports:
+      - "3000:3000"
+    depends_on:
+      db:
+        condition: service_healthy
+      keycloak:
+        condition: service_healthy
+      keycloak-init:
+        condition: service_completed_successfully
+    healthcheck:
+      test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://localhost:3000/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+    restart: unless-stopped
+
+  # ------------------------------------------------------------------
+  # Test runner - vitest integration tests against live stack
+  # ------------------------------------------------------------------
+  tests:
+    build:
+      context: .
+      dockerfile: Dockerfile.test
+    container_name: duka_pos_tests
+    environment:
+      NODE_ENV: test
+      DATABASE_URL: postgresql://duka_pos:[REDACTED]@db:5432/duka_pos?schema=public
+      OIDC_ISSUER_URL: http://keycloak:8080/realms/duka
+      OIDC_AUDIENCE: duka-api
+      OIDC_JWKS_URI: http://keycloak:8080/realms/duka/protocol/openid-connect/certs
+      PAYHERO_AUTH_TOKEN: payhero_live_token_2024_#L9nX4vW7!
+      SYSTEM_ADMIN_SUBJECTS: admin-subject
+      KEYCLOAK_URL: http://keycloak:8080
+      KEYCLOAK_ADMIN: admin
+      KEYCLOAK_ADMIN_PASSWORD: [REDACTED]
+      REALM_NAME: duka
+      CLIENT_ID: duka-app
+      TEST_USER: test-user
+      TEST_USER_PASSWORD: [REDACTED]
+      BACKEND_URL: http://backend:3000/api
+    depends_on:
+      backend:
+        condition: service_healthy
+    command: ["npx", "vitest", "run"]
+
+volumes:
+  duka_pos_db_data:

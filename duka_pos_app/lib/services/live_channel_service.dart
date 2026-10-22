@@ -189,7 +189,10 @@ class LiveChannelService extends ChangeNotifier {
     //     was, rather than stuck claiming a connection attempt that never ran.
     final String? token;
     try {
-      token = await OidcService.appSessionAccessToken;
+      // The ONE credential: the Keycloak access token. The server's live
+      // channel verifies it against the identity server's own signing keys,
+      // and accepts nothing else.
+      token = await OidcService.accessToken;
     } on Object catch (_) {
       _scheduleReconnect();
       return;

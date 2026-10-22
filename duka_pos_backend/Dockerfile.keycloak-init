@@ -1,0 +1,9 @@
+FROM quay.io/keycloak/keycloak:24.0.1
+
+RUN microdnf install -y curl jq && microdnf clean all
+
+WORKDIR /opt/keycloak-init
+COPY keycloak-init.sh /opt/keycloak-init/keycloak-init.sh
+RUN chmod +x /opt/keycloak-init/keycloak-init.sh
+
+ENTRYPOINT ["/opt/keycloak-init/keycloak-init.sh"]

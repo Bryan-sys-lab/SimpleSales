@@ -4,6 +4,7 @@ import 'package:dio/dio.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../db/database_helper.dart';
 import '../models/models.dart';
+import '../models/session_renewal.dart';
 import 'etims/etims_service.dart';
 import 'oidc_service.dart';
 import 'row_scope.dart';
@@ -121,25 +122,19 @@ class VerifiedIdentity {
   const VerifiedIdentity({
     required this.tenantId,
     required this.shopName,
-    required this.accessToken,
-    required this.refreshToken,
-    required this.expiresInSeconds,
   });
 
   factory VerifiedIdentity.fromJson(Map<String, dynamic> json) =>
       VerifiedIdentity(
         tenantId: json['tenant_id'] as String? ?? '',
         shopName: json['shop_name'] as String? ?? '',
-        accessToken: json['access_token'] as String? ?? '',
-        refreshToken: json['refresh_token'] as String? ?? '',
-        expiresInSeconds: (json['expires_in_seconds'] as num?)?.toInt() ?? 0,
       );
 
+  /// The shop the account runs.
   final String tenantId;
+
+  /// What the shop is called.
   final String shopName;
-  final String accessToken;
-  final String refreshToken;
-  final int expiresInSeconds;
 }
 
 /// Backend API service using self-hosted OIDC tokens instead of Supabase.
@@ -153,22 +148,58 @@ class BackendService {
     receiveTimeout: const Duration(seconds: 20),
   ));
 
-  /// A second client with no interceptors, for the one call that must not
-  /// recurse into them: refreshing a session is what a 401 handler does, and
-  /// doing that through the interceptor that retries on 401 is a loop.
-  static final Dio _unauthenticated = Dio(BaseOptions(
-    connectTimeout: const Duration(seconds: 10),
-    receiveTimeout: const Duration(seconds: 20),
-  ));
   static SharedPreferences? _prefs;
 
   /// Marks a request that has already had one chance to renew its session.
   static const String _authRetriedKey = 'auth_retried';
 
+  /// The URL a build falls back to when `--dart-define=BACKEND_URL=...` is
+  /// missing.
+  ///
+  /// Named so a test can recognise it: a RELEASE build that still carries
+  /// this URL points every shop's till at a server on the phone's own
+  /// machine — no KRA receipt for the money taken, no M-Pesa, no sync, and no
+  /// error message to explain any of it.
+  static const String defaultBackendUrl = 'https://localhost:3000/api';
+
   static const backendUrl = String.fromEnvironment(
     'BACKEND_URL',
-    defaultValue: 'https://localhost:3000/api',
+    defaultValue: defaultBackendUrl,
   );
+
+  /// Why this build may not reach a server, or null when it may.
+  ///
+  /// Pure, and separate from the rest of the service, because the constant
+  /// [backendUrl] is fixed at compile time: a test cannot change it, so the
+  /// RULE has to be testable on its own.
+  ///
+  /// A debug build is never a problem — localhost is exactly where the
+  /// development server lives. A release build with no address is: it is the
+  /// build that reaches a shop, and a shop whose till cannot reach the backend
+  /// cannot issue a tax receipt for the money it has taken.
+  ///
+  /// It is a NOTICE, not a gate. The build still starts and the till still
+  /// sells; see [BuildConfiguration] for where the answer is shown.
+  static String? releaseConfigurationProblem({
+    required String url,
+    required bool isRelease,
+  }) {
+    if (!isRelease) return null;
+    if (url.trim().isEmpty) {
+      return 'BACKEND_URL is empty. Rebuild with '
+          '--dart-define=BACKEND_URL=https://your-backend/api';
+    }
+    if (url == defaultBackendUrl) {
+      return 'BACKEND_URL was never set, so this build points at '
+          '$defaultBackendUrl. Rebuild with '
+          '--dart-define=BACKEND_URL=https://your-backend/api';
+    }
+    if (url.startsWith('http://')) {
+      return 'BACKEND_URL ($url) is plaintext. Staff PINs, usernames and OIDC '
+          'tokens would cross the network in the clear. Use https://';
+    }
+    return null;
+  }
 
   static Future<SharedPreferences> get _prefsInstance async =>
       _prefs ??= await SharedPreferences.getInstance();
@@ -192,12 +223,14 @@ class BackendService {
 
     _dio.interceptors.add(InterceptorsWrapper(
       onRequest: (options, handler) async {
-        // The browser session first, then the device-linked one. A shop that
-        // signed in through Keycloak keeps using that token; a shop that
-        // tapped Verify and typed a mailed code uses the session the backend
-        // minted for it. Both are bearer tokens to this interceptor.
-        final token = await OidcService.accessToken ??
-            await OidcService.appSessionAccessToken;
+        // The ONE credential: the Keycloak access token.
+        //
+        // It used to be two — the browser session first, and the server's own
+        // device session second. A shop that signed in through Keycloak kept
+        // using that token; a shop that tapped Verify and typed a mailed code
+        // used the session the backend minted for it. There is one now, and
+        // the server accepts nothing else.
+        final token = await OidcService.accessToken;
         if (token != null) options.headers['Authorization'] = 'Bearer $token';
         // The tenant this shop on this device maps to, NOT a global preference.
         //
@@ -223,13 +256,13 @@ class BackendService {
           // ends only when the phone runs out of battery.
           requestOptions.extra[_authRetriedKey] = true;
 
-          // A device session can be renewed without a browser, so try that
-          // before falling back to clearing tokens and asking the owner to
-          // sign in.
-          if (await OidcService.hasAppSession && await _refreshAppSession()) {
-            final refreshed = await OidcService.appSessionAccessToken;
-            if (refreshed != null) {
-              requestOptions.headers['Authorization'] = 'Bearer $refreshed';
+          // The Keycloak session, if there is one.
+          final SessionRenewal browser =
+              await OidcService.renewBrowserSession();
+          if (browser is SessionRenewed) {
+            final renewed = await OidcService.accessToken;
+            if (renewed != null) {
+              requestOptions.headers['Authorization'] = 'Bearer $renewed';
               try {
                 return handler.resolve(await _dio.fetch(requestOptions));
               } on DioException catch (_) {
@@ -237,17 +270,14 @@ class BackendService {
               }
             }
           }
-          await OidcService.clearAccessToken();
-          final newToken = await OidcService.accessToken;
-          if (newToken != null) {
-            requestOptions.headers['Authorization'] = 'Bearer $newToken';
-            try {
-              return handler.resolve(await _dio.fetch(requestOptions));
-            } on DioException catch (_) {
-              return handler.next(error);
-            }
+          if (browser is SessionRejected) {
+            // The provider refused the refresh token. The session is over.
+            await OidcService.logout();
+            return handler.next(error);
           }
-          await OidcService.logout();
+          // Unreachable or absent: nothing is known to be wrong with the
+          // session, so nothing is cleared. The request fails; the till keeps
+          // selling and the next request tries again.
         }
         return handler.next(error);
       },
@@ -256,46 +286,21 @@ class BackendService {
     _initialized = true;
   }
 
-  /// Exchanges the stored refresh token for a new session.
+  /// Points the till at the shop the verify flow just linked.
   ///
-  /// Returns false for every failure — no signal, an expired token, a server
-  /// that says no — because every one of them means the same thing to the
-  /// caller: this session is finished.
-  static Future<bool> _refreshAppSession() async {
-    final refreshToken = await OidcService.appSessionRefreshToken;
-    if (refreshToken == null) return false;
-    try {
-      final response = await _unauthenticated.post(
-        '$backendUrl/auth/refresh',
-        data: {'refreshToken': refreshToken},
-      );
-      final identity = VerifiedIdentity.fromJson(
-          response.data as Map<String, dynamic>? ?? const {});
-      await _adoptVerifiedIdentity(identity);
-      return true;
-    } on DioException catch (_) {
-      await OidcService.clearAppSession();
-      return false;
-    } catch (_) {
-      await OidcService.clearAppSession();
-      return false;
-    }
-  }
-
-  /// Stores a freshly minted session and points the till at its shop.
+  /// ## WHY NO TOKEN IS STORED HERE
   ///
-  /// Shared by verify and refresh so the two paths cannot disagree about where
-  /// the token lives or which workspace the shop maps to.
+  /// The backend used to mint a session of its own here and hand it back.
+  /// It does not any more: the credential is Keycloak's, and Keycloak is the
+  /// only thing that issues one. The verify flow's job now ends at "the
+  /// account exists, the address is proven, and here is the shop" — and the
+  /// till signs in to Keycloak for the token, which is the authority that
+  /// matters.
+  ///
+  /// So there is nothing to store but the SHOP: which workspace it is, which
+  /// tenant it maps to, and what it is called. The credential that opens it
+  /// comes from the identity server, and it is refreshed there.
   static Future<void> _adoptVerifiedIdentity(VerifiedIdentity identity) async {
-    if (identity.accessToken.isEmpty) {
-      throw StateError('The backend returned no session');
-    }
-    await OidcService.storeAppSession(
-      accessToken: identity.accessToken,
-      refreshToken: identity.refreshToken,
-      expiresAt:
-          DateTime.now().add(Duration(seconds: identity.expiresInSeconds)),
-    );
     if (identity.tenantId.isNotEmpty) {
       // Recorded against the ACTIVE workspace, and read back from there — see
       // [WorkspaceService.activeTenantId] for why a global key is wrong here.
@@ -312,7 +317,7 @@ class BackendService {
   /// Step one of Verify: create the online account for this shop and post a
   /// 6-digit code to its email address.
   ///
-  /// The [pin] is the shop's own 4-digit admin PIN, and it is verified against
+  /// The [pin] is the shop's own 6-digit admin PIN, and it is verified against
   /// the local hash on the device before this method is ever reached — the
   /// caller refuses a wrong one rather than sending it over the wire. The
   /// backend cannot verify it (the hash lives in this phone's database), so the
@@ -349,9 +354,19 @@ class BackendService {
 
   /// Step two of Verify: hand back the code from the email.
   ///
-  /// On success this also stores the session the backend minted and points the
-  /// till at its tenant, which is what unlocks auto-backups, analytics and
-  /// auto-update — they all read the linked shop from the same session.
+  /// On success this points the till at the shop the account runs, and then
+  /// SIGNS IN TO KEYCLOAK for the credential.
+  ///
+  /// ## WHY THE SIGN-IN IS HERE AND NOT IN THE SERVER
+  ///
+  /// The server used to mint a session of its own and hand it back. It does
+  /// not any more: there is one credential in the whole system, a Keycloak
+  /// access token, and only the identity server may issue one. So the account
+  /// is created and activated by the server, and the token is collected by the
+  /// till — which is the party that will present it on every request.
+  ///
+  /// The shop is recorded first, so that a sign-in which is interrupted still
+  /// leaves the till pointing at the right shop.
   static Future<VerifiedIdentity> confirmVerificationCode({
     required String email,
     required String pin,
@@ -367,6 +382,10 @@ class BackendService {
       final identity = VerifiedIdentity.fromJson(
           response.data as Map<String, dynamic>? ?? const {});
       await _adoptVerifiedIdentity(identity);
+      // The credential, from the authority that issues them.
+      if (!await OidcService.login()) {
+        throw StateError('Could not sign in to the identity server');
+      }
       if (identity.shopName.isNotEmpty) {
         await WorkspaceService.register(
           workspaceKey: await WorkspaceService.activeWorkspaceKey(),
@@ -952,22 +971,29 @@ class BackendService {
   /// the server is the authority there, so this is how a break, a delivery or a
   /// count reaches it. Best effort: the local ledger is already updated, and a
   /// failed push is surfaced rather than silently dropped.
+  ///
+  /// NEVER THROWS. The local adjustment has already been written by the time
+  /// this is called, so an exception escaping here would be caught by the
+  /// caller's error handler and reported as a failed adjustment — and the
+  /// natural response to "the adjustment failed" is to run it again, which
+  /// applies the delta twice. A push that did not happen is a "saved on this
+  /// phone only" outcome, not a failure of the adjustment.
   static Future<bool> adjustStockOnBackend({
     required Product product,
     required int delta,
     String? reason,
     String? staffProfileId,
   }) async {
-    await ensureInitialized();
-    final tid = await tenantId;
-    if (tid == null) return false;
-    final remoteId = product.remoteId;
-    if (remoteId == null) return false;
-    // The remote id names a row in one tenant's namespace. If the shop has been
-    // relinked since that id was minted, the write would land on a foreign row,
-    // so the scope is checked rather than assumed.
-    await _assertRowsInScope();
     try {
+      await ensureInitialized();
+      final tid = await tenantId;
+      if (tid == null) return false;
+      final remoteId = product.remoteId;
+      if (remoteId == null) return false;
+      // The remote id names a row in one tenant's namespace. If the shop has
+      // been relinked since that id was minted, the write would land on a
+      // foreign row, so the scope is checked rather than assumed.
+      await _assertRowsInScope();
       await _dio.post('$backendUrl/products/stock-adjust', data: {
         'product_id': remoteId,
         'delta': delta,
@@ -976,6 +1002,11 @@ class BackendService {
       });
       return true;
     } on DioException {
+      return false;
+    } catch (_) {
+      // A scope violation, a misconfigured backend, an unreachable tenant —
+      // none of them undo the local adjustment, so none of them may be
+      // reported as one.
       return false;
     }
   }
@@ -1074,6 +1105,273 @@ class BackendService {
     if (pairs.isNotEmpty) {
       await DatabaseHelper.instance.setProductRemoteIds(pairs);
     }
+  }
+
+  /// Pushes the till's ledger to the server.
+  ///
+  /// ## WHY THIS EXISTS
+  ///
+  /// The till writes its sales OFFLINE, on the phone, and that is the whole
+  /// point of it: a shop with no signal still sells, still takes the money and
+  /// still knows what it sold.
+  ///
+  /// But the server had no way to learn about any of it. The only rows that
+  /// ever reached the server were the M-Pesa ones — so CASH SALES, which are
+  /// most of a shop's sales, never left the phone. The owner's account, the
+  /// reports and the all-shops view were reading a ledger with holes in it.
+  ///
+  /// ## WHY IT IS SAFE TO PUSH THE SAME SALE TWICE
+  ///
+  /// A phone that was offline pushes the same sales again the next time it
+  /// is online — that is the whole mechanism. The server keys each sale on
+  /// the till's own id for it, so a re-push corrects the row it already has
+  /// rather than making a second one, and a week's takings cannot become two
+  /// weeks of takings.
+  ///
+  /// The local side keeps the same rule: a sale is marked pushed only when
+  /// the server has confirmed it, so a sale the server did not accept is
+  /// still pending and is tried again.
+  static Future<void> syncSalesToBackend() async {
+    await ensureInitialized();
+    if (await tenantId == null) return;
+    await _assertRowsInScope();
+
+    final List<Sale> sales = await DatabaseHelper.instance.getUnsyncedSales();
+    if (sales.isEmpty) return;
+
+    final response = await _dio.post('$backendUrl/sales/sync', data: {
+      'sales': sales.map(_salePayload).toList(),
+    });
+
+    final synced = response.data['synced'] as List?;
+    if (synced == null) return;
+    final List<int> confirmed = <int>[];
+    for (final item in synced) {
+      final localId = item['localId'];
+      if (localId is int) confirmed.add(localId);
+    }
+    await DatabaseHelper.instance.markSalesSynced(confirmed);
+  }
+
+  /// One sale, in the shape the server reads.
+  ///
+  /// The MONEY IS IN MINOR UNITS — the integer cents the till counts in. The
+  /// server's columns are major units and it converts once, on the way in; a
+  /// float of shillings would lose a cent on the way and a ledger that is a
+  /// cent out is a ledger that does not reconcile against the drawer.
+  static Map<String, dynamic> _salePayload(Sale sale) => {
+        'localId': sale.id,
+        'staffName': sale.staffName,
+        'paymentMethod': sale.paymentMethod,
+        'paymentReference': sale.paymentReference,
+        'total': sale.total.minorUnits,
+        'profit': sale.profit.minorUnits,
+        'amountTendered': sale.amountTendered.minorUnits,
+        'changeGiven': sale.changeGiven.minorUnits,
+        'createdAt': sale.createdAt,
+        'items': sale.items
+            .map((SaleItem item) => <String, dynamic>{
+                  'productId': item.productId,
+                  'productName': item.productName,
+                  'qty': item.qty,
+                  'unitPrice': item.unitPrice.minorUnits,
+                  'unitCost': item.unitCost.minorUnits,
+                  'portion': item.portion,
+                  'portionMl': item.portionMl,
+                })
+            .toList(),
+      };
+
+  /// Pushes the till's drawers to the server.
+  ///
+  /// A shift is opened OFFLINE — a shop with one device and its staff on it
+  /// has no signal half the time, and a shift that needs a server is a shift
+  /// nobody opens — and the shift is pushed when the phone can reach it.
+  static Future<void> syncShiftsToBackend() async {
+    await ensureInitialized();
+    if (await tenantId == null) return;
+    await _assertRowsInScope();
+
+    final List<Map<String, dynamic>> shifts =
+        await DatabaseHelper.instance.getUnsyncedShifts();
+    if (shifts.isEmpty) return;
+
+    final response = await _dio.post('$backendUrl/shifts/sync', data: {
+      'shifts': shifts
+          .map((Map<String, dynamic> shift) => <String, dynamic>{
+                'localId': shift['id'],
+                'staffName': shift['staff_name'],
+                'startTime': shift['start_time'],
+                'endTime': shift['end_time'],
+                'startFloat': shift['start_float'] ?? 0,
+                'endFloat': shift['end_float'] ?? 0,
+                'expectedCash': shift['expected_cash'] ?? 0,
+                'countedCash': shift['counted_cash'] ?? 0,
+                'status': shift['status'] ?? 'open',
+              })
+          .toList(),
+    });
+
+    final synced = response.data['synced'] as List?;
+    if (synced == null) return;
+    final List<int> confirmed = <int>[];
+    for (final item in synced) {
+      final localId = item['localId'];
+      if (localId is int) confirmed.add(localId);
+    }
+    await DatabaseHelper.instance.markShiftsSynced(confirmed);
+  }
+
+  /// Pushes the till's shot cups to the server.
+  ///
+  /// A shot cup is set up ONCE, on one phone, and it is the whole shop's
+  /// shelf after that: a cup the owner set up in the office has to be the cup
+  /// the counter sells from.
+  static Future<void> syncShotCupsToBackend() async {
+    await ensureInitialized();
+    if (await tenantId == null) return;
+    await _assertRowsInScope();
+
+    final List<ShotCup> cups =
+        await DatabaseHelper.instance.getUnsyncedShotCups();
+    if (cups.isEmpty) return;
+
+    final response = await _dio.post('$backendUrl/shot-cups/sync', data: {
+      'shotCups': cups
+          .map((ShotCup cup) => <String, dynamic>{
+                'localId': cup.id,
+                'productId': cup.productId,
+                'productName': cup.productName,
+                'label': cup.label,
+                // Zero means the size is not known, and that is a legal
+                // answer: a cup with a size earns its cost exactly, and a cup
+                // without one is counted at its full price.
+                'capacityMl': cup.capacityMl,
+                'price': cup.price.minorUnits,
+                'active': cup.active,
+              })
+          .toList(),
+    });
+
+    final synced = response.data['synced'] as List?;
+    if (synced == null) return;
+    final List<int> confirmed = <int>[];
+    for (final item in synced) {
+      final localId = item['localId'];
+      if (localId is int) confirmed.add(localId);
+    }
+    await DatabaseHelper.instance.markShotCupsSynced(confirmed);
+  }
+
+  /// Pushes the till's returns to the server.
+  ///
+  /// A return is the one thing in a till that gives money back, so the server
+  /// has to hear about it: a credit note the tax authority never saw is a
+  /// credit note that does not exist, and a return the owner cannot see on
+  /// another device is a return the books disagree about.
+  ///
+  /// The push is keyed on the till's own id for the return, so a phone that
+  /// was offline pushes the same return again without refunding it twice.
+  static Future<void> syncReturnsToBackend() async {
+    await ensureInitialized();
+    if (await tenantId == null) return;
+    await _assertRowsInScope();
+
+    final List<SaleReturn> returns =
+        await DatabaseHelper.instance.getUnsyncedReturns();
+    if (returns.isEmpty) return;
+
+    // ONE AT A TIME.
+    //
+    // The server takes a return on its own, and a shop's returns are rare —
+    // a handful in a week, on a bad day. One request each keeps the contract
+    // simple, and it means one refused return does not hold up the rest: each
+    // is sent on its own, and only the ones the server confirmed are marked.
+    final List<int> confirmed = <int>[];
+    for (final SaleReturn entry in returns) {
+      try {
+        final response = await _dio.post('$backendUrl/returns', data: {
+          'localId': entry.id,
+          'originalSaleLocalId': entry.saleId,
+          'kind': entry.kind,
+          'reason': entry.reason,
+          'total': entry.total.minorUnits,
+          'profit': entry.profit.minorUnits,
+          'staffName': entry.staffName,
+          'createdAt': entry.createdAt,
+          'items': entry.items
+              .map((SaleReturnItem item) => <String, dynamic>{
+                    'productId': item.productId,
+                    'productName': item.productName,
+                    'qty': item.qty,
+                    'unitPrice': item.unitPrice.minorUnits,
+                    'unitCost': item.unitCost.minorUnits,
+                    'portion': item.portion,
+                    'portionMl': item.portionMl,
+                  })
+              .toList(),
+        });
+        final returned = response.data['localId'];
+        if (returned is int) {
+          confirmed.add(returned);
+        }
+      } on DioException catch (error) {
+        // One refused return must not hold up the rest, and the return that
+        // failed stays pending so the next push tries it again.
+        debugPrint('Return push failed for ${entry.id}: $error');
+      }
+    }
+    await DatabaseHelper.instance.markReturnsSynced(confirmed);
+  }
+
+  /// Pushes the till's deliveries to the server.
+  ///
+  /// A delivery is the shop's record of what it paid for its stock, and the
+  /// cost on those goods is what every later sale's profit is measured
+  /// against. A delivery the server has not seen is a delivery the other
+  /// devices do not know about.
+  ///
+  /// The push is keyed on the till's own id for the delivery, so a phone that
+  /// was offline pushes the same delivery again without doubling the stock.
+  static Future<void> syncReceiptsToBackend() async {
+    await ensureInitialized();
+    if (await tenantId == null) return;
+    await _assertRowsInScope();
+
+    final List<StockReceipt> receipts =
+        await DatabaseHelper.instance.getUnsyncedReceipts();
+    if (receipts.isEmpty) return;
+
+    final List<int> confirmed = <int>[];
+    for (final StockReceipt receipt in receipts) {
+      try {
+        final response = await _dio.post('$backendUrl/purchases', data: {
+          'localId': receipt.id,
+          'supplierName': receipt.supplierRef ?? '',
+          'invoiceNumber': receipt.supplierRef,
+          'total': receipt.totalCost.minorUnits,
+          'staffName': receipt.staffName,
+          'createdAt': receipt.receivedAt,
+          'items': receipt.items
+              .map((StockReceiptItem item) => <String, dynamic>{
+                    'productId': item.productId,
+                    'productName': item.productName,
+                    'qty': item.qty,
+                    'unitCost': item.unitCost.minorUnits,
+                  })
+              .toList(),
+        });
+        final returned = response.data['localId'];
+        if (returned is int) {
+          confirmed.add(returned);
+        }
+      } on DioException catch (error) {
+        // One refused delivery must not hold up the rest, and the one that
+        // failed stays pending so the next push tries it again.
+        debugPrint('Delivery push failed for ${receipt.id}: $error');
+      }
+    }
+    await DatabaseHelper.instance.markReceiptsSynced(confirmed);
   }
 
   static Future<void> syncStaffToBackend() async {
