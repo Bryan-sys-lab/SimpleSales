@@ -103,11 +103,25 @@ router.get(
 );
 
 // ---------------------------------------------------------------------------
-// GET /api/admin/sessions — app sessions across all tenants
+// GET /api/admin/accounts — the shop accounts across all tenants
 // ---------------------------------------------------------------------------
 
+/**
+ * Who has access, across every shop on the platform.
+ *
+ * It used to be a list of app SESSIONS: rows in this service's own table,
+ * written when a till signed in here. There is no such table any more, and
+ * there should not be — the sessions live in Keycloak, which is where a
+ * sign-in belongs, and a service that keeps its own copy of who is signed in
+ * is a service with a second answer to "is this person allowed in".
+ *
+ * What the operator can still be told is the durable half: the accounts that
+ * exist, the shop each one runs, the role it holds, and when its address was
+ * proven. The live half — who is signed in right now — is Keycloak's to
+ * answer.
+ */
 router.get(
-  '/sessions',
+  '/accounts',
   asyncHandler(async (req: Request, res: Response) => {
     const { from, tenantId, limit } = parseBody(adminListQuerySchema, req.query);
     const fromDate = from ? new Date(from) : new Date(Date.now() - 30 * 24 * 60 * 60 * 1000);
@@ -116,13 +130,13 @@ router.get(
     }
     const where: Record<string, unknown> = { createdAt: { gte: fromDate } };
     if (tenantId) where.tenantId = tenantId;
-    const sessions = await prisma.appSession.findMany({
+    const accounts = await prisma.profile.findMany({
       where,
       include: { tenant: { select: { id: true, shopName: true } } },
       orderBy: { createdAt: 'desc' },
       take: limit,
     });
-    return res.json({ sessions });
+    return res.json({ accounts });
   })
 );
 
@@ -217,7 +231,10 @@ router.post(
     if (!req.auth?.sub) {
       return res.status(401).json({ error: 'Authenticated system admin required' });
     }
-    const { deletedTelemetryEvents } = await runRetention({ olderThanDays, dryRun });
+    const { deletedTelemetryEvents } = await runRetention({
+      olderThanDays: olderThanDays ?? undefined,
+      dryRun: dryRun ?? undefined,
+    });
     await prisma.adminAuditLog.create({
       data: { adminId: req.auth.sub, action: 'purge_telemetry', targetType: 'telemetry_event', tenantId: null },
     });

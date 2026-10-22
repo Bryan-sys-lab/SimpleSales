@@ -52,7 +52,7 @@ router.post(
   '/upload-url',
   asyncHandler(async (req, res) => {
     const { fileName, contentType } = parseBody(uploadUrlSchema, req.body);
-    const userId = req.user?.sub;
+    const userId = req.auth?.sub;
 
     if (!userId) {
       return res.status(401).json({ error: 'Authenticated user required' });
@@ -80,7 +80,7 @@ router.post(
   '/confirm',
   asyncHandler(async (req, res) => {
     const { key } = parseBody(confirmSchema, req.body);
-    const userId = req.user?.sub;
+    const userId = req.auth?.sub;
 
     if (!userId) {
       return res.status(401).json({ error: 'Authenticated user required' });
@@ -117,7 +117,7 @@ router.post(
 router.get(
   '/download-url',
   asyncHandler(async (req, res) => {
-    const userId = req.user?.sub;
+    const userId = req.auth?.sub;
 
     if (!userId) {
       return res.status(401).json({ error: 'Authenticated user required' });
@@ -151,7 +151,7 @@ router.get(
 router.delete(
   '/',
   asyncHandler(async (req, res) => {
-    const userId = req.user?.sub;
+    const userId = req.auth?.sub;
 
     if (!userId) {
       return res.status(401).json({ error: 'Authenticated user required' });

@@ -1,0 +1,106 @@
+<!DOCTYPE html>
+<!--
+The operator dashboard, served by the API itself.
+
+## Why it is one HTML file with no build step
+
+This surface changes when the API changes, and a build pipeline for a
+handful of tables is a pipeline that will be out of date the first time an
+endpoint grows a field. One file, no framework, no bundle: what an operator
+sees is exactly what is in the repository, and a change to `/api/system/*`
+and a change to this page are one commit together.
+
+## Why it does not hold the admin token
+
+It never receives one. The operator's browser holds no Keycloak session by
+default, so the page talks to the API through a session cookie the operator
+obtains by signing in — and the API is the only thing that ever sees the
+token. A dashboard that keeps a bearer token in `localStorage` is a token an
+XSS can read, and a dashboard that has no token has nothing to steal.
+
+## What it shows
+
+The numbers an operator actually opens it for: shops, users, revenue over
+the chosen window, per-shop drill-down, and the verification traffic that
+says whether a shop's email is silently failing. Everything is a table with
+a real number and a date, because that is what a support ticket asks for.
+-->
+
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>SimpleSales operator</title>
+<link rel="stylesheet" href="/admin/dashboard.css">
+</head>
+<body>
+<header class="bar">
+  <h1>SimpleSales operator</h1>
+  <nav>
+    <button type="button" data-view="overview" class="tab is-current">Shops</button>
+    <button type="button" data-view="users" class="tab">Users</button>
+    <button type="button" data-view="health" class="tab">Health</button>
+  </nav>
+</header>
+
+<main>
+  <!-- The gate. Nothing below it is useful unauthenticated, and rendering it
+       anyway shows an operator a screen full of errors that they will read as
+       a platform outage. -->
+  <section id="gate" class="card" hidden>
+    <h2>Sign in to continue</h2>
+    <p>This dashboard reads every shop on the platform, so it requires a platform operator account.</p>
+    <form id="signin">
+      <label for="token">Bearer token</label>
+      <input id="token" name="token" type="password" autocomplete="off" spellcheck="false"
+             placeholder="Paste the token your identity provider issued">
+      <button type="submit">Continue</button>
+    </form>
+    <p id="gate-error" class="error" role="alert" hidden></p>
+  </section>
+
+  <section id="views" hidden>
+    <section id="view-overview">
+      <div class="controls">
+        <label for="from">From</label>
+        <input id="from" type="date">
+        <label for="to">To</label>
+        <input id="to" type="date">
+        <button type="button" id="refresh">Refresh</button>
+      </div>
+      <div class="tiles" id="tiles"></div>
+      <h2>Shops</h2>
+      <table id="shops">
+        <thead>
+          <tr><th>Shop</th><th>Sales</th><th>Revenue</th><th>Profit</th><th>Avg basket</th><th>Dominant tender</th></tr>
+        </thead>
+        <tbody></tbody>
+      </table>
+    </section>
+
+    <section id="view-users" hidden>
+      <h2>Users</h2>
+      <table id="users-table">
+        <thead>
+          <tr><th>Name</th><th>Shop</th><th>Role</th><th>Email verified</th><th>Joined</th></tr>
+        </thead>
+        <tbody></tbody>
+      </table>
+    </section>
+
+    <section id="view-health" hidden>
+      <h2>Health</h2>
+      <div class="tiles" id="health-tiles"></div>
+      <h2>Verification traffic, last 24 hours</h2>
+      <table id="verifications">
+        <thead>
+          <tr><th>When</th><th>Email</th><th>Attempts</th><th>Used</th><th>Expired</th></tr>
+        </thead>
+        <tbody></tbody>
+      </table>
+    </section>
+  </section>
+</main>
+<script src="/admin/dashboard.js" defer></script>
+</body>
+</html>

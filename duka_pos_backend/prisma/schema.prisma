@@ -1,5 +1,5 @@
-// Duka POS Prisma Schema
-// Run: npx prisma generate
+// Prisma schema translating your existing Supabase SQL schema
+// Maintains same multi-tenant structure with RLS concepts enforced in app code
 
 generator client {
   provider = "prisma-client-js"
@@ -10,28 +10,39 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
-model Tenant {
-  id            String    @id @default(cuid())
-  shopName      String
-  mpesaEnabled  Boolean   @default(false)
-  etimsEnabled  Boolean   @default(false)
-  payheroChannelId Int?
-  payheroCredentialId String?
-  tin           String?
-  createdAt     DateTime  @default(now())
-  updatedAt     DateTime  @updatedAt
+// Your existing tables from 0001_schema.sql
 
-  profiles      Profile[]
-  products      Product[]
-  sales         Sale[]
-  saleItems     SaleItem[]
+enum UserRole {
+  admin
+  manager
+  cashier
+}
+
+model Tenant {
+  id                  String   @id @default(uuid())
+  shopName            String   @map("shop_name")
+  createdAt           DateTime @default(now()) @map("created_at")
+  mpesaEnabled        Boolean  @default(false) @map("mpesa_enabled")
+  etimsEnabled        Boolean  @default(false) @map("etims_enabled")
+  payheroChannelId    Int?     @map("payhero_channel_id")
+  payheroCredentialId String?  @map("payhero_credential_id")
+
+  profiles         Profile[]
+  products         Product[]
+  sales            Sale[]
   stockAdjustments StockAdjustment[]
-  payments      Payment[]
-  deletionLedgers DeletionLedger[]
-  verificationChallenges VerificationChallenge[]
-  appSessions     AppSession[]
-  etimsDevices    EtimsDevice[]
-  etimsReceipts   EtimsReceipt[]
+  payments         Payment[]
+  deletionLedgers  DeletionLedger[]
+  etimsDevice      EtimsDevice?
+  etimsReceipts    EtimsReceipt[]
+  etimsZReports    EtimsZReport[]
+  emailVerifications EmailVerification[]
+  shifts          Shift[]
+  returns         Return[]
+  returnItems     ReturnItem[]
+  purchases       Purchase[]
+  purchaseItems   PurchaseItem[]
+  shotCups        ShotCup[]
   telemetryEvents TelemetryEvent[] @relation("TenantTelemetryEvents")
   churnSnapshots  ChurnSnapshot[] @relation("TenantChurnSnapshots")
   supportTickets  SupportTicket[]
@@ -40,310 +51,635 @@ model Tenant {
 }
 
 model Profile {
-  id            String   @id @default(cuid())
-  oidcSubject   String?
-  tenantId      String
-  localId       Int?
-  name          String
-  email         String?
-  photoUrl      String?
-  role          String   @default("cashier")
-  active        Boolean  @default(true)
-  deletedAt     DateTime?
-  createdAt     DateTime @default(now())
+  id          String    @id @default(uuid())
+  tenantId    String    @map("tenant_id")
+  oidcSubject String?   @map("oidc_subject")
+  localId     Int?      @map("local_id")
+  email       String?
+  name        String
+  role        UserRole  @default(cashier)
+  active      Boolean   @default(true)
+  deletedAt   DateTime? @map("deleted_at")
+  createdAt   DateTime  @default(now()) @map("created_at")
 
-  tenant        Tenant   @relation(fields: [tenantId], references: [id])
-  sales         Sale[]   @relation("ProfileSales")
-  stockAdjustments StockAdjustment[] @relation("ProfileStockAdjustments")
-  payments      Payment[] @relation("ProfilePayments")
+  /// The profile picture, in the object store.
+  photoUrl String? @map("photo_url")
 
-  @@map("profiles")
+  /// When the emailed 6-digit code for this address was presented. The outcome
+  /// of verification lives here; the pending code never does — see
+  /// `EmailVerification`. Null means "not verified", which is the state every
+  /// other row in this table starts in.
+  emailVerifiedAt DateTime? @map("email_verified_at")
+
+  tenant           Tenant            @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  sales            Sale[]
+  stockAdjustments StockAdjustment[]
+  payments         Payment[]
+
+  @@unique([tenantId, localId])
   @@index([tenantId])
   @@index([oidcSubject])
+  @@map("profiles")
+}
+
+/// A pending email-verification code: the only place one exists.
+///
+/// Not columns on `tenants` — a challenge is a short-lived, single-use,
+/// attempt-counted secret, and hanging a half-finished one off a shop's own
+/// row is how a shop ends up "half verified" after a failed attempt. Nothing
+/// here outlives ten minutes, and the tenant is untouched until a code is
+/// actually presented.
+model EmailVerification {
+  id     String @id @default(uuid())
+  /// Lower-cased by the route, never by the database, so every comparison in
+  /// this table is an equality and no lookup depends on a collation.
+  email  String
+  /// The shop the challenge belongs to, when it is already known. Null for a
+  /// first-ever link, when the tenant does not exist yet.
+  tenantId String? @map("tenant_id")
+  /// The Keycloak subject the account was created for. `activateUser` is
+  /// called with this, so the challenge and the account it verifies cannot
+  /// drift apart.
+  subject String
+
+  /// HMAC-SHA256 of the 6-digit code, keyed by the server's verification
+  /// secret and salted per row. A code is never stored in the clear.
+  codeHash String    @map("code_hash")
+  /// The same transform applied to the 4-digit admin PIN, under the same salt:
+  /// the PIN binds the two halves of the flow to the same person, so it is
+  /// compared by the same constant-time path rather than trusted.
+  pinHash  String    @map("pin_hash")
+  salt     String
+  /// Failed attempts. Five burns the code; the row is then consumed and the
+  /// owner asks for a new one.
+  attempts Int       @default(0)
+  /// Set the moment the code is used, superseded, or burnt. Everything that
+  /// reads this table asks for `consumed_at IS NULL`, so consuming a row is
+  /// the only way to invalidate a code.
+  consumedAt DateTime? @map("consumed_at")
+  expiresAt  DateTime  @map("expires_at")
+  createdAt  DateTime  @default(now()) @map("created_at")
+
+  tenant Tenant? @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  @@index([email, createdAt])
+  @@map("email_verifications")
 }
 
 model Product {
-  id              String   @id @default(cuid())
-  tenantId        String
-  remoteId        String?
-  name            String
-  category        String   @default("General")
-  costPrice       Decimal  @default(0)
-  sellPrice       Decimal  @default(0)
-  stockQty        Decimal  @default(0)
-  reorderLevel    Int      @default(0)
-  bottleMl        Int      @default(750)
-  halfPrice       Decimal?
-  quarterPrice    Decimal?
-  exciseStampBatch String?
-  active          Boolean  @default(true)
-  createdAt       DateTime @default(now())
-  updatedAt       DateTime @updatedAt
+  id               String   @id @default(uuid())
+  tenantId         String   @map("tenant_id")
+  name             String
+  category         String   @default("General")
+  costPrice        Decimal  @map("cost_price") @db.Decimal(12, 2)
+  sellPrice        Decimal  @map("sell_price") @db.Decimal(12, 2)
+  stockQty         Decimal  @default(0) @map("stock_qty") @db.Decimal(12, 3)
+  reorderLevel     Int      @default(5) @map("reorder_level")
+  bottleMl         Int      @default(750) @map("bottle_ml")
+  halfPrice        Decimal? @map("half_price") @db.Decimal(12, 2)
+  quarterPrice     Decimal? @map("quarter_price") @db.Decimal(12, 2)
+  exciseStampBatch String?  @map("excise_stamp_batch")
+  active           Boolean  @default(true)
+  updatedAt        DateTime @default(now()) @updatedAt @map("updated_at")
 
-  tenant          Tenant   @relation(fields: [tenantId], references: [id])
+  tenant           Tenant            @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  saleItems        SaleItem[]
   stockAdjustments StockAdjustment[]
-  saleItems       SaleItem[]
 
-  @@map("products")
   @@index([tenantId])
+  @@map("products")
 }
 
 model Sale {
-  id              String   @id @default(cuid())
-  tenantId        String
-  staffId         String
-  staffName       String
-  paymentMethod   String   @default("cash")
-  paymentReference String?
-  total           Decimal  @default(0)
-  profit          Decimal  @default(0)
-  createdAt       DateTime @default(now())
+  id               String   @id @default(uuid())
+  tenantId         String   @map("tenant_id")
+  /// The till's own id for this sale.
+  ///
+  /// The ledger is written on the phone, offline, and pushed when the phone
+  /// can reach the server — so the same sale arrives more than once unless the
+  /// server can tell it from the first one. This is that: the local id,
+  /// unique WITHIN a shop, so a push is idempotent and a retry cannot double
+  /// the shop's takings.
+  localId          Int?     @map("local_id")
+  /// The profile that rang the sale, when the server knows it.
+  ///
+  /// NULLABLE, and that is the point: a till that has not synced its roster
+  /// yet still has sales, and a sale is not lost because the person who rang
+  /// it is not on the server yet. The NAME is on the sale either way, which
+  /// is what the reports read.
+  staffId          String?  @map("staff_id")
+  staffName        String   @map("staff_name")
+  paymentMethod    String   @default("cash") @map("payment_method")
+  paymentReference String?  @map("payment_reference")
+  total            Decimal  @db.Decimal(12, 2)
+  profit           Decimal  @db.Decimal(12, 2)
+  createdAt        DateTime @default(now()) @map("created_at")
 
-  tenant          Tenant   @relation(fields: [tenantId], references: [id])
-  profile         Profile? @relation("ProfileSales", fields: [staffId], references: [id])
-  items           SaleItem[]
+  tenant    Tenant     @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  staff     Profile?   @relation(fields: [staffId], references: [id])
+  saleItems SaleItem[]
+  payment   Payment?
 
+  @@unique([tenantId, localId])
+  @@index([tenantId, createdAt])
   @@map("sales")
-  @@index([tenantId])
-  @@index([createdAt])
 }
 
 model SaleItem {
-  id          String   @id @default(cuid())
-  tenantId    String
-  saleId      String
-  productId   String
-  productName String
-  qty         Decimal
-  unitPrice   Decimal
-  unitCost    Decimal
-  portion     String     @default("full")
-  portionMl   Int        @default(0)
+  id          String  @id @default(uuid())
+  tenantId    String  @map("tenant_id")
+  saleId      String  @map("sale_id")
+  /// The product that was sold, when the server knows it.
+  ///
+  /// NULLABLE, and that is the point: a till can sell before its catalogue has
+  /// been pushed, and the two syncs are independent paths. The NAME is on the
+  /// line either way, so the report says what was sold even when the
+  /// catalogue has not caught up.
+  productId   String? @map("product_id")
+  productName String  @map("product_name")
+  qty         Decimal @db.Decimal(12, 3)
+  unitPrice   Decimal @map("unit_price") @db.Decimal(12, 2)
+  unitCost    Decimal @map("unit_cost") @db.Decimal(12, 2)
+  portion     String  @default("full")
+  portionMl   Int     @default(0) @map("portion_ml")
 
-  tenant      Tenant   @relation(fields: [tenantId], references: [id])
-  sale        Sale     @relation(fields: [saleId], references: [id])
-  product     Product  @relation(fields: [productId], references: [id])
+  sale    Sale     @relation(fields: [saleId], references: [id], onDelete: Cascade)
+  product Product? @relation(fields: [productId], references: [id])
 
-  @@map("sale_items")
-  @@index([tenantId])
   @@index([saleId])
+  @@map("sale_items")
+}
+
+// ---------------------------------------------------------------------------
+// The till's records: the things a phone writes while the shop is open.
+//
+// Every table here is written by a TILL, offline, and pushed to the server
+// when the phone can reach it. The `local_id` column is what makes that push
+// idempotent: the same sale arriving twice is one sale.
+// ---------------------------------------------------------------------------
+
+/// A shift: a drawer, and the people who worked it.
+///
+/// The till opens a shift OFFLINE — a shop with one device and its staff on
+/// it has no signal half the time, and a shift that needs a server is a shift
+/// nobody opens — and the shift is pushed when the phone can reach the
+/// server. `local_id` is what makes that push idempotent.
+model Shift {
+  id         String   @id @default(uuid())
+  tenantId   String   @map("tenant_id")
+  localId    Int      @map("local_id")
+  staffId    String?  @map("staff_id")
+  staffName  String   @map("staff_name")
+  startTime  DateTime @map("start_time")
+  endTime    DateTime? @map("end_time")
+  /// The cash the drawer started with.
+  startFloat Decimal  @default(0) @map("start_float") @db.Decimal(12, 2)
+  /// The cash the drawer ended with.
+  endFloat   Decimal  @default(0) @map("end_float") @db.Decimal(12, 2)
+  /// The cash the ledger says should have been in the drawer at the close.
+  expectedCash Decimal @default(0) @map("expected_cash") @db.Decimal(12, 2)
+  /// The cash that was actually counted at the close.
+  countedCash  Decimal @default(0) @map("counted_cash") @db.Decimal(12, 2)
+  /// 'open' while the shift is live, 'closed' once it has been counted.
+  status     String   @default("open")
+  createdAt  DateTime @default(now()) @map("created_at")
+
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  @@unique([tenantId, localId])
+  @@index([tenantId, startTime])
+  @@map("shifts")
+}
+
+/// A return: money and stock going back to the shop.
+///
+/// Two kinds, because the till treats them differently and the tax authority
+/// does too:
+///
+///  * `refund` — the money goes back to the customer.
+///  * `credit_note` — the customer keeps the goods and the shop owes them.
+///
+/// Both are recorded against the sale they came from, because a return with
+/// no sale behind it is money the shop has invented.
+model Return {
+  id        String   @id @default(uuid())
+  tenantId  String   @map("tenant_id")
+  localId   Int      @map("local_id")
+  /// The till's id for the sale being returned, when there was one.
+  originalSaleLocalId Int? @map("original_sale_local_id")
+  /// 'refund' or 'credit_note'.
+  kind      String   @default("refund")
+  reason    String
+  /// The money given back.
+  total     Decimal  @default(0) @db.Decimal(12, 2)
+  /// The profit given back — the margin on the returned goods, which is the
+  /// figure that tells the owner what a return actually cost.
+  profit    Decimal  @default(0) @db.Decimal(12, 2)
+  staffId   String?  @map("staff_id")
+  staffName String   @map("staff_name")
+  createdAt DateTime @default(now()) @map("created_at")
+
+  tenant Tenant      @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  items  ReturnItem[]
+
+  @@unique([tenantId, localId])
+  @@index([tenantId, createdAt])
+  @@map("returns")
+}
+
+/// One line of a return.
+model ReturnItem {
+  id          String  @id @default(uuid())
+  tenantId    String  @map("tenant_id")
+  returnId    String  @map("return_id")
+  productId   String? @map("product_id")
+  productName String  @map("product_name")
+  qty         Decimal @db.Decimal(12, 3)
+  unitPrice   Decimal @map("unit_price") @db.Decimal(12, 2)
+  unitCost    Decimal @map("unit_cost") @db.Decimal(12, 2)
+  portion     String  @default("full")
+  portionMl   Int     @default(0) @map("portion_ml")
+
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  return Return @relation(fields: [returnId], references: [id], onDelete: Cascade)
+
+  @@index([returnId])
+  @@map("return_items")
+}
+
+/// A purchase: stock arriving at the shop.
+///
+/// The cost on each line is the point. Stock that arrived at a price is worth
+/// a different amount from stock that arrived at another, and a shop that only
+/// remembers quantities cannot price what it sells. The line cost is what the
+/// profit on every later sale is measured against.
+model Purchase {
+  id            String   @id @default(uuid())
+  tenantId      String   @map("tenant_id")
+  localId       Int      @map("local_id")
+  supplierName  String   @map("supplier_name")
+  invoiceNumber String?  @map("invoice_number")
+  /// What the whole delivery cost.
+  total         Decimal  @default(0) @db.Decimal(12, 2)
+  staffId       String?  @map("staff_id")
+  staffName     String   @map("staff_name")
+  createdAt     DateTime @default(now()) @map("created_at")
+
+  tenant Tenant         @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  items  PurchaseItem[]
+
+  @@unique([tenantId, localId])
+  @@index([tenantId, createdAt])
+  @@map("purchases")
+}
+
+/// One line of a purchase: what arrived, and what it cost.
+model PurchaseItem {
+  id          String  @id @default(uuid())
+  tenantId    String  @map("tenant_id")
+  purchaseId  String  @map("purchase_id")
+  productId   String? @map("product_id")
+  productName String  @map("product_name")
+  qty         Decimal @db.Decimal(12, 3)
+  /// What one unit cost the shop.
+  unitCost    Decimal @map("unit_cost") @db.Decimal(12, 2)
+
+  tenant   Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  purchase Purchase @relation(fields: [purchaseId], references: [id], onDelete: Cascade)
+
+  @@index([purchaseId])
+  @@map("purchase_items")
+}
+
+/// A shot cup: a named serving poured from a drink.
+///
+/// The size is OPTIONAL, and zero means "not known": a cup with a size earns
+/// its cost exactly, because the app can work out what that much of the drink
+/// cost to pour. A cup without one is counted at its full price, because the
+/// drink that went into it is not being measured.
+model ShotCup {
+  id          String   @id @default(uuid())
+  tenantId    String   @map("tenant_id")
+  localId     Int      @map("local_id")
+  /// The drink this cup is poured from.
+  productId   String   @map("product_id")
+  productName String   @map("product_name")
+  /// What the cup is called: "Single", "Double", "One shot".
+  label       String
+  /// The size in millilitres. Zero means the size is not known.
+  capacityMl  Int      @default(0) @map("capacity_ml")
+  /// What one of these sells for.
+  price       Decimal  @default(0) @db.Decimal(12, 2)
+  active      Boolean  @default(true)
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @updatedAt @map("updated_at")
+
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  @@unique([tenantId, localId])
+  @@index([tenantId, productId])
+  @@map("shot_cups")
 }
 
 model StockAdjustment {
-  id        String   @id @default(cuid())
-  tenantId  String
-  productId String
-  delta     Decimal
-  reason    String?
-  staffId   String?
-  createdAt DateTime @default(now())
+  id          String   @id @default(uuid())
+  tenantId    String   @map("tenant_id")
+  productId   String   @map("product_id")
+  productName String   @map("product_name")
+  delta       Int
+  reason      String?
+  staffId     String   @map("staff_id")
+  createdAt   DateTime @default(now()) @map("created_at")
 
-  tenant    Tenant   @relation(fields: [tenantId], references: [id])
-  product   Product  @relation(fields: [productId], references: [id])
-  profile   Profile? @relation("ProfileStockAdjustments", fields: [staffId], references: [id])
+  tenant  Tenant  @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  product Product @relation(fields: [productId], references: [id])
+  staff   Profile @relation(fields: [staffId], references: [id])
 
-  @@map("stock_adjustments")
   @@index([tenantId])
+  @@map("stock_adjustments")
 }
 
 model Payment {
-  id               String   @id @default(cuid())
-  tenantId         String
-  initiatedBy      String
-  staffName        String
-  reference        String   @unique
-  phoneNumber      String
-  amount           Decimal
-  cartSnapshot     Json
-  status           String   @default("QUEUED")
-  checkoutRequestId String?
-  saleId           String?
-  createdAt        DateTime @default(now())
+  id                String   @id @default(uuid())
+  tenantId          String   @map("tenant_id")
+  initiatedBy       String   @map("initiated_by")
+  staffName         String   @map("staff_name")
+  reference         String   @unique
+  checkoutRequestId String?  @map("checkout_request_id")
+  phoneNumber       String   @map("phone_number")
+  amount            Decimal  @db.Decimal(12, 2)
+  status            String   @default("QUEUED")
+  cartSnapshot      Json     @map("cart_snapshot")
+  saleId            String?  @unique @map("sale_id")
+  createdAt         DateTime @default(now()) @map("created_at")
+  updatedAt         DateTime @default(now()) @updatedAt @map("updated_at")
 
-  tenant           Tenant   @relation(fields: [tenantId], references: [id])
-  profile          Profile? @relation("ProfilePayments", fields: [initiatedBy], references: [id])
+  tenant             Tenant  @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  initiatedByProfile Profile @relation(fields: [initiatedBy], references: [id])
+  sale               Sale?   @relation(fields: [saleId], references: [id])
 
-  @@map("payments")
   @@index([tenantId])
   @@index([reference])
+  @@map("payments")
 }
 
 model DeletionLedger {
-  id          String   @id @default(cuid())
-  tenantId    String
-  subjectType String
-  subjectId   String
+  id          String    @id @default(uuid())
+  tenantId    String    @map("tenant_id")
+  subjectType String    @map("subject_type")
+  subjectId   String    @map("subject_id")
   reason      String?
-  completedAt DateTime @default(now())
+  status      String    @default("COMPLETED")
+  requestedAt DateTime  @default(now()) @map("requested_at")
+  completedAt DateTime? @map("completed_at")
 
-  tenant      Tenant   @relation(fields: [tenantId], references: [id])
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
 
-  @@map("deletion_ledgers")
-  @@index([tenantId])
+  @@index([tenantId, subjectType, subjectId])
+  @@map("deletion_ledger")
 }
 
-// ---------------------------------------------------------------------------
-// New models for integrated features
-// ---------------------------------------------------------------------------
+// ============================================================================
+// eTIMS (KRA electronic tax invoice)
+// ============================================================================
 
-model VerificationChallenge {
-  id          String   @id @default(cuid())
-  tenantId    String?
-  email       String
-  code        String
-  expiresAt   DateTime
-  used        Boolean   @default(false)
-  createdAt   DateTime @default(now())
-
-  tenant      Tenant?   @relation(fields: [tenantId], references: [id])
-
-  @@map("verification_challenges")
-  @@index([email])
-  @@index([code])
-  @@index([expiresAt])
-}
-
-model AppSession {
-  id            String   @id @default(cuid())
-  tenantId      String
-  accessToken   String
-  refreshToken  String   @unique
-  expiresAt     DateTime
-  createdAt     DateTime @default(now())
-
-  tenant        Tenant   @relation(fields: [tenantId], references: [id])
-
-  @@map("app_sessions")
-  @@index([refreshToken])
-  @@index([expiresAt])
-}
-
+/// A registered KRA eTIMS device for one shop.
+///
+/// One row per tenant. The credentials live here rather than in the environment
+/// because one deployment serves many shops, each with its own TIN and its own
+/// KRA account, and the OSCU signing key is issued per taxpayer. Keeping them
+/// in env would mean one shop's receipts filed under another's TIN.
 model EtimsDevice {
-  id           String   @id @default(cuid())
-  tenantId     String
-  tin          String
-  deviceId     String   @unique
-  deviceName   String?
-  registeredAt DateTime @default(now())
+  id        String @id @default(uuid())
+  tenantId  String @unique @map("tenant_id")
+  tin       String
+  deviceId  String @map("device_id")
+  deviceName String @default("") @map("device_name")
+  /// 'unregistered' | 'initialised' | 'active' | 'suspended'
+  status    String @default("unregistered")
+  /// Decrypted OSCU keys, base64. Never logged and never returned by an
+  /// endpoint. `access_key` is the signing key KRA issued for this taxpayer.
+  encryptionKey String? @map("encryption_key")
+  accessKey     String? @map("access_key")
+  /// The device serial KRA returns on initialisation. Required on re-init.
+  deviceSerial  String? @map("device_serial")
+  initialisedAt DateTime? @map("initialised_at")
+  lastError     String? @map("last_error")
+  createdAt     DateTime @default(now()) @map("created_at")
+  updatedAt     DateTime @updatedAt @map("updated_at")
 
-  tenant       Tenant   @relation(fields: [tenantId], references: [id])
+  tenant   Tenant        @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  receipts EtimsReceipt[]
+  zReports EtimsZReport[]
 
   @@map("etims_devices")
-  @@index([tenantId])
-  @@index([deviceId])
 }
 
+/// One tax invoice, exactly as KRA saw it.
+///
+/// An immutable ledger rather than a cache. The amounts arrive from the till
+/// that actually took the money and are never recalculated here: a Z-report
+/// built from a re-derived total would not reconcile against the paperwork the
+/// customer was already handed.
 model EtimsReceipt {
-  id             String   @id @default(cuid())
-  tenantId       String
-  kraReceiptNumber String   @unique
-  verificationUrl String?
-  qrPayload      String?
-  status         String   @default("ISSUED")
-  payload        Json
-  deviceId       String?
-  issuedAt       DateTime @default(now())
+  id      String @id @default(uuid())
+  tenantId String @map("tenant_id")
+  deviceId String? @map("device_id")
+  /// The till's own receipt number (`<TILL>-000123`). Unique per tenant, both
+  /// because KRA rejects a duplicate submitted under the same device and number
+  /// and because the till retries an upload it believes failed.
+  receiptNumber String @map("receipt_number")
+  /// KRA's receipt number. Null until issued. Deliberately not derivable from
+  /// receiptNumber, so the two can disagree rather than one impersonating the
+  /// other on a document.
+  kraReceiptNumber String? @map("kra_receipt_number")
+  /// The payload submitted to KRA, verbatim. Kept because KRA's own rules
+  /// change, and a disputed invoice has to be reproducible exactly as sent.
+  payload          Json
+  /// Major-unit figures as Decimal, matching the rest of the catalogue so a
+  /// float can never enter a tax document. The till sends integer minor units;
+  /// routes/etims.ts converts at that boundary and nowhere else.
+  total            Decimal   @db.Decimal(14, 2)
+  vatTotal         Decimal   @db.Decimal(14, 2)
+  vatRatePercent   Int       @default(16) @map("vat_rate_percent")
+  itemCount        Int       @default(0) @map("item_count")
+  paymentMethod    String    @default("cash") @map("payment_method")
+  paymentReference String?   @map("payment_reference")
+  /// 'pending' | 'issued' | 'rejected'
+  status           String    @default("pending")
+  /// Why KRA refused it, verbatim. Surfaced to the owner, because a silent
+  /// refusal is an unissued tax invoice that nobody knows exists.
+  rejectionReason  String?   @map("rejection_reason")
+  issuedAt         DateTime? @map("issued_at")
+  createdAt        DateTime  @default(now()) @map("created_at")
+  updatedAt        DateTime  @updatedAt @map("updated_at")
 
-  tenant         Tenant   @relation(fields: [tenantId], references: [id])
+  tenant Tenant       @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  device EtimsDevice? @relation(fields: [deviceId], references: [id], onDelete: SetNull)
 
+  @@unique([tenantId, receiptNumber])
+  // KRA receipt numbers are globally unique, and this index is what makes the
+  // *public* verification page safe: it is looked up with no tenant filter,
+  // because the person following the QR is a customer with no account.
+  //
+  // `receipt_number` cannot carry this guarantee — it is only unique per shop,
+  // and "T1-000001" is a number several shops will independently reach.
+  @@unique([kraReceiptNumber])
+  @@index([tenantId, status])
   @@map("etims_receipts")
-  @@index([tenantId])
-  @@index([kraReceiptNumber])
-  @@index([deviceId])
+}
+
+/// The end-of-day summary KRA requires.
+///
+/// Cumulative, never reset: an absolute Z-number starting at 1 is what an
+/// auditor checks, and a per-day counter would let any day look like the shop's
+/// first.
+model EtimsZReport {
+  id          String   @id @default(uuid())
+  tenantId    String   @map("tenant_id")
+  deviceId    String?  @map("device_id")
+  /// Absolute and monotonically increasing per device. This is the Z-number.
+  zNumber     Int
+  /// Business date covered, UTC midnight.
+  businessDate DateTime @map("business_date")
+  invoiceCount Int      @default(0) @map("invoice_count")
+  total        Decimal  @db.Decimal(14, 2)
+  vatTotal     Decimal  @db.Decimal(14, 2)
+  /// Receipts the till recorded but KRA has not accepted. Reported on the
+  /// Z-report because the gap between the two is precisely what KRA reconciles,
+  /// and hiding it would make the report agree with itself while disagreeing
+  /// with the authority.
+  pendingCount  Int      @default(0) @map("pending_count")
+  rejectedCount Int      @default(0) @map("rejected_count")
+  status        String   @default("pending") // 'pending' | 'issued' | 'failed'
+  failureReason String?  @map("failure_reason")
+  rawResponse   Json?
+  createdAt     DateTime @default(now()) @map("created_at")
+  updatedAt     DateTime @updatedAt @map("updated_at")
+
+  tenant Tenant       @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  device EtimsDevice? @relation(fields: [deviceId], references: [id], onDelete: SetNull)
+
+  @@unique([tenantId, businessDate])
+  @@index([tenantId, zNumber])
+  @@map("etims_z_reports")
 }
 
 // ---------------------------------------------------------------------------
-// Systems admin + churn analytics (new in v2.1)
+// The platform's own records: device telemetry, churn snapshots, what an
+// administrator did, the platform's settings and the shop's support tickets.
+//
+// These were lost in an earlier merge of this service — the code that writes
+// them was still here, and the tables were not. They are back, with a
+// migration, because a route that writes to a table that does not exist is a
+// route that fails at runtime and nowhere else.
 // ---------------------------------------------------------------------------
 
-/// Raw telemetry event pushed from a till phone. Never contains secrets/PII
-/// (rule 3 of TelemetryService: route names, feature names, timestamps only).
+/// One event from a till phone.
+///
+/// Route names, feature names and timestamps only — never secrets and never
+/// anything about a person.
 model TelemetryEvent {
-  id          String   @id @default(cuid())
-  tenantId    String
-  deviceId    String?    // phone device identifier
-  name        String   // app_open | app_close | screen_view | feature_use | sale_recorded | idle_start | idle_end
-  at          DateTime @default(now())  // when the event occurred on the device, UTC
-  route       String?
-  detail      String?  // non-user-controlled identifier only
-  createdAt   DateTime @default(now())
+  id        String   @id @default(uuid())
+  tenantId  String   @map("tenant_id")
+  /// The phone the event came from.
+  deviceId  String?  @map("device_id")
+  /// What happened: app_open, screen_view, feature_use, sale_recorded...
+  name      String
+  /// When it happened on the device, in UTC.
+  at        DateTime @default(now())
+  route     String?
+  /// A non-user-controlled identifier only.
+  detail    String?
+  createdAt DateTime @default(now()) @map("created_at")
 
-  tenant      Tenant   @relation("TenantTelemetryEvents", fields: [tenantId], references: [id])
+  tenant Tenant @relation("TenantTelemetryEvents", fields: [tenantId], references: [id], onDelete: Cascade)
 
-  @@map("telemetry_events")
   @@index([tenantId])
   @@index([name])
   @@index([at])
   @@index([createdAt])
+  @@map("telemetry_events")
 }
 
-/// Pre-computed churn snapshot pushed from a till phone (phone computes the
-/// ChurnAnalysis locally; backend only stores/delivers the snapshot).
+/// A phone's usage, summarised for the day.
 model ChurnSnapshot {
-  id               String   @id @default(cuid())
-  tenantId         String
-  deviceId         String?
-  date             DateTime // calendar date this snapshot describes
-  streakDays       Int
-  daysSinceLastActive Int
-  totalSessions    Int
-  risk             String   // none | low | medium | high
-  score            Float    // 0.0 to 1.0
-  computedAt       DateTime @default(now())
+  id                 String   @id @default(uuid())
+  tenantId           String   @map("tenant_id")
+  deviceId           String?  @map("device_id")
+  /// The calendar day this snapshot describes.
+  date               DateTime
+  streakDays         Int      @map("streak_days")
+  daysSinceLastActive Int     @map("days_since_last_active")
+  totalSessions      Int      @map("total_sessions")
+  /// none | low | medium | high
+  risk               String
+  /// 0.0 to 1.0
+  score              Float
+  computedAt         DateTime @default(now()) @map("computed_at")
 
-  tenant           Tenant   @relation("TenantChurnSnapshots", fields: [tenantId], references: [id])
+  tenant Tenant @relation("TenantChurnSnapshots", fields: [tenantId], references: [id], onDelete: Cascade)
 
-  @@map("churn_snapshots")
   @@index([tenantId])
   @@index([date])
   @@index([computedAt])
+  @@map("churn_snapshots")
 }
 
-/// Audit log of systems-admin actions (global admin viewing/editing any tenant).
+/// What a platform administrator did.
+///
+/// The record exists so that "who changed that?" has an answer that is not
+/// "ask the server logs".
 model AdminAuditLog {
-  id        String   @id @default(cuid())
-  adminId   String   // profile id of the system admin who acted
-  action    String   // e.g. view_churn, update_tenant_settings, purge_telemetry
-  targetType String? // e.g. tenant, sale, profile, telemetry_event
-  targetId  String?
-  tenantId  String?  // which tenant was affected; null for cross-tenant actions
-  at        DateTime @default(now())
+  id         String   @id @default(uuid())
+  /// The profile of the administrator who acted.
+  adminId    String   @map("admin_id")
+  /// What they did: view_churn, update_tenant_settings, purge_telemetry.
+  action     String
+  /// tenant, sale, profile, telemetry_event.
+  targetType String?  @map("target_type")
+  targetId   String?  @map("target_id")
+  /// The shop it affected; null for a cross-tenant action.
+  tenantId   String?  @map("tenant_id")
+  at         DateTime @default(now())
 
-  @@map("admin_audit_logs")
   @@index([adminId])
   @@index([tenantId])
   @@index([at])
+  @@map("admin_audit_logs")
 }
 
-/// Platform-wide settings key/value store.
+/// A platform setting, by key.
 model SystemSettings {
-  id          String   @id @default(cuid())
+  id          String   @id @default(uuid())
   key         String   @unique
   value       String
   description String?
-  updatedAt   DateTime @updatedAt
+  updatedAt   DateTime @updatedAt @map("updated_at")
 
-  @@map("system_settings")
   @@index([key])
+  @@map("system_settings")
 }
 
-/// Support ticket or feature request pushed from a till phone.
+/// A ticket or a request from a shop.
 model SupportTicket {
-  id          String   @id @default(cuid())
-  tenantId    String
-  deviceId    String?
-  type        String   // ticket | request
+  id          String   @id @default(uuid())
+  tenantId    String   @map("tenant_id")
+  deviceId    String?  @map("device_id")
+  /// ticket | request
+  type        String
   title       String
   description String
-  status      String   // open | in_progress | resolved
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
+  /// open | in_progress | resolved
+  status      String
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @updatedAt @map("updated_at")
 
-  tenant      Tenant   @relation(fields: [tenantId], references: [id])
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
 
-  @@map("support_tickets")
   @@index([tenantId])
   @@index([type])
   @@index([status])
   @@index([createdAt])
+  @@map("support_tickets")
 }
