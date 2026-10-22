@@ -38,7 +38,7 @@ describe('keycloak admin client', () => {
 
   it('takes an admin token from the realm, not from a user login', async () => {
     const { instance, calls } = client([{ status: 201, location: 'https://id.example.test/admin/realms/duka/users/kc-1' }]);
-    await instance.ensureUser('owner@example.com');
+    await instance.ensureUser('owner@example.com', '123456');
     expect(calls[0].url).toBe('https://id.example.test/realms/duka/protocol/openid-connect/token');
     expect(calls[0].init.body).toContain('grant_type=client_credentials');
     expect(calls[0].init.headers.Authorization).toBeUndefined();
@@ -46,7 +46,7 @@ describe('keycloak admin client', () => {
 
   it('creates the account dark: disabled, unverified, verify-email required', async () => {
     const { instance, calls } = client([{ status: 201, location: 'https://id.example.test/admin/realms/duka/users/kc-1' }]);
-    await instance.ensureUser('owner@example.com');
+    await instance.ensureUser('owner@example.com', '123456');
     const payload = JSON.parse(calls[1].init.body!);
     expect(payload.username).toBe('owner@example.com');
     expect(payload.email).toBe('owner@example.com');
@@ -54,15 +54,16 @@ describe('keycloak admin client', () => {
     expect(payload.emailVerified).toBe(false);
     expect(payload.requiredActions).toEqual(['VERIFY_EMAIL']);
     expect(payload.credentials).toHaveLength(1);
-    // The generated password is long enough for any realm policy, and it is
-    // the only place it exists.
-    expect(payload.credentials[0].value.length).toBeGreaterThanOrEqual(24);
+    // The password is the OWNER'S OWN admin PIN — the one secret they
+    // already keep for the till. It is set here and never stored here:
+    // Keycloak keeps a hash.
+    expect(payload.credentials[0].value).toBe('123456');
     expect(payload.credentials[0].temporary).toBe(false);
   });
 
   it('reads the new user id out of Location, because Keycloak returns no body', async () => {
     const { instance } = client([{ status: 201, location: 'https://id.example.test/admin/realms/duka/users/kc-42' }]);
-    const user = await instance.ensureUser('owner@example.com');
+    const user = await instance.ensureUser('owner@example.com', '123456');
     expect(user).toEqual({ id: 'kc-42', created: true });
   });
 
@@ -71,14 +72,14 @@ describe('keycloak admin client', () => {
       { status: 409, body: { errorMessage: 'User exists' } },
       { status: 200, body: [{ id: 'kc-42' }] },
     ]);
-    const user = await instance.ensureUser('owner@example.com');
+    const user = await instance.ensureUser('owner@example.com', '123456');
     expect(user).toEqual({ id: 'kc-42', created: false });
     expect(calls[2].url).toContain('/users?username=owner%40example.com&exact=true');
   });
 
   it('fails loudly rather than inventing a user id', async () => {
     const { instance } = client([{ status: 201, location: undefined }]);
-    await expect(instance.ensureUser('owner@example.com')).rejects.toThrow(/without returning its id/);
+    await expect(instance.ensureUser('owner@example.com', '123456')).rejects.toThrow(/without returning its id/);
   });
 
   it('fails loudly when the realm will not hand back an existing user', async () => {
@@ -86,7 +87,7 @@ describe('keycloak admin client', () => {
       { status: 409, body: { errorMessage: 'User exists' } },
       { status: 200, body: [] },
     ]);
-    await expect(instance.ensureUser('owner@example.com')).rejects.toThrow(/will not return it/);
+    await expect(instance.ensureUser('owner@example.com', '123456')).rejects.toThrow(/will not return it/);
   });
 
   it('turns the account on only when the email is verified', async () => {

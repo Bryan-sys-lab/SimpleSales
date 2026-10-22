@@ -236,7 +236,11 @@ router.post('/link', linkLimiter, asyncHandler(async (req: Request, res: Respons
 
     let user;
     try {
-      user = await keycloak.ensureUser(email);
+      // The password IS the owner's 6-digit admin PIN — the one secret they
+      // already keep for the till. It is set here and never stored here:
+      // Keycloak keeps a hash, and the server's copy of the PIN is the hash
+      // it already binds into the challenge.
+      user = await keycloak.ensureUser(email, pin);
     } catch (error) {
       log('error', 'auth.keycloak_unreachable', { requestId, message: error instanceof Error ? error.message : 'unknown' });
       return res.status(502).json({ error: 'Could not reach the identity server', code: 'IDENTITY_UNAVAILABLE', requestId });

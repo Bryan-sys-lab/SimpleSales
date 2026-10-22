@@ -11,14 +11,26 @@
  *
  * WHY THE ACCOUNT STARTS DISABLED
  * An account created for an email the caller does not own would otherwise sit
- * there, enabled, with a password the backend generated and nobody knows. The
- * user is created `enabled: false` with `emailVerified: false` and is only
- * switched on by `activateUser`, which runs after a code sent to that address
- * has been presented. A guessed PIN therefore buys the caller a disabled row
- * in the identity server and nothing else.
+ * there, enabled, with a password nobody has. The user is created
+ * `enabled: false` with `emailVerified: false` and is only switched on by
+ * `activateUser`, which runs after a code sent to that address has been
+ * presented. A guessed PIN therefore buys the caller a disabled row in the
+ * identity server and nothing else.
+ *
+ * WHY THE PASSWORD IS THE OWNER'S OWN ADMIN PIN
+ * The credential in this system is a Keycloak token, so the owner has to be
+ * able to SIGN IN to Keycloak — and the account they were sent has to have a
+ * password they know.
+ *
+ * The password IS their 6-digit admin PIN: the one secret they already keep
+ * for the till, which they type forty times a day and never write down. The
+ * server sets it through the admin client and never stores it — Keycloak
+ * keeps a hash, like everything else — and the owner's sign-in is
+ * email + the same six digits.
+ *
+ * A generated password would have been tidier and useless: the owner would
+ * have had no way in at all.
  */
-
-import { randomBytes } from 'node:crypto';
 
 export type KeycloakHttpResponse = {
   status: number;
@@ -50,12 +62,6 @@ export type KeycloakAdminOptions = {
   tokenUrl?: string;
   http?: KeycloakHttp;
 };
-
-/** 192 bits, URL-safe: satisfies any password policy the realm may later grow,
- * and never leaves this process in either direction. */
-function generatedPassword(): string {
-  return randomBytes(24).toString('base64url');
-}
 
 export function createKeycloakAdminClient(options: KeycloakAdminOptions) {
   const http =
@@ -115,7 +121,7 @@ export function createKeycloakAdminClient(options: KeycloakAdminOptions) {
      * Idempotent by design: the owner who taps Verify a second time, on a
      * second device, gets the same account back rather than a 409.
      */
-    async ensureUser(email: string): Promise<KeycloakUser> {
+    async ensureUser(email: string, password: string): Promise<KeycloakUser> {
       const token = await adminToken();
       const created = await http(adminBase + '/users', {
         method: 'POST',
@@ -127,7 +133,8 @@ export function createKeycloakAdminClient(options: KeycloakAdminOptions) {
           enabled: false,
           emailVerified: false,
           requiredActions: ['VERIFY_EMAIL'],
-          credentials: [{ type: 'password', value: generatedPassword(), temporary: false }],
+          // The owner's own admin PIN. See the file header.
+          credentials: [{ type: 'password', value: password, temporary: false }],
         }),
       });
 
