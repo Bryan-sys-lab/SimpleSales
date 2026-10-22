@@ -25,6 +25,9 @@ class ShopKpi {
     required this.transactions,
     this.role,
     this.topPaymentMethod,
+    this.shiftsClosed = 0,
+    this.shiftsOpen = 0,
+    this.cashVariance = Money.zero,
   });
 
   /// The backend's tenant id. Identifying, never a display value.
@@ -48,6 +51,18 @@ class ShopKpi {
   /// shop sold nothing in the window — inventing 'cash' would claim a fact that
   /// is not in the data.
   final String? topPaymentMethod;
+
+  /// Shifts counted in the window, and any still open right now.
+  ///
+  /// A shop's shift is where the cash is reconciled, so "how are my shops
+  /// doing" cannot honestly answer with takings alone: a busy shop and a shop
+  /// whose drawer has been short for three days look identical on revenue.
+  final int shiftsClosed;
+  final int shiftsOpen;
+
+  /// Counted cash minus expected cash across the closed shifts. Negative
+  /// means the drawer came up short.
+  final Money cashVariance;
 
   /// The average basket, derived from this shop's own totals.
   ///
@@ -73,6 +88,9 @@ class ShopKpi {
         profit: Money.fromMinor(_intOf(json['profit'])),
         transactions: _intOf(json['transactions']),
         topPaymentMethod: json['topPaymentMethod'] as String?,
+        shiftsClosed: _intOf(json['shiftsClosed']),
+        shiftsOpen: _intOf(json['shiftsOpen']),
+        cashVariance: Money.fromMinor(_intOf(json['cashVariance'])),
       );
 }
 

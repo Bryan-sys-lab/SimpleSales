@@ -456,6 +456,7 @@ class _Footer extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final AppLocalizations l10n = AppLocalizations.of(context);
     final AppSpacing spacing = AppSpacing.of(context);
 
     return Padding(
@@ -475,12 +476,12 @@ class _Footer extends StatelessWidget {
               // control points the way the reader does without the screen
               // having to choose a second icon.
               icon: ExcludeSemantics(child: Icon(Icons.arrow_back)),
-              label: const Text('Back'),
+              label: Text(l10n.actionBack),
             )
           else
             TextButton(
               onPressed: locked ? null : onSkip,
-              child: const Text('Skip'),
+              child: Text(l10n.actionSkip),
             ),
           // Flexible, not a Spacer with a fixed button: at 200% text scale a
           // long label wraps instead of the row overflowing.

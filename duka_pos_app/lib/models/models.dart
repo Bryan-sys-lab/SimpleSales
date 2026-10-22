@@ -1135,6 +1135,7 @@ class CategoryName {
   static const seeds = <String>[
     general,
     'Beer',
+    'Tanks',
     'Wines & Spirits',
     'Soft Drinks',
     'Water',

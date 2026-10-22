@@ -103,6 +103,7 @@ class PinResetService {
       email: email,
       challengeId: challengeId,
       code: code,
+      newPin: newPin,
     );
     if (!accepted) return false;
 

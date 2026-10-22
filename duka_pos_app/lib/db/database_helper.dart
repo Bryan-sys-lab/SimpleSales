@@ -2991,51 +2991,6 @@ SELECT name FROM staff GROUP BY name HAVING COUNT(*) = 1
     }
   }
 
-  /// Runs [action] in one transaction, and gives back the rows it wrote.
-  ///
-  /// The seam a multi-row save uses so that N rows are one journal commit and
-  /// one all-or-nothing unit. `upsertProducts` already does this for a batch of
-  /// products; this exposes the same guarantee to a save whose rows are of
-  /// DIFFERENT kinds — a tank and its two taps — which is otherwise three
-  /// implicit transactions, and a failure between them leaving the product with
-  /// no taps to pour from.
-  ///
-  /// Returns the inserted product id, which is what `product_variants.product_id`
-  /// needs and why the taps cannot simply be written first.
-  Future<int> saveTank({
-    required Product tank,
-    required List<ProductVariant> taps,
-  }) async {
-    final db = await database;
-    return db.transaction((txn) async {
-      final values = tank.toMap()..remove('id');
-      if (tank.remoteId == null) values.remove('remote_id');
-      final int tankId = await txn.insert('products', values);
-      for (final tap in taps) {
-        await upsertVariantInTransaction(
-          txn,
-          ProductVariant(
-            id: tap.id,
-            // The row the tap hangs off, resolved here because it does not
-            // exist until the tank does.
-            productId: tankId,
-            name: tap.name,
-            sku: tap.sku,
-            unit: tap.unit,
-            sizeMl: tap.sizeMl,
-            sellPrice: tap.sellPrice,
-            costPrice: tap.costPrice,
-            stockQty: tap.stockQty,
-            reorderLevel: tap.reorderLevel,
-            position: tap.position,
-            active: tap.active,
-          ),
-        );
-      }
-      return tankId;
-    });
-  }
-
   ///
   /// Bulk import previously called [upsertProduct] per row, which meant one
   /// implicit transaction and one journal fsync per product. This makes an

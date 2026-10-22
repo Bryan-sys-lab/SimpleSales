@@ -619,6 +619,15 @@ class AppLocalizationsEn extends AppLocalizations {
   String get sellCompleteTitle => 'Sale recorded';
 
   @override
+  String get sellCompleteFactPaid => 'Paid';
+
+  @override
+  String get sellCompleteFactChange => 'Change';
+
+  @override
+  String get sellCompleteFactTotal => 'Total';
+
+  @override
   String get sellCompletePaidCash => 'Paid in cash';
 
   @override
@@ -639,11 +648,6 @@ class AppLocalizationsEn extends AppLocalizations {
   @override
   String sellCompletePaidOther(Object amount, Object method) {
     return '$method · $amount';
-  }
-
-  @override
-  String sellCompleteChange(Object amount) {
-    return 'Change due $amount';
   }
 
   @override
@@ -3669,6 +3673,9 @@ class AppLocalizationsEn extends AppLocalizations {
   }
 
   @override
+  String get analyticsMarginLabel => 'Margin';
+
+  @override
   String get analyticsAvgBasketCaption => 'per sale';
 
   @override
@@ -3853,6 +3860,15 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get analyticsNothingTaken => 'Nothing taken in this period.';
+
+  @override
+  String get analyticsReportingPeriod => 'Shown for';
+
+  @override
+  String get analyticsNothingToCompare => 'nothing to compare against';
+
+  @override
+  String get analyticsNoChange => 'no change';
 
   @override
   String get analyticsPaymentMixTotal => 'Total';
@@ -4224,6 +4240,41 @@ class AppLocalizationsEn extends AppLocalizations {
   }
 
   @override
+  String portfolioShiftsCounted(num count) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: '$count shifts counted',
+      one: '1 shift counted',
+    );
+    return '$_temp0';
+  }
+
+  @override
+  String portfolioShiftsOpenNow(num count) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: '$count open now',
+      one: '1 open now',
+    );
+    return '$_temp0';
+  }
+
+  @override
+  String portfolioDrawerShort(Object amount) {
+    return 'drawer short $amount';
+  }
+
+  @override
+  String portfolioDrawerOver(Object amount) {
+    return 'drawer over $amount';
+  }
+
+  @override
+  String get portfolioShiftsNone => 'no shifts yet';
+
+  @override
   String get productSizeLabelKilogram => 'How many litres the tank holds (ml)';
 
   @override
@@ -4233,154 +4284,288 @@ class AppLocalizationsEn extends AppLocalizations {
   String get variantUnitKilogram => 'Tank (kg)';
 
   @override
-  String get tankFormTitle => 'Add a beer tank';
+  String get tankFormTitle => 'Add a tank';
 
   @override
   String get tankFormSubtitle =>
-      'A tank is a drum of beer. You fill it, and then you sell the beer by the cup. Add the tank once, and then sell from it like any other drink.';
+      'A tank is a big container you pour drinks from. It can hold beer, soda or anything else you sell by the cup. Write what is in it and how you sell it. You can add as many tanks as you want.';
 
   @override
-  String get tankFieldName => 'Name of the beer';
+  String get tankFieldName => 'What is in the tank?';
 
   @override
   String get tankFieldNameHint =>
-      'For example Tusker or Balozi. Write the name of the beer, not of the drum.';
-
-  @override
-  String get tankFieldMlPerKg => 'How many millilitres one kilogram holds';
-
-  @override
-  String get tankFieldMlPerKgHint =>
-      'Beer is 1000. A syrup or a liqueur holds less. If you are not sure, leave 1000.';
+      'Write the name of the drink. For example: Tusker.';
 
   @override
   String get tankFieldCapacityL => 'How much the tank holds (litres)';
 
   @override
   String get tankFieldCapacityLHint =>
-      'How full it is when it is brand new. A 50-litre tank? Write 50.';
+      'Write a number. A big drum holds 50 litres — write 50.';
 
   @override
   String get tankFieldTankCount => 'How many full tanks you have now';
 
   @override
   String get tankFieldTankCountHint =>
-      'If you have one full tank, write 1. Every cup you pour is counted down from this number.';
+      'Write a number, like 1 or 2. Every cup you sell is counted down from here.';
 
   @override
   String get tankFieldTankCost => 'What one full tank cost you (KSh)';
 
   @override
   String get tankFieldTankCostHint =>
-      'The price of the whole tank, not of one cup. We share this cost between the taps.';
+      'The money you paid for the whole tank. We use it to work out the profit on every cup.';
 
   @override
-  String tankTapLabel(Object n) {
-    return 'Tap $n';
-  }
+  String get tankCapacityInvalid =>
+      'Write how much the tank holds. Only numbers, like 50.';
 
   @override
-  String get tankFieldTapName => 'Name of this tap';
+  String get tankCountRequired =>
+      'Write how many tanks you have. Only numbers, like 1.';
 
   @override
-  String get tankFieldTapNameHint =>
-      'For example Dark or Regular. This is the drink that comes out of it.';
-
-  @override
-  String get tankFieldTapAmount => 'How much is in it now';
-
-  @override
-  String get tankFieldTapAmountHint =>
-      'How much of the tank is filled right now. Write 0 if it is empty.';
-
-  @override
-  String get tankUnitLitres => 'Litres';
-
-  @override
-  String get tankUnitKg => 'Kg';
-
-  @override
-  String get tankCupSmallLabel => 'Small cup';
-
-  @override
-  String get tankFieldSmallMl => 'How much is in one cup (ml)';
-
-  @override
-  String get tankFieldSmallMlHint => 'A normal small cup is 330.';
-
-  @override
-  String get tankFieldSmallPrice => 'Price of one cup (KSh)';
-
-  @override
-  String get tankFieldSmallPriceHint => 'What one small cup sells for.';
-
-  @override
-  String get tankCupBigLabel => 'Big cup';
-
-  @override
-  String get tankFieldBigMl => 'How much is in one cup (ml)';
-
-  @override
-  String get tankFieldBigMlHint => 'A large cup is 500.';
-
-  @override
-  String get tankFieldBigPrice => 'Price of one cup (KSh)';
-
-  @override
-  String get tankFieldBigPriceHint => 'What one big cup sells for.';
-
-  @override
-  String get tankTapNameRequired => 'Give this tap a name.';
-
-  @override
-  String get tankTapAmountInvalid => 'Write how much is in this tap.';
-
-  @override
-  String get tankTapOverCapacity =>
-      'This tap holds more than the whole tank. Write less.';
-
-  @override
-  String get tankTapsOverCapacity =>
-      'The taps together hold more than the tank. Write less.';
-
-  @override
-  String get tankSmallCupInvalid =>
-      'The small cup must be smaller than the tank.';
-
-  @override
-  String get tankBigCupInvalid => 'The big cup must be smaller than the tank.';
-
-  @override
-  String get tankSmallPriceInvalid => 'Write the price of one small cup.';
-
-  @override
-  String get tankBigPriceInvalid => 'Write the price of one big cup.';
-
-  @override
-  String get tankCapacityInvalid => 'Write how much the tank holds, in litres.';
-
-  @override
-  String get tankCountRequired => 'Write how many full tanks you have.';
-
-  @override
-  String get tankMlPerKgInvalid =>
-      'Write how many millilitres one kilogram holds. Beer is 1000.';
-
-  @override
-  String get tankNameRequired => 'Give the beer a name.';
+  String get tankNameRequired => 'Write what is in the tank.';
 
   @override
   String get tankAddAction => 'Save this tank';
 
   @override
-  String get tankPriceInvalid => 'Write what one full tank cost you.';
+  String get tankPriceInvalid =>
+      'Write what one full tank cost you. Only numbers.';
 
   @override
   String get tankSaveFailed =>
       'That tank could not be saved. Your numbers are still here — try again.';
 
   @override
-  String tankCreated(Object name) {
-    return '$name added. You can now sell it by the cup.';
+  String get tankAddEntry => 'Add a tank';
+
+  @override
+  String get tankServingsTitle => 'How do you sell it?';
+
+  @override
+  String get tankServingsHint =>
+      'Write each cup you sell. For example a small cup and a big cup.';
+
+  @override
+  String tankServingLabel(Object n) {
+    return 'Cup $n';
   }
+
+  @override
+  String get tankFieldServingName => 'What do you call it?';
+
+  @override
+  String get tankFieldServingNameHint => 'For example: Small cup, Big cup.';
+
+  @override
+  String get tankFieldServingMl => 'How much is in one cup (ml)';
+
+  @override
+  String get tankFieldServingMlHint =>
+      'For example: 330. Leave it empty if you do not know.';
+
+  @override
+  String get tankFieldServingPrice => 'Price for one cup (KSh)';
+
+  @override
+  String get tankFieldServingPriceHint => 'What you sell one cup for.';
+
+  @override
+  String get tankServingAdd => 'Add another cup';
+
+  @override
+  String get tankServingRemove => 'Remove this cup';
+
+  @override
+  String get tankServingNameRequired => 'Write what you call this cup.';
+
+  @override
+  String get tankServingPriceInvalid =>
+      'Write the price for one cup. Only numbers.';
+
+  @override
+  String get tankServingSizeInvalid =>
+      'Write how much is in one cup, or leave it empty.';
+
+  @override
+  String get tankServingTooBig => 'That cup is bigger than the tank.';
+
+  @override
+  String get tankServingMinOne => 'Write at least one cup you sell.';
+
+  @override
+  String tankCreated(Object name) {
+    return '$name is added. You can now sell it in the cups you set.';
+  }
+
+  @override
+  String get actionTryAgain => 'Try again';
+
+  @override
+  String get actionBack => 'Back';
+
+  @override
+  String get actionSkip => 'Skip';
+
+  @override
+  String get actionSendCopy => 'Send a copy';
+
+  @override
+  String get loginWhoAreYou => 'Who are you?';
+
+  @override
+  String get loginNotInThisShop => 'That person is not in this shop. Pick the shop they work in.';
+
+  @override
+  String get supportMarkResolved => 'Mark as solved';
+
+  @override
+  String get analyticsReorderInInventory => 'Ask for more in Stock';
+
+  @override
+  String get reportsShiftAndTillSection => 'Money in the till';
+
+  @override
+  String inventoryWhichVariant(Object name) {
+    return 'Which size of $name?';
+  }
+
+  @override
+  String inventoryRemoveConfirm(Object name) {
+    return 'Remove $name?';
+  }
+
+  @override
+  String get servingAllInCart => 'Everything left is already in the cart';
+
+  @override
+  String servingFractionLeft(Object count) {
+    return 'Only $count of a bottle is left';
+  }
+
+  @override
+  String sellAllVariantInCart(Object name) {
+    return 'All of $name is already in the cart.';
+  }
+
+  @override
+  String sellNoVariantLeft(Object name) {
+    return 'There is no $name left. Take some out of the cart first.';
+  }
+
+  @override
+  String sellNotEnoughForShot(Object name) {
+    return 'There is not enough $name left for another cup. Take some out of the cart first.';
+  }
+
+  @override
+  String sellNotEnoughLeft(Object name) {
+    return 'There is not enough $name left. Take some out of the cart first.';
+  }
+
+  @override
+  String shotNoVolume(Object name) {
+    return '$name has no size written, so a cup cannot be taken from it';
+  }
+
+  @override
+  String shotNoneLeft(Object name) {
+    return 'There is no $name left';
+  }
+
+  @override
+  String get shotCupNoSize =>
+      'This cup has no size, so the bottle will not go down when you sell it';
+
+  @override
+  String shotCupTooBig(Object ml) {
+    return 'This cup is bigger than the bottle ($ml ml)';
+  }
+
+  @override
+  String shotCountLeft(Object count) {
+    return '$count cups left in the bottle';
+  }
+
+  @override
+  String get reportsPrinterOffPairFirst =>
+      'Printing is switched off. Join a printer in Settings first.';
+
+  @override
+  String get reportsPrinterOff => 'Printing is switched off.';
+
+  @override
+  String get reportsSendingToPrinter => 'Sending the receipt to the printer…';
+
+  @override
+  String get reportsReceiptReprinted => 'The receipt printed again.';
+
+  @override
+  String reportsPrintFailedWith(Object advice) {
+    return 'Could not print. $advice';
+  }
+
+  @override
+  String get reportsNoSalesByCashier =>
+      'Nothing on this till was sold by that person.';
+
+  @override
+  String get reportsCashierReportWaiting =>
+      'Once a shift is opened and a sale is rung up, this report has something to show.';
+
+  @override
+  String get shiftNeedsStaffEntry =>
+      'A shift needs a worker. Add yourself in Settings, then open the shift again.';
+
+  @override
+  String sellTileStockCountLow(Object quantity) {
+    return '$quantity in stock · running low';
+  }
+
+  @override
+  String get sellNoStockLeft => 'There is none left';
+
+  @override
+  String get sellOutOfStockHint => 'Tap to see why it cannot be sold';
+
+  @override
+  String get sellNoPriceSetYet => 'This item has no price and no cup to sell by yet. Set a price in Stock.';
+
+  @override
+  String get portionFullLabel => 'Full bottle';
+
+  @override
+  String get portionHalfLabel => 'Half';
+
+  @override
+  String get portionQuarterLabel => 'Quarter';
+
+  @override
+  String get supportStatusOpen => 'Open';
+
+  @override
+  String get supportStatusInProgress => 'Being worked on';
+
+  @override
+  String get supportStatusResolved => 'Done';
+
+  @override
+  String get reportsNoSalesTitle => 'No sales written yet';
+
+  @override
+  String get reportsOpenTillReport => 'Open the till report';
+
+  @override
+  String get reportsClearSearch => 'Clear the search';
+
+  @override
+  String get dashboardCouldNotLoad => 'Could not read today\'s numbers.';
+
+  @override
+  String get dashboardStillWorksDetail =>
+      'The till still works. Pull to try again, or look at the data in Settings.';
 }

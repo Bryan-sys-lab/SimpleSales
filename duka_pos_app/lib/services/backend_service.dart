@@ -550,13 +550,17 @@ class BackendService {
 
   /// Step two of Forgot PIN: exchange a mailed code for a new owner PIN.
   ///
-  /// Returns true when the server accepted the code. The caller then writes the
-  /// new hash locally — the backend cannot know a hash it never saw, so the new
-  /// PIN's hash is created on this device and never leaves it.
+  /// Returns true when the server accepted the code. The caller writes the new
+  /// hash locally, and the NEW PIN goes with the request because the identity
+  /// server's password IS the admin PIN: a reset that changed only the phone's
+  /// copy would leave the account expecting the PIN the owner had forgotten,
+  /// and the next cloud sign-in would fail with the credential this screen had
+  /// just handed them.
   static Future<bool> confirmPinReset({
     required String email,
     required String challengeId,
     required String code,
+    required String newPin,
   }) async {
     await ensureInitialized();
     try {
@@ -565,6 +569,7 @@ class BackendService {
         'email': email.trim(),
         'challengeId': challengeId,
         'code': code.trim(),
+        'newPin': newPin,
       });
       return response.statusCode != null &&
           response.statusCode! >= 200 &&
@@ -1139,8 +1144,14 @@ class BackendService {
     final List<Sale> sales = await DatabaseHelper.instance.getUnsyncedSales();
     if (sales.isEmpty) return;
 
+    // The server knows products by their UUID, not by the row id this device
+    // happens to have given them. Sending the LOCAL id made every item fail
+    // validation (`productId` must be a uuid or null), so a sale could be rung
+    // up all day and never reach the ledger.
+    final Map<int, String> remotes = await _productRemoteIds();
+
     final response = await _dio.post('$backendUrl/sales/sync', data: {
-      'sales': sales.map(_salePayload).toList(),
+      'sales': sales.map((Sale sale) => _salePayload(sale, remotes)).toList(),
     });
 
     final synced = response.data['synced'] as List?;
@@ -1153,13 +1164,33 @@ class BackendService {
     await DatabaseHelper.instance.markSalesSynced(confirmed);
   }
 
+  /// This device's product ids, mapped to the server's UUIDs.
+  ///
+  /// One read per sync, not one per row: a busy day is a few hundred sales and
+  /// each one would otherwise walk the catalogue. A product that has never
+  /// been synced has no remote id and is simply absent from the map — the
+  /// callers send null, and the server keeps the name.
+  static Future<Map<int, String>> _productRemoteIds() async {
+    final List<Product> products =
+        await DatabaseHelper.instance.getProducts(activeOnly: false);
+    return <int, String>{
+      for (final Product product in products)
+        if (product.id != null && product.remoteId != null)
+          product.id!: product.remoteId!,
+    };
+  }
+
   /// One sale, in the shape the server reads.
   ///
   /// The MONEY IS IN MINOR UNITS — the integer cents the till counts in. The
   /// server's columns are major units and it converts once, on the way in; a
   /// float of shillings would lose a cent on the way and a ledger that is a
   /// cent out is a ledger that does not reconcile against the drawer.
-  static Map<String, dynamic> _salePayload(Sale sale) => {
+  static Map<String, dynamic> _salePayload(
+    Sale sale,
+    Map<int, String> productRemoteIds,
+  ) =>
+      {
         'localId': sale.id,
         'staffName': sale.staffName,
         'paymentMethod': sale.paymentMethod,
@@ -1171,7 +1202,10 @@ class BackendService {
         'createdAt': sale.createdAt,
         'items': sale.items
             .map((SaleItem item) => <String, dynamic>{
-                  'productId': item.productId,
+                  // Null when the product has never been synced: the server
+                  // still records the line by name, and linking it is better
+                  // done late than a sale refused at the door.
+                  'productId': productRemoteIds[item.productId],
                   'productName': item.productName,
                   'qty': item.qty,
                   'unitPrice': item.unitPrice.minorUnits,
@@ -1236,11 +1270,15 @@ class BackendService {
         await DatabaseHelper.instance.getUnsyncedShotCups();
     if (cups.isEmpty) return;
 
+    // A cup belongs to a DRINK, and the server names drinks by UUID. See
+    // `_productRemoteIds`.
+    final Map<int, String> remotes = await _productRemoteIds();
+
     final response = await _dio.post('$backendUrl/shot-cups/sync', data: {
       'shotCups': cups
           .map((ShotCup cup) => <String, dynamic>{
                 'localId': cup.id,
-                'productId': cup.productId,
+                'productId': remotes[cup.productId],
                 'productName': cup.productName,
                 'label': cup.label,
                 // Zero means the size is not known, and that is a legal

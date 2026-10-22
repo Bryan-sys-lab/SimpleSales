@@ -2,9 +2,11 @@
 //
 // ## THE SHAPE
 //
-// The bar is a PILL — a stadium, rounded at both ends — whose top edge rises
-// in the middle into a smooth bell curve, and the SELL button is a big green
-// ball sitting ON that curve.
+// The bar is the BOTTOM of the app: a strip painted in the same colour as the
+// canvas the screens sit on, so there is no line, no shadow and no band
+// between the page and the bar — the screen runs into it and stops there. Its
+// top edge rises in the middle into a smooth bell curve, and the SELL button
+// is a big green ball sitting ON that curve.
 //
 // It is a shape rather than a rectangle because the sell button is what a
 // cashier presses forty times an hour, and the eye finds a raised circle
@@ -24,18 +26,17 @@
 //
 // ## WHY THE BALL IS GREEN
 //
-// Everything else in the bar is ink: the icons, the labels, the outline. The
-// one saturated thing on the screen is the one thing to press. That is the
-// whole colour strategy of a till: the accent means "this is the action", and
-// there is exactly one.
+// Everything else in the bar is ink: the icons, the labels. The one saturated
+// thing on the screen is the one thing to press. That is the whole colour
+// strategy of a till: the accent means "this is the action", and there is
+// exactly one.
 //
 // ## THE MOTION
 //
 // A press scales the ball to 96% and back, in a hundred and twenty
-// milliseconds. That is the only animation here: the ball is tapped
-// constantly, and an animation that plays on every press is a delay on every
-// press. The selected destination changes colour, which needs no animation to
-// be read.
+// milliseconds. The ball also beats, like a heart, every few seconds: a short
+// finite pulse of light, then rest, then the next beat. The selection of a
+// destination changes colour, which needs no animation to be read.
 
 import 'dart:async';
 import 'dart:math' as math;
@@ -165,7 +166,17 @@ class ShellNavBar extends StatelessWidget {
           child: Stack(
             clipBehavior: Clip.none,
             children: <Widget>[
-              // The bar: a pill with a bell hump, floating above the edge.
+              // The bar: the bottom of the app, in the app's own canvas colour.
+              //
+              // It used to be painted in the CARD colour, a step lighter than
+              // the canvas the screens sit on, and it carried a hairline along
+              // its top edge and a drop shadow. Together those three things
+              // drew a hard line across the bottom of every screen: a separate
+              // band with a visible edge, floating over the page. The bar is
+              // not furniture that sits on the screen — it IS the bottom of the
+              // screen. So it is painted in the canvas colour, with no edge
+              // and no shadow, and the only thing that marks where it begins
+              // is the hump and the green ball that sits on it.
               Positioned(
                 left: _NavMetrics.sideMargin,
                 right: _NavMetrics.sideMargin,
@@ -173,9 +184,7 @@ class ShellNavBar extends StatelessWidget {
                 height: _NavMetrics.humpHeight + _NavMetrics.bodyHeight,
                 child: CustomPaint(
                   painter: _OmegaBarPainter(
-                    surface: colors.surface,
-                    hairline: colors.outline,
-                    shadow: colors.shadow,
+                    surface: colors.canvas,
                     bodyHeight: _NavMetrics.bodyHeight,
                     humpHeight: _NavMetrics.humpHeight,
                   ),
@@ -273,19 +282,32 @@ double _measure(String text, TextStyle style, TextDirection direction) {
   return width;
 }
 
-/// The bar itself: a pill whose top edge swells into a bell curve.
+/// The bar itself: a bell-humped strip painted in the canvas colour.
+///
+/// ## WHY IT HAS NO EDGE
+///
+/// It used to be stroked with a hairline along its top edge and to cast a
+/// drop shadow. Both drew a line across the bottom of every screen, and a
+/// line there says "something is sitting ON this page". The bar is not sitting
+/// on the page — it IS the bottom of the page. It is painted in the same
+/// colour as the canvas the screens sit on, so there is nothing to see where
+/// one ends and the other begins, and the hump and the green ball are what
+/// say "the nav is here".
+///
+/// ## WHY THE ENDS ARE SQUARE
+///
+/// A pill's rounded ends put a dark crescent down each edge of every screen
+/// and made the bar read as a floating object. The ends are cut square and
+/// meet the screen edges cleanly.
 class _OmegaBarPainter extends CustomPainter {
   const _OmegaBarPainter({
     required this.surface,
-    required this.hairline,
-    required this.shadow,
     required this.bodyHeight,
     required this.humpHeight,
   });
 
+  /// The bar's fill: the app's canvas colour.
   final Color surface;
-  final Color hairline;
-  final Color shadow;
 
   /// The height of the pill's straight part.
   final double bodyHeight;
@@ -307,17 +329,7 @@ class _OmegaBarPainter extends CustomPainter {
     // slope rather than as the thing the bar is built around.
     final double sigma = _NavMetrics.ballRadius * 1.25;
 
-    // The bar is cut SQUARE at both ends.
-    //
-    // It used to end in a semicircle the height of the bar, which is what a
-    // floating pill does — but this bar is not floating, it is the bottom of
-    // the app, and a rounded end leaves a dark crescent down each edge of
-    // every screen. The ends now meet the screen edges cleanly.
-    //
-    // The top edge is sampled ONCE, into a list of points, because two paths
-    // need it: the filled shape and the stroked outline. Sampling it twice
-    // would let the two drift apart by a hair, and the outline would stop
-    // matching the shape it is supposed to trace.
+    // The top edge is sampled ONCE, into a list of points.
     final List<Offset> topEdge = <Offset>[];
     const int steps = 96;
     for (int i = 0; i <= steps; i++) {
@@ -338,42 +350,18 @@ class _OmegaBarPainter extends CustomPainter {
       ..lineTo(0, bottom)
       ..close();
 
-    // The bar floats, so it casts a shadow.
-    canvas.drawShadow(path, shadow, 8, false);
-    canvas.drawPath(path, Paint()..color = surface);
-
-    // A hairline along the edge — but NOT along the bottom.
+    // One fill. No shadow, no outline.
     //
-    // The outline is a separate OPEN path: up the left edge, over the hump,
-    // down the right edge, and stopped there. The bottom edge is left
-    // unstroked on purpose. The bar is the bottom of the app, so a line across
-    // its foot drew a boundary between the app and the screen — the last thing
-    // left of the floating object the bar used to be. Without it the bar and
-    // the screen behind it read as one surface, and only the hump and the two
-    // shoulders still say where the bar ends.
-    final Path outline = Path()..moveTo(0, bottom);
-    outline.lineTo(0, topEdge.first.dy);
-    for (final Offset point in topEdge) {
-      outline.lineTo(point.dx, point.dy);
-    }
-    outline
-      ..lineTo(size.width, topEdge.last.dy)
-      ..lineTo(size.width, bottom);
-
-    canvas.drawPath(
-      outline,
-      Paint()
-        ..color = hairline
-        ..style = PaintingStyle.stroke
-        ..strokeWidth = 1,
-    );
+    // A shadow needs a DIFFERENT colour to be a shadow, so it draws a band of
+    // its own along the top edge — which is the exact edge this bar is trying
+    // not to have. The fill alone leaves the bar and the canvas as one
+    // continuous surface.
+    canvas.drawPath(path, Paint()..color = surface);
   }
 
   @override
   bool shouldRepaint(covariant _OmegaBarPainter old) =>
       old.surface != surface ||
-      old.hairline != hairline ||
-      old.shadow != shadow ||
       old.bodyHeight != bodyHeight ||
       old.humpHeight != humpHeight;
 }

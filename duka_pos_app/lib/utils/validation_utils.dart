@@ -66,12 +66,25 @@ abstract final class ValidationUtils {
     return null;
   }
 
-  static String? validatePIN(AppLocalizations l10n, String? value) {
+  /// Validates a PIN against the length the ROLE requires.
+  ///
+  /// The length is a parameter because the two roles have different PINs —
+  /// four digits for staff, six for the owner — and a validator that hardcodes
+  /// one of them is how an admin ends up unable to delete their own account.
+  /// The default is the STAFF length, which is what a form collecting a new
+  /// staff PIN needs; an owner form passes `PinRules.adminLength`.
+  static String? validatePIN(
+    AppLocalizations l10n,
+    String? value, {
+    int length = 4,
+  }) {
     if (value == null || value.isEmpty) {
       return l10n.validationPinRequired;
     }
-    if (!RegExp(r'^\d{4}$').hasMatch(value)) {
-      return l10n.validationPinNotFourDigits;
+    if (!RegExp(r'^\d+$').hasMatch(value) || value.length != length) {
+      return length == 6
+          ? l10n.validationPinNotSixDigits
+          : l10n.validationPinNotFourDigits;
     }
     return null;
   }

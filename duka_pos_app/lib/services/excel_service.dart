@@ -365,25 +365,66 @@ class ExcelService {
     );
   }
 
-  /// The inventory tab's name, matched case-insensitively, falling back to the
-  /// first tab.
-  ///
-  /// The fallback matters: a supplier's single-sheet price list is still a
-  /// price list, and refusing it because the tab is called "Price List" would be
-  /// a worse answer than trying it.
   /// The tab holding the inventory.
   ///
-  /// Falls back to the first tab that actually *has rows*, not merely the first
-  /// tab. `xl.Excel.createExcel()` creates a default sheet called `Sheet1`, and
-  /// a supplier's file routinely leaves it empty alongside the real data — so
-  /// "the first tab" is usually an empty sheet, and reading it imported nothing
-  /// while reporting no error at all.
+  /// A tab literally named `Inventory` wins, because that is this app's own
+  /// export and there is nothing to work out.
+  ///
+  /// Otherwise the tabs are SCORED, not taken in order. The old rule was "the
+  /// first tab that has rows", and it broke on the two shapes real supplier
+  /// files come in:
+  ///
+  ///   * a daily stock tracker — one tab per day, 190 of them, none named
+  ///     anything useful. The first tab is the oldest day in the book, so the
+  ///     import wrote last March's stock as today's.
+  ///   * a workbook whose first tab is a cover page or a summary, with the
+  ///     product list further along.
+  ///
+  /// So every tab is read for its header, and the one that maps the most
+  /// fields onto the app's columns wins; a tie goes to the tab with more
+  /// product rows, and a further tie to the LAST one, which for a book of
+  /// daily tabs is the most recent day — the only one whose closing stock is
+  /// still true.
+  ///
+  /// The `Barcodes` and `Variants` tabs are not candidates: they are read
+  /// separately by name, and a file that has them would otherwise have its
+  /// barcode list chosen as the product list because it is shorter and its
+  /// header maps cleanly.
   static String _inventorySheetName(xl.Excel book) {
     for (final name in book.tables.keys) {
       if (name.trim().toLowerCase() == inventorySheetName.toLowerCase()) {
         return name;
       }
     }
+
+    final skip = {
+      barcodesSheetName.toLowerCase(),
+      variantsSheetName.toLowerCase(),
+    };
+    String? bestName;
+    var bestScore = -1;
+    for (final name in book.tables.keys) {
+      final lower = name.trim().toLowerCase();
+      if (skip.contains(lower)) continue;
+      final raw = _rawRows(book.tables[name]!);
+      if (raw.isEmpty) continue;
+      final layout = SheetLayout.fromRawRows(raw);
+      // A tab with no header we can map is a cover page, a note, or a picture
+      // of a table — not the table.
+      if (!layout.headerRowDetected || layout.refusal != null) continue;
+      final mapped = layout.columns.mappedCount;
+      // `>=`, not `>`: a daily tracker's tabs all map the same columns, so the
+      // tie is the normal case and the LAST tab wins. Counting ROWS as a
+      // tiebreak was worse than useless here — a day's row count includes its
+      // section titles and moves with every sale — so the oldest day could
+      // outrank the newest by having one more "SPIRITS" heading.
+      if (mapped >= bestScore) {
+        bestScore = mapped;
+        bestName = name;
+      }
+    }
+    if (bestName != null) return bestName;
+
     for (final name in book.tables.keys) {
       if (_rawRows(book.tables[name]!).isNotEmpty) return name;
     }

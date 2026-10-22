@@ -194,6 +194,25 @@ class _LoginScreenState extends State<LoginScreen> {
     return _RosterState.ready;
   }
 
+  /// Whether the shop chooser has been shown and answered this session.
+  ///
+  /// `_load()` re-opens the chooser whenever the device holds more than one
+  /// shop — which is right on the FIRST load, and wrong after a choice:
+  /// `_chooseShop` calls `_load()` to read the new shop's roster, and the
+  /// chooser slammed straight back down over it, so on a two-shop phone the
+  /// staff roster was unreachable and nobody but the owner could sign in.
+  /// Once the person has named a shop, the chooser stays put until the screen
+  /// is rebuilt from scratch.
+  bool _shopChosen = false;
+
+  /// One shop question at a time.
+  ///
+  /// The question is asked from the PIN handler, and while it is open the pad
+  /// is still live underneath it. A second submit would open a second dialog
+  /// on top of the first, and choosing in the lower one would switch shops
+  /// under the upper one. The flag makes the question single-flight.
+  bool _askingShop = false;
+
   Future<void> _load() async {
     // Read before the await, never after it: context must not cross an async
     // gap, and the owner cannot change while this screen is being built, the
@@ -209,10 +228,15 @@ class _LoginScreenState extends State<LoginScreen> {
     setState(() {
       _staff = staff;
       _shops = shops;
-      // More than one shop on the phone means the person has to say which
-      // one they are opening. The roster below belongs to ONE shop, and
-      // without being asked, they are looking at the wrong shop's people.
-      _choosingShop = shops.length > 1;
+      // The chooser is NOT opened on load.
+      //
+      // A till screen that opens on a shop list before anyone has touched it
+      // reads as a setup step, and a person who came to type their PIN has to
+      // get past a question they did not ask. The shop is asked for at the
+      // moment it starts to MATTER — when the PIN is submitted and the app is
+      // about to sign someone in — and the roster they see before that is
+      // their own shop's, which is the shop they are standing in.
+      _choosingShop = false;
       // Default to the owner only when there is one.
       _selected = owner != null
           ? _ownerValue
@@ -230,6 +254,7 @@ class _LoginScreenState extends State<LoginScreen> {
     final AppState state = context.read<AppState>();
     setState(() {
       _choosingShop = false;
+      _shopChosen = true;
       _loading = true;
       _error = null;
     });
@@ -300,10 +325,90 @@ class _LoginScreenState extends State<LoginScreen> {
     );
   }
 
+  /// Asks which shop to sign in to, when this phone holds more than one.
+  ///
+  /// ## WHY AT SIGN-IN AND NOT ON ARRIVAL
+  ///
+  /// The roster and the PIN pad belong to a shop, so the shop has to be known
+  /// before the PIN is checked — but asking on arrival makes every sign-in
+  /// start with a menu, including the nine in ten that are for the shop the
+  /// till is already in. Asking at the moment the PIN lands costs one tap only
+  /// when there is genuinely something to choose, and it is the point where
+  /// "which shop" changes the answer.
+  Future<LocalShop?> _askWhichShop() {
+    final AppSpacing spacing = AppSpacing.of(context);
+    return showDialog<LocalShop>(
+      context: context,
+      builder: (BuildContext dialogContext) => AlertDialog(
+        title: Text(AppLocalizations.of(dialogContext).loginChooseShopTitle),
+        contentPadding: EdgeInsets.fromLTRB(
+          spacing.lg,
+          spacing.md,
+          spacing.lg,
+          spacing.sm,
+        ),
+        content: SizedBox(
+          // A phone with many shops still gets a bounded list, so the dialog
+          // cannot grow past the screen and lose its own buttons.
+          width: double.maxFinite,
+          height: (_shops.length * 64).clamp(64, 320).toDouble(),
+          child: ListView.separated(
+            shrinkWrap: true,
+            itemCount: _shops.length,
+            separatorBuilder: (_, __) => SizedBox(height: spacing.sm),
+            itemBuilder: (BuildContext context, int index) => _ShopTile(
+              shop: _shops[index],
+              onTap: () => Navigator.of(dialogContext).pop(_shops[index]),
+            ),
+          ),
+        ),
+        actions: <Widget>[
+          TextButton(
+            onPressed: () => Navigator.of(dialogContext).pop(),
+            child: Text(AppLocalizations.of(dialogContext).actionCancel),
+          ),
+        ],
+      ),
+    );
+  }
+
   Future<void> _tryLogin() async {
     // Read before the await, never after it.
     final AppState state = context.read<AppState>();
     final String userKey = _selected ?? '';
+
+    // Which shop? Only asked once per visit to this screen, and only when
+    // there is more than one to choose from.
+    if (_shops.length > 1 && !_shopChosen && !_askingShop) {
+      _askingShop = true;
+      late final LocalShop? shop;
+      try {
+        shop = await _askWhichShop();
+      } finally {
+        _askingShop = false;
+      }
+      if (shop == null) {
+        // Cancelled: the digits stay typed, and the next tap tries again.
+        if (mounted) _pin.clear();
+        return;
+      }
+      if (!mounted) return;
+      await state.switchWorkspace(shop.workspaceKey, signIn: false);
+      if (!mounted) return;
+      _shopChosen = true;
+      await _load();
+      if (!mounted) return;
+      // The person chosen before the question must exist in the shop that
+      // answered it. If they do not, say so rather than silently signing in
+      // as the owner with somebody else's PIN.
+      final bool personHere = userKey == _ownerValue ||
+          _staff.any((Staff s) => _tagFor(s) == userKey);
+      if (!personHere) {
+        _refuse(AppLocalizations.of(context).loginNotInThisShop);
+        return;
+      }
+      setState(() => _selected = userKey);
+    }
 
     setState(() => _verifying = true);
     try {
@@ -748,6 +853,7 @@ class _NoAccountsPanel extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final AppLocalizations l10n = AppLocalizations.of(context);
     final AppSpacing spacing = AppSpacing.of(context);
     final TextTheme type = AppTypography.of(context);
 
@@ -784,7 +890,7 @@ class _NoAccountsPanel extends StatelessWidget {
               SizedBox(height: spacing.lg),
               FilledButton(
                 onPressed: onSetUp,
-                child: const Text('Set this shop up on the device'),
+                child: Text(l10n.settingsShopNotOnDevice),
               ),
             ],
           ),
@@ -907,6 +1013,7 @@ class _WhoPicker extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final AppLocalizations l10n = AppLocalizations.of(context);
     final AppSpacing spacing = AppSpacing.of(context);
     final TextTheme type = AppTypography.of(context);
 
@@ -919,7 +1026,7 @@ class _WhoPicker extends StatelessWidget {
       children: <Widget>[
         Semantics(
           header: true,
-          child: Text('Who are you?', style: type.titleMedium),
+          child: Text(l10n.loginWhoAreYou, style: type.titleMedium),
         ),
         SizedBox(height: spacing.sm),
         Expanded(

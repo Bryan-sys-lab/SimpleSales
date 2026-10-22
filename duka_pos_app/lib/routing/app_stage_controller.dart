@@ -24,7 +24,7 @@ class AppStageController extends ChangeNotifier {
     // router, so the redirect never re-runs and the user stays frozen on the
     // PIN pad or setup screen. Forwarding makes every session transition
     // observable to the guard immediately.
-    _state.addListener(notifyListeners);
+    _state.addListener(_onStateChanged);
   }
 
   final AppState _state;
@@ -43,6 +43,38 @@ class AppStageController extends ChangeNotifier {
   /// True before [boot] answers, so the pre-boot stage is not the permissions
   /// step: the stage is `loading` until then anyway.
   bool _permissionsAsked = true;
+
+  /// The store the two flags above were read from, kept so a workspace switch
+  /// can re-read them SYNCHRONOUSLY.
+  ///
+  /// A `redirect` that awaits is a redirect that can run twice, so the flags
+  /// the guard reads have to be current values, not futures. SharedPreferences
+  /// caches its instance after the first load, which makes a re-read a map
+  /// lookup — and the lookup is the whole reason this field exists.
+  SharedPreferences? _prefs;
+
+  /// The workspace the two flags were last read for.
+  String? _flagsReadFor;
+
+  /// A change in [AppState] — sign-in, sign-out, or a SHOP SWITCH.
+  ///
+  /// The two walkthrough flags are stored per workspace, but `boot()` reads
+  /// them exactly once, for whatever workspace was active at launch. Switching
+  /// from shop A to shop B without re-reading left the guard answering with
+  /// A's flags: shop B was either shoved back into an onboarding it had
+  /// already finished, or skipped a walkthrough it had never seen. The switch
+  /// itself notifies [AppState] (see `switchWorkspace`), so this is the one
+  /// place that can see it coming.
+  void _onStateChanged() {
+    final SharedPreferences? prefs = _prefs;
+    final String key = _state.workspaceKey;
+    if (prefs != null && _flagsReadFor != key) {
+      _flagsReadFor = key;
+      _onboardingComplete = prefs.getBool('onboarding_completed_$key') ?? false;
+      _permissionsAsked = prefs.getBool('permissions_asked_$key') ?? false;
+    }
+    notifyListeners();
+  }
 
   AppChooserIntent _intent = AppChooserIntent.signIn;
 
@@ -65,6 +97,8 @@ class AppStageController extends ChangeNotifier {
       await _state.loadOwner();
       await _state.loadRememberedStaff();
       final SharedPreferences prefs = await SharedPreferences.getInstance();
+      _prefs = prefs;
+      _flagsReadFor = _state.workspaceKey;
       _onboardingComplete =
           prefs.getBool('onboarding_completed_${_state.workspaceKey}') ?? false;
       // The permissions step is asked once. A till that has never been asked
@@ -124,7 +158,7 @@ class AppStageController extends ChangeNotifier {
 
   @override
   void dispose() {
-    _state.removeListener(notifyListeners);
+    _state.removeListener(_onStateChanged);
     _disposed = true;
     super.dispose();
   }

@@ -418,7 +418,7 @@ class _BackRow extends StatelessWidget {
         // points the way the reader does, and the screen never has to choose
         // between two icons.
         icon: ExcludeSemantics(child: Icon(Icons.arrow_back)),
-        label: const Text('Back'),
+        label: Text(AppLocalizations.of(context).actionBack),
       ),
     );
   }

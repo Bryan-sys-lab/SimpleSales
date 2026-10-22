@@ -200,7 +200,7 @@ class ServingChoiceSheet extends StatelessWidget {
       options.add(_PortionOption(
         product: product,
         portion: 'full',
-        label: 'Full',
+        label: l10n.portionFullLabel,
         price: product.sellPrice,
         remainingStock: remainingStock,
         onChoose: onChoose,
@@ -210,7 +210,7 @@ class ServingChoiceSheet extends StatelessWidget {
       options.add(_PortionOption(
         product: product,
         portion: 'half',
-        label: 'Half',
+        label: l10n.portionHalfLabel,
         price: product.halfPrice!,
         remainingStock: remainingStock,
         onChoose: onChoose,
@@ -220,7 +220,7 @@ class ServingChoiceSheet extends StatelessWidget {
       options.add(_PortionOption(
         product: product,
         portion: 'quarter',
-        label: 'Quarter',
+        label: l10n.portionQuarterLabel,
         price: product.quarterPrice!,
         remainingStock: remainingStock,
         onChoose: onChoose,
@@ -262,8 +262,8 @@ class _PortionOption extends StatelessWidget {
       enabled: canAdd,
       subtitle: !canAdd
           ? Text(remainingStock <= 0
-              ? 'All stock for this product is already in the cart'
-              : 'Only $remainingStock of a bottle left')
+              ? l10n.servingAllInCart
+              : l10n.servingFractionLeft(remainingStock))
           : null,
       onTap: canAdd
           ? () => onChoose?.call(switch (portion) {
@@ -292,7 +292,7 @@ class _ShotOption extends StatelessWidget {
   Widget build(BuildContext context) {
     final AppLocalizations l10n = AppLocalizations.of(context);
     final ({bool canPour, String reason}) verdict =
-        shotAvailability(product, cup, product.stockQty);
+        shotAvailability(l10n, product, cup, product.stockQty);
     return ListTile(
       leading: Icon(verdict.canPour
           ? Icons.local_drink_outlined
@@ -321,6 +321,7 @@ class _VariantOption extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final AppLocalizations l10n = AppLocalizations.of(context);
     final bool canAdd = variant.stockQty >= 1;
     return ListTile(
       leading: Icon(variant.isLow
@@ -329,55 +330,58 @@ class _VariantOption extends StatelessWidget {
       title: Text(variant.label),
       trailing: Text(formatMoney(variant.sellPrice)),
       enabled: canAdd,
+      // Every one of these is said in the shop's words. "No stock left" and a
+      // bare "{n} in stock · low" are the kind of fragment that reads as an
+      // error log to anyone who did not build the app.
       subtitle: Text(!canAdd
           ? (variant.stockQty <= 0
-              ? 'All stock is already in the cart'
-              : 'No stock left')
+              ? l10n.servingAllInCart
+              : l10n.sellNoStockLeft)
           : (variant.isLow
-              ? '${variant.stockQty.round()} in stock · low'
-              : '${variant.stockQty.round()} in stock')),
+              ? l10n.sellTileStockCountLow(variant.stockQty.round())
+              : l10n.sellTileStockCount(variant.stockQty.round()))),
       onTap:
           canAdd ? () => onChoose?.call(ServingChoiceVariant(variant)) : null,
     );
   }
 }
 
+/// Whether a shot can be poured, and the sentence that says why not.
+///
+/// A cup with no size, a bottle with no volume, and a pour bigger than the
+/// bottle are all refused HERE rather than at the register, because an
+/// oversold pour is the one state this app cannot recover from cleanly.
+///
+/// The reason is read aloud on the tile and spoken to the person standing at
+/// the counter with a customer in front of them, so it is written in the
+/// shop's words through [l10n] — never as a field name. "capacityMl is null"
+/// is an error log; "This cup has no size" is something a person can act on.
 ({bool canPour, String reason}) shotAvailability(
+  AppLocalizations l10n,
   Product product,
   ShotCup cup,
   double available,
 ) {
   final containerMl = product.bottleMl;
   if (containerMl <= 0) {
-    return (
-      canPour: false,
-      reason: '${product.name} has no volume set, so it cannot be poured'
-    );
+    return (canPour: false, reason: l10n.shotNoVolume(product.name));
   }
   // A cup with NO size is still pourable: the owner simply did not say how
   // big it is. The shot is sold at its price and the amount taken from the
   // bottle is not measured, which is what the shot's own note says.
   if (cup.capacityMl <= 0) {
     if (available <= 0) {
-      return (canPour: false, reason: 'No ${product.name} left to pour');
+      return (canPour: false, reason: l10n.shotNoneLeft(product.name));
     }
-    return (
-      canPour: true,
-      reason: 'The size of this shot is not set, so what it takes from the '
-          'bottle is not counted'
-    );
+    return (canPour: true, reason: l10n.shotCupNoSize);
   }
-  final perBottle =
-      cup.capacityMl > 0 ? (containerMl / cup.capacityMl).floor() : 0;
+  final perBottle = (containerMl / cup.capacityMl).floor();
   if (perBottle <= 0) {
-    return (
-      canPour: false,
-      reason: 'The cup is bigger than the $containerMl ml bottle'
-    );
+    return (canPour: false, reason: l10n.shotCupTooBig(containerMl));
   }
   final needed = cup.capacityMl / containerMl;
   if (available < needed) {
-    return (canPour: false, reason: 'No ${product.name} left to pour');
+    return (canPour: false, reason: l10n.shotNoneLeft(product.name));
   }
-  return (canPour: true, reason: '$perBottle shots in the bottle');
+  return (canPour: true, reason: l10n.shotCountLeft(perBottle));
 }

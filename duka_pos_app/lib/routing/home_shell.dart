@@ -14,7 +14,7 @@ import '../theme/app_spacing.dart';
 import '../theme/typography.dart';
 import '../ui/components/brand_header.dart';
 import '../ui/components/status_bar.dart';
-import '../ui/components/support_bubble.dart';
+import '../ui/components/support_action.dart';
 import '../ui/layout/window_size_class.dart';
 import '../widgets/sign_out_sheet.dart';
 import 'idle_guard.dart';
@@ -468,9 +468,25 @@ class _ShellAppBar extends StatelessWidget implements PreferredSizeWidget {
       titleSpacing: spacing.lg,
       title: BrandHeader(markSize: spacing.xl),
       actions: <Widget>[
-        // Who is signed in, quietly. The full name is on the dashboard's own
-        // title block and in Settings, so this is a reminder rather than the
-        // only place the answer lives.
+        // Support FIRST, then the name, then the account.
+        //
+        // The name and the account icon answer one question — who am I, and
+        // where do I change that — and a support icon between them breaks the
+        // pair. Support is also the thing a person reaches for from anywhere,
+        // so it gets the leading slot rather than the one beside the exit.
+        //
+        // It was a 44dp floating bubble with a shadow over the bottom corner
+        // of the page; it rode up with the keyboard and covered the buttons at
+        // the far end. A plain icon in the bar is where help is looked for
+        // anyway, and it is out of every thumb's way.
+        SupportAction(
+          label: l10n.navSupport,
+          onTap: onOpenSupport,
+        ),
+        SizedBox(width: spacing.xs),
+        // Who is signed in, quietly, RIGHT BESIDE the account icon. The full
+        // name is on the dashboard's title block and in Settings, so this is a
+        // reminder that travels with the avatar rather than a label of its own.
         ConstrainedBox(
           constraints: const BoxConstraints(maxWidth: 140),
           child: Text(
@@ -481,17 +497,6 @@ class _ShellAppBar extends StatelessWidget implements PreferredSizeWidget {
                 .labelMedium
                 ?.copyWith(color: colors.onSurfaceMuted),
           ),
-        ),
-        SizedBox(width: spacing.xs),
-        // Support, beside the other two.
-        //
-        // It was a bubble floating over the bottom-right of the body, which
-        // meant it rode up with the keyboard and landed on the buttons at the
-        // far end of the screen. Up here it is out of the way of every
-        // thumb, and it is where a person looks for help anyway.
-        SupportBubble(
-          label: l10n.navSupport,
-          onTap: onOpenSupport,
         ),
         // The account: a VIEWER of who is signed in.
         //

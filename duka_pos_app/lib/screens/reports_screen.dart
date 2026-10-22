@@ -260,11 +260,15 @@ class _ReportsScreenState extends State<ReportsScreen>
     if (!config.isConfigured) {
       showAppSnackBar(
         context,
-        message: 'Printing is switched off. Pair a printer in Settings first.',
+        message:
+            AppLocalizations.of(context).reportsPrinterOffPairFirst,
       );
       return;
     }
-    showAppSnackBar(context, message: 'Sending receipt to the printer…');
+    showAppSnackBar(
+      context,
+      message: AppLocalizations.of(context).reportsSendingToPrinter,
+    );
     final PrintResult result = await ReceiptPrinter().printSale(
       saleId: id,
       shopName: state.owner?.shopName ?? SimplePosBrand.appName,
@@ -277,16 +281,24 @@ class _ReportsScreenState extends State<ReportsScreen>
     );
     if (!mounted) return;
     if (result.printed) {
-      showAppSnackBar(context, message: 'Receipt reprinted.');
+      showAppSnackBar(
+        context,
+        message: AppLocalizations.of(context).reportsReceiptReprinted,
+      );
       return;
     }
     if (result.outcome == PrintOutcome.disabled) {
-      showAppSnackBar(context, message: 'Printing is switched off.');
+      showAppSnackBar(
+        context,
+        message: AppLocalizations.of(context).reportsPrinterOff,
+      );
       return;
     }
     showAppSnackBar(
       context,
-      message: 'Could not print. ${printerAdviceFor(result)}',
+      message:
+          AppLocalizations.of(context).reportsPrintFailedWith(
+              printerAdviceFor(result)),
     );
   }
 
@@ -330,6 +342,7 @@ class _ReportsScreenState extends State<ReportsScreen>
     AppColors colors,
     AppSpacing spacing,
   ) {
+    final AppLocalizations l10n = AppLocalizations.of(context);
     final List<ShiftReportRow> shifts = _visibleShifts;
     final List<Sale> sales = _visibleSales;
     final List<StaffTakings> staff = _visibleStaff;
@@ -338,10 +351,9 @@ class _ReportsScreenState extends State<ReportsScreen>
       return AdaptivePage(
         child: EmptyStateView(
           kind: EmptyKind.collection,
-          title: 'No sales recorded yet',
-          message: 'Once a shift is opened and a sale is rung up, this report '
-              'fills itself from the ledger.',
-          actionLabel: 'Open shift and reconciliation',
+          title: l10n.reportsNoSalesTitle,
+          message: l10n.reportsCashierReportWaiting,
+          actionLabel: l10n.reportsOpenTillReport,
           onAction: _showShiftSummary,
         ),
       );
@@ -356,9 +368,9 @@ class _ReportsScreenState extends State<ReportsScreen>
       return AdaptivePage(
         child: EmptyStateView(
           kind: EmptyKind.filtered,
-          title: 'No report matches “${_query.trim()}”',
-          message: 'Nothing on this till was rung up by that cashier.',
-          actionLabel: 'Clear the search',
+          title: l10n.sellNoMatchQuery(_query.trim()),
+          message: l10n.reportsNoSalesByCashier,
+          actionLabel: l10n.reportsClearSearch,
           onAction: () {
             _search.clear();
             _setQuery('');
@@ -444,6 +456,7 @@ class _ReportsActions extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final AppLocalizations l10n = AppLocalizations.of(context);
     final AppSpacing spacing = AppSpacing.of(context);
 
     // Expanded rather than fixed widths, so a label that wraps at 200% text
@@ -455,7 +468,7 @@ class _ReportsActions extends StatelessWidget {
           child: FilledButton.icon(
             onPressed: () => onOpenShift(),
             icon: const Icon(Icons.receipt_long),
-            label: const Text('Shift and reconciliation'),
+            label: Text(l10n.reportsShiftAndTillSection),
           ),
         ),
         SizedBox(width: spacing.sm),
@@ -463,7 +476,7 @@ class _ReportsActions extends StatelessWidget {
           child: OutlinedButton.icon(
             onPressed: () => onExport(),
             icon: const Icon(Icons.ios_share),
-            label: const Text('Export'),
+            label: Text(l10n.actionSendCopy),
           ),
         ),
       ],

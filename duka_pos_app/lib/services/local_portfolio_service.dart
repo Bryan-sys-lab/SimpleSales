@@ -119,6 +119,46 @@ class LocalPortfolioService {
         }
       }
 
+      // The shifts, from the same file, so "how are my shops doing" answers
+      // about the drawer and not only about takings. A shop's shift is where
+      // the cash is reconciled: a busy shop and a shop whose drawer has been
+      // short for days look identical on revenue alone.
+      //
+      // Counted against expected, both already in minor units on the row —
+      // the close wrote them, so this is the same figure the shop's own shift
+      // report shows.
+      // The drawer figures do NOT live on `shifts`: a shift is opened with a
+      // float and closed with a COUNT, and the count-plus-variance is written
+      // to `reconciliations`. Reading them off the shift row is a query that
+      // throws, and this method treats a throwing shop as a shop to leave out —
+      // so the whole portfolio silently emptied.
+      //
+      // The latest count per shift, not a join: a drawer can be counted twice,
+      // and a join would count the earlier count as well.
+      final List<Map<String, Object?>> closedShifts = await db.rawQuery(
+        '''
+        SELECT
+          COUNT(*) AS closed,
+          CAST(COALESCE(SUM(
+            (SELECT r.counted_cash - r.expected_cash
+             FROM reconciliations r
+             WHERE r.shift_id = shifts.id
+             ORDER BY r.recorded_at DESC, r.id DESC
+             LIMIT 1)
+          ), 0) AS INTEGER) AS variance_minor
+        FROM shifts
+        WHERE status = 'closed' AND start_time >= ? AND start_time <= ?
+        ''',
+        <Object?>[from.toIso8601String(), to.toIso8601String()],
+      );
+      // Open shifts are counted NOW, not in the window: a drawer that is open
+      // is open whether it was opened this morning or last week, and hiding it
+      // because it falls outside a report window would be the one thing an
+      // owner most needs to see.
+      final List<Map<String, Object?>> openShifts = await db.rawQuery(
+        "SELECT COUNT(*) AS open_count FROM shifts WHERE status = 'open'",
+      );
+
       return ShopKpi(
         // The local shop's own identifier. It is not the backend's tenant id,
         // and it never is: a shop that has never been online has no tenant.
@@ -129,6 +169,15 @@ class LocalPortfolioService {
         profit: Money.fromMinor((row['profit_minor'] as num?)?.toInt() ?? 0),
         transactions: (row['transactions'] as num?)?.toInt() ?? 0,
         topPaymentMethod: topPaymentMethod,
+        shiftsClosed: closedShifts.isEmpty
+            ? 0
+            : (closedShifts.first['closed'] as num?)?.toInt() ?? 0,
+        shiftsOpen: openShifts.isEmpty
+            ? 0
+            : (openShifts.first['open_count'] as num?)?.toInt() ?? 0,
+        cashVariance: Money.fromMinor(closedShifts.isEmpty
+            ? 0
+            : (closedShifts.first['variance_minor'] as num?)?.toInt() ?? 0),
       );
     } catch (_) {
       // A shop whose file will not open is left out, not reported as empty.

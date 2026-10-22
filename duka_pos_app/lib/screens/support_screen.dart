@@ -441,80 +441,78 @@ class _ItemRow extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final l10n = AppLocalizations.of(context);
     final spacing = AppSpacing.of(context);
     final colors = AppColors.of(context);
     final type = AppTypography.of(context);
 
     final bool resolved = item.status == 'resolved';
 
-    return InkWell(
-      onTap: resolved ? null : () => onResolve(item.id),
-      child: Padding(
-        padding: EdgeInsetsDirectional.only(
-          start: spacing.xl,
-          end: spacing.xl,
-          top: spacing.md,
-          bottom: spacing.md,
-        ),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: <Widget>[
-            Row(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: <Widget>[
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: <Widget>[
-                      Semantics(
-                        header: true,
-                        child: Text(
-                          item.title,
-                          style: type.bodyMedium?.copyWith(
-                            color: resolved ? colors.onSurfaceMuted : null,
-                            decoration:
-                                resolved ? TextDecoration.lineThrough : null,
-                          ),
-                        ),
-                      ),
-                      SizedBox(height: spacing.xs),
-                      Text(
-                        item.description,
-                        style: type.bodySmall?.copyWith(
+    return Padding(
+      padding: EdgeInsetsDirectional.only(
+        start: spacing.xl,
+        end: spacing.xl,
+        top: spacing.md,
+        bottom: spacing.md,
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: <Widget>[
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: <Widget>[
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: <Widget>[
+                    Semantics(
+                      header: true,
+                      child: Text(
+                        item.title,
+                        style: type.bodyMedium?.copyWith(
                           color: resolved ? colors.onSurfaceMuted : null,
                           decoration:
                               resolved ? TextDecoration.lineThrough : null,
                         ),
                       ),
-                    ],
-                  ),
-                ),
-                SizedBox(width: spacing.md),
-                StatusChip(
-                  tone: _tone(item.status),
-                  text: item.status == 'resolved'
-                      ? 'Resolved'
-                      : item.status == 'in_progress'
-                          ? 'In progress'
-                          : 'Open',
-                ),
-              ],
-            ),
-            if (!resolved) ...<Widget>[
-              SizedBox(height: spacing.md),
-              Align(
-                // Directional, so the action sits on the END side of the row in
-                // every locale — a physically-right-aligned button is a button
-                // in the wrong corner for half the world's readers.
-                alignment: AlignmentDirectional.centerEnd,
-                child: TextButton(
-                  onPressed: () => onResolve(item.id),
-                  child: Text('Mark resolved'),
+                    ),
+                    SizedBox(height: spacing.xs),
+                    Text(
+                      item.description,
+                      style: type.bodySmall?.copyWith(
+                        color: resolved ? colors.onSurfaceMuted : null,
+                        decoration:
+                            resolved ? TextDecoration.lineThrough : null,
+                      ),
+                    ),
+                  ],
                 ),
               ),
+              SizedBox(width: spacing.md),
+              StatusChip(
+                tone: _tone(item.status),
+                text: item.status == 'resolved'
+                    ? l10n.supportStatusResolved
+                    : item.status == 'in_progress'
+                        ? l10n.supportStatusInProgress
+                        : l10n.supportStatusOpen,
+              ),
             ],
+          ),
+          if (!resolved) ...<Widget>[
+            SizedBox(height: spacing.md),
+            Align(
+              // Directional, so the action sits on the END side of the row in
+              // every locale — a physically-right-aligned button is a button
+              // in the wrong corner for half the world's readers.
+              alignment: AlignmentDirectional.centerEnd,
+              child: TextButton(
+                onPressed: () => onResolve(item.id),
+                child: Text(l10n.supportMarkResolved),
+              ),
+            ),
           ],
-        ),
+        ],
       ),
     );
   }
@@ -559,53 +557,75 @@ class _SubmitFormState extends State<_SubmitForm> {
 
     return Form(
       key: _formKey,
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: <Widget>[
-          TextFormField(
-            controller: _titleController,
-            decoration: InputDecoration(
-              labelText: widget.label,
-              hintText: widget.hint,
-              border: const OutlineInputBorder(),
+      child: Padding(
+        // The gutter the section's ROWS use.
+        //
+        // The form used to sit flush against the card's edges while the rows
+        // above it were inset, so a form field touched the border of the card
+        // it lived in — which is what made the section read as a card inside a
+        // card. One inset for everything inside a card.
+        padding: EdgeInsetsDirectional.fromSTEB(
+          spacing.xl,
+          spacing.lg,
+          spacing.xl,
+          spacing.xl,
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: <Widget>[
+            TextFormField(
+              controller: _titleController,
+              decoration: InputDecoration(
+                labelText: widget.label,
+                hintText: widget.hint,
+                // No explicit outline. A boxed field inside a card is a second
+                // rectangle drawn on the first; the app's own field style is
+                // filled, and letting the theme answer keeps the support form
+                // looking like the rest of the app.
+              ),
+              validator: (value) {
+                if (value == null || value.trim().isEmpty) {
+                  // The LABEL, not the word "field". `validationFieldRequired`
+                  // interpolates its argument straight into the sentence, so
+                  // passing a field name printed "field is required" on the
+                  // screen — the placeholder leaking through to the shop.
+                  return l10n.validationFieldRequired(widget.label);
+                }
+                return null;
+              },
+              textInputAction: TextInputAction.next,
             ),
-            validator: (value) {
-              if (value == null || value.trim().isEmpty) {
-                return l10n.validationFieldRequired('field');
-              }
-              return null;
-            },
-            textInputAction: TextInputAction.next,
-          ),
-          SizedBox(height: spacing.md),
-          TextFormField(
-            controller: _descriptionController,
-            decoration: InputDecoration(
-              labelText: l10n.supportDescriptionLabel,
-              hintText: l10n.supportDescriptionHint,
-              border: const OutlineInputBorder(),
+            SizedBox(height: spacing.md),
+            TextFormField(
+              controller: _descriptionController,
+              decoration: InputDecoration(
+                labelText: l10n.supportDescriptionLabel,
+                hintText: l10n.supportDescriptionHint,
+              ),
+              validator: (value) {
+                if (value == null || value.trim().isEmpty) {
+                  return l10n.validationFieldRequired(
+                    l10n.supportDescriptionLabel,
+                  );
+                }
+                return null;
+              },
+              maxLines: 4,
+              textInputAction: TextInputAction.done,
             ),
-            validator: (value) {
-              if (value == null || value.trim().isEmpty) {
-                return l10n.validationFieldRequired('field');
-              }
-              return null;
-            },
-            maxLines: 4,
-            textInputAction: TextInputAction.done,
-          ),
-          SizedBox(height: spacing.lg),
-          FilledButton(
-            onPressed: widget.submitting ? null : _submit,
-            child: widget.submitting
-                ? const SizedBox(
-                    width: 20,
-                    height: 20,
-                    child: CircularProgressIndicator(strokeWidth: 2),
-                  )
-                : Text(widget.submitLabel),
-          ),
-        ],
+            SizedBox(height: spacing.lg),
+            FilledButton(
+              onPressed: widget.submitting ? null : _submit,
+              child: widget.submitting
+                  ? const SizedBox(
+                      width: 20,
+                      height: 20,
+                      child: CircularProgressIndicator(strokeWidth: 2),
+                    )
+                  : Text(widget.submitLabel),
+            ),
+          ],
+        ),
       ),
     );
   }

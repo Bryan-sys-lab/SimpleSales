@@ -272,13 +272,18 @@ class ProductTile extends StatelessWidget {
           );
 
     return Semantics(
-      button: data.canTap,
+      // An out-of-stock tile is STILL a button. It used to be announced as
+      // plain text with no action at all, and tapping it did nothing — the
+      // cashier pressed a product, the screen ignored them, and the only
+      // conclusion available was that the till was broken. A tile that cannot
+      // be sold can still EXPLAIN itself, and that is what the tap is for.
+      button: true,
       label: spoken,
       // The hint says what the tap DOES, not how to perform it. "Double tap to
       // add" repeats what the platform already announces on every button, and
       // it says nothing about what the tap is FOR.
       hint: !data.canTap
-          ? l10n.sellOutOfStock
+          ? l10n.sellOutOfStockHint
           : data.sellsAsVariants
               ? l10n.sellTileHintChoosesVariant
               : l10n.sellTileHintAddsToCart,
@@ -613,7 +618,8 @@ class _ProductTileGridState extends State<ProductTileGrid> {
             final ProductTileData item = widget.items[index];
             return ProductTile(
               data: item,
-              onTap: item.canTap ? () => widget.onTap(item.product) : null,
+              // Always tappable: see the Semantics note above.
+              onTap: () => widget.onTap(item.product),
             );
           },
         );

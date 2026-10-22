@@ -43,6 +43,7 @@ class SuccessView extends StatelessWidget {
     this.amountLabel,
     this.detail,
     this.detailIcon = Icons.receipt_long_outlined,
+    this.facts = const <SuccessFact>[],
     this.onNext,
     this.nextLabel,
     super.key,
@@ -61,6 +62,14 @@ class SuccessView extends StatelessWidget {
   final String? detail;
 
   final IconData detailIcon;
+
+  /// The money, spelled out: what was handed over, what is owed back.
+  ///
+  /// A row each, label on the left and figure on the right, because a person
+  /// counting coins out of a drawer reads them as a sum, not as a sentence.
+  /// The headline amount says how big the sale was; these say what to DO
+  /// about it.
+  final List<SuccessFact> facts;
 
   /// The action that moves on. Null when there is nothing to do but look.
   final VoidCallback? onNext;
@@ -125,6 +134,62 @@ class SuccessView extends StatelessWidget {
                     style: type.displaySmall?.copyWith(color: colors.onSurface),
                   ),
                 ],
+                if (facts.isNotEmpty) ...<Widget>[
+                  SizedBox(height: spacing.lg),
+                  // The money, in the order it is acted on: what came in, what
+                  // goes back out. The figures are RIGHT-aligned in one column
+                  // because a person counting coins reads them as a sum, and a
+                  // row that hugs its own words makes every figure start at a
+                  // different place.
+                  //
+                  // The label is `Expanded`, not sitting beside the value: the
+                  // word and the figure have to survive a 320dp phone at 200%
+                  // text, and two `Text`s in a `MainAxisSize.min` row is the
+                  // classic overflow.
+                  Container(
+                    width: double.infinity,
+                    padding: EdgeInsets.symmetric(
+                      horizontal: spacing.md,
+                      vertical: spacing.sm,
+                    ),
+                    decoration: BoxDecoration(
+                      color: colors.surfaceSunken,
+                      borderRadius: shapes.controlRadius,
+                    ),
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      children: <Widget>[
+                        for (final SuccessFact fact in facts)
+                          Padding(
+                            padding: EdgeInsets.symmetric(
+                              vertical: spacing.xs / 2,
+                            ),
+                            child: Row(
+                              children: <Widget>[
+                                Expanded(
+                                  child: Text(
+                                    fact.label,
+                                    style: type.bodyMedium?.copyWith(
+                                      color: colors.onSurfaceMuted,
+                                    ),
+                                  ),
+                                ),
+                                SizedBox(width: spacing.md),
+                                Text(
+                                  fact.value,
+                                  textAlign: TextAlign.end,
+                                  style: type.titleMedium?.copyWith(
+                                    color: colors.onSurface,
+                                    fontFeatures: AppTypography.tabular,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                      ],
+                    ),
+                  ),
+                ],
                 if (detail != null) ...<Widget>[
                   SizedBox(height: spacing.lg),
                   Container(
@@ -179,4 +244,12 @@ class SuccessView extends StatelessWidget {
       ),
     );
   }
+}
+
+/// One line of the money: "Paid  KSh 1,500".
+class SuccessFact {
+  const SuccessFact({required this.label, required this.value});
+
+  final String label;
+  final String value;
 }

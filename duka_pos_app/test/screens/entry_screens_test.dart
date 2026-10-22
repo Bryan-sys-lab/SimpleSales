@@ -308,7 +308,10 @@ void main() {
       );
       await tester.pump(const Duration(milliseconds: 50));
       expect(find.text('This till has no accounts yet'), findsOneWidget);
-      expect(find.text('Set this shop up on the device'), findsOneWidget);
+      // The same sentence the settings screen uses when a shop is missing on
+      // this device — one phrasing for one situation, so the two screens do
+      // not describe the same fix in two ways.
+      expect(find.text('Set this shop up on this device first'), findsOneWidget);
     });
   });
 

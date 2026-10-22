@@ -446,9 +446,8 @@ class _DashboardScreenState extends State<DashboardScreen>
     return switch (_state) {
       null || _DashboardLoading() => const _DashboardSkeleton(),
       _DashboardFailed() => ErrorStateView(
-          message: 'Could not load today’s dashboard data.',
-          detail: 'The till keeps working. Pull to try again, or check the '
-              'database in Settings.',
+          message: AppLocalizations.of(context).dashboardCouldNotLoad,
+          detail: AppLocalizations.of(context).dashboardStillWorksDetail,
           onRetry: _load,
         ),
       _DashboardReady() => _DashboardContent(

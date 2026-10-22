@@ -169,8 +169,7 @@ class _ShiftScreenState extends State<ShiftScreen>
     // happened, or the button looks broken.
     showAppSnackBar(
       context,
-      message: 'A shift needs a staff entry. Add yourself in Settings, then '
-          'open the shift.',
+      message: AppLocalizations.of(context).shiftNeedsStaffEntry,
     );
   }
 

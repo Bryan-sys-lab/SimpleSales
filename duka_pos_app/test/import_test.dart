@@ -126,6 +126,7 @@ List<List<dynamic>> _tracker({List<dynamic>? header, int products = 6}) {
 }
 
 void main() {
+  _multiColumnTests();
   TestWidgetsFlutterBinding.ensureInitialized();
   sqfliteFfiInit();
   databaseFactory = databaseFactoryFfi;
@@ -1416,6 +1417,56 @@ void main() {
       expect(bond!.costPrice.minorUnits, 9000);
       expect(bond.sellPrice.minorUnits, 20000);
       expect(bond.stockQty, 5);
+    });
+  });
+}
+
+// A field can be stated in more than one column, and not every column a header
+// names can actually be read.
+//
+// The real BlackBee tracker states the stock three times — `OP/STOCK`,
+// `TOTAL STOCK QTY`, `CLOSING STOCK` — and the column that reads best
+// (`CLOSING STOCK`) is a column of FORMULAS. The workbook reader hands a
+// formula back as text ("=E53+F53") or as nothing at all, so taking the
+// best-scoring column unconditionally wrote all 108 products into stock at
+// zero while the number sat in the column next to it.
+//
+// These tests pin the rule on plain strings, which is all a cell is once the
+// reader is done with it: a cell that is empty, or that is a formula, is not an
+// answer, and the next column gets the question.
+void _multiColumnTests() {
+  final SheetColumns columns = SheetColumns.fromHeaderRow(<dynamic>[
+    'OP/STOCK',
+    'TOTAL STOCK QTY',
+    'CLOSING STOCK',
+    'PRODUCT NAME',
+  ])!;
+
+  group('a field stated in several columns', () {
+    test('the best-scoring column is asked first', () {
+      final row = <dynamic>[9, 8, 7, 'Lager'];
+      // CLOSING STOCK scores highest, so it wins when it has a value.
+      expect(columns.cell(row, 'stock_qty'), 7);
+    });
+
+    test('an empty cell falls through to the next column', () {
+      // The BlackBee shape: closing stock is blank to the reader.
+      final row = <dynamic>['', 8, '', 'Lager'];
+      expect(columns.cell(row, 'stock_qty'), 8);
+    });
+
+    test('a formula is not a value', () {
+      // "=E53+F53" is an instruction to calculate, and this app does not
+      // calculate spreadsheets. Reading it as a number would import a product
+      // priced at nothing; treating it as absent lets the real column answer.
+      final row = <dynamic>[9, '=E53+F53', '=B53+C53', 'Lager'];
+      expect(columns.cell(row, 'stock_qty'), 9);
+    });
+
+    test('when no column can answer, the field is absent', () {
+      final row = <dynamic>['', '=E1+F1', null, 'Lager'];
+      expect(columns.cell(row, 'stock_qty'), isNull,
+          reason: 'the caller defaults it, and reports that it did');
     });
   });
 }

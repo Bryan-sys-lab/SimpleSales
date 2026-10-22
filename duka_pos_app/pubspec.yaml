@@ -48,7 +48,7 @@ dependencies:
 
   # The one router for the whole app. Every screen is URL-addressable and each
   # tab keeps its own navigation stack via StatefulShellRoute.indexedStack.
-  go_router: ^17.5.0
+  go_router: ^18.1.1
 
   # Local database (offline-first system of record)
   sqflite: ^2.4.4+1
@@ -92,7 +92,7 @@ dependencies:
   # this project pins rejects outright ("Language version 1.6 is no longer
   # supported"), failing :sentry_flutter:compileDebugKotlin. 9.x is the line
   # that supports Kotlin 2.x.
-  sentry_flutter: ^9.30.1
+  sentry_flutter: ^10.1.0
   
   # Update checker (for sideloaded APKs)
   package_info_plus: ^10.2.1

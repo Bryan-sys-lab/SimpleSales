@@ -1,18 +1,8 @@
-# Test runner configuration.
-#
-# `concurrency: 1` is load-bearing, not a tuning knob.
-#
-# Several suites (workspace_test, cross_shop_audit_test, migration_test,
-# audit_log_test) open real per-workspace SQLite files under
-# `.dart_tool/sqflite_common_ffi/databases`, and several of them clear that
-# directory in `setUpAll` because the files survive the process. With the
-# default parallelism two isolates can interleave: one suite's `setUpAll`
-# delete removes the file another suite still has open, and sqlite reports
-# `1032 attempt to write a readonly database` against whichever test writes
-# next — a failure with no relationship to its cause. `resetForTests()` does
-# not close the handle, so the damage is done the moment the delete lands.
-#
-# Serialising the suites removes the window entirely and costs a few seconds
-# on a suite that is not the long pole. Do not remove this to speed up a run:
-# a suite that deletes files it does not own is a suite that fails at random.
 concurrency: 1
+
+tags:
+  # The real-workbook import test decodes a 3.2 MB, 192-sheet workbook and
+  # takes minutes. It is tagged so a quick loop can skip it with
+  # `flutter test --exclude-tags slow_import`, and it is NOT excluded in CI:
+  # it is the only test that proves the parser reads a file it did not write.
+  slow_import:

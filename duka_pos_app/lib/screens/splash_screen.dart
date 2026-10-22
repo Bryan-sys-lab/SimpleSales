@@ -62,7 +62,27 @@ class SplashScreen extends StatelessWidget {
                       height: 76,
                       fit: BoxFit.contain,
                     ),
-                    SizedBox(height: spacing.xl),
+                    SizedBox(height: spacing.lg),
+                    // The ATTRIBUTION first, the app's own name after it.
+                    //
+                    // It used to be the other way round — the shop's app in
+                    // large type, then a small "Powered by Nerva" trailing
+                    // underneath like a footnote. Read in that order the
+                    // footer looked like it belonged to the line above it, and
+                    // the lockup said the app was made by whoever the line
+                    // named. The vendor comes first, the product second.
+                    //
+                    // The VENDOR'S MARK, not the vendor's name in the app's
+                    // typeface: a brand set in the wrong face is a line of
+                    // somebody else's copy.
+                    Center(
+                      child: PoweredByNerva(
+                        style: type.labelSmall?.copyWith(
+                          color: colors.onSurface.withValues(alpha: 0.55),
+                        ),
+                      ),
+                    ),
+                    SizedBox(height: spacing.md),
                     SimplePosWordmark(color: colors.onSurface),
                     SizedBox(height: spacing.sm),
                     Text(
@@ -74,17 +94,6 @@ class SplashScreen extends StatelessWidget {
                     ),
                     SizedBox(height: spacing.xxl),
                     const _SplashProgress(),
-                    SizedBox(height: spacing.xxl),
-                    // The VENDOR'S MARK, not the vendor's name in the app's
-                    // typeface: a brand set in the wrong face is a line of
-                    // somebody else's copy.
-                    Center(
-                      child: PoweredByNerva(
-                        style: type.labelSmall?.copyWith(
-                          color: colors.onSurface.withValues(alpha: 0.55),
-                        ),
-                      ),
-                    ),
                   ],
                 ),
               ),

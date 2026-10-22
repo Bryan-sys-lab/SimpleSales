@@ -12,6 +12,7 @@ import '../services/app_state.dart';
 import '../services/shift_analytics.dart';
 import '../theme/app_colors.dart';
 import '../theme/app_haptics.dart';
+import '../theme/app_motion.dart';
 import '../theme/app_shapes.dart';
 import '../theme/app_spacing.dart';
 import '../theme/typography.dart';
@@ -544,22 +545,63 @@ class _AnalyticsScaffold extends StatelessWidget {
     );
   }
 
+  /// The page's sections, in reading order, each one revealed as it arrives.
+  ///
+  /// ## WHY A HERO AND NOT FOUR BOXES
+  ///
+  /// The screen used to open with four equally weighted cards: takings,
+  /// profit, transactions, basket. Equal weight is no hierarchy — the eye has
+  /// nowhere to land, and the one figure the owner opened the app for was the
+  /// same size as the one they only glance at. So the takings are the single
+  /// display-size number on the screen, the comparison sits immediately under
+  /// it in words, and the other three become quiet rows in one card: present,
+  /// comparable, and visibly secondary.
+  ///
+  /// ## WHY THE STAGGER
+  ///
+  /// Sections arrive 40ms apart, eight pixels up, over 220ms on an ease-out
+  /// curve — a cascade rather than a page that snaps. It runs ONCE, on the
+  /// first paint of a snapshot: re-revealing on every rebuild would make
+  /// changing the range feel like a page reload. Under reduced motion every
+  /// offset and duration collapses to zero and the sections simply appear.
   List<Widget> _content(BuildContext context, AnalyticsSnapshot shown) {
     final AppSpacing spacing = AppSpacing.of(context);
+    final l10n = AppLocalizations.of(context);
+    var section = 0;
+    Widget reveal(Widget child) => _Reveal(index: section++, child: child);
+
     return <Widget>[
-      _RangeKpis(
+      // The headline is a CARD like the rest of the figures, with the amount
+      // inside it as the one display-size number on the screen. A dashboard
+      // whose top row is one bare number and four boxes reads as two designs
+      // stacked; one card system, with the biggest number in the first card,
+      // is a hierarchy rather than an inconsistency.
+      reveal(SurfaceCard(
+        padding: EdgeInsets.all(spacing.lg),
+        child: _TakingsHero(
+          totals: shown.totals,
+          previous: shown.previousTotals,
+          range: range,
+        ),
+      )),
+      SizedBox(height: spacing.lg),
+      if (!shown.totals.hasSales)
+        Padding(
+          padding: EdgeInsetsDirectional.only(bottom: spacing.md),
+          child: Text(
+            l10n.analyticsNothingTaken,
+            style: AppTypography.of(context)
+                .bodyMedium
+                ?.copyWith(color: AppColors.of(context).onSurfaceMuted),
+          ),
+        ),
+      reveal(_KpiGrid(
         totals: shown.totals,
         previous: shown.previousTotals,
-        range: range,
-      ),
-      SizedBox(height: spacing.md),
-      _GrowthLine(
-        current: shown.totals,
-        previous: shown.previousTotals,
-        range: range,
-      ),
+        days: range.days,
+      )),
       SizedBox(height: spacing.lg),
-      SurfaceCard(
+      reveal(SurfaceCard(
         padding: EdgeInsetsDirectional.only(
           start: spacing.md,
           end: spacing.md,
@@ -570,32 +612,152 @@ class _AnalyticsScaffold extends StatelessWidget {
         // "is the week trending up or down" — a direction, which a line renders
         // directly and fourteen bars ask the reader to derive.
         child: PosLineChart(
-          title: AppLocalizations.of(context).analyticsChartTitleSalesByDay,
+          title: l10n.analyticsChartTitleSalesByDay,
           emphasis: chartEmphasis,
           semanticsLabel: chartSemantics,
           height: 168,
           points: salesPoints,
         ),
-      ),
+      )),
       SizedBox(height: spacing.lg),
-      ProductTableCard(
+      reveal(ProductTableCard(
         rows: sortedProducts,
         sort: sort,
         ascending: ascending,
         onSort: onSortBy,
-      ),
+      )),
       SizedBox(height: spacing.lg),
-      PaymentMixCard(rows: shown.payments, totals: shown.totals),
+      reveal(PaymentMixCard(rows: shown.payments, totals: shown.totals)),
       SizedBox(height: spacing.lg),
       // The shifts, and what the drawers did over the window.
       //
       // Between the payment mix and the stock: both are about the shop's
       // money and the shift figures are the ones that say whether the money
       // in the drawer is the money the ledger expects.
-      ShiftAnalyticsCard(shifts: shown.shifts),
+      reveal(ShiftAnalyticsCard(shifts: shown.shifts)),
       SizedBox(height: spacing.lg),
-      StockSection(outOfStock: shown.outOfStock, lowStock: shown.lowStock),
+      reveal(StockSection(
+          outOfStock: shown.outOfStock, lowStock: shown.lowStock)),
     ];
+  }
+}
+
+/// A section that fades and rises into place once, on its first paint.
+///
+/// [index] staggers the sections: the delay grows by forty milliseconds per
+/// section, which is short enough that the page never feels like it is loading
+/// itself in front of the reader. The end state is the layout's own state —
+/// under reduced motion the widget is the child, untouched.
+class _Reveal extends StatefulWidget {
+  const _Reveal({required this.index, required this.child});
+
+  final int index;
+  final Widget child;
+
+  @override
+  State<_Reveal> createState() => _RevealState();
+}
+
+class _RevealState extends State<_Reveal> {
+  bool _shown = false;
+  bool _started = false;
+
+  @override
+  void initState() {
+    super.initState();
+    // Deferred by a frame so the first build is the "before" state; without it
+    // the animation has nothing to travel from.
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted || _started) return;
+      _started = true;
+      Future<void>.delayed(
+        Duration(milliseconds: 40 * widget.index),
+        () {
+          if (mounted) setState(() => _shown = true);
+        },
+      );
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final AppMotion motion = AppMotion.of(context);
+    // The duration and curve both collapse under reduced motion, so the widget
+    // still reaches its end state — it just does not travel to it.
+    final Duration duration = AppMotion.resolve(context, motion.normal);
+    if (duration == Duration.zero) return widget.child;
+    return AnimatedOpacity(
+      opacity: _shown ? 1 : 0,
+      duration: duration,
+      curve: AppMotion.resolveCurve(context, motion.enter),
+      child: AnimatedSlide(
+        offset: _shown ? Offset.zero : const Offset(0, 0.02),
+        duration: duration,
+        curve: AppMotion.resolveCurve(context, motion.enter),
+        child: widget.child,
+      ),
+    );
+  }
+}
+
+/// The period's takings: the one display-size figure, and how it compares.
+class _TakingsHero extends StatelessWidget {
+  const _TakingsHero({
+    required this.totals,
+    required this.previous,
+    required this.range,
+  });
+
+  final DailyTotals totals;
+  final DailyTotals previous;
+  final AnalyticsRange range;
+
+  @override
+  Widget build(BuildContext context) {
+    final AppSpacing spacing = AppSpacing.of(context);
+    final AppColors colors = AppColors.of(context);
+    final l10n = AppLocalizations.of(context);
+
+    return Semantics(
+      container: true,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: <Widget>[
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.baseline,
+            textBaseline: TextBaseline.alphabetic,
+            children: <Widget>[
+              Expanded(
+                child: Text(
+                  l10n.analyticsSalesLabel,
+                  style: AppTypography.of(context)
+                      .labelLarge
+                      ?.copyWith(color: colors.onSurfaceMuted),
+                ),
+              ),
+              // The window is a caption on the figure, not a control: the
+              // control is the segmented bar directly above it.
+              Text(
+                range.label,
+                style: AppTypography.of(context).labelMedium?.copyWith(
+                      color: colors.onSurfaceMuted,
+                    ),
+              ),
+            ],
+          ),
+          SizedBox(height: spacing.xs),
+          // Money at display size, tabular so the digits do not jitter as the
+          // range changes. Nothing else on this screen is this large.
+          Text(
+            formatMoney(totals.total),
+            style: AppTypography.money(context, size: 40, weight: FontWeight.w700)
+                .copyWith(color: colors.onSurface, height: 1.05),
+          ),
+          SizedBox(height: spacing.sm),
+          _GrowthLine(current: totals, previous: previous, range: range),
+        ],
+      ),
+    );
   }
 }
 
@@ -616,7 +778,7 @@ class _RangeBar extends StatelessWidget {
     return SegmentedChoice<AnalyticsRange>(
       value: range,
       onChanged: onChanged,
-      semanticLabel: 'Reporting period',
+      semanticLabel: AppLocalizations.of(context).analyticsReportingPeriod,
       options: <SegmentedOption<AnalyticsRange>>[
         for (final AnalyticsRange option in AnalyticsRange.values)
           SegmentedOption<AnalyticsRange>(value: option, label: option.label),
@@ -625,102 +787,186 @@ class _RangeBar extends StatelessWidget {
   }
 }
 
-/// The range's headline figures.
+/// The figures that support the headline, as KPI cards.
 ///
-/// Four [StatTile]s, whose value style is already tabular, in a [Wrap] rather
-/// than a [Row]: a value that wraps at 200% text scale makes a taller tile
-/// rather than a clipped number, and the second row simply reflows.
-class _RangeKpis extends StatelessWidget {
-  const _RangeKpis({
+/// ## WHY CARDS AND NOT ROWS
+///
+/// Four numbers in one vertical list read as a receipt: you scan down, and the
+/// eye has to re-find the left edge for every label. A grid of cards gives each
+/// figure its own frame and its own place, which is what makes a dashboard
+/// scannable from across a counter — you look AT a card, not along a list.
+///
+/// ## WHY THE GRID REFLOWS INSTEAD OF SHRINKING
+///
+/// The width is computed from the space available, not from the device, so the
+/// same code gives two columns on a phone and four on a tablet. A card whose
+/// value has to ellipsis is a card that has failed; the grid moves a column to
+/// the next row instead, and at 200% text that is the difference between a
+/// readable dashboard and a set of clipped numbers.
+class _KpiGrid extends StatelessWidget {
+  const _KpiGrid({
     required this.totals,
     required this.previous,
-    required this.range,
+    required this.days,
   });
 
   final DailyTotals totals;
 
-  /// The window before this one, so a tile can say which way it moved.
+  /// The window before, so the sales count can say which way it moved.
   final DailyTotals previous;
 
-  final AnalyticsRange range;
+  /// The window's length, for the comparison sentence.
+  final int days;
+
+  /// The sales count against the previous window, as "+12%" or "−8%".
+  String? _countChange(AppLocalizations l10n) {
+    final int before = previous.transactions;
+    final int now = totals.transactions;
+    if (before <= 0 || now == before) return null;
+    final double percent = ((now - before) / before) * 100;
+    final String sign = percent > 0 ? '+' : '−';
+    return '$sign${percent.abs().toStringAsFixed(0)}% '
+        '${l10n.analyticsAgainstDaysBefore(days)}';
+  }
 
   @override
   Widget build(BuildContext context) {
     final AppSpacing spacing = AppSpacing.of(context);
+    final l10n = AppLocalizations.of(context);
+
+    final List<_Kpi> kpis = <_Kpi>[
+      _Kpi(
+        label: l10n.analyticsProfitLabel,
+        value: formatMoney(totals.profit),
+        caption: totals.hasSales
+            ? l10n.analyticsMarginCaption(totals.marginPct.toStringAsFixed(0))
+            : null,
+        icon: Icons.trending_up,
+      ),
+      _Kpi(
+        label: l10n.analyticsMarginLabel,
+        value: totals.hasSales
+            ? '${totals.marginPct.toStringAsFixed(0)}%'
+            : '—',
+        caption: l10n.analyticsAvgBasketCaption,
+        icon: Icons.percent,
+      ),
+      _Kpi(
+        label: l10n.analyticsTransactionsLabel,
+        value: l10n.analyticsTransactionCaption(totals.transactions),
+        // How the count moved, as a signed percentage. Null when there is no
+        // earlier window to compare with: a "0%" beside a zero is a claim
+        // about a direction that did not happen.
+        caption: _countChange(l10n),
+        icon: Icons.receipt_long_outlined,
+        showCaptionWhenEmpty: false,
+      ),
+      _Kpi(
+        label: l10n.analyticsAvgBasketLabel,
+        value: formatMoney(totals.averageBasket),
+        caption: l10n.analyticsAvgBasketCaption,
+        icon: Icons.shopping_basket_outlined,
+      ),
+    ];
 
     return LayoutBuilder(
       builder: (BuildContext context, BoxConstraints constraints) {
-        final double width = (constraints.maxWidth - spacing.md) / 2;
+        // Two columns up to a tablet, four beyond it. The minimum card is wide
+        // enough for a four-figure shilling amount at normal text.
+        final int columns = constraints.maxWidth >= 720 ? 4 : 2;
+        final double width =
+            (constraints.maxWidth - spacing.md * (columns - 1)) / columns;
         return Wrap(
           spacing: spacing.md,
           runSpacing: spacing.md,
           children: <Widget>[
-            for (final Widget tile in _tiles(AppLocalizations.of(context)))
+            for (final _Kpi kpi in kpis)
               SizedBox(
                 width: width,
-                child: SurfaceCard(
-                  padding: EdgeInsets.zero,
-                  child: tile,
-                ),
+                child: _KpiCard(kpi: kpi),
               ),
           ],
         );
       },
     );
   }
+}
 
-  /// The catalogue is passed in: this is called from `build`, which has the
-  /// context, and reaching for a field here would mean a second lookup per tile
-  /// row for no benefit.
-  List<Widget> _tiles(AppLocalizations l10n) {
-    return <Widget>[
-      StatTile(
-        label: l10n.analyticsSalesLabel,
-        value: formatMoney(totals.total),
-        caption: range.label,
-        emphasis: StatEmphasis.strong,
-      ),
-      StatTile(
-        label: l10n.analyticsProfitLabel,
-        value: formatMoney(totals.profit),
-        caption: totals.hasSales
-            ? l10n.analyticsMarginCaption(totals.marginPct.toStringAsFixed(0))
-            : null,
-      ),
-      // The transaction COUNT is the caption, not the value: the value is money,
-      // and a tile whose big number is "7" beside a money tile beside it is
-      // read as KSh 7.
-      StatTile(
-        label: l10n.analyticsTransactionsLabel,
-        value: l10n.analyticsTransactionCaption(totals.transactions),
-        emphasis: StatEmphasis.strong,
-        delta: _transactionDelta,
-      ),
-      StatTile(
-        label: l10n.analyticsAvgBasketLabel,
-        value: formatMoney(totals.averageBasket),
-        caption: l10n.analyticsAvgBasketCaption,
-      ),
-    ];
-  }
+/// One figure on the dashboard: its label, its value, and what qualifies it.
+class _Kpi {
+  const _Kpi({
+    required this.label,
+    required this.value,
+    required this.icon,
+    this.caption,
+    this.showCaptionWhenEmpty = true,
+  });
 
-  /// How the transaction count moved against the window before.
-  ///
-  /// Null when there is nothing to compare against and null when nothing moved:
-  /// a "0%" carrying an up arrow is a claim about a direction that did not
-  /// happen, and [DeltaDirection] has no flat to say it honestly.
-  ///
-  /// The takings comparison is a row of its own ([_GrowthLine]); this is the
-  /// count beside it, so the two figures answer different questions instead of
-  /// repeating one.
-  StatDelta? get _transactionDelta {
-    final int before = previous.transactions;
-    final int now = totals.transactions;
-    if (before <= 0 || now == before) return null;
-    final double percent = ((now - before) / before) * 100;
-    return StatDelta(
-      text: '${percent > 0 ? '+' : '−'}${percent.abs().toStringAsFixed(0)}%',
-      direction: percent > 0 ? DeltaDirection.up : DeltaDirection.down,
+  final String label;
+  final String value;
+  final IconData icon;
+  final String? caption;
+
+  /// Whether the caption is worth showing when the figure is zero. "per sale"
+  /// under a zero basket is noise; a margin caption is not.
+  final bool showCaptionWhenEmpty;
+}
+
+class _KpiCard extends StatelessWidget {
+  const _KpiCard({required this.kpi});
+
+  final _Kpi kpi;
+
+  @override
+  Widget build(BuildContext context) {
+    final AppSpacing spacing = AppSpacing.of(context);
+    final AppColors colors = AppColors.of(context);
+    final type = AppTypography.of(context);
+    final String? caption =
+        kpi.showCaptionWhenEmpty || kpi.value != '0' ? kpi.caption : null;
+
+    return SurfaceCard(
+      padding: EdgeInsets.all(spacing.md),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: <Widget>[
+          Row(
+            children: <Widget>[
+              Icon(kpi.icon, size: 16, color: colors.onSurfaceMuted),
+              SizedBox(width: spacing.xs),
+              Expanded(
+                child: Text(
+                  kpi.label,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: type.labelMedium?.copyWith(
+                    color: colors.onSurfaceMuted,
+                  ),
+                ),
+              ),
+            ],
+          ),
+          SizedBox(height: spacing.sm),
+          // Tabular figures so four cards form a column of digits that does
+          // not jitter when the range changes.
+          Text(
+            kpi.value,
+            maxLines: 2,
+            style: AppTypography.money(context, size: 22)
+                .copyWith(color: colors.onSurface, height: 1.1),
+          ),
+          if (caption != null) ...<Widget>[
+            SizedBox(height: spacing.xs),
+            Text(
+              caption,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: type.labelSmall?.copyWith(color: colors.onSurfaceMuted),
+            ),
+          ],
+        ],
+      ),
     );
   }
 }
@@ -755,6 +1001,7 @@ class _GrowthLine extends StatelessWidget {
 
     final bool isUp = delta > 0;
     final bool isDown = delta < 0;
+    final l10n = AppLocalizations.of(context);
     // A shop with nothing in the earlier window has no percentage to quote, so
     // the line says what actually happened rather than inventing a ratio.
     final String word = isUp ? 'Up' : (isDown ? 'Down' : 'Level');
@@ -767,7 +1014,7 @@ class _GrowthLine extends StatelessWidget {
 
     final String figure = hasComparison
         ? '${isUp ? '+' : (isDown ? '−' : '')}${percent.abs().toStringAsFixed(0)}%'
-        : (isUp ? 'nothing to compare' : 'no change');
+        : (isUp ? l10n.analyticsNothingToCompare : l10n.analyticsNoChange);
 
     final TextStyle figureStyle = AppTypography.money(
       context,
@@ -776,8 +1023,8 @@ class _GrowthLine extends StatelessWidget {
     ).copyWith(color: tone);
 
     final String comparison = previous.hasSales || current.hasSales
-        ? AppLocalizations.of(context).analyticsAgainstDaysBefore(range.days)
-        : 'no sales yet in this period';
+        ? l10n.analyticsAgainstDaysBefore(range.days)
+        : l10n.analyticsNothingTaken;
 
     return Semantics(
       container: true,
@@ -855,7 +1102,7 @@ class _AnalyticsError extends StatelessWidget {
               alignment: AlignmentDirectional.centerStart,
               child: TextButton(
                 onPressed: () => onRetry(),
-                child: const Text('Try again'),
+                child: Text(AppLocalizations.of(context).actionTryAgain),
               ),
             ),
           ],
@@ -872,9 +1119,12 @@ class OpenInventoryAction extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final AppColors colors = AppColors.of(context);
+    final AppLocalizations l10n = AppLocalizations.of(context);
     return Semantics(
       button: true,
-      label: 'Open Inventory to reorder',
+      // The screen-reader name is said too, so it carries the same plain words
+      // as the label rather than a third phrasing nobody reads.
+      label: l10n.analyticsReorderInInventory,
       child: ExcludeSemantics(
         child: Align(
           alignment: AlignmentDirectional.centerStart,
@@ -882,7 +1132,7 @@ class OpenInventoryAction extends StatelessWidget {
             onPressed: () =>
                 context.read<HomeShellTabs>().goTo(AppDestination.inventory),
             icon: const Icon(Icons.inventory_2_outlined),
-            label: const Text('Reorder in Inventory'),
+            label: Text(l10n.analyticsReorderInInventory),
             style: TextButton.styleFrom(
               foregroundColor: colors.accent,
               minimumSize: const Size(0, 44),

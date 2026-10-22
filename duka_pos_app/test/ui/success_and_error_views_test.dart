@@ -34,16 +34,47 @@ void main() {
             title: 'Sale recorded',
             message: 'Paid in cash',
             amountLabel: 'KSh 1,240.00',
-            detail: 'Change due KSh 500.00',
+            facts: <SuccessFact>[
+              SuccessFact(label: 'Paid', value: 'KSh 1,500.00'),
+              SuccessFact(label: 'Change', value: 'KSh 260.00'),
+            ],
           ),
         ),
       );
 
-      // The three facts the screen exists for.
+      // The three facts the screen exists for: what was handed over, how it
+      // was paid, and what to give back. A cashier counts coins out of a
+      // drawer while reading them, so each is its own line — a sentence like
+      // "Paid in cash, change due KSh 260" makes the eye hunt for the number
+      // it is about to speak.
       expect(find.text('Sale recorded'), findsOneWidget);
       expect(find.text('Paid in cash'), findsOneWidget);
       expect(find.text('KSh 1,240.00'), findsOneWidget);
-      expect(find.text('Change due KSh 500.00'), findsOneWidget);
+      expect(find.text('Paid'), findsOneWidget);
+      expect(find.text('KSh 1,500.00'), findsOneWidget);
+      expect(find.text('Change'), findsOneWidget);
+      expect(find.text('KSh 260.00'), findsOneWidget);
+    });
+
+    testWidgets('an exact cash sale still answers "do I owe them change?"', (
+      tester,
+    ) async {
+      tester.useDevice(Device.small);
+      await tester.pumpApp(
+        home: const Scaffold(
+          body: SuccessView(
+            title: 'Sale recorded',
+            message: 'Paid in cash',
+            amountLabel: 'KSh 1,240.00',
+            facts: <SuccessFact>[
+              SuccessFact(label: 'Paid', value: 'KSh 1,240.00'),
+              SuccessFact(label: 'Change', value: 'KSh 0.00'),
+            ],
+          ),
+        ),
+      );
+
+      expect(find.text('KSh 0.00'), findsOneWidget);
     });
 
     testWidgets('the next button moves on', (tester) async {
@@ -75,7 +106,11 @@ void main() {
             title: 'Sale recorded',
             message: 'Paid by M-Pesa',
             amountLabel: 'KSh 1,240.00',
-            detail: 'Change due KSh 500.00',
+            facts: <SuccessFact>[
+              SuccessFact(label: 'Paid', value: 'KSh 1,500.00'),
+              SuccessFact(label: 'Change', value: 'KSh 260.00'),
+            ],
+            detail: 'The receipt is still printing.',
           ),
         ),
         textScaler: TextScaler.linear(2.0),

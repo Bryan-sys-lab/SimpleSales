@@ -119,15 +119,19 @@ ThemeData _buildTheme({
       titleTextStyle: text.headlineSmall?.copyWith(color: colors.onSurface),
       toolbarHeight: 56,
       titleSpacing: spacing.lg,
+      // The system's own navigation strip is painted in the CANVAS colour, not
+      // the card colour. The card colour made a pale band under the app's own
+      // nav bar, so the bottom of the screen was two different greys with a
+      // line between them. One colour all the way down.
       systemOverlayStyle: brightness == Brightness.light
           ? SystemUiOverlayStyle.dark.copyWith(
               statusBarColor: Colors.transparent,
-              systemNavigationBarColor: colors.surface,
+              systemNavigationBarColor: colors.canvas,
               systemNavigationBarIconBrightness: Brightness.dark,
             )
           : SystemUiOverlayStyle.light.copyWith(
               statusBarColor: Colors.transparent,
-              systemNavigationBarColor: colors.surface,
+              systemNavigationBarColor: colors.canvas,
               systemNavigationBarIconBrightness: Brightness.light,
             ),
       iconTheme: IconThemeData(color: colors.onSurface, size: 22),

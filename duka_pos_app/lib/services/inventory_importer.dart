@@ -224,8 +224,17 @@ const Map<String, String> _extraSheetAliases = {
 /// Maps [header] onto [fields] by name, or falls back to positional when the row
 /// does not name the fields.
 SheetColumns _namedColumns(List<dynamic> header, List<String> fields) {
+  // Keyed by the NORMALISED name, so the lookup below compares like with like.
+  //
+  // This used to be `{field: normaliseHeader(field)}` — the field name on the
+  // left, its normalised spelling on the right — which only worked while
+  // normalising changed nothing. It does change something now (punctuation is
+  // word spacing, so `product_id` reads as `product id`), and the lookup
+  // `byName[normalisedHeaderCell]` then missed every multi-word field: a
+  // `Barcodes` sheet lost its `product_id` column and every code came back as
+  // one that "does not say which product it belongs to".
   final byName = {
-    for (final field in fields) field: SheetColumns.normaliseHeader(field),
+    for (final field in fields) SheetColumns.normaliseHeader(field): field,
   };
   final map = <String, int>{};
   for (var i = 0; i < header.length; i++) {
@@ -570,6 +579,7 @@ class InventoryImporter {
       needsAttention: needsAttention,
       refusedBarcodes: refusedBarcodes,
       skippedSheets: skippedSheets,
+      sheetName: sheetName,
     );
   }
 
@@ -763,6 +773,7 @@ class InventoryImportResult {
     this.needsAttention = 0,
     this.refusedBarcodes = const {},
     this.skippedSheets = const [],
+    this.sheetName = '',
   });
 
   /// Rows written to the database.
@@ -787,6 +798,14 @@ class InventoryImportResult {
   /// supplier's file is not an error, but silently ignoring it leaves the owner
   /// wondering whether their 200 rows of sales came in.
   final List<String> skippedSheets;
+
+  /// The tab the products were actually read from.
+  ///
+  /// Said out loud because a workbook can hold a tab per DAY — a shop's own
+  /// stock tracker runs to 190 of them — and when the owner asks "why is my
+  /// stock from April?", the only answer is "here is the tab the import read".
+  /// Empty for an import that never reached a tab.
+  final String sheetName;
 
   /// The old name for [imported].
   ///

@@ -1115,6 +1115,24 @@ abstract class AppLocalizations {
   /// **'Sale recorded'**
   String get sellCompleteTitle;
 
+  /// No description provided for @sellCompleteFactPaid.
+  ///
+  /// In en, this message translates to:
+  /// **'Paid'**
+  String get sellCompleteFactPaid;
+
+  /// No description provided for @sellCompleteFactChange.
+  ///
+  /// In en, this message translates to:
+  /// **'Change'**
+  String get sellCompleteFactChange;
+
+  /// No description provided for @sellCompleteFactTotal.
+  ///
+  /// In en, this message translates to:
+  /// **'Total'**
+  String get sellCompleteFactTotal;
+
   /// No description provided for @sellCompletePaidCash.
   ///
   /// In en, this message translates to:
@@ -1156,12 +1174,6 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'{method} · {amount}'**
   String sellCompletePaidOther(Object amount, Object method);
-
-  /// No description provided for @sellCompleteChange.
-  ///
-  /// In en, this message translates to:
-  /// **'Change due {amount}'**
-  String sellCompleteChange(Object amount);
 
   /// No description provided for @sellCompleteNext.
   ///
@@ -5954,6 +5966,12 @@ abstract class AppLocalizations {
   /// **'{margin}% margin'**
   String analyticsMarginCaption(Object margin);
 
+  /// No description provided for @analyticsMarginLabel.
+  ///
+  /// In en, this message translates to:
+  /// **Margin**
+  String get analyticsMarginLabel;
+
   /// No description provided for @analyticsAvgBasketCaption.
   ///
   /// In en, this message translates to:
@@ -6194,6 +6212,24 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'Nothing taken in this period.'**
   String get analyticsNothingTaken;
+
+  /// No description provided for @analyticsReportingPeriod.
+  ///
+  /// In en, this message translates to:
+  /// **Shown for**
+  String get analyticsReportingPeriod;
+
+  /// No description provided for @analyticsNothingToCompare.
+  ///
+  /// In en, this message translates to:
+  /// **nothing to compare against**
+  String get analyticsNothingToCompare;
+
+  /// No description provided for @analyticsNoChange.
+  ///
+  /// In en, this message translates to:
+  /// **no change**
+  String get analyticsNoChange;
 
   /// No description provided for @analyticsPaymentMixTotal.
   ///
@@ -6726,6 +6762,36 @@ abstract class AppLocalizations {
   String portfolioShopRowSpoken(
       num count, Object profit, Object revenue, Object share, Object shop);
 
+  /// No description provided for @portfolioShiftsCounted.
+  ///
+  /// In en, this message translates to:
+  /// **{count, plural, =1{1 shift counted} other{{count} shifts counted}}**
+  String portfolioShiftsCounted(num count);
+
+  /// No description provided for @portfolioShiftsOpenNow.
+  ///
+  /// In en, this message translates to:
+  /// **{count, plural, =1{1 open now} other{{count} open now}}**
+  String portfolioShiftsOpenNow(num count);
+
+  /// No description provided for @portfolioDrawerShort.
+  ///
+  /// In en, this message translates to:
+  /// **drawer short {amount}**
+  String portfolioDrawerShort(Object amount);
+
+  /// No description provided for @portfolioDrawerOver.
+  ///
+  /// In en, this message translates to:
+  /// **drawer over {amount}**
+  String portfolioDrawerOver(Object amount);
+
+  /// No description provided for @portfolioShiftsNone.
+  ///
+  /// In en, this message translates to:
+  /// **no shifts yet**
+  String get portfolioShiftsNone;
+
   /// No description provided for @productSizeLabelKilogram.
   ///
   /// In en, this message translates to:
@@ -6747,38 +6813,26 @@ abstract class AppLocalizations {
   /// No description provided for @tankFormTitle.
   ///
   /// In en, this message translates to:
-  /// **'Add a beer tank'**
+  /// **'Add a tank'**
   String get tankFormTitle;
 
   /// No description provided for @tankFormSubtitle.
   ///
   /// In en, this message translates to:
-  /// **'A tank is a drum of beer. You fill it, and then you sell the beer by the cup. Add the tank once, and then sell from it like any other drink.'**
+  /// **'A tank is a big container you pour drinks from. It can hold beer, soda or anything else you sell by the cup. Write what is in it and how you sell it. You can add as many tanks as you want.'**
   String get tankFormSubtitle;
 
   /// No description provided for @tankFieldName.
   ///
   /// In en, this message translates to:
-  /// **'Name of the beer'**
+  /// **'What is in the tank?'**
   String get tankFieldName;
 
   /// No description provided for @tankFieldNameHint.
   ///
   /// In en, this message translates to:
-  /// **'For example Tusker or Balozi. Write the name of the beer, not of the drum.'**
+  /// **'Write the name of the drink. For example: Tusker.'**
   String get tankFieldNameHint;
-
-  /// No description provided for @tankFieldMlPerKg.
-  ///
-  /// In en, this message translates to:
-  /// **'How many millilitres one kilogram holds'**
-  String get tankFieldMlPerKg;
-
-  /// No description provided for @tankFieldMlPerKgHint.
-  ///
-  /// In en, this message translates to:
-  /// **'Beer is 1000. A syrup or a liqueur holds less. If you are not sure, leave 1000.'**
-  String get tankFieldMlPerKgHint;
 
   /// No description provided for @tankFieldCapacityL.
   ///
@@ -6789,7 +6843,7 @@ abstract class AppLocalizations {
   /// No description provided for @tankFieldCapacityLHint.
   ///
   /// In en, this message translates to:
-  /// **'How full it is when it is brand new. A 50-litre tank? Write 50.'**
+  /// **'Write a number. A big drum holds 50 litres — write 50.'**
   String get tankFieldCapacityLHint;
 
   /// No description provided for @tankFieldTankCount.
@@ -6801,7 +6855,7 @@ abstract class AppLocalizations {
   /// No description provided for @tankFieldTankCountHint.
   ///
   /// In en, this message translates to:
-  /// **'If you have one full tank, write 1. Every cup you pour is counted down from this number.'**
+  /// **'Write a number, like 1 or 2. Every cup you sell is counted down from here.'**
   String get tankFieldTankCountHint;
 
   /// No description provided for @tankFieldTankCost.
@@ -6813,181 +6867,25 @@ abstract class AppLocalizations {
   /// No description provided for @tankFieldTankCostHint.
   ///
   /// In en, this message translates to:
-  /// **'The price of the whole tank, not of one cup. We share this cost between the taps.'**
+  /// **'The money you paid for the whole tank. We use it to work out the profit on every cup.'**
   String get tankFieldTankCostHint;
-
-  /// No description provided for @tankTapLabel.
-  ///
-  /// In en, this message translates to:
-  /// **'Tap {n}'**
-  String tankTapLabel(Object n);
-
-  /// No description provided for @tankFieldTapName.
-  ///
-  /// In en, this message translates to:
-  /// **'Name of this tap'**
-  String get tankFieldTapName;
-
-  /// No description provided for @tankFieldTapNameHint.
-  ///
-  /// In en, this message translates to:
-  /// **'For example Dark or Regular. This is the drink that comes out of it.'**
-  String get tankFieldTapNameHint;
-
-  /// No description provided for @tankFieldTapAmount.
-  ///
-  /// In en, this message translates to:
-  /// **'How much is in it now'**
-  String get tankFieldTapAmount;
-
-  /// No description provided for @tankFieldTapAmountHint.
-  ///
-  /// In en, this message translates to:
-  /// **'How much of the tank is filled right now. Write 0 if it is empty.'**
-  String get tankFieldTapAmountHint;
-
-  /// No description provided for @tankUnitLitres.
-  ///
-  /// In en, this message translates to:
-  /// **'Litres'**
-  String get tankUnitLitres;
-
-  /// No description provided for @tankUnitKg.
-  ///
-  /// In en, this message translates to:
-  /// **'Kg'**
-  String get tankUnitKg;
-
-  /// No description provided for @tankCupSmallLabel.
-  ///
-  /// In en, this message translates to:
-  /// **'Small cup'**
-  String get tankCupSmallLabel;
-
-  /// No description provided for @tankFieldSmallMl.
-  ///
-  /// In en, this message translates to:
-  /// **'How much is in one cup (ml)'**
-  String get tankFieldSmallMl;
-
-  /// No description provided for @tankFieldSmallMlHint.
-  ///
-  /// In en, this message translates to:
-  /// **'A normal small cup is 330.'**
-  String get tankFieldSmallMlHint;
-
-  /// No description provided for @tankFieldSmallPrice.
-  ///
-  /// In en, this message translates to:
-  /// **'Price of one cup (KSh)'**
-  String get tankFieldSmallPrice;
-
-  /// No description provided for @tankFieldSmallPriceHint.
-  ///
-  /// In en, this message translates to:
-  /// **'What one small cup sells for.'**
-  String get tankFieldSmallPriceHint;
-
-  /// No description provided for @tankCupBigLabel.
-  ///
-  /// In en, this message translates to:
-  /// **'Big cup'**
-  String get tankCupBigLabel;
-
-  /// No description provided for @tankFieldBigMl.
-  ///
-  /// In en, this message translates to:
-  /// **'How much is in one cup (ml)'**
-  String get tankFieldBigMl;
-
-  /// No description provided for @tankFieldBigMlHint.
-  ///
-  /// In en, this message translates to:
-  /// **'A large cup is 500.'**
-  String get tankFieldBigMlHint;
-
-  /// No description provided for @tankFieldBigPrice.
-  ///
-  /// In en, this message translates to:
-  /// **'Price of one cup (KSh)'**
-  String get tankFieldBigPrice;
-
-  /// No description provided for @tankFieldBigPriceHint.
-  ///
-  /// In en, this message translates to:
-  /// **'What one big cup sells for.'**
-  String get tankFieldBigPriceHint;
-
-  /// No description provided for @tankTapNameRequired.
-  ///
-  /// In en, this message translates to:
-  /// **'Give this tap a name.'**
-  String get tankTapNameRequired;
-
-  /// No description provided for @tankTapAmountInvalid.
-  ///
-  /// In en, this message translates to:
-  /// **'Write how much is in this tap.'**
-  String get tankTapAmountInvalid;
-
-  /// No description provided for @tankTapOverCapacity.
-  ///
-  /// In en, this message translates to:
-  /// **'This tap holds more than the whole tank. Write less.'**
-  String get tankTapOverCapacity;
-
-  /// No description provided for @tankTapsOverCapacity.
-  ///
-  /// In en, this message translates to:
-  /// **'The taps together hold more than the tank. Write less.'**
-  String get tankTapsOverCapacity;
-
-  /// No description provided for @tankSmallCupInvalid.
-  ///
-  /// In en, this message translates to:
-  /// **'The small cup must be smaller than the tank.'**
-  String get tankSmallCupInvalid;
-
-  /// No description provided for @tankBigCupInvalid.
-  ///
-  /// In en, this message translates to:
-  /// **'The big cup must be smaller than the tank.'**
-  String get tankBigCupInvalid;
-
-  /// No description provided for @tankSmallPriceInvalid.
-  ///
-  /// In en, this message translates to:
-  /// **'Write the price of one small cup.'**
-  String get tankSmallPriceInvalid;
-
-  /// No description provided for @tankBigPriceInvalid.
-  ///
-  /// In en, this message translates to:
-  /// **'Write the price of one big cup.'**
-  String get tankBigPriceInvalid;
 
   /// No description provided for @tankCapacityInvalid.
   ///
   /// In en, this message translates to:
-  /// **'Write how much the tank holds, in litres.'**
+  /// **'Write how much the tank holds. Only numbers, like 50.'**
   String get tankCapacityInvalid;
 
   /// No description provided for @tankCountRequired.
   ///
   /// In en, this message translates to:
-  /// **'Write how many full tanks you have.'**
+  /// **'Write how many tanks you have. Only numbers, like 1.'**
   String get tankCountRequired;
-
-  /// No description provided for @tankMlPerKgInvalid.
-  ///
-  /// In en, this message translates to:
-  /// **'Write how many millilitres one kilogram holds. Beer is 1000.'**
-  String get tankMlPerKgInvalid;
 
   /// No description provided for @tankNameRequired.
   ///
   /// In en, this message translates to:
-  /// **'Give the beer a name.'**
+  /// **'Write what is in the tank.'**
   String get tankNameRequired;
 
   /// No description provided for @tankAddAction.
@@ -6999,7 +6897,7 @@ abstract class AppLocalizations {
   /// No description provided for @tankPriceInvalid.
   ///
   /// In en, this message translates to:
-  /// **'Write what one full tank cost you.'**
+  /// **'Write what one full tank cost you. Only numbers.'**
   String get tankPriceInvalid;
 
   /// No description provided for @tankSaveFailed.
@@ -7008,11 +6906,383 @@ abstract class AppLocalizations {
   /// **'That tank could not be saved. Your numbers are still here — try again.'**
   String get tankSaveFailed;
 
+  /// No description provided for @tankAddEntry.
+  ///
+  /// In en, this message translates to:
+  /// **'Add a tank'**
+  String get tankAddEntry;
+
+  /// No description provided for @tankServingsTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'How do you sell it?'**
+  String get tankServingsTitle;
+
+  /// No description provided for @tankServingsHint.
+  ///
+  /// In en, this message translates to:
+  /// **'Write each cup you sell. For example a small cup and a big cup.'**
+  String get tankServingsHint;
+
+  /// No description provided for @tankServingLabel.
+  ///
+  /// In en, this message translates to:
+  /// **'Cup {n}'**
+  String tankServingLabel(Object n);
+
+  /// No description provided for @tankFieldServingName.
+  ///
+  /// In en, this message translates to:
+  /// **'What do you call it?'**
+  String get tankFieldServingName;
+
+  /// No description provided for @tankFieldServingNameHint.
+  ///
+  /// In en, this message translates to:
+  /// **'For example: Small cup, Big cup.'**
+  String get tankFieldServingNameHint;
+
+  /// No description provided for @tankFieldServingMl.
+  ///
+  /// In en, this message translates to:
+  /// **'How much is in one cup (ml)'**
+  String get tankFieldServingMl;
+
+  /// No description provided for @tankFieldServingMlHint.
+  ///
+  /// In en, this message translates to:
+  /// **'For example: 330. Leave it empty if you do not know.'**
+  String get tankFieldServingMlHint;
+
+  /// No description provided for @tankFieldServingPrice.
+  ///
+  /// In en, this message translates to:
+  /// **'Price for one cup (KSh)'**
+  String get tankFieldServingPrice;
+
+  /// No description provided for @tankFieldServingPriceHint.
+  ///
+  /// In en, this message translates to:
+  /// **'What you sell one cup for.'**
+  String get tankFieldServingPriceHint;
+
+  /// No description provided for @tankServingAdd.
+  ///
+  /// In en, this message translates to:
+  /// **'Add another cup'**
+  String get tankServingAdd;
+
+  /// No description provided for @tankServingRemove.
+  ///
+  /// In en, this message translates to:
+  /// **'Remove this cup'**
+  String get tankServingRemove;
+
+  /// No description provided for @tankServingNameRequired.
+  ///
+  /// In en, this message translates to:
+  /// **'Write what you call this cup.'**
+  String get tankServingNameRequired;
+
+  /// No description provided for @tankServingPriceInvalid.
+  ///
+  /// In en, this message translates to:
+  /// **'Write the price for one cup. Only numbers.'**
+  String get tankServingPriceInvalid;
+
+  /// No description provided for @tankServingSizeInvalid.
+  ///
+  /// In en, this message translates to:
+  /// **'Write how much is in one cup, or leave it empty.'**
+  String get tankServingSizeInvalid;
+
+  /// No description provided for @tankServingTooBig.
+  ///
+  /// In en, this message translates to:
+  /// **'That cup is bigger than the tank.'**
+  String get tankServingTooBig;
+
+  /// No description provided for @tankServingMinOne.
+  ///
+  /// In en, this message translates to:
+  /// **'Write at least one cup you sell.'**
+  String get tankServingMinOne;
+
   /// No description provided for @tankCreated.
   ///
   /// In en, this message translates to:
-  /// **'{name} added. You can now sell it by the cup.'**
+  /// **'{name} is added. You can now sell it in the cups you set.'**
   String tankCreated(Object name);
+
+  /// No description provided for @actionTryAgain.
+  ///
+  /// In en, this message translates to:
+  /// **'Try again'**
+  String get actionTryAgain;
+
+  /// No description provided for @actionBack.
+  ///
+  /// In en, this message translates to:
+  /// **'Back'**
+  String get actionBack;
+
+  /// No description provided for @actionSkip.
+  ///
+  /// In en, this message translates to:
+  /// **'Skip'**
+  String get actionSkip;
+
+  /// No description provided for @actionSendCopy.
+  ///
+  /// In en, this message translates to:
+  /// **'Send a copy'**
+  String get actionSendCopy;
+
+  /// No description provided for @loginWhoAreYou.
+  ///
+  /// In en, this message translates to:
+  /// **'Who are you?'**
+  String get loginWhoAreYou;
+
+  /// No description provided for @loginNotInThisShop.
+  ///
+  /// In en, this message translates to:
+  /// **That person is not in this shop. Pick the shop they work in.**
+  String get loginNotInThisShop;
+
+  /// No description provided for @supportMarkResolved.
+  ///
+  /// In en, this message translates to:
+  /// **'Mark as solved'**
+  String get supportMarkResolved;
+
+  /// No description provided for @analyticsReorderInInventory.
+  ///
+  /// In en, this message translates to:
+  /// **'Ask for more in Stock'**
+  String get analyticsReorderInInventory;
+
+  /// No description provided for @reportsShiftAndTillSection.
+  ///
+  /// In en, this message translates to:
+  /// **'Money in the till'**
+  String get reportsShiftAndTillSection;
+
+  /// No description provided for @inventoryWhichVariant.
+  ///
+  /// In en, this message translates to:
+  /// **'Which size of {name}?'**
+  String inventoryWhichVariant(Object name);
+
+  /// No description provided for @inventoryRemoveConfirm.
+  ///
+  /// In en, this message translates to:
+  /// **'Remove {name}?'**
+  String inventoryRemoveConfirm(Object name);
+
+  /// No description provided for @servingAllInCart.
+  ///
+  /// In en, this message translates to:
+  /// **'Everything left is already in the cart'**
+  String get servingAllInCart;
+
+  /// No description provided for @servingFractionLeft.
+  ///
+  /// In en, this message translates to:
+  /// **'Only {count} of a bottle is left'**
+  String servingFractionLeft(Object count);
+
+  /// No description provided for @sellAllVariantInCart.
+  ///
+  /// In en, this message translates to:
+  /// **'All of {name} is already in the cart.'**
+  String sellAllVariantInCart(Object name);
+
+  /// No description provided for @sellNoVariantLeft.
+  ///
+  /// In en, this message translates to:
+  /// **'There is no {name} left. Take some out of the cart first.'**
+  String sellNoVariantLeft(Object name);
+
+  /// No description provided for @sellNotEnoughForShot.
+  ///
+  /// In en, this message translates to:
+  /// **'There is not enough {name} left for another cup. Take some out of the cart first.'**
+  String sellNotEnoughForShot(Object name);
+
+  /// No description provided for @sellNotEnoughLeft.
+  ///
+  /// In en, this message translates to:
+  /// **'There is not enough {name} left. Take some out of the cart first.'**
+  String sellNotEnoughLeft(Object name);
+
+  /// No description provided for @shotNoVolume.
+  ///
+  /// In en, this message translates to:
+  /// **'{name} has no size written, so a cup cannot be taken from it'**
+  String shotNoVolume(Object name);
+
+  /// No description provided for @shotNoneLeft.
+  ///
+  /// In en, this message translates to:
+  /// **'There is no {name} left'**
+  String shotNoneLeft(Object name);
+
+  /// No description provided for @shotCupNoSize.
+  ///
+  /// In en, this message translates to:
+  /// **'This cup has no size, so the bottle will not go down when you sell it'**
+  String get shotCupNoSize;
+
+  /// No description provided for @shotCupTooBig.
+  ///
+  /// In en, this message translates to:
+  /// **'This cup is bigger than the bottle ({ml} ml)'**
+  String shotCupTooBig(Object ml);
+
+  /// No description provided for @shotCountLeft.
+  ///
+  /// In en, this message translates to:
+  /// **'{count} cups left in the bottle'**
+  String shotCountLeft(Object count);
+
+  /// No description provided for @reportsPrinterOffPairFirst.
+  ///
+  /// In en, this message translates to:
+  /// **'Printing is switched off. Join a printer in Settings first.'**
+  String get reportsPrinterOffPairFirst;
+
+  /// No description provided for @reportsPrinterOff.
+  ///
+  /// In en, this message translates to:
+  /// **'Printing is switched off.'**
+  String get reportsPrinterOff;
+
+  /// No description provided for @reportsSendingToPrinter.
+  ///
+  /// In en, this message translates to:
+  /// **'Sending the receipt to the printer…'**
+  String get reportsSendingToPrinter;
+
+  /// No description provided for @reportsReceiptReprinted.
+  ///
+  /// In en, this message translates to:
+  /// **'The receipt printed again.'**
+  String get reportsReceiptReprinted;
+
+  /// No description provided for @reportsPrintFailedWith.
+  ///
+  /// In en, this message translates to:
+  /// **'Could not print. {advice}'**
+  String reportsPrintFailedWith(Object advice);
+
+  /// No description provided for @reportsNoSalesByCashier.
+  ///
+  /// In en, this message translates to:
+  /// **'Nothing on this till was sold by that person.'**
+  String get reportsNoSalesByCashier;
+
+  /// No description provided for @reportsCashierReportWaiting.
+  ///
+  /// In en, this message translates to:
+  /// **'Once a shift is opened and a sale is rung up, this report has something to show.'**
+  String get reportsCashierReportWaiting;
+
+  /// No description provided for @shiftNeedsStaffEntry.
+  ///
+  /// In en, this message translates to:
+  /// **'A shift needs a worker. Add yourself in Settings, then open the shift again.'**
+  String get shiftNeedsStaffEntry;
+
+  /// No description provided for @sellTileStockCountLow.
+  ///
+  /// In en, this message translates to:
+  /// **'{quantity} in stock · running low'**
+  String sellTileStockCountLow(Object quantity);
+
+  /// No description provided for @sellNoStockLeft.
+  ///
+  /// In en, this message translates to:
+  /// **'There is none left'**
+  String get sellNoStockLeft;
+
+  /// No description provided for @sellOutOfStockHint.
+  ///
+  /// In en, this message translates to:
+  /// **Tap to see why it cannot be sold**
+  String get sellOutOfStockHint;
+
+  /// No description provided for @sellNoPriceSetYet.
+  ///
+  /// In en, this message translates to:
+  /// **This item has no price and no cup to sell by yet. Set a price in Stock.**
+  String get sellNoPriceSetYet;
+
+  /// No description provided for @portionFullLabel.
+  ///
+  /// In en, this message translates to:
+  /// **'Full bottle'**
+  String get portionFullLabel;
+
+  /// No description provided for @portionHalfLabel.
+  ///
+  /// In en, this message translates to:
+  /// **'Half'**
+  String get portionHalfLabel;
+
+  /// No description provided for @portionQuarterLabel.
+  ///
+  /// In en, this message translates to:
+  /// **'Quarter'**
+  String get portionQuarterLabel;
+
+  /// No description provided for @supportStatusOpen.
+  ///
+  /// In en, this message translates to:
+  /// **'Open'**
+  String get supportStatusOpen;
+
+  /// No description provided for @supportStatusInProgress.
+  ///
+  /// In en, this message translates to:
+  /// **'Being worked on'**
+  String get supportStatusInProgress;
+
+  /// No description provided for @supportStatusResolved.
+  ///
+  /// In en, this message translates to:
+  /// **'Done'**
+  String get supportStatusResolved;
+
+  /// No description provided for @reportsNoSalesTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'No sales written yet'**
+  String get reportsNoSalesTitle;
+
+  /// No description provided for @reportsOpenTillReport.
+  ///
+  /// In en, this message translates to:
+  /// **'Open the till report'**
+  String get reportsOpenTillReport;
+
+  /// No description provided for @reportsClearSearch.
+  ///
+  /// In en, this message translates to:
+  /// **'Clear the search'**
+  String get reportsClearSearch;
+
+  /// No description provided for @dashboardCouldNotLoad.
+  ///
+  /// In en, this message translates to:
+  /// **'Could not read today\'s numbers.'**
+  String get dashboardCouldNotLoad;
+
+  /// No description provided for @dashboardStillWorksDetail.
+  ///
+  /// In en, this message translates to:
+  /// **'The till still works. Pull to try again, or look at the data in Settings.'**
+  String get dashboardStillWorksDetail;
 }
 
 class _AppLocalizationsDelegate

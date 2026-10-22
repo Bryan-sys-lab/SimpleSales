@@ -275,7 +275,8 @@ class _InventoryScreenState extends State<InventoryScreen>
     final chosen = await showDialog<ProductVariant>(
       context: context,
       builder: (dialogContext) => SimpleDialog(
-        title: Text('Which variant? · ${p.name}'),
+        title: Text(AppLocalizations.of(dialogContext)
+            .inventoryWhichVariant(p.name)),
         children: [
           for (final variant in variants)
             SimpleDialogOption(
@@ -436,9 +437,9 @@ class _InventoryScreenState extends State<InventoryScreen>
         tooltip: l10n.inventoryAddProduct,
         child: const Icon(Icons.add),
       ),
-      // A tank is not another kind of bottle: it is stocked by weight, has two
-      // named taps, and is poured by the cup, so it gets its own form rather
-      // than one more option on this screen's product editor.
+      // A tank is not another kind of bottle: it is a drum you pour out and
+      // sell by the cup, so it gets its own form rather than one more option
+      // on this screen's product editor.
       // The footer's two actions: record a delivery, and set up a tank.
       //
       // Receiving stock is for managers AND owners — it is the shop's stock
@@ -455,7 +456,7 @@ class _InventoryScreenState extends State<InventoryScreen>
           TextButton.icon(
             onPressed: () => showTankFormSheet(context),
             icon: const Icon(Icons.propane_tank_outlined, size: 18),
-            label: Text(l10n.tankAddAction),
+            label: Text(l10n.tankAddEntry),
           ),
       ],
       body: RefreshIndicator(
@@ -1561,7 +1562,8 @@ class _ProductEditorState extends State<_ProductEditor> {
       final confirmed = await showDialog<bool>(
         context: context,
         builder: (dialogContext) => AlertDialog(
-          title: Text('Remove ${draft.name}?'),
+          title: Text(AppLocalizations.of(dialogContext)
+              .inventoryRemoveConfirm(draft.name)),
           content: Text(draft.hasStoredBarcode
               ? AppLocalizations.of(context).inventoryRemoveVariantBarcodeFreed
               : AppLocalizations.of(context)

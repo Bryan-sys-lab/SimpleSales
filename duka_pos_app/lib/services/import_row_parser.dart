@@ -117,19 +117,46 @@ class UnreadableLayoutException extends FormatException {
 /// header row, the names decide the mapping; otherwise the canonical order from
 /// [Product.sheetHeaders] is used, which is what a header-less file means.
 class SheetColumns {
-  const SheetColumns._(this._indexByField, this.headerRowDetected);
+  const SheetColumns._(this._indexesByField, this.headerRowDetected)
+      : _single = null;
 
   /// A mapping built by the caller, e.g. from a header row read by name.
   const SheetColumns.named(Map<String, int> indexByField,
       {this.headerRowDetected = false})
-      : _indexByField = indexByField;
+      : _indexesByField = const <String, List<int>>{},
+        _single = indexByField;
 
-  final Map<String, int> _indexByField;
+  /// A mapping whose fields each remember EVERY column that stated them, best
+  /// first — see [cell].
+  const SheetColumns.ranked(Map<String, List<int>> indexesByField,
+      {this.headerRowDetected = false})
+      : _indexesByField = indexesByField,
+        _single = null;
+
+  final Map<String, List<int>> _indexesByField;
+
+  /// The single-column form, if this mapping was built that way.
+  final Map<String, int>? _single;
+
+  /// Every column that states [field], best confidence first.
+  List<int> _indexesFor(String field) {
+    final ranked = _indexesByField[field];
+    if (ranked != null) return ranked;
+    final single = _single?[field];
+    return single == null ? const <int>[] : <int>[single];
+  }
 
   /// Whether these positions came from a header row the caller has skipped.
   final bool headerRowDetected;
 
-  bool get hasName => _indexByField.containsKey('name');
+  bool get hasName => _indexesFor('name').isNotEmpty;
+
+  /// How many of the app's columns this header found.
+  ///
+  /// The measure a multi-tab workbook is judged on: the tab that maps the most
+  /// columns is the tab that is the product list, whatever it is called.
+  int get mappedCount =>
+      _indexesByField.isNotEmpty ? _indexesByField.length : (_single?.length ?? 0);
 
   /// The canonical column order, for a file with no recognisable header row.
   static final SheetColumns positional =
@@ -146,13 +173,13 @@ class SheetColumns {
   /// order, which is what a header-less file means.
   factory SheetColumns.fromJson(String? json) {
     if (json == null || json.trim().isEmpty) return positional;
-    final Map<String, int> map;
+    final Map<String, List<int>> map;
     try {
       final decoded = jsonDecode(json);
       if (decoded is! Map) return positional;
-      map = <String, int>{
+      map = <String, List<int>>{
         for (final MapEntry<dynamic, dynamic> entry in decoded.entries)
-          if (entry.value is int) '${entry.key}': entry.value as int,
+          if (entry.value is int) '${entry.key}': <int>[entry.value as int],
       };
     } on FormatException {
       return positional;
@@ -162,12 +189,25 @@ class SheetColumns {
   }
 
   /// The stored form of this mapping — see [fromJson].
-  String toJson() => jsonEncode(_indexByField);
+  /// The stored form of this mapping — see [fromJson].
+  ///
+  /// Only the BEST column per field is written. The alternatives are a reading
+  /// convenience for a cell the workbook left blank, and a re-parse of the raw
+  /// cells has the same file to consult again.
+  String toJson() => jsonEncode(<String, int>{
+        for (final String field in _allFields()) field: _indexesFor(field).first,
+      });
+
+  Iterable<String> _allFields() =>
+      _indexesByField.isNotEmpty ? _indexesByField.keys : (_single?.keys ?? const <String>[]);
 
   /// The canonical order for any header list — [ProductVariant.sheetHeaders]
   /// for the `Variants` sheet, [Product.sheetHeaders] for `Inventory`.
   static SheetColumns positionalFor(List<String> fields) => SheetColumns._(
-        {for (var i = 0; i < fields.length; i++) fields[i]: i},
+        {
+          for (var i = 0; i < fields.length; i++)
+            fields[i]: <int>[i],
+        },
         false,
       );
 
@@ -238,9 +278,238 @@ class SheetColumns {
     'measured in': 'unit',
   };
 
-  /// `  Selling Price : ` and `SELLING PRICE` are the same header.
+  /// Every spelling a field is known by, with the confidence each carries.
+  ///
+  /// ## WHY A TABLE AND NOT ONLY THE ALIAS MAP
+  ///
+  /// The alias map is an exact-match fast path, and an exact match is a
+  /// dictionary nobody can finish writing: every supplier in the country has
+  /// their own header for the same column, and a file that misses the
+  /// dictionary by one word used to be refused as "not our format". This table
+  /// is the same dictionary plus a scoring rule, so `TOTAL STOCK QTY`,
+  /// `CLOSING STOCK` and `Stock on hand` all reach `stock_qty` at their own
+  /// confidence, and the column that says it best wins.
+  ///
+  /// ## THE CONFIDENCE IS THE WHOLE DESIGN
+  ///
+  /// Two columns can reach the same field, and only one can be that field.
+  /// A daily stock tracker carries `OP/STOCK`, `NEW STOCK`, `TOTAL STOCK QTY`,
+  /// `SOLD STOCK` and `CLOSING STOCK` — five columns, one quantity. The
+  /// leftmost-wins rule that suits a duplicated header picks `OP/STOCK` there,
+  /// which is the number the day STARTED with, and the shop's stock lands in
+  /// the app at last month's figure. Confidence settles it instead: the
+  /// closing count of what is on the shelf outranks the opening one, because
+  /// it is the better answer to "how much do you have".
+  static const Map<String, List<(String, double)>> fieldSynonyms = {
+    'name': <(String, double)>[
+      ('name', 1.0),
+      ('stock name', 1.0),
+      ('product name', 1.0),
+      ('item name', 1.0),
+      ('particular', 0.9),
+      ('commodity', 0.9),
+      ('product', 0.9),
+      ('item', 0.85),
+      ('description', 0.8),
+      ('stock item', 0.8),
+    ],
+    'id': <(String, double)>[
+      ('id', 1.0),
+      ('product id', 1.0),
+      ('sku', 0.95),
+      ('item code', 0.8),
+    ],
+    'category': <(String, double)>[
+      ('category', 1.0),
+      ('group', 0.9),
+      ('section', 0.85),
+      ('class', 0.8),
+      ('department', 0.8),
+      ('type', 0.75),
+      ('cat', 0.7),
+    ],
+    'cost_price': <(String, double)>[
+      ('cost price', 1.0),
+      ('b price', 1.0),
+      ('buying price', 1.0),
+      ('purchase price', 1.0),
+      ('buy price', 1.0),
+      ('cost', 0.9),
+      ('cost of goods', 0.9),
+      ('buying', 0.8),
+      ('cp', 0.7),
+    ],
+    'sell_price': <(String, double)>[
+      ('sell price', 1.0),
+      ('selling price', 1.0),
+      ('s price', 1.0),
+      ('sale price', 1.0),
+      ('retail price', 1.0),
+      ('shelf price', 0.95),
+      ('price', 0.9),
+      ('mrp', 0.85),
+      ('sp', 0.7),
+      ('selling', 0.75),
+    ],
+    'stock_qty': <(String, double)>[
+      ('stock qty', 1.0),
+      ('stock quantity', 1.0),
+      ('closing stock', 1.0),
+      ('quantity', 0.95),
+      ('qty', 0.95),
+      ('total stock qty', 0.95),
+      ('stock on hand', 0.95),
+      ('current stock', 0.95),
+      ('available stock', 0.9),
+      ('total stock', 0.85),
+      ('stock', 0.8),
+      ('on hand', 0.8),
+      ('balance', 0.7),
+      ('opening stock', 0.5),
+      ('op stock', 0.5),
+    ],
+    'reorder_level': <(String, double)>[
+      ('reorder level', 1.0),
+      ('minimum stock', 0.9),
+      ('min stock', 0.9),
+      ('reorder point', 0.9),
+      ('low stock level', 0.9),
+      ('reorder', 0.8),
+    ],
+    'bottle_ml': <(String, double)>[
+      ('bottle ml', 1.0),
+      ('size ml', 1.0),
+      ('bottle size', 1.0),
+      ('volume', 0.9),
+      ('millilitres', 0.9),
+      ('milliliters', 0.9),
+      ('pack size', 0.85),
+      ('size', 0.8),
+      ('ml', 0.8),
+    ],
+    'half_price': <(String, double)>[
+      ('half price', 1.0),
+      ('half', 0.8),
+    ],
+    'quarter_price': <(String, double)>[
+      ('quarter price', 1.0),
+      ('quarter', 0.8),
+    ],
+    'excise_stamp_batch': <(String, double)>[
+      ('excise stamp batch', 1.0),
+      ('excise batch', 1.0),
+      ('stamp batch', 1.0),
+      ('excise', 0.8),
+    ],
+    'barcode': <(String, double)>[
+      ('barcode', 1.0),
+      ('bar code', 1.0),
+      ('ean', 0.95),
+      ('upc', 0.95),
+      ('code', 0.7),
+    ],
+    'unit': <(String, double)>[
+      ('unit', 0.95),
+      ('uom', 0.9),
+      ('size unit', 0.9),
+      ('measured in', 0.85),
+      ('measure', 0.75),
+    ],
+  };
+
+  /// Words that say "this column is a different measure entirely".
+  ///
+  /// A stock tracker's `TOTAL STOCK VALUE` shares every word with `TOTAL STOCK
+  /// QTY` except the last one, and a matcher that reads token overlap maps the
+  /// money column onto the quantity — which is not a wrong number, it is a
+  /// plausible one: a shop that has 40 bottles and KSh 12,000 of stock imports
+  /// 12,000 bottles. So a header carrying any of these is not a match for
+  /// anything, however well the rest of it reads.
+  ///
+  /// What is deliberately NOT here: `total`, `sale` and `batch`. `TOTAL STOCK
+  /// QTY` is a quantity, `SALE PRICE` is a price and `EXCISE STAMP BATCH` is a
+  /// stamp batch, and vetoing on those words would refuse three columns this
+  /// app really does read.
+  static const Set<String> _vetoTokens = <String>{
+    'value', 'amount', 'amt', 'profit', 'loss', 'margin', 'sold', 'sales',
+    'revenue', 'turnover', 'discount', 'tax', 'vat', 'date', 'time',
+    'new', 'received', 'paid', 'note', 'notes', 'remark', 'remarks',
+    'serial', 'sno', 'index', 'no', 'sr',
+    'sum', 'avg', 'average',
+    'expiry', 'exp', 'location', 'store', 'branch', 'supplier',
+    'vendor', 'contact', 'phone', 'email', 'address', 'image', 'photo', 'url',
+  };
+
+  /// The field a header cell means, and how sure the matcher is.
+  ///
+  /// Null for a column the app has no field for — and an unmapped column is
+  /// IGNORED, not an error. A supplier's sheet carries a dozen columns the till
+  /// does not care about, and refusing a file because it holds extra
+  /// information is how a parser ends up useless on every file but its own
+  /// export.
+  static ({String field, double score})? matchField(String normalised) {
+    if (normalised.isEmpty) return null;
+    final tokens = normalised.split(' ').where((t) => t.isNotEmpty).toSet();
+    if (tokens.isEmpty) return null;
+    // A column named `TOTAL STOCK VALUE` is a money column whatever else it
+    // says. The veto is checked on the whole cell, so `stock value` and
+    // `total value` are both refused while `stock qty` is not.
+    if (tokens.intersection(_vetoTokens).isNotEmpty) return null;
+
+    ({String field, double score})? best;
+    aliases.forEach((String alias, String field) {
+      if (alias == normalised) {
+        best = _better(best, (field: field, score: 1.0));
+      }
+    });
+    fieldSynonyms.forEach((String field, List<(String, double)> synonyms) {
+      for (final (String phrase, double score) in synonyms) {
+        if (phrase == normalised) {
+          best = _better(best, (field: field, score: score));
+          continue;
+        }
+        // A multi-word phrase wholly inside the header still means the same
+        // thing: `TOTAL STOCK QTY (CARTONS)` is `total stock qty` with a unit
+        // note in brackets. Single-word phrases are NOT matched this way —
+        // that is how `stock value` would reach `stock` — because a lone word
+        // is too common to carry a field on its own.
+        final phraseTokens = phrase.split(' ');
+        if (phraseTokens.length > 1 &&
+            tokens.containsAll(phraseTokens)) {
+          // Discounted for the extra words, so the column that says the
+          // field plainly still outranks the one that says it in passing.
+          final double diluted =
+              score * phraseTokens.length / tokens.length;
+          if (diluted >= 0.6) {
+            best = _better(best, (field: field, score: diluted));
+          }
+        }
+      }
+    });
+    return best;
+  }
+
+  static ({String field, double score})? _better(
+    ({String field, double score})? current,
+    ({String field, double score})? candidate,
+  ) {
+    if (current == null) return candidate;
+    // Higher confidence wins; a tie keeps the field already found, which is
+    // the caller's left-to-right order — leftmost on ties, as with a
+    // duplicated header.
+    return candidate!.score > current.score ? candidate : current;
+  }
+
+  /// `  Selling Price : `, `SELLING PRICE` and `S.PRICE` are the same header.
+  ///
+  /// Punctuation is stripped, not just colons. A supplier's column is called
+  /// `B.PRICE`, `S.PRICE`, `OP/STOCK`, `Qty.` or `Stock (units)` — a dot and a
+  /// slash are word separators in a spreadsheet header exactly as a space is,
+  /// and a matcher that leaves them in place sees `b.price` and knows neither
+  /// the word `b` nor the word `price`. What survives is the words.
   static String normaliseHeader(String raw) => raw
       .toLowerCase()
+      .replaceAll(RegExp(r'[./\-_(),&#*]'), ' ')
       .replaceAll(RegExp(r'\s+'), ' ')
       .trim()
       .replaceAll(':', '')
@@ -314,14 +583,65 @@ class SheetColumns {
     return cents;
   }
 
-  int? indexOf(String field) => _indexByField[field];
+  int? indexOf(String field) {
+    final indexes = _indexesFor(field);
+    return indexes.isEmpty ? null : indexes.first;
+  }
 
   /// The cell holding [field], or null when the column is absent or the row is
   /// shorter than the column. Both are "the supplier did not give us this".
+  /// The row's value for [field], from the first column that actually has one.
+  ///
+  /// ## WHY A FIELD CAN HAVE SEVERAL COLUMNS
+  ///
+  /// A real stock tracker states a quantity three times — `OP/STOCK`,
+  /// `TOTAL STOCK QTY`, `CLOSING STOCK` — because the person filling it in is
+  /// doing arithmetic across the day. The header scores tell us which of those
+  /// is the best answer, and the best answer is tried first.
+  ///
+  /// But the best-sounding column is not always a cell that CAN be read. In the
+  /// workbook this parser was fixed against, `CLOSING STOCK` is a formula whose
+  /// cached value the reader returns blank, while the plainer `TOTAL STOCK QTY`
+  /// beside it holds the number. Taking the first column unconditionally wrote
+  /// every one of those products into stock at zero. Falling through a blank
+  /// cell to the next column that says the same thing is the difference between
+  /// reading the file and silently emptying the shelf.
   dynamic cell(List<dynamic> row, String field) {
-    final index = _indexByField[field];
-    if (index == null || index < 0 || index >= row.length) return null;
-    return row[index];
+    for (final int index in _indexesFor(field)) {
+      if (index < 0 || index >= row.length) continue;
+      final dynamic value = row[index];
+      if (_holdsAValue(value)) return value;
+    }
+    return null;
+  }
+
+  /// Whether a cell holds something this reader can use.
+  ///
+  /// ## WHY A CELL OBJECT IS NOT A VALUE
+  ///
+  /// The workbook reader hands back CELL OBJECTS, not plain numbers and
+  /// strings. Three of them matter here:
+  ///
+  ///   * a number — `IntCellValue`, whose text is the digits;
+  ///   * text — a plain `String`;
+  ///   * a FORMULA — `FormulaCellValue`, whose text is the expression, or is
+  ///     empty when the file stores a shared formula this reader never
+  ///     resolves.
+  ///
+  /// A formula is an instruction, not an answer. This app does not evaluate
+  /// spreadsheets, and a formula cell read as if it were a value is exactly how
+  /// the real BlackBee tracker imported every product at stock zero: its
+  /// `CLOSING STOCK` column is formulas, so the best-scoring column answered
+  /// with nothing, and the number sitting in `TOTAL STOCK QTY` beside it was
+  /// never consulted. An unusable cell is therefore SKIPPED, and the next
+  /// column that states the same field gets the question.
+  static bool _holdsAValue(dynamic value) {
+    if (value == null) return false;
+    if (value is num || value is bool) return true;
+    final String text = value.toString().trim();
+    if (text.isEmpty) return false;
+    // "=E53+F53" — a formula, never a figure.
+    return !text.startsWith('=');
   }
 
   String? text(List<dynamic> row, String field) =>
@@ -348,7 +668,7 @@ class SheetColumns {
       final text = cell?.toString().trim() ?? '';
       if (text.isEmpty) continue;
       considered++;
-      if (aliases.containsKey(normaliseHeader(text))) {
+      if (matchField(normaliseHeader(text)) != null) {
         recognised++;
       }
     }
@@ -362,20 +682,39 @@ class SheetColumns {
   /// headers and I skipped them" from "this file has no headers and row 1 is a
   /// product", which is the difference between importing a file and quietly
   /// losing its first row.
+  ///
+  /// ## THE BEST COLUMN WINS A FIELD
+  ///
+  /// A field is claimed by the column that states it most confidently, not by
+  /// the leftmost one that mentions it. `OP/STOCK`, `TOTAL STOCK QTY` and
+  /// `CLOSING STOCK` are three columns and one quantity, and leftmost-wins
+  /// would file the day's OPENING count as the shop's stock — a number that
+  /// was true this morning and is not true now. See [fieldSynonyms].
   static SheetColumns? fromHeaderRow(List<dynamic> row) {
     if (!looksLikeHeaderRow(row)) return null;
-    final map = <String, int>{};
+    // Every (field, column, confidence) the header offers.
+    final found = <String, List<({int index, double score})>>{};
     for (var i = 0; i < row.length; i++) {
-      final field = aliases[normaliseHeader(row[i]?.toString() ?? '')];
-      if (field == null) continue;
-      // First wins: a duplicated header is a supplier's typo, and the leftmost
-      // column is the one they filled in.
-      map.putIfAbsent(field, () => i);
+      final match = matchField(normaliseHeader(row[i]?.toString() ?? ''));
+      if (match == null) continue;
+      found
+          .putIfAbsent(match.field, () => <({int index, double score})>[])
+          .add((index: i, score: match.score));
     }
+    final ranked = <String, List<int>>{};
+    found.forEach((String field, List<({int index, double score})> hits) {
+      hits.sort((a, b) {
+        final byScore = b.score.compareTo(a.score);
+        // Leftmost on a tie, so a duplicated header keeps the first column
+        // first — the same rule the single-column version had.
+        return byScore != 0 ? byScore : a.index.compareTo(b.index);
+      });
+      ranked[field] = <int>[for (final hit in hits) hit.index];
+    });
     // A header row with no name column is not our format. Falling back to the
     // canonical order here would read some other column as the product name.
-    if (!map.containsKey('name')) return null;
-    return SheetColumns._(map, true);
+    if (!ranked.containsKey('name')) return null;
+    return SheetColumns.ranked(ranked, headerRowDetected: true);
   }
 
   /// A row that declares a category rather than naming a product.

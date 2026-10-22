@@ -499,6 +499,22 @@ class _ShopKpiRow extends StatelessWidget {
   final double share;
   final bool showDivider;
 
+  /// What the shop's shifts did, in one line.
+  String _shiftLine(AppLocalizations l10n) {
+    final List<String> parts = <String>[
+      if (kpi.shiftsClosed > 0)
+        l10n.portfolioShiftsCounted(kpi.shiftsClosed),
+      if (kpi.shiftsOpen > 0) l10n.portfolioShiftsOpenNow(kpi.shiftsOpen),
+      if (!kpi.cashVariance.isZero)
+        kpi.cashVariance.isNegative
+            ? l10n.portfolioDrawerShort(
+                formatMoney(Money.fromMinor(kpi.cashVariance.minorUnits.abs())),
+              )
+            : l10n.portfolioDrawerOver(formatMoney(kpi.cashVariance)),
+    ];
+    return parts.isEmpty ? l10n.portfolioShiftsNone : parts.join(' · ');
+  }
+
   @override
   Widget build(BuildContext context) {
     final AppLocalizations l10n = AppLocalizations.of(context);
@@ -548,6 +564,21 @@ class _ShopKpiRow extends StatelessWidget {
                       .bodySmall
                       ?.copyWith(color: colors.onSurfaceMuted),
                 ),
+                SizedBox(height: 2),
+                // The drawer, under the takings.
+                //
+                // Takings alone cannot answer "how is this shop doing": a busy
+                // shop and a shop whose drawer has been short all week look the
+                // same on revenue. A shift is where cash is reconciled, so the
+                // count and any shortfall sit with the money they qualify.
+                Text(
+                  _shiftLine(l10n),
+                  style: AppTypography.of(context).bodySmall?.copyWith(
+                        color: kpi.cashVariance.isNegative
+                            ? colors.danger
+                            : colors.onSurfaceMuted,
+                      ),
+                ),
               ],
             ),
           ),
@@ -562,13 +593,17 @@ class _ShopKpiRow extends StatelessWidget {
       // Alphabetical, as gen-l10n orders the generated parameters: count,
       // profit, revenue, share, shop. l10n.dart documents that these getters
       // are positional by design.
-      label: l10n.portfolioShopRowSpoken(
+      // The shift line is appended rather than folded into the generated
+      // sentence: both halves are complete sentences in the owner's language,
+      // and a second positional string here would be one more place for the
+      // argument order to drift.
+      label: '${l10n.portfolioShopRowSpoken(
         kpi.transactions,
         formatMoney(kpi.profit),
         formatMoney(kpi.revenue),
         percent.format(share),
         kpi.shopName,
-      ),
+      )}. ${_shiftLine(l10n)}',
       excludeSemantics: true,
       child: ExcludeSemantics(
         child: showDivider

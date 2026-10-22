@@ -9,7 +9,7 @@
 import 'package:duka_pos/l10n/generated/app_localizations.dart';
 import 'package:duka_pos/routing/routes.dart';
 import 'package:duka_pos/routing/shell_nav_bar.dart';
-import 'package:duka_pos/ui/components/support_bubble.dart';
+import 'package:duka_pos/ui/components/support_action.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -203,15 +203,15 @@ void main() {
     });
   });
 
-  group('the support bubble', () {
-    testWidgets('is a button that says what it does',
+  group('the support action', () {
+    testWidgets('is a small support icon, not a chat bubble',
         (WidgetTester tester) async {
       tester.useDevice(Device.small);
 
       await tester.pumpApp(
         home: Scaffold(
           body: Center(
-            child: SupportBubble(
+            child: SupportAction(
               label: 'Support',
               onTap: () {},
             ),
@@ -220,8 +220,11 @@ void main() {
       );
       await tester.pump();
 
-      expect(find.byType(SupportBubble), findsOneWidget);
-      expect(find.byIcon(Icons.chat_bubble_outline), findsOneWidget);
+      expect(find.byType(SupportAction), findsOneWidget);
+      // The glyph says "help", not "message". The old chat bubble was the
+      // thing that made it read as a floating widget in the corner.
+      expect(find.byIcon(Icons.support_agent_outlined), findsOneWidget);
+      expect(find.byIcon(Icons.chat_bubble_outline), findsNothing);
     });
 
     testWidgets('opens the support page when tapped',
@@ -232,7 +235,7 @@ void main() {
       await tester.pumpApp(
         home: Scaffold(
           body: Center(
-            child: SupportBubble(
+            child: SupportAction(
               label: 'Support',
               onTap: () => taps++,
             ),
@@ -241,7 +244,7 @@ void main() {
       );
       await tester.pump();
 
-      await tester.tap(find.byType(SupportBubble));
+      await tester.tap(find.byType(SupportAction));
       await tester.pump();
 
       expect(taps, 1);

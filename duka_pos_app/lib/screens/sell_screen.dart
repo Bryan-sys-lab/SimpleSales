@@ -561,6 +561,21 @@ class _SellScreenState extends State<SellScreen>
     final variants = _variants.of(product);
     final sellsAsVariants = _variants.sellsAsVariants(product);
     final shots = _shotsFor(product);
+    final l10n = AppLocalizations.of(context);
+    // Nothing to choose means nothing to sell: a product with no price of its
+    // own, no half, no quarter, no cup and no variant has never been set up
+    // for the till. Opening an empty sheet would look like a broken tap, so
+    // the till says which step is missing.
+    final bool hasSomethingToSell = sellsAsVariants ||
+        shots.isNotEmpty ||
+        product.sellsWhole ||
+        product.halfPrice != null ||
+        product.quarterPrice != null;
+    if (!hasSomethingToSell) {
+      _portionSheetOpen = false;
+      _say(l10n.sellNoPriceSetYet);
+      return;
+    }
     ServingChoice? choice;
     try {
       choice = await showModalBottomSheet<ServingChoice>(
@@ -643,8 +658,8 @@ class _SellScreenState extends State<SellScreen>
       final available = variant.stockQty - _cartUnitsForVariant(variant);
       if (available < 1) {
         _say(available <= 0
-            ? 'All ${variant.name} stock is already in the cart.'
-            : 'No ${variant.name} left. Adjust the cart before adding more.');
+            ? AppLocalizations.of(context).sellAllVariantInCart(variant.name)
+            : AppLocalizations.of(context).sellNoVariantLeft(variant.name));
         return;
       }
       // Merges on the variant, not on the product: Dark and Regular are two
@@ -674,8 +689,8 @@ class _SellScreenState extends State<SellScreen>
           : (shotCup.capacityMl / current.bottleMl).clamp(0.0, 1.0);
       final available = current.stockQty - _cartUnitsFor(current);
       if (available < needed) {
-        _say('Not enough ${current.name} left for another shot. '
-            'Adjust the cart before adding more.');
+        _say(AppLocalizations.of(context)
+            .sellNotEnoughForShot(current.name));
         return;
       }
       // Merges on the cup, not on the product: a 30 ml shot and a 45 ml shot of
@@ -699,8 +714,7 @@ class _SellScreenState extends State<SellScreen>
     }
     final needed = current.fractionFor(portion);
     if (current.stockQty - _cartUnitsFor(current) < needed) {
-      _say('Not enough ${current.name} left. '
-          'Adjust the cart before adding more.');
+      _say(AppLocalizations.of(context).sellNotEnoughLeft(current.name));
       return;
     }
     final existing = _cart.where((c) =>
@@ -945,8 +959,17 @@ class _SellScreenState extends State<SellScreen>
       // which a crash sold a bottle and kept the count.
 
       if (mounted) {
-        _announceStatus('Sale recorded: ${formatMoney(_total)}');
-        final change = amountTendered - _total;
+        // The sale's total, captured BEFORE the cart is cleared.
+        //
+        // `_total` is a getter over the cart, so reading it after the clear
+        // answers "KSh 0" — and the success sheet and the popup both did
+        // exactly that: the change line was right (captured first) while the
+        // amount above it read zero. The number the cashier is shown is the
+        // number the customer just paid, so it is taken once, here, and
+        // carried to every surface that reports this sale.
+        final Money saleTotal = _total;
+        _announceStatus('Sale recorded: ${formatMoney(saleTotal)}');
+        final Money change = amountTendered - saleTotal;
         setState(() {
           _cart.clear();
           _rebuildReservations();
@@ -965,18 +988,25 @@ class _SellScreenState extends State<SellScreen>
         if (paymentMethod == 'cash') {
           await _showSaleComplete(
             method: AppLocalizations.of(context).sellCompletePaidCash,
-            change: change.isNegative ? null : formatMoney(change),
+            total: saleTotal,
+            paid: amountTendered,
+            change: change,
           );
         } else {
           // The method is NAMED, not assumed. This used to say "Paid in cash"
           // for a card payment, and "Change due KSh 0.00" under it — two
           // statements that were both false on a sale where no cash changed
           // hands.
+          //
+          // gen-l10n sorts the placeholders ALPHABETICALLY, so the generated
+          // signature is (amount, method) even though the sentence reads
+          // "{method} · {amount}". Passing the label first printed the amount
+          // where the method belongs.
           showAppSnackBar(
             context,
             message: AppLocalizations.of(context).sellCompletePaidOther(
+              formatMoney(saleTotal),
               _paymentLabel(paymentMethod),
-              formatMoney(_total),
             ),
           );
         }
@@ -1011,7 +1041,9 @@ class _SellScreenState extends State<SellScreen>
   /// that somehow cannot be dismissed can never hold the till hostage.
   Future<void> _showSaleComplete({
     required String method,
-    String? change,
+    required Money total,
+    required Money paid,
+    required Money change,
   }) async {
     final l10n = AppLocalizations.of(context);
     if (!mounted) return;
@@ -1025,9 +1057,23 @@ class _SellScreenState extends State<SellScreen>
       builder: (BuildContext sheetContext) => SafeArea(
         child: SuccessView(
           title: l10n.sellCompleteTitle,
+          // The method: the one fact that changes what the cashier says out
+          // loud, and the one the reports ask for.
           message: method,
-          amountLabel: formatMoney(_total),
-          detail: change == null ? null : l10n.sellCompleteChange(change),
+          amountLabel: formatMoney(total),
+          // Paid, and what to hand back. Both are said even when the change
+          // is nothing — "Change 0" is the answer to "do I owe them?" and
+          // silence on that line makes a cashier count the notes again.
+          facts: <SuccessFact>[
+            SuccessFact(
+              label: l10n.sellCompleteFactPaid,
+              value: formatMoney(paid),
+            ),
+            SuccessFact(
+              label: l10n.sellCompleteFactChange,
+              value: formatMoney(change.isNegative ? Money.zero : change),
+            ),
+          ],
           onNext: () => Navigator.pop(sheetContext),
           nextLabel: l10n.sellCompleteNext,
         ),
@@ -1419,6 +1465,9 @@ class _SellScreenState extends State<SellScreen>
           }
           _announceStatus('M-Pesa payment successful. Sale recorded.');
           if (!mounted) return;
+          // Same rule as the cash route: the total is read BEFORE the cart
+          // goes, or the popup reports a sale of nothing.
+          final Money mpesaTotal = _total;
           setState(() {
             _cart.clear();
             _rebuildReservations();
@@ -1431,11 +1480,13 @@ class _SellScreenState extends State<SellScreen>
           // out. An M-Pesa payment has no change and no cash to hand over —
           // the customer has already paid — so there is nothing to hold the
           // cashier on a screen while the next customer waits.
+          //
+          // (amount, method) — gen-l10n sorts the placeholders alphabetically.
           showAppSnackBar(
             context,
             message: AppLocalizations.of(context).sellCompletePaidOther(
+              formatMoney(mpesaTotal),
               AppLocalizations.of(context).sellCompletePaidMpesa,
-              formatMoney(_total),
             ),
           );
         } else {

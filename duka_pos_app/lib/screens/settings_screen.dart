@@ -1573,11 +1573,20 @@ class _SettingsScreenState extends State<SettingsScreen>
     // takes the loaded values, so the whole presentation can be rendered from a
     // constructed snapshot in a test without a database — the same split the
     // shift screen uses.
+    //
+    // The two OWNER-ACCOUNT flows below — linking the online identity and
+    // deleting the online account — verify against the OWNER's 6-digit PIN.
+    // They are gated on the owner SESSION, not on `isAdmin`: a staff member
+    // given the Admin role signs in with a 4-digit PIN, and asking them for a
+    // PIN only the shop owner holds is a dead end that charges the owner's
+    // lockout budget for the attempt.
+    final AppState state = context.watch<AppState>();
+    final bool ownerSession = state.isOwnerSession;
     return SettingsPanel(
-      identityLinkPending: context.watch<AppState>().identityLinkPending,
-      identityVerified: context.watch<AppState>().identityVerified,
+      identityLinkPending: state.identityLinkPending,
+      identityVerified: state.identityVerified,
       verifyingIdentity: _verifyingIdentity,
-      onVerifyIdentity: _verifyIdentityOnline,
+      onVerifyIdentity: ownerSession ? _verifyIdentityOnline : null,
       staff: _staff,
       onAddStaff: _addStaff,
       onResetPin: _resetPin,
@@ -1606,7 +1615,7 @@ class _SettingsScreenState extends State<SettingsScreen>
       importing: _importing,
       importProgress: _importProgress,
       onEraseBackups: _eraseEncryptedBackups,
-      onDeleteAccount: _deleteOnlineAccount,
+      onDeleteAccount: ownerSession ? _deleteOnlineAccount : null,
       accountDeleting: _deletingAccount,
       onAddShop: _addShopOnThisDevice,
       onManageShops: _manageShops,
@@ -1667,7 +1676,12 @@ class SettingsPanel extends StatelessWidget {
 
   final bool identityLinkPending;
   final bool verifyingIdentity;
-  final Future<void> Function() onVerifyIdentity;
+
+  /// Opens the online-identity verification flow, or NULL when this session is
+  /// not the shop owner's. The flow proves itself with the OWNER's 6-digit
+  /// PIN, so a manager or an admin-role staff account — who holds a 4-digit
+  /// PIN — is not offered a door they cannot open.
+  final Future<void> Function()? onVerifyIdentity;
 
   /// Whether the emailed code has been presented and accepted. The until-then
   /// gate on everything that needs an authoritative online identity:
@@ -1714,8 +1728,10 @@ class SettingsPanel extends StatelessWidget {
 
   final Future<void> Function() onEraseBackups;
 
-  /// Deletes the online account and erases what this shop held.
-  final Future<void> Function() onDeleteAccount;
+  /// Deletes the online account and erases what this shop held. NULL when
+  /// this session is not the shop owner's — the action proves itself with the
+  /// OWNER's 6-digit PIN, so it is not offered to anyone else.
+  final Future<void> Function()? onDeleteAccount;
 
   /// True while a deletion is running, so the row can be disabled rather than
   /// appearing to have been ignored.
@@ -1743,8 +1759,8 @@ class SettingsPanel extends StatelessWidget {
         // Settings to find one thing had to read past the branding to find out
         // where they were.
         ScreenTitle(title: l10n.navSettings),
-        if (identityLinkPending)
-          _IdentityBanner(busy: verifyingIdentity, onVerify: onVerifyIdentity),
+        if (identityLinkPending && onVerifyIdentity != null)
+          _IdentityBanner(busy: verifyingIdentity, onVerify: onVerifyIdentity!),
         _ShopsPanel(
           onAddShop: onAddShop,
           onManage: onManageShops,
@@ -1818,7 +1834,8 @@ class _AccountPanel extends StatelessWidget {
     required this.onOpenProfile,
   });
 
-  final Future<void> Function() onDeleteAccount;
+  /// Null when this session is not the shop owner's: the row is not rendered.
+  final Future<void> Function()? onDeleteAccount;
 
   /// Opens the owner's account.
   final VoidCallback onOpenProfile;
@@ -1844,15 +1861,21 @@ class _AccountPanel extends StatelessWidget {
           // idea. The only way to reach this screen is to unlock the till, and
           // unlocking it needs the PIN — so recovery has to be on the login pad
           // (see `_LoginScreenState._forgotPin`), behind nothing.
-          ListTile(
-            leading: Icon(Icons.delete_forever_outlined, color: colors.danger),
-            title: Text(
-              l10n.settingsDeleteAccountAction,
-              style: TextStyle(color: colors.danger),
+          //
+          // The delete row only exists for the OWNER session. A staff account
+          // has no online account of its own to delete, and the action asks
+          // for the owner's PIN, which a staff account does not hold.
+          if (onDeleteAccount != null)
+            ListTile(
+              leading:
+                  Icon(Icons.delete_forever_outlined, color: colors.danger),
+              title: Text(
+                l10n.settingsDeleteAccountAction,
+                style: TextStyle(color: colors.danger),
+              ),
+              enabled: !deleting,
+              onTap: deleting ? null : onDeleteAccount,
             ),
-            enabled: !deleting,
-            onTap: deleting ? null : onDeleteAccount,
-          ),
         ],
       ),
     );

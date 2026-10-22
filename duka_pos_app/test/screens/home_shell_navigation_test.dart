@@ -14,7 +14,7 @@ import 'package:duka_pos/routing/app_stage_controller.dart';
 import 'package:duka_pos/routing/home_shell.dart';
 import 'package:duka_pos/routing/routes.dart';
 import 'package:duka_pos/theme/app_theme.dart';
-import 'package:duka_pos/ui/components/support_bubble.dart';
+import 'package:duka_pos/ui/components/support_action.dart';
 import 'package:duka_pos/routing/shell_nav_bar.dart';
 import 'package:duka_pos/services/app_state.dart';
 import 'package:duka_pos/services/live_channel_service.dart';
@@ -306,7 +306,7 @@ void main() {
         _destination(AppDestination.settings),
         findsOneWidget,
       );
-      expect(find.byType(SupportBubble), findsOneWidget);
+      expect(find.byType(SupportAction), findsOneWidget);
     });
 
     testWidgets('tapping each destination changes the URL',
@@ -411,7 +411,7 @@ void main() {
         _destination(AppDestination.settings),
         findsNothing,
       );
-      expect(find.byType(SupportBubble), findsOneWidget);
+      expect(find.byType(SupportAction), findsOneWidget);
     });
   });
 
