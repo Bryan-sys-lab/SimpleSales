@@ -5,8 +5,8 @@
 // second, quietly different answer to "how are my shops doing" — and the phone
 // would show one figure on a pull-to-refresh and another on the socket stream.
 
-import { prisma } from './prisma';
-import { canViewShopKpis, rollUpPortfolio, type Portfolio, type ShopKpi } from './portfolio';
+import { prisma } from './prisma.js';
+import { canViewShopKpis, rollUpPortfolio, type Portfolio, type ShopKpi } from './portfolio.js';
 
 /** An owner with more shops than this gets the ones set up first, plus a flag
  * saying the rest are missing — never an unbounded number of aggregate

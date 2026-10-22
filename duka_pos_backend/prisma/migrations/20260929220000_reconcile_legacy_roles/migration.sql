@@ -127,12 +127,12 @@ BEGIN
   EXECUTE format(
     'ALTER TABLE "profiles" ALTER COLUMN "role" TYPE "UserRole" USING ('
     '  CASE %I::text'
-    "    WHEN 'owner' THEN 'admin'"
-    "    WHEN 'staff' THEN 'cashier'"
-    "    WHEN 'manager' THEN 'manager'"
-    "    WHEN 'admin' THEN 'admin'"
-    "    WHEN 'cashier' THEN 'cashier'"
-    "    ELSE 'cashier'"
+    '    WHEN ''owner'' THEN ''admin'''
+    '    WHEN ''staff'' THEN ''cashier'''
+    '    WHEN ''manager'' THEN ''manager'''
+    '    WHEN ''admin'' THEN ''admin'''
+    '    WHEN ''cashier'' THEN ''cashier'''
+    '    ELSE ''cashier'''
     '  END)::"UserRole"',
     role_type);
 

@@ -27,29 +27,29 @@ import express from 'express';
 import cors from 'cors';
 import helmet from 'helmet';
 import dotenv from 'dotenv';
-import { systemAdminMiddleware, authMiddleware } from './middleware/auth';
-import tenantRoutes from './routes/tenant';
-import paymentRoutes from './routes/payment';
-import productRoutes from './routes/product';
-import { handlePayheroCallback } from './routes/payhero-callback';
-import { requestContext, log } from './lib/observability';
+import { systemAdminMiddleware, authMiddleware } from './middleware/auth.js';
+import tenantRoutes from './routes/tenant.js';
+import paymentRoutes from './routes/payment.js';
+import productRoutes from './routes/product.js';
+import { handlePayheroCallback } from './routes/payhero-callback.js';
+import { requestContext, log } from './lib/observability.js';
 import rateLimit from 'express-rate-limit';
-import { prisma } from './lib/prisma';
-import reportRoutes from './routes/report';
-import { attachLiveChannel } from './routes/live';
-import systemRoutes from './routes/system';
-import etimsRoutes, { publicEtimsRouter } from './routes/etims';
-import authRoutes from './routes/auth';
-import appReleaseRoutes from './routes/app-release';
-import dashboardRoutes from './routes/dashboard';
-import saleRoutes from './routes/sale';
-import shiftRoutes from './routes/shift';
-import returnRoutes from './routes/return';
-import purchaseRoutes from './routes/purchase';
-import shotCupRoutes from './routes/shotcup';
-import profileRoutes from './routes/profile';
-import telemetryRoutes from './routes/telemetry';
-import adminRoutes from './routes/admin';
+import { prisma } from './lib/prisma.js';
+import reportRoutes from './routes/report.js';
+import { attachLiveChannel } from './routes/live.js';
+import systemRoutes from './routes/system.js';
+import etimsRoutes, { publicEtimsRouter } from './routes/etims.js';
+import authRoutes from './routes/auth.js';
+import appReleaseRoutes from './routes/app-release.js';
+import dashboardRoutes from './routes/dashboard.js';
+import saleRoutes from './routes/sale.js';
+import shiftRoutes from './routes/shift.js';
+import returnRoutes from './routes/return.js';
+import purchaseRoutes from './routes/purchase.js';
+import shotCupRoutes from './routes/shotcup.js';
+import profileRoutes from './routes/profile.js';
+import telemetryRoutes from './routes/telemetry.js';
+import adminRoutes from './routes/admin.js';
 
 dotenv.config();
 
@@ -174,7 +174,7 @@ app.use('/api/admin', adminRoutes);
 
 app.use((_req, res) => res.status(404).json({ error: 'Not found' }));
 
-import { errorHandler } from './lib/http';
+import { errorHandler } from './lib/http.js';
 app.use(errorHandler);
 
 // The live channel lives on its own path because it is the one route that is

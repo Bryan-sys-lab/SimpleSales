@@ -14,7 +14,7 @@ import {
   liveBus,
   LIVE_REASONS,
   type LiveEvent,
-} from '../lib/live';
+} from '../lib/live.js';
 
 describe('the bus', () => {
   it('delivers an event to every listener', () => {

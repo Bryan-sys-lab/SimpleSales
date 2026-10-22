@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { createKeycloakAdminClient, keycloakAdminOptionsFromEnv, type KeycloakHttp, type KeycloakHttpResponse } from '../lib/keycloak_admin';
+import { createKeycloakAdminClient, keycloakAdminOptionsFromEnv, type KeycloakHttp, type KeycloakHttpResponse } from '../lib/keycloak_admin.js';
 
 /** A recorded exchange, so a test can assert what the realm was asked. */
 function fakeHttp(responses: Array<Partial<KeycloakHttpResponse>>) {

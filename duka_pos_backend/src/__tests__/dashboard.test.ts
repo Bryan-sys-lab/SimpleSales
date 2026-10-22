@@ -23,8 +23,8 @@ beforeAll(async () => {
   process.env.OIDC_ISSUER_URL = 'https://id.example.test/realms/duka';
   process.env.OIDC_AUDIENCE = 'duka-api';
   process.env.DATABASE_URL = 'postgresql://localhost:5432/duka_pos_test';
-  const module = await import('../index');
-  app = module.default;
+  const module = await import('../index.js');
+  app = (module as unknown as { default: Express }).default;
 });
 
 async function http() {

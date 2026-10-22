@@ -1,10 +1,11 @@
 import { Router, Request, Response } from 'express';
-import { requireOwner, requireRole } from '../middleware/auth';
-import { asyncHandler } from '../lib/http';
-import { prisma } from '../lib/prisma';
-import { log } from '../lib/observability';
-import { parseBody, etimsDeviceSchema, etimsReceiptSchema } from '../lib/validation';
-import { KraError } from '../services/kra';
+import { requireOwner, requireRole } from '../middleware/auth.js';
+import { asyncHandler } from '../lib/http.js';
+import { prisma } from '../lib/prisma.js';
+import { log } from '../lib/observability.js';
+import { parseBody, etimsDeviceSchema, etimsReceiptSchema } from '../lib/validation.js';
+import { KraError } from '../services/kra.js';
+import { routeParam } from '../lib/http';
 import {
   issueReceipt,
   registerDevice,
@@ -14,7 +15,7 @@ import {
   buildZReport,
   type InvoiceInput,
   type InvoiceItemInput,
-} from '../services/etims';
+} from '../services/etims.js';
 
 const router = Router();
 
@@ -74,7 +75,7 @@ publicEtimsRouter.get('/:receiptNumber', asyncHandler(async (req: Request, res) 
   // so resolving on it with no tenant filter would let one shop's customer read
   // another's totals. KRA receipt numbers are globally unique, and the schema
   // carries a unique index on them so this lookup is deterministic.
-  const kraReceiptNumber = String(req.params.receiptNumber ?? '').slice(0, 64);
+  const kraReceiptNumber = String(routeParam(req.params.receiptNumber) ?? '').slice(0, 64);
   if (!kraReceiptNumber) return res.status(400).json({ error: 'Receipt number required' });
 
   const receipt = await prisma.etimsReceipt.findFirst({
@@ -305,7 +306,7 @@ router.post('/z-report', requireOwner, asyncHandler(async (req: Request, res) =>
 /** A receipt this shop filed, looked up by its till receipt number. */
 router.get('/receipts/:receiptNumber', requireRole('admin', 'manager'), asyncHandler(async (req: Request, res) => {
   const receipt = await prisma.etimsReceipt.findFirst({
-    where: { tenantId: req.user!.tenantId, receiptNumber: String(req.params.receiptNumber) },
+    where: { tenantId: req.user!.tenantId, receiptNumber: String(routeParam(req.params.receiptNumber)) },
   });
   if (!receipt) return res.status(404).json({ error: 'Receipt not found' });
   res.json({

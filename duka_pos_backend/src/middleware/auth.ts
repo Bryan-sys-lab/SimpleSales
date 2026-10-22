@@ -24,7 +24,7 @@ import dotenv from 'dotenv';
 import express, { Request, Response, NextFunction, RequestHandler } from 'express';
 import { expressjwt } from 'express-jwt';
 import jwksRsa from 'jwks-rsa';
-import { prisma } from '../lib/prisma';
+import { prisma } from '../lib/prisma.js';
 
 dotenv.config();
 

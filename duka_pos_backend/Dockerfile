@@ -21,7 +21,7 @@
 # user the service runs as, so a CLI invocation can do its job.
 #
 # Stage 1: Build
-FROM node:20-slim AS builder
+FROM node:24-slim AS builder
 WORKDIR /app
 COPY package.json package-lock.json* ./
 RUN npm ci --include=dev
@@ -30,7 +30,7 @@ RUN npx prisma generate
 RUN npm run build
 
 # Stage 2: Runtime
-FROM node:20-slim AS runner
+FROM node:24-slim AS runner
 WORKDIR /app
 ENV NODE_ENV=production
 RUN apt-get update \
@@ -41,6 +41,10 @@ RUN adduser --system --uid 1001 nodejs
 COPY --from=builder /app/node_modules ./node_modules
 COPY --from=builder /app/dist ./dist
 COPY --from=builder /app/prisma ./prisma
+# The Prisma configuration, which is where the connection URL now lives: the
+# schema says WHAT it talks to, this says WHERE, and the migration service
+# reads it from here.
+COPY --from=builder /app/prisma.config.ts ./prisma.config.ts
 RUN chown -R nodejs:nodejs /app
 USER nodejs
 EXPOSE 3000

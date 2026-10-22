@@ -1,13 +1,35 @@
 // Prisma schema translating your existing Supabase SQL schema
 // Maintains same multi-tenant structure with RLS concepts enforced in app code
 
+// The client generator, and where its output goes.
+//
+// It used to be `prisma-client-js`, which wrote into node_modules and
+// needed a NATIVE engine — an engine built against a particular OpenSSL,
+// which is why the image had to be Debian and not Alpine, and why a stack
+// could fail to start over a library version.
+//
+// `prisma-client` writes the client INTO THE PROJECT, as TypeScript, and
+// runs the query engine in the same process as the service. So:
+//
+//   * there is no engine to install, and no OpenSSL to detect;
+//   * the client is part of the build, so `tsc` checks it;
+//   * the output is a real folder in the repository, so it is visible
+//     instead of hiding in node_modules.
+//
+// The output is gitignored: it is generated, and it is regenerated on every
+// build.
 generator client {
-  provider = "prisma-client-js"
+  provider = "prisma-client"
+  output   = "../src/generated/prisma"
 }
 
+// The datasource says WHAT, not WHERE.
+//
+// Prisma 7 took the URL out of the schema: it lives in prisma.config.ts for
+// the CLI, and the service builds an adapter for the client. A schema that
+// carried the URL would have to be edited to move between environments.
 datasource db {
   provider = "postgresql"
-  url      = env("DATABASE_URL")
 }
 
 // Your existing tables from 0001_schema.sql

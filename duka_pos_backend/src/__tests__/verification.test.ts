@@ -10,7 +10,7 @@ import {
   newSalt,
   attemptsRemaining,
   codeRequestWindowStart,
-} from '../lib/verification';
+} from '../lib/verification.js';
 
 const SECRET = 'server-side-secret-that-never-leaves-this-process';
 

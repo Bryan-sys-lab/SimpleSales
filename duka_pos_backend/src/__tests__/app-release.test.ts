@@ -12,7 +12,7 @@ import { join } from 'node:path';
 import express from 'express';
 import request from 'supertest';
 
-import appReleaseRoutes from '../routes/app-release';
+import appReleaseRoutes from '../routes/app-release.js';
 
 /** An app mounting only the route under test. */
 function app() {

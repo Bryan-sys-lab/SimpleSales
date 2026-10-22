@@ -17,8 +17,8 @@ beforeAll(async () => {
   process.env.OIDC_ISSUER_URL = 'https://id.example.test/realms/duka';
   process.env.OIDC_AUDIENCE = 'duka-api';
   process.env.DATABASE_URL = 'postgresql://localhost:5432/duka_pos_test';
-  const module = await import('../index');
-  app = module.default;
+  const module = await import('../index.js');
+  app = (module as unknown as { default: Express }).default;
 });
 
 describe('eTIMS access boundaries', () => {
@@ -79,7 +79,7 @@ describe('eTIMS access boundaries', () => {
     // and `encryption_key` sign every invoice the shop will ever file, so they
     // are not fetched at all rather than filtered on the way out — no future
     // edit to the response body can then leak them by accident.
-    const { etimsDeviceStatusSelect } = await import('../routes/etims');
+    const { etimsDeviceStatusSelect } = await import('../routes/etims.js');
     const fields = Object.keys(etimsDeviceStatusSelect);
     expect(fields).toContain('tin');
     expect(fields).toContain('status');
@@ -93,7 +93,7 @@ describe('eTIMS access boundaries', () => {
     // person following the QR is a customer. It therefore may return only what
     // is already printed on the paper in their hand. A field added here would
     // be a shop-data leak reachable by anyone with a receipt.
-    const { publicReceiptSelect } = await import('../routes/etims');
+    const { publicReceiptSelect } = await import('../routes/etims.js');
     const fields = Object.keys(publicReceiptSelect);
     expect(fields).toContain('kraReceiptNumber');
     expect(fields).toContain('total');

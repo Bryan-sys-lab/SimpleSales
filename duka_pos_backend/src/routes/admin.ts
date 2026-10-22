@@ -6,13 +6,13 @@
  */
 import { Request, Response, Router } from 'express';
 import { z } from 'zod';
-import { asyncHandler } from '../lib/http';
-import { parseBody } from '../lib/validation';
-import { adminAuditSchema, adminListQuerySchema } from '../lib/validation';
-import { prisma } from '../lib/prisma';
-import { runRetention } from '../lib/retention';
-import { log } from '../lib/observability';
-import { systemAdminMiddleware } from '../middleware/auth';
+import { asyncHandler } from '../lib/http.js';
+import { parseBody } from '../lib/validation.js';
+import { adminAuditSchema, adminListQuerySchema } from '../lib/validation.js';
+import { prisma } from '../lib/prisma.js';
+import { runRetention } from '../lib/retention.js';
+import { log } from '../lib/observability.js';
+import { systemAdminMiddleware } from '../middleware/auth.js';
 
 const router = Router();
 

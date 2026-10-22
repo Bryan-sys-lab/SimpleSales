@@ -1,7 +1,7 @@
 import { Request, Response } from 'express';
-import { prisma } from '../lib/prisma';
-import { queryTransactionStatus } from '../services/payhero';
-import { log } from '../lib/observability';
+import { prisma } from '../lib/prisma.js';
+import { queryTransactionStatus } from '../services/payhero.js';
+import { log } from '../lib/observability.js';
 
 // PayHero webhook callback - no auth required
 export const handlePayheroCallback = async (req: Request, res: Response) => {

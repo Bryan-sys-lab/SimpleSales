@@ -20,7 +20,7 @@
 import type http from 'node:http';
 import type { Duplex } from 'node:stream';
 import { IncomingMessage } from 'node:http';
-import { concerns, createLiveEventBus, liveBus, type LiveEventBus } from '../lib/live';
+import { concerns, createLiveEventBus, liveBus, type LiveEventBus } from '../lib/live.js';
 import {
   OPCODE_CLOSE,
   OPCODE_PING,
@@ -30,11 +30,11 @@ import {
   drainFrames,
   encodeClose,
   encodeFrame,
-} from '../lib/websocket';
-import { verifyKeycloakToken, type KeycloakClaims } from '../lib/keycloak_token';
-import { prisma } from '../lib/prisma';
-import { log } from '../lib/observability';
-import { readPortfolio } from '../lib/portfolio_query';
+} from '../lib/websocket.js';
+import { verifyKeycloakToken, type KeycloakClaims } from '../lib/keycloak_token.js';
+import { prisma } from '../lib/prisma.js';
+import { log } from '../lib/observability.js';
+import { readPortfolio } from '../lib/portfolio_query.js';
 
 export const LIVE_PATH = '/live';
 

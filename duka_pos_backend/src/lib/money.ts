@@ -24,7 +24,7 @@
 // rounding in the whole path is the one at the far end, where a value that
 // somehow carries a third decimal is rounded rather than truncated.
 
-import { Prisma } from '@prisma/client';
+import { Prisma } from '../generated/prisma/client.js';
 
 /** Minor units to the major-unit DECIMAL the columns store. */
 export function majorFromMinor(minor: number): Prisma.Decimal {

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { isVerifiedEmailMatch, normalizeEmail } from '../lib/identity';
+import { isVerifiedEmailMatch, normalizeEmail } from '../lib/identity.js';
 
 describe('authoritative online identity', () => {
   it('normalizes case and whitespace', () => {

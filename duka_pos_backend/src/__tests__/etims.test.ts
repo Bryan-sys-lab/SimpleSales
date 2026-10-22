@@ -16,7 +16,7 @@ import {
   paymentModeCodeFor,
   toMajor,
   type InvoiceInput,
-} from '../services/etims';
+} from '../services/etims.js';
 import {
   DEFAULT_BRANCH_ID,
   KRA_PRODUCTION_URL,
@@ -33,7 +33,7 @@ import {
   signRequest,
   KraError,
   clearTokenCache,
-} from '../services/kra';
+} from '../services/kra.js';
 
 const item = (overrides: Partial<InvoiceInput['items'][number]> = {}) => ({
   name: 'Soda 350ml',

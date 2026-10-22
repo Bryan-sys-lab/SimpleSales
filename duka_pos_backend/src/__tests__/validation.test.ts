@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { parseBody, paymentSchema, staffSyncSchema, deletionSchema, provisionSchema } from '../lib/validation';
+import { parseBody, paymentSchema, staffSyncSchema, deletionSchema, provisionSchema } from '../lib/validation.js';
 
 describe('request validation', () => {
   it('requires a valid owner email when provisioning a shop', () => {
@@ -22,8 +22,8 @@ describe('request validation', () => {
     // about accumulated stock, answered in /initiate and finalizeSale.
     const input = parseBody(paymentSchema, {
       items: [
-        { product_id: '00000000-0000-0000-0000-000000000001', qty: 1 },
-        { product_id: '00000000-0000-0000-0000-000000000001', qty: 1 },
+        { product_id: '11111111-1111-4111-8111-111111111111', qty: 1 },
+        { product_id: '11111111-1111-4111-8111-111111111111', qty: 1 },
       ],
       phone_number: '+254700000000', staff_name: 'Cashier',
     });
@@ -35,8 +35,8 @@ describe('request validation', () => {
     // same bottle" — 1.5 bottles of stock, one full line and one half line.
     const input = parseBody(paymentSchema, {
       items: [
-        { product_id: '00000000-0000-0000-0000-000000000001', qty: 1, portion: 'full' },
-        { product_id: '00000000-0000-0000-0000-000000000001', qty: 1, portion: 'half' },
+        { product_id: '11111111-1111-4111-8111-111111111111', qty: 1, portion: 'full' },
+        { product_id: '11111111-1111-4111-8111-111111111111', qty: 1, portion: 'half' },
       ],
       phone_number: '+254700000000', staff_name: 'Cashier',
     });
@@ -45,18 +45,18 @@ describe('request validation', () => {
 
   it('rejects a line asking for more than any plausible stock', () => {
     expect(() => parseBody(paymentSchema, {
-      items: [{ product_id: '00000000-0000-0000-0000-000000000001', qty: 10_000, portion: 'full' }],
+      items: [{ product_id: '11111111-1111-4111-8111-111111111111', qty: 10_000, portion: 'full' }],
       phone_number: '+254700000000', staff_name: 'Cashier',
     })).not.toThrow(); // 10,000 is under the ceiling; availability is decided later
     expect(() => parseBody(paymentSchema, {
-      items: [{ product_id: '00000000-0000-0000-0000-000000000001', qty: 0 }],
+      items: [{ product_id: '11111111-1111-4111-8111-111111111111', qty: 0 }],
       phone_number: '+254700000000', staff_name: 'Cashier',
     })).toThrow();
   });
 
   it('strips client-controlled payment price fields', () => {
     const input = parseBody(paymentSchema, {
-      items: [{ product_id: '00000000-0000-0000-0000-000000000001', qty: 2, unit_price: 0 }],
+      items: [{ product_id: '11111111-1111-4111-8111-111111111111', qty: 2, unit_price: 0 }],
       phone_number: '+254700000000', staff_name: 'Cashier', amount: 0,
     });
     expect(input.items[0]).not.toHaveProperty('unit_price');

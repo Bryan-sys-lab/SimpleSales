@@ -28,12 +28,12 @@
  */
 
 import { Router, Request, Response } from 'express';
-import rateLimit from 'express-rate-limit';
+import rateLimit, { ipKeyGenerator } from 'express-rate-limit';
 import { randomBytes } from 'node:crypto';
-import { prisma } from '../lib/prisma';
-import { asyncHandler } from '../lib/http';
-import { linkSchema, parseBody, verificationCodeSchema } from '../lib/validation';
-import { log } from '../lib/observability';
+import { prisma } from '../lib/prisma.js';
+import { asyncHandler } from '../lib/http.js';
+import { linkSchema, parseBody, verificationCodeSchema } from '../lib/validation.js';
+import { log } from '../lib/observability.js';
 import {
   CODE_REQUEST_WINDOW_MINUTES,
   MAX_CODES_PER_WINDOW,
@@ -46,9 +46,9 @@ import {
   isVerificationExpired,
   maskEmail,
   newSalt,
-} from '../lib/verification';
-import { createKeycloakAdminClient, keycloakAdminOptionsFromEnv } from '../lib/keycloak_admin';
-import { createEmailJsTransport, type EmailTransport } from '../lib/email_sender';
+} from '../lib/verification.js';
+import { createKeycloakAdminClient, keycloakAdminOptionsFromEnv } from '../lib/keycloak_admin.js';
+import { createEmailJsTransport, type EmailTransport } from '../lib/email_sender.js';
 
 const router = Router();
 
@@ -91,13 +91,21 @@ function notConfigured(res: Response, requestId?: string) {
   });
 }
 
-/** Keyed on the address as well as the IP, so one caller cannot spend the
+/**
+ * Keyed on the address as well as the IP, so one caller cannot spend the
  * whole limit on other people's mailboxes and one shop cannot be locked out by
- * its neighbours. */
+ * its neighbours.
+ *
+ * The IP goes through the library's `ipKeyGenerator`, which folds an IPv6
+ * address down to its /64. A raw IPv6 address is a whole /64 of addresses, so
+ * a caller with one prefix could take a fresh identity for every request and
+ * walk past the limit — which is the bypass the library now refuses to start
+ * without, and the reason this helper exists.
+ */
 function addressKey(req: Request): string {
   const body = req.body as { email?: unknown };
   const email = typeof body?.email === 'string' ? body.email.trim().toLowerCase() : '';
-  return `${req.ip ?? 'unknown'}:${email}`;
+  return `${ipKeyGenerator(req.ip ?? 'unknown')}:${email}`;
 }
 
 const linkLimiter = rateLimit({

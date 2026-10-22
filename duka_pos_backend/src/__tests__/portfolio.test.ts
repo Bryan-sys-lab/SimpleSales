@@ -4,7 +4,7 @@ import {
   rollUpPortfolio,
   viewableTenantIds,
   type ShopKpi,
-} from '../lib/portfolio';
+} from '../lib/portfolio.js';
 
 describe('portfolio roll-up', () => {
   const shop = (over: Partial<ShopKpi>): ShopKpi => ({

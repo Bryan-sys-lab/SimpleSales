@@ -11,8 +11,8 @@ import {
   rollUpShifts,
   totalsForReturn,
   type ShiftTotals,
-} from '../lib/till_records';
-import { majorFromMinor, minorFromMajor, sumMinor } from '../lib/money';
+} from '../lib/till_records.js';
+import { majorFromMinor, minorFromMajor, sumMinor } from '../lib/money.js';
 
 describe('the push is idempotent', () => {
   it('knows a re-push from a new record', () => {

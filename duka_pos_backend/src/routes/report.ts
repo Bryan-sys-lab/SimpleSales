@@ -1,7 +1,7 @@
 import { Router, Request } from 'express';
-import { prisma } from '../lib/prisma';
-import { asyncHandler } from '../lib/http';
-import { requireRole } from '../middleware/auth';
+import { prisma } from '../lib/prisma.js';
+import { asyncHandler } from '../lib/http.js';
+import { requireRole } from '../middleware/auth.js';
 
 const router = Router();
 

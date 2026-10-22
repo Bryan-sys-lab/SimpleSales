@@ -6,7 +6,7 @@ import {
   createHash,
   timingSafeEqual as nodeTimingSafeEqual,
 } from 'node:crypto';
-import { log } from '../lib/observability';
+import { log } from '../lib/observability.js';
 
 // ---------------------------------------------------------------------------
 // Endpoints

@@ -28,15 +28,16 @@
 
 import { Router, Request, Response } from 'express';
 import rateLimit from 'express-rate-limit';
-import { prisma } from '../lib/prisma';
-import { asyncHandler } from '../lib/http';
-import { parseBody, settingsSchema, staffActiveSchema } from '../lib/validation';
+import { prisma } from '../lib/prisma.js';
+import { asyncHandler } from '../lib/http.js';
+import { parseBody, settingsSchema, staffActiveSchema } from '../lib/validation.js';
+import { routeParam } from '../lib/http';
 import {
   buildDrilldown,
   defaultDrilldownWindow,
   isWindowUsable,
   type SaleRow,
-} from '../lib/admin_analytics';
+} from '../lib/admin_analytics.js';
 
 const router = Router();
 
@@ -268,7 +269,7 @@ router.get('/analytics/drilldown', analyticsLimiter, asyncHandler(async (req: Re
  */
 router.get('/tenants/:tenantId/settings', asyncHandler(async (req: Request, res) => {
   const tenant = await prisma.tenant.findUnique({
-    where: { id: req.params.tenantId },
+    where: { id: routeParam(req.params.tenantId) },
     select: { id: true, shopName: true, mpesaEnabled: true, etimsEnabled: true, payheroChannelId: true },
   });
   if (!tenant) return res.status(404).json({ error: 'No such shop', code: 'TENANT_NOT_FOUND' });
@@ -283,14 +284,14 @@ router.get('/tenants/:tenantId/settings', asyncHandler(async (req: Request, res)
 
 router.patch('/tenants/:tenantId/settings', asyncHandler(async (req: Request, res) => {
   const input = parseBody(settingsSchema, req.body);
-  const existing = await prisma.tenant.findUnique({ where: { id: req.params.tenantId }, select: { id: true } });
+  const existing = await prisma.tenant.findUnique({ where: { id: routeParam(req.params.tenantId) }, select: { id: true } });
   if (!existing) return res.status(404).json({ error: 'No such shop', code: 'TENANT_NOT_FOUND' });
   // A write that changes nothing must not claim it did: an empty payload is
   // rejected rather than silently becoming a no-op that returns success.
   if (Object.keys(req.body ?? {}).length === 0) {
     return res.status(400).json({ error: 'Nothing to change', code: 'EMPTY_UPDATE' });
   }
-  const tenant = await prisma.tenant.update({ where: { id: req.params.tenantId }, data: {
+  const tenant = await prisma.tenant.update({ where: { id: routeParam(req.params.tenantId) }, data: {
     ...(input.mpesaEnabled !== undefined && { mpesaEnabled: input.mpesaEnabled }),
     ...(input.etimsEnabled !== undefined && { etimsEnabled: input.etimsEnabled }),
     ...(input.payheroChannelId !== undefined && { payheroChannelId: input.payheroChannelId }),
@@ -308,12 +309,12 @@ router.patch('/tenants/:tenantId/settings', asyncHandler(async (req: Request, re
 router.patch('/users/:profileId/active', asyncHandler(async (req: Request, res) => {
   const { active } = parseBody(staffActiveSchema, req.body);
   const profile = await prisma.profile.findFirst({
-    where: { id: req.params.profileId, deletedAt: null },
+    where: { id: routeParam(req.params.profileId), deletedAt: null },
     select: { id: true },
   });
   if (!profile) return res.status(404).json({ error: 'No such user', code: 'PROFILE_NOT_FOUND' });
   const updated = await prisma.profile.update({
-    where: { id: req.params.profileId },
+    where: { id: routeParam(req.params.profileId) },
     data: { active },
   });
   res.json({ id: updated.id, active: updated.active });

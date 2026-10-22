@@ -11,17 +11,17 @@
  *   DELETE /api/profile/photo              - Delete profile photo from R2 and profile
  */
 import { Router } from 'express';
-import { asyncHandler } from '../lib/http';
-import { parseBody } from '../lib/validation';
-import { prisma } from '../lib/prisma';
-import { authMiddleware } from '../middleware/auth';
+import { asyncHandler } from '../lib/http.js';
+import { parseBody } from '../lib/validation.js';
+import { prisma } from '../lib/prisma.js';
+import { authMiddleware } from '../middleware/auth.js';
 import {
   uploadProfilePhoto,
   getProfilePhoto,
   deleteProfilePhoto,
   getProfilePhotoUploadUrl,
   getProfilePhotoDownloadUrl,
-} from '../lib/r2';
+} from '../lib/r2.js';
 import { z } from 'zod';
 
 const router = Router();

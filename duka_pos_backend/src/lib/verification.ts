@@ -22,7 +22,7 @@
  */
 
 import { createHmac, randomInt, randomUUID, timingSafeEqual } from 'node:crypto';
-import { normalizeEmail } from './identity';
+import { normalizeEmail } from './identity.js';
 
 /** Six digits: a million to one against, and short enough to read off a phone
  * lock screen without swapping apps. */

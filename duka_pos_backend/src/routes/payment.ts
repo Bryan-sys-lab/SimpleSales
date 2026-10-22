@@ -1,12 +1,12 @@
 import { Router, Request, Response } from 'express';
 import { randomUUID } from 'node:crypto';
-import { prisma } from '../lib/prisma';
-import { asyncHandler } from '../lib/http';
-import { parseBody, paymentSchema } from '../lib/validation';
-import { initiateStkPush, queryTransactionStatus } from '../services/payhero';
-import { finalizeSale } from './payhero-callback';
-import { requireRole } from '../middleware/auth';
-import { log } from '../lib/observability';
+import { prisma } from '../lib/prisma.js';
+import { asyncHandler } from '../lib/http.js';
+import { parseBody, paymentSchema } from '../lib/validation.js';
+import { initiateStkPush, queryTransactionStatus } from '../services/payhero.js';
+import { finalizeSale } from './payhero-callback.js';
+import { requireRole } from '../middleware/auth.js';
+import { log } from '../lib/observability.js';
 
 const router = Router();
 

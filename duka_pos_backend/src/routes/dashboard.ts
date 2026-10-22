@@ -14,6 +14,7 @@
 import { readFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { Router, Request, Response } from 'express';
+import { routeParam } from '../lib/http';
 
 const router = Router();
 
@@ -85,7 +86,7 @@ router.get('/', (_req: Request, res: Response) => {
 });
 
 router.get('/:asset', (req: Request, res: Response) => {
-  const name = (req.params.asset ?? '').replace(/[^a-zA-Z0-9._-]/g, '');
+  const name = (routeParam(req.params.asset) ?? '').replace(/[^a-zA-Z0-9._-]/g, '');
   const promise = files[name];
   if (!promise) {
     res.status(404).json({ error: 'No such asset', code: 'ASSET_NOT_FOUND' });

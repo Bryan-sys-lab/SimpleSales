@@ -21,7 +21,7 @@ import {
   staffLeaderboard,
   tenantBreakdown,
   type SaleRow,
-} from '../lib/admin_analytics';
+} from '../lib/admin_analytics.js';
 
 const AT = '2026-10-05T09:30:00.000Z';
 

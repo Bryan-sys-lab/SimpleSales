@@ -16,13 +16,13 @@
  * So zero means "not known", and it is a legal value.
  */
 import { Router, Request, Response } from 'express';
-import { prisma } from '../lib/prisma';
-import { asyncHandler } from '../lib/http';
-import { parseBody, shotCupSyncSchema } from '../lib/validation';
-import { requireRole } from '../middleware/auth';
-import { announceChange } from '../lib/live';
-import { majorFromMinor, minorFromMajor } from '../lib/money';
-import { mergeByLocalId } from '../lib/till_records';
+import { prisma } from '../lib/prisma.js';
+import { asyncHandler } from '../lib/http.js';
+import { parseBody, shotCupSyncSchema } from '../lib/validation.js';
+import { requireRole } from '../middleware/auth.js';
+import { announceChange } from '../lib/live.js';
+import { majorFromMinor, minorFromMajor } from '../lib/money.js';
+import { mergeByLocalId } from '../lib/till_records.js';
 
 const router = Router();
 

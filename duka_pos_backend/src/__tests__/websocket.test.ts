@@ -8,7 +8,7 @@ import {
   encodeClose,
   encodeFrame,
   handshakeResponse,
-} from '../lib/websocket';
+} from '../lib/websocket.js';
 
 /** Builds a client frame the way a client must: masked, and with the
  * extended length form once the payload outgrows a byte. */

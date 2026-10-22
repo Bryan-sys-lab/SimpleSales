@@ -20,8 +20,8 @@
  * one hundred, which is both catastrophic and entirely invisible in review.
  */
 
-import { prisma } from '../lib/prisma';
-import { log } from '../lib/observability';
+import { prisma } from '../lib/prisma.js';
+import { log } from '../lib/observability.js';
 import {
   DEFAULT_BRANCH_ID,
   TAX_TYPE_VAT,
@@ -36,7 +36,7 @@ import {
   type ReceiptType,
   type SaveSalesItemResult,
   type TransactionType,
-} from './kra';
+} from './kra.js';
 
 // ---------------------------------------------------------------------------
 // Money

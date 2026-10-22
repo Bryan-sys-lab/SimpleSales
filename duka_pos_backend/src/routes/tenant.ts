@@ -1,11 +1,12 @@
 import { Router, Request, Response } from 'express';
-import { requireOwner, requireRole } from '../middleware/auth';
-import { prisma } from '../lib/prisma';
-import { asyncHandler } from '../lib/http';
-import { parseBody, provisionSchema, settingsSchema, staffSyncSchema, deletionSchema, staffAuthenticateSchema } from '../lib/validation';
-import { isVerifiedEmailMatch } from '../lib/identity';
-import { readPortfolio } from '../lib/portfolio_query';
-import { announceChange } from '../lib/live';
+import { requireOwner, requireRole } from '../middleware/auth.js';
+import { prisma } from '../lib/prisma.js';
+import { asyncHandler } from '../lib/http.js';
+import { parseBody, provisionSchema, settingsSchema, staffSyncSchema, deletionSchema, staffAuthenticateSchema } from '../lib/validation.js';
+import { isVerifiedEmailMatch } from '../lib/identity.js';
+import { readPortfolio } from '../lib/portfolio_query.js';
+import { announceChange } from '../lib/live.js';
+import { routeParam } from '../lib/http';
 
 const router = Router();
 
@@ -232,7 +233,7 @@ router.post('/staff/sync', requireOwner, asyncHandler(async (req: Request, res: 
 router.delete('/staff/:profileId', requireOwner, asyncHandler(async (req: Request, res: Response) => {
     const { reason } = parseBody(deletionSchema, req.body ?? {});
     const profile = await prisma.profile.findFirst({
-      where: { id: req.params.profileId, tenantId: req.user!.tenantId, role: { in: ['cashier', 'manager'] } },
+      where: { id: routeParam(req.params.profileId), tenantId: req.user!.tenantId, role: { in: ['cashier', 'manager'] } },
     });
     if (!profile) return res.status(404).json({ error: 'Staff profile not found' });
 

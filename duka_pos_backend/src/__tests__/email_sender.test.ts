@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { EmailSendError, createEmailJsTransport } from '../lib/email_sender';
+import { EmailSendError, createEmailJsTransport } from '../lib/email_sender.js';
 
 function fakePost(status: number, body: string) {
   const calls: Array<{ url: string; body: unknown }> = [];

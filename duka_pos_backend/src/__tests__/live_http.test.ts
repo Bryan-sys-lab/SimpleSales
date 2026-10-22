@@ -15,9 +15,9 @@ import { createServer, type Server } from 'node:http';
 import { createConnection, type Socket } from 'node:net';
 import { afterAll, afterEach, beforeAll, describe, expect, it } from 'vitest';
 import type { Express } from 'express';
-import { attachLiveChannel, type LiveChannel } from '../routes/live';
-import { createLiveEventBus, type LiveEventBus } from '../lib/live';
-import { OPCODE_CLOSE, OPCODE_PING, OPCODE_TEXT, applyMask, encodeClose } from '../lib/websocket';
+import { attachLiveChannel, type LiveChannel } from '../routes/live.js';
+import { createLiveEventBus, type LiveEventBus } from '../lib/live.js';
+import { OPCODE_CLOSE, OPCODE_PING, OPCODE_TEXT, applyMask, encodeClose } from '../lib/websocket.js';
 
 const SUBJECT = 'kc-subject-1';
 const TENANT_A = 'tenant-a';
@@ -140,8 +140,8 @@ beforeAll(async () => {
   process.env.OIDC_ISSUER_URL = 'https://id.example.test/realms/duka';
   process.env.OIDC_AUDIENCE = 'duka-api';
   process.env.DATABASE_URL = 'postgresql://localhost:5432/duka_pos_test';
-  const module = await import('../index');
-  app = module.default;
+  const module = await import('../index.js');
+  app = (module as unknown as { default: Express }).default;
   bus = createLiveEventBus();
   server = createServer(app as unknown as Parameters<typeof createServer>[0]);
   channel = attachLiveChannel(server, {
