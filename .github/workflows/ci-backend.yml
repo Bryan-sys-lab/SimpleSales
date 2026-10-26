@@ -14,18 +14,12 @@ name: Backend CI
 # the signed APK from a tag on `main` and does not touch this directory, so the
 # backend is validated on every push and deployed by hand.
 on:
-  # `backend` for the branch of record, `backend-*` for feature branches cut from
-  # it, `backend/**` for work under a backend/ subdirectory.
-  #
-  # The middle pattern is not redundant with the third: GitHub treats
-  # `backend/**` as a path glob, so it matches `backend/etims` and NOT
-  # `backend-etims`. Without it a branch named `backend-<anything>` carries the
-  # backend and gets no validation at all — silently, because the workflow simply
-  # never runs.
+  # The backend pipeline belongs only to the branch of record. The app's main
+  # branch has its own workflow and must never start this stack pipeline.
   push:
-    branches: [backend, 'backend-*', 'backend/**']
+    branches: [backend]
   pull_request:
-    branches: [backend, 'backend-*', 'backend/**']
+    branches: [backend]
   workflow_dispatch:
 
 # Cancel superseded runs, matching ci.yml: a rapid push-to-PR sequence should not
