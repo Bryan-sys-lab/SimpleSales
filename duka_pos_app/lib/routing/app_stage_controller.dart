@@ -1,6 +1,7 @@
 import 'package:flutter/foundation.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
+import '../models/crash_log.dart';
 import '../services/app_stage.dart';
 import '../services/app_state.dart';
 import '../services/auto_sync_service.dart';
