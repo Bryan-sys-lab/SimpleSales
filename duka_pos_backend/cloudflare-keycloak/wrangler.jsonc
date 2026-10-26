@@ -21,9 +21,6 @@
       { "name": "KEYCLOAK_CONTAINER", "class_name": "KeycloakContainer" }
     ]
   },
-  "migrations": [
-    { "tag": "v1", "new_sqlite_classes": ["KeycloakContainer"] }
-  ],
   "exports": {
     "KeycloakContainer": { "type": "durable-object", "storage": "sqlite" }
   },

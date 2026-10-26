@@ -21,9 +21,6 @@
       { "name": "BACKEND_CONTAINER", "class_name": "BackendContainer" }
     ]
   },
-  "migrations": [
-    { "tag": "v1", "new_sqlite_classes": ["BackendContainer"] }
-  ],
   "exports": {
     "BackendContainer": { "type": "durable-object", "storage": "sqlite" }
   },
