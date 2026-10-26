@@ -114,6 +114,9 @@ jobs:
       # The ephemeral CI stack runs several live journeys and three Postman
       # collections in one minute. Production keeps the default limit of 120.
       RATE_LIMIT_LIMIT: 10000
+      # eTIMS device and receipts routes return 409 unless tax reporting is
+      # activated; CI needs them live so the Postman collections exercise them.
+      TAX_REPORTING_ACTIVATED: true
     defaults:
       run:
         working-directory: duka_pos_backend
