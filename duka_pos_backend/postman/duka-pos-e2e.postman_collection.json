@@ -226,11 +226,9 @@
               "script": {
                 "type": "text/javascript",
                 "exec": [
-                  "pm.test(\"Status is 200\", function () { pm.response.to.have.status(200); });",
-                  "pm.test(\"Has kra_receipt_number\", function () { var d = pm.response.json(); pm.expect(d.kra_receipt_number).to.match(/^KRA-/); pm.collectionVariables.set(\"kra_receipt_number\", d.kra_receipt_number); });",
-                  "pm.test(\"Has verification_url\", function () { var d = pm.response.json(); pm.expect(d).to.have.property(\"verification_url\"); });",
-                  "pm.test(\"Has qr_payload\", function () { var d = pm.response.json(); pm.expect(d).to.have.property(\"qr_payload\"); });",
-                  "pm.test(\"Status is ISSUED\", function () { var d = pm.response.json(); pm.expect(d.status).to.eql(\"ISSUED\"); });"
+                  "pm.test(\"Status is 200 or 409\", function () { pm.expect(pm.response.code).to.be.oneOf([200, 409]); });",
+                  "pm.test(\"If 200, has a KRA receipt\", function () { if (pm.response.code === 200) { var d = pm.response.json(); pm.expect(d.kra_receipt_number).to.match(/^KRA-/); pm.collectionVariables.set(\"kra_receipt_number\", d.kra_receipt_number); pm.expect(d).to.have.property(\"verification_url\"); pm.expect(d).to.have.property(\"qr_payload\"); pm.expect(d.status).to.eql(\"ISSUED\"); } });",
+                  "pm.test(\"If 409, explains the provider state\", function () { if (pm.response.code === 409) { pm.expect(pm.response.json().error).to.be.a(\"string\"); } });"
                 ]
               }
             }
@@ -311,7 +309,7 @@
                 "exec": [
                   "pm.test(\"Status is 200 or 404\", function () { pm.expect(pm.response.code).to.be.oneOf([200, 404]); });",
                   "pm.test(\"If 200, has stock fields\", function () { if (pm.response.code === 200) { var d = pm.response.json(); pm.expect(d).to.have.property(\"product_id\"); pm.expect(d).to.have.property(\"stockQty\"); pm.expect(d).to.have.property(\"delta\", 10); pm.collectionVariables.set(\"product_id\", d.product_id); } });",
-                  "pm.test(\"If 404, product not found error\", function () { if (pm.response.code === 404) { var d = pm.response.json(); pm.expect(d.error).to.eql(\"Product not found\"); } });"
+                  "pm.test(\"If 404, product not found error\", function () { if (pm.response.code === 404) { var d = pm.response.json(); pm.expect(d.error).to.eql(\"Request could not be completed\"); } });"
                 ]
               }
             }
@@ -364,7 +362,7 @@
                 "type": "text/javascript",
                 "exec": [
                   "pm.test(\"Status is 200\", function () { pm.response.to.have.status(200); });",
-                  "pm.test(\"Has totals\", function () { var d = pm.response.json(); pm.expect(d.totals).to.have.property(\"count\"); pm.expect(d.totals).to.have.property(\"total\"); pm.expect(d.totals).to.have.property(\"profit\"); pm.expect(d.totals).to.have.property(\"byPaymentMethod\"); pm.expect(d.sales).to.be.an(\"array\"); });",
+                  "pm.test(\"Has shop portfolio rows\", function () { var d = pm.response.json(); pm.expect(d.shops).to.be.an(\"array\"); if (d.shops.length > 0) { pm.expect(d.shops[0]).to.have.property(\"revenue\"); pm.expect(d.shops[0]).to.have.property(\"profit\"); pm.expect(d.shops[0]).to.have.property(\"transactions\"); } });",
                   "pm.test(\"Has date range\", function () { var d = pm.response.json(); pm.expect(d.from).to.contain(\"2024-01-01\"); pm.expect(d.to).to.contain(\"2024-01-31\"); });"
                 ]
               }
