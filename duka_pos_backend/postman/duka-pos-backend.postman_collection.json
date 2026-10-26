@@ -78,6 +78,123 @@
       ]
     },
     {
+      "name": "Session - Link and Verify",
+      "item": [
+        {
+          "name": "POST /api/auth/link",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"owner@example.com\",\n  \"pin\": \"1234\",\n  \"shopName\": \"Test Shop\",\n  \"ownerName\": \"Test Owner\"\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/api/auth/link",
+              "host": ["{{base_url}}"],
+              "path": ["api", "auth", "link"]
+            },
+            "description": "Create tenant and owner profile, send verification code"
+          },
+          "response": [
+            {
+              "name": "200 OK",
+              "status": "OK",
+              "code": 200,
+              "body": {
+                "challenge_id": "{{challenge_id}}",
+                "email": "owner@example.com",
+                "expires_in_seconds": 600
+              }
+            }
+          ],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Status is 200\", function () {",
+                  "    pm.response.to.have.status(200);",
+                  "});",
+                  "pm.test(\"Has challenge_id\", function () {",
+                  "    var data = pm.response.json();",
+                  "    pm.expect(data).to.have.property(\"challenge_id\");",
+                  "    pm.expect(data.challenge_id).to.not.be.empty;",
+                  "    pm.collectionVariables.set(\"challenge_id\", data.challenge_id);",
+                  "});",
+                  "pm.test(\"Email matches\", function () {",
+                  "    var data = pm.response.json();",
+                  "    pm.expect(data.email).to.eql(\"owner@example.com\");",
+                  "});",
+                  "pm.test(\"Expires in seconds is number\", function () {",
+                  "    var data = pm.response.json();",
+                  "    pm.expect(data.expires_in_seconds).to.be.a(\"number\");",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "POST /api/auth/verify",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"owner@example.com\",\n  \"pin\": \"1234\",\n  \"code\": \"{{verification_code}}\"\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/api/auth/verify",
+              "host": ["{{base_url}}"],
+              "path": ["api", "auth", "verify"]
+            },
+            "description": "Confirm verification code and mint session tokens"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Status is 200\", function () {",
+                  "    pm.response.to.have.status(200);",
+                  "});",
+                  "pm.test(\"Has access_token\", function () {",
+                  "    var data = pm.response.json();",
+                  "    pm.expect(data).to.have.property(\"access_token\");",
+                  "    pm.expect(data.access_token).to.not.be.empty;",
+                  "    pm.collectionVariables.set(\"access_token\", data.access_token);",
+                  "});",
+                  "pm.test(\"Has tenant_id\", function () {",
+                  "    var data = pm.response.json();",
+                  "    pm.expect(data).to.have.property(\"tenant_id\");",
+                  "    pm.expect(data.tenant_id).to.not.be.empty;",
+                  "    pm.collectionVariables.set(\"tenant_id\", data.tenant_id);",
+                  "});",
+                  "pm.test(\"Expires in seconds is 86400\", function () {",
+                  "    var data = pm.response.json();",
+                  "    pm.expect(data.expires_in_seconds).to.eql(86400);",
+                  "});"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
       "name": "Auth - Shop Linking",
       "item": [
         {
@@ -107,7 +224,7 @@
               "status": "OK",
               "code": 200,
               "body": {
-                "challenge_id": "{{$guid}}",
+                "challenge_id": "{{challenge_id}}",
                 "email": "owner@example.com",
                 "expires_in_seconds": 600
               }
@@ -152,7 +269,7 @@
             ],
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"email\": \"owner@example.com\",\n  \"pin\": \"1234\",\n  \"shopName\": \"Duplicate Shop\",\n  \"ownerName\": \"Test Owner\"\n}"
+              "raw": "{\n  \"email\": \"owner@example.com\",\n  \"pin\": \"1234\",\n  \"shopName\": \"Test Shop\",\n  \"ownerName\": \"Test Owner\"\n}"
             },
             "url": {
               "raw": "{{base_url}}/api/auth/link",
@@ -476,6 +593,10 @@
                 "value": "application/json"
               },
               {
+                "key": "Authorization",
+                "value": "Bearer {{access_token}}"
+              },
+              {
                 "key": "x-tenant-id",
                 "value": "test-tenant-id"
               }
@@ -521,6 +642,10 @@
               {
                 "key": "Content-Type",
                 "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{access_token}}"
               },
               {
                 "key": "x-tenant-id",
@@ -574,6 +699,10 @@
             "method": "GET",
             "header": [
               {
+                "key": "Authorization",
+                "value": "Bearer {{access_token}}"
+              },
+              {
                 "key": "x-tenant-id",
                 "value": "test-tenant-id"
               }
@@ -612,6 +741,10 @@
           "request": {
             "method": "GET",
             "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{access_token}}"
+              },
               {
                 "key": "x-tenant-id",
                 "value": "test-tenant-id"
@@ -667,6 +800,10 @@
             "method": "GET",
             "header": [
               {
+                "key": "Authorization",
+                "value": "Bearer {{access_token}}"
+              },
+              {
                 "key": "x-tenant-id",
                 "value": "test-tenant-id"
               }
@@ -718,6 +855,10 @@
               {
                 "key": "Content-Type",
                 "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{access_token}}"
               },
               {
                 "key": "x-tenant-id",
@@ -776,6 +917,10 @@
               {
                 "key": "Content-Type",
                 "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{access_token}}"
               },
               {
                 "key": "x-tenant-id",
@@ -861,6 +1006,26 @@
     {
       "key": "base_url",
       "value": "http://localhost:3000",
+      "type": "string"
+    },
+    {
+      "key": "access_token",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "tenant_id",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "challenge_id",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "verification_code",
+      "value": "123456",
       "type": "string"
     }
   ]
