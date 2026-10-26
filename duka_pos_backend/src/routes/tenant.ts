@@ -238,7 +238,7 @@ router.patch(
     if (requireUser(req).role !== 'admin') {
       return res.status(403).json({ error: 'Shop admin access required' });
     }
-    const { mpesaEnabled, etimsEnabled, payheroChannelId, businessProfile } = parseBody(settingsSchema, req.body);
+    const { mpesaEnabled, etimsEnabled, payheroChannelId, businessProfile, risitiMerchantId } = parseBody(settingsSchema, req.body);
     if (etimsEnabled === true && !taxReportingActivated()) {
       return res.status(409).json({
         error: 'Tax reporting is not activated yet',
@@ -253,6 +253,7 @@ router.patch(
         ...(etimsEnabled !== undefined && { etimsEnabled }),
         ...(payheroChannelId !== undefined && { payheroChannelId }),
         ...(businessProfile !== undefined && { businessProfile }),
+        ...(risitiMerchantId !== undefined && { risitiMerchantId }),
       },
     });
     return res.json(tenant);

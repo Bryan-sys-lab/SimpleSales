@@ -29,6 +29,7 @@ export const settingsSchema = z.object({
   etimsEnabled: z.boolean().optional(),
   payheroChannelId: z.number().int().positive().max(2000000).nullable().optional(),
   businessProfile: z.enum(['drinks', 'duka', 'fashion', 'open']).optional(),
+  risitiMerchantId: z.string().trim().min(1).max(50).optional(),
 }).strict();
 
 export const taxEntitySchema = z.object({
