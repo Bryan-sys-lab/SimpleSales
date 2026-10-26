@@ -145,7 +145,7 @@ void main() {
   /// The plan step, with the event payload the workflow passes it.
   String planScript(String plan, String sha) => plan
       .replaceAll(r'${{ github.event.workflow_run.head_sha }}', sha)
-      .replaceAll(r'${{ github.event.workflow_run.head_branch }}', 'main')
+      .replaceAll(r'${{ github.event.workflow_run.head_branch }}', 'app')
       .replaceAll(r'${{ github.event.workflow_run.id }}', '1')
       .replaceAll(r'${{ github.event.workflow_run.conclusion }}', 'success')
       .replaceAll(r'${{ github.event.workflow_run.event }}', 'push')
@@ -217,10 +217,10 @@ void main() {
 
     // And it was PUSHED, which is what starts the CI that blesses it.
     final ProcessResult remote = Process.runSync(
-        'git', <String>['log', '-1', '--format=%s', 'origin/main'],
+        'git', <String>['log', '-1', '--format=%s', 'origin/app'],
         workingDirectory: repo.path);
     expect(remote.stdout.toString(), contains('bump the build number to 29'),
-        reason: 'the bump has to reach main, or the release ships an untested '
+        reason: 'the bump has to reach app, or the release ships an untested '
             'commit');
 
     // The pubspec now says the next number.
