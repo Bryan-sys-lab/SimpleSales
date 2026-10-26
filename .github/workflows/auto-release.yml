@@ -28,12 +28,12 @@ on:
   workflow_run:
     workflows: [CI]
     types: [completed]
-    branches: [app]
+    branches: [main]
 
 # Serialise: two green runs finishing together must not both read the same
 # highest released build number and mint the same one.
 concurrency:
-  group: auto-release-app
+  group: auto-release-main
   cancel-in-progress: false
 
 permissions:
@@ -93,7 +93,7 @@ jobs:
           # head branch, so a pull request's run should never arrive here — but
           # a release is irreversible and this workflow holds signing-triggering
           # permission, so the check is repeated rather than assumed.
-          if [ "$branch" != "app" ]; then
+          if [ "$branch" != "main" ]; then
             echo "::error::Refusing to release: tested branch is '${branch}', not main."
             exit 1
           fi
@@ -309,7 +309,7 @@ jobs:
           # with the token in it is written to .git/config and can be read
           # off the machine by anything that can read the repository.
           auth="$(printf 'x-access-token:%s' "$GH_TOKEN" | base64 -w0)"
-          if ! git -c http.extraheader="AUTHORIZATION: basic ${auth}" push origin HEAD:app; then
+          if ! git -c http.extraheader="AUTHORIZATION: basic ${auth}" push origin HEAD:main; then
             # FAILED, not "nothing to do".
             #
             # The push is rejected when main has moved on since this run
