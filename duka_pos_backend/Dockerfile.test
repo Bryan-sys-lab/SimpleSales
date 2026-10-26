@@ -1,10 +1,5 @@
-# Test runner image - runs vitest integration tests against the live stack.
-# Match the API image's glibc/OpenSSL-3 runtime so Prisma generation is
-# deterministic and does not need the retired OpenSSL 1.1 engine.
-FROM node:26-bookworm-slim AS test
-RUN apt-get update \
-  && apt-get install -y --no-install-recommends libssl3 ca-certificates curl \
-  && rm -rf /var/lib/apt/lists/*
+# Test runner image - runs vitest integration tests against live backend
+FROM node:20-alpine AS test
 WORKDIR /app
 COPY package.json package-lock.json* ./
 RUN npm ci --include=dev
