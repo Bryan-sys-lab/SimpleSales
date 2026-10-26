@@ -129,7 +129,7 @@ jobs:
         # The helper services reference the same local backend image. A clean
         # GitHub runner has no local tag yet, so build it explicitly before
         # Compose resolves migrate/keycloak-init/storage-init.
-        run: docker compose build backend tests
+        run: docker compose build --no-cache backend tests
 
       - name: Start the full local stack
         shell: bash
