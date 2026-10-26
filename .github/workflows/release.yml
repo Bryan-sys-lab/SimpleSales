@@ -255,19 +255,9 @@ jobs:
           EOF
           chmod 600 android/key.properties
 
-      # Compile-time configuration.
-      #
-      # The app is offline-first: a till records sales to its own database and
-      # needs no backend to take money. So an unset backend or issuer is a
-      # warning, not a failure — that build is a valid cash-only till, and
-      # refusing to ship it would mean no APK at all until the backend and
-      # Keycloak are deployed.
-      #
-      # A value that IS set is held to a stricter rule. Someone who typed a
-      # backend URL and got it wrong believes the build is wired up, and an
-      # http:// or localhost endpoint fails silently on the handset (Android
-      # blocks cleartext by default; there is no usesCleartextTraffic in the
-      # manifest). Failing here makes the cause visible instead.
+      # Compile-time configuration for the downloadable release artifact.
+      # The release must point at the deployed API and OIDC Worker; an
+      # offline-only APK is not a final connected release.
       - name: Validate release configuration
         id: config
         shell: bash
@@ -275,6 +265,9 @@ jobs:
           SENTRY_DSN: ${{ secrets.SENTRY_DSN }}
           BACKEND_URL: ${{ secrets.BACKEND_URL }}
           OIDC_ISSUER_URL: ${{ secrets.OIDC_ISSUER_URL }}
+          OIDC_CLIENT_ID: ${{ secrets.OIDC_CLIENT_ID }}
+          OIDC_REDIRECT_URL: ${{ secrets.OIDC_REDIRECT_URL }}
+          OIDC_API_SCOPE: ${{ secrets.OIDC_API_SCOPE }}
         run: |
           set -euo pipefail
 
@@ -282,15 +275,15 @@ jobs:
             echo "::warning::SENTRY_DSN is not set; this build ships without crash reporting."
           fi
 
-          if [ -z "${BACKEND_URL}" ]; then
-            echo "::warning::BACKEND_URL is not set. This is an offline-only build: sales are recorded locally, but sync and M-Pesa will not work."
-          fi
-          if [ -z "${OIDC_ISSUER_URL}" ]; then
-            echo "::warning::OIDC_ISSUER_URL is not set. This is an offline-only build: staff sign in with their PIN, but online sign-in will not work."
-          fi
+          required=(BACKEND_URL OIDC_ISSUER_URL OIDC_CLIENT_ID OIDC_REDIRECT_URL OIDC_API_SCOPE)
+          for name in "${required[@]}"; do
+            if [ -z "${!name}" ]; then
+              echo "::error::${name} is required for a connected release artifact."
+              exit 1
+            fi
+          done
 
           for url in "$BACKEND_URL" "$OIDC_ISSUER_URL"; do
-            [ -z "$url" ] && continue
             if [[ ! "$url" =~ ^https://[^[:space:]]+$ ]]; then
               echo "::error::'$url' must be an https:// URL. Cleartext and bare hosts are not accepted."
               exit 1
@@ -301,25 +294,16 @@ jobs:
             fi
           done
 
-          # A placeholder is https and non-local, so it survives the checks
-          # above — but it is still obviously not a real deployment.
-          if [[ "${OIDC_ISSUER_URL}" == *example.com* || "${OIDC_ISSUER_URL}" == *example.test* ]]; then
-            echo "::warning::OIDC_ISSUER_URL looks like a placeholder ('$OIDC_ISSUER_URL'). Online sign-in will not work."
+          if [[ "${BACKEND_URL}" == *example.com* || "${BACKEND_URL}" == *example.test* || "${OIDC_ISSUER_URL}" == *example.com* || "${OIDC_ISSUER_URL}" == *example.test* ]]; then
+            echo "::error::A placeholder endpoint was supplied. Use the deployed Worker URLs."
+            exit 1
           fi
 
-          # Recorded so the published release is self-documenting about what
-          # this particular APK can and cannot do.
-          offline_only=false
-          if [ -z "${BACKEND_URL}" ] || [ -z "${OIDC_ISSUER_URL}" ]; then
-            offline_only=true
+          if [[ "${OIDC_REDIRECT_URL}" != *://* ]]; then
+            echo "::error::OIDC_REDIRECT_URL must include a URI scheme, for example dukapos://callback."
+            exit 1
           fi
-          echo "offline_only=${offline_only}" >> "$GITHUB_OUTPUT"
-
-          if [ "$offline_only" = true ]; then
-            echo "::warning::Releasing an OFFLINE-ONLY build. Set BACKEND_URL and OIDC_ISSUER_URL before you need M-Pesa or online sign-in."
-          else
-            echo "BACKEND_URL and OIDC_ISSUER_URL are set, https and non-local."
-          fi
+          echo "Connected release configuration validated."
 
       - name: Build signed release APK
         shell: bash
