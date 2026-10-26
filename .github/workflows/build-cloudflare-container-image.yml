@@ -32,7 +32,39 @@ jobs:
           context: duka_pos_backend
           file: duka_pos_backend/Dockerfile
           push: true
-          tags: registry.cloudflare.com/0d995e8087844342ed0da43d9ccd9993/duka-pos-backend:latest
+          tags: registry.cloudflare.com/0d995e8087844342ed0da43d9ccd9993/duka-pos-backend:prod
+
+      - name: Build and push Keycloak image
+        uses: docker/build-push-action@v6
+        with:
+          context: duka_pos_backend/cloudflare-keycloak
+          file: duka_pos_backend/cloudflare-keycloak/Dockerfile
+          push: true
+          tags: registry.cloudflare.com/0d995e8087844342ed0da43d9ccd9993/simplesales-keycloak:prod
+
+      - name: Pin image digests for the Cloudflare deployment
+        shell: bash
+        run: |
+          set -euo pipefail
+          backend_image="$(docker image inspect --format '{{index .RepoDigests 0}}' registry.cloudflare.com/0d995e8087844342ed0da43d9ccd9993/duka-pos-backend:prod)"
+          keycloak_image="$(docker image inspect --format '{{index .RepoDigests 0}}' registry.cloudflare.com/0d995e8087844342ed0da43d9ccd9993/simplesales-keycloak:prod)"
+          BACKEND_IMAGE="$backend_image" KEYCLOAK_IMAGE="$keycloak_image" node <<'NODE'
+          const fs = require('node:fs');
+          for (const [file, placeholder, value] of [
+            ['duka_pos_backend/cloudflare/wrangler.jsonc', '__BACKEND_IMAGE__', process.env.BACKEND_IMAGE],
+            ['duka_pos_backend/cloudflare-keycloak/wrangler.jsonc', '__KEYCLOAK_IMAGE__', process.env.KEYCLOAK_IMAGE],
+          ]) {
+            const source = fs.readFileSync(file, 'utf8');
+            fs.writeFileSync(file, source.replaceAll(placeholder, value));
+          }
+          NODE
+
+      - name: Commit deployment image digests
+        run: |
+          git config user.name github-actions[bot]
+          git config user.email 41898282+github-actions[bot]@users.noreply.github.com
+          git add duka_pos_backend/cloudflare/wrangler.jsonc duka_pos_backend/cloudflare-keycloak/wrangler.jsonc
+          git commit -m "ci: pin Cloudflare container image digests"
 
       # Workers Builds watches this branch. It is updated only after the image
       # is available, so Cloudflare never races the remote image publication.

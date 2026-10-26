@@ -9,9 +9,10 @@
   "containers": [
     {
       "class_name": "BackendContainer",
-      "image": "registry.cloudflare.com/0d995e8087844342ed0da43d9ccd9993/duka-pos-backend:latest",
-      "instance_type": "standard-1",
-      "max_instances": 1,
+      "scheduling_policy": "durable_object",
+      "images": {
+        "base": { "image": "__BACKEND_IMAGE__" }
+      },
       "observability": { "enabled": true }
     }
   ],
@@ -23,6 +24,9 @@
   "migrations": [
     { "tag": "v1", "new_sqlite_classes": ["BackendContainer"] }
   ],
+  "exports": {
+    "BackendContainer": { "type": "durable-object", "storage": "sqlite" }
+  },
   "secrets": {
     "required": [
       "DATABASE_URL", "OIDC_ISSUER_URL", "OIDC_AUDIENCE", "OIDC_JWKS_URI",

@@ -9,9 +9,10 @@
   "containers": [
     {
       "class_name": "KeycloakContainer",
-      "image": "docker.io/library/keycloak:24.0.1",
-      "instance_type": "standard-1",
-      "max_instances": 1,
+      "scheduling_policy": "durable_object",
+      "images": {
+        "base": { "image": "__KEYCLOAK_IMAGE__" }
+      },
       "observability": { "enabled": true }
     }
   ],
@@ -23,6 +24,9 @@
   "migrations": [
     { "tag": "v1", "new_sqlite_classes": ["KeycloakContainer"] }
   ],
+  "exports": {
+    "KeycloakContainer": { "type": "durable-object", "storage": "sqlite" }
+  },
   "secrets": {
     "required": [
       "KC_DB_URL",
