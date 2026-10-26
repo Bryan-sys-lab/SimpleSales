@@ -738,18 +738,24 @@
               "script": {
                 "type": "text/javascript",
                 "exec": [
-"pm.test(\"Status is 200 or 500\", function () {",
-                   "    pm.expect(pm.response.code).to.be.oneOf([200, 500]);",
-                   "});",
-                   "pm.test(\"If 200, has kra_receipt_number\", function () {",
-                   "    if (pm.response.code === 200) {",
-                   "        var data = pm.response.json();",
-                   "        pm.expect(data.kra_receipt_number).to.match(/^KRA-/);",
-                   "        pm.expect(data).to.have.property(\"verification_url\");",
-                   "        pm.expect(data).to.have.property(\"qr_payload\");",
-                   "        pm.expect(data.status).to.eql(\"ISSUED\");",
-                   "    }",
-                   "});"
+                  "pm.test(\"Status is 200 or 409\", function () {",
+                  "    pm.expect(pm.response.code).to.be.oneOf([200, 409]);",
+                  "});",
+                  "pm.test(\"If 200, has kra_receipt_number\", function () {",
+                  "    if (pm.response.code === 200) {",
+                  "        var data = pm.response.json();",
+                  "        pm.expect(data.kra_receipt_number).to.match(/^KRA-/);",
+                  "        pm.expect(data).to.have.property(\"verification_url\");",
+                  "        pm.expect(data).to.have.property(\"qr_payload\");",
+                  "        pm.expect(data.status).to.eql(\"ISSUED\");",
+                  "    }",
+                  "});",
+                  "pm.test(\"If 409, error is about tax reporting\", function () {",
+                  "    if (pm.response.code === 409) {",
+                  "        var data = pm.response.json();",
+                  "        pm.expect(data.error).to.be.a(\"string\");",
+                  "    }",
+                  "});"
                 ]
               }
             }
@@ -908,12 +914,12 @@
                   "pm.test(\"Status is 200\", function () {",
                   "    pm.response.to.have.status(200);",
                   "});",
-"pm.test(\"Has totals\", function () {",
-                   "    var data = pm.response.json();",
-                   "    pm.expect(data.shops).to.be.an(\"array\");",
-                   "    pm.expect(data.from).to.be.a(\"string\");",
-                   "    pm.expect(data.to).to.be.a(\"string\");",
-                   "});"
+                  "pm.test(\"Has totals\", function () {",
+                  "    var data = pm.response.json();",
+                  "    pm.expect(data.shops).to.be.an(\"array\");",
+                  "    pm.expect(data.from).to.be.a(\"string\");",
+                  "    pm.expect(data.to).to.be.a(\"string\");",
+                  "});"
                 ]
               }
             }

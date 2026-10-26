@@ -335,7 +335,7 @@
                 "type": "text/javascript",
                 "exec": [
                   "pm.test(\"Status is 200\", function () { pm.response.to.have.status(200); });",
-                  "pm.test(\"Body is an array\", function () { var d = pm.response.json(); pm.expect(d).to.be.an(\"array\"); });"
+                  "pm.test(\"Body has products and nextOffset\", function () { var d = pm.response.json(); pm.expect(d).to.have.property(\"products\"); pm.expect(d.products).to.be.an(\"array\"); pm.expect(d).to.have.property(\"nextOffset\"); });"
                 ]
               }
             }
