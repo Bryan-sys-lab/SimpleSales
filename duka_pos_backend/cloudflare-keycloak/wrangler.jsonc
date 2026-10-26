@@ -1,0 +1,36 @@
+{
+  "$schema": "./node_modules/wrangler/config-schema.json",
+  "name": "simplesales-keycloak",
+  "main": "worker.ts",
+  "compatibility_date": "2026-10-26",
+  "compatibility_flags": ["nodejs_compat"],
+  "upload_source_maps": true,
+  "observability": { "enabled": true },
+  "containers": [
+    {
+      "class_name": "KeycloakContainer",
+      "image": "./Dockerfile",
+      "instance_type": "standard-1",
+      "max_instances": 1,
+      "observability": { "enabled": true }
+    }
+  ],
+  "durable_objects": {
+    "bindings": [
+      { "name": "KEYCLOAK_CONTAINER", "class_name": "KeycloakContainer" }
+    ]
+  },
+  "migrations": [
+    { "tag": "v1", "new_sqlite_classes": ["KeycloakContainer"] }
+  ],
+  "secrets": {
+    "required": [
+      "KC_DB_URL",
+      "KC_DB_USERNAME",
+      "KC_DB_PASSWORD",
+      "KC_HOSTNAME",
+      "KEYCLOAK_ADMIN",
+      "KEYCLOAK_ADMIN_PASSWORD"
+    ]
+  }
+}
