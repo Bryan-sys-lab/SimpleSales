@@ -56,8 +56,8 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          git fetch --no-tags origin main
-          if ! git merge-base --is-ancestor "$GITHUB_SHA" origin/main; then
+          git fetch --no-tags origin app
+          if ! git merge-base --is-ancestor "$GITHUB_SHA" origin/app; then
             echo "::error::Tag ${GITHUB_REF_NAME} points at a commit that is not on main. Refusing to release."
             exit 1
           fi

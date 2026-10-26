@@ -14,12 +14,12 @@ name: CI
 # file that decides what ships is now covered by the check that gates shipping.
 on:
   pull_request:
-    branches: [main]
+    branches: [app]
     paths:
       - 'duka_pos_app/**'
       - '.github/**'
   push:
-    branches: [main]
+    branches: [app]
     paths:
       - 'duka_pos_app/**'
       - '.github/**'
