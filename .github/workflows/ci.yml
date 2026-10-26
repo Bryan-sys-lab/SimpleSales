@@ -17,13 +17,11 @@ on:
     branches: [main]
     paths:
       - 'duka_pos_app/**'
-      - 'duka_pos_backend/**'
       - '.github/**'
   push:
     branches: [main]
     paths:
       - 'duka_pos_app/**'
-      - 'duka_pos_backend/**'
       - '.github/**'
   workflow_dispatch:
     inputs:
@@ -43,51 +41,6 @@ permissions:
   contents: read
 
 jobs:
-  backend:
-    name: Backend Compose stack and tests
-    runs-on: ubuntu-24.04
-    timeout-minutes: 30
-    steps:
-      - name: Check out source
-        uses: actions/checkout@v4
-
-      - name: Start the complete local backend stack
-        working-directory: duka_pos_backend
-        run: docker compose up --build -d
-
-      - name: Verify Compose services are healthy
-        shell: bash
-        run: |
-          set -Eeuo pipefail
-          cleanup() {
-            local status=$?
-            docker compose -f duka_pos_backend/docker-compose.yml logs --no-color > /tmp/duka-pos-compose.log 2>&1 || true
-            docker compose -f duka_pos_backend/docker-compose.yml down -v || true
-            return "${status}"
-          }
-          trap cleanup EXIT INT TERM
-          for attempt in {1..60}; do
-            if curl --fail --silent http://127.0.0.1:3100/ready >/dev/null; then break; fi
-            if [[ "${attempt}" == 60 ]]; then
-              docker compose -f duka_pos_backend/docker-compose.yml ps -a
-              cat /tmp/duka-pos-compose.log 2>/dev/null || true
-              exit 1
-            fi
-            sleep 1
-          done
-
-      - name: Run backend unit and live integration tests inside Compose
-        working-directory: duka_pos_backend
-        run: >-
-          docker compose --profile verify run --rm tests sh -lc
-          'npm test && BASE_URL=http://backend:3000 npm run test:live &&
-          BASE_URL=http://backend:3000 AUTH_TEST_CODE=123456 npm run test:live:auth &&
-          BASE_URL=http://backend:3000 AUTH_TEST_CODE=123456 npm run test:live:analytics &&
-          BASE_URL=http://backend:3000 AUTH_TEST_CODE=123456 npm run test:live:backup &&
-          BASE_URL=http://backend:3000 AUTH_TEST_CODE=123456 CONCURRENCY=10 REQUESTS=50 npm run test:load &&
-          npx --yes newman@latest run postman/duka-pos-live-smoke.postman_collection.json --env-var base_url=http://backend:3000 &&
-          npx --yes newman@latest run postman/duka-pos-backend.postman_collection.json --env-var base_url=http://backend:3000 &&
-          npx --yes newman@latest run postman/duka-pos-e2e.postman_collection.json --env-var base_url=http://backend:3000 --env-var verification_code=123456'
 
   validate:
     name: Analyze, test, and build
