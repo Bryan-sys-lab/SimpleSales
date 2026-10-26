@@ -1,0 +1,12 @@
+{
+  "id": "duka-pos-ci",
+  "name": "CI",
+  "values": [
+    { "key": "base_url", "value": "http://localhost:3000", "type": "default", "enabled": true },
+    { "key": "keycloak_url", "value": "http://localhost:8080", "type": "default", "enabled": true },
+    { "key": "keycloak_realm", "value": "duka", "type": "default", "enabled": true },
+    { "key": "keycloak_client_id", "value": "duka-app", "type": "default", "enabled": true },
+    { "key": "owner_email", "value": "owner@example.com", "type": "default", "enabled": true },
+    { "key": "owner_pin", "value": "123456", "type": "default", "enabled": true }
+  ]
+}
