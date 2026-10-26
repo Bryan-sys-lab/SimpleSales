@@ -125,7 +125,16 @@ jobs:
         run: docker compose build backend tests
 
       - name: Start the full local stack
-        run: docker compose up -d
+        shell: bash
+        run: |
+          set +e
+          docker compose up -d
+          status=$?
+          if [[ $status -ne 0 ]]; then
+            docker compose ps
+            docker compose logs --no-color migrate keycloak-init storage-init backend
+            exit "$status"
+          fi
 
       - name: Wait for the API to be healthy
         # The stack's own health check is the gate, and the wait is for the
