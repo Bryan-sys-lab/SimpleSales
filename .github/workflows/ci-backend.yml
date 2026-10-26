@@ -110,6 +110,10 @@ jobs:
     name: The whole stack, started and exercised
     runs-on: ubuntu-24.04
     timeout-minutes: 30
+    env:
+      # The ephemeral CI stack runs several live journeys and three Postman
+      # collections in one minute. Production keeps the default limit of 120.
+      RATE_LIMIT_LIMIT: 10000
     defaults:
       run:
         working-directory: duka_pos_backend

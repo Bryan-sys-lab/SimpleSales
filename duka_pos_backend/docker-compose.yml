@@ -31,6 +31,7 @@ x-backend-env: &backend-env
   MPESA_CALLBACK_KEY: ${MPESA_CALLBACK_KEY:-unset-local-dev}
   SYSTEM_ADMIN_SUBJECTS: ${SYSTEM_ADMIN_SUBJECTS:-local-admin-subject}
   FRONTEND_URL: ${FRONTEND_URL:-http://localhost:3100}
+  RATE_LIMIT_LIMIT: ${RATE_LIMIT_LIMIT:-120}
   APP_VERSION_NAME: '2.0.0'
   APP_VERSION_CODE: '23'
   APP_DOWNLOAD_URL: http://localhost:3000/app/app.apk

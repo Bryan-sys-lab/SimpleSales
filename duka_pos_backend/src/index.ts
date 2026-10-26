@@ -72,7 +72,7 @@ app.use(cors({ origin: allowedOrigins.length ? allowedOrigins : false }));
 app.use(express.json({ limit: '8mb' }));
 app.use(rateLimit({
   windowMs: 60000,
-  limit: 120,
+  limit: Number(process.env.RATE_LIMIT_LIMIT ?? 120),
   standardHeaders: 'draft-7',
   legacyHeaders: false,
   // Liveness/readiness probes must keep working during a traffic burst;
