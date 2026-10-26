@@ -538,7 +538,7 @@
               },
               {
                 "key": "x-tenant-id",
-                "value": "test-tenant-id"
+                "value": "{{tenant_id}}"
               }
             ],
             "body": {
@@ -589,7 +589,7 @@
               },
               {
                 "key": "x-tenant-id",
-                "value": "test-tenant-id"
+                "value": "{{tenant_id}}"
               }
             ],
             "body": {
@@ -644,7 +644,7 @@
               },
               {
                 "key": "x-tenant-id",
-                "value": "test-tenant-id"
+                "value": "{{tenant_id}}"
               }
             ],
             "url": {
@@ -687,7 +687,7 @@
               },
               {
                 "key": "x-tenant-id",
-                "value": "test-tenant-id"
+                "value": "{{tenant_id}}"
               }
             ],
             "url": {
@@ -745,7 +745,7 @@
               },
               {
                 "key": "x-tenant-id",
-                "value": "test-tenant-id"
+                "value": "{{tenant_id}}"
               }
             ],
             "url": {
@@ -802,7 +802,7 @@
               },
               {
                 "key": "x-tenant-id",
-                "value": "test-tenant-id"
+                "value": "{{tenant_id}}"
               }
             ],
             "body": {
@@ -864,7 +864,7 @@
               },
               {
                 "key": "x-tenant-id",
-                "value": "test-tenant-id"
+                "value": "{{tenant_id}}"
               }
             ],
             "body": {
