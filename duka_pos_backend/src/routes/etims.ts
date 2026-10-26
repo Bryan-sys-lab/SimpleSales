@@ -1,330 +1,277 @@
-import { Router, Request, Response } from 'express';
-import { requireOwner, requireRole } from '../middleware/auth.js';
-import { asyncHandler } from '../lib/http.js';
-import { prisma } from '../lib/prisma.js';
-import { log } from '../lib/observability.js';
-import { parseBody, etimsDeviceSchema, etimsReceiptSchema } from '../lib/validation.js';
-import { KraError } from '../services/kra.js';
-import { routeParam } from '../lib/http';
-import {
-  issueReceipt,
-  registerDevice,
-  toMajor,
-  uploadPendingBatch,
-  publishZReport,
-  buildZReport,
-  type InvoiceInput,
-  type InvoiceItemInput,
-} from '../services/etims.js';
-
-const router = Router();
-
 /**
- * The only device fields this API will ever hand back.
- *
- * `access_key` and `encryption_key` sign every invoice the shop will file, and
- * they are deliberately absent. They are not filtered in the response builder —
- * they are not fetched at all, so no future edit to the response can leak them
- * by accident. Exported so a test can assert the projection rather than the
- * JSON, which is what actually has to stay true.
+ * eTIMS (KRA tax compliance) routes.
+ * Uses PostgreSQL/Prisma for persistent storage.
  */
+import { Router } from 'express';
+import { asyncHandler } from '../lib/http';
+import { parseBody } from '../lib/validation';
+import { etimsReceiptSchema, etimsDeviceSchema } from '../lib/validation';
+import { Prisma } from '@prisma/client';
+import { prisma } from '../lib/prisma';
+
+import { log } from '../lib/observability';
+import { buildRisitiInvoiceRequest, submissionOutcome, submitInvoice } from '../services/risiti';
+import { TAX_REPORTING_PROVIDER, TAX_PROVIDER_DISPLAY_NAME, taxReportingActivated, taxReportingStatus } from '../services/tax_reporting';
+
+const taxProvider = TAX_REPORTING_PROVIDER;
+
 /**
- * What the public verification page may return.
+ * What GET /etims/status answers with.
  *
- * Exactly the fields already printed on the paper the customer is holding.
- * Exported so the guarantee is testable as a value: the risk being guarded
- * against is someone widening this projection to include the tenant, the TIN or
- * the device, which would turn a customer-facing page into a shop-data leak.
+ * `accessKey` and `encryptionKey` sign every invoice the shop will ever file,
+ * so they are NOT FETCHED rather than filtered on the way out — no future edit
+ * to the response body can then leak them by accident.
+ */
+export const etimsDeviceStatusSelect = {
+  tin: true,
+  deviceId: true,
+  deviceName: true,
+  status: true,
+  registeredAt: true,
+} as const;
+
+/**
+ * What the public verification page (GET /etims/verify/:number) answers with.
+ *
+ * No tenant, no device, no payload: the person following the QR is the
+ * customer, so the page may return only what is already printed on the paper
+ * in their hand.
  */
 export const publicReceiptSelect = {
-  receiptNumber: true,
   kraReceiptNumber: true,
+  issuedAt: true,
   status: true,
   total: true,
   vatTotal: true,
-  vatRatePercent: true,
-  issuedAt: true,
+  itemCount: true,
+  paymentMethod: true,
 } as const;
 
-export const etimsDeviceStatusSelect = {
-  tin: true,
-  status: true,
-  deviceId: true,
-  deviceSerial: true,
-  lastError: true,
-} as const;
+const router = Router();
+
+// GET /etims/verify/:number — the public page behind a receipt's QR code.
+//
+// No auth: the person following the QR is the customer, not the shop. It
+// returns ONLY what is already printed on the paper in their hand — the
+// projected fields in `publicReceiptSelect` — because a shop's database row
+// is not something a receipt number is entitled to read.
+router.get(
+  '/verify/:number',
+  asyncHandler(async (req, res): Promise<void> => {
+    const number = String(req.params.number ?? '').trim();
+    if (number === '') {
+      res.status(400).json({ error: 'A receipt number is required' });
+      return;
+    }
+    const receipt = await prisma.etimsReceipt.findFirst({
+      where: { OR: [{ kraReceiptNumber: number }, { receiptNumber: number }] },
+      select: { ...publicReceiptSelect },
+    });
+    if (!receipt) {
+      res.status(404).json({ error: 'No such receipt' });
+      return;
+    }
+    res.json({ status: receipt.status, receipt });
+  }),
+);
 
 
-/**
- * The page a customer lands on when they scan the receipt's QR code.
- *
- * Public and unauthenticated on purpose: the person scanning is the customer,
- * who has no account and will never have one. Mounted *before* the auth
- * middleware — putting it on the protected router would make the QR on every
- * receipt lead to a 401 for the only person who is meant to follow it.
- *
- * It therefore reveals nothing beyond what is already printed on the paper: the
- * receipt number, the total, the VAT and whether KRA accepted it. Never the
- * shop's TIN, never device credentials, never another tenant's data.
- */
-export const publicEtimsRouter = Router();
+router.post(
+  '/device',
+  asyncHandler(async (req, res) => {
+    if (!taxReportingActivated()) {
+      return res.status(409).json({
+        error: 'Tax reporting is not activated for this deployment',
+        provider: taxProvider,
+        provider_name: TAX_PROVIDER_DISPLAY_NAME,
+        kra_activated: false,
+      });
+    }
+    const { tin, deviceId, deviceName } = parseBody(etimsDeviceSchema, req.body);
+    const tenantId = req.user?.tenantId;
+    if (!tenantId) return res.status(403).json({ error: 'Tenant selection required' });
 
-publicEtimsRouter.get('/:receiptNumber', asyncHandler(async (req: Request, res) => {
-  // A KRA receipt number, not the till's own. The till's number is only unique
-  // within a shop — "T1-000001" is a number several shops reach independently —
-  // so resolving on it with no tenant filter would let one shop's customer read
-  // another's totals. KRA receipt numbers are globally unique, and the schema
-  // carries a unique index on them so this lookup is deterministic.
-  const kraReceiptNumber = String(routeParam(req.params.receiptNumber) ?? '').slice(0, 64);
-  if (!kraReceiptNumber) return res.status(400).json({ error: 'Receipt number required' });
+    const device = await prisma.etimsDevice.upsert({
+      where: { deviceId },
+      update: { tin, deviceName },
+      create: { tenantId, tin, deviceId, deviceName },
+    });
+    log('info', 'etims.device_registered', { tin, deviceId, deviceName });
+    return res.json({ tin: device.tin, device_id: device.deviceId, device_name: device.deviceName, registered: true });
+  })
+);
 
-  const receipt = await prisma.etimsReceipt.findFirst({
-    where: { kraReceiptNumber },
-    select: publicReceiptSelect,
-    // No tenant filter, and nothing beyond what is printed on the paper. Safe
-    // because the key is globally unique and the projection is exactly the
-    // fields the customer can already read off the receipt in their hand.
-  });
+router.post(
+  '/receipts',
+  asyncHandler(async (req, res) => {
+    const { deviceId, ...payload } = parseBody(etimsReceiptSchema, req.body);
+    const tenantId = req.user?.tenantId;
+    if (!tenantId) return res.status(403).json({ error: 'Tenant selection required' });
 
-  if (!receipt) return res.status(404).json({ error: 'No such receipt' });
-  res.json({
-    receipt_number: receipt.receiptNumber,
-    kra_receipt_number: receipt.kraReceiptNumber,
-    status: receipt.status,
-    total: receipt.total.toString(),
-    vat_total: receipt.vatTotal.toString(),
-    vat_rate_percent: receipt.vatRatePercent,
-    issued_at: receipt.issuedAt?.toISOString() ?? null,
-    verified: receipt.status === 'issued' && Boolean(receipt.kraReceiptNumber),
-  });
-}));
+    if (deviceId) {
+      const device = await prisma.etimsDevice.findUnique({ where: { deviceId } });
+      if (!device) return res.status(400).json({ error: 'eTIMS device not registered' });
+    }
 
-/**
- * Registers this shop's device with KRA.
- *
- * Owner-only. Registration mints the signing keys every invoice from this shop
- * is signed with, so it is a shop-administration action and not something a
- * cashier can trigger.
- */
-router.post('/device', requireOwner, asyncHandler(async (req: Request, res) => {
-  const { tin, device_id, device_name } = parseBody(etimsDeviceSchema, req.body);
-  const tenant = await prisma.tenant.findUnique({
-    where: { id: req.user!.tenantId },
-    select: { shopName: true },
-  });
-  if (!tenant) return res.status(404).json({ error: 'Shop not found' });
+    const tenant = await prisma.tenant.findUnique({ where: { id: tenantId } });
+    if (!taxReportingActivated() || !tenant?.etimsEnabled) {
+      return res.status(409).json({
+        error: 'Tax reporting is not activated for this shop',
+        provider: taxProvider,
+        provider_name: TAX_PROVIDER_DISPLAY_NAME,
+        kra_activated: false,
+      });
+    }
 
-  const device = await registerDevice({
-    tenantId: req.user!.tenantId,
-    shopName: tenant.shopName,
-    tin: tin.toUpperCase(),
-    deviceId: device_id,
-    deviceName: device_name,
-  });
+    if (tenant.taxProvider !== 'risiti' || !tenant.risitiMerchantId) {
+      return res.status(409).json({
+        error: 'Risiti merchant onboarding is incomplete',
+        provider: tenant.taxProvider,
+        provider_name: TAX_PROVIDER_DISPLAY_NAME,
+        kra_activated: false,
+      });
+    }
 
-  // Never the keys. They sign every invoice this shop will ever file; a
-  // response body is not a place to put a signing key.
-  res.status(201).json({
-    registered: device.status === 'active',
-    status: device.status,
-    tin: device.tin,
-    device_id: device.deviceId,
-    device_serial: device.deviceSerial,
-    initialised_at: device.initialisedAt?.toISOString() ?? null,
-    ...(device.lastError ? { error: device.lastError } : {}),
-  });
-}));
-
-/**
- * Issues a KRA receipt for one recorded sale.
- *
- * Cashiers may call this: filing the tax invoice for a sale they just made is
- * part of making the sale, not an administrative act. The tenant's own
- * `etims_enabled` flag is honoured, so a shop that has not opted in can never
- * have an invoice filed in its name by mistake.
- */
-router.post('/receipts', requireRole('admin', 'manager', 'cashier'), asyncHandler(async (req: Request, res) => {
-  const body = parseBody(etimsReceiptSchema, req.body);
-  const tenantId = req.user!.tenantId;
-
-  const tenant = await prisma.tenant.findUnique({
-    where: { id: tenantId },
-    select: { etimsEnabled: true },
-  });
-  if (!tenant?.etimsEnabled) {
-    return res.status(409).json({ error: 'eTIMS is not switched on for this shop' });
-  }
-
-  const input: InvoiceInput = {
-    receiptNumber: body.receipt_number,
-    issuedAt: body.issued_at,
-    paymentMethod: body.payment_method,
-    ...(body.payment_reference ? { paymentReference: body.payment_reference } : {}),
-    total: body.total,
-    vatRatePercent: body.vat_rate_percent,
-    items: body.items.map(
-      (item): InvoiceItemInput => ({
+    const input = payload as unknown as {
+      receipt_number: string;
+      issued_at: string;
+      payment_method: string;
+      items: Array<{ name: string; qty: number; unit_price: number; vat_amount: number; line_total: number }>;
+      buyer_name?: string;
+      buyer_tin?: string;
+    };
+    const prior = await prisma.etimsReceipt.findUnique({
+      where: { tenantId_receiptNumber: { tenantId, receiptNumber: input.receipt_number } },
+    });
+    if (prior?.status === 'issued' && prior.kraReceiptNumber) {
+      return res.json({
+        status: 'issued',
+        kra_receipt_number: prior.kraReceiptNumber,
+        verification_url: prior.verificationUrl,
+        qr_payload: prior.qrPayload,
+        duplicate: true,
+      });
+    }
+    const risiti = await submitInvoice(buildRisitiInvoiceRequest({
+      tenantId,
+      merchantId: tenant.risitiMerchantId,
+      receiptNumber: input.receipt_number,
+      issuedAt: input.issued_at,
+      paymentMethod: input.payment_method,
+      items: input.items.map((item) => ({
         name: item.name,
         qty: item.qty,
         unitPrice: item.unit_price,
-        unitCost: item.unit_cost,
-        portion: item.portion,
-        portionMl: item.portion_ml,
         vatAmount: item.vat_amount,
         lineTotal: item.line_total,
-      }),
-    ),
-  };
-
-  const outcome = await issueReceipt({ tenantId, deviceId: body.device_id ?? null, input });
-
-  switch (outcome.status) {
-    case 'issued':
-      return res.status(201).json({
-        status: 'issued',
-        kra_receipt_number: outcome.receiptNumber,
-        verification_url: verificationUrl(outcome.receiptNumber),
-        // The exact string for the receipt's QR code. KRA's verification page
-        // expects specific parameters, so the till encodes this rather than
-        // building a URL of its own.
-        qr_payload: outcome.qrPayload ?? verificationUrl(outcome.receiptNumber),
-      });
-    case 'already_issued':
-      return res.status(200).json({
-        status: 'issued',
-        kra_receipt_number: outcome.receiptNumber,
-        verification_url: verificationUrl(outcome.receiptNumber),
-        qr_payload: outcome.qrPayload ?? verificationUrl(outcome.receiptNumber),
-      });
-    case 'rejected':
-      // 422: the payload is well-formed and the request authenticated, but KRA
-      // refused the content. A retry would be refused identically, so the till
-      // must be told rather than left looping.
-      return res.status(422).json({ error: outcome.reason, status: 'rejected' });
-    case 'pending':
-    default:
-      // 202: accepted for later. The sale is committed on the till and stays
-      // there; this only says the invoice has not been issued yet.
-      return res.status(202).json({
-        status: 'pending',
-        message: 'KRA has not issued this receipt yet. It will be retried on the next upload.',
-      });
-  }
-}));
-
-/** Uploads every outstanding receipt for the shop, oldest first. */
-router.post('/upload', requireRole('admin', 'manager'), asyncHandler(async (req: Request, res) => {
-  const limit = Number(req.query.limit ?? 100);
-  const result = await uploadPendingBatch({
-    tenantId: req.user!.tenantId,
-    limit: Number.isFinite(limit) ? Math.min(Math.max(limit, 1), 500) : 100,
-  });
-  res.json(result);
-}));
-
-/** How much is outstanding, for the settings screen. */
-router.get('/status', requireRole('admin', 'manager', 'cashier'), asyncHandler(async (req: Request, res) => {
-  const tenantId = req.user!.tenantId;
-  const [device, pending, rejected, issued] = await Promise.all([
-    prisma.etimsDevice.findUnique({ where: { tenantId }, select: etimsDeviceStatusSelect }),
-    prisma.etimsReceipt.count({ where: { tenantId, status: 'pending' } }),
-    prisma.etimsReceipt.count({ where: { tenantId, status: 'rejected' } }),
-    prisma.etimsReceipt.count({ where: { tenantId, status: 'issued' } }),
-  ]);
-
-  res.json({
-    configured: device?.status === 'active',
-    device_status: device?.status ?? 'unregistered',
-    tin: device?.tin ?? null,
-    device_id: device?.deviceId ?? null,
-    device_serial: device?.deviceSerial ?? null,
-    pending_upload: pending,
-    rejected,
-    issued,
-    ...(device?.lastError ? { error: device.lastError } : {}),
-  });
-}));
-
-/**
- * The Z-report for a business date.
- *
- * Generated server-side because it has to reconcile against the receipts KRA
- * has actually accepted, which the till cannot know: the till can see what it
- * recorded, not what was issued.
- */
-router.get('/z-report', requireRole('admin', 'manager'), asyncHandler(async (req: Request, res) => {
-  const raw = typeof req.query.date === 'string' ? req.query.date : new Date().toISOString().slice(0, 10);
-  const parsed = new Date(`${raw}T00:00:00.000Z`);
-  if (!Number.isFinite(parsed.getTime())) {
-    return res.status(400).json({ error: 'Invalid report date' });
-  }
-
-  const summary = await buildZReport({ tenantId: req.user!.tenantId, date: parsed });
-
-  res.json({
-    z_number: summary.zNumber,
-    business_date: summary.businessDate.toISOString().slice(0, 10),
-    invoice_count: summary.invoiceCount,
-    total: summary.total,
-    vat_total: summary.vatTotal,
-    pending_count: summary.pendingCount,
-    device_ready: summary.deviceReady,
-  });
-}));
-
-/** Files today's Z-report with KRA. Explicit: publishing is not automatic. */
-router.post('/z-report', requireOwner, asyncHandler(async (req: Request, res) => {
-  const raw = typeof req.body?.date === 'string' ? req.body.date : new Date().toISOString().slice(0, 10);
-  const parsed = new Date(`${raw}T00:00:00.000Z`);
-  if (!Number.isFinite(parsed.getTime())) {
-    return res.status(400).json({ error: 'Invalid report date' });
-  }
-
-  try {
-    const report = await publishZReport({ tenantId: req.user!.tenantId, date: parsed });
-    res.json({
-      z_number: report.zNumber,
-      business_date: report.businessDate.toISOString().slice(0, 10),
-      invoice_count: report.invoiceCount,
-      total: report.total.toString(),
-      vat_total: report.vatTotal.toString(),
-      pending_count: report.pendingCount,
-      status: report.status,
+      })),
+      buyerName: input.buyer_name,
+      buyerTin: input.buyer_tin,
+    }));
+    const outcome = submissionOutcome(risiti.data.submission);
+    const status = outcome === 'issued' ? 'issued' : outcome === 'pending' ? 'pending' : 'rejected';
+    const receipt = await prisma.etimsReceipt.upsert({
+      where: { tenantId_receiptNumber: { tenantId, receiptNumber: input.receipt_number } },
+      update: {
+        status,
+        payload: payload as Prisma.InputJsonValue,
+        kraReceiptNumber: risiti.data.kra_receipt_number ?? null,
+        verificationUrl: risiti.data.risiti_url ?? null,
+        qrPayload: risiti.data.qr_code_data ?? null,
+        issuedAt: status === 'issued' ? new Date() : null,
+        rejectionReason: status === 'rejected' ? risiti.data.submission?.message ?? 'Risiti requires action' : null,
+      },
+      create: {
+        tenantId,
+        receiptNumber: input.receipt_number,
+        status,
+        payload: payload as Prisma.InputJsonValue,
+        kraReceiptNumber: risiti.data.kra_receipt_number ?? null,
+        verificationUrl: risiti.data.risiti_url ?? null,
+        qrPayload: risiti.data.qr_code_data ?? null,
+        issuedAt: status === 'issued' ? new Date() : null,
+        rejectionReason: status === 'rejected' ? risiti.data.submission?.message ?? 'Risiti requires action' : null,
+        deviceId,
+      },
     });
-  } catch (error) {
-    if (error instanceof KraError) {
-      log('warn', 'etims.z_report_failed', { tenantId: req.user!.tenantId, kind: error.kind });
-      return res.status(error.kind === 'misconfigured' ? 409 : 502).json({
-        error: error.message,
-        kind: error.kind,
-      });
+    log('info', 'etims.risiti_submitted', {
+      tenantId,
+      receiptNumber: input.receipt_number,
+      risitiInvoiceId: risiti.data.invoice_id,
+      requestId: risiti.requestId,
+      status,
+    });
+    return res.status(status === 'pending' ? 202 : 200).json({
+      status,
+      kra_receipt_number: receipt.kraReceiptNumber,
+      verification_url: receipt.verificationUrl,
+      qr_payload: receipt.qrPayload,
+      risiti_invoice_id: risiti.data.invoice_id,
+      request_id: risiti.requestId,
+      submission: risiti.data.submission,
+    });
+  })
+);
+
+router.get(
+  '/status',
+  asyncHandler(async (req, res) => {
+    const tenantId = req.user?.tenantId;
+    if (!tenantId) return res.status(403).json({ error: 'Tenant selection required' });
+
+    const tenant = await prisma.tenant.findUnique({ where: { id: tenantId } });
+    const tenantReceipts = await prisma.etimsReceipt.findMany({ where: { tenantId } });
+    const pending = tenantReceipts.filter((r) => r.status === 'pending').length;
+    const rejected = tenantReceipts.filter((r) => r.status === 'rejected').length;
+    return res.json({
+      ...taxReportingStatus(),
+      configured: Boolean(tenant?.etimsEnabled && taxReportingActivated()),
+      activation_status: taxReportingActivated() ? 'activated' : 'not_activated',
+      message: taxReportingActivated()
+        ? 'Tax reporting is ready through the configured provider.'
+        : 'KRA eTIMS is not activated. Sales and VAT reports remain available locally.',
+      pending_upload: pending,
+      rejected,
+      device_status: tenant?.etimsEnabled && taxReportingActivated() ? 'ACTIVE' : 'NOT_ACTIVATED',
+      tin: tenant?.tin ?? null,
+    });
+  })
+);
+
+router.get(
+  '/z-report',
+  asyncHandler(async (req, res) => {
+    const tenantId = req.user?.tenantId;
+    if (!tenantId) return res.status(403).json({ error: 'Tenant selection required' });
+
+    const dateParam = typeof req.query.date === 'string' ? req.query.date : undefined;
+    const targetDate = dateParam ? new Date(dateParam) : new Date();
+    if (!Number.isFinite(targetDate.getTime())) return res.status(400).json({ error: 'Invalid date' });
+
+    const start = new Date(targetDate); start.setHours(0, 0, 0, 0);
+    const end = new Date(targetDate); end.setHours(23, 59, 59, 999);
+
+    const sales = await prisma.sale.findMany({
+      where: { tenantId, createdAt: { gte: start, lte: end }, paymentMethod: 'mpesa' },
+      select: { id: true, total: true, profit: true, staffName: true, createdAt: true, paymentReference: true },
+      orderBy: { createdAt: 'asc' },
+    });
+
+    let totalSales = 0, totalProfit = 0, receiptCount = 0;
+    for (const sale of sales) {
+      totalSales += Number(sale.total ?? 0);
+      totalProfit += Number(sale.profit ?? 0);
+      receiptCount += 1;
     }
-    throw error;
-  }
-}));
-
-/** A receipt this shop filed, looked up by its till receipt number. */
-router.get('/receipts/:receiptNumber', requireRole('admin', 'manager'), asyncHandler(async (req: Request, res) => {
-  const receipt = await prisma.etimsReceipt.findFirst({
-    where: { tenantId: req.user!.tenantId, receiptNumber: String(routeParam(req.params.receiptNumber)) },
-  });
-  if (!receipt) return res.status(404).json({ error: 'Receipt not found' });
-  res.json({
-    receipt_number: receipt.receiptNumber,
-    kra_receipt_number: receipt.kraReceiptNumber,
-    status: receipt.status,
-    total: toMajor(Number(receipt.total) * 100),
-    vat_total: toMajor(Number(receipt.vatTotal) * 100),
-    vat_rate_percent: receipt.vatRatePercent,
-    issued_at: receipt.issuedAt?.toISOString() ?? null,
-    ...(receipt.rejectionReason ? { error: receipt.rejectionReason } : {}),
-  });
-}));
-
-/** The public verification URL for a KRA receipt number. */
-function verificationUrl(kraReceiptNumber: string): string {
-  const base = process.env.PUBLIC_API_URL?.replace(/\/$/, '') ?? '';
-  return base ? `${base}/api/etims/verify/${encodeURIComponent(kraReceiptNumber)}` : '';
-}
+    return res.json({
+      date: targetDate.toISOString().slice(0, 10),
+      tenantId,
+      receiptCount,
+      totalSales,
+      totalProfit,
+      sales,
+    });
+  })
+);
 
 export default router;

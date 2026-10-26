@@ -1,25 +1,57 @@
-# The whole stack: the database, the identity provider, the API, and the
-# tests that run against it.
+# The development stack: PostgreSQL, Keycloak, its realm setup, and the API.
 #
-# ## THE SECRETS COME FROM THE ENVIRONMENT
+# Every value below is a LOCAL-DEV default, never a secret: the overrides live
+# in .env (gitignored), via `${VAR:-default}`. What a real deployment needs —
+# strong passwords, a live PayHero token, SYSTEM_ADMIN_SUBJECTS — is supplied
+# there, or the placeholder is honest: `unset-local-dev` values that only ever
+# serve localhost.
 #
-# They are not in this file. A compose file that carries a password is a
-# password in git, and this one had placeholder secrets in it that could not
-# even be parsed — `[REDACTED]` is a YAML LIST, not a string, and the PayHero
-# token contained a `#`, which YAML reads as the start of a comment. So the
-# file could not start the stack at all.
-#
-# Every secret below is REQUIRED and named: a missing one stops the stack with
-# a message that says which, rather than starting with a blank password and
-# failing somewhere less obvious. Copy `.env.example` to `.env` and the stack
-# starts.
-#
-# ## THE MIGRATIONS RUN BEFORE THE API
-#
-# The API container applies the migrations and THEN starts. A stack that
-# starts the API against an empty database serves 500s for every query, and
-# the first symptom is a test that fails for a reason that looks like a bug in
-# the test.
+# The keycloak role and database do not exist in a fresh postgres volume (the
+# image can only seed ONE), so `db-init` creates them once, quietly, idempotently.
+
+x-backend-env: &backend-env
+  # The container below is the DEV stack: production behaviour (the https
+  # startup check, P0-10) is a real deployment's, with .env carrying the
+  # public URL. A laptop has none, and the backend would refuse its own boot.
+  NODE_ENV: development
+  # Production must provide a managed Postgres URL. The local default keeps
+  # Prisma's pool bounded so a laptop or small container cannot exhaust DB
+  # connections during sync bursts.
+  DATABASE_URL: ${DATABASE_URL:-postgresql://duka_pos:${DUKA_DB_PASSWORD:-duka_local_dev}@db:5432/duka_pos?schema=public&connection_limit=5&pool_timeout=10}
+  OIDC_ISSUER_URL: ${OIDC_ISSUER_URL:-http://keycloak:8080/realms/duka}
+  OIDC_AUDIENCE: ${OIDC_AUDIENCE:-duka-app}
+  OIDC_JWKS_URI: ${OIDC_JWKS_URI:-http://keycloak:8080/realms/duka/protocol/openid-connect/certs}
+  # The real credential comes from .env; the placeholder is refused by the
+  # PayHero checks, so a misconfigured deploy says so instead of failing a
+  # payment in the field.
+  PAYHERO_AUTH_TOKEN: ${PAYHERO_AUTH_TOKEN:-unset-local-dev}
+  # The shared key the C2B webhook checks; a deployment sets its own (and
+  # the same value in Daraja) — the placeholder makes the telco callback
+  # surface REFUSE rather than silently listen.
+  MPESA_CALLBACK_KEY: ${MPESA_CALLBACK_KEY:-unset-local-dev}
+  SYSTEM_ADMIN_SUBJECTS: ${SYSTEM_ADMIN_SUBJECTS:-local-admin-subject}
+  FRONTEND_URL: ${FRONTEND_URL:-http://localhost:3100}
+  APP_VERSION_NAME: '2.0.0'
+  APP_VERSION_CODE: '23'
+  APP_DOWNLOAD_URL: http://localhost:3000/app/app.apk
+  APP_UPDATE_REQUIRED: 'false'
+  APP_RELEASE_NOTES: 'Auto-update manifest'
+  R2_ENDPOINT: ${R2_ENDPOINT:-http://storage:9000}
+  R2_ACCESS_KEY_ID: ${R2_ACCESS_KEY_ID:-duka_local_storage}
+  R2_SECRET_ACCESS_KEY: ${R2_SECRET_ACCESS_KEY:-duka_local_storage_secret}
+  R2_BUCKET_NAME: ${R2_BUCKET_NAME:-duka-pos-profile-photos}
+  R2_PUBLIC_URL: ${R2_PUBLIC_URL:-http://localhost:9000/duka-pos-profile-photos}
+  # Deterministic verification is available only to local/test runs so the
+  # Postman journey can complete without an email transport. Production never
+  # accepts this override because the generator ignores it there.
+  AUTH_TEST_CODE: ${AUTH_TEST_CODE:-123456}
+  # Tax reporting stays disabled in local development until a merchant is
+  # onboarded and production approval is complete.
+  TAX_REPORTING_PROVIDER: ${TAX_REPORTING_PROVIDER:-risiti}
+  TAX_REPORTING_ACTIVATED: ${TAX_REPORTING_ACTIVATED:-false}
+  RISITI_BASE_URL: ${RISITI_BASE_URL:-https://sandbox-api.getrisiti.com/v1/platform}
+  RISITI_API_KEY: ${RISITI_API_KEY:-}
+
 services:
   # ------------------------------------------------------------------
   # PostgreSQL - application database
@@ -28,27 +60,64 @@ services:
     image: postgres:15-alpine
     container_name: duka_pos_db
     environment:
-      POSTGRES_USER: ${POSTGRES_USER:-duka_pos}
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?POSTGRES_PASSWORD is required}
-      POSTGRES_DB: ${POSTGRES_DB:-duka_pos}
-      # The identity provider's own password, so the first-run script can
-      # create its role with it.
-      KEYCLOAK_DB_PASSWORD: ${KEYCLOAK_DB_PASSWORD:?KEYCLOAK_DB_PASSWORD is required}
+      POSTGRES_USER: duka_pos
+      POSTGRES_PASSWORD: ${DUKA_DB_PASSWORD:-duka_local_dev}
+      POSTGRES_DB: duka_pos
     volumes:
       - duka_pos_db_data:/var/lib/postgresql/data
-      # The first-run setup: the identity provider's own role and database.
-      # Keycloak connects to an EXISTING database with a role that can log in —
-      # it creates neither — so without this the stack fails with "password
-      # authentication failed for user keycloak", which reads like a wrong
-      # password and is actually a missing role.
-      - ./scripts/init-db.sh:/docker-entrypoint-initdb.d/init-db.sh:ro
+      - ./docker/db-init.sql:/docker-entrypoint-initdb.d/10-keycloak.sql:ro
     ports:
-      - "5432:5432"
+      - '5432:5432'
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-duka_pos} -d ${POSTGRES_DB:-duka_pos}"]
+      test: ['CMD-SHELL', 'pg_isready -U duka_pos -d duka_pos']
       interval: 5s
       timeout: 5s
       retries: 5
+
+  # S3-compatible local object storage. Production uses Cloudflare R2 with
+  # the same variables; keeping the contract identical makes profile-photo
+  # flows testable without putting binaries in PostgreSQL. RustFS is used for
+  # local development because the old minio/minio Docker Hub image is no
+  # longer a reliable pull target.
+  storage:
+    image: rustfs/rustfs:latest
+    container_name: duka_pos_storage
+    environment:
+      RUSTFS_VOLUMES: /data
+      RUSTFS_ADDRESS: 0.0.0.0:9000
+      RUSTFS_CONSOLE_ADDRESS: 0.0.0.0:9001
+      RUSTFS_CONSOLE_ENABLE: 'true'
+      RUSTFS_CHECK_UPDATE: 'false'
+      RUSTFS_ACCESS_KEY: ${R2_ACCESS_KEY_ID:-duka_local_storage}
+      RUSTFS_SECRET_KEY: ${R2_SECRET_ACCESS_KEY:-duka_local_storage_secret}
+    ports:
+      - '9000:9000'
+      - '9001:9001'
+    volumes:
+      - duka_pos_storage_data:/data
+    healthcheck:
+      test: ['CMD-SHELL', 'curl -fsS http://localhost:9000/health || exit 1']
+      interval: 5s
+      timeout: 5s
+      start_period: 20s
+      retries: 12
+
+  # Create the local bucket once the S3-compatible service is ready. R2
+  # buckets are provisioned outside this compose file; this keeps a fresh
+  # developer volume equivalent to the production object-store contract.
+  storage-init:
+    image: duka_pos_backend:local
+    container_name: duka_pos_storage_init
+    environment:
+      R2_ENDPOINT: http://storage:9000
+      R2_ACCESS_KEY_ID: ${R2_ACCESS_KEY_ID:-duka_local_storage}
+      R2_SECRET_ACCESS_KEY: ${R2_SECRET_ACCESS_KEY:-duka_local_storage_secret}
+      R2_BUCKET_NAME: ${R2_BUCKET_NAME:-duka-pos-profile-photos}
+    command: ['node', 'scripts/ensure-bucket.cjs']
+    depends_on:
+      storage:
+        condition: service_healthy
+    restart: 'no'
 
   # ------------------------------------------------------------------
   # Keycloak - OIDC identity provider
@@ -60,141 +129,96 @@ services:
     environment:
       KC_DB: postgres
       KC_DB_URL: jdbc:postgresql://db:5432/keycloak
-      KC_DB_USERNAME: ${KEYCLOAK_DB_USERNAME:-keycloak}
-      KC_DB_PASSWORD: ${KEYCLOAK_DB_PASSWORD:?KEYCLOAK_DB_PASSWORD is required}
+      KC_DB_USERNAME: keycloak
+      KC_DB_PASSWORD: ${KC_DB_PASSWORD:-keycloak_local_dev}
       KEYCLOAK_ADMIN: ${KEYCLOAK_ADMIN:-admin}
-      KEYCLOAK_ADMIN_PASSWORD: ${KEYCLOAK_ADMIN_PASSWORD:?KEYCLOAK_ADMIN_PASSWORD is required}
-      # The health endpoints, on the management port.
-      KC_HEALTH_ENABLED: "true"
+      KEYCLOAK_ADMIN_PASSWORD: ${KEYCLOAK_ADMIN_PASSWORD:-admin_local_dev}
     ports:
-      - "8080:8080"
+      - '8080:8080'
     depends_on:
       db:
         condition: service_healthy
-    # NO HEALTH CHECK, AND THAT IS DELIBERATE.
-    #
-    # Two things fight here. The image is ubi9-MINIMAL and has no curl, so a
-    # check that shells out to curl fails with "executable file not found" and
-    # the container is called unhealthy while the server is running perfectly
-    # well. And the health endpoints live on the MANAGEMENT port in Keycloak
-    # 24, so a check against the main port answers 404.
-    #
-    # Neither is worth a fight. The init container already waits for
-    # Keycloak — by asking it for an admin token, which is the thing the init
-    # needs anyway — and its successful completion is the gate the API waits
-    # for. So the readiness gate is the one that tests the thing that
-    # matters, and there is no health check to get wrong.
-    #
-    # The API waits for the init container, not for this one.
+    # The image ships no curl, so a curl-based check fails FOREVER and every
+    # depends_on silently starves. The realm answers on 8080; TCP says when
+    # it is listening, which is what a dependent needs.
+    healthcheck:
+      test: ['CMD-SHELL', 'echo > /dev/tcp/127.0.0.1/8080']
+      interval: 5s
+      timeout: 5s
+      retries: 60
 
   # ------------------------------------------------------------------
   # Keycloak init - creates realm, client, and test user
   # ------------------------------------------------------------------
   keycloak-init:
-    build:
-      context: .
-      dockerfile: Dockerfile.keycloak-init
+    image: duka_pos_backend:local
     container_name: duka_pos_keycloak_init
     environment:
       KEYCLOAK_URL: http://keycloak:8080
       KEYCLOAK_ADMIN: ${KEYCLOAK_ADMIN:-admin}
-      KEYCLOAK_ADMIN_PASSWORD: ${KEYCLOAK_ADMIN_PASSWORD:?KEYCLOAK_ADMIN_PASSWORD is required}
-      REALM_NAME: ${REALM_NAME:-duka}
-      CLIENT_ID: ${CLIENT_ID:-duka-app}
-      TEST_USER: ${TEST_USER:-test-user}
-      TEST_USER_PASSWORD: ${TEST_USER_PASSWORD:?TEST_USER_PASSWORD is required}
-      TEST_USER_EMAIL: ${TEST_USER_EMAIL:-test-user@example.com}
+      KEYCLOAK_ADMIN_PASSWORD: ${KEYCLOAK_ADMIN_PASSWORD:-admin_local_dev}
+      REALM_NAME: duka
+      CLIENT_ID: ${OIDC_AUDIENCE:-duka-app}
+      TEST_USER: test-user
+      TEST_USER_PASSWORD: ${TEST_USER_PASSWORD:-test_local_dev}
+      TEST_USER_EMAIL: test-user@example.com
+    command: ['node', 'keycloak-init.mjs']
     depends_on:
       keycloak:
-        # Started, not healthy: Keycloak has no health check (see above), and
-        # this container IS the readiness gate — it waits for the server by
-        # asking it for an admin token.
-        condition: service_started
+        condition: service_healthy
 
-  # ------------------------------------------------------------------
-  # Migrations - its own service, so the API never runs a CLI
-  # ------------------------------------------------------------------
-  # The schema is applied HERE, once, before the API starts.
-  #
-  # It used to be applied by the API container, as `prisma migrate deploy &&
-  # node dist/index.js`. That put a package-manager's job inside the service's
-  # start-up, where it fails in ways that look like the service failing: the
-  # Prisma CLI wants to write into node_modules, and the runtime image runs
-  # as a user that cannot.
-  #
-  # As its own service, the CLI runs as the image's own user, the API starts
-  # knowing the schema is right, and the two failures are separable: a
-  # migration that will not apply is a migration's failure, and not the API's.
+  # Apply the repository's additive schema chain before the API accepts
+  # traffic. A green liveness probe is not enough when Prisma knows about a
+  # column the database volume does not yet have.
   migrate:
-    build:
-      context: .
-      dockerfile: Dockerfile
+    image: duka_pos_backend:local
     container_name: duka_pos_migrate
-    environment:
-      DATABASE_URL: postgresql://${POSTGRES_USER:-duka_pos}:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB:-duka_pos}?schema=public
+    environment: *backend-env
+    command: ['npx', 'prisma', 'migrate', 'deploy']
     depends_on:
       db:
         condition: service_healthy
-    command: ["npx", "prisma", "migrate", "deploy"]
-    restart: "no"
+    restart: 'no'
 
   # ------------------------------------------------------------------
   # Backend API - Express + Prisma
   # ------------------------------------------------------------------
   backend:
+    image: duka_pos_backend:local
     build:
       context: .
       dockerfile: Dockerfile
     container_name: duka_pos_backend
-    environment:
-      NODE_ENV: production
-      DATABASE_URL: postgresql://${POSTGRES_USER:-duka_pos}:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB:-duka_pos}?schema=public
-      OIDC_ISSUER_URL: ${OIDC_ISSUER_URL:-http://keycloak:8080/realms/duka}
-      OIDC_AUDIENCE: ${OIDC_AUDIENCE:-duka-api}
-      OIDC_JWKS_URI: ${OIDC_JWKS_URI:-http://keycloak:8080/realms/duka/protocol/openid-connect/certs}
-      PAYHERO_AUTH_TOKEN: "${PAYHERO_AUTH_TOKEN:-}"
-      SYSTEM_ADMIN_SUBJECTS: ${SYSTEM_ADMIN_SUBJECTS:-admin-subject}
-      FRONTEND_URL: ${FRONTEND_URL:-http://localhost:3000}
-      APP_VERSION_NAME: ${APP_VERSION_NAME:-2.0.0}
-      APP_VERSION_CODE: ${APP_VERSION_CODE:-23}
-      APP_DOWNLOAD_URL: ${APP_DOWNLOAD_URL:-}
-      APP_UPDATE_REQUIRED: ${APP_UPDATE_REQUIRED:-false}
-      APP_RELEASE_NOTES: ${APP_RELEASE_NOTES:-Auto-update manifest}
-      # The verify flow's own secrets. Without them /api/auth/* answers 503
-      # rather than pretending an account was created.
-      EMAIL_VERIFICATION_SECRET: ${EMAIL_VERIFICATION_SECRET:-}
-      KEYCLOAK_ADMIN_CLIENT_ID: ${KEYCLOAK_ADMIN_CLIENT_ID:-}
-      KEYCLOAK_ADMIN_CLIENT_SECRET: ${KEYCLOAK_ADMIN_CLIENT_SECRET:-}
-      KEYCLOAK_REALM: ${KEYCLOAK_REALM:-}
-      KEYCLOAK_BASE_URL: ${KEYCLOAK_BASE_URL:-}
-      EMAILJS_SERVICE_ID: ${EMAILJS_SERVICE_ID:-}
-      EMAILJS_TEMPLATE_ID: ${EMAILJS_TEMPLATE_ID:-}
-      EMAILJS_PUBLIC_KEY: ${EMAILJS_PUBLIC_KEY:-}
-      EMAILJS_PRIVATE_KEY: ${EMAILJS_PRIVATE_KEY:-}
-      VERIFICATION_DEBUG_CODES: ${VERIFICATION_DEBUG_CODES:-false}
-      APP_NAME: ${APP_NAME:-SimpleSales}
+    environment: *backend-env
     ports:
-      - "3000:3000"
+      # The host side is not 3000: whatever process holds 3000 on this dev
+      # machine is not ours to kill, and the port the app talks to is a
+      # setting, not an assumption.
+      - '3100:3000'
     depends_on:
       db:
         condition: service_healthy
       keycloak:
-        condition: service_started
+        condition: service_healthy
       keycloak-init:
         condition: service_completed_successfully
-      # The schema, applied by the migration service. The API starts knowing
-      # the database is right, rather than discovering it one query at a time.
       migrate:
         condition: service_completed_successfully
+      storage-init:
+        condition: service_completed_successfully
+    # The image carries the same check; the service key exists so a container
+    # that had the DEFAULT image check (wget — absent from the slim base)
+    # could never flap. node is certain: the API itself is a node process.
     healthcheck:
-      test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://localhost:3000/health"]
-      interval: 10s
+      test: ['CMD-SHELL', "node -e \"fetch('http://localhost:3000/health').then((r) => process.exit(r.ok ? 0 : 1)).catch(() => process.exit(1))\""]
+      interval: 15s
       timeout: 5s
+      start_period: 40s
       retries: 10
     restart: unless-stopped
 
   # ------------------------------------------------------------------
-  # Test runner - vitest integration tests against live stack
+  # Test runner - the integration suite against the live stack
   # ------------------------------------------------------------------
   tests:
     build:
@@ -202,25 +226,16 @@ services:
       dockerfile: Dockerfile.test
     container_name: duka_pos_tests
     environment:
+      <<: *backend-env
       NODE_ENV: test
-      DATABASE_URL: postgresql://${POSTGRES_USER:-duka_pos}:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB:-duka_pos}?schema=public
-      OIDC_ISSUER_URL: ${OIDC_ISSUER_URL:-http://keycloak:8080/realms/duka}
-      OIDC_AUDIENCE: ${OIDC_AUDIENCE:-duka-api}
-      OIDC_JWKS_URI: ${OIDC_JWKS_URI:-http://keycloak:8080/realms/duka/protocol/openid-connect/certs}
-      PAYHERO_AUTH_TOKEN: "${PAYHERO_AUTH_TOKEN:-}"
-      SYSTEM_ADMIN_SUBJECTS: ${SYSTEM_ADMIN_SUBJECTS:-admin-subject}
-      KEYCLOAK_URL: http://keycloak:8080
-      KEYCLOAK_ADMIN: ${KEYCLOAK_ADMIN:-admin}
-      KEYCLOAK_ADMIN_PASSWORD: ${KEYCLOAK_ADMIN_PASSWORD:?KEYCLOAK_ADMIN_PASSWORD is required}
-      REALM_NAME: ${REALM_NAME:-duka}
-      CLIENT_ID: ${CLIENT_ID:-duka-app}
-      TEST_USER: ${TEST_USER:-test-user}
-      TEST_USER_PASSWORD: ${TEST_USER_PASSWORD:?TEST_USER_PASSWORD is required}
-      BACKEND_URL: http://backend:3000/api
+    profiles:
+      - verify
     depends_on:
       backend:
         condition: service_healthy
-    command: ["npx", "vitest", "run"]
+      keycloak-init:
+        condition: service_completed_successfully
 
 volumes:
   duka_pos_db_data:
+  duka_pos_storage_data:

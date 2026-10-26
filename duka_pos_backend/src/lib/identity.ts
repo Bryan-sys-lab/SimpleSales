@@ -1,20 +1,4 @@
-/**
- * Authoritative online identity rules.
- *
- * Duka POS has exactly one online identity: the self-hosted Keycloak/OIDC
- * account. The local 6-digit admin PIN is a device-bound offline unlock for the till
- * and is never a second identity. To stop an app from claiming a shop it does
- * not own, provisioning requires the email in the verified OIDC token to match
- * the email the operator typed during local setup.
- */
-
-export type OidcTokenClaims = {
-  sub?: unknown;
-  email?: unknown;
-  email_verified?: unknown;
-};
-
-export function normalizeEmail(value: unknown): string {
+export function normalizeEmail(value: any): string {
   return typeof value === 'string' ? value.trim().toLowerCase() : '';
 }
 
@@ -22,10 +6,7 @@ export function normalizeEmail(value: unknown): string {
  * A shop may be linked only when the token carries a verified email that
  * matches the email collected during local account creation.
  */
-export function isVerifiedEmailMatch(
-  claims: OidcTokenClaims | null | undefined,
-  requestedEmail: string,
-): boolean {
+export function isVerifiedEmailMatch(claims: any, requestedEmail: string): boolean {
   if (!claims) {
     return false;
   }

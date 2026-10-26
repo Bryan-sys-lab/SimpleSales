@@ -9,6 +9,7 @@ import { describe, expect, it } from 'vitest';
 import {
   buildKraInvoice,
   businessDateFor,
+  creditNoteInvoiceInput,
   fromMajor,
   assertKraConfigured,
   kraCredentialsFromEnv,
@@ -16,7 +17,7 @@ import {
   paymentModeCodeFor,
   toMajor,
   type InvoiceInput,
-} from '../services/etims.js';
+} from '../services/etims';
 import {
   DEFAULT_BRANCH_ID,
   KRA_PRODUCTION_URL,
@@ -33,7 +34,7 @@ import {
   signRequest,
   KraError,
   clearTokenCache,
-} from '../services/kra.js';
+} from '../services/kra';
 
 const item = (overrides: Partial<InvoiceInput['items'][number]> = {}) => ({
   name: 'Soda 350ml',
@@ -167,6 +168,9 @@ describe('KRA invoice document', () => {
     expect(paymentModeCodeFor('card')).toBe('Card');
     expect(paymentModeCodeFor('mobile_money_manual')).toBe('MobileMoney');
     expect(paymentModeCodeFor('bank_transfer')).toBe('BankTransfer');
+    // An on-account sale is filed as a credit sale, never as Cash: filing it as
+    // Cash reports money the shop never received that day.
+    expect(paymentModeCodeFor('credit')).toBe('Credit');
     // An unknown code is refused by KRA outright, so an unrecognised method must
     // not be passed through.
     expect(paymentModeCodeFor('carrier_pigeon')).toBe('Cash');
@@ -180,6 +184,58 @@ describe('KRA invoice document', () => {
     // so a document with and without one is otherwise identical.
     const without = buildKraInvoice(invoice());
     expect(without.totalAmount).toBe(withReference.totalAmount);
+  });
+
+  it('carries buyer details onto the document when the till captured them', () => {
+    const withBuyer = buildKraInvoice(invoice({ buyerName: 'Acme Ltd', buyerTin: 'P051234567X' }));
+    expect(withBuyer.buyerName).toBe('Acme Ltd');
+    expect(withBuyer.buyerTin).toBe('P051234567X');
+    // Absent details are omitted rather than sent as empty strings.
+    const withoutBuyer = buildKraInvoice(invoice());
+    expect(withoutBuyer.buyerName).toBeUndefined();
+    expect(withoutBuyer.buyerTin).toBeUndefined();
+  });
+});
+
+describe('credit-note documents', () => {
+  const queued = {
+    document_type: 'credit_note' as const,
+    original_receipt_number: 'KRA-001',
+    reason_code: 'RETURN',
+    lines: [{ name: 'Soda 350ml', qty: 2, unit_price: 8000, vat_amount: 2207, line_total: 16000 }],
+    total: 16000,
+    vat_total: 2207,
+    buyer_name: 'Acme Ltd',
+    buyer_tin: 'P051234567X',
+  };
+
+  it('files as a CREDIT NOTE with the NC label, not as an invoice', () => {
+    const input = creditNoteInvoiceInput(queued, { receiptNumber: 'R-0001' });
+    const label = labelForSubmission({ isReprint: false, transactionType: 'CREDIT NOTE' });
+    expect(label.label).toBe('NC');
+    expect(label.transactionType).toBe('CREDIT NOTE');
+    // The line arithmetic the invoice builder enforces must hold for the
+    // normalised note too, so a malformed note is refused, never mis-filed.
+    const document = buildKraInvoice(input);
+    expect(document.totalAmount).toBe('160.00');
+    expect(document.items).toHaveLength(1);
+    expect(input.buyerName).toBe('Acme Ltd');
+    expect(input.buyerTin).toBe('P051234567X');
+  });
+
+  it('mirrors the original sale payment method, defaulting to Credit', () => {
+    expect(creditNoteInvoiceInput(queued, { receiptNumber: 'R-1', originalPaymentMethod: 'mpesa' }).paymentMethod).toBe('mpesa');
+    expect(creditNoteInvoiceInput(queued, { receiptNumber: 'R-1' }).paymentMethod).toBe('credit');
+  });
+
+  it('refuses a note with no lines or a non-positive total', () => {
+    expect(() => creditNoteInvoiceInput({ ...queued, lines: [] }, { receiptNumber: 'R-1' })).toThrow(/no lines/);
+    expect(() => creditNoteInvoiceInput({ ...queued, total: 0 }, { receiptNumber: 'R-1' })).toThrow(/positive/);
+  });
+
+  it('refuses a line whose amounts disagree, as an invoice line is refused', () => {
+    const broken = { ...queued, lines: [{ ...queued.lines[0], line_total: 9999 }] };
+    expect(() => buildKraInvoice(creditNoteInvoiceInput(broken, { receiptNumber: 'R-1' }))).toThrow(/quantit/);
   });
 });
 

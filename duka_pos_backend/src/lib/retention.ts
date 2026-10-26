@@ -5,8 +5,8 @@
  * ChurnSnapshot, AdminAuditLog and SystemSettings are intentionally NOT purged:
  * they are snapshots/audit and are kept longer.
  */
-import { prisma } from '../lib/prisma.js';
-import { log } from '../lib/observability.js';
+import { prisma } from '../lib/prisma';
+import { log } from '../lib/observability';
 
 const DEFAULT_OLDER_THAN_DAYS = 90;
 

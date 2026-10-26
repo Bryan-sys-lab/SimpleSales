@@ -4,9 +4,8 @@ import {
   createDecipheriv,
   randomBytes,
   createHash,
-  timingSafeEqual as nodeTimingSafeEqual,
 } from 'node:crypto';
-import { log } from '../lib/observability.js';
+import { log } from '../lib/observability';
 
 // ---------------------------------------------------------------------------
 // Endpoints
@@ -653,6 +652,9 @@ export interface SaveSalesParams {
   receiptType: ReceiptType;
   transactionType: TransactionType;
   buyerPin?: string;
+  /** Business-customer details, when the till captured them (spec 7.6). */
+  buyerName?: string;
+  buyerTin?: string;
   totalAmount: string;
   totalTaxAmount: string;
   paymentModeCode: string;
@@ -705,6 +707,9 @@ export async function saveSalesTransactions(
           rceiptType: params.receiptType,
           transactionType: params.transactionType,
           buyerPin: params.buyerPin,
+          ...(params.buyerName || params.buyerTin
+            ? { buyerDtls: { buyerNm: params.buyerName, buyerTin: params.buyerTin } }
+            : {}),
           totlAmt: params.totalAmount,
           taxAmt: params.totalTaxAmount,
           prdtDet: params.items.map((item) => ({

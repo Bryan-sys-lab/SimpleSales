@@ -8,12 +8,5 @@ prisma/*.db
 prisma/*.db-journal
 newman-e2e-report.json
 reports/*.json
-
-# The local stack's environment. `.env.ci` holds throwaway values for an
-# ephemeral stack and IS committed; this one holds the machine's own.
-.env
-
-# The generated Prisma client. It is generated on every build — `prisma
-# generate` — and it is part of the build, so `tsc` checks it. Committing it
-# would mean committing a file that is never the truth.
 src/generated/
+cloudflare/worker-configuration.d.ts

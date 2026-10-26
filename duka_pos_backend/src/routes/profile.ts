@@ -11,17 +11,16 @@
  *   DELETE /api/profile/photo              - Delete profile photo from R2 and profile
  */
 import { Router } from 'express';
-import { asyncHandler } from '../lib/http.js';
-import { parseBody } from '../lib/validation.js';
-import { prisma } from '../lib/prisma.js';
-import { authMiddleware } from '../middleware/auth.js';
+import { asyncHandler } from '../lib/http';
+import { parseBody } from '../lib/validation';
+import { prisma } from '../lib/prisma';
+import { authMiddleware } from '../middleware/auth';
 import {
-  uploadProfilePhoto,
-  getProfilePhoto,
   deleteProfilePhoto,
   getProfilePhotoUploadUrl,
   getProfilePhotoDownloadUrl,
-} from '../lib/r2.js';
+  profilePhotoExists,
+} from '../lib/r2';
 import { z } from 'zod';
 
 const router = Router();
@@ -41,8 +40,13 @@ const uploadUrlSchema = z.object({
  * Schema for confirm request
  */
 const confirmSchema = z.object({
-  key: z.string().min(1),
+  key: z.string().min(1).max(512),
 });
+
+function ownedPhotoKey(userId: string, key: string): boolean {
+  return key.startsWith(`profile-photos/${userId}/`) &&
+      !key.includes('..') && !key.includes('\\');
+}
 
 /**
  * POST /api/profile/photo/upload-url
@@ -52,7 +56,7 @@ router.post(
   '/upload-url',
   asyncHandler(async (req, res) => {
     const { fileName, contentType } = parseBody(uploadUrlSchema, req.body);
-    const userId = req.auth?.sub;
+    const userId = req.user?.id;
 
     if (!userId) {
       return res.status(401).json({ error: 'Authenticated user required' });
@@ -80,7 +84,7 @@ router.post(
   '/confirm',
   asyncHandler(async (req, res) => {
     const { key } = parseBody(confirmSchema, req.body);
-    const userId = req.auth?.sub;
+    const userId = req.user?.id;
 
     if (!userId) {
       return res.status(401).json({ error: 'Authenticated user required' });
@@ -93,6 +97,10 @@ router.post(
 
     if (!profile) {
       return res.status(404).json({ error: 'Profile not found' });
+    }
+
+    if (!ownedPhotoKey(userId, key) || !(await profilePhotoExists(key))) {
+      return res.status(400).json({ error: 'Uploaded profile photo not found' });
     }
 
     const publicUrl = `${process.env.R2_PUBLIC_URL || ''}/${key}`;
@@ -117,7 +125,7 @@ router.post(
 router.get(
   '/download-url',
   asyncHandler(async (req, res) => {
-    const userId = req.auth?.sub;
+    const userId = req.user?.id;
 
     if (!userId) {
       return res.status(401).json({ error: 'Authenticated user required' });
@@ -134,6 +142,10 @@ router.get(
     // Extract key from photoUrl
     const publicUrl = process.env.R2_PUBLIC_URL || '';
     const key = profile.photoUrl.replace(publicUrl + '/', '');
+
+    if (!ownedPhotoKey(userId, key)) {
+      return res.status(400).json({ error: 'Invalid profile photo reference' });
+    }
 
     const { downloadUrl, expiresIn } = await getProfilePhotoDownloadUrl(key);
 
@@ -151,7 +163,7 @@ router.get(
 router.delete(
   '/',
   asyncHandler(async (req, res) => {
-    const userId = req.auth?.sub;
+    const userId = req.user?.id;
 
     if (!userId) {
       return res.status(401).json({ error: 'Authenticated user required' });
@@ -169,10 +181,15 @@ router.delete(
     const publicUrl = process.env.R2_PUBLIC_URL || '';
     const key = profile.photoUrl.replace(publicUrl + '/', '');
 
+    if (!ownedPhotoKey(userId, key)) {
+      return res.status(400).json({ error: 'Invalid profile photo reference' });
+    }
+
     // Delete from R2
     try {
       await deleteProfilePhoto(key);
-    } catch (error) {
+    } catch {
+      // R2 cleanup is best-effort; the database reference is still cleared.
       // Log but continue - we still want to clear the DB reference
     }
 

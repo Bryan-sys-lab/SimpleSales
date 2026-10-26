@@ -1,0 +1,63 @@
+{
+  "info": {
+    "name": "Duka POS - Live Safety Smoke",
+    "description": "Credential-free live checks. Authenticated journeys belong to the E2E collection and require OIDC/Keycloak credentials.",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "variable": [
+    { "key": "base_url", "value": "http://localhost:3100", "type": "string" }
+  ],
+  "item": [
+    {
+      "name": "GET /health",
+      "request": { "method": "GET", "url": "{{base_url}}/health" },
+      "event": [{ "listen": "test", "script": { "exec": [
+        "pm.test('status is 200', () => pm.response.to.have.status(200));",
+        "pm.test('service is healthy', () => pm.expect(pm.response.json().status).to.eql('ok'));"
+      ] } }]
+    },
+    {
+      "name": "GET /ready",
+      "request": { "method": "GET", "url": "{{base_url}}/ready" },
+      "event": [{ "listen": "test", "script": { "exec": [
+        "pm.test('status is 200', () => pm.response.to.have.status(200));",
+        "pm.test('database is ready', () => pm.expect(pm.response.json().status).to.eql('ready'));"
+      ] } }]
+    },
+    {
+      "name": "GET protected products without credentials",
+      "request": { "method": "GET", "url": "{{base_url}}/api/products" },
+      "event": [{ "listen": "test", "script": { "exec": [
+        "pm.test('protected route rejects missing credentials', () => pm.response.to.have.status(401));",
+        "pm.test('error has request id', () => pm.expect(pm.response.json().requestId).to.be.ok);"
+      ] } }]
+    },
+    {
+      "name": "GET protected backups without credentials",
+      "request": { "method": "GET", "url": "{{base_url}}/api/backups/full" },
+      "event": [{ "listen": "test", "script": { "exec": [
+        "pm.test('backup route rejects missing credentials', () => pm.response.to.have.status(401));"
+      ] } }]
+    },
+    {
+      "name": "POST profile upload URL without credentials",
+      "request": {
+        "method": "POST",
+        "header": [{ "key": "Content-Type", "value": "application/json" }],
+        "body": { "mode": "raw", "raw": "{\"fileName\":\"avatar.jpg\",\"contentType\":\"image/jpeg\"}" },
+        "url": "{{base_url}}/api/profile/photo/upload-url"
+      },
+      "event": [{ "listen": "test", "script": { "exec": [
+        "pm.test('profile storage route rejects missing credentials', () => pm.response.to.have.status(401));"
+      ] } }]
+    },
+    {
+      "name": "GET unknown route",
+      "request": { "method": "GET", "url": "{{base_url}}/does-not-exist" },
+      "event": [{ "listen": "test", "script": { "exec": [
+        "pm.test('unknown route is 404', () => pm.response.to.have.status(404));",
+        "pm.test('not found is explicit', () => pm.expect(pm.response.json().error).to.eql('Not found'));"
+      ] } }]
+    }
+  ]
+}

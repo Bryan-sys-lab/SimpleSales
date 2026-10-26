@@ -1,12 +1,22 @@
 import { Request, Response } from 'express';
-import { prisma } from '../lib/prisma.js';
-import { queryTransactionStatus } from '../services/payhero.js';
-import { log } from '../lib/observability.js';
+import { prisma } from '../lib/prisma';
+import { queryTransactionStatus } from '../services/payhero';
+import { log } from '../lib/observability';
+
+export function payheroReferenceFromCallback(body: unknown): string | undefined {
+  if (!body || typeof body !== 'object') return undefined;
+  const root = body as Record<string, unknown>;
+  const nested = root.response && typeof root.response === 'object'
+    ? root.response as Record<string, unknown>
+    : root;
+  const reference = nested.ExternalReference ?? nested.external_reference ?? root.reference;
+  return typeof reference === 'string' ? reference : undefined;
+}
 
 // PayHero webhook callback - no auth required
 export const handlePayheroCallback = async (req: Request, res: Response) => {
   try {
-    const { reference } = req.body;
+    const reference = payheroReferenceFromCallback(req.body);
 
     if (typeof reference !== 'string' || !/^DUKA-[0-9a-f-]{36}$/.test(reference)) {
       return res.status(400).json({ error: 'reference required' });
@@ -27,7 +37,7 @@ export const handlePayheroCallback = async (req: Request, res: Response) => {
     // queried response is still bound to this exact reference, and an
     // unverified or mismatched response is treated as inconclusive rather
     // than as proof that money arrived.
-    const status = await queryTransactionStatus(reference, { force: true });
+    const status = await queryTransactionStatus(reference);
 
     if (status.status === 'SUCCESS') {
       await finalizeSale(payment.id);
@@ -90,7 +100,7 @@ export async function finalizeSale(paymentId: string) {
     })) {
       products.set(product.id, product);
     }
-    for (const [productId, stockUnits] of stockUnitsByProduct) {
+    for (const productId of stockUnitsByProduct.keys()) {
       if (!products.has(productId)) {
         const missing = cartItems.find((item) => item.product_id === productId);
         throw new Error(`Product unavailable: ${missing?.product_name ?? productId}`);

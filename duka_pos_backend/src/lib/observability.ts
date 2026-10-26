@@ -1,19 +1,20 @@
-import { randomUUID } from 'node:crypto';
-import { Request, Response, NextFunction } from 'express';
-
-export function requestContext(req: Request, res: Response, next: NextFunction) {
+export function requestContext(req: any, res: any, next: any) {
   const supplied = req.headers['x-request-id'];
-  const requestId = typeof supplied === 'string' && supplied.length <= 80 ? supplied : randomUUID();
+  const requestId = typeof supplied === 'string' && supplied.length <= 80 ? supplied : crypto.randomUUID();
   req.requestId = requestId;
   res.setHeader('x-request-id', requestId);
   const started = process.hrtime.bigint();
-  res.on('finish', () => log('info', 'http.request', { requestId, method: req.method, path: req.path, status: res.statusCode, durationMs: Number(process.hrtime.bigint() - started) / 1_000_000 }));
+  res.on('finish', () => log('info', 'http.request', { requestId, method: req.method, path: req.path, status: res.statusCode, durationMs: Number(process.hrtime.bigint() - started) / 1000000 }));
   next();
 }
 
-export function log(level: 'info' | 'warn' | 'error', event: string, fields: Record<string, unknown> = {}) {
+export function log(level: string, event: string, fields: Record<string, any> = {}) {
   const line = JSON.stringify({ timestamp: new Date().toISOString(), level, event, ...fields });
-  if (level === 'error') console.error(line); else if (level === 'warn') console.warn(line); else console.log(line);
+  if (level === 'error') {
+    console.error(line);
+  } else if (level === 'warn') {
+    console.warn(line);
+  } else {
+    console.log(line);
+  }
 }
-
-declare global { namespace Express { interface Request { requestId?: string; } } }

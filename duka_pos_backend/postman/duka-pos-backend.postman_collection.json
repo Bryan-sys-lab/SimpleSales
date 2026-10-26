@@ -1,48 +1,75 @@
 {
   "info": {
-    "name": "Duka POS backend — smoke",
-    "description": "The routes a person can reach WITHOUT a token.\n\nThis collection is a refusal test as much as a reachability test: it walks the endpoints that are GONE and asserts that they are gone, because a route that was removed and still answers is a route that was only half removed.\n\nIt runs against a live stack: `docker compose up -d --build`, then `npm run test:postman`.",
-    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+    "name": "Duka POS Backend API - Postman Collection",
+    "description": "Integration tests for all Duka POS backend API endpoints including auth, eTIMS, portfolio, stock-adjust, staff-authenticate, and update manifest.",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json",
+    "_postman_variable_scope": "variables",
+    "_postman_exported_at": "2026-10-16T00:00:00.000Z",
+    "_postman_exported_using": "Postman/11.0.0"
   },
   "item": [
     {
-      "name": "The service is up",
+      "name": "Health",
       "item": [
         {
-          "name": "GET /health",
+          "name": "GET Health Check",
           "request": {
             "method": "GET",
             "header": [],
-            "url": { "raw": "{{base_url}}/health", "host": ["{{base_url}}"], "path": ["health"] }
+            "url": {
+              "raw": "{{base_url}}/health",
+              "host": ["{{base_url}}"],
+              "path": ["health"]
+            },
+            "description": "Verify the backend is running and healthy"
           },
-          "event": [
+          "response": [
             {
-              "listen": "test",
-              "script": {
-                "type": "text/javascript",
-                "exec": [
-                  "pm.test('Status is 200', function () { pm.response.to.have.status(200); });",
-                  "pm.test('It says ok', function () { pm.expect(pm.response.json().status).to.eql('ok'); });"
-                ]
+              "name": "200 OK",
+              "status": "OK",
+              "code": 200,
+              "header": [
+                {
+                  "key": "Content-Type",
+                  "value": "application/json"
+                },
+                {
+                  "key": "X-Content-Type-Options",
+                  "value": "nosniff"
+                },
+                {
+                  "key": "X-Frame-Options",
+                  "value": "DENY"
+                },
+                {
+                  "key": "X-Request-ID",
+                  "value": "{{$guid}}"
+                }
+              ],
+              "body": {
+                "status": "ok",
+                "timestamp": "{{$isoTimestamp}}"
               }
             }
-          ]
-        },
-        {
-          "name": "GET /ready — the database answers",
-          "request": {
-            "method": "GET",
-            "header": [],
-            "url": { "raw": "{{base_url}}/ready", "host": ["{{base_url}}"], "path": ["ready"] }
-          },
+          ],
           "event": [
             {
               "listen": "test",
               "script": {
                 "type": "text/javascript",
                 "exec": [
-                  "pm.test('Status is 200', function () { pm.response.to.have.status(200); });",
-                  "pm.test('It says ready', function () { pm.expect(pm.response.json().status).to.eql('ready'); });"
+                  "pm.test(\"Status is 200\", function () {",
+                  "    pm.response.to.have.status(200);",
+                  "});",
+                  "pm.test(\"Body has status ok\", function () {",
+                  "    var data = pm.response.json();",
+                  "    pm.expect(data.status).to.eql(\"ok\");",
+                  "});",
+                  "pm.test(\"Security headers present\", function () {",
+                  "    pm.expect(pm.response.headers.get(\"X-Content-Type-Options\")).to.eql(\"nosniff\");",
+                  "    pm.expect(pm.response.headers.get(\"X-Frame-Options\")).to.eql(\"DENY\");",
+                  "    pm.expect(pm.response.headers.get(\"X-Request-ID\")).to.not.be.null;",
+                  "});"
                 ]
               }
             }
@@ -51,152 +78,62 @@
       ]
     },
     {
-      "name": "The verify flow",
+      "name": "Auth - Shop Linking",
       "item": [
         {
-          "name": "POST /api/auth/link — a good body",
+          "name": "POST /api/auth/link",
           "request": {
             "method": "POST",
-            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"email\": \"{{owner_email}}\",\n  \"pin\": \"{{owner_pin}}\",\n  \"shopName\": \"Smoke Test Shop\",\n  \"ownerName\": \"Smoke Owner\"\n}"
+              "raw": "{\n  \"email\": \"owner@example.com\",\n  \"pin\": \"1234\",\n  \"shopName\": \"Test Shop\",\n  \"ownerName\": \"Test Owner\"\n}"
             },
-            "url": { "raw": "{{base_url}}/api/auth/link", "host": ["{{base_url}}"], "path": ["api", "auth", "link"] }
+            "url": {
+              "raw": "{{base_url}}/api/auth/link",
+              "host": ["{{base_url}}"],
+              "path": ["api", "auth", "link"]
+            },
+            "description": "Create tenant and owner profile, send verification code"
           },
+          "response": [
+            {
+              "name": "200 OK",
+              "status": "OK",
+              "code": 200,
+              "body": {
+                "challenge_id": "{{$guid}}",
+                "email": "owner@example.com",
+                "expires_in_seconds": 600
+              }
+            }
+          ],
           "event": [
             {
               "listen": "test",
               "script": {
                 "type": "text/javascript",
                 "exec": [
-                  "pm.test('Status is 200', function () { pm.response.to.have.status(200); });",
-                  "pm.test('It has a challenge', function () { pm.expect(pm.response.json()).to.have.property('challenge_id'); });",
-                  "pm.test('The address is MASKED, not echoed back', function () {",
-                  "  var email = pm.response.json().email;",
-                  "  pm.expect(email).to.be.a('string');",
-                  "  pm.expect(email).to.not.include('@example.com');",
+                  "pm.test(\"Status is 200\", function () {",
+                  "    pm.response.to.have.status(200);",
                   "});",
-                  "pm.test('It says the code was sent', function () { pm.expect(pm.response.json().status).to.eql('code_sent'); });"
-                ]
-              }
-            }
-          ]
-        },
-        {
-          "name": "POST /api/auth/link — an invalid email",
-          "request": {
-            "method": "POST",
-            "header": [{ "key": "Content-Type", "value": "application/json" }],
-            "body": { "mode": "raw", "raw": "{\n  \"email\": \"not-an-email\",\n  \"pin\": \"{{owner_pin}}\",\n  \"shopName\": \"Smoke Test Shop\",\n  \"ownerName\": \"Smoke Owner\"\n}" },
-            "url": { "raw": "{{base_url}}/api/auth/link", "host": ["{{base_url}}"], "path": ["api", "auth", "link"] }
-          },
-          "event": [
-            {
-              "listen": "test",
-              "script": {
-                "type": "text/javascript",
-                "exec": [
-                  "pm.test('Status is 400', function () { pm.response.to.have.status(400); });"
-                ]
-              }
-            }
-          ]
-        },
-        {
-          "name": "POST /api/auth/link — a FOUR-digit admin PIN is refused",
-          "request": {
-            "method": "POST",
-            "header": [{ "key": "Content-Type", "value": "application/json" }],
-            "body": { "mode": "raw", "raw": "{\n  \"email\": \"{{owner_email}}\",\n  \"pin\": \"1234\",\n  \"shopName\": \"Smoke Test Shop\",\n  \"ownerName\": \"Smoke Owner\"\n}" },
-            "url": { "raw": "{{base_url}}/api/auth/link", "host": ["{{base_url}}"], "path": ["api", "auth", "link"] }
-          },
-          "event": [
-            {
-              "listen": "test",
-              "script": {
-                "type": "text/javascript",
-                "exec": [
-                  "pm.test('Status is 400', function () { pm.response.to.have.status(400); });",
-                  "pm.test('And it says the PIN is the wrong length', function () {",
-                  "  var body = pm.response.text();",
-                  "  pm.expect(body).to.include('6 digits');",
-                  "});"
-                ]
-              }
-            }
-          ]
-        },
-        {
-          "name": "POST /api/auth/verify — a wrong code",
-          "request": {
-            "method": "POST",
-            "header": [{ "key": "Content-Type", "value": "application/json" }],
-            "body": { "mode": "raw", "raw": "{\n  \"email\": \"{{owner_email}}\",\n  \"pin\": \"{{owner_pin}}\",\n  \"code\": \"000000\"\n}" },
-            "url": { "raw": "{{base_url}}/api/auth/verify", "host": ["{{base_url}}"], "path": ["api", "auth", "verify"] }
-          },
-          "event": [
-            {
-              "listen": "test",
-              "script": {
-                "type": "text/javascript",
-                "exec": [
-                  "pm.test('Status is 400', function () { pm.response.to.have.status(400); });",
-                  "pm.test('The code is what is wrong', function () {",
-                  "  var code = pm.response.json().code;",
-                  "  pm.expect(['VERIFICATION_INVALID', 'VERIFICATION_EXPIRED']).to.include(code);",
-                  "});"
-                ]
-              }
-            }
-          ]
-        },
-        {
-          "name": "POST /api/auth/verify — no code at all",
-          "request": {
-            "method": "POST",
-            "header": [{ "key": "Content-Type", "value": "application/json" }],
-            "body": { "mode": "raw", "raw": "{\n  \"email\": \"{{owner_email}}\",\n  \"pin\": \"{{owner_pin}}\"\n}" },
-            "url": { "raw": "{{base_url}}/api/auth/verify", "host": ["{{base_url}}"], "path": ["api", "auth", "verify"] }
-          },
-          "event": [
-            {
-              "listen": "test",
-              "script": {
-                "type": "text/javascript",
-                "exec": [
-                  "pm.test('Status is 400', function () { pm.response.to.have.status(400); });"
-                ]
-              }
-            }
-          ]
-        }
-      ]
-    },
-    {
-      "name": "The endpoints that are gone",
-      "item": [
-        {
-          "name": "POST /api/auth/refresh — there is no session of ours to refresh",
-          "request": {
-            "method": "POST",
-            "header": [{ "key": "Content-Type", "value": "application/json" }],
-            "body": { "mode": "raw", "raw": "{\n  \"refreshToken\": \"not-a-real-refresh-token-at-all\"\n}" },
-            "url": { "raw": "{{base_url}}/api/auth/refresh", "host": ["{{base_url}}"], "path": ["api", "auth", "refresh"] }
-          },
-          "event": [
-            {
-              "listen": "test",
-              "script": {
-                "type": "text/javascript",
-                "exec": [
-                  "pm.test('It is not answered', function () {",
-                  "  pm.expect([401, 404]).to.include(pm.response.code);",
+                  "pm.test(\"Has challenge_id\", function () {",
+                  "    var data = pm.response.json();",
+                  "    pm.expect(data).to.have.property(\"challenge_id\");",
+                  "    pm.expect(data.challenge_id).to.not.be.empty;",
                   "});",
-                  "pm.test('And it mints no token', function () {",
-                  "  var body = pm.response.json();",
-                  "  pm.expect(body.access_token).to.be.undefined;",
-                  "  pm.expect(body.refresh_token).to.be.undefined;",
+                  "pm.test(\"Email matches\", function () {",
+                  "    var data = pm.response.json();",
+                  "    pm.expect(data.email).to.eql(\"owner@example.com\");",
+                  "});",
+                  "pm.test(\"Expires in seconds is number\", function () {",
+                  "    var data = pm.response.json();",
+                  "    pm.expect(data.expires_in_seconds).to.be.a(\"number\");",
                   "});"
                 ]
               }
@@ -204,21 +141,48 @@
           ]
         },
         {
-          "name": "POST /api/auth/pin-reset/request — the app recovers a PIN on the device",
+          "name": "POST /api/auth/link - duplicate shop",
           "request": {
             "method": "POST",
-            "header": [{ "key": "Content-Type", "value": "application/json" }],
-            "body": { "mode": "raw", "raw": "{\n  \"email\": \"{{owner_email}}\"\n}" },
-            "url": { "raw": "{{base_url}}/api/auth/pin-reset/request", "host": ["{{base_url}}"], "path": ["api", "auth", "pin-reset", "request"] }
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"owner@example.com\",\n  \"pin\": \"1234\",\n  \"shopName\": \"Duplicate Shop\",\n  \"ownerName\": \"Test Owner\"\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/api/auth/link",
+              "host": ["{{base_url}}"],
+              "path": ["api", "auth", "link"]
+            }
           },
+          "response": [
+            {
+              "name": "409 Conflict",
+              "status": "Conflict",
+              "code": 409,
+              "body": {
+                "error": "This account is already linked to this shop",
+                "tenant_id": "{{$guid}}"
+              }
+            }
+          ],
           "event": [
             {
               "listen": "test",
               "script": {
                 "type": "text/javascript",
                 "exec": [
-                  "pm.test('It is not answered', function () {",
-                  "  pm.expect([401, 404]).to.include(pm.response.code);",
+                  "pm.test(\"Status is 409\", function () {",
+                  "    pm.response.to.have.status(409);",
+                  "});",
+                  "pm.test(\"Error mentions already linked\", function () {",
+                  "    var data = pm.response.json();",
+                  "    pm.expect(data.error).to.include(\"already linked\");",
                   "});"
                 ]
               }
@@ -226,12 +190,24 @@
           ]
         },
         {
-          "name": "POST /api/auth/pin-reset/confirm — and there is no confirming either",
+          "name": "POST /api/auth/link - invalid email",
           "request": {
             "method": "POST",
-            "header": [{ "key": "Content-Type", "value": "application/json" }],
-            "body": { "mode": "raw", "raw": "{\n  \"email\": \"{{owner_email}}\",\n  \"challengeId\": \"x\",\n  \"code\": \"000000\"\n}" },
-            "url": { "raw": "{{base_url}}/api/auth/pin-reset/confirm", "host": ["{{base_url}}"], "path": ["api", "auth", "pin-reset", "confirm"] }
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"not-an-email\",\n  \"pin\": \"1234\",\n  \"shopName\": \"Test Shop\",\n  \"ownerName\": \"Test Owner\"\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/api/auth/link",
+              "host": ["{{base_url}}"],
+              "path": ["api", "auth", "link"]
+            }
           },
           "event": [
             {
@@ -239,8 +215,8 @@
               "script": {
                 "type": "text/javascript",
                 "exec": [
-                  "pm.test('It is not answered', function () {",
-                  "  pm.expect([401, 404]).to.include(pm.response.code);",
+                  "pm.test(\"Status is 400\", function () {",
+                  "    pm.response.to.have.status(400);",
                   "});"
                 ]
               }
@@ -250,35 +226,77 @@
       ]
     },
     {
-      "name": "Everything else needs a token",
+      "name": "Auth - Verify Code",
       "item": [
         {
-          "name": "POST /api/sales/sync",
+          "name": "POST /api/auth/verify",
           "request": {
             "method": "POST",
-            "header": [{ "key": "Content-Type", "value": "application/json" }],
-            "body": { "mode": "raw", "raw": "{ \"sales\": [] }" },
-            "url": { "raw": "{{base_url}}/api/sales/sync", "host": ["{{base_url}}"], "path": ["api", "sales", "sync"] }
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"verify@example.com\",\n  \"pin\": \"1234\",\n  \"code\": \"123456\"\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/api/auth/verify",
+              "host": ["{{base_url}}"],
+              "path": ["api", "auth", "verify"]
+            },
+            "description": "Confirm verification code and mint session tokens"
           },
+          "response": [
+            {
+              "name": "400 Invalid code",
+              "status": "Bad Request",
+              "code": 400,
+              "body": {
+                "error": "Invalid or expired verification code",
+                "code": "VERIFICATION_INVALID"
+              }
+            }
+          ],
           "event": [
             {
               "listen": "test",
               "script": {
                 "type": "text/javascript",
                 "exec": [
-                  "pm.test('Status is 401', function () { pm.response.to.have.status(401); });"
+                  "pm.test(\"Status is 400\", function () {",
+                  "    pm.response.to.have.status(400);",
+                  "});",
+                  "pm.test(\"Error code is VERIFICATION_INVALID\", function () {",
+                  "    var data = pm.response.json();",
+                  "    pm.expect(data.code).to.eql(\"VERIFICATION_INVALID\");",
+                  "});"
                 ]
               }
             }
           ]
         },
         {
-          "name": "POST /api/shifts/sync",
+          "name": "POST /api/auth/verify - missing code",
           "request": {
             "method": "POST",
-            "header": [{ "key": "Content-Type", "value": "application/json" }],
-            "body": { "mode": "raw", "raw": "{ \"shifts\": [] }" },
-            "url": { "raw": "{{base_url}}/api/shifts/sync", "host": ["{{base_url}}"], "path": ["api", "shifts", "sync"] }
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"verify@example.com\",\n  \"pin\": \"1234\"\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/api/auth/verify",
+              "host": ["{{base_url}}"],
+              "path": ["api", "auth", "verify"]
+            }
           },
           "event": [
             {
@@ -286,19 +304,192 @@
               "script": {
                 "type": "text/javascript",
                 "exec": [
-                  "pm.test('Status is 401', function () { pm.response.to.have.status(401); });"
+                  "pm.test(\"Status is 400\", function () {",
+                  "    pm.response.to.have.status(400);",
+                  "});"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "Auth - Refresh Token",
+      "item": [
+        {
+          "name": "POST /api/auth/refresh",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"refreshToken\": \"invalid-token\"\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/api/auth/refresh",
+              "host": ["{{base_url}}"],
+              "path": ["api", "auth", "refresh"]
+            },
+            "description": "Exchange refresh token for new session"
+          },
+          "response": [
+            {
+              "name": "401 Session expired",
+              "status": "Unauthorized",
+              "code": 401,
+              "body": {
+                "error": "Refresh token expired or invalid",
+                "code": "SESSION_EXPIRED"
+              }
+            }
+          ],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Status is 401\", function () {",
+                  "    pm.response.to.have.status(401);",
+                  "});",
+                  "pm.test(\"Error code is SESSION_EXPIRED\", function () {",
+                  "    var data = pm.response.json();",
+                  "    pm.expect(data.code).to.eql(\"SESSION_EXPIRED\");",
+                  "});"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "Auth - PIN Reset",
+      "item": [
+        {
+          "name": "POST /api/auth/pin-reset/request",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"pinreset@example.com\"\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/api/auth/pin-reset/request",
+              "host": ["{{base_url}}"],
+              "path": ["api", "auth", "pin-reset", "request"]
+            },
+            "description": "Request a PIN reset code by email"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Status is 200\", function () {",
+                  "    pm.response.to.have.status(200);",
+                  "});",
+                  "pm.test(\"Has challengeId\", function () {",
+                  "    var data = pm.response.json();",
+                  "    pm.expect(data).to.have.property(\"challengeId\");",
+                  "});"
                 ]
               }
             }
           ]
         },
         {
-          "name": "POST /api/returns",
+          "name": "POST /api/auth/pin-reset/confirm",
           "request": {
             "method": "POST",
-            "header": [{ "key": "Content-Type", "value": "application/json" }],
-            "body": { "mode": "raw", "raw": "{}" },
-            "url": { "raw": "{{base_url}}/api/returns", "host": ["{{base_url}}"], "path": ["api", "returns"] }
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"pinreset@example.com\",\n  \"challengeId\": \"fake-challenge-id\",\n  \"code\": \"000000\"\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/api/auth/pin-reset/confirm",
+              "host": ["{{base_url}}"],
+              "path": ["api", "auth", "pin-reset", "confirm"]
+            },
+            "description": "Confirm PIN reset code"
+          },
+          "response": [
+            {
+              "name": "400 Code rejected",
+              "status": "Bad Request",
+              "code": 400,
+              "body": {
+                "error": "Invalid or expired reset code",
+                "code": "CODE_REJECTED"
+              }
+            }
+          ],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Status is 400\", function () {",
+                  "    pm.response.to.have.status(400);",
+                  "});",
+                  "pm.test(\"Error code is CODE_REJECTED\", function () {",
+                  "    var data = pm.response.json();",
+                  "    pm.expect(data.code).to.eql(\"CODE_REJECTED\");",
+                  "});"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "eTIMS - KRA Tax Compliance",
+      "item": [
+        {
+          "name": "POST /api/etims/device",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "x-tenant-id",
+                "value": "test-tenant-id"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"tin\": \"P051234567L\",\n  \"deviceId\": \"device-001\",\n  \"deviceName\": \"Till Device 1\"\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/api/etims/device",
+              "host": ["{{base_url}}"],
+              "path": ["api", "etims", "device"]
+            },
+            "description": "Register TIN and eTIMS device"
           },
           "event": [
             {
@@ -306,19 +497,46 @@
               "script": {
                 "type": "text/javascript",
                 "exec": [
-                  "pm.test('Status is 401', function () { pm.response.to.have.status(401); });"
+                  "pm.test(\"Status is 200\", function () {",
+                  "    pm.response.to.have.status(200);",
+                  "});",
+                  "pm.test(\"Has tin\", function () {",
+                  "    var data = pm.response.json();",
+                  "    pm.expect(data.tin).to.eql(\"P051234567L\");",
+                  "});",
+                  "pm.test(\"Has device_id\", function () {",
+                  "    var data = pm.response.json();",
+                  "    pm.expect(data.device_id).to.eql(\"device-001\");",
+                  "});"
                 ]
               }
             }
           ]
         },
         {
-          "name": "POST /api/purchases",
+          "name": "POST /api/etims/receipts",
           "request": {
             "method": "POST",
-            "header": [{ "key": "Content-Type", "value": "application/json" }],
-            "body": { "mode": "raw", "raw": "{}" },
-            "url": { "raw": "{{base_url}}/api/purchases", "host": ["{{base_url}}"], "path": ["api", "purchases"] }
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "x-tenant-id",
+                "value": "test-tenant-id"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"payload\": {\n    \"sale_id\": \"sale-123\",\n    \"total\": 1500.00,\n    \"items\": [{\"product\": \"Coca Cola\", \"qty\": 2, \"price\": 750.00}]\n  },\n  \"deviceId\": \"device-001\"\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/api/etims/receipts",
+              "host": ["{{base_url}}"],
+              "path": ["api", "etims", "receipts"]
+            },
+            "description": "Issue a KRA receipt for a committed sale"
           },
           "event": [
             {
@@ -326,19 +544,46 @@
               "script": {
                 "type": "text/javascript",
                 "exec": [
-                  "pm.test('Status is 401', function () { pm.response.to.have.status(401); });"
+                  "pm.test(\"Status is 200\", function () {",
+                  "    pm.response.to.have.status(200);",
+                  "});",
+                  "pm.test(\"Has kra_receipt_number\", function () {",
+                  "    var data = pm.response.json();",
+                  "    pm.expect(data.kra_receipt_number).to.match(/^KRA-/);",
+                  "});",
+                  "pm.test(\"Has verification_url\", function () {",
+                  "    var data = pm.response.json();",
+                  "    pm.expect(data).to.have.property(\"verification_url\");",
+                  "});",
+                  "pm.test(\"Has qr_payload\", function () {",
+                  "    var data = pm.response.json();",
+                  "    pm.expect(data).to.have.property(\"qr_payload\");",
+                  "});",
+                  "pm.test(\"Status is ISSUED\", function () {",
+                  "    var data = pm.response.json();",
+                  "    pm.expect(data.status).to.eql(\"ISSUED\");",
+                  "});"
                 ]
               }
             }
           ]
         },
         {
-          "name": "POST /api/shot-cups/sync",
+          "name": "GET /api/etims/status",
           "request": {
-            "method": "POST",
-            "header": [{ "key": "Content-Type", "value": "application/json" }],
-            "body": { "mode": "raw", "raw": "{ \"shotCups\": [] }" },
-            "url": { "raw": "{{base_url}}/api/shot-cups/sync", "host": ["{{base_url}}"], "path": ["api", "shot-cups", "sync"] }
+            "method": "GET",
+            "header": [
+              {
+                "key": "x-tenant-id",
+                "value": "test-tenant-id"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/etims/status",
+              "host": ["{{base_url}}"],
+              "path": ["api", "etims", "status"]
+            },
+            "description": "Check eTIMS queue status"
           },
           "event": [
             {
@@ -346,18 +591,102 @@
               "script": {
                 "type": "text/javascript",
                 "exec": [
-                  "pm.test('Status is 401', function () { pm.response.to.have.status(401); });"
+                  "pm.test(\"Status is 200\", function () {",
+                  "    pm.response.to.have.status(200);",
+                  "});",
+                  "pm.test(\"Has configured field\", function () {",
+                  "    var data = pm.response.json();",
+                  "    pm.expect(data).to.have.property(\"configured\");",
+                  "    pm.expect(data).to.have.property(\"pending_upload\");",
+                  "    pm.expect(data).to.have.property(\"rejected\");",
+                  "    pm.expect(data).to.have.property(\"device_status\");",
+                  "    pm.expect(data).to.have.property(\"tin\");",
+                  "});"
                 ]
               }
             }
           ]
         },
+        {
+          "name": "GET /api/etims/z-report",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "x-tenant-id",
+                "value": "test-tenant-id"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/etims/z-report?date=2024-01-15",
+              "host": ["{{base_url}}"],
+              "path": ["api", "etims", "z-report"],
+              "query": [
+                {
+                  "key": "date",
+                  "value": "2024-01-15"
+                }
+              ]
+            },
+            "description": "Get server-generated Z-report for a day"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Status is 200\", function () {",
+                  "    pm.response.to.have.status(200);",
+                  "});",
+                  "pm.test(\"Has date field\", function () {",
+                  "    var data = pm.response.json();",
+                  "    pm.expect(data.date).to.eql(\"2024-01-15\");",
+                  "});",
+                  "pm.test(\"Has totals\", function () {",
+                  "    var data = pm.response.json();",
+                  "    pm.expect(data).to.have.property(\"totalSales\");",
+                  "    pm.expect(data).to.have.property(\"totalProfit\");",
+                  "    pm.expect(data).to.have.property(\"receiptCount\");",
+                  "    pm.expect(data).to.have.property(\"sales\");",
+                  "    pm.expect(data.sales).to.be.an(\"array\");",
+                  "});"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "Tenant - Portfolio & Staff",
+      "item": [
         {
           "name": "GET /api/tenant/portfolio",
           "request": {
             "method": "GET",
-            "header": [],
-            "url": { "raw": "{{base_url}}/api/tenant/portfolio", "host": ["{{base_url}}"], "path": ["api", "tenant", "portfolio"] }
+            "header": [
+              {
+                "key": "x-tenant-id",
+                "value": "test-tenant-id"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/tenant/portfolio?from=2024-01-01&to=2024-01-31",
+              "host": ["{{base_url}}"],
+              "path": ["api", "tenant", "portfolio"],
+              "query": [
+                {
+                  "key": "from",
+                  "value": "2024-01-01"
+                },
+                {
+                  "key": "to",
+                  "value": "2024-01-31"
+                }
+              ]
+            },
+            "description": "Get aggregated portfolio KPIs across linked tenants"
           },
           "event": [
             {
@@ -365,7 +694,161 @@
               "script": {
                 "type": "text/javascript",
                 "exec": [
-                  "pm.test('Status is 401', function () { pm.response.to.have.status(401); });"
+                  "pm.test(\"Status is 200\", function () {",
+                  "    pm.response.to.have.status(200);",
+                  "});",
+                  "pm.test(\"Has totals\", function () {",
+                  "    var data = pm.response.json();",
+                  "    pm.expect(data.totals).to.have.property(\"count\");",
+                  "    pm.expect(data.totals).to.have.property(\"total\");",
+                  "    pm.expect(data.totals).to.have.property(\"profit\");",
+                  "    pm.expect(data.totals).to.have.property(\"byPaymentMethod\");",
+                  "    pm.expect(data.sales).to.be.an(\"array\");",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "POST /api/tenant/staff/authenticate",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "x-tenant-id",
+                "value": "test-tenant-id"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"username\": \"nonexistent\",\n  \"pin\": \"1234\"\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/api/tenant/staff/authenticate",
+              "host": ["{{base_url}}"],
+              "path": ["api", "tenant", "staff", "authenticate"]
+            },
+            "description": "Authenticate staff PIN against backend"
+          },
+          "response": [
+            {
+              "name": "401 Staff not found",
+              "status": "Unauthorized",
+              "code": 401,
+              "body": {
+                "error": "Staff not found or inactive"
+              }
+            }
+          ],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Status is 401\", function () {",
+                  "    pm.response.to.have.status(401);",
+                  "});",
+                  "pm.test(\"Error message\", function () {",
+                  "    var data = pm.response.json();",
+                  "    pm.expect(data.error).to.eql(\"Staff not found or inactive\");",
+                  "});"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "Products - Stock Adjust",
+      "item": [
+        {
+          "name": "POST /api/products/stock-adjust",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "x-tenant-id",
+                "value": "test-tenant-id"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"product_id\": \"00000000-0000-0000-0000-000000000001\",\n  \"delta\": 10,\n  \"reason\": \"Delivery received\",\n  \"staff_profile_id\": \"00000000-0000-0000-0000-000000000002\"\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/api/products/stock-adjust",
+              "host": ["{{base_url}}"],
+              "path": ["api", "products", "stock-adjust"]
+            },
+            "description": "Adjust stock for a single product immediately"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Status is 200 or 404\", function () {",
+                  "    pm.expect(pm.response.code).to.be.oneOf([200, 404]);",
+                  "});",
+                  "pm.test(\"If 404, error is product not found\", function () {",
+                  "    if (pm.response.code === 404) {",
+                  "        var data = pm.response.json();",
+                  "        pm.expect(data.error).to.eql(\"Product not found\");",
+                  "    }",
+                  "});"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "Updates - Manifest",
+      "item": [
+        {
+          "name": "GET /api/app/latest",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/app/latest",
+              "host": ["{{base_url}}"],
+              "path": ["api", "app", "latest"]
+            },
+            "description": "Get update manifest for auto-updates"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Status is 200\", function () {",
+                  "    pm.response.to.have.status(200);",
+                  "});",
+                  "pm.test(\"Has version fields\", function () {",
+                  "    var data = pm.response.json();",
+                  "    pm.expect(data).to.have.property(\"version_name\");",
+                  "    pm.expect(data).to.have.property(\"version_code\");",
+                  "    pm.expect(data).to.have.property(\"download_url\");",
+                  "    pm.expect(data).to.have.property(\"required\");",
+                  "    pm.expect(data).to.have.property(\"release_notes\");",
+                  "    pm.expect(data.version_code).to.be.a(\"number\");",
+                  "    pm.expect(data.required).to.be.a(\"boolean\");",
+                  "});"
                 ]
               }
             }
@@ -375,8 +858,10 @@
     }
   ],
   "variable": [
-    { "key": "base_url", "value": "http://localhost:3000" },
-    { "key": "owner_email", "value": "owner@example.com" },
-    { "key": "owner_pin", "value": "123456" }
+    {
+      "key": "base_url",
+      "value": "http://localhost:3000",
+      "type": "string"
+    }
   ]
 }

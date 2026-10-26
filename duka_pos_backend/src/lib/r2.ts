@@ -1,9 +1,9 @@
 /**
- * Cloudflare R2 storage service for profile images.
+ * Cloudflare R2 storage service for profile images and encrypted backups.
  *
  * Images are stored in Cloudflare R2 (S3-compatible object storage).
- * Only profile photos are stored in R2 - all other images (receipts, product
- * images, documents) stay on the user's device.
+ * Profile photos and opaque encrypted workspace backups are stored in R2.
+ * Other images (receipts and product images) stay on the user's device.
  *
  * Environment variables:
  *   R2_ENDPOINT        - R2 endpoint URL (e.g. https://<account>.r2.cloudflarestorage.com)
@@ -96,6 +96,55 @@ export async function deleteProfilePhoto(key: string) {
   }));
 }
 
+export async function profilePhotoExists(key: string): Promise<boolean> {
+  try {
+    await r2.send(new HeadObjectCommand({ Bucket: BUCKET, Key: key }));
+    return true;
+  } catch (error: any) {
+    if (error.name === 'NotFound' || error.$metadata?.httpStatusCode === 404) {
+      return false;
+    }
+    throw error;
+  }
+}
+
+/** Encrypted workspace backups are opaque blobs, not database fields. */
+export async function putOpaqueBackup(key: string, payload: string): Promise<void> {
+  await r2.send(new PutObjectCommand({
+    Bucket: BUCKET,
+    Key: key,
+    Body: Buffer.from(payload, 'utf8'),
+    ContentType: 'application/octet-stream',
+  }));
+}
+
+export async function getOpaqueBackup(key: string): Promise<string | null> {
+  try {
+    const response = await r2.send(new GetObjectCommand({
+      Bucket: BUCKET,
+      Key: key,
+    }));
+    if (!response.Body) return null;
+    const chunks: Buffer[] = [];
+    for await (const chunk of response.Body as AsyncIterable<Uint8Array>) {
+      chunks.push(Buffer.from(chunk));
+    }
+    return Buffer.concat(chunks).toString('utf8');
+  } catch (error: any) {
+    if (error.name === 'NotFound' || error.$metadata?.httpStatusCode === 404) {
+      return null;
+    }
+    throw error;
+  }
+}
+
+export async function deleteOpaqueBackup(key: string): Promise<void> {
+  await r2.send(new DeleteObjectCommand({
+    Bucket: BUCKET,
+    Key: key,
+  }));
+}
+
 /**
  * Generate a presigned PUT URL for direct browser upload to R2.
  * Returns the URL and the object key.
@@ -105,7 +154,8 @@ export async function getProfilePhotoUploadUrl(params: {
   fileName: string;
   contentType: string;
 }) {
-  const key = `profile-photos/${params.userId}/${params.fileName}`;
+  const safeName = params.fileName.replace(/[^a-zA-Z0-9._-]/g, '_');
+  const key = `profile-photos/${params.userId}/${Date.now()}-${safeName}`;
 
   const url = await getSignedUrl(r2, new PutObjectCommand({
     Bucket: BUCKET,

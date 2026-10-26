@@ -1,136 +1,205 @@
-import { Router, Request, Response } from 'express';
-import { prisma } from '../lib/prisma.js';
-import { asyncHandler } from '../lib/http.js';
-import { parseBody, productSyncSchema, stockAdjustmentSchema } from '../lib/validation.js';
-import { requireRole } from '../middleware/auth.js';
-import { announceChange } from '../lib/live.js';
+/**
+ * Product routes: bulk sync, per-product stock adjustment, list.
+ */
+import { Router } from 'express';
+import { asyncHandler, HttpError, requireUser } from '../lib/http';
+import { parseBody } from '../lib/validation';
+import { productSyncSchema, stockAdjustSchema } from '../lib/validation';
+import { prisma } from '../lib/prisma';
+import { log } from '../lib/observability';
 
 const router = Router();
 
-router.post('/sync', requireRole('admin', 'manager'), asyncHandler(async (req: Request, res: Response) => {
-  const { products } = parseBody(productSyncSchema, req.body);
-  const tenantId = req.user!.tenantId;
+// ---------------------------------------------------------------------------
+// Bulk product sync (owner or manager)
+// ---------------------------------------------------------------------------
 
-  // Stock is owned by the server: it is decremented by M-Pesa finalization and
-  // adjusted through explicit endpoints. A till's cached count can be stale the
-  // moment a sale is confirmed, so accepting it here would resurrect units that
-  // have already been sold and re-enable overselling. Only the catalogue is
-  // synced; `stockQty` is honoured on first insert only.
-  const remoteIds = products
-    .map((product) => product.remoteId)
-    .filter((id): id is string => typeof id === 'string' && id.length > 0);
-
-  // One lookup for the whole batch instead of a findFirst per product.
-  const existing = remoteIds.length
-    ? await prisma.product.findMany({ where: { id: { in: remoteIds }, tenantId }, select: { id: true } })
-    : [];
-  const existingIds = new Set(existing.map((product) => product.id));
-
-  const owned = remoteIds.filter((id) => !existingIds.has(id));
-  if (owned.length) {
-    return res.status(400).json({ error: 'One or more products do not belong to this shop' });
-  }
-
-  const synced = await prisma.$transaction(async (tx) => {
-    const result: Array<{ localId?: number; remoteId: string }> = [];
-    for (const product of products) {
-      if (product.remoteId) {
-        const updated = await tx.product.update({
-          where: { id: product.remoteId },
-          data: {
-            name: product.name,
-            category: product.category,
-            costPrice: product.costPrice,
-            sellPrice: product.sellPrice,
-            reorderLevel: product.reorderLevel,
-            bottleMl: product.bottleMl,
-            halfPrice: product.halfPrice,
-            quarterPrice: product.quarterPrice,
-            exciseStampBatch: product.exciseStampBatch,
-            active: product.active,
-          },
-        });
-        result.push({ localId: product.id, remoteId: updated.id });
-      } else {
-        const created = await tx.product.create({ data: { tenantId, name: product.name, category: product.category, costPrice: product.costPrice, sellPrice: product.sellPrice, stockQty: product.stockQty, reorderLevel: product.reorderLevel, bottleMl: product.bottleMl, halfPrice: product.halfPrice, quarterPrice: product.quarterPrice, exciseStampBatch: product.exciseStampBatch, active: product.active } });
-        result.push({ localId: product.id, remoteId: created.id });
+router.post(
+  '/sync',
+  asyncHandler(async (req, res) => {
+    const { products } = parseBody(productSyncSchema, req.body);
+    const tenantId = requireUser(req).tenantId;
+    const synced = await prisma.$transaction(async (tx) => {
+      const result: any[] = [];
+      for (const product of products) {
+        if (product.remoteId) {
+          const existing = await tx.product.findFirst({ where: { id: product.remoteId, tenantId } });
+          if (!existing) {
+            throw new Error('Product does not belong to this shop');
+          }
+          const updated = await tx.product.update({
+            where: { id: existing.id },
+            data: {
+              name: product.name,
+              category: product.category,
+              costPrice: product.costPrice,
+              sellPrice: product.sellPrice,
+              // Once a product exists remotely, stock is the sum of the
+              // append-only movement stream. A cached offline snapshot must
+              // never overwrite another till's movements.
+              reorderLevel: product.reorderLevel,
+              bottleMl: product.bottleMl,
+              unit: product.unit,
+              mlPerKg: product.mlPerKg,
+              halfPrice: product.halfPrice,
+              quarterPrice: product.quarterPrice,
+              exciseStampBatch: product.exciseStampBatch,
+              active: product.active,
+            },
+          });
+          result.push({ localId: product.id, remoteId: updated.id });
+        } else if (product.syncKey) {
+          // The client key is stable across a lost response and a retry. The
+          // upsert makes concurrent retries converge on one catalogue row;
+          // stock is deliberately absent from update so only the first create
+          // establishes the opening snapshot.
+          const synced = await tx.product.upsert({
+            where: {
+              tenantId_syncKey: {
+                tenantId,
+                syncKey: product.syncKey,
+              },
+            },
+            create: {
+              tenantId,
+              syncKey: product.syncKey,
+              name: product.name,
+              category: product.category,
+              costPrice: product.costPrice,
+              sellPrice: product.sellPrice,
+              stockQty: product.openingStockQty ?? product.stockQty,
+              reorderLevel: product.reorderLevel,
+              bottleMl: product.bottleMl,
+              unit: product.unit,
+              mlPerKg: product.mlPerKg,
+              halfPrice: product.halfPrice,
+              quarterPrice: product.quarterPrice,
+              exciseStampBatch: product.exciseStampBatch,
+              active: product.active,
+            },
+            update: {
+              name: product.name,
+              category: product.category,
+              costPrice: product.costPrice,
+              sellPrice: product.sellPrice,
+              reorderLevel: product.reorderLevel,
+              bottleMl: product.bottleMl,
+              unit: product.unit,
+              mlPerKg: product.mlPerKg,
+              halfPrice: product.halfPrice,
+              quarterPrice: product.quarterPrice,
+              exciseStampBatch: product.exciseStampBatch,
+              active: product.active,
+            },
+          });
+          result.push({ localId: product.id, remoteId: synced.id });
+        } else {
+          const created = await tx.product.create({
+            data: {
+              tenantId,
+              name: product.name,
+              category: product.category,
+              costPrice: product.costPrice,
+              sellPrice: product.sellPrice,
+              stockQty: product.openingStockQty ?? product.stockQty,
+              reorderLevel: product.reorderLevel,
+              bottleMl: product.bottleMl,
+              unit: product.unit,
+              mlPerKg: product.mlPerKg,
+              halfPrice: product.halfPrice,
+              quarterPrice: product.quarterPrice,
+              exciseStampBatch: product.exciseStampBatch,
+              active: product.active,
+            },
+          });
+          result.push({ localId: product.id, remoteId: created.id });
+        }
       }
-    }
-    return result;
-  });
-  // After the write, and only because it succeeded: a stream told about a
-  // catalogue that failed to save is a stream chasing a change that never
-  // happened. See lib/live.ts.
-  announceChange([tenantId], 'products');
-  return res.json({ synced });
-}));
-
-router.get('/', requireRole('admin', 'manager', 'cashier'), asyncHandler(async (req: Request, res: Response) => {
-  const products = await prisma.product.findMany({ where: { tenantId: req.user!.tenantId }, orderBy: { name: 'asc' } });
-  return res.json(products);
-}));
-
-// Records a stock correction made at the till.
-//
-// This is the only way stock moves on the server apart from M-Pesa
-// finalization. `/products/sync` no longer carries `stockQty` for existing
-// rows, so without this endpoint a break, a delivery or a stock count would
-// only ever exist on the till that made it.
-//
-// The update is conditional on sufficient stock, matching `finalizeSale`, so a
-// correction can never drive stock negative — the local `adjustStock` enforces
-// the same rule, and this keeps the server honest if a second device races it.
-router.post('/stock-adjust', requireRole('admin', 'manager'), asyncHandler(async (req: Request, res: Response) => {
-  const input = parseBody(stockAdjustmentSchema, req.body);
-  const tenantId = req.user!.tenantId;
-
-  // The cashier label is resolved server-side, never taken from the request.
-  const staffId = input.staff_profile_id ?? req.user!.id;
-  const staff = await prisma.profile.findFirst({
-    where: { id: staffId, tenantId, active: true, deletedAt: null },
-  });
-  if (!staff) return res.status(403).json({ error: 'Cashier profile is not active' });
-  if (req.user!.role === 'cashier' && staff.id !== req.user!.id) {
-    return res.status(403).json({ error: 'A cashier may only record adjustments under their own profile' });
-  }
-
-  // Read first so a missing product or an impossible correction gets a
-  // meaningful status rather than a generic 500 from inside the transaction.
-  const product = await prisma.product.findFirst({
-    where: { id: input.product_id, tenantId },
-    select: { id: true, name: true, stockQty: true },
-  });
-  if (!product) return res.status(404).json({ error: 'Product not found' });
-  if (Number(product.stockQty) + input.delta < 0) {
-    return res.status(409).json({ error: `Stock cannot go below zero for ${product.name}` });
-  }
-
-  const result = await prisma.$transaction(async (tx) => {
-    // The predicate repeats the stock check so a concurrent sale or a second
-    // device cannot drive the count negative between the read and the write.
-    const updated = await tx.product.updateMany({
-      where: { id: product.id, tenantId, stockQty: { gte: -input.delta } },
-      data: { stockQty: { increment: input.delta } },
+      return result;
     });
-    if (updated.count !== 1) {
-      const conflict = Object.assign(new Error('Stock conflict'), { status: 409 });
-      throw conflict;
-    }
-    const adjustment = await tx.stockAdjustment.create({
-      data: {
-        tenantId,
-        productId: product.id,
-        productName: product.name,
-        delta: input.delta,
-        reason: input.reason,
-        staffId: staff.id,
-      },
-    });
-    return { adjustmentId: adjustment.id, stockQty: Number(product.stockQty) + input.delta };
-  });
-  announceChange([tenantId], 'stock');
+    return res.json({ synced });
+  })
+);
 
-  return res.status(201).json(result);
-}));
+// ---------------------------------------------------------------------------
+// Per-product stock adjustment (immediate, single write)
+// ---------------------------------------------------------------------------
+
+router.post(
+  '/stock-adjust',
+  asyncHandler(async (req, res) => {
+    const { product_id, delta, reason, staff_profile_id } = parseBody(stockAdjustSchema, req.body);
+    const tenantId = requireUser(req).tenantId;
+
+    await prisma.$transaction(async (tx) => {
+      // Do not read stock, calculate a new value, then overwrite it: two tills
+      // can both read the same quantity and silently lose one adjustment.
+      // PostgreSQL applies this conditional arithmetic update atomically, so a
+      // decrement either reserves the remaining stock or loses the race.
+      const updated = await tx.product.updateMany({
+        where: {
+          id: product_id,
+          tenantId,
+          ...(delta < 0 ? { stockQty: { gte: Math.abs(delta) } } : {}),
+        },
+        data: { stockQty: { increment: delta } },
+      });
+      if (updated.count !== 1) {
+        const exists = await tx.product.findFirst({
+          where: { id: product_id, tenantId },
+          select: { id: true },
+        });
+        if (!exists) throw new HttpError(404, 'Product not found');
+        throw new HttpError(409, 'Insufficient stock for this adjustment');
+      }
+      await tx.stockAdjustment.create({
+        data: {
+          tenantId,
+          productId: product_id,
+          delta,
+          reason,
+          staffId: staff_profile_id,
+          createdAt: new Date(),
+        },
+      });
+    });
+
+    log('info', 'product.stock_adjusted', {
+      tenantId,
+      productId: product_id,
+      delta,
+      reason,
+      staff_profile_id,
+    });
+
+    const current = await prisma.product.findFirst({
+      where: { id: product_id, tenantId },
+      select: { stockQty: true },
+    });
+    return res.json({ product_id, stockQty: current?.stockQty ?? 0, delta });
+  })
+);
+
+// ---------------------------------------------------------------------------
+// List products for the tenant
+// ---------------------------------------------------------------------------
+
+router.get(
+  '/',
+  asyncHandler(async (req, res) => {
+    const limit = Math.min(Math.max(Number(req.query.limit) || 200, 1), 200);
+    const offset = Math.max(Number(req.query.offset) || 0, 0);
+    const products = await prisma.product.findMany({
+      where: { tenantId: requireUser(req).tenantId },
+      orderBy: [{ name: 'asc' }, { id: 'asc' }],
+      skip: offset,
+      take: limit,
+    });
+    return res.json({
+      products,
+      nextOffset: products.length === limit ? offset + products.length : null,
+    });
+  })
+);
 
 export default router;

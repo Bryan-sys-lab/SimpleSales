@@ -6,10 +6,10 @@
  * (req.user.tenantId).
  */
 import { Request, Response, Router } from 'express';
-import { asyncHandler } from '../lib/http.js';
-import { parseBody } from '../lib/validation.js';
-import { ingestTelemetrySchema, telemetryQuerySchema, churnSnapshotSchema, ingestSupportSchema } from '../lib/validation.js';
-import { prisma } from '../lib/prisma.js';
+import { asyncHandler } from '../lib/http';
+import { parseBody } from '../lib/validation';
+import { ingestTelemetrySchema, telemetryQuerySchema, churnSnapshotSchema, ingestSupportSchema } from '../lib/validation';
+import { prisma } from '../lib/prisma';
 
 const router = Router();
 

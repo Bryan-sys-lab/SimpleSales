@@ -1,19 +1,17 @@
-# The build context.
-#
-# Without this file, `COPY . .` in the Dockerfile sends EVERYTHING to the
-# daemon: node_modules (hundreds of megabytes), the compiled output, the
-# local .env with the stack's secrets, and the git history. The image build
-# then spends longer moving files than compiling TypeScript, and the local
-# secrets are shipped into a build context that may be cached.
+# Keep Docker builds small and prevent local credentials/artifacts entering the
+# build context. The Dockerfile installs dependencies from the lockfile.
 node_modules
+**/node_modules
 dist
-coverage
+.env
+.env.*
+!.env.example
 .git
 .gitignore
-.env
-.env.local
+coverage
 *.log
-*.tsbuildinfo
-Dockerfile*
-docker-compose*.yml
-postman/newman-*.json
+Dockerfile.test
+src/__tests__
+scripts/*
+!scripts/
+!scripts/ensure-bucket.cjs

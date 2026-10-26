@@ -65,51 +65,13 @@ npm run dev
    PUBLIC_API_URL=https://api.example.com
    ```
 
-### Account creation without a password (the till's Verify flow)
-
-The owner taps Verify on the till and never types a password: the app sends the
-email and the 4-digit admin PIN it collected at shop setup, and this server
-creates the account, emails a 6-digit code, and signs the till in once the code
-comes back. Three pieces of configuration make that possible, and each of them
-exists for a reason worth knowing:
-
-- **A Keycloak admin client** (`KEYCLOAK_ADMIN_CLIENT_ID` /
-  `KEYCLOAK_ADMIN_CLIENT_SECRET`). A confidential client in the realm with
-  `realm-management`'s `manage-users` role. The admin credential belongs on the
-  server and nowhere else — in an APK it is a published credential that lets
-  anyone create an account for someone else's email.
-  Set `KEYCLOAK_REALM` / `KEYCLOAK_BASE_URL` only if they cannot be derived
-  from `OIDC_ISSUER_URL`.
-- **A verification secret** (`EMAIL_VERIFICATION_SECRET`). Codes and PINs are
-  stored as HMACs under a per-row salt, so a dumped table cannot be replayed.
-  Generating one: `openssl rand -base64 48`.
-- **EmailJS keys** (`EMAILJS_SERVICE_ID`, `EMAILJS_TEMPLATE_ID`,
-  `EMAILJS_PUBLIC_KEY`, `EMAILJS_PRIVATE_KEY`). The private half never leaves
-  this process; without the full set, `/auth/link` answers 503 rather than
-  pretending a code was sent.
-- **A session secret** (`APP_SESSION_SECRET`), which signs the till's session
-  token. Optional: without it, verification still works and the till simply
-  cannot hold a session of its own.
-
-The account is created `enabled: false` with `emailVerified: false` and is only
-switched on by `/auth/verify`, after a code sent to that address has been
-presented. A guessed PIN therefore buys the caller a disabled row in the
-identity server and nothing else. Enable Keycloak's brute-force detection on
-the realm: the PIN is four digits, and the realm is the only place a wrong one
-can be tried more than five times.
-
-For local development without an EmailJS template, set
-`VERIFICATION_DEBUG_CODES=true` outside production; `/auth/link` then returns
-the code in a `debug_code` field. This is ignored by release builds and gated
-on `NODE_ENV !== production`, and it is deliberately not available in one.
-
 4. Prepare the database:
 ```bash
 npm run db:generate
 npm run db:deploy
 ```
 
-For an existing owner/staff deployment, take a verified backup and run `npm run db:deploy` as normal. The chain is additive and re-runnable: `20260929220000_reconcile_legacy_roles` maps the legacy `('owner','staff')` role vocabulary to `('admin','manager','cashier')` and adds every column, table and index the old schema is missing (`deletion_ledger`, the `profiles` OIDC columns, the portion prices and decimal stock).
+For an existing owner/staff deployment, take a verified backup and run `npm run db:deploy` after following the deployment baseline procedure for the existing database. The chain is additive and re-runnable: `20260929220000_reconcile_legacy_roles` maps the legacy `('owner','staff')` role vocabulary to `('admin','manager','cashier')` and adds every column, table and index the old schema is missing (`deletion_ledger`, the `profiles` OIDC columns, the portion prices and decimal stock). Do not run migrations as the container startup command; legacy databases must be baselined and migrated in a controlled deployment step first.
 
 `npm run db:migrate:roles` is retained for runbooks that reference it, but it only reconciles the role column — prefer the full chain.
 
@@ -135,64 +97,32 @@ Platform administration is separate from shop administration. Set `SYSTEM_ADMIN_
 - `PATCH /api/tenant/settings` - Update settings (owner only)
 - `POST /api/tenant/staff` - Add staff member (owner only)
 
-### Identity verification (the "Verify" button)
-The only endpoints that authenticate by content rather than by token, because
-the first one has to work for an account that does not exist yet. They are
-rate-limited per address, and the Keycloak account they create stays **dark**
-(disabled, unverified) until an emailed code is presented.
-
-- `POST /api/auth/link` - `{ email, pin, shopName, ownerName }`. Creates the Keycloak account for the owner's email if there is not one, sends a 6-digit code to it, and answers where it was sent. It never says whether the address already had an account.
-- `POST /api/auth/verify` - `{ email, pin, code }`. Consumes the code, enables and marks the account verified, adopts or creates the shop, and returns the shop's tenant id plus an app session for the till.
-- `POST /api/auth/refresh` - `{ refreshToken }`. A rotated token pair; a token lifted off a phone works exactly once.
-
-An **app session** is signed by this server, not by the identity server, and is accepted on `/api/tenant/*`, `/api/products/*` and `/api/reports/*` only. It cannot move money (`/api/payments/*`), file a tax invoice (`/api/etims/*`), or touch platform administration (`/api/system/*`). Set `APP_SESSION_SECRET` to enable it; deleting the secret is the revocation switch for every outstanding session.
-
-### Platform administration
-Mounted at `/api/system`, and the one surface that reads *every* shop — which
-is the whole job of answering "is anything wrong anywhere?". The allowlist is
-`SYSTEM_ADMIN_SUBJECTS`: OIDC subject ids, never email addresses. An app
-session is refused here, and so is every tenant token, so a till cannot reach
-platform administration even by accident.
-
-- `GET /api/system/access` - Whether the caller is a platform operator.
-- `GET /api/system/users?limit&offset` - Who is on the platform, paged, with the email's masked form.
-- `GET /api/system/analytics?from&to` - Platform totals. Window-bounded (400 days, flagged when clamped).
-- `GET /api/system/analytics/drilldown?from&to&tenant_id` - Per-day series, tender mix, staff leaderboard, per-shop breakdown. All of it from `src/lib/admin_analytics.ts`, which is pure and unit-tested, so the dashboard and the aggregates cannot disagree.
-- `GET /api/system/observability` - Pending verification codes, codes burnt in the last 24h, and the recent attempts — a spike here is a shop whose email is failing before anyone notices.
-- `GET|PATCH /api/system/tenants/:tenantId/settings` - One shop's settings, read and written.
-
-### Operator dashboard (`/admin`)
-A hand-built page served from this origin, so it cannot drift from the API it
-reads: `npm run build` copies `src/public/` to `dist/public/`, and `/admin`
-serves it from memory. No framework, no bundle, no separate deployment. It
-holds no token — the operator pastes a bearer token into a form, and the page
-keeps it in `sessionStorage` for the tab's lifetime only. The API's own error
-message is shown verbatim, so an operator can tell an expired token from a
-rate limit without calling anyone. `src/__tests__/dashboard.test.ts` asserts
-the page links only assets that exist and calls only endpoints that exist.
-
-### Live channel (`/live`)
-A WebSocket for the till, replacing polling for the portfolio screen and other fast-changing data. It carries a **signal**, never the data:
-
-- The till opens `wss://host/live` with its app session in the `Authorization` header.
-- It may send `{"type":"ping"}` (answered with a pong) and `{"type":"read"}` (answered with a snapshot read by the same `readPortfolio` the HTTP endpoint uses, so the two can never disagree).
-- A write — a product sync, a stock adjustment, a settings change — emits onto the channel's bus, and every stream holding that shop is told `{"type":"stale","reasons":["sales"],"at":"…"}`. The till answers a stale signal by reading, which is why the bus carries no payloads.
-
-Scoping is per shop and read at connect time from the caller's own profiles, so one customer's till is never told about another's. A connection counts as alive only while it speaks: 30s heartbeat, 10-minute idle close. The reason vocabulary is closed (`products`, `stock`, `sales`, `settings`) so the phone never meets a reason it has no copy for. Two seams — the shop lookup and the snapshot read — are injectable, which is how the route test drives the channel with no database.
-
 ### Products
 - `POST /api/products/sync` - Bulk sync from app
 - `GET /api/products` - List all products
 
-### eTIMS (KRA electronic tax invoicing)
-- `POST /api/etims/device` - Register this shop's till with KRA and store its signing keys (owner only)
-- `POST /api/etims/receipts` - Issue a tax receipt for one recorded sale
+### Tax reporting (Risiti by PesaStack; KRA activation pending)
+- `POST /api/etims/device` - Reserved for an activated tax deployment (disabled by default)
+- `POST /api/etims/receipts` - Submit a recorded sale through the server-side Risiti adapter when activated
 - `POST /api/etims/upload` - Upload every outstanding receipt, oldest first (admin/manager)
 - `GET /api/etims/status` - How much is outstanding, and whether the device is registered
 - `GET /api/etims/z-report` - The end-of-day report for a business date
-- `POST /api/etims/z-report` - File that report with KRA (owner only)
+- `POST /api/etims/z-report` - File that report with KRA only after explicit activation (owner only)
 - `GET /api/etims/receipts/:receiptNumber` - A receipt this shop filed
 - `GET /api/etims/verify/:receiptNumber` - **Public.** What the QR code on a customer's receipt points at
+
+The default posture is deliberately `TAX_REPORTING_ACTIVATED=false`: sales and VAT
+reports continue locally, while no KRA credentials or Risiti API key are used by the
+till. When enabled after merchant onboarding, the backend uses Risiti's Platform API
+with a server-only `RISITI_API_KEY`, a tenant-scoped `risiti_merchant_id`, stable
+external IDs, and idempotency keys. An asynchronous response is only an issued tax
+receipt when Risiti reports `submission.terminal && submission.succeeded`; queued
+responses remain pending.
+
+### Platform system administration
+- `GET /api/system/users` - Active users across all shops (system-admin allowlist only)
+- `GET /api/system/analytics` - Cross-tenant aggregate analytics and per-tenant payment breakdowns
+- `PATCH /api/system/tenants/:tenantId/settings` - Configure a tenant backend integration
 
 ### Payments
 - `POST /api/payments/initiate` - Start M-Pesa payment
@@ -251,6 +181,10 @@ railway up
 - Deploy to App Platform
 
 ## eTIMS design notes
+
+The following OSCU notes describe the retained KRA transport seam and are not an
+activation claim. The live application path is gated off until the Risiti merchant
+and KRA connection have been approved.
 
 ### What was implemented, and against what
 
@@ -345,9 +279,6 @@ those keys sign every invoice the shop will ever file.
 - ✓ Runtime request validation and bounded JSON bodies
 - ✓ Rate limits on API and PayHero webhook traffic
 - ✓ PayHero secrets never exposed to client
-- ✓ Keycloak admin credentials never exposed to the client: the API mints tokens instead of shipping them
-- ✓ Verification codes and refresh tokens stored as HMACs, single-use, and bounded in lifetime
-- ✓ App sessions limited to an allowlist of paths
 
 ### PostgreSQL RLS and mobile workspace isolation
 

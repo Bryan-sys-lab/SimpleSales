@@ -3,23 +3,13 @@
  *
  * Mounts all route modules with the appropriate middleware:
  *   /api/system         — platform administration (system admin allowlist)
- *   /api/auth           — the verify flow (no token yet: it mints the account)
- *   /api/etims/verify   — the public eTIMS device check
+ *   /api/auth           — app verification flow (no OIDC, app's own challenge flow)
  *   /api/etims          — KRA tax compliance (OIDC guarded)
  *   /api/tenant         — shop provisioning, settings, staff, portfolio (OIDC guarded)
  *   /api/payments       — M-Pesa via PayHero (OIDC guarded)
  *   /api/products       — catalogue sync + stock adjustment (OIDC guarded)
  *   /api/reports        — sales reports (OIDC guarded)
- *   /api/sales          — the till's ledger, pushed from the phone (OIDC guarded)
- *   /api/shifts         — the till's drawers, pushed from the phone (OIDC guarded)
- *   /api/returns        — returns and credit notes (OIDC guarded)
- *   /api/purchases      — stock received, and what it cost (OIDC guarded)
- *   /api/shot-cups      — named servings poured from a drink (OIDC guarded)
- *   /api/profile        — profile photos (OIDC guarded)
- *   /api/telemetry      — device telemetry (OIDC guarded)
- *   /api/admin          — shop administration (OIDC guarded)
- *   /admin              — the operator dashboard
- *   /api/app/latest     — the update manifest for the till app
+ *   /api/app/latest     — update manifest for the till app
  *   /webhooks/payhero-callback — PayHero webhook (no auth)
  *   /health, /ready     — liveness / readiness probes
  */
@@ -27,29 +17,36 @@ import express from 'express';
 import cors from 'cors';
 import helmet from 'helmet';
 import dotenv from 'dotenv';
-import { systemAdminMiddleware, authMiddleware } from './middleware/auth.js';
-import tenantRoutes from './routes/tenant.js';
-import paymentRoutes from './routes/payment.js';
-import productRoutes from './routes/product.js';
-import { handlePayheroCallback } from './routes/payhero-callback.js';
-import { requestContext, log } from './lib/observability.js';
+import { WebSocketServer } from 'ws';
+import { asyncHandler, errorHandler } from './lib/http';
+import {
+  expireOldUnclaimed,
+  mpesaRoutes,
+  mpesaWebhookRoutes,
+  setMpesaPaymentNotifier,
+} from './routes/mpesa';
+import { creditNoteRoutes, receiptLinksRoutes } from './routes/receipt_links';
+import { systemAdminMiddleware, authMiddleware } from './middleware/auth';
+import tenantRoutes from './routes/tenant';
+import paymentRoutes from './routes/payment';
+import productRoutes from './routes/product';
+import { handlePayheroCallback } from './routes/payhero-callback';
+import { requestContext, log } from './lib/observability';
 import rateLimit from 'express-rate-limit';
-import { prisma } from './lib/prisma.js';
-import reportRoutes from './routes/report.js';
-import { attachLiveChannel } from './routes/live.js';
-import systemRoutes from './routes/system.js';
-import etimsRoutes, { publicEtimsRouter } from './routes/etims.js';
-import authRoutes from './routes/auth.js';
-import appReleaseRoutes from './routes/app-release.js';
-import dashboardRoutes from './routes/dashboard.js';
-import saleRoutes from './routes/sale.js';
-import shiftRoutes from './routes/shift.js';
-import returnRoutes from './routes/return.js';
-import purchaseRoutes from './routes/purchase.js';
-import shotCupRoutes from './routes/shotcup.js';
-import profileRoutes from './routes/profile.js';
-import telemetryRoutes from './routes/telemetry.js';
-import adminRoutes from './routes/admin.js';
+import { prisma } from './lib/prisma';
+import reportRoutes from './routes/report';
+import systemRoutes from './routes/system';
+import authRoutes from './routes/auth';
+import etimsRoutes from './routes/etims';
+import profileRoutes from './routes/profile';
+import telemetryRoutes from './routes/telemetry';
+import adminRoutes from './routes/admin';
+import { setPlatformAnnouncementNotifier } from './routes/admin';
+import salesRoutes from './routes/sales';
+import backupRoutes from './routes/backup';
+import creditRoutes from './routes/credit';
+import operationalSyncRoutes from './routes/operational_sync';
+import evidenceRoutes from './routes/evidence';
 
 dotenv.config();
 
@@ -70,10 +67,18 @@ const allowedOrigins = (process.env.FRONTEND_URL || '')
   .filter(Boolean);
 app.use(cors({ origin: allowedOrigins.length ? allowedOrigins : false }));
 
-app.use(express.json({ limit: '256kb' }));
-app.use(
-  rateLimit({ windowMs: 60000, limit: 120, standardHeaders: 'draft-7', legacyHeaders: false }),
-);
+// Full workspace backups are already encrypted client-side and can contain a
+// busy shop's history; the route still validates and caps the payload at 8 MB.
+app.use(express.json({ limit: '8mb' }));
+app.use(rateLimit({
+  windowMs: 60000,
+  limit: 120,
+  standardHeaders: 'draft-7',
+  legacyHeaders: false,
+  // Liveness/readiness probes must keep working during a traffic burst;
+  // application and webhook routes remain behind the limiter below.
+  skip: (req) => req.path === '/health' || req.path === '/ready',
+}));
 
 // ---------------------------------------------------------------------------
 // Health / readiness
@@ -112,54 +117,89 @@ app.use('/api/system', systemAdminMiddleware, systemRoutes);
 // Public routes (no auth required) - mounted BEFORE auth middleware
 // ---------------------------------------------------------------------------
 
-// The eTIMS device check: the till asks whether its device is registered
-// before it may file a receipt, and it asks BEFORE it has a token.
-app.use('/api/etims/verify', publicEtimsRouter);
-
-// The verify flow, and the only endpoints in the service that authenticate by
-// content instead of by token — they run *before* a shop has a token, because
-// the first one has to work for an account that does not exist yet. Mounted
-// ahead of `authMiddleware` for that reason, rate-limited per address inside.
-//
-// What it does NOT do is mint a credential. It creates the Keycloak account,
-// proves the address with an emailed code, activates the account, and links
-// the shop. The credential is Keycloak's, and the till signs in to Keycloak
-// for it.
 app.use('/api/auth', authRoutes);
+app.get('/api/app/latest', asyncHandler(async (_req, res) => {
+  // These are injected at build/release time via environment variables.
+  // A release pipeline sets them to the current build's values.
+  const versionName = process.env.APP_VERSION_NAME ?? '2.0.0';
+  const versionCode = Number(process.env.APP_VERSION_CODE ?? '23');
+  const downloadUrl = process.env.APP_DOWNLOAD_URL ?? '';
+  const required = process.env.APP_UPDATE_REQUIRED ?? 'false';
+  const releaseNotes = process.env.APP_RELEASE_NOTES ?? 'No release notes published.';
+  let announcement: { id: string; title: string; body: string } | null = null;
+  try {
+    const announcementRows = await prisma.systemSettings.findMany({
+      where: { key: { in: ['platform_announcement_id', 'platform_announcement_title', 'platform_announcement_body', 'platform_announcement_active'] } },
+    });
+    const announcementValues = Object.fromEntries(announcementRows.map((row) => [row.key, row.value]));
+    if (announcementValues.platform_announcement_active === 'true' && announcementValues.platform_announcement_id) {
+      announcement = {
+        id: announcementValues.platform_announcement_id,
+        title: announcementValues.platform_announcement_title ?? '',
+        body: announcementValues.platform_announcement_body ?? '',
+      };
+    }
+  } catch {
+    // The update manifest remains available during a database interruption;
+    // only the optional platform announcement is omitted.
+  }
 
-// The operator dashboard: a hand-built page, served from this origin so it
-// cannot drift from the API it reads. Sits outside `/api` and carries no
-// authentication of its own — every read it makes is an authenticated call to
-// `/api/system/*`, which is where the allowlist is enforced.
-app.use('/admin', dashboardRoutes);
+  return res.json({
+    // The mobile manifest uses camelCase; retain the legacy snake_case aliases
+    // for older clients that may still be in the field.
+    build: versionCode,
+    version: versionName,
+    downloadUrl,
+    notes: releaseNotes,
+    required: required === 'true',
+    version_name: versionName,
+    version_code: versionCode,
+    download_url: downloadUrl,
+    release_notes: releaseNotes,
+    announcement,
+  });
+}));
 
-// The release manifest, unauthenticated: a shop that has never signed in still
-// needs to be able to update. Mounted here rather than under `/api` so it is
-// outside `authMiddleware` entirely — see the note in the route file.
-app.use('/', appReleaseRoutes);
+// ---------------------------------------------------------------------------
+// M-Pesa C2B callbacks (public, key-guarded in the route) and the receipt
+// share links (one public page, the rest behind the JWT wall).
+// ---------------------------------------------------------------------------
 
+app.use('/callback/mpesa', mpesaWebhookRoutes);
+
+// ---------------------------------------------------------------------------
 // Protected routes (require OIDC JWT)
 // ---------------------------------------------------------------------------
 
 app.use('/api', authMiddleware);
+app.use('/api/mpesa', mpesaRoutes);
 app.use('/api/tenant', tenantRoutes);
 app.use('/api/payments', paymentRoutes);
 app.use('/api/products', productRoutes);
 app.use('/api/reports', reportRoutes);
-
-// The till's own records: the ledger, the drawers, the returns, the
-// deliveries and the shot cups. All written on the phone and pushed here.
-app.use('/api/sales', saleRoutes);
-app.use('/api/shifts', shiftRoutes);
-app.use('/api/returns', returnRoutes);
-app.use('/api/purchases', purchaseRoutes);
-app.use('/api/shot-cups', shotCupRoutes);
+app.use('/api/sales', salesRoutes);
+app.use('/api/backups/full', backupRoutes);
+app.use('/api/evidence', evidenceRoutes);
+app.use('/api/credit', creditRoutes);
+app.use('/api/shifts', operationalSyncRoutes);
+app.use('/api/shot-cups', operationalSyncRoutes);
+app.use('/api/returns', operationalSyncRoutes);
+app.use('/api/purchases', operationalSyncRoutes);
+app.use('/api/expenses', operationalSyncRoutes);
+app.use('/api/till-movements', operationalSyncRoutes);
+app.use('/api/stock-movements', operationalSyncRoutes);
+app.use('/api/drawer-events', operationalSyncRoutes);
+app.use('/api/laybys', operationalSyncRoutes);
+app.use('/api/exchanges', operationalSyncRoutes);
+app.use('/api/reorder', operationalSyncRoutes);
 
 // ---------------------------------------------------------------------------
 // eTIMS KRA tax compliance (OIDC guarded)
 // ---------------------------------------------------------------------------
 
 app.use('/api/etims', etimsRoutes);
+app.use('/api/etims/credit-note', creditNoteRoutes);
+app.use('/api/receipt-links', receiptLinksRoutes);
 
 // ---------------------------------------------------------------------------
 // Profile photos (OIDC guarded)
@@ -174,23 +214,53 @@ app.use('/api/admin', adminRoutes);
 
 app.use((_req, res) => res.status(404).json({ error: 'Not found' }));
 
-import { errorHandler } from './lib/http.js';
 app.use(errorHandler);
 
-// The live channel lives on its own path because it is the one route that is
-// not a request/response: the upgrade is handled by the HTTP server, not by
-// Express, so attaching a listener here is what makes /live exist at all. It
-// must be attached before the first connection, and it must see the same
-// server the app listens on.
 if (require.main === module) {
-  const server = app.listen(PORT, () => log('info', 'server.started', { port: PORT, environment: process.env.NODE_ENV ?? 'development' }));
-  const live = attachLiveChannel(server);
+  const server = app.listen(PORT, () =>
+    log('info', 'server.started', { port: PORT, environment: process.env.NODE_ENV ?? 'development' }),
+  );
+  const wss = new WebSocketServer({ server, path: '/api/live' });
+  const liveClients = new Set<import('ws').WebSocket>();
+  wss.on('connection', (ws) => {
+    liveClients.add(ws);
+    ws.once('close', () => liveClients.delete(ws));
+    ws.send(JSON.stringify({ type: 'connected', at: new Date().toISOString() }));
+  });
+  setMpesaPaymentNotifier(() => {
+    const message = JSON.stringify({ type: 'mpesa_incoming' });
+    for (const client of liveClients) {
+      if (client.readyState === client.OPEN) client.send(message);
+    }
+  });
+  setPlatformAnnouncementNotifier((announcement) => {
+    const message = JSON.stringify({
+      type: announcement.id ? 'platform_announcement' : 'platform_announcement_cleared',
+      ...(announcement.id ? { announcement } : {}),
+    });
+    for (const client of liveClients) {
+      if (client.readyState === client.OPEN) client.send(message);
+    }
+  });
+  // Reap rows that crossed the 24-hour boundary while this container was
+  // asleep or scaled to zero before starting the recurring sweep.
+  void expireOldUnclaimed().catch((error) =>
+    log('warn', 'mpesa.expiry_failed', {
+      message: error instanceof Error ? error.message : 'unknown',
+    }),
+  );
+  const mpesaExpiryTimer = setInterval(() => {
+    void expireOldUnclaimed().catch((error) =>
+      log('warn', 'mpesa.expiry_failed', {
+        message: error instanceof Error ? error.message : 'unknown',
+      }),
+    );
+  }, 24 * 60 * 60 * 1000);
   const shutdown = (signal: string) => {
     log('info', 'server.shutdown', { signal });
-    // Close the streams before the server: a till left holding a socket the
-    // process has abandoned reconnects and gets a clean 1001 rather than a
-    // half-read frame.
-    live.close();
+    clearInterval(mpesaExpiryTimer);
+    setMpesaPaymentNotifier(null);
+    setPlatformAnnouncementNotifier(null);
     server.close(() => void prisma.$disconnect());
   };
   process.once('SIGTERM', () => shutdown('SIGTERM'));

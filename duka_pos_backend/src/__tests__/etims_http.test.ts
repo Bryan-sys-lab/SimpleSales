@@ -7,8 +7,9 @@
 // an unregistered shop filing an invoice, a verification page that reveals more
 // than the receipt already shows.
 
-import { beforeAll, describe, expect, it } from 'vitest';
+import { beforeAll, describe, expect, it, vi } from 'vitest';
 import type { Express } from 'express';
+import { prisma } from '../lib/prisma';
 
 let app: Express;
 
@@ -16,9 +17,9 @@ beforeAll(async () => {
   process.env.NODE_ENV = 'test';
   process.env.OIDC_ISSUER_URL = 'https://id.example.test/realms/duka';
   process.env.OIDC_AUDIENCE = 'duka-api';
-  process.env.DATABASE_URL = 'postgresql://localhost:5432/duka_pos_test';
-  const module = await import('../index.js');
-  app = (module as unknown as { default: Express }).default;
+  process.env.DATABASE_URL ??= 'postgresql://localhost:5432/duka_pos_test';
+  const module = await import('../index');
+  app = module.default;
 });
 
 describe('eTIMS access boundaries', () => {
@@ -79,7 +80,7 @@ describe('eTIMS access boundaries', () => {
     // and `encryption_key` sign every invoice the shop will ever file, so they
     // are not fetched at all rather than filtered on the way out — no future
     // edit to the response body can then leak them by accident.
-    const { etimsDeviceStatusSelect } = await import('../routes/etims.js');
+    const { etimsDeviceStatusSelect } = await import('../routes/etims');
     const fields = Object.keys(etimsDeviceStatusSelect);
     expect(fields).toContain('tin');
     expect(fields).toContain('status');
@@ -93,7 +94,7 @@ describe('eTIMS access boundaries', () => {
     // person following the QR is a customer. It therefore may return only what
     // is already printed on the paper in their hand. A field added here would
     // be a shop-data leak reachable by anyone with a receipt.
-    const { publicReceiptSelect } = await import('../routes/etims.js');
+    const { publicReceiptSelect } = await import('../routes/etims');
     const fields = Object.keys(publicReceiptSelect);
     expect(fields).toContain('kraReceiptNumber');
     expect(fields).toContain('total');
@@ -108,14 +109,14 @@ describe('eTIMS access boundaries', () => {
     // customer, who has no account. It must still answer rather than 401, and
     // it must not answer for a receipt that does not exist.
     const supertest = await import('supertest');
+    const lookup = vi
+      .spyOn(prisma.etimsReceipt, 'findFirst')
+      .mockResolvedValue(null);
     const response = await supertest.default(app)
       .get('/api/etims/verify/00000000-0000-0000-0000-000000000000');
-    // The property under test is reachability without a token, not the exact
-    // code: a 401 here would mean the QR on every receipt leads the customer to
-    // a dead end. A 404 (no such receipt) and a 500 (this suite has no
-    // database) both prove the request got past the auth layer.
-    expect(response.status).not.toBe(401);
-    expect(response.body.error ?? response.body.status).toBeTruthy();
+    expect(response.status).toBe(404);
+    expect(response.body.error).toBe('No such receipt');
+    lookup.mockRestore();
   });
 });
 

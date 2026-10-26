@@ -20,8 +20,8 @@
  * one hundred, which is both catastrophic and entirely invisible in review.
  */
 
-import { prisma } from '../lib/prisma.js';
-import { log } from '../lib/observability.js';
+import { prisma } from '../lib/prisma';
+import { log } from '../lib/observability';
 import {
   DEFAULT_BRANCH_ID,
   TAX_TYPE_VAT,
@@ -36,7 +36,7 @@ import {
   type ReceiptType,
   type SaveSalesItemResult,
   type TransactionType,
-} from './kra.js';
+} from './kra';
 
 // ---------------------------------------------------------------------------
 // Money
@@ -93,6 +93,9 @@ export interface InvoiceInput {
   total: number; // minor units
   vatRatePercent: number;
   items: InvoiceItemInput[];
+  /** Business-customer details, when the till captured them (spec 7.6). */
+  buyerName?: string;
+  buyerTin?: string;
 }
 
 /**
@@ -116,6 +119,8 @@ export function buildKraInvoice(
   totalTaxAmount: string;
   paymentModeCode: string;
   paymentAmount: string;
+  buyerName?: string;
+  buyerTin?: string;
   items: Array<{
     itemCode: string;
     itemName: string;
@@ -178,6 +183,10 @@ export function buildKraInvoice(
     totalTaxAmount: toMajor(taxTotalMinor),
     paymentModeCode: paymentModeCodeFor(input.paymentMethod),
     paymentAmount: toMajor(input.total),
+    // Buyer details ride the document when the till captured them; absent
+    // fields are omitted rather than sent as empty strings, which KRA reads
+    // as a business customer with a blank PIN and rejects.
+    ...(input.buyerName || input.buyerTin ? { buyerName: input.buyerName, buyerTin: input.buyerTin } : {}),
     items,
   };
 }
@@ -216,6 +225,10 @@ export function paymentModeCodeFor(paymentMethod: string): string {
       return 'MobileMoney';
     case 'bank_transfer':
       return 'BankTransfer';
+    case 'credit':
+      // A sale recorded on account is filed as a credit sale, not as Cash:
+      // filing it as Cash reports money the shop never received that day.
+      return 'Credit';
     case 'cash':
     default:
       return 'Cash';
@@ -394,9 +407,19 @@ export async function issueReceipt(params: {
 
   const vatTotalMinor = params.input.items.reduce((sum, item) => sum + item.vatAmount, 0);
 
-  const receipt = await prisma.etimsReceipt.upsert({
+  const existing = await prisma.etimsReceipt.findUnique({
     where: { tenantId_receiptNumber: { tenantId: params.tenantId, receiptNumber: params.input.receiptNumber } },
-    create: {
+  });
+  if (existing?.status === 'issued' && existing.kraReceiptNumber) {
+    return { status: 'already_issued', receiptNumber: existing.kraReceiptNumber, qrPayload: existing.qrPayload };
+  }
+  const receipt = existing
+    ? await prisma.etimsReceipt.update({
+        where: { id: existing.id },
+        data: { status: 'pending', rejectionReason: null },
+      })
+    : await prisma.etimsReceipt.create({
+      data: {
       tenantId: params.tenantId,
       deviceId: device.id,
       receiptNumber: params.input.receiptNumber,
@@ -408,11 +431,8 @@ export async function issueReceipt(params: {
       paymentMethod: params.input.paymentMethod,
       paymentReference: params.input.paymentReference ?? null,
       status: 'pending',
-    },
-    // A rejected receipt is retried when the till re-sends it. An issued one is
-    // left alone, which is what makes a duplicate upload a no-op.
-    update: { status: 'pending', rejectionReason: null },
-  });
+      },
+    });
 
   if (receipt.status === 'issued' && receipt.kraReceiptNumber) {
     return { status: 'already_issued', receiptNumber: receipt.kraReceiptNumber, qrPayload: null };
@@ -437,13 +457,16 @@ export async function issueReceipt(params: {
         totalTaxAmount: invoice.totalTaxAmount,
         paymentModeCode: invoice.paymentModeCode,
         paymentAmount: invoice.paymentAmount,
-        ...(params.input.paymentReference
-          ? { paymentReference: params.input.paymentReference }
-          : {}),
-        items: invoice.items,
-      },
-      { baseUrl: kraBaseUrl(), credentials: params.credentials ?? kraCredentialsFromEnv() },
-    );
+          ...(params.input.paymentReference
+            ? { paymentReference: params.input.paymentReference }
+            : {}),
+          ...(params.input.buyerName || params.input.buyerTin
+            ? { buyerName: params.input.buyerName, buyerTin: params.input.buyerTin }
+            : {}),
+          items: invoice.items,
+        },
+        { baseUrl: kraBaseUrl(), credentials: params.credentials ?? kraCredentialsFromEnv() },
+      );
 
     const result: SaveSalesItemResult | undefined = batch.saveSalesItems[0];
     if (!result?.receiptNumber) {
@@ -498,6 +521,73 @@ async function markRejected(receiptId: string, reason: string): Promise<void> {
 // Offline batch upload
 // ---------------------------------------------------------------------------
 
+/** The credit-note payload receipt_links.ts queues, snake_case as stored. */
+export interface CreditNotePayload {
+  document_type: 'credit_note';
+  original_receipt_number?: string;
+  reason_code?: string;
+  lines?: unknown[];
+  total?: number;
+  vat_total?: number;
+  buyer_name?: string;
+  buyer_tin?: string;
+}
+
+/**
+ * Normalises a queued credit note into the InvoiceInput the invoice builder
+ * already validates, so a credit note can never be mis-filed as a sale: the
+ * label comes out 'NC', the transaction type 'CREDIT NOTE', and the line
+ * arithmetic is checked exactly like an invoice's.
+ *
+ * The payment mode mirrors the ORIGINAL sale's — a credit note reverses that
+ * payment, not a fresh one. When the original cannot be read it files as
+ * `Credit` (on account) rather than as money changing hands again.
+ */
+export function creditNoteInvoiceInput(
+  payload: CreditNotePayload,
+  opts: { receiptNumber: string; originalPaymentMethod?: string | null },
+): InvoiceInput {
+  const lines = Array.isArray(payload.lines) ? payload.lines : [];
+  if (lines.length === 0) throw new RangeError('a credit note with no lines is not a document');
+  const items = lines.map((raw, index) => {
+    const line = (raw ?? {}) as Record<string, unknown>;
+    const name = typeof line.name === 'string' && line.name.trim() !== '' ? line.name : `line ${index + 1}`;
+    const qty = Number(line.qty ?? 0);
+    const unitPrice = Number(line.unit_price ?? 0);
+    const lineTotal = Number(line.line_total ?? 0);
+    if (!Number.isFinite(qty) || !Number.isFinite(unitPrice) || !Number.isFinite(lineTotal)) {
+      throw new RangeError(`credit note line ${index + 1} (${name}) carries a non-numeric amount`);
+    }
+    const portionMl = Number(line.portion_ml);
+    return {
+      name,
+      qty,
+      unitPrice,
+      // A reversal restocks what the sale consumed; it does not price the
+      // goods again, so cost stays out of the filed document.
+      unitCost: 0,
+      ...(typeof line.portion === 'string' ? { portion: line.portion } : {}),
+      ...(Number.isFinite(portionMl) && portionMl > 0 ? { portionMl } : {}),
+      vatAmount: Number.isFinite(Number(line.vat_amount)) ? Number(line.vat_amount) : 0,
+      lineTotal,
+    };
+  });
+  const total = Number(payload.total ?? 0);
+  if (!Number.isFinite(total) || total <= 0) {
+    throw new RangeError('the credit note total must be a positive number');
+  }
+  return {
+    receiptNumber: opts.receiptNumber,
+    issuedAt: new Date().toISOString(),
+    paymentMethod: opts.originalPaymentMethod ?? 'credit',
+    ...(payload.buyer_name?.trim() ? { buyerName: payload.buyer_name.trim() } : {}),
+    ...(payload.buyer_tin?.trim() ? { buyerTin: payload.buyer_tin.trim() } : {}),
+    total,
+    vatRatePercent: 0,
+    items,
+  };
+}
+
 /**
  * Uploads every outstanding receipt in issue order.
  *
@@ -537,19 +627,61 @@ export async function uploadPendingBatch(params: {
   // or a bad TIN, and none of those improves for the next receipt — while
   // carrying on would file a later receipt over a gap and make the gap
   // permanent.
-  const documents = outstanding.map((receipt) => {
-    const input = receipt.payload as unknown as InvoiceInput;
-    return {
-      receipt,
-      invoice: buildKraInvoice(input),
-      label: labelForSubmission({ isReprint: false }),
-    };
-  });
+  //
+  // Credit notes are their own document type and are built as such; a row
+  // whose payload does not build is marked rejected here rather than poisoning
+  // the run — the rows are independent submissions and a malformed payload
+  // would otherwise be retried forever.
+  const documents: Array<{
+    receipt: (typeof outstanding)[number];
+    invoice: ReturnType<typeof buildKraInvoice>;
+    label: ReturnType<typeof labelForSubmission>;
+  }> = [];
+  const rejected: Array<{ receiptNumber: string; reason: string }> = [];
+
+  for (const receipt of outstanding) {
+    try {
+      const isCreditNote = receipt.documentType === 'credit_note';
+      const input = isCreditNote
+        ? creditNoteInvoiceInput(receipt.payload as unknown as CreditNotePayload, {
+            receiptNumber: receipt.receiptNumber,
+            originalPaymentMethod: receipt.originalReceiptNumber
+              ? (
+                  await prisma.etimsReceipt.findFirst({
+                    where: {
+                      tenantId: params.tenantId,
+                      OR: [
+                        { kraReceiptNumber: receipt.originalReceiptNumber },
+                        { receiptNumber: receipt.originalReceiptNumber },
+                      ],
+                    },
+                    select: { paymentMethod: true },
+                  })
+                )?.paymentMethod ?? null
+              : null,
+          })
+        : (receipt.payload as unknown as InvoiceInput);
+      documents.push({
+        receipt,
+        invoice: buildKraInvoice(input),
+        label: labelForSubmission({
+          isReprint: false,
+          transactionType: isCreditNote ? 'CREDIT NOTE' : 'SALE',
+        }),
+      });
+    } catch (error) {
+      const reason = error instanceof Error ? error.message : 'malformed document';
+      await markRejected(receipt.id, reason);
+      rejected.push({ receiptNumber: receipt.receiptNumber, reason });
+    }
+  }
+
+  if (documents.length === 0) return { uploaded: 0, stillPending: [], rejected };
+
+  const stillPending: string[] = [];
 
   try {
     let uploaded = 0;
-    const stillPending: string[] = [];
-    const rejected: Array<{ receiptNumber: string; reason: string }> = [];
 
     for (const { receipt, invoice, label } of documents) {
       const batch = await saveSalesTransactions(
@@ -567,6 +699,9 @@ export async function uploadPendingBatch(params: {
           totalTaxAmount: invoice.totalTaxAmount,
           paymentModeCode: invoice.paymentModeCode,
           paymentAmount: invoice.paymentAmount,
+          ...(invoice.buyerName || invoice.buyerTin
+            ? { buyerName: invoice.buyerName, buyerTin: invoice.buyerTin }
+            : {}),
           items: invoice.items,
         },
         { baseUrl: kraBaseUrl(), credentials: params.credentials ?? kraCredentialsFromEnv() },
@@ -597,7 +732,6 @@ export async function uploadPendingBatch(params: {
   } catch (error) {
     // The whole batch failed, so nothing is marked. The till will retry the
     // same receipts in the same order, which KRA dedupes on.
-    const rejected: Array<{ receiptNumber: string; reason: string }> = [];
     log('warn', 'etims.batch_failed', {
       tenantId: params.tenantId,
       count: outstanding.length,
@@ -607,7 +741,7 @@ export async function uploadPendingBatch(params: {
       // A refusal applies to the batch as a whole — usually a stale clock or an
       // uninitialised device — so it is recorded against every receipt rather
       // than guessed at one.
-      for (const receipt of outstanding) {
+      for (const receipt of documents.map((d) => d.receipt)) {
         await markRejected(receipt.id, error.message);
         rejected.push({ receiptNumber: receipt.receiptNumber, reason: error.message });
       }
@@ -675,8 +809,10 @@ export async function buildZReport(params: { tenantId: string; date: Date }) {
     },
   });
 
-  const totalMinor = issued.reduce((sum, row) => sum + fromMajor(row.total.toString()), 0);
-  const vatMinor = issued.reduce((sum, row) => sum + fromMajor(row.vatTotal.toString()), 0);
+  const totalMinor =
+    issued.reduce((sum, row) => sum + fromMajor(`${row.total ?? 0}`), 0);
+  const vatMinor =
+    issued.reduce((sum, row) => sum + fromMajor(`${row.vatTotal ?? 0}`), 0);
 
   // Z-number is absolute per device, so it is the count of reports ever issued
   // plus one — never a per-day counter, which would make any day look like the
