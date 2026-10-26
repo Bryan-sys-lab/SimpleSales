@@ -6,7 +6,7 @@ type BackendEnv = {
   OIDC_ISSUER_URL: string;
   OIDC_AUDIENCE: string;
   OIDC_JWKS_URI: string;
-  FRONTEND_URL: string;
+  FRONTEND_URL?: string;
   PUBLIC_API_URL: string;
   PAYHERO_AUTH_TOKEN: string;
   PAYHERO_ACCOUNT_ID: string;
