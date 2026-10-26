@@ -103,6 +103,10 @@ class FailureRecorder {
   FailureRecorder({DatabaseHelper? db}) : _db = db ?? DatabaseHelper.instance;
 
   final DatabaseHelper _db;
+  CrashLogEntry? _lastFailure;
+
+  /// Kept in memory so a database-open failure still has a useful diagnostic.
+  CrashLogEntry? get lastFailure => _lastFailure;
 
   final BreadcrumbTrail trail = BreadcrumbTrail();
 
@@ -143,22 +147,44 @@ class FailureRecorder {
     String? actorName,
     List<String>? breadcrumbs,
   }) async {
+    remember(
+      kind: kind,
+      message: message,
+      stack: stack,
+      operation: operation,
+      route: route,
+      actorName: actorName,
+      breadcrumbs: breadcrumbs,
+    );
     try {
-      await _db.recordCrash(CrashLogEntry(
-        kind: kind,
-        message: _describe(message),
-        stack: stack,
-        route: route ?? context.route,
-        actorName: actorName ?? context.actorName,
-        action: operation ?? context.operation,
-        breadcrumbs:
-            breadcrumbs ?? trail.crumbs, // the trail as of now, at read time
-        at: DateTime.now().toIso8601String(),
-      ));
+      await _db.recordCrash(_lastFailure!);
     } catch (_) {
       // Swallowed by design, and documented in the file header: a failed
       // diagnostic write is never the reason a sale does not happen.
     }
+  }
+
+  /// Records a failure without touching SQLite. This is used while the local
+  /// database is the thing that failed to open.
+  void remember({
+    required CrashKind kind,
+    required String message,
+    String? stack,
+    String? operation,
+    String? route,
+    String? actorName,
+    List<String>? breadcrumbs,
+  }) {
+    _lastFailure = CrashLogEntry(
+      kind: kind,
+      message: _describe(message),
+      stack: stack,
+      route: route ?? context.route,
+      actorName: actorName ?? context.actorName,
+      action: operation ?? context.operation,
+      breadcrumbs: breadcrumbs ?? trail.crumbs,
+      at: DateTime.now().toIso8601String(),
+    );
   }
 
   /// Notes something the shop did, for the trail.

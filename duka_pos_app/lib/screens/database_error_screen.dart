@@ -3,6 +3,7 @@ import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
 
 import '../l10n/generated/app_localizations.dart';
+import '../models/crash_log.dart';
 import '../routing/app_stage_controller.dart';
 import '../services/failure_recorder.dart';
 import '../theme/app_colors.dart';
@@ -78,6 +79,16 @@ class _DatabaseErrorScreenState extends State<DatabaseErrorScreen> {
     for (final MapEntry<String, String> field
         in recorder.environment().entries) {
       report.writeln('${field.key}: ${field.value}');
+    }
+    final CrashLogEntry? failure = recorder.lastFailure;
+    if (failure != null) {
+      report.writeln('failure kind: ${failure.kind.wire}');
+      report.writeln('failure operation: ${failure.action ?? 'unknown'}');
+      report.writeln('failure message: ${failure.message}');
+      if (failure.stack != null && failure.stack!.isNotEmpty) {
+        report.writeln('failure stack:');
+        report.writeln(failure.stack);
+      }
     }
     report.writeln('trail: ${recorder.trail.crumbs.join(' > ')}');
 

@@ -4,6 +4,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import '../services/app_stage.dart';
 import '../services/app_state.dart';
 import '../services/auto_sync_service.dart';
+import '../services/failure_recorder.dart';
 
 /// The boot gate, as something the router can watch.
 ///
@@ -110,6 +111,12 @@ class AppStageController extends ChangeNotifier {
       await AutoSyncService.start();
     } catch (error, stack) {
       debugPrint('Boot failed: $error\n$stack');
+      failureRecorder.remember(
+        kind: error is Error ? CrashKind.crash : CrashKind.error,
+        message: 'Database boot failed: $error',
+        stack: stack.toString(),
+        operation: 'opening local workspace database',
+      );
       if (_disposed) return;
       _databaseFailed = true;
     }
@@ -149,6 +156,12 @@ class AppStageController extends ChangeNotifier {
       return true;
     } catch (error, stack) {
       debugPrint('Retry failed: $error\n$stack');
+      failureRecorder.remember(
+        kind: error is Error ? CrashKind.crash : CrashKind.error,
+        message: 'Database retry failed: $error',
+        stack: stack.toString(),
+        operation: 'retrying local workspace database',
+      );
       if (_disposed) return false;
       _databaseFailed = true;
       notifyListeners();
