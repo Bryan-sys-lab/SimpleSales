@@ -17,13 +17,21 @@ on:
     branches: [main]
     paths:
       - 'duka_pos_app/**'
+      - 'duka_pos_backend/**'
       - '.github/**'
   push:
     branches: [main]
     paths:
       - 'duka_pos_app/**'
+      - 'duka_pos_backend/**'
       - '.github/**'
   workflow_dispatch:
+    inputs:
+      full_suite:
+        description: 'Run every Flutter test file in one serial process to detect order-dependent failures'
+        required: false
+        type: boolean
+        default: false
 
 # Cancel superseded runs so a rapid push-to-PR sequence does not burn minutes
 # of runner time on commits that are already obsolete.
@@ -35,6 +43,52 @@ permissions:
   contents: read
 
 jobs:
+  backend:
+    name: Backend Compose stack and tests
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v4
+
+      - name: Start the complete local backend stack
+        working-directory: duka_pos_backend
+        run: docker compose up --build -d
+
+      - name: Verify Compose services are healthy
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          cleanup() {
+            local status=$?
+            docker compose -f duka_pos_backend/docker-compose.yml logs --no-color > /tmp/duka-pos-compose.log 2>&1 || true
+            docker compose -f duka_pos_backend/docker-compose.yml down -v || true
+            return "${status}"
+          }
+          trap cleanup EXIT INT TERM
+          for attempt in {1..60}; do
+            if curl --fail --silent http://127.0.0.1:3100/ready >/dev/null; then break; fi
+            if [[ "${attempt}" == 60 ]]; then
+              docker compose -f duka_pos_backend/docker-compose.yml ps -a
+              cat /tmp/duka-pos-compose.log 2>/dev/null || true
+              exit 1
+            fi
+            sleep 1
+          done
+
+      - name: Run backend unit and live integration tests inside Compose
+        working-directory: duka_pos_backend
+        run: >-
+          docker compose --profile verify run --rm tests sh -lc
+          'npm test && BASE_URL=http://backend:3000 npm run test:live &&
+          BASE_URL=http://backend:3000 AUTH_TEST_CODE=123456 npm run test:live:auth &&
+          BASE_URL=http://backend:3000 AUTH_TEST_CODE=123456 npm run test:live:analytics &&
+          BASE_URL=http://backend:3000 AUTH_TEST_CODE=123456 npm run test:live:backup &&
+          BASE_URL=http://backend:3000 AUTH_TEST_CODE=123456 CONCURRENCY=10 REQUESTS=50 npm run test:load &&
+          npx --yes newman@latest run postman/duka-pos-live-smoke.postman_collection.json --env-var base_url=http://backend:3000 &&
+          npx --yes newman@latest run postman/duka-pos-backend.postman_collection.json --env-var base_url=http://backend:3000 &&
+          npx --yes newman@latest run postman/duka-pos-e2e.postman_collection.json --env-var base_url=http://backend:3000 --env-var verification_code=123456'
+
   validate:
     name: Analyze, test, and build
     runs-on: ubuntu-24.04
@@ -67,11 +121,11 @@ jobs:
             echo "All dependencies are up to date."
           fi
 
+      - name: Validate localization catalogues
+        run: python3 tool/l10n/check_arb.py
+
       - name: Analyze
         run: flutter analyze --fatal-infos
-
-      - name: Run tests
-        run: flutter test --reporter expanded
 
       # A release APK build exercises the part of the pipeline that analyze and
       # test cannot see: the Gradle configuration, AGP/manifest wiring, and the
@@ -166,3 +220,129 @@ jobs:
         run: |
           rm -f android/key.properties android/duka-pos-release.jks
           rm -f "$RUNNER_TEMP"/duka_pos_keystore.jks 2>/dev/null || true
+
+  test:
+    name: Flutter tests (shard ${{ matrix.shard }})
+    needs: validate
+    if: ${{ github.event_name != 'workflow_dispatch' || !inputs.full_suite }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      # Each shard has its own hosted runner and its own temporary cache. Keep
+      # a small cap so four shards make progress without turning the shared
+      # package/download service into the bottleneck.
+      max-parallel: 3
+      matrix:
+        shard: [0, 1, 2, 3, 4, 5]
+    defaults:
+      run:
+        working-directory: duka_pos_app
+    env:
+      # Do not let matrix jobs contend for a shared pub cache lock. The cache
+      # action still restores dependencies, but Flutter resolves/writes into a
+      # shard-local directory for the lifetime of this runner.
+      PUB_CACHE: ${{ runner.temp }}/pub-cache-${{ matrix.shard }}
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v4
+
+      - name: Set up Flutter and Android SDK
+        uses: ./.github/actions/setup-flutter-android
+
+      - name: Run isolated serial shard
+        shell: bash
+        env:
+          SHARD: ${{ matrix.shard }}
+        run: |
+          set -euo pipefail
+          runner_pid=''
+          cleanup() {
+            local status=$?
+            if [[ -n "${runner_pid}" ]]; then
+              # Flutter starts tester/frontend children. Kill the whole
+              # process group so cancellation cannot leave a tester behind.
+              kill -TERM -- "-${runner_pid}" 2>/dev/null || true
+              sleep 1
+              kill -KILL -- "-${runner_pid}" 2>/dev/null || true
+              wait "${runner_pid}" 2>/dev/null || true
+            fi
+            return "${status}"
+          }
+          trap cleanup EXIT INT TERM
+          shard_count=6
+          mapfile -t test_files < <(find test -type f -name '*_test.dart' | sort)
+          files=()
+          index=0
+          for file in "${test_files[@]}"; do
+            if (( index % shard_count == SHARD )); then
+              files+=("$file")
+            fi
+            ((index += 1))
+          done
+          if (( ${#files[@]} == 0 )); then
+            echo "No test files selected for shard ${SHARD}."
+            exit 1
+          fi
+          # Each matrix job has its own runner, so Flutter's global startup
+          # lock cannot serialize the shards. Keep each shard itself serial:
+          # the test harness deliberately owns one shared SQLite/platform fake.
+          setsid timeout --signal=TERM --kill-after=30s 25m \
+            flutter test --concurrency=1 --exclude-tags=real-network --reporter expanded "${files[@]}" &
+          runner_pid=$!
+          if wait "${runner_pid}"; then
+            test_status=0
+          else
+            test_status=$?
+          fi
+          runner_pid=''
+          exit "${test_status}"
+
+  full_suite:
+    name: Flutter full suite (serial order check)
+    needs: validate
+    if: ${{ github.event_name == 'workflow_dispatch' && inputs.full_suite }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 50
+    defaults:
+      run:
+        working-directory: duka_pos_app
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v4
+
+      - name: Set up Flutter and Android SDK
+        uses: ./.github/actions/setup-flutter-android
+
+      - name: Run full suite in one bounded serial process
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          runner_pid=''
+          cleanup() {
+            local status=$?
+            if [[ -n "${runner_pid}" ]]; then
+              kill -TERM -- "-${runner_pid}" 2>/dev/null || true
+              sleep 1
+              kill -KILL -- "-${runner_pid}" 2>/dev/null || true
+              wait "${runner_pid}" 2>/dev/null || true
+            fi
+            return "${status}"
+          }
+          trap cleanup EXIT INT TERM
+          mapfile -t test_files < <(find test -type f -name '*_test.dart' | sort)
+          if (( ${#test_files[@]} == 0 )); then
+            echo 'No Flutter test files found.'
+            exit 1
+          fi
+          setsid timeout --signal=TERM --kill-after=30s 45m \
+            flutter test --concurrency=1 --exclude-tags=real-network \
+            --reporter expanded "${test_files[@]}" &
+          runner_pid=$!
+          if wait "${runner_pid}"; then
+            test_status=0
+          else
+            test_status=$?
+          fi
+          runner_pid=''
+          exit "${test_status}"

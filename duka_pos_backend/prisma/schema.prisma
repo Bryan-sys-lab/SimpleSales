@@ -2,7 +2,12 @@
 // Run: npx prisma generate
 
 generator client {
-  provider = "prisma-client-js"
+  provider      = "prisma-client-js"
+  // The shipped backend and Cloudflare Container image use Debian with
+  // OpenSSL 3. Keep the target explicit so CI and deployment builds do not
+  // download the retired OpenSSL 1.1 engine or select a host-dependent
+  // "native" engine.
+  binaryTargets = ["debian-openssl-3.0.x"]
 }
 
 datasource db {
@@ -11,175 +16,612 @@ datasource db {
 }
 
 model Tenant {
-  id            String    @id @default(cuid())
-  shopName      String
-  mpesaEnabled  Boolean   @default(false)
-  etimsEnabled  Boolean   @default(false)
-  payheroChannelId Int?
-  payheroCredentialId String?
-  tin           String?
-  createdAt     DateTime  @default(now())
-  updatedAt     DateTime  @updatedAt
+  id       String @id @default(cuid())
+  shopName String @map("shop_name")
 
-  profiles      Profile[]
-  products      Product[]
-  sales         Sale[]
-  saleItems     SaleItem[]
-  stockAdjustments StockAdjustment[]
-  payments      Payment[]
-  deletionLedgers DeletionLedger[]
+  /// One of drinks, duka, fashion, open. Legacy tenants default to duka.
+  businessProfile String @default("duka") @map("business_profile")
+
+  mpesaEnabled Boolean @default(false) @map("mpesa_enabled")
+
+  etimsEnabled Boolean @default(false) @map("etims_enabled")
+
+  taxProvider      String  @default("risiti") @map("tax_provider")
+  risitiMerchantId String? @map("risiti_merchant_id")
+
+  payheroChannelId Int? @map("payhero_channel_id")
+
+  payheroCredentialId String? @map("payhero_credential_id")
+
+  tin       String?
+  createdAt DateTime @default(now()) @map("created_at")
+
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  profiles               Profile[]
+  products               Product[]
+  sales                  Sale[]
+  salePayments           SalePayment[]
+  saleItems              SaleItem[]
+  stockAdjustments       StockAdjustment[]
+  payments               Payment[]
+  deletionLedgers        DeletionLedger[]
   verificationChallenges VerificationChallenge[]
-  appSessions     AppSession[]
-  etimsDevices    EtimsDevice[]
-  etimsReceipts   EtimsReceipt[]
-  telemetryEvents TelemetryEvent[] @relation("TenantTelemetryEvents")
-  churnSnapshots  ChurnSnapshot[] @relation("TenantChurnSnapshots")
-  supportTickets  SupportTicket[]
+  appSessions            AppSession[]
+  etimsDevices           EtimsDevice[]
+  etimsReceipts          EtimsReceipt[]
+  etimsZReports          EtimsZReport[]
+  mpesaIncoming          MpesaIncoming[]
+  receiptLinks           ReceiptLink[]
+  telemetryEvents        TelemetryEvent[]        @relation("TenantTelemetryEvents")
+  churnSnapshots         ChurnSnapshot[]         @relation("TenantChurnSnapshots")
+  supportTickets         SupportTicket[]
+  cloudBackups           CloudBackup[]
+  customers              Customer[]
+  creditLedger           CreditLedger[]
+  syncRecords            SyncRecord[]
+  saleSyncConflicts      SaleSyncConflict[]
+  taxEntityLinks         ShopTaxEntity[]
 
   @@map("tenants")
 }
 
-model Profile {
+/// Tax registration belongs to the taxpayer, not to a profile preset or one
+/// outlet. A taxpayer may operate several shops under one entity.
+model TaxEntity {
+  id                         String   @id @default(cuid())
+  legalForm                  String   @map("legal_form")
+  displayLabel               String   @map("display_label")
+  kraPinCiphertext           String?  @map("kra_pin_ciphertext") @db.Text
+  kraPinLast4                String?  @map("kra_pin_last4")
+  registeredTaxObligations   Json     @default("[]") @map("registered_tax_obligations")
+  accountingPeriodStartMonth Int      @default(1) @map("accounting_period_start_month")
+  status                     String   @default("needs_review")
+  etimsOnboardingStatus      String   @default("not_started") @map("etims_onboarding_status")
+  etimsMethod                String?  @map("etims_method")
+  createdAt                  DateTime @default(now()) @map("created_at")
+  updatedAt                  DateTime @updatedAt @map("updated_at")
+
+  shops           ShopTaxEntity[]
+  taxRules        TaxRule[]
+  vatReturns      VatReturn[]
+  totReturns      TotReturn[]
+  taxReturnEvents TaxReturnEvent[]
+
+  @@map("tax_entities")
+}
+
+/// Prepared VAT-period evidence. A prepared record is not a KRA submission;
+/// status transitions are explicit so accepted/rejected/settled cannot be
+/// inferred from the presence of an export.
+model VatReturn {
+  id                   String    @id @default(cuid())
+  taxEntityId          String    @map("tax_entity_id")
+  periodStart          DateTime  @map("period_start")
+  periodEnd            DateTime  @map("period_end")
+  outputVat            Decimal   @default(0) @map("output_vat")
+  eligibleInputVat     Decimal   @default(0) @map("eligible_input_vat")
+  withholdingVatCredit Decimal   @default(0) @map("withholding_vat_credit")
+  adjustments          Decimal   @default(0)
+  netPayable           Decimal   @default(0) @map("net_payable")
+  evidence             Json      @default("{}")
+  status               String    @default("prepared")
+  submittedAt          DateTime? @map("submitted_at")
+  acceptedAt           DateTime? @map("accepted_at")
+  paidAt               DateTime? @map("paid_at")
+  rejectionReason      String?   @map("rejection_reason") @db.Text
+  createdAt            DateTime  @default(now()) @map("created_at")
+  updatedAt            DateTime  @updatedAt @map("updated_at")
+
+  taxEntity TaxEntity        @relation(fields: [taxEntityId], references: [id], onDelete: Cascade)
+  events    TaxReturnEvent[]
+
+  @@unique([taxEntityId, periodStart, periodEnd])
+  @@index([taxEntityId, periodStart, periodEnd])
+  @@index([status])
+  @@map("vat_returns")
+}
+
+/// Indicative/period TOT evidence. This is deliberately separate from VAT:
+/// expenses are not deducted from its gross-sales base.
+model TotReturn {
+  id              String    @id @default(cuid())
+  taxEntityId     String    @map("tax_entity_id")
+  periodStart     DateTime  @map("period_start")
+  periodEnd       DateTime  @map("period_end")
+  grossSales      Decimal   @default(0) @map("gross_sales")
+  rateBasisPoints Int?      @map("rate_basis_points")
+  estimate        Decimal   @default(0)
+  evidence        Json      @default("{}")
+  status          String    @default("prepared")
+  submittedAt     DateTime? @map("submitted_at")
+  acceptedAt      DateTime? @map("accepted_at")
+  paidAt          DateTime? @map("paid_at")
+  rejectionReason String?   @map("rejection_reason") @db.Text
+  createdAt       DateTime  @default(now()) @map("created_at")
+  updatedAt       DateTime  @updatedAt @map("updated_at")
+
+  taxEntity TaxEntity        @relation(fields: [taxEntityId], references: [id], onDelete: Cascade)
+  events    TaxReturnEvent[]
+
+  @@unique([taxEntityId, periodStart, periodEnd])
+  @@index([taxEntityId, periodStart, periodEnd])
+  @@index([status])
+  @@map("tot_returns")
+}
+
+/// Append-only audit trail for tax-return status transitions. The current
+/// return row is a queryable projection; this ledger preserves the history.
+model TaxReturnEvent {
+  id          String   @id @default(cuid())
+  taxEntityId String   @map("tax_entity_id")
+  vatReturnId String?  @map("vat_return_id")
+  totReturnId String?  @map("tot_return_id")
+  fromStatus  String?  @map("from_status")
+  toStatus    String   @map("to_status")
+  actorId     String   @map("actor_id")
+  note        String?  @db.Text
+  createdAt   DateTime @default(now()) @map("created_at")
+
+  taxEntity TaxEntity  @relation(fields: [taxEntityId], references: [id], onDelete: Cascade)
+  vatReturn VatReturn? @relation(fields: [vatReturnId], references: [id], onDelete: Cascade)
+  totReturn TotReturn? @relation(fields: [totReturnId], references: [id], onDelete: Cascade)
+
+  @@index([taxEntityId, createdAt])
+  @@index([vatReturnId, createdAt])
+  @@index([totReturnId, createdAt])
+  @@map("tax_return_events")
+}
+
+/// Effective-dated outlet relationship. Historical links remain auditable;
+/// only one link may be active for a shop at a given time in application logic.
+model ShopTaxEntity {
+  id              String    @id @default(cuid())
+  tenantId        String    @map("tenant_id")
+  taxEntityId     String    @map("tax_entity_id")
+  outletReference String?   @map("outlet_reference")
+  effectiveFrom   DateTime  @map("effective_from")
+  effectiveTo     DateTime? @map("effective_to")
+  createdAt       DateTime  @default(now()) @map("created_at")
+
+  tenant    Tenant    @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  taxEntity TaxEntity @relation(fields: [taxEntityId], references: [id], onDelete: Cascade)
+
+  @@index([tenantId, effectiveFrom, effectiveTo])
+  @@index([taxEntityId, effectiveFrom, effectiveTo])
+  @@map("shop_tax_entities")
+}
+
+/// A reviewed, effective-dated tax rule. Rules are versioned records rather
+/// than mutable constants so historical documents can retain their snapshot.
+model TaxRule {
+  id              String    @id @default(cuid())
+  taxEntityId     String    @map("tax_entity_id")
+  taxType         String    @map("tax_type")
+  scope           String
+  jurisdiction    String    @default("KE")
+  rateBasisPoints Int?      @map("rate_basis_points")
+  taxBase         String    @map("tax_base")
+  filingFrequency String    @default("none") @map("filing_frequency")
+  filingDueDay    Int?      @map("filing_due_day")
+  thresholdMinor  Decimal?  @map("threshold_minor")
+  effectiveFrom   DateTime  @map("effective_from")
+  effectiveTo     DateTime? @map("effective_to")
+  sourceUrl       String    @map("source_url") @db.Text
+  sourceReference String?   @map("source_reference") @db.Text
+  reviewedAt      DateTime? @map("reviewed_at")
+  approvedBy      String?   @map("approved_by")
+  approvalNote    String?   @map("approval_note") @db.Text
+  status          String    @default("needs_review")
+  version         Int       @default(1)
+  createdAt       DateTime  @default(now()) @map("created_at")
+  updatedAt       DateTime  @updatedAt @map("updated_at")
+
+  taxEntity TaxEntity  @relation(fields: [taxEntityId], references: [id], onDelete: Cascade)
+  saleItems SaleItem[]
+
+  @@index([taxEntityId, taxType, scope, effectiveFrom, effectiveTo])
+  @@index([status, effectiveFrom, effectiveTo])
+  @@map("tax_rules")
+}
+
+/// Opaque client-encrypted workspace snapshots. The API stores ciphertext only;
+/// the portable passphrase export remains the recovery path for a new phone.
+model CloudBackup {
+  id           String   @id @default(cuid())
+  tenantId     String   @map("tenant_id")
+  workspaceKey String   @map("workspace_key")
+  kind         String   @default("device_bound")
+  snapshotHash String?  @map("snapshot_hash")
+  // Legacy rows keep their ciphertext here. New rows store it in R2 and keep
+  // only this object key in Postgres.
+  payload      String   @db.Text
+  storageKey   String?  @map("storage_key")
+  createdAt    DateTime @default(now()) @map("created_at")
+
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  @@index([tenantId, workspaceKey, kind, createdAt])
+  @@unique([tenantId, workspaceKey, kind, snapshotHash])
+  @@map("cloud_backups")
+}
+
+/// Restricted, minimized commercial contribution ledger. It deliberately has
+/// no tenant/shop/customer/source-transaction foreign key: lineage is held as
+/// controlled metadata and is visible only to the existing system-admin
+/// surface while the commercial policy is approved.
+model CommercialContribution {
+  id                      String   @id @default(cuid())
+  batchId                 String   @map("batch_id")
+  recordId                String   @unique @map("record_id")
+  policyVersion           String   @map("policy_version")
+  schemaVersion           String   @map("schema_version")
+  businessProfile         String   @map("business_profile")
+  periodStart             DateTime @map("period_start")
+  periodEnd               DateTime @map("period_end")
+  currency                String
+  categoryFamily          String   @map("category_family")
+  unitKind                String   @map("unit_kind")
+  transactionCount        Int      @map("transaction_count")
+  grossRevenueMinor       Int      @map("gross_revenue_minor")
+  discountMinor           Int      @map("discount_minor")
+  refundMinor             Int      @map("refund_minor")
+  cogsMinor               Int      @map("cogs_minor")
+  stockoutCount           Int      @map("stockout_count")
+  paymentMethodMix        Json     @map("payment_method_mix")
+  coverageLevel           String   @map("coverage_level")
+  normalizedVersion       String   @map("normalized_version")
+  status                  String   @default("accepted")
+  consentPurposeVersion   String   @map("consent_purpose_version")
+  qualityFlags            Json     @default("[]") @map("quality_flags")
+  payloadChecksum         String   @map("payload_checksum")
+  aggregationJobVersion   String?  @map("aggregation_job_version")
+  datasetSnapshotId       String?  @map("dataset_snapshot_id")
+  partnerExportRefs       Json     @default("[]") @map("partner_export_refs")
+  supersedesRecordId      String?  @map("supersedes_record_id")
+  retentionState          String   @default("active") @map("retention_state")
+  deletedAt               DateTime? @map("deleted_at")
+  acceptedAt              DateTime @default(now()) @map("accepted_at")
+  createdAt               DateTime @default(now()) @map("created_at")
+
+  @@index([businessProfile, periodStart, periodEnd])
+  @@index([batchId, acceptedAt])
+  @@map("commercial_contributions")
+}
+
+/// Customer and credit rows synced from an offline till. localUuid is the
+/// stable client identity; server ids are deliberately opaque.
+model Customer {
+  id               String   @id @default(cuid())
+  tenantId         String   @map("tenant_id")
+  localUuid        String   @map("local_uuid")
+  name             String
+  phone            String?
+  tin              String?
+  notes            String?
+  creditLimitMinor Int?     @map("credit_limit_minor")
+  balanceMinor     Int      @map("balance_minor")
+  active           Boolean  @default(true)
+  createdAt        DateTime @map("created_at")
+  updatedAt        DateTime @updatedAt @map("updated_at")
+
+  tenant       Tenant         @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  creditLedger CreditLedger[]
+
+  @@unique([tenantId, localUuid])
+  @@index([tenantId, name])
+  @@map("customers")
+}
+
+model CreditLedger {
   id            String   @id @default(cuid())
-  oidcSubject   String?
-  tenantId      String
-  localId       Int?
-  name          String
-  email         String?
-  photoUrl      String?
-  role          String   @default("cashier")
-  active        Boolean  @default(true)
-  deletedAt     DateTime?
-  createdAt     DateTime @default(now())
+  tenantId      String   @map("tenant_id")
+  localUuid     String   @map("local_uuid")
+  customerId    String   @map("customer_id")
+  entryType     String   @map("entry_type")
+  amountMinor   Int      @map("amount_minor")
+  saleLocalId   Int?     @map("sale_local_id")
+  returnLocalId Int?     @map("return_local_id")
+  paymentMethod String?  @map("payment_method")
+  reference     String?
+  staffName     String   @map("staff_name")
+  note          String?
+  createdAt     DateTime @map("created_at")
 
-  tenant        Tenant   @relation(fields: [tenantId], references: [id])
-  sales         Sale[]   @relation("ProfileSales")
+  tenant   Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  customer Customer @relation(fields: [customerId], references: [id], onDelete: Cascade)
+
+  @@unique([tenantId, localUuid])
+  @@index([tenantId, customerId, createdAt])
+  @@map("credit_ledger")
+}
+
+/// Idempotent mirror for offline operational records whose detailed source of
+/// truth remains in the till snapshot. Keeping the original payload lets the
+/// portfolio and recovery tools see the record without duplicating every
+/// device-local table in the server schema.
+model SyncRecord {
+  id        String   @id @default(cuid())
+  tenantId  String   @map("tenant_id")
+  kind      String
+  deviceId  String   @default("legacy") @map("device_id")
+  localId   Int      @map("local_id")
+  payload   Json
+  createdAt DateTime @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  @@unique([tenantId, kind, deviceId, localId])
+  @@index([tenantId, kind, createdAt])
+  @@map("sync_records")
+}
+
+/// A sale that lost a concurrent stock race stays auditable until a manager
+/// explicitly accepts it or voids it. The payload is the original offline
+/// sale, so resolving it never depends on mutable till state.
+model SaleSyncConflict {
+  id         String    @id @default(cuid())
+  tenantId   String    @map("tenant_id")
+  deviceId   String    @map("device_id")
+  localId    Int       @map("local_id")
+  payload    Json
+  reason     String
+  status     String    @default("open")
+  resolution String?
+  resolvedBy String?   @map("resolved_by")
+  createdAt  DateTime  @default(now()) @map("created_at")
+  resolvedAt DateTime? @map("resolved_at")
+
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  @@unique([tenantId, deviceId, localId])
+  @@index([tenantId, status, createdAt])
+  @@map("sale_sync_conflicts")
+}
+
+model Profile {
+  id          String  @id @default(cuid())
+  oidcSubject String? @map("oidc_subject")
+
+  tenantId String @map("tenant_id")
+
+  localId Int? @map("local_id")
+
+  name     String
+  username String?
+  email    String?
+  photoUrl String? @map("photo_url")
+  // PBKDF2 verifier supplied by an authenticated till. Plain PINs never
+  // cross the API or enter the database.
+  pinHash  String? @map("pin_hash")
+
+  role      String    @default("cashier")
+  active    Boolean   @default(true)
+  deletedAt DateTime? @map("deleted_at")
+
+  createdAt DateTime @default(now()) @map("created_at")
+
+  tenant           Tenant            @relation(fields: [tenantId], references: [id])
+  sales            Sale[]            @relation("ProfileSales")
   stockAdjustments StockAdjustment[] @relation("ProfileStockAdjustments")
-  payments      Payment[] @relation("ProfilePayments")
+  payments         Payment[]         @relation("ProfilePayments")
 
-  @@map("profiles")
+  // Usernames are unique inside a shop; the same username may exist in a
+  // different shop because the shop ID is part of the login identity.
+  @@unique([tenantId, username])
   @@index([tenantId])
   @@index([oidcSubject])
+  @@map("profiles")
 }
 
 model Product {
-  id              String   @id @default(cuid())
-  tenantId        String
-  remoteId        String?
-  name            String
-  category        String   @default("General")
-  costPrice       Decimal  @default(0)
-  sellPrice       Decimal  @default(0)
-  stockQty        Decimal  @default(0)
-  reorderLevel    Int      @default(0)
-  bottleMl        Int      @default(750)
-  halfPrice       Decimal?
-  quarterPrice    Decimal?
-  exciseStampBatch String?
-  active          Boolean  @default(true)
-  createdAt       DateTime @default(now())
-  updatedAt       DateTime @updatedAt
+  id       String @id @default(cuid())
+  tenantId String @map("tenant_id")
 
-  tenant          Tenant   @relation(fields: [tenantId], references: [id])
+  remoteId String? @map("remote_id")
+  /// Stable client key makes a retried offline product create idempotent.
+  syncKey  String? @map("sync_key")
+
+  name      String
+  category  String  @default("General")
+  costPrice Decimal @default(0) @map("cost_price")
+
+  sellPrice Decimal @default(0) @map("sell_price")
+
+  stockQty Decimal @default(0) @map("stock_qty")
+
+  reorderLevel Int @default(0) @map("reorder_level")
+
+  bottleMl Int @default(750) @map("bottle_ml")
+
+  unit    String  @default("each")
+  mlPerKg Decimal @default(0) @map("ml_per_kg")
+
+  halfPrice Decimal? @map("half_price")
+
+  quarterPrice Decimal? @map("quarter_price")
+
+  exciseStampBatch String? @map("excise_stamp_batch")
+
+  active    Boolean  @default(true)
+  createdAt DateTime @default(now()) @map("created_at")
+
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  tenant           Tenant            @relation(fields: [tenantId], references: [id])
   stockAdjustments StockAdjustment[]
-  saleItems       SaleItem[]
+  saleItems        SaleItem[]
 
-  @@map("products")
+  @@unique([tenantId, syncKey])
   @@index([tenantId])
+  @@map("products")
 }
 
 model Sale {
-  id              String   @id @default(cuid())
-  tenantId        String
-  staffId         String
-  staffName       String
-  paymentMethod   String   @default("cash")
-  paymentReference String?
-  total           Decimal  @default(0)
-  profit          Decimal  @default(0)
-  createdAt       DateTime @default(now())
+  id       String @id @default(cuid())
+  tenantId String @map("tenant_id")
 
-  tenant          Tenant   @relation(fields: [tenantId], references: [id])
-  profile         Profile? @relation("ProfileSales", fields: [staffId], references: [id])
-  items           SaleItem[]
+  /// The till's local sale id is the idempotency key for offline retries.
+  localId Int? @map("local_id")
 
-  @@map("sales")
+  /// Persistent till identity makes local integer ids safe across devices.
+  deviceId String @default("legacy") @map("device_id")
+
+  staffId String @map("staff_id")
+
+  staffName String @map("staff_name")
+
+  /// Buyer identity captured on the sale document, not read from a mutable
+  /// customer directory during a later offline retry.
+  buyerName String? @map("buyer_name")
+  buyerTin  String? @map("buyer_tin")
+
+  paymentMethod String @default("cash") @map("payment_method")
+
+  paymentReference String? @map("payment_reference")
+
+  total     Decimal  @default(0)
+  profit    Decimal  @default(0)
+  createdAt DateTime @default(now()) @map("created_at")
+
+  tenant       Tenant        @relation(fields: [tenantId], references: [id])
+  profile      Profile?      @relation("ProfileSales", fields: [staffId], references: [id])
+  items        SaleItem[]
+  salePayments SalePayment[]
+
+  @@unique([tenantId, deviceId, localId])
   @@index([tenantId])
   @@index([createdAt])
+  @@map("sales")
+}
+
+/// The append-only tender ledger for an offline sale. Keeping this separate
+/// from Sale.paymentMethod preserves the legacy summary while allowing a
+/// split sale to remain visible in multishop payment-mix reports.
+model SalePayment {
+  id        String   @id @default(cuid())
+  tenantId  String   @map("tenant_id")
+  saleId    String   @map("sale_id")
+  localUuid String   @map("local_uuid")
+  method    String
+  amount    Decimal
+  tendered  Decimal?
+  change    Decimal?
+  reference String?
+  status    String   @default("confirmed")
+  createdAt DateTime @default(now()) @map("created_at")
+
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  sale   Sale   @relation(fields: [saleId], references: [id], onDelete: Cascade)
+
+  @@unique([tenantId, localUuid])
+  @@index([tenantId, saleId])
+  @@map("sale_payments")
 }
 
 model SaleItem {
-  id          String   @id @default(cuid())
-  tenantId    String
-  saleId      String
-  productId   String
-  productName String
-  qty         Decimal
-  unitPrice   Decimal
-  unitCost    Decimal
-  portion     String     @default("full")
-  portionMl   Int        @default(0)
+  id       String @id @default(cuid())
+  tenantId String @map("tenant_id")
 
-  tenant      Tenant   @relation(fields: [tenantId], references: [id])
-  sale        Sale     @relation(fields: [saleId], references: [id])
-  product     Product  @relation(fields: [productId], references: [id])
+  saleId String @map("sale_id")
 
-  @@map("sale_items")
+  productId String? @map("product_id")
+
+  productName String @map("product_name")
+
+  qty       Decimal
+  unitPrice Decimal @map("unit_price")
+
+  unitCost Decimal @map("unit_cost")
+
+  // Snapshots from the till. Nullable keeps legacy uploads readable; reports
+  // fall back to the historical gross line amount when these are absent.
+  vatAmount      Decimal? @map("vat_amount")
+  taxableAmount  Decimal? @map("taxable_amount")
+  taxClass       String?  @map("tax_class")
+  vatRateBps     Int?     @map("vat_rate_bps")
+  taxRuleId      String?  @map("tax_rule_id")
+  taxRuleVersion Int?     @map("tax_rule_version")
+
+  portion   String @default("full")
+  portionMl Int    @default(0) @map("portion_ml")
+
+  tenant  Tenant   @relation(fields: [tenantId], references: [id])
+  sale    Sale     @relation(fields: [saleId], references: [id])
+  product Product? @relation(fields: [productId], references: [id])
+  taxRule TaxRule? @relation(fields: [taxRuleId], references: [id], onDelete: SetNull)
+
   @@index([tenantId])
   @@index([saleId])
+  @@index([taxRuleId])
+  @@map("sale_items")
 }
 
 model StockAdjustment {
-  id        String   @id @default(cuid())
-  tenantId  String
-  productId String
-  delta     Decimal
-  reason    String?
-  staffId   String?
-  createdAt DateTime @default(now())
+  id       String @id @default(cuid())
+  tenantId String @map("tenant_id")
 
-  tenant    Tenant   @relation(fields: [tenantId], references: [id])
-  product   Product  @relation(fields: [productId], references: [id])
-  profile   Profile? @relation("ProfileStockAdjustments", fields: [staffId], references: [id])
+  productId String @map("product_id")
 
-  @@map("stock_adjustments")
+  delta   Decimal
+  reason  String?
+  staffId String? @map("staff_id")
+
+  createdAt DateTime @default(now()) @map("created_at")
+
+  tenant  Tenant   @relation(fields: [tenantId], references: [id])
+  product Product  @relation(fields: [productId], references: [id])
+  profile Profile? @relation("ProfileStockAdjustments", fields: [staffId], references: [id])
+
   @@index([tenantId])
+  @@map("stock_adjustments")
 }
 
 model Payment {
-  id               String   @id @default(cuid())
-  tenantId         String
-  initiatedBy      String
-  staffName        String
-  reference        String   @unique
-  phoneNumber      String
-  amount           Decimal
-  cartSnapshot     Json
-  status           String   @default("QUEUED")
-  checkoutRequestId String?
-  saleId           String?
-  createdAt        DateTime @default(now())
+  id       String @id @default(cuid())
+  tenantId String @map("tenant_id")
 
-  tenant           Tenant   @relation(fields: [tenantId], references: [id])
-  profile          Profile? @relation("ProfilePayments", fields: [initiatedBy], references: [id])
+  initiatedBy String @map("initiated_by")
 
-  @@map("payments")
+  staffName String @map("staff_name")
+
+  reference   String @unique
+  phoneNumber String @map("phone_number")
+
+  amount       Decimal
+  cartSnapshot Json    @map("cart_snapshot")
+
+  status            String  @default("QUEUED")
+  checkoutRequestId String? @map("checkout_request_id")
+
+  saleId String? @map("sale_id")
+
+  createdAt DateTime @default(now()) @map("created_at")
+
+  tenant  Tenant   @relation(fields: [tenantId], references: [id])
+  profile Profile? @relation("ProfilePayments", fields: [initiatedBy], references: [id])
+
   @@index([tenantId])
   @@index([reference])
+  @@map("payments")
 }
 
 model DeletionLedger {
-  id          String   @id @default(cuid())
-  tenantId    String
-  subjectType String
-  subjectId   String
+  id       String @id @default(cuid())
+  tenantId String @map("tenant_id")
+
+  subjectType String @map("subject_type")
+
+  subjectId String @map("subject_id")
+
   reason      String?
-  completedAt DateTime @default(now())
+  completedAt DateTime @default(now()) @map("completed_at")
 
-  tenant      Tenant   @relation(fields: [tenantId], references: [id])
+  tenant Tenant @relation(fields: [tenantId], references: [id])
 
-  @@map("deletion_ledgers")
   @@index([tenantId])
+  @@map("deletion_ledgers")
 }
 
 // ---------------------------------------------------------------------------
@@ -187,69 +629,163 @@ model DeletionLedger {
 // ---------------------------------------------------------------------------
 
 model VerificationChallenge {
-  id          String   @id @default(cuid())
-  tenantId    String?
-  email       String
-  code        String
-  expiresAt   DateTime
-  used        Boolean   @default(false)
-  createdAt   DateTime @default(now())
+  id       String  @id @default(cuid())
+  tenantId String? @map("tenant_id")
 
-  tenant      Tenant?   @relation(fields: [tenantId], references: [id])
+  email     String
+  code      String
+  expiresAt DateTime @map("expires_at")
 
-  @@map("verification_challenges")
+  used      Boolean  @default(false)
+  createdAt DateTime @default(now()) @map("created_at")
+
+  tenant Tenant? @relation(fields: [tenantId], references: [id])
+
   @@index([email])
   @@index([code])
   @@index([expiresAt])
+  @@map("verification_challenges")
 }
 
 model AppSession {
-  id            String   @id @default(cuid())
-  tenantId      String
-  accessToken   String
-  refreshToken  String   @unique
-  expiresAt     DateTime
-  createdAt     DateTime @default(now())
+  id       String @id @default(cuid())
+  tenantId String @map("tenant_id")
 
-  tenant        Tenant   @relation(fields: [tenantId], references: [id])
+  accessToken String @map("access_token")
 
-  @@map("app_sessions")
+  refreshToken String @unique @map("refresh_token")
+
+  expiresAt DateTime @map("expires_at")
+
+  createdAt DateTime @default(now()) @map("created_at")
+
+  tenant Tenant @relation(fields: [tenantId], references: [id])
+
   @@index([refreshToken])
   @@index([expiresAt])
+  @@map("app_sessions")
 }
 
 model EtimsDevice {
-  id           String   @id @default(cuid())
-  tenantId     String
-  tin          String
-  deviceId     String   @unique
-  deviceName   String?
-  registeredAt DateTime @default(now())
+  id       String @id @default(cuid())
+  tenantId String @unique @map("tenant_id")
 
-  tenant       Tenant   @relation(fields: [tenantId], references: [id])
+  tin      String
+  deviceId String @unique @map("device_id")
 
-  @@map("etims_devices")
+  deviceName String? @map("device_name")
+
+  deviceSerial String? @map("device_serial")
+
+  status    String  @default("unregistered") // active | unregistered
+  accessKey String? @map("access_key")
+
+  encryptionKey String? @map("encryption_key")
+
+  initialisedAt DateTime? @map("initialised_at")
+
+  lastError String? @map("last_error")
+
+  registeredAt DateTime @default(now()) @map("registered_at")
+
+  tenant        Tenant         @relation(fields: [tenantId], references: [id])
+  etimsReceipts EtimsReceipt[]
+  etimsZReports EtimsZReport[]
+
   @@index([tenantId])
   @@index([deviceId])
+  @@map("etims_devices")
 }
 
 model EtimsReceipt {
-  id             String   @id @default(cuid())
-  tenantId       String
-  kraReceiptNumber String   @unique
-  verificationUrl String?
-  qrPayload      String?
-  status         String   @default("ISSUED")
-  payload        Json
-  deviceId       String?
-  issuedAt       DateTime @default(now())
+  id       String @id @default(cuid())
+  tenantId String @map("tenant_id")
 
-  tenant         Tenant   @relation(fields: [tenantId], references: [id])
+  // The till's own receipt number; unique per tenant so a duplicate upload is a no-op.
+  receiptNumber String @map("receipt_number")
 
-  @@map("etims_receipts")
+  kraReceiptNumber String? @unique @map("kra_receipt_number")
+
+  verificationUrl String? @map("verification_url")
+
+  qrPayload String? @map("qr_payload")
+
+  status       String @default("pending") // pending | issued | rejected
+  // A sale queues an invoice; a return queues a credit note against the
+  // SAME table, on its own number series. The note carries the invoice it
+  // reverses, because that is the KRA-side key.
+  documentType String @default("invoice") // invoice | credit_note@map("document_type")
+
+  originalReceiptNumber String? @map("original_receipt_number")
+
+  returnNumber String? @map("return_number")
+
+  payload  Json
+  total    String?
+  vatTotal String? @map("vat_total")
+
+  vatRatePercent Float? @map("vat_rate_percent")
+
+  itemCount Int? @map("item_count")
+
+  paymentMethod String? @map("payment_method")
+
+  paymentReference String? @map("payment_reference")
+
+  rejectionReason String? @map("rejection_reason")
+
+  deviceId String? @map("device_id")
+
+  issuedAt DateTime? @map("issued_at")
+
+  createdAt DateTime @default(now()) @map("created_at")
+
+  tenant Tenant       @relation(fields: [tenantId], references: [id])
+  device EtimsDevice? @relation(fields: [deviceId], references: [id])
+
+  @@unique([tenantId, receiptNumber])
+  @@unique([tenantId, returnNumber])
   @@index([tenantId])
   @@index([kraReceiptNumber])
   @@index([deviceId])
+  @@index([status])
+  @@index([createdAt])
+  @@map("etims_receipts")
+}
+
+/// The end-of-day Z report, upserted per business date so a re-run replaces the
+/// same day instead of minting a second Z number for it.
+model EtimsZReport {
+  id       String @id @default(cuid())
+  tenantId String @map("tenant_id")
+
+  deviceId String? @map("device_id")
+
+  zNumber Int @map("z_number")
+
+  businessDate DateTime @map("business_date")
+
+  invoiceCount Int @default(0) @map("invoice_count")
+
+  total    String @default("0.00")
+  vatTotal String @default("0.00") @map("vat_total")
+
+  pendingCount Int @default(0) @map("pending_count")
+
+  rejectedCount Int @default(0) @map("rejected_count")
+
+  status        String  @default("issued") // issued | failed
+  failureReason String? @map("failure_reason")
+
+  createdAt DateTime @default(now()) @map("created_at")
+
+  tenant Tenant       @relation(fields: [tenantId], references: [id])
+  device EtimsDevice? @relation(fields: [deviceId], references: [id])
+
+  @@unique([tenantId, businessDate])
+  @@index([tenantId])
+  @@index([businessDate])
+  @@map("etims_z_reports")
 }
 
 // ---------------------------------------------------------------------------
@@ -259,60 +795,71 @@ model EtimsReceipt {
 /// Raw telemetry event pushed from a till phone. Never contains secrets/PII
 /// (rule 3 of TelemetryService: route names, feature names, timestamps only).
 model TelemetryEvent {
-  id          String   @id @default(cuid())
-  tenantId    String
-  deviceId    String?    // phone device identifier
-  name        String   // app_open | app_close | screen_view | feature_use | sale_recorded | idle_start | idle_end
-  at          DateTime @default(now())  // when the event occurred on the device, UTC
-  route       String?
-  detail      String?  // non-user-controlled identifier only
-  createdAt   DateTime @default(now())
+  id       String @id @default(cuid())
+  tenantId String @map("tenant_id")
 
-  tenant      Tenant   @relation("TenantTelemetryEvents", fields: [tenantId], references: [id])
+  deviceId String? // phone device identifier@map("device_id")
 
-  @@map("telemetry_events")
+  name      String // app_open | app_close | screen_view | feature_use | sale_recorded | idle_start | idle_end
+  at        DateTime @default(now()) // when the event occurred on the device, UTC
+  route     String?
+  detail    String? // non-user-controlled identifier only
+  createdAt DateTime @default(now()) @map("created_at")
+
+  tenant Tenant @relation("TenantTelemetryEvents", fields: [tenantId], references: [id])
+
   @@index([tenantId])
   @@index([name])
   @@index([at])
   @@index([createdAt])
+  @@map("telemetry_events")
 }
 
 /// Pre-computed churn snapshot pushed from a till phone (phone computes the
 /// ChurnAnalysis locally; backend only stores/delivers the snapshot).
 model ChurnSnapshot {
-  id               String   @id @default(cuid())
-  tenantId         String
-  deviceId         String?
-  date             DateTime // calendar date this snapshot describes
-  streakDays       Int
-  daysSinceLastActive Int
-  totalSessions    Int
-  risk             String   // none | low | medium | high
-  score            Float    // 0.0 to 1.0
-  computedAt       DateTime @default(now())
+  id       String @id @default(cuid())
+  tenantId String @map("tenant_id")
 
-  tenant           Tenant   @relation("TenantChurnSnapshots", fields: [tenantId], references: [id])
+  deviceId String? @map("device_id")
 
-  @@map("churn_snapshots")
+  date       DateTime // calendar date this snapshot describes
+  streakDays Int      @map("streak_days")
+
+  daysSinceLastActive Int @map("days_since_last_active")
+
+  totalSessions Int @map("total_sessions")
+
+  risk       String // none | low | medium | high
+  score      Float // 0.0 to 1.0
+  computedAt DateTime @default(now()) @map("computed_at")
+
+  tenant Tenant @relation("TenantChurnSnapshots", fields: [tenantId], references: [id])
+
   @@index([tenantId])
   @@index([date])
   @@index([computedAt])
+  @@map("churn_snapshots")
 }
 
 /// Audit log of systems-admin actions (global admin viewing/editing any tenant).
 model AdminAuditLog {
-  id        String   @id @default(cuid())
-  adminId   String   // profile id of the system admin who acted
-  action    String   // e.g. view_churn, update_tenant_settings, purge_telemetry
-  targetType String? // e.g. tenant, sale, profile, telemetry_event
-  targetId  String?
-  tenantId  String?  // which tenant was affected; null for cross-tenant actions
-  at        DateTime @default(now())
+  id      String @id @default(cuid())
+  adminId String // profile id of the system admin who acted@map("admin_id")
 
-  @@map("admin_audit_logs")
+  action     String // e.g. view_churn, update_tenant_settings, purge_telemetry
+  targetType String? // e.g. tenant, sale, profile, telemetry_event@map("target_type")
+
+  targetId String? @map("target_id")
+
+  tenantId String? // which tenant was affected; null for cross-tenant actions@map("tenant_id")
+
+  at DateTime @default(now())
+
   @@index([adminId])
   @@index([tenantId])
   @@index([at])
+  @@map("admin_audit_logs")
 }
 
 /// Platform-wide settings key/value store.
@@ -321,29 +868,104 @@ model SystemSettings {
   key         String   @unique
   value       String
   description String?
-  updatedAt   DateTime @updatedAt
+  updatedAt   DateTime @updatedAt @map("updated_at")
 
-  @@map("system_settings")
   @@index([key])
+  @@map("system_settings")
 }
 
 /// Support ticket or feature request pushed from a till phone.
 model SupportTicket {
-  id          String   @id @default(cuid())
-  tenantId    String
-  deviceId    String?
-  type        String   // ticket | request
+  id       String @id @default(cuid())
+  tenantId String @map("tenant_id")
+
+  deviceId String? @map("device_id")
+
+  type        String // ticket | request
   title       String
   description String
-  status      String   // open | in_progress | resolved
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
+  status      String // open | in_progress | resolved
+  createdAt   DateTime @default(now()) @map("created_at")
 
-  tenant      Tenant   @relation(fields: [tenantId], references: [id])
+  updatedAt DateTime @updatedAt @map("updated_at")
 
-  @@map("support_tickets")
+  tenant Tenant @relation(fields: [tenantId], references: [id])
+
   @@index([tenantId])
   @@index([type])
   @@index([status])
   @@index([createdAt])
+  @@map("support_tickets")
+}
+
+/// A customer's payment INTO the shop's Till or Paybill, seen by the server.
+///
+/// Created by the Daraja C2B confirmation callback, idempotent by the M-Pesa
+/// transaction code (the callbacks arrive more than once and out of order,
+/// and two till phones must not disagree about whether money arrived). The
+/// payer is masked HERE, at the source: the device never holds a full paying
+/// phone number, so a till cannot leak what it never received.
+model MpesaIncoming {
+  id       String @id @default(cuid())
+  tenantId String @map("tenant_id")
+
+  // The server's own id, which the devices page by, uniquely.
+  remoteId String @unique @map("remote_id")
+
+  // M-Pesa's transaction code, unique GLOBALLY on the network — two shops
+  // cannot collide, so the uniqueness pays for itself in races.
+  transId String @unique @map("trans_id")
+
+  amount     Float
+  // Masked at the callback: a first name and the last three digits.
+  payerLabel String @map("payer_label")
+
+  billRef String? @map("bill_ref")
+
+  receivedAt DateTime @map("received_at")
+
+  createdAt DateTime @default(now()) @map("created_at")
+
+  // unclaimed | claimed | ignored | expired
+  status          String  @default("unclaimed")
+  claimedByDevice String? @map("claimed_by_device")
+
+  claimedSaleUuid String? @map("claimed_sale_uuid")
+
+  claimedAt DateTime? @map("claimed_at")
+
+  ignoredAt DateTime? @map("ignored_at")
+
+  ignoreReason String? @map("ignore_reason")
+
+  tenant Tenant @relation(fields: [tenantId], references: [id])
+
+  @@index([tenantId, receivedAt])
+  @@index([status])
+  @@map("mpesa_incoming")
+}
+
+/// The public receipt page's right to exist and to be withdrawn.
+///
+/// The token is the ONLY key — unguessable, revocable, expiring — and the
+/// page renders the SNAPSHOT taken when the link was made (names, figures,
+/// the QR), never a live query into the shop's documents.
+model ReceiptLink {
+  id       String @id @default(cuid())
+  tenantId String @map("tenant_id")
+
+  token     String   @unique
+  // The receipt snapshot, as the page will show it.
+  snapshot  Json
+  createdAt DateTime @default(now()) @map("created_at")
+
+  expiresAt DateTime @map("expires_at")
+
+  revokedAt DateTime? @map("revoked_at")
+
+  tenant Tenant @relation(fields: [tenantId], references: [id])
+
+  @@index([tenantId])
+  @@index([expiresAt])
+  @@map("receipt_links")
 }
