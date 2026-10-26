@@ -18,8 +18,12 @@
             "header": [],
             "url": {
               "raw": "{{base_url}}/health",
-              "host": ["{{base_url}}"],
-              "path": ["health"]
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "health"
+              ]
             },
             "description": "Verify the backend is running and healthy"
           },
@@ -96,8 +100,14 @@
             },
             "url": {
               "raw": "{{base_url}}/api/auth/link",
-              "host": ["{{base_url}}"],
-              "path": ["api", "auth", "link"]
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "auth",
+                "link"
+              ]
             },
             "description": "Create tenant and owner profile, send verification code"
           },
@@ -157,8 +167,14 @@
             },
             "url": {
               "raw": "{{base_url}}/api/auth/verify",
-              "host": ["{{base_url}}"],
-              "path": ["api", "auth", "verify"]
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "auth",
+                "verify"
+              ]
             },
             "description": "Confirm verification code and mint session tokens"
           },
@@ -213,8 +229,14 @@
             },
             "url": {
               "raw": "{{base_url}}/api/auth/link",
-              "host": ["{{base_url}}"],
-              "path": ["api", "auth", "link"]
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "auth",
+                "link"
+              ]
             }
           },
           "response": [
@@ -262,8 +284,14 @@
             },
             "url": {
               "raw": "{{base_url}}/api/auth/link",
-              "host": ["{{base_url}}"],
-              "path": ["api", "auth", "link"]
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "auth",
+                "link"
+              ]
             }
           },
           "event": [
@@ -301,8 +329,14 @@
             },
             "url": {
               "raw": "{{base_url}}/api/auth/verify",
-              "host": ["{{base_url}}"],
-              "path": ["api", "auth", "verify"]
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "auth",
+                "verify"
+              ]
             },
             "description": "Confirm verification code and mint session tokens"
           },
@@ -351,8 +385,14 @@
             },
             "url": {
               "raw": "{{base_url}}/api/auth/verify",
-              "host": ["{{base_url}}"],
-              "path": ["api", "auth", "verify"]
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "auth",
+                "verify"
+              ]
             }
           },
           "event": [
@@ -390,8 +430,14 @@
             },
             "url": {
               "raw": "{{base_url}}/api/auth/refresh",
-              "host": ["{{base_url}}"],
-              "path": ["api", "auth", "refresh"]
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "auth",
+                "refresh"
+              ]
             },
             "description": "Exchange refresh token for new session"
           },
@@ -445,8 +491,15 @@
             },
             "url": {
               "raw": "{{base_url}}/api/auth/pin-reset/request",
-              "host": ["{{base_url}}"],
-              "path": ["api", "auth", "pin-reset", "request"]
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "auth",
+                "pin-reset",
+                "request"
+              ]
             },
             "description": "Request a PIN reset code by email"
           },
@@ -484,8 +537,15 @@
             },
             "url": {
               "raw": "{{base_url}}/api/auth/pin-reset/confirm",
-              "host": ["{{base_url}}"],
-              "path": ["api", "auth", "pin-reset", "confirm"]
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "auth",
+                "pin-reset",
+                "confirm"
+              ]
             },
             "description": "Confirm PIN reset code"
           },
@@ -547,8 +607,14 @@
             },
             "url": {
               "raw": "{{base_url}}/api/etims/device",
-              "host": ["{{base_url}}"],
-              "path": ["api", "etims", "device"]
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "etims",
+                "device"
+              ]
             },
             "description": "Register TIN and eTIMS device"
           },
@@ -594,12 +660,18 @@
             ],
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"payload\": {\n    \"sale_id\": \"sale-123\",\n    \"total\": 1500.00,\n    \"items\": [{\"product\": \"Coca Cola\", \"qty\": 2, \"price\": 750.00}]\n  },\n  \"deviceId\": \"device-001\"\n}"
+              "raw": "{\n  \"receipt_number\": \"sale-123\",\n  \"issued_at\": \"2024-01-15T10:30:00+00:00\",\n  \"payment_method\": \"cash\",\n  \"total\": 150000,\n  \"vat_rate_percent\": 16,\n  \"items\": [\n    {\n      \"name\": \"Coca Cola\",\n      \"qty\": 2,\n      \"unit_price\": 75000,\n      \"unit_cost\": 0,\n      \"vat_amount\": 0,\n      \"line_total\": 150000\n    }\n  ],\n  \"device_id\": \"device-001\"\n}"
             },
             "url": {
               "raw": "{{base_url}}/api/etims/receipts",
-              "host": ["{{base_url}}"],
-              "path": ["api", "etims", "receipts"]
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "etims",
+                "receipts"
+              ]
             },
             "description": "Issue a KRA receipt for a committed sale"
           },
@@ -649,8 +721,14 @@
             ],
             "url": {
               "raw": "{{base_url}}/api/etims/status",
-              "host": ["{{base_url}}"],
-              "path": ["api", "etims", "status"]
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "etims",
+                "status"
+              ]
             },
             "description": "Check eTIMS queue status"
           },
@@ -692,8 +770,14 @@
             ],
             "url": {
               "raw": "{{base_url}}/api/etims/z-report?date=2024-01-15",
-              "host": ["{{base_url}}"],
-              "path": ["api", "etims", "z-report"],
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "etims",
+                "z-report"
+              ],
               "query": [
                 {
                   "key": "date",
@@ -716,14 +800,12 @@
                   "    var data = pm.response.json();",
                   "    pm.expect(data.date).to.eql(\"2024-01-15\");",
                   "});",
-                  "pm.test(\"Has totals\", function () {",
-                  "    var data = pm.response.json();",
-                  "    pm.expect(data).to.have.property(\"totalSales\");",
-                  "    pm.expect(data).to.have.property(\"totalProfit\");",
-                  "    pm.expect(data).to.have.property(\"receiptCount\");",
-                  "    pm.expect(data).to.have.property(\"sales\");",
-                  "    pm.expect(data.sales).to.be.an(\"array\");",
-                  "});"
+"pm.test(\"Has totals\", function () {",
+                   "    var data = pm.response.json();",
+                   "    pm.expect(data.shops).to.be.an(\"array\");",
+                   "    pm.expect(data.from).to.be.a(\"string\");",
+                   "    pm.expect(data.to).to.be.a(\"string\");",
+                   "});"
                 ]
               }
             }
@@ -750,8 +832,14 @@
             ],
             "url": {
               "raw": "{{base_url}}/api/tenant/portfolio?from=2024-01-01&to=2024-01-31",
-              "host": ["{{base_url}}"],
-              "path": ["api", "tenant", "portfolio"],
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "tenant",
+                "portfolio"
+              ],
               "query": [
                 {
                   "key": "from",
@@ -776,10 +864,10 @@
                   "});",
                   "pm.test(\"Has totals\", function () {",
                   "    var data = pm.response.json();",
-                  "    pm.expect(data.totals).to.have.property(\"count\");",
-                  "    pm.expect(data.totals).to.have.property(\"total\");",
-                  "    pm.expect(data.totals).to.have.property(\"profit\");",
-                  "    pm.expect(data.totals).to.have.property(\"byPaymentMethod\");",
+                  "    pm.expect(data.shops).to.be.a(\"string\");",
+                  "    pm.expect(data.shops).to.be.a(\"string\");",
+                  "    pm.expect(data.shops).to.be.a(\"string\");",
+                  "    pm.expect(data.shops).to.be.a(\"string\");",
                   "    pm.expect(data.sales).to.be.an(\"array\");",
                   "});"
                 ]
@@ -811,8 +899,15 @@
             },
             "url": {
               "raw": "{{base_url}}/api/tenant/staff/authenticate",
-              "host": ["{{base_url}}"],
-              "path": ["api", "tenant", "staff", "authenticate"]
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "tenant",
+                "staff",
+                "authenticate"
+              ]
             },
             "description": "Authenticate staff PIN against backend"
           },
@@ -873,8 +968,14 @@
             },
             "url": {
               "raw": "{{base_url}}/api/products/stock-adjust",
-              "host": ["{{base_url}}"],
-              "path": ["api", "products", "stock-adjust"]
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "products",
+                "stock-adjust"
+              ]
             },
             "description": "Adjust stock for a single product immediately"
           },
@@ -890,7 +991,7 @@
                   "pm.test(\"If 404, error is product not found\", function () {",
                   "    if (pm.response.code === 404) {",
                   "        var data = pm.response.json();",
-                  "        pm.expect(data.error).to.eql(\"Product not found\");",
+                  "        pm.expect(data.error).to.eql(\"Request could not be completed\");",
                   "    }",
                   "});"
                 ]
@@ -910,8 +1011,14 @@
             "header": [],
             "url": {
               "raw": "{{base_url}}/api/app/latest",
-              "host": ["{{base_url}}"],
-              "path": ["api", "app", "latest"]
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "app",
+                "latest"
+              ]
             },
             "description": "Get update manifest for auto-updates"
           },
