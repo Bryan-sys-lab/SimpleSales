@@ -9,7 +9,7 @@
   "containers": [
     {
       "class_name": "KeycloakContainer",
-      "image": "./Dockerfile",
+      "image": "docker.io/library/keycloak:24.0.1",
       "instance_type": "standard-1",
       "max_instances": 1,
       "observability": { "enabled": true }
