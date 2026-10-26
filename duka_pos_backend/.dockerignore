@@ -11,7 +11,3 @@ dist
 coverage
 *.log
 Dockerfile.test
-src/__tests__
-scripts/*
-!scripts/
-!scripts/ensure-bucket.cjs
