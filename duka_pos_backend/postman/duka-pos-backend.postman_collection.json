@@ -198,66 +198,6 @@
       "name": "Auth - Shop Linking",
       "item": [
         {
-          "name": "POST /api/auth/link",
-          "request": {
-            "method": "POST",
-            "header": [
-              {
-                "key": "Content-Type",
-                "value": "application/json"
-              }
-            ],
-            "body": {
-              "mode": "raw",
-              "raw": "{\n  \"email\": \"owner@example.com\",\n  \"pin\": \"1234\",\n  \"shopName\": \"Test Shop\",\n  \"ownerName\": \"Test Owner\"\n}"
-            },
-            "url": {
-              "raw": "{{base_url}}/api/auth/link",
-              "host": ["{{base_url}}"],
-              "path": ["api", "auth", "link"]
-            },
-            "description": "Create tenant and owner profile, send verification code"
-          },
-          "response": [
-            {
-              "name": "200 OK",
-              "status": "OK",
-              "code": 200,
-              "body": {
-                "challenge_id": "{{challenge_id}}",
-                "email": "owner@example.com",
-                "expires_in_seconds": 600
-              }
-            }
-          ],
-          "event": [
-            {
-              "listen": "test",
-              "script": {
-                "type": "text/javascript",
-                "exec": [
-                  "pm.test(\"Status is 200\", function () {",
-                  "    pm.response.to.have.status(200);",
-                  "});",
-                  "pm.test(\"Has challenge_id\", function () {",
-                  "    var data = pm.response.json();",
-                  "    pm.expect(data).to.have.property(\"challenge_id\");",
-                  "    pm.expect(data.challenge_id).to.not.be.empty;",
-                  "});",
-                  "pm.test(\"Email matches\", function () {",
-                  "    var data = pm.response.json();",
-                  "    pm.expect(data.email).to.eql(\"owner@example.com\");",
-                  "});",
-                  "pm.test(\"Expires in seconds is number\", function () {",
-                  "    var data = pm.response.json();",
-                  "    pm.expect(data.expires_in_seconds).to.be.a(\"number\");",
-                  "});"
-                ]
-              }
-            }
-          ]
-        },
-        {
           "name": "POST /api/auth/link - duplicate shop",
           "request": {
             "method": "POST",
