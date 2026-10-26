@@ -8,7 +8,7 @@ type BackendEnv = {
   R2_SECRET_ACCESS_KEY: string; R2_BUCKET_NAME: string; R2_PUBLIC_URL: string;
   TAX_ENTITY_ENCRYPTION_KEY: string; TAX_REPORTING_ACTIVATED: string; RISITI_BASE_URL: string; RISITI_API_KEY: string;
   APP_VERSION_NAME: string; APP_VERSION_CODE: string; APP_DOWNLOAD_URL: string; APP_UPDATE_REQUIRED: string;
-  APP_RELEASE_NOTES: string;
+  APP_RELEASE_NOTES: string; APP_RELEASE_REPOSITORY?: string;
 };
 
 export class BackendContainer extends DurableObject<BackendEnv> {
@@ -40,6 +40,7 @@ export class BackendContainer extends DurableObject<BackendEnv> {
         RISITI_API_KEY: this.env.RISITI_API_KEY, APP_VERSION_NAME: this.env.APP_VERSION_NAME,
         APP_VERSION_CODE: this.env.APP_VERSION_CODE, APP_DOWNLOAD_URL: this.env.APP_DOWNLOAD_URL,
         APP_UPDATE_REQUIRED: this.env.APP_UPDATE_REQUIRED, APP_RELEASE_NOTES: this.env.APP_RELEASE_NOTES,
+        ...(this.env.APP_RELEASE_REPOSITORY ? { APP_RELEASE_REPOSITORY: this.env.APP_RELEASE_REPOSITORY } : {}),
       },
     });
     await container.setInactivityTimeout(10 * 60 * 1000);

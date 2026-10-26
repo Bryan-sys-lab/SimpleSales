@@ -37,6 +37,7 @@ x-backend-env: &backend-env
   APP_DOWNLOAD_URL: http://localhost:3000/app/app.apk
   APP_UPDATE_REQUIRED: 'false'
   APP_RELEASE_NOTES: 'Auto-update manifest'
+  APP_RELEASE_REPOSITORY: ${APP_RELEASE_REPOSITORY:-Bryan-sys-lab/SimpleSales}
   R2_ENDPOINT: ${R2_ENDPOINT:-http://storage:9000}
   R2_ACCESS_KEY_ID: ${R2_ACCESS_KEY_ID:-duka_local_storage}
   R2_SECRET_ACCESS_KEY: ${R2_SECRET_ACCESS_KEY:-duka_local_storage_secret}

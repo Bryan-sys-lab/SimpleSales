@@ -6,6 +6,7 @@
   "compatibility_flags": ["nodejs_compat"],
   "upload_source_maps": true,
   "observability": { "enabled": true },
+  "vars": { "APP_RELEASE_REPOSITORY": "Bryan-sys-lab/SimpleSales" },
   "containers": [
     {
       "class_name": "BackendContainer",
