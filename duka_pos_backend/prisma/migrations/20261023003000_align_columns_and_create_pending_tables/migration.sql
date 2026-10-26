@@ -157,9 +157,11 @@ ALTER COLUMN "half_price" SET DATA TYPE DECIMAL(65,30),
 ALTER COLUMN "quarter_price" SET DATA TYPE DECIMAL(65,30),
 ALTER COLUMN "updated_at" DROP DEFAULT;
 
+-- `photo_url` was added by 20261022150000_profile_photo. Do not add it again
+-- here: a fresh database applies both migrations and PostgreSQL rejects the
+-- duplicate column.
 -- AlterTable
-ALTER TABLE "profiles" ADD COLUMN     "photo_url" TEXT,
-DROP COLUMN "role",
+ALTER TABLE "profiles" DROP COLUMN "role",
 ADD COLUMN     "role" TEXT NOT NULL DEFAULT 'cashier';
 
 -- AlterTable
