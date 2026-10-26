@@ -177,7 +177,10 @@ jobs:
   test:
     name: Flutter tests (shard ${{ matrix.shard }})
     needs: validate
-    if: ${{ github.event_name != 'workflow_dispatch' || !inputs.full_suite }}
+    # Shards are useful for an explicit fast/manual run, but the normal push
+    # gate must exercise the complete suite in one process so order-dependent
+    # SQLite and platform-state failures cannot hide between runners.
+    if: ${{ github.event_name == 'workflow_dispatch' && !inputs.full_suite }}
     runs-on: ubuntu-24.04
     timeout-minutes: 30
     strategy:
@@ -254,7 +257,10 @@ jobs:
   full_suite:
     name: Flutter full suite (serial order check)
     needs: validate
-    if: ${{ github.event_name == 'workflow_dispatch' && inputs.full_suite }}
+    # Every push and pull request runs the full suite. The workflow_dispatch
+    # input remains available for an explicit rerun, while the default push
+    # path no longer silently substitutes isolated shards for the real gate.
+    if: ${{ github.event_name != 'workflow_dispatch' || inputs.full_suite }}
     runs-on: ubuntu-24.04
     timeout-minutes: 50
     defaults:
