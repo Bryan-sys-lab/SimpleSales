@@ -11,7 +11,7 @@
       "class_name": "KeycloakContainer",
       "scheduling_policy": "durable_object",
       "images": {
-        "base": { "image": "__KEYCLOAK_IMAGE__" }
+        "base": { "image": "registry.cloudflare.com/0d995e8087844342ed0da43d9ccd9993/simplesales-keycloak@sha256:28fe17f0e20898ce5bbdc4b29500c06b61cf370d84217081378ad45240440c3e" }
       },
       "observability": { "enabled": true }
     }
