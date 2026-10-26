@@ -114,9 +114,10 @@ jobs:
       # The ephemeral CI stack runs several live journeys and three Postman
       # collections in one minute. Production keeps the default limit of 120.
       RATE_LIMIT_LIMIT: 10000
-      # eTIMS device and receipts routes return 409 unless tax reporting is
-      # activated; CI needs them live so the Postman collections exercise them.
-      TAX_REPORTING_ACTIVATED: true
+      # Tax reporting stays disabled in CI because no real Risiti credential is
+      # available. The live collection accepts the intentional 409 response;
+      # enabling the gate without RISITI_API_KEY turns a safe refusal into a
+      # misleading 500 configuration error.
     defaults:
       run:
         working-directory: duka_pos_backend
@@ -135,7 +136,7 @@ jobs:
         shell: bash
         run: |
           set +e
-          TAX_REPORTING_ACTIVATED=true docker compose up -d
+          docker compose up -d
           status=$?
           if [[ $status -ne 0 ]]; then
             docker compose ps
