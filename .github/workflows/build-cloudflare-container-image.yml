@@ -69,4 +69,6 @@ jobs:
       # Workers Builds watches this branch. It is updated only after the image
       # is available, so Cloudflare never races the remote image publication.
       - name: Publish deploy branch
-        run: git push origin "HEAD:refs/heads/cloudflare-deploy"
+        # This is a generated deployment ref, not a development branch; replace
+        # its previous digest-pinned commit on every backend image publication.
+        run: git push --force origin "HEAD:refs/heads/cloudflare-deploy"
