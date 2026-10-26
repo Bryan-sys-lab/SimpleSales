@@ -10,7 +10,7 @@ import { Prisma } from '@prisma/client';
 import { prisma } from '../lib/prisma';
 
 import { log } from '../lib/observability';
-import { buildRisitiInvoiceRequest, submissionOutcome, submitInvoice } from '../services/risiti';
+import { buildRisitiInvoiceRequest, RisitiError, submissionOutcome, submitInvoice } from '../services/risiti';
 import { TAX_REPORTING_PROVIDER, TAX_PROVIDER_DISPLAY_NAME, taxReportingActivated, taxReportingStatus } from '../services/tax_reporting';
 
 const taxProvider = TAX_REPORTING_PROVIDER;
@@ -152,22 +152,35 @@ router.post(
         duplicate: true,
       });
     }
-    const risiti = await submitInvoice(buildRisitiInvoiceRequest({
-      tenantId,
-      merchantId: tenant.risitiMerchantId,
-      receiptNumber: input.receipt_number,
-      issuedAt: input.issued_at,
-      paymentMethod: input.payment_method,
-      items: input.items.map((item) => ({
-        name: item.name,
-        qty: item.qty,
-        unitPrice: item.unit_price,
-        vatAmount: item.vat_amount,
-        lineTotal: item.line_total,
-      })),
-      buyerName: input.buyer_name,
-      buyerTin: input.buyer_tin,
-    }));
+    let risiti: Awaited<ReturnType<typeof submitInvoice>>;
+    try {
+      risiti = await submitInvoice(buildRisitiInvoiceRequest({
+        tenantId,
+        merchantId: tenant.risitiMerchantId,
+        receiptNumber: input.receipt_number,
+        issuedAt: input.issued_at,
+        paymentMethod: input.payment_method,
+        items: input.items.map((item) => ({
+          name: item.name,
+          qty: item.qty,
+          unitPrice: item.unit_price,
+          vatAmount: item.vat_amount,
+          lineTotal: item.line_total,
+        })),
+        buyerName: input.buyer_name,
+        buyerTin: input.buyer_tin,
+      }));
+    } catch (error) {
+      if (error instanceof RisitiError && error.kind === 'misconfigured') {
+        return res.status(409).json({
+          error: 'Risiti is not configured for this deployment',
+          provider: taxProvider,
+          provider_name: TAX_PROVIDER_DISPLAY_NAME,
+          kra_activated: false,
+        });
+      }
+      throw error;
+    }
     const outcome = submissionOutcome(risiti.data.submission);
     const status = outcome === 'issued' ? 'issued' : outcome === 'pending' ? 'pending' : 'rejected';
     const receipt = await prisma.etimsReceipt.upsert({
