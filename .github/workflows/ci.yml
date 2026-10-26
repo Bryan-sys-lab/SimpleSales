@@ -242,7 +242,7 @@ jobs:
       # Do not let matrix jobs contend for a shared pub cache lock. The cache
       # action still restores dependencies, but Flutter resolves/writes into a
       # shard-local directory for the lifetime of this runner.
-      PUB_CACHE: ${{ runner.temp }}/pub-cache-${{ matrix.shard }}
+      PUB_CACHE: ${{ github.workspace }}/pub-cache-${{ matrix.shard }}
     steps:
       - name: Check out source
         uses: actions/checkout@v4
