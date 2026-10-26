@@ -247,6 +247,15 @@ class _PosLineChartState extends State<PosLineChart> {
     setState(() => _selected = _selected == index ? null : index);
   }
 
+  void _selectRelative(int direction) {
+    if (widget.points.isEmpty) return;
+    final int current =
+        _selected ?? (direction > 0 ? -1 : widget.points.length);
+    final int next = (current + direction).clamp(0, widget.points.length - 1);
+    if (_selected == next) return;
+    setState(() => _selected = next);
+  }
+
   /// What a screen reader says for this chart right now.
   ///
   /// The caller's description when it gave one, the series summary otherwise,
@@ -272,6 +281,8 @@ class _PosLineChartState extends State<PosLineChart> {
     return Semantics(
       label: _announcement(l10n),
       container: true,
+      onIncrease: () => _selectRelative(1),
+      onDecrease: () => _selectRelative(-1),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         mainAxisSize: MainAxisSize.min,
@@ -967,6 +978,15 @@ class _PosBarChartState extends State<PosBarChart> {
     setState(() => _selected = _selected == index ? null : index);
   }
 
+  void _selectRelative(int direction) {
+    if (widget.points.isEmpty) return;
+    final int current =
+        _selected ?? (direction > 0 ? -1 : widget.points.length);
+    final int next = (current + direction).clamp(0, widget.points.length - 1);
+    if (_selected == next) return;
+    setState(() => _selected = next);
+  }
+
   @override
   Widget build(BuildContext context) {
     final AppColors colors = AppColors.of(context);
@@ -995,6 +1015,8 @@ class _PosBarChartState extends State<PosBarChart> {
     return Semantics(
       label: _announcement(l10n),
       container: true,
+      onIncrease: () => _selectRelative(1),
+      onDecrease: () => _selectRelative(-1),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         mainAxisSize: MainAxisSize.min,
@@ -1378,6 +1400,69 @@ class PosPieChart extends StatelessWidget {
   Widget build(BuildContext context) {
     final AppSpacing spacing = AppSpacing.of(context);
     final TextTheme type = AppTypography.of(context);
+    final bool compactLegend = MediaQuery.textScalerOf(context).scale(1) > 1.3;
+
+    Widget legendRow(PosPieSlice slice) => LayoutBuilder(
+          builder: (BuildContext context, BoxConstraints constraints) {
+            final bool stackValue = compactLegend || constraints.maxWidth < 170;
+            final Widget label = stackValue
+                ? Expanded(
+                    child: Text(
+                      slice.label,
+                      style: type.bodySmall,
+                      maxLines: 2,
+                    ),
+                  )
+                : Text(
+                    slice.label,
+                    style: type.bodySmall,
+                    maxLines: 2,
+                  );
+            final Widget identity = Row(
+              children: <Widget>[
+                Container(
+                  width: 10,
+                  height: 10,
+                  decoration: BoxDecoration(
+                    color: slice.color,
+                    shape: BoxShape.circle,
+                  ),
+                ),
+                SizedBox(width: spacing.sm),
+                label,
+              ],
+            );
+            final Widget value = Text(
+              slice.displayValue,
+              style: AppTypography.money(
+                context,
+                size: 12,
+                weight: FontWeight.w600,
+              ),
+            );
+            return Padding(
+              padding: EdgeInsets.symmetric(vertical: spacing.xs),
+              child: stackValue
+                  ? Column(
+                      crossAxisAlignment: CrossAxisAlignment.stretch,
+                      children: <Widget>[
+                        identity,
+                        Align(
+                          alignment: AlignmentDirectional.centerEnd,
+                          child: value,
+                        ),
+                      ],
+                    )
+                  : Row(
+                      children: <Widget>[
+                        identity,
+                        SizedBox(width: spacing.xs),
+                        value,
+                      ],
+                    ),
+            );
+          },
+        );
 
     final total = slices.fold<int>(0, (sum, s) => sum + s.value);
 
@@ -1474,39 +1559,7 @@ class PosPieChart extends StatelessWidget {
                     crossAxisAlignment: CrossAxisAlignment.stretch,
                     mainAxisSize: MainAxisSize.min,
                     children: <Widget>[
-                      for (final PosPieSlice slice in slices)
-                        Padding(
-                          padding: EdgeInsets.symmetric(vertical: spacing.xs),
-                          child: Row(
-                            children: <Widget>[
-                              Container(
-                                width: 10,
-                                height: 10,
-                                decoration: BoxDecoration(
-                                  color: slice.color,
-                                  shape: BoxShape.circle,
-                                ),
-                              ),
-                              SizedBox(width: spacing.sm),
-                              Expanded(
-                                child: Text(
-                                  slice.label,
-                                  style: type.bodySmall,
-                                  maxLines: 2,
-                                ),
-                              ),
-                              SizedBox(width: spacing.xs),
-                              Text(
-                                slice.displayValue,
-                                style: AppTypography.money(
-                                  context,
-                                  size: 12,
-                                  weight: FontWeight.w600,
-                                ),
-                              ),
-                            ],
-                          ),
-                        ),
+                      for (final PosPieSlice slice in slices) legendRow(slice),
                     ],
                   ),
                 ),

@@ -679,7 +679,7 @@ class _ShotCupEditorState extends State<_ShotCupEditor> {
               Semantics(
                 header: true,
                 child: Text(
-                  _isNew ? 'Add a shot cup' : 'Edit shot cup',
+                  _isNew ? l10n.shotCupsAddAction : l10n.shotCupsEditAction,
                   style: AppTypography.of(context).titleLarge,
                 ),
               ),

@@ -16,6 +16,12 @@ import 'package:duka_pos/models/models.dart';
 import 'package:duka_pos/utils/money.dart';
 
 void main() {
+  test('largest remainder allocation preserves every minor unit', () {
+    expect(largestRemainderAllocation(10, <int>[1, 1, 1]), <int>[4, 3, 3]);
+    expect(largestRemainderAllocation(1, <int>[1, 1]), <int>[1, 0]);
+    expect(largestRemainderAllocation(7, <int>[0, 0]), <int>[7, 0]);
+  });
+
   group('Money.fromMajor', () {
     test('quantises typed shillings to whole cents', () {
       expect(Money.fromMajor(12.3456).minorUnits, 1235);

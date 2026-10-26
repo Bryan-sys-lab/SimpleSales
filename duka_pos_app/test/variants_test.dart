@@ -11,6 +11,7 @@ import 'package:duka_pos/db/database_helper.dart';
 import 'package:duka_pos/models/models.dart';
 import 'package:duka_pos/utils/money.dart';
 import 'package:duka_pos/utils/units.dart';
+import 'package:duka_pos/widgets/variant_catalogue.dart';
 
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
@@ -37,6 +38,32 @@ void main() {
   });
 
   tearDown(() => DatabaseHelper.resetForTests());
+
+  test('unrelated product edits preserve measured tank metadata', () {
+    final tank = Product(
+      name: 'Water tank',
+      category: 'Water',
+      costPrice: Money.fromMajor(1000),
+      sellPrice: Money.zero,
+      stockQty: 2,
+      reorderLevel: 1,
+      bottleMl: 50000,
+      unit: ProductUnit.cup,
+      millilitresPerKilogram: 1000,
+      trackVariants: true,
+      imagePath: 'products/water.jpg',
+      primaryBarcode: 'WATER-50L',
+      updatedAt: DateTime.now().toIso8601String(),
+    );
+
+    final edited = tank.copyWith(stockQty: 1);
+
+    expect(edited.unit, ProductUnit.cup);
+    expect(edited.millilitresPerKilogram, 1000);
+    expect(edited.trackVariants, isTrue);
+    expect(edited.imagePath, 'products/water.jpg');
+    expect(edited.primaryBarcode, 'WATER-50L');
+  });
 
   ProductVariant variant({
     int? id,
@@ -66,6 +93,53 @@ void main() {
     expect(read.sellPrice, Money.fromMinor(150));
     expect(read.stockQty, 20);
     expect(read.sizeMl, 500);
+  });
+
+  test('a profile that does not enable variants can load a shared empty view',
+      () async {
+    await db.upsertVariant(variant(name: 'Dark'));
+
+    final catalogue = await VariantCatalogue.load(includeVariants: false);
+
+    expect(catalogue.of((await db.getProducts()).single), isEmpty);
+    expect(catalogue.trackingProductIds, isEmpty);
+  });
+
+  test('expiry-tracked variant sales consume the variant batch', () async {
+    final variantId = await db.upsertVariant(variant(name: 'Dark'));
+    final product = (await db.getProducts()).single;
+    await db.upsertProduct(product.copyWith(trackExpiry: true));
+    await db.postStockReceipt(
+      lines: [
+        StockReceiptLine(
+          productId: productId,
+          variantId: variantId,
+          productName: 'Kenyana Beer · Dark',
+          qty: 1,
+          unitCost: Money.fromMinor(90),
+          expiryDate: DateTime.now().add(const Duration(days: 3)),
+        ),
+      ],
+      staffName: 'Amina',
+    );
+
+    await db.recordSale(
+      staffName: 'Amina',
+      items: [
+        SaleItem(
+          saleId: 0,
+          productId: productId,
+          variantId: variantId,
+          productName: 'Kenyana Beer · Dark',
+          qty: 1,
+          unitPrice: Money.fromMinor(150),
+          unitCost: Money.fromMinor(90),
+        ),
+      ],
+    );
+    final batches = await db.getProductBatches(productId, variantId: variantId);
+    expect(batches.single['qty_remaining'], 0);
+    expect(batches.single['status'], 'depleted');
   });
 
   test('two variants hold independent stock', () async {

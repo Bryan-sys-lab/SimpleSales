@@ -10,9 +10,14 @@ import '../l10n/generated/app_localizations.dart';
 import '../models/models.dart';
 import '../routing/routes.dart';
 import '../services/app_state.dart';
+import '../services/roles.dart';
 import '../services/excel_service.dart';
+import '../services/business_report_pdf_service.dart';
 import '../services/printer/printer_config.dart';
 import '../services/printer/receipt_printer.dart';
+import '../services/printer/receipt_builder.dart';
+import '../services/printer/shift_report_builder.dart';
+import '../services/shift_report_pdf_service.dart';
 import '../services/session_refresh_mixin.dart';
 import '../theme/app_colors.dart';
 import '../theme/app_haptics.dart';
@@ -28,6 +33,16 @@ import '../ui/components/screen_title.dart';
 import 'reports_shifts.dart';
 
 const int kRecentSalesLimit = 50;
+
+enum ReportsRange {
+  month('30 days', 30),
+  quarter('90 days', 90),
+  year('1 year', 365);
+
+  const ReportsRange(this.label, this.days);
+  final String label;
+  final int days;
+}
 
 @immutable
 class StaffTakings {
@@ -52,6 +67,7 @@ class ReportsData {
     required this.shifts,
     required this.totalShifts,
     required this.staff,
+    required this.noSaleOpens,
   });
 
   static const ReportsData empty = ReportsData(
@@ -59,12 +75,14 @@ class ReportsData {
     shifts: <ShiftReportRow>[],
     totalShifts: 0,
     staff: <StaffTakings>[],
+    noSaleOpens: 0,
   );
 
   final List<Sale> sales;
   final List<ShiftReportRow> shifts;
   final int totalShifts;
   final List<StaffTakings> staff;
+  final int noSaleOpens;
 
   bool get isUnrecorded => sales.isEmpty && shifts.isEmpty;
 
@@ -105,6 +123,7 @@ class _ReportsScreenState extends State<ReportsScreen>
   ReportsView _view = const ReportsLoading(ReportsData.empty);
   ReportsData _shown = ReportsData.empty;
   String _query = '';
+  ReportsRange _range = ReportsRange.month;
 
   int _unfilteredCount = 0;
 
@@ -134,19 +153,26 @@ class _ReportsScreenState extends State<ReportsScreen>
 
   Future<void> _load() async {
     final AppState state = context.read<AppState>();
+    final DateTime since = DateTime.now().subtract(Duration(days: _range.days));
     try {
       final DatabaseHelper db = DatabaseHelper.instance;
       final List<Object> results = await Future.wait(<Future<Object>>[
         db.getSales(
+          since: since,
           staffName:
               state.currentRole == 'cashier' ? state.currentStaffName : null,
           // Reports aggregates per sale only; skip hydrating line items.
           withItems: false,
         ),
         db.getShifts(),
+        db.getDrawerEvents(
+          staffId: state.currentRole == 'cashier' ? state.currentStaffId : null,
+        ),
       ]);
       final List<Sale> sales = results[0] as List<Sale>;
       final List<Shift> shifts = results[1] as List<Shift>;
+      final List<Map<String, dynamic>> drawerEvents =
+          results[2] as List<Map<String, dynamic>>;
       final List<ShiftReportRow> shiftRows =
           await loadShiftReports(shifts, sales);
       if (!mounted) return;
@@ -158,6 +184,9 @@ class _ReportsScreenState extends State<ReportsScreen>
             shifts: shiftRows,
             totalShifts: shifts.length,
             staff: _takingsByStaff(sales),
+            noSaleOpens: drawerEvents
+                .where((row) => row['event_type'] == 'no_sale')
+                .length,
           ),
         );
         _view = ReportsReady(_shown);
@@ -233,13 +262,43 @@ class _ReportsScreenState extends State<ReportsScreen>
   }
 
   Future<void> _exportSales() async {
-    final file = await _excel.exportEncryptedSales();
+    final file = await _excel.exportEncryptedSales(
+      since: DateTime.now().subtract(Duration(days: _range.days)),
+    );
     await _excel.shareFile(file);
   }
 
+  Future<void> _exportPdf() async {
+    final file = await BusinessReportPdfService().export(
+      since: DateTime.now().subtract(Duration(days: _range.days)),
+      // Keep PDF and on-screen reports on the same selected window.
+      shopName:
+          context.read<AppState>().owner?.shopName ?? SimplePosBrand.appName,
+    );
+    await _excel.shareFile(file);
+  }
+
+  void _setRange(ReportsRange range) {
+    if (range == _range) return;
+    setState(() => _range = range);
+    _load();
+  }
+
   Future<void> _exportShift(Shift shift) async {
-    final DateTime? start = DateTime.tryParse(shift.startTime);
-    final file = await _excel.exportSales(since: start);
+    final int? shiftId = shift.id;
+    if (shiftId == null) return;
+    final String shopName =
+        context.read<AppState>().owner?.shopName ?? SimplePosBrand.appName;
+    final row = await DatabaseHelper.instance.getShiftReport(shiftId);
+    if (row == null) {
+      // Open shifts have no immutable Z snapshot yet; do not silently export
+      // the rest of the shop as if it belonged to this shift.
+      return;
+    }
+    final file = await ShiftReportPdfService().export(
+      report: ShiftReportSnapshot.fromRow(row),
+      shopName: shopName,
+    );
     await _excel.shareFile(file);
   }
 
@@ -255,13 +314,15 @@ class _ReportsScreenState extends State<ReportsScreen>
     // Read identity before the first await: everything past this point is a
     // printer round-trip, and the screen can be popped in between.
     final AppState state = context.read<AppState>();
+    final receiptLanguage = Localizations.localeOf(context).languageCode == 'sw'
+        ? ReceiptLanguage.swahili
+        : ReceiptLanguage.english;
     final PrinterConfig config = await PrinterConfig.load();
     if (!mounted) return;
     if (!config.isConfigured) {
       showAppSnackBar(
         context,
-        message:
-            AppLocalizations.of(context).reportsPrinterOffPairFirst,
+        message: AppLocalizations.of(context).reportsPrinterOffPairFirst,
       );
       return;
     }
@@ -278,6 +339,7 @@ class _ReportsScreenState extends State<ReportsScreen>
       pricesIncludeVat: (await SharedPreferences.getInstance())
               .getBool('prices_include_vat') ??
           true,
+      receiptLanguage: receiptLanguage,
     );
     if (!mounted) return;
     if (result.printed) {
@@ -296,9 +358,8 @@ class _ReportsScreenState extends State<ReportsScreen>
     }
     showAppSnackBar(
       context,
-      message:
-          AppLocalizations.of(context).reportsPrintFailedWith(
-              printerAdviceFor(result)),
+      message: AppLocalizations.of(context)
+          .reportsPrintFailedWith(printerAdviceFor(result)),
     );
   }
 
@@ -306,6 +367,72 @@ class _ReportsScreenState extends State<ReportsScreen>
     HapticTheme.of(context).fire(HapticEvent.commit);
     _reprint(sale);
   }
+
+  Future<void> _reprintZReport(ShiftReportRow row) async {
+    final snapshot = row.snapshot;
+    if (snapshot == null) return;
+    final config = await PrinterConfig.load();
+    if (!mounted) return;
+    final result = await ReceiptPrinter().printDocument(
+      lines: buildShiftReportLines(snapshot),
+      config: config,
+    );
+    if (!mounted) return;
+    showAppSnackBar(
+      context,
+      message: result.printed
+          ? 'Z report #${snapshot.reportNumber} reprinted'
+          : result.outcome == PrintOutcome.disabled
+              ? AppLocalizations.of(context).reportsPrinterOff
+              : 'Z report could not be printed: ${printerAdviceFor(result)}',
+    );
+  }
+
+  Future<void> _viewZReport(ShiftReportRow row) async {
+    final ShiftReportSnapshot? report = row.snapshot;
+    if (report == null || !mounted) return;
+    await showDialog<void>(
+      context: context,
+      builder: (BuildContext context) => AlertDialog(
+        title: Text('Z report #${report.reportNumber}'),
+        content: SingleChildScrollView(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            mainAxisSize: MainAxisSize.min,
+            children: <Widget>[
+              _reportMetric('Sales', '${report.saleCount}'),
+              _reportMetric('Taxable sales', formatMoney(report.taxable)),
+              _reportMetric('VAT captured', formatMoney(report.vat)),
+              _reportMetric('eTIMS issued', '${report.etimsIssued}'),
+              _reportMetric('eTIMS pending', '${report.etimsPending}'),
+              _reportMetric('eTIMS rejected', '${report.etimsRejected}'),
+              const Divider(),
+              Text(
+                report.kraActivated
+                    ? 'KRA comparison is available for this report.'
+                    : 'KRA comparison unavailable: KRA eTIMS is not activated. '
+                        'These are local VAT figures, not a filing.',
+              ),
+            ],
+          ),
+        ),
+        actions: <Widget>[
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('Done'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _reportMetric(String label, String value) => Padding(
+        padding: const EdgeInsets.only(bottom: 8),
+        child: Row(
+          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+          children: <Widget>[Text(label), Text(value)],
+        ),
+      );
 
   Future<void> _exportFromShift(Shift shift) async {
     HapticTheme.of(context).fire(HapticEvent.commit);
@@ -408,6 +535,23 @@ class _ReportsScreenState extends State<ReportsScreen>
             _ReportsActions(
               onOpenShift: _showShiftSummary,
               onExport: _exportSales,
+              onExportPdf: _exportPdf,
+              canExport: context
+                  .read<AppState>()
+                  .hasPermission(PermissionKey.exportData),
+            ),
+            SizedBox(height: spacing.md),
+            SegmentedButton<ReportsRange>(
+              segments: <ButtonSegment<ReportsRange>>[
+                for (final ReportsRange range in ReportsRange.values)
+                  ButtonSegment<ReportsRange>(
+                    value: range,
+                    label: Text(range.label),
+                  ),
+              ],
+              selected: <ReportsRange>{_range},
+              onSelectionChanged: (Set<ReportsRange> value) =>
+                  _setRange(value.first),
             ),
             SizedBox(height: spacing.md),
             SearchField(
@@ -420,8 +564,12 @@ class _ReportsScreenState extends State<ReportsScreen>
               rows: shifts,
               totalShifts: data.totalShifts,
               onPrint: _reprintShift,
+              onPrintReport: _reprintZReport,
+              onViewReport: _viewZReport,
               onExport: (Shift shift) => _exportFromShift(shift),
             ),
+            SizedBox(height: spacing.md),
+            _NoSaleDrawerCard(count: data.noSaleOpens),
             SizedBox(height: spacing.lg),
             _StaffTakingsCard(rows: staff),
             SizedBox(height: spacing.lg),
@@ -448,36 +596,79 @@ class _ReportsScreenState extends State<ReportsScreen>
   }
 }
 
+class _NoSaleDrawerCard extends StatelessWidget {
+  const _NoSaleDrawerCard({required this.count});
+
+  final int count;
+
+  @override
+  Widget build(BuildContext context) {
+    return SurfaceCard(
+      child: Row(
+        children: <Widget>[
+          const Icon(Icons.point_of_sale_outlined),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Text(
+              'No-sale drawer opens',
+              style: AppTypography.of(context).titleSmall,
+            ),
+          ),
+          CountBadge(count: count, noun: count == 1 ? 'open' : 'opens'),
+        ],
+      ),
+    );
+  }
+}
+
 class _ReportsActions extends StatelessWidget {
-  const _ReportsActions({required this.onOpenShift, required this.onExport});
+  const _ReportsActions({
+    required this.onOpenShift,
+    required this.onExport,
+    required this.onExportPdf,
+    required this.canExport,
+  });
 
   final Future<void> Function() onOpenShift;
   final Future<void> Function() onExport;
+  final Future<void> Function() onExportPdf;
+  final bool canExport;
 
   @override
   Widget build(BuildContext context) {
     final AppLocalizations l10n = AppLocalizations.of(context);
     final AppSpacing spacing = AppSpacing.of(context);
 
-    // Expanded rather than fixed widths, so a label that wraps at 200% text
-    // scale grows its button instead of overflowing the row.
-    return Row(
+    // Keep the primary journey side by side, then give the report export its
+    // own full-width action. Three equal buttons cannot stay legible on a
+    // compact phone or at 200% text scale.
+    return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: <Widget>[
-        Expanded(
-          child: FilledButton.icon(
-            onPressed: () => onOpenShift(),
-            icon: const Icon(Icons.receipt_long),
-            label: Text(l10n.reportsShiftAndTillSection),
-          ),
+        Row(
+          children: <Widget>[
+            Expanded(
+              child: FilledButton.icon(
+                onPressed: () => onOpenShift(),
+                icon: const Icon(Icons.receipt_long),
+                label: Text(l10n.reportsShiftAndTillSection),
+              ),
+            ),
+            SizedBox(width: spacing.sm),
+            Expanded(
+              child: OutlinedButton.icon(
+                onPressed: canExport ? () => onExport() : null,
+                icon: const Icon(Icons.ios_share),
+                label: Text(l10n.actionSendCopy),
+              ),
+            ),
+          ],
         ),
-        SizedBox(width: spacing.sm),
-        Expanded(
-          child: OutlinedButton.icon(
-            onPressed: () => onExport(),
-            icon: const Icon(Icons.ios_share),
-            label: Text(l10n.actionSendCopy),
-          ),
+        SizedBox(height: spacing.sm),
+        OutlinedButton.icon(
+          onPressed: canExport ? () => onExportPdf() : null,
+          icon: const Icon(Icons.picture_as_pdf_outlined),
+          label: const Text('PDF report'),
         ),
       ],
     );

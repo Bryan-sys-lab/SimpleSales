@@ -139,7 +139,7 @@ void main() {
 
       expect(find.textContaining('Full'), findsNothing);
       // The cup is still there: it is how the tank is sold.
-      expect(find.text('Shot · 330 ml'), findsOneWidget);
+      expect(find.text('Small cup · 330 ml'), findsOneWidget);
     });
   });
 

@@ -215,6 +215,7 @@ class CrossShopAuditReader {
     AuditAction.backupRestored,
     AuditAction.shopCreated,
     AuditAction.shopSwitched,
+    AuditAction.profileChanged,
     AuditAction.identityLinked,
   ];
 

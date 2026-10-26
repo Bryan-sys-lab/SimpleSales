@@ -33,6 +33,7 @@ import 'package:web_socket_channel/io.dart' show IOWebSocketChannel;
 import 'package:web_socket_channel/web_socket_channel.dart';
 
 import 'backend_service.dart';
+import 'app_release.dart';
 import 'oidc_service.dart';
 
 /// What changed, as far as the phone is concerned.
@@ -116,6 +117,16 @@ class LiveChannelService extends ChangeNotifier {
   /// queue of changes that arrived while it was busy, it wants the latest one.
   LiveChange? _change;
   LiveChange? get change => _change;
+
+  PlatformAnnouncement? _platformAnnouncement;
+
+  /// The newest platform announcement delivered over the live channel. Reading
+  /// consumes it so a rebuild cannot show the same message twice.
+  PlatformAnnouncement? takePlatformAnnouncement() {
+    final announcement = _platformAnnouncement;
+    _platformAnnouncement = null;
+    return announcement;
+  }
 
   /// A message from the server the UI should show, if anything went wrong.
   String? _lastError;
@@ -265,6 +276,18 @@ class LiveChannelService extends ChangeNotifier {
     final type = decoded['type'];
     if (type == 'stale' || type == 'snapshot') {
       _recordChange(decoded);
+    } else if (type == 'mpesa_incoming') {
+      // The backend deliberately sends only a signal for an incoming payment;
+      // the screen re-reads the authenticated list endpoint, just like every
+      // other live refresh. Treat it as broad so older tills do not need a new
+      // reason enum merely to stay current.
+      _recordChange(<String, dynamic>{
+        'reasons': const <String>[],
+        'at': DateTime.now().toUtc().toIso8601String(),
+      });
+    } else if (type == 'platform_announcement') {
+      _platformAnnouncement =
+          PlatformAnnouncement.tryParse(decoded['announcement']);
     } else if (type == 'error') {
       _lastError = decoded['error'] as String?;
     }

@@ -1115,6 +1115,13 @@ class ImportRowParser {
     final category =
         resolveCategory(cols.text(row, 'category') ?? section, name);
 
+    final expiryCell =
+        (cols.text(row, 'track_expiry') ?? '').trim().toLowerCase();
+    final trackExpiry = expiryCell == '1' ||
+        expiryCell == 'true' ||
+        expiryCell == 'yes' ||
+        expiryCell == 'y';
+
     // The shared validator, so an imported row can never hold a value the editor
     // would refuse to save: over-long names, negative stock, absurd sizes.
     final invalid = Product.validate(
@@ -1152,6 +1159,7 @@ class ImportRowParser {
       // wrote. Validated by the importer, which owns the database and is the only
       // place a duplicate can actually be enforced.
       primaryBarcode: barcode.isEmpty ? null : barcode,
+      trackExpiry: trackExpiry,
     );
     return warning == null
         ? ParsedRow.ok(product)

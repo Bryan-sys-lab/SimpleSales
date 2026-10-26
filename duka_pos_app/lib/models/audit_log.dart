@@ -16,6 +16,9 @@ enum AuditAction {
   barcodeKindChanged('barcode_kind_changed'),
   stockAdjusted('stock_adjusted'),
   saleRecorded('sale_recorded'),
+  creditRepayment('credit_repayment'),
+  creditAdjusted('credit_adjusted'),
+  expenseVoided('expense_voided'),
   shotCupSold('shot_cup_sold'),
   staffAdded('staff_added'),
   staffRemoved('staff_removed'),
@@ -29,9 +32,11 @@ enum AuditAction {
   backupRestored('backup_restored'),
   backupErased('backup_erased'),
   shopSwitched('shop_switched'),
+  profileChanged('profile_changed'),
   shopCreated('shop_created'),
   shiftOpened('shift_opened'),
   shiftClosed('shift_closed'),
+  drawerOpened('drawer_opened'),
   identityLinked('identity_linked'),
   ownerPinReset('owner_pin_reset'),
   accountDeleted('account_deleted'),
@@ -60,10 +65,12 @@ enum AuditAction {
 /// touched this product" a single query rather than a scan.
 enum AuditEntity {
   product('product'),
+  customer('customer'),
   variant('variant'),
   barcode('barcode'),
   staff('staff'),
   sale('sale'),
+  expense('expense'),
   settings('settings'),
   backup('backup'),
   workspace('workspace'),
@@ -187,6 +194,7 @@ class AuditLogQuery {
     this.actorId,
     this.actions,
     this.since,
+    this.until,
     this.limit = 200,
   });
 
@@ -198,6 +206,10 @@ class AuditLogQuery {
   /// Inclusive lower bound, ISO-8601. Null means "from the start", which is
   /// only safe because the index orders newest-first.
   final String? since;
+
+  /// Exclusive upper bound, ISO-8601. Keeping the report window half-open
+  /// prevents an event at the next report boundary from appearing twice.
+  final String? until;
 
   final int limit;
 }

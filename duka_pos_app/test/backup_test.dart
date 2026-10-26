@@ -136,6 +136,7 @@ void main() {
     double cost = 120,
     double sell = 180,
     double stock = 24,
+    String? imagePath,
   }) =>
       Product(
         id: 0,
@@ -145,6 +146,7 @@ void main() {
         sellPrice: Money.fromMajor(sell),
         stockQty: stock,
         reorderLevel: 6,
+        imagePath: imagePath,
         updatedAt: DateTime.now().toIso8601String(),
       );
 
@@ -167,6 +169,32 @@ void main() {
   }
 
   group('encrypted backup round trip', () {
+    test('portable format derives from a passphrase and verifies its manifest',
+        () async {
+      final clear = utf8.encode('portable catalogue bytes');
+      final payload = await EncryptedBackupService.buildPortablePayload(
+        clearBytes: clear,
+        passphrase: 'correct horse battery staple',
+      );
+      final decoded = await EncryptedBackupService.decryptPortableBytes(
+        encodedBytes: utf8.encode(payload),
+        passphrase: 'correct horse battery staple',
+      );
+      expect(decoded, clear);
+      expect(
+        () => EncryptedBackupService.decryptPortableBytes(
+          encodedBytes: utf8.encode(payload),
+          passphrase: 'wrong passphrase',
+        ),
+        throwsA(isA<Exception>()),
+      );
+      final header = jsonDecode(payload) as Map;
+      expect(header['format'], 'duka-encrypted-backup-v2');
+      expect(header['kdf'], 'pbkdf2-sha256');
+      expect(header['iterations'], greaterThanOrEqualTo(600000));
+      expect(header['manifest'], isA<Map>());
+    }, timeout: const Timeout(Duration(minutes: 2)));
+
     test('a saved catalogue returns from the bytes exactly as it left',
         () async {
       // Three products, including one at zero stock: a dropped row or a zero
@@ -318,6 +346,15 @@ void main() {
               'once encrypted');
     });
 
+    test('the cloud backup envelope is ciphertext and restores on this device',
+        () async {
+      final clear = utf8.encode('{"format":"duka-full-snapshot-v1"}');
+      final envelope = await EncryptedBackupService.encryptBytes(clear);
+      expect(envelope, isNot(contains('duka-full-snapshot-v1')));
+      expect(await EncryptedBackupService.decryptBytes(utf8.encode(envelope)),
+          clear);
+    });
+
     test('the key is generated once and reused', () async {
       // A new key per run would make last week's backup undecryptable, which is
       // the quietest possible way for a backup scheme to fail.
@@ -325,6 +362,69 @@ void main() {
       final second = await EncryptedBackupService.keyBytesForTest();
       expect(second, first);
       expect(keystore.values.containsKey('duka_backup_key_v1'), isTrue);
+    });
+  });
+
+  group('full snapshot recovery', () {
+    test('replacement restore keeps the eTIMS receipt sequence contiguous',
+        () async {
+      await db.setTillCode('T1');
+      final productId = await db.upsertProduct(product(stock: 10));
+      Future<void> sale() => db.recordSale(
+            staffName: 'Amina',
+            paymentMethod: 'cash',
+            items: <SaleItem>[
+              SaleItem(
+                saleId: 0,
+                productId: productId,
+                productName: 'Tusker 500ml',
+                qty: 1,
+                unitPrice: Money.fromMajor(180),
+                unitCost: Money.fromMajor(120),
+              ),
+            ],
+          );
+      await sale();
+      final snapshot = await db.exportFullSnapshot();
+      await db.restoreFullSnapshot(
+        <String, Object?>{...snapshot, 'workspaceKey': 'replacement-phone'},
+        allowWorkspaceMismatch: true,
+      );
+      await sale();
+
+      final rows = await (await db.database).query(
+        'sales',
+        columns: <String>['receipt_number'],
+        orderBy: 'id ASC',
+      );
+      expect(rows.map((row) => row['receipt_number']),
+          <Object?>['T1-000001', 'T1-000002']);
+    });
+
+    test('a failed media swap restores files and leaves the database alone',
+        () async {
+      final oldFile = File('${docs.path}/product_photos/first.jpg')
+        ..parent.createSync(recursive: true);
+      await oldFile.writeAsBytes(<int>[1, 2, 3], flush: true);
+      await File('${docs.path}/conflict').writeAsBytes(<int>[9], flush: true);
+      final productId = await db.upsertProduct(product(
+        imagePath: 'product_photos/first.jpg',
+      ));
+      await db.setSetting('media_restore_marker', 'current');
+      final snapshot = await db.exportFullSnapshot();
+      await db.setSetting('media_restore_marker', 'changed');
+      final broken = <String, Object?>{
+        ...snapshot,
+        'media': <Object?>[
+          <String, String>{'path': 'product_photos/first.jpg', 'bytes': 'BA=='},
+          <String, String>{'path': 'conflict/blocked.jpg', 'bytes': 'BQ=='},
+        ],
+      };
+
+      await expectLater(db.restoreFullSnapshot(broken), throwsA(anything));
+      expect(await oldFile.readAsBytes(), <int>[1, 2, 3]);
+      expect(await db.getSetting('media_restore_marker'), 'changed');
+      expect((await db.getProducts()).single.id, productId);
     });
   });
 

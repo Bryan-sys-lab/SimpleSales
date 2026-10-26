@@ -11,6 +11,7 @@ import '../routing/routes.dart';
 import '../services/analytics.dart';
 import '../app_brand.dart';
 import '../services/app_state.dart';
+import '../services/roles.dart';
 import '../services/live_channel_service.dart';
 import '../services/live_refresh_mixin.dart';
 import '../services/session_refresh_mixin.dart';
@@ -59,6 +60,8 @@ final class _DashboardReady extends _DashboardState {
     required this.greeting,
     required this.openShift,
     required this.expectedTill,
+    this.creditOwedMinor = 0,
+    this.creditCustomerCount = 0,
   });
 
   final DailyTotals totals;
@@ -77,6 +80,8 @@ final class _DashboardReady extends _DashboardState {
 
   final Shift? openShift;
   final Money expectedTill;
+  final int creditOwedMinor;
+  final int creditCustomerCount;
 }
 
 class _DashboardScreenState extends State<DashboardScreen>
@@ -131,7 +136,10 @@ class _DashboardScreenState extends State<DashboardScreen>
 
     try {
       final DatabaseHelper db = DatabaseHelper.instance;
-      final bool ownOnly = !appState.canManageStock;
+      // Stock access and sales visibility are separate permissions. A cashier
+      // may be granted stock-receiving without being granted the whole shop's
+      // financial view.
+      final bool ownOnly = !appState.seesAllSales;
       // A cashier's own figures only. An id that cannot be resolved scopes to
       // NOBODY: the name lookup returns nothing for a name that matches no
       // roster row or two of them, and null means "no filter" to every scoped
@@ -159,6 +167,9 @@ class _DashboardScreenState extends State<DashboardScreen>
       final DailyTotals totalsToday =
           await db.salesTotalsFor(since: dayStart, staffId: staffId);
       final DailyTotals totalsAll = await db.salesTotalsFor(staffId: staffId);
+      final creditSummary = ownOnly
+          ? (totalOwedMinor: 0, customerCount: 0)
+          : await db.creditSummary();
 
       if (!_current(serial, session, appState)) return;
       if (products.isEmpty && !totalsAll.hasSales) {
@@ -190,6 +201,8 @@ class _DashboardScreenState extends State<DashboardScreen>
             ),
             openShift: shift,
             expectedTill: Money.zero,
+            creditOwedMinor: creditSummary.totalOwedMinor,
+            creditCustomerCount: creditSummary.customerCount,
           );
         });
         if (shift == null) return;
@@ -209,6 +222,8 @@ class _DashboardScreenState extends State<DashboardScreen>
               greeting: ready.greeting,
               openShift: ready.openShift,
               expectedTill: expected,
+              creditOwedMinor: ready.creditOwedMinor,
+              creditCustomerCount: ready.creditCustomerCount,
             ));
         return;
       }
@@ -258,6 +273,8 @@ class _DashboardScreenState extends State<DashboardScreen>
           ),
           openShift: shift,
           expectedTill: Money.zero,
+          creditOwedMinor: creditSummary.totalOwedMinor,
+          creditCustomerCount: creditSummary.customerCount,
         );
       });
 
@@ -278,6 +295,8 @@ class _DashboardScreenState extends State<DashboardScreen>
             greeting: ready.greeting,
             openShift: ready.openShift,
             expectedTill: expected,
+            creditOwedMinor: ready.creditOwedMinor,
+            creditCustomerCount: ready.creditCustomerCount,
           ));
     } catch (_) {
       if (!_current(serial, session, appState)) return;
@@ -563,6 +582,16 @@ class _DashboardContent extends StatelessWidget {
       onViewAll: onOpenInventory,
     );
 
+    final bool canManageCredit =
+        appState.isOwnerSession || appState.role == ShopRole.manager;
+    final Widget? credit = canManageCredit
+        ? DashboardCreditCard(
+            owedMinor: data.creditOwedMinor,
+            customerCount: data.creditCustomerCount,
+            onOpen: () => context.push(Routes.customers),
+          )
+        : null;
+
     return RefreshIndicator(
       onRefresh: onRefresh,
       child: AdaptivePage(
@@ -598,7 +627,7 @@ class _DashboardContent extends StatelessWidget {
                           child: Column(
                             crossAxisAlignment: CrossAxisAlignment.stretch,
                             children: _spaced(
-                              <Widget?>[shift, reorder],
+                              <Widget?>[shift, credit, reorder],
                               gap,
                             ),
                           ),
@@ -607,7 +636,7 @@ class _DashboardContent extends StatelessWidget {
                     ),
                   ]
                 : _spaced(
-                    <Widget?>[shift, sales, topProducts, reorder],
+                    <Widget?>[shift, credit, sales, topProducts, reorder],
                     gap,
                   );
 
@@ -641,6 +670,7 @@ class _DashboardContent extends StatelessWidget {
                       // by whom — so the card opens the list that answers it.
                       onTransactions: () => context.push(Routes.transactions),
                     ),
+                    credit,
                   ],
                   gap,
                 ),

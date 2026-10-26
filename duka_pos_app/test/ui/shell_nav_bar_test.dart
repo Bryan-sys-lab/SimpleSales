@@ -207,6 +207,7 @@ void main() {
     testWidgets('is a small support icon, not a chat bubble',
         (WidgetTester tester) async {
       tester.useDevice(Device.small);
+      final SemanticsHandle semantics = tester.ensureSemantics();
 
       await tester.pumpApp(
         home: Scaffold(
@@ -225,6 +226,12 @@ void main() {
       // thing that made it read as a floating widget in the corner.
       expect(find.byIcon(Icons.support_agent_outlined), findsOneWidget);
       expect(find.byIcon(Icons.chat_bubble_outline), findsNothing);
+      expect(find.bySemanticsLabel('Support'), findsOneWidget);
+      expect(tester.getSize(find.byType(SupportAction)).width,
+          greaterThanOrEqualTo(48));
+      expect(tester.getSize(find.byType(SupportAction)).height,
+          greaterThanOrEqualTo(48));
+      semantics.dispose();
     });
 
     testWidgets('opens the support page when tapped',

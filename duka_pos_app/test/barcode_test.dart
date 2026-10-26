@@ -340,4 +340,18 @@ void main() {
           reason: 'the listener is the focused field\'s ancestor');
     });
   });
+
+  group('internal labels', () {
+    test('generates a valid restricted-circulation EAN-13', () {
+      final code = Barcode.internalEan13(itemNumber: 42, storeNumber: 7);
+      expect(code, '2000070000427');
+      expect(code.length, 13);
+      expect(Barcode.isValid(code), isTrue);
+    });
+
+    test('rejects values that cannot fit the label payload', () {
+      expect(() => Barcode.internalEan13(itemNumber: 1000000), throwsArgumentError);
+      expect(() => Barcode.internalEan13(itemNumber: 1, storeNumber: 10000), throwsArgumentError);
+    });
+  });
 }

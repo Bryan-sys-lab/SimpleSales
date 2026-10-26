@@ -48,6 +48,7 @@ import 'package:duka_pos/l10n/generated/app_localizations.dart';
 import 'package:duka_pos/models/models.dart';
 import 'package:duka_pos/screens/tank_form_sheet.dart';
 import 'package:duka_pos/utils/money.dart';
+import 'package:duka_pos/utils/units.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:sqflite_common_ffi/sqflite_ffi.dart';
@@ -106,8 +107,8 @@ void main() {
       await tester.pumpApp(home: const Scaffold(body: TankFormSheet()));
       await tester.pumpAndSettle();
 
-      for (final EditableText field in tester
-          .widgetList<EditableText>(find.byType(EditableText))) {
+      for (final EditableText field
+          in tester.widgetList<EditableText>(find.byType(EditableText))) {
         expect(
           field.controller.text,
           isEmpty,
@@ -218,7 +219,8 @@ void main() {
       // real file I/O never completes, which is why this file keeps the two
       // apart.
       expect(find.textContaining('Only numbers'), findsNothing);
-      expect(find.text('Write the price for one cup. Only numbers.'), findsNothing);
+      expect(find.text('Write the price for one cup. Only numbers.'),
+          findsNothing);
     });
   });
 
@@ -227,8 +229,10 @@ void main() {
       final db = await DatabaseHelper.instance.database;
       await saveTank(db, tank());
 
-      final List<Product> products = await DatabaseHelper.instance.getProducts();
-      expect(products, hasLength(1), reason: 'a tank is one drum, not a tap each');
+      final List<Product> products =
+          await DatabaseHelper.instance.getProducts();
+      expect(products, hasLength(1),
+          reason: 'a tank is one drum, not a tap each');
 
       final Product soda = products.single;
       expect(soda.name, 'Soda');
@@ -237,8 +241,12 @@ void main() {
       expect(soda.sellsWhole, isFalse,
           reason: 'this is the gate the till reads to hide "the whole thing"');
       expect(soda.stockQty, 2, reason: 'stock is counted in tanks');
+      expect(soda.unit, ProductUnit.cup,
+          reason: 'a synced tank remains a pourable product on other tills');
       expect(soda.costPrice, Money.fromMajor(10000));
       expect(soda.bottleMl, 50000);
+      expect(await DatabaseHelper.instance.findLedgerDifferences(), isEmpty,
+          reason: 'a newly-created tank must start with a ledger baseline');
     });
 
     test('a cup with no size is stored as zero, which means "not measured"',
@@ -257,6 +265,65 @@ void main() {
       expect(cups.single.label, 'Glass');
     });
 
+    test('manual receiving adds whole tanks and keeps their cup setup',
+        () async {
+      final db = await DatabaseHelper.instance.database;
+      await saveTank(db, tank(tankCount: 1));
+
+      final Product before =
+          (await DatabaseHelper.instance.getProducts()).single;
+      await DatabaseHelper.instance.postStockReceipt(
+        lines: <StockReceiptLine>[
+          StockReceiptLine(
+            productId: before.id!,
+            productName: before.name,
+            qty: 3,
+            unitCost: Money.fromMajor(11000),
+          ),
+        ],
+        staffName: 'Water seller',
+        costingMode: 'last_cost',
+      );
+
+      final Product after =
+          (await DatabaseHelper.instance.getProducts()).single;
+      expect(after.stockQty, 4,
+          reason: 'receiving three drums adds three drums, not cups');
+      expect(after.costPrice, Money.fromMajor(11000));
+      expect(after.unit, ProductUnit.cup);
+      expect((await DatabaseHelper.instance.getShotCups()), hasLength(2));
+    });
+
+    test('a new tank can start empty and be restocked manually', () async {
+      final db = await DatabaseHelper.instance.database;
+      await saveTank(db, tank(tankCount: 0));
+
+      final Product before =
+          (await DatabaseHelper.instance.getProducts()).single;
+      expect(before.stockQty, 0);
+      expect((await DatabaseHelper.instance.getShotCups()), hasLength(2));
+
+      await DatabaseHelper.instance.postStockReceipt(
+        lines: <StockReceiptLine>[
+          StockReceiptLine(
+            productId: before.id!,
+            productName: before.name,
+            qty: 2,
+            unitCost: Money.fromMajor(10000),
+          ),
+        ],
+        staffName: 'Water seller',
+        costingMode: 'last_cost',
+      );
+
+      final Product after =
+          (await DatabaseHelper.instance.getProducts()).single;
+      expect(after.stockQty, 2);
+      expect(after.unit, ProductUnit.cup);
+      expect((await DatabaseHelper.instance.getShotCups()), hasLength(2));
+      expect(await DatabaseHelper.instance.findLedgerDifferences(), isEmpty);
+    });
+
     test('each cup is written with its own price and size', () async {
       final db = await DatabaseHelper.instance.database;
       await saveTank(db, tank());
@@ -266,10 +333,12 @@ void main() {
           .where((ShotCup c) => c.productId == soda.id)
           .toList();
       expect(cups, hasLength(2));
-      expect(cups.map((ShotCup c) => c.label), containsAll(<String>[
-        'Small cup',
-        'Big cup',
-      ]));
+      expect(
+          cups.map((ShotCup c) => c.label),
+          containsAll(<String>[
+            'Small cup',
+            'Big cup',
+          ]));
       expect(
         cups.map((ShotCup c) => c.price),
         containsAll(<Money>[Money.fromMajor(50), Money.fromMajor(80)]),
@@ -285,8 +354,7 @@ void main() {
       const int tankCostMinor = 1000000; // KSh 10,000
       const int cupMl = 500;
       final double fraction = cupMl / capacityMl;
-      final Money cupCost =
-          Money.fromMinor((tankCostMinor * fraction).round());
+      final Money cupCost = Money.fromMinor((tankCostMinor * fraction).round());
       expect(cupCost, Money.fromMajor(100));
       expect(Money.fromMajor(80) - cupCost, Money.fromMajor(-20),
           reason: 'a cup priced under its share of the drum loses money — '

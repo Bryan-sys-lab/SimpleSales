@@ -37,6 +37,8 @@ class AppColors extends ThemeExtension<AppColors> {
     required this.dangerContainer,
     required this.onDangerContainer,
     required this.info,
+    required this.infoContainer,
+    required this.onInfoContainer,
     required this.scrim,
     required this.shadow,
     required this.mediaScrim,
@@ -114,6 +116,8 @@ class AppColors extends ThemeExtension<AppColors> {
 
   /// Info semantic color.
   final Color info;
+  final Color infoContainer;
+  final Color onInfoContainer;
 
   /// Modal barrier. A scrim, not a colour with meaning.
   final Color scrim;
@@ -192,6 +196,8 @@ class AppColors extends ThemeExtension<AppColors> {
         dangerContainer = Primitives.red95Light,
         onDangerContainer = Primitives.red42Light,
         info = Primitives.blue47Light,
+        infoContainer = Primitives.blue95Light,
+        onInfoContainer = Primitives.blue35Light,
         scrim = Primitives.scrimInk60,
         shadow = Primitives.shadowInk10,
         mediaScrim = Primitives.scrimNight70,
@@ -230,6 +236,8 @@ class AppColors extends ThemeExtension<AppColors> {
         dangerContainer = Primitives.red22Dark,
         onDangerContainer = Primitives.red92Dark,
         info = Primitives.blue66,
+        infoContainer = Primitives.blue22Dark,
+        onInfoContainer = Primitives.blue90Dark,
         scrim = Primitives.scrimNight70,
         shadow = Primitives.shadowNight40,
         mediaScrim = Primitives.scrimNight70,
@@ -265,6 +273,8 @@ class AppColors extends ThemeExtension<AppColors> {
     Color? dangerContainer,
     Color? onDangerContainer,
     Color? info,
+    Color? infoContainer,
+    Color? onInfoContainer,
     Color? scrim,
     Color? shadow,
     Color? mediaScrim,
@@ -299,6 +309,8 @@ class AppColors extends ThemeExtension<AppColors> {
       dangerContainer: dangerContainer ?? this.dangerContainer,
       onDangerContainer: onDangerContainer ?? this.onDangerContainer,
       info: info ?? this.info,
+      infoContainer: infoContainer ?? this.infoContainer,
+      onInfoContainer: onInfoContainer ?? this.onInfoContainer,
       scrim: scrim ?? this.scrim,
       shadow: shadow ?? this.shadow,
       mediaScrim: mediaScrim ?? this.mediaScrim,
@@ -345,6 +357,8 @@ class AppColors extends ThemeExtension<AppColors> {
       dangerContainer: mix(dangerContainer, other.dangerContainer),
       onDangerContainer: mix(onDangerContainer, other.onDangerContainer),
       info: mix(info, other.info),
+      infoContainer: mix(infoContainer, other.infoContainer),
+      onInfoContainer: mix(onInfoContainer, other.onInfoContainer),
       scrim: mix(scrim, other.scrim),
       shadow: mix(shadow, other.shadow),
       mediaScrim: mix(mediaScrim, other.mediaScrim),
@@ -384,6 +398,8 @@ class AppColors extends ThemeExtension<AppColors> {
           other.dangerContainer == dangerContainer &&
           other.onDangerContainer == onDangerContainer &&
           other.info == info &&
+          other.infoContainer == infoContainer &&
+          other.onInfoContainer == onInfoContainer &&
           other.scrim == scrim &&
           other.shadow == shadow &&
           other.mediaScrim == mediaScrim &&
@@ -419,6 +435,8 @@ class AppColors extends ThemeExtension<AppColors> {
         dangerContainer,
         onDangerContainer,
         info,
+        infoContainer,
+        onInfoContainer,
         scrim,
         shadow,
         mediaScrim,

@@ -40,8 +40,6 @@
 
 import 'package:flutter/material.dart';
 
-import '../../theme/app_colors.dart';
-import '../../theme/app_motion.dart';
 import '../../theme/app_spacing.dart';
 import '../../ui/components/controls.dart';
 
@@ -85,37 +83,14 @@ void showOperationFailure(
   String? retryLabel,
 }) {
   if (!context.mounted) return;
-  final AppColors colors = AppColors.of(context);
-  final AppMotion motion = AppMotion.of(context);
-  final ScaffoldMessengerState messenger = ScaffoldMessenger.of(context);
-  final bool slow = MediaQuery.accessibleNavigationOf(context);
-
-  messenger.clearSnackBars();
-  messenger.showSnackBar(
-    SnackBar(
-      // A failure is RED, and it says so in words too: the colour is never
-      // the only channel. Colour-blindness is not the reason; a red bar at
-      // the bottom of a bright till screen is easy to miss, and a person who
-      // missed it never learns the import failed.
-      backgroundColor: colors.danger,
-      content: Text(
-        <String?>[title, message, detail]
-            .where((String? part) => part != null && part.trim().isNotEmpty)
-            .join(' · '),
-        style: TextStyle(color: colors.onDangerContainer),
-      ),
-      // Longer than a success: a failure is the one thing on a till that the
-      // owner may have to deal with.
-      duration: slow
-          ? motion.feedbackExtended
-          : (onRetry == null ? motion.feedbackExtended : motion.feedbackBrief),
-      action: (onRetry == null)
-          ? null
-          : SnackBarAction(
-              label: retryLabel ?? 'Try again',
-              onPressed: onRetry,
-            ),
-    ),
+  showAppSnackBar(
+    context,
+    message: <String?>[title, message, detail]
+        .where((String? part) => part != null && part.trim().isNotEmpty)
+        .join(' · '),
+    tone: AppNoticeTone.error,
+    actionLabel: onRetry == null ? null : (retryLabel ?? 'Try again'),
+    onAction: onRetry,
   );
 }
 

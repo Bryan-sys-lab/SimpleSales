@@ -5,7 +5,22 @@ import 'package:intl/intl.dart';
 
 import '../l10n/generated/app_localizations.dart';
 import '../models/models.dart';
+import '../models/stock_movement.dart';
 import '../utils/money.dart';
+
+/// Remote shop aggregates are authoritative only for an owner with a verified
+/// identity and no local operational queue waiting to upload. A pending
+/// expense, return, receipt, or stock movement can make a remote net-profit or
+/// stock-derived figure stale even when the sales queue itself is empty.
+bool remoteAnalyticsIsAuthoritative({
+  required int? staffId,
+  required bool identityVerified,
+  required Map<String, int> pendingOperational,
+}) {
+  return staffId == null &&
+      identityVerified &&
+      pendingOperational.values.every((count) => count == 0);
+}
 
 /// The shapes an aggregated query returns, and the pure arithmetic that turns
 /// them into something a screen can show.
@@ -39,6 +54,9 @@ class DailyTotals {
     required this.profitMinor,
     required this.transactions,
     required this.averageMinor,
+    this.expensesMinor = 0,
+    this.vatMinor = 0,
+    this.taxableMinor = 0,
   });
 
   /// What an empty range aggregates to, rather than the NULL that `SUM`
@@ -68,8 +86,19 @@ class DailyTotals {
   /// KSh 10.00, which is the direction that hides revenue.
   final int averageMinor;
 
+  /// Posted operating expenses in the same range and staff scope.
+  final int expensesMinor;
+
+  /// VAT captured in the line-level tax snapshot for this window.
+  final int vatMinor;
+
+  /// VAT-exclusive taxable amount captured in the same line snapshot.
+  final int taxableMinor;
+
   Money get total => Money.fromMinor(totalMinor);
   Money get profit => Money.fromMinor(profitMinor);
+
+  Money get netProfit => Money.fromMinor(profitMinor - expensesMinor);
 
   /// Mean basket size — "what does a typical customer spend".
   Money get averageBasket => Money.fromMinor(averageMinor);
@@ -82,7 +111,71 @@ class DailyTotals {
   /// `double` is deliberate and terminal — a margin is a ratio, not an amount.
   double get marginPct =>
       totalMinor <= 0 ? 0 : (profitMinor / totalMinor) * 100;
+
+  double get netMarginPct =>
+      totalMinor <= 0 ? 0 : ((profitMinor - expensesMinor) / totalMinor) * 100;
 }
+
+/// The bounded online equivalent of [DailyTotals]. The local database remains
+/// the first source; this is used only when a device has no local ledger for a
+/// linked shop.
+@immutable
+class RemoteSalesSummary {
+  const RemoteSalesSummary({
+    required this.totals,
+    required this.payments,
+    this.days = const <DateBucket>[],
+  });
+
+  final DailyTotals totals;
+  final List<PaymentMixRow> payments;
+  final List<DateBucket> days;
+
+  factory RemoteSalesSummary.fromJson(Map<String, dynamic> json) {
+    final totals = (json['totals'] as Map?)?.cast<String, dynamic>() ??
+        const <String, dynamic>{};
+    final rawPayments = json['paymentMix'] as List? ?? const <dynamic>[];
+    final rawDays = json['daily'] as List? ?? const <dynamic>[];
+    return RemoteSalesSummary(
+      totals: DailyTotals(
+        totalMinor: _intValue(totals['total']),
+        profitMinor: _intValue(totals['profit']),
+        expensesMinor: _intValue(totals['expensesMinor']),
+        transactions: _intValue(totals['count']),
+        averageMinor: _intValue(totals['count']) == 0
+            ? 0
+            : (_intValue(totals['total']) / _intValue(totals['count'])).round(),
+        vatMinor: _intValue(totals['vatMinor']),
+        taxableMinor: _intValue(totals['taxableMinor']),
+      ),
+      payments: rawPayments
+          .whereType<Map>()
+          .map((row) => PaymentMixRow(
+                method: row['method'] as String? ?? 'cash',
+                salesMinor: _intValue(row['sales']),
+                transactions: _intValue(row['transactions']),
+              ))
+          .toList(),
+      days: rawDays.whereType<Map>().map((row) {
+        final day = row['day'] as String? ?? '';
+        return DateBucket(
+          day: day,
+          label: DateBucket.fromDay(day).label,
+          salesMinor: _intValue(row['sales']),
+          profitMinor: _intValue(row['profit']),
+          transactions: _intValue(row['transactions']),
+        );
+      }).toList(),
+    );
+  }
+}
+
+int _intValue(Object? value) => switch (value) {
+      final int v => v,
+      final double v => v.round(),
+      final String v => int.tryParse(v) ?? 0,
+      _ => 0,
+    };
 
 // ---------------------------------------------------------------------------
 // Per-product
@@ -97,9 +190,11 @@ class ProductSalesRow {
     required this.units,
     required this.revenueMinor,
     required this.profitMinor,
+    this.remoteId,
   });
 
   final int productId;
+  final String? remoteId;
 
   /// The name carried on the sale lines, not a join against `products`.
   ///
@@ -129,6 +224,365 @@ class ProductSalesRow {
   /// sold at zero margin rather than that it has no margin to report.
   String get marginLabel =>
       revenueMinor <= 0 ? '—' : '${marginPct.toStringAsFixed(0)}%';
+}
+
+@immutable
+class SlowMoverRow {
+  const SlowMoverRow({
+    required this.product,
+    required this.unitsPerDay,
+  });
+
+  final Product product;
+  final double unitsPerDay;
+}
+
+/// Sales coverage for products with a recorded cost. A zero cost is treated as
+/// missing data, never as a genuine zero-cost product.
+@immutable
+class CostCoverage {
+  const CostCoverage({
+    required this.coveredRevenueMinor,
+    required this.totalRevenueMinor,
+    required this.missingCostProductNames,
+  });
+
+  static const empty = CostCoverage(
+    coveredRevenueMinor: 0,
+    totalRevenueMinor: 0,
+    missingCostProductNames: <String>[],
+  );
+
+  final int coveredRevenueMinor;
+  final int totalRevenueMinor;
+  final List<String> missingCostProductNames;
+
+  double get percentage => totalRevenueMinor <= 0
+      ? 0
+      : (coveredRevenueMinor / totalRevenueMinor) * 100;
+
+  bool get hasMissingCosts => missingCostProductNames.isNotEmpty;
+}
+
+/// Drinks-specific facts projected from the same sale and product rows as the
+/// universal analytics screen.  This is a view model, not a second ledger.
+@immutable
+class DrinksAnalyticsSnapshot {
+  const DrinksAnalyticsSnapshot({
+    required this.litresSold,
+    required this.pourSalesMinor,
+    required this.pourCostMinor,
+    required this.measuredLines,
+    required this.openTabs,
+    required this.tanks,
+    required this.wasteLitres,
+    required this.wasteValueMinor,
+    required this.dipVarianceLitres,
+  });
+
+  static const empty = DrinksAnalyticsSnapshot(
+    litresSold: 0,
+    pourSalesMinor: 0,
+    pourCostMinor: 0,
+    measuredLines: 0,
+    openTabs: 0,
+    tanks: <DrinkTankLevel>[],
+    wasteLitres: 0,
+    wasteValueMinor: 0,
+    dipVarianceLitres: 0,
+  );
+
+  final double litresSold;
+  final int pourSalesMinor;
+  final int pourCostMinor;
+  final int measuredLines;
+  final int openTabs;
+  final List<DrinkTankLevel> tanks;
+  final double wasteLitres;
+  final int wasteValueMinor;
+  final double dipVarianceLitres;
+
+  Money get pourSales => Money.fromMinor(pourSalesMinor);
+  Money get pourCost => Money.fromMinor(pourCostMinor);
+  Money get wasteValue => Money.fromMinor(wasteValueMinor);
+  double get pourCostPercent =>
+      pourSalesMinor <= 0 ? 0 : pourCostMinor / pourSalesMinor * 100;
+  double get litresRemaining =>
+      tanks.fold<double>(0, (sum, tank) => sum + tank.litresRemaining);
+}
+
+@immutable
+class DrinkTankLevel {
+  const DrinkTankLevel({
+    required this.name,
+    required this.litresRemaining,
+    required this.tankCount,
+  });
+
+  final String name;
+  final double litresRemaining;
+  final double tankCount;
+}
+
+CostCoverage costCoverageFor(
+  List<ProductSalesRow> sales,
+  List<Product> products,
+) {
+  final byId = <int, Product>{
+    for (final product in products)
+      if (product.id != null) product.id!: product,
+  };
+  var total = 0;
+  var covered = 0;
+  for (final row in sales) {
+    total += row.revenueMinor;
+    if ((byId[row.productId]?.costPrice.minorUnits ?? 0) > 0) {
+      covered += row.revenueMinor;
+    }
+  }
+  final missing = products
+      .where((product) => product.costPrice.minorUnits <= 0)
+      .toList()
+    ..sort((a, b) => a.name.toLowerCase().compareTo(b.name.toLowerCase()));
+  return CostCoverage(
+    coveredRevenueMinor: covered,
+    totalRevenueMinor: total,
+    missingCostProductNames: [for (final product in missing) product.name],
+  );
+}
+
+@immutable
+class RemoteProductReport {
+  const RemoteProductReport({
+    required this.products,
+    this.drilldown,
+    this.costCoverage,
+  });
+
+  final List<ProductSalesRow> products;
+  final ProductDrilldownSnapshot? drilldown;
+  final CostCoverage? costCoverage;
+
+  factory RemoteProductReport.fromJson(Map<String, dynamic> json) {
+    final rows = (json['products'] as List? ?? const <dynamic>[])
+        .whereType<Map>()
+        .map((row) => ProductSalesRow(
+              productId: -1,
+              remoteId: row['product_id'] as String?,
+              productName: row['product_name'] as String? ?? 'Unnamed product',
+              units: _numberValue(row['units']),
+              revenueMinor: _intValue(row['net_sales']),
+              profitMinor: _intValue(row['gross_profit']),
+            ))
+        .toList();
+    final productId = json['products'] is List &&
+            (json['products'] as List).isNotEmpty
+        ? (((json['products'] as List).first as Map?)?['product_id']) as String?
+        : null;
+    final rawCoverage = json['costCoverage'];
+    final coverage = rawCoverage is Map
+        ? CostCoverage(
+            coveredRevenueMinor: _intValue(rawCoverage['coveredRevenueMinor']),
+            totalRevenueMinor: _intValue(rawCoverage['totalRevenueMinor']),
+            missingCostProductNames:
+                (rawCoverage['missingCostProductNames'] as List? ?? const [])
+                    .whereType<String>()
+                    .toList(),
+          )
+        : null;
+    if (productId == null ||
+        json['staff'] is! List ||
+        json['payments'] is! List) {
+      return RemoteProductReport(products: rows, costCoverage: coverage);
+    }
+    final product = rows.first;
+    return RemoteProductReport(
+      products: rows,
+      costCoverage: coverage,
+      drilldown: ProductDrilldownSnapshot(
+        product: product,
+        catalogueProduct: null,
+        totals: DailyTotals(
+          totalMinor: product.revenueMinor,
+          profitMinor: product.profitMinor,
+          transactions: _intValue(
+              ((json['products'] as List).first as Map?)?['transactions']),
+          averageMinor: 0,
+        ),
+        staff: (json['staff'] as List)
+            .whereType<Map>()
+            .map((row) => (
+                  name: row['staff_name'] as String? ?? 'Unknown staff',
+                  transactions: _intValue(row['transactions']),
+                  revenueMinor: _intValue(row['net_sales']),
+                ))
+            .toList(),
+        payments: (json['payments'] as List)
+            .whereType<Map>()
+            .map((row) => PaymentMixRow(
+                  method: row['payment_method'] as String? ?? 'cash',
+                  salesMinor: _intValue(row['net_sales']),
+                  transactions: _intValue(row['transactions']),
+                ))
+            .toList(),
+        hourly: (json['hourly'] as List? ?? const <dynamic>[])
+            .whereType<Map>()
+            .map((row) => ProductHourRow(
+                  hour: _intValue(row['hour']),
+                  units: _numberValue(row['units']),
+                  salesMinor: _intValue(row['net_sales']),
+                  transactions: _intValue(row['transactions']),
+                ))
+            .toList(),
+        daily: (json['daily'] as List? ?? const <dynamic>[])
+            .whereType<Map>()
+            .map((row) {
+          final day = row['day'] as String? ?? '';
+          return DateBucket(
+            day: day,
+            label: DateBucket.fromDay(day).label,
+            salesMinor: _intValue(row['net_sales']),
+            profitMinor: _intValue(row['gross_profit']),
+            transactions: _intValue(row['transactions']),
+          );
+        }).toList(),
+        records: (json['records'] as List? ?? const <dynamic>[])
+            .whereType<Map>()
+            .map((row) => ProductTransactionRow(
+                  saleId: row['sale_id']?.toString() ?? '',
+                  createdAt: row['created_at']?.toString() ?? '',
+                  staffName: row['staff_name'] as String? ?? 'Unknown staff',
+                  paymentMethod: row['payment_method'] as String? ?? 'cash',
+                  saleTotalMinor: _intValue(row['sale_total']),
+                  productSalesMinor: _intValue(row['product_sales']),
+                ))
+            .toList(),
+        boughtTogether: (json['companions'] as List? ?? const <dynamic>[])
+            .whereType<Map>()
+            .map((row) => ProductCompanionRow(
+                  productId: -1,
+                  productName:
+                      row['product_name'] as String? ?? 'Unknown product',
+                  baskets: _intValue(row['baskets']),
+                  units: _numberValue(row['units']),
+                ))
+            .toList(),
+        stockTimeline: (json['stockTimeline'] as List? ?? const <dynamic>[])
+            .whereType<Map>()
+            .map((row) => StockMovement.fromMap(
+                  Map<String, dynamic>.from(row),
+                ))
+            .toList(),
+      ),
+    );
+  }
+}
+
+double _numberValue(Object? value) => switch (value) {
+      final num v => v.toDouble(),
+      final String v => double.tryParse(v) ?? 0,
+      _ => 0,
+    };
+
+/// The product-level view behind the analytics drill-down.  It deliberately
+/// keeps the first slice small: the same exact aggregates used by the product
+/// list, plus the people and tenders that explain them.
+@immutable
+class ProductDrilldownSnapshot {
+  const ProductDrilldownSnapshot({
+    required this.product,
+    required this.totals,
+    required this.staff,
+    this.catalogueProduct,
+    required this.payments,
+    this.hourly = const <ProductHourRow>[],
+    this.daily = const <DateBucket>[],
+    this.records = const <ProductTransactionRow>[],
+    this.boughtTogether = const <ProductCompanionRow>[],
+    this.stockTimeline = const <StockMovement>[],
+    this.priceHistory = const <ProductPricePoint>[],
+  });
+
+  final ProductSalesRow product;
+  final Product? catalogueProduct;
+  final DailyTotals totals;
+  final List<({String name, int transactions, int revenueMinor})> staff;
+  final List<PaymentMixRow> payments;
+  final List<ProductHourRow> hourly;
+  final List<DateBucket> daily;
+  final List<ProductTransactionRow> records;
+  final List<ProductCompanionRow> boughtTogether;
+  final List<StockMovement> stockTimeline;
+  final List<ProductPricePoint> priceHistory;
+}
+
+@immutable
+class ProductPricePoint {
+  const ProductPricePoint({
+    required this.recordedAt,
+    required this.costPriceMinor,
+    required this.sellPriceMinor,
+    this.reason,
+  });
+
+  final String recordedAt;
+  final int costPriceMinor;
+  final int sellPriceMinor;
+  final String? reason;
+}
+
+@immutable
+class ProductCompanionRow {
+  const ProductCompanionRow({
+    required this.productId,
+    required this.productName,
+    required this.baskets,
+    required this.units,
+  });
+
+  final int productId;
+  final String productName;
+  final int baskets;
+  final double units;
+}
+
+@immutable
+class ProductHourRow {
+  const ProductHourRow({
+    required this.hour,
+    required this.units,
+    required this.salesMinor,
+    required this.transactions,
+  });
+
+  final int hour;
+  final double units;
+  final int salesMinor;
+  final int transactions;
+
+  Money get sales => Money.fromMinor(salesMinor);
+}
+
+@immutable
+class ProductTransactionRow {
+  const ProductTransactionRow({
+    required this.saleId,
+    required this.createdAt,
+    required this.staffName,
+    required this.paymentMethod,
+    required this.saleTotalMinor,
+    required this.productSalesMinor,
+  });
+
+  final String saleId;
+  final String createdAt;
+  final String staffName;
+  final String paymentMethod;
+  final int saleTotalMinor;
+  final int productSalesMinor;
+
+  Money get saleTotal => Money.fromMinor(saleTotalMinor);
+  Money get productSales => Money.fromMinor(productSalesMinor);
 }
 
 // ---------------------------------------------------------------------------

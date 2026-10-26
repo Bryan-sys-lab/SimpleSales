@@ -107,12 +107,18 @@ class PoweredByNerva extends StatelessWidget {
       // "Powered by Nerva" rather than the words and the mark separately.
       label: '$words ${SimplePosBrand.vendorName}',
       excludeSemantics: true,
-      child: Row(
-        mainAxisSize: MainAxisSize.min,
-        crossAxisAlignment: alignment,
+      child: Wrap(
+        alignment: WrapAlignment.center,
+        crossAxisAlignment: switch (alignment) {
+          CrossAxisAlignment.start => WrapCrossAlignment.start,
+          CrossAxisAlignment.end => WrapCrossAlignment.end,
+          _ => WrapCrossAlignment.center,
+        },
+        runAlignment: WrapAlignment.center,
+        spacing: 6,
+        runSpacing: 4,
         children: <Widget>[
           Text(words, style: style),
-          SizedBox(width: 6),
           NervaWordmark(height: wordmarkHeight),
         ],
       ),

@@ -63,6 +63,16 @@ void main() {
         expect(LiveReason.fromWire(reason.wire), reason);
       }
     });
+
+    test('an incoming M-Pesa signal uses the broad refresh path', () {
+      // The wire event carries no ledger data. Its contract is the same as a
+      // broad snapshot: re-read the authenticated endpoint.
+      final change = LiveChange(
+        reasons: const <LiveReason>[],
+        at: DateTime.utc(2026, 10, 12, 9, 30),
+      );
+      expect(change.isBroad, isTrue);
+    });
   });
 
   group('a change record', () {

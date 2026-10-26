@@ -7,6 +7,9 @@ import 'package:go_router/go_router.dart';
 import 'package:provider/provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../db/database_helper.dart';
+import '../profile/shop_profile.dart';
+import '../profile/profile_navigation.dart';
+import '../profile/profile_terminology.dart';
 import '../l10n/generated/app_localizations.dart';
 import '../utils/money.dart';
 import '../utils/datetime_format.dart';
@@ -52,6 +55,7 @@ import '../services/app_update_service.dart';
 import '../services/app_release.dart';
 import '../services/pin_reset_service.dart';
 import '../utils/pin_rules.dart';
+import 'blackbee_seed_screen.dart';
 
 class SettingsScreen extends StatefulWidget {
   const SettingsScreen({super.key});
@@ -65,13 +69,27 @@ class SettingsScreen extends StatefulWidget {
 /// together and it is not possible to have one without the other: a shop
 /// without a PIN has no way in, and a PIN without a shop has nothing to open.
 class _NewShopDetails {
-  const _NewShopDetails({required this.name, required this.pin});
+  const _NewShopDetails(
+      {required this.name, required this.pin, required this.profile});
 
   /// The shop's name, as typed.
   final String name;
 
   /// The PIN that opens THIS shop.
   final String pin;
+  final ShopProfile profile;
+}
+
+/// The PayHero channel details the owner needs to recognise the destination
+/// without putting PayHero credentials on the till.
+class _MpesaChannelDetails {
+  const _MpesaChannelDetails({
+    required this.channelType,
+    required this.merchantNumber,
+  });
+
+  final String channelType;
+  final String merchantNumber;
 }
 
 class _SettingsScreenState extends State<SettingsScreen>
@@ -98,6 +116,9 @@ class _SettingsScreenState extends State<SettingsScreen>
   String? _syncStatus;
   bool _verifyingIdentity = false;
   bool _mpesaEnabled = false;
+  int? _mpesaChannelId;
+  String _mpesaChannelType = 'Till';
+  String _mpesaMerchantNumber = '';
   bool _backendLinked = false;
   bool _automaticBackupSync = false;
   bool _savingToggle = false;
@@ -105,6 +126,22 @@ class _SettingsScreenState extends State<SettingsScreen>
   int _vatRatePercent = kDefaultVatRatePercent;
   String _tillCode = '';
   String _tin = '';
+  bool _creditEnabled = false;
+  int _creditDefaultLimitMinor = 0;
+  int _expenseApprovalLimitMinor = 500000;
+  String _creditLimitMode = 'block';
+  bool _creditCashiersAllowed = false;
+  String _creditReminderTemplate = '';
+  bool _discountsEnabled = false;
+  int _cashierDiscountPercent = 0;
+  int _managerDiscountPercent = 0;
+  bool _discountReasonRequired = false;
+  bool _discountBelowCostAllowed = false;
+  bool _cashDrawerEnabled = false;
+  bool _cashDrawerOnCashSale = false;
+  int _cashDrawerPin = 0;
+  int _cashDrawerOnMs = 50;
+  int _cashDrawerOffMs = 500;
 
   int _printerBusyCount = 0;
 
@@ -130,16 +167,72 @@ class _SettingsScreenState extends State<SettingsScreen>
     final tillCode = await db.getTillCode();
     final vatRate = await db.getVatRatePercent();
     final tin = (await db.getSetting(DatabaseHelper.settingTin)) ?? '';
+    final creditEnabled = await db.getCreditEnabled();
+    final creditLimit = await db.getCreditDefaultLimit();
+    final creditMode = await db.getCreditLimitMode();
+    final creditCashiers = await db.getCreditCashiersAllowed();
+    final creditTemplate = await db.getCreditReminderTemplate();
+    final expenseApprovalLimit = await db.getExpenseApprovalLimitMinor();
+    final discountsEnabled = await db.getDiscountsEnabled();
+    final cashierDiscountPercent = await db
+        .getDiscountPercent(DatabaseHelper.settingCashierDiscountPercent);
+    final managerDiscountPercent = await db
+        .getDiscountPercent(DatabaseHelper.settingManagerDiscountPercent);
+    final discountReasonRequired = await db.getDiscountReasonRequired();
+    final discountBelowCostAllowed = await db.getDiscountBelowCostAllowed();
+    final cashDrawerEnabled =
+        await db.getSetting(DatabaseHelper.settingCashDrawerEnabled) == '1';
+    final cashDrawerOnCashSale =
+        await db.getSetting(DatabaseHelper.settingCashDrawerOnCashSale) == '1';
+    final cashDrawerPin = int.tryParse(
+          await db.getSetting(DatabaseHelper.settingCashDrawerPin) ?? '',
+        ) ??
+        0;
+    final cashDrawerOnMs = int.tryParse(
+          await db.getSetting(DatabaseHelper.settingCashDrawerOnMs) ?? '',
+        ) ??
+        50;
+    final cashDrawerOffMs = int.tryParse(
+          await db.getSetting(DatabaseHelper.settingCashDrawerOffMs) ?? '',
+        ) ??
+        500;
+    final mpesaChannelId = int.tryParse(
+      (await db.getSetting(DatabaseHelper.settingMpesaChannelId) ?? '').trim(),
+    );
+    final mpesaChannelType =
+        (await db.getSetting(DatabaseHelper.settingMpesaChannelType))?.trim();
+    final mpesaMerchantNumber =
+        (await db.getSetting(DatabaseHelper.settingMpesaMerchantNumber))
+            ?.trim();
+    final automaticBackupSync = await AutoSyncService.enabled;
     if (!mounted) return;
     setState(() {
       _staff = staff;
       _mpesaEnabled = prefs.getBool('mpesa_enabled_local') ?? false;
-      _automaticBackupSync =
-          prefs.getBool('automatic_backup_sync_enabled') ?? false;
+      _mpesaChannelId = mpesaChannelId;
+      _mpesaChannelType = mpesaChannelType == 'Paybill' ? 'Paybill' : 'Till';
+      _mpesaMerchantNumber = mpesaMerchantNumber ?? '';
+      _automaticBackupSync = automaticBackupSync;
       _printer = printer;
       _tillCode = tillCode;
       _vatRatePercent = vatRate;
       _tin = tin;
+      _creditEnabled = creditEnabled;
+      _creditDefaultLimitMinor = creditLimit;
+      _expenseApprovalLimitMinor = expenseApprovalLimit;
+      _creditLimitMode = creditMode;
+      _creditCashiersAllowed = creditCashiers;
+      _creditReminderTemplate = creditTemplate;
+      _discountsEnabled = discountsEnabled;
+      _cashierDiscountPercent = cashierDiscountPercent;
+      _managerDiscountPercent = managerDiscountPercent;
+      _discountReasonRequired = discountReasonRequired;
+      _discountBelowCostAllowed = discountBelowCostAllowed;
+      _cashDrawerEnabled = cashDrawerEnabled;
+      _cashDrawerOnCashSale = cashDrawerOnCashSale;
+      _cashDrawerPin = cashDrawerPin;
+      _cashDrawerOnMs = cashDrawerOnMs;
+      _cashDrawerOffMs = cashDrawerOffMs;
     });
     _backendLinked = await BackendService.isBackendLinked;
     if (!mounted) return;
@@ -347,6 +440,107 @@ class _SettingsScreenState extends State<SettingsScreen>
     await _load();
   }
 
+  Future<void> _editCreditSettings() async {
+    final result = await showModalBottomSheet<Map<String, Object?>>(
+      context: context,
+      isScrollControlled: true,
+      builder: (_) => _CreditSettingsSheet(
+        enabled: _creditEnabled,
+        defaultLimitMinor: _creditDefaultLimitMinor,
+        limitMode: _creditLimitMode,
+        cashiersAllowed: _creditCashiersAllowed,
+        reminderTemplate: _creditReminderTemplate,
+      ),
+    );
+    if (result == null || !mounted) return;
+    final int? limit = result['defaultLimitMinor'] as int?;
+    if (limit == null) return;
+    final AppState state = context.read<AppState>();
+    await DatabaseHelper.instance.setCreditEnabled(result['enabled'] as bool);
+    await DatabaseHelper.instance.setCreditDefaultLimit(limit);
+    await DatabaseHelper.instance
+        .setCreditLimitMode(result['limitMode'] as String);
+    await DatabaseHelper.instance
+        .setCreditCashiersAllowed(result['cashiersAllowed'] as bool);
+    await DatabaseHelper.instance
+        .setCreditReminderTemplate(result['reminderTemplate'] as String);
+    await recordActionAudit(
+      state,
+      action: AuditAction.paymentMethodChanged,
+      entity: AuditEntity.settings,
+      detail: 'credit ${result['enabled'] == true ? 'on' : 'off'}, limit '
+          '${formatMoney(Money.fromMinor(limit))}, over-limit ${result['limitMode']}',
+    );
+    if (!mounted) return;
+    _err(AppLocalizations.of(context).settingsCreditSaved);
+    await _load();
+  }
+
+  Future<void> _editExpenseApprovalLimit() async {
+    final controller = TextEditingController(
+      text: Money.fromMinor(_expenseApprovalLimitMinor)
+          .asMajor
+          .toStringAsFixed(0),
+    );
+    final value = await showDialog<double>(
+      context: context,
+      builder: (_) => AlertDialog(
+        title: const Text('Cashier payout approval limit'),
+        content: TextField(
+          controller: controller,
+          autofocus: true,
+          keyboardType: const TextInputType.numberWithOptions(decimal: true),
+          decoration: const InputDecoration(labelText: 'Amount (KSh)'),
+        ),
+        actions: <Widget>[
+          TextButton(
+              onPressed: () => Navigator.pop(context),
+              child: const Text('Cancel')),
+          FilledButton(
+            onPressed: () =>
+                Navigator.pop(context, double.tryParse(controller.text)),
+            child: const Text('Save'),
+          ),
+        ],
+      ),
+    );
+    controller.dispose();
+    if (value == null || value < 0 || !mounted) return;
+    await DatabaseHelper.instance.setExpenseApprovalLimitMinor(
+      Money.fromMajor(value).minorUnits,
+    );
+    await _load();
+  }
+
+  Future<void> _editDiscountSettings() async {
+    final result = await showDialog<Map<String, Object?>>(
+      context: context,
+      builder: (_) => AlertDialog(
+        title: const Text('Discounts and price overrides'),
+        content: _DiscountSettingsForm(
+          enabled: _discountsEnabled,
+          cashierPercent: _cashierDiscountPercent,
+          managerPercent: _managerDiscountPercent,
+          reasonRequired: _discountReasonRequired,
+          belowCostAllowed: _discountBelowCostAllowed,
+        ),
+      ),
+    );
+    if (result == null || !mounted) return;
+    final db = DatabaseHelper.instance;
+    await db.setSetting(DatabaseHelper.settingDiscountsEnabled,
+        result['enabled'] == true ? '1' : '0');
+    await db.setSetting(DatabaseHelper.settingCashierDiscountPercent,
+        '${result['cashierPercent']}');
+    await db.setSetting(DatabaseHelper.settingManagerDiscountPercent,
+        '${result['managerPercent']}');
+    await db.setSetting(DatabaseHelper.settingDiscountReasonRequired,
+        result['reasonRequired'] == true ? '1' : '0');
+    await db.setSetting(DatabaseHelper.settingDiscountBelowCostAllowed,
+        result['belowCostAllowed'] == true ? '1' : '0');
+    await _load();
+  }
+
   void _err(String msg) {
     if (mounted) {
       ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(msg)));
@@ -423,44 +617,46 @@ class _SettingsScreenState extends State<SettingsScreen>
         context: context,
         builder: (BuildContext dialogContext) => AlertDialog(
           title: Text(l10n.accountDeleteDoneTitle),
-          content: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: <Widget>[
-              Text(report.remoteDeleted
-                  ? l10n.accountDeleteDoneRemote
-                  : l10n.accountDeleteDoneLocalOnly),
-              SizedBox(height: AppSpacing.of(context).sm),
-              // What happened to the cashier logins on this phone, said
-              // plainly: either they are gone, or they are sealed and still
-              // there, and the owner needs to know which.
-              Text(
-                report.localAccountsDeleted
-                    ? l10n.accountDeleteLocalAccountsRemoved
-                    : l10n.accountDeleteLocalAccountsSealed,
-                style: AppTypography.of(context).bodySmall,
-              ),
-              SizedBox(height: AppSpacing.of(context).md),
-              Text(
-                l10n.accountDeleteReceipt(
-                  report.deletionId,
-                  formatInstant(report.completedAt.toIso8601String()),
-                ),
-                style: AppTypography.of(context).bodySmall,
-              ),
-              // A failed compaction is the one partial-erasure state worth
-              // naming: the data is unreadable but the file was never fully
-              // rewritten, and only the owner can act on that.
-              if (!report.compacted) ...<Widget>[
+          content: SingleChildScrollView(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: <Widget>[
+                Text(report.remoteDeleted
+                    ? l10n.accountDeleteDoneRemote
+                    : l10n.accountDeleteDoneLocalOnly),
                 SizedBox(height: AppSpacing.of(context).sm),
+                // What happened to the cashier logins on this phone, said
+                // plainly: either they are gone, or they are sealed and still
+                // there, and the owner needs to know which.
                 Text(
-                  l10n.accountDeleteCompactionPending,
-                  style: AppTypography.of(context).bodySmall?.copyWith(
-                        color: AppColors.of(context).danger,
-                      ),
+                  report.localAccountsDeleted
+                      ? l10n.accountDeleteLocalAccountsRemoved
+                      : l10n.accountDeleteLocalAccountsSealed,
+                  style: AppTypography.of(context).bodySmall,
                 ),
+                SizedBox(height: AppSpacing.of(context).md),
+                Text(
+                  l10n.accountDeleteReceipt(
+                    report.deletionId,
+                    formatInstant(report.completedAt.toIso8601String()),
+                  ),
+                  style: AppTypography.of(context).bodySmall,
+                ),
+                // A failed compaction is the one partial-erasure state worth
+                // naming: the data is unreadable but the file was never fully
+                // rewritten, and only the owner can act on that.
+                if (!report.compacted) ...<Widget>[
+                  SizedBox(height: AppSpacing.of(context).sm),
+                  Text(
+                    l10n.accountDeleteCompactionPending,
+                    style: AppTypography.of(context).bodySmall?.copyWith(
+                          color: AppColors.of(context).danger,
+                        ),
+                  ),
+                ],
               ],
-            ],
+            ),
           ),
           actions: <Widget>[
             FilledButton(
@@ -791,14 +987,30 @@ class _SettingsScreenState extends State<SettingsScreen>
     // Read before the await.
     final AppState state = context.read<AppState>();
     final l10n = AppLocalizations.of(context);
+    _MpesaChannelDetails? setup;
+    if (value) {
+      setup = await _showMpesaSetupDialog(
+        initialChannelType: _mpesaChannelType,
+        initialMerchantNumber: _mpesaMerchantNumber,
+      );
+      if (setup == null || !mounted) return;
+    }
+    int? channelId = _mpesaChannelId;
     if (value && !_backendLinked) {
       final linked = await _showLinkBackendDialog();
       if (linked != true) return; // user cancelled — leave the toggle off
+      _backendLinked = true;
     }
     setState(() => _savingToggle = true);
     try {
       if (_backendLinked) {
-        await BackendService.setMpesaEnabled(value);
+        if (value) {
+          channelId = await BackendService.registerMpesaChannel(
+            channelType: setup!.channelType,
+            shortCode: setup.merchantNumber,
+          );
+        }
+        await BackendService.setMpesaEnabled(value, channelId: channelId);
         if (value) {
           await BackendService.syncProductsToBackend();
           await BackendService.syncStaffToBackend();
@@ -806,6 +1018,20 @@ class _SettingsScreenState extends State<SettingsScreen>
       }
       final prefs = await SharedPreferences.getInstance();
       await prefs.setBool('mpesa_enabled_local', value);
+      if (value) {
+        await DatabaseHelper.instance.setSetting(
+          DatabaseHelper.settingMpesaChannelId,
+          channelId.toString(),
+        );
+        await DatabaseHelper.instance.setSetting(
+          DatabaseHelper.settingMpesaChannelType,
+          setup!.channelType,
+        );
+        await DatabaseHelper.instance.setSetting(
+          DatabaseHelper.settingMpesaMerchantNumber,
+          setup.merchantNumber,
+        );
+      }
       // Turning M-Pesa on or off changes what the till can take, so it is one
       // of the settings whose change an owner would want attributed.
       await recordActionAudit(
@@ -817,6 +1043,11 @@ class _SettingsScreenState extends State<SettingsScreen>
       if (mounted) {
         setState(() {
           _mpesaEnabled = value;
+          _mpesaChannelId = channelId;
+          if (setup != null) {
+            _mpesaChannelType = setup.channelType;
+            _mpesaMerchantNumber = setup.merchantNumber;
+          }
           _backendLinked = true;
         });
       }
@@ -832,9 +1063,91 @@ class _SettingsScreenState extends State<SettingsScreen>
     }
   }
 
+  Future<_MpesaChannelDetails?> _showMpesaSetupDialog({
+    required String initialChannelType,
+    required String initialMerchantNumber,
+  }) async {
+    final merchantController =
+        TextEditingController(text: initialMerchantNumber);
+    var channelType = initialChannelType == 'Paybill' ? 'Paybill' : 'Till';
+    final result = await showDialog<_MpesaChannelDetails>(
+      context: context,
+      builder: (dialogContext) => StatefulBuilder(
+        builder: (dialogContext, setDialogState) => AlertDialog(
+          title: const Text('Set up M-Pesa with PayHero'),
+          content: SingleChildScrollView(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: <Widget>[
+                const Text(
+                  'Enter the shop’s Till or Paybill number. The backend registers it with PayHero and keeps the API credentials off this till.',
+                ),
+                const SizedBox(height: 8),
+                const Text(
+                  'The number must belong to this shop. STK prompts require an online connection at checkout.',
+                ),
+                const SizedBox(height: 16),
+                DropdownButtonFormField<String>(
+                  initialValue: channelType,
+                  decoration: const InputDecoration(labelText: 'Channel type'),
+                  items: const <DropdownMenuItem<String>>[
+                    DropdownMenuItem(value: 'Till', child: Text('M-Pesa Till')),
+                    DropdownMenuItem(
+                        value: 'Paybill', child: Text('M-Pesa Paybill')),
+                  ],
+                  onChanged: (value) {
+                    if (value != null) {
+                      setDialogState(() => channelType = value);
+                    }
+                  },
+                ),
+                const SizedBox(height: 12),
+                TextField(
+                  controller: merchantController,
+                  keyboardType: TextInputType.number,
+                  decoration: InputDecoration(
+                    labelText: channelType == 'Paybill'
+                        ? 'Paybill number'
+                        : 'Till number',
+                    helperText:
+                        'For your records; PayHero uses the channel ID below.',
+                  ),
+                ),
+              ],
+            ),
+          ),
+          actions: <Widget>[
+            TextButton(
+              onPressed: () => Navigator.pop(dialogContext),
+              child: const Text('Cancel'),
+            ),
+            FilledButton(
+              onPressed: () {
+                final merchant = merchantController.text.trim();
+                if (!RegExp(r'^\d{5,12}$').hasMatch(merchant)) {
+                  return;
+                }
+                Navigator.pop(
+                  dialogContext,
+                  _MpesaChannelDetails(
+                    channelType: channelType,
+                    merchantNumber: merchant,
+                  ),
+                );
+              },
+              child: const Text('Save channel'),
+            ),
+          ],
+        ),
+      ),
+    );
+    merchantController.dispose();
+    return result;
+  }
+
   Future<bool?> _showLinkBackendDialog() async {
     final AppLocalizations l10n = AppLocalizations.of(context);
-    final channelId = TextEditingController();
     final owner = context.read<AppState>().owner!;
     var submitting = false;
     String? error;
@@ -849,18 +1162,6 @@ class _SettingsScreenState extends State<SettingsScreen>
               Text(
                 l10n.settingsConnectMpesaMessage,
                 style: AppTypography.of(context).bodyMedium,
-              ),
-              const SizedBox(height: 12),
-              TextField(
-                  controller: channelId,
-                  decoration: InputDecoration(
-                      labelText: AppLocalizations.of(context)
-                          .settingsPaymentChannelId),
-                  keyboardType: TextInputType.number),
-              const SizedBox(height: 4),
-              Text(
-                l10n.settingsPaymentChannelHint,
-                style: AppTypography.of(context).bodySmall,
               ),
               if (error != null)
                 Padding(
@@ -878,13 +1179,6 @@ class _SettingsScreenState extends State<SettingsScreen>
               onPressed: submitting
                   ? null
                   : () async {
-                      final cid = int.tryParse(channelId.text.trim());
-                      if (cid == null) {
-                        setDialogState(() => error =
-                            AppLocalizations.of(context)
-                                .settingsPaymentChannelIdRequired);
-                        return;
-                      }
                       setDialogState(() {
                         submitting = true;
                         error = null;
@@ -895,8 +1189,6 @@ class _SettingsScreenState extends State<SettingsScreen>
                           ownerName: owner.name,
                           email: owner.email,
                         );
-                        await BackendService.setMpesaEnabled(true,
-                            channelId: cid);
                         if (dialogContext.mounted) {
                           Navigator.pop(dialogContext, true);
                         }
@@ -919,7 +1211,6 @@ class _SettingsScreenState extends State<SettingsScreen>
         );
       }),
     );
-    channelId.dispose();
     return result;
   }
 
@@ -1052,15 +1343,19 @@ class _SettingsScreenState extends State<SettingsScreen>
       verificationMessage(l10n, error);
 
   Future<void> _syncNow() async {
+    // Capture dependencies before the sync's async gap; they are used again
+    // for the audit/result message after the network work completes.
+    final AppState state = context.read<AppState>();
+    final AppLocalizations l10n = AppLocalizations.of(context);
+    final shopName = state.owner!.shopName;
     setState(() {
       _syncing = true;
       _syncStatus = null;
     });
-    // Read before the sync's async gap, and used after it: the audit row has to
-    // name the outcome, which is only known once the two syncs have returned.
-    final AppState state = context.read<AppState>();
-    final AppLocalizations l10n = AppLocalizations.of(context);
-    final shopName = state.owner!.shopName;
+    // The manual action must reconcile every offline queue, not just the
+    // legacy Sheets workbook. It is a one-shot sync and does not turn on the
+    // recurring automatic-backup preference.
+    await AutoSyncService.runNow(force: true);
     final invResult = await _sync.syncInventory(shopName);
     final salesResult = await _sync.syncSales(shopName);
     if (_mpesaEnabled && _backendLinked) {
@@ -1123,7 +1418,9 @@ class _SettingsScreenState extends State<SettingsScreen>
     final l10n = AppLocalizations.of(context);
     final state = context.read<AppState>();
     try {
-      final f = await _excel.exportEncryptedInventory();
+      final passphrase = await _backupPassphrase(context, confirm: true);
+      if (passphrase == null) return;
+      final f = await _excel.exportPortableEncryptedInventory(passphrase);
       await _excel.shareFile(f);
       // The share has already left the device, so the row says a backup WAS
       // produced — the audit is the last thing standing after the share sheet
@@ -1132,7 +1429,7 @@ class _SettingsScreenState extends State<SettingsScreen>
         state,
         action: AuditAction.backupExported,
         entity: AuditEntity.backup,
-        detail: 'encrypted',
+        detail: 'portable encrypted',
       );
       if (!mounted) return;
       showOperationSuccess(
@@ -1149,6 +1446,31 @@ class _SettingsScreenState extends State<SettingsScreen>
         message: l10n.settingsExportFailed,
         onRetry: _exportEncryptedInventory,
       );
+    }
+  }
+
+  Future<void> _exportFullBackup() async {
+    final state = context.read<AppState>();
+    try {
+      final passphrase = await _backupPassphrase(context, confirm: true);
+      if (passphrase == null) return;
+      final file = await _excel.exportPortableFullBackup(passphrase);
+      await _excel.shareFile(file);
+      await recordActionAudit(
+        state,
+        action: AuditAction.backupExported,
+        entity: AuditEntity.backup,
+        detail: 'portable full data backup',
+      );
+    } catch (_) {
+      if (mounted) {
+        showOperationFailure(
+          context,
+          title: AppLocalizations.of(context).settingsExportFailedTitle,
+          message: AppLocalizations.of(context).settingsExportFailed,
+          onRetry: _exportFullBackup,
+        );
+      }
     }
   }
 
@@ -1191,7 +1513,9 @@ class _SettingsScreenState extends State<SettingsScreen>
     final l10n = AppLocalizations.of(context);
     final state = context.read<AppState>();
     try {
-      final n = await _excel.importEncryptedInventory();
+      final passphrase = await _backupPassphrase(context);
+      if (passphrase == null) return;
+      final n = await _excel.importPortableEncryptedInventory(passphrase);
       if (!mounted) return;
       showOperationSuccess(
         context,
@@ -1226,6 +1550,165 @@ class _SettingsScreenState extends State<SettingsScreen>
         onRetry: _restoreEncryptedInventory,
       );
     }
+  }
+
+  Future<void> _restoreFullBackup() async {
+    final state = context.read<AppState>();
+    try {
+      final passphrase = await _backupPassphrase(context);
+      if (passphrase == null) return;
+      await _excel.importPortableFullBackup(passphrase);
+      await recordActionAudit(
+        state,
+        action: AuditAction.backupRestored,
+        entity: AuditEntity.backup,
+        detail: 'portable full data backup',
+      );
+      if (mounted) {
+        showOperationSuccess(
+          context,
+          title: AppLocalizations.of(context).settingsRestoreDoneTitle,
+          message: 'All local shop data was restored.',
+          detailIcon: Icons.restore_outlined,
+        );
+      }
+    } on Object {
+      if (mounted) {
+        showOperationFailure(
+          context,
+          title: AppLocalizations.of(context).settingsRestoreFailedTitle,
+          message: AppLocalizations.of(context).settingsDecryptBackupFailed,
+          onRetry: _restoreFullBackup,
+        );
+      }
+    }
+  }
+
+  Future<void> _restoreCloudFullBackup() async {
+    final state = context.read<AppState>();
+    try {
+      final passphrase = await _backupPassphrase(context);
+      if (passphrase == null) return;
+      final restored =
+          await BackendService.restorePortableFullBackupFromBackend(passphrase);
+      if (!restored) {
+        if (mounted) {
+          showOperationFailure(
+            context,
+            title: AppLocalizations.of(context).settingsRestoreFailedTitle,
+            message: 'No cloud backup is available for this workspace.',
+          );
+        }
+        return;
+      }
+      await recordActionAudit(
+        state,
+        action: AuditAction.backupRestored,
+        entity: AuditEntity.backup,
+        detail: 'portable cloud full data backup',
+      );
+      if (mounted) {
+        showOperationSuccess(
+          context,
+          title: AppLocalizations.of(context).settingsRestoreDoneTitle,
+          message: 'The latest cloud backup was restored.',
+          detailIcon: Icons.cloud_download_outlined,
+        );
+      }
+    } on Object {
+      if (mounted) {
+        showOperationFailure(
+          context,
+          title: AppLocalizations.of(context).settingsRestoreFailedTitle,
+          message: AppLocalizations.of(context).settingsDecryptBackupFailed,
+          onRetry: _restoreCloudFullBackup,
+        );
+      }
+    }
+  }
+
+  Future<void> _uploadCloudFullBackup() async {
+    final state = context.read<AppState>();
+    try {
+      final passphrase = await _backupPassphrase(context, confirm: true);
+      if (passphrase == null) return;
+      await BackendService.syncPortableFullBackupToBackend(passphrase);
+      await recordActionAudit(
+        state,
+        action: AuditAction.backupExported,
+        entity: AuditEntity.backup,
+        detail: 'portable cloud full data backup',
+      );
+      if (mounted) {
+        showOperationSuccess(
+          context,
+          title: 'Cloud backup uploaded',
+          message:
+              'This copy can be restored on another phone with its passphrase.',
+          detailIcon: Icons.cloud_upload_outlined,
+        );
+      }
+    } on Object {
+      if (mounted) {
+        showOperationFailure(
+          context,
+          title: AppLocalizations.of(context).settingsExportFailedTitle,
+          message: AppLocalizations.of(context).settingsExportFailed,
+          onRetry: _uploadCloudFullBackup,
+        );
+      }
+    }
+  }
+
+  Future<String?> _backupPassphrase(
+    BuildContext context, {
+    bool confirm = false,
+  }) async {
+    final first = TextEditingController();
+    final second = TextEditingController();
+    final result = await showDialog<String>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: Text(confirm ? 'Protect backup' : 'Unlock backup'),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            TextField(
+              controller: first,
+              obscureText: true,
+              autofocus: true,
+              decoration: const InputDecoration(
+                  labelText: 'Passphrase (8+ characters)'),
+            ),
+            if (confirm)
+              TextField(
+                controller: second,
+                obscureText: true,
+                decoration:
+                    const InputDecoration(labelText: 'Repeat passphrase'),
+              ),
+          ],
+        ),
+        actions: [
+          TextButton(
+              onPressed: () => Navigator.pop(dialogContext),
+              child: const Text('Cancel')),
+          FilledButton(
+            onPressed: () {
+              if (first.text.length < 8 ||
+                  (confirm && first.text != second.text)) {
+                return;
+              }
+              Navigator.pop(dialogContext, first.text);
+            },
+            child: Text(confirm ? 'Protect' : 'Unlock'),
+          ),
+        ],
+      ),
+    );
+    first.dispose();
+    second.dispose();
+    return result;
   }
 
   /// Imports a plain workbook, naming any barcode it refused and why.
@@ -1436,8 +1919,82 @@ class _SettingsScreenState extends State<SettingsScreen>
     }
   }
 
+  Future<void> _changeBusinessProfile() async {
+    final AppState state = context.read<AppState>();
+    final ShopProfile current = state.shopProfile;
+    final AppLocalizations l10n = AppLocalizations.of(context);
+    ShopProfile selected = current;
+    final ShopProfile? result = await showDialog<ShopProfile>(
+      context: context,
+      builder: (BuildContext dialogContext) => StatefulBuilder(
+        builder: (BuildContext context, StateSetter setDialogState) =>
+            AlertDialog(
+          title: Text(l10n.settingsBusinessProfileChangeTitle),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: <Widget>[
+              DropdownButtonFormField<ShopProfile>(
+                initialValue: selected,
+                decoration: InputDecoration(
+                  labelText: l10n.shopProfileLabel,
+                ),
+                items: ShopProfile.values
+                    .map((profile) => DropdownMenuItem<ShopProfile>(
+                          value: profile,
+                          child: Text(profile.displayName),
+                        ))
+                    .toList(),
+                onChanged: (profile) {
+                  if (profile != null) {
+                    setDialogState(() => selected = profile);
+                  }
+                },
+              ),
+              SizedBox(height: AppSpacing.of(context).md),
+              Text(l10n.settingsBusinessProfileChangeWarning),
+              SizedBox(height: AppSpacing.of(context).sm),
+              ProfileChangePreview(current: current, selected: selected),
+            ],
+          ),
+          actions: <Widget>[
+            TextButton(
+              onPressed: () => Navigator.pop(dialogContext),
+              child: Text(l10n.actionCancel),
+            ),
+            FilledButton(
+              onPressed: () => Navigator.pop(dialogContext, selected),
+              child: Text(l10n.settingsBusinessProfileChangeAction),
+            ),
+          ],
+        ),
+      ),
+    );
+    if (result == null || result == current || !mounted) return;
+
+    await DatabaseHelper.instance.setShopProfile(result);
+    state.setShopProfile(result);
+    try {
+      await BackendService.setBusinessProfile(result);
+    } catch (_) {
+      // Local shop records remain usable offline; the next sync/retry can
+      // reconcile the linked tenant profile.
+    }
+    await recordActionAudit(
+      state,
+      action: AuditAction.profileChanged,
+      entity: AuditEntity.workspace,
+      detail: '${current.displayName} → ${result.displayName}',
+    );
+    if (mounted) {
+      setState(() {});
+      _err(l10n.settingsBusinessProfileChanged(result.displayName));
+    }
+  }
+
   Future<void> _addShopOnThisDevice() async {
     final previous = context.read<AppState>().owner;
+    final previousWorkspace = context.read<AppState>().workspaceKey;
     final l10n = AppLocalizations.of(context);
     // Read before the dialog's async gap: a `BuildContext` does not survive an
     // await, and the reason for a bad PIN has to be said in the language the
@@ -1450,6 +2007,7 @@ class _SettingsScreenState extends State<SettingsScreen>
 
     final name = TextEditingController();
     final pin = TextEditingController();
+    ShopProfile selectedProfile = ShopProfile.duka;
     // The shop's name AND the PIN that opens it.
     //
     // The PIN is asked for because each shop has its own. One PIN for every
@@ -1470,6 +2028,29 @@ class _SettingsScreenState extends State<SettingsScreen>
                           labelText: AppLocalizations.of(context)
                               .settingsShopNameLabel),
                       autofillHints: const [AutofillHints.organizationName]),
+                  SizedBox(height: AppSpacing.of(context).md),
+                  StatefulBuilder(builder: (context, setDialogState) {
+                    return DropdownButtonFormField<ShopProfile>(
+                      initialValue: selectedProfile,
+                      decoration: InputDecoration(
+                        labelText:
+                            AppLocalizations.of(context).shopProfileLabel,
+                        helperText:
+                            AppLocalizations.of(context).shopProfileHelp,
+                      ),
+                      items: ShopProfile.values
+                          .map((profile) => DropdownMenuItem<ShopProfile>(
+                                value: profile,
+                                child: Text(profile.displayName),
+                              ))
+                          .toList(),
+                      onChanged: (profile) {
+                        if (profile != null) {
+                          setDialogState(() => selectedProfile = profile);
+                        }
+                      },
+                    );
+                  }),
                   SizedBox(height: AppSpacing.of(context).md),
                   TextField(
                       controller: pin,
@@ -1498,6 +2079,7 @@ class _SettingsScreenState extends State<SettingsScreen>
                         _NewShopDetails(
                           name: name.text.trim(),
                           pin: pin.text.trim(),
+                          profile: selectedProfile,
                         )),
                     child: Text(AppLocalizations.of(context).actionContinue))
               ],
@@ -1546,7 +2128,13 @@ class _SettingsScreenState extends State<SettingsScreen>
           createdAt: DateTime.now().toIso8601String(),
         ),
       );
+      await DatabaseHelper.instance.setShopProfile(details.profile);
     } catch (e) {
+      await rollbackFailedShopCreation(
+        state: state,
+        workspaceKey: key,
+        previousWorkspaceKey: previousWorkspace,
+      );
       if (!mounted) return;
       _err(l10n.settingsCreateShopFailed);
       return;
@@ -1556,7 +2144,10 @@ class _SettingsScreenState extends State<SettingsScreen>
     // setup: the shop is fully usable offline and a later attempt can link it.
     try {
       await BackendService.linkShopToBackend(
-          shopName: shop, ownerName: previous.name, email: previous.email);
+          shopName: shop,
+          ownerName: previous.name,
+          email: previous.email,
+          businessProfile: details.profile);
     } catch (_) {
       // Deliberately swallowed. Losing the signal must not lose the shop.
     }
@@ -1591,7 +2182,12 @@ class _SettingsScreenState extends State<SettingsScreen>
       onAddStaff: _addStaff,
       onResetPin: _resetPin,
       onRemoveStaff: _removeStaff,
+      onOpenPermissions:
+          ownerSession ? () => context.push(Routes.permissionsMatrix) : null,
       mpesaEnabled: _mpesaEnabled,
+      mpesaChannelId: _mpesaChannelId,
+      mpesaChannelType: _mpesaChannelType,
+      mpesaMerchantNumber: _mpesaMerchantNumber,
       savingPaymentToggle: _savingToggle,
       onToggleMpesa: _toggleMpesa,
       printer: _printer,
@@ -1599,10 +2195,29 @@ class _SettingsScreenState extends State<SettingsScreen>
       onPairPrinter: _chooseAndPairPrinter,
       onTestPrint: _testPrint,
       onSavePrinter: _savePrinter,
+      cashDrawerEnabled: _cashDrawerEnabled,
+      cashDrawerOnCashSale: _cashDrawerOnCashSale,
+      cashDrawerPin: _cashDrawerPin,
+      cashDrawerOnMs: _cashDrawerOnMs,
+      cashDrawerOffMs: _cashDrawerOffMs,
+      onToggleCashDrawer: ownerSession ? _toggleCashDrawer : null,
       vatRatePercent: _vatRatePercent,
       tin: _tin,
       tillCode: _tillCode,
       onOpenTaxSettings: _openTaxSettings,
+      creditEnabled: _creditEnabled,
+      creditDefaultLimitMinor: _creditDefaultLimitMinor,
+      expenseApprovalLimitMinor: _expenseApprovalLimitMinor,
+      creditLimitMode: _creditLimitMode,
+      creditCashiersAllowed: _creditCashiersAllowed,
+      creditReminderTemplate: _creditReminderTemplate,
+      onEditCreditSettings: ownerSession ? _editCreditSettings : null,
+      onEditExpenseApprovalLimit:
+          ownerSession ? _editExpenseApprovalLimit : null,
+      discountsEnabled: _discountsEnabled,
+      cashierDiscountPercent: _cashierDiscountPercent,
+      managerDiscountPercent: _managerDiscountPercent,
+      onEditDiscountSettings: ownerSession ? _editDiscountSettings : null,
       autoSyncEnabled: _automaticBackupSync,
       syncing: _syncing,
       syncStatus: _syncStatus,
@@ -1610,8 +2225,23 @@ class _SettingsScreenState extends State<SettingsScreen>
       onSyncNow: _syncNow,
       onExportEncrypted: _exportEncryptedInventory,
       onRestoreEncrypted: _restoreEncryptedInventory,
+      onExportFullBackup: _exportFullBackup,
+      onRestoreFullBackup: _restoreFullBackup,
+      onUploadCloudFullBackup: ownerSession && state.identityVerified
+          ? _uploadCloudFullBackup
+          : null,
+      onRestoreCloudFullBackup: ownerSession && state.identityVerified
+          ? _restoreCloudFullBackup
+          : null,
       onExport: _exportInventory,
       onImport: _importInventory,
+      onSeedBlackbee: ownerSession
+          ? () => Navigator.of(context).push(
+                MaterialPageRoute<void>(
+                  builder: (_) => const BlackbeeSeedScreen(),
+                ),
+              )
+          : null,
       importing: _importing,
       importProgress: _importProgress,
       onEraseBackups: _eraseEncryptedBackups,
@@ -1619,9 +2249,112 @@ class _SettingsScreenState extends State<SettingsScreen>
       accountDeleting: _deletingAccount,
       onAddShop: _addShopOnThisDevice,
       onManageShops: _manageShops,
+      onChangeBusinessProfile: ownerSession ? _changeBusinessProfile : null,
       onOpenPortfolio: () => context.push(Routes.portfolio),
       onOpenActivity: () => context.push(Routes.activity),
+      onOpenIncomingPayments: () => context.push(Routes.incomingPayments),
+      onOpenSyncCenter: () => context.push(Routes.syncCenter),
     );
+  }
+
+  Future<void> _toggleCashDrawer({
+    bool? enabled,
+    bool? onCashSale,
+    int? pin,
+    int? onMs,
+    int? offMs,
+  }) async {
+    final AppState state = context.read<AppState>();
+    final db = DatabaseHelper.instance;
+    if (enabled != null) {
+      await db.setSetting(
+          DatabaseHelper.settingCashDrawerEnabled, enabled ? '1' : '0');
+    }
+    if (onCashSale != null) {
+      await db.setSetting(
+          DatabaseHelper.settingCashDrawerOnCashSale, onCashSale ? '1' : '0');
+    }
+    if (pin != null) {
+      await db.setSetting(DatabaseHelper.settingCashDrawerPin, '$pin');
+    }
+    if (onMs != null) {
+      await db.setSetting(DatabaseHelper.settingCashDrawerOnMs, '$onMs');
+    }
+    if (offMs != null) {
+      await db.setSetting(DatabaseHelper.settingCashDrawerOffMs, '$offMs');
+    }
+    await recordActionAudit(
+      state,
+      action: AuditAction.printerSaved,
+      entity: AuditEntity.settings,
+      detail: 'cash drawer ${enabled ?? _cashDrawerEnabled ? 'on' : 'off'}',
+    );
+    await _load();
+  }
+}
+
+/// The before/after preview shown before an owner commits a profile change.
+/// Kept as a value widget so the lifecycle contract is directly testable and
+/// cannot silently regress into a warning-only dialog.
+class ProfileChangePreview extends StatelessWidget {
+  const ProfileChangePreview({
+    required this.current,
+    required this.selected,
+    super.key,
+  });
+
+  final ShopProfile current;
+  final ShopProfile selected;
+
+  @override
+  Widget build(BuildContext context) {
+    final AppLocalizations l10n = AppLocalizations.of(context);
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: <Widget>[
+        Text(
+          l10n.settingsBusinessProfilePreviewTitle,
+          style: AppTypography.of(context).titleSmall,
+        ),
+        SizedBox(height: AppSpacing.of(context).xs),
+        Text(
+          l10n.settingsBusinessProfilePreviewNavigation(
+            current.navigation.showInventory
+                ? l10n.settingsBusinessProfileStock
+                : l10n.settingsBusinessProfileMoneyFirst,
+            selected.navigation.showInventory
+                ? l10n.settingsBusinessProfileStock
+                : l10n.settingsBusinessProfileMoneyFirst,
+          ),
+        ),
+        Text(
+          l10n.settingsBusinessProfilePreviewTerminology(
+            current.terminology.product,
+            selected.terminology.product,
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+/// Restores the pre-creation state after a shop creation transaction fails.
+///
+/// This is the one rollback path used by Add Shop: remove the exact database,
+/// remove the exact registry entry, then re-open the shop the owner was using.
+/// The order prevents a deleted workspace from remaining the active database.
+Future<void> rollbackFailedShopCreation({
+  required AppState state,
+  required String workspaceKey,
+  required String previousWorkspaceKey,
+}) async {
+  await DatabaseHelper.deleteWorkspace(workspaceKey);
+  await WorkspaceService.unregister(workspaceKey);
+  try {
+    await state.switchWorkspace(previousWorkspaceKey);
+  } catch (_) {
+    // The registry is already repaired; the next launch can recover the
+    // previous workspace even if reopening it fails in this error path.
   }
 }
 
@@ -1642,7 +2375,11 @@ class SettingsPanel extends StatelessWidget {
     required this.onAddStaff,
     required this.onResetPin,
     required this.onRemoveStaff,
+    this.onOpenPermissions,
     required this.mpesaEnabled,
+    this.mpesaChannelId,
+    this.mpesaChannelType = 'Till',
+    this.mpesaMerchantNumber = '',
     required this.savingPaymentToggle,
     required this.onToggleMpesa,
     required this.printer,
@@ -1654,15 +2391,40 @@ class SettingsPanel extends StatelessWidget {
     required this.tin,
     required this.tillCode,
     required this.onOpenTaxSettings,
+    this.creditEnabled = false,
+    this.creditDefaultLimitMinor = 0,
+    this.expenseApprovalLimitMinor = 500000,
+    this.creditLimitMode = 'block',
+    this.creditCashiersAllowed = false,
+    this.creditReminderTemplate = '',
+    this.onEditCreditSettings,
+    this.onEditExpenseApprovalLimit,
+    this.discountsEnabled = false,
+    this.cashierDiscountPercent = 0,
+    this.managerDiscountPercent = 0,
+    this.onEditDiscountSettings,
+    this.cashDrawerEnabled = false,
+    this.cashDrawerOnCashSale = false,
+    this.cashDrawerPin = 0,
+    this.cashDrawerOnMs = 50,
+    this.cashDrawerOffMs = 500,
+    this.onToggleCashDrawer,
     required this.autoSyncEnabled,
     required this.syncing,
     required this.syncStatus,
     required this.onSetAutoSync,
     required this.onSyncNow,
+    this.onOpenIncomingPayments,
+    this.onOpenSyncCenter,
     required this.onExportEncrypted,
     required this.onRestoreEncrypted,
+    this.onExportFullBackup,
+    this.onRestoreFullBackup,
+    this.onUploadCloudFullBackup,
+    this.onRestoreCloudFullBackup,
     required this.onExport,
     required this.onImport,
+    this.onSeedBlackbee,
     required this.importing,
     required this.importProgress,
     required this.onEraseBackups,
@@ -1670,6 +2432,7 @@ class SettingsPanel extends StatelessWidget {
     required this.accountDeleting,
     required this.onAddShop,
     required this.onManageShops,
+    this.onChangeBusinessProfile,
     required this.onOpenPortfolio,
     required this.onOpenActivity,
   });
@@ -1693,8 +2456,12 @@ class SettingsPanel extends StatelessWidget {
   final Future<void> Function() onAddStaff;
   final void Function(Staff) onResetPin;
   final Future<void> Function(Staff) onRemoveStaff;
+  final VoidCallback? onOpenPermissions;
 
   final bool mpesaEnabled;
+  final int? mpesaChannelId;
+  final String mpesaChannelType;
+  final String mpesaMerchantNumber;
   final bool savingPaymentToggle;
   final Future<void> Function(bool) onToggleMpesa;
 
@@ -1709,16 +2476,47 @@ class SettingsPanel extends StatelessWidget {
   final String tillCode;
   final Future<void> Function() onOpenTaxSettings;
 
+  final bool creditEnabled;
+  final int creditDefaultLimitMinor;
+  final int expenseApprovalLimitMinor;
+  final String creditLimitMode;
+  final bool creditCashiersAllowed;
+  final String creditReminderTemplate;
+  final Future<void> Function()? onEditCreditSettings;
+  final Future<void> Function()? onEditExpenseApprovalLimit;
+  final bool discountsEnabled;
+  final int cashierDiscountPercent;
+  final int managerDiscountPercent;
+  final Future<void> Function()? onEditDiscountSettings;
+  final bool cashDrawerEnabled;
+  final bool cashDrawerOnCashSale;
+  final int cashDrawerPin;
+  final int cashDrawerOnMs;
+  final int cashDrawerOffMs;
+  final Future<void> Function(
+      {bool? enabled,
+      bool? onCashSale,
+      int? pin,
+      int? onMs,
+      int? offMs})? onToggleCashDrawer;
+
   final bool autoSyncEnabled;
   final bool syncing;
   final String? syncStatus;
   final Future<void> Function(bool) onSetAutoSync;
   final Future<void> Function() onSyncNow;
+  final VoidCallback? onOpenIncomingPayments;
+  final VoidCallback? onOpenSyncCenter;
 
   final Future<void> Function() onExportEncrypted;
   final Future<void> Function() onRestoreEncrypted;
+  final Future<void> Function()? onExportFullBackup;
+  final Future<void> Function()? onRestoreFullBackup;
+  final Future<void> Function()? onUploadCloudFullBackup;
+  final Future<void> Function()? onRestoreCloudFullBackup;
   final Future<void> Function() onExport;
   final Future<void> Function() onImport;
+  final VoidCallback? onSeedBlackbee;
 
   /// Whether an import is running.
   final bool importing;
@@ -1739,6 +2537,7 @@ class SettingsPanel extends StatelessWidget {
 
   final Future<void> Function() onAddShop;
   final Future<void> Function() onManageShops;
+  final Future<void> Function()? onChangeBusinessProfile;
   final VoidCallback onOpenPortfolio;
   final VoidCallback onOpenActivity;
 
@@ -1764,6 +2563,7 @@ class SettingsPanel extends StatelessWidget {
         _ShopsPanel(
           onAddShop: onAddShop,
           onManage: onManageShops,
+          onChangeProfile: onChangeBusinessProfile,
           onOpenPortfolio: onOpenPortfolio,
           onOpenActivity: onOpenActivity,
         ),
@@ -1772,9 +2572,13 @@ class SettingsPanel extends StatelessWidget {
           onAdd: onAddStaff,
           onResetPin: onResetPin,
           onRemove: onRemoveStaff,
+          onOpenPermissions: onOpenPermissions,
         ),
         _PaymentsPanel(
           mpesaEnabled: mpesaEnabled,
+          mpesaChannelId: mpesaChannelId,
+          mpesaChannelType: mpesaChannelType,
+          mpesaMerchantNumber: mpesaMerchantNumber,
           saving: savingPaymentToggle,
           onToggleMpesa: onToggleMpesa,
         ),
@@ -1785,12 +2589,42 @@ class SettingsPanel extends StatelessWidget {
           onTestPrint: onTestPrint,
           onSave: onSavePrinter,
         ),
+        if (onToggleCashDrawer != null)
+          _CashDrawerPanel(
+            enabled: cashDrawerEnabled,
+            onCashSale: cashDrawerOnCashSale,
+            pin: cashDrawerPin,
+            onMs: cashDrawerOnMs,
+            offMs: cashDrawerOffMs,
+            onChanged: onToggleCashDrawer!,
+          ),
         _TaxPanel(
           vatRatePercent: vatRatePercent,
           tin: tin,
           tillCode: tillCode,
           onOpen: onOpenTaxSettings,
         ),
+        if (onEditCreditSettings != null)
+          _CreditPanel(
+            enabled: creditEnabled,
+            defaultLimitMinor: creditDefaultLimitMinor,
+            limitMode: creditLimitMode,
+            cashiersAllowed: creditCashiersAllowed,
+            reminderTemplate: creditReminderTemplate,
+            onEdit: onEditCreditSettings!,
+          ),
+        if (onEditExpenseApprovalLimit != null)
+          _ExpenseApprovalPanel(
+            limitMinor: expenseApprovalLimitMinor,
+            onEdit: onEditExpenseApprovalLimit!,
+          ),
+        if (onEditDiscountSettings != null)
+          _DiscountPanel(
+            enabled: discountsEnabled,
+            cashierPercent: cashierDiscountPercent,
+            managerPercent: managerDiscountPercent,
+            onEdit: onEditDiscountSettings!,
+          ),
         _SyncPanel(
           identityVerified: identityVerified,
           enabled: autoSyncEnabled,
@@ -1798,13 +2632,20 @@ class SettingsPanel extends StatelessWidget {
           status: syncStatus,
           onToggle: onSetAutoSync,
           onSyncNow: onSyncNow,
+          onOpenIncomingPayments: onOpenIncomingPayments,
+          onOpenSyncCenter: onOpenSyncCenter,
         ),
         _BackupPanel(
           onOpenDiagnostics: () => context.push(Routes.diagnostics),
           onExportEncrypted: onExportEncrypted,
           onRestoreEncrypted: onRestoreEncrypted,
+          onExportFullBackup: onExportFullBackup,
+          onRestoreFullBackup: onRestoreFullBackup,
+          onUploadCloudFullBackup: onUploadCloudFullBackup,
+          onRestoreCloudFullBackup: onRestoreCloudFullBackup,
           onExport: onExport,
           onImport: onImport,
+          onSeedBlackbee: onSeedBlackbee,
           onErase: onEraseBackups,
           importing: importing,
           importProgress: importProgress,
@@ -1914,11 +2755,22 @@ class _UpdateRows extends StatelessWidget {
     final AppLocalizations l10n = AppLocalizations.of(context);
     final service = context.watch<AppUpdateService>();
     final release = service.pendingRelease;
+    final announcement = service.announcement;
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       mainAxisSize: MainAxisSize.min,
       children: <Widget>[
+        if (announcement != null) ...<Widget>[
+          Card(
+            child: ListTile(
+              leading: const Icon(Icons.campaign_outlined),
+              title: Text(announcement.title),
+              subtitle: Text(announcement.body),
+            ),
+          ),
+          SizedBox(height: AppSpacing.of(context).sm),
+        ],
         ListTile(
           contentPadding: EdgeInsets.zero,
           leading: const Icon(Icons.system_update_outlined),
@@ -2569,12 +3421,14 @@ class _ShopsPanel extends StatelessWidget {
   const _ShopsPanel({
     required this.onAddShop,
     required this.onManage,
+    this.onChangeProfile,
     required this.onOpenPortfolio,
     required this.onOpenActivity,
   });
 
   final Future<void> Function() onAddShop;
   final Future<void> Function() onManage;
+  final Future<void> Function()? onChangeProfile;
   final VoidCallback onOpenPortfolio;
   final VoidCallback onOpenActivity;
 
@@ -2607,6 +3461,12 @@ class _ShopsPanel extends StatelessWidget {
             title: l10n.settingsSwitchShopAction,
             onTap: () => onManage(),
           ),
+          if (onChangeProfile != null)
+            SettingsNavRow(
+              icon: Icons.tune_outlined,
+              title: l10n.settingsBusinessProfile,
+              onTap: onChangeProfile,
+            ),
           SettingsNavRow(
             icon: Icons.add_business_outlined,
             title: l10n.settingsAddShopOnDeviceAction,
@@ -2624,12 +3484,14 @@ class _StaffPanel extends StatelessWidget {
     required this.onAdd,
     required this.onResetPin,
     required this.onRemove,
+    this.onOpenPermissions,
   });
 
   final List<Staff> staff;
   final Future<void> Function() onAdd;
   final void Function(Staff) onResetPin;
   final Future<void> Function(Staff) onRemove;
+  final VoidCallback? onOpenPermissions;
 
   @override
   Widget build(BuildContext context) {
@@ -2665,6 +3527,12 @@ class _StaffPanel extends StatelessWidget {
             title: l10n.settingsAddStaffAction,
             onTap: () => onAdd(),
           ),
+          if (onOpenPermissions != null)
+            SettingsNavRow(
+              icon: Icons.admin_panel_settings_outlined,
+              title: 'Permissions matrix',
+              onTap: onOpenPermissions!,
+            ),
         ],
       ),
     );
@@ -2741,11 +3609,17 @@ class _StaffRow extends StatelessWidget {
 class _PaymentsPanel extends StatelessWidget {
   const _PaymentsPanel({
     required this.mpesaEnabled,
+    this.mpesaChannelId,
+    required this.mpesaChannelType,
+    required this.mpesaMerchantNumber,
     required this.saving,
     required this.onToggleMpesa,
   });
 
   final bool mpesaEnabled;
+  final int? mpesaChannelId;
+  final String mpesaChannelType;
+  final String mpesaMerchantNumber;
   final bool saving;
   final Future<void> Function(bool) onToggleMpesa;
 
@@ -2765,7 +3639,7 @@ class _PaymentsPanel extends StatelessWidget {
             icon: Icons.phone_iphone_outlined,
             title: l10n.settingsMpesaMethod,
             subtitle: mpesaEnabled
-                ? l10n.settingsMpesaOnSubtitle
+                ? '${l10n.settingsMpesaOnSubtitle} · $mpesaChannelType ${mpesaMerchantNumber.isEmpty ? 'number not set' : mpesaMerchantNumber} · Channel ${mpesaChannelId ?? 'not set'}'
                 : l10n.settingsMpesaOffSubtitle,
             value: mpesaEnabled,
             enabled: !saving,
@@ -2775,6 +3649,89 @@ class _PaymentsPanel extends StatelessWidget {
       ),
     );
   }
+}
+
+class _CashDrawerPanel extends StatelessWidget {
+  const _CashDrawerPanel({
+    required this.enabled,
+    required this.onCashSale,
+    required this.pin,
+    required this.onMs,
+    required this.offMs,
+    required this.onChanged,
+  });
+
+  final bool enabled;
+  final bool onCashSale;
+  final int pin;
+  final int onMs;
+  final int offMs;
+  final Future<void> Function(
+      {bool? enabled,
+      bool? onCashSale,
+      int? pin,
+      int? onMs,
+      int? offMs}) onChanged;
+
+  @override
+  Widget build(BuildContext context) => _SettingsSection(
+        title: 'Cash drawer',
+        child: Column(
+          children: [
+            SettingsSwitchRow(
+              icon: Icons.point_of_sale_outlined,
+              title: 'Enable cash drawer',
+              subtitle: 'Uses the paired receipt printer drawer port',
+              value: enabled,
+              onChanged: (value) => onChanged(enabled: value),
+            ),
+            SettingsSwitchRow(
+              icon: Icons.receipt_long_outlined,
+              title: 'Open on cash sale',
+              subtitle: 'Disabled unless the drawer is enabled',
+              value: onCashSale,
+              enabled: enabled,
+              onChanged: (value) => onChanged(onCashSale: value),
+            ),
+            ListTile(
+              leading: const Icon(Icons.settings_input_component_outlined),
+              title: const Text('Drawer connector'),
+              subtitle: Text('Pin ${pin + 1} · ${onMs}ms on · ${offMs}ms off'),
+              trailing: DropdownButton<int>(
+                value: pin,
+                items: const [
+                  DropdownMenuItem(value: 0, child: Text('Pin 1')),
+                  DropdownMenuItem(value: 1, child: Text('Pin 2')),
+                ],
+                onChanged: enabled
+                    ? (value) {
+                        if (value != null) onChanged(pin: value);
+                      }
+                    : null,
+              ),
+            ),
+            ListTile(
+              leading: const Icon(Icons.timer_outlined),
+              title: const Text('Pulse timing'),
+              subtitle: const Text('Adjust only if the paired drawer needs it'),
+              trailing: DropdownButton<int>(
+                value: onMs,
+                items: const [
+                  DropdownMenuItem(value: 50, child: Text('50 / 500 ms')),
+                  DropdownMenuItem(value: 100, child: Text('100 / 500 ms')),
+                ],
+                onChanged: enabled
+                    ? (value) {
+                        if (value != null) {
+                          onChanged(onMs: value, offMs: 500);
+                        }
+                      }
+                    : null,
+              ),
+            ),
+          ],
+        ),
+      );
 }
 
 class _PrinterPanel extends StatelessWidget {
@@ -2904,6 +3861,340 @@ class _TaxPanel extends StatelessWidget {
   }
 }
 
+class _CreditPanel extends StatelessWidget {
+  const _CreditPanel({
+    required this.enabled,
+    required this.defaultLimitMinor,
+    required this.limitMode,
+    required this.cashiersAllowed,
+    required this.reminderTemplate,
+    required this.onEdit,
+  });
+
+  final bool enabled;
+  final int defaultLimitMinor;
+  final String limitMode;
+  final bool cashiersAllowed;
+  final String reminderTemplate;
+  final Future<void> Function() onEdit;
+
+  @override
+  Widget build(BuildContext context) {
+    final AppLocalizations l10n = AppLocalizations.of(context);
+    final String summary = enabled
+        ? l10n.settingsCreditOnSummary(
+            formatMoney(Money.fromMinor(defaultLimitMinor)),
+          )
+        : l10n.settingsCreditOffSummary;
+    return _SettingsSection(
+      title: l10n.settingsCreditSection,
+      child: SettingsNavRow(
+        icon: Icons.account_balance_wallet_outlined,
+        title: l10n.settingsCreditSection,
+        subtitle: summary,
+        onTap: () => onEdit(),
+      ),
+    );
+  }
+}
+
+class _DiscountPanel extends StatelessWidget {
+  const _DiscountPanel({
+    required this.enabled,
+    required this.cashierPercent,
+    required this.managerPercent,
+    required this.onEdit,
+  });
+
+  final bool enabled;
+  final int cashierPercent;
+  final int managerPercent;
+  final Future<void> Function() onEdit;
+
+  @override
+  Widget build(BuildContext context) => _SettingsSection(
+        title: 'Discounts',
+        child: SettingsNavRow(
+          icon: Icons.sell_outlined,
+          title: 'Discounts and price overrides',
+          subtitle: enabled
+              ? 'Cashier $cashierPercent% · manager $managerPercent%'
+              : 'Off — checkout prices stay unchanged',
+          onTap: onEdit,
+        ),
+      );
+}
+
+class _ExpenseApprovalPanel extends StatelessWidget {
+  const _ExpenseApprovalPanel({required this.limitMinor, required this.onEdit});
+
+  final int limitMinor;
+  final Future<void> Function() onEdit;
+
+  @override
+  Widget build(BuildContext context) => _SettingsSection(
+        title: 'Cash controls',
+        child: SettingsNavRow(
+          icon: Icons.lock_clock_outlined,
+          title: 'Cashier payout approval',
+          subtitle:
+              'Manager approval above ${formatMoney(Money.fromMinor(limitMinor))}',
+          onTap: onEdit,
+        ),
+      );
+}
+
+class _DiscountSettingsForm extends StatefulWidget {
+  const _DiscountSettingsForm({
+    required this.enabled,
+    required this.cashierPercent,
+    required this.managerPercent,
+    required this.reasonRequired,
+    required this.belowCostAllowed,
+  });
+
+  final bool enabled;
+  final int cashierPercent;
+  final int managerPercent;
+  final bool reasonRequired;
+  final bool belowCostAllowed;
+
+  @override
+  State<_DiscountSettingsForm> createState() => _DiscountSettingsFormState();
+}
+
+class _DiscountSettingsFormState extends State<_DiscountSettingsForm> {
+  late bool enabled = widget.enabled;
+  late bool reasonRequired = widget.reasonRequired;
+  late bool belowCostAllowed = widget.belowCostAllowed;
+  late final TextEditingController cashier =
+      TextEditingController(text: '${widget.cashierPercent}');
+  late final TextEditingController manager =
+      TextEditingController(text: '${widget.managerPercent}');
+
+  @override
+  void dispose() {
+    cashier.dispose();
+    manager.dispose();
+    super.dispose();
+  }
+
+  void _save() {
+    final cashierValue = int.tryParse(cashier.text) ?? 0;
+    final managerValue = int.tryParse(manager.text) ?? 0;
+    if (cashierValue < 0 ||
+        cashierValue > 100 ||
+        managerValue < 0 ||
+        managerValue > 100) {
+      return;
+    }
+    Navigator.pop(context, <String, Object?>{
+      'enabled': enabled,
+      'cashierPercent': cashierValue,
+      'managerPercent': managerValue,
+      'reasonRequired': reasonRequired,
+      'belowCostAllowed': belowCostAllowed,
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) => SingleChildScrollView(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            SwitchListTile(
+              contentPadding: EdgeInsets.zero,
+              title: const Text('Enable discounts'),
+              value: enabled,
+              onChanged: (value) => setState(() => enabled = value),
+            ),
+            TextField(
+              controller: cashier,
+              keyboardType: TextInputType.number,
+              decoration: const InputDecoration(labelText: 'Cashier maximum %'),
+            ),
+            TextField(
+              controller: manager,
+              keyboardType: TextInputType.number,
+              decoration: const InputDecoration(labelText: 'Manager maximum %'),
+            ),
+            SwitchListTile(
+              contentPadding: EdgeInsets.zero,
+              title: const Text('Require a reason'),
+              value: reasonRequired,
+              onChanged: (value) => setState(() => reasonRequired = value),
+            ),
+            SwitchListTile(
+              contentPadding: EdgeInsets.zero,
+              title: const Text('Allow discounts below cost'),
+              value: belowCostAllowed,
+              onChanged: (value) => setState(() => belowCostAllowed = value),
+            ),
+            Row(
+              mainAxisAlignment: MainAxisAlignment.end,
+              children: [
+                TextButton(
+                    onPressed: () => Navigator.pop(context),
+                    child: const Text('Cancel')),
+                FilledButton(onPressed: _save, child: const Text('Save')),
+              ],
+            ),
+          ],
+        ),
+      );
+}
+
+class _CreditSettingsSheet extends StatefulWidget {
+  const _CreditSettingsSheet({
+    required this.enabled,
+    required this.defaultLimitMinor,
+    required this.limitMode,
+    required this.cashiersAllowed,
+    required this.reminderTemplate,
+  });
+
+  final bool enabled;
+  final int defaultLimitMinor;
+  final String limitMode;
+  final bool cashiersAllowed;
+  final String reminderTemplate;
+
+  @override
+  State<_CreditSettingsSheet> createState() => _CreditSettingsSheetState();
+}
+
+class _CreditSettingsSheetState extends State<_CreditSettingsSheet> {
+  late bool _enabled = widget.enabled;
+  late bool _cashiersAllowed = widget.cashiersAllowed;
+  late String _limitMode = widget.limitMode;
+  late final TextEditingController _limit = TextEditingController(
+    text: (widget.defaultLimitMinor / 100).toStringAsFixed(2),
+  );
+  late final TextEditingController _reminder =
+      TextEditingController(text: widget.reminderTemplate);
+
+  @override
+  void dispose() {
+    _limit.dispose();
+    _reminder.dispose();
+    super.dispose();
+  }
+
+  void _save() {
+    final double? major = double.tryParse(_limit.text.trim());
+    if (major == null || !major.isFinite || major < 0) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+            content:
+                Text(AppLocalizations.of(context).settingsCreditInvalidLimit)),
+      );
+      return;
+    }
+    Navigator.pop(context, <String, Object?>{
+      'enabled': _enabled,
+      'defaultLimitMinor': Money.fromMajor(major).minorUnits,
+      'limitMode': _limitMode,
+      'cashiersAllowed': _cashiersAllowed,
+      'reminderTemplate': _reminder.text.trim(),
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final AppLocalizations l10n = AppLocalizations.of(context);
+    final AppSpacing spacing = AppSpacing.of(context);
+    return SafeArea(
+      child: Padding(
+        padding: EdgeInsetsDirectional.only(
+          start: spacing.lg,
+          end: spacing.lg,
+          top: spacing.md,
+          bottom: MediaQuery.viewInsetsOf(context).bottom + spacing.md,
+        ),
+        child: SingleChildScrollView(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: <Widget>[
+              Text(l10n.settingsCreditSection,
+                  style: AppTypography.of(context).titleLarge),
+              SizedBox(height: spacing.md),
+              SettingsSwitchRow(
+                icon: Icons.account_balance_wallet_outlined,
+                title: l10n.settingsCreditEnabledLabel,
+                value: _enabled,
+                onChanged: (value) => setState(() => _enabled = value),
+              ),
+              SizedBox(height: spacing.sm),
+              TextField(
+                controller: _limit,
+                keyboardType:
+                    const TextInputType.numberWithOptions(decimal: true),
+                decoration: InputDecoration(
+                  labelText: l10n.settingsCreditDefaultLimitLabel,
+                ),
+              ),
+              SizedBox(height: spacing.sm),
+              DropdownButtonFormField<String>(
+                initialValue: _limitMode,
+                decoration: InputDecoration(
+                  labelText: l10n.settingsCreditLimitModeLabel,
+                ),
+                items: <DropdownMenuItem<String>>[
+                  DropdownMenuItem(
+                    value: 'block',
+                    child: Text(l10n.settingsCreditLimitBlock),
+                  ),
+                  DropdownMenuItem(
+                    value: 'warn',
+                    child: Text(l10n.settingsCreditLimitWarn),
+                  ),
+                ],
+                onChanged: (value) {
+                  if (value != null) setState(() => _limitMode = value);
+                },
+              ),
+              SizedBox(height: spacing.sm),
+              SettingsSwitchRow(
+                icon: Icons.people_outline,
+                title: l10n.settingsCreditCashiersLabel,
+                value: _cashiersAllowed,
+                onChanged: (value) => setState(() => _cashiersAllowed = value),
+              ),
+              SizedBox(height: spacing.sm),
+              TextField(
+                controller: _reminder,
+                maxLines: 2,
+                decoration: InputDecoration(
+                  labelText: l10n.settingsCreditReminderLabel,
+                  helperText: l10n.settingsCreditReminderHelper,
+                ),
+              ),
+              SizedBox(height: spacing.md),
+              Row(
+                children: <Widget>[
+                  Expanded(
+                    child: OutlinedButton(
+                      onPressed: () => Navigator.pop(context),
+                      child: Text(l10n.actionCancel),
+                    ),
+                  ),
+                  SizedBox(width: spacing.sm),
+                  Expanded(
+                    child: FilledButton(
+                      onPressed: _save,
+                      child: Text(l10n.settingsCreditSaveAction),
+                    ),
+                  ),
+                ],
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
 /// Sync: the one switch and the one button, plus what happened last.
 class _SyncPanel extends StatelessWidget {
   const _SyncPanel({
@@ -2913,6 +4204,8 @@ class _SyncPanel extends StatelessWidget {
     required this.status,
     required this.onToggle,
     required this.onSyncNow,
+    this.onOpenIncomingPayments,
+    this.onOpenSyncCenter,
   });
 
   /// True once the emailed code has been presented. Everything that pushes a
@@ -2924,6 +4217,8 @@ class _SyncPanel extends StatelessWidget {
   final String? status;
   final Future<void> Function(bool) onToggle;
   final Future<void> Function() onSyncNow;
+  final VoidCallback? onOpenIncomingPayments;
+  final VoidCallback? onOpenSyncCenter;
 
   @override
   Widget build(BuildContext context) {
@@ -2960,6 +4255,22 @@ class _SyncPanel extends StatelessWidget {
             label: Text(
                 syncing ? l10n.settingsSyncing : l10n.settingsSyncNowAction),
           ),
+          if (onOpenIncomingPayments != null) ...<Widget>[
+            SizedBox(height: spacing.sm),
+            OutlinedButton.icon(
+              onPressed: onOpenIncomingPayments,
+              icon: const Icon(Icons.account_balance_wallet_outlined),
+              label: const Text('Incoming M-Pesa payments'),
+            ),
+          ],
+          if (onOpenSyncCenter != null) ...<Widget>[
+            SizedBox(height: spacing.sm),
+            OutlinedButton.icon(
+              onPressed: onOpenSyncCenter,
+              icon: const Icon(Icons.sync_problem_outlined),
+              label: const Text('Open Sync Center'),
+            ),
+          ],
           // The result of the last sync, announced rather than left to be seen:
           // "synced just now" is information, and information only the eye can
           // reach is information a screen reader never gets.
@@ -2982,8 +4293,13 @@ class _BackupPanel extends StatelessWidget {
   const _BackupPanel({
     required this.onExportEncrypted,
     required this.onRestoreEncrypted,
+    this.onExportFullBackup,
+    this.onRestoreFullBackup,
+    this.onUploadCloudFullBackup,
+    this.onRestoreCloudFullBackup,
     required this.onExport,
     required this.onImport,
+    this.onSeedBlackbee,
     required this.onErase,
     required this.onOpenDiagnostics,
     required this.importing,
@@ -2998,8 +4314,13 @@ class _BackupPanel extends StatelessWidget {
 
   final Future<void> Function() onExportEncrypted;
   final Future<void> Function() onRestoreEncrypted;
+  final Future<void> Function()? onExportFullBackup;
+  final Future<void> Function()? onRestoreFullBackup;
+  final Future<void> Function()? onUploadCloudFullBackup;
+  final Future<void> Function()? onRestoreCloudFullBackup;
   final Future<void> Function() onExport;
   final Future<void> Function() onImport;
+  final VoidCallback? onSeedBlackbee;
   final Future<void> Function() onErase;
 
   final Future<void> Function() onOpenDiagnostics;
@@ -3029,6 +4350,27 @@ class _BackupPanel extends StatelessWidget {
                 onPressed: () => onRestoreEncrypted(),
                 child: Text(l10n.settingsRestoreEncrypted),
               ),
+              if (onExportFullBackup != null)
+                OutlinedButton(
+                  onPressed: onExportFullBackup,
+                  child: const Text('Back up all shop data'),
+                ),
+              if (onRestoreFullBackup != null)
+                OutlinedButton(
+                  onPressed: onRestoreFullBackup,
+                  child: const Text('Restore all shop data'),
+                ),
+              if (onUploadCloudFullBackup != null)
+                OutlinedButton.icon(
+                  onPressed: onUploadCloudFullBackup,
+                  icon: const Icon(Icons.cloud_upload_outlined),
+                  label: const Text('Upload portable cloud copy'),
+                ),
+              if (onRestoreCloudFullBackup != null)
+                OutlinedButton(
+                  onPressed: onRestoreCloudFullBackup,
+                  child: const Text('Restore latest cloud copy'),
+                ),
               OutlinedButton(
                 onPressed: () => onExport(),
                 child: Text(l10n.settingsExportInventory),
@@ -3039,6 +4381,12 @@ class _BackupPanel extends StatelessWidget {
                 onPressed: importing ? null : () => onImport(),
                 child: Text(l10n.settingsImportInventory),
               ),
+              if (onSeedBlackbee != null)
+                OutlinedButton.icon(
+                  onPressed: onSeedBlackbee,
+                  icon: const Icon(Icons.playlist_add_outlined),
+                  label: const Text('Seed BlackBee products'),
+                ),
             ],
           ),
           // The import's progress.

@@ -129,6 +129,9 @@ class AppUpdateService extends ChangeNotifier {
   UpdateCheck? _check;
   UpdateCheck? get check => _check;
 
+  PlatformAnnouncement? _announcement;
+  PlatformAnnouncement? get announcement => _announcement;
+
   UpdateProgress? _progress;
   UpdateProgress? get progress => _progress;
 
@@ -214,6 +217,11 @@ class AppUpdateService extends ChangeNotifier {
           'manifest not JSON',
         ));
       }
+
+      // The announcement is independent of whether this build is newer. Keep
+      // it when the release manifest is otherwise current so platform admins
+      // can reach every online till without coupling a message to an APK.
+      _announcement = PlatformAnnouncement.tryParse(decoded['announcement']);
 
       final release = AppRelease.tryParse(decoded);
       if (release == null) {

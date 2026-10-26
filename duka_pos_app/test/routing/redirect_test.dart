@@ -14,20 +14,25 @@ import 'package:flutter_test/flutter_test.dart';
 AppStageSnapshot snapshot({
   AppStage stage = AppStage.ready,
   bool canManageStock = true,
+  bool? canViewReports,
   bool isAdmin = true,
 }) =>
     AppStageSnapshot(
       stage: stage,
       canManageStock: canManageStock,
+      canViewReports: canViewReports ?? canManageStock,
       isAdmin: isAdmin,
     );
 
 String? guard(AppStage stage, String location,
-        {bool canManageStock = true, bool isAdmin = true}) =>
+        {bool canManageStock = true,
+        bool? canViewReports,
+        bool isAdmin = true}) =>
     appRedirect(
       snapshot: snapshot(
         stage: stage,
         canManageStock: canManageStock,
+        canViewReports: canViewReports,
         isAdmin: isAdmin,
       ),
       location: location,
@@ -147,6 +152,15 @@ void main() {
     test('a cashier deep-linked to reports is sent to the dashboard', () {
       expect(
         guard(AppStage.ready, Routes.reports, canManageStock: false),
+        Routes.dashboard,
+      );
+    });
+
+    test('a stock manager without report permission is sent to the dashboard',
+        () {
+      expect(
+        guard(AppStage.ready, Routes.reports,
+            canManageStock: true, canViewReports: false),
         Routes.dashboard,
       );
     });
@@ -281,8 +295,9 @@ void main() {
       expect(AppDestination.fromPath('/nope'), isNull);
     });
 
-    test('there are exactly six branches, and Reports is not one of them', () {
-      expect(AppDestination.values.length, 6);
+    test('there are six branches plus More, and Reports is not one of them',
+        () {
+      expect(AppDestination.values.length, 7);
       expect(
         AppDestination.values.map((AppDestination d) => d.path),
         isNot(contains(Routes.reports)),

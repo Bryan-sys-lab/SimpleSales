@@ -141,7 +141,7 @@ class _ReturnSaleSheetState extends State<ReturnSaleSheet> {
     for (final SaleItem item in widget.sale.items) {
       final double qty = _quantities[item.id ?? 0] ?? 0;
       if (qty <= 0) continue;
-      final int lineTotal = (item.unitPrice.minorUnits * item.qty).round();
+      final int lineTotal = item.total.minorUnits;
       total += (lineTotal * (qty / item.qty)).round();
     }
     return total;

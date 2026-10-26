@@ -1,3 +1,5 @@
+import 'dart:convert';
+
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 
@@ -18,6 +20,79 @@ import '../utils/money.dart';
 const int kShiftReportLimit = 30;
 
 @immutable
+class ShiftReportSnapshot {
+  const ShiftReportSnapshot({
+    required this.shiftId,
+    required this.reportNumber,
+    required this.endedAt,
+    required this.saleCount,
+    required this.gross,
+    required this.profit,
+    required this.expectedCash,
+    required this.countedCash,
+    required this.variance,
+    required this.vat,
+    required this.taxable,
+    required this.etimsIssued,
+    required this.etimsPending,
+    required this.etimsRejected,
+    required this.kraActivated,
+    required this.paymentMix,
+  });
+
+  final int shiftId;
+  final int reportNumber;
+  final String endedAt;
+  final int saleCount;
+  final Money gross;
+  final Money profit;
+  final Money expectedCash;
+  final Money countedCash;
+  final Money variance;
+  final Money vat;
+  final Money taxable;
+  final int etimsIssued;
+  final int etimsPending;
+  final int etimsRejected;
+  final bool kraActivated;
+  final Map<String, int> paymentMix;
+
+  factory ShiftReportSnapshot.fromRow(Map<String, dynamic> row) {
+    final raw =
+        jsonDecode(row['snapshot_json'] as String) as Map<String, dynamic>;
+    int number(String key) => (raw[key] as num?)?.toInt() ?? 0;
+    final mix = <String, int>{};
+    final rawMix = raw['payment_mix'];
+    if (rawMix is Map) {
+      for (final entry in rawMix.entries) {
+        final value = entry.value;
+        mix['${entry.key}'] = value is Map
+            ? (value['total_minor'] as num?)?.toInt() ?? 0
+            : (value as num?)?.toInt() ?? 0;
+      }
+    }
+    return ShiftReportSnapshot(
+      shiftId: number('shift_id'),
+      reportNumber: number('report_number'),
+      endedAt: raw['ended_at'] as String? ?? row['created_at'] as String? ?? '',
+      saleCount: number('sale_count'),
+      gross: Money.fromMinor(number('gross_minor')),
+      profit: Money.fromMinor(number('profit_minor')),
+      expectedCash: Money.fromMinor(number('expected_cash_minor')),
+      countedCash: Money.fromMinor(number('counted_cash_minor')),
+      variance: Money.fromMinor(number('variance_minor')),
+      vat: Money.fromMinor(number('vat_minor')),
+      taxable: Money.fromMinor(number('taxable_minor')),
+      etimsIssued: number('etims_issued'),
+      etimsPending: number('etims_pending'),
+      etimsRejected: number('etims_rejected'),
+      kraActivated: raw['kra_activated'] == true,
+      paymentMix: mix,
+    );
+  }
+}
+
+@immutable
 class ShiftReportRow {
   const ShiftReportRow({
     required this.shift,
@@ -26,6 +101,8 @@ class ShiftReportRow {
     required this.variance,
     required this.reconciliationCount,
     required this.latestSale,
+    this.zReportNumber,
+    this.snapshot,
   });
 
   final Shift shift;
@@ -39,6 +116,8 @@ class ShiftReportRow {
   final int reconciliationCount;
 
   final Sale? latestSale;
+  final int? zReportNumber;
+  final ShiftReportSnapshot? snapshot;
 
   bool get isOpen => shift.status == 'open';
 
@@ -71,6 +150,19 @@ Future<List<ShiftReportRow>> loadShiftReports(
 ) async {
   final DatabaseHelper db = DatabaseHelper.instance;
   final List<Shift> window = shifts.take(kShiftReportLimit).toList();
+  final reports = await db.getShiftReports(limit: kShiftReportLimit);
+  final zNumberByShift = <int, int>{
+    for (final report in reports)
+      if (report['shift_id'] is num && report['report_number'] is num)
+        (report['shift_id'] as num).toInt():
+            (report['report_number'] as num).toInt(),
+  };
+  final snapshotByShift = <int, ShiftReportSnapshot>{
+    for (final report in reports)
+      if (report['shift_id'] is num)
+        (report['shift_id'] as num).toInt():
+            ShiftReportSnapshot.fromRow(report),
+  };
 
   final List<ShiftReportRow> rows = await Future.wait(
     window.map((Shift shift) async {
@@ -102,6 +194,8 @@ Future<List<ShiftReportRow>> loadShiftReports(
             reconciliations.isEmpty ? null : reconciliations.first.variance,
         reconciliationCount: reconciliations.length,
         latestSale: _latestSaleIn(sales, shift),
+        zReportNumber: shiftId == null ? null : zNumberByShift[shiftId],
+        snapshot: shiftId == null ? null : snapshotByShift[shiftId],
       );
     }),
   );
@@ -128,6 +222,8 @@ class ShiftReportsCard extends StatelessWidget {
     required this.rows,
     required this.totalShifts,
     required this.onPrint,
+    required this.onPrintReport,
+    required this.onViewReport,
     required this.onExport,
     super.key,
   });
@@ -137,6 +233,8 @@ class ShiftReportsCard extends StatelessWidget {
   final int totalShifts;
 
   final void Function(int shiftId, Sale sale) onPrint;
+  final void Function(ShiftReportRow row) onPrintReport;
+  final void Function(ShiftReportRow row) onViewReport;
   final void Function(Shift shift) onExport;
 
   @override
@@ -179,6 +277,8 @@ class ShiftReportsCard extends StatelessWidget {
                 row: rows[i],
                 showDivider: i != rows.length - 1,
                 onPrint: onPrint,
+                onPrintReport: onPrintReport,
+                onViewReport: onViewReport,
                 onExport: onExport,
               ),
           if (hidden > 0)
@@ -206,12 +306,16 @@ class _ShiftReportLine extends StatelessWidget {
     required this.row,
     required this.showDivider,
     required this.onPrint,
+    required this.onPrintReport,
+    required this.onViewReport,
     required this.onExport,
   });
 
   final ShiftReportRow row;
   final bool showDivider;
   final void Function(int shiftId, Sale sale) onPrint;
+  final void Function(ShiftReportRow row) onPrintReport;
+  final void Function(ShiftReportRow row) onViewReport;
   final void Function(Shift shift) onExport;
 
   @override
@@ -259,6 +363,13 @@ class _ShiftReportLine extends StatelessWidget {
                       row.cashierLabel(AppLocalizations.of(context)),
                       style: AppTypography.of(context).bodySmall,
                     ),
+                    if (row.zReportNumber != null)
+                      Text(
+                        'Z report #${row.zReportNumber}',
+                        style: AppTypography.of(context).bodySmall?.copyWith(
+                              color: colors.onSurfaceMuted,
+                            ),
+                      ),
                   ],
                 ),
               ),
@@ -276,6 +387,10 @@ class _ShiftReportLine extends StatelessWidget {
                 onPrint: shiftId != null && sale != null
                     ? () => onPrint(shiftId, sale)
                     : null,
+                onPrintReport:
+                    row.snapshot == null ? null : () => onPrintReport(row),
+                onViewReport:
+                    row.snapshot == null ? null : () => onViewReport(row),
                 onExport: () => onExport(row.shift),
               ),
             ],
@@ -381,11 +496,15 @@ class _ShiftActions extends StatelessWidget {
   const _ShiftActions({
     required this.row,
     required this.onPrint,
+    required this.onPrintReport,
+    required this.onViewReport,
     required this.onExport,
   });
 
   final ShiftReportRow row;
   final VoidCallback? onPrint;
+  final VoidCallback? onPrintReport;
+  final VoidCallback? onViewReport;
   final VoidCallback onExport;
 
   @override
@@ -407,6 +526,32 @@ class _ShiftActions extends StatelessWidget {
                 : 'No receipt to reprint in this shift',
             onPressed: onPrint,
             icon: const Icon(Icons.print_outlined),
+          ),
+        ),
+        Semantics(
+          button: true,
+          label: onPrintReport == null
+              ? 'No Z report to reprint'
+              : 'Reprint Z report',
+          child: IconButton(
+            tooltip: onPrintReport == null
+                ? 'No Z report to reprint'
+                : 'Reprint Z report',
+            onPressed: onPrintReport,
+            icon: const Icon(Icons.summarize_outlined),
+          ),
+        ),
+        Semantics(
+          button: true,
+          label: onViewReport == null
+              ? 'No Z report details'
+              : 'View Z report details',
+          child: IconButton(
+            tooltip: onViewReport == null
+                ? 'No Z report details'
+                : 'View Z report details',
+            onPressed: onViewReport,
+            icon: const Icon(Icons.visibility_outlined),
           ),
         ),
         SizedBox(width: spacing.xs),

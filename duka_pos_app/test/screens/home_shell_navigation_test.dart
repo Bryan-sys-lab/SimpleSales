@@ -14,9 +14,9 @@ import 'package:duka_pos/routing/app_stage_controller.dart';
 import 'package:duka_pos/routing/home_shell.dart';
 import 'package:duka_pos/routing/routes.dart';
 import 'package:duka_pos/theme/app_theme.dart';
-import 'package:duka_pos/ui/components/support_action.dart';
 import 'package:duka_pos/routing/shell_nav_bar.dart';
 import 'package:duka_pos/services/app_state.dart';
+import 'package:duka_pos/profile/shop_profile.dart';
 import 'package:duka_pos/services/live_channel_service.dart';
 import 'package:duka_pos/services/app_stage.dart';
 import 'package:duka_pos/ui/layout/window_size_class.dart';
@@ -238,10 +238,17 @@ void main() {
       final AppState state = AppState();
       state.signIn('Owner', asOwner: true);
       final visible = visibleDestinations(state).toList();
-      expect(visible.toSet(), equals(AppDestination.values.toSet()));
+      expect(visible, <AppDestination>[
+        AppDestination.dashboard,
+        AppDestination.inventory,
+        AppDestination.sell,
+        AppDestination.analytics,
+        AppDestination.more,
+        AppDestination.support,
+      ]);
     });
 
-    test('manager sees five tabs (no Settings)', () {
+    test('manager sees five destinations (More replaces Settings)', () {
       final AppState state = AppState();
       state.signIn('Manager', asOwner: false, role: 'manager');
       final visible = visibleDestinations(state).toList();
@@ -252,11 +259,12 @@ void main() {
         AppDestination.inventory,
         AppDestination.sell,
         AppDestination.analytics,
+        AppDestination.more,
         AppDestination.support,
       ]);
     });
 
-    test('cashier sees dashboard, sell, analytics and support', () {
+    test('cashier sees dashboard, sell, analytics, More and support', () {
       // The cashier gets ANALYTICS, and the figures on it are their own: the
       // screen is scoped to the rows they sold, so "how am I doing?" has an
       // answer instead of a closed door. Inventory and Settings stay behind
@@ -268,8 +276,19 @@ void main() {
         AppDestination.dashboard,
         AppDestination.sell,
         AppDestination.analytics,
+        AppDestination.more,
         AppDestination.support,
       ]);
+    });
+
+    test('Open profile hides stock navigation for an owner', () {
+      final AppState state = AppState();
+      state.shopProfile = ShopProfile.open;
+      state.signIn('Owner', asOwner: true);
+      expect(
+        visibleDestinations(state),
+        isNot(contains(AppDestination.inventory)),
+      );
     });
   });
 
@@ -303,10 +322,11 @@ void main() {
         findsOneWidget,
       );
       expect(
-        _destination(AppDestination.settings),
+        _destination(AppDestination.more),
         findsOneWidget,
       );
-      expect(find.byType(SupportAction), findsOneWidget);
+      expect(
+          find.byIcon(Icons.account_balance_wallet_outlined), findsOneWidget);
     });
 
     testWidgets('tapping each destination changes the URL',
@@ -342,13 +362,31 @@ void main() {
       await tester.pump(const Duration(milliseconds: 50));
       visited.add(location());
 
-      await tester.tap(_destination(AppDestination.settings));
-      await tester.pump(const Duration(milliseconds: 50));
-      visited.add(location());
-
       final distinct = visited.toSet();
       expect(distinct.length, greaterThanOrEqualTo(3),
           reason: 'expected navigation to change the URL, got $visited');
+    });
+
+    testWidgets('More contains settings and the non-identity app actions',
+        (WidgetTester tester) async {
+      tester.view.physicalSize =
+          const Size(320, 640).testerPhysicalSizeForDpr(2.0);
+      tester.view.devicePixelRatio = 2.0;
+      addTearDown(tester.view.reset);
+      final AppState state = AppState();
+      state.signIn('Test Owner', asOwner: true);
+      final GoRouter router = _testRouter(state);
+      await _pumpShell(tester, state, router);
+
+      await tester.tap(_destination(AppDestination.more));
+      await tester.pumpAndSettle();
+
+      expect(find.text('Settings'), findsOneWidget);
+      expect(find.text('Support'), findsOneWidget);
+      expect(find.text('Notifications'), findsOneWidget);
+      expect(find.text('Business tools marketplace'), findsOneWidget);
+      expect(
+          find.byIcon(Icons.account_balance_wallet_outlined), findsOneWidget);
     });
 
     testWidgets('manager sees five tabs', (WidgetTester tester) async {
@@ -376,8 +414,8 @@ void main() {
         findsOneWidget,
       );
       expect(
-        _destination(AppDestination.settings),
-        findsNothing,
+        _destination(AppDestination.more),
+        findsOneWidget,
       );
     });
 
@@ -408,10 +446,10 @@ void main() {
         findsOneWidget,
       );
       expect(
-        _destination(AppDestination.settings),
-        findsNothing,
+        _destination(AppDestination.more),
+        findsOneWidget,
       );
-      expect(find.byType(SupportAction), findsOneWidget);
+      expect(find.byIcon(Icons.account_balance_wallet_outlined), findsNothing);
     });
   });
 
@@ -477,7 +515,6 @@ void main() {
         'Sell',
         'Inventory',
         'Analytics',
-        'Settings',
         'Dashboard',
       ];
       for (final String label in tabs) {

@@ -68,15 +68,15 @@ class AppRelease {
   /// as an endpoint that did not answer.
   static AppRelease? tryParse(Object? raw) {
     if (raw is! Map) return null;
-    final build = raw['build'];
-    final version = raw['version'];
-    final url = raw['downloadUrl'];
+    final build = raw['build'] ?? raw['version_code'];
+    final version = raw['version'] ?? raw['version_name'];
+    final url = raw['downloadUrl'] ?? raw['download_url'];
     if (build is! int || build <= 0) return null;
     if (version is! String || version.trim().isEmpty) return null;
     if (url is! String || url.trim().isEmpty) return null;
 
-    final notesRaw = raw['notes'];
-    final minimumRaw = raw['minimumBuild'];
+    final notesRaw = raw['notes'] ?? raw['release_notes'];
+    final minimumRaw = raw['minimumBuild'] ?? raw['minimum_build'];
 
     return AppRelease(
       build: build,
@@ -91,6 +91,41 @@ class AppRelease {
   /// How urgently this should be presented.
   UpdateUrgency get urgency =>
       required ? UpdateUrgency.required : UpdateUrgency.normal;
+}
+
+/// A platform-admin message delivered through the same authenticated-safe
+/// manifest check as updates. It contains no shop or customer data.
+@immutable
+class PlatformAnnouncement {
+  const PlatformAnnouncement({
+    required this.id,
+    required this.title,
+    required this.body,
+  });
+
+  final String id;
+  final String title;
+  final String body;
+
+  static PlatformAnnouncement? tryParse(Object? raw) {
+    if (raw is! Map) return null;
+    final id = raw['id'];
+    final title = raw['title'];
+    final body = raw['body'];
+    if (id is! String ||
+        id.trim().isEmpty ||
+        title is! String ||
+        title.trim().isEmpty ||
+        body is! String ||
+        body.trim().isEmpty) {
+      return null;
+    }
+    return PlatformAnnouncement(
+      id: id.trim(),
+      title: title.trim(),
+      body: body.trim(),
+    );
+  }
 }
 
 /// What the update flow found when it looked.

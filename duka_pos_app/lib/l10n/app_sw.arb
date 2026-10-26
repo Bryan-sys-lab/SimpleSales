@@ -1,0 +1,103 @@
+{
+  "@@locale": "sw",
+  "appName": "SimpleSales",
+  "actionCancel": "Ghairi",
+  "actionUndo": "Tendua",
+  "actionSave": "Hifadhi",
+  "actionRefresh": "Onyesha upya",
+  "actionConfirm": "Futa",
+  "actionRetry": "Jaribu tena",
+  "actionPressBackAgainToExit": "Bonyeza nyuma tena ili kutoka",
+  "errorDuplicateName": "Jina hilo tayari limetumika. Jaribu jingine.",
+  "errorMissingField": "Jaza kila sehemu inayohitajika.",
+  "errorWriteFailed": "Haikuweza kuhifadhiwa. Jaribu tena; ikiendelea, wasiliana na usaidizi.",
+  "errorOffline": "Hakuna muunganisho wa intaneti. Angalia mtandao kisha ujaribu tena.",
+  "errorTimedOut": "Muunganisho umechelewa. Jaribu tena mawimbi yanapokuwa bora.",
+  "errorSessionExpired": "Kipindi kimeisha. Ingia tena.",
+  "errorNotPermitted": "Jukumu lako haliruhusu hilo. Muulize mmiliki akupatie ruhusa.",
+  "errorPaymentFailed": "Malipo yameshindikana. Huenda mteja alighairi au fedha hazikutosha.",
+  "errorInsufficientStock": "Bidhaa hazitoshi kukamilisha mauzo haya.",
+  "errorUnknown": "Kuna hitilafu. Jaribu tena; ikiendelea, wasiliana na usaidizi.",
+  "actionContinue": "Endelea",
+  "actionDone": "Imekamilika",
+  "navDashboard": "Dashibodi",
+  "navDashboardShort": "Nyumbani",
+  "navSell": "Uza",
+  "navSellShort": "Kauzo",
+  "navInventory": "Hesabu ya bidhaa",
+  "navInventoryShort": "Bidhaa",
+  "navAnalytics": "Uchambuzi",
+  "navAnalyticsShort": "Ripoti",
+  "navSettings": "Mipangilio",
+  "navSettingsShort": "Duka",
+  "navMore": "Zaidi",
+  "navMoreShort": "Zaidi",
+  "navSupport": "Usaidizi",
+  "navSupportShort": "Msaada",
+  "shellRoleOwner": "Mmiliki",
+  "shellAccountMenuLabel": "Akaunti na kutoka",
+  "shellCreditMenuLabel": "Wateja wa mkopo",
+  "shellSignOutTooltip": "Toka",
+  "settingsRoleCashier": "Muuza bidhaa"
+  ,"marketplaceTitle": "Zana za biashara"
+  ,"marketplaceIntro": "Lifanya duka lako liwe na nguvu zaidi"
+  ,"marketplaceDescription": "Unganisha zana salama za akili, ripoti, watu, fedha na wateja. Data ya POS yako inabaki yako."
+  ,"marketplaceComingSoon": "Inakuja hivi karibuni"
+  ,"marketplaceStamp": "INAKUJA HIVI KARIBUNI"
+  ,"actionClose": "Funga"
+  ,"permissionsMatrixTitle": "Ruhusa"
+  ,"permissionsMatrixOwnerOnly": "Mmiliki pekee anaweza kubadilisha ruhusa."
+  ,"permissionsMatrixRolePermissions": "Ruhusa za jukumu"
+  ,"permissionsMatrixManager": "Msimamizi"
+  ,"permissionsMatrixCashier": "Muuza bidhaa"
+  ,"permissionsMatrixStaffOverrides": "Marekebisho ya wafanyakazi"
+  ,"permissionsMatrixStaffMember": "Mfanyakazi"
+  ,"permissionsMatrixNoOverride": "Hakuna marekebisho binafsi"
+  ,"permissionsMatrixIndividualOverride": "Marekebisho binafsi"
+  ,"permissionsMatrixRoleDefault": "Tumia ruhusa ya jukumu"
+  ,"permissionsMatrixReset": "Rudisha ruhusa ya jukumu"
+  ,"permissionsMatrixAllow": "Ruhusu"
+  ,"permissionsMatrixApproval": "Idhini"
+  ,"permissionsMatrixDeny": "Kataa"
+  ,"blackbeeSeedTitle": "Ongeza bidhaa za BlackBee"
+  ,"blackbeeSeedAdded": "Imeongezwa"
+  ,"blackbeeSeedPriceRequired": "Bei ya ununuzi na ya kuuza inahitajika"
+  ,"incomingPaymentsTitle": "M-Pesa inayoingia"
+  ,"incomingPaymentsManagerOnly": "Msimamizi pekee anaweza kuona malipo yanayoingia."
+  ,"incomingPaymentsUnclaimed": "Hayajadaiwa"
+  ,"incomingPaymentsClaimed": "Yamedaiwa"
+  ,"incomingPaymentsIgnored": "Yamepuuzwa"
+  ,"incomingPaymentsDisputed": "Yamepingwa"
+  ,"incomingPaymentsNewNotice": "Malipo mapya ya M-Pesa ambayo hayajadaiwa yamepokelewa."
+  ,"incomingPaymentsLoadFailed": "Malipo yanayoingia hayakuweza kupakiwa."
+  ,"incomingPaymentsSetAsideTitle": "Weka malipo kando"
+  ,"incomingPaymentsReason": "Sababu"
+  ,"incomingPaymentsSetAsideAction": "Weka kando"
+  ,"incomingPaymentsEmpty": "Hakuna malipo hapa."
+  ,"incomingPaymentsSetAsideFailed": "Malipo hayakuweza kuwekwa kando."
+  ,"inventoryRepackAction": "Fungasha upya bidhaa"
+  ,"inventoryRepackTitle": "Fungasha upya bidhaa"
+  ,"inventoryRepackSourceProduct": "Bidhaa ya chanzo"
+  ,"inventoryRepackSourceQuantity": "Kiasi kilichotumika"
+  ,"inventoryRepackSourceHelp": "Kwa mfano, kilo 10 za sukari nyingi"
+  ,"inventoryRepackOutputProduct": "Bidhaa inayotengenezwa"
+  ,"inventoryRepackOutputQuantity": "Kiasi kilichotengenezwa"
+  ,"inventoryRepackOutputHelp": "Kwa mfano, pakiti 20 za gramu 500"
+  ,"inventoryRepackCancel": "Ghairi"
+  ,"inventoryRepackRecord": "Rekodi ufungashaji"
+  ,"inventoryRepackSaved": "Ufungashaji umerekodiwa. Usawazishaji utajumuisha mizunguko yote miwili."
+  ,"inventoryRepackInsufficientStock": "Huwezi kutumia bidhaa nyingi kuliko zilizo kwenye hisa."
+  ,"inventoryRepackFailed": "Ufungashaji haukuweza kurekodiwa."
+  ,"drinksAnalyticsTitle": "Uendeshaji wa vinywaji"
+  ,"drinksAnalyticsLitresSold": "Lita zilizouzwa"
+  ,"drinksAnalyticsPourSales": "Mauzo ya vipimo"
+  ,"drinksAnalyticsMeasuredLines": "Vipimo vilivyouzwa"
+  ,"drinksAnalyticsOpenTabs": "Tabs zilizo wazi"
+  ,"drinksAnalyticsTankBalance": "Salio la matenki"
+  ,"drinksAnalyticsWaste": "Upotevu/mwagiko"
+  ,"drinksAnalyticsDipVariance": "Tofauti ya dip"
+  ,"drinksAnalyticsDipBelow": "chini ya matarajio"
+  ,"drinksAnalyticsDipAbove": "juu ya matarajio"
+  ,"drinksAnalyticsNoTankData": "Hakuna salio la tanki lililorekodiwa"
+  ,"drinksAnalyticsLitres": "{amount} L"
+}

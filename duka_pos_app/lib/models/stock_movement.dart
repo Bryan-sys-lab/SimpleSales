@@ -39,7 +39,16 @@ enum StockMovementType {
   import('import'),
 
   /// A correction to an earlier mistake.
-  correction('correction');
+  correction('correction'),
+
+  /// Stock converted from one catalogue unit into another (for example,
+  /// kilograms of sugar into 500 g packets).
+  repack('repack'),
+
+  /// A remote stock baseline applied while merging another device's catalogue
+  /// snapshot. It is already acknowledged by the server and is never pushed
+  /// back as a new local movement.
+  remoteSync('remote_sync');
 
   const StockMovementType(this.wire);
 

@@ -1,3 +1,4 @@
+import 'dart:convert';
 import 'dart:io';
 import 'package:excel/excel.dart' as xl;
 import 'package:path_provider/path_provider.dart';
@@ -10,6 +11,7 @@ import '../models/models.dart';
 import 'encrypted_backup_service.dart';
 import 'import_row_parser.dart';
 import 'inventory_importer.dart';
+import '../utils/crypto_utils.dart';
 
 export 'inventory_importer.dart' show InventoryImportResult;
 
@@ -47,6 +49,14 @@ class InventoryBackupRequest {
 Future<String> writeAutomaticInventoryBackup(
     InventoryBackupRequest request) async {
   final file = await ExcelService().saveAutomaticInventoryBackup();
+  return file.path;
+}
+
+/// Writes the complete local workspace for the opt-in automatic backup path.
+/// Unlike the spreadsheet export, this includes staff, queues, audit history,
+/// credit, shifts, and every analytics source table.
+Future<String> writeAutomaticFullBackup(InventoryBackupRequest request) async {
+  final file = await ExcelService().saveAutomaticFullBackup();
   return file.path;
 }
 
@@ -129,7 +139,10 @@ class ExcelService {
     return _save(book, 'duka-inventory');
   }
 
-  Future<File> exportSales({DateTime? since, int limit = 10000}) async {
+  /// Exports every sale in the requested period by default. A limit is only
+  /// applied when the caller explicitly asks for a bounded export; reports
+  /// must never silently truncate a one-year history.
+  Future<File> exportSales({DateTime? since, int? limit}) async {
     final sales = await _db.getSales(since: since, limit: limit);
     final book = xl.Excel.createExcel();
     final sheet = book['Sales'];
@@ -143,8 +156,7 @@ class ExcelService {
     return _save(book, 'duka-sales');
   }
 
-  Future<File> exportEncryptedSales(
-      {DateTime? since, int limit = 10000}) async {
+  Future<File> exportEncryptedSales({DateTime? since, int? limit}) async {
     final workbook = await exportSales(since: since, limit: limit);
     final encrypted = await EncryptedBackupService.encryptToFile(
         await workbook.readAsBytes(),
@@ -222,21 +234,121 @@ class ExcelService {
   /// sheet. This is used by AutoSyncService while the app is open.
   Future<File> saveAutomaticInventoryBackup() async {
     final workbook = await exportInventory();
-    final file = await EncryptedBackupService.encryptToFile(
-        await workbook.readAsBytes(),
+    final clearBytes = await workbook.readAsBytes();
+    final file = await EncryptedBackupService.encryptToFile(clearBytes,
         prefix: 'duka-inventory');
     if (workbook.existsSync()) await workbook.delete();
+    await _db.recordBackupLog(
+      uuid: generateUuid(),
+      kind: 'automatic_device_bound',
+      path: file.path,
+      clearBytes: clearBytes.length,
+    );
+    await recordAutomaticBackupWritten(file.path);
+    return file;
+  }
+
+  Future<File> saveAutomaticFullBackup() async {
+    final snapshot = await _db.exportFullSnapshot();
+    final clearBytes = utf8.encode(jsonEncode(snapshot));
+    final file = await EncryptedBackupService.encryptToFile(
+      clearBytes,
+      prefix: 'duka-autobackup',
+    );
+    await _db.recordBackupLog(
+      uuid: generateUuid(),
+      kind: 'automatic_full_device_bound',
+      path: file.path,
+      clearBytes: clearBytes.length,
+      manifestJson: jsonEncode(snapshot['manifest']),
+    );
     await recordAutomaticBackupWritten(file.path);
     return file;
   }
 
   Future<File> exportEncryptedInventory() async {
     final workbook = await exportInventory();
-    final encrypted = await EncryptedBackupService.encryptToFile(
-        await workbook.readAsBytes(),
+    final clearBytes = await workbook.readAsBytes();
+    final encrypted = await EncryptedBackupService.encryptToFile(clearBytes,
         prefix: 'duka-inventory');
     if (workbook.existsSync()) await workbook.delete();
+    await _db.recordBackupLog(
+      uuid: generateUuid(),
+      kind: 'encrypted_device_bound',
+      path: encrypted.path,
+      clearBytes: clearBytes.length,
+    );
     return encrypted;
+  }
+
+  Future<File> exportPortableEncryptedInventory(String passphrase) async {
+    final workbook = await exportInventory();
+    final clearBytes = await workbook.readAsBytes();
+    final encrypted = await EncryptedBackupService.encryptPortableToFile(
+      clearBytes,
+      passphrase: passphrase,
+      prefix: 'duka-inventory-portable',
+    );
+    if (workbook.existsSync()) await workbook.delete();
+    await _db.recordBackupLog(
+      uuid: generateUuid(),
+      kind: 'portable_passphrase',
+      path: encrypted.path,
+      clearBytes: clearBytes.length,
+    );
+    return encrypted;
+  }
+
+  /// Full portable backup: unlike the spreadsheet export this carries every
+  /// local table, including sales, staff, permissions, credit, shifts, audit
+  /// history, queues and the source data used by analytics.
+  Future<File> exportPortableFullBackup(String passphrase) async {
+    final snapshot = await _db.exportFullSnapshot();
+    final clearBytes = utf8.encode(jsonEncode(snapshot));
+    final encrypted = await EncryptedBackupService.encryptPortableToFile(
+      clearBytes,
+      passphrase: passphrase,
+      prefix: 'duka-full-portable',
+    );
+    await _db.recordBackupLog(
+      uuid: generateUuid(),
+      kind: 'portable_full_passphrase',
+      path: encrypted.path,
+      clearBytes: clearBytes.length,
+      manifestJson: jsonEncode(snapshot['manifest']),
+    );
+    return encrypted;
+  }
+
+  Future<int> importPortableEncryptedInventory(String passphrase) async {
+    final files = await FilePicker.pickFiles(
+      type: FileType.custom,
+      allowedExtensions: ['duka'],
+    );
+    if (files.isEmpty) return 0;
+    final bytes = await EncryptedBackupService.decryptPortableBytes(
+      encodedBytes: await File(files.single.path!).readAsBytes(),
+      passphrase: passphrase,
+    );
+    return (await importInventoryBytes(bytes)).imported;
+  }
+
+  Future<void> importPortableFullBackup(String passphrase) async {
+    final files = await FilePicker.pickFiles(
+      type: FileType.custom,
+      allowedExtensions: ['duka'],
+    );
+    if (files.isEmpty) return;
+    final bytes = await EncryptedBackupService.decryptPortableBytes(
+      encodedBytes: await File(files.single.path!).readAsBytes(),
+      passphrase: passphrase,
+    );
+    final decoded = jsonDecode(utf8.decode(bytes));
+    if (decoded is! Map) throw const FormatException('Invalid full backup');
+    await _db.restoreFullSnapshot(
+      Map<String, Object?>.from(decoded),
+      allowWorkspaceMismatch: true,
+    );
   }
 
   Future<int> importEncryptedInventory() async {

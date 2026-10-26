@@ -410,8 +410,10 @@ class _VerifySheetFrame extends StatelessWidget {
                     ),
                   ),
                   SizedBox(height: spacing.md),
-                  Row(
-                    mainAxisAlignment: MainAxisAlignment.end,
+                  Wrap(
+                    alignment: WrapAlignment.end,
+                    spacing: spacing.xs,
+                    runSpacing: spacing.xs,
                     children: actions,
                   ),
                 ],

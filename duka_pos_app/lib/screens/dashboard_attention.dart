@@ -319,107 +319,131 @@ class _AttentionRow extends StatelessWidget {
     final AppSpacing spacing = AppSpacing.of(context);
     final TextTheme type = AppTypography.of(context);
 
+    Widget details() => Expanded(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: <Widget>[
+              Semantics(
+                // gen-l10n sorts the parameters ALPHABETICALLY — detail,
+                // label — which is the reverse of the sentence's own order
+                // "{label}. {detail}".
+                label: AppLocalizations.of(context)
+                    .attentionSpoken(attention.detail, attention.label),
+                excludeSemantics: true,
+                child: ExcludeSemantics(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: <Widget>[
+                      Text(attention.label, style: type.titleSmall),
+                      SizedBox(height: spacing.xs),
+                      Text(
+                        attention.detail,
+                        style: type.bodySmall?.copyWith(
+                          color: colors.onSurfaceMuted,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            ],
+          ),
+        );
+
+    final List<Widget> actionWidgets = <Widget>[
+      if (attention.action != null)
+        TextButton(
+          onPressed: attention.action!.onPressed,
+          child: Text(attention.action!.label),
+        ),
+      if (attention.secondaryAction != null)
+        TextButton(
+          onPressed: attention.secondaryAction!.onPressed,
+          child: Text(attention.secondaryAction!.label),
+        ),
+      if (onDismiss != null)
+        Tooltip(
+          message: AppLocalizations.of(context).attentionDismissAction,
+          child: IconButton(
+            tooltip: AppLocalizations.of(context).attentionDismissAction,
+            onPressed: onDismiss!,
+            icon: const Icon(Icons.close, size: 20),
+          ),
+        ),
+    ];
+
+    Widget actions() => ConstrainedBox(
+          constraints: BoxConstraints(minHeight: spacing.minTapTarget),
+          child: Wrap(
+            alignment: WrapAlignment.end,
+            crossAxisAlignment: WrapCrossAlignment.center,
+            spacing: spacing.xs,
+            children: actionWidgets,
+          ),
+        );
+
+    Widget badge() => Container(
+          constraints: const BoxConstraints(minWidth: 32, minHeight: 32),
+          alignment: Alignment.center,
+          padding: EdgeInsets.symmetric(horizontal: spacing.xs),
+          decoration: BoxDecoration(
+            color: attention.tone.container(colors),
+            borderRadius: shapes.chipRadius,
+            border: Border.all(color: attention.tone.color(colors)),
+          ),
+          child: Text(
+            AppLocalizations.of(context).attentionCountBadge(attention.count),
+            style: AppTypography.money(
+              context,
+              size: 13,
+              weight: FontWeight.w700,
+            ).copyWith(color: attention.tone.onContainer(colors)),
+          ),
+        );
+
+    final bool stackActions = MediaQuery.textScalerOf(context).scale(1) > 1.3;
     return Padding(
       padding: EdgeInsetsDirectional.only(
         top: isFirst ? 0 : spacing.md,
         bottom: isLast ? 0 : spacing.md,
       ),
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: <Widget>[
-          Container(
-            constraints: const BoxConstraints(minWidth: 32, minHeight: 32),
-            alignment: Alignment.center,
-            padding: EdgeInsets.symmetric(horizontal: spacing.xs),
-            decoration: BoxDecoration(
-              color: attention.tone.container(colors),
-              borderRadius: shapes.chipRadius,
-              border: Border.all(color: attention.tone.color(colors)),
-            ),
-            child: Text(
-              AppLocalizations.of(context).attentionCountBadge(attention.count),
-              style: AppTypography.money(
-                context,
-                size: 13,
-                weight: FontWeight.w700,
-              ).copyWith(color: attention.tone.onContainer(colors)),
-            ),
-          ),
-          SizedBox(width: spacing.md),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
+      child: LayoutBuilder(
+        builder: (BuildContext context, BoxConstraints constraints) {
+          final bool compact = stackActions || constraints.maxWidth < 360;
+          if (compact) {
+            return Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
               children: <Widget>[
-                Semantics(
-                  // gen-l10n sorts the parameters ALPHABETICALLY — detail,
-                  // label — which is the reverse of the sentence's own order
-                  // "{label}. {detail}". These were passed label-first.
-                  label: AppLocalizations.of(context)
-                      .attentionSpoken(attention.detail, attention.label),
-                  excludeSemantics: true,
-                  child: ExcludeSemantics(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: <Widget>[
-                        Text(attention.label, style: type.titleSmall),
-                        SizedBox(height: 2),
-                        Text(
-                          attention.detail,
-                          style: type.bodySmall?.copyWith(
-                            color: colors.onSurfaceMuted,
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
+                Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: <Widget>[
+                    badge(),
+                    SizedBox(width: spacing.md),
+                    details(),
+                  ],
                 ),
-              ],
-            ),
-          ),
-          if (attention.action != null ||
-              attention.secondaryAction != null) ...<Widget>[
-            SizedBox(width: spacing.sm),
-            // 44px tall: this is a real target on a real till, not a text link
-            // pretending to be one.
-            //
-            // Two actions stack: side by side they would squeeze their labels
-            // onto two lines on a 320dp phone, and a squashed button is a
-            // button people miss.
-            ConstrainedBox(
-              constraints: BoxConstraints(minHeight: spacing.minTapTarget),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.end,
-                mainAxisSize: MainAxisSize.min,
-                children: <Widget>[
-                  if (attention.action != null)
-                    TextButton(
-                      onPressed: attention.action!.onPressed,
-                      child: Text(attention.action!.label),
-                    ),
-                  if (attention.secondaryAction != null)
-                    TextButton(
-                      onPressed: attention.secondaryAction!.onPressed,
-                      child: Text(attention.secondaryAction!.label),
-                    ),
+                if (actionWidgets.isNotEmpty) ...<Widget>[
+                  SizedBox(height: spacing.xs),
+                  Align(
+                      alignment: AlignmentDirectional.centerEnd,
+                      child: actions()),
                 ],
-              ),
-            ),
-          ],
-          if (onDismiss != null) ...<Widget>[
-            SizedBox(width: spacing.sm),
-            ConstrainedBox(
-              constraints: BoxConstraints(minHeight: spacing.minTapTarget),
-              child: Tooltip(
-                message: AppLocalizations.of(context).attentionDismissAction,
-                child: IconButton(
-                  tooltip: AppLocalizations.of(context).attentionDismissAction,
-                  onPressed: onDismiss!,
-                  icon: const Icon(Icons.close, size: 20),
-                ),
-              ),
-            ),
-          ],
-        ],
+              ],
+            );
+          }
+          return Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: <Widget>[
+              badge(),
+              SizedBox(width: spacing.md),
+              details(),
+              if (actionWidgets.isNotEmpty) ...<Widget>[
+                SizedBox(width: spacing.sm),
+                actions(),
+              ],
+            ],
+          );
+        },
       ),
     );
   }

@@ -173,6 +173,13 @@ class AppLocalizationsEn extends AppLocalizations {
   String get ownerSetupInvalidEmail => 'Enter a valid email address';
 
   @override
+  String get shopProfileLabel => 'Business profile';
+
+  @override
+  String get shopProfileHelp =>
+      'Choose this shop\'s profile once. You can change it later.';
+
+  @override
   String get validationEmailRequired => 'Email is required';
 
   @override
@@ -416,6 +423,65 @@ class AppLocalizationsEn extends AppLocalizations {
   String get shiftCloseCommit => 'Close and reconcile';
 
   @override
+  String get expensePayOutAction => 'Pay out';
+
+  @override
+  String get expensePayOutTitle => 'Pay out from till';
+
+  @override
+  String get expensePayOutSubtitle => 'Record money taken from the drawer.';
+
+  @override
+  String get expenseAmountLabel => 'Amount (KSh)';
+
+  @override
+  String get expenseCategoryLabel => 'Category';
+
+  @override
+  String get expenseNoteLabel => 'Note (optional)';
+
+  @override
+  String get expenseSaveAction => 'Record payout';
+
+  @override
+  String get expenseHistoryAction => 'Expense history';
+
+  @override
+  String get expenseHistoryTitle => 'Expenses';
+
+  @override
+  String get expenseHistoryEmpty => 'No payouts recorded yet.';
+
+  @override
+  String get expenseManagerOnly =>
+      'Only the owner or manager can view expenses.';
+
+  @override
+  String get expenseHistoryTotal => 'Total paid out';
+
+  @override
+  String get tillMovementAction => 'Cash in/drop';
+
+  @override
+  String get tillMovementTitle => 'Cash in or drop';
+
+  @override
+  String get tillMovementSubtitle =>
+      'Record cash entering or leaving this drawer.';
+
+  @override
+  String get tillMovementTypeLabel => 'Movement';
+
+  @override
+  String get tillCashInAction => 'Cash in';
+
+  @override
+  String get tillCashDropAction => 'Cash drop';
+
+  @override
+  String get tillMovementSaveAction => 'Record movement';
+
+  @override
   String get shiftCloseCommitting => 'Closing';
 
   @override
@@ -524,6 +590,12 @@ class AppLocalizationsEn extends AppLocalizations {
   String get navSettingsShort => 'Shop';
 
   @override
+  String get navMore => 'More';
+
+  @override
+  String get navMoreShort => 'More';
+
+  @override
   String get navSupport => 'Support';
 
   @override
@@ -534,6 +606,41 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get shellAccountMenuLabel => 'Account and sign out';
+
+  @override
+  String get shellCreditMenuLabel => 'Credit customers';
+
+  @override
+  String get notifications => 'Notifications';
+
+  @override
+  String get notificationsEmpty => 'Nothing needs your attention right now.';
+
+  @override
+  String get notificationsLoadFailed =>
+      'Notifications are unavailable right now.';
+
+  @override
+  String get businessToolsMarketplace => 'Business tools marketplace';
+
+  @override
+  String get marketplaceTitle => 'Business tools';
+
+  @override
+  String get marketplaceIntro => 'Make your shop more powerful';
+
+  @override
+  String get marketplaceDescription =>
+      'Connect trusted tools for intelligence, reporting, people, money and customers. Your POS data stays yours.';
+
+  @override
+  String get marketplaceComingSoon => 'Coming soon';
+
+  @override
+  String get marketplaceStamp => 'COMING SOON';
+
+  @override
+  String get actionClose => 'Close';
 
   @override
   String get shellSignOutTooltip => 'Sign out';
@@ -923,7 +1030,7 @@ class AppLocalizationsEn extends AppLocalizations {
   String get sellSearchProducts => 'Search products';
 
   @override
-  String get sellShotsSection => 'Shots';
+  String get sellShotsSection => 'Cups';
 
   @override
   String sellVariantCount(num count) {
@@ -958,6 +1065,55 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get inventoryAddProduct => 'Add product';
+
+  @override
+  String get inventoryManualRestock => 'Restock manually';
+
+  @override
+  String get settingsCreditSection => 'Credit sales';
+
+  @override
+  String get settingsCreditOffSummary =>
+      'Off — on-account sales are not offered.';
+
+  @override
+  String settingsCreditOnSummary(Object limit) {
+    return 'On — default limit $limit.';
+  }
+
+  @override
+  String get settingsCreditEnabledLabel => 'Allow sales on account';
+
+  @override
+  String get settingsCreditDefaultLimitLabel => 'Default credit limit (KSh)';
+
+  @override
+  String get settingsCreditLimitModeLabel => 'Over-limit sales';
+
+  @override
+  String get settingsCreditLimitBlock => 'Require manager approval';
+
+  @override
+  String get settingsCreditLimitWarn => 'Warn, then allow';
+
+  @override
+  String get settingsCreditCashiersLabel => 'Allow cashiers to sell on account';
+
+  @override
+  String get settingsCreditReminderLabel => 'Payment reminder message';
+
+  @override
+  String get settingsCreditReminderHelper =>
+      'Leave blank to use the default reminder.';
+
+  @override
+  String get settingsCreditSaveAction => 'Save credit settings';
+
+  @override
+  String get settingsCreditInvalidLimit => 'Enter a limit of 0 or more.';
+
+  @override
+  String get settingsCreditSaved => 'Credit settings saved.';
 
   @override
   String get inventoryEmptyTitle => 'No products yet';
@@ -1137,7 +1293,7 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get productUnitCupPourHint =>
-      'Cups are poured from a bigger container: add that container, then pour from it on the Shot cups screen.';
+      'Cups are poured from a bigger container: add that container, then configure its cups in Inventory.';
 
   @override
   String get inventoryFieldStock => 'Stock';
@@ -1284,10 +1440,10 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get inventoryShotCupsSpoken =>
-      'Shot cups. Fixed-size shots of any drink in your inventory.';
+      'Cups. Fixed-size cups of any drink in your inventory.';
 
   @override
-  String get inventoryShotCupsTitle => 'Shot cups';
+  String get inventoryShotCupsTitle => 'Cups';
 
   @override
   String get inventorySizeSuggestionsSpoken => 'Sizes you have used before';
@@ -2318,11 +2474,11 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get settingsConnectMpesaMessage =>
-      'This shop needs to be registered with the backend once. Sign in with the shop identity account; staff continue using local PINs for the till.';
+      'The platform connects this shop to M-Pesa through PayHero. Enter only the shop Till or Paybill number; PayHero credentials stay on the backend. Staff continue using local PINs for the till.';
 
   @override
   String get settingsPaymentChannelHint =>
-      'Find your channel ID on the payment provider dashboard, under your wallet/channel settings.';
+      'Enter the shop Till or Paybill number. The platform registers the payment channel for you.';
 
   @override
   String get settingsStaffSection => 'Managers and cashiers';
@@ -2467,14 +2623,66 @@ class AppLocalizationsEn extends AppLocalizations {
   String get settingsYourShopsTitle => 'Your shops';
 
   @override
-  String get shotCupsActionsLabel => 'Shot cup actions';
+  String get settingsBusinessProfile => 'Business profile';
 
   @override
-  String get shotCupsAddAction => 'Add a shot cup';
+  String get settingsBusinessProfileChangeTitle => 'Change business profile';
+
+  @override
+  String get settingsBusinessProfileChangeWarning =>
+      'This changes navigation and terminology for this shop. Existing sales, stock, tax snapshots, cash balances and financial results stay unchanged.';
+
+  @override
+  String get settingsBusinessProfileChangeAction => 'Apply profile';
+
+  @override
+  String settingsBusinessProfileChanged(Object profile) {
+    return 'Business profile changed to $profile';
+  }
+
+  @override
+  String get settingsBusinessProfilePreviewTitle => 'What will change';
+
+  @override
+  String settingsBusinessProfilePreviewNavigation(Object after, Object before) {
+    return 'Navigation: $before → $after';
+  }
+
+  @override
+  String settingsBusinessProfilePreviewTerminology(
+      Object after, Object before) {
+    return 'Product wording: $before → $after';
+  }
+
+  @override
+  String get settingsBusinessProfileStock => 'Stock';
+
+  @override
+  String get settingsBusinessProfileMoneyFirst => 'Money-first records';
+
+  @override
+  String get activityProfileChanged => 'Business profile changed';
+
+  @override
+  String transactionsExpenseTitle(Object category) {
+    return 'Expense · $category';
+  }
+
+  @override
+  String get transactionsExpenseSourceTill => 'Till cash';
+
+  @override
+  String get transactionsExpenseSourceOther => 'Other funds';
+
+  @override
+  String get shotCupsActionsLabel => 'Cup actions';
+
+  @override
+  String get shotCupsAddAction => 'Add a cup';
 
   @override
   String get shotCupsCapacityHelper =>
-      'Leave it empty if you do not know the size. With a size, the app works out what each shot cost you to pour.';
+      'Leave it empty if you do not know the size. With a size, the app works out what each cup cost you to pour.';
 
   @override
   String get shotCupsCapacityHint => '30';
@@ -2515,28 +2723,27 @@ class AppLocalizationsEn extends AppLocalizations {
   }
 
   @override
-  String get shotCupsChooseDrink =>
-      'Choose the drink this shot is poured from.';
+  String get shotCupsChooseDrink => 'Choose the drink this cup is poured from.';
 
   @override
-  String get shotCupsDefaultName => 'Shot';
+  String get shotCupsDefaultName => 'Small cup';
 
   @override
   String get shotCupsEditAction => 'Edit';
 
   @override
   String get shotCupsEmptyMessageNoPermission =>
-      'No shot cups have been set up for this shop.';
+      'No cups have been set up for this shop.';
 
   @override
   String get shotCupsEmptyMessageOwner =>
-      'Add one to sell fixed-size shots of any drink in your inventory.';
+      'Add one to sell fixed-size cups of any drink in your inventory.';
 
   @override
-  String get shotCupsEmptyTitle => 'No shot cups yet';
+  String get shotCupsEmptyTitle => 'No cups yet';
 
   @override
-  String get shotCupsLoadFailed => 'Couldn’t load the shot cups. Try again.';
+  String get shotCupsLoadFailed => 'Couldn’t load the cups. Try again.';
 
   @override
   String get shotCupsNameAtTillLabel => 'Name at the till';
@@ -2545,25 +2752,25 @@ class AppLocalizationsEn extends AppLocalizations {
   String get shotCupsNameHelper => 'What the cashier taps';
 
   @override
-  String get shotCupsNameHint => 'Shot, Double, Slim';
+  String get shotCupsNameHint => 'Small cup, Big cup';
 
   @override
   String get shotCupsNameRequired =>
-      'Give the cup a name, like Shot or Double.';
+      'Give the cup a name, like Small cup or Big cup.';
 
   @override
   String get shotCupsNotSold => 'Not sold';
 
   @override
   String shotCupsPerBottle(Object count) {
-    return '$count per bottle';
+    return '$count cups per bottle';
   }
 
   @override
   String get shotCupsPouredFromLabel => 'Poured from';
 
   @override
-  String get shotCupsPriceHelper => 'For one shot';
+  String get shotCupsPriceHelper => 'For one cup';
 
   @override
   String get shotCupsPriceInvalid => 'Price must be a number, 0 or more.';
@@ -2582,7 +2789,7 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String shotCupsStopSellingMessage(Object product) {
-    return '$product shots stop appearing at the till. Sales already recorded are untouched.';
+    return '$product cups stop appearing at the till. Sales already recorded are untouched.';
   }
 
   @override
@@ -2591,7 +2798,7 @@ class AppLocalizationsEn extends AppLocalizations {
   }
 
   @override
-  String get shotCupsTitle => 'Shot cups';
+  String get shotCupsTitle => 'Cups';
 
   @override
   String get taxSettingsAdminOnly =>
@@ -2627,7 +2834,7 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get taxSettingsEtimsOffSubtitle =>
-      'Off — sales are recorded but no tax invoice is issued. Turn this on once a TIN is registered.';
+      'Off — sales are recorded and VAT reports remain available. KRA eTIMS is not activated.';
 
   @override
   String get taxSettingsTinNotRegisteredHelp =>
@@ -2662,7 +2869,7 @@ class AppLocalizationsEn extends AppLocalizations {
   String get taxSettingsEtimsOn => 'eTIMS receipts switched on';
 
   @override
-  String get taxSettingsEtimsSection => 'KRA eTIMS';
+  String get taxSettingsEtimsSection => 'Tax reporting';
 
   @override
   String get taxSettingsEtimsUpdateFailed =>
@@ -2673,7 +2880,7 @@ class AppLocalizationsEn extends AppLocalizations {
       'Link this shop to the backend before switching eTIMS on.';
 
   @override
-  String get taxSettingsIssueEtimsTitle => 'Issue eTIMS receipts';
+  String get taxSettingsIssueEtimsTitle => 'Issue tax receipts';
 
   @override
   String get taxSettingsKraPinTitle => 'KRA taxpayer PIN';
@@ -2685,6 +2892,13 @@ class AppLocalizationsEn extends AppLocalizations {
   @override
   String get taxSettingsKraUnreachableRetry =>
       'Couldn’t reach KRA. Try again when you have a connection.';
+
+  @override
+  String get taxSettingsNotActivatedStatus => 'KRA eTIMS not activated';
+
+  @override
+  String get taxSettingsNotActivatedSubtitle =>
+      'Risiti by PesaStack Limited is the planned provider. Activation stays off until the shop is onboarded and approved.';
 
   @override
   String get taxSettingsPricesIncludeVat => 'Prices include VAT';
@@ -3112,7 +3326,7 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get settingsPaymentChannelIdRequired =>
-      'Enter a numeric payment channel ID';
+      'Enter a numeric Till or Paybill number';
 
   @override
   String get settingsCloseAction => 'Close';
@@ -3231,6 +3445,267 @@ class AppLocalizationsEn extends AppLocalizations {
   String get loginSignInAction => 'Sign in';
 
   @override
+  String get approvalTitle => 'Manager approval';
+
+  @override
+  String get approvalWrongPin => 'That PIN is not the one on file. Try again.';
+
+  @override
+  String get approvalNoManagers =>
+      'Nobody can approve this yet: add a manager or use the owner sign-in.';
+
+  @override
+  String get approvalPinLabel => 'Your 6-digit PIN';
+
+  @override
+  String get approvalConfirmAction => 'Approve';
+
+  @override
+  String get roleNameOwner => 'Owner';
+
+  @override
+  String get roleNameManager => 'Manager';
+
+  @override
+  String get roleNameCashier => 'Cashier';
+
+  @override
+  String get sellPaymentOnAccount => 'On account';
+
+  @override
+  String get sellCreditNoCustomer => 'Tap to choose the customer';
+
+  @override
+  String get sellCreditPickCustomer => 'Who takes this on account?';
+
+  @override
+  String sellCreditOverLimit(Object name, Object total) {
+    return '$name would owe $total.';
+  }
+
+  @override
+  String sellCreditOverLimitAsk(Object name, Object total) {
+    return '$name would owe $total.';
+  }
+
+  @override
+  String get customerAddInlineAction => 'Add a new customer';
+
+  @override
+  String get customerSavedTitle => 'Customer saved';
+
+  @override
+  String get customerAddedMessage => 'The customer is on the list.';
+
+  @override
+  String get customerEditAction => 'Edit';
+
+  @override
+  String get customersTitle => 'Customers';
+
+  @override
+  String get creditOwedToYou => 'Owed to you';
+
+  @override
+  String creditOwedByCount(num count) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: '$count customers owe',
+      one: 'One customer owes',
+      zero: 'No one owes anything',
+    );
+    return '$_temp0';
+  }
+
+  @override
+  String get creditAging7 => '0–7 days';
+
+  @override
+  String get creditAging30 => '8–30 days';
+
+  @override
+  String get creditAging60 => '31–60 days';
+
+  @override
+  String get creditAgingOver => '60+ days';
+
+  @override
+  String get customersFilterOwes => 'Owes money';
+
+  @override
+  String get customersSortName => 'By name';
+
+  @override
+  String get customerSearchHint => 'Search by name or number';
+
+  @override
+  String get customersEmptyTitle => 'No customers yet';
+
+  @override
+  String get customersEmptyMessage =>
+      'Sell on account and the till keeps the balance here instead of on paper.';
+
+  @override
+  String get customersNoMatchesTitle => 'No matches';
+
+  @override
+  String get customersNoMatchesMessage => 'Nobody matches that search.';
+
+  @override
+  String customerOwesChip(Object amount) {
+    return 'Owes $amount';
+  }
+
+  @override
+  String customerCreditChip(Object amount) {
+    return 'Credit with them $amount';
+  }
+
+  @override
+  String get customerAddAction => 'Add customer';
+
+  @override
+  String get customerNameLabel => 'Customer name';
+
+  @override
+  String get customerLimitLabel => 'Credit limit (KSh)';
+
+  @override
+  String get customerLimitHelper => 'Blank uses the shop default.';
+
+  @override
+  String get customerLimitInvalid => 'A limit is a number of shillings.';
+
+  @override
+  String get customerNotesLabel => 'Notes';
+
+  @override
+  String get customerSaveAction => 'Save customer';
+
+  @override
+  String get customerBalanceOwedHeading => 'Owed to the shop';
+
+  @override
+  String get customerBalanceCreditHeading => 'In credit with the shop';
+
+  @override
+  String get customerBalanceClearHeading => 'Nothing owed';
+
+  @override
+  String customerBalanceLimitHeading(Object headroom, Object limit) {
+    return 'Limit $limit. Room $headroom.';
+  }
+
+  @override
+  String get customerAddPayment => 'Add payment';
+
+  @override
+  String get customerRemindAction => 'Remind';
+
+  @override
+  String get customerStatementAction => 'Statement';
+
+  @override
+  String get customerDeactivateAction => 'Remove';
+
+  @override
+  String customerDeactivateError(Object message) {
+    return '$message';
+  }
+
+  @override
+  String creditDeactivateFailed(Object message) {
+    return '$message';
+  }
+
+  @override
+  String get customerReminderFailed =>
+      'There is no app that could open the message.';
+
+  @override
+  String get creditHistoryLabel => 'History';
+
+  @override
+  String get creditHistoryEmptyTitle => 'Nothing on this account yet';
+
+  @override
+  String get creditHistoryEmptyMessage =>
+      'A sale on account or a first payment starts the history.';
+
+  @override
+  String get creditEntryCharge => 'Bought on account';
+
+  @override
+  String get creditEntryPayment => 'Paid';
+
+  @override
+  String get creditEntryAdjustment => 'Corrected';
+
+  @override
+  String get creditEntryWriteoff => 'Written off';
+
+  @override
+  String get creditEntryReturn => 'Returned';
+
+  @override
+  String customerStatementTitle(Object name) {
+    return 'Statement — $name';
+  }
+
+  @override
+  String customerStatementBalance(Object balance) {
+    return 'Balance: $balance';
+  }
+
+  @override
+  String get customerStatementShareHint =>
+      'Copy the text, then paste it wherever the customer will read it.';
+
+  @override
+  String get customerCopyStatement => 'Copy';
+
+  @override
+  String creditPaymentOwes(Object amount) {
+    return 'Currently owes $amount';
+  }
+
+  @override
+  String get creditPaymentAmountLabel => 'The amount being paid';
+
+  @override
+  String get creditPaymentAmountHelper => 'The full balance is pre-filled.';
+
+  @override
+  String get creditPaymentAmountInvalid => 'A payment is more than zero.';
+
+  @override
+  String get creditPaymentCash => 'Cash';
+
+  @override
+  String get creditPaymentMpesa => 'M-Pesa';
+
+  @override
+  String get creditPaymentCodeLabel => 'M-Pesa code';
+
+  @override
+  String get creditPaymentConfirmAction => 'Take the payment';
+
+  @override
+  String creditPaymentTaken(Object amount, Object name) {
+    return '$name paid $amount.';
+  }
+
+  @override
+  String get creditRepaymentTakenTitle => 'Payment taken';
+
+  @override
+  String get activityCreditRepayment => 'Credit payment taken';
+
+  @override
+  String get activityCreditAdjusted => 'Credit account adjusted';
+
+  @override
   String get loginPinLabel => 'PIN';
 
   @override
@@ -3298,6 +3773,116 @@ class AppLocalizationsEn extends AppLocalizations {
   @override
   String get receiveDone =>
       'The stock is on the shelf and the costs are up to date.';
+
+  @override
+  String get receiveAddSupplierAction => 'Add a supplier';
+
+  @override
+  String get receiveDraftRestored =>
+      'A half-finished delivery was brought back.';
+
+  @override
+  String get receiveDraftDiscarded =>
+      'The half-finished delivery was thrown away.';
+
+  @override
+  String get receiveDraftDiscardAction => 'Discard';
+
+  @override
+  String get receiveDraftDiscardTitle => 'Discard this half-finished delivery?';
+
+  @override
+  String get receiveDraftDiscardMessage =>
+      'What you scanned in goes away for good. The stock and the costs are untouched.';
+
+  @override
+  String get receiveDraftDiscardConfirm => 'Discard it';
+
+  @override
+  String get receiveDraftAction => 'Resume delivery';
+
+  @override
+  String receiveQtyValue(Object qty) {
+    return '$qty';
+  }
+
+  @override
+  String get receiveDeliveriesAction => 'Deliveries';
+
+  @override
+  String get receiveHistoryTitle => 'Deliveries';
+
+  @override
+  String get receiveHistoryEmpty =>
+      'No deliveries recorded yet. Receiving stock gets you one here.';
+
+  @override
+  String receiveReceiptCost(Object total) {
+    return 'Cost $total';
+  }
+
+  @override
+  String get receiveViewAction => 'View';
+
+  @override
+  String get supplierAddTitle => 'Add a supplier';
+
+  @override
+  String get supplierAddSubtitle =>
+      'The name of the shop or person you buy from, and the number to order on.';
+
+  @override
+  String get supplierNameLabel => 'Supplier name';
+
+  @override
+  String get supplierNameTooShort => 'Enter the supplier\'s name.';
+
+  @override
+  String get supplierNameAlreadyOnList =>
+      'That supplier is already on the list.';
+
+  @override
+  String get supplierPhoneLabel => 'Phone number';
+
+  @override
+  String get supplierPhoneHelper => 'For ordering later. 07…, 01… or 254…';
+
+  @override
+  String get supplierPhoneInvalid =>
+      'That is not a Kenyan number. Use 07…, 01…, +254… or 254…';
+
+  @override
+  String get supplierSaveAction => 'Save supplier';
+
+  @override
+  String supplierSaveFailed(Object message) {
+    return '$message';
+  }
+
+  @override
+  String get receiveVoidAction => 'Void delivery';
+
+  @override
+  String get receiveVoidTitle => 'Void this delivery?';
+
+  @override
+  String get receiveVoidMessage =>
+      'The stock it brought goes back off the shelf, and its cost comes off the history. This cannot be undone.';
+
+  @override
+  String get receiveVoidConfirm => 'Void delivery';
+
+  @override
+  String get receiveVoided =>
+      'The delivery was voided. The stock went back off the shelf.';
+
+  @override
+  String receiveVoidFailed(Object message) {
+    return '$message';
+  }
+
+  @override
+  String get receiveVoidedBy => 'Voided';
 
   @override
   String get transactionsReturnedBadge => 'Returned';
@@ -3479,6 +4064,101 @@ class AppLocalizationsEn extends AppLocalizations {
   @override
   String get permissionsOptionalNote =>
       'None of these are required. A till with a barcode scanner and no camera can still sell everything.';
+
+  @override
+  String get permissionsMatrixTitle => 'Permissions';
+
+  @override
+  String get permissionsMatrixOwnerOnly =>
+      'Only the owner can change permissions.';
+
+  @override
+  String get permissionsMatrixRolePermissions => 'Role permissions';
+
+  @override
+  String get permissionsMatrixManager => 'Manager';
+
+  @override
+  String get permissionsMatrixCashier => 'Cashier';
+
+  @override
+  String get permissionsMatrixStaffOverrides => 'Staff overrides';
+
+  @override
+  String get permissionsMatrixStaffMember => 'Staff member';
+
+  @override
+  String get permissionsMatrixNoOverride => 'No individual override';
+
+  @override
+  String get permissionsMatrixIndividualOverride => 'Individual override';
+
+  @override
+  String get permissionsMatrixRoleDefault => 'Uses role default';
+
+  @override
+  String get permissionsMatrixReset => 'Reset to role default';
+
+  @override
+  String get permissionsMatrixAllow => 'Allow';
+
+  @override
+  String get permissionsMatrixApproval => 'Approval';
+
+  @override
+  String get permissionsMatrixDeny => 'Deny';
+
+  @override
+  String get blackbeeSeedTitle => 'Seed BlackBee products';
+
+  @override
+  String get blackbeeSeedAdded => 'Added';
+
+  @override
+  String get blackbeeSeedPriceRequired => 'Price and selling price required';
+
+  @override
+  String get incomingPaymentsTitle => 'Incoming M-Pesa';
+
+  @override
+  String get incomingPaymentsManagerOnly =>
+      'Only a manager can view incoming payments.';
+
+  @override
+  String get incomingPaymentsUnclaimed => 'Unclaimed';
+
+  @override
+  String get incomingPaymentsClaimed => 'Claimed';
+
+  @override
+  String get incomingPaymentsIgnored => 'Ignored';
+
+  @override
+  String get incomingPaymentsDisputed => 'Disputed';
+
+  @override
+  String get incomingPaymentsNewNotice =>
+      'New unclaimed M-Pesa payment received.';
+
+  @override
+  String get incomingPaymentsLoadFailed =>
+      'Incoming payments could not be loaded.';
+
+  @override
+  String get incomingPaymentsSetAsideTitle => 'Set payment aside';
+
+  @override
+  String get incomingPaymentsReason => 'Reason';
+
+  @override
+  String get incomingPaymentsSetAsideAction => 'Set aside';
+
+  @override
+  String get incomingPaymentsEmpty => 'No payments here.';
+
+  @override
+  String get incomingPaymentsSetAsideFailed =>
+      'The payment could not be set aside.';
 
   @override
   String onboardingImportedProducts(Object products) {
@@ -3673,9 +4353,6 @@ class AppLocalizationsEn extends AppLocalizations {
   }
 
   @override
-  String get analyticsMarginLabel => 'Margin';
-
-  @override
   String get analyticsAvgBasketCaption => 'per sale';
 
   @override
@@ -3823,6 +4500,12 @@ class AppLocalizationsEn extends AppLocalizations {
   String get analyticsProfitLabel => 'Profit';
 
   @override
+  String get analyticsNetProfitLabel => 'Net profit';
+
+  @override
+  String get analyticsNetProfitCaption => 'After posted expenses';
+
+  @override
   String get analyticsAvgBasketLabel => 'Avg basket';
 
   @override
@@ -3860,15 +4543,6 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get analyticsNothingTaken => 'Nothing taken in this period.';
-
-  @override
-  String get analyticsReportingPeriod => 'Shown for';
-
-  @override
-  String get analyticsNothingToCompare => 'nothing to compare against';
-
-  @override
-  String get analyticsNoChange => 'no change';
 
   @override
   String get analyticsPaymentMixTotal => 'Total';
@@ -4089,7 +4763,7 @@ class AppLocalizationsEn extends AppLocalizations {
   String get activitySaleRecorded => 'Sale recorded';
 
   @override
-  String get activityShotCupSold => 'Shot cup sold';
+  String get activityShotCupSold => 'Cup sold';
 
   @override
   String get activityStaffAdded => 'Staff added';
@@ -4240,41 +4914,6 @@ class AppLocalizationsEn extends AppLocalizations {
   }
 
   @override
-  String portfolioShiftsCounted(num count) {
-    String _temp0 = intl.Intl.pluralLogic(
-      count,
-      locale: localeName,
-      other: '$count shifts counted',
-      one: '1 shift counted',
-    );
-    return '$_temp0';
-  }
-
-  @override
-  String portfolioShiftsOpenNow(num count) {
-    String _temp0 = intl.Intl.pluralLogic(
-      count,
-      locale: localeName,
-      other: '$count open now',
-      one: '1 open now',
-    );
-    return '$_temp0';
-  }
-
-  @override
-  String portfolioDrawerShort(Object amount) {
-    return 'drawer short $amount';
-  }
-
-  @override
-  String portfolioDrawerOver(Object amount) {
-    return 'drawer over $amount';
-  }
-
-  @override
-  String get portfolioShiftsNone => 'no shifts yet';
-
-  @override
   String get productSizeLabelKilogram => 'How many litres the tank holds (ml)';
 
   @override
@@ -4309,7 +4948,7 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get tankFieldTankCountHint =>
-      'Write a number, like 1 or 2. Every cup you sell is counted down from here.';
+      'Write a number, like 1 or 2. Use 0 if the delivery has not arrived yet.';
 
   @override
   String get tankFieldTankCost => 'What one full tank cost you (KSh)';
@@ -4324,7 +4963,7 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get tankCountRequired =>
-      'Write how many tanks you have. Only numbers, like 1.';
+      'Write how many tanks you have. Use 0 if none have arrived yet.';
 
   @override
   String get tankNameRequired => 'Write what is in the tank.';
@@ -4418,9 +5057,6 @@ class AppLocalizationsEn extends AppLocalizations {
   String get loginWhoAreYou => 'Who are you?';
 
   @override
-  String get loginNotInThisShop => 'That person is not in this shop. Pick the shop they work in.';
-
-  @override
   String get supportMarkResolved => 'Mark as solved';
 
   @override
@@ -4479,16 +5115,16 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get shotCupNoSize =>
-      'This cup has no size, so the bottle will not go down when you sell it';
+      'This cup has no size, so the container will not go down when you sell it';
 
   @override
   String shotCupTooBig(Object ml) {
-    return 'This cup is bigger than the bottle ($ml ml)';
+    return 'This cup is bigger than the container ($ml ml)';
   }
 
   @override
   String shotCountLeft(Object count) {
-    return '$count cups left in the bottle';
+    return '$count cups left in the container';
   }
 
   @override
@@ -4530,12 +5166,6 @@ class AppLocalizationsEn extends AppLocalizations {
   String get sellNoStockLeft => 'There is none left';
 
   @override
-  String get sellOutOfStockHint => 'Tap to see why it cannot be sold';
-
-  @override
-  String get sellNoPriceSetYet => 'This item has no price and no cup to sell by yet. Set a price in Stock.';
-
-  @override
   String get portionFullLabel => 'Full bottle';
 
   @override
@@ -4568,4 +5198,141 @@ class AppLocalizationsEn extends AppLocalizations {
   @override
   String get dashboardStillWorksDetail =>
       'The till still works. Pull to try again, or look at the data in Settings.';
+
+  @override
+  String get analyticsReportingPeriod => 'Shown for';
+
+  @override
+  String get analyticsNothingToCompare => 'nothing to compare against';
+
+  @override
+  String get analyticsNoChange => 'no change';
+
+  @override
+  String portfolioShiftsCounted(num count) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: '$count shifts counted',
+      one: '1 shift counted',
+    );
+    return '$_temp0';
+  }
+
+  @override
+  String portfolioShiftsOpenNow(num count) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: '$count open now',
+      one: '1 open now',
+    );
+    return '$_temp0';
+  }
+
+  @override
+  String portfolioDrawerShort(Object amount) {
+    return 'drawer short $amount';
+  }
+
+  @override
+  String portfolioDrawerOver(Object amount) {
+    return 'drawer over $amount';
+  }
+
+  @override
+  String get portfolioShiftsNone => 'no shifts yet';
+
+  @override
+  String get sellOutOfStockHint => 'Tap to see why it cannot be sold';
+
+  @override
+  String get sellNoPriceSetYet =>
+      'This item has no price and no cup to sell by yet. Set a price in Stock.';
+
+  @override
+  String get loginNotInThisShop =>
+      'That person is not in this shop. Pick the shop they work in.';
+
+  @override
+  String get analyticsMarginLabel => 'Margin';
+
+  @override
+  String get inventoryRepackAction => 'Repack stock';
+
+  @override
+  String get inventoryRepackTitle => 'Repack stock';
+
+  @override
+  String get inventoryRepackSourceProduct => 'Source product';
+
+  @override
+  String get inventoryRepackSourceQuantity => 'Source quantity used';
+
+  @override
+  String get inventoryRepackSourceHelp => 'For example, 10 kg of bulk sugar';
+
+  @override
+  String get inventoryRepackOutputProduct => 'Output product';
+
+  @override
+  String get inventoryRepackOutputQuantity => 'Output quantity made';
+
+  @override
+  String get inventoryRepackOutputHelp => 'For example, 20 packets of 500 g';
+
+  @override
+  String get inventoryRepackCancel => 'Cancel';
+
+  @override
+  String get inventoryRepackRecord => 'Record repack';
+
+  @override
+  String get inventoryRepackSaved =>
+      'Repack recorded. Stock sync will include both movements.';
+
+  @override
+  String get inventoryRepackInsufficientStock =>
+      'Repack cannot use more stock than is available.';
+
+  @override
+  String get inventoryRepackFailed => 'Repack could not be recorded.';
+
+  @override
+  String get drinksAnalyticsTitle => 'Drinks operations';
+
+  @override
+  String get drinksAnalyticsLitresSold => 'Litres sold';
+
+  @override
+  String get drinksAnalyticsPourSales => 'Pour sales';
+
+  @override
+  String get drinksAnalyticsMeasuredLines => 'Measured servings';
+
+  @override
+  String get drinksAnalyticsOpenTabs => 'Open tabs';
+
+  @override
+  String get drinksAnalyticsTankBalance => 'Tank balance';
+
+  @override
+  String get drinksAnalyticsWaste => 'Waste/spillage';
+
+  @override
+  String get drinksAnalyticsDipVariance => 'Dip variance';
+
+  @override
+  String get drinksAnalyticsDipBelow => 'below expected';
+
+  @override
+  String get drinksAnalyticsDipAbove => 'above expected';
+
+  @override
+  String get drinksAnalyticsNoTankData => 'No tank balance recorded';
+
+  @override
+  String drinksAnalyticsLitres(Object amount) {
+    return '$amount L';
+  }
 }

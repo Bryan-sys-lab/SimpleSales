@@ -70,6 +70,18 @@ class WorkspaceService {
     await prefs.setString(registryKey, jsonEncode(current));
   }
 
+  /// Removes a workspace registry entry after a failed, not-yet-completed
+  /// shop creation. This is intentionally explicit rather than a generic
+  /// "clear registry" operation so an error cannot erase another shop.
+  static Future<void> unregister(String workspaceKey) async {
+    if (workspaceKey.trim().isEmpty || workspaceKey == legacyKey) return;
+    final current = await registry();
+    if (!current.containsKey(workspaceKey)) return;
+    current.remove(workspaceKey);
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString(registryKey, jsonEncode(current));
+  }
+
   static Future<String?> workspaceForTenant(String tenantId) async {
     final all = await registry();
     for (final entry in all.entries) {

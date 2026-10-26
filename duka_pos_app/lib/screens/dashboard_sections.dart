@@ -100,19 +100,36 @@ class DashboardPanel extends StatelessWidget {
                   top: spacing.sm,
                   bottom: spacing.sm,
                 ),
-                child: Row(
-                  children: <Widget>[
-                    Expanded(
-                      child: Semantics(
-                        header: true,
-                        child: Text(
-                          title,
-                          style: AppTypography.of(context).titleMedium,
-                        ),
+                child: LayoutBuilder(
+                  builder: (BuildContext context, BoxConstraints constraints) {
+                    final bool stack = trailing != null &&
+                        (constraints.maxWidth < 360 ||
+                            MediaQuery.textScalerOf(context).scale(1) > 1.3);
+                    final Widget heading = Semantics(
+                      header: true,
+                      child: Text(
+                        title,
+                        style: AppTypography.of(context).titleMedium,
                       ),
-                    ),
-                    if (trailing != null) trailing!,
-                  ],
+                    );
+                    if (stack) {
+                      return Column(
+                        crossAxisAlignment: CrossAxisAlignment.stretch,
+                        mainAxisSize: MainAxisSize.min,
+                        children: <Widget>[
+                          heading,
+                          SizedBox(height: spacing.xs),
+                          trailing!,
+                        ],
+                      );
+                    }
+                    return Row(
+                      children: <Widget>[
+                        Expanded(child: heading),
+                        if (trailing != null) trailing!,
+                      ],
+                    );
+                  },
                 ),
               ),
             ),
@@ -134,6 +151,62 @@ class DashboardPanel extends StatelessWidget {
     return Semantics(
       sortKey: OrdinalSortKey(sortKey!),
       child: card,
+    );
+  }
+}
+
+/// A manager/owner-only door into the credit ledger. Cashiers can sell on
+/// credit when permitted, but customer balances are shop-level money data.
+class DashboardCreditCard extends StatelessWidget {
+  const DashboardCreditCard({
+    required this.owedMinor,
+    required this.customerCount,
+    required this.onOpen,
+    super.key,
+  });
+
+  final int owedMinor;
+  final int customerCount;
+  final VoidCallback onOpen;
+
+  @override
+  Widget build(BuildContext context) {
+    final l10n = AppLocalizations.of(context);
+    final spacing = AppSpacing.of(context);
+    return DashboardPanel(
+      title: l10n.creditOwedToYou,
+      sortKey: 4,
+      trailing: Icon(Icons.chevron_right,
+          color: AppColors.of(context).onSurfaceMuted),
+      child: Semantics(
+        button: true,
+        label: '${l10n.creditOwedToYou}: '
+            '${formatMoney(Money.fromMinor(owedMinor))}',
+        child: InkWell(
+          onTap: onOpen,
+          child: Padding(
+            padding: EdgeInsets.symmetric(vertical: spacing.sm),
+            child: Row(
+              children: [
+                const Icon(Icons.account_balance_wallet_outlined),
+                SizedBox(width: spacing.md),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        formatMoney(Money.fromMinor(owedMinor)),
+                        style: AppTypography.of(context).titleLarge,
+                      ),
+                      Text(l10n.creditOwedByCount(customerCount)),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
     );
   }
 }
@@ -815,11 +888,14 @@ class _PeakHourBadge extends StatelessWidget {
             ),
           ),
           SizedBox(width: spacing.xs),
-          Text(
-            '$hour · $amount',
-            style: type.labelSmall?.copyWith(
-              color: colors.onAccentContainer,
-              fontWeight: FontWeight.w600,
+          Flexible(
+            child: Text(
+              '$hour · $amount',
+              softWrap: true,
+              style: type.labelSmall?.copyWith(
+                color: colors.onAccentContainer,
+                fontWeight: FontWeight.w600,
+              ),
             ),
           ),
         ],

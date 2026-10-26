@@ -68,6 +68,11 @@ class AuthService {
   /// low enough that verifying a PIN stays imperceptible on a budget phone.
   static const int defaultIterations = 120000;
 
+  /// Test-only override for repeated destructive-flow setup. Production never
+  /// sets this, so shipped PIN hashes keep the configured work factor.
+  @visibleForTesting
+  static int? iterationsForTest;
+
   static final _kdfHmac = Hmac.sha256();
 
   /// The configured default KDF. Held as an instance so there is exactly one
@@ -90,14 +95,15 @@ class AuthService {
   /// per-user salt can be introduced later without touching call sites.
   static Future<String> hashPin(String pin, {int? userKey}) async {
     final salt = _randomBytes(16);
+    final iterations = iterationsForTest ?? defaultIterations;
     final derived = await _deriveInBackground(
-        Pbkdf2Request(pin, salt, defaultIterations, 256));
+        Pbkdf2Request(pin, salt, iterations, 256));
     assert(() {
       // Guards the invariant that what we write is what [_kdf] derives, so the
       // inline and isolated paths can never silently disagree.
       return derived.length * 8 == 256;
     }());
-    return '$_prefix\$$defaultIterations\$${base64UrlEncode(salt)}\$${base64UrlEncode(derived)}';
+    return '$_prefix\$$iterations\$${base64UrlEncode(salt)}\$${base64UrlEncode(derived)}';
   }
 
   /// Verifies [pin] against a stored hash, accepting both the current PBKDF2

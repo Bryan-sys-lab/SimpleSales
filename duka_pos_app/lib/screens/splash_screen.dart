@@ -4,8 +4,8 @@ import 'package:flutter/services.dart';
 import '../theme/app_colors.dart';
 import '../theme/app_spacing.dart';
 import '../theme/typography.dart';
+import '../ui/brand/animated_startup_brand.dart';
 import '../ui/brand/nerva_wordmark.dart';
-import '../ui/brand/simple_pos_mark.dart';
 
 /// The startup page.
 ///
@@ -43,7 +43,10 @@ class SplashScreen extends StatelessWidget {
         body: SafeArea(
           child: Center(
             child: SingleChildScrollView(
-              padding: EdgeInsets.all(spacing.xl),
+              padding: EdgeInsets.symmetric(
+                horizontal: spacing.mobilePageGutter,
+                vertical: spacing.xl,
+              ),
               child: ConstrainedBox(
                 constraints: BoxConstraints(maxWidth: spacing.readableMaxWidth),
                 child: Column(
@@ -54,14 +57,7 @@ class SplashScreen extends StatelessWidget {
                     // loads. Its plate is the brand ink, the same ink as the
                     // page behind it, so the lockup reads as one mark rather
                     // than as an icon sitting on a background.
-                    const Image(
-                      image: AssetImage(
-                        'assets/branding/stitch_simple_pos_launcher_icon/simple_pos_geometric_s_icon/screen.png',
-                      ),
-                      width: 76,
-                      height: 76,
-                      fit: BoxFit.contain,
-                    ),
+                    const AnimatedStartupBrand(),
                     SizedBox(height: spacing.lg),
                     // The ATTRIBUTION first, the app's own name after it.
                     //
@@ -83,8 +79,6 @@ class SplashScreen extends StatelessWidget {
                       ),
                     ),
                     SizedBox(height: spacing.md),
-                    SimplePosWordmark(color: colors.onSurface),
-                    SizedBox(height: spacing.sm),
                     Text(
                       'Point of sale, built for the till it runs on',
                       textAlign: TextAlign.center,

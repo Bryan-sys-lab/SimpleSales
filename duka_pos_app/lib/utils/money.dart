@@ -103,6 +103,38 @@ class Money implements Comparable<Money> {
 Money sumMoney(Iterable<Money> values) =>
     values.fold(Money.zero, (total, value) => total + value);
 
+/// Allocates [total] minor units proportionally to [weights] without losing a
+/// unit. Equal remainders are resolved in input order, making refunds and
+/// order-level discounts deterministic across devices.
+List<int> largestRemainderAllocation(int total, List<int> weights) {
+  if (weights.isEmpty || total < 0) return const <int>[];
+  final positive = weights.map((value) => value < 0 ? 0 : value).toList();
+  final denominator = positive.fold<int>(0, (sum, value) => sum + value);
+  if (denominator == 0) {
+    final result = List<int>.filled(weights.length, 0);
+    result[0] = total;
+    return result;
+  }
+  final result = <int>[];
+  final remainders = <int>[];
+  var allocated = 0;
+  for (final weight in positive) {
+    final numerator = total * weight;
+    final base = numerator ~/ denominator;
+    result.add(base);
+    remainders.add(numerator % denominator);
+    allocated += base;
+  }
+  final order = List<int>.generate(weights.length, (index) => index)
+    ..sort((a, b) => remainders[b] != remainders[a]
+        ? remainders[b].compareTo(remainders[a])
+        : a.compareTo(b));
+  for (var i = 0; i < total - allocated; i++) {
+    result[order[i % order.length]]++;
+  }
+  return result;
+}
+
 /// The VAT *contained inside* a VAT-inclusive amount, or the VAT *on top of*
 /// a net amount when [pricesIncludeVat] is false.
 ///
@@ -154,6 +186,26 @@ Money vatComponentOf(Money amount,
     return Money.fromMinor(-divideMoneyHalfUp(-numerator, denominator));
   }
   return Money.fromMinor(divideMoneyHalfUp(numerator, denominator));
+}
+
+/// Applies the one VAT calculation to a supply tax class. Exempt and
+/// out-of-scope supplies are not interchangeable with standard-rated goods;
+/// zero-rated supplies remain taxable supplies but carry a zero amount.
+/// Unknown classes fail closed at zero and remain visible in the stored class
+/// snapshot for review instead of silently receiving a guessed legal rate.
+Money vatComponentForTaxClass(
+  Money amount, {
+  required int ratePercent,
+  required String taxClass,
+  bool pricesIncludeVat = true,
+}) {
+  final normalized = taxClass.trim().toLowerCase().replaceAll('-', '_');
+  if (normalized != 'standard') return Money.zero;
+  return vatComponentOf(
+    amount,
+    ratePercent: ratePercent,
+    pricesIncludeVat: pricesIncludeVat,
+  );
 }
 
 /// `numerator / denominator` rounded half up, in integers only.

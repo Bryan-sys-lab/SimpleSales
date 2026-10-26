@@ -55,6 +55,7 @@ void main() {
     int? actorId,
     String actorName = 'Amina',
     String? detail,
+    String? createdAt,
   }) =>
       AuditLogEntry(
         action: action,
@@ -63,7 +64,7 @@ void main() {
         actorId: actorId,
         actorName: actorName,
         detail: detail,
-        createdAt: DateTime.now().toIso8601String(),
+        createdAt: createdAt ?? DateTime.now().toIso8601String(),
       );
 
   group('writing', () {
@@ -158,6 +159,18 @@ void main() {
       expect(rows.length, 1);
       expect(rows.single.actorId, 4);
       expect(rows.single.action, AuditAction.stockAdjusted);
+    });
+
+    test('a bounded query excludes the next report window', () async {
+      await db.recordAudit(entry(createdAt: '2026-01-31T23:59:59.000Z'));
+      await db.recordAudit(entry(createdAt: '2026-02-01T00:00:00.000Z'));
+
+      final rows = await db.auditLog(const AuditLogQuery(
+        since: '2026-01-01T00:00:00.000Z',
+        until: '2026-02-01T00:00:00.000Z',
+      ));
+      expect(rows, hasLength(1));
+      expect(rows.single.createdAt, '2026-01-31T23:59:59.000Z');
     });
 
     test('the owner-relevant view hides the sale rows', () async {

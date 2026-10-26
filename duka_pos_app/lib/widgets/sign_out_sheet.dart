@@ -20,6 +20,7 @@ import 'package:provider/provider.dart';
 
 import '../l10n/generated/app_localizations.dart';
 import '../models/models.dart';
+import '../db/database_helper.dart';
 import '../services/app_state.dart';
 
 /// Shows the sign-out confirmation and returns true if the session should end.
@@ -43,6 +44,13 @@ Future<bool> confirmSignOut(BuildContext context) async {
   if (!context.mounted) return false;
 
   final cartCount = context.read<CartLineCount>().count;
+  int heldCount = 0;
+  try {
+    heldCount = (await DatabaseHelper.instance.getHeldCarts()).length;
+  } catch (_) {
+    heldCount = 0;
+  }
+  if (!context.mounted) return false;
 
   final confirmed = await showModalBottomSheet<bool>(
     context: context,
@@ -75,6 +83,13 @@ Future<bool> confirmSignOut(BuildContext context) async {
                 // fork this app can only express in English.
                 title: l10n.signOutCartWarningTitle(cartCount),
                 detail: l10n.signOutCartWarningDetail,
+              ),
+            if (heldCount > 0)
+              const _Warning(
+                icon: Icons.pause_circle_outline,
+                title: 'Held sales remain on this till',
+                detail:
+                    'They will stay saved and can be resumed by the next session.',
               ),
             if (openShift != null)
               _Warning(

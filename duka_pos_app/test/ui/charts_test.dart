@@ -108,6 +108,23 @@ void main() {
       expect(node.properties.label, contains('KSh 3200'));
     });
 
+    testWidgets('screen readers can step through line readings',
+        (tester) async {
+      tester.useDevice(Device.small);
+      await tester.pumpApp(home: line());
+
+      final Semantics node = tester.widget<Semantics>(
+        find
+            .descendant(
+              of: find.byType(PosLineChart),
+              matching: find.byType(Semantics),
+            )
+            .first,
+      );
+      expect(node.properties.onIncrease, isNotNull);
+      expect(node.properties.onDecrease, isNotNull);
+    });
+
     testWidgets('the painted surface is excluded from the semantics',
         (tester) async {
       tester.useDevice(Device.small);

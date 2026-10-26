@@ -138,6 +138,10 @@ class AccountDeletionService {
   /// brute-force by anyone who obtained a backup file.
   static const _iterations = 150000;
 
+  /// Test-only override. Production deletion always uses [_iterations].
+  @visibleForTesting
+  static int? iterationsForTest;
+
   /// Not `const`, unlike the backup service's cipher: the cryptography package's
   /// factory is not const-constructible.
   static final AesGcm _cipher = AesGcm.with256bits();
@@ -184,7 +188,7 @@ class AccountDeletionService {
     final salt = await _erasureSalt();
     final derived = await compute(
       _deriveErasureKey,
-      ErasureKeyRequest(salt, pin.trim(), _iterations),
+      ErasureKeyRequest(salt, pin.trim(), iterationsForTest ?? _iterations),
     );
 
     // Pre-erasure compaction, fatal on failure. Reclaims free pages BEFORE the
@@ -359,9 +363,44 @@ class AccountDeletionService {
       // snapshot of who moved the count, and the free-text note beside it.
       await _eraseColumn(txn, 'stock_movements', 'staff_name', key);
       await _eraseColumn(txn, 'stock_movements', 'note', key);
+      // Financial-event metadata is canonical evidence, but its JSON may
+      // carry the reason or other free text copied from a source correction.
+      // Seal the envelope rather than leaving a second plaintext path around
+      // the source row's erased column.
+      await _eraseColumn(txn, 'financial_events', 'metadata_json', key);
+      await _eraseColumn(txn, 'owner_transactions', 'staff_name', key);
+      await _eraseColumn(txn, 'owner_transactions', 'note', key);
+      await _eraseColumn(txn, 'cost_pools', 'name', key);
+      await _eraseColumn(txn, 'cost_pools', 'note', key);
+      await _eraseColumn(txn, 'cost_pool_entries', 'description', key);
+      await _eraseColumn(txn, 'jobs', 'customer_name', key);
+      await _eraseColumn(txn, 'jobs', 'title', key);
+      await _eraseColumn(txn, 'job_costs', 'description', key);
+      await _eraseColumn(txn, 'job_payments', 'reference', key);
+      await _eraseColumn(txn, 'expense_payments', 'reference', key);
       await _eraseColumn(txn, 'pending_payments', 'phone_number', key);
       await _eraseColumn(txn, 'pending_payments', 'staff_name', key);
       await _eraseColumn(txn, 'pending_payments', 'cart_json', key);
+
+      // AND THEN THE CREDIT ACCOUNTS (v30): who owes the shop — the most
+      // judgement-inviting personal data the app holds. The customer rows
+      // themselves are GONE (a name+number entry is the point of deletion),
+      // while the ledger rows are SEALED (their amounts are the shop's own
+      // figures, and their names/note must not survive in the clear either).
+      await txn.delete('customers');
+      await txn.delete('credit_allocations');
+      await _eraseColumn(txn, 'credit_ledger', 'staff_name', key);
+      await _eraseColumn(txn, 'credit_ledger', 'reference', key);
+      await _eraseColumn(txn, 'credit_ledger', 'note', key);
+
+      // The supplier's phone (v30) — a person to reach, the same kind of
+      // record the deletion exists to erase.
+      await _eraseColumn(txn, 'suppliers', 'phone', key);
+      await _eraseColumn(txn, 'suppliers', 'contact_person', key);
+      await _eraseColumn(txn, 'suppliers', 'name', key);
+
+      // The receive-session draft (v30) may name products and references.
+      await txn.delete('receive_drafts');
 
       // The tombstone itself records the remote id of the deleted cashier;
       // seal it too so a deleted account leaves no trace of who was removed.

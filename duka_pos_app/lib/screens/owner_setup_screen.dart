@@ -2,14 +2,17 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 import '../db/database_helper.dart';
+import '../profile/shop_profile.dart';
 import '../l10n/generated/app_localizations.dart';
 import '../models/models.dart';
 import '../services/app_state.dart';
 import '../services/auth_service.dart';
 import '../services/backend_service.dart';
 import '../services/workspace_service.dart';
+import '../routing/app_stage_controller.dart';
 import '../theme/app_haptics.dart';
 import '../theme/app_spacing.dart';
 import '../theme/typography.dart';
@@ -75,6 +78,7 @@ class _OwnerSetupScreenState extends State<OwnerSetupScreen> {
   /// support call, so the button stops accepting taps rather than relying on
   /// the person not pressing it twice.
   bool _saving = false;
+  ShopProfile _shopProfile = ShopProfile.duka;
 
   @override
   void initState() {
@@ -212,20 +216,35 @@ class _OwnerSetupScreenState extends State<OwnerSetupScreen> {
         createdAt: DateTime.now().toIso8601String(),
       );
       await DatabaseHelper.instance.createOwner(owner);
+      await DatabaseHelper.instance.setShopProfile(_shopProfile);
       await WorkspaceService.register(
         workspaceKey: await WorkspaceService.activeWorkspaceKey(),
         shopName: owner.shopName,
+      );
+      // The profile tour now happens before account creation. Do not send a
+      // new owner through the old post-creation demo/import walkthrough; the
+      // permissions prompt that follows remains functional and intentional.
+      final SharedPreferences prefs = await SharedPreferences.getInstance();
+      await prefs.setBool(
+        'onboarding_completed_${await WorkspaceService.activeWorkspaceKey()}',
+        true,
       );
       unawaited(BackendService.linkShopToBackend(
         shopName: owner.shopName,
         ownerName: owner.name,
         email: owner.email,
+        businessProfile: _shopProfile,
       ).catchError((_) {}));
       if (!mounted) return;
       // Land the person straight into the new shop. Choosing from a shop list
       // used to happen here, and it dumped them on a landing page asking to
       // create an admin they had already created.
       await context.read<AppState>().loadOwner();
+      if (!mounted) return;
+      // Keep the in-memory router snapshot aligned with the persisted choice;
+      // otherwise the guard would still send this newly-created owner through
+      // the retired post-account demo walkthrough once after sign-in.
+      await context.read<AppStageController>().completeOnboarding();
       if (!mounted) return;
       context.read<AppState>().signInAsOwner();
       if (!mounted) return;
@@ -279,6 +298,13 @@ class _OwnerSetupScreenState extends State<OwnerSetupScreen> {
                     SizedBox(height: spacing.lg),
                     _SetupHeading(isAdditionalShop: widget.isAdditionalShop),
                     SizedBox(height: spacing.md),
+                    _ProfilePicker(
+                      value: _shopProfile,
+                      onChanged: (value) {
+                        if (value != null) setState(() => _shopProfile = value);
+                      },
+                    ),
+                    SizedBox(height: spacing.md),
                     _SetupFields(
                       formKey: _formKey,
                       shop: _shop,
@@ -320,6 +346,32 @@ class _OwnerSetupScreenState extends State<OwnerSetupScreen> {
           ),
         ),
       ),
+    );
+  }
+}
+
+class _ProfilePicker extends StatelessWidget {
+  const _ProfilePicker({required this.value, required this.onChanged});
+
+  final ShopProfile value;
+  final ValueChanged<ShopProfile?> onChanged;
+
+  @override
+  Widget build(BuildContext context) {
+    final l10n = AppLocalizations.of(context);
+    return DropdownButtonFormField<ShopProfile>(
+      initialValue: value,
+      decoration: InputDecoration(
+        labelText: l10n.shopProfileLabel,
+        helperText: l10n.shopProfileHelp,
+      ),
+      items: ShopProfile.values
+          .map((profile) => DropdownMenuItem<ShopProfile>(
+                value: profile,
+                child: Text(profile.displayName),
+              ))
+          .toList(),
+      onChanged: onChanged,
     );
   }
 }

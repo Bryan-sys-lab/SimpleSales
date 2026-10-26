@@ -36,6 +36,7 @@ import '../db/database_helper.dart';
 import '../services/portfolio_kpis.dart';
 import '../services/workspace_service.dart';
 import '../utils/money.dart';
+import '../profile/shop_profile.dart';
 
 /// The cross-shop figures, read from the shops on this device.
 class LocalPortfolioService {
@@ -99,6 +100,65 @@ class LocalPortfolioService {
       );
       if (rows.isEmpty) return null;
       final Map<String, Object?> row = rows.first;
+      ShopProfile businessProfile = ShopProfile.duka;
+      try {
+        final List<Map<String, Object?>> profileRows = await db.query(
+          'shop_profile',
+          columns: <String>['profile'],
+          limit: 1,
+        );
+        if (profileRows.isNotEmpty) {
+          businessProfile = ShopProfile.fromWire(
+            profileRows.first['profile'] as String?,
+          );
+        }
+      } catch (_) {
+        // A pre-profile legacy database is the Duka baseline.
+      }
+
+      // These are the canonical shared financial events used by the shop's
+      // own statement. Read the same columns here so the All shops view is a
+      // projection of the existing ledger, not a second accounting formula.
+      var financialDataComplete = true;
+      var operatingExpensesMinor = 0;
+      var cashInMinor = 0;
+      var cashOutMinor = 0;
+      var receivableDeltaMinor = 0;
+      var payableDeltaMinor = 0;
+      try {
+        final eventRows = await db.rawQuery('''
+          SELECT COALESCE(SUM(operating_expense_minor), 0) AS expenses,
+                 COALESCE(SUM(cash_in_minor), 0) AS cash_in,
+                 COALESCE(SUM(cash_out_minor), 0) AS cash_out,
+                 COALESCE(SUM(receivable_delta_minor), 0) AS receivable,
+                 COALESCE(SUM(payable_delta_minor), 0) AS payable
+            FROM financial_events
+           WHERE occurred_at_utc >= ? AND occurred_at_utc < ?
+        ''', <Object?>[
+          from.toUtc().toIso8601String(),
+          to.toUtc().toIso8601String()
+        ]);
+        final event = eventRows.first;
+        operatingExpensesMinor = (event['expenses'] as num?)?.toInt() ?? 0;
+        cashInMinor = (event['cash_in'] as num?)?.toInt() ?? 0;
+        cashOutMinor = (event['cash_out'] as num?)?.toInt() ?? 0;
+        receivableDeltaMinor = (event['receivable'] as num?)?.toInt() ?? 0;
+        payableDeltaMinor = (event['payable'] as num?)?.toInt() ?? 0;
+      } catch (_) {
+        financialDataComplete = false;
+      }
+      var stockValueMinor = 0;
+      try {
+        final stockRows = await db.rawQuery('''
+          SELECT COALESCE(SUM(stock_qty * cost_price), 0) AS stock_value
+            FROM products
+           WHERE active = 1
+        ''');
+        stockValueMinor =
+            (stockRows.first['stock_value'] as num?)?.round() ?? 0;
+      } catch (_) {
+        financialDataComplete = false;
+      }
 
       final List<Map<String, Object?>> tenders = await db.rawQuery(
         '''
@@ -165,6 +225,7 @@ class LocalPortfolioService {
         // The screen shows names and figures, and the id is only ever a key.
         tenantId: shop.workspaceKey,
         shopName: shop.shopName,
+        businessProfile: businessProfile,
         revenue: Money.fromMinor((row['total_minor'] as num?)?.toInt() ?? 0),
         profit: Money.fromMinor((row['profit_minor'] as num?)?.toInt() ?? 0),
         transactions: (row['transactions'] as num?)?.toInt() ?? 0,
@@ -178,6 +239,13 @@ class LocalPortfolioService {
         cashVariance: Money.fromMinor(closedShifts.isEmpty
             ? 0
             : (closedShifts.first['variance_minor'] as num?)?.toInt() ?? 0),
+        operatingExpenses: Money.fromMinor(operatingExpensesMinor),
+        cashIn: Money.fromMinor(cashInMinor),
+        cashOut: Money.fromMinor(cashOutMinor),
+        receivableDelta: Money.fromMinor(receivableDeltaMinor),
+        payableDelta: Money.fromMinor(payableDeltaMinor),
+        stockValue: Money.fromMinor(stockValueMinor),
+        financialDataComplete: financialDataComplete,
       );
     } catch (_) {
       // A shop whose file will not open is left out, not reported as empty.

@@ -127,6 +127,10 @@ final class ReceiptQr extends ReceiptLine {
 
 enum ReceiptAlignment { left, center, right }
 
+/// The language used for fixed receipt labels. Product names and payment
+/// labels remain the shop's own data and are never machine-translated.
+enum ReceiptLanguage { english, swahili }
+
 /// Everything the receipt says, as a value.
 ///
 /// Deliberately a plain value with no reference to `AppState`, the database, or
@@ -150,6 +154,7 @@ class ReceiptInput {
     this.etimsReceiptNumber,
     this.etimsVerificationPayload,
     this.etimsPending = false,
+    this.receiptLanguage = ReceiptLanguage.english,
   });
 
   final String shopName;
@@ -180,6 +185,7 @@ class ReceiptInput {
   /// When the inline eTIMS attempt timed out, the receipt prints a pending
   /// line instead of a QR so the customer knows the invoice is still coming.
   final bool etimsPending;
+  final ReceiptLanguage receiptLanguage;
 
   bool get isVatExempt => vatRatePercent == 0;
 }
@@ -206,19 +212,20 @@ class ReceiptBuilder {
         'a receipt this narrow cannot hold a price and a label');
 
     final lines = <ReceiptLine>[];
+    final copy = _ReceiptCopy.forLanguage(input.receiptLanguage);
 
     lines.add(ReceiptText(_oneLine(input.shopName),
         alignment: ReceiptAlignment.center,
         bold: true,
         scale: input.shopName.trim().length <= columnBudget ~/ 2 ? 2 : 1));
     lines.add(
-        const ReceiptText('SALES RECEIPT', alignment: ReceiptAlignment.center));
+        ReceiptText(copy.salesReceipt, alignment: ReceiptAlignment.center));
 
     lines.add(const ReceiptRule());
-    lines.add(ReceiptColumns('Date', _date(input.issuedAt)));
-    lines.add(ReceiptColumns('Receipt No.', input.receiptNumber));
+    lines.add(ReceiptColumns(copy.date, _date(input.issuedAt)));
+    lines.add(ReceiptColumns(copy.receiptNumber, input.receiptNumber));
     if (input.cashierName.trim().isNotEmpty) {
-      lines.add(ReceiptColumns('Served by',
+      lines.add(ReceiptColumns(copy.servedBy,
           '${_oneLine(input.cashierName)} (${input.cashierRole})'));
     }
     lines.add(const ReceiptRule());
@@ -232,16 +239,29 @@ class ReceiptBuilder {
     var printedVatTotal = Money.zero;
     for (final item in input.items) {
       final lineTotal = item.total;
-      final vat = vatComponentOf(lineTotal,
+      final vat = vatComponentForTaxClass(lineTotal,
           ratePercent: input.vatRatePercent,
+          taxClass: item.taxClass,
           pricesIncludeVat: input.pricesIncludeVat);
       printedLineTotal = printedLineTotal + lineTotal;
       printedVatTotal = printedVatTotal + vat;
 
-      lines.add(ReceiptColumns(_lineLabel(item), _money(lineTotal)));
+      lines.add(ReceiptColumns(
+          _lineLabel(item, input.receiptLanguage), _money(lineTotal)));
+      final originalUnitPrice = item.listUnitPrice;
+      if (item.discount.minorUnits > 0 && originalUnitPrice != null) {
+        lines.add(ReceiptColumns(
+          '  ${copy.was} ${_money(originalUnitPrice)} x ${_qty(item.qty)}',
+          '',
+        ));
+        lines.add(ReceiptColumns(
+          '  ${copy.discount}',
+          '-${_money(item.discount)}',
+        ));
+      }
       lines.add(ReceiptColumns(
         '  ${_qty(item.qty)} x ${_money(item.unitPrice)}',
-        input.isVatExempt ? '' : 'VAT ${_money(vat)}',
+        input.isVatExempt ? '' : '${copy.vat} ${_money(vat)}',
       ));
     }
 
@@ -253,43 +273,41 @@ class ReceiptBuilder {
         'printed item lines must sum to the recorded sale total');
 
     lines.add(const ReceiptRule());
-    lines.add(ReceiptColumns('Subtotal', _money(input.total)));
+    lines.add(ReceiptColumns(copy.subtotal, _money(input.total)));
     if (!input.isVatExempt) {
       lines.add(ReceiptColumns(
-          'VAT (${input.vatRatePercent}%)', _money(printedVatTotal)));
+          '${copy.vat} (${input.vatRatePercent}%)', _money(printedVatTotal)));
     }
     lines.add(const ReceiptRule());
     lines.add(ReceiptColumns('TOTAL', _money(input.total), bold: true));
     lines.add(
         ReceiptColumns(input.paymentMethodLabel, _money(input.amountTendered)));
     if (!input.changeGiven.isZero) {
-      lines.add(ReceiptColumns('Change', _money(input.changeGiven)));
+      lines.add(ReceiptColumns(copy.change, _money(input.changeGiven)));
     }
 
     if (input.etimsReceiptNumber != null &&
         input.etimsReceiptNumber!.trim().isNotEmpty) {
       lines.add(const ReceiptRule());
-      lines.add(ReceiptColumns('eTIMS No.', input.etimsReceiptNumber!));
+      lines.add(ReceiptColumns(copy.etimsNumber, input.etimsReceiptNumber!));
       if (input.etimsVerificationPayload != null &&
           input.etimsVerificationPayload!.trim().isNotEmpty) {
-        lines.add(const ReceiptText('Scan to verify',
-            alignment: ReceiptAlignment.center));
+        lines.add(
+            ReceiptText(copy.scanToVerify, alignment: ReceiptAlignment.center));
         lines.add(ReceiptQr(input.etimsVerificationPayload!));
       } else if (input.etimsPending) {
-        lines.add(const ReceiptText('eTIMS pending — official copy reprints',
-            alignment: ReceiptAlignment.center));
+        lines.add(
+            ReceiptText(copy.etimsPending, alignment: ReceiptAlignment.center));
       }
     } else if (input.etimsPending) {
       lines.add(const ReceiptRule());
-      lines.add(const ReceiptText('eTIMS pending — official copy reprints',
-          alignment: ReceiptAlignment.center));
+      lines.add(
+          ReceiptText(copy.etimsPending, alignment: ReceiptAlignment.center));
     }
 
     lines.add(const ReceiptFeed());
-    lines.add(const ReceiptText('Thank you for your business',
-        alignment: ReceiptAlignment.center));
-    lines.add(const ReceiptText('Goods once sold are not returnable',
-        alignment: ReceiptAlignment.center));
+    lines.add(ReceiptText(copy.thankYou, alignment: ReceiptAlignment.center));
+    lines.add(ReceiptText(copy.noReturns, alignment: ReceiptAlignment.center));
 
     return lines;
   }
@@ -299,20 +317,21 @@ class ReceiptBuilder {
   /// why it is asserted rather than silently producing a truncated total.
   static const int minimumColumnBudget = 12;
 
-  String _lineLabel(SaleItem item) {
-    final portion = _portionSuffix(item);
-    final raw =
-        item.productName.trim().isEmpty ? 'Item' : item.productName.trim();
+  String _lineLabel(SaleItem item, ReceiptLanguage language) {
+    final portion = _portionSuffix(item, language);
+    final raw = item.productName.trim().isEmpty
+        ? (language == ReceiptLanguage.swahili ? 'Bidhaa' : 'Item')
+        : item.productName.trim();
     final base = _oneLine(raw);
     return portion.isEmpty ? base : '$base ($portion)';
   }
 
-  static String _portionSuffix(SaleItem item) {
+  static String _portionSuffix(SaleItem item, ReceiptLanguage language) {
     switch (item.portion) {
       case 'half':
-        return 'half';
+        return language == ReceiptLanguage.swahili ? 'nusu' : 'half';
       case 'quarter':
-        return 'quarter';
+        return language == ReceiptLanguage.swahili ? 'robo' : 'quarter';
       case 'measured':
         return '${item.portionMl}ml';
       default:
@@ -349,6 +368,78 @@ class ReceiptBuilder {
   /// receipt's fixed line structure.
   static String _oneLine(String value) =>
       value.replaceAll(RegExp(r'\s+'), ' ').trim();
+}
+
+@immutable
+class _ReceiptCopy {
+  const _ReceiptCopy({
+    required this.salesReceipt,
+    required this.date,
+    required this.receiptNumber,
+    required this.servedBy,
+    required this.was,
+    required this.discount,
+    required this.vat,
+    required this.subtotal,
+    required this.change,
+    required this.etimsNumber,
+    required this.scanToVerify,
+    required this.etimsPending,
+    required this.thankYou,
+    required this.noReturns,
+  });
+
+  final String salesReceipt;
+  final String date;
+  final String receiptNumber;
+  final String servedBy;
+  final String was;
+  final String discount;
+  final String vat;
+  final String subtotal;
+  final String change;
+  final String etimsNumber;
+  final String scanToVerify;
+  final String etimsPending;
+  final String thankYou;
+  final String noReturns;
+
+  static const _ReceiptCopy english = _ReceiptCopy(
+    salesReceipt: 'SALES RECEIPT',
+    date: 'Date',
+    receiptNumber: 'Receipt No.',
+    servedBy: 'Served by',
+    was: 'Was',
+    discount: 'Discount',
+    vat: 'VAT',
+    subtotal: 'Subtotal',
+    change: 'Change',
+    etimsNumber: 'eTIMS No.',
+    scanToVerify: 'Scan to verify',
+    etimsPending: 'eTIMS pending — official copy reprints',
+    thankYou: 'Thank you for your business',
+    noReturns: 'Goods once sold are not returnable',
+  );
+
+  static const _ReceiptCopy swahili = _ReceiptCopy(
+    salesReceipt: 'RISITI YA MAUZO',
+    date: 'Tarehe',
+    receiptNumber: 'Nambari ya risiti',
+    servedBy: 'Aliyehudumu',
+    was: 'Ilikuwa',
+    discount: 'Punguzo',
+    vat: 'VAT',
+    subtotal: 'Jumla ndogo',
+    change: 'Chenji',
+    etimsNumber: 'Nambari ya eTIMS',
+    scanToVerify: 'Changanua kuthibitisha',
+    etimsPending: 'eTIMS inasubiri — nakala rasmi itachapishwa',
+    thankYou: 'Asante kwa biashara yako',
+    noReturns: 'Bidhaa zilizouzwa hazirudishwi',
+  );
+
+  static _ReceiptCopy forLanguage(ReceiptLanguage language) =>
+      language == ReceiptLanguage.swahili ? swahili : english;
 }
 
 String _fit(String text, int width, ReceiptAlignment alignment) {

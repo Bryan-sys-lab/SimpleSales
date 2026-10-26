@@ -26,22 +26,31 @@ abstract final class Routes {
   static const String inventory = '/inventory';
   static const String analytics = '/analytics';
   static const String settings = '/settings';
+  static const String more = '/more';
 
   /// Detail routes pushed on top of a branch. Each declares its parent as the
   /// `parentNavigatorKey` so it covers the shell — a sheet pushed from Settings
   /// should hide the navigation, not render inside a 320dp column.
   static const String shotCups = '/inventory/shot-cups';
   static const String transactions = '/dashboard/transactions';
+  static const String customers = '/dashboard/customers';
+  static const String laybys = '/dashboard/laybys';
   static const String shift = '/analytics/shift';
+  static const String expenses = '/analytics/expenses';
+  static const String openBusiness = '/analytics/open-business';
   static const String reports = '/analytics/reports';
   static const String portfolio = '/analytics/portfolio';
   static const String activity = '/settings/activity';
   static const String diagnostics = '/settings/diagnostics';
+  static const String incomingPayments = '/settings/incoming-payments';
+  static const String syncCenter = '/settings/sync-center';
+  static const String permissionsMatrix = '/settings/permissions';
   static const String profile = '/settings/profile';
   static const String imports = '/settings/imports';
   static const String taxSettings = '/settings/tax';
   static const String cameraScan = '/sell/scan';
   static const String support = '/support';
+  static const String marketplace = '/marketplace';
 
   // ------------------------------------------------------------- the doors
   // Outside the shell: no navigation affordance, because there is no session to
@@ -77,6 +86,7 @@ enum AppDestination {
   inventory('navInventory', 'navInventoryShort'),
   analytics('navAnalytics', 'navAnalyticsShort'),
   settings('navSettings', 'navSettingsShort'),
+  more('navMore', 'navMoreShort'),
   support('navSupport', 'navSupportShort');
 
   const AppDestination(this.labelKey, this.shortLabelKey);
@@ -106,8 +116,31 @@ enum AppDestination {
         AppDestination.inventory => Routes.inventory,
         AppDestination.analytics => Routes.analytics,
         AppDestination.settings => Routes.settings,
+        AppDestination.more => Routes.more,
         AppDestination.support => Routes.support,
       };
+
+  /// The indexed shell has no branch for More; it is an action that opens a
+  /// sheet. Keep branch positions explicit so adding that action cannot shift
+  /// the support branch.
+  int get branchIndex => switch (this) {
+        AppDestination.dashboard => 0,
+        AppDestination.sell => 1,
+        AppDestination.inventory => 2,
+        AppDestination.analytics => 3,
+        AppDestination.settings => 4,
+        AppDestination.support => 5,
+        AppDestination.more => -1,
+      };
+
+  static AppDestination branchAt(int index) => <AppDestination>[
+        AppDestination.dashboard,
+        AppDestination.sell,
+        AppDestination.inventory,
+        AppDestination.analytics,
+        AppDestination.settings,
+        AppDestination.support,
+      ][index];
 
   /// The glyph.
   ///
@@ -122,6 +155,7 @@ enum AppDestination {
         AppDestination.inventory => Icons.inventory_2_outlined,
         AppDestination.analytics => Icons.insights_outlined,
         AppDestination.settings => Icons.tune_outlined,
+        AppDestination.more => Icons.more_horiz,
         AppDestination.support => Icons.help_outline,
       };
 

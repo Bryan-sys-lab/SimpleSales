@@ -84,3 +84,97 @@ enum ShopRole {
   /// this is a distinct identity rather than a role value.
   static const ShopRole owner = ShopRole.admin;
 }
+
+/// Runtime capabilities that can be enabled per role or overridden per staff
+/// member. Owners always retain every capability; the matrix only governs
+/// manager and cashier sessions.
+enum PermissionKey {
+  viewProfit,
+  processReturn,
+  giveDiscount,
+  recordExpense,
+  receiveStock,
+  adjustStock,
+  stocktake,
+  manageCustomers,
+  sellOnCredit,
+  openDrawerNoSale,
+  exportData,
+  manageSettings,
+  viewReports,
+  manageSuppliers,
+  managePacks,
+  viewCost,
+  editPrice,
+  voidOrCancel,
+  manageStaff,
+  manageTax,
+  managePrinter,
+  manageBackup,
+  manageDevices,
+  runStocktakeApply,
+}
+
+enum PermissionMode { allow, approval, deny }
+
+extension PermissionKeyWire on PermissionKey {
+  String get wire => switch (this) {
+        PermissionKey.viewProfit => 'view_profit',
+        PermissionKey.processReturn => 'process_return',
+        PermissionKey.giveDiscount => 'give_discount',
+        PermissionKey.recordExpense => 'record_expense',
+        PermissionKey.receiveStock => 'receive_stock',
+        PermissionKey.adjustStock => 'adjust_stock',
+        PermissionKey.stocktake => 'stocktake',
+        PermissionKey.manageCustomers => 'manage_customers',
+        PermissionKey.sellOnCredit => 'sell_on_credit',
+        PermissionKey.openDrawerNoSale => 'open_drawer_no_sale',
+        PermissionKey.exportData => 'export_data',
+        PermissionKey.manageSettings => 'manage_settings',
+        PermissionKey.viewReports => 'view_reports',
+        PermissionKey.manageSuppliers => 'manage_suppliers',
+        PermissionKey.managePacks => 'manage_packs',
+        PermissionKey.viewCost => 'view_cost',
+        PermissionKey.editPrice => 'edit_price',
+        PermissionKey.voidOrCancel => 'void_or_cancel',
+        PermissionKey.manageStaff => 'manage_staff',
+        PermissionKey.manageTax => 'manage_tax',
+        PermissionKey.managePrinter => 'manage_printer',
+        PermissionKey.manageBackup => 'manage_backup',
+        PermissionKey.manageDevices => 'manage_devices',
+        PermissionKey.runStocktakeApply => 'run_stocktake_apply',
+      };
+
+  String get label => wire.replaceAll('_', ' ');
+}
+
+const Map<String, Set<String>> defaultRolePermissions = {
+  'manager': {
+    'view_profit',
+    'process_return',
+    'give_discount',
+    'record_expense',
+    'receive_stock',
+    'adjust_stock',
+    'stocktake',
+    'manage_customers',
+    'sell_on_credit',
+    'open_drawer_no_sale',
+    'view_reports',
+    'manage_suppliers',
+    'manage_packs',
+    'view_cost',
+    'edit_price',
+    'void_or_cancel',
+    'run_stocktake_apply',
+  },
+  'cashier': {
+    'process_return',
+    'manage_customers',
+  },
+};
+
+const Map<String, Set<String>> defaultApprovalPermissions = {
+  'manager': <String>{},
+  'cashier': <String>{'give_discount', 'record_expense', 'open_drawer_no_sale'},
+};

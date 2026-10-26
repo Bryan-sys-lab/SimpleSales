@@ -126,8 +126,9 @@ class VariantCatalogue {
   }
 
   /// Reads the whole variant picture in two queries.
-  static Future<VariantCatalogue> load() async {
+  static Future<VariantCatalogue> load({bool includeVariants = true}) async {
     final db = DatabaseHelper.instance;
+    if (!includeVariants) return VariantCatalogue.empty;
     final variants = await db.getAllVariants();
     final byProduct = <int, List<ProductVariant>>{};
     final byId = <int, ProductVariant>{};

@@ -4,6 +4,8 @@
 /// one shape used everywhere avoids three slightly different versions drifting apart.
 library;
 
+import 'dart:math' as math;
+
 import '../services/import_row_parser.dart';
 import '../utils/money.dart';
 import '../utils/units.dart';
@@ -141,6 +143,11 @@ class Product {
   final Money costPrice;
   final Money sellPrice;
   final double stockQty;
+
+  /// Quantity currently reserved by open Fashion lay-bys. It is not on-hand
+  /// stock: it reduces what a normal sale may promise, while the goods remain
+  /// physically in the shop until the lay-by completes or is cancelled.
+  final double reservedQty;
   final int reorderLevel;
   final int bottleMl;
 
@@ -169,6 +176,7 @@ class Product {
   /// owner: "has none" is a statement about the catalogue, "has not added them
   /// yet" is a prompt on the product itself.
   final bool trackVariants;
+  final bool trackExpiry;
   final Money? halfPrice;
   final Money? quarterPrice;
   final String exciseStampBatch;
@@ -206,10 +214,12 @@ class Product {
     required this.costPrice,
     required this.sellPrice,
     required this.stockQty,
+    this.reservedQty = 0,
     required this.reorderLevel,
     this.bottleMl = 750,
     this.unit = ProductUnit.each,
     this.trackVariants = false,
+    this.trackExpiry = false,
     this.halfPrice,
     this.quarterPrice,
     this.exciseStampBatch = '',
@@ -228,7 +238,8 @@ class Product {
       ? 0
       : ((sellPrice.minorUnits - costPrice.minorUnits) / sellPrice.minorUnits) *
           100;
-  bool get isLow => stockQty <= reorderLevel;
+  double get availableStockQty => math.max(0.0, stockQty - reservedQty);
+  bool get isLow => availableStockQty <= reorderLevel;
 
   /// The price charged for one portion of a bottle.
   ///
@@ -278,6 +289,7 @@ class Product {
     Money? costPrice,
     Money? sellPrice,
     double? stockQty,
+    double? reservedQty,
     int? reorderLevel,
     int? bottleMl,
     Money? halfPrice,
@@ -285,6 +297,12 @@ class Product {
     String? exciseStampBatch,
     bool? active,
     String? remoteId,
+    bool? trackExpiry,
+    ProductUnit? unit,
+    double? millilitresPerKilogram,
+    bool? trackVariants,
+    String? imagePath,
+    String? primaryBarcode,
   }) =>
       Product(
         id: id,
@@ -293,6 +311,7 @@ class Product {
         costPrice: costPrice ?? this.costPrice,
         sellPrice: sellPrice ?? this.sellPrice,
         stockQty: stockQty ?? this.stockQty,
+        reservedQty: reservedQty ?? this.reservedQty,
         reorderLevel: reorderLevel ?? this.reorderLevel,
         bottleMl: bottleMl ?? this.bottleMl,
         halfPrice: halfPrice ?? this.halfPrice,
@@ -301,6 +320,13 @@ class Product {
         active: active ?? this.active,
         updatedAt: DateTime.now().toIso8601String(),
         remoteId: remoteId ?? this.remoteId,
+        trackExpiry: trackExpiry ?? this.trackExpiry,
+        unit: unit ?? this.unit,
+        millilitresPerKilogram:
+            millilitresPerKilogram ?? this.millilitresPerKilogram,
+        trackVariants: trackVariants ?? this.trackVariants,
+        imagePath: imagePath ?? this.imagePath,
+        primaryBarcode: primaryBarcode ?? this.primaryBarcode,
       );
 
   Map<String, dynamic> toMap() => {
@@ -311,10 +337,12 @@ class Product {
         'cost_price': costPrice.minorUnits,
         'sell_price': sellPrice.minorUnits,
         'stock_qty': stockQty,
+        'reserved_qty': reservedQty,
         'reorder_level': reorderLevel,
         'bottle_ml': bottleMl,
         'unit': unit.wire,
         'track_variants': trackVariants ? 1 : 0,
+        'track_expiry': trackExpiry ? 1 : 0,
         // 0 for a product not stocked by weight; see the field's doc.
         'ml_per_kg': millilitresPerKilogram,
         'half_price': halfPrice?.minorUnits,
@@ -333,6 +361,7 @@ class Product {
         costPrice: Money.fromMinor((m['cost_price'] as num?)?.toInt() ?? 0),
         sellPrice: Money.fromMinor((m['sell_price'] as num?)?.toInt() ?? 0),
         stockQty: (m['stock_qty'] as num).toDouble(),
+        reservedQty: (m['reserved_qty'] as num?)?.toDouble() ?? 0,
         reorderLevel: m['reorder_level'],
         bottleMl: (m['bottle_ml'] as num?)?.toInt() ?? 750,
         // Both are read here as well as written in `toMap`. A field written but
@@ -341,6 +370,7 @@ class Product {
         // error anywhere.
         unit: ProductUnit.parse(m['unit'] as String?),
         trackVariants: ((m['track_variants'] as num?)?.toInt() ?? 0) == 1,
+        trackExpiry: ((m['track_expiry'] as num?)?.toInt() ?? 0) == 1,
         // 0 for a row written before tanks existed, and for every product that
         // is not stocked by weight — see the field's doc.
         millilitresPerKilogram: (m['ml_per_kg'] as num?)?.toDouble() ?? 0,
@@ -387,17 +417,18 @@ class Product {
     'half_price',
     'quarter_price',
     'barcode',
-    'unit'
+    'unit',
+    'track_expiry'
   ];
 
   /// How many columns [sheetHeaders] has. Exported so the Sheets importer's
   /// range constant cannot drift from the header list — the previous design
   /// hardcoded `Inventory!A1:K` next to an eleven-column header, and a twelfth
   /// column added later would have been silently dropped by Google Sheets.
-  static const sheetColumnCount = 13;
+  static const sheetColumnCount = 14;
 
   /// A1 range covering the whole Inventory sheet, header row included.
-  static const sheetRange = 'Inventory!A1:M';
+  static const sheetRange = 'Inventory!A1:N';
 
   /// Emitted in whole shillings, not cents: this row is read and edited by
   /// people in a spreadsheet, and a column of 4050 where a human expects 40.50
@@ -426,6 +457,7 @@ class Product {
         quarterPrice?.asMajor ?? '',
         barcode ?? '',
         unit.wire,
+        trackExpiry ? 'yes' : 'no',
       ];
 
   /// Shared product-row rules.
@@ -537,6 +569,14 @@ class SaleItem {
   /// once, by [lineTotal], which rounds the result to a whole cent.
   final Money unitPrice;
   final Money unitCost;
+
+  /// The original price before a line discount. Legacy rows use unit_price.
+  final Money? listUnitPrice;
+
+  /// Discount for the whole line, in minor units.
+  final Money discount;
+  final int? discountReasonId;
+  final bool priceOverridden;
   final String portion;
   final int portionMl;
 
@@ -547,6 +587,10 @@ class SaleItem {
   /// count used to be adjusted after the sale had already been committed, which
   /// left a window where a crash sold a bottle and kept the count.
   final int? variantId;
+
+  /// The pack scanned for this line, when it was sold as a carton/case.
+  final int? packId;
+  final double? packQty;
 
   /// The variant's name as it was at the time of the sale.
   ///
@@ -567,6 +611,11 @@ class SaleItem {
   /// hold without losing it.
   final int? vatRateBps;
 
+  /// The reviewed tax-rule snapshot used for this line, when the till had
+  /// current taxpayer configuration available.
+  final String? taxRuleId;
+  final int? taxRuleVersion;
+
   /// The VAT on this line, in minor units.
   final int? vatMinor;
 
@@ -581,12 +630,20 @@ class SaleItem {
     required this.qty,
     required this.unitPrice,
     required this.unitCost,
+    this.listUnitPrice,
+    this.discount = Money.zero,
+    this.discountReasonId,
+    this.priceOverridden = false,
     this.portion = 'full',
     this.portionMl = 0,
     this.variantId,
+    this.packId,
+    this.packQty,
     this.variantName = '',
     this.taxClass = 'standard',
     this.vatRateBps,
+    this.taxRuleId,
+    this.taxRuleVersion,
     this.vatMinor,
     this.taxableMinor,
   });
@@ -598,20 +655,28 @@ class SaleItem {
         'product_name': productName,
         'qty': qty,
         'unit_price': unitPrice.minorUnits,
+        'list_unit_price_minor': (listUnitPrice ?? unitPrice).minorUnits,
         'unit_cost': unitCost.minorUnits,
+        'discount_minor': discount.minorUnits,
+        'discount_reason_id': discountReasonId,
+        'price_overridden': priceOverridden ? 1 : 0,
         'portion': portion,
         'portion_ml': portionMl,
         'variant_id': variantId,
+        'pack_id': packId,
+        'pack_qty': packQty,
         'variant_name': variantName,
         'tax_class': taxClass,
         'vat_rate_bps': vatRateBps,
+        'tax_rule_id': taxRuleId,
+        'tax_rule_version': taxRuleVersion,
         'vat_minor': vatMinor,
         'taxable_minor': taxableMinor,
       };
 
   /// The line's amount: unit price scaled by quantity, quantised to whole
   /// cents. A recorded sale total is the exact sum of these.
-  Money get total => unitPrice.times(qty);
+  Money get total => unitPrice.times(qty) - discount;
 
   factory SaleItem.fromMap(Map<String, dynamic> m) => SaleItem(
         id: m['id'],
@@ -621,15 +686,44 @@ class SaleItem {
         qty: (m['qty'] as num).toDouble(),
         unitPrice: Money.fromMinor((m['unit_price'] as num?)?.toInt() ?? 0),
         unitCost: Money.fromMinor((m['unit_cost'] as num?)?.toInt() ?? 0),
+        listUnitPrice: Money.fromMinor(
+            (m['list_unit_price_minor'] as num?)?.toInt() ??
+                (m['unit_price'] as num?)?.toInt() ??
+                0),
+        discount: Money.fromMinor((m['discount_minor'] as num?)?.toInt() ?? 0),
+        discountReasonId: (m['discount_reason_id'] as num?)?.toInt(),
+        priceOverridden: (m['price_overridden'] as num?)?.toInt() == 1,
         portion: m['portion'] ?? 'full',
         portionMl: (m['portion_ml'] as num?)?.toInt() ?? 0,
         variantId: (m['variant_id'] as num?)?.toInt(),
+        packId: (m['pack_id'] as num?)?.toInt(),
+        packQty: (m['pack_qty'] as num?)?.toDouble(),
         variantName: (m['variant_name'] as String?) ?? '',
         taxClass: (m['tax_class'] as String?) ?? 'standard',
         vatRateBps: (m['vat_rate_bps'] as num?)?.toInt(),
+        taxRuleId: m['tax_rule_id'] as String?,
+        taxRuleVersion: (m['tax_rule_version'] as num?)?.toInt(),
         vatMinor: (m['vat_minor'] as num?)?.toInt(),
         taxableMinor: (m['taxable_minor'] as num?)?.toInt(),
       );
+}
+
+/// One tender used to settle a sale. [amount] is applied to the invoice;
+/// [tendered] is only different for cash when change was given.
+class SaleTender {
+  const SaleTender({
+    required this.method,
+    required this.amount,
+    this.tendered,
+    this.reference,
+    this.status = 'confirmed',
+  });
+
+  final String method;
+  final Money amount;
+  final Money? tendered;
+  final String? reference;
+  final String status;
 }
 
 /// One line of a return: what came back, and what was done with it.
@@ -735,6 +829,7 @@ class SaleReturn {
     required this.staffName,
     required this.createdAt,
     this.items = const <SaleReturnItem>[],
+    this.refundAllocations = const <ReturnRefundAllocation>[],
   });
 
   final int? id;
@@ -769,6 +864,9 @@ class SaleReturn {
 
   final List<SaleReturnItem> items;
 
+  /// The immutable split-tender breakdown of this refund.
+  final List<ReturnRefundAllocation> refundAllocations;
+
   /// Whether this is a credit note rather than a refund.
   bool get isCreditNote => kind == 'credit_note';
 
@@ -788,9 +886,44 @@ class SaleReturn {
       );
 }
 
+/// How a return was allocated back to the tender rows that funded its sale.
+///
+/// The method is snapshotted because a payment row is historical evidence,
+/// not a live setting. [salePaymentId] is local-only and may be null for a
+/// legacy sale that had no payment rows.
+class ReturnRefundAllocation {
+  const ReturnRefundAllocation({
+    this.id,
+    required this.returnId,
+    this.salePaymentId,
+    required this.method,
+    required this.amount,
+    this.reference,
+  });
+
+  final int? id;
+  final int returnId;
+  final int? salePaymentId;
+  final String method;
+  final Money amount;
+  final String? reference;
+
+  factory ReturnRefundAllocation.fromMap(Map<String, dynamic> m) =>
+      ReturnRefundAllocation(
+        id: (m['id'] as num?)?.toInt(),
+        returnId: (m['return_id'] as num?)?.toInt() ?? 0,
+        salePaymentId: (m['sale_payment_id'] as num?)?.toInt(),
+        method: m['method'] as String? ?? 'cash',
+        amount: Money.fromMinor((m['amount_minor'] as num?)?.toInt() ?? 0),
+        reference: m['reference'] as String?,
+      );
+}
+
 class Sale {
   final int? id;
   final String staffName;
+  final String? buyerName;
+  final String? buyerTin;
 
   /// Integer cents throughout. [total] is stored as the exact sum of the line
   /// amounts, so the ledger reconciles against the items by construction rather
@@ -807,6 +940,8 @@ class Sale {
   Sale({
     this.id,
     required this.staffName,
+    this.buyerName,
+    this.buyerTin,
     required this.total,
     required this.profit,
     required this.createdAt,
@@ -820,6 +955,8 @@ class Sale {
   Map<String, dynamic> toMap() => {
         if (id != null) 'id': id,
         'staff_name': staffName,
+        'buyer_name': buyerName,
+        'buyer_tin': buyerTin,
         'total': total.minorUnits,
         'profit': profit.minorUnits,
         'payment_method': paymentMethod,
@@ -837,6 +974,8 @@ class Sale {
     return Sale(
       id: m['id'],
       staffName: m['staff_name'],
+      buyerName: m['buyer_name'] as String?,
+      buyerTin: m['buyer_tin'] as String?,
       total: total,
       profit: Money.fromMinor((m['profit'] as num?)?.toInt() ?? 0),
       createdAt: m['created_at'],
@@ -946,6 +1085,7 @@ class ProductVariant {
   final Money sellPrice;
   final Money costPrice;
   final double stockQty;
+  final double reservedQty;
   final int reorderLevel;
 
   /// Display order. Explicit because "Dark before Regular" is a shop
@@ -963,12 +1103,14 @@ class ProductVariant {
     required this.sellPrice,
     this.costPrice = Money.zero,
     this.stockQty = 0,
+    this.reservedQty = 0,
     this.reorderLevel = 0,
     this.position = 0,
     this.active = true,
   });
 
-  bool get isLow => stockQty <= reorderLevel;
+  double get availableStockQty => math.max(0.0, stockQty - reservedQty);
+  bool get isLow => availableStockQty <= reorderLevel;
 
   /// How much this is worth at cost, for the dashboard's stock valuation.
   Money get stockValue => costPrice.times(stockQty);
@@ -990,6 +1132,7 @@ class ProductVariant {
         'sell_price': sellPrice.minorUnits,
         'cost_price': costPrice.minorUnits,
         'stock_qty': stockQty,
+        'reserved_qty': reservedQty,
         'reorder_level': reorderLevel,
         'position': position,
         'active': active ? 1 : 0,
@@ -1007,6 +1150,7 @@ class ProductVariant {
             (m['cost_price'] as num?)?.round() ??
             0),
         stockQty: ((m['stock_qty'] as num?) ?? 0).toDouble(),
+        reservedQty: ((m['reserved_qty'] as num?) ?? 0).toDouble(),
         reorderLevel: (m['reorder_level'] as num?)?.round() ?? 0,
         position: (m['position'] as num?)?.round() ?? 0,
         active: ((m['active'] as num?)?.toInt() ?? 1) == 1,
@@ -1398,7 +1542,7 @@ class ShotCup {
     required this.productName,
     required this.capacityMl,
     required this.price,
-    this.label = 'Shot',
+    this.label = 'Small cup',
     this.active = true,
     required this.updatedAt,
   });
@@ -1420,7 +1564,7 @@ class ShotCup {
         productName: (m['product_name'] as String?) ?? '',
         capacityMl: (m['capacity_ml'] as num?)?.toInt() ?? 30,
         price: Money.fromMinor((m['price'] as num?)?.toInt() ?? 0),
-        label: (m['label'] as String?) ?? 'Shot',
+        label: (m['label'] as String?) ?? 'Small cup',
         active: m['active'] == 1,
         updatedAt: (m['updated_at'] as String?) ?? '',
       );
@@ -1469,7 +1613,11 @@ class StockAdjustment {
   final int? id;
   final int productId;
   final String productName;
-  final int delta;
+
+  /// A measured product can lose a fraction of one stock unit (for example a
+  /// spill from a tank), so this remains numeric rather than being narrowed to
+  /// whole counted units.
+  final num delta;
   final String reason;
   final String staffName;
   final String createdAt;
@@ -1544,6 +1692,8 @@ class StockReceiptLine {
     required this.qty,
     required this.unitCost,
     this.variantId,
+    this.expiryDate,
+    this.batchCode,
   });
 
   final int productId;
@@ -1556,6 +1706,8 @@ class StockReceiptLine {
   final Money unitCost;
 
   final int? variantId;
+  final DateTime? expiryDate;
+  final String? batchCode;
 }
 
 /// One line of a posted delivery.
@@ -1571,12 +1723,16 @@ class StockReceiptItem {
     this.oldCost,
     this.newCost,
     this.variantId,
+    this.expiryDate,
+    this.batchCode,
   });
 
   final int? id;
   final int receiptId;
   final int productId;
   final int? variantId;
+  final DateTime? expiryDate;
+  final String? batchCode;
   final String productName;
   final double qty;
 
@@ -1607,6 +1763,8 @@ class StockReceiptItem {
         newCost: (m['new_cost_minor'] as num?) == null
             ? null
             : Money.fromMinor((m['new_cost_minor'] as num).toInt()),
+        expiryDate: DateTime.tryParse(m['expiry_date'] as String? ?? ''),
+        batchCode: m['batch_code'] as String?,
       );
 }
 
@@ -1616,6 +1774,10 @@ class StockReceipt {
     this.id,
     this.supplierId,
     this.supplierRef,
+    this.supplierPin,
+    this.etimsInvoiceRef,
+    this.inputVat,
+    this.taxEvidenceStatus = 'needs_review',
     required this.receivedAt,
     this.staffId,
     required this.staffName,
@@ -1632,6 +1794,10 @@ class StockReceipt {
 
   /// The supplier's own invoice or delivery note number.
   final String? supplierRef;
+  final String? supplierPin;
+  final String? etimsInvoiceRef;
+  final Money? inputVat;
+  final String taxEvidenceStatus;
 
   final String receivedAt;
   final int? staffId;
@@ -1651,6 +1817,13 @@ class StockReceipt {
         id: m['id'] as int?,
         supplierId: (m['supplier_id'] as num?)?.toInt(),
         supplierRef: m['supplier_ref'] as String?,
+        supplierPin: m['supplier_pin'] as String?,
+        etimsInvoiceRef: m['etims_invoice_ref'] as String?,
+        inputVat: (m['input_vat_minor'] as num?) == null
+            ? null
+            : Money.fromMinor((m['input_vat_minor'] as num).toInt()),
+        taxEvidenceStatus:
+            (m['tax_evidence_status'] as String?) ?? 'needs_review',
         receivedAt: m['received_at'] as String,
         staffId: (m['staff_id'] as num?)?.toInt(),
         staffName: m['staff_name'] as String,
@@ -1668,6 +1841,9 @@ class Supplier {
     this.phone,
     this.contactPerson,
     this.notes,
+    this.leadTimeDays,
+    this.paymentTerms,
+    this.orderChannel,
     this.active = true,
     this.createdAt,
   });
@@ -1677,6 +1853,9 @@ class Supplier {
   final String? phone;
   final String? contactPerson;
   final String? notes;
+  final int? leadTimeDays;
+  final String? paymentTerms;
+  final String? orderChannel;
   final bool active;
   final String? createdAt;
 
@@ -1686,7 +1865,15 @@ class Supplier {
         phone: m['phone'] as String?,
         contactPerson: m['contact_person'] as String?,
         notes: m['notes'] as String?,
+        leadTimeDays: _parseLeadTimeDays(m['lead_time_days']),
+        paymentTerms: m['payment_terms'] as String?,
+        orderChannel: m['order_channel'] as String?,
         active: ((m['active'] as num?)?.toInt() ?? 1) == 1,
         createdAt: m['created_at'] as String?,
       );
+
+  static int? _parseLeadTimeDays(Object? value) {
+    if (value is num) return value.toInt();
+    return int.tryParse(value?.toString() ?? '');
+  }
 }

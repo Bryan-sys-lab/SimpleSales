@@ -634,7 +634,9 @@ class _SellBallState extends State<_SellBall>
       selected: widget.selected,
       label: label,
       excludeSemantics: true,
-      child: GestureDetector(
+      onTap: widget.onTap,
+      child: InkWell(
+        customBorder: const CircleBorder(),
         onTap: widget.onTap,
         onTapDown: (_) => setState(() => _pressed = true),
         onTapUp: (_) => setState(() => _pressed = false),

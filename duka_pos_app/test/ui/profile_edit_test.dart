@@ -136,4 +136,21 @@ void main() {
 
     tester.expectNoOverflow('profile edit sheet at 2x text');
   });
+
+  testWidgets('structured profile fields expose input purpose', (tester) async {
+    tester.useDevice(Device.small);
+    await openSheet(tester);
+
+    final TextField name = tester.widget<TextField>(
+      find.widgetWithText(TextField, l10n.profileEditNameLabel),
+    );
+    final TextField email = tester.widget<TextField>(
+      find.widgetWithText(TextField, l10n.profileEditEmailLabel),
+    );
+
+    expect(name.autofillHints, contains(AutofillHints.name));
+    expect(name.textInputAction, TextInputAction.next);
+    expect(email.autofillHints, contains(AutofillHints.email));
+    expect(email.textInputAction, TextInputAction.done);
+  });
 }

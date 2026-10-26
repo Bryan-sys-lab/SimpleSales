@@ -11,6 +11,7 @@
 
 import 'package:duka_pos/l10n/generated/app_localizations.dart';
 import 'package:duka_pos/models/audit_log.dart';
+import 'package:duka_pos/models/financial_event.dart';
 import 'package:duka_pos/models/models.dart';
 import 'package:duka_pos/utils/money.dart';
 import 'package:duka_pos/screens/transactions_screen.dart';
@@ -131,5 +132,27 @@ void main() {
       expect(find.text(l10n.transactionsSoldBy('Brian')), findsOneWidget);
       expect(find.text(l10n.transactionsAuditBy('Amina')), findsOneWidget);
     });
+  });
+
+  testWidgets('canonical non-sale events have a readable money row',
+      (WidgetTester tester) async {
+    final FinancialEvent event = FinancialEvent(
+      id: 1,
+      uuid: 'event-1',
+      eventType: 'expense_payment',
+      sourceType: 'expense_payment',
+      sourceId: 9,
+      occurredAtUtc: DateTime.now().toUtc().toIso8601String(),
+      cashOutMinor: 750,
+      payableDeltaMinor: -750,
+      metadataJson: '{}',
+      previousHash: null,
+      integrityHash: 'hash',
+    );
+
+    await tester.pumpApp(home: FinancialEventTimelineRow(event: event));
+
+    expect(find.text('Expense payment'), findsOneWidget);
+    expect(find.textContaining('KSh'), findsOneWidget);
   });
 }

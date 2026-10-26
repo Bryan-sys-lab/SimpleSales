@@ -157,6 +157,7 @@ ThemeData _buildTheme({
     inputDecorationTheme: InputDecorationTheme(
       filled: true,
       fillColor: colors.surfaceSunken,
+      constraints: BoxConstraints(minHeight: spacing.textFieldHeight),
       // `outlineStrong` clears 3:1 against the surface, which is what an input
       // edge is: a meaningful boundary the user must find. `outline` would not.
       hintStyle: text.bodyMedium?.copyWith(color: colors.onSurfaceMuted),
@@ -201,16 +202,17 @@ ThemeData _buildTheme({
     ),
 
     // ------------------------------------------------------------ buttons
-    // The 44 floor is honoured through `minimumSize` AND
+    // The 48 preferred Android target is honoured through `minimumSize` AND
     // `MaterialTapTargetSize.padded` above: a dense visual height of 40 with
     // padded hit testing keeps the row tight while the target stays legal.
     filledButtonTheme: FilledButtonThemeData(
       style: ButtonStyle(
         minimumSize: WidgetStatePropertyAll<Size>(
-          Size(0, spacing.minTapTarget),
+          Size(0, spacing.primaryButtonHeight),
         ),
         padding: WidgetStatePropertyAll<EdgeInsetsGeometry>(
-          EdgeInsetsDirectional.symmetric(horizontal: spacing.lg),
+          EdgeInsetsDirectional.symmetric(
+              horizontal: spacing.buttonHorizontalPadding),
         ),
         textStyle: WidgetStatePropertyAll<TextStyle?>(text.labelLarge),
         shape: WidgetStatePropertyAll<OutlinedBorder>(
@@ -226,10 +228,11 @@ ThemeData _buildTheme({
     elevatedButtonTheme: ElevatedButtonThemeData(
       style: ButtonStyle(
         minimumSize: WidgetStatePropertyAll<Size>(
-          Size(0, spacing.minTapTarget),
+          Size(0, spacing.primaryButtonHeight),
         ),
         padding: WidgetStatePropertyAll<EdgeInsetsGeometry>(
-          EdgeInsetsDirectional.symmetric(horizontal: spacing.lg),
+          EdgeInsetsDirectional.symmetric(
+              horizontal: spacing.buttonHorizontalPadding),
         ),
         textStyle: WidgetStatePropertyAll<TextStyle?>(text.labelLarge),
         shape: WidgetStatePropertyAll<OutlinedBorder>(
@@ -245,10 +248,11 @@ ThemeData _buildTheme({
     outlinedButtonTheme: OutlinedButtonThemeData(
       style: ButtonStyle(
         minimumSize: WidgetStatePropertyAll<Size>(
-          Size(0, spacing.minTapTarget),
+          Size(0, spacing.primaryButtonHeight),
         ),
         padding: WidgetStatePropertyAll<EdgeInsetsGeometry>(
-          EdgeInsetsDirectional.symmetric(horizontal: spacing.lg),
+          EdgeInsetsDirectional.symmetric(
+              horizontal: spacing.buttonHorizontalPadding),
         ),
         textStyle: WidgetStatePropertyAll<TextStyle?>(text.labelLarge),
         shape: WidgetStatePropertyAll<OutlinedBorder>(
@@ -261,10 +265,11 @@ ThemeData _buildTheme({
     textButtonTheme: TextButtonThemeData(
       style: ButtonStyle(
         minimumSize: WidgetStatePropertyAll<Size>(
-          Size(0, spacing.minTapTarget),
+          Size(0, spacing.primaryButtonHeight),
         ),
         padding: WidgetStatePropertyAll<EdgeInsetsGeometry>(
-          EdgeInsetsDirectional.symmetric(horizontal: spacing.md),
+          EdgeInsetsDirectional.symmetric(
+              horizontal: spacing.buttonHorizontalPadding),
         ),
         textStyle: WidgetStatePropertyAll<TextStyle?>(text.labelLarge),
         shape: WidgetStatePropertyAll<OutlinedBorder>(
@@ -275,7 +280,9 @@ ThemeData _buildTheme({
     // says the verb rather than "OK".
     iconButtonTheme: IconButtonThemeData(
       style: ButtonStyle(
-        minimumSize: WidgetStatePropertyAll<Size>(const Size(44, 44)),
+        minimumSize: WidgetStatePropertyAll<Size>(
+          Size.square(spacing.minTapTarget),
+        ),
         foregroundColor: WidgetStatePropertyAll<Color>(colors.onSurfaceVariant),
         shape: WidgetStatePropertyAll<OutlinedBorder>(
             RoundedRectangleBorder(borderRadius: shapes.controlRadius)),
@@ -283,7 +290,9 @@ ThemeData _buildTheme({
     ),
     segmentedButtonTheme: SegmentedButtonThemeData(
       style: ButtonStyle(
-        minimumSize: WidgetStatePropertyAll<Size>(const Size(0, 40)),
+        minimumSize: WidgetStatePropertyAll<Size>(
+          Size(0, spacing.minTapTarget),
+        ),
         textStyle: WidgetStatePropertyAll<TextStyle?>(text.labelMedium),
         shape: WidgetStatePropertyAll<OutlinedBorder>(
             RoundedRectangleBorder(borderRadius: shapes.controlRadius)),

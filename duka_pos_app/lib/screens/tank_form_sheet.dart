@@ -52,11 +52,13 @@ import 'package:sqflite/sqflite.dart' show Database;
 
 import '../db/database_helper.dart';
 import '../l10n/generated/app_localizations.dart';
+import '../models/stock_movement.dart';
 import '../routing/home_shell.dart';
 import '../theme/app_colors.dart';
 import '../theme/app_shapes.dart';
 import '../theme/app_spacing.dart';
 import '../theme/typography.dart';
+import '../utils/crypto_utils.dart';
 import '../utils/money.dart';
 import '../utils/units.dart';
 import '../ui/components/screen_title.dart';
@@ -149,12 +151,36 @@ Future<void> saveTank(Database database, TankValues values) async {
       'stock_qty': values.tankCount.toDouble(),
       'reorder_level': 0,
       'bottle_ml': values.capacityMl,
-      'unit': ProductUnit.millilitre.wire,
+      // The tank is a pourable product. It is never sold whole; its cups are
+      // the configured servings, and the unit keeps it volumetric on every
+      // other till after catalogue sync.
+      'unit': ProductUnit.cup.wire,
       // 0, not false: sqflite carries no boolean, and a bool handed to it is a
       // type error at the moment of the write.
       'track_variants': 0,
       'active': 1,
       'updated_at': DateTime.now().toIso8601String(),
+    });
+
+    // The tank is a product with an opening balance, not an exception to the
+    // stock ledger. Keep this in the same transaction as the product and its
+    // servings so a newly-created tank is immediately reconcileable and its
+    // baseline can be sent to the backend on the first product sync.
+    await txn.insert('stock_movements', <String, Object?>{
+      'uuid': generateUuid(),
+      'created_at': DateTime.now().toIso8601String(),
+      'product_id': productId,
+      'variant_id': null,
+      'movement_type': StockMovementType.opening.wire,
+      'qty_delta': values.tankCount.toDouble(),
+      'unit_cost_minor': null,
+      'reference_type': null,
+      'reference_id': null,
+      'batch_id': null,
+      'staff_id': null,
+      'staff_name': null,
+      'note': 'Opening balance',
+      'balance_after': values.tankCount.toDouble(),
     });
 
     for (final TankServingValues serving in values.servings) {
@@ -225,7 +251,10 @@ class _TankFormSheetState extends State<TankFormSheet> {
 
   int? get _tankCount {
     final value = int.tryParse(_countCtrl.text.trim());
-    if (value == null || value <= 0) return null;
+    // A product can be created before the delivery arrives. Zero is a real
+    // opening balance; the owner can then record the delivery through the
+    // ordinary manual receiving flow without inventing stock.
+    if (value == null || value < 0) return null;
     return value;
   }
 

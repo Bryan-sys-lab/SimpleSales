@@ -11,7 +11,10 @@ import '../db/database_helper.dart';
 import '../l10n/generated/app_localizations.dart';
 import '../models/audit_log.dart';
 import '../models/models.dart';
+import '../models/stock_movement.dart';
 import '../services/app_state.dart';
+import '../services/roles.dart';
+import '../ui/dialogs/manager_approval_sheet.dart';
 import '../services/audit_actor.dart';
 import '../services/barcode/barcode_service.dart';
 import '../services/backend_service.dart';
@@ -19,7 +22,11 @@ import '../services/live_refresh_mixin.dart';
 import '../services/live_channel_service.dart';
 import '../services/session_refresh_mixin.dart';
 import '../services/workspace_service.dart';
+import '../services/printer/label_builder.dart';
+import '../services/printer/printer_config.dart';
+import '../services/printer/receipt_printer.dart';
 import '../ui/components/controls.dart';
+import '../screens/deliveries_history_sheet.dart';
 import '../screens/receive_stock_sheet.dart';
 import '../utils/error_utils.dart';
 import '../utils/money.dart';
@@ -40,6 +47,11 @@ import '../services/product_image_store.dart';
 import '../ui/components/product_photo.dart';
 import '../utils/validation_utils.dart';
 import 'tank_form_sheet.dart';
+import 'stocktake_screen.dart';
+import 'reorder_screen.dart';
+import '../models/product_pack.dart';
+import '../profile/profile_navigation.dart';
+import '../profile/shop_profile.dart';
 
 class InventoryScreen extends StatefulWidget {
   const InventoryScreen({this.focusedProductId, super.key});
@@ -92,8 +104,12 @@ class _InventoryScreenState extends State<InventoryScreen>
     // No clearing of the previous list first: a pull-to-refresh that blanks the
     // screen reads as "my stock is gone" for the second it takes to reload. The
     // RefreshIndicator's own spinner says the reload is happening.
+    final includeVariants =
+        context.read<AppState>().shopProfile.navigation.showVariants;
     final p = await DatabaseHelper.instance.getProducts();
-    final catalogue = await VariantCatalogue.load();
+    final catalogue = await VariantCatalogue.load(
+      includeVariants: includeVariants,
+    );
     final int? limit = p
         .where((Product product) => product.reorderLevel > 0)
         .map((Product product) => product.reorderLevel)
@@ -136,8 +152,226 @@ class _InventoryScreenState extends State<InventoryScreen>
     await showModalBottomSheet(
       context: context,
       isScrollControlled: true,
-      builder: (_) => _ProductEditor(existing: existing, onSaved: _load),
+      builder: (_) => _ProductEditor(
+        existing: existing,
+        allowVariants:
+            context.read<AppState>().shopProfile.navigation.showVariants,
+        onSaved: _load,
+      ),
     );
+  }
+
+  Future<void> _managePacks(Product product) async {
+    if (product.id == null) return;
+    final changed = await showModalBottomSheet<bool>(
+      context: context,
+      isScrollControlled: true,
+      builder: (_) => _ProductPacksSheet(product: product),
+    );
+    if (changed == true && mounted) await _load();
+  }
+
+  Future<void> _repackStock() async {
+    final state = context.read<AppState>();
+    final l10n = AppLocalizations.of(context);
+    if (!state.hasPermission(PermissionKey.adjustStock)) return;
+    if (!state.isOwnerSession &&
+        state.permissionMode(PermissionKey.adjustStock) ==
+            PermissionMode.approval) {
+      final approver = await showManagerApprovalSheet(
+        context,
+        purpose: l10n.inventoryRepackTitle,
+      );
+      if (!mounted || approver == null) return;
+    }
+    final result = await showDialog<Map<String, String>>(
+      context: context,
+      builder: (_) => _RepackDialog(products: _products),
+    );
+    if (result == null || !mounted) return;
+    final sourceId = int.tryParse(result['source_id'] ?? '');
+    final outputId = int.tryParse(result['output_id'] ?? '');
+    final sourceQty = double.tryParse(result['source_qty'] ?? '');
+    final outputQty = double.tryParse(result['output_qty'] ?? '');
+    if (sourceId == null ||
+        outputId == null ||
+        sourceQty == null ||
+        outputQty == null) {
+      return;
+    }
+    final staffName = state.currentStaffName ?? 'Owner';
+    try {
+      await DatabaseHelper.instance.repackStock(
+        sourceProductId: sourceId,
+        outputProductId: outputId,
+        sourceQty: sourceQty,
+        outputQty: outputQty,
+        staffName: staffName,
+        staffId: state.currentStaffId,
+      );
+      await _audit(
+        AuditAction.stockAdjusted,
+        AuditEntity.product,
+        entityId: 'id-$sourceId',
+        detail: 'repack $sourceQty → $outputQty into product $outputId',
+      );
+      await _load();
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+          content: Text(l10n.inventoryRepackSaved),
+        ));
+      }
+    } on Object catch (error) {
+      if (!mounted) return;
+      final message = error.toString().contains('more source stock')
+          ? l10n.inventoryRepackInsufficientStock
+          : l10n.inventoryRepackFailed;
+      ScaffoldMessenger.of(context)
+          .showSnackBar(SnackBar(content: Text(message)));
+    }
+  }
+
+  Future<void> _assignInternalBarcode(Product product) async {
+    if (product.id == null) return;
+    final code = Barcode.internalEan13(itemNumber: product.id!);
+    final saved = await DatabaseHelper.instance.addBarcode(
+      productId: product.id!,
+      barcode: code,
+      kind: BarcodeKind.own,
+    );
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+      content: Text(saved
+          ? 'Internal barcode assigned: $code'
+          : 'This product already has that barcode.'),
+    ));
+  }
+
+  Future<void> _printBarcodeLabel(Product product) async {
+    if (product.id == null) return;
+    final codes =
+        await DatabaseHelper.instance.getBarcodesForProduct(product.id!);
+    if (!mounted) return;
+    if (codes.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+        content: Text('Assign a barcode before printing its label.'),
+      ));
+      return;
+    }
+    final quantityController = TextEditingController(text: '1');
+    final int? quantity = await showDialog<int>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Print barcode labels'),
+        content: TextField(
+          controller: quantityController,
+          autofocus: true,
+          keyboardType: TextInputType.number,
+          decoration: const InputDecoration(
+            labelText: 'Number of labels',
+            helperText: 'The batch can be retried if the printer is busy.',
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('Cancel'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(
+              context,
+              int.tryParse(quantityController.text.trim()),
+            ),
+            child: const Text('Print'),
+          ),
+        ],
+      ),
+    );
+    quantityController.dispose();
+    if (quantity == null || quantity < 1 || quantity > 100 || !mounted) return;
+    final config = await PrinterConfig.load();
+    final jobId = await DatabaseHelper.instance.createLabelPrintJob(
+      uuid: 'label-job-${DateTime.now().microsecondsSinceEpoch}',
+      productId: product.id!,
+      productName: product.name,
+      barcode: codes.first.barcode,
+      priceMinor: product.sellPrice.minorUnits,
+      quantity: quantity,
+      paperWidth: config.paperWidth.mm,
+    );
+    await _runLabelPrintJob(jobId, config);
+  }
+
+  Future<void> _runLabelPrintJob(int jobId, PrinterConfig config) async {
+    final job = await DatabaseHelper.instance.getLabelPrintJob(jobId);
+    if (job == null || !mounted) return;
+    final total = (job['quantity'] as num).toInt();
+    var printed = (job['printed_quantity'] as num).toInt();
+    if (!config.isConfigured) {
+      await DatabaseHelper.instance.updateLabelPrintJob(
+        id: jobId,
+        status: 'pending',
+        error: 'Printer is not configured',
+      );
+      if (mounted) {
+        _showLabelJobMessage(
+            jobId, 'Turn on the receipt printer in Settings first.');
+      }
+      return;
+    }
+    final labels = List<BarcodeLabel>.generate(
+      total,
+      (_) => BarcodeLabel(
+        name: job['product_name'] as String,
+        barcode: job['barcode'] as String,
+        price: Money.fromMinor((job['price_minor'] as num).toInt()),
+      ),
+    );
+    final printer = ReceiptPrinter();
+    while (printed < total) {
+      final end = (printed + 20).clamp(0, total);
+      final result = await printer.printLabels(
+        labels: labels.sublist(printed, end),
+        config: config,
+      );
+      if (!result.printed) {
+        await DatabaseHelper.instance.updateLabelPrintJob(
+          id: jobId,
+          printedQuantity: printed,
+          status: 'pending',
+          error: result.outcome.name,
+        );
+        if (mounted) {
+          _showLabelJobMessage(
+              jobId, 'The barcode label batch could not be completed.');
+        }
+        return;
+      }
+      printed = end;
+      await DatabaseHelper.instance.updateLabelPrintJob(
+        id: jobId,
+        printedQuantity: printed,
+        status: printed == total ? 'completed' : 'printing',
+      );
+    }
+    if (!mounted) return;
+    _showLabelJobMessage(jobId, '$total barcode labels sent to the printer.');
+  }
+
+  void _showLabelJobMessage(int jobId, String message) {
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+      content: Text(message),
+      action: message.contains('could not')
+          ? SnackBarAction(
+              label: 'Retry',
+              onPressed: () async => _runLabelPrintJob(
+                jobId,
+                await PrinterConfig.load(),
+              ),
+            )
+          : null,
+    ));
   }
 
   Future<void> _audit(
@@ -155,6 +389,16 @@ class _InventoryScreenState extends State<InventoryScreen>
       );
 
   Future<void> _adjustStock(Product p) async {
+    final state = context.read<AppState>();
+    if (!state.isOwnerSession &&
+        state.permissionMode(PermissionKey.adjustStock) ==
+            PermissionMode.approval) {
+      final approver = await showManagerApprovalSheet(
+        context,
+        purpose: 'Approve the stock adjustment for ${p.name}',
+      );
+      if (!mounted || approver == null) return;
+    }
     // A product sold as variants has no stock count of its own to correct: its
     // `stock_qty` is the sum of its variants (see
     // VariantCatalogue.writeAggregateStock), so adjusting the parent would
@@ -172,7 +416,6 @@ class _InventoryScreenState extends State<InventoryScreen>
     final delta = int.tryParse(result['delta'] ?? '');
     if (delta == null || delta == 0) return;
     if (!mounted) return;
-    final state = context.read<AppState>();
     final staffName = state.currentStaffName!;
     // Shrinkage is reviewed per cashier, and `deleteStaffWithTombstone`
     // anonymises the ledger by `staff_id`. Recording only the display name
@@ -258,6 +501,131 @@ class _InventoryScreenState extends State<InventoryScreen>
     }
   }
 
+  /// Records a Drinks waste/spillage as an append-only write-off movement.
+  ///
+  /// The quantity is deliberately decimal: a tank can lose half a stock unit,
+  /// and forcing that through the whole-number correction dialog would turn a
+  /// measured variance into a false bottle count.
+  Future<void> _recordWaste(Product p) async {
+    final state = context.read<AppState>();
+    if (!state.isOwnerSession &&
+        state.permissionMode(PermissionKey.adjustStock) ==
+            PermissionMode.approval) {
+      final approver = await showManagerApprovalSheet(
+        context,
+        purpose: 'Approve waste recorded for ${p.name}',
+      );
+      if (!mounted || approver == null) return;
+    }
+    final quantityController = TextEditingController();
+    final reasonController = TextEditingController(text: 'Waste/spillage');
+    final result = await showDialog<Map<String, String>>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: Text('Record waste · ${p.name}'),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: <Widget>[
+            TextField(
+              controller: quantityController,
+              autofocus: true,
+              keyboardType:
+                  const TextInputType.numberWithOptions(decimal: true),
+              decoration: const InputDecoration(
+                labelText: 'Quantity wasted',
+                helperText: 'Use the product stock unit; decimals are allowed.',
+              ),
+            ),
+            TextField(
+              controller: reasonController,
+              decoration: const InputDecoration(labelText: 'Reason'),
+            ),
+          ],
+        ),
+        actions: <Widget>[
+          TextButton(
+            onPressed: () => Navigator.pop(dialogContext),
+            child: const Text('Cancel'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(dialogContext, <String, String>{
+              'quantity': quantityController.text.trim(),
+              'reason': reasonController.text.trim(),
+            }),
+            child: const Text('Record waste'),
+          ),
+        ],
+      ),
+    );
+    quantityController.dispose();
+    reasonController.dispose();
+    if (result == null || !mounted) return;
+    final quantity = double.tryParse(result['quantity'] ?? '');
+    if (quantity == null || !quantity.isFinite || quantity <= 0) return;
+    if (quantity > p.stockQty) {
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+        content: Text('Waste cannot be greater than current stock.'),
+      ));
+      return;
+    }
+    final staffName = state.currentStaffName ?? 'Unknown';
+    int? staffId;
+    String? staffRemoteId;
+    if (!state.isOwnerSession) {
+      final staff = await DatabaseHelper.instance.getStaff();
+      final match = staff.where((entry) => entry.name == staffName);
+      staffId = match.isEmpty ? null : match.first.id;
+      staffRemoteId = match.isEmpty ? null : match.first.remoteId;
+    }
+    try {
+      await DatabaseHelper.instance.adjustStock(
+        StockAdjustment(
+          productId: p.id!,
+          productName: p.name,
+          delta: -quantity,
+          reason: result['reason']?.isNotEmpty == true
+              ? result['reason']!
+              : 'Waste/spillage',
+          staffName: staffName,
+          createdAt: DateTime.now().toIso8601String(),
+        ),
+        staffId: staffId,
+        movementType: StockMovementType.writeoff,
+      );
+      await _audit(
+        AuditAction.stockAdjusted,
+        AuditEntity.product,
+        entityId: 'id-${p.id}',
+        detail: 'waste -$quantity ${result['reason'] ?? 'Waste/spillage'}',
+      );
+      await _load();
+      var pushed = false;
+      try {
+        pushed = await BackendService.adjustStockOnBackend(
+          product: p,
+          delta: -quantity,
+          reason: result['reason'],
+          staffProfileId: staffRemoteId,
+        );
+      } catch (_) {
+        pushed = false;
+      }
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+          content: Text(pushed
+              ? 'Waste recorded and synced.'
+              : 'Waste recorded on this till; sync is pending.'),
+        ));
+      }
+    } on Object catch (_) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+          content: Text('Waste could not be recorded.'),
+        ));
+      }
+    }
+  }
+
   /// Corrects the stock of one variant of a product sold as variants.
   ///
   /// Deliberately not pushed to the backend: the adjustment API takes a product
@@ -275,8 +643,8 @@ class _InventoryScreenState extends State<InventoryScreen>
     final chosen = await showDialog<ProductVariant>(
       context: context,
       builder: (dialogContext) => SimpleDialog(
-        title: Text(AppLocalizations.of(dialogContext)
-            .inventoryWhichVariant(p.name)),
+        title: Text(
+            AppLocalizations.of(dialogContext).inventoryWhichVariant(p.name)),
         children: [
           for (final variant in variants)
             SimpleDialogOption(
@@ -398,14 +766,32 @@ class _InventoryScreenState extends State<InventoryScreen>
 
   /// Records a delivery: what arrived, and what it cost.
   ///
-  /// The products, the suppliers and the last costs are read HERE, before the
-  /// sheet opens, because a sheet that reads the database while it is building
-  /// itself does its I/O in the middle of a build.
+  /// Records a delivery: what arrived, and what it cost.
+  ///
+  /// The products, the suppliers, the draft and the costing mode are read
+  /// HERE, before the sheet opens, because a sheet that reads the database
+  /// while it is building itself does its I/O in the middle of a build.
   Future<void> _receiveStock() async {
     final AppState state = context.read<AppState>();
+    if (!state.isOwnerSession &&
+        state.permissionMode(PermissionKey.receiveStock) ==
+            PermissionMode.approval) {
+      final approver = await showManagerApprovalSheet(
+        context,
+        purpose: 'Approve receiving new stock',
+      );
+      if (!mounted || approver == null) return;
+    }
     final DatabaseHelper db = DatabaseHelper.instance;
     final List<Product> products = await db.getProducts();
     final List<Supplier> suppliers = await db.getSuppliers();
+    // A session the app killed last time comes back as a draft, offered —
+    // not forced, because the delivery could have been finished on paper.
+    final Map<String, dynamic>? draftJson =
+        await db.getReceiveDraft(state.currentStaffId);
+    final ReceiveDraftSnapshot? draft =
+        draftJson == null ? null : ReceiveDraftSnapshot.fromJson(draftJson);
+    final String costingMode = await db.getCostingMode();
     if (!mounted) return;
     final int? receiptId = await showReceiveStockSheet(
       context,
@@ -414,10 +800,22 @@ class _InventoryScreenState extends State<InventoryScreen>
       lastCostFor: db.lastCostForProduct,
       staffName: state.currentStaffName ?? '',
       staffId: state.currentStaffId,
+      costingMode: costingMode,
+      draft: draft,
     );
     if (receiptId == null || !mounted) return;
     await _load();
     if (!mounted) return;
+    if (receiptId == 0) {
+      // A resumed draft was discarded; nothing was posted, and the draft is
+      // already gone. Say what happened rather than nothing at all.
+      showOperationSuccess(
+        context,
+        title: AppLocalizations.of(context).receiveTitle,
+        message: AppLocalizations.of(context).receiveDraftDiscarded,
+      );
+      return;
+    }
     // The outcome is a POPUP, not a screen: the till is not blocked.
     final AppLocalizations l10n = AppLocalizations.of(context);
     showOperationSuccess(
@@ -427,9 +825,41 @@ class _InventoryScreenState extends State<InventoryScreen>
     );
   }
 
+  /// The deliveries so far, with the owner's void. A modal history over the
+  /// inventory: read by the CALLER (the receipts with their supplier names),
+  /// so it opens without I/O in its own build.
+  Future<void> _openDeliveries() async {
+    final AppState state = context.read<AppState>();
+    final DatabaseHelper db = DatabaseHelper.instance;
+    final List<StockReceipt> receipts = await db.getStockReceipts();
+    final Map<int, String> supplierNames = <int, String>{
+      for (final Supplier supplier in await db.getSuppliers())
+        if (supplier.id != null) supplier.id!: supplier.name,
+    };
+    if (!mounted) return;
+    await showModalBottomSheet<void>(
+      context: context,
+      isScrollControlled: true,
+      builder: (BuildContext sheetContext) => DeliveriesHistorySheet(
+        receipts: receipts,
+        supplierNames: supplierNames,
+        canVoid: state.isOwnerSession,
+        staffId: state.currentStaffId,
+        staffName: state.currentStaffName ?? '',
+      ),
+    );
+    if (!mounted) return;
+    await _load();
+  }
+
   @override
   Widget build(BuildContext context) {
-    final isOwner = context.watch<AppState>().isOwnerSession;
+    final appState = context.watch<AppState>();
+    final isOwner = appState.isOwnerSession;
+    final canReceive = appState.hasPermission(PermissionKey.receiveStock);
+    final canStocktake = appState.hasPermission(PermissionKey.stocktake);
+    final canReorder = appState.hasPermission(PermissionKey.manageSuppliers);
+    final showDrinkService = appState.shopProfile.navigation.showDrinkService;
     final l10n = AppLocalizations.of(context);
     return Scaffold(
       floatingActionButton: FloatingActionButton(
@@ -440,23 +870,54 @@ class _InventoryScreenState extends State<InventoryScreen>
       // A tank is not another kind of bottle: it is a drum you pour out and
       // sell by the cup, so it gets its own form rather than one more option
       // on this screen's product editor.
-      // The footer's two actions: record a delivery, and set up a tank.
+      // The footer's stock action is deliberately manual: buying stock does
+      // not create an order or trigger any automatic purchasing in this
+      // version. The receive flow records what actually arrived and its cost.
       //
       // Receiving stock is for managers AND owners — it is the shop's stock
       // coming in, and the money it cost. A tank is the owner's own setup
       // decision, so it stays behind the owner's door.
       persistentFooterButtons: <Widget>[
-        if (context.watch<AppState>().canManageStock)
+        if (canReceive)
           TextButton.icon(
             onPressed: () => _receiveStock(),
             icon: const Icon(Icons.local_shipping_outlined, size: 18),
-            label: Text(l10n.receiveTitle),
+            label: Text(l10n.inventoryManualRestock),
           ),
-        if (isOwner)
+        if (canReceive)
+          TextButton.icon(
+            onPressed: () => _openDeliveries(),
+            icon: const Icon(Icons.receipt_long_outlined, size: 18),
+            label: Text(l10n.receiveDeliveriesAction),
+          ),
+        if (canStocktake)
+          TextButton.icon(
+            onPressed: () => Navigator.of(context).push(
+              MaterialPageRoute<void>(builder: (_) => const StocktakeScreen()),
+            ),
+            icon: const Icon(Icons.fact_check_outlined, size: 18),
+            label: const Text('Stocktake'),
+          ),
+        if (canReorder)
+          TextButton.icon(
+            onPressed: () => Navigator.of(context).push(
+              MaterialPageRoute<void>(builder: (_) => const ReorderScreen()),
+            ),
+            icon: const Icon(Icons.playlist_add_check_outlined, size: 18),
+            label: const Text('Reorder'),
+          ),
+        if (isOwner && showDrinkService)
           TextButton.icon(
             onPressed: () => showTankFormSheet(context),
             icon: const Icon(Icons.propane_tank_outlined, size: 18),
             label: Text(l10n.tankAddEntry),
+          ),
+        if (appState.shopProfile == ShopProfile.duka &&
+            appState.hasPermission(PermissionKey.adjustStock))
+          TextButton.icon(
+            onPressed: _repackStock,
+            icon: const Icon(Icons.swap_horiz_outlined, size: 18),
+            label: Text(l10n.inventoryRepackAction),
           ),
       ],
       body: RefreshIndicator(
@@ -503,16 +964,17 @@ class _InventoryScreenState extends State<InventoryScreen>
                         if (_products.isEmpty || i == 0) {
                           return Column(
                             children: <Widget>[
-                              Semantics(
-                                label: l10n.inventoryShotCupsSpoken,
-                                child: ListTile(
-                                  leading:
-                                      const Icon(Icons.local_drink_outlined),
-                                  title: Text(l10n.inventoryShotCupsTitle),
-                                  trailing: const Icon(Icons.chevron_right),
-                                  onTap: () => context.push(Routes.shotCups),
+                              if (showDrinkService)
+                                Semantics(
+                                  label: l10n.inventoryShotCupsSpoken,
+                                  child: ListTile(
+                                    leading:
+                                        const Icon(Icons.local_drink_outlined),
+                                    title: Text(l10n.inventoryShotCupsTitle),
+                                    trailing: const Icon(Icons.chevron_right),
+                                    onTap: () => context.push(Routes.shotCups),
+                                  ),
                                 ),
-                              ),
                               ListTile(
                                 leading: const Icon(Icons.tune),
                                 title: Text(l10n.inventoryLowStockLimitTitle),
@@ -544,6 +1006,11 @@ class _InventoryScreenState extends State<InventoryScreen>
                             isOwner: isOwner,
                             onEdit: () => _openEditor(p),
                             onAdjust: () => _adjustStock(p),
+                            onWaste:
+                                showDrinkService ? () => _recordWaste(p) : null,
+                            onPacks: () => _managePacks(p),
+                            onAssignBarcode: () => _assignInternalBarcode(p),
+                            onPrintBarcode: () => _printBarcodeLabel(p),
                             onDelete: () => _delete(p),
                           ),
                         );
@@ -683,6 +1150,122 @@ class _InventoryEmptyState extends StatelessWidget {
   }
 }
 
+class _RepackDialog extends StatefulWidget {
+  const _RepackDialog({required this.products});
+
+  final List<Product> products;
+
+  @override
+  State<_RepackDialog> createState() => _RepackDialogState();
+}
+
+class _RepackDialogState extends State<_RepackDialog> {
+  late int? _sourceId =
+      widget.products.isEmpty ? null : widget.products.first.id;
+  late int? _outputId =
+      widget.products.length < 2 ? null : widget.products[1].id;
+  final _sourceQty = TextEditingController();
+  final _outputQty = TextEditingController();
+
+  @override
+  void dispose() {
+    _sourceQty.dispose();
+    _outputQty.dispose();
+    super.dispose();
+  }
+
+  void _save() {
+    final sourceQty = double.tryParse(_sourceQty.text.trim());
+    final outputQty = double.tryParse(_outputQty.text.trim());
+    if (_sourceId == null ||
+        _outputId == null ||
+        _sourceId == _outputId ||
+        sourceQty == null ||
+        outputQty == null ||
+        !sourceQty.isFinite ||
+        !outputQty.isFinite ||
+        sourceQty <= 0 ||
+        outputQty <= 0) {
+      return;
+    }
+    Navigator.of(context).pop(<String, String>{
+      'source_id': '$_sourceId',
+      'output_id': '$_outputId',
+      'source_qty': '$sourceQty',
+      'output_qty': '$outputQty',
+    });
+  }
+
+  String _label(int? id) =>
+      widget.products.firstWhere((product) => product.id == id).name;
+
+  @override
+  Widget build(BuildContext context) {
+    final l10n = AppLocalizations.of(context);
+    return AlertDialog(
+      title: Text(l10n.inventoryRepackTitle),
+      content: SingleChildScrollView(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: <Widget>[
+            DropdownButtonFormField<int>(
+              initialValue: _sourceId,
+              decoration:
+                  InputDecoration(labelText: l10n.inventoryRepackSourceProduct),
+              items: [
+                for (final product in widget.products)
+                  DropdownMenuItem<int>(
+                    value: product.id,
+                    child: Text('${product.name} · ${product.stockQty}'),
+                  ),
+              ],
+              onChanged: (value) => setState(() => _sourceId = value),
+            ),
+            TextField(
+              controller: _sourceQty,
+              keyboardType:
+                  const TextInputType.numberWithOptions(decimal: true),
+              decoration: InputDecoration(
+                labelText: l10n.inventoryRepackSourceQuantity,
+                helperText: l10n.inventoryRepackSourceHelp,
+              ),
+            ),
+            DropdownButtonFormField<int>(
+              initialValue: _outputId,
+              decoration:
+                  InputDecoration(labelText: l10n.inventoryRepackOutputProduct),
+              items: [
+                for (final product in widget.products)
+                  DropdownMenuItem<int>(
+                    value: product.id,
+                    child: Text(_label(product.id)),
+                  ),
+              ],
+              onChanged: (value) => setState(() => _outputId = value),
+            ),
+            TextField(
+              controller: _outputQty,
+              keyboardType:
+                  const TextInputType.numberWithOptions(decimal: true),
+              decoration: InputDecoration(
+                labelText: l10n.inventoryRepackOutputQuantity,
+                helperText: l10n.inventoryRepackOutputHelp,
+              ),
+            ),
+          ],
+        ),
+      ),
+      actions: <Widget>[
+        TextButton(
+          onPressed: () => Navigator.pop(context),
+          child: Text(l10n.inventoryRepackCancel),
+        ),
+        FilledButton(onPressed: _save, child: Text(l10n.inventoryRepackRecord)),
+      ],
+    );
+  }
+}
+
 /// A product list tile with reliable edit/adjust/delete actions.
 ///
 /// Uses an explicit menu button instead of PopupMenuButton to avoid
@@ -695,6 +1278,10 @@ class _ProductListTile extends StatelessWidget {
     required this.isOwner,
     required this.onEdit,
     required this.onAdjust,
+    this.onWaste,
+    required this.onPacks,
+    required this.onAssignBarcode,
+    required this.onPrintBarcode,
     required this.onDelete,
     super.key,
   });
@@ -705,6 +1292,10 @@ class _ProductListTile extends StatelessWidget {
   final bool isOwner;
   final VoidCallback onEdit;
   final VoidCallback onAdjust;
+  final VoidCallback? onWaste;
+  final VoidCallback onPacks;
+  final VoidCallback onAssignBarcode;
+  final VoidCallback onPrintBarcode;
   final VoidCallback onDelete;
 
   @override
@@ -753,9 +1344,10 @@ class _ProductListTile extends StatelessWidget {
             bottom: spacing.sm,
           ),
           child: ConstrainedBox(
-            // The floor is on the ROW, not the text: a 44px minimum with the
-            // name free to wrap keeps the target legal at any text scale.
-            constraints: const BoxConstraints(minHeight: 56),
+            // The floor is on the ROW, not the text: the shared 56px field
+            // dimension gives the target room while the name remains free to
+            // wrap at larger text scales.
+            constraints: BoxConstraints(minHeight: spacing.textFieldHeight),
             child: Row(
               children: [
                 // The photograph, when the product has one.
@@ -837,6 +1429,10 @@ class _ProductListTile extends StatelessWidget {
                   isOwner: isOwner,
                   onEdit: onEdit,
                   onAdjust: onAdjust,
+                  onWaste: onWaste,
+                  onPacks: onPacks,
+                  onAssignBarcode: onAssignBarcode,
+                  onPrintBarcode: onPrintBarcode,
                   onDelete: onDelete,
                 ),
               ],
@@ -853,12 +1449,20 @@ class _ProductActionMenu extends StatelessWidget {
     required this.isOwner,
     required this.onEdit,
     required this.onAdjust,
+    this.onWaste,
+    required this.onPacks,
+    required this.onAssignBarcode,
+    required this.onPrintBarcode,
     required this.onDelete,
   });
 
   final bool isOwner;
   final VoidCallback onEdit;
   final VoidCallback onAdjust;
+  final VoidCallback? onWaste;
+  final VoidCallback onPacks;
+  final VoidCallback onAssignBarcode;
+  final VoidCallback onPrintBarcode;
   final VoidCallback onDelete;
 
   @override
@@ -874,6 +1478,18 @@ class _ProductActionMenu extends StatelessWidget {
             break;
           case 'adjust':
             onAdjust();
+            break;
+          case 'waste':
+            onWaste?.call();
+            break;
+          case 'packs':
+            onPacks();
+            break;
+          case 'barcode':
+            onAssignBarcode();
+            break;
+          case 'print-barcode':
+            onPrintBarcode();
             break;
           case 'delete':
             onDelete();
@@ -901,6 +1517,47 @@ class _ProductActionMenu extends StatelessWidget {
             ],
           ),
         ),
+        if (onWaste != null)
+          const PopupMenuItem(
+            value: 'waste',
+            child: Row(
+              children: [
+                Icon(Icons.delete_sweep_outlined, size: 20),
+                SizedBox(width: 12),
+                Text('Record waste/spillage'),
+              ],
+            ),
+          ),
+        PopupMenuItem(
+          value: 'packs',
+          child: Row(
+            children: const [
+              Icon(Icons.inventory_2_outlined, size: 20),
+              SizedBox(width: 12),
+              Text('Packs and cartons'),
+            ],
+          ),
+        ),
+        const PopupMenuItem(
+          value: 'barcode',
+          child: Row(
+            children: [
+              Icon(Icons.qr_code_2_outlined, size: 20),
+              SizedBox(width: 12),
+              Text('Assign internal barcode'),
+            ],
+          ),
+        ),
+        const PopupMenuItem(
+          value: 'print-barcode',
+          child: Row(
+            children: [
+              Icon(Icons.print_outlined, size: 20),
+              SizedBox(width: 12),
+              Text('Print barcode label'),
+            ],
+          ),
+        ),
         if (isOwner)
           PopupMenuItem(
             value: 'delete',
@@ -918,6 +1575,202 @@ class _ProductActionMenu extends StatelessWidget {
       ],
     );
   }
+}
+
+class _ProductPacksSheet extends StatefulWidget {
+  const _ProductPacksSheet({required this.product});
+
+  final Product product;
+
+  @override
+  State<_ProductPacksSheet> createState() => _ProductPacksSheetState();
+}
+
+class _ProductPacksSheetState extends State<_ProductPacksSheet> {
+  List<ProductPack> _packs = const <ProductPack>[];
+  bool _loading = true;
+
+  @override
+  void initState() {
+    super.initState();
+    _load();
+  }
+
+  Future<void> _load() async {
+    final packs =
+        await DatabaseHelper.instance.getProductPacks(widget.product.id!);
+    if (!mounted) return;
+    setState(() {
+      _packs = packs;
+      _loading = false;
+    });
+  }
+
+  Future<void> _add() async {
+    final result = await showDialog<Map<String, String>>(
+      context: context,
+      builder: (_) => const _PackFormDialog(),
+    );
+    if (result == null) return;
+    try {
+      await DatabaseHelper.instance.addProductPack(
+        uuid: 'pack-${DateTime.now().microsecondsSinceEpoch}',
+        productId: widget.product.id!,
+        name: result['name']!,
+        barcode: result['barcode']!,
+        unitsPerPack: double.parse(result['units']!),
+        unitCost: Money.fromMajor(double.parse(result['cost']!)),
+        sellPrice: result['sell']!.trim().isEmpty
+            ? null
+            : Money.fromMajor(double.parse(result['sell']!)),
+      );
+      if (mounted) {
+        Navigator.of(context).pop(true);
+      }
+    } catch (error) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Could not save pack: $error')),
+      );
+    }
+  }
+
+  Future<void> _deactivate(ProductPack pack) async {
+    await DatabaseHelper.instance.deactivateProductPack(pack.id!);
+    await _load();
+  }
+
+  @override
+  Widget build(BuildContext context) => SafeArea(
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(16, 16, 16, 24),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              Text('${widget.product.name} packs',
+                  style: Theme.of(context).textTheme.titleLarge),
+              const SizedBox(height: 8),
+              if (_loading)
+                const LinearProgressIndicator()
+              else if (_packs.isEmpty)
+                const Text(
+                    'No packs yet. Add a case, carton or bundle barcode.'),
+              ..._packs.map((pack) => ListTile(
+                    contentPadding: EdgeInsets.zero,
+                    title: Text(pack.name),
+                    subtitle: Text(
+                        '${pack.unitsPerPack} base units · ${pack.barcode} · cost ${formatMoney(pack.unitCost)}'),
+                    trailing: IconButton(
+                      tooltip: 'Deactivate pack',
+                      onPressed: () => _deactivate(pack),
+                      icon: const Icon(Icons.remove_circle_outline),
+                    ),
+                  )),
+              const SizedBox(height: 8),
+              FilledButton.icon(
+                onPressed: _add,
+                icon: const Icon(Icons.add),
+                label: const Text('Add pack'),
+              ),
+            ],
+          ),
+        ),
+      );
+}
+
+class _PackFormDialog extends StatefulWidget {
+  const _PackFormDialog();
+
+  @override
+  State<_PackFormDialog> createState() => _PackFormDialogState();
+}
+
+class _PackFormDialogState extends State<_PackFormDialog> {
+  final _formKey = GlobalKey<FormState>();
+  final _name = TextEditingController();
+  final _barcode = TextEditingController();
+  final _units = TextEditingController(text: '1');
+  final _cost = TextEditingController();
+  final _sell = TextEditingController();
+
+  @override
+  void dispose() {
+    for (final controller in [_name, _barcode, _units, _cost, _sell]) {
+      controller.dispose();
+    }
+    super.dispose();
+  }
+
+  void _save() {
+    if (!(_formKey.currentState?.validate() ?? false)) return;
+    Navigator.of(context).pop({
+      'name': _name.text.trim(),
+      'barcode': _barcode.text.trim(),
+      'units': _units.text.trim(),
+      'cost': _cost.text.trim(),
+      'sell': _sell.text.trim(),
+    });
+  }
+
+  String? _required(String? value) =>
+      value == null || value.trim().isEmpty ? 'Required' : null;
+
+  String? _positive(String? value) {
+    final number = double.tryParse(value?.trim() ?? '');
+    return number == null || number <= 0 ? 'Enter a positive number' : null;
+  }
+
+  @override
+  Widget build(BuildContext context) => AlertDialog(
+        title: const Text('Add pack or carton'),
+        content: Form(
+          key: _formKey,
+          child: SingleChildScrollView(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                TextFormField(
+                    controller: _name,
+                    decoration: const InputDecoration(labelText: 'Name'),
+                    validator: _required),
+                TextFormField(
+                    controller: _barcode,
+                    decoration:
+                        const InputDecoration(labelText: 'Pack barcode'),
+                    validator: _required),
+                TextFormField(
+                    controller: _units,
+                    decoration:
+                        const InputDecoration(labelText: 'Base units per pack'),
+                    keyboardType:
+                        const TextInputType.numberWithOptions(decimal: true),
+                    validator: _positive),
+                TextFormField(
+                    controller: _cost,
+                    decoration: const InputDecoration(labelText: 'Pack cost'),
+                    keyboardType:
+                        const TextInputType.numberWithOptions(decimal: true),
+                    validator: _positive),
+                TextFormField(
+                    controller: _sell,
+                    decoration: const InputDecoration(
+                        labelText: 'Pack selling price (optional)'),
+                    keyboardType:
+                        const TextInputType.numberWithOptions(decimal: true),
+                    validator: (value) =>
+                        value!.trim().isEmpty ? null : _positive(value)),
+              ],
+            ),
+          ),
+        ),
+        actions: [
+          TextButton(
+              onPressed: () => Navigator.of(context).pop(),
+              child: const Text('Cancel')),
+          FilledButton(onPressed: _save, child: const Text('Save')),
+        ],
+      );
 }
 
 /// The photograph controls for one product.
@@ -1044,27 +1897,36 @@ class _PhotoRow extends StatelessWidget {
 }
 
 class _UnitPicker extends StatelessWidget {
-  const _UnitPicker({required this.value, required this.onChanged});
+  const _UnitPicker({
+    required this.value,
+    required this.onChanged,
+    required this.showMeasuredGoods,
+  });
 
   final ProductUnit value;
   final ValueChanged<ProductUnit> onChanged;
+  final bool showMeasuredGoods;
 
   @override
   Widget build(BuildContext context) {
     final AppLocalizations l10n = AppLocalizations.of(context);
+    final options = <SegmentedOption<ProductUnit>>[
+      SegmentedOption<ProductUnit>(
+          value: ProductUnit.each, label: l10n.productUnitEach),
+      if (showMeasuredGoods || value == ProductUnit.litre)
+        SegmentedOption<ProductUnit>(
+            value: ProductUnit.litre, label: l10n.productUnitLitre),
+      if (showMeasuredGoods || value == ProductUnit.millilitre)
+        SegmentedOption<ProductUnit>(
+            value: ProductUnit.millilitre, label: l10n.productUnitMillilitre),
+      if (showMeasuredGoods || value == ProductUnit.cup)
+        SegmentedOption<ProductUnit>(
+            value: ProductUnit.cup, label: l10n.productUnitCup),
+    ];
     return SegmentedChoice<ProductUnit>(
       value: value,
       semanticLabel: l10n.productUnitPickerLabel,
-      options: <SegmentedOption<ProductUnit>>[
-        SegmentedOption<ProductUnit>(
-            value: ProductUnit.each, label: l10n.productUnitEach),
-        SegmentedOption<ProductUnit>(
-            value: ProductUnit.litre, label: l10n.productUnitLitre),
-        SegmentedOption<ProductUnit>(
-            value: ProductUnit.millilitre, label: l10n.productUnitMillilitre),
-        SegmentedOption<ProductUnit>(
-            value: ProductUnit.cup, label: l10n.productUnitCup),
-      ],
+      options: options,
       onChanged: onChanged,
     );
   }
@@ -1085,8 +1947,13 @@ String _sizeLabelOf(BuildContext context, ProductUnit unit) {
 
 class _ProductEditor extends StatefulWidget {
   final Product? existing;
+  final bool allowVariants;
   final VoidCallback onSaved;
-  const _ProductEditor({this.existing, required this.onSaved});
+  const _ProductEditor({
+    this.existing,
+    required this.allowVariants,
+    required this.onSaved,
+  });
   @override
   State<_ProductEditor> createState() => _ProductEditorState();
 }
@@ -1138,6 +2005,9 @@ class _ProductEditorState extends State<_ProductEditor> {
   /// it — a product that *is* sold as variants arrives here looking like one
   /// that is not, and saving it would quietly turn the feature off.
   bool _trackVariants = false;
+  bool _persistedTrackVariants = false;
+
+  bool _trackExpiry = false;
 
   /// What the product is measured in, for the same reason as [_trackVariants].
   ProductUnit _unit = ProductUnit.each;
@@ -1217,6 +2087,7 @@ class _ProductEditorState extends State<_ProductEditor> {
     _halfPrice = TextEditingController(text: _editAmount(e?.halfPrice));
     _quarterPrice = TextEditingController(text: _editAmount(e?.quarterPrice));
     _barcode = TextEditingController();
+    _trackExpiry = e?.trackExpiry ?? false;
     _loadMeta();
     _loadSizeSuggestions();
   }
@@ -1263,6 +2134,18 @@ class _ProductEditorState extends State<_ProductEditor> {
     final productId = existing!.id!;
     final db = DatabaseHelper.instance;
     final flags = await VariantCatalogue.productFlags(productId);
+    if (!widget.allowVariants) {
+      // Non-Fashion profiles cannot create or edit variants, but an owner
+      // moving a legacy catalogue between profiles must not lose the existing
+      // flag or rows when they save an unrelated product field.
+      if (mounted) {
+        setState(() {
+          _persistedTrackVariants = flags.trackVariants;
+          _loadingMeta = false;
+        });
+      }
+      return;
+    }
     final variants = await db.getVariants(productId, activeOnly: false);
     final codes = await VariantCatalogue.codesForProduct(productId);
     if (!mounted) return;
@@ -1430,7 +2313,9 @@ class _ProductEditorState extends State<_ProductEditor> {
           int.tryParse(_reorder.text.trim()) ?? existing?.reorderLevel ?? 0,
       bottleMl: int.tryParse(_bottleMl.text.trim()) ?? existing?.bottleMl ?? 0,
       unit: _unit,
-      trackVariants: _trackVariants,
+      trackVariants:
+          widget.allowVariants ? _trackVariants : _persistedTrackVariants,
+      trackExpiry: _trackExpiry,
       active: existing?.active ?? true,
       updatedAt: DateTime.now().toIso8601String(),
       remoteId: existing?.remoteId,
@@ -1926,6 +2811,7 @@ class _ProductEditorState extends State<_ProductEditor> {
       // variants" and reset the unit on every unrelated edit.
       unit: _unit,
       trackVariants: _trackVariants,
+      trackExpiry: _trackExpiry,
       // Already `Money`, so they pass straight through. Re-quantising here
       // would be the third conversion on the same value.
       halfPrice: halfPrice,
@@ -1947,7 +2833,7 @@ class _ProductEditorState extends State<_ProductEditor> {
       final productId = await rawDb.transaction((txn) async {
         final id = await DatabaseHelper.instance
             .upsertProductInTransaction(txn, product);
-        await _saveVariants(id, txn: txn);
+        if (widget.allowVariants) await _saveVariants(id, txn: txn);
         return id;
       });
       // The product's existence is now durable, so "who changed it" is safe to
@@ -1969,7 +2855,7 @@ class _ProductEditorState extends State<_ProductEditor> {
       // configured "Kenyana Beer" and its four variants as one thing, and
       // saving half of it would leave the till offering something the catalogue
       // does not have.
-      await _saveVariants(productId);
+      if (widget.allowVariants) await _saveVariants(productId);
       // Then the photograph, now that there is an id to name its file after.
       //
       // Flushed here rather than before the insert because the store names a
@@ -2103,6 +2989,11 @@ class _ProductEditorState extends State<_ProductEditor> {
               // cup, every litre of beer and every tank depends on this.
               _UnitPicker(
                 value: _unit,
+                showMeasuredGoods: context
+                    .read<AppState>()
+                    .shopProfile
+                    .navigation
+                    .showMeasuredGoods,
                 onChanged: (ProductUnit unit) => setState(() => _unit = unit),
               ),
               SizedBox(height: spacing.md),
@@ -2199,22 +3090,32 @@ class _ProductEditorState extends State<_ProductEditor> {
                 onUndoRemove: () => setState(() => _photoRemoved = false),
               ),
               SizedBox(height: spacing.md),
+              if (widget.allowVariants)
+                SwitchListTile(
+                  contentPadding: EdgeInsets.zero,
+                  value: _trackVariants,
+                  onChanged: _setTrackVariants,
+                  title: Text(
+                      AppLocalizations.of(context).inventorySoldAsVariants),
+                  // Says what turning it on does to the till, because the switch
+                  // is otherwise invisible in its consequences: with it on, the
+                  // product itself stops being sellable and its variants take over.
+                  subtitle: Text(_trackVariants
+                      ? AppLocalizations.of(context)
+                          .inventorySoldAsVariantsOnSubtitle
+                      : AppLocalizations.of(context)
+                          .inventorySoldAsVariantsOffSubtitle),
+                ),
               SwitchListTile(
                 contentPadding: EdgeInsets.zero,
-                value: _trackVariants,
-                onChanged: _setTrackVariants,
-                title:
-                    Text(AppLocalizations.of(context).inventorySoldAsVariants),
-                // Says what turning it on does to the till, because the switch
-                // is otherwise invisible in its consequences: with it on, the
-                // product itself stops being sellable and its variants take over.
-                subtitle: Text(_trackVariants
-                    ? AppLocalizations.of(context)
-                        .inventorySoldAsVariantsOnSubtitle
-                    : AppLocalizations.of(context)
-                        .inventorySoldAsVariantsOffSubtitle),
+                value: _trackExpiry,
+                onChanged: (value) => setState(() => _trackExpiry = value),
+                title: const Text('Track expiry dates'),
+                subtitle: Text(_trackExpiry
+                    ? 'Received stock needs an expiry date and sells oldest first.'
+                    : 'Stock is not separated by expiry date.'),
               ),
-              if (_trackVariants) ...[
+              if (widget.allowVariants && _trackVariants) ...[
                 Text(AppLocalizations.of(context).inventoryVariantsSection,
                     style: Theme.of(context).textTheme.titleSmall),
                 SizedBox(height: spacing.sm),

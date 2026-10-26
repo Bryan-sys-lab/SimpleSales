@@ -1,11 +1,14 @@
 import 'dart:async';
 import 'dart:io';
+import 'dart:math';
 
 import 'package:flutter/foundation.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'backend_service.dart';
 import 'excel_service.dart';
+import 'owner_business_sync_service.dart';
+import 'workspace_service.dart';
 
 /// Best-effort, opt-in online sync. Offline work never waits for this timer
 /// and mobile OS background execution is not assumed; a retry occurs while
@@ -20,19 +23,71 @@ import 'excel_service.dart';
 /// app process is not alive; the timer below is the in-process fallback.
 class AutoSyncService {
   static const _enabledKey = 'automatic_backup_sync_enabled';
+  static const _jitterSeedKey = 'automatic_backup_sync_jitter_seed';
   static Timer? _timer;
   static bool _running = false;
 
-  static Future<bool> get enabled async =>
-      (await SharedPreferences.getInstance()).getBool(_enabledKey) ?? false;
+  static Future<String> _enabledKeyForActiveWorkspace() async =>
+      '$_enabledKey@${await WorkspaceService.activeWorkspaceKey()}';
+
+  @visibleForTesting
+  static String enabledKeyForWorkspace(String workspaceKey) =>
+      '$_enabledKey@$workspaceKey';
+
+  static Future<bool> get enabled async {
+    final prefs = await SharedPreferences.getInstance();
+    final key = await _enabledKeyForActiveWorkspace();
+    final scoped = prefs.getBool(key);
+    if (scoped != null) return scoped;
+    // Adopt the pre-workspace setting once for whichever shop is active at
+    // upgrade time. Leaving the old global key in place would make every
+    // later shop inherit it.
+    final legacy = prefs.getBool(_enabledKey);
+    if (legacy != null) {
+      await prefs.setBool(key, legacy);
+      await prefs.remove(_enabledKey);
+      return legacy;
+    }
+    return false;
+  }
+
+  /// Each shop on an installation keeps one recovery slot.  Re-rolling this
+  /// value on every launch made tills that came back after the same outage
+  /// bunch up again on a later launch, defeating the point of the jitter.
+  /// The key is scoped to the workspace so switching shops on one handset
+  /// cannot make their schedules share a slot.
+  static Future<int> _jitterSeed() async {
+    final prefs = await SharedPreferences.getInstance();
+    final key =
+        '$_jitterSeedKey@${await WorkspaceService.activeWorkspaceKey()}';
+    final existing = prefs.getInt(key);
+    if (existing != null) return existing;
+    final created = Random.secure().nextInt(1 << 31);
+    await prefs.setInt(key, created);
+    return created;
+  }
+
+  @visibleForTesting
+  static String jitterSeedKeyForWorkspace(String workspaceKey) =>
+      '$_jitterSeedKey@$workspaceKey';
+
+  @visibleForTesting
+  static int jitterSecondsForSeed(int seed) =>
+      seed.abs() % (_jitterWindow.inSeconds + 1);
 
   static Future<void> start() async {
-    if (await enabled) _schedule();
+    if (!await enabled) return;
+    _schedule();
+    // Re-opening a till is a sync opportunity, but every till in a shop often
+    // opens at the same time. A small per-process jitter prevents a fleet of
+    // tills returning after an outage from stampeding the API together.
+    unawaited(_runStartupJitter());
   }
 
   static Future<void> setEnabled(bool value) async {
     final prefs = await SharedPreferences.getInstance();
-    await prefs.setBool(_enabledKey, value);
+    final key = await _enabledKeyForActiveWorkspace();
+    await prefs.setBool(key, value);
     if (value) {
       _schedule();
       await runNow();
@@ -46,6 +101,7 @@ class AutoSyncService {
   /// minutes: each cycle builds and encrypts a full workbook, and on a budget
   /// phone that is expensive enough to be felt as UI jank if it runs often.
   static const Duration _interval = Duration(hours: 6);
+  static const Duration _jitterWindow = Duration(minutes: 15);
 
   /// Retained backups are rotated so an always-on till cannot fill its storage
   /// with encrypted snapshots.
@@ -56,69 +112,47 @@ class AutoSyncService {
   static const String _backupPrefix = 'duka-autobackup';
 
   static void _schedule() {
-    _timer ??= Timer.periodic(_interval, (_) => runNow());
+    if (_timer != null) return;
+    unawaited(_scheduleWithStableJitter());
   }
 
-  static Future<void> runNow() async {
-    if (_running || !await enabled) return;
+  static Future<void> _scheduleWithStableJitter() async {
+    if (_timer != null || !await enabled) return;
+    final jitter = jitterSecondsForSeed(await _jitterSeed());
+    // The setting may have been switched off while SharedPreferences was
+    // being read. Do not leave a timer behind in that case.
+    if (_timer != null || !await enabled) return;
+    _timer = Timer(_interval + Duration(seconds: jitter), () {
+      _timer = null;
+      unawaited(_runScheduled());
+    });
+  }
+
+  static Future<void> _runStartupJitter() async {
+    final jitter = jitterSecondsForSeed(await _jitterSeed());
+    await Future<void>.delayed(Duration(seconds: jitter));
+    if (await enabled) await runNow();
+  }
+
+  static Future<void> _runScheduled() async {
+    if (await enabled) await runNow();
+    if (await enabled) _schedule();
+  }
+
+  /// Runs the complete local-to-server cycle. Automatic calls respect the
+  /// owner's opt-in; an explicit "Sync now" action is allowed to run once
+  /// without enabling the recurring backup setting.
+  static Future<void> runNow({bool force = false}) async {
+    // Claim the process-local gate before the first await.  Without this,
+    // startup jitter, the timer and a manual "Sync now" can all observe
+    // `_running == false`, then enter together after their enabled read.
+    if (_running) return;
     _running = true;
     try {
-      // Network steps are best-effort: a failure here must never skip the
-      // local backup below. Each step has its own try so one failing step
-      // does not abort the whole cycle.
-      if (await BackendService.isBackendLinked) {
-        try {
-          await BackendService.syncProductsToBackend();
-        } catch (error) {
-          debugPrint('Automatic product sync failed: $error');
-        }
-        try {
-          await BackendService.syncStaffToBackend();
-        } catch (error) {
-          debugPrint('Automatic staff sync failed: $error');
-        }
-        // The LEDGER, the drawers and the shot cups.
-        //
-        // These three were missing, and the ledger is the one that matters:
-        // the till writes its sales offline and the server had no way to
-        // learn about any of them, so the owner's account and the all-shops
-        // view were reading a ledger with holes in it. The push is keyed on
-        // the till's own ids, so a phone that was offline pushes the same
-        // records again without doubling them.
-        try {
-          await BackendService.syncSalesToBackend();
-        } catch (error) {
-          debugPrint('Automatic sales sync failed: $error');
-        }
-        try {
-          await BackendService.syncShiftsToBackend();
-        } catch (error) {
-          debugPrint('Automatic shift sync failed: $error');
-        }
-        try {
-          await BackendService.syncShotCupsToBackend();
-        } catch (error) {
-          debugPrint('Automatic shot cup sync failed: $error');
-        }
-        // The returns and the deliveries.
-        //
-        // A return is money going back and a delivery is money going in; both
-        // are records the shop's books are made of, and both are written
-        // offline on the till that made them.
-        try {
-          await BackendService.syncReturnsToBackend();
-        } catch (error) {
-          debugPrint('Automatic return sync failed: $error');
-        }
-        try {
-          await BackendService.syncReceiptsToBackend();
-        } catch (error) {
-          debugPrint('Automatic delivery sync failed: $error');
-        }
-      }
-
-      // The local backup is written even when the network steps failed: a
-      // till that cannot reach the server still needs a fresh encrypted copy.
+      if (!force && !await enabled) return;
+      // The local copy is the safety boundary. Write it before any network
+      // request so an unreachable server cannot delay the only fresh backup
+      // on the device.
       try {
         // Runs on the main isolate on purpose: the catalogue read (sqflite)
         // and the file write (path_provider) both need platform channels that
@@ -126,9 +160,23 @@ class AutoSyncService {
         // dispatched off-thread, from inside EncryptedBackupService. The
         // "last backup" timestamp is recorded by the delegate itself, so a
         // manual and an automatic backup stay consistent.
-        await writeAutomaticInventoryBackup(const InventoryBackupRequest());
+        await writeAutomaticFullBackup(const InventoryBackupRequest());
       } catch (error) {
         debugPrint('Automatic local backup failed: $error');
+      }
+
+      // Network steps are best-effort: a failure in one must not skip the
+      // remaining queues. Each step is isolated so one failing request does
+      // not abort the whole cycle.
+      // A tenant link alone is not permission to sync. During the
+      // linked-but-unverified state the till keeps all queues local and
+      // retries them only after identity verification.
+      if (await BackendService.isIdentityVerified) {
+        final report = await OwnerBusinessSyncService.run();
+        for (final failure in report.failed) {
+          debugPrint(
+              'Automatic owner business sync failed (${failure.domain}): ${failure.message}');
+        }
       }
 
       try {

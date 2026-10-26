@@ -249,6 +249,7 @@ class AppStageController extends ChangeNotifier {
           chooserIntent: _intent,
         ),
         canManageStock: _state.canManageStock,
+        canViewReports: _state.canViewReports,
         isAdmin: _state.isAdmin,
       );
 }
@@ -262,6 +263,7 @@ class AppStageSnapshot {
   const AppStageSnapshot({
     required this.stage,
     required this.canManageStock,
+    this.canViewReports = false,
     required this.isAdmin,
   });
 
@@ -270,6 +272,8 @@ class AppStageSnapshot {
   /// Whether this session may see Inventory, Analytics and Reports. A cashier
   /// may not: those screens report the whole shop.
   final bool canManageStock;
+
+  final bool canViewReports;
 
   /// Whether this session may see Settings.
   final bool isAdmin;

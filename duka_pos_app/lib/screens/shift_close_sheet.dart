@@ -77,6 +77,7 @@ class _CloseShiftSheetState extends State<_CloseShiftSheet> {
 
   String? _error;
   bool _saving = false;
+  Map<String, int>? _breakdown;
 
   @override
   void initState() {
@@ -85,7 +86,14 @@ class _CloseShiftSheetState extends State<_CloseShiftSheet> {
     // field never shows a number the shop has not confirmed.
     _counted = TextEditingController();
     _nextFloat = TextEditingController();
+    _loadBreakdown();
     _prefillFromRecordedCount();
+  }
+
+  Future<void> _loadBreakdown() async {
+    final value =
+        await DatabaseHelper.instance.expectedCashBreakdown(widget.shift);
+    if (mounted) setState(() => _breakdown = value);
   }
 
   Future<void> _prefillFromRecordedCount() async {
@@ -218,6 +226,7 @@ class _CloseShiftSheetState extends State<_CloseShiftSheet> {
                     _ExpectedPanel(
                       startFloat: widget.shift.startFloat,
                       expected: widget.expected,
+                      breakdown: _breakdown,
                     ),
                     SizedBox(height: spacing.lg),
                     TextField(
@@ -306,10 +315,15 @@ class _CloseShiftSheetState extends State<_CloseShiftSheet> {
 /// a variance of KSh 5,000 needs to see whether it came out of the float or out
 /// of the takings, and that is visible here and nowhere else.
 class _ExpectedPanel extends StatelessWidget {
-  const _ExpectedPanel({required this.startFloat, required this.expected});
+  const _ExpectedPanel({
+    required this.startFloat,
+    required this.expected,
+    this.breakdown,
+  });
 
   final Money startFloat;
   final Money expected;
+  final Map<String, int>? breakdown;
 
   @override
   Widget build(BuildContext context) {
@@ -333,6 +347,22 @@ class _ExpectedPanel extends StatelessWidget {
             value: formatMoney(expected - startFloat),
             showDivider: true,
           ),
+          if (breakdown != null) ...<Widget>[
+            _BreakdownRow(
+                label: 'Cash sales', minor: breakdown!['cash_sales'] ?? 0),
+            _BreakdownRow(
+                label: 'Cash refunds',
+                minor: -(breakdown!['cash_refunds'] ?? 0)),
+            _BreakdownRow(
+                label: 'Credit repayments',
+                minor: breakdown!['credit_repayments'] ?? 0),
+            _BreakdownRow(
+                label: 'Till expenses',
+                minor: -(breakdown!['till_expenses'] ?? 0)),
+            _BreakdownRow(
+                label: 'Till movements',
+                minor: breakdown!['till_movements'] ?? 0),
+          ],
           Padding(
             padding: EdgeInsets.all(spacing.md),
             child: Row(
@@ -356,6 +386,20 @@ class _ExpectedPanel extends StatelessWidget {
       ),
     );
   }
+}
+
+class _BreakdownRow extends StatelessWidget {
+  const _BreakdownRow({required this.label, required this.minor});
+
+  final String label;
+  final int minor;
+
+  @override
+  Widget build(BuildContext context) => KeyValueRow(
+        label: label,
+        value: formatMoney(Money.fromMinor(minor)),
+        showDivider: true,
+      );
 }
 
 /// A variance, as glyph + word + figure, announced on every change.

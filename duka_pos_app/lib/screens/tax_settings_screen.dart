@@ -8,6 +8,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import '../db/database_helper.dart';
 import '../l10n/generated/app_localizations.dart';
 import '../models/audit_log.dart';
+import '../models/tax_entity.dart';
 import '../services/app_state.dart';
 import '../services/audit_actor.dart';
 import '../services/etims/etims_service.dart';
@@ -84,6 +85,7 @@ class _TaxSettingsScreenState extends State<TaxSettingsScreen> {
   String _tillCode = '';
   String _tin = '';
   String _etimsDeviceId = '';
+  TaxEntitySnapshot? _taxEntity;
   bool _loading = true;
   bool _saving = false;
   String? _message;
@@ -104,15 +106,29 @@ class _TaxSettingsScreenState extends State<TaxSettingsScreen> {
         (await db.getSetting(DatabaseHelper.settingEtimsDeviceId)) ?? '';
     final prefs = await SharedPreferences.getInstance();
     final includesVat = prefs.getBool(_pricesIncludeVatKey) ?? true;
-    final etimsOn = prefs.getBool(EtimsService.etimsEnabledPrefKey) ?? false;
+    // This release deliberately cannot activate KRA/eTIMS. Clear any stale
+    // local flag from an upgraded build instead of displaying a switch that
+    // suggests the shop is filing when only local VAT reporting is active.
+    final etimsOn = EtimsService.taxReportingActivated &&
+        (prefs.getBool(EtimsService.etimsEnabledPrefKey) ?? false);
+    if (!EtimsService.taxReportingActivated &&
+        prefs.getBool(EtimsService.etimsEnabledPrefKey) == true) {
+      await prefs.setBool(EtimsService.etimsEnabledPrefKey, false);
+    }
+    final backendLinked = await BackendService.isBackendLinked;
+    final taxEntity =
+        backendLinked ? await BackendService.fetchTaxEntity() : null;
+    final managedVatRate = taxEntity?.managedVatRatePercent;
+    if (managedVatRate != null) await db.setVatRatePercent(managedVatRate);
     if (!mounted) return;
     setState(() {
       _etimsEnabled = etimsOn;
-      _vatRatePercent = vatRate;
+      _vatRatePercent = managedVatRate ?? vatRate;
       _tillCode = tillCode;
       _tin = tin;
       _etimsDeviceId = device;
       _pricesIncludeVat = includesVat;
+      _taxEntity = taxEntity;
       _loading = false;
     });
   }
@@ -279,6 +295,7 @@ class _TaxSettingsScreenState extends State<TaxSettingsScreen> {
       tillCode: _tillCode,
       onEditTillCode: _saving ? null : _editTillCode,
       etimsEnabled: _etimsEnabled,
+      taxReportingActivated: false,
       onToggleEtims: _saving ? null : _toggleEtims,
       tin: _tin,
       onEditTin: _saving ? null : _editTin,
@@ -286,6 +303,9 @@ class _TaxSettingsScreenState extends State<TaxSettingsScreen> {
       onRefreshQueue: _saving ? null : _refreshQueue,
       message: _message,
       messageIsError: _messageIsError,
+      taxEntity: _taxEntity,
+      onEditTaxEntity: _saving ? null : _editTaxEntity,
+      vatRateManagedByRule: _taxEntity?.managedVatRatePercent != null,
     );
   }
 
@@ -416,6 +436,20 @@ class _TaxSettingsScreenState extends State<TaxSettingsScreen> {
                         final deviceId = await _deviceIdentifier();
                         await BackendService.registerEtimsDevice(
                             tin: value, deviceId: deviceId);
+                        if (await BackendService.isBackendLinked) {
+                          await BackendService.saveTaxEntity(
+                            legalForm: _taxEntity?.legalForm ?? 'other',
+                            displayLabel:
+                                _taxEntity?.displayLabel ?? 'Taxpayer',
+                            obligations: _taxEntity?.obligations ?? const [],
+                            accountingPeriodStartMonth:
+                                _taxEntity?.accountingPeriodStartMonth ?? 1,
+                            status: _taxEntity?.status ?? 'needs_review',
+                            effectiveFrom: DateTime.now().toUtc(),
+                            outletReference: _taxEntity?.outletReference,
+                            kraPin: value,
+                          );
+                        }
                         await DatabaseHelper.instance
                             .setSetting(DatabaseHelper.settingTin, value);
                         await DatabaseHelper.instance.setSetting(
@@ -454,6 +488,192 @@ class _TaxSettingsScreenState extends State<TaxSettingsScreen> {
     controller.dispose();
     if (result == null || !mounted) return;
     await _save(tin: result);
+  }
+
+  Future<void> _editTaxEntity() async {
+    final labelController = TextEditingController(
+      text: _taxEntity?.displayLabel.isNotEmpty == true
+          ? _taxEntity!.displayLabel
+          : 'Taxpayer',
+    );
+    var legalForm = _taxEntity?.legalForm ?? 'other';
+    final obligations = <String>{...?_taxEntity?.obligations};
+    var etimsOnboardingStatus =
+        _taxEntity?.etimsOnboardingStatus ?? 'not_started';
+    var etimsMethod = _taxEntity?.etimsMethod;
+    var submitting = false;
+    String? error;
+    final result = await showDialog<TaxEntitySnapshot>(
+      context: context,
+      builder: (dialogContext) => StatefulBuilder(
+        builder: (dialogContext, setDialogState) => AlertDialog(
+          title: const Text('Tax entity and outlet mapping'),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              TextField(
+                controller: labelController,
+                autofocus: true,
+                maxLength: 160,
+                decoration: const InputDecoration(labelText: 'Display label'),
+              ),
+              DropdownButtonFormField<String>(
+                initialValue: legalForm,
+                decoration: const InputDecoration(labelText: 'Legal form'),
+                items: const [
+                  DropdownMenuItem(
+                      value: 'individual', child: Text('Individual')),
+                  DropdownMenuItem(
+                      value: 'sole_proprietor', child: Text('Sole proprietor')),
+                  DropdownMenuItem(
+                      value: 'partnership', child: Text('Partnership')),
+                  DropdownMenuItem(value: 'company', child: Text('Company')),
+                  DropdownMenuItem(value: 'other', child: Text('Other')),
+                ],
+                onChanged: submitting
+                    ? null
+                    : (value) =>
+                        setDialogState(() => legalForm = value ?? 'other'),
+              ),
+              const Align(
+                alignment: AlignmentDirectional.centerStart,
+                child: Padding(
+                  padding: EdgeInsets.only(top: 12),
+                  child: Text('Registered obligations'),
+                ),
+              ),
+              for (final obligation in const [
+                'vat',
+                'etims',
+                'tot',
+                'income_tax',
+                'withholding',
+                'withholding_vat',
+                'excise',
+                'payroll',
+              ])
+                CheckboxListTile(
+                  contentPadding: EdgeInsets.zero,
+                  dense: true,
+                  title: Text(obligation.toUpperCase()),
+                  value: obligations.contains(obligation),
+                  onChanged: submitting
+                      ? null
+                      : (value) => setDialogState(() {
+                            if (value == true) {
+                              obligations.add(obligation);
+                            } else {
+                              obligations.remove(obligation);
+                            }
+                          }),
+                ),
+              if (obligations.contains('etims')) ...[
+                DropdownButtonFormField<String>(
+                  initialValue: etimsOnboardingStatus,
+                  decoration:
+                      const InputDecoration(labelText: 'eTIMS onboarding'),
+                  items: const [
+                    DropdownMenuItem(
+                        value: 'not_started', child: Text('Not started')),
+                    DropdownMenuItem(
+                        value: 'in_progress', child: Text('In progress')),
+                    DropdownMenuItem(
+                        value: 'onboarded', child: Text('Onboarded')),
+                    DropdownMenuItem(
+                        value: 'needs_review', child: Text('Needs review')),
+                  ],
+                  onChanged: submitting
+                      ? null
+                      : (value) => setDialogState(() {
+                            etimsOnboardingStatus = value ?? 'not_started';
+                          }),
+                ),
+                DropdownButtonFormField<String>(
+                  initialValue: etimsMethod,
+                  decoration: const InputDecoration(labelText: 'eTIMS method'),
+                  items: const [
+                    DropdownMenuItem(
+                        value: 'online', child: Text('Online / eClient')),
+                    DropdownMenuItem(value: 'oscu', child: Text('OSCU')),
+                    DropdownMenuItem(value: 'vscu', child: Text('VSCU')),
+                    DropdownMenuItem(value: 'epos', child: Text('ePOS')),
+                    DropdownMenuItem(
+                        value: 'non_vat_lite', child: Text('Non-VAT Lite')),
+                    DropdownMenuItem(value: 'other', child: Text('Other')),
+                  ],
+                  onChanged: submitting
+                      ? null
+                      : (value) => setDialogState(() => etimsMethod = value),
+                ),
+              ],
+              if (error != null)
+                Padding(
+                  padding: const EdgeInsets.only(top: 8),
+                  child: Text(error!,
+                      style: TextStyle(color: AppColors.of(context).danger)),
+                ),
+            ],
+          ),
+          actions: [
+            TextButton(
+              onPressed: submitting ? null : () => Navigator.pop(dialogContext),
+              child: Text(AppLocalizations.of(context).actionCancel),
+            ),
+            FilledButton(
+              onPressed: submitting
+                  ? null
+                  : () async {
+                      final label = labelController.text.trim();
+                      if (label.isEmpty) {
+                        setDialogState(
+                            () => error = 'A display label is required');
+                        return;
+                      }
+                      setDialogState(() {
+                        submitting = true;
+                        error = null;
+                      });
+                      try {
+                        final saved = await BackendService.saveTaxEntity(
+                          legalForm: legalForm,
+                          displayLabel: label,
+                          obligations: obligations.toList()..sort(),
+                          accountingPeriodStartMonth:
+                              _taxEntity?.accountingPeriodStartMonth ?? 1,
+                          status: _taxEntity?.status ?? 'needs_review',
+                          effectiveFrom: DateTime.now().toUtc(),
+                          etimsOnboardingStatus: etimsOnboardingStatus,
+                          etimsMethod: etimsMethod,
+                          outletReference: _taxEntity?.outletReference,
+                        );
+                        if (dialogContext.mounted) {
+                          Navigator.pop(dialogContext, saved);
+                        }
+                      } catch (_) {
+                        setDialogState(() {
+                          submitting = false;
+                          error = 'Could not save the tax-entity mapping';
+                        });
+                      }
+                    },
+              child: submitting
+                  ? const SizedBox(
+                      width: 16,
+                      height: 16,
+                      child: CircularProgressIndicator(strokeWidth: 2))
+                  : const Text('Save mapping'),
+            ),
+          ],
+        ),
+      ),
+    );
+    labelController.dispose();
+    if (result == null || !mounted) return;
+    setState(() {
+      _taxEntity = result;
+      _message = 'Tax-entity mapping saved';
+      _messageIsError = false;
+    });
   }
 
   /// Uploads anything waiting and reports what happened.
@@ -528,6 +748,7 @@ class TaxSettingsPanel extends StatelessWidget {
     required this.tillCode,
     required this.onEditTillCode,
     required this.etimsEnabled,
+    this.taxReportingActivated = false,
     required this.onToggleEtims,
     required this.tin,
     required this.onEditTin,
@@ -535,6 +756,9 @@ class TaxSettingsPanel extends StatelessWidget {
     required this.onRefreshQueue,
     required this.message,
     required this.messageIsError,
+    this.taxEntity,
+    this.onEditTaxEntity,
+    this.vatRateManagedByRule = false,
   });
 
   final bool loading;
@@ -560,6 +784,7 @@ class TaxSettingsPanel extends StatelessWidget {
   final VoidCallback? onEditTillCode;
 
   final bool etimsEnabled;
+  final bool taxReportingActivated;
   final ValueChanged<bool>? onToggleEtims;
   final String tin;
   final VoidCallback? onEditTin;
@@ -568,6 +793,9 @@ class TaxSettingsPanel extends StatelessWidget {
 
   final String? message;
   final bool messageIsError;
+  final TaxEntitySnapshot? taxEntity;
+  final VoidCallback? onEditTaxEntity;
+  final bool vatRateManagedByRule;
 
   @override
   Widget build(BuildContext context) {
@@ -620,6 +848,119 @@ class TaxSettingsPanel extends StatelessWidget {
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: <Widget>[
           title,
+          TaxSection(
+            label: 'Tax entity and outlets',
+            children: <Widget>[
+              SettingsInfoRow(
+                icon: Icons.account_balance_outlined,
+                title: taxEntity == null
+                    ? 'Tax entity is not configured'
+                    : taxEntity!.displayLabel,
+                subtitle: taxEntity == null
+                    ? 'Link this shop to a taxpayer before configuring tax rules.'
+                    : '${taxEntity!.legalForm} · ${taxEntity!.status} · '
+                        '${taxEntity!.linkedShopCount} linked shop(s) · '
+                        'turnover ${formatMoney(taxEntity!.turnover)}',
+              ),
+              SettingsNavRow(
+                icon: Icons.edit_outlined,
+                title: 'Configure tax entity',
+                subtitle: 'Set the taxpayer identity used for this outlet.',
+                trailing: 'Configure',
+                onTap: onEditTaxEntity,
+              ),
+              if (taxEntity != null && taxEntity!.obligations.isNotEmpty)
+                SettingsInfoRow(
+                  icon: Icons.assignment_turned_in_outlined,
+                  title: 'Registered obligations',
+                  subtitle: taxEntity!.obligations.join(', '),
+                ),
+              ...?taxEntity?.conditionalObligations.map(
+                (obligation) => SettingsInfoRow(
+                  icon: obligation.status ==
+                          'not_supported_for_automated_calculation'
+                      ? Icons.info_outline
+                      : Icons.rule_outlined,
+                  title: '${obligation.taxType.toUpperCase()} obligation',
+                  subtitle: obligation.status ==
+                          'not_supported_for_automated_calculation'
+                      ? 'Registered but not supported for automated calculation.'
+                      : '${obligation.status} · ${obligation.reviewedRuleCount} reviewed rule(s)',
+                ),
+              ),
+              if (taxEntity != null && taxEntity!.obligations.contains('etims'))
+                SettingsInfoRow(
+                  icon: Icons.receipt_long_outlined,
+                  title: 'eTIMS onboarding',
+                  subtitle:
+                      '${taxEntity!.etimsOnboardingStatus}${taxEntity!.etimsMethod == null ? '' : ' · ${taxEntity!.etimsMethod}'}',
+                ),
+              if (taxEntity != null && taxEntity!.obligations.contains('tot'))
+                SettingsInfoRow(
+                  icon: Icons.calculate_outlined,
+                  title: 'TOT estimate (not filed)',
+                  subtitle: taxEntity!.totEstimate == null
+                      ? 'Needs an approved effective TOT rule.'
+                      : '${formatMoney(taxEntity!.totEstimate!)} · ${taxEntity!.totStatus ?? 'needs review'}${taxEntity!.totDueDate == null ? '' : ' · due ${taxEntity!.totDueDate!.toLocal().toIso8601String().split('T').first}'}',
+                ),
+              if (taxEntity?.totReturn != null)
+                SettingsInfoRow(
+                  icon: Icons.assignment_turned_in_outlined,
+                  title: 'TOT period evidence',
+                  subtitle:
+                      '${formatMoney(taxEntity!.totReturn!.estimate)} on ${formatMoney(taxEntity!.totReturn!.grossSales)} gross sales · ${taxEntity!.totReturn!.status} (not a filing)',
+                ),
+              if (taxEntity?.vatReport != null)
+                SettingsInfoRow(
+                  icon: Icons.fact_check_outlined,
+                  title: 'VAT period reconciliation',
+                  subtitle:
+                      '${formatMoney(taxEntity!.vatReport!.adjustedOutputVat)} adjusted output · ${formatMoney(taxEntity!.vatReport!.creditNoteVat)} credit-note VAT · ${taxEntity!.vatReport!.status}${taxEntity!.vatReport!.linesWithoutRuleSnapshot == 0 ? '' : ' · ${taxEntity!.vatReport!.linesWithoutRuleSnapshot} lines need review'}',
+                ),
+              if (taxEntity?.inputVatReport != null)
+                SettingsInfoRow(
+                  icon: Icons.receipt_long_outlined,
+                  title: 'Input VAT evidence',
+                  subtitle:
+                      '${formatMoney(taxEntity!.inputVatReport!.eligibleInputVat)} eligible · ${taxEntity!.inputVatReport!.unmatchedCount} unmatched · ${taxEntity!.inputVatReport!.status}',
+                ),
+              if (taxEntity?.vatReturn != null)
+                SettingsInfoRow(
+                  icon: Icons.assignment_outlined,
+                  title: 'VAT return evidence',
+                  subtitle:
+                      '${formatMoney(taxEntity!.vatReturn!.netPayable)} net · ${taxEntity!.vatReturn!.status} (not a filing)',
+                ),
+              if (taxEntity?.etimsQueue != null)
+                SettingsInfoRow(
+                  icon: Icons.cloud_upload_outlined,
+                  title: 'eTIMS invoice queue',
+                  subtitle:
+                      '${taxEntity!.etimsQueue!.issued} issued · ${taxEntity!.etimsQueue!.pending} pending · ${taxEntity!.etimsQueue!.rejected} rejected · ${taxEntity!.etimsQueue!.status}',
+                ),
+              if (taxEntity != null && taxEntity!.kraPinSet)
+                SettingsInfoRow(
+                  icon: Icons.verified_outlined,
+                  title: 'KRA PIN protected',
+                  subtitle: 'PIN ending ${taxEntity!.kraPinLast4 ?? '****'}',
+                ),
+              if (taxEntity != null && taxEntity!.rules.isEmpty)
+                const SettingsInfoRow(
+                  icon: Icons.rule_folder_outlined,
+                  title: 'No approved tax rules',
+                  subtitle: 'Tax rules need review before they can be applied.',
+                ),
+              ...?taxEntity?.rules.map(
+                (rule) => SettingsInfoRow(
+                  icon: Icons.rule_outlined,
+                  title: '${rule.taxType.toUpperCase()} · ${rule.scope}',
+                  subtitle:
+                      '${rule.status} · source: ${rule.sourceReference ?? rule.sourceUrl}',
+                ),
+              ),
+            ],
+          ),
+          SizedBox(height: AppSpacing.of(context).md),
           // VAT: the rate, what it does to a real price, and whether shelf
           // prices already contain it.
           TaxSection(
@@ -633,6 +974,12 @@ class TaxSettingsPanel extends StatelessWidget {
                     : TaxSettingsScreen.workedExample(l10n, vatRatePercent,
                         pricesIncludeVat: pricesIncludeVat),
               ),
+              if (vatRateManagedByRule)
+                const SettingsInfoRow(
+                  icon: Icons.verified_outlined,
+                  title: 'VAT rate is rule-managed',
+                  subtitle: 'The approved taxpayer rule controls new sales.',
+                ),
               // The rate is a slider plus Apply rather than a text field: a
               // shop picking between 0% and 25% is choosing, not typing, and a
               // keyboard invites a 16.5% a receipt must never carry.
@@ -659,18 +1006,19 @@ class TaxSettingsPanel extends StatelessWidget {
                       // which wrote the setting and an audit row each time.
                       semanticFormatterCallback: (double v) =>
                           l10n.taxSettingsVatRateSpoken(v.round()),
-                      onChanged: saving
+                      onChanged: saving || vatRateManagedByRule
                           ? null
                           : (double v) => onPreviewVatRate(v.round()),
-                      onChangeEnd: saving
+                      onChangeEnd: saving || vatRateManagedByRule
                           ? null
                           : (double v) => onSaveVatRate(v.round()),
                     ),
                   ),
                   SizedBox(width: AppSpacing.of(context).sm),
                   FilledButton(
-                    onPressed:
-                        saving ? null : () => onSaveVatRate(vatRatePercent),
+                    onPressed: saving || vatRateManagedByRule
+                        ? null
+                        : () => onSaveVatRate(vatRatePercent),
                     child: Text(l10n.taxSettingsApplyAction),
                   ),
                 ],
@@ -704,6 +1052,13 @@ class TaxSettingsPanel extends StatelessWidget {
           TaxSection(
             label: l10n.taxSettingsEtimsSection,
             children: <Widget>[
+              if (!taxReportingActivated)
+                SettingsInfoRow(
+                  icon: Icons.lock_outline,
+                  title: l10n.taxSettingsNotActivatedStatus,
+                  subtitle: l10n.taxSettingsNotActivatedSubtitle,
+                ),
+              if (!taxReportingActivated) const Divider(height: 1),
               SettingsSwitchRow(
                 icon: Icons.receipt_long_outlined,
                 title: l10n.taxSettingsIssueEtimsTitle,
@@ -711,7 +1066,7 @@ class TaxSettingsPanel extends StatelessWidget {
                     ? l10n.taxSettingsEtimsOnSubtitle
                     : l10n.taxSettingsEtimsOffSubtitle,
                 value: etimsEnabled,
-                enabled: !saving,
+                enabled: !saving && taxReportingActivated,
                 onChanged: onToggleEtims ?? (bool _) {},
               ),
               if (etimsEnabled) const Divider(height: 1),

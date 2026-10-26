@@ -24,9 +24,8 @@
 //
 // NOT asked, and deliberately so:
 //
-//   * NOTIFICATIONS — the app has no notification feature. A permission for
-//     something the app does not do is a permission the owner refuses for
-//     nothing, and a refusal teaches them to refuse.
+//   * NOTIFICATIONS — the app's current notification surface is in-app and
+//     counts-only, so it does not request lock-screen notification permission.
 //   * LOCATION — the app never derives a place from a radio. A till that
 //     wanted location would be a till asking for something a shop should not
 //     have to explain.

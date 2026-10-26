@@ -117,6 +117,8 @@ void main() {
   setUpAll(() => sqfliteFfiInit());
 
   setUp(() async {
+    AuthService.iterationsForTest = 4000;
+    AccountDeletionService.iterationsForTest = 4000;
     databaseFactory = databaseFactoryFfi;
     docs = await Directory.systemTemp.createTemp('duka_delete_');
     PathProviderPlatform.instance = _FakePathProvider(docs);
@@ -132,6 +134,11 @@ void main() {
   });
 
   tearDown(() async => docs.delete(recursive: true));
+
+  tearDown(() {
+    AuthService.iterationsForTest = null;
+    AccountDeletionService.iterationsForTest = null;
+  });
 
   /// A shop as the owner has set it up: an owner, a cashier, a sale.
   /// A shop as the owner has set it up: an owner, a cashier, a sale.

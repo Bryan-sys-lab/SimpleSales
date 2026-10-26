@@ -543,15 +543,20 @@ class _ActivityRow extends StatelessWidget {
       AuditAction.backupRestored => l10n.activityBackupRestored,
       AuditAction.backupErased => l10n.activityBackupErased,
       AuditAction.shopSwitched => l10n.activityShopSwitched,
+      AuditAction.profileChanged => l10n.activityProfileChanged,
       AuditAction.shopCreated => l10n.activityShopCreated,
       AuditAction.shiftOpened => l10n.activityShiftOpened,
       AuditAction.shiftClosed => l10n.activityShiftClosed,
+      AuditAction.drawerOpened => 'Drawer opened',
       AuditAction.identityLinked => l10n.activityIdentityLinked,
       AuditAction.productVariantAdded => l10n.activityVariantAdded,
       AuditAction.productVariantUpdated => l10n.activityVariantUpdated,
       AuditAction.productVariantRemoved => l10n.activityVariantRemoved,
       AuditAction.ownerPinReset => l10n.activityOwnerPinReset,
       AuditAction.accountDeleted => l10n.activityAccountDeleted,
+      AuditAction.creditRepayment => l10n.activityCreditRepayment,
+      AuditAction.creditAdjusted => l10n.activityCreditAdjusted,
+      AuditAction.expenseVoided => 'Expense voided',
     };
     final String detail = entry.detail?.trim() ?? '';
     return detail.isEmpty ? action : '$action — $detail';

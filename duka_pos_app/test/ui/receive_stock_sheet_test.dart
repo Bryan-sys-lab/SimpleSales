@@ -67,6 +67,7 @@ void main() {
       await openSheet(tester, lastCost: Money.fromMajor(90));
 
       // Add the product through the picker.
+      await tester.ensureVisible(find.text('Add a product'));
       await tester.tap(find.text('Add a product'));
       await tester.pumpAndSettle();
       await tester.tap(find.text('Tusker').last);

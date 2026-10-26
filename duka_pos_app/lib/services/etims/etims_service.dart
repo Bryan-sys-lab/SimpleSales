@@ -6,6 +6,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 import '../backend_service.dart';
 import '../../db/database_helper.dart';
+import '../../models/credit.dart' show Customer;
 import '../../models/models.dart';
 import '../../utils/money.dart';
 
@@ -22,15 +23,25 @@ Map<String, dynamic> buildEtimsPayload({
   required String tin,
   required int vatRatePercent,
   required bool pricesIncludeVat,
+  String? paymentMethod,
+  Customer? customer,
 }) {
   final receiptNumber = db.receiptNumberFor(saleRow);
   return {
     'receipt_number': receiptNumber,
     'issued_at': sale.createdAt,
-    'payment_method': sale.paymentMethod,
+    'payment_method': paymentMethod ?? sale.paymentMethod,
     'payment_reference': sale.paymentReference,
     'total': sale.total.minorUnits,
     'vat_rate_percent': vatRatePercent,
+    // Business-customer details ride the invoice when the sale carries a
+    // customer (spec 7.6). The TIN is what KRA validates; the name only
+    // identifies the buyer on the document.
+    if (customer != null || sale.buyerName != null) ...{
+      'buyer_name': customer?.name ?? sale.buyerName,
+      if ((customer?.tin ?? sale.buyerTin)?.trim().isNotEmpty ?? false)
+        'buyer_tin': (customer?.tin ?? sale.buyerTin)!.trim(),
+    },
     'items': sale.items
         .map((item) => {
               'name': item.productName,
@@ -41,8 +52,9 @@ Map<String, dynamic> buildEtimsPayload({
               // The VAT contained in this line, in minor units. Sent rather
               // than recomputed server-side so the figure KRA records is
               // exactly the figure printed on the customer's receipt.
-              'vat_amount': vatComponentOf(item.total,
+              'vat_amount': vatComponentForTaxClass(item.total,
                       ratePercent: vatRatePercent,
+                      taxClass: item.taxClass,
                       pricesIncludeVat: pricesIncludeVat)
                   .minorUnits,
               'line_total': item.total.minorUnits,
@@ -85,16 +97,41 @@ class EtimsService {
 
   DatabaseHelper get _db => DatabaseHelper.instance;
 
+  /// KRA receives one payment mode. For a split sale the largest tender is
+  /// the stable summary, while the local sale-payments rows retain every part.
+  Future<String> _paymentMethodForEtims(Sale sale) async {
+    if (sale.id == null || sale.paymentMethod != 'split') {
+      return sale.paymentMethod;
+    }
+    final payments = await _db.getSalePayments(sale.id!);
+    if (payments.isEmpty) return sale.paymentMethod;
+    final largest = payments.reduce(
+      (a, b) => a.amountMinor >= b.amountMinor ? a : b,
+    );
+    return largest.method;
+  }
+
   /// Whether a sale recorded now should be queued for KRA.
   ///
-  /// Requires the shop's own switch to be on. The backend is never asked at
-  /// this point: it is unreachable by definition in the case that matters.
+  /// Tax reporting is deliberately not activated in this release. The old
+  /// local preference is still read nowhere in the decision, so an upgraded
+  /// till cannot keep retrying a KRA queue that the backend has disabled.
   Future<bool> isEnabledForSales() async {
     final prefs = await SharedPreferences.getInstance();
+    if (!taxReportingActivated) {
+      if (prefs.getBool(etimsEnabledPrefKey) == true) {
+        await prefs.setBool(etimsEnabledPrefKey, false);
+      }
+      return false;
+    }
     return prefs.getBool(etimsEnabledPrefKey) ?? false;
   }
 
   static const etimsEnabledPrefKey = 'etims_enabled_local';
+
+  /// Build-time activation stays off until Risiti merchant onboarding and KRA
+  /// approval are complete. This is intentionally not user-editable.
+  static const taxReportingActivated = false;
 
   /// Whether the shop has completed the KRA configuration this shop needs.
   ///
@@ -169,6 +206,10 @@ class EtimsService {
         vatRatePercent:
             await _db.vatRateForSale(row, fallback: fallbackVatRate),
         pricesIncludeVat: pricesIncludeVat,
+        paymentMethod: await _paymentMethodForEtims(sale),
+        // Buyer identity is read from the sale snapshot, never the mutable
+        // customer directory. This keeps retries and reprints deterministic.
+        customer: null,
       );
       try {
         final issued = await _uploadWithCap(
@@ -296,6 +337,8 @@ class EtimsService {
         vatRatePercent:
             await _db.vatRateForSale(row, fallback: fallbackVatRate),
         pricesIncludeVat: pricesIncludeVat,
+        paymentMethod: await _paymentMethodForEtims(sale),
+        customer: null,
       );
       try {
         final issued = await _upload(payload, device: device);

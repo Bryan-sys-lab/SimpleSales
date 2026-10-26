@@ -14,12 +14,14 @@
 library;
 
 import '../utils/money.dart';
+import '../profile/shop_profile.dart';
 
 /// One shop's KPIs over the window.
 class ShopKpi {
   const ShopKpi({
     required this.tenantId,
     required this.shopName,
+    this.businessProfile = ShopProfile.duka,
     required this.revenue,
     required this.profit,
     required this.transactions,
@@ -28,12 +30,21 @@ class ShopKpi {
     this.shiftsClosed = 0,
     this.shiftsOpen = 0,
     this.cashVariance = Money.zero,
+    this.operatingExpenses = Money.zero,
+    this.cashIn = Money.zero,
+    this.cashOut = Money.zero,
+    this.receivableDelta = Money.zero,
+    this.payableDelta = Money.zero,
+    this.stockValue = Money.zero,
+    this.financialDataComplete = false,
   });
 
   /// The backend's tenant id. Identifying, never a display value.
   final String tenantId;
 
   final String shopName;
+
+  final ShopProfile businessProfile;
 
   /// The caller's role in THIS shop — an owner of one duka is not thereby an
   /// owner of the next, and a screen that implies otherwise is a screen asking
@@ -64,6 +75,20 @@ class ShopKpi {
   /// means the drawer came up short.
   final Money cashVariance;
 
+  /// Canonical financial-event totals for the same reporting window.
+  final Money operatingExpenses;
+  final Money cashIn;
+  final Money cashOut;
+  final Money receivableDelta;
+  final Money payableDelta;
+  final Money stockValue;
+  final bool financialDataComplete;
+
+  Money get netProfit =>
+      Money.fromMinor(profit.minorUnits - operatingExpenses.minorUnits);
+  Money get netCashFlow =>
+      Money.fromMinor(cashIn.minorUnits - cashOut.minorUnits);
+
   /// The average basket, derived from this shop's own totals.
   ///
   /// Computed on read rather than stored, so it cannot drift from the revenue
@@ -83,6 +108,8 @@ class ShopKpi {
   factory ShopKpi.fromJson(Map<String, dynamic> json) => ShopKpi(
         tenantId: json['tenantId'] as String? ?? '',
         shopName: json['shopName'] as String? ?? '',
+        businessProfile:
+            ShopProfile.fromWire(json['businessProfile'] as String?),
         role: json['role'] as String?,
         revenue: Money.fromMinor(_intOf(json['revenue'])),
         profit: Money.fromMinor(_intOf(json['profit'])),
@@ -91,6 +118,13 @@ class ShopKpi {
         shiftsClosed: _intOf(json['shiftsClosed']),
         shiftsOpen: _intOf(json['shiftsOpen']),
         cashVariance: Money.fromMinor(_intOf(json['cashVariance'])),
+        operatingExpenses: Money.fromMinor(_intOf(json['operatingExpenses'])),
+        cashIn: Money.fromMinor(_intOf(json['cashIn'])),
+        cashOut: Money.fromMinor(_intOf(json['cashOut'])),
+        receivableDelta: Money.fromMinor(_intOf(json['receivableDelta'])),
+        payableDelta: Money.fromMinor(_intOf(json['payableDelta'])),
+        stockValue: Money.fromMinor(_intOf(json['stockValue'])),
+        financialDataComplete: json['financialDataComplete'] == true,
       );
 }
 
@@ -123,6 +157,33 @@ class PortfolioKpis {
 
   Money get totalProfit => Money.fromMinor(
       shops.fold<int>(0, (int sum, ShopKpi s) => sum + s.profit.minorUnits));
+
+  Money get totalOperatingExpenses => Money.fromMinor(shops.fold<int>(
+      0, (int sum, ShopKpi s) => sum + s.operatingExpenses.minorUnits));
+
+  Money get totalNetProfit => Money.fromMinor(
+      totalProfit.minorUnits - totalOperatingExpenses.minorUnits);
+
+  Money get totalCashIn => Money.fromMinor(
+      shops.fold<int>(0, (int sum, ShopKpi s) => sum + s.cashIn.minorUnits));
+
+  Money get totalCashOut => Money.fromMinor(
+      shops.fold<int>(0, (int sum, ShopKpi s) => sum + s.cashOut.minorUnits));
+
+  Money get totalNetCashFlow =>
+      Money.fromMinor(totalCashIn.minorUnits - totalCashOut.minorUnits);
+
+  Money get totalReceivableDelta => Money.fromMinor(shops.fold<int>(
+      0, (int sum, ShopKpi s) => sum + s.receivableDelta.minorUnits));
+
+  Money get totalPayableDelta => Money.fromMinor(shops.fold<int>(
+      0, (int sum, ShopKpi s) => sum + s.payableDelta.minorUnits));
+
+  Money get totalStockValue => Money.fromMinor(shops.fold<int>(
+      0, (int sum, ShopKpi s) => sum + s.stockValue.minorUnits));
+
+  bool get financialDataComplete =>
+      shops.isNotEmpty && shops.every((shop) => shop.financialDataComplete);
 
   int get totalTransactions =>
       shops.fold<int>(0, (int sum, ShopKpi s) => sum + s.transactions);

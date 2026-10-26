@@ -129,6 +129,10 @@ extension TestHarness on WidgetTester {
   /// and it is the situation that finds physical-side geometry.
   Future<void> pumpApp({
     required Widget home,
+
+    /// The AppState a test wants the screen to build under (a role variant):
+    /// null uses the harness's own signed-out default.
+    AppState? appState,
     Brightness brightness = Brightness.light,
     TextScaler textScaler = TextScaler.noScaling,
     bool boldText = false,
@@ -148,7 +152,10 @@ extension TestHarness on WidgetTester {
       // a rendering bug in the screen rather than as a missing harness. A
       // harness that cannot render the real app is not a harness.
       providers: [
-        ChangeNotifierProvider<AppState>(create: (_) => AppState()),
+        // An overridable AppState: a role-variant test sets the session
+        // BEFORE pump, so the screen builds as that person sees it. Null
+        // keeps the plain, signed-out state every default test gets.
+        ChangeNotifierProvider<AppState>(create: (_) => appState ?? AppState()),
         // The boot gate. It reads the session above it, and the recovery
         // screen reaches for it: a screen that cannot open its data offers a
         // way to try again, and that button asks the gate to try.
@@ -313,10 +320,9 @@ Future<AppLocalizations> loadL10n([Locale locale = const Locale('en')]) =>
 
 /// What the app ships.
 ///
-/// English only, deliberately: `supportedLocales` is derived from the ARB
-/// catalogue, and a locale with no file behind it is a locale whose chrome is
-/// translated and whose content is not.
-const List<Locale> _appLocales = <Locale>[Locale('en')];
+/// Keep the harness in lockstep with the production catalogue. A locale that
+/// is supported by the app must be renderable in widget tests too.
+const List<Locale> _appLocales = <Locale>[Locale('en'), Locale('sw')];
 
 /// The text-scale values in the overflow matrix.
 ///

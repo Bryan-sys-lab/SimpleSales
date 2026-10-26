@@ -125,7 +125,9 @@ class _ProfileEditSheetState extends State<ProfileEditSheet> {
               SizedBox(height: spacing.lg),
               TextField(
                 controller: _name,
+                autofillHints: const <String>[AutofillHints.name],
                 textCapitalization: TextCapitalization.words,
+                textInputAction: TextInputAction.next,
                 decoration: InputDecoration(
                   labelText: l10n.profileEditNameLabel,
                   helperText: l10n.profileEditNameHelp,
@@ -136,6 +138,7 @@ class _ProfileEditSheetState extends State<ProfileEditSheet> {
               TextField(
                 controller: _shopName,
                 textCapitalization: TextCapitalization.words,
+                textInputAction: TextInputAction.next,
                 decoration: InputDecoration(
                   labelText: l10n.profileEditShopNameLabel,
                 ),
@@ -145,7 +148,9 @@ class _ProfileEditSheetState extends State<ProfileEditSheet> {
               TextField(
                 controller: _email,
                 keyboardType: TextInputType.emailAddress,
+                autofillHints: const <String>[AutofillHints.email],
                 autocorrect: false,
+                textInputAction: TextInputAction.done,
                 decoration: InputDecoration(
                   labelText: l10n.profileEditEmailLabel,
                   helperText: l10n.profileEditEmailHelp,

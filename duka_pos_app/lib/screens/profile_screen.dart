@@ -61,6 +61,7 @@ import '../routing/routes.dart';
 import '../db/database_helper.dart';
 import '../services/app_state.dart';
 import '../services/pin_reset_service.dart';
+import '../services/backend_service.dart';
 import '../theme/app_colors.dart';
 import '../theme/app_shapes.dart';
 import '../theme/app_spacing.dart';
@@ -319,6 +320,23 @@ class _ProfileBodyState extends State<_ProfileBody> {
                 label: l10n.profileShopLabel,
                 value: owner.shopName,
               ),
+              FutureBuilder<String?>(
+                future: BackendService.tenantId,
+                builder: (context, snapshot) {
+                  final id = snapshot.data;
+                  if (id == null || id.isEmpty) return const SizedBox.shrink();
+                  return Column(
+                    children: <Widget>[
+                      const Divider(height: 1),
+                      _ProfileRow(
+                        icon: Icons.badge_outlined,
+                        label: 'Shop ID',
+                        value: id,
+                      ),
+                    ],
+                  );
+                },
+              ),
             ],
           ),
         ),
@@ -458,6 +476,18 @@ class _ProfileBodyState extends State<_ProfileBody> {
     }
     if (!mounted) return;
     setState(() => _avatarRevision++);
+    // The local copy remains the offline display/cache. When this workspace is
+    // verified, also persist the online copy in object storage; the profile
+    // database stores only its URL. A network failure must not undo a local
+    // avatar change or block the owner from continuing offline.
+    try {
+      if (await BackendService.isIdentityVerified) {
+        await BackendService.uploadProfilePhoto(File(picked.path));
+      }
+    } catch (_) {
+      // The next online profile edit can retry; local operation is intact.
+    }
+    if (!mounted) return;
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(content: Text(l10n.profilePhotoSaved)),
     );
@@ -746,12 +776,9 @@ class _ProfileRow extends StatelessWidget {
           top: spacing.md,
           bottom: spacing.md,
         ),
-        child: Row(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: <Widget>[
-            IconBadge(icon: icon),
-            SizedBox(width: spacing.md),
-            Expanded(
+        child: LayoutBuilder(
+          builder: (BuildContext context, BoxConstraints constraints) {
+            final Widget details = Expanded(
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 mainAxisSize: MainAxisSize.min,
@@ -762,16 +789,49 @@ class _ProfileRow extends StatelessWidget {
                       color: colors.onSurfaceMuted,
                     ),
                   ),
-                  SizedBox(height: 2),
+                  SizedBox(height: spacing.xs),
                   Text(value, style: type.bodyLarge),
                 ],
               ),
-            ),
-            if (trailing != null) ...<Widget>[
-              SizedBox(width: spacing.md),
-              trailing!,
-            ],
-          ],
+            );
+            final Widget marker = IconBadge(icon: icon);
+            final bool stack = trailing != null &&
+                (constraints.maxWidth < 360 ||
+                    MediaQuery.textScalerOf(context).scale(1) > 1.3);
+            if (stack) {
+              return Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                mainAxisSize: MainAxisSize.min,
+                children: <Widget>[
+                  Row(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: <Widget>[
+                      marker,
+                      SizedBox(width: spacing.md),
+                      details,
+                    ],
+                  ),
+                  SizedBox(height: spacing.xs),
+                  Align(
+                    alignment: AlignmentDirectional.centerEnd,
+                    child: trailing!,
+                  ),
+                ],
+              );
+            }
+            return Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: <Widget>[
+                marker,
+                SizedBox(width: spacing.md),
+                details,
+                if (trailing != null) ...<Widget>[
+                  SizedBox(width: spacing.md),
+                  trailing!,
+                ],
+              ],
+            );
+          },
         ),
       ),
     );

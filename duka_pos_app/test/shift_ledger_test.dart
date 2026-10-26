@@ -11,6 +11,8 @@
 // about who sees what and what a difference MEANS, and none of them need a
 // widget to be verified.
 
+import 'dart:convert';
+
 import 'package:duka_pos/db/database_helper.dart';
 import 'package:duka_pos/models/models.dart';
 import 'package:duka_pos/screens/shift_ledger.dart';
@@ -229,11 +231,39 @@ void main() {
     test('a closed shift leaves the ledger and never becomes the open one',
         () async {
       await openShiftFor(7, 'Amina', 5000);
+      final int productId = await db.upsertProduct(Product(
+        name: 'Z report item',
+        category: 'Test',
+        costPrice: Money.fromMajor(80),
+        sellPrice: Money.fromMajor(150),
+        stockQty: 10,
+        reorderLevel: 1,
+        updatedAt: DateTime.now().toIso8601String(),
+      ));
+      await db.recordSale(
+        staffName: 'Amina',
+        staffId: 7,
+        paymentMethod: 'cash',
+        items: [
+          SaleItem(
+            saleId: 0,
+            productId: productId,
+            productName: 'Z report item',
+            qty: 1,
+            unitPrice: Money.fromMajor(150),
+            unitCost: Money.fromMajor(80),
+          ),
+        ],
+      );
       final Shift shift = (await db.getShifts(openOnly: true)).single;
+      final xReport = await db.getXReport(shift);
+      expect(xReport['sale_count'], 1);
+      expect(xReport['gross_minor'], 15000);
+      expect((xReport['payment_mix'] as Map<String, int>)['cash'], 15000);
       await db.reconcileShift(
         shiftId: shift.id!,
-        countedCash: Money.fromMajor(5000),
-        expectedCash: Money.fromMajor(5000),
+        countedCash: Money.fromMajor(5150),
+        expectedCash: Money.fromMajor(5150),
       );
 
       final ShiftLedger ledger =
@@ -246,6 +276,23 @@ void main() {
       // owner can read the variance without opening anything.
       expect(ledger.reconciliations.length, 1);
       expect(ledger.reconciliations.single.variance.isZero, isTrue);
+
+      final reports = await db.getShiftReports();
+      expect(reports, hasLength(1));
+      expect(reports.single['report_number'], 1);
+      expect(reports.single['report_type'], 'z');
+      final snapshot = jsonDecode(reports.single['snapshot_json'] as String)
+          as Map<String, dynamic>;
+      expect(snapshot['sale_count'], 1);
+      expect(snapshot['gross_minor'], 15000);
+      // VAT-exclusive taxable sales (12,931) less the 8,000 cost.
+      expect(snapshot['profit_minor'], 4931);
+      expect(snapshot['vat_minor'], 2069);
+      expect(snapshot['taxable_minor'], 12931);
+      expect(snapshot['kra_activated'], isFalse);
+      expect(snapshot['etims_pending'], 0);
+      expect(snapshot['payment_mix']['cash']['count'], 1);
+      expect(snapshot['payment_mix']['cash']['total_minor'], 15000);
     });
 
     test('history is capped, and the total says how many were left out',
@@ -269,6 +316,10 @@ void main() {
       expect(ledger.history.length, 30);
       expect(ledger.historyTotal, 40);
       expect(ledger.reconciliations.length, 30);
+      final reports = await db.getShiftReports();
+      expect(reports.length, 40);
+      expect(reports.last['report_number'], 1);
+      expect(reports.first['report_number'], 40);
     });
   });
 }

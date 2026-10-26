@@ -201,7 +201,7 @@ See [PRODUCTION_DEPLOYMENT_CHECKLIST.md](PRODUCTION_DEPLOYMENT_CHECKLIST.md) for
 - ✅ Input validation requirements
 - ✅ Error message guidelines
 - ✅ Testing procedures
-- ✅ KRA eTIMS compliance
+- ⚠️ KRA/eTIMS activation intentionally deferred; the deployment gate is off by default
 - ✅ Security checklist
 - ⚠️ Known limitations
 
@@ -312,7 +312,8 @@ BACKEND_URL=https://your-api.com/api
 
 1. **Product sync delay** - Local products not M-Pesa sellable until synced
 2. **No barcode scanning** - Manual product selection only
-3. **eTIMS not integrated** - Internal tracking only, not tax invoices
+3. **KRA/eTIMS disabled for this release** - Local sales and tax evidence remain available, but
+   no KRA submission or statutory tax invoice is claimed until the deployment gate is approved
 4. **Multiple shop workspaces** - Each shop on one device uses a separate local SQLite workspace; linked backend shops must be set up on the device before switching offline data
 5. **No offline M-Pesa** - Requires internet
 6. **Shared device auth** - One backend account per till, not per staff

@@ -1,13 +1,17 @@
 library;
 
+import 'dart:convert';
+
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
 import '../db/database_helper.dart';
 import '../l10n/generated/app_localizations.dart';
 import '../models/audit_log.dart';
+import '../models/financial_event.dart';
 import '../models/models.dart';
 import '../services/app_state.dart';
+import '../services/roles.dart';
 import '../theme/app_colors.dart';
 import '../theme/app_spacing.dart';
 import '../theme/typography.dart';
@@ -31,13 +35,17 @@ class _LedgerLoading extends _LedgerState {}
 
 class _LedgerReady extends _LedgerState {
   _LedgerReady(
+    this.items,
     this.sales,
+    this.expenses,
     this.audit,
     this.canSeeSellers,
     this.returnedFractions,
   );
 
+  final List<_LedgerItem> items;
   final List<Sale> sales;
+  final List<Map<String, dynamic>> expenses;
   final List<AuditLogEntry> audit;
 
   final bool canSeeSellers;
@@ -46,15 +54,93 @@ class _LedgerReady extends _LedgerState {
   final Map<int, double> returnedFractions;
 }
 
+/// One normalized row in the shop-scoped money timeline. Sales retain their
+/// typed model for the existing detail/return flow; expenses retain their
+/// posted ledger row and use the same chronological list.
+class _LedgerItem {
+  const _LedgerItem.sale(this.sale)
+      : expense = null,
+        event = null,
+        at = null,
+        kindOrder = 0;
+
+  const _LedgerItem.expense(this.expense)
+      : sale = null,
+        event = null,
+        at = null,
+        kindOrder = 1;
+
+  const _LedgerItem.event(this.event)
+      : sale = null,
+        expense = null,
+        at = null,
+        kindOrder = 2;
+
+  final Sale? sale;
+  final Map<String, dynamic>? expense;
+  final FinancialEvent? event;
+  final DateTime? at;
+  final int kindOrder;
+
+  DateTime get timestamp {
+    final String value = sale?.createdAt ??
+        expense?['created_at'] as String? ??
+        event?.occurredAtUtc ??
+        '';
+    return DateTime.tryParse(value) ?? DateTime.fromMillisecondsSinceEpoch(0);
+  }
+
+  int get recordId => sale?.id ?? (expense?['id'] as int? ?? event?.id ?? 0);
+
+  static int amountMinor(_LedgerItem item) {
+    if (item.sale != null) return item.sale!.total.minorUnits;
+    if (item.expense != null) {
+      return -((item.expense!['amount_minor'] as num?)?.toInt() ?? 0);
+    }
+    return FinancialEventTimelineRow.primaryAmountMinor(item.event!);
+  }
+
+  static String? category(_LedgerItem item) {
+    if (item.sale != null) return 'Sale';
+    if (item.expense != null) {
+      return item.expense!['category_name'] as String? ?? 'Other';
+    }
+    return item.event?.eventType;
+  }
+
+  static String? paymentMethod(_LedgerItem item) {
+    if (item.sale != null) return item.sale!.paymentMethod;
+    if (item.expense != null) return item.expense!['paid_from'] as String?;
+    final String metadata = item.event?.metadataJson ?? '{}';
+    try {
+      final decoded = jsonDecode(metadata);
+      if (decoded is Map<String, dynamic>) {
+        return decoded['payment_method'] as String? ??
+            decoded['method'] as String?;
+      }
+    } catch (_) {
+      // A malformed optional label must not hide a financial event.
+    }
+    return null;
+  }
+}
+
 class _LedgerFailed extends _LedgerState {
   _LedgerFailed(this.message);
   final String message;
 }
 
+enum _LedgerRange { today, week, month, custom }
+
+enum _LedgerDirection { all, moneyIn, moneyOut }
+
 class _TransactionsScreenState extends State<TransactionsScreen> {
   _LedgerState _state = _LedgerLoading();
 
-  static const int _days = 14;
+  // Keep a bounded local history so the custom-period filter does not turn the
+  // phone into an unbounded report query. The visible filters narrow this
+  // window without creating a second transaction source.
+  static const int _days = 365;
 
   @override
   void initState() {
@@ -82,6 +168,47 @@ class _TransactionsScreenState extends State<TransactionsScreen> {
           state.canManageStock ? null : state.currentStaffName;
       final List<Sale> sales =
           await db.getSales(since: since, staffName: staff, limit: 200);
+      final List<Map<String, dynamic>> expenses = state.canManageStock
+          ? await db.getExpenseHistory(since: since, limit: 200)
+          : const <Map<String, dynamic>>[];
+      final List<_LedgerItem> items;
+      if (state.canManageStock) {
+        final events = await db.getFinancialEvents(
+          sinceUtc: since,
+          limit: 200,
+        );
+        final eventSaleIds = events
+            .where((event) => event.sourceType == 'sale')
+            .map((event) => event.sourceId)
+            .whereType<int>()
+            .toSet();
+        final eventExpenseIds = events
+            .where((event) => event.sourceType == 'expense')
+            .map((event) => event.sourceId)
+            .whereType<int>()
+            .toSet();
+        items = <_LedgerItem>[
+          ...events.map(_LedgerItem.event),
+          ...sales
+              .where((sale) => !eventSaleIds.contains(sale.id))
+              .map(_LedgerItem.sale),
+          ...expenses
+              .where((expense) => !eventExpenseIds.contains(expense['id']))
+              .map(_LedgerItem.expense),
+        ];
+      } else {
+        items = <_LedgerItem>[
+          ...sales.map(_LedgerItem.sale),
+          ...expenses.map(_LedgerItem.expense),
+        ];
+      }
+      items.sort((a, b) {
+        final int byTime = b.timestamp.compareTo(a.timestamp);
+        if (byTime != 0) return byTime;
+        final int byKind = a.kindOrder.compareTo(b.kindOrder);
+        if (byKind != 0) return byKind;
+        return b.recordId.compareTo(a.recordId);
+      });
       final List<AuditLogEntry> audit = await db.auditLog(
         AuditLogQuery(
             actions: <AuditAction>[AuditAction.saleRecorded], limit: 200),
@@ -96,7 +223,9 @@ class _TransactionsScreenState extends State<TransactionsScreen> {
       );
       if (!mounted) return;
       setState(() => _state = _LedgerReady(
+            items,
             sales,
+            expenses,
             audit,
             staff == null,
             returnedFractions,
@@ -134,12 +263,14 @@ class _TransactionsScreenState extends State<TransactionsScreen> {
             retryLabel: l10n.actionRetry,
           ),
         _LedgerReady(
+          :final List<_LedgerItem> items,
           :final List<Sale> sales,
+          :final List<Map<String, dynamic>> expenses,
           :final List<AuditLogEntry> audit,
           :final bool canSeeSellers,
           :final Map<int, double> returnedFractions,
         ) =>
-          sales.isEmpty
+          items.isEmpty
               ? EmptyStateView(
                   title: canSeeSellers
                       ? l10n.transactionsEmptyTitle
@@ -151,7 +282,9 @@ class _TransactionsScreenState extends State<TransactionsScreen> {
               : RefreshIndicator(
                   onRefresh: _load,
                   child: _Ledger(
+                    items: items,
                     sales: sales,
+                    expenses: expenses,
                     audit: audit,
                     canSeeSellers: canSeeSellers,
                     returnedFractions: returnedFractions,
@@ -162,15 +295,19 @@ class _TransactionsScreenState extends State<TransactionsScreen> {
   }
 }
 
-class _Ledger extends StatelessWidget {
+class _Ledger extends StatefulWidget {
   const _Ledger({
+    required this.items,
     required this.sales,
+    required this.expenses,
     required this.audit,
     required this.canSeeSellers,
     required this.returnedFractions,
   });
 
+  final List<_LedgerItem> items;
   final List<Sale> sales;
+  final List<Map<String, dynamic>> expenses;
   final List<AuditLogEntry> audit;
 
   final bool canSeeSellers;
@@ -179,10 +316,81 @@ class _Ledger extends StatelessWidget {
   final Map<int, double> returnedFractions;
 
   @override
+  State<_Ledger> createState() => _LedgerStateWidget();
+}
+
+class _LedgerStateWidget extends State<_Ledger> {
+  _LedgerRange _range = _LedgerRange.month;
+  _LedgerDirection _direction = _LedgerDirection.all;
+  String? _category;
+  String? _paymentMethod;
+  DateTimeRange? _customRange;
+
+  List<_LedgerItem> get _filteredItems {
+    final DateTime now = DateTime.now();
+    final DateTime today = DateTime(now.year, now.month, now.day);
+    final DateTime start = switch (_range) {
+      _LedgerRange.today => today,
+      _LedgerRange.week => today.subtract(const Duration(days: 6)),
+      _LedgerRange.month => today.subtract(const Duration(days: 29)),
+      _LedgerRange.custom => _customRange?.start ?? today,
+    };
+    final DateTime end = switch (_range) {
+      _LedgerRange.custom =>
+        (_customRange?.end ?? today).add(const Duration(days: 1)),
+      _ => now.add(const Duration(seconds: 1)),
+    };
+    return widget.items.where((item) {
+      final DateTime at = item.timestamp.toLocal();
+      if (at.isBefore(start) || !at.isBefore(end)) return false;
+      if (_direction != _LedgerDirection.all) {
+        final int amount = _LedgerItem.amountMinor(item);
+        if (_direction == _LedgerDirection.moneyIn && amount <= 0) {
+          return false;
+        }
+        if (_direction == _LedgerDirection.moneyOut && amount >= 0) {
+          return false;
+        }
+      }
+      if (_category != null && _LedgerItem.category(item) != _category) {
+        return false;
+      }
+      if (_paymentMethod != null &&
+          _LedgerItem.paymentMethod(item) != _paymentMethod) {
+        return false;
+      }
+      return true;
+    }).toList(growable: false);
+  }
+
+  List<String> _options(String? Function(_LedgerItem) read) {
+    final Set<String> values = <String>{
+      for (final _LedgerItem item in widget.items)
+        if (read(item) case final String value when value.isNotEmpty) value,
+    };
+    return values.toList()..sort();
+  }
+
+  Future<void> _pickCustomRange() async {
+    final DateTime now = DateTime.now();
+    final DateTimeRange? picked = await showDateRangePicker(
+      context: context,
+      firstDate: DateTime(now.year - 1, now.month, now.day),
+      lastDate: DateTime(now.year, now.month, now.day),
+      initialDateRange: _customRange,
+    );
+    if (!mounted || picked == null) return;
+    setState(() {
+      _range = _LedgerRange.custom;
+      _customRange = picked;
+    });
+  }
+
+  @override
   Widget build(BuildContext context) {
     final AppSpacing spacing = AppSpacing.of(context);
     final AppColors colors = AppColors.of(context);
-    final l10n = AppLocalizations.of(context);
+    final List<_LedgerItem> items = _filteredItems;
 
     // Two keys, because there are two ways a sale reaches the log: checkout
     // writes `id-<saleId>` (sell_screen.dart:1056) and the reconciled M-Pesa path
@@ -191,7 +399,7 @@ class _Ledger extends StatelessWidget {
     // reference would otherwise coerce it into a sale id and attribute one
     // sale's audit line to another.
     final Map<int, AuditLogEntry> bySale = <int, AuditLogEntry>{
-      for (final AuditLogEntry entry in audit)
+      for (final AuditLogEntry entry in widget.audit)
         if (entry.entityId case final String id when id.startsWith('id-'))
           if (int.tryParse(id.substring(3)) case final int saleId)
             saleId: entry,
@@ -199,6 +407,23 @@ class _Ledger extends StatelessWidget {
 
     return CustomScrollView(
       slivers: <Widget>[
+        SliverToBoxAdapter(
+          child: _LedgerFilters(
+            range: _range,
+            direction: _direction,
+            category: _category,
+            paymentMethod: _paymentMethod,
+            categories: _options(_LedgerItem.category),
+            paymentMethods: _options(_LedgerItem.paymentMethod),
+            customRange: _customRange,
+            onRangeChanged: (value) => setState(() => _range = value),
+            onDirectionChanged: (value) => setState(() => _direction = value),
+            onCategoryChanged: (value) => setState(() => _category = value),
+            onPaymentMethodChanged: (value) =>
+                setState(() => _paymentMethod = value),
+            onCustomRange: _pickCustomRange,
+          ),
+        ),
         SliverToBoxAdapter(
           child: Padding(
             padding: EdgeInsetsDirectional.only(
@@ -208,7 +433,7 @@ class _Ledger extends StatelessWidget {
               bottom: spacing.sm,
             ),
             child: Text(
-              l10n.transactionsSubtitle(sales.length),
+              AppLocalizations.of(context).transactionsSubtitle(items.length),
               style: AppTypography.of(context).bodySmall?.copyWith(
                     color: colors.onSurfaceMuted,
                   ),
@@ -216,19 +441,325 @@ class _Ledger extends StatelessWidget {
           ),
         ),
         SliverList.separated(
-          itemCount: sales.length,
+          itemCount: items.length,
           separatorBuilder: (_, __) => SizedBox(height: spacing.sm),
-          itemBuilder: (BuildContext context, int index) => TransactionsRow(
-            sale: sales[index],
-            audit: bySale[sales[index].id],
-            canSeeSellers: canSeeSellers,
-            returnedFraction: returnedFractions[sales[index].id] ?? 0,
-          ),
+          itemBuilder: (BuildContext context, int index) {
+            final _LedgerItem item = items[index];
+            final Sale? sale = item.sale;
+            final FinancialEvent? event = item.event;
+            if (event != null) {
+              if (event.sourceType == 'sale') {
+                final Sale? eventSale = widget.sales
+                    .where((candidate) => candidate.id == event.sourceId)
+                    .firstOrNull;
+                if (eventSale != null) {
+                  return TransactionsRow(
+                    sale: eventSale,
+                    audit: bySale[eventSale.id],
+                    canSeeSellers: widget.canSeeSellers,
+                    returnedFraction:
+                        widget.returnedFractions[eventSale.id] ?? 0,
+                  );
+                }
+              }
+              if (event.sourceType == 'expense') {
+                final Map<String, dynamic>? eventExpense = widget.expenses
+                    .where((candidate) => candidate['id'] == event.sourceId)
+                    .firstOrNull;
+                if (eventExpense != null) {
+                  return ExpenseTimelineRow(expense: eventExpense);
+                }
+              }
+              return FinancialEventTimelineRow(event: event);
+            }
+            return sale != null
+                ? TransactionsRow(
+                    sale: sale,
+                    audit: bySale[sale.id],
+                    canSeeSellers: widget.canSeeSellers,
+                    returnedFraction: widget.returnedFractions[sale.id] ?? 0,
+                  )
+                : ExpenseTimelineRow(expense: item.expense!);
+          },
         ),
         SliverToBoxAdapter(child: SizedBox(height: spacing.xxl)),
       ],
     );
   }
+}
+
+class _LedgerFilters extends StatelessWidget {
+  const _LedgerFilters({
+    required this.range,
+    required this.direction,
+    required this.category,
+    required this.paymentMethod,
+    required this.categories,
+    required this.paymentMethods,
+    required this.customRange,
+    required this.onRangeChanged,
+    required this.onDirectionChanged,
+    required this.onCategoryChanged,
+    required this.onPaymentMethodChanged,
+    required this.onCustomRange,
+  });
+
+  final _LedgerRange range;
+  final _LedgerDirection direction;
+  final String? category;
+  final String? paymentMethod;
+  final List<String> categories;
+  final List<String> paymentMethods;
+  final DateTimeRange? customRange;
+  final ValueChanged<_LedgerRange> onRangeChanged;
+  final ValueChanged<_LedgerDirection> onDirectionChanged;
+  final ValueChanged<String?> onCategoryChanged;
+  final ValueChanged<String?> onPaymentMethodChanged;
+  final VoidCallback onCustomRange;
+
+  @override
+  Widget build(BuildContext context) {
+    final AppSpacing spacing = AppSpacing.of(context);
+    return Padding(
+      padding: EdgeInsetsDirectional.only(top: spacing.md, bottom: spacing.sm),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: <Widget>[
+          Text('Period', style: AppTypography.of(context).labelLarge),
+          SizedBox(height: spacing.xs),
+          Wrap(
+            spacing: spacing.xs,
+            children: <Widget>[
+              for (final (_LedgerRange, String) option
+                  in <(_LedgerRange, String)>[
+                (_LedgerRange.today, 'Today'),
+                (_LedgerRange.week, 'This week'),
+                (_LedgerRange.month, 'This month'),
+              ])
+                ChoiceChip(
+                  label: Text(option.$2),
+                  selected: range == option.$1,
+                  onSelected: (_) => onRangeChanged(option.$1),
+                ),
+              ChoiceChip(
+                label: Text(customRange == null ? 'Custom' : 'Custom dates'),
+                selected: range == _LedgerRange.custom,
+                onSelected: (_) => onCustomRange(),
+              ),
+            ],
+          ),
+          SizedBox(height: spacing.xs),
+          Wrap(
+            spacing: spacing.xs,
+            children: <Widget>[
+              for (final (_LedgerDirection, String) option
+                  in <(_LedgerDirection, String)>[
+                (_LedgerDirection.all, 'All money'),
+                (_LedgerDirection.moneyIn, 'Money in'),
+                (_LedgerDirection.moneyOut, 'Money out'),
+              ])
+                ChoiceChip(
+                  label: Text(option.$2),
+                  selected: direction == option.$1,
+                  onSelected: (_) => onDirectionChanged(option.$1),
+                ),
+            ],
+          ),
+          SizedBox(height: spacing.xs),
+          Wrap(
+            spacing: spacing.sm,
+            runSpacing: spacing.xs,
+            children: <Widget>[
+              _LedgerDropdown(
+                label: 'Category',
+                value: category,
+                options: categories,
+                onChanged: onCategoryChanged,
+              ),
+              _LedgerDropdown(
+                label: 'Payment method',
+                value: paymentMethod,
+                options: paymentMethods,
+                onChanged: onPaymentMethodChanged,
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _LedgerDropdown extends StatelessWidget {
+  const _LedgerDropdown({
+    required this.label,
+    required this.value,
+    required this.options,
+    required this.onChanged,
+  });
+
+  final String label;
+  final String? value;
+  final List<String> options;
+  final ValueChanged<String?> onChanged;
+
+  @override
+  Widget build(BuildContext context) {
+    return DropdownButton<String?>(
+      value: value,
+      hint: Text(label),
+      items: <DropdownMenuItem<String?>>[
+        DropdownMenuItem<String?>(value: null, child: Text('All $label')),
+        for (final String option in options)
+          DropdownMenuItem<String?>(value: option, child: Text(option)),
+      ],
+      onChanged: onChanged,
+    );
+  }
+}
+
+class FinancialEventTimelineRow extends StatelessWidget {
+  const FinancialEventTimelineRow({required this.event, super.key});
+
+  final FinancialEvent event;
+
+  @override
+  Widget build(BuildContext context) {
+    final AppSpacing spacing = AppSpacing.of(context);
+    final AppColors colors = AppColors.of(context);
+    final TextTheme type = AppTypography.of(context);
+    final DateTime? timestamp =
+        DateTime.tryParse(event.occurredAtUtc)?.toLocal();
+    final int amount = primaryAmountMinor(event);
+    final String sign = amount < 0 ? '-' : '+';
+    return SurfaceCard(
+      padding: EdgeInsets.all(spacing.md),
+      child: Row(
+        children: <Widget>[
+          Icon(Icons.account_balance_wallet_outlined,
+              size: 20, color: colors.onSurfaceMuted),
+          SizedBox(width: spacing.sm),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: <Widget>[
+                Text(_eventTitle(event.eventType), style: type.titleMedium),
+                SizedBox(height: spacing.xs),
+                Text(
+                  timestamp == null ? '' : _formatTimestamp(timestamp),
+                  style: type.bodySmall?.copyWith(color: colors.onSurfaceMuted),
+                ),
+              ],
+            ),
+          ),
+          MoneyText(
+            amount: '$sign${formatMoney(Money.fromMinor(amount.abs()))}',
+            size: 16,
+          ),
+        ],
+      ),
+    );
+  }
+
+  static int primaryAmountMinor(FinancialEvent event) {
+    if (event.cashInMinor != 0 || event.cashOutMinor != 0) {
+      return event.cashInMinor - event.cashOutMinor;
+    }
+    if (event.revenueMinor != 0) return event.revenueMinor;
+    if (event.operatingExpenseMinor != 0) return -event.operatingExpenseMinor;
+    if (event.cogsMinor != 0) return -event.cogsMinor;
+    if (event.receivableDeltaMinor != 0) return event.receivableDeltaMinor;
+    if (event.payableDeltaMinor != 0) return -event.payableDeltaMinor;
+    return event.customerDepositDeltaMinor;
+  }
+
+  static String _eventTitle(String eventType) => switch (eventType) {
+        'refund' => 'Refund',
+        'purchase' => 'Stock purchase',
+        'purchase_void' => 'Stock purchase voided',
+        'credit_repayment' => 'Credit repayment',
+        'credit_adjustment' => 'Credit adjustment',
+        'credit_writeoff' => 'Credit write-off',
+        'bad_debt_expense' => 'Bad-debt expense',
+        'stock_adjustment' => 'Stock correction',
+        'stock_count' => 'Stock count correction',
+        'cost_pool_entry' => 'Pool cost',
+        'cost_pool_allocation' => 'Pool allocation',
+        'job_cost' => 'Job cost',
+        'job_completion' => 'Job completed',
+        'job_payment' => 'Job payment',
+        'owner_transaction' => 'Owner money movement',
+        'till_movement' => 'Till movement',
+        'expense_payment' => 'Expense payment',
+        _ => eventType,
+      };
+
+  static String _formatTimestamp(DateTime at) =>
+      '${at.day}/${at.month} ${at.hour.toString().padLeft(2, '0')}:${at.minute.toString().padLeft(2, '0')}';
+}
+
+class ExpenseTimelineRow extends StatelessWidget {
+  const ExpenseTimelineRow({required this.expense, super.key});
+
+  final Map<String, dynamic> expense;
+
+  @override
+  Widget build(BuildContext context) {
+    final AppLocalizations l10n = AppLocalizations.of(context);
+    final AppSpacing spacing = AppSpacing.of(context);
+    final AppColors colors = AppColors.of(context);
+    final TextTheme type = AppTypography.of(context);
+    final int amount = (expense['amount_minor'] as num?)?.toInt() ?? 0;
+    final String category = expense['category_name'] as String? ?? 'Other';
+    final String source = expense['paid_from'] == 'till_cash'
+        ? l10n.transactionsExpenseSourceTill
+        : l10n.transactionsExpenseSourceOther;
+    final DateTime? at = DateTime.tryParse(
+      expense['created_at'] as String? ?? '',
+    )?.toLocal();
+    return SurfaceCard(
+      padding: EdgeInsets.all(spacing.md),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: <Widget>[
+          Icon(Icons.receipt_long_outlined,
+              size: 20, color: colors.onSurfaceMuted),
+          SizedBox(width: spacing.sm),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: <Widget>[
+                Text(
+                  l10n.transactionsExpenseTitle(category),
+                  style: type.titleMedium,
+                ),
+                SizedBox(height: spacing.xs),
+                Text(
+                  '${at == null ? '' : _formatTimestamp(at)} · $source',
+                  style: type.bodySmall?.copyWith(
+                    color: colors.onSurfaceMuted,
+                  ),
+                ),
+                if ((expense['note'] as String? ?? '').trim().isNotEmpty)
+                  Text(
+                    (expense['note'] as String).trim(),
+                    style: type.bodySmall,
+                  ),
+              ],
+            ),
+          ),
+          SizedBox(width: spacing.sm),
+          MoneyText(
+            amount: '-${formatMoney(Money.fromMinor(amount))}',
+            size: 16,
+          ),
+        ],
+      ),
+    );
+  }
+
+  static String _formatTimestamp(DateTime at) =>
+      '${at.day}/${at.month} ${at.hour.toString().padLeft(2, '0')}:${at.minute.toString().padLeft(2, '0')}';
 }
 
 class TransactionsRow extends StatelessWidget {
@@ -275,6 +806,8 @@ class TransactionsRow extends StatelessWidget {
         sale: sale,
         audit: audit,
         canSeeSellers: canSeeSellers,
+        canProcessReturn:
+            context.read<AppState>().hasPermission(PermissionKey.processReturn),
         // The shop the sale was rung in: the session's own, which is the only
         // place this till can ring a sale.
         shopName: context.read<AppState>().owner?.shopName ?? '',

@@ -59,6 +59,242 @@ void main() {
   }
 
   group('the delivery', () {
+    test('turning expiry tracking on backfills existing countable stock',
+        () async {
+      final productId = await seedProduct(stock: 3);
+      final product =
+          (await DatabaseHelper.instance.getProductById(productId))!;
+      await DatabaseHelper.instance
+          .upsertProduct(product.copyWith(trackExpiry: true));
+      final batches =
+          await DatabaseHelper.instance.getProductBatches(productId);
+      expect(batches, hasLength(1));
+      expect(batches.single['qty_remaining'], 3);
+      expect(batches.single['status'], 'active');
+    });
+
+    test('a manager can write off a batch and the ledger records its cost',
+        () async {
+      final productId = await DatabaseHelper.instance.upsertProduct(Product(
+        name: 'Expired milk',
+        category: 'Chilled',
+        costPrice: Money.fromMajor(40),
+        sellPrice: Money.fromMajor(70),
+        stockQty: 0,
+        reorderLevel: 1,
+        trackExpiry: true,
+        updatedAt: DateTime.now().toIso8601String(),
+      ));
+      await DatabaseHelper.instance.postStockReceipt(
+        lines: [
+          StockReceiptLine(
+            productId: productId,
+            productName: 'Expired milk',
+            qty: 2,
+            unitCost: Money.fromMajor(40),
+            expiryDate: DateTime.now().add(const Duration(days: 2)),
+          ),
+        ],
+        staffName: 'Amina',
+      );
+      final batch =
+          (await DatabaseHelper.instance.getProductBatches(productId)).single;
+      await DatabaseHelper.instance.writeOffBatch(
+        batchId: batch['id'] as int,
+        staffName: 'Amina',
+        reason: 'Expired',
+      );
+      final after =
+          (await DatabaseHelper.instance.getProductBatches(productId)).single;
+      expect(after['qty_remaining'], 0);
+      expect(after['status'], 'written_off');
+      final movements =
+          await DatabaseHelper.instance.getStockMovements(productId);
+      expect(
+          movements.any((m) => m.type == StockMovementType.writeoff), isTrue);
+    });
+
+    test('expiry batches are received and sold oldest-first', () async {
+      final int productId = await DatabaseHelper.instance.upsertProduct(Product(
+        name: 'Yoghurt',
+        category: 'Chilled',
+        costPrice: Money.fromMajor(40),
+        sellPrice: Money.fromMajor(70),
+        stockQty: 0,
+        reorderLevel: 1,
+        trackExpiry: true,
+        updatedAt: DateTime.now().toIso8601String(),
+      ));
+      final now = DateTime.now();
+      await DatabaseHelper.instance.postStockReceipt(
+        receivedAt: now.subtract(const Duration(days: 2)),
+        lines: [
+          StockReceiptLine(
+            productId: productId,
+            productName: 'Yoghurt',
+            qty: 2,
+            unitCost: Money.fromMajor(40),
+            expiryDate: now.add(const Duration(days: 2)),
+          ),
+        ],
+        staffName: 'Amina',
+      );
+      await DatabaseHelper.instance.postStockReceipt(
+        receivedAt: now.subtract(const Duration(days: 1)),
+        lines: [
+          StockReceiptLine(
+            productId: productId,
+            productName: 'Yoghurt',
+            qty: 3,
+            unitCost: Money.fromMajor(42),
+            expiryDate: now.add(const Duration(days: 10)),
+          ),
+        ],
+        staffName: 'Amina',
+      );
+
+      await DatabaseHelper.instance.recordSale(
+        staffName: 'Amina',
+        items: [
+          SaleItem(
+            saleId: 0,
+            productId: productId,
+            productName: 'Yoghurt',
+            qty: 1,
+            unitPrice: Money.fromMajor(70),
+            unitCost: Money.fromMajor(40),
+          ),
+        ],
+        paymentMethod: 'cash',
+        amountTendered: Money.fromMajor(70),
+      );
+      final batches = await (await DatabaseHelper.instance.database).query(
+        'stock_batches',
+        orderBy: 'expires_at ASC',
+      );
+      expect(batches[0]['qty_remaining'], 1);
+      expect(batches[1]['qty_remaining'], 3);
+    });
+
+    test('expired stock cannot be sold', () async {
+      final int productId = await DatabaseHelper.instance.upsertProduct(Product(
+        name: 'Short-life milk',
+        category: 'Chilled',
+        costPrice: Money.fromMajor(40),
+        sellPrice: Money.fromMajor(70),
+        stockQty: 0,
+        reorderLevel: 1,
+        trackExpiry: true,
+        updatedAt: DateTime.now().toIso8601String(),
+      ));
+      await DatabaseHelper.instance.postStockReceipt(
+        lines: [
+          StockReceiptLine(
+            productId: productId,
+            productName: 'Short-life milk',
+            qty: 1,
+            unitCost: Money.fromMajor(40),
+            expiryDate: DateTime.now().add(const Duration(days: 1)),
+          ),
+        ],
+        staffName: 'Amina',
+      );
+      final database = await DatabaseHelper.instance.database;
+      await database.update('stock_batches', {
+        'expires_at':
+            DateTime.now().subtract(const Duration(days: 1)).toIso8601String()
+      });
+      expect(
+        () => DatabaseHelper.instance.recordSale(
+          staffName: 'Amina',
+          items: [
+            SaleItem(
+              saleId: 0,
+              productId: productId,
+              productName: 'Short-life milk',
+              qty: 1,
+              unitPrice: Money.fromMajor(70),
+              unitCost: Money.fromMajor(40),
+            ),
+          ],
+          paymentMethod: 'cash',
+          amountTendered: Money.fromMajor(70),
+        ),
+        throwsA(isA<StateError>()),
+      );
+    });
+
+    test('a restocked return restores the sale to its original expiry batch',
+        () async {
+      final int productId = await DatabaseHelper.instance.upsertProduct(Product(
+        name: 'Returned yoghurt',
+        category: 'Chilled',
+        costPrice: Money.fromMajor(40),
+        sellPrice: Money.fromMajor(70),
+        stockQty: 0,
+        reorderLevel: 1,
+        trackExpiry: true,
+        updatedAt: DateTime.now().toIso8601String(),
+      ));
+      final expiry = DateTime.now().add(const Duration(days: 5));
+      await DatabaseHelper.instance.postStockReceipt(
+        lines: [
+          StockReceiptLine(
+            productId: productId,
+            productName: 'Returned yoghurt',
+            qty: 2,
+            unitCost: Money.fromMajor(40),
+            expiryDate: expiry,
+          ),
+        ],
+        staffName: 'Amina',
+      );
+      await DatabaseHelper.instance.openShift(
+        staffId: 7,
+        staffName: 'Amina',
+        startFloat: Money.fromMajor(100),
+      );
+      await DatabaseHelper.instance.recordSale(
+        staffName: 'Amina',
+        staffId: 7,
+        items: [
+          SaleItem(
+            saleId: 0,
+            productId: productId,
+            productName: 'Returned yoghurt',
+            qty: 1,
+            unitPrice: Money.fromMajor(70),
+            unitCost: Money.fromMajor(40),
+          ),
+        ],
+        paymentMethod: 'cash',
+        amountTendered: Money.fromMajor(70),
+      );
+      final sale = (await DatabaseHelper.instance.getSales()).single;
+      final batchBefore = (await (await DatabaseHelper.instance.database)
+              .query('stock_batches'))
+          .single;
+      expect(batchBefore['qty_remaining'], 1);
+
+      await DatabaseHelper.instance.recordReturn(
+        sale: sale,
+        lines: [
+          ReturnLineDraft(
+            saleItemId: sale.items.single.id!,
+            qty: 1,
+          ),
+        ],
+        reason: 'Customer changed mind',
+        staffName: 'Amina',
+        staffId: 7,
+      );
+
+      final batchAfter = (await (await DatabaseHelper.instance.database)
+              .query('stock_batches'))
+          .single;
+      expect(batchAfter['qty_remaining'], 2);
+    });
+
     test('the stock arrives and the ledger says so', () async {
       final int productId = await seedProduct(stock: 10);
       final int receiptId = await DatabaseHelper.instance.postStockReceipt(
@@ -89,7 +325,10 @@ void main() {
       );
     });
 
-    test('the cost becomes what was paid', () async {
+    test('the cost becomes what was paid, in last-cost mode', () async {
+      // Last cost REPLACES the shelf cost. The shop setting picks it
+      // deliberately (weighted average is the default) — this pins the mode,
+      // not the default.
       final int productId = await seedProduct(cost: 60);
       await DatabaseHelper.instance.postStockReceipt(
         lines: <StockReceiptLine>[
@@ -102,6 +341,7 @@ void main() {
         ],
         staffName: 'Amina',
         staffId: 7,
+        costingMode: 'last_cost',
       );
 
       final Product after = (await DatabaseHelper.instance.getProducts())
@@ -122,6 +362,7 @@ void main() {
         ],
         staffName: 'Amina',
         staffId: 7,
+        costingMode: 'last_cost',
       );
 
       final StockReceipt receipt =

@@ -200,8 +200,20 @@ abstract final class Primitives {
   /// Light-theme info text. Calm blue.
   static const blue47Light = Color(0xFF1A6BAA);
 
+  /// Light-theme information container.
+  static const blue95Light = Color(0xFFE5F2FC);
+
+  /// Text on the light information container.
+  static const blue35Light = Color(0xFF0C3B5E);
+
   /// Dark-theme info text.
   static const blue66 = Color(0xFF6AB0F5);
+
+  /// Dark-theme information container.
+  static const blue22Dark = Color(0xFF123047);
+
+  /// Text on the dark information container.
+  static const blue90Dark = Color(0xFFB7DEFF);
 
   // -------------------------------------------------------------------- external payment identities (NOT brand colors)
   //

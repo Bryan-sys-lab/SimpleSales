@@ -2,6 +2,7 @@ import 'dart:math' as math;
 import 'dart:typed_data';
 
 import 'receipt_builder.dart';
+import 'label_builder.dart';
 
 /// Turns a laid-out receipt into ESC/POS bytes.
 ///
@@ -64,6 +65,76 @@ class EscPosEncoder {
   /// different pin on the same port, and driving it from a receipt would open
   /// the drawer on every reprint.
   static const List<int> _cut = [_gs, 0x56, 0x42, 0x00];
+
+  /// Opens a connected cash drawer through the printer's kick-out port.
+  /// `ESC p m t1 t2`, where timings are milliseconds and the printer's
+  /// two-millisecond units are used on the wire.
+  static List<int> drawerPulse({
+    int pin = 0,
+    int onMs = 50,
+    int offMs = 500,
+  }) =>
+      [
+        _esc,
+        0x70,
+        pin.clamp(0, 1),
+        (onMs ~/ 2).clamp(1, 255),
+        (offMs ~/ 2).clamp(1, 255),
+      ];
+
+  /// Encodes compact product labels for the same receipt printer.
+  ///
+  /// Code 128 accepts internal EAN-13 values as well as alphanumeric supplier
+  /// codes. The text remains below the symbol so a damaged scan can be entered
+  /// by hand.
+  Uint8List encodeLabels(
+    List<BarcodeLabel> labels, {
+    int columnBudget = k58mmColumnBudget,
+  }) {
+    if (labels.isEmpty) throw ArgumentError.value(labels, 'labels');
+    final out = BytesBuilder(copy: false);
+    void emit(List<int> bytes) => out.add(bytes);
+    void text(String value, {bool bold = false}) {
+      emit(_align(ReceiptAlignment.center));
+      emit(_bold(bold));
+      emit(_scale(1));
+      emit(_encodeText(value.length <= columnBudget
+          ? value
+          : value.substring(0, columnBudget)));
+      emit(const [_lf]);
+    }
+
+    emit(_initialise);
+    emit(_characterSet);
+    for (final label in labels) {
+      final code = label.barcode.trim();
+      if (code.isEmpty ||
+          code.length > 255 ||
+          code.codeUnits.any((unit) => unit < 0x20 || unit > 0x7e)) {
+        throw ArgumentError.value(label.barcode, 'barcode');
+      }
+      text(label.name.trim(), bold: true);
+      emit(_barcode128(code));
+      emit(const [_lf]);
+      text(code);
+      text('KSh ${label.price.asMajor.toStringAsFixed(2)}');
+      emit(_feed(2));
+    }
+    emit(_cut);
+    return out.takeBytes();
+  }
+
+  /// ESC/POS Code 128, subset B. `{B` selects the subset and is part of the
+  /// printer command payload, not part of the visible code.
+  static List<int> _barcode128(String value) => [
+        _gs,
+        0x6b,
+        0x49,
+        value.length + 2,
+        0x7b,
+        0x42,
+        ...value.codeUnits,
+      ];
 
   /// Encodes [lines] for one receipt, ending with a paper cut.
   ///

@@ -100,6 +100,24 @@ class Barcode {
     return (10 - (sum % 10)) % 10;
   }
 
+  /// Creates a shop-assigned EAN-13 in the restricted-circulation range.
+  ///
+  /// Prefix 20 is reserved for internal use, so these labels cannot be
+  /// mistaken for a supplier's globally assigned product code. The item
+  /// number is normally the local product id; callers still run it through
+  /// the database's uniqueness check before saving.
+  static String internalEan13({required int itemNumber, int storeNumber = 0}) {
+    if (itemNumber < 0 || itemNumber > 999999) {
+      throw ArgumentError.value(itemNumber, 'itemNumber');
+    }
+    if (storeNumber < 0 || storeNumber > 9999) {
+      throw ArgumentError.value(storeNumber, 'storeNumber');
+    }
+    final payload = '20${storeNumber.toString().padLeft(4, '0')}'
+        '${itemNumber.toString().padLeft(6, '0')}';
+    return '$payload${checkDigit(payload)}';
+  }
+
   /// Whether [code]'s final digit is the correct check digit for its payload.
   static bool hasValidCheckDigit(String code) {
     if (code.isEmpty || !_isAllDigits(code)) return false;

@@ -9,12 +9,13 @@ import '../l10n/generated/app_localizations.dart';
 import '../l10n/l10n_keys.dart';
 import '../services/app_state.dart';
 import '../services/roles.dart';
+import '../profile/profile_navigation.dart';
 import '../theme/app_colors.dart';
 import '../theme/app_spacing.dart';
 import '../theme/typography.dart';
 import '../ui/components/brand_header.dart';
 import '../ui/components/status_bar.dart';
-import '../ui/components/support_action.dart';
+import '../ui/components/notification_sheet.dart';
 import '../ui/layout/window_size_class.dart';
 import '../widgets/sign_out_sheet.dart';
 import 'idle_guard.dart';
@@ -39,7 +40,8 @@ List<AppDestination> visibleDestinations(AppState state) {
     AppDestination.dashboard,
     // Inventory and Reports report the whole shop. A cashier's business is
     // this counter, not the month.
-    if (state.canManageStock) AppDestination.inventory,
+    if (state.canManageStock && state.shopProfile.navigation.showInventory)
+      AppDestination.inventory,
     AppDestination.sell,
     // Analytics is open to everybody, and it shows each person their OWN
     // takings. A cashier may read how their counter is doing without being
@@ -47,7 +49,7 @@ List<AppDestination> visibleDestinations(AppState state) {
     // they sold, and the manager's whole-shop view is the same screen with
     // the scope opened up.
     AppDestination.analytics,
-    if (state.isAdmin) AppDestination.settings,
+    AppDestination.more,
     AppDestination.support,
   ];
 }
@@ -74,7 +76,8 @@ List<AppDestination> visibleDestinations(AppState state) {
 /// shell to [attach], and nothing in this class mirrors the index: the router is
 /// the only source of truth for which tab is showing.
 class HomeShellTabs extends ChangeNotifier {
-  HomeShellTabs(this._shell, this._state) {
+  HomeShellTabs(this._shell, this._state, {VoidCallback? onMore})
+      : _onMore = onMore ?? (() {}) {
     _state.addListener(_onAppStateChanged);
     _catalogueListeners.add(_onCatalogueChange);
     _catalogueGeneration = catalogueGeneration;
@@ -82,6 +85,7 @@ class HomeShellTabs extends ChangeNotifier {
 
   StatefulNavigationShell _shell;
   final AppState _state;
+  final VoidCallback _onMore;
   bool _disposed = false;
 
   /// Points this at the shell widget go_router most recently built.
@@ -93,7 +97,7 @@ class HomeShellTabs extends ChangeNotifier {
   StatefulNavigationShell get shell => _shell;
 
   /// The destination the router is showing, whether or not this role may see it.
-  AppDestination get current => AppDestination.values[_shell.currentIndex];
+  AppDestination get current => AppDestination.branchAt(_shell.currentIndex);
 
   /// Role changed under a live session (an owner demoting a manager, say): if the
   /// branch on screen is no longer offered, move to the first one that is.
@@ -135,9 +139,13 @@ class HomeShellTabs extends ChangeNotifier {
   /// throw away the stack the router keeps alive for exactly this reason.
   void goTo(AppDestination destination) {
     if (!visibleDestinations(_state).contains(destination)) return;
+    if (destination == AppDestination.more) {
+      _onMore();
+      return;
+    }
     _shell.goBranch(
-      destination.index,
-      initialLocation: destination.index == _shell.currentIndex,
+      destination.branchIndex,
+      initialLocation: destination.branchIndex == _shell.currentIndex,
     );
   }
 
@@ -233,7 +241,42 @@ class _HomeShellState extends State<HomeShell> {
   @override
   void initState() {
     super.initState();
-    _tabs = HomeShellTabs(widget.navigationShell, context.read<AppState>());
+    _tabs = HomeShellTabs(
+      widget.navigationShell,
+      context.read<AppState>(),
+      onMore: () => _openMore(context),
+    );
+  }
+
+  Future<void> _openMore(BuildContext context) async {
+    final state = context.read<AppState>();
+    final action = await showModalBottomSheet<_MoreAction>(
+      context: context,
+      useSafeArea: true,
+      builder: (_) => _MoreSheet(
+        showLayby: state.shopProfile.navigation.showLayby,
+      ),
+    );
+    if (!context.mounted || action == null) return;
+    switch (action) {
+      case _MoreAction.settings:
+        context.push(Routes.settings);
+      case _MoreAction.support:
+        _tabs.goTo(AppDestination.support);
+      case _MoreAction.marketplace:
+        context.push(Routes.marketplace);
+      case _MoreAction.notifications:
+        final destination = await showNotificationSheet(
+          context,
+          staffId: state.currentStaffId ?? 1,
+          role: state.role.wire,
+        );
+        if (destination != null && context.mounted) context.push(destination);
+      case _MoreAction.laybys:
+        context.push(Routes.laybys);
+      case _MoreAction.openBusiness:
+        context.push(Routes.openBusiness);
+    }
   }
 
   @override
@@ -283,7 +326,7 @@ class _ShellScaffold extends StatelessWidget {
     // has just hidden the branch on screen, highlight the first tab that is
     // offered rather than handing the bar an index of -1.
     final AppDestination active =
-        AppDestination.values[navigationShell.currentIndex];
+        AppDestination.branchAt(navigationShell.currentIndex);
     final AppDestination selected =
         destinations.contains(active) ? active : destinations.first;
 
@@ -313,9 +356,11 @@ class _ShellScaffold extends StatelessWidget {
           appBar: _ShellAppBar(
             title: state.owner?.shopName ?? SimplePosBrand.appName,
             roleLabel: _roleLabel(context, state),
+            sessionName: state.currentStaffName ?? _roleLabel(context, state),
             onSignOut: () => _signOut(context),
             onOpenProfile: () => context.push(Routes.profile),
-            onOpenSupport: () => tabs.goTo(AppDestination.support),
+            onOpenCredit: () => context.push(Routes.customers),
+            showCredit: state.isOwnerSession || state.role == ShopRole.manager,
           ),
           // The body.
           //
@@ -400,6 +445,65 @@ class _ShellScaffold extends StatelessWidget {
   }
 }
 
+enum _MoreAction {
+  settings,
+  support,
+  marketplace,
+  notifications,
+  laybys,
+  openBusiness
+}
+
+class _MoreSheet extends StatelessWidget {
+  const _MoreSheet({required this.showLayby});
+
+  final bool showLayby;
+
+  @override
+  Widget build(BuildContext context) {
+    final l10n = AppLocalizations.of(context);
+    return ListView(
+      shrinkWrap: true,
+      children: <Widget>[
+        if (showLayby)
+          ListTile(
+            leading: const Icon(Icons.bookmark_border),
+            title: const Text('Fashion lay-bys'),
+            onTap: () => Navigator.pop(context, _MoreAction.laybys),
+          ),
+        if (context.read<AppState>().shopProfile.navigation.showJobs)
+          ListTile(
+            leading: const Icon(Icons.work_outline),
+            title: const Text('Open business record'),
+            subtitle: const Text('Pots, jobs and owner money'),
+            onTap: () => Navigator.pop(context, _MoreAction.openBusiness),
+          ),
+        if (context.read<AppState>().isAdmin)
+          ListTile(
+            leading: const Icon(Icons.tune_outlined),
+            title: Text(l10n.navSettings),
+            onTap: () => Navigator.pop(context, _MoreAction.settings),
+          ),
+        ListTile(
+          leading: const Icon(Icons.help_outline),
+          title: Text(l10n.navSupport),
+          onTap: () => Navigator.pop(context, _MoreAction.support),
+        ),
+        ListTile(
+          leading: const Icon(Icons.notifications_none),
+          title: Text(l10n.notifications),
+          onTap: () => Navigator.pop(context, _MoreAction.notifications),
+        ),
+        ListTile(
+          leading: const Icon(Icons.extension_outlined),
+          title: Text(l10n.businessToolsMarketplace),
+          onTap: () => Navigator.pop(context, _MoreAction.marketplace),
+        ),
+      ],
+    );
+  }
+}
+
 /// The role of whoever is signed in, in the app's own words.
 ///
 /// "Owner", "Manager" or "Cashier" — the ROLE, not the name. The name is in
@@ -427,9 +531,11 @@ class _ShellAppBar extends StatelessWidget implements PreferredSizeWidget {
   const _ShellAppBar({
     required this.title,
     required this.roleLabel,
+    required this.sessionName,
     required this.onSignOut,
     required this.onOpenProfile,
-    required this.onOpenSupport,
+    required this.onOpenCredit,
+    required this.showCredit,
   });
 
   final String title;
@@ -440,6 +546,7 @@ class _ShellAppBar extends StatelessWidget implements PreferredSizeWidget {
   /// person is greeted by it, and the role is a fact about this session —
   /// which is what belongs beside the way out of the session.
   final String roleLabel;
+  final String sessionName;
 
   final VoidCallback onSignOut;
 
@@ -451,8 +558,8 @@ class _ShellAppBar extends StatelessWidget implements PreferredSizeWidget {
   /// editing does.
   final VoidCallback onOpenProfile;
 
-  /// Opens support.
-  final VoidCallback onOpenSupport;
+  final VoidCallback onOpenCredit;
+  final bool showCredit;
 
   @override
   Size get preferredSize => const Size.fromHeight(48);
@@ -463,41 +570,47 @@ class _ShellAppBar extends StatelessWidget implements PreferredSizeWidget {
     final AppColors colors = AppColors.of(context);
     final AppLocalizations l10n = AppLocalizations.of(context);
     final String role = roleLabel;
+    final bool compact = MediaQuery.sizeOf(context).width < 400;
+    final bool showRoleText = !compact;
 
     return AppBar(
-      titleSpacing: spacing.lg,
-      title: BrandHeader(markSize: spacing.xl),
+      automaticallyImplyLeading: false,
+      titleSpacing: compact ? 0 : spacing.lg,
+      title:
+          compact ? const SizedBox.shrink() : BrandHeader(markSize: spacing.xl),
       actions: <Widget>[
-        // Support FIRST, then the name, then the account.
-        //
-        // The name and the account icon answer one question — who am I, and
-        // where do I change that — and a support icon between them breaks the
-        // pair. Support is also the thing a person reaches for from anywhere,
-        // so it gets the leading slot rather than the one beside the exit.
-        //
-        // It was a 44dp floating bubble with a shadow over the bottom corner
-        // of the page; it rode up with the keyboard and covered the buttons at
-        // the far end. A plain icon in the bar is where help is looked for
-        // anyway, and it is out of every thumb's way.
-        SupportAction(
-          label: l10n.navSupport,
-          onTap: onOpenSupport,
-        ),
-        SizedBox(width: spacing.xs),
+        // Non-identity actions live in More. Only identity and sign-out stay
+        // on the app bar, with credit restored as the one operational shortcut
+        // owners and managers need at a glance.
+        if (showCredit)
+          Semantics(
+            button: true,
+            label: l10n.shellCreditMenuLabel,
+            child: IconButton(
+              tooltip: l10n.shellCreditMenuLabel,
+              onPressed: onOpenCredit,
+              icon: const Icon(Icons.account_balance_wallet_outlined),
+            ),
+          ),
         // Who is signed in, quietly, RIGHT BESIDE the account icon. The full
         // name is on the dashboard's title block and in Settings, so this is a
         // reminder that travels with the avatar rather than a label of its own.
-        ConstrainedBox(
-          constraints: const BoxConstraints(maxWidth: 140),
-          child: Text(
-            role,
-            maxLines: 1,
-            overflow: TextOverflow.ellipsis,
-            style: AppTypography.of(context)
-                .labelMedium
-                ?.copyWith(color: colors.onSurfaceMuted),
+        if (showRoleText)
+          ConstrainedBox(
+            // Keep the app-level actions usable on a compact till after the
+            // credit shortcut is added. The full identity remains available
+            // in Profile; this label only needs to identify the role at a
+            // glance.
+            constraints: const BoxConstraints(maxWidth: 90),
+            child: Text(
+              sessionName,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: AppTypography.of(context)
+                  .labelMedium
+                  ?.copyWith(color: colors.onSurfaceMuted),
+            ),
           ),
-        ),
         // The account: a VIEWER of who is signed in.
         //
         // It used to open the sign-out sheet, which is a trap: the person
@@ -524,7 +637,7 @@ class _ShellAppBar extends StatelessWidget implements PreferredSizeWidget {
           onPressed: onSignOut,
           icon: const Icon(Icons.logout),
         ),
-        SizedBox(width: spacing.xs),
+        if (!compact) SizedBox(width: spacing.xs),
       ],
     );
   }

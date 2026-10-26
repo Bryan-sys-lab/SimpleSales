@@ -38,13 +38,14 @@ import '../ui/layout/page.dart';
 import '../utils/money.dart';
 import '../widgets/chart.dart';
 
-enum PortfolioRange { week, month, quarter }
+enum PortfolioRange { week, month, quarter, year }
 
 extension on PortfolioRange {
   DateTime since(DateTime now) => switch (this) {
         PortfolioRange.week => DateTime(now.year, now.month, now.day - 6),
         PortfolioRange.month => DateTime(now.year, now.month, now.day - 29),
         PortfolioRange.quarter => DateTime(now.year, now.month, now.day - 89),
+        PortfolioRange.year => DateTime(now.year, now.month, now.day - 364),
       };
 }
 
@@ -301,6 +302,8 @@ class PortfolioPanel extends StatelessWidget {
                       PortfolioRange.month, l10n.portfolioRangeMonth),
                   MapEntry<PortfolioRange, String>(
                       PortfolioRange.quarter, l10n.portfolioRangeQuarter),
+                  const MapEntry<PortfolioRange, String>(
+                      PortfolioRange.year, '1 year'),
                 ])
                   PopupMenuItem<PortfolioRange>(
                     value: option.key,
@@ -331,6 +334,7 @@ class PortfolioPanel extends StatelessWidget {
                   PortfolioRange.week => l10n.portfolioRangeWeek,
                   PortfolioRange.month => l10n.portfolioRangeMonth,
                   PortfolioRange.quarter => l10n.portfolioRangeQuarter,
+                  PortfolioRange.year => '1 year',
                 }),
               ),
             ),
@@ -358,17 +362,16 @@ class PortfolioPanel extends StatelessWidget {
               title: l10n.portfolioSharedTitle,
               slices: <PosPieSlice>[
                 for (final ShopKpi shop in kpis.shopsByRevenue)
-                  if (shop.revenue.minorUnits > 0)
-                    PosPieSlice(
-                      label: shop.shopName,
-                      value: shop.revenue.minorUnits,
-                      // The rank decides the tint, so the largest slice is
-                      // also the strongest one and the two channels agree
-                      // instead of the colour contradicting the size.
-                      color: _rankColor(
-                          kpis.shopsByRevenue.indexOf(shop), context),
-                      valueLabel: formatMoney(shop.revenue),
-                    ),
+                  PosPieSlice(
+                    label: shop.shopName,
+                    value: shop.revenue.minorUnits,
+                    // The rank decides the tint, so the largest slice is
+                    // also the strongest one and the two channels agree
+                    // instead of the colour contradicting the size.
+                    color:
+                        _rankColor(kpis.shopsByRevenue.indexOf(shop), context),
+                    valueLabel: formatMoney(shop.revenue),
+                  ),
               ],
               centerLabel: l10n.portfolioTotalRevenue,
               centerValue: formatMoney(kpis.totalRevenue),
@@ -448,6 +451,41 @@ class _PortfolioTotalsCard extends StatelessWidget {
             label: l10n.portfolioAvgBasket,
             value: formatMoney(kpis.averageBasket),
           ),
+          if (kpis.financialDataComplete) ...<Widget>[
+            KeyValueRow(
+              label: 'Operating expenses',
+              value: formatMoney(kpis.totalOperatingExpenses),
+            ),
+            KeyValueRow(
+              label: 'Net profit',
+              value: formatMoney(kpis.totalNetProfit),
+            ),
+            KeyValueRow(
+              label: 'Net cash flow',
+              value: formatMoney(kpis.totalNetCashFlow),
+            ),
+            KeyValueRow(
+              label: 'Receivables change',
+              value: formatMoney(kpis.totalReceivableDelta),
+            ),
+            KeyValueRow(
+              label: 'Payables change',
+              value: formatMoney(kpis.totalPayableDelta),
+            ),
+            KeyValueRow(
+              label: 'Stock value',
+              value: formatMoney(kpis.totalStockValue),
+            ),
+          ] else
+            Padding(
+              padding: EdgeInsets.only(top: spacing.xs),
+              child: Text(
+                'Financial details incomplete for one or more shops',
+                style: AppTypography.of(context).bodySmall?.copyWith(
+                      color: AppColors.of(context).warning,
+                    ),
+              ),
+            ),
           SizedBox(height: spacing.sm),
           // Where the total came from. A total is a number an owner cannot act
           // on; a total plus its source is the thing they open next.
@@ -502,8 +540,7 @@ class _ShopKpiRow extends StatelessWidget {
   /// What the shop's shifts did, in one line.
   String _shiftLine(AppLocalizations l10n) {
     final List<String> parts = <String>[
-      if (kpi.shiftsClosed > 0)
-        l10n.portfolioShiftsCounted(kpi.shiftsClosed),
+      if (kpi.shiftsClosed > 0) l10n.portfolioShiftsCounted(kpi.shiftsClosed),
       if (kpi.shiftsOpen > 0) l10n.portfolioShiftsOpenNow(kpi.shiftsOpen),
       if (!kpi.cashVariance.isZero)
         kpi.cashVariance.isNegative
@@ -559,6 +596,7 @@ class _ShopKpiRow extends StatelessWidget {
                 Text(kpi.shopName, style: AppTypography.of(context).bodyLarge),
                 SizedBox(height: 2),
                 Text(
+                  '${kpi.businessProfile.displayName} · '
                   '${formatMoney(kpi.revenue)} · ${percent.format(share)}',
                   style: AppTypography.of(context)
                       .bodySmall
@@ -577,6 +615,19 @@ class _ShopKpiRow extends StatelessWidget {
                         color: kpi.cashVariance.isNegative
                             ? colors.danger
                             : colors.onSurfaceMuted,
+                      ),
+                ),
+                SizedBox(height: 2),
+                Text(
+                  kpi.financialDataComplete
+                      ? 'Expenses ${formatMoney(kpi.operatingExpenses)} · '
+                          'net ${formatMoney(kpi.netProfit)} · '
+                          'cash ${formatMoney(kpi.netCashFlow)}'
+                      : 'Financial details incomplete',
+                  style: AppTypography.of(context).bodySmall?.copyWith(
+                        color: kpi.financialDataComplete
+                            ? colors.onSurfaceMuted
+                            : colors.warning,
                       ),
                 ),
               ],

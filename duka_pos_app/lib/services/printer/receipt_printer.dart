@@ -8,6 +8,7 @@ import 'esc_pos_printer.dart';
 import 'printer_config.dart';
 import 'printer_service.dart';
 import 'receipt_builder.dart';
+import 'label_builder.dart';
 
 /// Why a print attempt ended the way it did.
 ///
@@ -66,6 +67,53 @@ class ReceiptPrinter {
   final EscPosEncoder _encoder;
   final DatabaseHelper _db = DatabaseHelper.instance;
 
+  /// Prints compact labels without touching the sales or stock ledgers.
+  Future<PrintResult> printLabels({
+    required List<BarcodeLabel> labels,
+    required PrinterConfig config,
+  }) async {
+    if (!config.isConfigured) return const PrintResult(PrintOutcome.disabled);
+    try {
+      final bytes = _encoder.encodeLabels(
+        labels,
+        columnBudget: config.paperWidth.columnBudget,
+      );
+      await _printer.connect(config.macAddress,
+          timeout: const Duration(seconds: 8));
+      await _printer.send(bytes);
+      return const PrintResult(PrintOutcome.printed);
+    } on PrinterException catch (error) {
+      debugPrint(
+          'Barcode label print failed: ${error.detail ?? error.failure.name}');
+      return PrintResult(PrintOutcome.failed, failure: error.failure);
+    } catch (error) {
+      debugPrint('Barcode label print failed unexpectedly: $error');
+      return const PrintResult(PrintOutcome.failed,
+          failure: PrinterFailure.printFailed);
+    }
+  }
+
+  /// Prints an already-built report snapshot without reading live sales.
+  Future<PrintResult> printDocument({
+    required List<ReceiptLine> lines,
+    required PrinterConfig config,
+  }) async {
+    if (!config.isConfigured) return const PrintResult(PrintOutcome.disabled);
+    try {
+      final bytes =
+          _encoder.encode(lines, columnBudget: config.paperWidth.columnBudget);
+      await _printer.connect(config.macAddress,
+          timeout: const Duration(seconds: 8));
+      await _printer.send(bytes);
+      return const PrintResult(PrintOutcome.printed);
+    } on PrinterException catch (error) {
+      return PrintResult(PrintOutcome.failed, failure: error.failure);
+    } catch (_) {
+      return const PrintResult(PrintOutcome.failed,
+          failure: PrinterFailure.printFailed);
+    }
+  }
+
   /// Prints the receipt for sale [saleId].
   ///
   /// [shopName] and [staffRole] are passed in rather than read from `AppState`,
@@ -90,6 +138,7 @@ class ReceiptPrinter {
     String? etimsReceiptNumber,
     String? etimsVerificationPayload,
     bool etimsPending = false,
+    ReceiptLanguage receiptLanguage = ReceiptLanguage.english,
   }) async {
     if (!config.isConfigured) return const PrintResult(PrintOutcome.disabled);
 
@@ -126,6 +175,7 @@ class ReceiptPrinter {
       etimsVerificationPayload:
           etimsVerificationPayload ?? await verificationPayloadFor(row),
       etimsPending: etimsPending,
+      receiptLanguage: receiptLanguage,
     );
 
     if (input.items.isEmpty) {

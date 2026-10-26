@@ -6,6 +6,7 @@ import 'package:flutter/foundation.dart'
     show compute, immutable, visibleForTesting;
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:path_provider/path_provider.dart';
+import '../utils/crypto_utils.dart';
 
 /// Arguments for [buildEncryptedPayload]. Plain data only — this is what
 /// crosses the isolate boundary.
@@ -17,6 +18,88 @@ class EncryptRequest {
   const EncryptRequest(this.keyBytes, this.clearBytes);
   final List<int> keyBytes;
   final List<int> clearBytes;
+}
+
+/// Plain arguments for the passphrase KDF isolate. Keeping the expensive KDF
+/// off the UI isolate matters on a till: the portable format intentionally
+/// uses a high iteration count, so a backup must not make the checkout stop
+/// responding while it is being written or restored.
+@immutable
+class PortableCryptoRequest {
+  const PortableCryptoRequest({
+    required this.clearBytes,
+    required this.passphrase,
+    required this.salt,
+    this.decrypt = false,
+    this.envelope,
+  });
+
+  final List<int>? clearBytes;
+  final String passphrase;
+  final List<int> salt;
+  final bool decrypt;
+  final Map<String, dynamic>? envelope;
+}
+
+const _portableIterations = 600000;
+const _portableFormat = 'duka-encrypted-backup-v2';
+
+Future<String> _encryptPortableInIsolate(PortableCryptoRequest request) async {
+  final cipher = AesGcm.with256bits();
+  final key = await Pbkdf2.hmacSha256(
+    iterations: _portableIterations,
+    bits: 256,
+  ).deriveKeyFromPassword(
+    password: request.passphrase,
+    nonce: request.salt,
+  );
+  final clear = request.clearBytes!;
+  final box = await cipher.encrypt(clear, secretKey: key);
+  final digest = await Sha256().hash(clear);
+  return jsonEncode({
+    'format': _portableFormat,
+    'createdAt': DateTime.now().toUtc().toIso8601String(),
+    'kdf': 'pbkdf2-sha256',
+    'iterations': _portableIterations,
+    'salt': base64UrlEncode(request.salt),
+    'nonce': base64UrlEncode(box.nonce),
+    'cipherText': base64UrlEncode(box.cipherText),
+    'mac': base64UrlEncode(box.mac.bytes),
+    'manifest': {
+      'clearBytes': clear.length,
+      'sha256': base64UrlEncode(digest.bytes),
+    },
+  });
+}
+
+Future<List<int>> _decryptPortableInIsolate(
+    PortableCryptoRequest request) async {
+  final envelope = request.envelope!;
+  final cipher = AesGcm.with256bits();
+  final key = await Pbkdf2.hmacSha256(
+    iterations: _portableIterations,
+    bits: 256,
+  ).deriveKeyFromPassword(
+    password: request.passphrase,
+    nonce: request.salt,
+  );
+  final clear = await cipher.decrypt(
+    SecretBox(
+      base64Url.decode(envelope['cipherText'] as String),
+      nonce: base64Url.decode(envelope['nonce'] as String),
+      mac: Mac(base64Url.decode(envelope['mac'] as String)),
+    ),
+    secretKey: key,
+  );
+  final manifest = envelope['manifest'];
+  if (manifest is! Map || manifest['clearBytes'] != clear.length) {
+    throw const FormatException('Portable backup manifest does not match');
+  }
+  final digest = await Sha256().hash(clear);
+  if (manifest['sha256'] != base64UrlEncode(digest.bytes)) {
+    throw const FormatException('Portable backup integrity check failed');
+  }
+  return clear;
 }
 
 /// Encrypts exported backup bytes with AES-256-GCM. The per-install key is
@@ -43,6 +126,8 @@ class EncryptedBackupService {
       storageForTest ?? const FlutterSecureStorage();
 
   static final _cipher = AesGcm.with256bits();
+  static const _portableFormat = 'duka-encrypted-backup-v2';
+  static const _portableIterations = 600000;
 
   /// Raw key bytes, read from or created in the OS keystore. Kept separate
   /// from the cipher so the expensive step can be dispatched to another
@@ -103,6 +188,17 @@ class EncryptedBackupService {
     return file;
   }
 
+  /// Builds the same device-bound encrypted envelope as a local backup,
+  /// without requiring a filesystem. Used when an opaque ciphertext snapshot
+  /// is uploaded to the tenant's cloud backup endpoint.
+  static Future<String> encryptBytes(List<int> clearBytes) async {
+    final keyBytes = await _keyBytes();
+    return compute(
+      buildEncryptedPayload,
+      EncryptRequest(keyBytes, clearBytes),
+    );
+  }
+
   static Future<List<int>> decryptBytes(List<int> encodedBytes) async {
     final value = jsonDecode(utf8.decode(encodedBytes));
     if (value is! Map || value['format'] != _format) {
@@ -115,6 +211,64 @@ class EncryptedBackupService {
       mac: Mac(base64Url.decode(value['mac'] as String)),
     );
     return _cipher.decrypt(box, secretKey: key);
+  }
+
+  /// Portable backup format. The passphrase, not this handset's keystore,
+  /// derives the key, so the file can be restored on another phone.
+  static Future<String> buildPortablePayload({
+    required List<int> clearBytes,
+    required String passphrase,
+  }) async {
+    if (passphrase.length < 8) {
+      throw const FormatException('Backup passphrase must be at least 8 characters');
+    }
+    final salt = randomBytes(16);
+    return compute(
+      _encryptPortableInIsolate,
+      PortableCryptoRequest(
+        clearBytes: clearBytes,
+        passphrase: passphrase,
+        salt: salt,
+      ),
+    );
+  }
+
+  static Future<List<int>> decryptPortableBytes({
+    required List<int> encodedBytes,
+    required String passphrase,
+  }) async {
+    final value = jsonDecode(utf8.decode(encodedBytes));
+    if (value is! Map || value['format'] != _portableFormat ||
+        value['kdf'] != 'pbkdf2-sha256' ||
+        value['iterations'] != _portableIterations) {
+      throw const FormatException('Unsupported portable encrypted backup');
+    }
+    return compute(
+      _decryptPortableInIsolate,
+      PortableCryptoRequest(
+        clearBytes: null,
+        passphrase: passphrase,
+        salt: base64Url.decode(value['salt'] as String),
+        decrypt: true,
+        envelope: Map<String, dynamic>.from(value),
+      ),
+    );
+  }
+
+  static Future<File> encryptPortableToFile(
+    List<int> clearBytes, {
+    required String passphrase,
+    String prefix = 'duka-backup',
+  }) async {
+    final payload = await buildPortablePayload(
+      clearBytes: clearBytes,
+      passphrase: passphrase,
+    );
+    final dir = await getApplicationDocumentsDirectory();
+    final file = File(
+        '${dir.path}/$prefix-${DateTime.now().toIso8601String().substring(0, 10)}.duka');
+    await file.writeAsString(payload, flush: true);
+    return file;
   }
 
   static Future<List<int>?> pickAndDecrypt() async {

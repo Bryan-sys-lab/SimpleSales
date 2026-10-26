@@ -104,6 +104,56 @@ void main() {
   }
 
   group('the money', () {
+    test('a split refund is allocated back to tenders by largest remainder',
+        () async {
+      final int productId = await seedProduct(price: 100);
+      await DatabaseHelper.instance.recordSale(
+        staffName: 'Amina',
+        staffId: 7,
+        tenders: <SaleTender>[
+          SaleTender(method: 'cash', amount: Money.fromMinor(7000)),
+          SaleTender(method: 'mpesa', amount: Money.fromMinor(3000)),
+        ],
+        items: <SaleItem>[
+          SaleItem(
+            saleId: 0,
+            productId: productId,
+            productName: 'Tusker',
+            qty: 1,
+            unitPrice: Money.fromMajor(100),
+            unitCost: Money.fromMajor(60),
+          ),
+        ],
+      );
+      final Sale sale = (await DatabaseHelper.instance.getSales()).first;
+      await openShift();
+
+      await DatabaseHelper.instance.recordReturn(
+        sale: sale,
+        lines: <ReturnLineDraft>[
+          ReturnLineDraft(saleItemId: sale.items.single.id!, qty: 0.5),
+        ],
+        reason: 'Half returned',
+        staffName: 'Amina',
+        staffId: 7,
+      );
+
+      final SaleReturn returned =
+          (await DatabaseHelper.instance.getReturnsForSale(sale.id!)).single;
+      expect(returned.refundAllocations, hasLength(2));
+      expect(returned.refundAllocations[0].method, 'cash');
+      expect(returned.refundAllocations[0].amount, Money.fromMinor(3500));
+      expect(returned.refundAllocations[1].method, 'mpesa');
+      expect(returned.refundAllocations[1].amount, Money.fromMinor(1500));
+      expect(
+        returned.refundAllocations.fold<int>(
+          0,
+          (sum, allocation) => sum + allocation.amount.minorUnits,
+        ),
+        returned.total.minorUnits,
+      );
+    });
+
     test('a whole line refunds the line total', () async {
       final int productId = await seedProduct();
       final Sale sale =

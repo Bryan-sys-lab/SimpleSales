@@ -120,8 +120,8 @@ void main() {
 
   group('the tap-target floor is the accessibility floor, not a preference',
       () {
-    test('it is at least 44px', () {
-      expect(AppSpacing.standard.minTapTarget, greaterThanOrEqualTo(44));
+    test('it uses the preferred 48px Android target', () {
+      expect(AppSpacing.standard.minTapTarget, greaterThanOrEqualTo(48));
     });
 
     test('every button theme in the light theme honours it', () {
@@ -135,7 +135,7 @@ void main() {
         final Size? size = style?.minimumSize?.resolve(<WidgetState>{});
         expect(
           size?.height,
-          greaterThanOrEqualTo(44),
+          greaterThanOrEqualTo(48),
           reason: 'the $name button theme has a ${size?.height}px minimum',
         );
       }
@@ -147,7 +147,7 @@ void main() {
           .style
           ?.minimumSize
           ?.resolve(<WidgetState>{});
-      expect(size?.height, greaterThanOrEqualTo(44));
+      expect(size?.height, greaterThanOrEqualTo(48));
     });
 
     test('the dark theme honours it too', () {
@@ -156,7 +156,7 @@ void main() {
           .style
           ?.minimumSize
           ?.resolve(<WidgetState>{});
-      expect(size?.height, greaterThanOrEqualTo(44));
+      expect(size?.height, greaterThanOrEqualTo(48));
     });
   });
 
@@ -282,6 +282,26 @@ void main() {
   });
 
   group('the spacing scale is a real scale', () {
+    test('matches the SimpleSales interaction standard', () {
+      final AppSpacing s = AppSpacing.standard;
+      expect(s.xxs, 4);
+      expect(s.xs, 8);
+      expect(s.sm, 12);
+      expect(s.md, 16);
+      expect(s.lg, 24);
+      expect(s.xl, 32);
+      expect(s.xxl, 40);
+      expect(s.section, 48);
+      expect(s.spacious, 64);
+      expect(s.minTapTarget, 48);
+      expect(s.primaryButtonHeight, 48);
+      expect(s.textFieldHeight, 56);
+      expect(s.buttonHorizontalPadding, 16);
+      expect(s.formPrimaryActionGap, 32);
+      expect(s.mobilePageGutter, 16);
+      expect(s.largePageGutter, 24);
+    });
+
     test('the steps are strictly increasing', () {
       final AppSpacing s = AppSpacing.standard;
       expect(s.xs, lessThan(s.sm));

@@ -12,27 +12,36 @@ import '../screens/imports_screen.dart';
 import '../screens/inventory_screen.dart';
 import '../screens/login_screen.dart';
 import '../screens/staff_login_screen.dart';
-import '../screens/onboarding_screen.dart';
 import '../screens/permissions_screen.dart';
 import '../services/permission_service.dart';
 import '../screens/owner_setup_screen.dart';
 import '../screens/portfolio_screen.dart';
 import '../screens/reports_screen.dart';
 import '../screens/sell_screen.dart';
-import '../screens/activity_screen.dart';
+import '../screens/cross_shop_activity_screen.dart';
 import '../screens/diagnostics_screen.dart';
+import '../screens/incoming_payments_screen.dart';
+import '../screens/sync_center_screen.dart';
+import '../screens/permissions_matrix_screen.dart';
 import '../screens/profile_screen.dart';
 import '../screens/settings_screen.dart';
+import '../screens/customers_screen.dart';
+import '../screens/layby_screen.dart';
 import '../screens/transactions_screen.dart';
 import '../screens/shift_screen.dart';
+import '../screens/expenses_screen.dart';
 import '../screens/shot_cups_screen.dart';
 import '../screens/splash_screen.dart';
 import '../screens/support_screen.dart';
+import '../screens/marketplace_screen.dart';
+import '../screens/open_business_screen.dart';
 import '../screens/tax_settings_screen.dart';
 import '../widgets/camera_scan_screen.dart';
 import '../screens/welcome_chooser_screen.dart';
 import '../services/app_stage.dart';
 import '../services/app_state.dart';
+import '../profile/profile_navigation.dart';
+import '../profile/shop_profile.dart';
 import '../theme/app_motion.dart';
 import 'app_redirect.dart';
 import 'app_stage_controller.dart';
@@ -100,7 +109,13 @@ GoRouter buildAppRouter({
     ],
     routes: <RouteBase>[
       ..._doorRoutes(stage, appState),
-      ..._shellRoutes(),
+      GoRoute(
+        path: Routes.marketplace,
+        parentNavigatorKey: rootNavigatorKey,
+        pageBuilder: (BuildContext context, GoRouterState routerState) =>
+            _fadeThrough(routerState, const MarketplaceScreen()),
+      ),
+      ..._shellRoutes(appState),
     ],
   );
   _backRouter = router;
@@ -133,6 +148,7 @@ List<RouteBase> _doorRoutes(AppStageController stage, AppState appState) {
         WelcomeChooserScreen(
           shopName: appState.owner?.shopName ?? '',
           hasShop: appState.owner != null,
+          showProductIntro: true,
         ),
       ),
     ),
@@ -175,7 +191,17 @@ List<RouteBase> _doorRoutes(AppStageController stage, AppState appState) {
       pageBuilder: (BuildContext context, GoRouterState routerState) =>
           _fadeThrough(
         routerState,
-        OnboardingScreen(onComplete: stage.completeOnboarding),
+        // Kept as a legacy deep-link for installs that still have the old
+        // walkthrough flag unset. The old demo/import pages are no longer
+        // shown after account creation; those installs go straight to the
+        // useful optional-permissions step.
+        PermissionsScreen(
+          permissions: PlatformPermissionService(),
+          onComplete: () async {
+            await stage.completeOnboarding();
+            await stage.completePermissions();
+          },
+        ),
       ),
     ),
     GoRoute(
@@ -196,7 +222,7 @@ List<RouteBase> _doorRoutes(AppStageController stage, AppState appState) {
 }
 
 /// The shell and its six branches.
-List<RouteBase> _shellRoutes() {
+List<RouteBase> _shellRoutes(AppState appState) {
   return <RouteBase>[
     StatefulShellRoute.indexedStack(
       builder: (
@@ -223,6 +249,28 @@ List<RouteBase> _shellRoutes() {
                   pageBuilder:
                       (BuildContext context, GoRouterState routerState) =>
                           _fadeThrough(routerState, const TransactionsScreen()),
+                ),
+                // Who owes what. The dashboard's owed-to-you card opens it;
+                // the branch is the DASHBOARD's, so going back lands on the
+                // day the owner was reading.
+                GoRoute(
+                  path: 'customers',
+                  parentNavigatorKey: rootNavigatorKey,
+                  pageBuilder:
+                      (BuildContext context, GoRouterState routerState) =>
+                          _fadeThrough(routerState, const CustomersScreen()),
+                ),
+                GoRoute(
+                  path: 'laybys',
+                  parentNavigatorKey: rootNavigatorKey,
+                  pageBuilder:
+                      (BuildContext context, GoRouterState routerState) =>
+                          _fadeThrough(
+                    routerState,
+                    appState.shopProfile.navigation.showLayby
+                        ? const LaybyScreen()
+                        : NotFoundScreen(location: routerState.matchedLocation),
+                  ),
                 ),
               ],
             ),
@@ -288,7 +336,12 @@ List<RouteBase> _shellRoutes() {
                   parentNavigatorKey: rootNavigatorKey,
                   pageBuilder:
                       (BuildContext context, GoRouterState routerState) =>
-                          _fadeThrough(routerState, const ShotCupsScreen()),
+                          _fadeThrough(
+                    routerState,
+                    appState.shopProfile.navigation.showDrinkService
+                        ? const ShotCupsScreen()
+                        : NotFoundScreen(location: routerState.matchedLocation),
+                  ),
                 ),
               ],
             ),
@@ -319,6 +372,25 @@ List<RouteBase> _shellRoutes() {
                   pageBuilder:
                       (BuildContext context, GoRouterState routerState) =>
                           _fadeThrough(routerState, const ShiftScreen()),
+                ),
+                GoRoute(
+                  path: 'expenses',
+                  parentNavigatorKey: rootNavigatorKey,
+                  pageBuilder:
+                      (BuildContext context, GoRouterState routerState) =>
+                          _fadeThrough(routerState, const ExpensesScreen()),
+                ),
+                GoRoute(
+                  path: 'open-business',
+                  parentNavigatorKey: rootNavigatorKey,
+                  pageBuilder:
+                      (BuildContext context, GoRouterState routerState) =>
+                          _fadeThrough(
+                    routerState,
+                    appState.shopProfile == ShopProfile.open
+                        ? const OpenBusinessScreen()
+                        : NotFoundScreen(location: routerState.matchedLocation),
+                  ),
                 ),
                 // The all-shops view. A sibling of Reports rather than a tab:
                 // it answers a question a single shop cannot, so it is only
@@ -358,7 +430,8 @@ List<RouteBase> _shellRoutes() {
                   parentNavigatorKey: rootNavigatorKey,
                   pageBuilder:
                       (BuildContext context, GoRouterState routerState) =>
-                          _fadeThrough(routerState, const ActivityScreen()),
+                          _fadeThrough(
+                              routerState, const CrossShopActivityScreen()),
                 ),
                 // Where the phone's own failure log is read. A child of
                 // Settings for the same reason as Activity: an owner looks for
@@ -381,6 +454,24 @@ List<RouteBase> _shellRoutes() {
                       canRepairLedger: context.read<AppState>().isOwnerSession,
                     ),
                   ),
+                ),
+                GoRoute(
+                  path: 'incoming-payments',
+                  parentNavigatorKey: rootNavigatorKey,
+                  pageBuilder: (BuildContext context, GoRouterState state) =>
+                      _fadeThrough(state, const IncomingPaymentsScreen()),
+                ),
+                GoRoute(
+                  path: 'sync-center',
+                  parentNavigatorKey: rootNavigatorKey,
+                  pageBuilder: (BuildContext context, GoRouterState state) =>
+                      _fadeThrough(state, const SyncCenterScreen()),
+                ),
+                GoRoute(
+                  path: 'permissions',
+                  parentNavigatorKey: rootNavigatorKey,
+                  pageBuilder: (BuildContext context, GoRouterState state) =>
+                      _fadeThrough(state, const PermissionsMatrixScreen()),
                 ),
                 // The shop's own account: who is signed in, where it is
                 // verified, and the avatar. A child of Settings for the same

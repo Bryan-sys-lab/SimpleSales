@@ -4,11 +4,13 @@ import 'package:provider/provider.dart';
 
 import '../db/database_helper.dart';
 import '../l10n/generated/app_localizations.dart';
+import '../models/financial_event.dart';
 import '../models/models.dart';
 import '../routing/home_shell.dart';
 import '../routing/routes.dart';
 import '../services/analytics.dart';
 import '../services/app_state.dart';
+import '../profile/profile_navigation.dart';
 import '../services/shift_analytics.dart';
 import '../theme/app_colors.dart';
 import '../theme/app_haptics.dart';
@@ -21,6 +23,9 @@ import '../services/workspace_service.dart';
 import '../services/live_refresh_mixin.dart';
 import '../services/live_channel_service.dart';
 import '../services/session_refresh_mixin.dart';
+import '../services/roles.dart';
+import 'cash_control_sheets.dart';
+import '../services/backend_service.dart';
 import '../ui/components/screen_title.dart';
 import '../ui/components/states.dart';
 import '../ui/components/surface.dart';
@@ -28,6 +33,7 @@ import '../widgets/chart.dart';
 import '../ui/layout/page.dart';
 import '../utils/money.dart';
 import 'analytics_tables.dart';
+import 'product_drilldown_sheet.dart';
 
 /// The windows the owner thinks in.
 ///
@@ -39,7 +45,8 @@ enum AnalyticsRange {
   today('Today', 1),
   week('7 days', 7),
   month('30 days', 30),
-  quarter('90 days', 90);
+  quarter('90 days', 90),
+  year('1 year', 365);
 
   const AnalyticsRange(this.label, this.days);
 
@@ -100,7 +107,13 @@ class AnalyticsSnapshot {
     required this.payments,
     required this.outOfStock,
     required this.lowStock,
+    this.expiring = const <Product>[],
+    this.expired = const <Product>[],
+    this.slowMovers = const <SlowMoverRow>[],
+    this.costCoverage = CostCoverage.empty,
     this.shifts = const ShiftAnalytics.empty(),
+    this.drinks = DrinksAnalyticsSnapshot.empty,
+    this.statement,
   });
 
   /// What an empty range aggregates to, so the first frame renders real zeros
@@ -113,7 +126,13 @@ class AnalyticsSnapshot {
     payments: <PaymentMixRow>[],
     outOfStock: <Product>[],
     lowStock: <Product>[],
+    expiring: <Product>[],
+    expired: <Product>[],
+    slowMovers: <SlowMoverRow>[],
+    costCoverage: CostCoverage.empty,
     shifts: ShiftAnalytics.empty(),
+    drinks: DrinksAnalyticsSnapshot.empty,
+    statement: null,
   );
 
   final DailyTotals totals;
@@ -123,9 +142,20 @@ class AnalyticsSnapshot {
   final List<PaymentMixRow> payments;
   final List<Product> outOfStock;
   final List<Product> lowStock;
+  final List<Product> expiring;
+  final List<Product> expired;
+  final List<SlowMoverRow> slowMovers;
+  final CostCoverage costCoverage;
 
   /// The shifts over the window, and what the drawers did.
   final ShiftAnalytics shifts;
+
+  /// Drinks-only operational metrics projected from the shared ledger.
+  final DrinksAnalyticsSnapshot drinks;
+
+  /// The canonical statement is management-scoped. Cashiers see their own
+  /// sales KPIs, but must not receive a whole-shop liability or cash balance.
+  final FinancialStatement? statement;
 
   bool get isEmpty =>
       !totals.hasSales &&
@@ -242,6 +272,7 @@ class _AnalyticsScreenState extends State<AnalyticsScreen>
 
   Future<void> _load() async {
     final DatabaseHelper db = DatabaseHelper.instance;
+    final AppState appState = context.read<AppState>();
     // The previous window rides along in the same batch: it is one more
     // aggregate query, and fetching it with the current one means the comparison
     // is answered by a single consistent read of the ledger rather than two
@@ -266,29 +297,95 @@ class _AnalyticsScreenState extends State<AnalyticsScreen>
         db.topProducts(since: since, limit: 20, staffId: staffId),
         db.salesByPaymentMethod(since: since, staffId: staffId),
         db.getProducts(),
+        db.getExpiringProducts(),
+        db.getExpiredProducts(),
+        db.getSlowMovingProducts(since: since, until: DateTime.now()),
         db.salesTotalsFor(
           since: range.previousSince,
           until: since,
           staffId: staffId,
         ),
         loadShiftAnalytics(from: since, to: DateTime.now(), staffId: staffId),
+        appState.shopProfile.navigation.showDrinkService
+            ? db.drinksAnalytics(since: since, staffId: staffId)
+            : Future<DrinksAnalyticsSnapshot>.value(
+                DrinksAnalyticsSnapshot.empty),
       ]);
+      final FinancialStatement? statement = staffId == null
+          ? await db.getFinancialStatement(
+              fromUtc: since.toUtc(),
+              untilUtc: DateTime.now().toUtc(),
+            )
+          : null;
       if (!mounted) return;
       final List<Product> products = results[4] as List<Product>;
+      final List<Product> expiring = results[5] as List<Product>;
+      final List<Product> expired = results[6] as List<Product>;
+      final List<SlowMoverRow> slowMovers = results[7] as List<SlowMoverRow>;
+      List<ProductSalesRow> productRows = results[2] as List<ProductSalesRow>;
+      CostCoverage costCoverage = costCoverageFor(productRows, products);
+      DailyTotals totals = results[0] as DailyTotals;
+      DailyTotals previousTotals = results[8] as DailyTotals;
+      List<PaymentMixRow> payments = results[3] as List<PaymentMixRow>;
+      List<DateBucket> chartDays = results[1] as List<DateBucket>;
+      // Once this till has no pending sales, the verified backend aggregate is
+      // authoritative: it includes sales from every till in the tenant. While
+      // this device still has an offline queue, keep its local figures so a
+      // just-recorded sale is never hidden while waiting for upload.
+      final pendingOperational = await db.unsyncedOperationalCounts();
+      final bool canUseRemote = remoteAnalyticsIsAuthoritative(
+        staffId: staffId,
+        identityVerified: await BackendService.isIdentityVerified,
+        pendingOperational: pendingOperational,
+      );
+      if (canUseRemote) {
+        try {
+          final remote = await BackendService.remoteSalesSummary(
+            from: since,
+            to: DateTime.now(),
+          );
+          totals = remote.totals;
+          payments = remote.payments;
+          if (remote.days.isNotEmpty) chartDays = remote.days;
+          final previous = await BackendService.remoteSalesSummary(
+            from: range.previousSince,
+            to: since,
+          );
+          previousTotals = previous.totals;
+        } catch (_) {
+          // Local zeroes are still honest while offline or unverified.
+        }
+      }
+      if (canUseRemote) {
+        try {
+          final remoteProducts = await BackendService.remoteProductReport(
+            from: since,
+            to: DateTime.now(),
+          );
+          if (remoteProducts.products.isNotEmpty || productRows.isEmpty) {
+            productRows = remoteProducts.products;
+          }
+          if (remoteProducts.costCoverage != null) {
+            costCoverage = remoteProducts.costCoverage!;
+          }
+        } catch (_) {
+          // Product rows remain empty while offline.
+        }
+      }
       setState(() {
         _sortedProducts = _order(
-          results[2] as List<ProductSalesRow>,
+          productRows,
           _sort,
           _ascending,
         );
-        _salesPoints = _salesChartPoints(results[1] as List<DateBucket>);
+        _salesPoints = _salesChartPoints(chartDays);
         _view = AnalyticsContent(
           AnalyticsSnapshot(
-            totals: results[0] as DailyTotals,
-            previousTotals: results[5] as DailyTotals,
-            days: results[1] as List<DateBucket>,
-            products: results[2] as List<ProductSalesRow>,
-            payments: results[3] as List<PaymentMixRow>,
+            totals: totals,
+            previousTotals: previousTotals,
+            days: chartDays,
+            products: productRows,
+            payments: payments,
             // Two lists, not one: "out of stock" and "running low" are different
             // urgencies, and one list that quietly contains both is read as the
             // milder of the two.
@@ -299,7 +396,13 @@ class _AnalyticsScreenState extends State<AnalyticsScreen>
                 .toList()
               ..sort(
                   (Product a, Product b) => a.stockQty.compareTo(b.stockQty)),
-            shifts: results[6] as ShiftAnalytics,
+            costCoverage: costCoverage,
+            expiring: expiring,
+            expired: expired,
+            slowMovers: slowMovers,
+            shifts: results[9] as ShiftAnalytics,
+            drinks: results[10] as DrinksAnalyticsSnapshot,
+            statement: statement,
           ),
         );
       });
@@ -398,6 +501,7 @@ class _AnalyticsScreenState extends State<AnalyticsScreen>
           snapshot: previous,
           onRetry: _load,
           loading: true,
+          drinks: null,
         ),
       AnalyticsFailure(message: final String message) => _AnalyticsScaffold(
           range: _range,
@@ -405,6 +509,7 @@ class _AnalyticsScreenState extends State<AnalyticsScreen>
           snapshot: AnalyticsSnapshot.empty,
           onRetry: _load,
           errorMessage: message,
+          drinks: null,
         ),
       AnalyticsContent(snapshot: final AnalyticsSnapshot snapshot) =>
         _AnalyticsScaffold(
@@ -424,14 +529,25 @@ class _AnalyticsScreenState extends State<AnalyticsScreen>
           chartEmphasis: snapshot.totals.hasSales
               ? '${formatMoney(snapshot.totals.total)} over ${_range.label.toLowerCase()}'
               : null,
+          statement: snapshot.statement,
           bottomInset: spacing.xl,
           onOpenPortfolio: () => context.push(Routes.portfolio),
           // The all-shops view reads across every shop on the device, which
           // is the owner's business and nobody else's.
           showPortfolioLink: _canShowPortfolio && state.isAdmin,
+          onProductTap: state.isOwnerSession || state.role == ShopRole.manager
+              ? (row) => showProductDrilldownSheet(
+                    context,
+                    row: row,
+                    since: _range.since,
+                  )
+              : null,
           title: ownScope
               ? AppLocalizations.of(context).analyticsYourSalesTitle
               : AppLocalizations.of(context).navAnalytics,
+          drinks: state.shopProfile.navigation.showDrinkService
+              ? snapshot.drinks
+              : null,
         ),
     };
   }
@@ -459,8 +575,11 @@ class _AnalyticsScaffold extends StatelessWidget {
     this.chartEmphasis,
     this.bottomInset = 0,
     this.onOpenPortfolio,
+    this.onProductTap,
     this.showPortfolioLink = false,
     this.title,
+    this.statement,
+    this.drinks,
   });
 
   final AnalyticsRange range;
@@ -483,6 +602,7 @@ class _AnalyticsScaffold extends StatelessWidget {
 
   /// Opens the all-shops view.
   final VoidCallback? onOpenPortfolio;
+  final ValueChanged<ProductSalesRow>? onProductTap;
 
   /// Whether to offer it. An owner running one duka has no use for "All shops",
   /// and an affordance that answers a question they never asked is noise on the
@@ -491,6 +611,8 @@ class _AnalyticsScaffold extends StatelessWidget {
 
   /// The screen's own name, which depends on whose figures it is showing.
   final String? title;
+  final FinancialStatement? statement;
+  final DrinksAnalyticsSnapshot? drinks;
 
   @override
   Widget build(BuildContext context) {
@@ -524,6 +646,25 @@ class _AnalyticsScaffold extends StatelessWidget {
               padding: EdgeInsetsDirectional.only(bottom: spacing.md),
             ),
             _RangeBar(range: range, onChanged: onRangeChanged),
+            if (context
+                .read<AppState>()
+                .hasPermission(PermissionKey.recordExpense)) ...<Widget>[
+              SizedBox(height: spacing.md),
+              SettingsNavRow(
+                icon: Icons.receipt_long_outlined,
+                title: AppLocalizations.of(context).expensePayOutAction,
+                onTap: () async {
+                  final AppState state = context.read<AppState>();
+                  final bool saved = await showExpenseSheet(
+                    context,
+                    staffName:
+                        state.currentStaffName ?? state.owner?.name ?? 'Owner',
+                    staffId: state.currentStaffId,
+                  );
+                  if (saved) await onRetry();
+                },
+              ),
+            ],
             if (showPortfolioLink && onOpenPortfolio != null) ...<Widget>[
               SizedBox(height: spacing.md),
               SettingsNavRow(
@@ -601,6 +742,20 @@ class _AnalyticsScaffold extends StatelessWidget {
         days: range.days,
       )),
       SizedBox(height: spacing.lg),
+      if (drinks != null) ...<Widget>[
+        reveal(_DrinksAnalyticsCard(snapshot: drinks!)),
+        SizedBox(height: spacing.lg),
+      ],
+      if (statement != null) ...<Widget>[
+        reveal(FinancialStatementCard(statement: statement!)),
+        SizedBox(height: spacing.lg),
+      ],
+      reveal(_VatSummaryCard(totals: shown.totals)),
+      SizedBox(height: spacing.lg),
+      if (shown.costCoverage.hasMissingCosts) ...<Widget>[
+        reveal(_CostCoverageCard(coverage: shown.costCoverage)),
+        SizedBox(height: spacing.lg),
+      ],
       reveal(SurfaceCard(
         padding: EdgeInsetsDirectional.only(
           start: spacing.md,
@@ -625,10 +780,23 @@ class _AnalyticsScaffold extends StatelessWidget {
         sort: sort,
         ascending: ascending,
         onSort: onSortBy,
+        onProductTap: onProductTap,
       )),
       SizedBox(height: spacing.lg),
       reveal(PaymentMixCard(rows: shown.payments, totals: shown.totals)),
       SizedBox(height: spacing.lg),
+      if (shown.expiring.isNotEmpty) ...<Widget>[
+        reveal(_ExpiringCard(products: shown.expiring)),
+        SizedBox(height: spacing.lg),
+      ],
+      if (shown.expired.isNotEmpty) ...<Widget>[
+        reveal(_ExpiredCard(products: shown.expired)),
+        SizedBox(height: spacing.lg),
+      ],
+      if (shown.slowMovers.isNotEmpty) ...<Widget>[
+        reveal(_SlowMoversCard(rows: shown.slowMovers)),
+        SizedBox(height: spacing.lg),
+      ],
       // The shifts, and what the drawers did over the window.
       //
       // Between the payment mix and the stock: both are about the shop's
@@ -636,10 +804,477 @@ class _AnalyticsScaffold extends StatelessWidget {
       // in the drawer is the money the ledger expects.
       reveal(ShiftAnalyticsCard(shifts: shown.shifts)),
       SizedBox(height: spacing.lg),
-      reveal(StockSection(
-          outOfStock: shown.outOfStock, lowStock: shown.lowStock)),
+      reveal(
+          StockSection(outOfStock: shown.outOfStock, lowStock: shown.lowStock)),
     ];
   }
+}
+
+/// Drinks' operational emphasis, rendered from the shared analytics snapshot.
+/// The card stays inside the common analytics page; a non-Drinks profile never
+/// receives it from the profile capability layer.
+class _DrinksAnalyticsCard extends StatelessWidget {
+  const _DrinksAnalyticsCard({required this.snapshot});
+
+  final DrinksAnalyticsSnapshot snapshot;
+
+  String _litres(double value) {
+    final decimals = value >= 100
+        ? 0
+        : value >= 10
+            ? 1
+            : 2;
+    return '${value.toStringAsFixed(decimals)} L';
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final AppSpacing spacing = AppSpacing.of(context);
+    final AppColors colors = AppColors.of(context);
+    final type = AppTypography.of(context);
+    final l10n = AppLocalizations.of(context);
+    final kpis = <_Kpi>[
+      _Kpi(
+        label: l10n.drinksAnalyticsLitresSold,
+        value: _litres(snapshot.litresSold),
+        caption: l10n.drinksAnalyticsMeasuredLines,
+        icon: Icons.local_drink_outlined,
+      ),
+      _Kpi(
+        label: l10n.drinksAnalyticsPourSales,
+        value: formatMoney(snapshot.pourSales),
+        caption:
+            '${l10n.drinksAnalyticsMeasuredLines} · ${snapshot.pourCostPercent.toStringAsFixed(0)}% cost',
+        icon: Icons.point_of_sale_outlined,
+      ),
+      _Kpi(
+        label: l10n.drinksAnalyticsOpenTabs,
+        value: '${snapshot.openTabs}',
+        icon: Icons.receipt_long_outlined,
+      ),
+      _Kpi(
+        label: l10n.drinksAnalyticsTankBalance,
+        value: _litres(snapshot.litresRemaining),
+        caption: l10n.drinksAnalyticsTitle,
+        icon: Icons.propane_tank_outlined,
+      ),
+      _Kpi(
+        label: l10n.drinksAnalyticsWaste,
+        value: _litres(snapshot.wasteLitres),
+        caption: formatMoney(snapshot.wasteValue),
+        icon: Icons.delete_sweep_outlined,
+      ),
+      _Kpi(
+        label: l10n.drinksAnalyticsDipVariance,
+        value: _litres(snapshot.dipVarianceLitres.abs()),
+        caption: snapshot.dipVarianceLitres < 0
+            ? l10n.drinksAnalyticsDipBelow
+            : l10n.drinksAnalyticsDipAbove,
+        icon: Icons.water_drop_outlined,
+      ),
+    ];
+
+    return SurfaceCard(
+      padding: EdgeInsets.all(spacing.md),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: <Widget>[
+          Row(
+            children: <Widget>[
+              Icon(Icons.local_bar_outlined, color: colors.onSurfaceMuted),
+              SizedBox(width: spacing.sm),
+              Expanded(
+                child: Text(
+                  l10n.drinksAnalyticsTitle,
+                  style: type.titleMedium,
+                ),
+              ),
+            ],
+          ),
+          SizedBox(height: spacing.md),
+          LayoutBuilder(
+            builder: (context, constraints) {
+              final columns = constraints.maxWidth >= 720 ? 4 : 2;
+              final width =
+                  (constraints.maxWidth - spacing.md * (columns - 1)) / columns;
+              return Wrap(
+                spacing: spacing.md,
+                runSpacing: spacing.md,
+                children: <Widget>[
+                  for (final kpi in kpis)
+                    SizedBox(width: width, child: _KpiCard(kpi: kpi)),
+                ],
+              );
+            },
+          ),
+          SizedBox(height: spacing.md),
+          if (snapshot.tanks.isEmpty)
+            Text(
+              l10n.drinksAnalyticsNoTankData,
+              style: type.bodySmall?.copyWith(color: colors.onSurfaceMuted),
+            )
+          else
+            for (final tank in snapshot.tanks)
+              Padding(
+                padding: EdgeInsets.only(bottom: spacing.xs),
+                child: Semantics(
+                  label: '${tank.name}, ${_litres(tank.litresRemaining)}',
+                  child: Row(
+                    children: <Widget>[
+                      Expanded(child: Text(tank.name)),
+                      Text(
+                        _litres(tank.litresRemaining),
+                        style: type.labelLarge,
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+        ],
+      ),
+    );
+  }
+}
+
+/// The management statement is intentionally built from [FinancialStatement],
+/// not from the sales dashboard totals. The two answer different questions:
+/// profit includes non-sale events, while cash flow includes movements that do
+/// not belong in profit.
+class FinancialStatementCard extends StatelessWidget {
+  const FinancialStatementCard({required this.statement, super.key});
+
+  final FinancialStatement statement;
+
+  static String _signedMoney(int minor) {
+    final String sign = minor < 0 ? '−' : '+';
+    return '$sign${formatMoney(Money.fromMinor(minor.abs()))}';
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final AppSpacing spacing = AppSpacing.of(context);
+    final AppColors colors = AppColors.of(context);
+    final TextTheme type = AppTypography.of(context);
+    final List<_StatementMetric> metrics = <_StatementMetric>[
+      _StatementMetric(
+          'Net profit',
+          formatMoney(Money.fromMinor(statement.netProfitMinor)),
+          Icons.trending_up),
+      _StatementMetric(
+          'Cash flow',
+          _signedMoney(statement.totals.netCashFlowMinor),
+          Icons.account_balance_wallet_outlined),
+      _StatementMetric('Receivables',
+          _signedMoney(statement.receivableDeltaMinor), Icons.people_outline),
+      _StatementMetric('Payables', _signedMoney(statement.payableDeltaMinor),
+          Icons.request_quote_outlined),
+      _StatementMetric(
+          'Customer deposits',
+          _signedMoney(statement.customerDepositDeltaMinor),
+          Icons.savings_outlined),
+      _StatementMetric(
+          'Inventory movement',
+          '${statement.inventoryDeltaMilliunits / 1000}',
+          Icons.inventory_2_outlined),
+    ];
+    return SurfaceCard(
+      padding: EdgeInsets.all(spacing.md),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: <Widget>[
+          Text('Reconciled financial statement', style: type.titleLarge),
+          SizedBox(height: spacing.xs),
+          Text(
+            statement.openingCashIsKnown
+                ? 'Opening cash is known for this period.'
+                : 'Closing cash is calculated from recorded movements; opening cash is not anchored.',
+            style: type.bodySmall?.copyWith(color: colors.onSurfaceMuted),
+          ),
+          SizedBox(height: spacing.md),
+          LayoutBuilder(
+            builder: (BuildContext context, BoxConstraints constraints) {
+              final int columns = constraints.maxWidth >= 720 ? 3 : 2;
+              final double width =
+                  (constraints.maxWidth - spacing.sm * (columns - 1)) / columns;
+              return Wrap(
+                spacing: spacing.sm,
+                runSpacing: spacing.md,
+                children: <Widget>[
+                  for (final _StatementMetric metric in metrics)
+                    SizedBox(
+                      width: width,
+                      child: Row(
+                        children: <Widget>[
+                          Icon(metric.icon,
+                              size: 18, color: colors.onSurfaceMuted),
+                          SizedBox(width: spacing.xs),
+                          Expanded(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: <Widget>[
+                                Text(metric.label, style: type.bodySmall),
+                                Text(metric.value, style: type.titleMedium),
+                              ],
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                ],
+              );
+            },
+          ),
+          SizedBox(height: spacing.md),
+          Text(
+            'Opening ${formatMoney(Money.fromMinor(statement.openingCashMinor))} · '
+            'closing ${formatMoney(Money.fromMinor(statement.closingCashMinor))}',
+            style: type.bodySmall?.copyWith(color: colors.onSurfaceMuted),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _StatementMetric {
+  const _StatementMetric(this.label, this.value, this.icon);
+
+  final String label;
+  final String value;
+  final IconData icon;
+}
+
+class _ExpiringCard extends StatelessWidget {
+  const _ExpiringCard({required this.products});
+
+  final List<Product> products;
+
+  @override
+  Widget build(BuildContext context) {
+    final spacing = AppSpacing.of(context);
+    final colors = AppColors.of(context);
+    final names = products.take(5).map((product) => product.name).join(', ');
+    return SurfaceCard(
+      padding: EdgeInsets.all(spacing.md),
+      child: Semantics(
+        container: true,
+        label:
+            '${products.length} products have stock expiring within seven days.',
+        child: Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Icon(Icons.schedule_outlined, color: colors.warning),
+            SizedBox(width: spacing.sm),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text('Expiry attention',
+                      style: AppTypography.of(context).titleSmall),
+                  SizedBox(height: spacing.xs),
+                  Text(
+                    '${products.length} product${products.length == 1 ? '' : 's'} have dated stock expiring within 7 days.',
+                    style: AppTypography.of(context).bodySmall,
+                  ),
+                  SizedBox(height: spacing.xs),
+                  Text('Review: $names',
+                      maxLines: 2, overflow: TextOverflow.ellipsis),
+                ],
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _ExpiredCard extends StatelessWidget {
+  const _ExpiredCard({required this.products});
+
+  final List<Product> products;
+
+  @override
+  Widget build(BuildContext context) {
+    final names = products.take(5).map((product) => product.name).join(', ');
+    return SurfaceCard(
+      padding: EdgeInsets.all(AppSpacing.of(context).md),
+      child: Semantics(
+        container: true,
+        label: '${products.length} products have expired stock.',
+        child: Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Icon(Icons.warning_amber_outlined,
+                color: AppColors.of(context).danger),
+            SizedBox(width: AppSpacing.of(context).sm),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text('Expired stock',
+                      style: AppTypography.of(context).titleSmall),
+                  SizedBox(height: AppSpacing.of(context).xs),
+                  Text(
+                      'Write off expired stock from Inventory before it can be sold.'),
+                  SizedBox(height: AppSpacing.of(context).xs),
+                  Text('Review: $names',
+                      maxLines: 2, overflow: TextOverflow.ellipsis),
+                ],
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _SlowMoversCard extends StatelessWidget {
+  const _SlowMoversCard({required this.rows});
+
+  final List<SlowMoverRow> rows;
+
+  @override
+  Widget build(BuildContext context) {
+    final spacing = AppSpacing.of(context);
+    final type = AppTypography.of(context);
+    return SurfaceCard(
+      padding: EdgeInsets.all(spacing.md),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text('Slow movers', style: type.titleSmall),
+          SizedBox(height: spacing.xs),
+          Text('Products with the fewest units sold in this period.',
+              style: type.bodySmall),
+          SizedBox(height: spacing.sm),
+          for (final row in rows)
+            Padding(
+              padding: EdgeInsets.symmetric(vertical: spacing.xs),
+              child: Row(
+                children: [
+                  Expanded(child: Text(row.product.name)),
+                  Text('${row.unitsPerDay.toStringAsFixed(1)}/day',
+                      style: type.labelMedium),
+                ],
+              ),
+            ),
+        ],
+      ),
+    );
+  }
+}
+
+class _CostCoverageCard extends StatelessWidget {
+  const _CostCoverageCard({required this.coverage});
+
+  final CostCoverage coverage;
+
+  @override
+  Widget build(BuildContext context) {
+    final spacing = AppSpacing.of(context);
+    final colors = AppColors.of(context);
+    final type = AppTypography.of(context);
+    final names = coverage.missingCostProductNames.take(3).join(', ');
+    return SurfaceCard(
+      padding: EdgeInsets.all(spacing.md),
+      child: Semantics(
+        container: true,
+        label:
+            'Cost coverage ${coverage.percentage.toStringAsFixed(0)} percent. '
+            '${coverage.missingCostProductNames.length} products have no cost recorded.',
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                Icon(Icons.warning_amber_outlined,
+                    size: 18, color: colors.warning),
+                SizedBox(width: spacing.xs),
+                Expanded(child: Text('Cost coverage', style: type.titleSmall)),
+                Text('${coverage.percentage.toStringAsFixed(0)}%',
+                    style: AppTypography.money(context, size: 22)),
+              ],
+            ),
+            SizedBox(height: spacing.xs),
+            Text(
+              'Profit is incomplete until every selling product has a cost.',
+              style: type.bodySmall?.copyWith(color: colors.onSurfaceMuted),
+            ),
+            SizedBox(height: spacing.xs),
+            Text(
+              names.isEmpty ? 'No missing costs.' : 'Missing: $names',
+              maxLines: 2,
+              overflow: TextOverflow.ellipsis,
+              style: type.labelMedium,
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _VatSummaryCard extends StatelessWidget {
+  const _VatSummaryCard({required this.totals});
+
+  final DailyTotals totals;
+
+  @override
+  Widget build(BuildContext context) {
+    final spacing = AppSpacing.of(context);
+    final colors = AppColors.of(context);
+    final type = AppTypography.of(context);
+    return SurfaceCard(
+      padding: EdgeInsets.all(spacing.md),
+      child: Semantics(
+        container: true,
+        label: 'VAT captured ${formatMoney(Money.fromMinor(totals.vatMinor))}. '
+            'Taxable sales ${formatMoney(Money.fromMinor(totals.taxableMinor))}.',
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text('VAT reconciliation', style: type.titleSmall),
+            SizedBox(height: spacing.xs),
+            Text(
+              'Captured from each sale line for this period; this is not a KRA filing.',
+              style: type.bodySmall?.copyWith(color: colors.onSurfaceMuted),
+            ),
+            SizedBox(height: spacing.sm),
+            Wrap(
+              spacing: spacing.lg,
+              runSpacing: spacing.xs,
+              children: [
+                _VatMetric('Taxable sales', totals.taxableMinor),
+                _VatMetric('VAT captured', totals.vatMinor),
+              ],
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _VatMetric extends StatelessWidget {
+  const _VatMetric(this.label, this.minor);
+
+  final String label;
+  final int minor;
+
+  @override
+  Widget build(BuildContext context) => SizedBox(
+        width: 130,
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(label, style: AppTypography.of(context).bodySmall),
+            Text(formatMoney(Money.fromMinor(minor)),
+                style: AppTypography.money(context, size: 18)),
+          ],
+        ),
+      );
 }
 
 /// A section that fades and rises into place once, on its first paint.
@@ -750,8 +1385,9 @@ class _TakingsHero extends StatelessWidget {
           // range changes. Nothing else on this screen is this large.
           Text(
             formatMoney(totals.total),
-            style: AppTypography.money(context, size: 40, weight: FontWeight.w700)
-                .copyWith(color: colors.onSurface, height: 1.05),
+            style:
+                AppTypography.money(context, size: 40, weight: FontWeight.w700)
+                    .copyWith(color: colors.onSurface, height: 1.05),
           ),
           SizedBox(height: spacing.sm),
           _GrowthLine(current: totals, previous: previous, range: range),
@@ -844,10 +1480,16 @@ class _KpiGrid extends StatelessWidget {
         icon: Icons.trending_up,
       ),
       _Kpi(
+        label: l10n.analyticsNetProfitLabel,
+        value: formatMoney(totals.netProfit),
+        caption: '${l10n.analyticsNetProfitCaption} · '
+            '${formatMoney(Money.fromMinor(totals.expensesMinor))}',
+        icon: Icons.account_balance_outlined,
+      ),
+      _Kpi(
         label: l10n.analyticsMarginLabel,
-        value: totals.hasSales
-            ? '${totals.marginPct.toStringAsFixed(0)}%'
-            : '—',
+        value:
+            totals.hasSales ? '${totals.marginPct.toStringAsFixed(0)}%' : '—',
         caption: l10n.analyticsAvgBasketCaption,
         icon: Icons.percent,
       ),
@@ -1135,7 +1777,10 @@ class OpenInventoryAction extends StatelessWidget {
             label: Text(l10n.analyticsReorderInInventory),
             style: TextButton.styleFrom(
               foregroundColor: colors.accent,
-              minimumSize: const Size(0, 44),
+              minimumSize: Size(
+                0,
+                AppSpacing.of(context).primaryButtonHeight,
+              ),
             ),
           ),
         ),

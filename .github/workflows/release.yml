@@ -180,7 +180,33 @@ jobs:
         run: flutter analyze --fatal-infos
 
       - name: Run tests
-        run: flutter test --reporter expanded
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          runner_pid=''
+          cleanup() {
+            local status=$?
+            if [[ -n "${runner_pid}" ]]; then
+              # Kill Flutter and every tester/compiler child as one process
+              # group on cancellation or timeout.
+              kill -TERM -- "-${runner_pid}" 2>/dev/null || true
+              sleep 1
+              kill -KILL -- "-${runner_pid}" 2>/dev/null || true
+              wait "${runner_pid}" 2>/dev/null || true
+            fi
+            return "${status}"
+          }
+          trap cleanup EXIT INT TERM
+          setsid timeout --signal=TERM --kill-after=30s 25m \
+            flutter test --concurrency=1 --exclude-tags=real-network --reporter expanded &
+          runner_pid=$!
+          if wait "${runner_pid}"; then
+            test_status=0
+          else
+            test_status=$?
+          fi
+          runner_pid=''
+          exit "${test_status}"
 
       # The keystore is reconstructed only inside this ephemeral runner and is
       # never committed. It is masked in logs, and the file is deleted before the

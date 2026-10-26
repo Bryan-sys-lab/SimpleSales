@@ -3,6 +3,14 @@
 # (node_modules/.env/dist are covered by duka_pos_backend/.gitignore on the
 # backend branch itself.)
 /duka_pos_backend/
+# Prisma migrations are deployment source and must travel with the app branch;
+# keep the rest of the separately checked-out backend ignored.
+!/duka_pos_backend/
+duka_pos_backend/*
+!/duka_pos_backend/prisma/
+duka_pos_backend/prisma/*
+!/duka_pos_backend/prisma/migrations/
+!/duka_pos_backend/prisma/migrations/**
 
 # Local agent tooling and vendored third-party skills — machine-local only,
 # never part of the project source. Provenance lives in

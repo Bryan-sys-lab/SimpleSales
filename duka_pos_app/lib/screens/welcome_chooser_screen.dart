@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import 'package:provider/provider.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 import '../routing/app_stage_controller.dart';
 import '../routing/routes.dart';
@@ -12,6 +13,7 @@ import '../theme/app_haptics.dart';
 import '../theme/app_spacing.dart';
 import '../theme/typography.dart';
 import '../ui/brand/simple_pos_mark.dart';
+import 'product_onboarding_screen.dart';
 
 /// The first screen a person sees when there is no signed-in session.
 ///
@@ -32,12 +34,13 @@ import '../ui/brand/simple_pos_mark.dart';
 /// resolve it; there is no `Navigator` call on this screen at all, and that is
 /// deliberate. A chooser that pushed its own screens is how a signed-out till
 /// ends up with two stacks and two sets of answers to "where am I".
-class WelcomeChooserScreen extends StatelessWidget {
+class WelcomeChooserScreen extends StatefulWidget {
   const WelcomeChooserScreen({
     super.key,
     required this.shopName,
     required this.hasShop,
     this.intent,
+    this.showProductIntro = false,
   });
 
   /// The active shop's name, or empty when there is no shop yet.
@@ -53,9 +56,47 @@ class WelcomeChooserScreen extends StatelessWidget {
   /// because of that flag alone.
   final AppChooserIntent? intent;
 
+  /// The router enables this for the first signed-out visit. Tests and callers
+  /// that need the chooser directly can keep the established chooser surface.
+  final bool showProductIntro;
+
+  @override
+  State<WelcomeChooserScreen> createState() => _WelcomeChooserScreenState();
+}
+
+class _WelcomeChooserScreenState extends State<WelcomeChooserScreen> {
+  bool _introVisible = false;
+  bool _introLoading = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _introVisible = widget.showProductIntro;
+    if (widget.showProductIntro) _readIntroPreference();
+  }
+
+  Future<void> _readIntroPreference() async {
+    setState(() => _introLoading = true);
+    final SharedPreferences prefs = await SharedPreferences.getInstance();
+    if (!mounted) return;
+    setState(() {
+      _introLoading = false;
+      _introVisible = !(prefs.getBool('product_onboarding_seen') ?? false);
+    });
+  }
+
+  Future<void> _finishIntro(VoidCallback next) async {
+    final SharedPreferences prefs = await SharedPreferences.getInstance();
+    await prefs.setBool('product_onboarding_seen', true);
+    if (!mounted) return;
+    setState(() => _introVisible = false);
+    next();
+  }
+
   /// The intent the setup action sends.
   AppChooserIntent get _setupIntent =>
-      intent ?? (hasShop ? AppChooserIntent.addShop : AppChooserIntent.setUp);
+      widget.intent ??
+      (widget.hasShop ? AppChooserIntent.addShop : AppChooserIntent.setUp);
 
   void _choose(BuildContext context, AppChooserIntent choice) {
     HapticTheme.of(context).fire(HapticEvent.select);
@@ -70,12 +111,26 @@ class WelcomeChooserScreen extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    if (_introLoading) {
+      return const Scaffold(
+        body: Center(child: CircularProgressIndicator()),
+      );
+    }
+    if (_introVisible) {
+      return ProductOnboardingScreen(
+        onCreateAccount: () =>
+            _finishIntro(() => _choose(context, _setupIntent)),
+        onSignIn: () =>
+            _finishIntro(() => _choose(context, AppChooserIntent.signIn)),
+      );
+    }
+
     final AppColors colors = AppColors.of(context);
     final AppSpacing spacing = AppSpacing.of(context);
     final TextTheme type = AppTypography.of(context);
 
     final bool addingAnother = _setupIntent == AppChooserIntent.addShop;
-    final bool showShop = hasShop && shopName.trim().isNotEmpty;
+    final bool showShop = widget.hasShop && widget.shopName.trim().isNotEmpty;
 
     return Scaffold(
       body: SafeArea(
@@ -112,7 +167,7 @@ class WelcomeChooserScreen extends StatelessWidget {
                     child: Text(
                       showShop
                           ? AppLocalizations.of(context)
-                              .chooserSignedInShop(shopName)
+                              .chooserSignedInShop(widget.shopName)
                           : AppLocalizations.of(context).chooserHeading,
                       textAlign: TextAlign.center,
                       style: showShop ? type.bodyMedium : type.titleMedium,
@@ -198,7 +253,7 @@ class WelcomeChooserScreen extends StatelessWidget {
                   ),
 
                   Text(
-                    hasShop
+                    widget.hasShop
                         ? AppLocalizations.of(context).chooserSignInHelp
                         : AppLocalizations.of(context).chooserSetupHelp,
                     textAlign: TextAlign.center,

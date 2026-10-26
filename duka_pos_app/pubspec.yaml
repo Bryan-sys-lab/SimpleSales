@@ -51,7 +51,7 @@ dependencies:
   go_router: ^18.1.1
 
   # Local database (offline-first system of record)
-  sqflite: ^2.4.4+1
+  sqflite: ^2.4.5
   path_provider: ^2.1.1
   path: ^1.8.3
 
@@ -60,15 +60,15 @@ dependencies:
   cryptography: ^2.9.0
 
   # Local network sync between tills (host/client)
-  shelf: ^1.4.1
-  shelf_router: ^1.1.4
+  shelf: ^1.4.3
+  shelf_router: ^1.1.5
   multicast_dns: ^0.3.2+6
   http: ^1.6.0
 
   # Excel / CSV export-import (fully offline path)
   excel: ^4.0.2
   share_plus: ^13.3.0
-  file_picker: ^13.1.0
+  file_picker: ^13.2.0
 
   # Self-hosted Keycloak/OIDC authentication; mobile uses PKCE, no client secret
   flutter_appauth: ^12.1.0
@@ -77,7 +77,7 @@ dependencies:
   # Google Sheets live sync (online path)
   google_sign_in: ^7.2.0
   googleapis: ^17.0.0
-  googleapis_auth: ^2.3.4
+  googleapis_auth: ^2.3.5
   extension_google_sign_in_as_googleapis_auth: ^3.0.0
 
   # State management
@@ -112,16 +112,22 @@ dependencies:
   sqflite_common_ffi_web: ^1.2.0
   web_socket_channel: ^3.0.3
   image_picker: ^1.2.4
+  # 4.12 requires archive 4.x, while excel 4.x requires archive 3.x.
+  # Keep the latest image line compatible with the workbook exporter.
   image: ^4.3.0
+  # 3.13 requires xml ^7, while excel 4.x currently requires xml <7.
+  # Keep the latest compatible PDF line until excel releases that constraint.
+  pdf: ^3.12.0
 
 dev_dependencies:
   flutter_test:
     sdk: flutter
   flutter_lints: ^6.0.0
   # Runs sqflite against a real SQLite engine on the test host (no device/emulator needed)
-  sqflite_common_ffi: ^2.3.0
+  sqflite_common_ffi: ^2.4.5
   # Mocking for tests
   mockito: ^5.4.4
+  # 2.17 conflicts with the current mockito generator dependency graph.
   build_runner: ^2.16.2
   # A test takes over the documents directory so a backup's target is somewhere
   # it owns. Declared here rather than borrowed transitively through
@@ -178,3 +184,15 @@ flutter:
     - assets/branding/nerva_wordmark_light.png
     - assets/branding/stitch_simple_pos_launcher_icon/simple_pos_geometric_s_icon/screen.png
     - assets/branding/stitch_simple_pos_launcher_icon/simple_pos_till_action_s_icon/screen.png
+    # Kenyan business photography used by the pre-account profile tour. These
+    # are local so the first-run flow remains available without a network.
+    - assets/onboarding/hero_kenyan_shop.jpg
+    - assets/onboarding/hero_kenyan_shop_photo.jpg
+    - assets/onboarding/drinks_shop.jpg
+    - assets/onboarding/drinks_shop_photo.jpg
+    - assets/onboarding/duka_shop.jpg
+    - assets/onboarding/duka_shop_photo.jpg
+    - assets/onboarding/fashion_shop.jpg
+    - assets/onboarding/fashion_shop_photo.jpg
+    - assets/onboarding/open_shop.jpg
+    - assets/onboarding/open_shop_photo.jpg

@@ -34,6 +34,7 @@ class ShiftLedger {
     required this.history,
     required this.historyTotal,
     required this.reconciliations,
+    this.cashControls = const <CashControlEntry>[],
   });
 
   /// A till with no shift and no history. The value a failed load falls back to
@@ -44,7 +45,8 @@ class ShiftLedger {
         counted = null,
         history = const <Shift>[],
         historyTotal = 0,
-        reconciliations = const <Reconciliation>[];
+        reconciliations = const <Reconciliation>[],
+        cashControls = const <CashControlEntry>[];
 
   /// The signed-in person's open shift, or null.
   final Shift? open;
@@ -71,6 +73,7 @@ class ShiftLedger {
   final int historyTotal;
 
   final List<Reconciliation> reconciliations;
+  final List<CashControlEntry> cashControls;
 
   bool get hasOpenShift => open != null;
 
@@ -119,6 +122,9 @@ Future<ShiftLedger> loadShiftLedger({
         ? Future<Object?>.value(Money.zero)
         : db.countedCashFromTillCounts(open!.id!),
     _reconciliationsFor(db, closed),
+    open?.id == null
+        ? Future<Object?>.value(const <CashControlEntry>[])
+        : _cashControlsFor(db, open!.id!),
   ]);
 
   final Money counted = results[1]! as Money;
@@ -132,7 +138,58 @@ Future<ShiftLedger> loadShiftLedger({
     history: closed.take(kShiftHistoryLimit).toList(growable: false),
     historyTotal: closed.length,
     reconciliations: results[2]! as List<Reconciliation>,
+    cashControls: results[3]! as List<CashControlEntry>,
   );
+}
+
+@immutable
+class CashControlEntry {
+  const CashControlEntry({
+    required this.label,
+    required this.amountMinor,
+    required this.isExpense,
+  });
+
+  final String label;
+  final int amountMinor;
+  final bool isExpense;
+}
+
+Future<List<CashControlEntry>> _cashControlsFor(
+  DatabaseHelper db,
+  int shiftId,
+) async {
+  final results = await Future.wait<List<Map<String, dynamic>>>(<Future<List<Map<String, dynamic>>>>[
+    db.getExpensesForShift(shiftId),
+    db.getTillMovementsForShift(shiftId),
+    db.getDrawerEvents(shiftId: shiftId),
+  ]);
+  final entries = <CashControlEntry>[
+    for (final row in results[0])
+      CashControlEntry(
+        label: (row['note'] as String?)?.trim().isNotEmpty == true
+            ? row['note'] as String
+            : 'Expense',
+        amountMinor: -(row['amount_minor'] as num).toInt(),
+        isExpense: true,
+      ),
+    for (final row in results[1])
+      CashControlEntry(
+        label: (row['movement_type'] as String?) == 'cash_in'
+            ? 'Cash in'
+            : 'Cash drop',
+        amountMinor: (row['amount_minor'] as num).toInt(),
+        isExpense: false,
+      ),
+    if (results[2].where((row) => row['event_type'] == 'no_sale').isNotEmpty)
+      CashControlEntry(
+        label:
+            'No-sale drawer opens (${results[2].where((row) => row['event_type'] == 'no_sale').length})',
+        amountMinor: 0,
+        isExpense: false,
+      ),
+  ];
+  return entries;
 }
 
 /// The reconciliation rows behind [closed], newest first.

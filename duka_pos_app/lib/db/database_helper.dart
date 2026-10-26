@@ -1,13 +1,24 @@
 import 'dart:async';
 import 'dart:convert';
+import 'dart:io';
+import 'dart:math' as math;
 import 'package:flutter/foundation.dart';
+import 'package:flutter/services.dart';
 import 'package:intl/intl.dart';
+import 'package:crypto/crypto.dart' show sha256;
 import 'package:path/path.dart';
+import 'package:path_provider/path_provider.dart';
 import 'package:sqflite/sqflite.dart';
 import '../models/audit_log.dart';
 import '../models/crash_log.dart';
+import '../models/credit.dart';
+import '../models/financial_event.dart';
 import '../models/models.dart';
+import '../models/notification.dart';
 import '../models/stock_movement.dart';
+import '../models/product_pack.dart';
+import '../models/incoming_payment.dart';
+import '../models/layby.dart';
 import '../utils/crypto_utils.dart';
 import '../utils/money.dart';
 import '../utils/units.dart';
@@ -16,7 +27,32 @@ import '../utils/units.dart';
 // than here so this file stays a data layer: it produces rows, it does not
 // define what a chart or a screen does with them.
 import '../services/analytics.dart';
+import '../services/product_image_store.dart';
 import '../services/workspace_service.dart';
+import '../services/roles.dart';
+import '../profile/shop_profile.dart';
+
+class _SnapshotMediaRollback {
+  const _SnapshotMediaRollback(this.oldBytes, {this.documents});
+
+  final Map<String, List<int>?> oldBytes;
+  final Directory? documents;
+
+  Future<void> rollback() async {
+    final docs = documents;
+    if (docs == null) return;
+    for (final entry in oldBytes.entries) {
+      final file = File(join(docs.path, entry.key));
+      final bytes = entry.value;
+      if (bytes == null) {
+        if (await file.exists()) await file.delete();
+      } else {
+        await file.parent.create(recursive: true);
+        await file.writeAsBytes(bytes, flush: true);
+      }
+    }
+  }
+}
 
 /// Single source of truth for local storage. Every screen reads/writes
 /// through here rather than touching sqflite directly, so the schema only
@@ -28,6 +64,13 @@ class DatabaseHelper {
   static final DatabaseHelper instance = DatabaseHelper._internal();
   Database? _db;
   String _workspaceKey = 'legacy';
+  int _databaseGeneration = 0;
+
+  /// Whether advisory background work may use the current database handle.
+  ///
+  /// Sign-in can outlive a widget test's database teardown, so callers that
+  /// launch non-critical work must not reopen or touch storage after a reset.
+  bool get hasOpenDatabase => _db != null;
 
   /// Serialises moving this singleton to another shop.
   ///
@@ -35,6 +78,7 @@ class DatabaseHelper {
   /// which must walk several shops (the cross-shop activity read) can keep the
   /// database still for as long as it is looking.
   static final _AsyncGate _workspaceGate = _AsyncGate();
+  static Future<void>? _pendingTestClose;
 
   /// Must run before the first database access. The legacy path is retained
   /// for existing installations; every additional shop gets a separate file.
@@ -67,6 +111,7 @@ class DatabaseHelper {
       throw ArgumentError.value(workspaceKey, 'workspaceKey');
     }
     if (_db != null && _workspaceKey == workspaceKey) return;
+    _databaseGeneration++;
     await _db?.close();
     _db = null;
     _workspaceKey = workspaceKey;
@@ -95,14 +140,44 @@ class DatabaseHelper {
   String get currentWorkspaceKey => _workspaceKey;
 
   Future<Database> get database async {
-    _db ??= await _initDb();
-    return _db!;
+    while (true) {
+      final existing = _db;
+      if (existing != null) return existing;
+      final generation = _databaseGeneration;
+      final opened = await _initDb();
+      // A reset or workspace switch may have happened while the filesystem
+      // database was opening. Never let that stale future replace the newer
+      // handle (especially a test's isolated in-memory handle).
+      if (generation != _databaseGeneration) {
+        await opened.close();
+        continue;
+      }
+      final current = _db;
+      if (current != null) {
+        await opened.close();
+        return current;
+      }
+      _db = opened;
+      _pendingTestClose = null;
+      return opened;
+    }
   }
 
   /// Test-only: Reset the singleton instance for test isolation
   @visibleForTesting
   static void resetForTests() {
+    final Database? previous = instance._db;
     instance._db = null;
+    instance._databaseGeneration++;
+    // The database handle and its workspace pointer are one piece of test
+    // state. A preceding multi-shop test may have left the singleton pointed
+    // at another workspace; the next in-memory database must start from the
+    // same default context as a fresh process.
+    instance._workspaceKey = 'legacy';
+    // sqflite's close is asynchronous. Test files deliberately reset and
+    // reopen the singleton between cases; leaving the old in-memory handle
+    // closing in the background lets a later case race the new handle.
+    _pendingTestClose = previous?.close();
   }
 
   /// Bump this every time the schema changes, and add the matching branch in
@@ -110,7 +185,7 @@ class DatabaseHelper {
   /// shipped — always add a new one, even for a one-line fix — because a
   /// shop's phone may be several versions behind and needs every step run
   /// in order to land on the current schema without data loss.
-  static const _schemaVersion = 29;
+  static const _schemaVersion = 75;
 
   /// Slack allowed when deciding whether a container has enough left for a sale.
   ///
@@ -124,8 +199,46 @@ class DatabaseHelper {
   /// "setting not found" in a legally significant field.
   static const String settingVatRate = 'vat_rate_percent';
   static const String settingTillCode = 'till_code';
+  static const String settingMpesaChannelId = 'mpesa_payhero_channel_id';
+  static const String settingMpesaChannelType = 'mpesa_payhero_channel_type';
+  static const String settingMpesaMerchantNumber = 'mpesa_merchant_number';
   static const String settingTin = 'tin';
   static const String settingEtimsDeviceId = 'etims_device_id';
+  static const String settingCashDrawerEnabled = 'cash_drawer_enabled';
+  static const String settingCashDrawerOnCashSale =
+      'cash_drawer_open_on_cash_sale';
+  static const String settingCashDrawerPin = 'cash_drawer_pin';
+  static const String settingCashDrawerOnMs = 'cash_drawer_pulse_on_ms';
+  static const String settingCashDrawerOffMs = 'cash_drawer_pulse_off_ms';
+  static const String settingExpenseApprovalLimitMinor =
+      'expense_approval_limit_minor';
+  static const String settingTaxRuleId = 'tax_rule_id';
+  static const String settingTaxRuleVersion = 'tax_rule_version';
+
+  // Credit (v30). Selling on account is a deliberate, money-adjacent
+  // capability, so it ships OFF and the owner turns it on (spec D5).
+  static const String settingCreditEnabled = 'credit_enabled';
+  static const String settingCreditDefaultLimitMinor =
+      'credit_default_limit_minor';
+
+  /// `warn` or `block`: what happens when a sale would put a customer past
+  /// their limit. A manager approval overrides a block; a warn never stops
+  /// the sale.
+  static const String settingCreditLimitMode = 'credit_limit_mode';
+  static const String settingCreditCashiersAllowed = 'credit_cashiers_allowed';
+  static const String settingCreditReminderTemplate =
+      'credit_reminder_template';
+
+  // Discounts are deliberately disabled until the owner enables them.
+  static const String settingDiscountsEnabled = 'discounts_enabled';
+  static const String settingCashierDiscountPercent =
+      'discount_cashier_percent';
+  static const String settingManagerDiscountPercent =
+      'discount_manager_percent';
+  static const String settingDiscountReasonRequired =
+      'discount_reason_required';
+  static const String settingDiscountBelowCostAllowed =
+      'discount_below_cost_allowed';
 
   /// Test-only: opens an existing database *file* at the current schema
   /// version, running the real [_onUpgrade].
@@ -168,6 +281,20 @@ class DatabaseHelper {
         : join(dbPath, 'duka_pos_$safeKey.db');
   }
 
+  /// Deletes one failed workspace database after its registry entry has been
+  /// removed. The target is an exact workspace-derived path; broad database
+  /// deletion is deliberately not exposed.
+  static Future<void> deleteWorkspace(String workspaceKey) async {
+    if (workspaceKey.trim().isEmpty || workspaceKey == 'legacy') return;
+    await _workspaceGate.run(() async {
+      if (instance._workspaceKey == workspaceKey && instance._db != null) {
+        await instance._db!.close();
+        instance._db = null;
+      }
+      await databaseFactory.deleteDatabase(await databasePathFor(workspaceKey));
+    });
+  }
+
   /// Test-only: a fresh, isolated in-memory instance with the real schema,
   /// bypassing getDatabasesPath() (which needs a platform channel that
   /// doesn't exist in a plain `flutter test` run). Pair with
@@ -175,6 +302,14 @@ class DatabaseHelper {
   /// test/database_helper_test.dart for the exact pattern.
   @visibleForTesting
   static Future<DatabaseHelper> openInMemoryForTests() async {
+    await _pendingTestClose;
+    _pendingTestClose = null;
+    // A preceding workspace test may still have a switch queued on the
+    // singleton gate. Do not install a fresh in-memory handle until that work
+    // has finished, otherwise the queued switch can close or repoint the new
+    // handle during the next test.
+    await _workspaceGate.run(() async {});
+    instance._workspaceKey = 'legacy';
     // sqflite_common_ffi caches the literal ':memory:' handle in some
     // versions; a unique URI keeps each test isolated even when the previous
     // singleton connection has not finished closing.
@@ -196,6 +331,35 @@ class DatabaseHelper {
   Future<void> _onUpgrade(Database db, int oldVersion, int newVersion) async {
     if (oldVersion < 2) {
       await db.execute('ALTER TABLE products ADD COLUMN remote_id TEXT');
+    }
+    if (oldVersion < 66) {
+      await _createShopProfileTable(db);
+    }
+    if (oldVersion < 67) {
+      await _createFinancialEventTable(db);
+    }
+    if (oldVersion < 68) {
+      await _createOwnerTransactionsTable(db);
+    }
+    if (oldVersion < 69) {
+      await _createOpenFinanceTables(db);
+    }
+    if (oldVersion < 70) {
+      await _addColumnIfMissing(
+        db,
+        'financial_events',
+        'customer_deposit_delta_minor',
+        'INTEGER NOT NULL DEFAULT 0',
+      );
+    }
+    if (oldVersion < 71) {
+      await _createExpensePaymentsTable(db);
+    }
+    if (oldVersion < 72) {
+      await _ensureTaxRuleSnapshotColumns(db);
+    }
+    if (oldVersion < 73) {
+      await _ensurePurchaseTaxEvidenceColumns(db);
     }
     if (oldVersion < 3) {
       await db.execute(
@@ -297,6 +461,14 @@ class DatabaseHelper {
 SELECT name FROM staff GROUP BY name HAVING COUNT(*) = 1
           )
       ''');
+    }
+    if (oldVersion < 57) {
+      await _addColumnIfMissing(
+        db,
+        'expenses',
+        'approved_by',
+        'INTEGER',
+      );
     }
     if (oldVersion < 11) {
       await _migrateMoneyToMinorUnits(db);
@@ -529,6 +701,1015 @@ SELECT name FROM staff GROUP BY name HAVING COUNT(*) = 1
     if (oldVersion < 27) await _migrateTillSyncFlags(db);
     if (oldVersion < 28) await _migrateReturns(db);
     if (oldVersion < 29) await _migrateReceipts(db);
+    if (oldVersion < 30) {
+      await _migrateCustomers(db);
+      await _migrateRestockDraft(db);
+    }
+    if (oldVersion < 31) await _migrateExpenses(db);
+    if (oldVersion < 32) await _migrateDiscounts(db);
+    if (oldVersion < 33) await _migrateSplitPaymentPending(db);
+    if (oldVersion < 34) await _migrateHeldCarts(db);
+    if (oldVersion < 35) await _migrateReceiptShares(db);
+    if (oldVersion < 36) await _migrateCashDrawer(db);
+    if (oldVersion < 37) await _migrateStocktake(db);
+    if (oldVersion < 38) await _migrateBackupLog(db);
+    if (oldVersion < 39) await _migrateProductPacks(db);
+    if (oldVersion < 40) await _migrateReordering(db);
+    if (oldVersion < 41) await _migratePackHeldLines(db);
+    if (oldVersion < 42) await _migrateIncomingPayments(db);
+    if (oldVersion < 43) await _migrateHeldCustomer(db);
+    if (oldVersion < 44) await _migratePermissions(db);
+    if (oldVersion < 45) await _migrateExpiryBatches(db);
+    if (oldVersion < 46) await _migrateShiftReports(db);
+    if (oldVersion < 47) await _migrateOperationalLedgerSync(db);
+    if (oldVersion < 48) await _migrateStockMovementSync(db);
+    if (oldVersion < 49) await _migrateRemoteOperationalRecords(db);
+    if (oldVersion < 50) await _migrateDrawerEventSync(db);
+    if (oldVersion < 51) await _migrateSyncConflicts(db);
+    if (oldVersion < 52) await _migrateSaleBuyerSnapshot(db);
+    if (oldVersion < 53) await _migrateReturnRefundAllocations(db);
+    if (oldVersion < 54) await _migrateIncomingPaymentClaims(db);
+    if (oldVersion < 55) await _migrateReorderingSync(db);
+    if (oldVersion < 56) await _migrateProductPriceHistory(db);
+    if (oldVersion < 58) await _migrateCashDrawerMetadata(db);
+    if (oldVersion < 59) await _migrateStocktakeMetadata(db);
+    if (oldVersion < 60) await _migrateProductPackVariants(db);
+    if (oldVersion < 61) await _migrateLabelPrintJobs(db);
+    if (oldVersion < 62) await _migrateExpiryBatchMetadata(db);
+    if (oldVersion < 63) await _migrateExpiryReceiptMetadata(db);
+    if (oldVersion < 64) await _migratePermissionModes(db);
+    if (oldVersion < 65) await _migrateNotifications(db);
+    if (oldVersion < 74) await _migrateLaybys(db);
+    if (oldVersion < 75) await _migrateExchanges(db);
+  }
+
+  Future<void> _migrateNotifications(Database db) async {
+    await _createNotificationTables(db);
+  }
+
+  /// v74: Fashion reservations and lay-by deposits.
+  ///
+  /// Reservations live beside the on-hand balance rather than pretending that
+  /// goods left the shop when a customer only paid a deposit. This lets normal
+  /// checkout subtract open lay-by quantities from available stock while the
+  /// financial event stream records deposits as liabilities until completion.
+  Future<void> _migrateLaybys(Database db) async {
+    await _createLaybyTables(db);
+    await _addColumnIfMissing(
+        db, 'products', 'reserved_qty', 'REAL NOT NULL DEFAULT 0');
+    await _addColumnIfMissing(
+        db, 'product_variants', 'reserved_qty', 'REAL NOT NULL DEFAULT 0');
+    await _addColumnIfMissing(
+        db, 'layby_payments', 'direction', "TEXT NOT NULL DEFAULT 'in'");
+  }
+
+  Future<void> _createLaybyTables(Database db) async {
+    await db.execute('''CREATE TABLE IF NOT EXISTS laybys (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      uuid TEXT NOT NULL UNIQUE,
+      customer_id INTEGER NOT NULL,
+      status TEXT NOT NULL DEFAULT 'open',
+      total_minor INTEGER NOT NULL,
+      paid_minor INTEGER NOT NULL DEFAULT 0,
+      due_at TEXT NOT NULL,
+      created_at TEXT NOT NULL,
+      staff_id INTEGER,
+      staff_name TEXT NOT NULL,
+      sale_id INTEGER,
+      completed_at TEXT,
+      cancelled_at TEXT,
+      synced_to_backend INTEGER NOT NULL DEFAULT 0,
+      FOREIGN KEY (customer_id) REFERENCES customers (id),
+      FOREIGN KEY (sale_id) REFERENCES sales (id)
+    )''');
+    await db.execute(
+        'CREATE INDEX IF NOT EXISTS idx_laybys_status_due ON laybys (status, due_at)');
+    await db.execute(
+        'CREATE INDEX IF NOT EXISTS idx_laybys_customer ON laybys (customer_id, created_at)');
+    await db.execute('''CREATE TABLE IF NOT EXISTS layby_items (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      layby_id INTEGER NOT NULL,
+      product_id INTEGER NOT NULL,
+      variant_id INTEGER,
+      product_name TEXT NOT NULL,
+      variant_name TEXT NOT NULL DEFAULT '',
+      qty REAL NOT NULL,
+      unit_price_minor INTEGER NOT NULL,
+      unit_cost_minor INTEGER NOT NULL,
+      discount_minor INTEGER NOT NULL DEFAULT 0,
+      total_minor INTEGER NOT NULL,
+      FOREIGN KEY (layby_id) REFERENCES laybys (id) ON DELETE CASCADE
+    )''');
+    await db.execute(
+        'CREATE INDEX IF NOT EXISTS idx_layby_items_layby ON layby_items (layby_id)');
+    await db.execute('''CREATE TABLE IF NOT EXISTS layby_payments (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      layby_id INTEGER NOT NULL,
+      method TEXT NOT NULL,
+      amount_minor INTEGER NOT NULL,
+      direction TEXT NOT NULL DEFAULT 'in',
+      reference TEXT,
+      created_at TEXT NOT NULL,
+      staff_id INTEGER,
+      staff_name TEXT NOT NULL,
+      FOREIGN KEY (layby_id) REFERENCES laybys (id) ON DELETE CASCADE
+    )''');
+    await db.execute(
+        'CREATE INDEX IF NOT EXISTS idx_layby_payments_layby ON layby_payments (layby_id, created_at)');
+  }
+
+  /// v75: a replacement sale and its return are one exchange document.
+  Future<void> _migrateExchanges(Database db) async {
+    await db.execute('''CREATE TABLE IF NOT EXISTS exchanges (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      uuid TEXT NOT NULL UNIQUE,
+      original_sale_id INTEGER NOT NULL,
+      return_id INTEGER,
+      replacement_sale_id INTEGER,
+      status TEXT NOT NULL DEFAULT 'completed',
+      returned_total_minor INTEGER NOT NULL,
+      replacement_total_minor INTEGER NOT NULL,
+      difference_minor INTEGER NOT NULL DEFAULT 0,
+      difference_direction TEXT NOT NULL DEFAULT 'even',
+      reason TEXT NOT NULL,
+      staff_id INTEGER,
+      staff_name TEXT NOT NULL,
+      created_at TEXT NOT NULL,
+      synced_to_backend INTEGER NOT NULL DEFAULT 0,
+      FOREIGN KEY (original_sale_id) REFERENCES sales (id),
+      FOREIGN KEY (return_id) REFERENCES sale_returns (id),
+      FOREIGN KEY (replacement_sale_id) REFERENCES sales (id)
+    )''');
+    await db.execute('CREATE INDEX IF NOT EXISTS idx_exchanges_original_sale '
+        'ON exchanges (original_sale_id, created_at)');
+  }
+
+  Future<void> _createNotificationTables(Database db) async {
+    await db.execute('''CREATE TABLE IF NOT EXISTS notification_prefs (
+      staff_id INTEGER NOT NULL,
+      type TEXT NOT NULL,
+      enabled INTEGER NOT NULL DEFAULT 1,
+      quiet_start INTEGER,
+      quiet_end INTEGER,
+      PRIMARY KEY (staff_id, type)
+    )''');
+    await db.execute('''CREATE TABLE IF NOT EXISTS notification_log (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      staff_id INTEGER NOT NULL,
+      type TEXT NOT NULL,
+      dedupe_key TEXT NOT NULL,
+      count INTEGER NOT NULL,
+      fired_at TEXT NOT NULL,
+      opened_at TEXT
+    )''');
+    await db.execute('CREATE INDEX IF NOT EXISTS idx_notification_log_lookup '
+        'ON notification_log (staff_id, type, dedupe_key, fired_at DESC)');
+  }
+
+  Future<void> _migratePermissionModes(Database db) async {
+    final roleTable = await db.rawQuery(
+        "SELECT name FROM sqlite_master WHERE type = 'table' AND name = 'role_permissions'");
+    if (roleTable.isEmpty) return;
+    await _addColumnIfMissing(
+        db, 'role_permissions', 'mode', "TEXT NOT NULL DEFAULT 'deny'");
+    await _addColumnIfMissing(db, 'staff_permission_overrides', 'mode',
+        "TEXT NOT NULL DEFAULT 'deny'");
+    await db.rawUpdate(
+        "UPDATE role_permissions SET mode = CASE WHEN allowed = 1 THEN 'allow' ELSE 'deny' END WHERE mode = 'deny' AND allowed = 1");
+    await db.rawUpdate(
+        "UPDATE staff_permission_overrides SET mode = CASE WHEN allowed = 1 THEN 'allow' ELSE 'deny' END WHERE mode = 'deny' AND allowed = 1");
+    await _seedPermissionDefaults(db);
+  }
+
+  Future<void> _migrateExpiryReceiptMetadata(Database db) async {
+    final tables = await db.rawQuery(
+        "SELECT name FROM sqlite_master WHERE type = 'table' AND name = 'stock_receipt_items'");
+    if (tables.isEmpty) return;
+    await _addColumnIfMissing(db, 'stock_receipt_items', 'expiry_date', 'TEXT');
+    await _addColumnIfMissing(db, 'stock_receipt_items', 'batch_code', 'TEXT');
+  }
+
+  Future<void> _migrateExpiryBatchMetadata(Database db) async {
+    final tables = await db.rawQuery(
+        "SELECT name FROM sqlite_master WHERE type = 'table' AND name = 'stock_batches'");
+    // Some historical repair fixtures have no expiry tables at all and reach
+    // the current version through a later upgrade path. The v45 migration (or
+    // a fresh install) owns creation; v62 must not create an index against a
+    // table that is intentionally absent in that legacy fixture.
+    if (tables.isEmpty) return;
+    await _addColumnIfMissing(db, 'stock_batches', 'variant_id', 'INTEGER');
+    await _addColumnIfMissing(db, 'stock_batches', 'batch_code', 'TEXT');
+    await _addColumnIfMissing(
+        db, 'stock_batches', 'status', "TEXT NOT NULL DEFAULT 'active'");
+    await db.execute('CREATE INDEX IF NOT EXISTS idx_stock_batches_variant '
+        'ON stock_batches (product_id, variant_id, expires_at, id)');
+  }
+
+  Future<void> _migrateProductPriceHistory(Database db) async {
+    await _createProductPriceHistoryTable(db);
+  }
+
+  Future<void> _createProductPriceHistoryTable(Database db) async {
+    await db.execute('''
+      CREATE TABLE IF NOT EXISTS product_price_history (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        product_id INTEGER NOT NULL,
+        recorded_at TEXT NOT NULL,
+        cost_price INTEGER NOT NULL,
+        sell_price INTEGER NOT NULL,
+        reason TEXT,
+        FOREIGN KEY (product_id) REFERENCES products (id) ON DELETE CASCADE
+      )
+    ''');
+    await db.execute(
+        'CREATE INDEX IF NOT EXISTS idx_product_price_history_product_time '
+        'ON product_price_history (product_id, recorded_at DESC, id DESC)');
+  }
+
+  Future<void> _migrateSaleBuyerSnapshot(Database db) async {
+    await _addColumnIfMissing(db, 'sales', 'buyer_name', 'TEXT');
+    await _addColumnIfMissing(db, 'sales', 'buyer_tin', 'TEXT');
+  }
+
+  Future<void> _migrateReturnRefundAllocations(Database db) async {
+    await _createReturnRefundAllocationsTable(db);
+  }
+
+  Future<void> _migrateIncomingPaymentClaims(Database db) async {
+    await _createIncomingPaymentClaimsTable(db);
+  }
+
+  Future<void> _migrateReorderingSync(Database db) async {
+    await _addColumnIfMissing(
+        db, 'suppliers', 'synced_to_backend', 'INTEGER NOT NULL DEFAULT 0');
+    await _addColumnIfMissing(db, 'product_suppliers', 'synced_to_backend',
+        'INTEGER NOT NULL DEFAULT 0');
+    await _addColumnIfMissing(db, 'purchase_orders', 'synced_to_backend',
+        'INTEGER NOT NULL DEFAULT 0');
+  }
+
+  Future<void> _migrateDrawerEventSync(Database db) async {
+    await _addColumnIfMissing(
+      db,
+      'drawer_events',
+      'synced_to_backend',
+      'INTEGER NOT NULL DEFAULT 0',
+    );
+  }
+
+  Future<void> _migrateCashDrawerMetadata(Database db) async {
+    await _addColumnIfMissing(db, 'drawer_events', 'sale_id', 'INTEGER');
+    await _addColumnIfMissing(db, 'drawer_events', 'approved_by', 'TEXT');
+    await _addColumnIfMissing(
+        db, 'drawer_events', 'success', 'INTEGER NOT NULL DEFAULT 0');
+  }
+
+  Future<void> _migrateStocktakeMetadata(Database db) async {
+    await _addColumnIfMissing(db, 'stock_counts', 'name', 'TEXT');
+    await _addColumnIfMissing(
+        db, 'stock_counts', 'scope_type', "TEXT NOT NULL DEFAULT 'all'");
+    await _addColumnIfMissing(db, 'stock_counts', 'scope_ref', 'TEXT');
+    await _addColumnIfMissing(db, 'stock_counts', 'sales_mode',
+        "TEXT NOT NULL DEFAULT 'keep_selling'");
+    await _addColumnIfMissing(db, 'stock_counts', 'applied_at', 'TEXT');
+    await _addColumnIfMissing(db, 'stock_counts', 'applied_by', 'INTEGER');
+    await _addColumnIfMissing(db, 'stock_counts', 'note', 'TEXT');
+    await _addColumnIfMissing(db, 'stock_count_lines', 'counted_by', 'INTEGER');
+    await _addColumnIfMissing(db, 'stock_count_lines', 'note', 'TEXT');
+  }
+
+  Future<void> _migrateProductPackVariants(Database db) async {
+    await _addColumnIfMissing(db, 'product_packs', 'variant_id', 'INTEGER');
+  }
+
+  Future<void> _migrateLabelPrintJobs(Database db) async {
+    await _createLabelPrintJobsTable(db);
+  }
+
+  Future<void> _createLabelPrintJobsTable(Database db) async {
+    await db.execute('''
+      CREATE TABLE IF NOT EXISTS label_print_jobs (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        uuid TEXT NOT NULL UNIQUE,
+        product_id INTEGER NOT NULL,
+        product_name TEXT NOT NULL,
+        barcode TEXT NOT NULL,
+        price_minor INTEGER NOT NULL,
+        quantity INTEGER NOT NULL,
+        printed_quantity INTEGER NOT NULL DEFAULT 0,
+        status TEXT NOT NULL DEFAULT 'pending',
+        paper_width INTEGER NOT NULL,
+        error TEXT,
+        created_at TEXT NOT NULL,
+        updated_at TEXT NOT NULL
+      )
+    ''');
+    await db.execute(
+        'CREATE INDEX IF NOT EXISTS idx_label_print_jobs_status ON label_print_jobs (status, updated_at DESC)');
+  }
+
+  Future<void> _migrateSyncConflicts(Database db) async {
+    await _createSyncConflictsTable(db);
+  }
+
+  Future<void> _createSyncConflictsTable(Database db) async {
+    await db.execute('''
+      CREATE TABLE IF NOT EXISTS sync_conflicts (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        uuid TEXT NOT NULL UNIQUE,
+        kind TEXT NOT NULL,
+        local_id INTEGER,
+        device_id TEXT,
+        reason TEXT NOT NULL,
+        payload_json TEXT,
+        created_at TEXT NOT NULL,
+        resolved_at TEXT,
+        resolution TEXT
+      )
+    ''');
+    await db.execute('CREATE INDEX IF NOT EXISTS idx_sync_conflicts_open '
+        'ON sync_conflicts (resolved_at, created_at DESC)');
+  }
+
+  Future<void> _migrateOperationalLedgerSync(Database db) async {
+    for (final table in <String>['expenses', 'till_movements']) {
+      await _addColumnIfMissing(
+        db,
+        table,
+        'synced_to_backend',
+        'INTEGER NOT NULL DEFAULT 0',
+      );
+    }
+  }
+
+  Future<void> _migrateStockMovementSync(Database db) async {
+    await _addColumnIfMissing(
+      db,
+      'stock_movements',
+      'synced_to_backend',
+      'INTEGER NOT NULL DEFAULT 0',
+    );
+  }
+
+  Future<void> _migrateRemoteOperationalRecords(Database db) async {
+    await db.execute('''
+      CREATE TABLE IF NOT EXISTS remote_operational_records (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        remote_id TEXT NOT NULL UNIQUE,
+        kind TEXT NOT NULL,
+        device_id TEXT,
+        local_id INTEGER,
+        payload_json TEXT NOT NULL,
+        created_at TEXT NOT NULL,
+        updated_at TEXT NOT NULL
+      )
+    ''');
+    await db.execute(
+        'CREATE INDEX IF NOT EXISTS idx_remote_operational_kind ON remote_operational_records (kind, updated_at DESC)');
+  }
+
+  Future<void> _migratePermissions(Database db) async {
+    await db.execute('''
+      CREATE TABLE IF NOT EXISTS role_permissions (
+        role TEXT NOT NULL,
+        permission TEXT NOT NULL,
+        allowed INTEGER NOT NULL DEFAULT 0,
+        mode TEXT NOT NULL DEFAULT 'deny',
+        PRIMARY KEY (role, permission)
+      )
+    ''');
+    await db.execute('''
+      CREATE TABLE IF NOT EXISTS staff_permission_overrides (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        staff_id INTEGER NOT NULL,
+        permission TEXT NOT NULL,
+        allowed INTEGER NOT NULL,
+        mode TEXT NOT NULL DEFAULT 'deny',
+        UNIQUE(staff_id, permission)
+      )
+    ''');
+    await _seedPermissionDefaults(db);
+  }
+
+  /// Expiry is additive. Existing stock remains ordinary stock until the owner
+  /// enables tracking; only dated receipts create batches.
+  Future<void> _migrateExpiryBatches(Database db) async {
+    await _addColumnIfMissing(
+        db, 'products', 'track_expiry', 'INTEGER NOT NULL DEFAULT 0');
+    await db.execute('''
+      CREATE TABLE IF NOT EXISTS stock_batches (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        uuid TEXT NOT NULL UNIQUE,
+        product_id INTEGER NOT NULL,
+        variant_id INTEGER,
+        batch_code TEXT,
+        receipt_id INTEGER,
+        received_at TEXT NOT NULL,
+        expires_at TEXT NOT NULL,
+        qty_remaining REAL NOT NULL,
+        unit_cost_minor INTEGER NOT NULL DEFAULT 0,
+        status TEXT NOT NULL DEFAULT 'active',
+        FOREIGN KEY (product_id) REFERENCES products (id) ON DELETE CASCADE
+      )
+    ''');
+    await db.execute('''
+      CREATE TABLE IF NOT EXISTS sale_item_batches (
+        sale_item_id INTEGER NOT NULL,
+        batch_id INTEGER NOT NULL,
+        qty REAL NOT NULL,
+        PRIMARY KEY (sale_item_id, batch_id),
+        FOREIGN KEY (sale_item_id) REFERENCES sale_items (id) ON DELETE CASCADE,
+        FOREIGN KEY (batch_id) REFERENCES stock_batches (id) ON DELETE RESTRICT
+      )
+    ''');
+    await db
+        .execute('CREATE INDEX IF NOT EXISTS idx_stock_batches_product_expiry '
+            'ON stock_batches (product_id, expires_at, id)');
+  }
+
+  Future<void> _migrateShiftReports(Database db) async {
+    await db.execute('''
+      CREATE TABLE IF NOT EXISTS shift_reports (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        uuid TEXT NOT NULL UNIQUE,
+        report_number INTEGER NOT NULL UNIQUE,
+        shift_id INTEGER NOT NULL UNIQUE,
+        report_type TEXT NOT NULL DEFAULT 'z',
+        snapshot_json TEXT NOT NULL,
+        created_at TEXT NOT NULL,
+        staff_id INTEGER,
+        staff_name TEXT NOT NULL
+      )
+    ''');
+    await db.execute('CREATE INDEX IF NOT EXISTS idx_shift_reports_created '
+        'ON shift_reports (created_at DESC)');
+  }
+
+  Future<void> _seedPermissionDefaults(Database db) async {
+    for (final role in <String>['manager', 'cashier']) {
+      final allowed = defaultRolePermissions[role] ?? const <String>{};
+      final approval = defaultApprovalPermissions[role] ?? const <String>{};
+      for (final permission in PermissionKey.values) {
+        await db.insert(
+          'role_permissions',
+          {
+            'role': role,
+            'permission': permission.wire,
+            'allowed': allowed.contains(permission.wire) ? 1 : 0,
+            'mode': approval.contains(permission.wire)
+                ? 'approval'
+                : allowed.contains(permission.wire)
+                    ? 'allow'
+                    : 'deny',
+          },
+          conflictAlgorithm: ConflictAlgorithm.ignore,
+        );
+      }
+    }
+  }
+
+  Future<void> _migrateHeldCustomer(Database db) async {
+    await _addColumnIfMissing(db, 'held_carts', 'customer_id', 'INTEGER');
+    await db.execute(
+        'CREATE INDEX IF NOT EXISTS idx_held_carts_customer ON held_carts (customer_id)');
+  }
+
+  Future<void> _migrateReordering(Database db) async {
+    final supplierColumns = await db.rawQuery('PRAGMA table_info(suppliers)');
+    final names = supplierColumns.map((row) => row['name']).toSet();
+    for (final column in <String>[
+      'lead_time_days',
+      'payment_terms',
+      'order_channel',
+    ]) {
+      if (!names.contains(column)) {
+        await db.execute('ALTER TABLE suppliers ADD COLUMN $column TEXT');
+      }
+    }
+    await db.execute('''
+      CREATE TABLE IF NOT EXISTS product_suppliers (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        uuid TEXT NOT NULL UNIQUE,
+        product_id INTEGER NOT NULL,
+        supplier_id INTEGER NOT NULL,
+        supplier_sku TEXT,
+        pack_id INTEGER,
+        preferred INTEGER NOT NULL DEFAULT 0,
+        synced_to_backend INTEGER NOT NULL DEFAULT 0,
+        UNIQUE(product_id, supplier_id),
+        FOREIGN KEY (product_id) REFERENCES products (id) ON DELETE CASCADE,
+        FOREIGN KEY (supplier_id) REFERENCES suppliers (id) ON DELETE CASCADE
+      )
+    ''');
+    await db.execute('''
+      CREATE TABLE IF NOT EXISTS purchase_orders (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        uuid TEXT NOT NULL UNIQUE,
+        order_number TEXT NOT NULL UNIQUE,
+        supplier_id INTEGER NOT NULL,
+        status TEXT NOT NULL DEFAULT 'draft',
+        ordered_at TEXT,
+        expected_at TEXT,
+        note TEXT,
+        created_at TEXT NOT NULL,
+        staff_id INTEGER,
+        staff_name TEXT NOT NULL
+        ,synced_to_backend INTEGER NOT NULL DEFAULT 0
+      )
+    ''');
+    await db.execute('''
+      CREATE TABLE IF NOT EXISTS purchase_order_lines (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        uuid TEXT NOT NULL UNIQUE,
+        purchase_order_id INTEGER NOT NULL,
+        product_id INTEGER NOT NULL,
+        product_name TEXT NOT NULL,
+        qty REAL NOT NULL,
+        unit_cost_minor INTEGER NOT NULL DEFAULT 0,
+        received_qty REAL NOT NULL DEFAULT 0,
+        FOREIGN KEY (purchase_order_id) REFERENCES purchase_orders (id) ON DELETE CASCADE
+      )
+    ''');
+    await db.execute(
+        'CREATE INDEX IF NOT EXISTS idx_product_suppliers_product ON product_suppliers (product_id, preferred)');
+    await db.execute(
+        'CREATE INDEX IF NOT EXISTS idx_purchase_orders_supplier ON purchase_orders (supplier_id, status, created_at DESC)');
+  }
+
+  Future<void> _migrateProductPacks(Database db) async {
+    await db.execute('''
+      CREATE TABLE IF NOT EXISTS product_packs (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        uuid TEXT NOT NULL UNIQUE,
+        product_id INTEGER NOT NULL,
+        variant_id INTEGER,
+        name TEXT NOT NULL,
+        barcode TEXT NOT NULL UNIQUE,
+        units_per_pack REAL NOT NULL,
+        unit_cost_minor INTEGER NOT NULL DEFAULT 0,
+        sell_price_minor INTEGER,
+        active INTEGER NOT NULL DEFAULT 1,
+        created_at TEXT NOT NULL
+      )
+    ''');
+    await db.execute(
+        'CREATE INDEX IF NOT EXISTS idx_product_packs_product ON product_packs (product_id, active)');
+    final columns = await db.rawQuery('PRAGMA table_info(sale_items)');
+    final names = columns.map((row) => row['name']).toSet();
+    if (!names.contains('pack_id')) {
+      await db.execute('ALTER TABLE sale_items ADD COLUMN pack_id INTEGER');
+    }
+    if (!names.contains('pack_qty')) {
+      await db.execute('ALTER TABLE sale_items ADD COLUMN pack_qty REAL');
+    }
+  }
+
+  Future<void> _migratePackHeldLines(Database db) async {
+    await _addColumnIfMissing(db, 'held_cart_lines', 'pack_id', 'INTEGER');
+    await _addColumnIfMissing(db, 'held_cart_lines', 'pack_qty', 'REAL');
+  }
+
+  Future<void> _migrateIncomingPayments(Database db) async {
+    await db.execute('''
+      CREATE TABLE IF NOT EXISTS incoming_payments (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        remote_id TEXT NOT NULL UNIQUE,
+        trans_id TEXT NOT NULL,
+        amount_minor INTEGER NOT NULL,
+        payer_masked TEXT NOT NULL DEFAULT '',
+        received_at TEXT NOT NULL,
+        status TEXT NOT NULL DEFAULT 'unclaimed',
+        claimed_at TEXT,
+        claimed_by TEXT,
+        updated_at TEXT NOT NULL
+      )
+    ''');
+    await db.execute(
+        'CREATE INDEX IF NOT EXISTS idx_incoming_payments_status ON incoming_payments (status, received_at DESC)');
+    await _createIncomingPaymentClaimsTable(db);
+  }
+
+  Future<void> _createIncomingPaymentClaimsTable(Database db) async {
+    await db.execute('''
+      CREATE TABLE IF NOT EXISTS incoming_payment_claims (
+        remote_id TEXT PRIMARY KEY,
+        sale_id INTEGER NOT NULL,
+        sale_uuid TEXT NOT NULL,
+        status TEXT NOT NULL DEFAULT 'pending',
+        reason TEXT,
+        created_at TEXT NOT NULL,
+        updated_at TEXT NOT NULL
+      )
+    ''');
+    await db.execute(
+        'CREATE INDEX IF NOT EXISTS idx_incoming_payment_claims_status '
+        'ON incoming_payment_claims (status, updated_at)');
+  }
+
+  Future<void> _migrateBackupLog(Database db) async {
+    await db.execute('''
+      CREATE TABLE IF NOT EXISTS backup_log (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        uuid TEXT NOT NULL UNIQUE,
+        kind TEXT NOT NULL,
+        path TEXT,
+        created_at TEXT NOT NULL,
+        clear_bytes INTEGER NOT NULL DEFAULT 0,
+        manifest_json TEXT,
+        status TEXT NOT NULL DEFAULT 'written'
+      )
+    ''');
+    await db.execute(
+        'CREATE INDEX IF NOT EXISTS idx_backup_log_created ON backup_log (created_at DESC)');
+  }
+
+  Future<void> _migrateStocktake(Database db) async {
+    await db.execute('''
+      CREATE TABLE IF NOT EXISTS stock_counts (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        uuid TEXT NOT NULL UNIQUE,
+        started_at TEXT NOT NULL,
+        name TEXT,
+        scope_type TEXT NOT NULL DEFAULT 'all',
+        scope_ref TEXT,
+        sales_mode TEXT NOT NULL DEFAULT 'keep_selling',
+        completed_at TEXT,
+        applied_at TEXT,
+        applied_by INTEGER,
+        note TEXT,
+        status TEXT NOT NULL DEFAULT 'in_progress',
+        blind INTEGER NOT NULL DEFAULT 0,
+        freeze INTEGER NOT NULL DEFAULT 0,
+        staff_id INTEGER,
+        staff_name TEXT NOT NULL
+      )
+    ''');
+    await db.execute('''
+      CREATE TABLE IF NOT EXISTS stock_count_lines (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        uuid TEXT NOT NULL UNIQUE,
+        count_id INTEGER NOT NULL,
+        product_id INTEGER NOT NULL,
+        variant_id INTEGER,
+        product_name TEXT NOT NULL,
+        expected_qty REAL NOT NULL,
+        counted_qty REAL,
+        counted_by INTEGER,
+        recount_required INTEGER NOT NULL DEFAULT 0,
+        counted_at TEXT,
+        note TEXT,
+        FOREIGN KEY (count_id) REFERENCES stock_counts (id) ON DELETE CASCADE
+      )
+    ''');
+    await db.execute(
+        'CREATE INDEX IF NOT EXISTS idx_stock_count_lines_count ON stock_count_lines (count_id, product_id, variant_id)');
+  }
+
+  Future<void> _migrateCashDrawer(Database db) async {
+    await db.execute('''
+      CREATE TABLE IF NOT EXISTS drawer_events (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        uuid TEXT NOT NULL UNIQUE,
+        shift_id INTEGER,
+        event_type TEXT NOT NULL,
+        reason TEXT,
+        staff_id INTEGER,
+        staff_name TEXT NOT NULL,
+        sale_id INTEGER,
+        approved_by TEXT,
+        created_at TEXT NOT NULL,
+        status TEXT NOT NULL DEFAULT 'recorded',
+        success INTEGER NOT NULL DEFAULT 0,
+        synced_to_backend INTEGER NOT NULL DEFAULT 0,
+        FOREIGN KEY (shift_id) REFERENCES shifts (id) ON DELETE SET NULL
+      )
+    ''');
+    await db.execute(
+        'CREATE INDEX IF NOT EXISTS idx_drawer_events_created ON drawer_events (created_at DESC)');
+    await db.execute(
+        'CREATE INDEX IF NOT EXISTS idx_drawer_events_shift ON drawer_events (shift_id, created_at DESC)');
+  }
+
+  Future<void> _migrateReceiptShares(Database db) async {
+    await db.execute('''
+      CREATE TABLE IF NOT EXISTS receipt_shares (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        uuid TEXT NOT NULL UNIQUE,
+        sale_id INTEGER NOT NULL,
+        token TEXT,
+        url TEXT,
+        recipient_masked TEXT,
+        created_at TEXT NOT NULL,
+        expires_at TEXT,
+        revoked_at TEXT,
+        status TEXT NOT NULL DEFAULT 'active',
+        FOREIGN KEY (sale_id) REFERENCES sales (id) ON DELETE CASCADE
+      )
+    ''');
+    await db.execute(
+        'CREATE INDEX IF NOT EXISTS idx_receipt_shares_sale ON receipt_shares (sale_id, created_at)');
+  }
+
+  Future<void> _migrateHeldCarts(Database db) async {
+    await db.execute('''
+      CREATE TABLE IF NOT EXISTS held_carts (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        uuid TEXT NOT NULL UNIQUE,
+        staff_id INTEGER,
+        staff_name TEXT NOT NULL,
+        created_at TEXT NOT NULL,
+        expires_at TEXT NOT NULL,
+        status TEXT NOT NULL DEFAULT 'held'
+      )
+    ''');
+    await db.execute('''
+      CREATE TABLE IF NOT EXISTS held_cart_lines (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        held_cart_id INTEGER NOT NULL,
+        product_id INTEGER NOT NULL,
+        product_name TEXT NOT NULL,
+        qty REAL NOT NULL,
+        portion TEXT NOT NULL,
+        portion_ml INTEGER NOT NULL DEFAULT 0,
+        variant_id INTEGER,
+        variant_name TEXT NOT NULL DEFAULT '',
+        shot_cup_id INTEGER,
+        shot_label TEXT,
+        shot_capacity_ml INTEGER,
+        shot_price INTEGER,
+        unit_price INTEGER NOT NULL,
+        unit_cost INTEGER NOT NULL,
+        discount_minor INTEGER NOT NULL DEFAULT 0,
+        discount_reason_id INTEGER,
+        FOREIGN KEY (held_cart_id) REFERENCES held_carts (id) ON DELETE CASCADE
+      )
+    ''');
+    await db.execute(
+        'CREATE INDEX IF NOT EXISTS idx_held_cart_lines_cart ON held_cart_lines (held_cart_id)');
+  }
+
+  Future<void> _migrateSplitPaymentPending(Database db) async {
+    await _addColumnIfMissing(
+        db, 'pending_payments', 'tender_amount_minor', 'INTEGER');
+    await _addColumnIfMissing(
+        db, 'pending_payments', 'intended_total_minor', 'INTEGER');
+  }
+
+  // ---------------- Discounts and price overrides (v32) ----------------
+
+  Future<void> _migrateDiscounts(Database db) async {
+    await db.execute('''
+      CREATE TABLE IF NOT EXISTS discount_reasons (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        name TEXT NOT NULL UNIQUE,
+        active INTEGER NOT NULL DEFAULT 1
+      )
+    ''');
+    for (final name in const [
+      'Staff discount',
+      'Loyalty',
+      'Damaged packaging',
+      'Promotion',
+      'Other',
+    ]) {
+      await db.insert('discount_reasons', {'name': name},
+          conflictAlgorithm: ConflictAlgorithm.ignore);
+    }
+    await _addColumnIfMissing(
+        db, 'sale_items', 'list_unit_price_minor', 'INTEGER');
+    await _addColumnIfMissing(
+        db, 'sale_items', 'discount_minor', 'INTEGER NOT NULL DEFAULT 0');
+    await _addColumnIfMissing(
+        db, 'sale_items', 'discount_reason_id', 'INTEGER');
+    await _addColumnIfMissing(
+        db, 'sale_items', 'price_overridden', 'INTEGER NOT NULL DEFAULT 0');
+    await _addColumnIfMissing(db, 'sales', 'subtotal_minor', 'INTEGER');
+    await _addColumnIfMissing(
+        db, 'sales', 'order_discount_minor', 'INTEGER NOT NULL DEFAULT 0');
+    await _addColumnIfMissing(
+        db, 'sales', 'order_discount_reason_id', 'INTEGER');
+    await _addColumnIfMissing(db, 'sales', 'discount_approved_by', 'INTEGER');
+  }
+
+  // ---------------- Expenses and till movements (v31) ----------------
+
+  Future<void> _migrateExpenses(Database db) => _createExpenseTables(db);
+
+  Future<void> _createExpenseTables(Database db) async {
+    await db.execute('''
+      CREATE TABLE IF NOT EXISTS expense_categories (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        name TEXT NOT NULL UNIQUE,
+        active INTEGER NOT NULL DEFAULT 1,
+        system INTEGER NOT NULL DEFAULT 1
+      )
+    ''');
+    await db.execute('''
+      CREATE TABLE IF NOT EXISTS expenses (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        uuid TEXT NOT NULL UNIQUE,
+        shift_id INTEGER,
+        category_id INTEGER NOT NULL,
+        amount_minor INTEGER NOT NULL,
+        paid_from TEXT NOT NULL DEFAULT 'till_cash',
+        note TEXT,
+        photo_path TEXT,
+        staff_id INTEGER,
+        approved_by INTEGER,
+        staff_name TEXT NOT NULL,
+        created_at TEXT NOT NULL,
+        status TEXT NOT NULL DEFAULT 'posted',
+        synced_to_backend INTEGER NOT NULL DEFAULT 0
+      )
+    ''');
+    await db.execute(
+        'CREATE INDEX IF NOT EXISTS idx_expenses_shift ON expenses (shift_id, created_at)');
+    await db.execute('''
+      CREATE TABLE IF NOT EXISTS till_movements (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        uuid TEXT NOT NULL UNIQUE,
+        shift_id INTEGER NOT NULL,
+        movement_type TEXT NOT NULL,
+        amount_minor INTEGER NOT NULL,
+        note TEXT,
+        staff_id INTEGER,
+        staff_name TEXT NOT NULL,
+        created_at TEXT NOT NULL,
+        status TEXT NOT NULL DEFAULT 'posted',
+        synced_to_backend INTEGER NOT NULL DEFAULT 0
+      )
+    ''');
+    await db.execute(
+        'CREATE INDEX IF NOT EXISTS idx_till_movements_shift ON till_movements (shift_id, created_at)');
+
+    const categories = <String>[
+      'Rent',
+      'Electricity and water',
+      'Transport',
+      'Wages',
+      'Supplies',
+      'Airtime and data',
+      'Licences and fees',
+      'Bad debts',
+      'Other',
+    ];
+    for (final name in categories) {
+      await db.insert(
+        'expense_categories',
+        {'name': name, 'active': 1, 'system': 1},
+        conflictAlgorithm: ConflictAlgorithm.ignore,
+      );
+    }
+  }
+
+  Future<void> _createExpensePaymentsTable(Database db) async {
+    await db.execute('''CREATE TABLE IF NOT EXISTS expense_payments (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      uuid TEXT NOT NULL UNIQUE,
+      expense_id INTEGER NOT NULL,
+      amount_minor INTEGER NOT NULL CHECK (amount_minor > 0),
+      payment_method TEXT NOT NULL,
+      reference TEXT,
+      shift_id INTEGER,
+      created_at TEXT NOT NULL,
+      FOREIGN KEY (expense_id) REFERENCES expenses (id)
+    )''');
+    await db.execute('CREATE INDEX IF NOT EXISTS idx_expense_payments_expense '
+        'ON expense_payments (expense_id, created_at)');
+  }
+
+  // ---------------- Customers, credit accounts and repayments (v30) ----------
+
+  /// The tables a credit account is written to.
+  ///
+  /// Additive only. Existing sales gain an (optional) customer link, and every
+  /// other table is new. The CREDIT LEDGER is append-only: a correction is a
+  /// new row, never an edit, and `customers.balance_minor` is a cache of the
+  /// ledger's sum maintained inside the transaction that writes the row.
+  Future<void> _migrateCustomers(Database db) async {
+    await _createCreditTables(db);
+    await _addColumnIfMissing(db, 'sales', 'customer_id', 'INTEGER');
+    await db.execute(
+        'CREATE INDEX IF NOT EXISTS idx_sales_customer ON sales (customer_id)');
+  }
+
+  /// The tables a credit account is written to — ONE definition, used by the
+  /// migration and by a fresh install.
+  Future<void> _createCreditTables(Database db) async {
+    await db.execute('''
+      CREATE TABLE IF NOT EXISTS customers (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        uuid TEXT NOT NULL UNIQUE,
+        name TEXT NOT NULL,
+        phone TEXT,
+        tin TEXT,
+        notes TEXT,
+        credit_limit_minor INTEGER,
+        balance_minor INTEGER NOT NULL DEFAULT 0,
+        active INTEGER NOT NULL DEFAULT 1,
+        created_at TEXT NOT NULL
+      )
+    ''');
+    // Name uniqueness among ACTIVE customers is checked at write time rather
+    // than by index: SQLite cannot express "unique where active = 1" without a
+    // partial index, and a deactivated customer's name must be reusable.
+    await db.execute(
+        'CREATE INDEX IF NOT EXISTS idx_customers_name ON customers (name)');
+    await db.execute(
+        'CREATE INDEX IF NOT EXISTS idx_customers_phone ON customers (phone)');
+    await db.execute('''
+      CREATE TABLE IF NOT EXISTS credit_ledger (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        uuid TEXT NOT NULL UNIQUE,
+        customer_id INTEGER NOT NULL,
+        entry_type TEXT NOT NULL,
+        amount_minor INTEGER NOT NULL,
+        sale_id INTEGER,
+        return_id INTEGER,
+        payment_method TEXT,
+        reference TEXT,
+        shift_id INTEGER,
+        staff_id INTEGER,
+        staff_name TEXT NOT NULL,
+        approved_by INTEGER,
+        note TEXT,
+        created_at TEXT NOT NULL,
+        FOREIGN KEY (customer_id) REFERENCES customers (id)
+      )
+    ''');
+    await db.execute('CREATE INDEX IF NOT EXISTS idx_credit_ledger_customer '
+        'ON credit_ledger (customer_id, created_at)');
+    await db.execute('CREATE INDEX IF NOT EXISTS idx_credit_ledger_shift '
+        'ON credit_ledger (shift_id)');
+    await db.execute('''
+      CREATE TABLE IF NOT EXISTS credit_allocations (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        payment_entry_id INTEGER NOT NULL,
+        charge_entry_id INTEGER NOT NULL,
+        amount_minor INTEGER NOT NULL,
+        FOREIGN KEY (payment_entry_id) REFERENCES credit_ledger (id),
+        FOREIGN KEY (charge_entry_id) REFERENCES credit_ledger (id)
+      )
+    ''');
+    await db
+        .execute('CREATE INDEX IF NOT EXISTS idx_credit_allocations_payment '
+            'ON credit_allocations (payment_entry_id)');
+    await db.execute('CREATE INDEX IF NOT EXISTS idx_credit_allocations_charge '
+        'ON credit_allocations (charge_entry_id)');
+  }
+
+  // ---------------- A receive-session draft (v30) ----------------
+
+  /// The draft a half-filled receive-stock session autosaves into.
+  ///
+  /// ONE row per staff member, upserted as the session changes. A delivery
+  /// half-scanned at the counter loses nothing when the app is killed — the
+  /// next open of the flow offers the draft back (spec 6.3.4). It holds a
+  /// JSON payload rather than a mirrored table of lines because the draft's
+  /// only reader is the same sheet that wrote it.
+  Future<void> _migrateRestockDraft(Database db) async {
+    await db.execute('''
+      CREATE TABLE IF NOT EXISTS receive_drafts (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        staff_id INTEGER UNIQUE,
+        payload TEXT NOT NULL,
+        updated_at TEXT NOT NULL
+      )
+    ''');
+  }
+
+  /// Saves (or replaces) the caller's receive-session draft. Null payload
+  /// clears it — that is what a POSTED delivery calls after committing.
+  Future<void> saveReceiveDraft(
+      int? staffId, Map<String, Object?>? payload) async {
+    final db = await database;
+    if (payload == null) {
+      await db.delete('receive_drafts',
+          where: staffId == null ? 'staff_id IS NULL' : 'staff_id = ?',
+          whereArgs: staffId == null ? null : [staffId]);
+      return;
+    }
+    await db.insert(
+      'receive_drafts',
+      {
+        'staff_id': staffId,
+        'payload': jsonEncode(payload),
+        'updated_at': DateTime.now().toIso8601String(),
+      },
+      conflictAlgorithm: ConflictAlgorithm.replace,
+    );
+  }
+
+  /// The caller's receive-session draft, or null.
+  Future<Map<String, dynamic>?> getReceiveDraft(int? staffId) async {
+    final rows = await (await database).query('receive_drafts',
+        where: staffId == null ? 'staff_id IS NULL' : 'staff_id = ?',
+        whereArgs: staffId == null ? null : [staffId],
+        limit: 1);
+    if (rows.isEmpty) return null;
+    final raw = rows.first['payload'] as String?;
+    if (raw == null || raw.isEmpty) return null;
+    return (jsonDecode(raw) as Map<String, dynamic>);
   }
 
   // ---------------- Receiving stock, and what it cost (v29) ----------------
@@ -568,6 +1749,7 @@ SELECT name FROM staff GROUP BY name HAVING COUNT(*) = 1
         contact_person TEXT,
         notes TEXT,
         active INTEGER NOT NULL DEFAULT 1,
+        synced_to_backend INTEGER NOT NULL DEFAULT 0,
         created_at TEXT NOT NULL
       )
     ''');
@@ -579,6 +1761,10 @@ SELECT name FROM staff GROUP BY name HAVING COUNT(*) = 1
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         supplier_id INTEGER,
         supplier_ref TEXT,
+        supplier_pin TEXT,
+        etims_invoice_ref TEXT,
+        input_vat_minor INTEGER,
+        tax_evidence_status TEXT NOT NULL DEFAULT 'needs_review',
         received_at TEXT NOT NULL,
         staff_id INTEGER,
         staff_name TEXT NOT NULL,
@@ -588,6 +1774,7 @@ SELECT name FROM staff GROUP BY name HAVING COUNT(*) = 1
         synced_to_backend INTEGER NOT NULL DEFAULT 0
       )
     ''');
+    await _ensurePurchaseTaxEvidenceColumns(db);
 
     await db.execute('''
       CREATE TABLE IF NOT EXISTS stock_receipt_items (
@@ -601,6 +1788,8 @@ SELECT name FROM staff GROUP BY name HAVING COUNT(*) = 1
         line_cost_minor INTEGER NOT NULL DEFAULT 0,
         old_cost_minor INTEGER,
         new_cost_minor INTEGER,
+        expiry_date TEXT,
+        batch_code TEXT,
         FOREIGN KEY (receipt_id) REFERENCES stock_receipts (id) ON DELETE CASCADE
       )
     ''');
@@ -623,6 +1812,19 @@ SELECT name FROM staff GROUP BY name HAVING COUNT(*) = 1
     await db
         .execute('CREATE INDEX IF NOT EXISTS idx_product_cost_history_product '
             'ON product_cost_history (product_id, effective_at)');
+  }
+
+  Future<void> _ensurePurchaseTaxEvidenceColumns(Database db) async {
+    final tables = await db.rawQuery(
+        "SELECT name FROM sqlite_master WHERE type = 'table' AND name = 'stock_receipts'");
+    if (tables.isEmpty) return;
+    await _addColumnIfMissing(db, 'stock_receipts', 'supplier_pin', 'TEXT');
+    await _addColumnIfMissing(
+        db, 'stock_receipts', 'etims_invoice_ref', 'TEXT');
+    await _addColumnIfMissing(
+        db, 'stock_receipts', 'input_vat_minor', 'INTEGER');
+    await _addColumnIfMissing(db, 'stock_receipts', 'tax_evidence_status',
+        "TEXT NOT NULL DEFAULT 'needs_review'");
   }
 
   // ---------------- Returns and credit notes (v28) ----------------
@@ -690,6 +1892,24 @@ SELECT name FROM staff GROUP BY name HAVING COUNT(*) = 1
     ''');
     await db.execute(
         'CREATE INDEX IF NOT EXISTS idx_sale_return_items_return ON sale_return_items (return_id)');
+    await _createReturnRefundAllocationsTable(db);
+  }
+
+  Future<void> _createReturnRefundAllocationsTable(Database db) async {
+    await db.execute('''
+      CREATE TABLE IF NOT EXISTS sale_return_refunds (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        return_id INTEGER NOT NULL,
+        sale_payment_id INTEGER,
+        method TEXT NOT NULL,
+        amount_minor INTEGER NOT NULL,
+        reference TEXT,
+        FOREIGN KEY (return_id) REFERENCES sale_returns (id) ON DELETE CASCADE,
+        FOREIGN KEY (sale_payment_id) REFERENCES sale_payments (id) ON DELETE SET NULL
+      )
+    ''');
+    await db.execute(
+        'CREATE INDEX IF NOT EXISTS idx_sale_return_refunds_return ON sale_return_refunds (return_id)');
   }
 
   // ---------------- The till's records, and their push (v27) ----------------
@@ -747,6 +1967,9 @@ SELECT name FROM staff GROUP BY name HAVING COUNT(*) = 1
   /// and the v25 step had to repair.
   Future<void> _migrateFoundation(Database db) async {
     await _createFoundationTables(db);
+    await _ensureTaxRuleSnapshotColumns(db);
+    await _migrateLaybys(db);
+    await _migrateExchanges(db);
     await _backfillOpeningStockMovements(db);
     await _backfillHistoricAdjustments(db);
     await _backfillSalePayments(db);
@@ -759,6 +1982,7 @@ SELECT name FROM staff GROUP BY name HAVING COUNT(*) = 1
   /// code writes are still there for the two releases the spec allows, and a
   /// downgrade still opens the database.
   Future<void> _createFoundationTables(Database db) async {
+    await _migrateSaleBuyerSnapshot(db);
     // Every stock change becomes an immutable, attributable row.
     //
     // The product's own `stock_qty` stays as a cached balance, updated in the
@@ -785,7 +2009,8 @@ SELECT name FROM staff GROUP BY name HAVING COUNT(*) = 1
         staff_id INTEGER,
         staff_name TEXT,
         note TEXT,
-        balance_after REAL NOT NULL
+        balance_after REAL NOT NULL,
+        synced_to_backend INTEGER NOT NULL DEFAULT 0
       )
     ''');
     await db.execute(
@@ -1470,6 +2695,7 @@ SELECT name FROM staff GROUP BY name HAVING COUNT(*) = 1
       shop_name TEXT NOT NULL,
       created_at TEXT NOT NULL
     )''');
+    await _createShopProfileTable(db);
     await db.execute('''CREATE TABLE IF NOT EXISTS staff (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       name TEXT NOT NULL,
@@ -1503,6 +2729,398 @@ SELECT name FROM staff GROUP BY name HAVING COUNT(*) = 1
       staff_id INTEGER,
       created_at TEXT NOT NULL
     )''');
+  }
+
+  Future<void> _createShopProfileTable(Database db) async {
+    await db.execute('''CREATE TABLE IF NOT EXISTS shop_profile (
+      id INTEGER PRIMARY KEY CHECK (id = 1),
+      profile TEXT NOT NULL DEFAULT 'duka',
+      updated_at TEXT NOT NULL
+    )''');
+  }
+
+  Future<void> _createFinancialEventTable(Database db) async {
+    await db.execute('''CREATE TABLE IF NOT EXISTS financial_events (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      uuid TEXT NOT NULL UNIQUE,
+      event_type TEXT NOT NULL,
+      source_type TEXT NOT NULL,
+      source_id INTEGER,
+      occurred_at_utc TEXT NOT NULL,
+      revenue_minor INTEGER NOT NULL DEFAULT 0,
+      cash_in_minor INTEGER NOT NULL DEFAULT 0,
+      cash_out_minor INTEGER NOT NULL DEFAULT 0,
+      cogs_minor INTEGER NOT NULL DEFAULT 0,
+      operating_expense_minor INTEGER NOT NULL DEFAULT 0,
+      tax_collected_minor INTEGER NOT NULL DEFAULT 0,
+      receivable_delta_minor INTEGER NOT NULL DEFAULT 0,
+      payable_delta_minor INTEGER NOT NULL DEFAULT 0,
+      customer_deposit_delta_minor INTEGER NOT NULL DEFAULT 0,
+      inventory_delta_milliunits INTEGER NOT NULL DEFAULT 0,
+      metadata_json TEXT NOT NULL DEFAULT '{}',
+      previous_hash TEXT,
+      integrity_hash TEXT NOT NULL,
+      synced_to_backend INTEGER NOT NULL DEFAULT 0
+    )''');
+    await _addColumnIfMissing(db, 'financial_events', 'synced_to_backend',
+        'INTEGER NOT NULL DEFAULT 0');
+    await db.execute('CREATE INDEX IF NOT EXISTS idx_financial_events_occurred '
+        'ON financial_events (occurred_at_utc, id)');
+    await db.execute('CREATE INDEX IF NOT EXISTS idx_financial_events_source '
+        'ON financial_events (source_type, source_id)');
+  }
+
+  Future<void> _createOwnerTransactionsTable(Database db) async {
+    await db.execute('''CREATE TABLE IF NOT EXISTS owner_transactions (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      uuid TEXT NOT NULL UNIQUE,
+      transaction_type TEXT NOT NULL,
+      amount_minor INTEGER NOT NULL CHECK (amount_minor > 0),
+      shift_id INTEGER,
+      staff_id INTEGER,
+      staff_name TEXT NOT NULL,
+      note TEXT,
+      created_at TEXT NOT NULL,
+      status TEXT NOT NULL DEFAULT 'posted',
+      synced_to_backend INTEGER NOT NULL DEFAULT 0
+    )''');
+    await db.execute('CREATE INDEX IF NOT EXISTS idx_owner_transactions_date '
+        'ON owner_transactions (created_at, id)');
+  }
+
+  Future<void> _createOpenFinanceTables(Database db) async {
+    await db.execute('''CREATE TABLE IF NOT EXISTS cost_pools (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      uuid TEXT NOT NULL UNIQUE,
+      name TEXT NOT NULL,
+      pool_type TEXT NOT NULL CHECK (pool_type IN ('lot', 'rolling_stock')),
+      invested_minor INTEGER NOT NULL DEFAULT 0,
+      recovered_minor INTEGER NOT NULL DEFAULT 0,
+      status TEXT NOT NULL DEFAULT 'open',
+      note TEXT,
+      created_at TEXT NOT NULL,
+      closed_at TEXT
+    )''');
+    await db.execute('''CREATE TABLE IF NOT EXISTS cost_pool_entries (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      uuid TEXT NOT NULL UNIQUE,
+      pool_id INTEGER NOT NULL,
+      entry_type TEXT NOT NULL,
+      amount_minor INTEGER NOT NULL CHECK (amount_minor > 0),
+      paid_from TEXT NOT NULL DEFAULT 'other',
+      description TEXT,
+      created_at TEXT NOT NULL,
+      FOREIGN KEY (pool_id) REFERENCES cost_pools (id)
+    )''');
+    await db.execute('''CREATE TABLE IF NOT EXISTS sale_pool_allocations (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      pool_id INTEGER NOT NULL,
+      sale_id INTEGER NOT NULL,
+      amount_minor INTEGER NOT NULL CHECK (amount_minor > 0),
+      created_at TEXT NOT NULL,
+      UNIQUE (pool_id, sale_id),
+      FOREIGN KEY (pool_id) REFERENCES cost_pools (id)
+    )''');
+    await db.execute('''CREATE TABLE IF NOT EXISTS jobs (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      uuid TEXT NOT NULL UNIQUE,
+      customer_name TEXT,
+      title TEXT NOT NULL,
+      quote_minor INTEGER,
+      final_price_minor INTEGER,
+      due_at TEXT,
+      status TEXT NOT NULL DEFAULT 'open',
+      created_at TEXT NOT NULL,
+      closed_at TEXT
+    )''');
+    await db.execute('''CREATE TABLE IF NOT EXISTS job_costs (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      uuid TEXT NOT NULL UNIQUE,
+      job_id INTEGER NOT NULL,
+      cost_type TEXT NOT NULL,
+      amount_minor INTEGER NOT NULL CHECK (amount_minor > 0),
+      paid_from TEXT NOT NULL DEFAULT 'other',
+      description TEXT,
+      created_at TEXT NOT NULL,
+      FOREIGN KEY (job_id) REFERENCES jobs (id)
+    )''');
+    await db.execute('''CREATE TABLE IF NOT EXISTS job_payments (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      uuid TEXT NOT NULL UNIQUE,
+      job_id INTEGER NOT NULL,
+      amount_minor INTEGER NOT NULL CHECK (amount_minor > 0),
+      payment_method TEXT NOT NULL,
+      reference TEXT,
+      shift_id INTEGER,
+      created_at TEXT NOT NULL,
+      FOREIGN KEY (job_id) REFERENCES jobs (id)
+    )''');
+    await db.execute('CREATE INDEX IF NOT EXISTS idx_cost_pool_entries_pool '
+        'ON cost_pool_entries (pool_id, created_at)');
+    await db
+        .execute('CREATE INDEX IF NOT EXISTS idx_sale_pool_allocations_sale '
+            'ON sale_pool_allocations (sale_id, created_at)');
+    await db.execute(
+        'CREATE INDEX IF NOT EXISTS idx_job_costs_job ON job_costs (job_id, created_at)');
+    await db.execute('CREATE INDEX IF NOT EXISTS idx_job_payments_job '
+        'ON job_payments (job_id, created_at)');
+  }
+
+  /// Appends one normalized financial fact and chains it to the previous fact.
+  ///
+  /// This method is only called from the same SQLite transaction as its source
+  /// writer. A failed event insert therefore rolls back the sale/expense too;
+  /// reports never observe a source row without its financial contract.
+  Future<int> _appendFinancialEvent({
+    required DatabaseExecutor txn,
+    required String eventType,
+    required String sourceType,
+    int? sourceId,
+    required String occurredAtUtc,
+    int revenueMinor = 0,
+    int cashInMinor = 0,
+    int cashOutMinor = 0,
+    int cogsMinor = 0,
+    int operatingExpenseMinor = 0,
+    int taxCollectedMinor = 0,
+    int receivableDeltaMinor = 0,
+    int payableDeltaMinor = 0,
+    int customerDepositDeltaMinor = 0,
+    int inventoryDeltaMilliunits = 0,
+    Map<String, Object?> metadata = const <String, Object?>{},
+  }) async {
+    FinancialEventContract.validate(
+      eventType: eventType,
+      sourceType: sourceType,
+      sourceId: sourceId,
+      occurredAtUtc: occurredAtUtc,
+      revenueMinor: revenueMinor,
+      cashInMinor: cashInMinor,
+      cashOutMinor: cashOutMinor,
+      cogsMinor: cogsMinor,
+      operatingExpenseMinor: operatingExpenseMinor,
+      taxCollectedMinor: taxCollectedMinor,
+      receivableDeltaMinor: receivableDeltaMinor,
+      payableDeltaMinor: payableDeltaMinor,
+      customerDepositDeltaMinor: customerDepositDeltaMinor,
+      inventoryDeltaMilliunits: inventoryDeltaMilliunits,
+    );
+    final previousRows = await txn.query(
+      'financial_events',
+      columns: <String>['integrity_hash'],
+      orderBy: 'id DESC',
+      limit: 1,
+    );
+    final previousHash = previousRows.isEmpty
+        ? null
+        : previousRows.first['integrity_hash'] as String;
+    final uuid = _newUuid();
+    final metadataJson = jsonEncode(metadata);
+    final canonical = _financialEventCanonical(
+      uuid: uuid,
+      eventType: eventType,
+      sourceType: sourceType,
+      sourceId: sourceId,
+      occurredAtUtc: occurredAtUtc,
+      revenueMinor: revenueMinor,
+      cashInMinor: cashInMinor,
+      cashOutMinor: cashOutMinor,
+      cogsMinor: cogsMinor,
+      operatingExpenseMinor: operatingExpenseMinor,
+      taxCollectedMinor: taxCollectedMinor,
+      receivableDeltaMinor: receivableDeltaMinor,
+      payableDeltaMinor: payableDeltaMinor,
+      customerDepositDeltaMinor: customerDepositDeltaMinor,
+      inventoryDeltaMilliunits: inventoryDeltaMilliunits,
+      metadataJson: metadataJson,
+      previousHash: previousHash,
+    );
+    final integrityHash =
+        sha256.convert(utf8.encode(jsonEncode(canonical))).toString();
+    return txn.insert('financial_events', {
+      ...canonical,
+      'integrity_hash': integrityHash,
+    });
+  }
+
+  Map<String, Object?> _financialEventCanonical({
+    required String uuid,
+    required String eventType,
+    required String sourceType,
+    required int? sourceId,
+    required String occurredAtUtc,
+    required int revenueMinor,
+    required int cashInMinor,
+    required int cashOutMinor,
+    required int cogsMinor,
+    required int operatingExpenseMinor,
+    required int taxCollectedMinor,
+    required int receivableDeltaMinor,
+    required int payableDeltaMinor,
+    required int customerDepositDeltaMinor,
+    required int inventoryDeltaMilliunits,
+    required String metadataJson,
+    required String? previousHash,
+  }) {
+    return <String, Object?>{
+      'uuid': uuid,
+      'event_type': eventType,
+      'source_type': sourceType,
+      'source_id': sourceId,
+      'occurred_at_utc': occurredAtUtc,
+      'revenue_minor': revenueMinor,
+      'cash_in_minor': cashInMinor,
+      'cash_out_minor': cashOutMinor,
+      'cogs_minor': cogsMinor,
+      'operating_expense_minor': operatingExpenseMinor,
+      'tax_collected_minor': taxCollectedMinor,
+      'receivable_delta_minor': receivableDeltaMinor,
+      'payable_delta_minor': payableDeltaMinor,
+      'customer_deposit_delta_minor': customerDepositDeltaMinor,
+      'inventory_delta_milliunits': inventoryDeltaMilliunits,
+      'metadata_json': metadataJson,
+      'previous_hash': previousHash,
+    };
+  }
+
+  /// Verifies the append-only financial-event chain and every event payload.
+  ///
+  /// This is intentionally read-only and cheap enough for restore/startup
+  /// checks. A false result means a restored or synced ledger must not be
+  /// treated as financially trustworthy until it is investigated.
+  Future<bool> verifyFinancialEventIntegrity() async {
+    final rows = await (await database).query(
+      'financial_events',
+      orderBy: 'id ASC',
+    );
+    return _verifyFinancialEventRows(rows);
+  }
+
+  bool _verifyFinancialEventRows(Iterable<Map<String, Object?>> rows) {
+    String? previousHash;
+    for (final row in rows) {
+      final rowPreviousHash = row['previous_hash'] as String?;
+      if (rowPreviousHash != previousHash) return false;
+      final canonical = _financialEventCanonical(
+        uuid: row['uuid'] as String,
+        eventType: row['event_type'] as String,
+        sourceType: row['source_type'] as String,
+        sourceId: (row['source_id'] as num?)?.toInt(),
+        occurredAtUtc: row['occurred_at_utc'] as String,
+        revenueMinor: (row['revenue_minor'] as num).toInt(),
+        cashInMinor: (row['cash_in_minor'] as num).toInt(),
+        cashOutMinor: (row['cash_out_minor'] as num).toInt(),
+        cogsMinor: (row['cogs_minor'] as num).toInt(),
+        operatingExpenseMinor: (row['operating_expense_minor'] as num).toInt(),
+        taxCollectedMinor: (row['tax_collected_minor'] as num).toInt(),
+        receivableDeltaMinor: (row['receivable_delta_minor'] as num).toInt(),
+        payableDeltaMinor: (row['payable_delta_minor'] as num).toInt(),
+        customerDepositDeltaMinor:
+            (row['customer_deposit_delta_minor'] as num).toInt(),
+        inventoryDeltaMilliunits:
+            (row['inventory_delta_milliunits'] as num).toInt(),
+        metadataJson: row['metadata_json'] as String,
+        previousHash: rowPreviousHash,
+      );
+      final expectedHash =
+          sha256.convert(utf8.encode(jsonEncode(canonical))).toString();
+      if (row['integrity_hash'] != expectedHash) return false;
+      previousHash = expectedHash;
+    }
+    return true;
+  }
+
+  Future<List<FinancialEvent>> getFinancialEvents({
+    int limit = 100,
+    DateTime? sinceUtc,
+    DateTime? untilUtc,
+  }) async {
+    final where = <String>[];
+    final args = <Object?>[];
+    if (sinceUtc != null) {
+      where.add('occurred_at_utc >= ?');
+      args.add(sinceUtc.toUtc().toIso8601String());
+    }
+    if (untilUtc != null) {
+      where.add('occurred_at_utc < ?');
+      args.add(untilUtc.toUtc().toIso8601String());
+    }
+    final rows = await (await database).query(
+      'financial_events',
+      where: where.isEmpty ? null : where.join(' AND '),
+      whereArgs: args.isEmpty ? null : args,
+      orderBy: 'id ASC',
+      limit: limit,
+    );
+    return rows.map(FinancialEvent.fromMap).toList();
+  }
+
+  Future<List<FinancialEvent>> getUnsyncedFinancialEvents({
+    int limit = 500,
+  }) async {
+    final rows = await (await database).query(
+      'financial_events',
+      where: 'synced_to_backend = 0',
+      orderBy: 'id ASC',
+      limit: limit,
+    );
+    return rows.map(FinancialEvent.fromMap).toList();
+  }
+
+  Future<void> markFinancialEventsSynced(List<int> ids) async {
+    if (ids.isEmpty) return;
+    await (await database).rawUpdate(
+      'UPDATE financial_events SET synced_to_backend = 1 '
+      'WHERE id IN (${List.filled(ids.length, '?').join(',')})',
+      ids,
+    );
+  }
+
+  /// Returns one reconciled total from the append-only event stream.
+  ///
+  /// [fromUtc] is inclusive and [untilUtc] is exclusive. The database stores
+  /// UTC timestamps, so range boundaries are normalized before querying.
+  Future<FinancialEventTotals> getFinancialEventTotals({
+    DateTime? fromUtc,
+    DateTime? untilUtc,
+  }) async {
+    final where = <String>[];
+    final args = <Object?>[];
+    if (fromUtc != null) {
+      where.add('occurred_at_utc >= ?');
+      args.add(fromUtc.toUtc().toIso8601String());
+    }
+    if (untilUtc != null) {
+      where.add('occurred_at_utc < ?');
+      args.add(untilUtc.toUtc().toIso8601String());
+    }
+    final rows = await (await database).query(
+      'financial_events',
+      where: where.isEmpty ? null : where.join(' AND '),
+      whereArgs: args.isEmpty ? null : args,
+      orderBy: 'id ASC',
+    );
+    var totals = const FinancialEventTotals();
+    for (final row in rows) {
+      totals += FinancialEvent.fromMap(row);
+    }
+    return totals;
+  }
+
+  Future<FinancialStatement> getFinancialStatement({
+    DateTime? fromUtc,
+    DateTime? untilUtc,
+    int openingCashMinor = 0,
+    bool openingCashIsKnown = false,
+  }) async {
+    return FinancialStatement(
+      totals: await getFinancialEventTotals(
+        fromUtc: fromUtc,
+        untilUtc: untilUtc,
+      ),
+      openingCashMinor: openingCashMinor,
+      openingCashIsKnown: openingCashIsKnown,
+    );
   }
 
   /// v11 -> v12: barcodes get their own table, and shop-wide configuration
@@ -1627,6 +3245,7 @@ SELECT name FROM staff GROUP BY name HAVING COUNT(*) = 1
       sell_price INTEGER NOT NULL DEFAULT 0,
       cost_price INTEGER NOT NULL DEFAULT 0,
       stock_qty REAL NOT NULL DEFAULT 0,
+      reserved_qty REAL NOT NULL DEFAULT 0,
       reorder_level INTEGER NOT NULL DEFAULT 0,
       position INTEGER NOT NULL DEFAULT 0,
       active INTEGER NOT NULL DEFAULT 1,
@@ -1729,6 +3348,7 @@ SELECT name FROM staff GROUP BY name HAVING COUNT(*) = 1
         cost_price INTEGER NOT NULL,
         sell_price INTEGER NOT NULL,
         stock_qty REAL NOT NULL DEFAULT 0,
+        reserved_qty REAL NOT NULL DEFAULT 0,
         reorder_level INTEGER NOT NULL DEFAULT 5,
         bottle_ml INTEGER NOT NULL DEFAULT 750,
         half_price INTEGER,
@@ -1892,6 +3512,7 @@ SELECT name FROM staff GROUP BY name HAVING COUNT(*) = 1
         cost_price INTEGER NOT NULL,
         sell_price INTEGER NOT NULL,
         stock_qty REAL NOT NULL DEFAULT 0,
+        reserved_qty REAL NOT NULL DEFAULT 0,
         reorder_level INTEGER NOT NULL DEFAULT 5,
         bottle_ml INTEGER NOT NULL DEFAULT 750,
         half_price INTEGER,
@@ -1997,6 +3618,40 @@ SELECT name FROM staff GROUP BY name HAVING COUNT(*) = 1
     // helper the v26 upgrade uses, so a new till and an upgraded one cannot
     // diverge — the defect the v24 step introduced and v25 had to repair.
     await _createFoundationTables(db);
+    // The customers and the credit ledger behind them. The same helper the
+    // v30 upgrade uses, for the same reason.
+    await _migrateCustomers(db);
+    // The receive-session draft table, likewise.
+    await _migrateRestockDraft(db);
+    await _migrateExpenses(db);
+    await _createExpensePaymentsTable(db);
+    await _createProductPriceHistoryTable(db);
+    await _migrateDiscounts(db);
+    await _migrateSplitPaymentPending(db);
+    await _migrateHeldCarts(db);
+    await _migrateReceiptShares(db);
+    await _migrateCashDrawer(db);
+    await _migrateStocktake(db);
+    await _migrateBackupLog(db);
+    await _migrateProductPacks(db);
+    await _createLabelPrintJobsTable(db);
+    await _migrateReordering(db);
+    await _migratePackHeldLines(db);
+    await _migrateIncomingPayments(db);
+    await _migrateHeldCustomer(db);
+    await _migratePermissions(db);
+    await _migrateExpiryBatches(db);
+    await _migrateExpiryBatchMetadata(db);
+    await _migrateShiftReports(db);
+    await _migrateRemoteOperationalRecords(db);
+    await _migrateSyncConflicts(db);
+    await _migrateNotifications(db);
+    await _createFinancialEventTable(db);
+    await _createOwnerTransactionsTable(db);
+    await _createOpenFinanceTables(db);
+    await _ensureTaxRuleSnapshotColumns(db);
+    await _migrateLaybys(db);
+    await _migrateExchanges(db);
 
     // Indexes for query hotspots not covered by the core set above. Created
     // after the helper calls so the columns they add (payment_verified,
@@ -2010,7 +3665,156 @@ SELECT name FROM staff GROUP BY name HAVING COUNT(*) = 1
         'CREATE INDEX idx_products_track_variants ON products (track_variants)');
   }
 
+  Future<void> _ensureTaxRuleSnapshotColumns(Database db) async {
+    final tables = await db.rawQuery(
+        "SELECT name FROM sqlite_master WHERE type = 'table' AND name = 'sale_items'");
+    if (tables.isEmpty) return;
+    await _addColumnIfMissing(db, 'sale_items', 'tax_rule_id', 'TEXT');
+    await _addColumnIfMissing(db, 'sale_items', 'tax_rule_version', 'INTEGER');
+    await db.execute(
+        'CREATE INDEX IF NOT EXISTS idx_sale_items_tax_rule ON sale_items (tax_rule_id)');
+  }
+
   // ---------------- Owner ----------------
+  Future<bool> hasPermission({
+    required String role,
+    required String permission,
+    int? staffId,
+  }) async {
+    if (role == ShopRole.admin.wire) return true;
+    return (await permissionMode(
+          role: role,
+          permission: permission,
+          staffId: staffId,
+        )) !=
+        PermissionMode.deny;
+  }
+
+  Future<PermissionMode> permissionMode({
+    required String role,
+    required String permission,
+    int? staffId,
+  }) async {
+    if (role == ShopRole.admin.wire) return PermissionMode.allow;
+    final db = await database;
+    if (staffId != null) {
+      final override = await db.query(
+        'staff_permission_overrides',
+        columns: ['allowed', 'mode'],
+        where: 'staff_id = ? AND permission = ?',
+        whereArgs: [staffId, permission],
+        limit: 1,
+      );
+      if (override.isNotEmpty) return _permissionModeFromRow(override.first);
+    }
+    final rows = await db.query(
+      'role_permissions',
+      columns: ['allowed', 'mode'],
+      where: 'role = ? AND permission = ?',
+      whereArgs: [role, permission],
+      limit: 1,
+    );
+    return rows.isEmpty
+        ? PermissionMode.deny
+        : _permissionModeFromRow(rows.first);
+  }
+
+  PermissionMode _permissionModeFromRow(Map<String, dynamic> row) {
+    final raw = (row['mode'] as String?)?.trim().toLowerCase();
+    return switch (raw) {
+      'allow' => PermissionMode.allow,
+      'approval' => PermissionMode.approval,
+      _ => (row['allowed'] as num?)?.toInt() == 1
+          ? PermissionMode.allow
+          : PermissionMode.deny,
+    };
+  }
+
+  Future<List<Map<String, dynamic>>> getPermissionMatrix() async =>
+      (await database).query('role_permissions', orderBy: 'role, permission');
+
+  Future<void> setRolePermission({
+    required String role,
+    required String permission,
+    required bool allowed,
+  }) async {
+    await (await database).insert(
+      'role_permissions',
+      {
+        'role': role,
+        'permission': permission,
+        'allowed': allowed ? 1 : 0,
+        'mode': allowed ? 'allow' : 'deny',
+      },
+      conflictAlgorithm: ConflictAlgorithm.replace,
+    );
+  }
+
+  Future<void> setRolePermissionMode({
+    required String role,
+    required String permission,
+    required PermissionMode mode,
+  }) async {
+    await (await database).insert(
+      'role_permissions',
+      {
+        'role': role,
+        'permission': permission,
+        'allowed': mode == PermissionMode.deny ? 0 : 1,
+        'mode': mode.name,
+      },
+      conflictAlgorithm: ConflictAlgorithm.replace,
+    );
+  }
+
+  Future<void> setStaffPermissionOverride({
+    required int staffId,
+    required String permission,
+    required bool allowed,
+  }) async {
+    await (await database).insert(
+      'staff_permission_overrides',
+      {
+        'staff_id': staffId,
+        'permission': permission,
+        'allowed': allowed ? 1 : 0,
+        'mode': allowed ? 'allow' : 'deny',
+      },
+      conflictAlgorithm: ConflictAlgorithm.replace,
+    );
+  }
+
+  Future<void> setStaffPermissionOverrideMode({
+    required int staffId,
+    required String permission,
+    required PermissionMode mode,
+  }) async {
+    await (await database).insert(
+      'staff_permission_overrides',
+      {
+        'staff_id': staffId,
+        'permission': permission,
+        'allowed': mode == PermissionMode.deny ? 0 : 1,
+        'mode': mode.name,
+      },
+      conflictAlgorithm: ConflictAlgorithm.replace,
+    );
+  }
+
+  Future<void> clearStaffPermissionOverride({
+    required int staffId,
+    required String permission,
+  }) async {
+    await (await database).delete('staff_permission_overrides',
+        where: 'staff_id = ? AND permission = ?',
+        whereArgs: [staffId, permission]);
+  }
+
+  Future<List<Map<String, dynamic>>> getStaffPermissionOverrides(
+          int staffId) async =>
+      (await database).query('staff_permission_overrides',
+          where: 'staff_id = ?', whereArgs: [staffId]);
+
   Future<Owner?> getOwner() async {
     final rows = await (await database).query('owner', where: 'id = 1');
     return rows.isEmpty ? null : Owner.fromMap(rows.first);
@@ -2070,6 +3874,21 @@ SELECT name FROM staff GROUP BY name HAVING COUNT(*) = 1
     return rows.map((r) => Staff.fromMap(r)).toList();
   }
 
+  /// The stored PIN hash of one staff member, for an approval sheet's check.
+  ///
+  /// It stays IN the helper of the verification only — the hash is never
+  /// listed, logged, or returned for display, and the caller keeps it in its
+  /// own local for exactly the verify.
+  Future<String?> staffPinHash(int staffId) async {
+    final rows = await (await database).query('staff',
+        columns: <String>['pin_hash'],
+        where: 'id = ? AND active = 1',
+        whereArgs: [staffId],
+        limit: 1);
+    if (rows.isEmpty) return null;
+    return rows.first['pin_hash'] as String?;
+  }
+
   Future<int> addStaff(Staff staff) async {
     final values = staff.toMap()..remove('id');
     return (await database).insert('staff', values);
@@ -2078,6 +3897,82 @@ SELECT name FROM staff GROUP BY name HAVING COUNT(*) = 1
   Future<void> setStaffRemoteId(int id, String remoteId) async {
     await (await database).update('staff', {'remote_id': remoteId},
         where: 'id = ?', whereArgs: [id]);
+  }
+
+  /// Refreshes a locally provisioned staff profile without touching its PIN.
+  /// PIN hashes never cross the network, so a new device must still provision
+  /// its local PIN before that person can sign in there.
+  Future<void> mergeRemoteStaff({
+    required String remoteId,
+    required String name,
+    String? username,
+    required String role,
+    required bool active,
+  }) async {
+    if (remoteId.trim().isEmpty) {
+      throw ArgumentError.value(remoteId, 'remoteId');
+    }
+    final db = await database;
+    await db.update(
+      'staff',
+      {
+        'name': name,
+        if (username != null && username.trim().isNotEmpty)
+          'username': username.trim(),
+        'role': role,
+        'active': active ? 1 : 0,
+      },
+      where: 'remote_id = ?',
+      whereArgs: [remoteId],
+    );
+  }
+
+  /// Materialises a staff member authenticated by the backend so the same
+  /// person can use this till when it is offline. Only the locally derived
+  /// PIN hash is stored; the backend never sends PIN material.
+  Future<Staff> mergeAuthenticatedStaff({
+    required String remoteId,
+    required String username,
+    required String name,
+    required String role,
+    required String pinHash,
+  }) async {
+    final db = await database;
+    final existing = await db.query(
+      'staff',
+      where: 'remote_id = ? OR username = ?',
+      whereArgs: [remoteId, username],
+      limit: 1,
+    );
+    int id;
+    if (existing.isEmpty) {
+      id = await db.insert('staff', {
+        'name': name,
+        'username': username,
+        'pin_hash': pinHash,
+        'active': 1,
+        'remote_id': remoteId,
+        'role': role,
+      });
+    } else {
+      id = (existing.first['id'] as num).toInt();
+      await db.update(
+        'staff',
+        {
+          'name': name,
+          'username': username,
+          'pin_hash': pinHash,
+          'active': 1,
+          'remote_id': remoteId,
+          'role': role,
+        },
+        where: 'id = ?',
+        whereArgs: [id],
+      );
+    }
+    final row =
+        await db.query('staff', where: 'id = ?', whereArgs: [id], limit: 1);
+    return Staff.fromMap(row.single);
   }
 
   Future<void> resetStaffPin(int id, String pinHash) async {
@@ -2153,6 +4048,194 @@ SELECT name FROM staff GROUP BY name HAVING COUNT(*) = 1
     return rows.map((r) => Product.fromMap(r)).toList();
   }
 
+  Future<Product?> getProductById(int id) async {
+    final rows = await (await database).query(
+      'products',
+      where: 'id = ?',
+      whereArgs: [id],
+      limit: 1,
+    );
+    return rows.isEmpty ? null : Product.fromMap(rows.first);
+  }
+
+  /// The stock baseline written when a product first entered this till. A
+  /// product can be sold before its first online sync, so the server must get
+  /// this opening balance and then replay the later movement deltas.
+  Future<double?> openingStockQtyForProduct(int productId) async {
+    final rows = await (await database).query(
+      'stock_movements',
+      columns: ['balance_after'],
+      where: 'product_id = ? AND variant_id IS NULL AND movement_type = ?',
+      whereArgs: [productId, StockMovementType.opening.wire],
+      orderBy: 'id ASC',
+      limit: 1,
+    );
+    if (rows.isEmpty) return null;
+    return (rows.first['balance_after'] as num?)?.toDouble();
+  }
+
+  /// The local stock changes the server has not acknowledged yet.
+  ///
+  /// A pulled product count is a remote baseline. Adding only these
+  /// non-opening movements keeps an offline sale or receipt visible locally
+  /// without double-counting the opening balance that product sync already
+  /// established on the server.
+  Future<double> unsyncedStockDeltaForProduct(int productId) async {
+    final rows = await (await database).rawQuery('''
+      SELECT COALESCE(SUM(qty_delta), 0) AS delta
+        FROM stock_movements
+       WHERE product_id = ?
+         AND variant_id IS NULL
+         AND synced_to_backend = 0
+         AND movement_type != ?
+    ''', [productId, StockMovementType.opening.wire]);
+    return (rows.first['delta'] as num?)?.toDouble() ?? 0;
+  }
+
+  /// Applies the shared catalogue fields received from another device. A
+  /// remote id is the merge key; the local row id is never trusted across
+  /// phones. Local-only selling fields (variants, unit, photos) remain intact.
+  Future<void> mergeRemoteProduct({
+    required String remoteId,
+    required String name,
+    required String category,
+    required int costPriceMinor,
+    required int sellPriceMinor,
+    required double stockQty,
+    required int reorderLevel,
+    required int bottleMl,
+    String unit = 'each',
+    double millilitresPerKilogram = 0,
+    required int? halfPriceMinor,
+    required int? quarterPriceMinor,
+    required String exciseStampBatch,
+    required bool active,
+    double unsyncedStockDelta = 0,
+  }) async {
+    if (remoteId.trim().isEmpty) {
+      throw ArgumentError.value(remoteId, 'remoteId');
+    }
+    final db = await database;
+    await db.transaction((txn) async {
+      final values = <String, Object?>{
+        'name': name,
+        'category': category,
+        'cost_price': costPriceMinor,
+        'sell_price': sellPriceMinor,
+        'stock_qty': stockQty + unsyncedStockDelta,
+        'reorder_level': reorderLevel,
+        'bottle_ml': bottleMl,
+        'unit': unit,
+        'ml_per_kg': millilitresPerKilogram,
+        'half_price': halfPriceMinor,
+        'quarter_price': quarterPriceMinor,
+        'excise_stamp_batch': exciseStampBatch,
+        'active': active ? 1 : 0,
+        'remote_id': remoteId,
+        'updated_at': DateTime.now().toIso8601String(),
+      };
+      final existing = await txn.query('products',
+          columns: ['id'],
+          where: 'remote_id = ?',
+          whereArgs: [remoteId],
+          limit: 1);
+      final int productId;
+      final double previousLedger;
+      if (existing.isEmpty) {
+        productId = await txn.insert('products', values);
+        previousLedger = 0;
+      } else {
+        productId = (existing.first['id'] as num).toInt();
+        final ledgerRows = await txn.rawQuery(
+          'SELECT COALESCE(SUM(qty_delta), 0) AS total '
+          'FROM stock_movements WHERE product_id = ? AND variant_id IS NULL',
+          [productId],
+        );
+        previousLedger = (ledgerRows.first['total'] as num?)?.toDouble() ?? 0;
+        await txn.update('products', values,
+            where: 'id = ?', whereArgs: [productId]);
+      }
+
+      // The remote count is a baseline, not a new unsynced sale or receipt.
+      // Bring the local ledger to the same target once; a later identical pull
+      // computes a zero delta and adds nothing.
+      final target = stockQty + unsyncedStockDelta;
+      final delta = target - previousLedger;
+      if (delta.abs() > _qtyEpsilon) {
+        await txn.insert('stock_movements', <String, Object?>{
+          'uuid': _newUuid(),
+          'created_at': DateTime.now().toIso8601String(),
+          'product_id': productId,
+          'variant_id': null,
+          'movement_type': StockMovementType.remoteSync.wire,
+          'qty_delta': delta,
+          'unit_cost_minor': null,
+          'reference_type': 'remote_product_sync',
+          'reference_id': null,
+          'batch_id': null,
+          'staff_id': null,
+          'staff_name': null,
+          'note': 'Remote stock baseline',
+          'balance_after': target,
+          'synced_to_backend': 1,
+        });
+      }
+    });
+  }
+
+  /// Base units sold per product in the recent window, used only as a reorder
+  /// signal. It is deliberately a single grouped query so opening the reorder
+  /// screen does not perform one scan per product.
+  Future<Map<int, double>> getSalesVelocity({int days = 30}) async {
+    if (days <= 0) throw ArgumentError.value(days, 'days');
+    final cutoff =
+        DateTime.now().subtract(Duration(days: days)).toIso8601String();
+    final rows = await (await database).rawQuery('''
+      SELECT i.product_id, COALESCE(SUM(i.qty), 0) AS units
+      FROM sale_items i JOIN sales s ON s.id = i.sale_id
+      WHERE s.created_at >= ?
+      GROUP BY i.product_id
+    ''', [cutoff]);
+    return <int, double>{
+      for (final row in rows)
+        (row['product_id'] as num).toInt():
+            ((row['units'] as num?)?.toDouble() ?? 0) / days,
+    };
+  }
+
+  /// Active catalogue items with the lowest movement in a bounded period.
+  ///
+  /// The left join intentionally keeps products with zero sales: a product
+  /// that never moved is the clearest slow-mover signal. The calculation stays
+  /// in SQLite so a large catalogue does not become a Dart-side scan.
+  Future<List<SlowMoverRow>> getSlowMovingProducts({
+    required DateTime since,
+    DateTime? until,
+    int limit = 5,
+  }) async {
+    final end = until ?? DateTime.now();
+    final days = math.max(1, end.difference(since).inMinutes / (60 * 24));
+    final rows = await (await database).rawQuery('''
+      SELECT p.*,
+             COALESCE(SUM(
+               CASE WHEN s.created_at >= ? AND s.created_at < ?
+                    THEN i.qty ELSE 0 END
+             ), 0) AS moved_units
+      FROM products p
+      LEFT JOIN sale_items i ON i.product_id = p.id
+      LEFT JOIN sales s ON s.id = i.sale_id
+      WHERE p.active = 1
+      GROUP BY p.id
+      ORDER BY moved_units ASC, p.name ASC
+      LIMIT ?
+    ''', [since.toIso8601String(), end.toIso8601String(), limit.clamp(1, 50)]);
+    return rows.map((row) {
+      final product = Product.fromMap(row);
+      final moved = (row['moved_units'] as num?)?.toDouble() ?? 0;
+      return SlowMoverRow(product: product, unitsPerDay: moved / days);
+    }).toList();
+  }
+
   // ---------------- Barcodes ----------------
   //
   // Its own section, its own table and its own API: a barcode is not a product
@@ -2178,6 +4261,147 @@ SELECT name FROM staff GROUP BY name HAVING COUNT(*) = 1
     );
     return rows.isEmpty ? null : Product.fromMap(rows.first);
   }
+
+  /// Resolves either a product barcode or a pack barcode in one lookup path.
+  /// Pack codes are checked against product codes before insertion, so this is
+  /// deterministic even though the two ledgers are separate tables.
+  Future<({Product? product, ProductPack? pack})> getSellableByBarcode(
+      String barcode) async {
+    final product = await getProductByBarcode(barcode);
+    if (product != null) return (product: product, pack: null);
+    final rows = await (await database).query(
+      'product_packs',
+      where: 'barcode = ? AND active = 1',
+      whereArgs: [barcode],
+      limit: 1,
+    );
+    return (
+      product: null,
+      pack: rows.isEmpty ? null : ProductPack.fromMap(rows.first),
+    );
+  }
+
+  Future<List<ProductPack>> getProductPacks(int productId) async {
+    final rows = await (await database).query(
+      'product_packs',
+      where: 'product_id = ? AND active = 1',
+      whereArgs: [productId],
+      orderBy: 'name',
+    );
+    return rows.map(ProductPack.fromMap).toList();
+  }
+
+  Future<int> addProductPack({
+    required String uuid,
+    required int productId,
+    required String name,
+    required String barcode,
+    required double unitsPerPack,
+    required Money unitCost,
+    Money? sellPrice,
+    int? variantId,
+  }) async {
+    if (uuid.trim().isEmpty || name.trim().isEmpty || barcode.trim().isEmpty) {
+      throw ArgumentError('Pack identity is required');
+    }
+    if (!unitsPerPack.isFinite || unitsPerPack <= 0) {
+      throw ArgumentError.value(unitsPerPack, 'unitsPerPack');
+    }
+    final db = await database;
+    if (variantId != null) {
+      final variant = await db.query(
+        'product_variants',
+        columns: ['id'],
+        where: 'id = ? AND product_id = ? AND active = 1',
+        whereArgs: [variantId, productId],
+        limit: 1,
+      );
+      if (variant.isEmpty) throw StateError('Pack variant not found');
+    }
+    final productBarcode = await db.query(
+      'product_barcodes',
+      columns: ['barcode'],
+      where: 'barcode = ?',
+      whereArgs: [barcode],
+      limit: 1,
+    );
+    if (productBarcode.isNotEmpty) {
+      throw StateError('That barcode already belongs to a product');
+    }
+    return db.insert('product_packs', {
+      'uuid': uuid,
+      'product_id': productId,
+      'variant_id': variantId,
+      'name': name.trim(),
+      'barcode': barcode,
+      'units_per_pack': unitsPerPack,
+      'unit_cost_minor': unitCost.minorUnits,
+      'sell_price_minor': sellPrice?.minorUnits,
+      'created_at': DateTime.now().toIso8601String(),
+    });
+  }
+
+  Future<void> deactivateProductPack(int id) async {
+    await (await database).update('product_packs', {'active': 0},
+        where: 'id = ?', whereArgs: [id]);
+  }
+
+  Future<int> createLabelPrintJob({
+    required String uuid,
+    required int productId,
+    required String productName,
+    required String barcode,
+    required int priceMinor,
+    required int quantity,
+    required int paperWidth,
+  }) async {
+    if (quantity < 1) throw ArgumentError.value(quantity, 'quantity');
+    final now = DateTime.now().toIso8601String();
+    return (await database).insert('label_print_jobs', {
+      'uuid': uuid,
+      'product_id': productId,
+      'product_name': productName,
+      'barcode': barcode,
+      'price_minor': priceMinor,
+      'quantity': quantity,
+      'paper_width': paperWidth,
+      'created_at': now,
+      'updated_at': now,
+    });
+  }
+
+  Future<Map<String, dynamic>?> getLabelPrintJob(int id) async {
+    final rows = await (await database).query(
+      'label_print_jobs',
+      where: 'id = ?',
+      whereArgs: [id],
+      limit: 1,
+    );
+    return rows.isEmpty ? null : rows.first;
+  }
+
+  Future<void> updateLabelPrintJob({
+    required int id,
+    int? printedQuantity,
+    String? status,
+    String? error,
+  }) async {
+    final values = <String, Object?>{
+      'updated_at': DateTime.now().toIso8601String(),
+    };
+    if (printedQuantity != null) values['printed_quantity'] = printedQuantity;
+    if (status != null) values['status'] = status;
+    if (error != null) values['error'] = error;
+    await (await database)
+        .update('label_print_jobs', values, where: 'id = ?', whereArgs: [id]);
+  }
+
+  Future<List<Map<String, dynamic>>> getPendingLabelPrintJobs() async =>
+      (await database).query(
+        'label_print_jobs',
+        where: "status != 'completed'",
+        orderBy: 'updated_at DESC',
+      );
 
   /// Every code a product answers to, primary-key order for stable output.
   Future<List<ProductBarcode>> getBarcodesForProduct(int productId) async {
@@ -2637,8 +4861,8 @@ SELECT name FROM staff GROUP BY name HAVING COUNT(*) = 1
   /// sell screen has to show something to tap. Returning both is what lets the
   /// caller add the right thing to the cart instead of the parent and
   /// discovering the mistake at checkout.
-  Future<({Product product, ProductVariant? variant})?> getScanTarget(
-      String barcode) async {
+  Future<({Product product, ProductVariant? variant, ProductPack? pack})?>
+      getScanTarget(String barcode) async {
     final rows = await (await database).rawQuery(
       '''SELECT p.*, b.variant_id AS _matched_variant
          FROM products p
@@ -2647,13 +4871,45 @@ SELECT name FROM staff GROUP BY name HAVING COUNT(*) = 1
         LIMIT 1''',
       [barcode],
     );
-    if (rows.isEmpty) return null;
+    if (rows.isEmpty) {
+      final packRows = await (await database).rawQuery(
+        '''SELECT p.*, k.id AS _pack_id, k.uuid AS _pack_uuid,
+                  k.name AS _pack_name, k.barcode AS _pack_barcode,
+                  k.variant_id AS _pack_variant,
+                  k.units_per_pack AS _pack_units,
+                  k.unit_cost_minor AS _pack_cost,
+                  k.sell_price_minor AS _pack_sell, k.active AS _pack_active
+           FROM product_packs k JOIN products p ON p.id = k.product_id
+           WHERE k.barcode = ? AND k.active = 1 AND p.active = 1 LIMIT 1''',
+        [barcode],
+      );
+      if (packRows.isEmpty) return null;
+      final row = packRows.first;
+      final pack = ProductPack(
+        id: row['_pack_id'] as int,
+        uuid: row['_pack_uuid'] as String,
+        productId: row['id'] as int,
+        variantId: (row['_pack_variant'] as num?)?.toInt(),
+        name: row['_pack_name'] as String,
+        barcode: row['_pack_barcode'] as String,
+        unitsPerPack: (row['_pack_units'] as num).toDouble(),
+        unitCost: Money.fromMinor((row['_pack_cost'] as num).toInt()),
+        sellPrice: (row['_pack_sell'] as num?) == null
+            ? null
+            : Money.fromMinor((row['_pack_sell'] as num).toInt()),
+        active: (row['_pack_active'] as num? ?? 1) == 1,
+      );
+      final variantId = pack.variantId;
+      final variant =
+          variantId == null ? null : await getVariantById(variantId);
+      return (product: Product.fromMap(row), variant: variant, pack: pack);
+    }
     final variantId = rows.first['_matched_variant'] as int?;
     if (variantId == null) {
-      return (product: Product.fromMap(rows.first), variant: null);
+      return (product: Product.fromMap(rows.first), variant: null, pack: null);
     }
     final variant = await getVariantById(variantId);
-    return (product: Product.fromMap(rows.first), variant: variant);
+    return (product: Product.fromMap(rows.first), variant: variant, pack: null);
   }
 
   // ---------------- Categories ----------------
@@ -2805,6 +5061,547 @@ SELECT name FROM staff GROUP BY name HAVING COUNT(*) = 1
     };
   }
 
+  /// The shop's selected profile. Legacy shops deliberately resolve to Duka
+  /// until the owner explicitly chooses another profile.
+  Future<ShopProfile> getShopProfile() async {
+    final rows = await (await database).query('shop_profile', limit: 1);
+    return ShopProfile.fromWire(
+        rows.isEmpty ? null : rows.first['profile'] as String?);
+  }
+
+  Future<void> setShopProfile(ShopProfile profile) async {
+    await (await database).insert(
+      'shop_profile',
+      {
+        'id': 1,
+        'profile': profile.wireValue,
+        'updated_at': DateTime.now().toUtc().toIso8601String(),
+      },
+      conflictAlgorithm: ConflictAlgorithm.replace,
+    );
+  }
+
+  Future<List<NotificationPreference>> getNotificationPreferences(
+      int staffId) async {
+    final rows = await (await database).query(
+      'notification_prefs',
+      where: 'staff_id = ?',
+      whereArgs: [staffId],
+    );
+    return rows
+        .map((row) => NotificationPreference(
+              staffId: staffId,
+              type: ShopNotificationTypeWire.parse(row['type'] as String?) ??
+                  ShopNotificationType.lowStock,
+              enabled: row['enabled'] == 1,
+              quietStartMinutes: row['quiet_start'] as int?,
+              quietEndMinutes: row['quiet_end'] as int?,
+            ))
+        .toList(growable: false);
+  }
+
+  Future<void> saveNotificationPreference(
+      NotificationPreference preference) async {
+    await (await database).insert(
+      'notification_prefs',
+      {
+        'staff_id': preference.staffId,
+        'type': preference.type.wire,
+        'enabled': preference.enabled ? 1 : 0,
+        'quiet_start': preference.quietStartMinutes,
+        'quiet_end': preference.quietEndMinutes,
+      },
+      conflictAlgorithm: ConflictAlgorithm.replace,
+    );
+  }
+
+  Future<NotificationRecord?> latestNotification({
+    required int staffId,
+    required ShopNotificationType type,
+    required String dedupeKey,
+  }) async {
+    final rows = await (await database).query(
+      'notification_log',
+      where: 'staff_id = ? AND type = ? AND dedupe_key = ?',
+      whereArgs: [staffId, type.wire, dedupeKey],
+      orderBy: 'fired_at DESC, id DESC',
+      limit: 1,
+    );
+    if (rows.isEmpty) return null;
+    return _notificationFromRow(rows.first);
+  }
+
+  Future<int> recordNotification({
+    required int staffId,
+    required ShopNotificationType type,
+    required String dedupeKey,
+    required int count,
+    required DateTime firedAt,
+  }) async {
+    return (await database).insert('notification_log', {
+      'staff_id': staffId,
+      'type': type.wire,
+      'dedupe_key': dedupeKey,
+      'count': count,
+      'fired_at': firedAt.toUtc().toIso8601String(),
+    });
+  }
+
+  /// Atomically applies the minimum interval and records the notification.
+  ///
+  /// Background callbacks and a foreground refresh can arrive together. A
+  /// separate SELECT followed by INSERT would let both observe the same old
+  /// row and emit the same alert.
+  Future<bool> recordNotificationIfDue({
+    required int staffId,
+    required ShopNotificationType type,
+    required String dedupeKey,
+    required int count,
+    required DateTime firedAt,
+    required Duration minimumInterval,
+  }) async {
+    final db = await database;
+    return db.transaction((txn) async {
+      final rows = await txn.query(
+        'notification_log',
+        where: 'staff_id = ? AND type = ? AND dedupe_key = ?',
+        whereArgs: [staffId, type.wire, dedupeKey],
+        orderBy: 'fired_at DESC, id DESC',
+        limit: 1,
+      );
+      if (rows.isNotEmpty) {
+        final previous = _notificationFromRow(rows.first);
+        if (firedAt.difference(previous.firedAt) < minimumInterval) {
+          return false;
+        }
+      }
+      await txn.insert('notification_log', {
+        'staff_id': staffId,
+        'type': type.wire,
+        'dedupe_key': dedupeKey,
+        'count': count,
+        'fired_at': firedAt.toUtc().toIso8601String(),
+      });
+      return true;
+    });
+  }
+
+  Future<void> markNotificationOpened(int id, {DateTime? openedAt}) async {
+    await (await database).update(
+      'notification_log',
+      {'opened_at': (openedAt ?? DateTime.now()).toUtc().toIso8601String()},
+      where: 'id = ?',
+      whereArgs: [id],
+    );
+  }
+
+  Future<List<NotificationRecord>> recentNotifications({
+    required int staffId,
+    int limit = 20,
+  }) async {
+    final rows = await (await database).query(
+      'notification_log',
+      where: 'staff_id = ?',
+      whereArgs: [staffId],
+      orderBy: 'fired_at DESC, id DESC',
+      limit: limit,
+    );
+    return rows.map(_notificationFromRow).toList(growable: false);
+  }
+
+  Future<int> pruneNotifications(
+      {Duration retain = const Duration(days: 90)}) async {
+    final cutoff = DateTime.now().toUtc().subtract(retain).toIso8601String();
+    return (await database).delete(
+      'notification_log',
+      where: 'fired_at < ?',
+      whereArgs: [cutoff],
+    );
+  }
+
+  NotificationRecord _notificationFromRow(Map<String, Object?> row) {
+    return NotificationRecord(
+      id: row['id']! as int,
+      staffId: row['staff_id']! as int,
+      type: ShopNotificationTypeWire.parse(row['type'] as String?) ??
+          ShopNotificationType.lowStock,
+      dedupeKey: row['dedupe_key']! as String,
+      count: row['count']! as int,
+      firedAt: DateTime.parse(row['fired_at']! as String).toLocal(),
+      openedAt: row['opened_at'] == null
+          ? null
+          : DateTime.parse(row['opened_at']! as String).toLocal(),
+    );
+  }
+
+  /// A portable, schema-aware snapshot of every local user-data table.  The
+  /// inventory workbook is deliberately not used here: it cannot carry sales,
+  /// staff, permissions, credit, shifts, audit history, queues or analytics
+  /// source data, so restoring it would produce a deceptively incomplete shop.
+  Future<Map<String, Object?>> exportFullSnapshot() async {
+    final db = await database;
+    // Keep the catalogue, ledgers, queues and audit history on one SQLite
+    // snapshot. Reading each table in separate operations lets a sale or a
+    // sync write land between related tables and creates a backup that never
+    // existed as a valid workspace state.
+    final tables = await db.transaction((txn) async {
+      final tableRows = await txn.rawQuery(
+        "SELECT name FROM sqlite_master WHERE type = 'table' "
+        "AND name NOT LIKE 'sqlite_%' ORDER BY name",
+      );
+      final result = <String, List<Map<String, Object?>>>{};
+      for (final tableRow in tableRows) {
+        final name = tableRow['name'] as String;
+        final rows = await txn.query(name, orderBy: 'rowid');
+        result[name] = [
+          for (final row in rows) Map<String, Object?>.from(row),
+        ];
+      }
+      return result;
+    });
+    final domainTables = <String, List<String>>{
+      'financial': _snapshotDomainTables(tables, const <String>[
+        'sales',
+        'sale_items',
+        'sale_payments',
+        'sale_returns',
+        'sale_return_items',
+        'sale_return_refunds',
+        'expenses',
+        'expense_payments',
+        'till_movements',
+        'financial_events',
+        'owner_transactions',
+        'incoming_payments',
+        'incoming_payment_claims',
+        'credit_ledger',
+        'credit_allocations',
+        'laybys',
+        'layby_items',
+        'layby_payments',
+        'exchanges',
+        'stock_receipts',
+        'stock_receipt_items',
+        'purchase_orders',
+        'purchase_order_lines',
+        'shifts',
+        'till_counts',
+        'reconciliations',
+        'cost_pools',
+        'cost_pool_entries',
+        'sale_pool_allocations',
+      ]),
+      'profile': _snapshotDomainTables(tables, const <String>[
+        'shop_profile',
+        'owner',
+        'staff',
+        'staff_deletion_tombstones',
+        'role_permissions',
+        'staff_permission_overrides',
+        'shop_settings',
+        'categories',
+        'products',
+        'product_barcodes',
+        'product_variants',
+        'product_packs',
+        'suppliers',
+        'product_suppliers',
+      ]),
+      // Tax/eTIMS is intentionally disabled in the current product behaviour.
+      // Its persisted source data still travels with a full backup so it can
+      // be enabled later without losing historical evidence.
+      'tax': _snapshotDomainTables(tables, const <String>[
+        'pending_etims',
+        'sales',
+        'sale_items',
+        'stock_receipts',
+        'stock_receipt_items',
+        'financial_events',
+        'shop_settings',
+      ]),
+    };
+    return <String, Object?>{
+      'format': 'duka-full-snapshot-v1',
+      'schemaVersion': _schemaVersion,
+      'workspaceKey': _workspaceKey,
+      'createdAt': DateTime.now().toUtc().toIso8601String(),
+      'tables': tables,
+      'manifest': <String, int>{
+        for (final entry in tables.entries) entry.key: entry.value.length,
+      },
+      'domainTables': domainTables,
+      'media': await _exportSnapshotMedia(tables),
+    };
+  }
+
+  static List<String> _snapshotDomainTables(
+    Map<String, List<Map<String, Object?>>> tables,
+    List<String> candidates,
+  ) =>
+      [
+        for (final table in candidates)
+          if (tables.containsKey(table)) table,
+      ];
+
+  /// Local images are deliberately not database blobs, but referenced images
+  /// are still part of a complete portable restore.  Keep this list narrow:
+  /// only product paths present in the snapshot and the device avatar are
+  /// included, never an arbitrary file from the documents directory.
+  Future<List<Map<String, String>>> _exportSnapshotMedia(
+    Map<String, List<Map<String, Object?>>> tables,
+  ) async {
+    final paths = <String>{ProductImageStore.avatarRelativePath};
+    for (final row in tables['products'] ?? const <Map<String, Object?>>[]) {
+      final imagePath = row['image_path'];
+      if (imagePath is String && imagePath.isNotEmpty) paths.add(imagePath);
+    }
+    final media = <Map<String, String>>[];
+    final docs = await _applicationDocumentsDirectory();
+    if (docs == null) return media;
+    for (final relative in paths) {
+      if (!_isSafeSnapshotPath(relative)) continue;
+      final file = File(join(docs.path, relative));
+      if (!await file.exists()) continue;
+      media.add(<String, String>{
+        'path': relative,
+        'bytes': base64Encode(await file.readAsBytes()),
+      });
+    }
+    return media;
+  }
+
+  static bool _isSafeSnapshotPath(String relative) {
+    if (relative.isEmpty || isAbsolute(relative)) return false;
+    final parts = relative.split(RegExp(r'[/\\]'));
+    return parts.isNotEmpty &&
+        !parts.any((part) => part.isEmpty || part == '.' || part == '..');
+  }
+
+  /// Restores a snapshot into the current workspace atomically.  The schema is
+  /// owned by the running build; unknown snapshot tables are ignored so a
+  /// newer backup can be inspected by an older build without arbitrary SQL.
+  ///
+  /// A device-bound backup stays locked to its workspace. A portable,
+  /// passphrase-protected backup may be restored into the currently selected
+  /// workspace on a replacement phone; the caller must opt into that boundary
+  /// explicitly after the user has authenticated and chosen the destination.
+  Future<void> restoreFullSnapshot(
+    Map<String, Object?> snapshot, {
+    bool allowWorkspaceMismatch = false,
+  }) async {
+    if (snapshot['format'] != 'duka-full-snapshot-v1' ||
+        snapshot['tables'] is! Map ||
+        snapshot['manifest'] is! Map) {
+      throw const FormatException('Unsupported full backup');
+    }
+    final snapshotWorkspace = snapshot['workspaceKey'];
+    if (snapshotWorkspace is! String ||
+        snapshotWorkspace.isEmpty ||
+        (!allowWorkspaceMismatch && snapshotWorkspace != _workspaceKey)) {
+      throw const FormatException('Backup belongs to a different shop');
+    }
+    final db = await database;
+    final availableRows = await db.rawQuery(
+      "SELECT name FROM sqlite_master WHERE type = 'table' "
+      "AND name NOT LIKE 'sqlite_%'",
+    );
+    final available = {
+      for (final row in availableRows) row['name'] as String,
+    };
+    final source = Map<Object?, Object?>.from(snapshot['tables']! as Map);
+    final manifest = Map<Object?, Object?>.from(snapshot['manifest']! as Map);
+    final domainTables = snapshot['domainTables'];
+    if (domainTables != null) {
+      if (domainTables is! Map) {
+        throw const FormatException('Invalid backup domain manifest');
+      }
+      for (final domainEntry in domainTables.entries) {
+        if (domainEntry.key is! String || domainEntry.value is! List) {
+          throw const FormatException('Invalid backup domain manifest');
+        }
+        for (final table in domainEntry.value as List) {
+          if (table is! String || !source.containsKey(table)) {
+            throw const FormatException('Backup domain is incomplete');
+          }
+        }
+      }
+    }
+    final tables = <String, List<Map<String, Object?>>>{};
+    for (final entry in source.entries) {
+      if (entry.key is! String || !available.contains(entry.key)) continue;
+      if (entry.value is! List) {
+        throw const FormatException('Invalid table rows');
+      }
+      final rawRows = entry.value as List;
+      if (rawRows.any((row) => row is! Map)) {
+        throw const FormatException('Invalid row in full backup');
+      }
+      final rows = [
+        for (final row in rawRows) Map<String, Object?>.from(row as Map),
+      ];
+      final expected = manifest[entry.key];
+      if (expected is! num || expected.toInt() != rows.length) {
+        throw const FormatException('Full backup manifest does not match');
+      }
+      tables[entry.key as String] = rows;
+    }
+    final financialRows = tables['financial_events'];
+    if (financialRows != null && !_verifyFinancialEventRows(financialRows)) {
+      throw const FormatException('Financial event integrity check failed');
+    }
+    // Validate media before replacing any table. A malformed media entry must
+    // fail like a malformed row, without leaving the database half-restored.
+    _validateSnapshotMedia(snapshot['media']);
+    // Filesystem writes cannot participate in SQLite's transaction. Stage the
+    // new files first, then swap them with a byte-for-byte rollback plan. The
+    // database is replaced only after that swap succeeds; if its transaction
+    // fails, the old media is restored before the error reaches the caller.
+    final mediaRollback = await _applySnapshotMedia(snapshot['media']);
+    try {
+      await db.execute('PRAGMA foreign_keys = OFF');
+      try {
+        await db.transaction((txn) async {
+          // Replace only tables represented by the snapshot. This preserves
+          // tables introduced by a newer schema when an older backup is
+          // restored, and prevents a malformed/partial export from wiping
+          // otherwise valid current data.
+          for (final table in tables.keys) {
+            await txn.delete(table);
+          }
+          for (final entry in tables.entries) {
+            for (final row in entry.value) {
+              await txn.insert(entry.key, row,
+                  conflictAlgorithm: ConflictAlgorithm.replace);
+            }
+          }
+          final restoredFinancialRows = await txn.query(
+            'financial_events',
+            orderBy: 'id ASC',
+          );
+          if (!_verifyFinancialEventRows(restoredFinancialRows)) {
+            throw const FormatException(
+                'Restored financial event integrity check failed');
+          }
+        });
+      } finally {
+        await db.execute('PRAGMA foreign_keys = ON');
+      }
+    } catch (_) {
+      await mediaRollback.rollback();
+      rethrow;
+    }
+    // Keep the restore itself in the same auditable history as the export. It
+    // is written only after the replacement transaction succeeds, so a failed
+    // or rejected backup never claims to have restored anything.
+    await recordBackupLog(
+      uuid: _newUuid(),
+      kind: 'full_restore',
+      manifestJson: jsonEncode(snapshot['manifest']),
+      status: 'restored',
+    );
+  }
+
+  Future<_SnapshotMediaRollback> _applySnapshotMedia(Object? rawMedia) async {
+    if (rawMedia == null) {
+      return const _SnapshotMediaRollback(<String, List<int>?>{});
+    }
+    _validateSnapshotMedia(rawMedia);
+    final media = rawMedia as List;
+    final docs = await _applicationDocumentsDirectory();
+    if (docs == null) {
+      return const _SnapshotMediaRollback(<String, List<int>?>{});
+    }
+    final oldBytes = <String, List<int>?>{};
+    final applied = <String>[];
+    try {
+      for (final item in media) {
+        final entry = Map<Object?, Object?>.from(item as Map);
+        final path = entry['path'] as String;
+        final file = File(join(docs.path, path));
+        oldBytes[path] = await file.exists() ? await file.readAsBytes() : null;
+      }
+      for (final item in media) {
+        final entry = Map<Object?, Object?>.from(item as Map);
+        final path = entry['path'] as String;
+        final bytes = base64Decode(entry['bytes'] as String);
+        final file = File(join(docs.path, path));
+        await file.parent.create(recursive: true);
+        await file.writeAsBytes(bytes, flush: true);
+        applied.add(path);
+      }
+    } catch (_) {
+      await _restoreSnapshotMediaBytes(docs, oldBytes, applied);
+      rethrow;
+    }
+    return _SnapshotMediaRollback(oldBytes, documents: docs);
+  }
+
+  Future<void> _restoreSnapshotMediaBytes(
+    Directory docs,
+    Map<String, List<int>?> oldBytes,
+    Iterable<String> paths,
+  ) async {
+    for (final path in paths) {
+      final file = File(join(docs.path, path));
+      final bytes = oldBytes[path];
+      if (bytes == null) {
+        if (await file.exists()) await file.delete();
+      } else {
+        await file.parent.create(recursive: true);
+        await file.writeAsBytes(bytes, flush: true);
+      }
+    }
+  }
+
+  static void _validateSnapshotMedia(Object? rawMedia) {
+    if (rawMedia == null) return;
+    if (rawMedia is! List) {
+      throw const FormatException('Invalid snapshot media');
+    }
+    for (final item in rawMedia) {
+      if (item is! Map) throw const FormatException('Invalid snapshot media');
+      final path = item['path'];
+      final encoded = item['bytes'];
+      if (path is! String || encoded is! String || !_isSafeSnapshotPath(path)) {
+        throw const FormatException('Invalid snapshot media entry');
+      }
+      try {
+        base64Decode(encoded);
+      } on FormatException {
+        throw const FormatException('Invalid snapshot media bytes');
+      }
+    }
+  }
+
+  /// Pure database tests run without Flutter's path-provider plugin. The
+  /// actual app always has it; treating the missing plugin as "no local media"
+  /// keeps headless database tests independent of platform channels.
+  static Future<Directory?> _applicationDocumentsDirectory() async {
+    try {
+      return await getApplicationDocumentsDirectory();
+    } on MissingPluginException {
+      return null;
+    }
+  }
+
+  Future<bool> getDiscountsEnabled() async =>
+      (await getSetting(settingDiscountsEnabled)) == '1';
+
+  Future<int> getDiscountPercent(String key, {int fallback = 0}) async {
+    final value = int.tryParse((await getSetting(key)) ?? '');
+    return (value ?? fallback).clamp(0, 100);
+  }
+
+  Future<bool> getDiscountReasonRequired() async =>
+      (await getSetting(settingDiscountReasonRequired)) == '1';
+
+  Future<bool> getDiscountBelowCostAllowed() async =>
+      (await getSetting(settingDiscountBelowCostAllowed)) == '1';
+
+  Future<List<Map<String, dynamic>>> getDiscountReasons() async =>
+      (await database).query('discount_reasons',
+          where: 'active = 1', orderBy: 'name COLLATE NOCASE');
+
   // ---------------- Receipt numbering ----------------
 
   /// Counter key for the sale sequence.
@@ -2838,6 +5635,38 @@ SELECT name FROM staff GROUP BY name HAVING COUNT(*) = 1
     final configured = (await getSetting(settingTillCode))?.trim();
     if (configured != null && configured.isNotEmpty) return configured;
     return defaultTillCode(_workspaceKey);
+  }
+
+  Future<String?> _settingFromExecutor(
+      DatabaseExecutor executor, String key) async {
+    final rows = await executor.query('shop_settings',
+        columns: ['value'], where: 'key = ?', whereArgs: [key], limit: 1);
+    if (rows.isEmpty) return null;
+    final value = rows.first['value'];
+    return value is String ? value : value?.toString();
+  }
+
+  Future<String> _tillCodeFromExecutor(DatabaseExecutor executor) async {
+    final configured =
+        (await _settingFromExecutor(executor, settingTillCode))?.trim();
+    if (configured != null && configured.isNotEmpty) return configured;
+    return defaultTillCode(_workspaceKey);
+  }
+
+  Future<int> _vatRateFromExecutor(DatabaseExecutor executor) async {
+    final parsed = int.tryParse(
+        await _settingFromExecutor(executor, settingVatRate) ?? '');
+    if (parsed == null || parsed < 0 || parsed > 100) {
+      return _defaultVatRatePercent;
+    }
+    return parsed;
+  }
+
+  Future<int> _creditDefaultLimitFromExecutor(DatabaseExecutor executor) async {
+    final parsed = int.tryParse(
+        await _settingFromExecutor(executor, settingCreditDefaultLimitMinor) ??
+            '');
+    return parsed == null || parsed < 0 ? 0 : parsed;
   }
 
   Future<void> setTillCode(String code) =>
@@ -2878,6 +5707,105 @@ SELECT name FROM staff GROUP BY name HAVING COUNT(*) = 1
   }
 
   static const int _defaultVatRatePercent = 16;
+
+  Future<int> getExpenseApprovalLimitMinor() async {
+    final parsed = int.tryParse(
+      await getSetting(settingExpenseApprovalLimitMinor) ?? '',
+    );
+    return parsed == null || parsed < 0 ? 500000 : parsed;
+  }
+
+  Future<void> setExpenseApprovalLimitMinor(int minorUnits) {
+    if (minorUnits < 0) {
+      throw ArgumentError.value(minorUnits, 'minorUnits');
+    }
+    return setSetting(settingExpenseApprovalLimitMinor, '$minorUnits');
+  }
+
+  // ---------------- Credit settings ----------------
+  //
+  // Selling on account is a money-adjacent capability and ships OFF (spec
+  // D5). The default limit of zero means that even after the owner turns
+  // credit on, nobody can take anything on account until they name a limit —
+
+  /// Whether the shop sells on credit at all.
+  Future<bool> getCreditEnabled() async =>
+      (await getSetting(settingCreditEnabled)) == '1';
+
+  Future<void> setCreditEnabled(bool enabled) =>
+      setSetting(settingCreditEnabled, enabled ? '1' : '0');
+
+  /// The limit a customer with no override of their own may owe. Zero is
+  /// valid: it means nobody can owe anything until the owner names a figure -
+  /// no silent default limit that a shop never agreed to.
+  Future<int> getCreditDefaultLimit() async {
+    final parsed =
+        int.tryParse(await getSetting(settingCreditDefaultLimitMinor) ?? '');
+    return parsed == null || parsed < 0 ? 0 : parsed;
+  }
+
+  Future<void> setCreditDefaultLimit(int minorUnits) {
+    if (minorUnits < 0) {
+      throw ArgumentError.value(
+          minorUnits, 'minorUnits', 'must not be negative');
+    }
+    return setSetting(settingCreditDefaultLimitMinor, '$minorUnits');
+  }
+
+  /// What happens when a sale would pass the customer's limit: `block`
+  /// (default) refuses the sale until a manager approves it; `warn` lets the
+  /// cashier through once they have seen the warning.
+  Future<String> getCreditLimitMode() async =>
+      (await getSetting(settingCreditLimitMode)) == 'warn' ? 'warn' : 'block';
+
+  Future<void> setCreditLimitMode(String mode) =>
+      setSetting(settingCreditLimitMode, mode == 'warn' ? 'warn' : 'block');
+
+  /// Whether a CASHIER (not the owner or a manager) may sell on account.
+  /// Off by default; the owner turns it on for a till that deals in credit
+  /// every day.
+  Future<bool> getCreditCashiersAllowed() async =>
+      (await getSetting(settingCreditCashiersAllowed)) == '1';
+
+  Future<void> setCreditCashiersAllowed(bool allowed) =>
+      setSetting(settingCreditCashiersAllowed, allowed ? '1' : '0');
+
+  /// The text a payment reminder is built from. The shop can write their own;
+  /// the default names the shop, the customer and the balance (model/credit.dart).
+  Future<String> getCreditReminderTemplate() async {
+    final raw = await getSetting(settingCreditReminderTemplate);
+    final template = raw?.trim();
+    if (template == null || template.isEmpty) return kDefaultReminderTemplate;
+    return template;
+  }
+
+  Future<void> setCreditReminderTemplate(String template) =>
+      setSetting(settingCreditReminderTemplate, template);
+
+  /// The name a reminder or a statement cites. Empty when the shop never
+  /// set one up (a till that sells before naming itself) — the template then
+  /// reads naturally without it.
+  Future<String> getShopName() async {
+    final rows = await (await database)
+        .query('owner', columns: <String>['shop_name'], limit: 1);
+    return (rows.first['shop_name'] as String?) ?? '';
+  }
+
+  /// How a delivery prices what it brings.
+  ///
+  /// Weighted average is the default (spec D3): shelf + delivery blended,
+  /// which is how a small shop reasons about the price of "the beer" rather
+  /// than of this week's case. `last_cost` replaces the cost outright, for
+  /// the shop that would rather see last Thursday's invoice figure.
+  static const String settingCostingMode = 'costing_mode';
+
+  Future<String> getCostingMode() async =>
+      (await getSetting(settingCostingMode)) == 'last_cost'
+          ? 'last_cost'
+          : 'weighted_average';
+
+  Future<void> setCostingMode(String mode) => setSetting(settingCostingMode,
+      mode == 'last_cost' ? 'last_cost' : 'weighted_average');
 
   /// Allocates the next receipt number, `<TILL>-000123`.
   ///
@@ -2943,6 +5871,34 @@ SELECT name FROM staff GROUP BY name HAVING COUNT(*) = 1
     );
   }
 
+  Future<void> _recordProductPriceIfChanged(
+    DatabaseExecutor executor, {
+    required int productId,
+    required int costPrice,
+    required int sellPrice,
+    String? reason,
+  }) async {
+    final latest = await executor.query(
+      'product_price_history',
+      columns: ['cost_price', 'sell_price'],
+      where: 'product_id = ?',
+      whereArgs: [productId],
+      orderBy: 'recorded_at DESC, id DESC',
+      limit: 1,
+    );
+    final changed = latest.isEmpty ||
+        latest.first['cost_price'] != costPrice ||
+        latest.first['sell_price'] != sellPrice;
+    if (!changed) return;
+    await executor.insert('product_price_history', <String, Object?>{
+      'product_id': productId,
+      'recorded_at': DateTime.now().toIso8601String(),
+      'cost_price': costPrice,
+      'sell_price': sellPrice,
+      'reason': reason,
+    });
+  }
+
   Future<int> upsertProduct(Product p) async {
     final db = await database;
     if (p.id == null) {
@@ -2952,8 +5908,26 @@ SELECT name FROM staff GROUP BY name HAVING COUNT(*) = 1
       // would have no history, and the ledger check would read every product
       // as wrong.
       await _writeOpeningMovement(db, productId: id, balance: p.stockQty);
+      await _recordProductPriceIfChanged(db,
+          productId: id,
+          costPrice: p.costPrice.minorUnits,
+          sellPrice: p.sellPrice.minorUnits,
+          reason: 'created');
       return id;
     } else {
+      final previous = await db.query('products',
+          columns: [
+            'cost_price',
+            'sell_price',
+            'track_expiry',
+            'track_variants',
+            'unit',
+            'ml_per_kg',
+            'stock_qty'
+          ],
+          where: 'id = ?',
+          whereArgs: [p.id],
+          limit: 1);
       final values = p.toMap();
       // Older imports and editor forms may not carry the backend ID. Never
       // erase it during a local edit; remote linkage is durable metadata.
@@ -2965,10 +5939,56 @@ SELECT name FROM staff GROUP BY name HAVING COUNT(*) = 1
         // workbook onto a fresh or reinstalled device). Fall back to an insert
         // so recovery works instead of aborting on the first product.
         values.remove('id');
-        return db.insert('products', values);
+        final id = await db.insert('products', values);
+        await _recordProductPriceIfChanged(db,
+            productId: id,
+            costPrice: p.costPrice.minorUnits,
+            sellPrice: p.sellPrice.minorUnits,
+            reason: 'restored');
+        return id;
       }
+      final changed = previous.isEmpty ||
+          previous.first['cost_price'] != p.costPrice.minorUnits ||
+          previous.first['sell_price'] != p.sellPrice.minorUnits;
+      if (changed) {
+        await _recordProductPriceIfChanged(db,
+            productId: p.id!,
+            costPrice: p.costPrice.minorUnits,
+            sellPrice: p.sellPrice.minorUnits,
+            reason: 'updated');
+      }
+      await _backfillExpiryBatchIfEnabled(db, p, previous);
       return p.id!;
     }
+  }
+
+  Future<void> _backfillExpiryBatchIfEnabled(
+    DatabaseExecutor db,
+    Product product,
+    List<Map<String, dynamic>> previous,
+  ) async {
+    if (previous.isEmpty ||
+        !product.trackExpiry ||
+        (previous.first['track_expiry'] as num?)?.toInt() == 1 ||
+        product.trackVariants ||
+        product.unit.isMeasuredByWeight ||
+        product.stockQty <= _qtyEpsilon) {
+      return;
+    }
+    final existing = await db.query('stock_batches',
+        columns: ['id'], where: 'product_id = ?', whereArgs: [product.id]);
+    if (existing.isNotEmpty) return;
+    // Unknown expiry is represented by the far-future sentinel. It is visible
+    // as "Unknown" in batch views and is never accidentally treated as stale.
+    await db.insert('stock_batches', {
+      'uuid': _newUuid(),
+      'product_id': product.id,
+      'received_at': DateTime.now().toIso8601String(),
+      'expires_at': '9999-12-31T23:59:59.999',
+      'qty_remaining': product.stockQty,
+      'unit_cost_minor': product.costPrice.minorUnits,
+      'status': 'active',
+    });
   }
 
   /// Same as [upsertProduct] but inside an already-open transaction, so a
@@ -2977,18 +5997,70 @@ SELECT name FROM staff GROUP BY name HAVING COUNT(*) = 1
   /// the editor still thinks is new — and the next Save inserts it again.
   Future<int> upsertProductInTransaction(Transaction txn, Product p) async {
     if (p.id == null) {
-      return txn.insert('products', p.toMap());
+      final id = await txn.insert('products', p.toMap());
+      await _recordProductPriceIfChanged(txn,
+          productId: id,
+          costPrice: p.costPrice.minorUnits,
+          sellPrice: p.sellPrice.minorUnits,
+          reason: 'created');
+      return id;
     } else {
+      final previous = await txn.query('products',
+          columns: ['cost_price', 'sell_price'],
+          where: 'id = ?',
+          whereArgs: [p.id],
+          limit: 1);
       final values = p.toMap();
       if (p.remoteId == null) values.remove('remote_id');
       final updated = await txn
           .update('products', values, where: 'id = ?', whereArgs: [p.id]);
       if (updated == 0) {
         values.remove('id');
-        return txn.insert('products', values);
+        final id = await txn.insert('products', values);
+        await _recordProductPriceIfChanged(txn,
+            productId: id,
+            costPrice: p.costPrice.minorUnits,
+            sellPrice: p.sellPrice.minorUnits,
+            reason: 'restored');
+        return id;
+      }
+      if (previous.isEmpty ||
+          previous.first['cost_price'] != p.costPrice.minorUnits ||
+          previous.first['sell_price'] != p.sellPrice.minorUnits) {
+        await _recordProductPriceIfChanged(txn,
+            productId: p.id!,
+            costPrice: p.costPrice.minorUnits,
+            sellPrice: p.sellPrice.minorUnits,
+            reason: 'updated');
       }
       return p.id!;
     }
+  }
+
+  Future<List<Map<String, dynamic>>> getProductPriceHistory(
+    int productId, {
+    DateTime? since,
+    DateTime? until,
+    int limit = 100,
+  }) async {
+    final where = <String>['product_id = ?'];
+    final args = <Object?>[productId];
+    if (since != null) {
+      where.add('recorded_at >= ?');
+      args.add(since.toIso8601String());
+    }
+    if (until != null) {
+      where.add('recorded_at < ?');
+      args.add(until.toIso8601String());
+    }
+    final rows = await (await database).query(
+      'product_price_history',
+      where: where.join(' AND '),
+      whereArgs: args,
+      orderBy: 'recorded_at DESC, id DESC',
+      limit: limit.clamp(1, 500),
+    );
+    return rows.map(Map<String, dynamic>.from).toList();
   }
 
   ///
@@ -3003,7 +6075,14 @@ SELECT name FROM staff GROUP BY name HAVING COUNT(*) = 1
       for (final p in products) {
         final values = p.toMap()..remove('id');
         if (p.id == null) {
-          await txn.insert('products', values);
+          final id = await txn.insert('products', values);
+          await _recordProductPriceIfChanged(
+            txn,
+            productId: id,
+            costPrice: p.costPrice.minorUnits,
+            sellPrice: p.sellPrice.minorUnits,
+            reason: 'created',
+          );
           continue;
         }
         if (p.remoteId == null) values.remove('remote_id');
@@ -3011,8 +6090,23 @@ SELECT name FROM staff GROUP BY name HAVING COUNT(*) = 1
             .update('products', values, where: 'id = ?', whereArgs: [p.id]);
         if (updated == 0) {
           // Row not present locally (restore onto a fresh device): insert it.
-          await txn.insert('products', values);
+          final id = await txn.insert('products', values);
+          await _recordProductPriceIfChanged(
+            txn,
+            productId: id,
+            costPrice: p.costPrice.minorUnits,
+            sellPrice: p.sellPrice.minorUnits,
+            reason: 'restored',
+          );
+          continue;
         }
+        await _recordProductPriceIfChanged(
+          txn,
+          productId: p.id!,
+          costPrice: p.costPrice.minorUnits,
+          sellPrice: p.sellPrice.minorUnits,
+          reason: 'updated',
+        );
       }
     });
   }
@@ -3030,6 +6124,7 @@ SELECT name FROM staff GROUP BY name HAVING COUNT(*) = 1
     String? phoneNumber,
     String? staffName,
     int? staffId,
+    Money? intendedTotal,
   }) async {
     await (await database).insert(
         'pending_payments',
@@ -3037,6 +6132,8 @@ SELECT name FROM staff GROUP BY name HAVING COUNT(*) = 1
           'reference': reference,
           'phone_number': phoneNumber,
           'amount': amount.minorUnits,
+          'tender_amount_minor': amount.minorUnits,
+          'intended_total_minor': (intendedTotal ?? amount).minorUnits,
           'cart_json': cartJson,
           'staff_name': staffName,
           'staff_id': staffId,
@@ -3051,8 +6148,328 @@ SELECT name FROM staff GROUP BY name HAVING COUNT(*) = 1
     return rows.isNotEmpty;
   }
 
+  Future<int> holdCart({
+    required String uuid,
+    required String staffName,
+    int? staffId,
+    required List<Map<String, Object?>> lines,
+    int? customerId,
+    Duration expiry = const Duration(hours: 24),
+  }) async {
+    if (lines.isEmpty) throw StateError('Cannot hold an empty cart');
+    final now = DateTime.now();
+    final db = await database;
+    return db.transaction<int>((txn) async {
+      final count = Sqflite.firstIntValue(await txn.rawQuery(
+            "SELECT COUNT(*) FROM held_carts WHERE status = 'held'",
+          )) ??
+          0;
+      if (count >= 10) {
+        throw StateError('The till already has the maximum of 10 held sales');
+      }
+      final cartId = await txn.insert('held_carts', {
+        'uuid': uuid,
+        'staff_id': staffId,
+        'staff_name': staffName,
+        'created_at': now.toIso8601String(),
+        'expires_at': now.add(expiry).toIso8601String(),
+        'customer_id': customerId,
+      });
+      for (final line in lines) {
+        await txn.insert('held_cart_lines', {
+          'held_cart_id': cartId,
+          ...line,
+        });
+      }
+      return cartId;
+    });
+  }
+
+  Future<List<Map<String, dynamic>>> getHeldCarts({DateTime? now}) async {
+    final db = await database;
+    await db.delete('held_carts',
+        where: "status = 'held' AND expires_at <= ?",
+        whereArgs: [(now ?? DateTime.now()).toIso8601String()]);
+    return db.rawQuery('''
+      SELECT c.*, cu.name AS customer_name, COUNT(l.id) AS line_count
+      FROM held_carts c LEFT JOIN held_cart_lines l ON l.held_cart_id = c.id
+      LEFT JOIN customers cu ON cu.id = c.customer_id
+      WHERE c.status = 'held'
+      GROUP BY c.id ORDER BY c.created_at DESC
+    ''');
+  }
+
+  Future<List<Map<String, dynamic>>> getHeldCartLines(int cartId) async =>
+      (await database).query('held_cart_lines',
+          where: 'held_cart_id = ?', whereArgs: [cartId], orderBy: 'id');
+
+  Future<void> deleteHeldCart(int cartId) async {
+    await (await database).transaction((txn) async {
+      await txn.delete('held_cart_lines',
+          where: 'held_cart_id = ?', whereArgs: [cartId]);
+      await txn.delete('held_carts', where: 'id = ?', whereArgs: [cartId]);
+    });
+  }
+
+  Future<int> recordReceiptShare({
+    required String uuid,
+    required int saleId,
+    String? token,
+    String? url,
+    String? recipientMasked,
+    String? expiresAt,
+  }) async =>
+      (await database).insert('receipt_shares', {
+        'uuid': uuid,
+        'sale_id': saleId,
+        'token': token,
+        'url': url,
+        'recipient_masked': recipientMasked,
+        'created_at': DateTime.now().toIso8601String(),
+        'expires_at': expiresAt,
+      });
+
+  Future<List<Map<String, dynamic>>> getReceiptShares(int saleId) async =>
+      (await database).query('receipt_shares',
+          where: 'sale_id = ?',
+          whereArgs: [saleId],
+          orderBy: 'created_at DESC');
+
+  Future<void> revokeReceiptShare(int id) async => (await database).update(
+        'receipt_shares',
+        {
+          'status': 'revoked',
+          'revoked_at': DateTime.now().toIso8601String(),
+        },
+        where: 'id = ?',
+        whereArgs: [id],
+      );
+
+  Future<int> recordDrawerEvent({
+    required String uuid,
+    required String eventType,
+    required String staffName,
+    String? reason,
+    int? shiftId,
+    int? staffId,
+    int? saleId,
+    String? approvedBy,
+    bool success = false,
+  }) async {
+    if (uuid.trim().isEmpty) throw ArgumentError.value(uuid, 'uuid');
+    if (!<String>{'sale', 'no_sale', 'refund', 'manual'}.contains(eventType)) {
+      throw StateError('Unknown drawer event');
+    }
+    return (await database).insert('drawer_events', {
+      'uuid': uuid,
+      'shift_id': shiftId,
+      'event_type': eventType,
+      'reason': reason,
+      'staff_id': staffId,
+      'staff_name': staffName,
+      'sale_id': saleId,
+      'approved_by': approvedBy,
+      'created_at': DateTime.now().toIso8601String(),
+      'success': success ? 1 : 0,
+    });
+  }
+
+  Future<List<Map<String, dynamic>>> getDrawerEvents({
+    int? shiftId,
+    int? staffId,
+  }) async {
+    final where = <String>[];
+    final args = <Object?>[];
+    if (shiftId != null) {
+      where.add('shift_id = ?');
+      args.add(shiftId);
+    }
+    if (staffId != null) {
+      where.add('staff_id = ?');
+      args.add(staffId);
+    }
+    return (await database).query(
+      'drawer_events',
+      where: where.isEmpty ? null : where.join(' AND '),
+      whereArgs: args.isEmpty ? null : args,
+      orderBy: 'created_at DESC',
+    );
+  }
+
+  Future<List<Map<String, dynamic>>> getUnsyncedDrawerEvents() async {
+    return (await database).query(
+      'drawer_events',
+      where: 'synced_to_backend = 0',
+      orderBy: 'created_at ASC, id ASC',
+      limit: 500,
+    );
+  }
+
+  Future<void> markDrawerEventsSynced(List<int> ids) async {
+    if (ids.isEmpty) return;
+    await (await database).rawUpdate(
+      'UPDATE drawer_events SET synced_to_backend = 1 WHERE id IN (${List.filled(ids.length, '?').join(',')})',
+      ids,
+    );
+  }
+
+  Future<int> recordBackupLog({
+    required String uuid,
+    required String kind,
+    String? path,
+    int clearBytes = 0,
+    String? manifestJson,
+    String status = 'written',
+  }) async {
+    return (await database).insert('backup_log', {
+      'uuid': uuid,
+      'kind': kind,
+      'path': path,
+      'created_at': DateTime.now().toIso8601String(),
+      'clear_bytes': clearBytes,
+      'manifest_json': manifestJson,
+      'status': status,
+    });
+  }
+
+  Future<List<Map<String, dynamic>>> getBackupLog({int limit = 50}) async =>
+      (await database).query(
+        'backup_log',
+        orderBy: 'created_at DESC',
+        limit: limit,
+      );
+
+  Future<int> countBackupLog() async {
+    final rows =
+        await (await database).rawQuery('SELECT COUNT(*) AS c FROM backup_log');
+    return (rows.single['c'] as num).toInt();
+  }
+
+  Future<void> upsertIncomingPayment(IncomingPayment payment) async {
+    await (await database).insert(
+      'incoming_payments',
+      {
+        'remote_id': payment.remoteId,
+        'trans_id': payment.transactionId,
+        'amount_minor': payment.amount.minorUnits,
+        'payer_masked': payment.payerMasked,
+        'received_at': payment.receivedAt.toIso8601String(),
+        'status': payment.status,
+        'claimed_at': payment.claimedAt?.toIso8601String(),
+        'claimed_by': payment.claimedBy,
+        'updated_at': DateTime.now().toIso8601String(),
+      },
+      conflictAlgorithm: ConflictAlgorithm.replace,
+    );
+  }
+
+  Future<List<IncomingPayment>> getIncomingPayments({
+    String? status,
+    int limit = 200,
+  }) async {
+    final rows = await (await database).query(
+      'incoming_payments',
+      where: status == null ? null : 'status = ?',
+      whereArgs: status == null ? null : [status],
+      orderBy: 'received_at DESC',
+      limit: limit,
+    );
+    return rows.map(IncomingPayment.fromMap).toList();
+  }
+
+  Future<int> countIncomingPayments({String? status}) async {
+    final rows = await (await database).rawQuery(
+      status == null
+          ? 'SELECT COUNT(*) AS c FROM incoming_payments'
+          : 'SELECT COUNT(*) AS c FROM incoming_payments WHERE status = ?',
+      status == null ? const [] : [status],
+    );
+    return (rows.single['c'] as num).toInt();
+  }
+
+  /// Durable claim work created after an offline till sale. A claim is kept
+  /// separate from the sale because the sale is already valid local ledger
+  /// data; only the server-side ownership of the incoming payment is pending.
+  Future<void> recordIncomingPaymentClaim({
+    required String remoteId,
+    required int saleId,
+    required String saleUuid,
+    String status = 'pending',
+    String? reason,
+  }) async {
+    final now = DateTime.now().toIso8601String();
+    await (await database).insert(
+      'incoming_payment_claims',
+      {
+        'remote_id': remoteId,
+        'sale_id': saleId,
+        'sale_uuid': saleUuid,
+        'status': status,
+        'reason': reason,
+        'created_at': now,
+        'updated_at': now,
+      },
+      conflictAlgorithm: ConflictAlgorithm.replace,
+    );
+  }
+
+  Future<List<Map<String, dynamic>>> getPendingIncomingPaymentClaims() async =>
+      (await database).query(
+        'incoming_payment_claims',
+        where: "status = 'pending'",
+        orderBy: 'created_at ASC',
+        limit: 200,
+      );
+
+  Future<int> countPendingIncomingPaymentClaims() async {
+    final rows = await (await database).rawQuery(
+      "SELECT COUNT(*) AS c FROM incoming_payment_claims WHERE status = 'pending'",
+    );
+    return (rows.single['c'] as num).toInt();
+  }
+
+  Future<void> resolveIncomingPaymentClaim(String remoteId) async {
+    await (await database).delete(
+      'incoming_payment_claims',
+      where: 'remote_id = ?',
+      whereArgs: [remoteId],
+    );
+  }
+
+  Future<void> markIncomingPaymentClaimDisputed(
+    String remoteId,
+    String reason,
+  ) async {
+    await (await database).update(
+      'incoming_payment_claims',
+      {
+        'status': 'disputed',
+        'reason': reason,
+        'updated_at': DateTime.now().toIso8601String(),
+      },
+      where: 'remote_id = ?',
+      whereArgs: [remoteId],
+    );
+    await (await database).update(
+      'incoming_payments',
+      {
+        'status': 'disputed',
+        'updated_at': DateTime.now().toIso8601String(),
+      },
+      where: 'remote_id = ?',
+      whereArgs: [remoteId],
+    );
+  }
+
   Future<List<Map<String, dynamic>>> getPendingPayments() async =>
       (await database).query('pending_payments', orderBy: 'created_at ASC');
+
+  Future<int> countPendingPayments() async {
+    final rows = await (await database).rawQuery(
+      'SELECT COUNT(*) AS c FROM pending_payments',
+    );
+    return (rows.single['c'] as num).toInt();
+  }
 
   /// Pending rows old enough that the provider will never confirm them.
   ///
@@ -3201,17 +6618,25 @@ SELECT name FROM staff GROUP BY name HAVING COUNT(*) = 1
     });
   }
 
-  Future<void> adjustStock(StockAdjustment adj, {int? staffId}) async {
+  Future<void> adjustStock(
+    StockAdjustment adj, {
+    int? staffId,
+    StockMovementType movementType = StockMovementType.adjustment,
+  }) async {
+    if (movementType == StockMovementType.writeoff && adj.delta >= 0) {
+      throw ArgumentError('A stock write-off must reduce stock');
+    }
     final db = await database;
     await db.transaction((txn) async {
       final rows = await txn.query('products',
           where: 'id = ?', whereArgs: [adj.productId], limit: 1);
       if (rows.isEmpty) throw StateError('Product not found');
       final currentStock = (rows.first['stock_qty'] as num).toDouble();
+      final unitCostMinor = (rows.first['cost_price'] as num?)?.toInt() ?? 0;
       if (currentStock + adj.delta < 0) {
         throw StateError('Stock cannot go below zero');
       }
-      await txn.insert('stock_adjustments', {
+      final adjustmentId = await txn.insert('stock_adjustments', {
         ...adj.toMap(),
         'staff_id': staffId,
       });
@@ -3226,14 +6651,33 @@ SELECT name FROM staff GROUP BY name HAVING COUNT(*) = 1
       await _writeStockMovement(
         txn,
         productId: adj.productId,
-        type: StockMovementType.adjustment,
+        type: movementType,
         qtyDelta: adj.delta.toDouble(),
+        unitCostMinor: unitCostMinor,
         referenceType: 'adjustment',
         staffId: staffId,
         staffName: adj.staffName,
         note: adj.reason,
         balanceAfter: balance,
       );
+      if (adj.delta != 0) {
+        await _appendFinancialEvent(
+          txn: txn,
+          eventType: movementType == StockMovementType.writeoff
+              ? 'stock_writeoff'
+              : 'stock_adjustment',
+          sourceType: movementType == StockMovementType.writeoff
+              ? 'stock_writeoff'
+              : 'stock_adjustment',
+          sourceId: adjustmentId,
+          occurredAtUtc: DateTime.now().toUtc().toIso8601String(),
+          inventoryDeltaMilliunits: (adj.delta * 1000).round(),
+          metadata: <String, Object?>{
+            'product_id': adj.productId,
+            'reason': adj.reason,
+          },
+        );
+      }
     });
   }
 
@@ -3243,7 +6687,670 @@ SELECT name FROM staff GROUP BY name HAVING COUNT(*) = 1
     return rows.map((r) => StockAdjustment.fromMap(r)).toList();
   }
 
+  /// Converts stock from one catalogue unit into another atomically.
+  ///
+  /// The source and output products are deliberately ordinary products in the
+  /// shared catalogue: a Duka can therefore turn bulk sugar into packets,
+  /// while sales, receipts, analytics and sync continue to use the same
+  /// engines. Both movements are append-only and carry the calculated output
+  /// cost, so the operation remains explainable after either product is
+  /// renamed.
+  Future<void> repackStock({
+    required int sourceProductId,
+    required int outputProductId,
+    required double sourceQty,
+    required double outputQty,
+    required String staffName,
+    int? staffId,
+    String note = 'Repack',
+  }) async {
+    if (sourceProductId == outputProductId) {
+      throw ArgumentError('Source and output products must differ');
+    }
+    if (!sourceQty.isFinite || sourceQty <= 0) {
+      throw ArgumentError.value(sourceQty, 'sourceQty');
+    }
+    if (!outputQty.isFinite || outputQty <= 0) {
+      throw ArgumentError.value(outputQty, 'outputQty');
+    }
+    final db = await database;
+    await db.transaction((txn) async {
+      final rows = await txn.query(
+        'products',
+        where: 'id IN (?, ?) AND active = 1',
+        whereArgs: [sourceProductId, outputProductId],
+      );
+      if (rows.length != 2) throw StateError('Repack products were not found');
+      final source = rows.firstWhere((row) => row['id'] == sourceProductId);
+      final output = rows.firstWhere((row) => row['id'] == outputProductId);
+      if ((source['track_variants'] as num?)?.toInt() == 1 ||
+          (output['track_variants'] as num?)?.toInt() == 1) {
+        throw StateError('Repack variant stock at the variant level');
+      }
+      final sourceStock = (source['stock_qty'] as num).toDouble();
+      if (sourceQty > sourceStock + _qtyEpsilon) {
+        throw StateError(
+            'Repack cannot use more source stock than is available');
+      }
+      final sourceCostMinor = (source['cost_price'] as num?)?.toInt() ?? 0;
+      final incomingOutputCostMinor =
+          (sourceCostMinor * sourceQty / outputQty).round();
+      final outputStock = (output['stock_qty'] as num).toDouble();
+      final outputCostMinor = _weightedAverageCost(
+        onHandMinor: (output['cost_price'] as num?)?.toInt() ?? 0,
+        onHandQty: outputStock,
+        incomingQty: outputQty,
+        incomingMinor: incomingOutputCostMinor,
+      );
+      final sourceBalance = sourceStock - sourceQty;
+      final outputBalance = outputStock + outputQty;
+      final operationNote = '${note.trim().isEmpty ? 'Repack' : note.trim()} '
+          '($sourceProductId → $outputProductId)';
+
+      await txn.rawUpdate(
+        'UPDATE products SET stock_qty = ?, updated_at = ? WHERE id = ?',
+        [sourceBalance, DateTime.now().toIso8601String(), sourceProductId],
+      );
+      await txn.rawUpdate(
+        'UPDATE products SET stock_qty = ?, cost_price = ?, updated_at = ? '
+        'WHERE id = ?',
+        [
+          outputBalance,
+          outputCostMinor,
+          DateTime.now().toIso8601String(),
+          outputProductId,
+        ],
+      );
+      await _writeStockMovement(
+        txn,
+        productId: sourceProductId,
+        type: StockMovementType.repack,
+        qtyDelta: -sourceQty,
+        unitCostMinor: sourceCostMinor,
+        referenceType: 'stock_repack',
+        referenceId: sourceProductId,
+        staffId: staffId,
+        staffName: staffName,
+        note: operationNote,
+        balanceAfter: sourceBalance,
+      );
+      await _writeStockMovement(
+        txn,
+        productId: outputProductId,
+        type: StockMovementType.repack,
+        qtyDelta: outputQty,
+        unitCostMinor: outputCostMinor,
+        referenceType: 'stock_repack',
+        referenceId: sourceProductId,
+        staffId: staffId,
+        staffName: staffName,
+        note: operationNote,
+        balanceAfter: outputBalance,
+      );
+      await _appendFinancialEvent(
+        txn: txn,
+        eventType: 'stock_repack',
+        sourceType: 'stock_repack',
+        sourceId: sourceProductId,
+        occurredAtUtc: DateTime.now().toUtc().toIso8601String(),
+        metadata: <String, Object?>{
+          'source_product_id': sourceProductId,
+          'output_product_id': outputProductId,
+          'source_qty': sourceQty,
+          'output_qty': outputQty,
+          'output_cost_minor': incomingOutputCostMinor,
+          'output_weighted_cost_minor': outputCostMinor,
+        },
+      );
+    });
+  }
+
   // ---------------- Sales (atomic checkout) ----------------
+
+  static const Set<String> _laybyPaymentMethods = {
+    'cash',
+    'card',
+    'bank_transfer',
+    'mobile_money_manual',
+    'mpesa',
+    'mpesa_till',
+  };
+
+  Future<int> createLayby({
+    required int customerId,
+    required List<SaleItem> items,
+    required Money deposit,
+    required String depositMethod,
+    required DateTime dueAt,
+    required String staffName,
+    String? depositReference,
+    int? staffId,
+  }) async {
+    if (items.isEmpty ||
+        items.any((item) => item.qty <= 0 || !item.qty.isFinite)) {
+      throw StateError('A lay-by must contain positive quantities');
+    }
+    if (!_laybyPaymentMethods.contains(depositMethod)) {
+      throw StateError('Unsupported lay-by payment method');
+    }
+    if (dueAt.isBefore(DateTime.now())) {
+      throw StateError('Due date must be in the future');
+    }
+    final total = sumMoney(items.map((item) => item.total));
+    if (deposit.isZero || deposit.isNegative || deposit > total) {
+      throw StateError(
+          'Deposit must be positive and no greater than the total');
+    }
+    final db = await database;
+    final now = DateTime.now().toIso8601String();
+    final eventAt = DateTime.now().toUtc().toIso8601String();
+    return db.transaction<int>((txn) async {
+      final customer = await txn.query('customers',
+          where: 'id = ? AND active = 1', whereArgs: [customerId], limit: 1);
+      if (customer.isEmpty) {
+        throw StateError('Customer not found');
+      }
+      final productRows = <int, Map<String, dynamic>>{};
+      final variantRows = <int, Map<String, dynamic>>{};
+      for (final item in items) {
+        final rows = await txn.query('products',
+            where: 'id = ?', whereArgs: [item.productId], limit: 1);
+        if (rows.isEmpty) {
+          throw StateError('Product not found: ${item.productName}');
+        }
+        productRows[item.productId] = rows.first;
+        final variantId = item.variantId;
+        if (variantId != null) {
+          final variants = await txn.query('product_variants',
+              where: 'id = ? AND product_id = ?',
+              whereArgs: [variantId, item.productId],
+              limit: 1);
+          if (variants.isEmpty) {
+            throw StateError('Variant not found: ${item.variantName}');
+          }
+          variantRows[variantId] = variants.first;
+        }
+      }
+      for (final item in items) {
+        final product = productRows[item.productId]!;
+        final qty = item.qty;
+        if (item.variantId != null) {
+          final variant = variantRows[item.variantId]!;
+          final available = (variant['stock_qty'] as num).toDouble() -
+              ((variant['reserved_qty'] as num?)?.toDouble() ?? 0);
+          if (available + _volumeTolerance < qty) {
+            throw StateError('Not enough stock for ${item.productName}');
+          }
+          await txn.rawUpdate(
+              'UPDATE product_variants SET reserved_qty = reserved_qty + ? WHERE id = ?',
+              [qty, item.variantId]);
+        } else {
+          final available = (product['stock_qty'] as num).toDouble() -
+              ((product['reserved_qty'] as num?)?.toDouble() ?? 0);
+          if (available + _volumeTolerance < qty) {
+            throw StateError('Not enough stock for ${item.productName}');
+          }
+        }
+        await txn.rawUpdate(
+            'UPDATE products SET reserved_qty = reserved_qty + ? WHERE id = ?',
+            [qty, item.productId]);
+      }
+      final laybyId = await txn.insert('laybys', {
+        'uuid': _newUuid(),
+        'customer_id': customerId,
+        'status': LaybyStatus.open.wire,
+        'total_minor': total.minorUnits,
+        'paid_minor': deposit.minorUnits,
+        'due_at': dueAt.toIso8601String(),
+        'created_at': now,
+        'staff_id': staffId,
+        'staff_name': staffName,
+        'synced_to_backend': 0,
+      });
+      for (final item in items) {
+        await txn.insert('layby_items', {
+          'layby_id': laybyId,
+          'product_id': item.productId,
+          'variant_id': item.variantId,
+          'product_name': item.productName,
+          'variant_name': item.variantName,
+          'qty': item.qty,
+          'unit_price_minor': item.unitPrice.minorUnits,
+          'unit_cost_minor': item.unitCost.minorUnits,
+          'discount_minor': item.discount.minorUnits,
+          'total_minor': item.total.minorUnits,
+        });
+      }
+      await txn.insert('layby_payments', {
+        'layby_id': laybyId,
+        'method': depositMethod,
+        'amount_minor': deposit.minorUnits,
+        'direction': 'in',
+        'reference': depositReference,
+        'created_at': now,
+        'staff_id': staffId,
+        'staff_name': staffName,
+      });
+      await _appendFinancialEvent(
+        txn: txn,
+        eventType: 'layby_deposit',
+        sourceType: 'layby',
+        sourceId: laybyId,
+        occurredAtUtc: eventAt,
+        cashInMinor: deposit.minorUnits,
+        customerDepositDeltaMinor: deposit.minorUnits,
+        metadata: {'payment_method': depositMethod},
+      );
+      return laybyId;
+    });
+  }
+
+  Future<Layby?> getLayby(int id) async {
+    final db = await database;
+    final rows =
+        await db.query('laybys', where: 'id = ?', whereArgs: [id], limit: 1);
+    if (rows.isEmpty) return null;
+    final items = await db.query('layby_items',
+        where: 'layby_id = ?', whereArgs: [id], orderBy: 'id ASC');
+    final payments = await db.query('layby_payments',
+        where: 'layby_id = ?', whereArgs: [id], orderBy: 'id ASC');
+    return Layby.fromMap(rows.first,
+        items: items.map(LaybyItem.fromMap).toList(),
+        payments: payments.map(LaybyPayment.fromMap).toList());
+  }
+
+  Future<List<Layby>> getLaybys({int? customerId, LaybyStatus? status}) async {
+    final db = await database;
+    final where = <String>[];
+    final args = <Object?>[];
+    if (customerId != null) {
+      where.add('customer_id = ?');
+      args.add(customerId);
+    }
+    if (status != null) {
+      where.add('status = ?');
+      args.add(status.wire);
+    }
+    final rows = await db.query('laybys',
+        where: where.isEmpty ? null : where.join(' AND '),
+        whereArgs: args,
+        orderBy: 'created_at DESC');
+    final result = <Layby>[];
+    for (final row in rows) {
+      final id = (row['id'] as num).toInt();
+      result.add(Layby.fromMap(row,
+          items: (await db
+                  .query('layby_items', where: 'layby_id = ?', whereArgs: [id]))
+              .map(LaybyItem.fromMap)
+              .toList(),
+          payments: (await db.query('layby_payments',
+                  where: 'layby_id = ?', whereArgs: [id]))
+              .map(LaybyPayment.fromMap)
+              .toList()));
+    }
+    return result;
+  }
+
+  /// Returns complete lay-by snapshots for the offline sync queue. A lay-by is
+  /// synced as one document so an admin or another till can see its current
+  /// status together with the immutable item and payment history.
+  Future<List<Map<String, dynamic>>> getUnsyncedLaybys(
+      {int limit = 200}) async {
+    final db = await database;
+    final rows = await db.query('laybys',
+        where: 'synced_to_backend = 0', orderBy: 'id ASC', limit: limit);
+    final result = <Map<String, dynamic>>[];
+    for (final row in rows) {
+      final id = (row['id'] as num).toInt();
+      final customerRows = await db.query('customers',
+          columns: ['uuid'],
+          where: 'id = ?',
+          whereArgs: [row['customer_id']],
+          limit: 1);
+      final items = await db.query('layby_items',
+          where: 'layby_id = ?', whereArgs: [id], orderBy: 'id ASC');
+      final payments = await db.query('layby_payments',
+          where: 'layby_id = ?', whereArgs: [id], orderBy: 'id ASC');
+      result.add({
+        ...row,
+        'customer_uuid':
+            customerRows.isEmpty ? null : customerRows.first['uuid'],
+        'items': items,
+        'payments': payments,
+      });
+    }
+    return result;
+  }
+
+  Future<void> markLaybysSynced(Iterable<int> ids) async {
+    final values = ids.toList();
+    if (values.isEmpty) return;
+    final db = await database;
+    await db.update('laybys', {'synced_to_backend': 1},
+        where: 'id IN (${List.filled(values.length, '?').join(',')})',
+        whereArgs: values);
+  }
+
+  Future<List<Map<String, dynamic>>> getUnsyncedExchanges(
+      {int limit = 200}) async {
+    final db = await database;
+    return db.query('exchanges',
+        where: 'synced_to_backend = 0', orderBy: 'id ASC', limit: limit);
+  }
+
+  Future<void> markExchangesSynced(Iterable<int> ids) async {
+    final values = ids.toList();
+    if (values.isEmpty) return;
+    final db = await database;
+    await db.update('exchanges', {'synced_to_backend': 1},
+        where: 'id IN (${List.filled(values.length, '?').join(',')})',
+        whereArgs: values);
+  }
+
+  Future<void> addLaybyPayment({
+    required int laybyId,
+    required Money amount,
+    required String method,
+    required String staffName,
+    String? reference,
+    int? staffId,
+  }) async {
+    if (!_laybyPaymentMethods.contains(method) ||
+        amount.isZero ||
+        amount.isNegative) {
+      throw StateError('Invalid lay-by payment');
+    }
+    final db = await database;
+    final now = DateTime.now().toIso8601String();
+    await db.transaction((txn) async {
+      final rows = await txn.query('laybys',
+          where: 'id = ?', whereArgs: [laybyId], limit: 1);
+      if (rows.isEmpty || rows.first['status'] != LaybyStatus.open.wire) {
+        throw StateError('Lay-by is not open');
+      }
+      final balance = (rows.first['total_minor'] as num).toInt() -
+          (rows.first['paid_minor'] as num).toInt();
+      if (amount.minorUnits > balance) {
+        throw StateError('Payment exceeds lay-by balance');
+      }
+      await txn.insert('layby_payments', {
+        'layby_id': laybyId,
+        'method': method,
+        'amount_minor': amount.minorUnits,
+        'direction': 'in',
+        'reference': reference,
+        'created_at': now,
+        'staff_id': staffId,
+        'staff_name': staffName
+      });
+      await txn.rawUpdate(
+          'UPDATE laybys SET paid_minor = paid_minor + ?, synced_to_backend = 0 WHERE id = ?',
+          [amount.minorUnits, laybyId]);
+      await _appendFinancialEvent(
+          txn: txn,
+          eventType: 'layby_payment',
+          sourceType: 'layby',
+          sourceId: laybyId,
+          occurredAtUtc: DateTime.now().toUtc().toIso8601String(),
+          cashInMinor: amount.minorUnits,
+          customerDepositDeltaMinor: amount.minorUnits,
+          metadata: {'payment_method': method});
+    });
+  }
+
+  Future<void> cancelLayby(
+      {required int laybyId,
+      required String staffName,
+      int? staffId,
+      bool expired = false,
+      String refundMethod = 'cash',
+      String? refundReference}) async {
+    final db = await database;
+    final now = DateTime.now().toIso8601String();
+    await db.transaction((txn) async {
+      final rows = await txn.query('laybys',
+          where: 'id = ?', whereArgs: [laybyId], limit: 1);
+      if (rows.isEmpty || rows.first['status'] != LaybyStatus.open.wire) {
+        throw StateError('Lay-by is not open');
+      }
+      final items = await txn
+          .query('layby_items', where: 'layby_id = ?', whereArgs: [laybyId]);
+      for (final item in items) {
+        final qty = (item['qty'] as num).toDouble();
+        await txn.rawUpdate(
+            'UPDATE products SET reserved_qty = MAX(0, reserved_qty - ?) WHERE id = ?',
+            [qty, item['product_id']]);
+        if (item['variant_id'] != null) {
+          await txn.rawUpdate(
+              'UPDATE product_variants SET reserved_qty = MAX(0, reserved_qty - ?) WHERE id = ?',
+              [qty, item['variant_id']]);
+        }
+      }
+      final paid = (rows.first['paid_minor'] as num).toInt();
+      if (paid > 0) {
+        await txn.insert('layby_payments', {
+          'layby_id': laybyId,
+          'method': refundMethod,
+          'amount_minor': paid,
+          'direction': 'out',
+          'reference': refundReference,
+          'created_at': now,
+          'staff_id': staffId,
+          'staff_name': staffName
+        });
+      }
+      await txn.update(
+          'laybys',
+          {
+            'status':
+                expired ? LaybyStatus.expired.wire : LaybyStatus.cancelled.wire,
+            'cancelled_at': now,
+            'synced_to_backend': 0
+          },
+          where: 'id = ?',
+          whereArgs: [laybyId]);
+      await _appendFinancialEvent(
+          txn: txn,
+          eventType: 'layby_cancel',
+          sourceType: 'layby',
+          sourceId: laybyId,
+          occurredAtUtc: DateTime.now().toUtc().toIso8601String(),
+          cashOutMinor: paid,
+          customerDepositDeltaMinor: -paid,
+          metadata: {'expired': expired});
+    });
+  }
+
+  Future<int> expireDueLaybys(
+      {DateTime? now, required String staffName, int? staffId}) async {
+    final due = now ?? DateTime.now();
+    final open = await getLaybys(status: LaybyStatus.open);
+    var count = 0;
+    for (final layby in open) {
+      if (!DateTime.parse(layby.dueAt).isAfter(due)) {
+        await cancelLayby(
+            laybyId: layby.id,
+            staffName: staffName,
+            staffId: staffId,
+            expired: true);
+        count++;
+      }
+    }
+    return count;
+  }
+
+  Future<int> completeLayby(int laybyId,
+      {required String staffName, int? staffId}) async {
+    final layby = await getLayby(laybyId);
+    if (layby == null || !layby.isOpen || layby.balance != Money.zero) {
+      throw StateError('Lay-by is not ready for completion');
+    }
+    final items = layby.items
+        .map((item) => SaleItem(
+            saleId: 0,
+            productId: item.productId,
+            productName: item.productName,
+            qty: item.qty,
+            unitPrice: item.unitPrice,
+            unitCost: item.unitCost,
+            discount: item.discount,
+            variantId: item.variantId,
+            variantName: item.variantName))
+        .toList();
+    return recordSale(
+        staffName: staffName,
+        staffId: staffId,
+        items: items,
+        paymentMethod: 'layby',
+        customerId: layby.customerId,
+        laybyId: laybyId,
+        amountTendered: layby.total);
+  }
+
+  /// Completes a Fashion exchange as one SQLite transaction: the original
+  /// goods return, the replacement sale, the exchange-credit tender and any
+  /// cash difference either all commit or all roll back.
+  Future<int> recordExchange({
+    required Sale originalSale,
+    required List<ReturnLineDraft> returnedLines,
+    required List<SaleItem> replacementItems,
+    required String reason,
+    required String staffName,
+    String paymentMethod = 'cash',
+    String? paymentReference,
+    int? staffId,
+  }) async {
+    if (originalSale.id == null ||
+        returnedLines.isEmpty ||
+        replacementItems.isEmpty) {
+      throw StateError(
+          'An exchange needs a sale, return lines and replacement lines');
+    }
+    final replacementTotal =
+        sumMoney(replacementItems.map((item) => item.total));
+    final db = await database;
+    final now = DateTime.now().toIso8601String();
+    return db.transaction<int>((txn) async {
+      final existing = await txn.query('exchanges',
+          where: 'original_sale_id = ? AND status = ?',
+          whereArgs: [originalSale.id, 'completed'],
+          limit: 1);
+      if (existing.isNotEmpty) {
+        throw StateError('That sale already has an exchange');
+      }
+
+      final exchangeId = await txn.insert('exchanges', {
+        'uuid': _newUuid(),
+        'original_sale_id': originalSale.id,
+        'status': 'processing',
+        'returned_total_minor': 0,
+        'replacement_total_minor': replacementTotal.minorUnits,
+        'difference_minor': 0,
+        'difference_direction': 'even',
+        'reason': reason.trim(),
+        'staff_id': staffId,
+        'staff_name': staffName,
+        'created_at': now,
+        'synced_to_backend': 0,
+      });
+
+      final returnId = await recordReturn(
+        sale: originalSale,
+        lines: returnedLines,
+        reason: reason,
+        kind: 'exchange',
+        refundMethod: 'exchange_credit',
+        staffName: staffName,
+        staffId: staffId,
+        existingTransaction: txn,
+      );
+      final returnRows = await txn.query('sale_returns',
+          columns: ['total'], where: 'id = ?', whereArgs: [returnId], limit: 1);
+      final returnedTotal = (returnRows.first['total'] as num).toInt();
+      final exchangeCredit = returnedTotal < replacementTotal.minorUnits
+          ? returnedTotal
+          : replacementTotal.minorUnits;
+      final difference = (replacementTotal.minorUnits - returnedTotal).abs();
+      final direction = replacementTotal.minorUnits > returnedTotal
+          ? 'customer_pays'
+          : replacementTotal.minorUnits < returnedTotal
+              ? 'customer_receives'
+              : 'even';
+      final externalAmount = replacementTotal.minorUnits > returnedTotal
+          ? replacementTotal.minorUnits - returnedTotal
+          : 0;
+      final tenders = <SaleTender>[
+        if (exchangeCredit > 0)
+          SaleTender(
+              method: 'exchange_credit',
+              amount: Money.fromMinor(exchangeCredit),
+              tendered: Money.fromMinor(exchangeCredit)),
+        if (externalAmount > 0)
+          SaleTender(
+              method: paymentMethod,
+              amount: Money.fromMinor(externalAmount),
+              tendered: Money.fromMinor(externalAmount),
+              reference: paymentReference),
+      ];
+      final replacementSaleId = await recordSale(
+        staffName: staffName,
+        staffId: staffId,
+        items: replacementItems,
+        paymentMethod: tenders.length == 1 ? tenders.single.method : 'split',
+        paymentReference: paymentReference,
+        tenders: tenders,
+        existingTransaction: txn,
+      );
+
+      // The return initially records all returned value as exchange credit.
+      // Reconcile that allocation to the actual replacement value, then make
+      // any lower-price difference an explicit cash refund.
+      final allocations = await txn.query('sale_return_refunds',
+          where: 'return_id = ?', whereArgs: [returnId], orderBy: 'id ASC');
+      if (allocations.isNotEmpty) {
+        await txn.update('sale_return_refunds',
+            {'amount_minor': exchangeCredit, 'method': 'exchange_credit'},
+            where: 'id = ?', whereArgs: [allocations.first['id']]);
+      }
+      if (returnedTotal > replacementTotal.minorUnits) {
+        await txn.insert('sale_return_refunds', {
+          'return_id': returnId,
+          'sale_payment_id': null,
+          'method': 'cash',
+          'amount_minor': returnedTotal - replacementTotal.minorUnits,
+          'reference': paymentReference,
+        });
+        await _appendFinancialEvent(
+          txn: txn,
+          eventType: 'exchange_difference',
+          sourceType: 'exchange',
+          sourceId: exchangeId,
+          occurredAtUtc: DateTime.now().toUtc().toIso8601String(),
+          cashOutMinor: returnedTotal - replacementTotal.minorUnits,
+          metadata: {
+            'return_id': returnId,
+            'replacement_sale_id': replacementSaleId
+          },
+        );
+      }
+      await txn.update(
+          'exchanges',
+          {
+            'return_id': returnId,
+            'replacement_sale_id': replacementSaleId,
+            'status': 'completed',
+            'returned_total_minor': returnedTotal,
+            'replacement_total_minor': replacementTotal.minorUnits,
+            'difference_minor': difference,
+            'difference_direction': direction,
+            'synced_to_backend': 0,
+          },
+          where: 'id = ?',
+          whereArgs: [exchangeId]);
+      return replacementSaleId;
+    });
+  }
+
   /// Writes the sale, its line items, and decrements stock for every item —
   /// all inside one transaction. If the app crashes or loses power mid-call,
   /// SQLite rolls the whole thing back rather than leaving a half-applied sale.
@@ -3261,6 +7368,7 @@ SELECT name FROM staff GROUP BY name HAVING COUNT(*) = 1
   Future<int> recordSale({
     required String staffName,
     required List<SaleItem> items,
+    List<SaleTender>? tenders,
     bool enforceStock = true,
     String paymentMethod = 'cash',
     String? paymentReference,
@@ -3276,6 +7384,22 @@ SELECT name FROM staff GROUP BY name HAVING COUNT(*) = 1
     /// recorded identically and only flagged. Default true, so every cash,
     /// card and confirmed-M-Pesa sale is verified without saying so.
     bool paymentVerified = true,
+
+    /// The customer taking the goods on account, for a `credit` sale.
+    ///
+    /// Required for, and ignored without, [paymentMethod] `credit`. The charge
+    /// lands on the customer's ledger inside the SAME transaction as the sale,
+    /// so a crash can never leave goods gone and nobody owing them.
+    int? customerId,
+
+    /// The manager or owner who approved an over-limit credit sale, when one
+    /// has approved it. Their presence is what permits the sale to exceed the
+    /// limit; without it the sale is refused.
+    int? creditApprovedBy,
+    int? discountApprovedBy,
+    int? orderDiscountReasonId,
+    int? laybyId,
+    DatabaseExecutor? existingTransaction,
   }) async {
     if (items.isEmpty) {
       throw StateError('A sale must contain at least one item');
@@ -3285,10 +7409,24 @@ SELECT name FROM staff GROUP BY name HAVING COUNT(*) = 1
       'card',
       'bank_transfer',
       'mobile_money_manual',
-      'mpesa'
+      'mpesa',
+      'mpesa_till',
+      'credit',
+      'layby',
+      'exchange_credit',
+      'split'
     };
     if (!allowedPaymentMethods.contains(paymentMethod)) {
       throw StateError('Unsupported payment method');
+    }
+    if (paymentMethod == 'credit' && customerId == null) {
+      throw StateError('A credit sale must name the customer taking it');
+    }
+    if (paymentMethod == 'layby' && laybyId == null) {
+      throw StateError('A lay-by sale must name the lay-by');
+    }
+    if (paymentMethod != 'layby' && laybyId != null) {
+      throw StateError('A lay-by may only be completed as a lay-by sale');
     }
     if (items.any((item) => item.qty <= 0 || !item.qty.isFinite)) {
       throw StateError('Sale quantities must be positive');
@@ -3299,32 +7437,134 @@ SELECT name FROM staff GROUP BY name HAVING COUNT(*) = 1
     //
     // The accumulation happens inside the transaction, below, because a measured
     // pour is only a fraction once you know how big the container is.
-    final db = await database;
+    final db = existingTransaction == null ? await database : null;
     // Every amount is quantised as it is accumulated, so the stored total is
     // exactly the sum of the stored line amounts and `change` is a real number
     // of shillings rather than a floating-point artefact.
     // Integer cents throughout: each line is scaled once (which rounds), and
     // the sums below are exact integer additions. The recorded total is
     // therefore always exactly the sum of the recorded line amounts.
-    final total = sumMoney(items.map((it) => it.unitPrice.times(it.qty)));
-    final profit =
-        sumMoney(items.map((it) => (it.unitPrice - it.unitCost).times(it.qty)));
-    final paid = amountTendered ?? total;
+    final subtotal = sumMoney(items.map((it) => it.unitPrice.times(it.qty)));
+    final total = sumMoney(items.map((it) => it.total));
+    if (items.any((it) =>
+        it.discount.isNegative || it.discount > it.unitPrice.times(it.qty))) {
+      throw StateError('A discount cannot exceed its line total');
+    }
+    final tenderRows = tenders ??
+        <SaleTender>[
+          SaleTender(
+            method: paymentMethod,
+            amount: total,
+            tendered: amountTendered ?? total,
+            reference: paymentReference,
+            status: paymentVerified ? 'confirmed' : 'unverified',
+          ),
+        ];
+    if (tenderRows.isEmpty ||
+        tenderRows.any(
+            (tender) => tender.amount.isNegative || tender.amount.isZero)) {
+      throw StateError('Payment amounts must be positive');
+    }
+    final tenderTotal = sumMoney(tenderRows.map((tender) => tender.amount));
+    if (tenderTotal != total) {
+      throw StateError('Payment tenders must add up to the sale total');
+    }
+    if (tenders != null) {
+      for (final tender in tenderRows) {
+        if (!allowedPaymentMethods.contains(tender.method)) {
+          throw StateError('Unsupported payment method');
+        }
+      }
+      final largest = tenderRows.reduce((a, b) => a.amount >= b.amount ? a : b);
+      paymentMethod = tenderRows.length == 1 ? largest.method : 'split';
+    }
+    // A credit sale is paid with a promise. The tender is by definition
+    // nothing, because the money has not moved; setting it here (rather than
+    // letting `amountTendered ?? total` imply it) keeps the change arithmetic
+    // honest and the payment row's amount at the full sale.
+    final paid = paymentMethod == 'credit' || paymentMethod == 'layby'
+        ? total
+        : (tenders == null
+            ? (amountTendered ?? total)
+            : sumMoney(
+                tenderRows.map((tender) => tender.tendered ?? tender.amount)));
     if (paid.isNegative) {
       throw StateError('Amount received cannot be less than the sale total');
     }
     if (paid < total) {
       throw StateError('Amount received cannot be less than the sale total');
     }
-    final change = paid - total;
+    final change = paymentMethod == 'credit' || paymentMethod == 'layby'
+        ? Money.zero
+        : paid - total;
     final now = DateTime.now().toIso8601String();
+    final eventAtUtc = DateTime.now().toUtc().toIso8601String();
     // Resolved before the transaction opens: reads that touch the database must
     // not happen inside the transaction, or sqflite_ffi deadlocks on a read
     // inside a write transaction.
-    final tillCode = await getTillCode();
-    final vatRatePercent = await getVatRatePercent();
+    final tillCode = existingTransaction == null
+        ? await getTillCode()
+        : await _tillCodeFromExecutor(existingTransaction);
+    final vatRatePercent = existingTransaction == null
+        ? await getVatRatePercent()
+        : await _vatRateFromExecutor(existingTransaction);
+    final taxRuleId = existingTransaction == null
+        ? await getSetting(settingTaxRuleId)
+        : await _settingFromExecutor(existingTransaction, settingTaxRuleId);
+    final taxRuleVersion = int.tryParse(existingTransaction == null
+        ? await getSetting(settingTaxRuleVersion) ?? ''
+        : await _settingFromExecutor(
+                existingTransaction, settingTaxRuleVersion) ??
+            '');
+    // The shop default a customer's own null limit falls back to, read here
+    // for the same reason: not inside the transaction.
+    final defaultLimitMinor = existingTransaction == null
+        ? await getCreditDefaultLimit()
+        : await _creditDefaultLimitFromExecutor(existingTransaction);
 
-    return db.transaction<int>((txn) async {
+    Future<int> write(DatabaseExecutor txn) async {
+      Map<String, dynamic>? laybyRow;
+      List<Map<String, dynamic>> laybyItemRows = const [];
+      if (laybyId != null) {
+        final rows = await txn.query('laybys',
+            where: 'id = ?', whereArgs: [laybyId], limit: 1);
+        if (rows.isEmpty || rows.first['status'] != LaybyStatus.open.wire) {
+          throw StateError('Lay-by is not open');
+        }
+        laybyRow = rows.first;
+        laybyItemRows = await txn.query('layby_items',
+            where: 'layby_id = ?', whereArgs: [laybyId], orderBy: 'id ASC');
+        if ((laybyRow['total_minor'] as num).toInt() != total.minorUnits ||
+            (laybyRow['paid_minor'] as num).toInt() != total.minorUnits) {
+          throw StateError('Lay-by balance does not match the sale');
+        }
+        customerId = (laybyRow['customer_id'] as num).toInt();
+      }
+      final frozen = await txn.query(
+        'stock_counts',
+        where: "status = 'in_progress' AND freeze = 1",
+        limit: 1,
+      );
+      if (frozen.isNotEmpty) {
+        final countId = frozen.first['id'] as int;
+        for (final item in items) {
+          final variantClause =
+              item.variantId == null ? 'variant_id IS NULL' : 'variant_id = ?';
+          final variantArgs = item.variantId == null
+              ? <Object?>[countId, item.productId]
+              : <Object?>[countId, item.productId, item.variantId];
+          final counted = await txn.query(
+            'stock_count_lines',
+            where:
+                'count_id = ? AND product_id = ? AND $variantClause AND counted_qty IS NOT NULL',
+            whereArgs: variantArgs,
+            limit: 1,
+          );
+          if (counted.isNotEmpty) {
+            throw StateError('This item is frozen during stocktake');
+          }
+        }
+      }
       // A line's fraction of its container — the shared rule, so a sale and a
       // return agree on what a portion of a bottle is.
       double portionFactor(SaleItem item, double containerMl) =>
@@ -3334,8 +7574,10 @@ SELECT name FROM staff GROUP BY name HAVING COUNT(*) = 1
       // availability check, its container size for the fraction, and its tax
       // class for the line's VAT snapshot.
       final stockByProduct = <int, double>{};
+      final reservedByProduct = <int, double>{};
       final containerMlByProduct = <int, double>{};
       final taxClassByProduct = <int, String>{};
+      final trackExpiryByProduct = <int, bool>{};
       for (final productId in items.map((it) => it.productId).toSet()) {
         final current = await txn.query('products',
             where: 'id = ?', whereArgs: [productId], limit: 1);
@@ -3345,10 +7587,14 @@ SELECT name FROM staff GROUP BY name HAVING COUNT(*) = 1
         }
         stockByProduct[productId] =
             (current.first['stock_qty'] as num).toDouble();
+        reservedByProduct[productId] =
+            (current.first['reserved_qty'] as num?)?.toDouble() ?? 0;
         containerMlByProduct[productId] =
             (current.first['bottle_ml'] as num?)?.toDouble() ?? 0;
         taxClassByProduct[productId] =
             current.first['tax_class'] as String? ?? 'standard';
+        trackExpiryByProduct[productId] =
+            (current.first['track_expiry'] as num?)?.toInt() == 1;
       }
 
       // The variants this sale sells, read inside the transaction.
@@ -3384,6 +7630,22 @@ SELECT name FROM staff GROUP BY name HAVING COUNT(*) = 1
       final variantUnitsByProduct = <int, double>{};
       final directUnitsByProduct = <int, double>{};
       final requiredByVariant = <int, double>{};
+      final ownReservedByVariant = <int, double>{};
+      final ownReservedByProduct = <int, double>{};
+      if (laybyId != null) {
+        for (final row in laybyItemRows) {
+          final units = (row['qty'] as num).toDouble();
+          final variant = (row['variant_id'] as num?)?.toInt();
+          if (variant != null) {
+            ownReservedByVariant[variant] =
+                (ownReservedByVariant[variant] ?? 0) + units;
+          } else {
+            final product = (row['product_id'] as num).toInt();
+            ownReservedByProduct[product] =
+                (ownReservedByProduct[product] ?? 0) + units;
+          }
+        }
+      }
       for (final item in items) {
         final units = item.qty *
             portionFactor(item, containerMlByProduct[item.productId]!);
@@ -3403,7 +7665,11 @@ SELECT name FROM staff GROUP BY name HAVING COUNT(*) = 1
           final double available =
               (variantRowsById[entry.key]!['stock_qty'] as num?)?.toDouble() ??
                   0;
-          if (available + _volumeTolerance < entry.value) {
+          final reserved = (variantRowsById[entry.key]!['reserved_qty'] as num?)
+                  ?.toDouble() ??
+              0;
+          final own = ownReservedByVariant[entry.key] ?? 0;
+          if (available - reserved + own + _volumeTolerance < entry.value) {
             final offending =
                 items.firstWhere((it) => it.variantId == entry.key);
             throw StateError('Not enough stock for ${offending.productName}');
@@ -3419,11 +7685,86 @@ SELECT name FROM staff GROUP BY name HAVING COUNT(*) = 1
           //
           // The tolerance is far below a microlitre at any bottle size that
           // exists, so it forgives the arithmetic error and nothing else.
-          if (stockByProduct[entry.key]! + _volumeTolerance < entry.value) {
+          final available = stockByProduct[entry.key]! -
+              (reservedByProduct[entry.key] ?? 0) +
+              (ownReservedByProduct[entry.key] ?? 0);
+          if (available + _volumeTolerance < entry.value) {
             final offending =
                 items.firstWhere((it) => it.productId == entry.key);
             throw StateError('Not enough stock for ${offending.productName}');
           }
+        }
+      }
+
+      // Dated stock is a separate availability rule from the aggregate
+      // product balance: an expired bottle must never be sold just because
+      // the cached balance still includes it. Allocate oldest-first and keep
+      // the rows available for the sale-item audit links below.
+      final batchesByProduct = <int, List<Map<String, dynamic>>>{};
+      final expiryKeys = <int, double>{
+        ...directUnitsByProduct,
+        for (final entry in requiredByVariant.entries) -entry.key: entry.value,
+      };
+      for (final entry in expiryKeys.entries) {
+        final productId = entry.key < 0
+            ? variantRowsById[-entry.key]!['product_id'] as int
+            : entry.key;
+        if (trackExpiryByProduct[productId] != true) continue;
+        final variantId = entry.key < 0 ? -entry.key : null;
+        final batchRows = await txn.query(
+          'stock_batches',
+          where: variantId == null
+              ? 'product_id = ? AND variant_id IS NULL AND qty_remaining > 0 AND expires_at >= ?'
+              : 'product_id = ? AND variant_id = ? AND qty_remaining > 0 AND expires_at >= ?',
+          whereArgs: variantId == null
+              ? [productId, now]
+              : [productId, variantId, now],
+          orderBy: 'expires_at ASC, id ASC',
+        );
+        final rows = <Map<String, dynamic>>[
+          for (final row in batchRows) Map<String, dynamic>.from(row),
+        ];
+        final available = rows.fold<double>(
+            0, (sum, row) => sum + (row['qty_remaining'] as num).toDouble());
+        if (available + _volumeTolerance < entry.value) {
+          final offending = items.firstWhere((it) => it.productId == entry.key);
+          throw StateError(
+              'Not enough unexpired stock for ${offending.productName}');
+        }
+        batchesByProduct[entry.key] = rows;
+      }
+
+      // Credit: the promise being taken, and the customer who will owe it.
+      //
+      // Read and checked inside the transaction, against the balance AS THE
+      // LEDGER HAS IT NOW — a balance read before the transaction opened would
+      // let two simultaneous sales each think there was room for both.
+      Map<String, dynamic>? customerRow;
+      if (paymentMethod == 'credit') {
+        final rows = await txn.query('customers',
+            where: 'id = ?', whereArgs: [customerId], limit: 1);
+        if (rows.isEmpty) {
+          throw StateError('Customer not found');
+        }
+        customerRow = rows.first;
+        if ((customerRow['active'] as num?)?.toInt() != 1) {
+          throw StateError('That customer is deactivated');
+        }
+        final int balanceBefore =
+            (customerRow['balance_minor'] as num?)?.toInt() ?? 0;
+        final int? ownLimit =
+            (customerRow['credit_limit_minor'] as num?)?.toInt();
+        // Null on the row means "use the shop default"; 0 is a real zero
+        // (this customer may owe nothing at all), which is why the two are
+        // distinguished rather than a null being read as zero.
+        final int limit = ownLimit ?? defaultLimitMinor;
+        // At the limit is allowed; past it is not, unless a manager approved
+        // the sale — whose id arrives in [creditApprovedBy].
+        if (balanceBefore + total.minorUnits > limit &&
+            creditApprovedBy == null) {
+          throw StateError(
+              'That sale would take ${customerRow['name'] as String} past '
+              'their credit limit');
         }
       }
 
@@ -3441,15 +7782,39 @@ SELECT name FROM staff GROUP BY name HAVING COUNT(*) = 1
         0,
         (sum, it) =>
             sum +
-            vatComponentOf(it.total, ratePercent: vatRatePercent).minorUnits,
+            vatComponentForTaxClass(
+              it.total,
+              ratePercent: vatRatePercent,
+              taxClass: taxClassByProduct[it.productId] ?? 'standard',
+            ).minorUnits,
       );
       final int saleTaxableMinor = total.minorUnits - saleVatMinor;
+      // Profit is based on VAT-exclusive revenue. The old calculation used
+      // gross (VAT-inclusive) line totals, which overstated margin whenever
+      // the shop collected VAT.
+      final int saleCostMinor = items.fold<int>(
+        0,
+        (sum, item) => sum + item.unitCost.times(item.qty).minorUnits,
+      );
 
       final saleId = await txn.insert('sales', {
         'staff_name': staffName,
         'staff_id': staffId,
+        // The customer who takes an ON-ACCOUNT sale. Null for everything
+        // else — the column is the link the aging, the statement and the
+        // return-to-account all read.
+        'customer_id': customerId,
+        // Snapshot the buyer onto the immutable sale document. Customer rows
+        // may later be edited or deactivated; retries and tax documents must
+        // reproduce what was captured at checkout.
+        'buyer_name': customerRow?['name'],
+        'buyer_tin': customerRow?['tin'],
         'total': total.minorUnits,
-        'profit': profit.minorUnits,
+        'subtotal_minor': subtotal.minorUnits,
+        'order_discount_minor': subtotal.minorUnits - total.minorUnits,
+        'order_discount_reason_id': orderDiscountReasonId,
+        'discount_approved_by': discountApprovedBy,
+        'profit': saleTaxableMinor - saleCostMinor,
         'payment_method': paymentMethod,
         'payment_reference': paymentReference,
         'amount_tendered': paid.minorUnits,
@@ -3469,17 +7834,50 @@ SELECT name FROM staff GROUP BY name HAVING COUNT(*) = 1
         'taxable_minor': saleTaxableMinor,
         'document_type': 'sale',
       });
+
+      // THE CHARGE: the ledger row that makes the promise, and the balance
+      // cache updated beside it — the same transaction, same rule as every
+      // other money move in this file. The row carries the approver when one
+      // approved an over-limit sale, which is the AUDIT of that decision.
+      if (paymentMethod == 'credit' && customerRow != null) {
+        final int balanceBefore =
+            (customerRow['balance_minor'] as num?)?.toInt() ?? 0;
+        await txn.insert('credit_ledger', <String, Object?>{
+          'uuid': _newUuid(),
+          'customer_id': customerId,
+          'entry_type': 'charge',
+          'amount_minor': total.minorUnits,
+          'sale_id': saleId,
+          'staff_id': staffId,
+          'staff_name': staffName,
+          'approved_by': creditApprovedBy,
+          'created_at': now,
+        });
+        await txn.rawUpdate(
+          'UPDATE customers SET balance_minor = ? WHERE id = ?',
+          <Object?>[balanceBefore + total.minorUnits, customerId],
+        );
+      }
+
       for (final it in items) {
         final fraction = portionFactor(it, containerMlByProduct[it.productId]!);
-        final int lineVatMinor =
-            vatComponentOf(it.total, ratePercent: vatRatePercent).minorUnits;
-        await txn.insert('sale_items', {
+        final int lineVatMinor = vatComponentForTaxClass(
+          it.total,
+          ratePercent: vatRatePercent,
+          taxClass: taxClassByProduct[it.productId] ?? 'standard',
+        ).minorUnits;
+        final saleItemId = await txn.insert('sale_items', {
           'sale_id': saleId,
           'product_id': it.productId,
           'product_name': it.productName,
           'qty': it.qty,
           'unit_price': it.unitPrice.minorUnits,
+          'list_unit_price_minor':
+              (it.listUnitPrice ?? it.unitPrice).minorUnits,
           'unit_cost': it.unitCost.minorUnits,
+          'discount_minor': it.discount.minorUnits,
+          'discount_reason_id': it.discountReasonId,
+          'price_overridden': it.priceOverridden ? 1 : 0,
           'portion': it.portion,
           'portion_ml': it.portionMl,
           // The variant the line was sold as. Recorded as a snapshot, because
@@ -3487,14 +7885,45 @@ SELECT name FROM staff GROUP BY name HAVING COUNT(*) = 1
           // today's receipt must still say which size was sold.
           'variant_id': it.variantId,
           'variant_name': it.variantName,
+          'pack_id': it.packId,
+          'pack_qty': it.packQty,
           // The tax on this line, snapshotted at the moment of sale. The
           // product's own tax class can change tomorrow; today's receipt must
           // still carry today's figure.
           'tax_class': taxClassByProduct[it.productId] ?? 'standard',
           'vat_rate_bps': vatRatePercent * 100,
+          'tax_rule_id': taxRuleId?.trim().isEmpty == true ? null : taxRuleId,
+          'tax_rule_version': taxRuleVersion,
           'vat_minor': lineVatMinor,
           'taxable_minor': it.total.minorUnits - lineVatMinor,
         });
+        final batchKey = it.variantId == null ? it.productId : -it.variantId!;
+        final batchRows = batchesByProduct[batchKey];
+        if (batchRows != null) {
+          double remaining = it.qty * fraction;
+          for (final batch in batchRows) {
+            if (remaining <= _volumeTolerance) break;
+            final available = (batch['qty_remaining'] as num).toDouble();
+            if (available <= _volumeTolerance) continue;
+            final taken = available < remaining ? available : remaining;
+            final batchId = (batch['id'] as num).toInt();
+            await txn.rawUpdate(
+                "UPDATE stock_batches SET qty_remaining = qty_remaining - ?, "
+                "status = CASE WHEN qty_remaining - ? <= ? THEN 'depleted' ELSE 'active' END "
+                'WHERE id = ?',
+                [taken, taken, _qtyEpsilon, batchId]);
+            await txn.insert('sale_item_batches', {
+              'sale_item_id': saleItemId,
+              'batch_id': batchId,
+              'qty': taken,
+            });
+            batch['qty_remaining'] = available - taken;
+            remaining -= taken;
+          }
+          if (remaining > _volumeTolerance) {
+            throw StateError('Unexpired stock changed while recording sale');
+          }
+        }
         final variantId = it.variantId;
         if (variantId != null) {
           // The variant's own count, in the same transaction as the sale.
@@ -3599,19 +8028,23 @@ SELECT name FROM staff GROUP BY name HAVING COUNT(*) = 1
       // One row per part of the tender. A sale paid in one go has one row; a
       // sale paid in several has several, and the sum of their amounts is the
       // sale's total. That sum is an invariant, and a test holds it.
-      await txn.insert('sale_payments', {
-        'uuid': _newUuid(),
-        'sale_id': saleId,
-        'method': paymentMethod,
-        // What was paid, without the change. The change is not payment.
-        'amount_minor': paid.minorUnits - change.minorUnits,
-        'tendered_minor': paid.minorUnits,
-        'change_minor': change.minorUnits,
-        'reference': paymentReference,
-        'status': paymentVerified ? 'confirmed' : 'unverified',
-        'pending_payment_id': null,
-        'created_at': now,
-      });
+      for (final tender in tenderRows) {
+        final tendered = tender.tendered ?? tender.amount;
+        final tenderChange = tendered - tender.amount;
+        await txn.insert('sale_payments', {
+          'uuid': _newUuid(),
+          'sale_id': saleId,
+          'method': tender.method,
+          // What was paid, without the change. The change is not payment.
+          'amount_minor': tender.amount.minorUnits,
+          'tendered_minor': tendered.minorUnits,
+          'change_minor': tenderChange.minorUnits,
+          'reference': tender.reference,
+          'status': tender.status,
+          'pending_payment_id': null,
+          'created_at': now,
+        });
+      }
 
       // The queue row is written in the same transaction as the sale. Writing
       // it afterwards would leave a window where a crash leaves a committed sale
@@ -3628,13 +8061,88 @@ SELECT name FROM staff GROUP BY name HAVING COUNT(*) = 1
           'document_type': 'sale',
         });
       }
+      await _appendFinancialEvent(
+        txn: txn,
+        eventType: 'sale',
+        sourceType: 'sale',
+        sourceId: saleId,
+        occurredAtUtc: eventAtUtc,
+        revenueMinor: saleTaxableMinor,
+        cashInMinor: paymentMethod == 'credit' || paymentMethod == 'layby'
+            ? 0
+            : tenders == null
+                ? (paymentMethod == 'exchange_credit' ? 0 : total.minorUnits)
+                : sumMoney(tenderRows
+                    .where((tender) => tender.method != 'exchange_credit')
+                    .map((tender) => tender.amount)).minorUnits,
+        cogsMinor: saleCostMinor,
+        taxCollectedMinor: saleVatMinor,
+        receivableDeltaMinor: paymentMethod == 'credit' ? total.minorUnits : 0,
+        inventoryDeltaMilliunits: items.fold<int>(
+          0,
+          (sum, item) =>
+              sum +
+              (item.qty *
+                          portionFactor(
+                            item,
+                            containerMlByProduct[item.productId]!,
+                          ) *
+                          1000)
+                      .round() *
+                  -1,
+        ),
+        metadata: <String, Object?>{
+          'payment_method': paymentMethod,
+          'payment_verified': paymentVerified,
+          'line_count': items.length,
+        },
+      );
+      if (laybyId != null) {
+        for (final item in items) {
+          final units = item.qty *
+              portionFactor(item, containerMlByProduct[item.productId]!);
+          if (item.variantId != null) {
+            await txn.rawUpdate(
+              'UPDATE product_variants SET reserved_qty = MAX(0, reserved_qty - ?) WHERE id = ?',
+              [units, item.variantId],
+            );
+          }
+          await txn.rawUpdate(
+            'UPDATE products SET reserved_qty = MAX(0, reserved_qty - ?) WHERE id = ?',
+            [units, item.productId],
+          );
+        }
+        await txn.update(
+            'laybys',
+            {
+              'status': LaybyStatus.completed.wire,
+              'sale_id': saleId,
+              'completed_at': now,
+              'synced_to_backend': 0,
+            },
+            where: 'id = ?',
+            whereArgs: [laybyId]);
+        await _appendFinancialEvent(
+          txn: txn,
+          eventType: 'layby_complete',
+          sourceType: 'layby',
+          sourceId: laybyId,
+          occurredAtUtc: eventAtUtc,
+          customerDepositDeltaMinor: -total.minorUnits,
+          metadata: {'sale_id': saleId},
+        );
+      }
       return saleId;
-    });
+    }
+
+    if (existingTransaction != null) return write(existingTransaction);
+    return db!.transaction<int>((txn) => write(txn));
   }
 
   /// The count a variant is left with, read from the row the transaction has
   /// just written.
-  Future<double> _variantBalanceAfter(Transaction txn, int variantId) async {
+  Future<double> _variantBalanceAfter(
+      DatabaseExecutor txn, int variantId) async {
     final rows = await txn.query('product_variants',
         columns: ['stock_qty'],
         where: 'id = ?',
@@ -3646,7 +8154,8 @@ SELECT name FROM staff GROUP BY name HAVING COUNT(*) = 1
 
   /// The count a product is left with, read from the row the transaction has
   /// just written.
-  Future<double> _productBalanceAfter(Transaction txn, int productId) async {
+  Future<double> _productBalanceAfter(
+      DatabaseExecutor txn, int productId) async {
     final rows = await txn.query('products',
         columns: ['stock_qty'],
         where: 'id = ?',
@@ -3654,6 +8163,590 @@ SELECT name FROM staff GROUP BY name HAVING COUNT(*) = 1
         limit: 1);
     if (rows.isEmpty) return 0;
     return (rows.first['stock_qty'] as num?)?.toDouble() ?? 0;
+  }
+
+  // ---------------- Customers and credit (v30) ----------------
+  //
+  // The ledger is the truth; `customers.balance_minor` is a cache. Every
+  // method that touches one touches the other inside the same transaction, and
+  // the ledger gains the new row FIRST — a balance cache that disagrees with
+  // the account history it came from is worse than either figure alone.
+
+  /// Lists customers.
+  ///
+  /// [search] matches name or phone, case-insensitively. [owsOnly] keeps only
+  /// customers the shop owes nothing from... rather, only those owing
+  /// something. Sorted by balance then name unless [sort] says otherwise
+  /// (`name` | `balance` | `recent`).
+  Future<List<Customer>> getCustomers({
+    String search = '',
+    bool activeOnly = true,
+    bool owesOnly = false,
+    String sort = 'balance',
+  }) async {
+    final where = <String>[
+      if (activeOnly) 'active = 1',
+      if (owesOnly) 'balance_minor > 0',
+    ];
+    final args = <Object?>[];
+    final term = search.trim();
+    if (term.isNotEmpty) {
+      where.add('(name LIKE ? OR phone LIKE ?)');
+      args
+        ..add('%$term%')
+        ..add('%$term%');
+    }
+    const orderBys = {
+      'balance': 'balance_minor DESC, name COLLATE NOCASE ASC',
+      'name': 'name COLLATE NOCASE ASC',
+      'recent': 'id DESC',
+    };
+    final rows = await (await database).query('customers',
+        where: where.isEmpty ? null : where.join(' AND '),
+        whereArgs: args.isEmpty ? null : args,
+        orderBy: orderBys[sort] ?? orderBys['balance']!);
+    return rows.map(Customer.fromMap).toList();
+  }
+
+  /// One customer, or null.
+  Future<Customer?> getCustomerById(int id) async {
+    final rows = await (await database)
+        .query('customers', where: 'id = ?', whereArgs: [id], limit: 1);
+    return rows.isEmpty ? null : Customer.fromMap(rows.first);
+  }
+
+  /// The [Customer] a sale was sold to, or null. Used when the shop sizing a
+  /// limit looks up what a sale already charged.
+  Future<Customer?> customerOfSale(Map<String, dynamic> saleRow) async {
+    final id = (saleRow['customer_id'] as num?)?.toInt();
+    if (id == null) return null;
+    return getCustomerById(id);
+  }
+
+  /// Creates or updates a customer.
+  ///
+  /// Two uniqueness rules, both among ACTIVE customers (a deactivated
+  /// customer's name and phone are reusable):
+  ///  * the name, compared case-insensitively — "Mary Wanjiku" and
+  ///    "mary wanjiku" are the one person;
+  ///  * the phone, when present, in canonical +254 form.
+  ///
+  /// Returns the id. Throws [StateError] with the reason when either rule is
+  /// broken, which the caller renders in the shop's language.
+  Future<int> upsertCustomer(Customer customer) async {
+    final name = customer.name.trim();
+    if (name.isEmpty) {
+      throw StateError('Enter a name');
+    }
+    if (customer.phone != null && customer.phone!.isNotEmpty) {
+      if (normaliseKenyanPhone(customer.phone) == null &&
+          normaliseKenyanPhone(customer.phoneDisplay ?? customer.phone) ==
+              null &&
+          !(customer.phone!.startsWith('+'))) {
+        throw StateError('That phone number is not a Kenyan number we can use');
+      }
+    }
+    final db = await database;
+    return db.transaction<int>((txn) async {
+      final id = customer.id;
+      final clash = await txn.rawQuery(
+        'SELECT id FROM customers WHERE active = 1 AND '
+        'LOWER(name) = LOWER(?) ${id != null ? 'AND id != ?' : ''} LIMIT 1',
+        id == null ? [name] : [name, id],
+      );
+      if (clash.isNotEmpty) {
+        throw StateError('Another active customer already has that name');
+      }
+      final phone = customer.phone == null || customer.phone!.isEmpty
+          ? null
+          : _canonicalPhone(customer.phone!);
+      if (phone != null) {
+        final phoneClash = await txn.rawQuery(
+          'SELECT id FROM customers WHERE active = 1 AND phone = ? '
+          '${id != null ? 'AND id != ?' : ''} LIMIT 1',
+          id == null ? [phone] : [phone, id],
+        );
+        if (phoneClash.isNotEmpty) {
+          throw StateError('Another active customer already has that number');
+        }
+      }
+
+      final row = customer.toMap()
+        ..['name'] = name
+        ..['phone'] = phone;
+      if (id == null) {
+        return txn.insert('customers', row..remove('id'));
+      }
+      final existing = await txn.query('customers',
+          columns: ['id'], where: 'id = ?', whereArgs: [id], limit: 1);
+      if (existing.isEmpty) {
+        throw StateError('Customer not found');
+      }
+      await txn.update('customers', row..remove('id'),
+          where: 'id = ?', whereArgs: [id]);
+      return id;
+    });
+  }
+
+  /// Deactivates a customer.
+  ///
+  /// A customer the shop still owes money for — a non-zero balance — cannot
+  /// be deactivated: their debt has to be settled or written off first,
+  /// because an inactive customer cannot take a payment through the normal
+  /// flows and the debt would become unaccountable.
+  Future<void> deactivateCustomer(int id) async {
+    final customer = await getCustomerById(id);
+    if (customer == null) return;
+    if (customer.balanceMinor != 0) {
+      throw StateError(
+          'Settle or write off the balance before removing a customer');
+    }
+    await (await database)
+        .update('customers', {'active': 0}, where: 'id = ?', whereArgs: [id]);
+  }
+
+  /// The canonical form of a phone as typed, or null.
+  String? _canonicalPhone(String raw) {
+    if (raw.startsWith('+254')) return normaliseKenyanPhone(raw);
+    final fromLocal = normaliseKenyanPhone(raw);
+    return fromLocal;
+  }
+
+  /// What a customer's payments settled: (payment, settled charge, amount).
+  ///
+  /// Read through the payments' entries so the DETAIL SHEET can show which
+  /// old invoice a payment was laid against — the FIFO order's receipt.
+  Future<List<CreditAllocation>> getCreditAllocations(int customerId) async {
+    final rows = await (await database).rawQuery('''
+      SELECT a.payment_entry_id, a.charge_entry_id, a.amount_minor
+      FROM credit_allocations a
+      JOIN credit_ledger l ON l.id = a.payment_entry_id
+      WHERE l.customer_id = ?
+      ORDER BY a.id ASC
+    ''', [customerId]);
+    return [
+      for (final row in rows)
+        CreditAllocation(
+          paymentEntryId: row['payment_entry_id'] as int,
+          chargeEntryId: row['charge_entry_id'] as int,
+          amountMinor: (row['amount_minor'] as num?)?.toInt() ?? 0,
+        ),
+    ];
+  }
+
+  /// The credit entries of one customer, newest first.
+  Future<List<CreditLedgerEntry>> getCreditEntries(int customerId) async {
+    final rows = await (await database).query('credit_ledger',
+        where: 'customer_id = ?',
+        whereArgs: [customerId],
+        orderBy: 'created_at DESC, id DESC');
+    return rows.map(CreditLedgerEntry.fromMap).toList();
+  }
+
+  /// Full customer/ledger batch for the online mirror. The local database
+  /// remains the source of truth while offline; the server upserts these rows
+  /// by UUID when a connection is available.
+  Future<List<Customer>> getAllCustomersForSync() async {
+    final rows = await (await database).query('customers', orderBy: 'id ASC');
+    return rows.map(Customer.fromMap).toList();
+  }
+
+  Future<List<CreditLedgerEntry>> getAllCreditEntriesForSync() async {
+    final rows = await (await database)
+        .query('credit_ledger', orderBy: 'created_at ASC, id ASC');
+    return rows.map(CreditLedgerEntry.fromMap).toList();
+  }
+
+  /// Merges a server credit snapshot after local uploads have completed.
+  /// Customer UUIDs, not device row ids, are the cross-device identity; ledger
+  /// UUIDs are inserted with ignore semantics so the append-only history is
+  /// never edited or duplicated.
+  Future<void> mergeRemoteCreditSnapshot({
+    required List<Map<String, dynamic>> customers,
+    required List<Map<String, dynamic>> entries,
+  }) async {
+    final db = await database;
+    await db.transaction((txn) async {
+      for (final customer in customers) {
+        final uuid = customer['localUuid'] as String?;
+        if (uuid == null || uuid.isEmpty) continue;
+        final existing = await txn.query('customers',
+            columns: ['id'], where: 'uuid = ?', whereArgs: [uuid], limit: 1);
+        final values = <String, Object?>{
+          'uuid': uuid,
+          'name': customer['name'] as String? ?? 'Customer',
+          'phone': customer['phone'],
+          'tin': customer['tin'],
+          'notes': customer['notes'],
+          'credit_limit_minor': customer['creditLimitMinor'],
+          'balance_minor': (customer['balanceMinor'] as num?)?.toInt() ?? 0,
+          'active': customer['active'] == true ? 1 : 0,
+          'created_at': customer['createdAt'] as String? ??
+              DateTime.now().toIso8601String(),
+        };
+        if (existing.isEmpty) {
+          await txn.insert('customers', values);
+        } else {
+          await txn.update('customers', values,
+              where: 'id = ?', whereArgs: [existing.first['id']]);
+        }
+      }
+      for (final entry in entries) {
+        final uuid = entry['localUuid'] as String?;
+        final customerUuid = entry['customerUuid'] as String?;
+        if (uuid == null || uuid.isEmpty || customerUuid == null) continue;
+        final customer = await txn.query('customers',
+            columns: ['id'],
+            where: 'uuid = ?',
+            whereArgs: [customerUuid],
+            limit: 1);
+        if (customer.isEmpty) continue;
+        await txn.insert(
+            'credit_ledger',
+            {
+              'uuid': uuid,
+              'customer_id': customer.first['id'],
+              'entry_type': entry['entryType'] as String? ?? 'charge',
+              'amount_minor': (entry['amountMinor'] as num?)?.toInt() ?? 0,
+              'sale_id': entry['saleLocalId'],
+              'return_id': entry['returnLocalId'],
+              'payment_method': entry['paymentMethod'],
+              'reference': entry['reference'],
+              'staff_name': entry['staffName'] as String? ?? '',
+              'note': entry['note'],
+              'created_at': entry['createdAt'] as String? ??
+                  DateTime.now().toIso8601String(),
+            },
+            conflictAlgorithm: ConflictAlgorithm.ignore);
+      }
+    });
+  }
+
+  /// The open (not fully allocated) charges of a set of customers, oldest
+  /// charge first per customer.
+  Future<
+      List<
+          ({
+            int chargeEntryId,
+            int customerId,
+            int outstandingMinor,
+            String createdAt
+          })>> openCreditCharges({required int? customerId}) async {
+    final db = await database;
+    final rows = await db.rawQuery('''
+      SELECT l.id AS entry_id, l.customer_id, l.amount_minor AS charged,
+             COALESCE((SELECT SUM(a.amount_minor) FROM credit_allocations a
+                       WHERE a.charge_entry_id = l.id), 0) AS allocated,
+             l.created_at
+      FROM credit_ledger l
+      WHERE l.entry_type = 'charge'
+        AND (${customerId == null ? '1' : 'l.customer_id = ?'})
+      ORDER BY l.created_at ASC, l.id ASC
+    ''', [if (customerId != null) customerId]);
+    return [
+      for (final row in rows)
+        if (((row['charged'] as num).toInt() -
+                (row['allocated'] as num).toInt()) >
+            0)
+          (
+            chargeEntryId: row['entry_id'] as int,
+            customerId: row['customer_id'] as int,
+            outstandingMinor: (row['charged'] as num).toInt() -
+                (row['allocated'] as num).toInt(),
+            createdAt: row['created_at'] as String,
+          ),
+    ];
+  }
+
+  /// Repays some or all of a customer's debt.
+  ///
+  /// The payment is a NEGATIVE ledger entry (money going down as owed), is
+  /// allocated against the open charges oldest first, and — when taken in
+  /// cash — belongs to the shift that is open NOW, because the money sits in
+  /// THAT drawer. A cash repayment without an open shift is refused, exactly
+  /// like a cash refund.
+  Future<int> recordCreditRepayment({
+    required int customerId,
+    required Money amount,
+
+    /// `cash` or `mpesa`.
+    required String method,
+    String? reference,
+    String? note,
+    int? staffId,
+    required String staffName,
+  }) async {
+    if (amount.minorUnits <= 0) {
+      throw StateError('A repayment must be more than zero');
+    }
+    if (method != 'cash' && method != 'mpesa') {
+      throw StateError('A repayment is cash or M-Pesa');
+    }
+    final db = await database;
+    return db.transaction<int>((txn) async {
+      final rows = await txn.query('customers',
+          where: 'id = ?', whereArgs: [customerId], limit: 1);
+      if (rows.isEmpty) throw StateError('Customer not found');
+      final balanceBefore = (rows.first['balance_minor'] as num?)?.toInt() ?? 0;
+
+      int? shiftId;
+      if (method == 'cash') {
+        final shift = await txn.query('shifts',
+            where: 'status = ?',
+            whereArgs: ['open'],
+            orderBy: 'start_time DESC',
+            limit: 1);
+        if (shift.isEmpty) {
+          throw StateError(
+              'Open a shift before taking cash in, so the drawer can be counted');
+        }
+        shiftId = shift.first['id'] as int;
+      }
+
+      final now = DateTime.now().toIso8601String();
+      final eventAtUtc = DateTime.now().toUtc().toIso8601String();
+      final entryId = await txn.insert('credit_ledger', {
+        'uuid': _newUuid(),
+        'customer_id': customerId,
+        'entry_type': 'payment',
+        'amount_minor': -amount.minorUnits,
+        'payment_method': method,
+        'reference': reference,
+        'shift_id': shiftId,
+        'staff_id': staffId,
+        'staff_name': staffName,
+        'note': note,
+        'created_at': now,
+      });
+
+      // Oldest debts first — THIS customer's only, which the query names or
+      // two customers' repayments would settle each other's invoices.
+      // Every open charge is read with what is still outstanding on it, and
+      // the payment is spread across them in order. What is allocated is
+      // bounded by the payment itself (the loop's [remaining]), so overpayment
+      // simply leaves charges open and the balance goes negative —
+      // "credit with us".
+      var remaining = amount.minorUnits;
+      final chargeRows = await txn.rawQuery('''
+        SELECT l.id,
+               l.amount_minor - COALESCE((SELECT SUM(a.amount_minor)
+                  FROM credit_allocations a WHERE a.charge_entry_id = l.id), 0)
+                 AS outstanding
+        FROM credit_ledger l
+        WHERE l.entry_type = 'charge'
+          AND l.customer_id = ?
+          AND l.amount_minor - COALESCE((SELECT SUM(a.amount_minor)
+                  FROM credit_allocations a WHERE a.charge_entry_id = l.id), 0) > 0
+        ORDER BY l.created_at ASC, l.id ASC
+      ''', [customerId]);
+      for (final charge in chargeRows) {
+        if (remaining <= 0) break;
+        final outstanding = (charge['outstanding'] as num).toInt();
+        final applied = outstanding < remaining ? outstanding : remaining;
+        if (applied <= 0) continue;
+        await txn.insert('credit_allocations', {
+          'payment_entry_id': entryId,
+          'charge_entry_id': charge['id'] as int,
+          'amount_minor': applied,
+        });
+        remaining -= applied;
+      }
+
+      // Cached balance, updated in the same transaction as the ledger row.
+      // The WHOLE payment reduces the debt, whether or not it fully settles a
+      // specific charge; the leftover sits as credit with us.
+      await txn.rawUpdate(
+        'UPDATE customers SET balance_minor = ? WHERE id = ?',
+        [balanceBefore - amount.minorUnits, customerId],
+      );
+      await _appendFinancialEvent(
+        txn: txn,
+        eventType: 'credit_repayment',
+        sourceType: 'credit_ledger',
+        sourceId: entryId,
+        occurredAtUtc: eventAtUtc,
+        cashInMinor: amount.minorUnits,
+        receivableDeltaMinor: -amount.minorUnits,
+        metadata: <String, Object?>{
+          'customer_id': customerId,
+          'method': method,
+          'has_reference': reference != null && reference.trim().isNotEmpty,
+        },
+      );
+      return entryId;
+    });
+  }
+
+  /// A signed correction or a write-off, taken against a customer's balance.
+  ///
+  /// [type] is `adjustment` (a signed correction) or `writeoff` (debt given
+  /// up on; always negative). A write-off may never exceed what the customer
+  /// owes, and both need the manager or owner who approved them — their id is
+  /// [approvedBy] and goes on the ledger row, which is the audit record.
+  Future<int> recordCreditAdjustment({
+    required int customerId,
+    required int amountMinor,
+    required String type,
+    required String staffName,
+    int? staffId,
+    required int approvedBy,
+    String? note,
+  }) async {
+    if (type != 'adjustment' && type != 'writeoff') {
+      throw StateError('A correction is an adjustment or a write-off');
+    }
+    if (amountMinor == 0) {
+      throw StateError('Nothing to correct');
+    }
+    if (type == 'writeoff' && amountMinor > 0) {
+      // Sign-normalised at the boundary: a write-off always reduces.
+      amountMinor = -amountMinor.abs();
+    }
+    final db = await database;
+    return db.transaction<int>((txn) async {
+      final rows = await txn.query('customers',
+          where: 'id = ?', whereArgs: [customerId], limit: 1);
+      if (rows.isEmpty) throw StateError('Customer not found');
+      final balanceBefore = (rows.first['balance_minor'] as num?)?.toInt() ?? 0;
+      if (amountMinor < 0 &&
+          balanceBefore + amountMinor < 0 &&
+          type == 'writeoff') {
+        throw StateError('That is more than the customer currently owes');
+      }
+      final now = DateTime.now().toIso8601String();
+      final entryId = await txn.insert('credit_ledger', {
+        'uuid': _newUuid(),
+        'customer_id': customerId,
+        'entry_type': type,
+        'amount_minor': amountMinor,
+        'staff_id': staffId,
+        'staff_name': staffName,
+        'approved_by': approvedBy,
+        'note': note,
+        'created_at': now,
+      });
+      int? badDebtExpenseId;
+      if (type == 'writeoff') {
+        final badDebtCategory = await txn.query(
+          'expense_categories',
+          columns: ['id'],
+          where: 'name = ? AND active = 1',
+          whereArgs: ['Bad debts'],
+          limit: 1,
+        );
+        if (badDebtCategory.isEmpty) {
+          throw StateError('Bad debts expense category not found');
+        }
+        badDebtExpenseId = await txn.insert('expenses', {
+          'uuid': _newUuid(),
+          'shift_id': null,
+          'category_id': badDebtCategory.first['id'] as int,
+          'amount_minor': amountMinor.abs(),
+          'paid_from': 'other',
+          'note': note,
+          'photo_path': null,
+          'staff_id': staffId,
+          'staff_name': staffName,
+          'created_at': now,
+        });
+      }
+      await txn.rawUpdate('UPDATE customers SET balance_minor = ? WHERE id = ?',
+          [balanceBefore + amountMinor, customerId]);
+      await _appendFinancialEvent(
+        txn: txn,
+        eventType: type == 'writeoff' ? 'credit_writeoff' : 'credit_adjustment',
+        sourceType: 'credit_ledger',
+        sourceId: entryId,
+        occurredAtUtc: DateTime.now().toUtc().toIso8601String(),
+        receivableDeltaMinor: amountMinor,
+        metadata: <String, Object?>{
+          'customer_id': customerId,
+          'approved_by': approvedBy,
+          'adjustment_type': type,
+        },
+      );
+      if (badDebtExpenseId != null) {
+        await _appendFinancialEvent(
+          txn: txn,
+          eventType: 'bad_debt_expense',
+          sourceType: 'expense',
+          sourceId: badDebtExpenseId,
+          occurredAtUtc: DateTime.now().toUtc().toIso8601String(),
+          operatingExpenseMinor: amountMinor.abs(),
+          metadata: <String, Object?>{
+            'credit_ledger_id': entryId,
+            'customer_id': customerId,
+          },
+        );
+      }
+      return entryId;
+    });
+  }
+
+  /// How the till sees credit: the total outstanding and who owes it most.
+  Future<({int totalOwedMinor, int customerCount})> creditSummary() async {
+    final rows = await (await database).rawQuery(
+      'SELECT COALESCE(SUM(balance_minor), 0) AS total, '
+      'COUNT(*) AS n FROM customers WHERE active = 1 AND balance_minor > 0',
+    );
+    return (
+      totalOwedMinor: (rows.first['total'] as num?)?.toInt() ?? 0,
+      customerCount: (rows.first['n'] as num?)?.toInt() ?? 0,
+    );
+  }
+
+  /// Ages the debts the shop is owed, by the OLDEST unpaid charge per
+  /// customer. Buckets: 0-7, 8-30, 31-60 and over 60 days.
+  /// Ages the debts the shop is owed, by the OLDEST unpaid charge per
+  /// customer. Buckets: 0-7, 8-30, 31-60 and over 60 days.
+  ///
+  /// The amounts summed per bucket are each charge's OUTSTANDING remainder
+  /// (charged minus what has been allocated against it), so the bucket sums
+  /// add up to the shop's total owed, and a part-paid debt lands in the bucket
+  /// its oldest unpaid charge falls in — which is what "this is 40 days old"
+  /// means when part of it was settled on Tuesday.
+  Future<
+      Map<DebtAgeBucket,
+          ({int amountMinor, int customers, int overdueCount})>> creditAging(
+      {DateTime? now}) async {
+    final at = now ?? DateTime.now();
+    final openCharges = await openCreditCharges(customerId: null);
+
+    final outstandingByCustomer = <int, int>{};
+    final oldestOpenPerCustomer = <int, String>{};
+    for (final charge in openCharges) {
+      outstandingByCustomer[charge.customerId] =
+          (outstandingByCustomer[charge.customerId] ?? 0) +
+              charge.outstandingMinor;
+      final existing = oldestOpenPerCustomer[charge.customerId];
+      if (existing == null || charge.createdAt.compareTo(existing) < 0) {
+        oldestOpenPerCustomer[charge.customerId] = charge.createdAt;
+      }
+    }
+
+    final totalByBucket = <DebtAgeBucket, int>{
+      for (final bucket in DebtAgeBucket.values) bucket: 0,
+    };
+    final customersByBucket = <DebtAgeBucket, int>{
+      for (final bucket in DebtAgeBucket.values) bucket: 0,
+    };
+    for (final customerId in outstandingByCustomer.keys) {
+      final createdAt =
+          DateTime.tryParse(oldestOpenPerCustomer[customerId] ?? '') ?? at;
+      final bucket = DebtAgeBucket.forAge(at.difference(createdAt).inDays);
+      totalByBucket[bucket] =
+          (totalByBucket[bucket] ?? 0) + outstandingByCustomer[customerId]!;
+      customersByBucket[bucket] = (customersByBucket[bucket] ?? 0) + 1;
+    }
+
+    return {
+      for (final bucket in DebtAgeBucket.values)
+        bucket: (
+          amountMinor: totalByBucket[bucket] ?? 0,
+          customers: customersByBucket[bucket] ?? 0,
+          overdueCount: customersByBucket[DebtAgeBucket.over60Days] ?? 0,
+        ),
+    };
   }
 
   // ---------------- eTIMS issuance queue ----------------
@@ -3683,6 +8776,7 @@ SELECT name FROM staff GROUP BY name HAVING COUNT(*) = 1
               createdAt:
                   DateTime.tryParse(row['created_at'] as String? ?? '') ??
                       DateTime.fromMillisecondsSinceEpoch(0),
+              documentType: row['document_type'] as String? ?? 'sale',
               lastError: row['last_error'] as String?,
             ))
         .toList();
@@ -3695,6 +8789,20 @@ SELECT name FROM staff GROUP BY name HAVING COUNT(*) = 1
       WHERE s.etims_status != ?
     ''', [EtimsStatus.rejected]);
     return (rows.first['c'] as int?) ?? 0;
+  }
+
+  /// Local issuance status counts for the Sync Center. Issued rows remain
+  /// visible as evidence of completed filing; they are never deletable from
+  /// this operational surface.
+  Future<Map<String, int>> etimsStatusCounts() async {
+    final rows = await (await database).rawQuery(
+      'SELECT etims_status, COUNT(*) AS c FROM sales GROUP BY etims_status',
+    );
+    return <String, int>{
+      for (final row in rows)
+        (row['etims_status'] as String? ?? EtimsStatus.notRequired):
+            (row['c'] as num).toInt(),
+    };
   }
 
   /// The pending queue row for one sale, so the inline post-sale attempt can
@@ -3715,6 +8823,7 @@ SELECT name FROM staff GROUP BY name HAVING COUNT(*) = 1
       attempts: (row['attempts'] as int?) ?? 0,
       createdAt: DateTime.tryParse(row['created_at'] as String? ?? '') ??
           DateTime.fromMillisecondsSinceEpoch(0),
+      documentType: row['document_type'] as String? ?? 'sale',
       lastError: row['last_error'] as String?,
     );
   }
@@ -3794,6 +8903,8 @@ SELECT name FROM staff GROUP BY name HAVING COUNT(*) = 1
     return Sale(
       id: sale.id,
       staffName: sale.staffName,
+      buyerName: sale.buyerName,
+      buyerTin: sale.buyerTin,
       total: sale.total,
       profit: sale.profit,
       createdAt: sale.createdAt,
@@ -3945,6 +9056,8 @@ SELECT name FROM staff GROUP BY name HAVING COUNT(*) = 1
       sales.add(Sale.fromMap(r).let((s) => Sale(
             id: s.id,
             staffName: s.staffName,
+            buyerName: s.buyerName,
+            buyerTin: s.buyerTin,
             total: s.total,
             profit: s.profit,
             createdAt: s.createdAt,
@@ -4137,6 +9250,7 @@ SELECT name FROM staff GROUP BY name HAVING COUNT(*) = 1
     String? paymentReference,
     required String staffName,
     int? staffId,
+    DatabaseExecutor? existingTransaction,
   }) async {
     if (lines.isEmpty) {
       throw StateError('A return must contain at least one line');
@@ -4148,8 +9262,8 @@ SELECT name FROM staff GROUP BY name HAVING COUNT(*) = 1
       throw StateError('That sale cannot be returned');
     }
 
-    final db = await database;
-    return db.transaction<int>((txn) async {
+    final db = existingTransaction == null ? await database : null;
+    Future<int> write(DatabaseExecutor txn) async {
       // What has already come back, per sale line.
       final previous = await txn.rawQuery(
         'SELECT sale_item_id, COALESCE(SUM(qty), 0) AS returned_qty '
@@ -4201,6 +9315,9 @@ SELECT name FROM staff GROUP BY name HAVING COUNT(*) = 1
       int totalMinor = 0;
       int vatMinor = 0;
       int profitMinor = 0;
+      int restockedCostMinor = 0;
+      int writtenOffCostMinor = 0;
+      int restockedMilliunits = 0;
       final now = DateTime.now().toIso8601String();
 
       for (final ReturnLineDraft draft in lines) {
@@ -4222,7 +9339,10 @@ SELECT name FROM staff GROUP BY name HAVING COUNT(*) = 1
         // The refund for the line: the line total scaled by the returned
         // fraction, rounded half-up. The line total is the UNIT price times
         // the quantity sold, so a half-bottle returns half the line.
-        final int lineTotal = _roundHalfUp(sold.unitPrice.minorUnits * soldQty);
+        // SaleItem.total already includes the recorded line discount, so a
+        // partial return refunds the discounted amount rather than today's
+        // list price.
+        final int lineTotal = sold.total.minorUnits;
         final int refund = _roundHalfUp(lineTotal * (draft.qty / soldQty));
         final int soldVat = sold.vatMinor ?? 0;
         final int lineVat = _roundHalfUp(soldVat * (draft.qty / soldQty));
@@ -4238,7 +9358,12 @@ SELECT name FROM staff GROUP BY name HAVING COUNT(*) = 1
         // missing bottle has to be somewhere. It just does not put the
         // quantity back on the shelf.
         final double units = draft.qty * _portionFactor(sold, 0);
+        final int returnCostMinor = _roundHalfUp(
+          sold.unitCost.minorUnits * draft.qty,
+        );
         if (draft.restock) {
+          restockedCostMinor += returnCostMinor;
+          restockedMilliunits += (units * 1000).round();
           final double balance =
               await _productBalanceAfter(txn, sold.productId);
           await _writeStockMovement(
@@ -4269,7 +9394,29 @@ SELECT name FROM staff GROUP BY name HAVING COUNT(*) = 1
             variantId: sold.variantId,
             units: units,
           );
+          // Put a restocked return back into the exact batches it came from.
+          // Pro-rating keeps a partial return auditable and avoids turning an
+          // older batch into a newer one merely because the product balance is
+          // aggregated at the catalogue level.
+          final batchLinks = await txn.query(
+            'sale_item_batches',
+            where: 'sale_item_id = ?',
+            whereArgs: [draft.saleItemId],
+            orderBy: 'batch_id ASC',
+          );
+          if (batchLinks.isNotEmpty) {
+            for (final link in batchLinks) {
+              final soldFromBatch = (link['qty'] as num).toDouble();
+              final restore = soldFromBatch * (draft.qty / soldQty);
+              await txn.rawUpdate(
+                'UPDATE stock_batches SET qty_remaining = qty_remaining + ? '
+                'WHERE id = ?',
+                [restore, link['batch_id']],
+              );
+            }
+          }
         } else {
+          writtenOffCostMinor += returnCostMinor;
           final double balance =
               await _productBalanceAfter(txn, sold.productId);
           await _writeStockMovement(
@@ -4306,6 +9453,80 @@ SELECT name FROM staff GROUP BY name HAVING COUNT(*) = 1
         'synced_to_backend': 0,
       });
 
+      // A split refund follows the original payment weights. Integer
+      // largest-remainder allocation makes the rows sum to the exact refund,
+      // including when the amount cannot be divided evenly into cents.
+      final paymentRows = await txn.query(
+        'sale_payments',
+        where: 'sale_id = ? AND status != ? AND amount_minor > 0',
+        whereArgs: [sale.id, 'pending'],
+        orderBy: 'id ASC',
+      );
+      final eligiblePayments = paymentRows.isEmpty
+          ? <Map<String, dynamic>>[
+              <String, dynamic>{
+                'id': null,
+                'method': refundMethod,
+                'amount_minor': totalMinor,
+                'reference': paymentReference,
+              },
+            ]
+          : paymentRows;
+      final allocations = largestRemainderAllocation(
+        totalMinor,
+        eligiblePayments
+            .map((row) => (row['amount_minor'] as num).toInt())
+            .toList(),
+      );
+      for (var i = 0; i < eligiblePayments.length; i++) {
+        final amount = allocations[i];
+        if (amount == 0) continue;
+        final payment = eligiblePayments[i];
+        await txn.insert('sale_return_refunds', {
+          'return_id': returnId,
+          'sale_payment_id': payment['id'],
+          'method': payment['method'] as String? ?? refundMethod,
+          'amount_minor': amount,
+          'reference': payment['reference'] as String? ?? paymentReference,
+        });
+      }
+
+      // A credit-account sale REFUNDS to the account by default (spec
+      // 7.5.4): the reversal is a return_credit entry against the customer's
+      // ledger, in the same transaction as the return — never a drawer
+      // action, never an edit.
+      if (refundMethod == 'credit_to_account') {
+        final customerRows = await txn.query(
+          'sales',
+          columns: <String>['customer_id'],
+          where: 'id = ?',
+          whereArgs: [sale.id],
+          limit: 1,
+        );
+        final int? customerId =
+            (customerRows.first['customer_id'] as num?)?.toInt();
+        if (customerId == null) {
+          throw StateError(
+              'That sale was not taken on account, so there is no account to refund');
+        }
+        await txn.insert('credit_ledger', <String, Object?>{
+          'uuid': _newUuid(),
+          'customer_id': customerId,
+          'entry_type': 'return_credit',
+          'amount_minor': -totalMinor,
+          'sale_id': sale.id,
+          'return_id': returnId,
+          'staff_id': staffId,
+          'staff_name': staffName,
+          'created_at': now,
+        });
+        await txn.rawUpdate(
+          'UPDATE customers SET balance_minor = balance_minor - ? '
+          'WHERE id = ?',
+          <Object?>[totalMinor, customerId],
+        );
+      }
+
       for (final ReturnLineDraft draft in lines) {
         final SaleItem sold = saleItems[draft.saleItemId]!;
         final int lineTotal =
@@ -4329,8 +9550,35 @@ SELECT name FROM staff GROUP BY name HAVING COUNT(*) = 1
         });
       }
 
+      await _appendFinancialEvent(
+        txn: txn,
+        eventType: 'refund',
+        sourceType: 'sale_return',
+        sourceId: returnId,
+        occurredAtUtc: DateTime.now().toUtc().toIso8601String(),
+        revenueMinor: -(totalMinor - vatMinor),
+        cashOutMinor: refundMethod == 'credit_to_account' ||
+                refundMethod == 'exchange_credit'
+            ? 0
+            : totalMinor,
+        cogsMinor: -restockedCostMinor,
+        operatingExpenseMinor: writtenOffCostMinor,
+        taxCollectedMinor: -vatMinor,
+        receivableDeltaMinor:
+            refundMethod == 'credit_to_account' ? -totalMinor : 0,
+        inventoryDeltaMilliunits: restockedMilliunits,
+        metadata: <String, Object?>{
+          'sale_id': sale.id,
+          'refund_method': refundMethod,
+          'line_count': lines.length,
+        },
+      );
+
       return returnId;
-    });
+    }
+
+    if (existingTransaction != null) return write(existingTransaction);
+    return db!.transaction<int>((txn) => write(txn));
   }
 
   /// Puts [units] back on the shelf, in the same transaction as the movement.
@@ -4431,6 +9679,12 @@ SELECT name FROM staff GROUP BY name HAVING COUNT(*) = 1
         whereArgs: [row['id']],
         orderBy: 'id ASC',
       );
+      final allocationRows = await db.query(
+        'sale_return_refunds',
+        where: 'return_id = ?',
+        whereArgs: [row['id']],
+        orderBy: 'id ASC',
+      );
       returns.add(
         SaleReturn.fromMap(row).let(
           (r) => SaleReturn(
@@ -4447,6 +9701,8 @@ SELECT name FROM staff GROUP BY name HAVING COUNT(*) = 1
             staffName: r.staffName,
             createdAt: r.createdAt,
             items: itemRows.map(SaleReturnItem.fromMap).toList(),
+            refundAllocations:
+                allocationRows.map(ReturnRefundAllocation.fromMap).toList(),
           ),
         ),
       );
@@ -4534,11 +9790,28 @@ SELECT name FROM staff GROUP BY name HAVING COUNT(*) = 1
     required List<StockReceiptLine> lines,
     int? supplierId,
     String? supplierRef,
+    String? supplierPin,
+    String? etimsInvoiceRef,
+    int? inputVatMinor,
+    String taxEvidenceStatus = 'needs_review',
     String? note,
     required String staffName,
     int? staffId,
     DateTime? receivedAt,
+
+    /// How the delivery prices what it brings: `weighted_average` (the shop
+    /// setting, and the default) blends the incoming cost with what is still
+    /// on the shelf; `last_cost` replaces the product's cost outright.
+    ///
+    /// Read once by the caller from the shop setting and passed in, so the
+    /// mode in force for this posting is the one the owner saw on the screen.
+    String costingMode = 'weighted_average',
+    int? purchaseOrderId,
   }) async {
+    if (costingMode != 'weighted_average' && costingMode != 'last_cost') {
+      throw ArgumentError.value(
+          costingMode, 'costingMode', 'must be weighted_average or last_cost');
+    }
     if (lines.isEmpty) {
       throw StateError('A delivery must contain at least one line');
     }
@@ -4549,13 +9822,27 @@ SELECT name FROM staff GROUP BY name HAVING COUNT(*) = 1
       final List<({StockReceiptLine line, int oldCost, int newCost})> costs =
           <({StockReceiptLine line, int oldCost, int newCost})>[];
 
+      final poLines = purchaseOrderId == null
+          ? const <Map<String, Object?>>[]
+          : await txn.query('purchase_order_lines',
+              where: 'purchase_order_id = ?', whereArgs: [purchaseOrderId]);
+      if (purchaseOrderId != null && poLines.isEmpty) {
+        throw StateError('Purchase order not found');
+      }
+
       for (final StockReceiptLine line in lines) {
         if (line.qty <= 0) {
           throw StateError('A received quantity must be more than zero');
         }
         final List<Map<String, Object?>> product = await txn.query(
           'products',
-          columns: <String>['id', 'cost_price', 'stock_qty', 'track_variants'],
+          columns: <String>[
+            'id',
+            'cost_price',
+            'stock_qty',
+            'track_variants',
+            'track_expiry',
+          ],
           where: 'id = ?',
           whereArgs: [line.productId],
           limit: 1,
@@ -4563,9 +9850,44 @@ SELECT name FROM staff GROUP BY name HAVING COUNT(*) = 1
         if (product.isEmpty) {
           throw StateError('That product is not in the catalogue');
         }
+        final tracksExpiry =
+            (product.first['track_expiry'] as num?)?.toInt() == 1;
+        if (tracksExpiry && line.expiryDate == null) {
+          throw StateError(
+              'An expiry date is required for ${line.productName}');
+        }
+        if (tracksExpiry &&
+            !line.expiryDate!.isAfter(receivedAt ?? DateTime.now())) {
+          throw StateError('The expiry date must be after the received date');
+        }
+        if (purchaseOrderId != null) {
+          final matches = poLines.where(
+              (row) => (row['product_id'] as num).toInt() == line.productId);
+          if (matches.isEmpty) {
+            throw StateError('Product is not on the purchase order');
+          }
+          final poLine = matches.first;
+          final ordered = (poLine['qty'] as num).toDouble();
+          final received = (poLine['received_qty'] as num?)?.toDouble() ?? 0;
+          if (received + line.qty > ordered + _qtyEpsilon) {
+            throw StateError('Received quantity exceeds the purchase order');
+          }
+        }
         final int oldCost = (product.first['cost_price'] as num?)?.toInt() ?? 0;
-        final int newCost = line.unitCost.minorUnits;
-        final int lineCost = (newCost * line.qty).round();
+        final int newCost;
+        if (costingMode == 'weighted_average') {
+          // Half-up against exact integers, never a float: the ONE division
+          // primitive every average in this app goes through.
+          newCost = _weightedAverageCost(
+            onHandMinor: oldCost,
+            onHandQty: (product.first['stock_qty'] as num?)?.toDouble() ?? 0,
+            incomingQty: line.qty,
+            incomingMinor: line.unitCost.minorUnits,
+          );
+        } else {
+          newCost = line.unitCost.minorUnits;
+        }
+        final int lineCost = (line.unitCost.minorUnits * line.qty).round();
         totalCost += lineCost;
         costs.add((line: line, oldCost: oldCost, newCost: newCost));
 
@@ -4598,6 +9920,10 @@ SELECT name FROM staff GROUP BY name HAVING COUNT(*) = 1
       final int receiptId = await txn.insert('stock_receipts', {
         'supplier_id': supplierId,
         'supplier_ref': supplierRef,
+        'supplier_pin': supplierPin,
+        'etims_invoice_ref': etimsInvoiceRef,
+        'input_vat_minor': inputVatMinor,
+        'tax_evidence_status': taxEvidenceStatus,
         'received_at': now,
         'staff_id': staffId,
         'staff_name': staffName,
@@ -4615,11 +9941,35 @@ SELECT name FROM staff GROUP BY name HAVING COUNT(*) = 1
           'variant_id': cost.line.variantId,
           'product_name': cost.line.productName,
           'qty': cost.line.qty,
-          'unit_cost_minor': cost.newCost,
-          'line_cost_minor': (cost.newCost * cost.line.qty).round(),
+          // What one unit cost HERE — the supplier's price. A blended figure
+          // belongs in new_cost_minor; storing it in BOTH columns would make
+          // the prefill of the next delivery show a book average as if the
+          // supplier had asked for it.
+          'unit_cost_minor': cost.line.unitCost.minorUnits,
+          'line_cost_minor':
+              (cost.line.unitCost.minorUnits * cost.line.qty).round(),
           'old_cost_minor': cost.oldCost,
           'new_cost_minor': cost.newCost,
+          'expiry_date': cost.line.expiryDate?.toIso8601String(),
+          'batch_code': cost.line.batchCode,
         });
+        if (cost.line.expiryDate != null) {
+          final expiry = cost.line.expiryDate!;
+          final endOfDay =
+              DateTime(expiry.year, expiry.month, expiry.day, 23, 59, 59, 999);
+          await txn.insert('stock_batches', {
+            'uuid': _newUuid(),
+            'product_id': cost.line.productId,
+            'variant_id': cost.line.variantId,
+            'batch_code': cost.line.batchCode,
+            'receipt_id': receiptId,
+            'received_at': now,
+            'expires_at': endOfDay.toIso8601String(),
+            'qty_remaining': cost.line.qty,
+            'unit_cost_minor': cost.line.unitCost.minorUnits,
+            'status': 'active',
+          });
+        }
         // The history: how the cost got to be what it is.
         await txn.insert('product_cost_history', {
           'product_id': cost.line.productId,
@@ -4637,7 +9987,271 @@ SELECT name FROM staff GROUP BY name HAVING COUNT(*) = 1
         );
       }
 
+      if (purchaseOrderId != null) {
+        for (final line in lines) {
+          await txn.rawUpdate(
+            'UPDATE purchase_order_lines SET received_qty = received_qty + ? '
+            'WHERE purchase_order_id = ? AND product_id = ?',
+            [line.qty, purchaseOrderId, line.productId],
+          );
+        }
+        final remaining = await txn.rawQuery(
+          'SELECT COUNT(*) AS c FROM purchase_order_lines '
+          'WHERE purchase_order_id = ? AND received_qty < qty',
+          [purchaseOrderId],
+        );
+        await txn.update(
+          'purchase_orders',
+          {
+            'status': ((remaining.first['c'] as num?)?.toInt() ?? 0) == 0
+                ? 'received'
+                : 'partial',
+            'synced_to_backend': 0,
+          },
+          where: 'id = ?',
+          whereArgs: [purchaseOrderId],
+        );
+      }
+
+      await _appendFinancialEvent(
+        txn: txn,
+        eventType: 'purchase',
+        sourceType: 'stock_receipt',
+        sourceId: receiptId,
+        occurredAtUtc: DateTime.parse(now).toUtc().toIso8601String(),
+        payableDeltaMinor: totalCost,
+        inventoryDeltaMilliunits: lines.fold<int>(
+          0,
+          (sum, line) => sum + (line.qty * 1000).round(),
+        ),
+        metadata: <String, Object?>{
+          'supplier_id': supplierId,
+          'purchase_order_id': purchaseOrderId,
+          'line_count': lines.length,
+          'costing_mode': costingMode,
+        },
+      );
+
       return receiptId;
+    });
+  }
+
+  /// Posts a delivery entered in packs while keeping the stock ledger in base
+  /// units. The pack cost is the cost of one pack; the receipt line stores the
+  /// derived unit cost and quantity so profit and future counts stay coherent.
+  Future<int> postStockReceiptByPack({
+    required int packId,
+    required double packQty,
+    required String staffName,
+    int? staffId,
+    int? supplierId,
+    String? supplierRef,
+    String? note,
+    DateTime? receivedAt,
+  }) async {
+    if (!packQty.isFinite || packQty <= 0) {
+      throw ArgumentError.value(packQty, 'packQty');
+    }
+    final rows = await (await database).query(
+      'product_packs',
+      where: 'id = ? AND active = 1',
+      whereArgs: [packId],
+      limit: 1,
+    );
+    if (rows.isEmpty) throw StateError('Pack not found');
+    final pack = ProductPack.fromMap(rows.first);
+    final productRows = await (await database).query(
+      'products',
+      where: 'id = ? AND active = 1',
+      whereArgs: [pack.productId],
+      limit: 1,
+    );
+    if (productRows.isEmpty) throw StateError('Pack product not found');
+    final product = Product.fromMap(productRows.first);
+    return postStockReceipt(
+      lines: [
+        StockReceiptLine(
+          productId: product.id!,
+          productName: product.name,
+          qty: packQty * pack.unitsPerPack,
+          variantId: pack.variantId,
+          unitCost: Money.fromMinor(
+              (pack.unitCost.minorUnits / pack.unitsPerPack).round()),
+        ),
+      ],
+      supplierId: supplierId,
+      supplierRef: supplierRef,
+      note: note == null ? 'Received ${pack.name}' : '$note (${pack.name})',
+      staffName: staffName,
+      staffId: staffId,
+      receivedAt: receivedAt,
+    );
+  }
+
+  /// The weighted-average cost [incomingQty] units of a delivery leave a
+  /// product standing at.
+  ///
+  /// `(on-hand value + incoming value) / (on-hand + incoming)`, with on-hand
+  /// BELOW zero read as zero — a negative shelf is a stocktake problem, not a
+  /// reason for the cost to dive. Result is quantised half-up by the one
+  /// division primitive, so a two-delivery chain cannot drift a cent from
+  /// doing the same sums once.
+  ///
+  /// Returns the incoming cost unchanged when nothing is on hand: first stock
+  /// IS the cost, by either mode.
+  static int _weightedAverageCost({
+    required int onHandMinor,
+    required double onHandQty,
+    required double incomingQty,
+    required int incomingMinor,
+  }) {
+    if (incomingQty <= 0) return onHandMinor;
+    final double shelf = onHandQty > 0 ? onHandQty : 0;
+    if (shelf <= 0) return incomingMinor;
+    final double total = shelf + incomingQty;
+    final int valueMinor =
+        (shelf * onHandMinor).round() + (incomingQty * incomingMinor).round();
+    return divideMoneyHalfUp(valueMinor, total.round());
+  }
+
+  /// Voids a posted delivery.
+  ///
+  /// Only while the stock it brought is still on hand: each line's quantity
+  /// must still be in the shop, because taking stock back that has already
+  /// been sold would need a stocktake, not a void — the shortfall is named in
+  /// the error, and the receipt stays posted. The void writes one
+  /// receipt_void movement per line IN THE SAME TRANSACTION (a crash cannot
+  /// leave half a void), restores the previous cost from history where no
+  /// later receipt has already moved cost past this one, and marks the
+  /// receipt `voided` — it stays visible in the history, in that state.
+  ///
+  /// Returns the number of lines voided.
+  Future<int> voidStockReceipt({
+    required int receiptId,
+    required String staffName,
+    int? staffId,
+  }) async {
+    final db = await database;
+    return db.transaction<int>((txn) async {
+      final receipts = await txn.query('stock_receipts',
+          where: 'id = ?', whereArgs: [receiptId], limit: 1);
+      if (receipts.isEmpty) {
+        throw StateError('That delivery is not in the history');
+      }
+      if ((receipts.first['status'] as String?) == 'voided') {
+        throw StateError('That delivery is already voided');
+      }
+      final String receivedAt = receipts.first['received_at'] as String? ??
+          DateTime.now().toIso8601String();
+      final lines = await txn.query('stock_receipt_items',
+          where: 'receipt_id = ?', whereArgs: [receiptId], orderBy: 'id ASC');
+      if (lines.isEmpty) {
+        throw StateError('That delivery has no lines to reverse');
+      }
+
+      // The whole void is judged BEFORE any row moves: one short line voids
+      // nothing, rather than reversing half a delivery.
+      for (final line in lines) {
+        final double taken = (line['qty'] as num).toDouble();
+        final int productId = line['product_id'] as int;
+        final current = await txn.query('products',
+            columns: <String>['stock_qty', 'name'],
+            where: 'id = ?',
+            whereArgs: [productId],
+            limit: 1);
+        final double onHand =
+            (current.first['stock_qty'] as num?)?.toDouble() ?? 0;
+        if (onHand + _volumeTolerance < taken) {
+          throw StateError('${current.first['name'] as String} is short: only '
+              '${onHand.toStringAsFixed(0)} left of the ${taken.toStringAsFixed(0)} '
+              'this delivery brought');
+        }
+      }
+
+      final String now = DateTime.now().toIso8601String();
+      final int totalCost = lines.fold<int>(
+        0,
+        (sum, line) => sum + ((line['line_cost_minor'] as num?)?.toInt() ?? 0),
+      );
+      final int inventoryMilliunits = lines.fold<int>(
+        0,
+        (sum, line) => sum + (((line['qty'] as num).toDouble()) * 1000).round(),
+      );
+      for (final line in lines) {
+        final double taken = (line['qty'] as num).toDouble();
+        final int productId = line['product_id'] as int;
+        final variantId = (line['variant_id'] as num?)?.toInt();
+        final int unitCost = (line['unit_cost_minor'] as num?)?.toInt() ?? 0;
+        final double balance = variantId == null
+            ? await _productBalanceAfter(txn, productId)
+            : await _variantBalanceAfter(txn, variantId);
+        await _writeStockMovement(
+          txn,
+          productId: productId,
+          variantId: variantId,
+          type: StockMovementType.receiptVoid,
+          qtyDelta: -taken,
+          unitCostMinor: unitCost,
+          referenceType: 'stock_receipt',
+          referenceId: receiptId,
+          staffId: staffId,
+          staffName: staffName,
+          note: 'Voided delivery',
+          balanceAfter: balance,
+          createdAt: now,
+        );
+        await txn.rawUpdate(
+          'UPDATE products SET stock_qty = MAX(0, stock_qty - ?), '
+          'updated_at = ? WHERE id = ?',
+          <Object?>[taken, now, productId],
+        );
+        if (variantId != null) {
+          await txn.rawUpdate(
+            'UPDATE product_variants SET stock_qty = MAX(0, stock_qty - ?) '
+            'WHERE id = ?',
+            <Object?>[taken, variantId],
+          );
+        }
+
+        // Cost: roll back ONLY when this delivery is still the newest thing
+        // that touched the cost. A later receipt's figures own the cost now;
+        // reversing an old average against a live one would corrupt it.
+        final later = await txn.rawQuery(
+          'SELECT COUNT(*) AS n FROM product_cost_history '
+          'WHERE product_id = ? AND receipt_id != ? AND effective_at > ?',
+          <Object?>[productId, receiptId, receivedAt],
+        );
+        if ((later.first['n'] as num?)?.toInt() == 0) {
+          final oldCost = (line['old_cost_minor'] as num?)?.toInt() ?? 0;
+          await txn.rawUpdate(
+            'UPDATE products SET cost_price = ? WHERE id = ?',
+            <Object?>[oldCost, productId],
+          );
+          await txn.insert('product_cost_history', {
+            'product_id': productId,
+            'variant_id': variantId,
+            'effective_at': now,
+            'old_cost_minor': unitCost,
+            'new_cost_minor': oldCost,
+            'reason': 'void',
+            'receipt_id': receiptId,
+          });
+        }
+      }
+
+      await txn.update('stock_receipts', {'status': 'voided'},
+          where: 'id = ?', whereArgs: [receiptId]);
+      await _appendFinancialEvent(
+        txn: txn,
+        eventType: 'purchase_void',
+        sourceType: 'stock_receipt',
+        sourceId: receiptId,
+        occurredAtUtc: DateTime.now().toUtc().toIso8601String(),
+        payableDeltaMinor: -totalCost,
+        inventoryDeltaMilliunits: -inventoryMilliunits,
+        metadata: <String, Object?>{'line_count': lines.length},
+      );
+      return lines.length;
     });
   }
 
@@ -4663,6 +10277,10 @@ SELECT name FROM staff GROUP BY name HAVING COUNT(*) = 1
             id: r.id,
             supplierId: r.supplierId,
             supplierRef: r.supplierRef,
+            supplierPin: r.supplierPin,
+            etimsInvoiceRef: r.etimsInvoiceRef,
+            inputVat: r.inputVat,
+            taxEvidenceStatus: r.taxEvidenceStatus,
             receivedAt: r.receivedAt,
             staffId: r.staffId,
             staffName: r.staffName,
@@ -4684,14 +10302,29 @@ SELECT name FROM staff GROUP BY name HAVING COUNT(*) = 1
   /// field: the number the owner is about to replace is the number they last
   /// paid.
   Future<Money?> lastCostForProduct(int productId) async {
+    // The last PAID figure — what one unit went for on the newest delivery —
+    // not the book cost: under weighted average the modelled cost is a blend,
+    // and the number the owner is about to type again is the price the
+    // supplier actually asked.
     final rows = await (await database).rawQuery(
+      'SELECT unit_cost_minor FROM stock_receipt_items '
+      'WHERE product_id = ? AND unit_cost_minor > 0 '
+      'ORDER BY id DESC LIMIT 1',
+      [productId],
+    );
+    if (rows.isNotEmpty) {
+      return Money.fromMinor(
+          (rows.first['unit_cost_minor'] as num?)?.toInt() ?? 0);
+    }
+    // Nothing bought yet: the cheapest thing it has ever cost.
+    final history = await (await database).rawQuery(
       'SELECT new_cost_minor FROM product_cost_history '
       'WHERE product_id = ? ORDER BY effective_at DESC, id DESC LIMIT 1',
       [productId],
     );
-    if (rows.isEmpty) return null;
+    if (history.isEmpty) return null;
     return Money.fromMinor(
-        (rows.first['new_cost_minor'] as num?)?.toInt() ?? 0);
+        (history.first['new_cost_minor'] as num?)?.toInt() ?? 0);
   }
 
   /// The suppliers, active ones first.
@@ -4714,10 +10347,27 @@ SELECT name FROM staff GROUP BY name HAVING COUNT(*) = 1
     String? phone,
     String? contactPerson,
     String? notes,
+    int? leadTimeDays,
+    String? paymentTerms,
+    String? orderChannel,
   }) async {
     final String trimmed = name.trim();
     if (trimmed.isEmpty) {
       throw StateError('A supplier needs a name');
+    }
+    // Stored in the canonical +254… form or not at all: a number typed one
+    // way today and another way next week is ONE supplier's number only if
+    // the app treats the six spellings as one. Anything that is not a
+    // Kenyan number is refused rather than stored broken — an unreadable
+    // number would be a restock message that never reached anyone.
+    String? canonical;
+    final typed = phone?.trim();
+    if (typed != null && typed.isNotEmpty) {
+      canonical = normaliseKenyanPhone(typed);
+      if (canonical == null) {
+        throw ArgumentError.value(phone, 'phone',
+            'not a Kenyan number: 07xx, 01xx, +254 or 254 form');
+      }
     }
     final db = await database;
     final existing = await db.query(
@@ -4732,12 +10382,295 @@ SELECT name FROM staff GROUP BY name HAVING COUNT(*) = 1
     }
     return db.insert('suppliers', <String, Object?>{
       'name': trimmed,
-      'phone': phone,
+      'phone': canonical,
       'contact_person': contactPerson,
       'notes': notes,
+      'lead_time_days': leadTimeDays,
+      'payment_terms': paymentTerms,
+      'order_channel': orderChannel,
       'active': 1,
       'created_at': DateTime.now().toIso8601String(),
     });
+  }
+
+  Future<void> linkProductSupplier({
+    required String uuid,
+    required int productId,
+    required int supplierId,
+    int? packId,
+    String? supplierSku,
+    bool preferred = false,
+  }) async {
+    await (await database).insert(
+        'product_suppliers',
+        {
+          'uuid': uuid,
+          'product_id': productId,
+          'supplier_id': supplierId,
+          'pack_id': packId,
+          'supplier_sku': supplierSku,
+          'preferred': preferred ? 1 : 0,
+        },
+        conflictAlgorithm: ConflictAlgorithm.replace);
+  }
+
+  Future<List<Map<String, dynamic>>> getProductSuppliers(int productId) async =>
+      (await database).rawQuery('''
+        SELECT ps.*, s.name AS supplier_name, s.phone AS supplier_phone
+        FROM product_suppliers ps JOIN suppliers s ON s.id = ps.supplier_id
+        WHERE ps.product_id = ? ORDER BY ps.preferred DESC, s.name
+      ''', [productId]);
+
+  Future<int> createPurchaseOrder({
+    required String uuid,
+    required int supplierId,
+    required String staffName,
+    required List<Map<String, Object?>> lines,
+    int? staffId,
+    String? note,
+    DateTime? expectedAt,
+  }) async {
+    if (lines.isEmpty) throw StateError('A purchase order needs lines');
+    final db = await database;
+    return db.transaction<int>((txn) async {
+      final now = DateTime.now().toIso8601String();
+      final id = await txn.insert('purchase_orders', {
+        'uuid': uuid,
+        'order_number': 'PO-PENDING-$uuid',
+        'supplier_id': supplierId,
+        'status': 'draft',
+        'expected_at': expectedAt?.toIso8601String(),
+        'note': note,
+        'created_at': now,
+        'staff_id': staffId,
+        'staff_name': staffName,
+      });
+      final number =
+          'PO-${DateTime.now().year}-${id.toString().padLeft(6, '0')}';
+      await txn.update('purchase_orders', {'order_number': number},
+          where: 'id = ?', whereArgs: [id]);
+      for (final line in lines) {
+        final qty = (line['qty'] as num?)?.toDouble() ?? 0;
+        if (qty <= 0) throw StateError('Purchase quantity must be positive');
+        await txn.insert('purchase_order_lines', {
+          'uuid': _newUuid(),
+          'purchase_order_id': id,
+          'product_id': line['product_id'],
+          'product_name': line['product_name'],
+          'qty': qty,
+          'unit_cost_minor': line['unit_cost_minor'] ?? 0,
+        });
+      }
+      return id;
+    });
+  }
+
+  Future<List<Map<String, dynamic>>> getPurchaseOrders({
+    int? supplierId,
+    String? status,
+  }) async {
+    final where = <String>[];
+    final args = <Object?>[];
+    if (supplierId != null) {
+      where.add('supplier_id = ?');
+      args.add(supplierId);
+    }
+    if (status != null) {
+      where.add('status = ?');
+      args.add(status);
+    }
+    return (await database).query(
+      'purchase_orders',
+      where: where.isEmpty ? null : where.join(' AND '),
+      whereArgs: args.isEmpty ? null : args,
+      orderBy: 'created_at DESC',
+    );
+  }
+
+  Future<List<Map<String, dynamic>>> getPurchaseOrderLines(int orderId) async =>
+      (await database).query(
+        'purchase_order_lines',
+        where: 'purchase_order_id = ?',
+        whereArgs: [orderId],
+        orderBy: 'id ASC',
+      );
+
+  /// Reordering is a draft workflow, but drafts still belong to the shop's
+  /// shared operational history. Return bounded, idempotent records for the
+  /// verified sync cycle; automatic ordering is never triggered here.
+  Future<List<Map<String, dynamic>>> getUnsyncedReorderRecords(
+      {int limit = 100}) async {
+    final db = await database;
+    final records = <Map<String, dynamic>>[];
+    for (final row in await db.query('suppliers',
+        where: 'synced_to_backend = 0', orderBy: 'id ASC', limit: limit)) {
+      records.add(<String, dynamic>{
+        'kind': 'supplier',
+        'localId': row['id'],
+        'createdAt': row['created_at'],
+        'payload': Map<String, dynamic>.from(row),
+      });
+    }
+    for (final row in await db.rawQuery('''
+      SELECT ps.*, s.name AS supplier_name
+      FROM product_suppliers ps JOIN suppliers s ON s.id = ps.supplier_id
+      WHERE ps.synced_to_backend = 0
+      ORDER BY ps.id ASC LIMIT ?
+    ''', [limit])) {
+      records.add(<String, dynamic>{
+        'kind': 'product_supplier',
+        'localId': row['id'],
+        'createdAt': DateTime.now().toIso8601String(),
+        'payload': Map<String, dynamic>.from(row),
+      });
+    }
+    for (final row in await db.query('purchase_orders',
+        where: 'synced_to_backend = 0', orderBy: 'id ASC', limit: limit)) {
+      final payload = Map<String, dynamic>.from(row);
+      final supplier = await db.rawQuery(
+          'SELECT name FROM suppliers WHERE id = ?', [row['supplier_id']]);
+      if (supplier.isNotEmpty) {
+        payload['supplier_name'] = supplier.first['name'];
+      }
+      payload['lines'] = await getPurchaseOrderLines(row['id'] as int);
+      records.add(<String, dynamic>{
+        'kind': 'purchase_order',
+        'localId': row['id'],
+        'createdAt': row['created_at'],
+        'payload': payload,
+      });
+    }
+    return records.take(limit).toList();
+  }
+
+  Future<void> markReorderRecordsSynced(
+      List<Map<String, dynamic>> records) async {
+    if (records.isEmpty) return;
+    final db = await database;
+    await db.transaction((txn) async {
+      for (final record in records) {
+        final id = record['localId'];
+        final kind = record['kind'];
+        final table = switch (kind) {
+          'supplier' => 'suppliers',
+          'product_supplier' => 'product_suppliers',
+          'purchase_order' => 'purchase_orders',
+          _ => null,
+        };
+        if (table != null && id is int) {
+          await txn.update(table, {'synced_to_backend': 1},
+              where: 'id = ?', whereArgs: [id]);
+        }
+      }
+    });
+  }
+
+  /// Applies a reorder record received from another verified till. Supplier
+  /// names are the portable identity; product links use the server product
+  /// UUID carried by the sender, never another phone's integer id.
+  Future<void> mergeRemoteReorderRecord(Map<String, dynamic> record) async {
+    final kind = record['entityKind'] as String?;
+    final raw = record['payload'];
+    if (kind == null || raw is! Map) return;
+    final payload = Map<String, dynamic>.from(raw);
+    final db = await database;
+    if (kind == 'supplier') {
+      final name = payload['name']?.toString().trim() ?? '';
+      if (name.isEmpty) return;
+      final existing = await db.query('suppliers',
+          where: 'LOWER(name) = ?', whereArgs: [name.toLowerCase()], limit: 1);
+      if (existing.isEmpty) {
+        await db.insert('suppliers', {
+          'name': name,
+          'phone': payload['phone'],
+          'contact_person': payload['contact_person'],
+          'notes': payload['notes'],
+          'lead_time_days': payload['lead_time_days'],
+          'payment_terms': payload['payment_terms'],
+          'order_channel': payload['order_channel'],
+          'active': payload['active'] ?? 1,
+          'synced_to_backend': 1,
+          'created_at':
+              payload['created_at'] ?? DateTime.now().toIso8601String(),
+        });
+      }
+      return;
+    }
+    if (kind == 'product_supplier') {
+      final remoteProductId = payload['product_remote_id']?.toString();
+      final supplierName = payload['supplier_name']?.toString().trim() ?? '';
+      if (remoteProductId == null || supplierName.isEmpty) return;
+      final products = await db.query('products',
+          where: 'remote_id = ?', whereArgs: [remoteProductId], limit: 1);
+      final suppliers = await db.query('suppliers',
+          where: 'LOWER(name) = ?',
+          whereArgs: [supplierName.toLowerCase()],
+          limit: 1);
+      if (products.isEmpty || suppliers.isEmpty) return;
+      await db.insert(
+          'product_suppliers',
+          {
+            'uuid': 'remote-${record['remoteId']}',
+            'product_id': products.single['id'],
+            'supplier_id': suppliers.single['id'],
+            'supplier_sku': payload['supplier_sku'],
+            'pack_id': null,
+            'preferred': payload['preferred'] ?? 0,
+            'synced_to_backend': 1,
+          },
+          conflictAlgorithm: ConflictAlgorithm.ignore);
+      return;
+    }
+    if (kind == 'purchase_order') {
+      final uuid = 'remote-${record['remoteId']}';
+      final exists = await db.query('purchase_orders',
+          where: 'uuid = ?', whereArgs: [uuid], limit: 1);
+      if (exists.isNotEmpty) return;
+      final supplierName = payload['supplier_name']?.toString().trim() ?? '';
+      final suppliers = await db.query('suppliers',
+          where: 'LOWER(name) = ?',
+          whereArgs: [supplierName.toLowerCase()],
+          limit: 1);
+      if (suppliers.isEmpty) return;
+      final orderId = await db.insert('purchase_orders', {
+        'uuid': uuid,
+        'order_number': 'REMOTE-${record['remoteId']}',
+        'supplier_id': suppliers.single['id'],
+        'status': payload['status'] ?? 'draft',
+        'ordered_at': payload['ordered_at'],
+        'expected_at': payload['expected_at'],
+        'note': payload['note'],
+        'created_at': payload['created_at'] ?? DateTime.now().toIso8601String(),
+        'staff_id': null,
+        'staff_name': payload['staff_name'] ?? 'Another till',
+        'synced_to_backend': 1,
+      });
+      final lines = payload['lines'];
+      if (lines is List) {
+        for (final rawLine in lines.whereType<Map>()) {
+          final remoteProductId = rawLine['product_remote_id']?.toString();
+          final products = remoteProductId == null
+              ? const <Map<String, Object?>>[]
+              : await db.query('products',
+                  where: 'remote_id = ?',
+                  whereArgs: [remoteProductId],
+                  limit: 1);
+          if (products.isEmpty) continue;
+          await db.insert(
+              'purchase_order_lines',
+              {
+                'uuid': 'remote-${record['remoteId']}-${rawLine['id']}',
+                'purchase_order_id': orderId,
+                'product_id': products.single['id'],
+                'product_name': rawLine['product_name'] ?? '',
+                'qty': rawLine['qty'] ?? 0,
+                'unit_cost_minor': rawLine['unit_cost_minor'] ?? 0,
+                'received_qty': rawLine['received_qty'] ?? 0,
+              },
+              conflictAlgorithm: ConflictAlgorithm.ignore);
+        }
+      }
+    }
   }
 
   /// The deliveries the server has not seen yet.
@@ -4763,6 +10696,10 @@ SELECT name FROM staff GROUP BY name HAVING COUNT(*) = 1
             id: r.id,
             supplierId: r.supplierId,
             supplierRef: r.supplierRef,
+            supplierPin: r.supplierPin,
+            etimsInvoiceRef: r.etimsInvoiceRef,
+            inputVat: r.inputVat,
+            taxEvidenceStatus: r.taxEvidenceStatus,
             receivedAt: r.receivedAt,
             staffId: r.staffId,
             staffName: r.staffName,
@@ -4805,6 +10742,12 @@ SELECT name FROM staff GROUP BY name HAVING COUNT(*) = 1
         whereArgs: [row['id']],
         orderBy: 'id ASC',
       );
+      final allocationRows = await db.query(
+        'sale_return_refunds',
+        where: 'return_id = ?',
+        whereArgs: [row['id']],
+        orderBy: 'id ASC',
+      );
       returns.add(
         SaleReturn.fromMap(row).let(
           (r) => SaleReturn(
@@ -4821,6 +10764,8 @@ SELECT name FROM staff GROUP BY name HAVING COUNT(*) = 1
             staffName: r.staffName,
             createdAt: r.createdAt,
             items: itemRows.map(SaleReturnItem.fromMap).toList(),
+            refundAllocations:
+                allocationRows.map(ReturnRefundAllocation.fromMap).toList(),
           ),
         ),
       );
@@ -4834,6 +10779,29 @@ SELECT name FROM staff GROUP BY name HAVING COUNT(*) = 1
     final db = await database;
     await db.rawUpdate(
       'UPDATE sale_returns SET synced_to_backend = 1 WHERE id IN '
+      '(${List.filled(ids.length, '?').join(',')})',
+      ids,
+    );
+  }
+
+  /// Stock movements are append-only and can be replayed safely by the
+  /// backend. Keeping the queue flag on the movement, rather than deriving it
+  /// from the parent sale or receipt, also covers corrections and stocktakes.
+  Future<List<StockMovement>> getUnsyncedStockMovements(
+      {int limit = 500}) async {
+    final rows = await (await database).query(
+      'stock_movements',
+      where: 'synced_to_backend = 0',
+      orderBy: 'created_at ASC, id ASC',
+      limit: limit,
+    );
+    return rows.map(StockMovement.fromMap).toList();
+  }
+
+  Future<void> markStockMovementsSynced(List<int> ids) async {
+    if (ids.isEmpty) return;
+    await (await database).rawUpdate(
+      'UPDATE stock_movements SET synced_to_backend = 1 WHERE id IN '
       '(${List.filled(ids.length, '?').join(',')})',
       ids,
     );
@@ -4872,6 +10840,8 @@ SELECT name FROM staff GROUP BY name HAVING COUNT(*) = 1
       sales.add(Sale.fromMap(r).let((s) => Sale(
             id: s.id,
             staffName: s.staffName,
+            buyerName: s.buyerName,
+            buyerTin: s.buyerTin,
             total: s.total,
             profit: s.profit,
             createdAt: s.createdAt,
@@ -4973,11 +10943,32 @@ SELECT name FROM staff GROUP BY name HAVING COUNT(*) = 1
         CAST(COALESCE(SUM(total), 0) AS INTEGER) AS total_minor,
         CAST(COALESCE(SUM(profit), 0) AS INTEGER) AS profit_minor,
         COUNT(*) AS transactions,
-        CAST(COALESCE(ROUND(AVG(total)), 0) AS INTEGER) AS average_minor
+        CAST(COALESCE(ROUND(AVG(total)), 0) AS INTEGER) AS average_minor,
+        CAST(COALESCE(SUM(vat_minor), 0) AS INTEGER) AS vat_minor,
+        CAST(COALESCE(SUM(taxable_minor), 0) AS INTEGER) AS taxable_minor
       FROM sales
       ${where.clause}
     ''', where.args);
     final row = rows.first;
+    final expenseWhere = <String>['status = ?'];
+    final expenseArgs = <Object?>['posted'];
+    if (since != null) {
+      expenseWhere.add('created_at >= ?');
+      expenseArgs.add(since.toIso8601String());
+    }
+    if (until != null) {
+      expenseWhere.add('created_at < ?');
+      expenseArgs.add(until.toIso8601String());
+    }
+    if (staffId != null) {
+      expenseWhere.add('staff_id = ?');
+      expenseArgs.add(staffId);
+    }
+    final expenseRows = await (await database).rawQuery(
+      'SELECT CAST(COALESCE(SUM(amount_minor), 0) AS INTEGER) AS total_minor '
+      'FROM expenses WHERE ${expenseWhere.join(' AND ')}',
+      expenseArgs,
+    );
     return DailyTotals(
       totalMinor: (row['total_minor'] as num?)?.toInt() ?? 0,
       profitMinor: (row['profit_minor'] as num?)?.toInt() ?? 0,
@@ -4986,6 +10977,9 @@ SELECT name FROM staff GROUP BY name HAVING COUNT(*) = 1
       // exact; rounded once, here, and handed on as an int like every other
       // figure in this section.
       averageMinor: (row['average_minor'] as num?)?.toInt() ?? 0,
+      expensesMinor: (expenseRows.first['total_minor'] as num?)?.toInt() ?? 0,
+      vatMinor: (row['vat_minor'] as num?)?.toInt() ?? 0,
+      taxableMinor: (row['taxable_minor'] as num?)?.toInt() ?? 0,
     );
   }
 
@@ -5016,7 +11010,8 @@ SELECT name FROM staff GROUP BY name HAVING COUNT(*) = 1
         MAX(si.product_name) AS product_name,
         SUM(si.qty) AS units,
         CAST(ROUND(SUM(si.unit_price * si.qty)) AS INTEGER) AS revenue_minor,
-        CAST(ROUND(SUM((si.unit_price - si.unit_cost) * si.qty)) AS INTEGER)
+        CAST(ROUND(SUM((COALESCE(si.taxable_minor, si.unit_price * si.qty) -
+          si.unit_cost * si.qty))) AS INTEGER)
           AS profit_minor
       FROM sale_items si
       JOIN sales s ON s.id = si.sale_id
@@ -5036,6 +11031,195 @@ SELECT name FROM staff GROUP BY name HAVING COUNT(*) = 1
               profitMinor: (row['profit_minor'] as num?)?.toInt() ?? 0,
             ))
         .toList();
+  }
+
+  /// The smallest useful explanation of one product's period total.  All
+  /// figures are read from the same sale-line snapshots as [topProducts], so
+  /// renaming a catalogue product cannot rewrite historical analytics.
+  Future<ProductDrilldownSnapshot> productDrilldown({
+    required int productId,
+    required DateTime since,
+    DateTime? until,
+    int? staffId,
+  }) async {
+    final where = _salesRangeWhere(
+      since: since,
+      until: until,
+      staffId: staffId,
+    );
+    final db = await database;
+    final summary = await db.rawQuery('''
+      SELECT MAX(si.product_name) AS product_name,
+             SUM(si.qty) AS units,
+             CAST(ROUND(SUM(si.unit_price * si.qty)) AS INTEGER) AS revenue_minor,
+             CAST(ROUND(SUM((COALESCE(si.taxable_minor, si.unit_price * si.qty) -
+               si.unit_cost * si.qty))) AS INTEGER) AS profit_minor,
+             COUNT(DISTINCT s.id) AS transactions
+      FROM sale_items si JOIN sales s ON s.id = si.sale_id
+      ${where.clause} AND si.product_id = ?
+    ''', [...where.args, productId]);
+    final staffRows = await db.rawQuery('''
+      SELECT COALESCE(s.staff_name, 'Unknown') AS staff_name,
+             COUNT(DISTINCT s.id) AS transactions,
+             CAST(ROUND(SUM(si.unit_price * si.qty)) AS INTEGER) AS revenue_minor
+      FROM sale_items si JOIN sales s ON s.id = si.sale_id
+      ${where.clause} AND si.product_id = ?
+      GROUP BY s.staff_id, s.staff_name
+      ORDER BY revenue_minor DESC
+    ''', [...where.args, productId]);
+    final paymentRows = await db.rawQuery('''
+      SELECT s.payment_method, COUNT(DISTINCT s.id) AS transactions,
+             CAST(ROUND(SUM(si.unit_price * si.qty)) AS INTEGER) AS sales_minor
+      FROM sale_items si JOIN sales s ON s.id = si.sale_id
+      ${where.clause} AND si.product_id = ?
+      GROUP BY s.payment_method
+      ORDER BY sales_minor DESC
+    ''', [...where.args, productId]);
+    final hourlyRows = await db.rawQuery('''
+      SELECT CAST(strftime('%H', s.created_at) AS INTEGER) AS hour,
+             SUM(si.qty) AS units,
+             COUNT(DISTINCT s.id) AS transactions,
+             CAST(ROUND(SUM(si.unit_price * si.qty)) AS INTEGER) AS sales_minor
+      FROM sale_items si JOIN sales s ON s.id = si.sale_id
+      ${where.clause} AND si.product_id = ?
+      GROUP BY hour
+      ORDER BY hour
+    ''', [...where.args, productId]);
+    final dailyRows = await db.rawQuery('''
+      SELECT strftime('%Y-%m-%d', s.created_at) AS day,
+             CAST(ROUND(SUM(si.unit_price * si.qty)) AS INTEGER) AS sales_minor,
+             CAST(ROUND(SUM((COALESCE(si.taxable_minor, si.unit_price * si.qty) -
+               si.unit_cost * si.qty))) AS INTEGER) AS profit_minor,
+             COUNT(DISTINCT s.id) AS transactions
+      FROM sale_items si JOIN sales s ON s.id = si.sale_id
+      ${where.clause} AND si.product_id = ?
+      GROUP BY day
+      ORDER BY day
+    ''', [...where.args, productId]);
+    final recordRows = await db.rawQuery('''
+      SELECT s.id AS sale_id, s.created_at, s.staff_name, s.payment_method,
+             s.total AS sale_total,
+             CAST(ROUND(SUM(si.unit_price * si.qty)) AS INTEGER) AS product_sales
+      FROM sale_items si JOIN sales s ON s.id = si.sale_id
+      ${where.clause} AND si.product_id = ?
+      GROUP BY s.id, s.created_at, s.staff_name, s.payment_method, s.total
+      ORDER BY s.created_at DESC, s.id DESC
+      LIMIT 200
+    ''', [...where.args, productId]);
+    final companionRows = await db.rawQuery('''
+      SELECT si2.product_id, MAX(si2.product_name) AS product_name,
+             COUNT(DISTINCT s.id) AS baskets, SUM(si2.qty) AS units
+      FROM sale_items si1
+      JOIN sales s ON s.id = si1.sale_id
+      JOIN sale_items si2 ON si2.sale_id = si1.sale_id
+      ${where.clause} AND si1.product_id = ?
+        AND si2.product_id IS NOT NULL AND si2.product_id != ?
+      GROUP BY si2.product_id
+      ORDER BY baskets DESC, units DESC
+      LIMIT 5
+    ''', [...where.args, productId, productId]);
+    final movementRows = await db.rawQuery('''
+      SELECT * FROM stock_movements
+      WHERE product_id = ? AND created_at >= ? AND created_at < ?
+      ORDER BY created_at DESC, id DESC
+      LIMIT 200
+    ''', [
+      productId,
+      since.toIso8601String(),
+      (until ?? DateTime.now()).toIso8601String()
+    ]);
+    final priceRows = await getProductPriceHistory(
+      productId,
+      since: since,
+      until: until,
+    );
+    final row = summary.single;
+    final product = ProductSalesRow(
+      productId: productId,
+      productName: row['product_name'] as String? ?? '',
+      units: (row['units'] as num?)?.toDouble() ?? 0,
+      revenueMinor: (row['revenue_minor'] as num?)?.toInt() ?? 0,
+      profitMinor: (row['profit_minor'] as num?)?.toInt() ?? 0,
+    );
+    return ProductDrilldownSnapshot(
+      product: product,
+      catalogueProduct: await getProductById(productId),
+      totals: DailyTotals(
+        totalMinor: product.revenueMinor,
+        profitMinor: product.profitMinor,
+        transactions: (row['transactions'] as num?)?.toInt() ?? 0,
+        averageMinor: product.revenueMinor == 0 ||
+                (row['transactions'] as num?)?.toInt() == 0
+            ? 0
+            : (product.revenueMinor / (row['transactions'] as num).toInt())
+                .round(),
+      ),
+      staff: [
+        for (final value in staffRows)
+          (
+            name: value['staff_name'] as String? ?? 'Unknown',
+            transactions: (value['transactions'] as num?)?.toInt() ?? 0,
+            revenueMinor: (value['revenue_minor'] as num?)?.toInt() ?? 0,
+          ),
+      ],
+      payments: [
+        for (final value in paymentRows)
+          PaymentMixRow(
+            method: value['payment_method'] as String? ?? 'unknown',
+            salesMinor: (value['sales_minor'] as num?)?.toInt() ?? 0,
+            transactions: (value['transactions'] as num?)?.toInt() ?? 0,
+          ),
+      ],
+      priceHistory: [
+        for (final value in priceRows)
+          ProductPricePoint(
+            recordedAt: value['recorded_at'] as String? ?? '',
+            costPriceMinor: (value['cost_price'] as num?)?.toInt() ?? 0,
+            sellPriceMinor: (value['sell_price'] as num?)?.toInt() ?? 0,
+            reason: value['reason'] as String?,
+          ),
+      ],
+      hourly: [
+        for (final value in hourlyRows)
+          ProductHourRow(
+            hour: (value['hour'] as num?)?.toInt() ?? 0,
+            units: (value['units'] as num?)?.toDouble() ?? 0,
+            salesMinor: (value['sales_minor'] as num?)?.toInt() ?? 0,
+            transactions: (value['transactions'] as num?)?.toInt() ?? 0,
+          ),
+      ],
+      records: [
+        for (final value in recordRows)
+          ProductTransactionRow(
+            saleId: '${value['sale_id']}',
+            createdAt: value['created_at'] as String? ?? '',
+            staffName: value['staff_name'] as String? ?? 'Unknown staff',
+            paymentMethod: value['payment_method'] as String? ?? 'cash',
+            saleTotalMinor: (value['sale_total'] as num?)?.toInt() ?? 0,
+            productSalesMinor: (value['product_sales'] as num?)?.toInt() ?? 0,
+          ),
+      ],
+      daily: [
+        for (final value in dailyRows)
+          DateBucket(
+            day: value['day'] as String? ?? '',
+            label: DateBucket.fromDay(value['day'] as String? ?? '').label,
+            salesMinor: (value['sales_minor'] as num?)?.toInt() ?? 0,
+            profitMinor: (value['profit_minor'] as num?)?.toInt() ?? 0,
+            transactions: (value['transactions'] as num?)?.toInt() ?? 0,
+          ),
+      ],
+      boughtTogether: [
+        for (final value in companionRows)
+          ProductCompanionRow(
+            productId: (value['product_id'] as num?)?.toInt() ?? 0,
+            productName: value['product_name'] as String? ?? 'Unknown product',
+            baskets: (value['baskets'] as num?)?.toInt() ?? 0,
+            units: (value['units'] as num?)?.toDouble() ?? 0,
+          ),
+      ],
+      stockTimeline: movementRows.map(StockMovement.fromMap).toList(),
+    );
   }
 
   /// Takings for each hour of [day], as exactly twenty-four buckets.
@@ -5081,17 +11265,119 @@ SELECT name FROM staff GROUP BY name HAVING COUNT(*) = 1
     });
   }
 
-  /// Takings per calendar day from [since] up to and including today.
+  /// Drinks' operational view over the shared sale-line and catalogue rows.
+  ///
+  /// `portion_ml` is a snapshot written at checkout: it covers a full bottle,
+  /// a half or quarter, and an explicitly sized shot/tank serving.  Reading
+  /// that snapshot keeps renamed products and later catalogue edits from
+  /// changing historical litres sold.  No Drinks-only sales writer exists.
+  Future<DrinksAnalyticsSnapshot> drinksAnalytics({
+    required DateTime since,
+    DateTime? until,
+    int? staffId,
+  }) async {
+    final db = await database;
+    final salesWhere = _salesRangeWhere(
+      since: since,
+      until: until,
+      staffId: staffId,
+    );
+    final salesRows = await db.rawQuery('''
+      SELECT
+        COALESCE(SUM(CASE WHEN si.portion_ml > 0
+          THEN si.portion_ml * si.qty ELSE 0 END), 0) AS ml_sold,
+        COALESCE(SUM(CASE WHEN si.portion_ml > 0
+          THEN (si.unit_price * si.qty) - COALESCE(si.discount_minor, 0)
+          ELSE 0 END), 0) AS pour_sales_minor,
+        COALESCE(SUM(CASE WHEN si.portion_ml > 0
+          THEN si.unit_cost * si.qty ELSE 0 END), 0) AS pour_cost_minor,
+        COALESCE(SUM(CASE WHEN si.portion_ml > 0 THEN 1 ELSE 0 END), 0)
+          AS measured_lines
+      FROM sale_items si
+      JOIN sales s ON s.id = si.sale_id
+      ${salesWhere.clause}
+    ''', salesWhere.args);
+
+    final heldWhere = <String>["status = 'held'"];
+    final heldArgs = <Object?>[];
+    if (staffId != null) {
+      heldWhere.add('staff_id = ?');
+      heldArgs.add(staffId);
+    }
+    final heldRows = await db.rawQuery(
+      'SELECT COUNT(*) AS count FROM held_carts WHERE ${heldWhere.join(' AND ')}',
+      heldArgs,
+    );
+
+    final tankRows = await db.rawQuery('''
+      SELECT name, stock_qty, bottle_ml
+      FROM products
+      WHERE active = 1 AND category = 'Tanks'
+      ORDER BY name ASC
+    ''');
+
+    final movementRows = await db.rawQuery('''
+      SELECT sm.movement_type, sm.qty_delta, sm.unit_cost_minor,
+             p.bottle_ml
+      FROM stock_movements sm
+      JOIN products p ON p.id = sm.product_id
+      WHERE sm.created_at >= ? AND sm.created_at < ?
+        AND sm.movement_type IN ('writeoff', 'count')
+        AND p.category = 'Tanks'
+    ''', [
+      since.toIso8601String(),
+      (until ?? DateTime.now()).toIso8601String(),
+    ]);
+    var wasteMl = 0.0;
+    var wasteValueMinor = 0;
+    var dipVarianceMl = 0.0;
+    for (final movement in movementRows) {
+      final qty = (movement['qty_delta'] as num?)?.toDouble() ?? 0;
+      final bottleMl = (movement['bottle_ml'] as num?)?.toDouble() ?? 0;
+      if (movement['movement_type'] == StockMovementType.writeoff.wire) {
+        wasteMl += -qty * bottleMl;
+        final unitCost = (movement['unit_cost_minor'] as num?)?.toDouble() ?? 0;
+        wasteValueMinor += (-qty * unitCost).round();
+      } else {
+        dipVarianceMl += qty * bottleMl;
+      }
+    }
+
+    final row = salesRows.first;
+    return DrinksAnalyticsSnapshot(
+      litresSold: ((row['ml_sold'] as num?)?.toDouble() ?? 0) / 1000,
+      pourSalesMinor: (row['pour_sales_minor'] as num?)?.round() ?? 0,
+      pourCostMinor: (row['pour_cost_minor'] as num?)?.round() ?? 0,
+      measuredLines: (row['measured_lines'] as num?)?.toInt() ?? 0,
+      openTabs: (heldRows.first['count'] as num?)?.toInt() ?? 0,
+      tanks: [
+        for (final tank in tankRows)
+          DrinkTankLevel(
+            name: tank['name'] as String? ?? 'Unnamed tank',
+            tankCount: (tank['stock_qty'] as num?)?.toDouble() ?? 0,
+            litresRemaining: ((tank['stock_qty'] as num?)?.toDouble() ?? 0) *
+                ((tank['bottle_ml'] as num?)?.toDouble() ?? 0) /
+                1000,
+          ),
+      ],
+      wasteLitres: wasteMl / 1000,
+      wasteValueMinor: wasteValueMinor,
+      dipVarianceLitres: dipVarianceMl / 1000,
+    );
+  }
+
+  /// Takings per calendar day from [since] through the day containing [until].
   ///
   /// The range is filled in, so a day with no sales is a zero bar rather than a
   /// missing one: "we shut on Tuesday" is exactly the thing an owner is looking
   /// for, and dropping the day would erase it.
   Future<List<DateBucket>> salesByDay({
     required DateTime since,
+    DateTime? until,
     int? staffId,
   }) async {
     final from = DateTime(since.year, since.month, since.day);
-    final today = DateTime.now();
+    final end = until ?? DateTime.now();
     // Midnight arithmetic, NOT `+ Duration(days: 1)`.
     //
     // A day is not always 24 hours: in a timezone with daylight saving, the
@@ -5102,8 +11388,10 @@ SELECT name FROM staff GROUP BY name HAVING COUNT(*) = 1
     //
     // Kenya has no daylight saving, so this changes nothing here. It changes
     // everything the day this app is sold in a place that does.
-    final until = DateTime(today.year, today.month, today.day + 1);
-    final where = _salesRangeWhere(since: from, until: until, staffId: staffId);
+    final endDay = DateTime(end.year, end.month, end.day);
+    final endExclusive =
+        (end == endDay) ? endDay : DateTime(end.year, end.month, end.day + 1);
+    final where = _salesRangeWhere(since: from, until: end, staffId: staffId);
     final rows = await (await database).rawQuery('''
       SELECT
         strftime('%Y-%m-%d', created_at) AS day,
@@ -5120,7 +11408,7 @@ SELECT name FROM staff GROUP BY name HAVING COUNT(*) = 1
     };
     final buckets = <DateBucket>[];
     for (var cursor = from;
-        cursor.isBefore(until);
+        cursor.isBefore(endExclusive);
         cursor = DateTime(cursor.year, cursor.month, cursor.day + 1)) {
       final key = '${cursor.year.toString().padLeft(4, '0')}-'
           '${cursor.month.toString().padLeft(2, '0')}-'
@@ -5140,9 +11428,11 @@ SELECT name FROM staff GROUP BY name HAVING COUNT(*) = 1
   /// How the range was paid for, biggest first.
   Future<List<PaymentMixRow>> salesByPaymentMethod({
     required DateTime since,
+    DateTime? until,
     int? staffId,
   }) async {
-    final where = _salesRangeWhere(since: since, staffId: staffId);
+    final where =
+        _salesRangeWhere(since: since, until: until, staffId: staffId);
     final rows = await (await database).rawQuery('''
       SELECT
         payment_method AS method,
@@ -5177,6 +11467,118 @@ SELECT name FROM staff GROUP BY name HAVING COUNT(*) = 1
       WHERE stock_qty <= reorder_level AND active = 1
     ''');
     return (rows.first['c'] as num?)?.toInt() ?? 0;
+  }
+
+  /// Products with remaining dated stock that is expired or expires soon.
+  ///
+  /// This is deliberately a bounded, indexed batch query rather than loading
+  /// every product and every batch into Dart. It is an operational warning, not
+  /// a tax status, and remains available offline.
+  Future<List<Product>> getExpiringProducts({int days = 7}) async {
+    if (days < 0) throw ArgumentError.value(days, 'days');
+    final now = DateTime.now();
+    final until = now.add(Duration(days: days)).toIso8601String();
+    final rows = await (await database).rawQuery('''
+      SELECT p.*
+      FROM products p
+      JOIN stock_batches b ON b.product_id = p.id
+      WHERE p.active = 1
+        AND b.qty_remaining > 0 AND b.status = 'active'
+        AND b.expires_at <= ?
+      GROUP BY p.id
+      ORDER BY MIN(b.expires_at) ASC, p.name ASC
+    ''', [until]);
+    return rows.map(Product.fromMap).toList();
+  }
+
+  Future<List<Product>> getExpiredProducts() async {
+    final now = DateTime.now().toIso8601String();
+    final rows = await (await database).rawQuery('''
+      SELECT p.* FROM products p
+      JOIN stock_batches b ON b.product_id = p.id
+      WHERE p.active = 1 AND b.qty_remaining > 0 AND b.status = 'active'
+        AND b.expires_at < ?
+      GROUP BY p.id
+      ORDER BY MIN(b.expires_at) ASC, p.name ASC
+    ''', [now]);
+    return rows.map(Product.fromMap).toList();
+  }
+
+  /// Batch rows for the product detail screen. Kept as maps because the
+  /// detail view needs the audit fields as well as the quantity.
+  Future<List<Map<String, dynamic>>> getProductBatches(int productId,
+      {int? variantId}) async {
+    final db = await database;
+    return db.query('stock_batches',
+        where: variantId == null
+            ? 'product_id = ? AND variant_id IS NULL'
+            : 'product_id = ? AND variant_id = ?',
+        whereArgs: variantId == null ? [productId] : [productId, variantId],
+        orderBy: 'expires_at ASC, id ASC');
+  }
+
+  /// Writes off a batch (or part of it) without changing the aggregate ledger
+  /// outside the same transaction. This is the manager/owner operation behind
+  /// the expired-stock dashboard action; there is deliberately no override for
+  /// selling an expired batch.
+  Future<void> writeOffBatch({
+    required int batchId,
+    required String staffName,
+    int? staffId,
+    double? quantity,
+    String reason = 'Expired stock',
+  }) async {
+    final db = await database;
+    await db.transaction((txn) async {
+      final rows = await txn.query('stock_batches',
+          where: 'id = ?', whereArgs: [batchId], limit: 1);
+      if (rows.isEmpty) throw StateError('Batch not found');
+      final row = rows.first;
+      final available = (row['qty_remaining'] as num).toDouble();
+      final qty = quantity ?? available;
+      if (qty <= 0 || qty > available + _qtyEpsilon) {
+        throw StateError('Write-off quantity exceeds the batch balance');
+      }
+      final productId = row['product_id'] as int;
+      final variantId = (row['variant_id'] as num?)?.toInt();
+      await txn.rawUpdate(
+          'UPDATE stock_batches SET qty_remaining = ?, status = ? WHERE id = ?',
+          [
+            available - qty,
+            available - qty <= _qtyEpsilon ? 'written_off' : 'active',
+            batchId
+          ]);
+      if (variantId != null) {
+        await txn.rawUpdate(
+            'UPDATE product_variants SET stock_qty = MAX(0, stock_qty - ?) WHERE id = ?',
+            [qty, variantId]);
+        await txn.rawUpdate(
+            'UPDATE products SET stock_qty = (SELECT COALESCE(SUM(stock_qty), 0) '
+            'FROM product_variants WHERE product_id = ? AND active = 1), updated_at = ? '
+            'WHERE id = ?',
+            [productId, DateTime.now().toIso8601String(), productId]);
+      } else {
+        await txn.rawUpdate(
+            'UPDATE products SET stock_qty = MAX(0, stock_qty - ?), updated_at = ? WHERE id = ?',
+            [qty, DateTime.now().toIso8601String(), productId]);
+      }
+      final balance = variantId == null
+          ? await _productBalanceAfter(txn, productId)
+          : await _variantBalanceAfter(txn, variantId);
+      await _writeStockMovement(
+        txn,
+        productId: productId,
+        variantId: variantId,
+        type: StockMovementType.writeoff,
+        qtyDelta: -qty,
+        unitCostMinor: (row['unit_cost_minor'] as num?)?.toInt() ?? 0,
+        batchId: batchId,
+        staffId: staffId,
+        staffName: staffName,
+        note: reason.trim().isEmpty ? 'Expired stock' : reason.trim(),
+        balanceAfter: balance,
+      );
+    });
   }
 
   // ---------------- Attention counts ----------------
@@ -5284,6 +11686,37 @@ SELECT name FROM staff GROUP BY name HAVING COUNT(*) = 1
   // per shop), so there is no shop column — a shift belongs to whichever till
   // holds its database.
 
+  /// A read-only X report for the currently open shift. It deliberately does
+  /// not allocate a number or write anything: unlike Z, it is a live peek.
+  Future<Map<String, Object?>> getXReport(Shift shift) async {
+    final end = DateTime.now().toIso8601String();
+    final sales = await (await database).rawQuery(
+      '''SELECT COUNT(*) AS sale_count,
+                COALESCE(SUM(total), 0) AS gross_minor,
+                COALESCE(SUM(profit), 0) AS profit_minor
+         FROM sales
+         WHERE staff_id = ? AND created_at >= ? AND created_at < ?''',
+      [shift.staffId, shift.startTime, end],
+    );
+    final payments = await (await database).rawQuery(
+      '''SELECT payment_method, COALESCE(SUM(total), 0) AS total_minor
+         FROM sales
+         WHERE staff_id = ? AND created_at >= ? AND created_at < ?
+         GROUP BY payment_method''',
+      [shift.staffId, shift.startTime, end],
+    );
+    final summary = sales.single;
+    return <String, Object?>{
+      'sale_count': (summary['sale_count'] as num).toInt(),
+      'gross_minor': (summary['gross_minor'] as num).toInt(),
+      'profit_minor': (summary['profit_minor'] as num).toInt(),
+      'payment_mix': <String, int>{
+        for (final row in payments)
+          row['payment_method'] as String: (row['total_minor'] as num).toInt(),
+      },
+    };
+  }
+
   /// Opens a new shift for [staffName] / [staffId] with the given starting float.
   ///
   /// Throws if an open shift already exists for this staff member, because allowing
@@ -5357,6 +11790,238 @@ SELECT name FROM staff GROUP BY name HAVING COUNT(*) = 1
     return Shift.fromMap(rows.first);
   }
 
+  /// Starts a physical count from a stable snapshot. Products with active
+  /// variants are counted at variant level; their derived parent balance is
+  /// never counted twice.
+  Future<int> startStockCount({
+    required String uuid,
+    required String staffName,
+    int? staffId,
+    bool blind = false,
+    bool freeze = false,
+    String? name,
+    String scopeType = 'all',
+    String? scopeRef,
+    String salesMode = 'keep_selling',
+    String? note,
+  }) async {
+    final db = await database;
+    final startedAt = DateTime.now().toIso8601String();
+    return db.transaction<int>((txn) async {
+      final countId = await txn.insert('stock_counts', {
+        'uuid': uuid,
+        'started_at': startedAt,
+        'name': name,
+        'scope_type': scopeType,
+        'scope_ref': scopeRef,
+        'sales_mode': salesMode,
+        'note': note,
+        'blind': blind ? 1 : 0,
+        'freeze': freeze ? 1 : 0,
+        'staff_id': staffId,
+        'staff_name': staffName,
+      });
+      if (scopeType != 'all' && scopeType != 'tanks') {
+        throw ArgumentError.value(scopeType, 'scopeType');
+      }
+      final products = await txn.query(
+        'products',
+        where: scopeType == 'tanks'
+            ? "active = 1 AND category = 'Tanks'"
+            : 'active = 1',
+      );
+      for (final product in products) {
+        final productId = product['id'] as int;
+        final tracksVariants = (product['track_variants'] as int? ?? 0) == 1;
+        final variants = tracksVariants
+            ? await txn.query('product_variants',
+                where: 'product_id = ? AND active = 1',
+                whereArgs: [productId],
+                orderBy: 'position, id')
+            : const <Map<String, Object?>>[];
+        if (variants.isEmpty) {
+          await txn.insert('stock_count_lines', {
+            'uuid': _newUuid(),
+            'count_id': countId,
+            'product_id': productId,
+            'product_name': product['name'] as String? ?? '',
+            'expected_qty': (product['stock_qty'] as num?)?.toDouble() ?? 0,
+          });
+        } else {
+          for (final variant in variants) {
+            await txn.insert('stock_count_lines', {
+              'uuid': _newUuid(),
+              'count_id': countId,
+              'product_id': productId,
+              'variant_id': variant['id'] as int,
+              'product_name':
+                  '${product['name'] as String? ?? ''} · ${variant['name'] as String? ?? ''}',
+              'expected_qty': (variant['stock_qty'] as num?)?.toDouble() ?? 0,
+            });
+          }
+        }
+      }
+      return countId;
+    });
+  }
+
+  Future<List<Map<String, dynamic>>> getStockCountLines(int countId) async =>
+      (await database).query('stock_count_lines',
+          where: 'count_id = ?', whereArgs: [countId], orderBy: 'id');
+
+  Future<Map<String, dynamic>?> getInProgressStockCount() async {
+    final rows = await (await database).query(
+      'stock_counts',
+      where: "status = 'in_progress'",
+      orderBy: 'started_at DESC',
+      limit: 1,
+    );
+    return rows.isEmpty ? null : rows.first;
+  }
+
+  Future<List<Map<String, dynamic>>> getStockCountHistory(
+          {int limit = 20}) async =>
+      (await database).query(
+        'stock_counts',
+        where: "status != 'in_progress'",
+        orderBy: 'COALESCE(completed_at, started_at) DESC',
+        limit: limit,
+      );
+
+  Future<void> clearStockCountLine(int lineId) async {
+    await (await database).update(
+      'stock_count_lines',
+      {
+        'counted_qty': null,
+        'counted_at': null,
+        'recount_required': 1,
+      },
+      where: 'id = ?',
+      whereArgs: [lineId],
+    );
+  }
+
+  Future<void> recordStockCountLine({
+    required int lineId,
+    required double countedQty,
+    bool recountRequired = false,
+    int? countedBy,
+    String? note,
+  }) async {
+    if (!countedQty.isFinite || countedQty < 0) {
+      throw ArgumentError.value(countedQty, 'countedQty');
+    }
+    await (await database).update(
+      'stock_count_lines',
+      {
+        'counted_qty': countedQty,
+        'counted_by': countedBy,
+        'recount_required': recountRequired ? 1 : 0,
+        'counted_at': DateTime.now().toIso8601String(),
+      },
+      where: 'id = ?',
+      whereArgs: [lineId],
+    );
+  }
+
+  /// Applies all entered lines atomically. The expected-at-start balance is
+  /// recovered by subtracting movements made after the count began, so sales
+  /// and receipts during a count do not become shrinkage.
+  Future<void> applyStockCount({
+    required int countId,
+    required int? staffId,
+    required String staffName,
+  }) async {
+    final db = await database;
+    await db.transaction((txn) async {
+      final counts = await txn.query('stock_counts',
+          where: "id = ? AND status = 'in_progress'",
+          whereArgs: [countId],
+          limit: 1);
+      if (counts.isEmpty) throw StateError('Stock count is not in progress');
+      final lines = await txn.query('stock_count_lines',
+          where: 'count_id = ? AND counted_qty IS NOT NULL',
+          whereArgs: [countId]);
+      var totalInventoryDeltaMilliunits = 0;
+      for (final line in lines) {
+        final productId = line['product_id'] as int;
+        final variantId = line['variant_id'] as int?;
+        final variantClause =
+            variantId == null ? 'variant_id IS NULL' : 'variant_id = ?';
+        final variantArgs = variantId == null
+            ? <Object?>[productId]
+            : <Object?>[productId, variantId];
+        final currentRows = await txn.rawQuery(
+          'SELECT COALESCE(SUM(qty_delta), 0) AS balance FROM stock_movements '
+          'WHERE product_id = ? AND $variantClause',
+          variantArgs,
+        );
+        final countedAt = line['counted_at'] as String?;
+        final afterRows = countedAt == null
+            ? const <Map<String, Object?>>[]
+            : await txn.rawQuery(
+                'SELECT COALESCE(SUM(qty_delta), 0) AS moved FROM stock_movements '
+                'WHERE product_id = ? AND $variantClause AND created_at > ?',
+                [...variantArgs, countedAt],
+              );
+        final current = (currentRows.first['balance'] as num?)?.toDouble() ?? 0;
+        final after = afterRows.isEmpty
+            ? 0
+            : (afterRows.first['moved'] as num?)?.toDouble() ?? 0;
+        final baseline = current - after;
+        final counted = (line['counted_qty'] as num).toDouble();
+        final delta = counted - baseline;
+        if (delta == 0) continue;
+        totalInventoryDeltaMilliunits += (delta * 1000).round();
+        final balanceAfter = current + delta;
+        await _writeStockMovement(
+          txn,
+          productId: productId,
+          variantId: variantId,
+          type: StockMovementType.count,
+          qtyDelta: delta,
+          referenceType: 'stock_count',
+          referenceId: countId,
+          staffId: staffId,
+          staffName: staffName,
+          note: (counts.first['scope_type'] as String?) == 'tanks'
+              ? 'Tank dip'
+              : 'Physical stock count',
+          balanceAfter: balanceAfter,
+        );
+        if (variantId == null) {
+          await txn.update('products', {'stock_qty': balanceAfter},
+              where: 'id = ?', whereArgs: [productId]);
+        } else {
+          await txn.update('product_variants', {'stock_qty': balanceAfter},
+              where: 'id = ?', whereArgs: [variantId]);
+        }
+      }
+      if (totalInventoryDeltaMilliunits != 0) {
+        await _appendFinancialEvent(
+          txn: txn,
+          eventType: 'stock_count',
+          sourceType: 'stock_count',
+          sourceId: countId,
+          occurredAtUtc: DateTime.now().toUtc().toIso8601String(),
+          inventoryDeltaMilliunits: totalInventoryDeltaMilliunits,
+          metadata: <String, Object?>{'line_count': lines.length},
+        );
+      }
+      await txn.update(
+        'stock_counts',
+        {
+          'status': 'applied',
+          'completed_at': DateTime.now().toIso8601String(),
+          'applied_at': DateTime.now().toIso8601String(),
+          'applied_by': staffId,
+        },
+        where: 'id = ?',
+        whereArgs: [countId],
+      );
+    });
+  }
+
   /// Records one denomination pile counted at the till.
   Future<int> addTillCount({
     required int shiftId,
@@ -5418,6 +12083,13 @@ SELECT name FROM staff GROUP BY name HAVING COUNT(*) = 1
     return db.transaction<int>((txn) async {
       final now = DateTime.now().toIso8601String();
       final variance = countedCash - expectedCash;
+      final shiftRows = await txn.query('shifts',
+          where: 'id = ? AND status = ?',
+          whereArgs: [shiftId, 'open'],
+          limit: 1);
+      if (shiftRows.isEmpty) {
+        throw StateError('Shift $shiftId is not open and cannot be reconciled');
+      }
       // With no explicit float, what was counted stays in the drawer and
       // becomes the next shift's float. Defaulting to zero would tell the next
       // cashier the till came up empty when it did not.
@@ -5436,15 +12108,109 @@ SELECT name FROM staff GROUP BY name HAVING COUNT(*) = 1
       if (closed == 0) {
         throw StateError('Shift $shiftId is not open and cannot be reconciled');
       }
-
-      return txn.insert('reconciliations', {
+      final reconciliationId = await txn.insert('reconciliations', {
         'shift_id': shiftId,
         'counted_cash': countedCash.minorUnits,
         'expected_cash': expectedCash.minorUnits,
         'variance': variance.minorUnits,
         'recorded_at': now,
       });
+      final sequenceRows = await txn
+          .rawQuery('SELECT COALESCE(MAX(report_number), 0) + 1 AS next_number '
+              'FROM shift_reports');
+      final reportNumber = (sequenceRows.first['next_number'] as num).toInt();
+      final startedAt = shiftRows.first['start_time'] as String;
+      final salesSummary = await txn.rawQuery(
+        '''SELECT COUNT(*) AS sale_count,
+                  COALESCE(SUM(total), 0) AS gross_minor,
+                  COALESCE(SUM(profit), 0) AS profit_minor
+           FROM sales
+           WHERE staff_id = ? AND created_at >= ? AND created_at < ?''',
+        [shiftRows.first['staff_id'], startedAt, now],
+      );
+      final paymentRows = await txn.rawQuery(
+        '''SELECT payment_method, COUNT(*) AS count,
+                  COALESCE(SUM(total), 0) AS total_minor
+           FROM sales
+           WHERE staff_id = ? AND created_at >= ? AND created_at < ?
+           GROUP BY payment_method''',
+        [shiftRows.first['staff_id'], startedAt, now],
+      );
+      final taxRows = await txn.rawQuery(
+        '''SELECT COALESCE(SUM(vat_minor), 0) AS vat_minor,
+                  COALESCE(SUM(taxable_minor), 0) AS taxable_minor,
+                  SUM(CASE WHEN etims_status = ? THEN 1 ELSE 0 END) AS etims_issued,
+                  SUM(CASE WHEN etims_status = ? THEN 1 ELSE 0 END) AS etims_pending,
+                  SUM(CASE WHEN etims_status = ? THEN 1 ELSE 0 END) AS etims_rejected
+           FROM sales
+           WHERE staff_id = ? AND created_at >= ? AND created_at < ?''',
+        [
+          EtimsStatus.issued,
+          EtimsStatus.pending,
+          EtimsStatus.rejected,
+          shiftRows.first['staff_id'],
+          startedAt,
+          now,
+        ],
+      );
+      final taxSummary = taxRows.single;
+      await txn.insert('shift_reports', {
+        'uuid': _newUuid(),
+        'report_number': reportNumber,
+        'shift_id': shiftId,
+        'report_type': 'z',
+        'snapshot_json': jsonEncode(<String, Object?>{
+          'shift_id': shiftId,
+          'report_number': reportNumber,
+          'ended_at': now,
+          'expected_cash_minor': expectedCash.minorUnits,
+          'counted_cash_minor': countedCash.minorUnits,
+          'variance_minor': variance.minorUnits,
+          'end_float_minor': endFloatMinor,
+          'reconciliation_id': reconciliationId,
+          'sale_count': (salesSummary.first['sale_count'] as num).toInt(),
+          'gross_minor': (salesSummary.first['gross_minor'] as num).toInt(),
+          'profit_minor': (salesSummary.first['profit_minor'] as num).toInt(),
+          'vat_minor': (taxSummary['vat_minor'] as num?)?.toInt() ?? 0,
+          'taxable_minor': (taxSummary['taxable_minor'] as num?)?.toInt() ?? 0,
+          'etims_issued': (taxSummary['etims_issued'] as num?)?.toInt() ?? 0,
+          'etims_pending': (taxSummary['etims_pending'] as num?)?.toInt() ?? 0,
+          'etims_rejected':
+              (taxSummary['etims_rejected'] as num?)?.toInt() ?? 0,
+          // KRA filing is explicitly disabled in this release. Preserve the
+          // state in the immutable snapshot rather than deriving it later.
+          'kra_activated': false,
+          'payment_mix': <String, Object?>{
+            for (final row in paymentRows)
+              row['payment_method'] as String: <String, Object?>{
+                'count': (row['count'] as num).toInt(),
+                'total_minor': (row['total_minor'] as num).toInt(),
+              },
+          },
+        }),
+        'created_at': now,
+        'staff_id': shiftRows.first['staff_id'],
+        'staff_name': shiftRows.first['staff_name'],
+      });
+      return reconciliationId;
     });
+  }
+
+  /// Immutable Z snapshots, newest first. A closed shift has exactly one.
+  Future<List<Map<String, dynamic>>> getShiftReports({int limit = 100}) async {
+    return (await database)
+        .query('shift_reports', orderBy: 'report_number DESC', limit: limit);
+  }
+
+  /// Returns the immutable Z snapshot for one closed shift.
+  Future<Map<String, dynamic>?> getShiftReport(int shiftId) async {
+    final rows = await (await database).query(
+      'shift_reports',
+      where: 'shift_id = ?',
+      whereArgs: [shiftId],
+      limit: 1,
+    );
+    return rows.isEmpty ? null : rows.single;
   }
 
   /// All reconciliations for a shift.
@@ -5504,7 +12270,1119 @@ SELECT name FROM staff GROUP BY name HAVING COUNT(*) = 1
     );
     final refunded = (refunds.first['total_minor'] as num?)?.toInt() ?? 0;
 
-    return Money.fromMinor(minor - refunded);
+    // PLUS the cash a customer paid INTO a debt in this shift (spec 7.5.3):
+    // a credit repayment taken in cash became drawer money the moment it
+    // was taken, and it names the shift it was taken in. A credit SALE is
+    // not here — no cash moved for it — and never gets to claim a place
+    // among the receipts.
+    final repayments = await (await database).rawQuery(
+      '''SELECT COALESCE(SUM(-amount_minor), 0) AS total_minor
+         FROM credit_ledger
+         WHERE shift_id = ?
+           AND entry_type = 'payment'
+           AND payment_method = 'cash' ''',
+      [shift.id],
+    );
+    final repaid = (repayments.first['total_minor'] as num?)?.toInt() ?? 0;
+
+    final expenses = await (await database).rawQuery(
+      '''SELECT COALESCE(SUM(amount_minor), 0) AS total_minor
+         FROM expenses
+         WHERE shift_id = ?
+           AND paid_from = 'till_cash'
+           AND status = 'posted' ''',
+      [shift.id],
+    );
+    final paidOut = (expenses.first['total_minor'] as num?)?.toInt() ?? 0;
+
+    final movements = await (await database).rawQuery(
+      '''SELECT COALESCE(SUM(amount_minor), 0) AS total_minor
+         FROM till_movements
+         WHERE shift_id = ?
+           AND status = 'posted' ''',
+      [shift.id],
+    );
+    final moved = (movements.first['total_minor'] as num?)?.toInt() ?? 0;
+
+    return Money.fromMinor(minor - refunded + repaid - paidOut + moved);
+  }
+
+  /// Active expense categories, in the order shown to the person paying out.
+  Future<List<Map<String, dynamic>>> getExpenseCategories() async {
+    return (await database).query(
+      'expense_categories',
+      where: 'active = 1',
+      orderBy: 'id ASC',
+    );
+  }
+
+  Future<void> setExpenseCategoryActive({
+    required int categoryId,
+    required bool active,
+  }) async {
+    final changed = await (await database).update(
+      'expense_categories',
+      {'active': active ? 1 : 0},
+      where: 'id = ?',
+      whereArgs: [categoryId],
+    );
+    if (changed == 0) throw StateError('Expense category not found');
+  }
+
+  Future<List<Map<String, dynamic>>> getExpensesForShift(int shiftId) async {
+    return (await database).query(
+      'expenses',
+      where: 'shift_id = ? AND status = ?',
+      whereArgs: [shiftId, 'posted'],
+      orderBy: 'created_at DESC',
+    );
+  }
+
+  Future<List<Map<String, dynamic>>> getExpenseHistory(
+      {int limit = 100, DateTime? since, DateTime? until}) async {
+    final where = <String>['e.status = ?'];
+    final args = <Object?>['posted'];
+    if (since != null) {
+      where.add('e.created_at >= ?');
+      args.add(since.toIso8601String());
+    }
+    if (until != null) {
+      where.add('e.created_at < ?');
+      args.add(until.toIso8601String());
+    }
+    return (await database).rawQuery(
+      '''SELECT e.*, c.name AS category_name,
+                e.amount_minor - COALESCE(
+                  (SELECT SUM(p.amount_minor) FROM expense_payments p
+                   WHERE p.expense_id = e.id), 0
+                ) AS remaining_payable_minor
+         FROM expenses e
+         LEFT JOIN expense_categories c ON c.id = e.category_id
+         WHERE ${where.join(' AND ')}
+         ORDER BY e.created_at DESC
+         LIMIT ?''',
+      [...args, limit],
+    );
+  }
+
+  Future<Map<String, int>> expectedCashBreakdown(Shift shift) async {
+    final since = DateTime.parse(shift.startTime).toIso8601String();
+    final until = (shift.endTime == null || shift.endTime!.isEmpty
+            ? DateTime.now()
+            : DateTime.parse(shift.endTime!))
+        .toIso8601String();
+    Future<int> one(String sql, List<Object?> args) async {
+      final rows = await (await database).rawQuery(sql, args);
+      return (rows.first['total_minor'] as num?)?.toInt() ?? 0;
+    }
+
+    return {
+      'cash_sales': await one(
+        "SELECT COALESCE(SUM(total), 0) AS total_minor FROM sales WHERE staff_id = ? AND created_at >= ? AND created_at < ? AND payment_method = 'cash' AND payment_verified = 1",
+        [shift.staffId, since, until],
+      ),
+      'cash_refunds': await one(
+        "SELECT COALESCE(SUM(total), 0) AS total_minor FROM sale_returns WHERE shift_id = ? AND refund_method = 'cash'",
+        [shift.id],
+      ),
+      'credit_repayments': await one(
+        "SELECT COALESCE(SUM(-amount_minor), 0) AS total_minor FROM credit_ledger WHERE shift_id = ? AND entry_type = 'payment' AND payment_method = 'cash'",
+        [shift.id],
+      ),
+      'till_expenses': await one(
+        "SELECT COALESCE(SUM(amount_minor), 0) AS total_minor FROM expenses WHERE shift_id = ? AND paid_from = 'till_cash' AND status = 'posted'",
+        [shift.id],
+      ),
+      'till_movements': await one(
+        "SELECT COALESCE(SUM(amount_minor), 0) AS total_minor FROM till_movements WHERE shift_id = ? AND status = 'posted'",
+        [shift.id],
+      ),
+    };
+  }
+
+  Future<List<Map<String, dynamic>>> getTillMovementsForShift(
+      int shiftId) async {
+    return (await database).query(
+      'till_movements',
+      where: 'shift_id = ? AND status = ?',
+      whereArgs: [shiftId, 'posted'],
+      orderBy: 'created_at DESC',
+    );
+  }
+
+  /// Offline cash-control rows waiting for the tenant-scoped server mirror.
+  Future<List<Map<String, dynamic>>> getUnsyncedExpenses(
+      {int limit = 200}) async {
+    return (await database).query(
+      'expenses',
+      where: 'synced_to_backend = 0',
+      orderBy: 'created_at ASC, id ASC',
+      limit: limit,
+    );
+  }
+
+  Future<void> markExpensesSynced(List<int> ids) async {
+    if (ids.isEmpty) return;
+    final db = await database;
+    await db.rawUpdate(
+      'UPDATE expenses SET synced_to_backend = 1 WHERE id IN '
+      '(${List.filled(ids.length, '?').join(',')})',
+      ids,
+    );
+  }
+
+  Future<List<Map<String, dynamic>>> getUnsyncedTillMovements(
+      {int limit = 200}) async {
+    return (await database).query(
+      'till_movements',
+      where: 'synced_to_backend = 0',
+      orderBy: 'created_at ASC, id ASC',
+      limit: limit,
+    );
+  }
+
+  Future<void> markTillMovementsSynced(List<int> ids) async {
+    if (ids.isEmpty) return;
+    final db = await database;
+    await db.rawUpdate(
+      'UPDATE till_movements SET synced_to_backend = 1 WHERE id IN '
+      '(${List.filled(ids.length, '?').join(',')})',
+      ids,
+    );
+  }
+
+  /// Counts local rows waiting for an online acknowledgement without loading
+  /// queue payloads into the Sync Center.
+  Future<Map<String, int>> unsyncedOperationalCounts() async {
+    final db = await database;
+    final result = <String, int>{};
+    for (final table in <String>[
+      'sales',
+      'shifts',
+      'stock_receipts',
+      'sale_returns',
+      'stock_movements',
+      'shot_cups',
+      'expenses',
+      'till_movements',
+      'drawer_events',
+    ]) {
+      final rows = await db.rawQuery(
+          'SELECT COUNT(*) AS count FROM $table WHERE synced_to_backend = 0');
+      result[table] = (rows.first['count'] as num?)?.toInt() ?? 0;
+    }
+    return result;
+  }
+
+  /// Stores a server-confirmed operational row without pretending its local
+  /// foreign keys are valid on this device. A shift, category, or product id
+  /// belongs to the originating till; the payload remains the authoritative
+  /// cross-device mirror and the remote id makes retries idempotent.
+  Future<void> mergeRemoteOperationalRecord({
+    required String remoteId,
+    required String kind,
+    required Map<String, dynamic> payload,
+    String? deviceId,
+    int? localId,
+    String? createdAt,
+    String? updatedAt,
+  }) async {
+    if (remoteId.trim().isEmpty || kind.trim().isEmpty) return;
+    final now = DateTime.now().toIso8601String();
+    await (await database).insert(
+      'remote_operational_records',
+      <String, Object?>{
+        'remote_id': remoteId,
+        'kind': kind,
+        'device_id': deviceId,
+        'local_id': localId,
+        'payload_json': jsonEncode(payload),
+        'created_at': createdAt ?? now,
+        'updated_at': updatedAt ?? now,
+      },
+      conflictAlgorithm: ConflictAlgorithm.replace,
+    );
+  }
+
+  Future<Map<String, int>> remoteOperationalCounts() async {
+    final db = await database;
+    final rows = await db.rawQuery(
+        'SELECT kind, COUNT(*) AS count FROM remote_operational_records GROUP BY kind');
+    return <String, int>{
+      for (final row in rows)
+        row['kind'] as String: (row['count'] as num?)?.toInt() ?? 0,
+    };
+  }
+
+  /// Records an online rejection that needs a human decision. A stock race is
+  /// not a reason to discard a sale: the sale stays queued, while this row
+  /// makes the conflict visible after the sync request has finished.
+  Future<void> recordSyncConflict({
+    required String uuid,
+    required String kind,
+    int? localId,
+    String? deviceId,
+    required String reason,
+    String? payloadJson,
+  }) async {
+    if (uuid.trim().isEmpty || kind.trim().isEmpty) return;
+    await (await database).insert(
+      'sync_conflicts',
+      <String, Object?>{
+        'uuid': uuid,
+        'kind': kind,
+        'local_id': localId,
+        'device_id': deviceId,
+        'reason': reason,
+        'payload_json': payloadJson,
+        'created_at': DateTime.now().toIso8601String(),
+        'resolved_at': null,
+        'resolution': null,
+      },
+      conflictAlgorithm: ConflictAlgorithm.replace,
+    );
+  }
+
+  Future<List<Map<String, dynamic>>> getOpenSyncConflicts({
+    int limit = 100,
+  }) async {
+    final rows = await (await database).query(
+      'sync_conflicts',
+      where: 'resolved_at IS NULL',
+      orderBy: 'created_at DESC, id DESC',
+      limit: limit,
+    );
+    return rows.map((row) => Map<String, dynamic>.from(row)).toList();
+  }
+
+  Future<int> countOpenSyncConflicts() async {
+    final rows = await (await database).rawQuery(
+        'SELECT COUNT(*) AS count FROM sync_conflicts WHERE resolved_at IS NULL');
+    return (rows.first['count'] as num?)?.toInt() ?? 0;
+  }
+
+  Future<void> resolveSyncConflict(String uuid, String resolution) async {
+    final value = resolution.trim();
+    if (uuid.trim().isEmpty || value.isEmpty) return;
+    await (await database).update(
+      'sync_conflicts',
+      {
+        'resolved_at': DateTime.now().toIso8601String(),
+        'resolution': value,
+      },
+      where: 'uuid = ? AND resolved_at IS NULL',
+      whereArgs: [uuid],
+    );
+  }
+
+  /// Closes a remotely resolved sale conflict without deleting the local
+  /// receipt. The sale remains part of the till audit ledger but is no longer
+  /// retried by the bounded upload queue.
+  Future<void> resolveSaleSyncConflict({
+    required String uuid,
+    required int localId,
+    required String resolution,
+  }) async {
+    final db = await database;
+    await db.transaction((txn) async {
+      await txn.update('sales', {'synced_to_backend': 1},
+          where: 'id = ?', whereArgs: [localId]);
+      await txn.update(
+        'sync_conflicts',
+        {
+          'resolved_at': DateTime.now().toIso8601String(),
+          'resolution': resolution,
+        },
+        where: 'uuid = ? AND resolved_at IS NULL',
+        whereArgs: [uuid],
+      );
+    });
+  }
+
+  /// Records a payout atomically. Till cash must belong to an open shift so
+  /// the shift-close figure can explain where it went.
+  Future<int> recordExpense({
+    required String uuid,
+    required int categoryId,
+    required Money amount,
+    required String paidFrom,
+    required String staffName,
+    int? staffId,
+    String? note,
+    String? photoPath,
+    int? approvedBy,
+  }) async {
+    if (uuid.trim().isEmpty) throw ArgumentError.value(uuid, 'uuid');
+    if (amount.minorUnits <= 0) {
+      throw StateError('An expense must be more than zero');
+    }
+    if (paidFrom != 'till_cash' &&
+        paidFrom != 'other' &&
+        paidFrom != 'payable') {
+      throw StateError('An expense is paid from till cash, elsewhere or later');
+    }
+    final db = await database;
+    return db.transaction<int>((txn) async {
+      final category = await txn.query('expense_categories',
+          where: 'id = ? AND active = 1', whereArgs: [categoryId], limit: 1);
+      if (category.isEmpty) throw StateError('Expense category not found');
+
+      int? shiftId;
+      if (paidFrom == 'till_cash') {
+        final shifts = await txn.query('shifts',
+            where: 'status = ?',
+            whereArgs: ['open'],
+            orderBy: 'start_time DESC',
+            limit: 1);
+        if (shifts.isEmpty) {
+          throw StateError('Open a shift before paying from till cash');
+        }
+        shiftId = shifts.first['id'] as int;
+      }
+      final now = DateTime.now().toIso8601String();
+      final eventAtUtc = DateTime.now().toUtc().toIso8601String();
+      final expenseId = await txn.insert('expenses', {
+        'uuid': uuid,
+        'shift_id': shiftId,
+        'category_id': categoryId,
+        'amount_minor': amount.minorUnits,
+        'paid_from': paidFrom,
+        'note': note,
+        'photo_path': photoPath,
+        'staff_id': staffId,
+        'approved_by': approvedBy,
+        'staff_name': staffName,
+        'created_at': now,
+      });
+      await _appendFinancialEvent(
+        txn: txn,
+        eventType: 'expense',
+        sourceType: 'expense',
+        sourceId: expenseId,
+        occurredAtUtc: eventAtUtc,
+        cashOutMinor: paidFrom == 'till_cash' ? amount.minorUnits : 0,
+        operatingExpenseMinor: amount.minorUnits,
+        payableDeltaMinor: paidFrom == 'payable' ? amount.minorUnits : 0,
+        metadata: <String, Object?>{
+          'paid_from': paidFrom,
+          'category_id': categoryId,
+        },
+      );
+      return expenseId;
+    });
+  }
+
+  /// Pays an expense that was recorded against a payable. The payment is a
+  /// separate append-only event, so it reduces cash and the payable without
+  /// recognizing the operating expense a second time.
+  Future<int> recordExpensePayment({
+    required String uuid,
+    required int expenseId,
+    required Money amount,
+    required String paymentMethod,
+    String? reference,
+    int? shiftId,
+  }) async {
+    if (uuid.trim().isEmpty) throw ArgumentError.value(uuid, 'uuid');
+    if (amount.minorUnits <= 0) {
+      throw StateError('An expense payment must be more than zero');
+    }
+    if (!<String>{'cash', 'mpesa', 'bank_transfer'}.contains(paymentMethod)) {
+      throw StateError('Unsupported expense payment method');
+    }
+    final db = await database;
+    return db.transaction<int>((txn) async {
+      final expenses = await txn.query(
+        'expenses',
+        columns: <String>['amount_minor', 'paid_from', 'status'],
+        where: 'id = ?',
+        whereArgs: [expenseId],
+        limit: 1,
+      );
+      if (expenses.isEmpty || expenses.first['status'] != 'posted') {
+        throw StateError('Expense not found or already voided');
+      }
+      if (expenses.first['paid_from'] != 'payable') {
+        throw StateError('Only unpaid expenses can receive a payment');
+      }
+      final paidRows = await txn.rawQuery(
+        'SELECT COALESCE(SUM(amount_minor), 0) AS total '
+        'FROM expense_payments WHERE expense_id = ?',
+        [expenseId],
+      );
+      final paid = (paidRows.first['total'] as num?)?.toInt() ?? 0;
+      final expenseAmount = (expenses.first['amount_minor'] as num).toInt();
+      if (paid + amount.minorUnits > expenseAmount) {
+        throw StateError('That payment exceeds the expense payable');
+      }
+
+      int? resolvedShiftId = shiftId;
+      if (paymentMethod == 'cash') {
+        if (resolvedShiftId == null) {
+          final shifts = await txn.query(
+            'shifts',
+            where: 'status = ?',
+            whereArgs: ['open'],
+            orderBy: 'start_time DESC',
+            limit: 1,
+          );
+          if (shifts.isEmpty) {
+            throw StateError('Open a shift before paying cash');
+          }
+          resolvedShiftId = shifts.first['id'] as int;
+        } else {
+          final shifts = await txn.query(
+            'shifts',
+            where: 'id = ? AND status = ?',
+            whereArgs: [resolvedShiftId, 'open'],
+          );
+          if (shifts.isEmpty) throw StateError('Shift is not open');
+        }
+      }
+
+      final now = DateTime.now().toIso8601String();
+      final paymentId = await txn.insert('expense_payments', {
+        'uuid': uuid,
+        'expense_id': expenseId,
+        'amount_minor': amount.minorUnits,
+        'payment_method': paymentMethod,
+        'reference': reference,
+        'shift_id': resolvedShiftId,
+        'created_at': now,
+      });
+      await _appendFinancialEvent(
+        txn: txn,
+        eventType: 'expense_payment',
+        sourceType: 'expense_payment',
+        sourceId: paymentId,
+        occurredAtUtc: DateTime.parse(now).toUtc().toIso8601String(),
+        cashOutMinor: amount.minorUnits,
+        payableDeltaMinor: -amount.minorUnits,
+        metadata: <String, Object?>{
+          'expense_id': expenseId,
+          'payment_method': paymentMethod,
+          'shift_id': resolvedShiftId,
+        },
+      );
+      return paymentId;
+    });
+  }
+
+  /// Voids a posted expense without deleting its audit trail. Till-paid
+  /// expenses may only be voided while their shift is open; a closed shift is
+  /// an immutable reconciliation record.
+  Future<void> voidExpense(int expenseId) async {
+    final db = await database;
+    await db.transaction((txn) async {
+      final rows = await txn.query('expenses',
+          columns: ['shift_id', 'status', 'amount_minor', 'paid_from'],
+          where: 'id = ?',
+          whereArgs: [expenseId],
+          limit: 1);
+      if (rows.isEmpty) throw StateError('Expense not found');
+      if (rows.first['status'] != 'posted') {
+        throw StateError('Expense is already voided');
+      }
+      if (rows.first['paid_from'] == 'payable') {
+        final payments = await txn.rawQuery(
+          'SELECT COUNT(*) AS count FROM expense_payments WHERE expense_id = ?',
+          [expenseId],
+        );
+        if ((payments.first['count'] as num).toInt() > 0) {
+          throw StateError('A paid payable expense cannot be voided');
+        }
+      }
+      final shiftId = rows.first['shift_id'] as int?;
+      if (shiftId != null) {
+        final shifts = await txn.query('shifts',
+            columns: ['status'],
+            where: 'id = ?',
+            whereArgs: [shiftId],
+            limit: 1);
+        if (shifts.isNotEmpty && shifts.first['status'] != 'open') {
+          throw StateError('A closed shift cannot be changed');
+        }
+      }
+      await txn.update('expenses', {'status': 'voided'},
+          where: 'id = ?', whereArgs: [expenseId]);
+      final amountMinor = (rows.first['amount_minor'] as num).toInt();
+      final paidFrom = rows.first['paid_from'] as String;
+      await _appendFinancialEvent(
+        txn: txn,
+        eventType: 'expense_void',
+        sourceType: 'expense',
+        sourceId: expenseId,
+        occurredAtUtc: DateTime.now().toUtc().toIso8601String(),
+        cashInMinor: paidFrom == 'till_cash' ? amountMinor : 0,
+        operatingExpenseMinor: -amountMinor,
+        payableDeltaMinor: paidFrom == 'payable' ? -amountMinor : 0,
+        metadata: <String, Object?>{'paid_from': paidFrom},
+      );
+    });
+  }
+
+  /// Records cash entering or leaving a shift. [amount] is signed: positive
+  /// for cash-in and negative for a cash drop or float correction out.
+  Future<int> createCostPool({
+    required String uuid,
+    required String name,
+    required String poolType,
+    String? note,
+  }) async {
+    if (uuid.trim().isEmpty || name.trim().isEmpty) {
+      throw StateError('A cost pool needs an id and a name');
+    }
+    if (poolType != 'lot' && poolType != 'rolling_stock') {
+      throw StateError('A cost pool is a lot or rolling stock');
+    }
+    return (await database).insert('cost_pools', {
+      'uuid': uuid,
+      'name': name.trim(),
+      'pool_type': poolType,
+      'note': note,
+      'created_at': DateTime.now().toIso8601String(),
+    });
+  }
+
+  /// Open-profile records are read through the database boundary so the
+  /// profile tools do not become a second source of truth.
+  Future<List<Map<String, dynamic>>> getCostPools() async =>
+      (await database).query('cost_pools', orderBy: 'created_at DESC, id DESC');
+
+  Future<List<Map<String, dynamic>>> getCostPoolEntries(int poolId) async =>
+      (await database).query('cost_pool_entries',
+          where: 'pool_id = ?',
+          whereArgs: [poolId],
+          orderBy: 'created_at DESC, id DESC');
+
+  Future<List<Map<String, dynamic>>> getOpenJobs() async =>
+      (await database).query('jobs', orderBy: 'created_at DESC, id DESC');
+
+  Future<List<Map<String, dynamic>>> getJobCosts(int jobId) async =>
+      (await database).query('job_costs',
+          where: 'job_id = ?',
+          whereArgs: [jobId],
+          orderBy: 'created_at DESC, id DESC');
+
+  Future<List<Map<String, dynamic>>> getJobPayments(int jobId) async =>
+      (await database).query('job_payments',
+          where: 'job_id = ?',
+          whereArgs: [jobId],
+          orderBy: 'created_at DESC, id DESC');
+
+  Future<List<Map<String, dynamic>>> getOwnerTransactions() async =>
+      (await database)
+          .query('owner_transactions', orderBy: 'created_at DESC, id DESC');
+
+  /// Records a money-first Open sale without inventing an item, stock cost, or
+  /// tax figure. It is still a normal sale ledger row, so sales, cash and
+  /// analytics see it through the same financial-event contract as checkout.
+  ///
+  /// Open's quick sale is intentionally limited to confirmed tender methods;
+  /// credit sales continue through the customer-aware checkout flow.
+  Future<int> recordOpenQuickSale({
+    required Money amount,
+    required String paymentMethod,
+    required String staffName,
+    int? staffId,
+    String? paymentReference,
+  }) async {
+    if (amount.minorUnits <= 0) {
+      throw StateError('A quick sale must be more than zero');
+    }
+    if (!<String>{'cash', 'mpesa', 'bank_transfer'}.contains(paymentMethod)) {
+      throw StateError('Unsupported quick-sale payment method');
+    }
+    final db = await database;
+    return db.transaction<int>((txn) async {
+      if (paymentMethod == 'cash') {
+        final shifts = await txn.query('shifts',
+            where: 'status = ?',
+            whereArgs: ['open'],
+            orderBy: 'start_time DESC',
+            limit: 1);
+        if (shifts.isEmpty) throw StateError('Open a shift before taking cash');
+      }
+      final now = DateTime.now().toIso8601String();
+      final saleId = await txn.insert('sales', <String, Object?>{
+        'staff_name': staffName.trim().isEmpty ? 'Open business' : staffName,
+        'staff_id': staffId,
+        'total': amount.minorUnits,
+        'profit': 0,
+        'payment_method': paymentMethod,
+        'payment_reference': paymentReference,
+        'amount_tendered': amount.minorUnits,
+        'change_given': 0,
+        'created_at': now,
+        'vat_rate_percent': 0,
+        'vat_minor': 0,
+        'taxable_minor': 0,
+        'document_type': 'sale',
+        'etims_status': EtimsStatus.notRequired,
+        'payment_verified': 1,
+      });
+      await txn.insert('sale_payments', <String, Object?>{
+        'uuid': _newUuid(),
+        'sale_id': saleId,
+        'method': paymentMethod,
+        'amount_minor': amount.minorUnits,
+        'tendered_minor': amount.minorUnits,
+        'change_minor': 0,
+        'reference': paymentReference,
+        'status': 'confirmed',
+        'created_at': now,
+      });
+      await _appendFinancialEvent(
+        txn: txn,
+        eventType: 'sale',
+        sourceType: 'sale',
+        sourceId: saleId,
+        occurredAtUtc: DateTime.parse(now).toUtc().toIso8601String(),
+        revenueMinor: amount.minorUnits,
+        cashInMinor: amount.minorUnits,
+        metadata: <String, Object?>{
+          'profile': ShopProfile.open.wireValue,
+          'open_quick_sale': true,
+          'cost_coverage': 'unrecorded',
+          'tax_mode': 'off',
+        },
+      );
+      return saleId;
+    });
+  }
+
+  Future<int> addCostPoolEntry({
+    required String uuid,
+    required int poolId,
+    required String entryType,
+    required Money amount,
+    String paidFrom = 'other',
+    String? description,
+  }) async {
+    const entryTypes = <String>{
+      'purchase',
+      'transport',
+      'packaging',
+      'sorting',
+      'other',
+    };
+    if (!entryTypes.contains(entryType)) {
+      throw StateError('Unknown cost-pool entry');
+    }
+    if (paidFrom != 'till_cash' &&
+        paidFrom != 'other' &&
+        paidFrom != 'credit') {
+      throw StateError('A pool cost is paid from cash, elsewhere or credit');
+    }
+    if (amount.minorUnits <= 0) {
+      throw StateError('A cost-pool entry must be more than zero');
+    }
+    final db = await database;
+    return db.transaction<int>((txn) async {
+      final pools = await txn.query('cost_pools',
+          where: "id = ? AND status = 'open'", whereArgs: [poolId], limit: 1);
+      if (pools.isEmpty) throw StateError('Cost pool not found or closed');
+      final now = DateTime.now().toIso8601String();
+      final entryId = await txn.insert('cost_pool_entries', {
+        'uuid': uuid,
+        'pool_id': poolId,
+        'entry_type': entryType,
+        'amount_minor': amount.minorUnits,
+        'paid_from': paidFrom,
+        'description': description,
+        'created_at': now,
+      });
+      await txn.rawUpdate(
+        'UPDATE cost_pools SET invested_minor = invested_minor + ? WHERE id = ?',
+        [amount.minorUnits, poolId],
+      );
+      await _appendFinancialEvent(
+        txn: txn,
+        eventType: 'cost_pool_entry',
+        sourceType: 'cost_pool_entry',
+        sourceId: entryId,
+        occurredAtUtc: DateTime.now().toUtc().toIso8601String(),
+        cashOutMinor: paidFrom == 'till_cash' ? amount.minorUnits : 0,
+        payableDeltaMinor: paidFrom == 'credit' ? amount.minorUnits : 0,
+        metadata: <String, Object?>{
+          'pool_id': poolId,
+          'entry_type': entryType,
+          'paid_from': paidFrom,
+        },
+      );
+      return entryId;
+    });
+  }
+
+  Future<int> allocateCostPoolToSale({
+    required int poolId,
+    required int saleId,
+    required Money amount,
+  }) async {
+    if (amount.minorUnits <= 0) {
+      throw StateError('A pool allocation must be more than zero');
+    }
+    final db = await database;
+    return db.transaction<int>((txn) async {
+      final pools = await txn.query('cost_pools',
+          where: 'id = ?', whereArgs: [poolId], limit: 1);
+      if (pools.isEmpty) throw StateError('Cost pool not found');
+      final pool = pools.first;
+      final invested = (pool['invested_minor'] as num).toInt();
+      final recovered = (pool['recovered_minor'] as num).toInt();
+      if (recovered + amount.minorUnits > invested) {
+        throw StateError('That allocation exceeds the pool remaining cost');
+      }
+      final sale = await txn.query('sales',
+          columns: <String>['id'],
+          where: 'id = ?',
+          whereArgs: [saleId],
+          limit: 1);
+      if (sale.isEmpty) throw StateError('Sale not found');
+      final now = DateTime.now().toIso8601String();
+      final allocationId = await txn.insert('sale_pool_allocations', {
+        'pool_id': poolId,
+        'sale_id': saleId,
+        'amount_minor': amount.minorUnits,
+        'created_at': now,
+      });
+      await txn.rawUpdate(
+        'UPDATE cost_pools SET recovered_minor = recovered_minor + ? WHERE id = ?',
+        [amount.minorUnits, poolId],
+      );
+      await _appendFinancialEvent(
+        txn: txn,
+        eventType: 'cost_pool_allocation',
+        sourceType: 'sale_pool_allocation',
+        sourceId: allocationId,
+        occurredAtUtc: DateTime.now().toUtc().toIso8601String(),
+        cogsMinor: amount.minorUnits,
+        metadata: <String, Object?>{
+          'pool_id': poolId,
+          'sale_id': saleId,
+        },
+      );
+      return allocationId;
+    });
+  }
+
+  Future<int> createJob({
+    required String uuid,
+    required String title,
+    String? customerName,
+    Money? quote,
+    DateTime? dueAt,
+  }) async {
+    if (uuid.trim().isEmpty || title.trim().isEmpty) {
+      throw StateError('A job needs an id and a title');
+    }
+    return (await database).insert('jobs', {
+      'uuid': uuid,
+      'customer_name': customerName,
+      'title': title.trim(),
+      'quote_minor': quote?.minorUnits,
+      'due_at': dueAt?.toIso8601String(),
+      'created_at': DateTime.now().toIso8601String(),
+    });
+  }
+
+  Future<int> addJobCost({
+    required String uuid,
+    required int jobId,
+    required String costType,
+    required Money amount,
+    String paidFrom = 'other',
+    String? description,
+  }) async {
+    const costTypes = <String>{'materials', 'helper', 'transport', 'other'};
+    if (!costTypes.contains(costType)) throw StateError('Unknown job cost');
+    if (paidFrom != 'till_cash' &&
+        paidFrom != 'other' &&
+        paidFrom != 'credit') {
+      throw StateError('A job cost is paid from cash, elsewhere or credit');
+    }
+    if (amount.minorUnits <= 0) {
+      throw StateError('A job cost must be more than zero');
+    }
+    final db = await database;
+    return db.transaction<int>((txn) async {
+      final jobs = await txn.query('jobs',
+          where: "id = ? AND status != 'closed'", whereArgs: [jobId], limit: 1);
+      if (jobs.isEmpty) throw StateError('Job not found or closed');
+      final costId = await txn.insert('job_costs', {
+        'uuid': uuid,
+        'job_id': jobId,
+        'cost_type': costType,
+        'amount_minor': amount.minorUnits,
+        'paid_from': paidFrom,
+        'description': description,
+        'created_at': DateTime.now().toIso8601String(),
+      });
+      await _appendFinancialEvent(
+        txn: txn,
+        eventType: 'job_cost',
+        sourceType: 'job_cost',
+        sourceId: costId,
+        occurredAtUtc: DateTime.now().toUtc().toIso8601String(),
+        cogsMinor: amount.minorUnits,
+        cashOutMinor: paidFrom == 'till_cash' ? amount.minorUnits : 0,
+        payableDeltaMinor: paidFrom == 'credit' ? amount.minorUnits : 0,
+        metadata: <String, Object?>{
+          'job_id': jobId,
+          'cost_type': costType,
+          'paid_from': paidFrom,
+        },
+      );
+      return costId;
+    });
+  }
+
+  /// Completes a job and recognizes its final price exactly once.
+  ///
+  /// Payments taken while the job was open are customer deposits. Completion
+  /// converts that liability into earned revenue and leaves only the unpaid
+  /// balance as a receivable. The job row and the normalized event are written
+  /// atomically so reports cannot observe an earned job without its source.
+  Future<void> completeJob({
+    required int jobId,
+    required Money finalPrice,
+  }) async {
+    if (finalPrice.minorUnits <= 0) {
+      throw StateError('A completed job must have a final price');
+    }
+    final db = await database;
+    await db.transaction((txn) async {
+      final jobs = await txn.query(
+        'jobs',
+        where: "id = ? AND status = 'open'",
+        whereArgs: [jobId],
+        limit: 1,
+      );
+      if (jobs.isEmpty) throw StateError('Job not found or already closed');
+      final depositsRows = await txn.rawQuery(
+        'SELECT COALESCE(SUM(amount_minor), 0) AS total FROM job_payments '
+        'WHERE job_id = ?',
+        [jobId],
+      );
+      final deposits = (depositsRows.first['total'] as num?)?.toInt() ?? 0;
+      if (deposits > finalPrice.minorUnits) {
+        throw StateError('The final price cannot be below collected deposits');
+      }
+      final now = DateTime.now().toIso8601String();
+      await txn.update(
+        'jobs',
+        {
+          'final_price_minor': finalPrice.minorUnits,
+          'status': 'closed',
+          'closed_at': now,
+        },
+        where: 'id = ?',
+        whereArgs: [jobId],
+      );
+      await _appendFinancialEvent(
+        txn: txn,
+        eventType: 'job_completion',
+        sourceType: 'job',
+        sourceId: jobId,
+        occurredAtUtc: DateTime.parse(now).toUtc().toIso8601String(),
+        revenueMinor: finalPrice.minorUnits,
+        receivableDeltaMinor: finalPrice.minorUnits - deposits,
+        customerDepositDeltaMinor: -deposits,
+        metadata: <String, Object?>{
+          'final_price_minor': finalPrice.minorUnits,
+          'deposits_applied_minor': deposits,
+        },
+      );
+    });
+  }
+
+  Future<int> recordJobPayment({
+    required String uuid,
+    required int jobId,
+    required Money amount,
+    required String paymentMethod,
+    String? reference,
+    int? shiftId,
+  }) async {
+    if (amount.minorUnits <= 0) {
+      throw StateError('A job payment must be more than zero');
+    }
+    if (!<String>{'cash', 'mpesa', 'bank_transfer'}.contains(paymentMethod)) {
+      throw StateError('Unsupported job payment method');
+    }
+    final db = await database;
+    return db.transaction<int>((txn) async {
+      final jobs = await txn.query('jobs',
+          where: 'id = ?', whereArgs: [jobId], limit: 1);
+      if (jobs.isEmpty) throw StateError('Job not found');
+      final job = jobs.first;
+      int? resolvedShiftId = shiftId;
+      if (paymentMethod == 'cash') {
+        if (resolvedShiftId == null) {
+          final shifts = await txn.query('shifts',
+              where: 'status = ?',
+              whereArgs: ['open'],
+              orderBy: 'start_time DESC',
+              limit: 1);
+          if (shifts.isEmpty) {
+            throw StateError('Open a shift before taking cash');
+          }
+          resolvedShiftId = shifts.first['id'] as int;
+        } else {
+          final shifts = await txn.query('shifts',
+              where: 'id = ? AND status = ?',
+              whereArgs: [resolvedShiftId, 'open']);
+          if (shifts.isEmpty) throw StateError('Shift is not open');
+        }
+      }
+      final isDeposit = (job['status'] as String?) != 'closed';
+      if (!isDeposit) {
+        final finalPrice = (job['final_price_minor'] as num?)?.toInt();
+        if (finalPrice == null) {
+          throw StateError('A closed job must have a final price');
+        }
+        final paidRows = await txn.rawQuery(
+          'SELECT COALESCE(SUM(amount_minor), 0) AS total FROM job_payments '
+          'WHERE job_id = ?',
+          [jobId],
+        );
+        final paid = (paidRows.first['total'] as num?)?.toInt() ?? 0;
+        if (paid + amount.minorUnits > finalPrice) {
+          throw StateError('That payment exceeds the job balance');
+        }
+      }
+      final paymentId = await txn.insert('job_payments', {
+        'uuid': uuid,
+        'job_id': jobId,
+        'amount_minor': amount.minorUnits,
+        'payment_method': paymentMethod,
+        'reference': reference,
+        'shift_id': resolvedShiftId,
+        'created_at': DateTime.now().toIso8601String(),
+      });
+      await _appendFinancialEvent(
+        txn: txn,
+        eventType: 'job_payment',
+        sourceType: 'job_payment',
+        sourceId: paymentId,
+        occurredAtUtc: DateTime.now().toUtc().toIso8601String(),
+        cashInMinor: amount.minorUnits,
+        receivableDeltaMinor: isDeposit ? 0 : -amount.minorUnits,
+        customerDepositDeltaMinor: isDeposit ? amount.minorUnits : 0,
+        metadata: <String, Object?>{
+          'job_id': jobId,
+          'payment_method': paymentMethod,
+          'shift_id': resolvedShiftId,
+          'is_deposit': isDeposit,
+        },
+      );
+      return paymentId;
+    });
+  }
+
+  Future<int> recordOwnerTransaction({
+    required String uuid,
+    required String transactionType,
+    required Money amount,
+    required int shiftId,
+    required String staffName,
+    int? staffId,
+    String? note,
+  }) async {
+    const allowed = <String>{
+      'capital_in',
+      'drawing',
+      'loan_received',
+      'loan_repayment',
+    };
+    if (uuid.trim().isEmpty) throw ArgumentError.value(uuid, 'uuid');
+    if (!allowed.contains(transactionType)) {
+      throw StateError('Unknown owner transaction');
+    }
+    if (amount.minorUnits <= 0) {
+      throw StateError('An owner transaction must be more than zero');
+    }
+    final db = await database;
+    return db.transaction<int>((txn) async {
+      final shifts = await txn.query('shifts',
+          where: 'id = ? AND status = ?', whereArgs: [shiftId, 'open']);
+      if (shifts.isEmpty) throw StateError('Shift is not open');
+      final now = DateTime.now().toIso8601String();
+      final eventAtUtc = DateTime.now().toUtc().toIso8601String();
+      final transactionId = await txn.insert('owner_transactions', {
+        'uuid': uuid,
+        'transaction_type': transactionType,
+        'amount_minor': amount.minorUnits,
+        'shift_id': shiftId,
+        'staff_id': staffId,
+        'staff_name': staffName,
+        'note': note,
+        'created_at': now,
+      });
+      final cashIn =
+          transactionType == 'capital_in' || transactionType == 'loan_received';
+      await _appendFinancialEvent(
+        txn: txn,
+        eventType: 'owner_transaction',
+        sourceType: 'owner_transaction',
+        sourceId: transactionId,
+        occurredAtUtc: eventAtUtc,
+        cashInMinor: cashIn ? amount.minorUnits : 0,
+        cashOutMinor: cashIn ? 0 : amount.minorUnits,
+        metadata: <String, Object?>{
+          'transaction_type': transactionType,
+          'shift_id': shiftId,
+        },
+      );
+      return transactionId;
+    });
+  }
+
+  Future<int> recordTillMovement({
+    required String uuid,
+    required int shiftId,
+    required String movementType,
+    required Money amount,
+    required String staffName,
+    int? staffId,
+    String? note,
+  }) async {
+    if (uuid.trim().isEmpty) throw ArgumentError.value(uuid, 'uuid');
+    if (!<String>{'cash_in', 'cash_drop', 'float_adjustment'}
+        .contains(movementType)) {
+      throw StateError('Unknown till movement');
+    }
+    if (amount.minorUnits == 0) {
+      throw StateError('A till movement must be more than zero');
+    }
+    final db = await database;
+    return db.transaction<int>((txn) async {
+      final shifts = await txn.query('shifts',
+          where: 'id = ? AND status = ?', whereArgs: [shiftId, 'open']);
+      if (shifts.isEmpty) throw StateError('Shift is not open');
+      final now = DateTime.now().toIso8601String();
+      final movementId = await txn.insert('till_movements', {
+        'uuid': uuid,
+        'shift_id': shiftId,
+        'movement_type': movementType,
+        'amount_minor': amount.minorUnits,
+        'note': note,
+        'staff_id': staffId,
+        'staff_name': staffName,
+        'created_at': now,
+      });
+      await _appendFinancialEvent(
+        txn: txn,
+        eventType: 'till_movement',
+        sourceType: 'till_movement',
+        sourceId: movementId,
+        occurredAtUtc: DateTime.now().toUtc().toIso8601String(),
+        cashInMinor: amount.minorUnits > 0 ? amount.minorUnits : 0,
+        cashOutMinor: amount.minorUnits < 0 ? -amount.minorUnits : 0,
+        metadata: <String, Object?>{'movement_type': movementType},
+      );
+      return movementId;
+    });
   }
 
   /// What the drawer should hold for [shift]: the float it opened with plus
@@ -5595,6 +13473,45 @@ SELECT name FROM staff GROUP BY name HAVING COUNT(*) = 1
         where: activeOnly ? 'active = 1' : null,
         orderBy: 'label ASC, product_name ASC');
     return rows.map(ShotCup.fromMap).toList();
+  }
+
+  /// Merges a serving configuration from another till by the product it
+  /// belongs to and its label. Product ids are local, so the caller resolves
+  /// the remote product id before reaching this method.
+  Future<void> mergeRemoteShotCup({
+    required int productId,
+    required String productName,
+    required int capacityMl,
+    required int priceMinor,
+    required String label,
+    required bool active,
+  }) async {
+    final db = await database;
+    final existing = await db.query(
+      'shot_cups',
+      columns: ['id'],
+      where: 'product_id = ? AND label = ?',
+      whereArgs: [productId, label],
+      limit: 1,
+    );
+    final values = <String, Object?>{
+      'product_id': productId,
+      'product_name': productName,
+      'capacity_ml': capacityMl,
+      'price': priceMinor,
+      'label': label,
+      'active': active ? 1 : 0,
+      'updated_at': DateTime.now().toIso8601String(),
+      'synced_to_backend': 1,
+    };
+    if (existing.isEmpty) {
+      await db.insert('shot_cups', values);
+    } else {
+      await db.update('shot_cups', values,
+          where: 'id = ?', whereArgs: [existing.first['id']]);
+    }
+    await db.update('products', {'unit': ProductUnit.cup.wire},
+        where: 'id = ?', whereArgs: [productId]);
   }
 
   /// The shot cup configured for [productId], or null.
@@ -5829,6 +13746,10 @@ SELECT name FROM staff GROUP BY name HAVING COUNT(*) = 1
       conditions.add('created_at >= ?');
       args.add(query.since);
     }
+    if (query.until != null) {
+      conditions.add('created_at < ?');
+      args.add(query.until);
+    }
 
     final rows = await db.query(
       'audit_log',
@@ -5856,6 +13777,7 @@ SELECT name FROM staff GROUP BY name HAVING COUNT(*) = 1
     AuditAction.backupRestored,
     AuditAction.shopCreated,
     AuditAction.shopSwitched,
+    AuditAction.profileChanged,
     AuditAction.identityLinked,
   ];
 
@@ -6101,6 +14023,7 @@ class PendingEtimsReceipt {
     required this.receiptNumber,
     required this.attempts,
     required this.createdAt,
+    this.documentType = 'sale',
     this.lastError,
   });
 
@@ -6108,6 +14031,7 @@ class PendingEtimsReceipt {
   final String receiptNumber;
   final int attempts;
   final DateTime createdAt;
+  final String documentType;
   final String? lastError;
 }
 

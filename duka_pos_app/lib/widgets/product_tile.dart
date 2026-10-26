@@ -180,7 +180,10 @@ class ProductTileMetrics {
     // The card's padding and the tile's own, in the tokens — never as
     // literals, because the tile and the measurement have to agree exactly or
     // the cell is a few pixels short of the text it holds.
-    final double cardInset = spacing.md;
+    // SurfaceCard uses the shared large inset by default. Keeping this
+    // measurement aligned with the rendered component prevents the grid from
+    // under-measuring a tile when text scales to 200%.
+    final double cardInset = spacing.lg;
     final double tileInset = spacing.sm;
     final double content = cellWidth - cardInset * 2 - tileInset * 2;
 

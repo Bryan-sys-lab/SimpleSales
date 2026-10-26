@@ -11,6 +11,7 @@ import 'roles.dart';
 import 'staff_credential_cache.dart';
 import 'workspace_service.dart';
 import 'backend_service.dart';
+import '../profile/shop_profile.dart';
 
 /// Holds who is currently signed in on this till. Deliberately not persisted
 /// across app restarts — a shared shop device should always come back to
@@ -22,6 +23,19 @@ class AppState extends ChangeNotifier {
   String? currentStaffName;
   bool isOwnerSession = false;
   String workspaceKey = WorkspaceService.legacyKey;
+
+  /// The selected profile for the active shop. Missing legacy data resolves
+  /// to Duka and is never treated as a new account-level prompt.
+  ShopProfile shopProfile = ShopProfile.duka;
+
+  /// Applies a deliberately requested profile change to the active shop.
+  /// The database write is owned by the caller so this notification only
+  /// follows a successful commit.
+  void setShopProfile(ShopProfile profile) {
+    if (shopProfile == profile) return;
+    shopProfile = profile;
+    notifyListeners();
+  }
 
   /// The signed-in person's role.
   ///
@@ -37,6 +51,9 @@ class AppState extends ChangeNotifier {
   /// `staff_id`, not on a display name, so the id has to survive sign-in. An
   /// owner session has no staff row and reports everything.
   int? currentStaffId;
+
+  /// Session-scoped permissions loaded from the local role matrix.
+  Map<String, PermissionMode> _permissions = <String, PermissionMode>{};
 
   /// True when the local shop exists but has not yet been linked to an
   /// online identity. Selling stays fully available offline; this only drives the
@@ -142,6 +159,7 @@ class AppState extends ChangeNotifier {
     workspaceKey = await WorkspaceService.activeWorkspaceKey();
     await DatabaseHelper.instance.initializeWorkspace(workspaceKey);
     owner = await DatabaseHelper.instance.getOwner();
+    shopProfile = await DatabaseHelper.instance.getShopProfile();
     if (_disposed) return;
     identityLinkPending =
         owner != null && (await BackendService.tenantId) == null;
@@ -355,6 +373,7 @@ class AppState extends ChangeNotifier {
     currentStaffId = null;
     isOwnerSession = signIn && nextOwner != null;
     _role = (signIn && nextOwner != null) ? ShopRole.admin : ShopRole.cashier;
+    _permissions = <String, PermissionMode>{};
     _advanceSession();
 
     owner = nextOwner;
@@ -390,6 +409,7 @@ class AppState extends ChangeNotifier {
     isOwnerSession = true;
     _role = ShopRole.admin;
     _advanceSession();
+    _loadPermissions();
     failureRecorder.context.actorName = shop.name;
     unawaited(clearRememberedStaff());
     notifyListeners();
@@ -405,6 +425,7 @@ class AppState extends ChangeNotifier {
     // manager. See [ShopRole.parse].
     _role = ShopRole.parse(staff.role);
     _advanceSession();
+    _loadPermissions();
     unawaited(rememberStaff(staff));
     notifyListeners();
   }
@@ -420,6 +441,7 @@ class AppState extends ChangeNotifier {
     isOwnerSession = asOwner;
     _role = asOwner ? ShopRole.admin : ShopRole.parse(role);
     _advanceSession();
+    _loadPermissions();
     notifyListeners();
   }
 
@@ -443,6 +465,7 @@ class AppState extends ChangeNotifier {
     currentStaffId = null;
     isOwnerSession = false;
     _role = ShopRole.cashier;
+    _permissions = <String, PermissionMode>{};
     _advanceSession();
     unawaited(clearRememberedStaff());
     notifyListeners();
@@ -501,7 +524,10 @@ class AppState extends ChangeNotifier {
   bool get isAdmin => _role.canAdminister;
 
   /// Inventory, stock and price edits.
-  bool get canManageStock => _role.canManageStock;
+  bool get canManageStock =>
+      hasPermission(PermissionKey.receiveStock) ||
+      hasPermission(PermissionKey.adjustStock) ||
+      hasPermission(PermissionKey.stocktake);
 
   /// The whole shop's numbers rather than only this person's own.
   bool get seesAllSales => _role.seesAllSales;
@@ -509,8 +535,60 @@ class AppState extends ChangeNotifier {
   /// Removing a product from the catalogue outright.
   bool get canDeleteProducts => _role.canDeleteProducts;
 
+  bool get canViewReports => hasPermission(PermissionKey.viewReports);
+
+  bool get canManageStaff => hasPermission(PermissionKey.manageStaff);
+
   /// Registering this shop's KRA device.
   bool get canRegisterTaxIdentity => _role.canRegisterTaxIdentity;
+
+  bool hasPermission(PermissionKey permission) {
+    if (isOwnerSession) return true;
+    return permissionMode(permission) != PermissionMode.deny;
+  }
+
+  PermissionMode permissionMode(PermissionKey permission) {
+    if (isOwnerSession) return PermissionMode.allow;
+    final loaded = _permissions[permission.wire];
+    if (loaded != null) return loaded;
+    if (defaultApprovalPermissions[_role.wire]?.contains(permission.wire) ??
+        false) {
+      return PermissionMode.approval;
+    }
+    return defaultRolePermissions[_role.wire]?.contains(permission.wire) ??
+            false
+        ? PermissionMode.allow
+        : PermissionMode.deny;
+  }
+
+  void _loadPermissions() {
+    final generation = _sessionGeneration;
+    final role = currentRole;
+    final staffId = currentStaffId;
+    _permissions = <String, PermissionMode>{};
+    if (isOwnerSession) return;
+    unawaited(() async {
+      try {
+        final loaded = <String, PermissionMode>{};
+        for (final permission in PermissionKey.values) {
+          loaded[permission.wire] =
+              await DatabaseHelper.instance.permissionMode(
+            role: role,
+            staffId: staffId,
+            permission: permission.wire,
+          );
+        }
+        if (_disposed || generation != _sessionGeneration) return;
+        _permissions = loaded;
+        notifyListeners();
+      } catch (_) {
+        // A lightweight session test, a cold boot before sqflite is bound, or
+        // a damaged local store must not turn sign-in into an unhandled async
+        // error. The role defaults remain the fail-closed fallback until the
+        // next real session load can read the matrix.
+      }
+    }());
+  }
 
   /// The staff id to scope analytics by, or null when every row is in scope.
   ///

@@ -50,6 +50,7 @@ Widget _panel({
       onTestPrint: () async {},
       onSavePrinter: (_) async {},
       onOpenTaxSettings: () async {},
+      onEditCreditSettings: () async {},
       onSetAutoSync: (_) async {},
       onSyncNow: () async {},
       onExportEncrypted: () async {},
@@ -104,6 +105,7 @@ void main() {
           find.text(l10n.settingsStaffSection.toUpperCase()), findsOneWidget);
       expect(find.text(l10n.settingsPaymentMethodsSection.toUpperCase()),
           findsOneWidget);
+      expect(find.text(l10n.settingsCreditSection.toUpperCase()), findsOneWidget);
       expect(
           find.text(l10n.settingsPrinterSection.toUpperCase()), findsOneWidget);
       expect(find.text(l10n.taxSettingsTitle.toUpperCase()), findsOneWidget);
@@ -111,6 +113,16 @@ void main() {
       expect(
           find.text(l10n.settingsBackupSection.toUpperCase()), findsOneWidget);
       tester.expectNoOverflow('settings sections');
+    });
+
+    testWidgets('credit sales are visibly off by default and configurable',
+        (tester) async {
+      tester.useDevice(Device.small);
+      await tester.pumpApp(home: _panel());
+
+      expect(find.text(l10n.settingsCreditOffSummary), findsOneWidget);
+      expect(find.text(l10n.settingsCreditSection.toUpperCase()), findsOneWidget);
+      tester.expectNoOverflow('credit settings section');
     });
 
     testWidgets('the identity banner leads when the shop is unlinked',

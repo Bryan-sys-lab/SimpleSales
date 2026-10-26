@@ -110,9 +110,11 @@ String? appRedirect({
   // every figure on it is scoped to the rows they sold, so it is their
   // numbers and not the shop's. The REPORTS view underneath it is the whole
   // shop's, so it stays behind the manager's door.
-  final bool stockBranch =
-      location.startsWith(Routes.inventory) || location == Routes.reports;
-  if (stockBranch && !snapshot.canManageStock) return Routes.dashboard;
+  final bool inventoryBranch = location.startsWith(Routes.inventory);
+  if (inventoryBranch && !snapshot.canManageStock) return Routes.dashboard;
+  if (location == Routes.reports && !snapshot.canViewReports) {
+    return Routes.dashboard;
+  }
 
   // The all-shops view is the owner's: it reads across every shop on the
   // device, which is nobody's business but the owner's.

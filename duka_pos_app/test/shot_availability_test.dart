@@ -65,7 +65,7 @@ void main() {
       // bottle to find out.
       final verdict = shotAvailability(l10n, spirit(), cup(), 2);
       expect(verdict.canPour, isTrue);
-      expect(verdict.reason, '25 cups left in the bottle');
+      expect(verdict.reason, '25 cups left in the container');
     });
 
     test('the last shot is still pourable', () {
@@ -80,11 +80,11 @@ void main() {
     test('a different cup size divides the same bottle differently', () {
       expect(
         shotAvailability(l10n, spirit(), cup(capacityMl: 50), 2).reason,
-        '15 cups left in the bottle',
+        '15 cups left in the container',
       );
       expect(
         shotAvailability(l10n, spirit(), cup(capacityMl: 750), 2).reason,
-        '1 cups left in the bottle',
+        '1 cups left in the container',
       );
     });
   });
@@ -117,7 +117,7 @@ void main() {
       final verdict = shotAvailability(
           l10n, spirit(bottleMl: 200), cup(capacityMl: 1000), 5);
       expect(verdict.canPour, isFalse);
-      expect(verdict.reason, 'This cup is bigger than the bottle (200 ml)');
+      expect(verdict.reason, 'This cup is bigger than the container (200 ml)');
       expect(verdict.reason, isNot(contains('left')));
     });
 

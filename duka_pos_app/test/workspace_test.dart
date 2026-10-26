@@ -16,6 +16,8 @@ import 'dart:io';
 
 import 'package:duka_pos/db/database_helper.dart';
 import 'package:duka_pos/models/models.dart';
+import 'package:duka_pos/screens/settings_screen.dart';
+import 'package:duka_pos/services/app_state.dart';
 import 'package:duka_pos/services/backend_service.dart';
 import 'package:duka_pos/services/workspace_service.dart';
 import 'package:duka_pos/utils/money.dart';
@@ -80,6 +82,72 @@ void main() {
       expect(shops.first.workspaceKey, 'legacy',
           reason: 'the original shop leads, whatever the registry order');
       expect(shops.last.isBackendLinked, isTrue);
+    });
+
+    test('failed-shop cleanup removes only the newly registered workspace',
+        () async {
+      await WorkspaceService.register(
+          workspaceKey: 'legacy', shopName: 'Kariuki');
+      await WorkspaceService.register(
+          workspaceKey: 'failed-shop', shopName: 'Incomplete');
+
+      await WorkspaceService.unregister('failed-shop');
+
+      final Map<String, Map<String, String>> registry =
+          await WorkspaceService.registryForTests();
+      expect(registry, contains('legacy'));
+      expect(registry, isNot(contains('failed-shop')));
+    });
+
+    test('failed shop creation rollback restores the prior shop and file',
+        () async {
+      const String previous = 'rollback-previous';
+      const String failed = 'rollback-failed';
+      await WorkspaceService.register(
+          workspaceKey: previous, shopName: 'Existing shop');
+      await WorkspaceService.setActiveWorkspace(previous);
+      await DatabaseHelper.instance.initializeWorkspace(previous);
+      await DatabaseHelper.instance.createOwner(Owner(
+        id: 1,
+        name: 'Owner',
+        pinHash: 'hash',
+        email: 'owner@example.com',
+        shopName: 'Existing shop',
+        createdAt: DateTime.now().toIso8601String(),
+      ));
+      final AppState state = AppState();
+      await state.loadOwner();
+
+      await WorkspaceService.register(
+          workspaceKey: failed, shopName: 'Incomplete shop');
+      await state.switchWorkspace(
+        failed,
+        createOwnerFor: Owner(
+          id: 1,
+          name: 'Owner',
+          pinHash: 'hash',
+          email: 'owner@example.com',
+          shopName: 'Incomplete shop',
+          createdAt: DateTime.now().toIso8601String(),
+        ),
+      );
+      final String failedPath = await DatabaseHelper.databasePathFor(failed);
+      expect(File(failedPath).existsSync(), isTrue);
+
+      await rollbackFailedShopCreation(
+        state: state,
+        workspaceKey: failed,
+        previousWorkspaceKey: previous,
+      );
+
+      expect(await WorkspaceService.activeWorkspaceKey(), previous);
+      expect(state.workspaceKey, previous);
+      expect(state.owner?.shopName, 'Existing shop');
+      expect(File(failedPath).existsSync(), isFalse);
+      expect(
+        (await WorkspaceService.registryForTests()).containsKey(failed),
+        isFalse,
+      );
     });
 
     test('the active shop is switchable by key, not by name', () async {

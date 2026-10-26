@@ -37,6 +37,28 @@ void main() {
       expect(release.required, isFalse);
     });
 
+    test('a platform announcement is accepted without tenant data', () {
+      final announcement = PlatformAnnouncement.tryParse(<String, Object?>{
+        'id': 'announcement-1',
+        'title': 'New update',
+        'body': 'A faster checkout is available.',
+      });
+      expect(announcement, isNotNull);
+      expect(announcement!.id, 'announcement-1');
+      expect(announcement.body, isNot(contains('tenant')));
+    });
+
+    test('legacy snake-case manifests remain readable', () {
+      final release = AppRelease.tryParse(<String, Object?>{
+        'version_code': 8,
+        'version_name': '2.2.0',
+        'download_url': 'https://example.com/app.apk',
+        'release_notes': 'Fixes',
+      });
+      expect(release?.build, 8);
+      expect(release?.notes, 'Fixes');
+    });
+
     test('the decision is the build, and the name is only a label', () {
       // THE trap. 2.10.0 sorts before 2.9.0 as a string. If the comparison were
       // made on names, a shop on 2.10.0 would be offered 2.9.0 and the OS would

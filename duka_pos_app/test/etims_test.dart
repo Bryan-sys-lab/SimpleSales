@@ -10,6 +10,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:sqflite_common_ffi/sqflite_ffi.dart';
 
 import 'package:duka_pos/db/database_helper.dart';
+import 'package:duka_pos/models/credit.dart';
 import 'package:duka_pos/models/models.dart';
 import 'package:duka_pos/services/etims/etims_service.dart';
 import 'package:duka_pos/services/printer/receipt_builder.dart';
@@ -66,6 +67,100 @@ void main() {
   }
 
   group('payload shape', () {
+    test('carries the buyer details of the sale customer, when one is attached', () async {
+      await db.setTillCode('T1');
+      final customerId = await db.upsertCustomer(Customer(
+        uuid: 'cus-1',
+        name: 'Acme Ltd',
+        tin: 'P051234567X',
+        creditLimitMinor: 100000000,
+        createdAt: DateTime.now().toIso8601String(),
+      ));
+      final saleId = await db.recordSale(
+          staffName: 'Alice',
+          items: [
+            SaleItem(
+              saleId: 0,
+              productId: sodaId,
+              productName: 'Soda 350ml',
+              qty: 1,
+              unitPrice: Money.fromMajor(80),
+              unitCost: Money.fromMajor(45),
+            )
+          ],
+          paymentMethod: 'credit',
+          customerId: customerId,
+          etimsPending: true);
+      final sale = await db.getSaleById(saleId);
+      final row = await db.getSaleRowById(saleId);
+      final customer = await db.getCustomerById(customerId);
+      final payload = buildEtimsPayload(
+        sale: sale!,
+        saleRow: row!,
+        db: db,
+        tillCode: await db.getTillCode(),
+        tin: 'P051234567X',
+        vatRatePercent: 16,
+        pricesIncludeVat: true,
+        customer: customer,
+      );
+      expect(payload['buyer_name'], 'Acme Ltd');
+      expect(payload['buyer_tin'], 'P051234567X');
+
+      // The invoice is a snapshot. Editing the directory after checkout must
+      // not change a queued retry.
+      await db.upsertCustomer(Customer(
+        id: customerId,
+        uuid: 'cus-1',
+        name: 'Renamed Ltd',
+        tin: 'P099999999Z',
+        creditLimitMinor: 100000000,
+        createdAt: DateTime.now().toIso8601String(),
+      ));
+      final retrySale = await db.getSaleById(saleId);
+      final retryPayload = buildEtimsPayload(
+        sale: retrySale!,
+        saleRow: (await db.getSaleRowById(saleId))!,
+        db: db,
+        tillCode: await db.getTillCode(),
+        tin: 'P051234567X',
+        vatRatePercent: 16,
+        pricesIncludeVat: true,
+      );
+      expect(retryPayload['buyer_name'], 'Acme Ltd');
+      expect(retryPayload['buyer_tin'], 'P051234567X');
+    });
+
+    test('carries no buyer fields for a walk-in sale', () async {
+      await db.setTillCode('T1');
+      final saleId = await db.recordSale(
+          staffName: 'Alice',
+          items: [
+            SaleItem(
+              saleId: 0,
+              productId: sodaId,
+              productName: 'Soda 350ml',
+              qty: 1,
+              unitPrice: Money.fromMajor(80),
+              unitCost: Money.fromMajor(45),
+            )
+          ],
+          etimsPending: true);
+      final sale = await db.getSaleById(saleId);
+      final row = await db.getSaleRowById(saleId);
+      final payload = buildEtimsPayload(
+        sale: sale!,
+        saleRow: row!,
+        db: db,
+        tillCode: await db.getTillCode(),
+        tin: 'P051234567X',
+        vatRatePercent: 16,
+        pricesIncludeVat: true,
+        customer: await db.getCustomerById(row['customer_id'] as int? ?? 0),
+      );
+      expect(payload.containsKey('buyer_name'), isFalse);
+      expect(payload.containsKey('buyer_tin'), isFalse);
+    });
     test('carries the till receipt number, not a fresh one', () async {
       await db.setTillCode('T1');
       final saleId = await db.recordSale(

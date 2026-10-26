@@ -1980,5 +1980,49 @@ void main() {
 
       await upgraded.close();
     });
+
+    test('v49 drawer events gain an online sync flag without losing history',
+        () async {
+      final old = await databaseFactoryFfi.openDatabase(
+        path,
+        options: OpenDatabaseOptions(
+          version: 49,
+          onCreate: (db, _) async {
+            await db.execute('''
+              CREATE TABLE drawer_events (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                uuid TEXT NOT NULL UNIQUE,
+                shift_id INTEGER,
+                event_type TEXT NOT NULL,
+                reason TEXT,
+                staff_id INTEGER,
+                staff_name TEXT NOT NULL,
+                created_at TEXT NOT NULL,
+                status TEXT NOT NULL DEFAULT 'recorded'
+              )
+            ''');
+            await db.insert('drawer_events', {
+              'uuid': 'v49-drawer-event',
+              'event_type': 'no_sale',
+              'staff_name': 'Amina',
+              'created_at': '2026-10-24T00:00:00.000Z',
+            });
+          },
+        ),
+      );
+      await old.close();
+
+      final upgraded = await DatabaseHelper.openExistingForUpgradeTests(path);
+      final columns = (await upgraded.rawQuery('PRAGMA table_info(drawer_events)'))
+          .map((row) => row['name'] as String)
+          .toSet();
+      expect(columns, contains('synced_to_backend'));
+      final pending = await upgraded.query(
+        'drawer_events',
+        where: 'synced_to_backend = 0',
+      );
+      expect(pending, hasLength(1));
+      await upgraded.close();
+    });
   });
 }

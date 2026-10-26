@@ -57,6 +57,7 @@ class ProductTableCard extends StatefulWidget {
     required this.sort,
     required this.ascending,
     this.onSort,
+    this.onProductTap,
     super.key,
   });
 
@@ -66,6 +67,7 @@ class ProductTableCard extends StatefulWidget {
 
   /// Null when the screen cannot reorder — a preview rather than a control.
   final ValueChanged<ProductSort>? onSort;
+  final ValueChanged<ProductSalesRow>? onProductTap;
 
   @override
   State<ProductTableCard> createState() => _ProductTableCardState();
@@ -134,10 +136,16 @@ class _ProductTableCardState extends State<ProductTableCard> {
                         ? _ProductTableRow(
                             row: rows[i],
                             showDivider: i != rows.length - 1,
+                            onTap: widget.onProductTap == null
+                                ? null
+                                : () => widget.onProductTap!(rows[i]),
                           )
                         : _ProductLine(
                             row: rows[i],
                             showDivider: i != rows.length - 1,
+                            onTap: widget.onProductTap == null
+                                ? null
+                                : () => widget.onProductTap!(rows[i]),
                           ),
                 ];
                 return Column(
@@ -360,10 +368,11 @@ class _NarrowSortControl extends StatelessWidget {
 
 /// One product, as five aligned columns.
 class _ProductTableRow extends StatelessWidget {
-  const _ProductTableRow({required this.row, required this.showDivider});
+  const _ProductTableRow({required this.row, required this.showDivider, this.onTap});
 
   final ProductSalesRow row;
   final bool showDivider;
+  final VoidCallback? onTap;
 
   @override
   Widget build(BuildContext context) {
@@ -417,7 +426,7 @@ class _ProductTableRow extends StatelessWidget {
       ),
     );
 
-    return Semantics(
+    final Widget rowWidget = Semantics(
       container: true,
       // gen-l10n sorts the parameters ALPHABETICALLY — margin, product, profit,
       // revenue, units — which is not the order the sentence reads them in.
@@ -443,6 +452,7 @@ class _ProductTableRow extends StatelessWidget {
             : content,
       ),
     );
+    return onTap == null ? rowWidget : InkWell(onTap: onTap, child: rowWidget);
   }
 }
 
@@ -453,10 +463,11 @@ class _ProductTableRow extends StatelessWidget {
 /// truncated: a product name wraps instead of being ellipsised, because a
 /// truncated product name in a report is a defect, not a design.
 class _ProductLine extends StatelessWidget {
-  const _ProductLine({required this.row, required this.showDivider});
+  const _ProductLine({required this.row, required this.showDivider, this.onTap});
 
   final ProductSalesRow row;
   final bool showDivider;
+  final VoidCallback? onTap;
 
   @override
   Widget build(BuildContext context) {
@@ -497,7 +508,7 @@ class _ProductLine extends StatelessWidget {
       ),
     );
 
-    return showDivider
+    final Widget rowWidget = showDivider
         ? Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: <Widget>[
@@ -506,6 +517,7 @@ class _ProductLine extends StatelessWidget {
             ],
           )
         : content;
+    return onTap == null ? rowWidget : InkWell(onTap: onTap, child: rowWidget);
   }
 }
 

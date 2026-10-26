@@ -46,6 +46,7 @@ class SuccessView extends StatelessWidget {
     this.facts = const <SuccessFact>[],
     this.onNext,
     this.nextLabel,
+    this.secondaryAction,
     super.key,
   });
 
@@ -75,6 +76,9 @@ class SuccessView extends StatelessWidget {
   final VoidCallback? onNext;
 
   final String? nextLabel;
+
+  /// An optional low-frequency action such as sharing the receipt.
+  final Widget? secondaryAction;
 
   @override
   Widget build(BuildContext context) {
@@ -236,6 +240,10 @@ class SuccessView extends StatelessWidget {
                       child: Text(nextLabel ?? ''),
                     ),
                   ),
+                ],
+                if (secondaryAction != null) ...<Widget>[
+                  SizedBox(height: spacing.sm),
+                  secondaryAction!,
                 ],
               ],
             ),

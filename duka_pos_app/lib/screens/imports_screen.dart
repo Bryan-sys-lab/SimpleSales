@@ -53,6 +53,36 @@ class ImportProblemRow {
   final ImportDraft draft;
 }
 
+/// Opens the same missing-information sheet used by failed imports for a
+/// product-only catalogue seed. The seed deliberately has no stored import
+/// problem to resolve; it only borrows the tested price-entry workflow.
+Future<void> showImportCompletionSheet(
+  BuildContext context, {
+  required ImportDraft draft,
+}) async {
+  final row = ImportProblemRow(
+    problem: ImportNeedsAttention(
+      id: 0,
+      source: 'seed',
+      rowNumber: 0,
+      rawName: draft.name,
+      rawRow: '[]',
+      problem: 'Price required',
+      createdAt: DateTime.now(),
+    ),
+    draft: draft,
+  );
+  await showModalBottomSheet<void>(
+    context: context,
+    isScrollControlled: true,
+    builder: (_) => _CompleteSheet(
+      row: row,
+      onSaved: () async {},
+      resolveProblem: false,
+    ),
+  );
+}
+
 class ImportsScreen extends StatefulWidget {
   const ImportsScreen({super.key});
 
@@ -255,10 +285,15 @@ class _ProblemTile extends StatelessWidget {
 }
 
 class _CompleteSheet extends StatefulWidget {
-  const _CompleteSheet({required this.row, required this.onSaved});
+  const _CompleteSheet({
+    required this.row,
+    required this.onSaved,
+    this.resolveProblem = true,
+  });
 
   final ImportProblemRow row;
   final Future<void> Function() onSaved;
+  final bool resolveProblem;
 
   @override
   State<_CompleteSheet> createState() => _CompleteSheetState();
@@ -455,7 +490,9 @@ class _CompleteSheetState extends State<_CompleteSheet> {
         }
       }
 
-      await db.resolveImportProblem(widget.row.problem.id!);
+      if (widget.resolveProblem) {
+        await db.resolveImportProblem(widget.row.problem.id!);
+      }
 
       if (!mounted) return;
       Navigator.of(context).pop();

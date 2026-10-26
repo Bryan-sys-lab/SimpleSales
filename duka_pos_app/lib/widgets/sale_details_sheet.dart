@@ -30,12 +30,16 @@
 // deliberately does not push a route for a thing that is a panel over a list.
 
 import 'package:flutter/material.dart';
+import 'package:share_plus/share_plus.dart';
 import 'package:provider/provider.dart';
 
 import '../db/database_helper.dart';
 import '../l10n/generated/app_localizations.dart';
 import '../models/audit_log.dart';
 import '../services/app_state.dart';
+import '../services/backend_service.dart';
+import '../services/receipt_pdf_service.dart';
+import '../services/receipt_share_service.dart';
 import '../models/models.dart';
 import '../theme/app_colors.dart';
 import '../theme/app_shapes.dart';
@@ -56,6 +60,7 @@ Future<void> showSaleDetails(
   required Sale sale,
   AuditLogEntry? audit,
   required bool canSeeSellers,
+  required bool canProcessReturn,
   required String shopName,
 }) {
   return showModalBottomSheet<void>(
@@ -67,6 +72,7 @@ Future<void> showSaleDetails(
       sale: sale,
       audit: audit,
       canSeeSellers: canSeeSellers,
+      canProcessReturn: canProcessReturn,
       shopName: shopName,
     ),
   );
@@ -77,12 +83,14 @@ class _SaleDetailsSheet extends StatelessWidget {
     required this.sale,
     required this.audit,
     required this.canSeeSellers,
+    required this.canProcessReturn,
     required this.shopName,
   });
 
   final Sale sale;
   final AuditLogEntry? audit;
   final bool canSeeSellers;
+  final bool canProcessReturn;
 
   /// The shop the sale was rung in.
   ///
@@ -141,6 +149,21 @@ class _SaleDetailsSheet extends StatelessWidget {
                   ),
                 ),
                 SizedBox(height: spacing.lg),
+                OutlinedButton.icon(
+                  onPressed: () => _shareReceipt(context),
+                  icon: const Icon(Icons.share_outlined),
+                  label: const Text('Share receipt'),
+                ),
+                OutlinedButton.icon(
+                  onPressed: () => _shareReceiptPdf(),
+                  icon: const Icon(Icons.picture_as_pdf_outlined),
+                  label: const Text('Share PDF'),
+                ),
+                if (sale.id != null) ...<Widget>[
+                  SizedBox(height: spacing.sm),
+                  _ReceiptShareHistory(saleId: sale.id!),
+                ],
+                SizedBox(height: spacing.md),
 
                 _DetailRow(
                   icon: Icons.schedule_outlined,
@@ -213,7 +236,7 @@ class _SaleDetailsSheet extends StatelessWidget {
                   ),
                 SizedBox(height: spacing.md),
                 // WHAT CAME BACK, and the button that gives something back.
-                _ReturnSection(sale: sale),
+                if (canProcessReturn) _ReturnSection(sale: sale),
               ],
             ),
           ),
@@ -223,6 +246,89 @@ class _SaleDetailsSheet extends StatelessWidget {
   }
 
   /// What moved, under the method.
+  Future<void> _shareReceipt(BuildContext context) async {
+    final recipientMasked = await askReceiptRecipient(context);
+    final snapshot = <String, dynamic>{
+      'shop_name': shopName,
+      'receipt_id': sale.id,
+      'staff_name': sale.staffName,
+      'created_at': sale.createdAt,
+      'payment_method': sale.paymentMethod,
+      'total_minor': sale.total.minorUnits,
+      'items': [
+        for (final item in sale.items)
+          {
+            'name': item.productName,
+            'qty': item.qty,
+            'total_minor': item.total.minorUnits,
+          },
+      ],
+    };
+    String? link;
+    try {
+      final response = await BackendService.createReceiptLink(snapshot);
+      final relative = response?['url'] as String?;
+      if (relative != null) {
+        link = BackendService.backendUrl.replaceFirst(RegExp(r'/api$'), '') +
+            relative;
+        if (sale.id != null) {
+          await DatabaseHelper.instance.recordReceiptShare(
+            uuid: 'receipt-share-${DateTime.now().microsecondsSinceEpoch}',
+            saleId: sale.id!,
+            token: response?['token'] as String?,
+            url: link,
+            recipientMasked: recipientMasked,
+            expiresAt: response?['expires_at']?.toString(),
+          );
+        }
+      } else if (sale.id != null) {
+        await DatabaseHelper.instance.recordReceiptShare(
+          uuid: 'receipt-share-${DateTime.now().microsecondsSinceEpoch}',
+          saleId: sale.id!,
+          recipientMasked: recipientMasked,
+        );
+      }
+    } on Object catch (_) {
+      // Offline sharing remains useful even when the public link cannot be
+      // minted. The receipt itself is never lost or blocked by the network.
+      if (sale.id != null) {
+        await DatabaseHelper.instance.recordReceiptShare(
+          uuid: 'receipt-share-${DateTime.now().microsecondsSinceEpoch}',
+          saleId: sale.id!,
+          recipientMasked: recipientMasked,
+        );
+      }
+    }
+    final lines = <String>[
+      if (shopName.isNotEmpty) shopName,
+      'Receipt ${sale.id ?? ''}'.trim(),
+      for (final item in sale.items)
+        '${item.productName} × ${item.qty}  ${formatMoney(item.total)}',
+      'Total: ${formatMoney(sale.total)}',
+      if (link != null) link,
+    ];
+    await SharePlus.instance.share(ShareParams(
+      text: lines.join('\n'),
+      subject: shopName.isEmpty ? 'Receipt' : 'Receipt from $shopName',
+    ));
+  }
+
+  Future<void> _shareReceiptPdf() async {
+    try {
+      final file = await const ReceiptPdfService().write(
+        sale: sale,
+        shopName: shopName,
+      );
+      await SharePlus.instance.share(ShareParams(
+        files: <XFile>[XFile(file.path, mimeType: 'application/pdf')],
+        subject: 'Receipt ${sale.id ?? ''}'.trim(),
+      ));
+    } on Object catch (_) {
+      // The text action remains available if local storage or the share sheet
+      // is unavailable; a receipt must never be blocked by an export failure.
+    }
+  }
+
   String? _paymentDetail(BuildContext context) {
     final AppLocalizations l10n = AppLocalizations.of(context);
     final String reference = sale.paymentReference ?? '';
@@ -236,6 +342,58 @@ class _SaleDetailsSheet extends StatelessWidget {
     return l10n.saleDetailsTendered(
       formatMoney(sale.amountTendered),
       formatMoney(sale.changeGiven),
+    );
+  }
+}
+
+class _ReceiptShareHistory extends StatefulWidget {
+  const _ReceiptShareHistory({required this.saleId});
+
+  final int saleId;
+
+  @override
+  State<_ReceiptShareHistory> createState() => _ReceiptShareHistoryState();
+}
+
+class _ReceiptShareHistoryState extends State<_ReceiptShareHistory> {
+  Future<void> _revoke(Map<String, dynamic> share) async {
+    final token = (share['token'] as String?)?.trim();
+    if (token != null && token.isNotEmpty) {
+      await BackendService.revokeReceiptLink(token);
+    }
+    await DatabaseHelper.instance.revokeReceiptShare(share['id'] as int);
+    if (mounted) setState(() {});
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return FutureBuilder<List<Map<String, dynamic>>>(
+      future: DatabaseHelper.instance.getReceiptShares(widget.saleId),
+      builder: (context, snapshot) {
+        final rows = snapshot.data ?? const <Map<String, dynamic>>[];
+        final active = rows.where((row) => row['status'] == 'active').toList();
+        if (active.isEmpty) return const SizedBox.shrink();
+        return Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: <Widget>[
+            const Text('Shared receipts'),
+            for (final share in active)
+              ListTile(
+                contentPadding: EdgeInsets.zero,
+                dense: true,
+                leading: const Icon(Icons.link_outlined),
+                title: Text(
+                  share['recipient_masked'] as String? ?? 'Receipt link',
+                ),
+                subtitle: Text(share['expires_at'] as String? ?? 'No expiry'),
+                trailing: TextButton(
+                  onPressed: () => _revoke(share),
+                  child: const Text('Revoke'),
+                ),
+              ),
+          ],
+        );
+      },
     );
   }
 }

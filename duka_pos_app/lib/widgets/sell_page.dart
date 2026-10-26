@@ -96,8 +96,8 @@ class SellPaneLayout extends StatelessWidget {
           // and the payment button — the two things a cashier is looking at
           // the moment they matter.
           final double scale = MediaQuery.textScalerOf(context).scale(1);
-          final int catalogueFlex = scale > 1.3 ? 2 : 3;
-          final int cartFlex = scale > 1.3 ? 3 : 2;
+          final int catalogueFlex = scale > 1.5 ? 2 : (scale > 1 ? 2 : 3);
+          final int cartFlex = scale > 1.5 ? 6 : (scale > 1 ? 3 : 2);
 
           return Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -210,6 +210,9 @@ class SellCataloguePane extends StatelessWidget {
                     hintText: l10n.sellScanHintSearchProducts,
                     prefixIcon: const Icon(Icons.search),
                     isDense: true,
+                    constraints: BoxConstraints(
+                      minHeight: spacing.textFieldHeight,
+                    ),
                     suffixIcon: query.isEmpty
                         ? null
                         : IconButton(
@@ -229,7 +232,7 @@ class SellCataloguePane extends StatelessWidget {
                   onPressed: scanning ? null : onScan,
                   style: OutlinedButton.styleFrom(
                     // A square, finger-sized target. The button is an icon
-                    // now, so the icon has to carry the whole 44dp.
+                    // now, so the icon has to carry the whole 48dp.
                     minimumSize: Size.square(spacing.minTapTarget),
                     padding: EdgeInsets.zero,
                   ),
@@ -278,6 +281,7 @@ class SellCartLine {
     required this.onDecrease,
     required this.onIncrease,
     required this.onRemove,
+    this.onEdit,
   });
 
   /// The product and its portion, as the cashier knows it.
@@ -296,6 +300,7 @@ class SellCartLine {
   final VoidCallback onDecrease;
   final VoidCallback onIncrease;
   final VoidCallback onRemove;
+  final VoidCallback? onEdit;
 }
 
 /// The cart: what is in it, and what it costs.
@@ -309,6 +314,9 @@ class SellCartPane extends StatelessWidget {
     required this.mpesaLabel,
     required this.onOffline,
     required this.onMpesa,
+    this.onHold,
+    this.onHeld,
+    this.onDiscount,
     required this.processing,
     this.statusMessage,
     super.key,
@@ -330,6 +338,9 @@ class SellCartPane extends StatelessWidget {
 
   final VoidCallback onOffline;
   final VoidCallback onMpesa;
+  final VoidCallback? onHold;
+  final VoidCallback? onHeld;
+  final VoidCallback? onDiscount;
 
   /// Whether a payment is running, so the buttons are not pressed twice.
   final bool processing;
@@ -383,6 +394,28 @@ class SellCartPane extends StatelessWidget {
                   ),
                   SizedBox(width: spacing.sm),
                   Text(itemCountLabel, style: type.bodySmall),
+                  PopupMenuButton<String>(
+                    tooltip: 'Held sales',
+                    onSelected: (value) {
+                      if (value == 'hold') onHold?.call();
+                      if (value == 'held') onHeld?.call();
+                      if (value == 'discount') onDiscount?.call();
+                    },
+                    itemBuilder: (context) => [
+                      PopupMenuItem<String>(
+                        value: 'discount',
+                        enabled: lines.isNotEmpty && onDiscount != null,
+                        child: const Text('Order discount'),
+                      ),
+                      PopupMenuItem<String>(
+                        value: 'hold',
+                        enabled: lines.isNotEmpty && onHold != null,
+                        child: const Text('Hold sale'),
+                      ),
+                      const PopupMenuItem<String>(
+                          value: 'held', child: Text('Held sales')),
+                    ],
+                  ),
                 ],
               ),
             ],
@@ -406,6 +439,7 @@ class SellCartPane extends StatelessWidget {
                   itemBuilder: (BuildContext context, int index) {
                     final SellCartLine line = lines[index];
                     return ListTile(
+                      onTap: line.onEdit,
                       // The name WRAPS, all the way.
                       //
                       // A product name is the cashier's typing — up to 120
@@ -413,9 +447,9 @@ class SellCartPane extends StatelessWidget {
                       // shelf. The old bound here was two lines and an
                       // ellipsis, on the theory that a long name "pushed the
                       // money off the screen" — but the cart rows are their
-                      // OWN scrollable, and the total and the payment buttons
-                      // are pinned BELOW that scrollable. A six-line row
-                      // scrolls; it does not move the money.
+                      // OWN scrollable. At ordinary text sizes the total and
+                      // payment buttons remain below it; at enlarged text the
+                      // action block itself can scroll rather than clipping.
                       //
                       // So the name is whole. A name cut in half is a product
                       // the cashier cannot find.
@@ -467,80 +501,86 @@ class SellCartPane extends StatelessWidget {
                   },
                 ),
         ),
-        Padding(
-          padding: EdgeInsetsDirectional.only(
-            start: PageGutter.of(context).left,
-            end: PageGutter.of(context).right,
-            top: spacing.sm,
-            bottom: spacing.lg,
-          ),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: <Widget>[
-              Row(
-                crossAxisAlignment: CrossAxisAlignment.end,
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+        Flexible(
+          fit: FlexFit.loose,
+          child: SingleChildScrollView(
+            child: Padding(
+              padding: EdgeInsetsDirectional.only(
+                start: PageGutter.of(context).left,
+                end: PageGutter.of(context).right,
+                top: spacing.sm,
+                bottom: spacing.lg,
+              ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: <Widget>[
-                  Text(
-                    l10n.sellTotalOnly,
-                    style: type.titleLarge,
+                  Row(
+                    crossAxisAlignment: CrossAxisAlignment.end,
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: <Widget>[
+                      Text(
+                        l10n.sellTotalOnly,
+                        style: type.titleLarge,
+                      ),
+                      SizedBox(width: spacing.sm),
+                      // Flexible, so the amount WRAPS rather than overflowing the
+                      // row: a Row hands its non-flexible children an unbounded
+                      // width, and an unbounded total is a total painted past the
+                      // edge of the card. The label yields; the amount does not.
+                      Flexible(
+                        child: Text(
+                          totalLabel,
+                          textAlign: TextAlign.end,
+                          style: type.headlineMedium,
+                        ),
+                      ),
+                    ],
                   ),
-                  SizedBox(width: spacing.sm),
-                  // Flexible, so the amount WRAPS rather than overflowing the
-                  // row: a Row hands its non-flexible children an unbounded
-                  // width, and an unbounded total is a total painted past the
-                  // edge of the card. The label yields; the amount does not.
-                  Flexible(
-                    child: Text(
-                      totalLabel,
-                      textAlign: TextAlign.end,
-                      style: type.headlineMedium,
+                  SizedBox(height: spacing.md),
+                  // THE TWO PAYMENT METHODS, SIDE BY SIDE.
+                  //
+                  // They were a Row before, and they stay a Row: the cart is a
+                  // FIXED share of the page, and two buttons stacked are twice as
+                  // tall as one. The label is not truncated to fit — it wraps
+                  // instead, and the pane's share of the page grows with the text
+                  // to make room (see `SellPaneLayout`).
+                  //
+                  // M-Pesa is the FILLED button because it is the path almost every
+                  // customer takes, and it is the one green thing on the till. The
+                  // offline fallback is quiet, because two saturated buttons on one
+                  // screen would spend the accent twice and leave the eye with
+                  // nothing to choose.
+                  //
+                  // `IntrinsicHeight` so both buttons are the SAME height even when
+                  // one label wraps to two lines and the other does not: a row of
+                  // two buttons of different heights is a row that looks broken.
+                  IntrinsicHeight(
+                    child: Row(
+                      crossAxisAlignment: CrossAxisAlignment.stretch,
+                      children: <Widget>[
+                        Expanded(
+                          child: ElevatedButton.icon(
+                            onPressed:
+                                lines.isEmpty || processing ? null : onOffline,
+                            icon: const Icon(Icons.payments),
+                            label: Text(offlineLabel),
+                          ),
+                        ),
+                        SizedBox(width: spacing.sm),
+                        Expanded(
+                          child: FilledButton.icon(
+                            onPressed:
+                                lines.isEmpty || processing ? null : onMpesa,
+                            icon: const Icon(Icons.phone_iphone),
+                            label: Text(mpesaLabel),
+                          ),
+                        ),
+                      ],
                     ),
                   ),
                 ],
               ),
-              SizedBox(height: spacing.md),
-              // THE TWO PAYMENT METHODS, SIDE BY SIDE.
-              //
-              // They were a Row before, and they stay a Row: the cart is a
-              // FIXED share of the page, and two buttons stacked are twice as
-              // tall as one. The label is not truncated to fit — it wraps
-              // instead, and the pane's share of the page grows with the text
-              // to make room (see `SellPaneLayout`).
-              //
-              // M-Pesa is the FILLED button because it is the path almost every
-              // customer takes, and it is the one green thing on the till. The
-              // offline fallback is quiet, because two saturated buttons on one
-              // screen would spend the accent twice and leave the eye with
-              // nothing to choose.
-              //
-              // `IntrinsicHeight` so both buttons are the SAME height even when
-              // one label wraps to two lines and the other does not: a row of
-              // two buttons of different heights is a row that looks broken.
-              IntrinsicHeight(
-                child: Row(
-                  crossAxisAlignment: CrossAxisAlignment.stretch,
-                  children: <Widget>[
-                    Expanded(
-                      child: ElevatedButton.icon(
-                        onPressed:
-                            lines.isEmpty || processing ? null : onOffline,
-                        icon: const Icon(Icons.payments),
-                        label: Text(offlineLabel),
-                      ),
-                    ),
-                    SizedBox(width: spacing.sm),
-                    Expanded(
-                      child: FilledButton.icon(
-                        onPressed: lines.isEmpty || processing ? null : onMpesa,
-                        icon: const Icon(Icons.phone_iphone),
-                        label: Text(mpesaLabel),
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-            ],
+            ),
           ),
         ),
       ],

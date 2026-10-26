@@ -70,6 +70,22 @@ void main() {
       expect(movements.single.balanceAfter, 24);
     });
 
+    test('stock movements have an idempotent sync queue', () async {
+      final pending = await db.getUnsyncedStockMovements();
+      expect(pending, hasLength(1));
+      expect(pending.single.uuid, isNotEmpty);
+
+      await db.markStockMovementsSynced([pending.single.id!]);
+
+      expect(await db.getUnsyncedStockMovements(), isEmpty);
+    });
+
+    test('the opening baseline stays stable after offline sales', () async {
+      await sellOne(qty: 3);
+      expect(await db.openingStockQtyForProduct(colaId), 24);
+      expect((await db.getProducts()).single.stockQty, 21);
+    });
+
     test('a sale leaves one row that says what it took', () async {
       final int saleId = await sellOne(qty: 3);
 

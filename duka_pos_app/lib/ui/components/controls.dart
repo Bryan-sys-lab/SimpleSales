@@ -167,7 +167,7 @@ class SearchField extends StatelessWidget {
 
     return ConstrainedBox(
       // A minimum, never a maximum: this must never be the thing that overflows.
-      constraints: BoxConstraints(minHeight: spacing.minTapTarget),
+      constraints: BoxConstraints(minHeight: spacing.textFieldHeight),
       child: TextField(
         controller: controller,
         onChanged: onChanged,
@@ -177,6 +177,7 @@ class SearchField extends StatelessWidget {
           hintText: hintText,
           prefixIcon: const Icon(Icons.search, size: 20),
           isDense: true,
+          constraints: BoxConstraints(minHeight: spacing.textFieldHeight),
           contentPadding: EdgeInsets.symmetric(vertical: spacing.md),
           // The theme's own border is a meaningful boundary (3:1); this keeps
           // that edge and only replaces the silhouette.
@@ -545,7 +546,10 @@ class PersistentBanner extends StatelessWidget {
   }
 }
 
-/// A snackbar with the screen-reader caveats already handled.
+enum AppNoticeTone { success, error, info, warning }
+
+/// The app's single floating toast surface. It remains a SnackBar under the
+/// hood so Flutter announces it correctly on every supported platform.
 ///
 /// Two things it does that a bare `SnackBar` does not:
 ///
@@ -559,15 +563,40 @@ void showAppSnackBar(
   required String message,
   String? actionLabel,
   VoidCallback? onAction,
+  AppNoticeTone tone = AppNoticeTone.info,
 }) {
   final ScaffoldMessengerState messenger = ScaffoldMessenger.of(context);
   final bool slow = MediaQuery.accessibleNavigationOf(context);
   final AppMotion motion = AppMotion.of(context);
+  final AppColors colors = AppColors.of(context);
+  final Color toneColor = switch (tone) {
+    AppNoticeTone.success => colors.accent,
+    AppNoticeTone.error => colors.danger,
+    AppNoticeTone.info => colors.onSurface,
+    AppNoticeTone.warning => colors.warning,
+  };
+  final IconData toneIcon = switch (tone) {
+    AppNoticeTone.success => Icons.check_circle_outline,
+    AppNoticeTone.error => Icons.error_outline,
+    AppNoticeTone.info => Icons.info_outline,
+    AppNoticeTone.warning => Icons.warning_amber_outlined,
+  };
 
   messenger.clearSnackBars();
   messenger.showSnackBar(
     SnackBar(
-      content: Text(message),
+      behavior: SnackBarBehavior.floating,
+      margin: const EdgeInsets.fromLTRB(16, 0, 16, 16),
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+      elevation: 4,
+      backgroundColor: colors.surface,
+      content: Row(
+        children: <Widget>[
+          Icon(toneIcon, color: toneColor),
+          const SizedBox(width: 12),
+          Expanded(child: Text(message)),
+        ],
+      ),
       duration: slow ? motion.feedbackExtended : motion.feedbackBrief,
       action: (actionLabel != null && onAction != null)
           ? SnackBarAction(label: actionLabel, onPressed: onAction)

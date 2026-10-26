@@ -35,10 +35,9 @@
 //
 // ## WHAT IS NOT ON THIS SCREEN
 //
-// Notifications, location, storage. The app has no notification feature, never
-// derives a place from a radio, and reads the gallery through the system photo
-// picker, which needs no permission. A permission for something the app does
-// not do is a permission the owner refuses for nothing.
+// Notifications, location, storage. In-app notifications are counts-only and
+// need no OS permission; the app never derives a place from a radio, and reads
+// the gallery through the system photo picker, which needs no permission.
 
 import 'package:flutter/material.dart';
 

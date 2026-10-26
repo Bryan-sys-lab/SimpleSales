@@ -5,6 +5,7 @@ import 'package:duka_pos/db/database_helper.dart';
 import 'package:duka_pos/models/models.dart';
 import 'package:duka_pos/services/analytics.dart';
 import 'package:duka_pos/utils/money.dart';
+import 'package:duka_pos/models/stock_movement.dart';
 
 /// The aggregate queries behind the dashboard and the analytics screen.
 ///
@@ -14,6 +15,35 @@ import 'package:duka_pos/utils/money.dart';
 /// figures had anything holding them in place. Every test below pins one of
 /// those two properties down.
 void main() {
+  group('remote analytics authority', () {
+    test('requires a verified owner with every operational queue clear', () {
+      expect(
+        remoteAnalyticsIsAuthoritative(
+          staffId: null,
+          identityVerified: true,
+          pendingOperational: const <String, int>{},
+        ),
+        isTrue,
+      );
+      expect(
+        remoteAnalyticsIsAuthoritative(
+          staffId: null,
+          identityVerified: true,
+          pendingOperational: const <String, int>{'expenses': 1},
+        ),
+        isFalse,
+      );
+      expect(
+        remoteAnalyticsIsAuthoritative(
+          staffId: 7,
+          identityVerified: true,
+          pendingOperational: const <String, int>{},
+        ),
+        isFalse,
+      );
+    });
+  });
+
   setUpAll(() {
     TestWidgetsFlutterBinding.ensureInitialized();
     sqfliteFfiInit();
@@ -54,6 +84,123 @@ void main() {
         Staff(id: null, name: name, pinHash: 'hash', role: role),
       );
 
+  test('Drinks analytics projects litres, pours, tabs and tank balance',
+      () async {
+    final drinkId = await db.upsertProduct(Product(
+      name: 'Vodka',
+      category: 'Spirits',
+      costPrice: Money.fromMajor(800),
+      sellPrice: Money.fromMajor(1500),
+      stockQty: 10,
+      reorderLevel: 1,
+      bottleMl: 750,
+      updatedAt: DateTime.now().toIso8601String(),
+    ));
+    final tankId = await db.upsertProduct(Product(
+      name: 'Lager tank',
+      category: 'Tanks',
+      costPrice: Money.fromMajor(5000),
+      sellPrice: Money.zero,
+      stockQty: 2,
+      reorderLevel: 0,
+      bottleMl: 50000,
+      updatedAt: DateTime.now().toIso8601String(),
+    ));
+
+    await db.recordSale(
+      staffName: 'Owner',
+      items: [
+        SaleItem(
+          saleId: 0,
+          productId: drinkId,
+          productName: 'Vodka',
+          qty: 2,
+          unitPrice: Money.fromMajor(1500),
+          unitCost: Money.fromMajor(800),
+          portion: SalePortion.full,
+          portionMl: 750,
+        ),
+        SaleItem(
+          saleId: 0,
+          productId: drinkId,
+          productName: 'Vodka · Shot',
+          qty: 3,
+          unitPrice: Money.fromMajor(120),
+          unitCost: Money.fromMajor(32),
+          portion: SalePortion.measured,
+          portionMl: 30,
+        ),
+      ],
+    );
+    await db.holdCart(
+      uuid: 'analytics-held-tab',
+      staffName: 'Owner',
+      lines: [
+        <String, Object?>{
+          'product_id': tankId,
+          'product_name': 'Lager tank · Pint',
+          'qty': 1,
+          'portion': SalePortion.measured,
+          'portion_ml': 500,
+          'unit_price': 250,
+          'unit_cost': 50,
+        },
+      ],
+    );
+    await db.adjustStock(
+      StockAdjustment(
+        productId: tankId,
+        productName: 'Lager tank',
+        delta: -0.5,
+        reason: 'Spillage',
+        staffName: 'Owner',
+        createdAt: DateTime.now().toIso8601String(),
+      ),
+      movementType: StockMovementType.writeoff,
+    );
+
+    final snapshot = await db.drinksAnalytics(
+      since: DateTime.now().subtract(const Duration(days: 1)),
+    );
+    expect(snapshot.litresSold, closeTo(1.59, 0.0001));
+    expect(snapshot.pourSales, Money.fromMajor(3360));
+    expect(snapshot.pourCost, Money.fromMajor(1696));
+    expect(snapshot.measuredLines, 2);
+    expect(snapshot.openTabs, 1);
+    expect(snapshot.wasteLitres, closeTo(25, 0.0001));
+    expect(snapshot.wasteValue, Money.fromMajor(2500));
+    expect(snapshot.tanks.single.name, 'Lager tank');
+    expect(snapshot.litresRemaining, closeTo(75, 0.0001));
+  });
+
+  test('cost coverage treats zero cost as missing, not as full margin',
+      () async {
+    final pricedId = await addProduct(name: 'Priced', costMinor: 1000);
+    final missingId = await addProduct(name: 'Missing cost', costMinor: 0);
+    final rows = <ProductSalesRow>[
+      ProductSalesRow(
+        productId: pricedId,
+        productName: 'Priced',
+        units: 1,
+        revenueMinor: 7000,
+        profitMinor: 2000,
+      ),
+      ProductSalesRow(
+        productId: missingId,
+        productName: 'Missing cost',
+        units: 1,
+        revenueMinor: 3000,
+        profitMinor: 3000,
+      ),
+    ];
+    final coverage = costCoverageFor(rows, await db.getProducts());
+
+    expect(coverage.totalRevenueMinor, 10000);
+    expect(coverage.coveredRevenueMinor, 7000);
+    expect(coverage.percentage, closeTo(70, 0.001));
+    expect(coverage.missingCostProductNames, ['Missing cost']);
+  });
+
   /// Writes a sale directly.
   ///
   /// Not through [DatabaseHelper.recordSale]: that stamps `created_at` with
@@ -90,6 +237,7 @@ void main() {
     required double qty,
     required int unitPriceMinor,
     required int unitCostMinor,
+    int? taxableMinor,
   }) async {
     await (await db.database).insert('sale_items', {
       'sale_id': saleId,
@@ -98,11 +246,16 @@ void main() {
       'qty': qty,
       'unit_price': unitPriceMinor,
       'unit_cost': unitCostMinor,
+      'taxable_minor': taxableMinor,
     });
   }
 
   final today = DateTime.now();
-  final midnight = DateTime(today.year, today.month, today.day);
+  // Keep the fixture on a completed day. At midnight, a sale placed at 09:00
+  // on "today" is correctly outside an unbounded report, which used to make
+  // this suite fail depending on the wall clock in CI.
+  final midnight = DateTime(today.year, today.month, today.day)
+      .subtract(const Duration(days: 1));
 
   // ---- salesTotalsFor ------------------------------------------------------
 
@@ -132,6 +285,33 @@ void main() {
       expect(totals.averageMinor, 1667); // 5000 / 3 = 1666.67, rounded half up
       expect(totals.hasSales, isTrue);
       expect(totals.total, Money.fromMinor(5000));
+    });
+
+    test('net profit subtracts posted expenses in the same range and scope',
+        () async {
+      await writeSale(
+        staffName: 'Amina',
+        totalMinor: 5000,
+        profitMinor: 1700,
+        at: midnight.add(const Duration(hours: 9)),
+      );
+      final categories = await db.getExpenseCategories();
+      final categoryId = categories.first['id'] as int;
+      await db.recordExpense(
+        uuid: 'analytics-expense',
+        categoryId: categoryId,
+        amount: Money.fromMinor(400),
+        paidFrom: 'other',
+        staffName: 'Amina',
+        staffId: 4,
+      );
+
+      final totals = await db.salesTotalsFor(since: midnight);
+      expect(totals.expensesMinor, 400);
+      expect(totals.netProfit, Money.fromMinor(1300));
+
+      final otherStaff = await db.salesTotalsFor(since: midnight, staffId: 5);
+      expect(otherStaff.expensesMinor, 0);
     });
 
     test('returns integer minor units, never a float', () async {
@@ -303,6 +483,86 @@ void main() {
   // ---- topProducts ---------------------------------------------------------
 
   group('topProducts', () {
+    test(
+        'product drilldown keeps the product total and explains staff and tenders',
+        () async {
+      final soda = await addProduct(name: 'Soda 350ml');
+      final water = await addProduct(name: 'Water 500ml');
+      final first = await writeSale(
+        staffName: 'Amina',
+        totalMinor: 3000,
+        at: midnight,
+        paymentMethod: 'cash',
+      );
+      final second = await writeSale(
+        staffName: 'Brian',
+        totalMinor: 1500,
+        at: midnight,
+        paymentMethod: 'mpesa',
+      );
+      await writeSaleItem(
+        saleId: first,
+        productId: soda,
+        productName: 'Soda 350ml',
+        qty: 2,
+        unitPriceMinor: 1500,
+        unitCostMinor: 1000,
+      );
+      await writeSaleItem(
+        saleId: second,
+        productId: soda,
+        productName: 'Soda 350ml',
+        qty: 1,
+        unitPriceMinor: 1500,
+        unitCostMinor: 1000,
+      );
+      await writeSaleItem(
+        saleId: first,
+        productId: water,
+        productName: 'Water 500ml',
+        qty: 1,
+        unitPriceMinor: 0,
+        unitCostMinor: 0,
+      );
+      await (await db.database).insert('stock_movements', <String, Object?>{
+        'uuid': 'analytics-stock-movement-1',
+        'created_at': midnight.toIso8601String(),
+        'product_id': soda,
+        'movement_type': 'receipt',
+        'qty_delta': 12,
+        'balance_after': 12,
+      });
+
+      final detail = await db.productDrilldown(
+        productId: soda,
+        since: midnight,
+        until: midnight.add(const Duration(days: 1)),
+      );
+
+      expect(detail.product.units, 3);
+      expect(detail.product.revenueMinor, 4500);
+      expect(detail.catalogueProduct?.category, 'General');
+      expect(detail.catalogueProduct?.stockQty, 50);
+      expect(detail.catalogueProduct?.sellPrice, Money.fromMinor(1500));
+      expect(detail.totals.transactions, 2);
+      expect(detail.staff.map((row) => row.name), ['Amina', 'Brian']);
+      expect(detail.payments.map((row) => row.method), ['cash', 'mpesa']);
+      expect(detail.hourly.map((row) => row.hour), [0]);
+      expect(detail.hourly.single.units, 3);
+      expect(detail.hourly.single.salesMinor, 4500);
+      expect(detail.daily.map((row) => row.day),
+          [midnight.toIso8601String().substring(0, 10)]);
+      expect(detail.daily.single.salesMinor, 4500);
+      expect(detail.records.length, 2);
+      expect(detail.records.first.productSalesMinor, 1500);
+      expect(detail.boughtTogether.single.productName, 'Water 500ml');
+      expect(detail.boughtTogether.single.baskets, 1);
+      expect(
+        detail.stockTimeline.any((movement) => movement.qtyDelta == 12),
+        isTrue,
+      );
+    });
+
     test('groups by product with units, revenue and profit', () async {
       final soda = await addProduct(name: 'Soda 350ml');
       final water = await addProduct(name: 'Water 500ml');
@@ -350,6 +610,34 @@ void main() {
       final waterRow = rows.firstWhere((r) => r.productId == water);
       expect(waterRow.revenueMinor, 2000);
       expect(waterRow.profitMinor, 800);
+    });
+
+    test('profit uses the VAT-exclusive line snapshot when present', () async {
+      final product = await addProduct(name: 'VAT soda');
+      final sale = await writeSale(
+        staffName: 'Amina',
+        totalMinor: 1160,
+        at: midnight,
+      );
+      await writeSaleItem(
+        saleId: sale,
+        productId: product,
+        productName: 'VAT soda',
+        qty: 1,
+        unitPriceMinor: 1160,
+        unitCostMinor: 600,
+        taxableMinor: 1000,
+      );
+
+      final row = (await db.topProducts(
+        since: midnight,
+        until: midnight.add(const Duration(days: 1)),
+      ))
+          .single;
+
+      expect(row.revenueMinor, 1160);
+      expect(row.profitMinor, 400,
+          reason: '1000 VAT-exclusive revenue - 600 cost');
     });
 
     test('money comes back as int minor units', () async {
@@ -548,7 +836,9 @@ void main() {
               .add(const Duration(hours: 9)));
 
       final buckets = await db.salesByDay(
-          since: midnight.subtract(const Duration(days: 2)));
+        since: midnight.subtract(const Duration(days: 2)),
+        until: midnight.add(const Duration(days: 1)),
+      );
 
       // Midnight minus two days through today inclusive.
       expect(buckets.length, 3);
@@ -584,11 +874,37 @@ void main() {
           totalMinor: 6000,
           at: midnight.add(const Duration(hours: 9)));
 
-      final mine = await db.salesByDay(since: midnight, staffId: amina);
-      final shop = await db.salesByDay(since: midnight);
+      final until = midnight.add(const Duration(days: 1));
+      final mine = await db.salesByDay(
+        since: midnight,
+        until: until,
+        staffId: amina,
+      );
+      final shop = await db.salesByDay(since: midnight, until: until);
 
       expect(mine.single.salesMinor, 1500);
       expect(shop.single.salesMinor, 7500);
+    });
+
+    test('honours an exclusive end when the report is bounded', () async {
+      await writeSale(
+        staffName: 'Amina',
+        totalMinor: 1000,
+        at: midnight.add(const Duration(hours: 9)),
+      );
+      final tomorrow = midnight.add(const Duration(days: 1));
+      await writeSale(
+        staffName: 'Amina',
+        totalMinor: 5000,
+        at: tomorrow.add(const Duration(hours: 9)),
+      );
+
+      final buckets = await db.salesByDay(
+        since: midnight,
+        until: tomorrow,
+      );
+      expect(buckets.length, 1);
+      expect(buckets.single.salesMinor, 1000);
     });
 
     test('merging keeps every shilling and shortens the axis', () async {
@@ -695,6 +1011,88 @@ void main() {
     });
   });
 
+  test(
+      'expiry attention returns only active batches within the seven-day window',
+      () async {
+    final soon = await addProduct(name: 'Soon');
+    final later = await addProduct(name: 'Later');
+    final now = DateTime.now();
+    final raw = await db.database;
+    await raw.insert('stock_batches', {
+      'uuid': 'soon-batch',
+      'product_id': soon,
+      'received_at': now.subtract(const Duration(days: 2)).toIso8601String(),
+      'expires_at': now.add(const Duration(days: 2)).toIso8601String(),
+      'qty_remaining': 3,
+      'unit_cost_minor': 100,
+    });
+    await raw.insert('stock_batches', {
+      'uuid': 'later-batch',
+      'product_id': later,
+      'received_at': now.toIso8601String(),
+      'expires_at': now.add(const Duration(days: 30)).toIso8601String(),
+      'qty_remaining': 3,
+      'unit_cost_minor': 100,
+    });
+
+    final expiring = await db.getExpiringProducts();
+    expect(expiring.map((product) => product.name), ['Soon']);
+  });
+
+  test('large history aggregates stay within the report performance budget',
+      () async {
+    final raw = await db.database;
+    final batch = raw.batch();
+    final now = DateTime.now();
+    for (var i = 0; i < 100000; i++) {
+      batch.insert('sales', {
+        'staff_name': 'Amina',
+        'total': 1000 + (i % 17),
+        'profit': 300,
+        'payment_method': 'cash',
+        'created_at': now
+            .subtract(Duration(days: i % 365, minutes: i % 60))
+            .toIso8601String(),
+      });
+    }
+    await batch.commit(noResult: true);
+
+    final stopwatch = Stopwatch()..start();
+    final totals = await db.salesTotalsFor(
+      since: now.subtract(const Duration(days: 365)),
+    );
+    stopwatch.stop();
+
+    expect(totals.transactions, 100000);
+    expect(stopwatch.elapsedMilliseconds, lessThan(500));
+  });
+
+  test('slow movers include products with no sales and order by movement',
+      () async {
+    final never = await addProduct(name: 'Never moved');
+    final moved = await addProduct(name: 'Moved');
+    final sale = await writeSale(
+      staffName: 'Amina',
+      totalMinor: 1000,
+      at: DateTime.now().subtract(const Duration(days: 2)),
+    );
+    await writeSaleItem(
+      saleId: sale,
+      productId: moved,
+      productName: 'Moved',
+      qty: 3,
+      unitPriceMinor: 1000,
+      unitCostMinor: 500,
+    );
+
+    final rows = await db.getSlowMovingProducts(
+      since: DateTime.now().subtract(const Duration(days: 30)),
+    );
+    expect(rows.first.product.id, never);
+    expect(rows.first.unitsPerDay, 0);
+    expect(rows.any((row) => row.product.id == moved), isTrue);
+  });
+
   // ---- salesByPaymentMethod ------------------------------------------------
 
   group('salesByPaymentMethod', () {
@@ -730,6 +1128,29 @@ void main() {
       // A share of nothing is zero, not a NaN that renders as "NaN%".
       expect(rows.first.sharePct(0), 0);
       expect(rows.last.label(), isNot('mobile_money_manual'));
+    });
+
+    test('honours the report end boundary', () async {
+      await writeSale(
+        staffName: 'Amina',
+        totalMinor: 1000,
+        at: midnight.add(const Duration(hours: 9)),
+        paymentMethod: 'cash',
+      );
+      final tomorrow = midnight.add(const Duration(days: 1));
+      await writeSale(
+        staffName: 'Amina',
+        totalMinor: 5000,
+        at: tomorrow.add(const Duration(hours: 9)),
+        paymentMethod: 'mpesa',
+      );
+
+      final rows = await db.salesByPaymentMethod(
+        since: midnight,
+        until: tomorrow,
+      );
+      expect(rows.single.method, 'cash');
+      expect(rows.single.salesMinor, 1000);
     });
   });
 

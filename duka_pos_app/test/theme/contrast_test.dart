@@ -140,6 +140,18 @@ const Map<String, ({Color fg, Color bg, double minimum, String note})>
     minimum: 4.5,
     note: 'text inside a danger chip',
   ),
+  'info on surface': (
+    fg: AppColorsLight.info,
+    bg: AppColorsLight.surface,
+    minimum: 4.5,
+    note: 'an informational status on a card',
+  ),
+  'onInfoContainer on infoContainer': (
+    fg: AppColorsLight.onInfoContainer,
+    bg: AppColorsLight.infoContainer,
+    minimum: 4.5,
+    note: 'text inside an information chip',
+  ),
   // Non-text boundaries, 3:1 (WCAG 1.4.11).
   'outlineStrong on surface': (
     fg: AppColorsLight.outlineStrong,
@@ -189,6 +201,9 @@ abstract final class AppColorsLight {
   static const danger = Color(0xFFC0392B);
   static const dangerContainer = Color(0xFFFDEDEA);
   static const onDangerContainer = Color(0xFF8B2518);
+  static const info = Color(0xFF1A6BAA);
+  static const infoContainer = Color(0xFFE5F2FC);
+  static const onInfoContainer = Color(0xFF0C3B5E);
   // The payment-mix ring's slices: a GRAPHICAL object, held to 3:1 and not to
   // the 4.5:1 of text. See the tender group below.
   static const mpesaGreen = Color(0xFF009C4E);
@@ -220,6 +235,9 @@ abstract final class AppColorsDark {
   static const danger = Color(0xFFFF6B5B);
   static const dangerContainer = Color(0xFF3A1814);
   static const onDangerContainer = Color(0xFFFFB3A8);
+  static const info = Color(0xFF6AB0F5);
+  static const infoContainer = Color(0xFF123047);
+  static const onInfoContainer = Color(0xFFB7DEFF);
   // The payment-mix ring's slices. The dark values are not the light values:
   // Equitel's #0066CC is 2.85:1 on the dark surface, which is a ring slice
   // whose edge nobody can find.
@@ -330,6 +348,16 @@ const Map<String, ({Color fg, Color bg, double minimum})> kDarkPairs =
   'onDangerContainer on dangerContainer': (
     fg: AppColorsDark.onDangerContainer,
     bg: AppColorsDark.dangerContainer,
+    minimum: 4.5
+  ),
+  'info on surface': (
+    fg: AppColorsDark.info,
+    bg: AppColorsDark.surface,
+    minimum: 4.5
+  ),
+  'onInfoContainer on infoContainer': (
+    fg: AppColorsDark.onInfoContainer,
+    bg: AppColorsDark.infoContainer,
     minimum: 4.5
   ),
   'outlineStrong on surface': (

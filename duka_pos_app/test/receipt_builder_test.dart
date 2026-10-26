@@ -10,6 +10,7 @@ import 'package:flutter_test/flutter_test.dart';
 
 import 'package:duka_pos/models/models.dart';
 import 'package:duka_pos/services/printer/esc_pos_encoder.dart';
+import 'package:duka_pos/services/printer/label_builder.dart';
 import 'package:duka_pos/services/printer/receipt_builder.dart';
 import 'package:duka_pos/utils/money.dart';
 
@@ -39,6 +40,7 @@ ReceiptInput receipt({
   String? etimsNumber,
   String? etimsPayload,
   bool etimsPending = false,
+  ReceiptLanguage receiptLanguage = ReceiptLanguage.english,
   String shopName = 'Kijani Stores',
   String receiptNumber = 'T1-000001',
   String cashierName = 'Alice',
@@ -59,6 +61,7 @@ ReceiptInput receipt({
     etimsReceiptNumber: etimsNumber,
     etimsVerificationPayload: etimsPayload,
     etimsPending: etimsPending,
+    receiptLanguage: receiptLanguage,
   );
 }
 
@@ -87,6 +90,47 @@ bool containsSequence(List<int> haystack, List<int> needle) {
 }
 
 void main() {
+  test('cash drawer pulse is the exact ESC/POS kick command', () {
+    expect(EscPosEncoder.drawerPulse(), [0x1b, 0x70, 0x00, 0x19, 0xfa]);
+    expect(
+      EscPosEncoder.drawerPulse(pin: 1, onMs: 100, offMs: 500),
+      [0x1b, 0x70, 0x01, 0x32, 0xfa],
+    );
+  });
+
+  test('barcode labels contain the product text and Code 128 payload', () {
+    final bytes = const EscPosEncoder().encodeLabels([
+      BarcodeLabel(
+        name: 'Soda',
+        barcode: '2000000000018',
+        price: Money.fromMajor(120),
+      ),
+    ]);
+    expect(bytes, contains(0x1d));
+    expect(bytes, contains(0x6b));
+    expect(String.fromCharCodes(bytes), contains('Soda'));
+    expect(String.fromCharCodes(bytes), contains('2000000000018'));
+    expect(String.fromCharCodes(bytes), contains('KSh 120.00'));
+  });
+
+  test('barcode label layouts have stable 58mm and 80mm variants', () {
+    final labels = [
+      BarcodeLabel(
+        name: 'Long product name that exceeds narrow paper',
+        barcode: '2000000000018',
+        price: Money.fromMajor(120),
+      ),
+    ];
+    final narrow = const EscPosEncoder().encodeLabels(labels, columnBudget: 32);
+    final wide = const EscPosEncoder().encodeLabels(labels, columnBudget: 48);
+    expect(narrow, isNotEmpty);
+    expect(wide, isNotEmpty);
+    expect(narrow, isNot(equals(wide)));
+    expect(String.fromCharCodes(narrow), contains('Long product name'));
+    expect(String.fromCharCodes(wide),
+        contains('Long product name that exceeds narrow paper'));
+  });
+
   group('VAT extraction', () {
     test('extracts the component contained inside a VAT-inclusive price', () {
       // 8000 cents at 16%: 8000 * 16/116 = 1103.4 -> 1103.
@@ -120,6 +164,27 @@ void main() {
     test('a zero rate means exempt, not a division by zero', () {
       expect(
           vatComponentOf(Money.fromMinor(8000), ratePercent: 0).minorUnits, 0);
+    });
+
+    test(
+        'supply classes do not collapse exempt and zero-rated into standard VAT',
+        () {
+      expect(
+        vatComponentForTaxClass(
+          Money.fromMinor(8000),
+          ratePercent: 16,
+          taxClass: 'exempt',
+        ).minorUnits,
+        0,
+      );
+      expect(
+        vatComponentForTaxClass(
+          Money.fromMinor(8000),
+          ratePercent: 16,
+          taxClass: 'standard',
+        ).minorUnits,
+        1103,
+      );
     });
 
     test('handles a non-16 rate the same way', () {
@@ -297,6 +362,36 @@ void main() {
   });
 
   group('receipt content', () {
+    test('Swahili receipt labels are translated without changing totals', () {
+      final text = render(receipt(receiptLanguage: ReceiptLanguage.swahili));
+
+      expect(text.any((row) => row.contains('RISITI YA MAUZO')), isTrue);
+      expect(text.any((row) => row.contains('Tarehe')), isTrue);
+      expect(text.any((row) => row.contains('Jumla ndogo')), isTrue);
+      expect(
+          text.any((row) => row.contains('Asante kwa biashara yako')), isTrue);
+      expect(text.any((row) => row.contains('Goods once sold')), isFalse);
+    });
+
+    test('shows original price and discount on a discounted line', () {
+      final discounted = SaleItem(
+        saleId: 1,
+        productId: 1,
+        productName: 'Soda 350ml',
+        qty: 2,
+        unitPrice: Money.fromMajor(70),
+        unitCost: Money.fromMajor(40),
+        listUnitPrice: Money.fromMajor(80),
+        discount: Money.fromMajor(20),
+      );
+
+      final text = render(receipt(items: [discounted]));
+      expect(text.any((row) => row.contains('Was 80.00 x 2')), isTrue);
+      expect(
+          text.any((row) => row.contains('Discount') && row.contains('-20.00')),
+          isTrue);
+    });
+
     test('carries shop, receipt number, cashier, date, tendered and change',
         () {
       final input = receipt(

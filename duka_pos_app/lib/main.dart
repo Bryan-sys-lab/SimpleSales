@@ -278,9 +278,12 @@ class _LiveChannelGate extends StatefulWidget {
 
 class _LiveChannelGateState extends State<_LiveChannelGate>
     with WidgetsBindingObserver {
+  late LiveChannelService _channel;
   @override
   void initState() {
     super.initState();
+    _channel = context.read<LiveChannelService>();
+    _channel.addListener(_onLiveMessage);
     WidgetsBinding.instance.addObserver(this);
     // Read in the first frame, not in initState: the session completes its own
     // bootstrap before this widget is mounted, but reading a provider before
@@ -290,8 +293,30 @@ class _LiveChannelGateState extends State<_LiveChannelGate>
 
   @override
   void dispose() {
+    _channel.removeListener(_onLiveMessage);
     WidgetsBinding.instance.removeObserver(this);
     super.dispose();
+  }
+
+  void _onLiveMessage() {
+    final announcement = _channel.takePlatformAnnouncement();
+    if (announcement == null || !mounted) return;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      showDialog<void>(
+        context: context,
+        builder: (BuildContext dialogContext) => AlertDialog(
+          title: Text(announcement.title),
+          content: Text(announcement.body),
+          actions: <Widget>[
+            TextButton(
+              onPressed: () => Navigator.pop(dialogContext),
+              child: Text(AppLocalizations.of(dialogContext).actionClose),
+            ),
+          ],
+        ),
+      );
+    });
   }
 
   @override
@@ -342,6 +367,7 @@ class _UpdateGate extends StatefulWidget {
 }
 
 class _UpdateGateState extends State<_UpdateGate> with WidgetsBindingObserver {
+  String? _shownAnnouncementId;
   @override
   void initState() {
     super.initState();
@@ -369,6 +395,10 @@ class _UpdateGateState extends State<_UpdateGate> with WidgetsBindingObserver {
     switch (state) {
       case AppLifecycleState.resumed:
         telemetry.recordAppOpen();
+        // A platform announcement and a required release are both delivered
+        // through the public manifest. Re-checking on resume makes an online
+        // till receive a super-admin message without requiring a restart.
+        unawaited(_check());
       case AppLifecycleState.paused:
       case AppLifecycleState.inactive:
         telemetry.recordAppClose();
@@ -382,6 +412,26 @@ class _UpdateGateState extends State<_UpdateGate> with WidgetsBindingObserver {
     if (!mounted) return;
     final service = context.read<AppUpdateService>();
     final result = await service.checkForUpdate();
+    if (!mounted) return;
+
+    final announcement = service.announcement;
+    if (announcement != null && announcement.id != _shownAnnouncementId) {
+      _shownAnnouncementId = announcement.id;
+      await showDialog<void>(
+        context: context,
+        builder: (BuildContext dialogContext) => AlertDialog(
+          title: Text(announcement.title),
+          content: Text(announcement.body),
+          actions: <Widget>[
+            TextButton(
+              onPressed: () => Navigator.pop(dialogContext),
+              child: Text(AppLocalizations.of(dialogContext).actionClose),
+            ),
+          ],
+        ),
+      );
+    }
+
     if (!mounted || result is! UpdateAvailable) return;
 
     final release = result.release;

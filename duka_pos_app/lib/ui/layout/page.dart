@@ -229,8 +229,8 @@ class PageGutter {
   static EdgeInsets of(BuildContext context) {
     final AppSpacing tokens = AppSpacing.of(context);
     return windowSizeClassOf(context).isCompact
-        ? EdgeInsets.all(tokens.lg)
-        : EdgeInsets.all(tokens.xl);
+        ? EdgeInsets.all(tokens.mobilePageGutter)
+        : EdgeInsets.all(tokens.largePageGutter);
   }
 
   /// The padding inside a card that sits on the page.

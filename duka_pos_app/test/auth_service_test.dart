@@ -9,6 +9,12 @@ import 'package:duka_pos/services/workspace_service.dart';
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
 
+  // Keep the authentication assertions intact without paying the production
+  // PBKDF2 cost for every repeated test fixture. The stored format still
+  // carries and verifies its selected work factor; production has no override.
+  setUp(() => AuthService.iterationsForTest = 4000);
+  tearDown(() => AuthService.iterationsForTest = null);
+
   // PBKDF2 at 120k iterations is intentionally slow; allow generous time.
   const kdfWait = Duration(minutes: 2);
   const kdfTimeout = Timeout(Duration(minutes: 2));

@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:dio/dio.dart';
 import 'package:go_router/go_router.dart';
 import 'dart:async';
 import 'dart:convert';
@@ -6,17 +7,27 @@ import 'package:flutter/services.dart';
 import 'package:flutter/semantics.dart';
 import 'package:provider/provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:share_plus/share_plus.dart';
 import '../routing/routes.dart';
 import '../models/audit_log.dart';
+import '../models/credit.dart';
+import '../screens/customer_credit_sheets.dart';
+import '../ui/dialogs/manager_approval_sheet.dart';
 import '../services/app_state.dart';
+import '../services/roles.dart';
+import '../services/printer/cash_drawer_service.dart';
+import '../utils/crypto_utils.dart';
 import '../services/audit_actor.dart';
 import '../services/backend_service.dart';
+import '../services/receipt_share_service.dart';
+import '../services/receipt_pdf_service.dart';
 import '../services/session_refresh_mixin.dart';
 import '../services/barcode/barcode_service.dart';
 import '../services/barcode/scan_input_service.dart';
 import '../services/etims/etims_service.dart';
 import '../services/printer/printer_config.dart';
 import '../services/printer/receipt_printer.dart';
+import '../services/printer/receipt_builder.dart';
 import '../widgets/sign_out_sheet.dart';
 import '../widgets/product_tile.dart';
 import '../widgets/sell_page.dart';
@@ -33,6 +44,9 @@ import '../models/models.dart';
 import '../db/database_helper.dart';
 import '../utils/money.dart';
 import '../utils/units.dart';
+import '../models/product_pack.dart';
+import '../profile/profile_navigation.dart';
+import '../models/incoming_payment.dart';
 
 class SellScreen extends StatefulWidget {
   const SellScreen({super.key});
@@ -45,6 +59,7 @@ class _SellScreenState extends State<SellScreen>
     with SessionRefresh<SellScreen> {
   static const _pollTimeout = Duration(seconds: 20);
   final List<CartItem> _cart = [];
+
   final Map<int, double> _reservedByProduct = <int, double>{};
   final Map<int, double> _reservedByVariant = <int, double>{};
 
@@ -67,6 +82,9 @@ class _SellScreenState extends State<SellScreen>
   bool _portionSheetOpen = false;
   bool _scanInFlight = false;
   String? _statusMessage;
+  int? _discountApprovedBy;
+  int? _orderDiscountReasonId;
+  int? _heldCustomerId;
 
   bool _searchHasFocus = false;
 
@@ -145,7 +163,10 @@ class _SellScreenState extends State<SellScreen>
     try {
       results = await Future.wait<Object>([
         db.getProducts(),
-        VariantCatalogue.load(),
+        VariantCatalogue.load(
+          includeVariants:
+              context.read<AppState>().shopProfile.navigation.showVariants,
+        ),
         db.getShotCups(),
       ]);
     } on Object {
@@ -179,7 +200,9 @@ class _SellScreenState extends State<SellScreen>
   }
 
   List<ShotCup> _shotsFor(Product product) =>
-      _shots.where((c) => c.productId == product.id).toList();
+      context.read<AppState>().shopProfile.navigation.showDrinkService
+          ? _shots.where((c) => c.productId == product.id).toList()
+          : const <ShotCup>[];
 
   double _cartUnitsFor(Product product) =>
       _reservedByProduct[product.id] ?? 0.0;
@@ -330,6 +353,10 @@ class _SellScreenState extends State<SellScreen>
           qty: (line['qty'] as num?)?.toDouble() ?? 0,
           unitPrice: Money.fromMinor((line['unitPrice'] as num?)?.toInt() ?? 0),
           unitCost: Money.fromMinor((line['unitCost'] as num?)?.toInt() ?? 0),
+          discount:
+              Money.fromMinor((line['discountMinor'] as num?)?.toInt() ?? 0),
+          discountReasonId: (line['discountReasonId'] as num?)?.toInt(),
+          priceOverridden: ((line['discountMinor'] as num?)?.toInt() ?? 0) > 0,
           portion: line['portion'] as String? ?? 'full',
           portionMl: (line['portionMl'] as num?)?.toInt() ?? 0,
           variantId: (line['variantId'] as num?)?.toInt(),
@@ -437,6 +464,12 @@ class _SellScreenState extends State<SellScreen>
     }
     final product = target.product;
     final variant = target.variant;
+    final pack = target.pack;
+    if (pack != null) {
+      await _addToCartDirect(product, 'full',
+          qty: pack.unitsPerPack, pack: pack);
+      return;
+    }
     if (variant == null && _variants.sellsAsVariants(product)) {
       // The product's own code on a product that is only sellable as one of
       // its variants. Refused out loud: adding the parent here would charge
@@ -646,7 +679,10 @@ class _SellScreenState extends State<SellScreen>
   }
 
   Future<void> _addToCartDirect(Product product, String portion,
-      {ProductVariant? variant, ShotCup? shotCup}) async {
+      {ProductVariant? variant,
+      ShotCup? shotCup,
+      ProductPack? pack,
+      double qty = 1}) async {
     // Re-check against the loaded product rather than the caller's snapshot:
     // the tap and the resolution are separated by a frame, and stock moves.
     final current = _products.where((p) => p.id == product.id).firstOrNull;
@@ -656,7 +692,7 @@ class _SellScreenState extends State<SellScreen>
       // its variants for a variant product, so checking it here would let two
       // orders of Dark go through while Regular is the only one in stock.
       final available = variant.stockQty - _cartUnitsForVariant(variant);
-      if (available < 1) {
+      if (available < qty) {
         _say(available <= 0
             ? AppLocalizations.of(context).sellAllVariantInCart(variant.name)
             : AppLocalizations.of(context).sellNoVariantLeft(variant.name));
@@ -667,10 +703,32 @@ class _SellScreenState extends State<SellScreen>
       final existing = _cart.where((c) => c.variant?.id == variant.id);
       setState(() {
         if (existing.isNotEmpty) {
-          existing.first.qty++;
+          existing.first.qty += qty;
         } else {
           _cart.add(CartItem(
-              product: current, portion: 'full', qty: 1, variant: variant));
+              product: current, portion: 'full', qty: qty, variant: variant));
+        }
+        _rebuildReservations();
+      });
+      return;
+    }
+    if (pack != null) {
+      final available = current.stockQty - _cartUnitsFor(current);
+      if (available < qty) {
+        _say(AppLocalizations.of(context).sellNotEnoughLeft(current.name));
+        return;
+      }
+      final existing = _cart.where((c) => c.pack?.id == pack.id);
+      setState(() {
+        if (existing.isNotEmpty) {
+          existing.first.qty += qty;
+        } else {
+          _cart.add(CartItem(
+            product: current,
+            portion: 'full',
+            qty: qty,
+            pack: pack,
+          ));
         }
         _rebuildReservations();
       });
@@ -689,8 +747,7 @@ class _SellScreenState extends State<SellScreen>
           : (shotCup.capacityMl / current.bottleMl).clamp(0.0, 1.0);
       final available = current.stockQty - _cartUnitsFor(current);
       if (available < needed) {
-        _say(AppLocalizations.of(context)
-            .sellNotEnoughForShot(current.name));
+        _say(AppLocalizations.of(context).sellNotEnoughForShot(current.name));
         return;
       }
       // Merges on the cup, not on the product: a 30 ml shot and a 45 ml shot of
@@ -724,9 +781,9 @@ class _SellScreenState extends State<SellScreen>
         c.portion == portion);
     setState(() {
       if (existing.isNotEmpty) {
-        existing.first.qty++;
+        existing.first.qty += qty;
       } else {
-        _cart.add(CartItem(product: current, portion: portion, qty: 1));
+        _cart.add(CartItem(product: current, portion: portion, qty: qty));
       }
       _rebuildReservations();
     });
@@ -747,6 +804,206 @@ class _SellScreenState extends State<SellScreen>
     });
   }
 
+  Future<void> _holdCart() async {
+    if (_cart.isEmpty) return;
+    final state = context.read<AppState>();
+    Customer? heldCustomer;
+    final attachCustomer = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: const Text('Hold sale'),
+        content: const Text('Attach a customer to this held sale?'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(dialogContext, false),
+            child: const Text('No customer'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(dialogContext, true),
+            child: const Text('Choose customer'),
+          ),
+        ],
+      ),
+    );
+    if (!mounted) return;
+    if (attachCustomer == true) {
+      heldCustomer = await _pickCustomerForCredit(context);
+      if (!mounted) return;
+    }
+    final lines = <Map<String, Object?>>[
+      for (final line in _cart)
+        {
+          'product_id': line.product.id!,
+          'product_name': line.foldedName,
+          'qty': line.qty,
+          'portion': line.portion,
+          'portion_ml': line.portionMl,
+          'variant_id': line.variant?.id,
+          'variant_name': line.variant?.name ?? '',
+          'shot_cup_id': line.shotCup?.id,
+          'shot_label': line.shotCup?.label,
+          'shot_capacity_ml': line.shotCup?.capacityMl,
+          'shot_price': line.shotCup?.price.minorUnits,
+          'unit_price': line.unitPrice.minorUnits,
+          'unit_cost': line.unitCost.minorUnits,
+          'discount_minor': line.discountMinor,
+          'discount_reason_id': line.discountReasonId,
+          'pack_id': line.pack?.id,
+          'pack_qty':
+              line.pack == null ? null : line.qty / line.pack!.unitsPerPack,
+        },
+    ];
+    await DatabaseHelper.instance.holdCart(
+      uuid: 'hold-${DateTime.now().microsecondsSinceEpoch}',
+      staffName: state.currentStaffName ?? 'Unknown',
+      staffId: state.currentStaffId,
+      customerId: heldCustomer?.id,
+      lines: lines,
+    );
+    if (!mounted) return;
+    setState(() {
+      _cart.clear();
+      _heldCustomerId = null;
+      _rebuildReservations();
+    });
+    _announceStatus('Sale held.');
+  }
+
+  Future<void> _showHeldCarts() async {
+    final held = await DatabaseHelper.instance.getHeldCarts();
+    if (!mounted) return;
+    final cartId = await showModalBottomSheet<int>(
+      context: context,
+      showDragHandle: true,
+      builder: (context) => SafeArea(
+        child: held.isEmpty
+            ? const Padding(
+                padding: EdgeInsets.all(24), child: Text('No held sales'))
+            : ListView(
+                shrinkWrap: true,
+                children: [
+                  for (final row in held)
+                    ListTile(
+                      leading: const Icon(Icons.pause_circle_outline),
+                      title: Text(row['customer_name'] as String? ??
+                          row['staff_name'] as String),
+                      subtitle: Text(
+                          '${row['line_count']} lines · ${row['created_at']}'),
+                      onTap: () => Navigator.pop(context, row['id'] as int),
+                    ),
+                ],
+              ),
+      ),
+    );
+    if (!mounted || cartId == null) return;
+    if (_cart.isNotEmpty) {
+      _announceStatus(
+          'Finish or hold the current sale before resuming another.');
+      return;
+    }
+    final rows = await DatabaseHelper.instance.getHeldCartLines(cartId);
+    final restored = <CartItem>[];
+    bool priceChanged = false;
+    for (final row in rows) {
+      final productId = (row['product_id'] as num).toInt();
+      Product? product;
+      for (final candidate in _products) {
+        if (candidate.id == productId) product = candidate;
+      }
+      if (product == null) {
+        _announceStatus('A held product is no longer available.');
+        return;
+      }
+      final variantId = (row['variant_id'] as num?)?.toInt();
+      final variant = _variants.byId(variantId);
+      ShotCup? shot;
+      final shotId = (row['shot_cup_id'] as num?)?.toInt();
+      for (final candidate in _shots) {
+        if (candidate.id == shotId) shot = candidate;
+      }
+      ProductPack? pack;
+      final packId = (row['pack_id'] as num?)?.toInt();
+      if (packId != null) {
+        final packs = await DatabaseHelper.instance.getProductPacks(productId);
+        pack = packs.where((candidate) => candidate.id == packId).firstOrNull;
+      }
+      final line = CartItem(
+        product: product,
+        portion: row['portion'] as String,
+        qty: (row['qty'] as num).toDouble(),
+        variant: variant,
+        shotCup: shot,
+        pack: pack,
+      )
+        ..discountMinor = (row['discount_minor'] as num?)?.toInt() ?? 0
+        ..discountReasonId = (row['discount_reason_id'] as num?)?.toInt();
+      if (line.unitPrice.minorUnits != (row['unit_price'] as num).toInt()) {
+        priceChanged = true;
+      }
+      restored.add(line);
+    }
+    final productUnits = <int, double>{};
+    final variantUnits = <int, double>{};
+    for (final line in restored) {
+      if (line.variant?.id != null) {
+        variantUnits[line.variant!.id!] =
+            (variantUnits[line.variant!.id!] ?? 0) + line.qty;
+      } else if (line.product.id != null) {
+        productUnits[line.product.id!] =
+            (productUnits[line.product.id!] ?? 0) + line.stockUnits;
+      }
+    }
+    final stockFailure = productUnits.entries.any((entry) {
+          final product = _products.firstWhere((p) => p.id == entry.key);
+          return entry.value > product.stockQty + 1e-9;
+        }) ||
+        variantUnits.entries.any((entry) {
+          final variant = _variants.byId(entry.key);
+          return variant == null || entry.value > variant.stockQty + 1e-9;
+        });
+    if (stockFailure) {
+      _announceStatus(
+          'Held sale needs more stock than is currently available.');
+      return;
+    }
+    if (priceChanged) {
+      if (!mounted) return;
+      final proceed = await showDialog<bool>(
+        context: context,
+        builder: (dialogContext) => AlertDialog(
+          title: const Text('Prices changed'),
+          content: const Text(
+            'One or more held items have a different current price. The current prices will be used.',
+          ),
+          actions: <Widget>[
+            TextButton(
+              onPressed: () => Navigator.pop(dialogContext, false),
+              child: const Text('Keep held sale'),
+            ),
+            FilledButton(
+              onPressed: () => Navigator.pop(dialogContext, true),
+              child: const Text('Use current prices'),
+            ),
+          ],
+        ),
+      );
+      if (proceed != true || !mounted) return;
+    }
+    setState(() {
+      _cart
+        ..clear()
+        ..addAll(restored);
+      _heldCustomerId =
+          (held.firstWhere((row) => row['id'] == cartId)['customer_id'] as num?)
+              ?.toInt();
+      _rebuildReservations();
+    });
+    await DatabaseHelper.instance.deleteHeldCart(cartId);
+    _announceStatus(priceChanged
+        ? 'Held sale resumed with current prices.'
+        : 'Held sale resumed.');
+  }
+
   Money get _total => sumMoney(_cart.map((item) => item.total));
 
   static const _offlinePaymentLabels = <String, String>{
@@ -755,6 +1012,34 @@ class _SellScreenState extends State<SellScreen>
     'bank_transfer': 'Bank transfer',
     'mobile_money_manual': 'Mobile money (manual)',
   };
+
+  Future<IncomingPayment?> _matchingIncomingTillPayment() async {
+    final local = await DatabaseHelper.instance
+        .getIncomingPayments(status: 'unclaimed', limit: 50);
+    final candidates = <IncomingPayment>[...local];
+    if (await BackendService.isBackendLinked) {
+      try {
+        final remote = await BackendService.fetchIncomingMpesa();
+        for (final payment in remote) {
+          await DatabaseHelper.instance.upsertIncomingPayment(payment);
+          if (candidates.every((item) => item.remoteId != payment.remoteId)) {
+            candidates.add(payment);
+          }
+        }
+      } catch (_) {
+        // Keep the cached list usable when the till has briefly lost signal.
+      }
+    }
+    final matches = candidates
+        .where((payment) => payment.amount >= _total)
+        .toList()
+      ..sort((a, b) {
+        final exact =
+            (a.amount == _total ? 0 : 1).compareTo(b.amount == _total ? 0 : 1);
+        return exact == 0 ? b.receivedAt.compareTo(a.receivedAt) : exact;
+      });
+    return matches.isEmpty ? null : matches.first;
+  }
 
   /// The name of a payment method, in the app's own words.
   ///
@@ -766,6 +1051,10 @@ class _SellScreenState extends State<SellScreen>
         return AppLocalizations.of(context).sellCompletePaidCash;
       case 'mpesa':
         return AppLocalizations.of(context).sellCompletePaidMpesa;
+      case 'mpesa_till':
+        return 'M-Pesa paid to till';
+      case 'credit':
+        return AppLocalizations.of(context).sellPaymentOnAccount;
       case 'card':
         return AppLocalizations.of(context).sellCompletePaidCard;
       case 'bank_transfer':
@@ -777,6 +1066,11 @@ class _SellScreenState extends State<SellScreen>
     }
   }
 
+  /// THE CUSTOMER PICKER — the sell flow's on-account sheet, public and
+  /// shared with the customers screen.
+  Future<Customer?> _pickCustomerForCredit(BuildContext context) =>
+      showCustomerPickerSheet(context);
+
   SaleItem _saleItemFor(CartItem line) => SaleItem(
         saleId: 0,
         productId: line.product.id!,
@@ -784,6 +1078,10 @@ class _SellScreenState extends State<SellScreen>
         qty: line.qty,
         unitPrice: line.unitPrice,
         unitCost: line.unitCost,
+        listUnitPrice: line.unitPrice,
+        discount: Money.fromMinor(line.discountMinor),
+        discountReasonId: line.discountReasonId,
+        priceOverridden: line.discountMinor > 0,
         portion: line.portion,
         // A variant's own serving size, not a fraction of the parent's bottle:
         // "Dark 500 ml" is 500ml however big the parent bottle is. A shot's is
@@ -793,103 +1091,578 @@ class _SellScreenState extends State<SellScreen>
         // variant's OWN count. The deduction happens inside the sale's
         // transaction, not after it — see [DatabaseHelper.recordSale].
         variantId: line.variant?.id,
+        packId: line.pack?.id,
+        packQty: line.pack == null ? null : line.qty / line.pack!.unitsPerPack,
         variantName: line.variant?.name ?? '',
       );
 
-  Future<void> _checkoutOffline() async {
-    if (_cart.isEmpty || _processingPayment) return;
-    final amountController =
-        TextEditingController(text: _total.asMajor.toStringAsFixed(2));
-    final referenceController = TextEditingController();
-    var method = 'cash';
-    final result = await showDialog<Map<String, String>>(
+  Future<void> _editCartLine(int index) async {
+    final db = DatabaseHelper.instance;
+    if (!context.read<AppState>().hasPermission(PermissionKey.giveDiscount)) {
+      return;
+    }
+    if (!await db.getDiscountsEnabled() || !mounted) return;
+    final line = _cart[index];
+    final appState = context.read<AppState>();
+    final isManager =
+        appState.isOwnerSession || appState.role == ShopRole.manager;
+    final capPercent = await db.getDiscountPercent(
+      isManager
+          ? DatabaseHelper.settingManagerDiscountPercent
+          : DatabaseHelper.settingCashierDiscountPercent,
+    );
+    final reasons = await db.getDiscountReasons();
+    if (!mounted) return;
+    final amount = TextEditingController(
+        text: Money.fromMinor(line.discountMinor).asMajor.toStringAsFixed(2));
+    int? reasonId = line.discountReasonId;
+    final result = await showDialog<(Money, int?)>(
+      context: context,
+      builder: (context) => StatefulBuilder(
+        builder: (context, setDialogState) => AlertDialog(
+          title: Text('Discount ${line.cartTitle}'),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              TextField(
+                controller: amount,
+                autofocus: true,
+                keyboardType:
+                    const TextInputType.numberWithOptions(decimal: true),
+                decoration: const InputDecoration(
+                    labelText: 'Discount (KSh)', hintText: '0.00'),
+              ),
+              if (reasons.isNotEmpty)
+                DropdownButtonFormField<int?>(
+                  initialValue: reasonId,
+                  decoration: const InputDecoration(labelText: 'Reason'),
+                  items: [
+                    const DropdownMenuItem<int?>(
+                        value: null, child: Text('No reason')),
+                    for (final row in reasons)
+                      DropdownMenuItem<int?>(
+                          value: row['id'] as int,
+                          child: Text(row['name'] as String)),
+                  ],
+                  onChanged: (value) => setDialogState(() => reasonId = value),
+                ),
+              const SizedBox(height: 8),
+              Text('Allowed here: up to $capPercent%'),
+            ],
+          ),
+          actions: [
+            TextButton(
+                onPressed: () => Navigator.pop(context),
+                child: const Text('Cancel')),
+            FilledButton(
+              onPressed: () {
+                final parsed = double.tryParse(amount.text.trim());
+                if (parsed == null || parsed < 0) return;
+                Navigator.pop(context, (Money.fromMajor(parsed), reasonId));
+              },
+              child: const Text('Apply'),
+            ),
+          ],
+        ),
+      ),
+    );
+    amount.dispose();
+    if (!mounted || result == null) return;
+    final discount = result.$1;
+    final original = line.unitPrice.times(line.qty);
+    if (discount > original) return;
+    final cap =
+        Money.fromMinor((original.minorUnits * capPercent / 100).round());
+    final requiresPermissionApproval =
+        appState.permissionMode(PermissionKey.giveDiscount) ==
+            PermissionMode.approval;
+    if ((discount > cap && !isManager) || requiresPermissionApproval) {
+      final approver = await showManagerApprovalSheet(
+        context,
+        purpose: 'Approve this discount on ${line.cartTitle}',
+      );
+      if (!mounted || approver == null) return;
+      _discountApprovedBy = approver.id;
+    }
+    if (await db.getDiscountReasonRequired() &&
+        discount.minorUnits > 0 &&
+        result.$2 == null) {
+      return;
+    }
+    if (!await db.getDiscountBelowCostAllowed() &&
+        original - discount < line.unitCost.times(line.qty)) {
+      return;
+    }
+    setState(() {
+      line.discountMinor = discount.minorUnits;
+      line.discountReasonId = result.$2;
+    });
+  }
+
+  Future<void> _applyOrderDiscount() async {
+    if (!context.read<AppState>().hasPermission(PermissionKey.giveDiscount)) {
+      return;
+    }
+    final db = DatabaseHelper.instance;
+    if (!await db.getDiscountsEnabled() || _cart.isEmpty || !mounted) return;
+    final state = context.read<AppState>();
+    final isManager = state.isOwnerSession || state.role == ShopRole.manager;
+    final capPercent = await db.getDiscountPercent(
+      isManager
+          ? DatabaseHelper.settingManagerDiscountPercent
+          : DatabaseHelper.settingCashierDiscountPercent,
+    );
+    final reasons = await db.getDiscountReasons();
+    if (!mounted) return;
+    final amountController = TextEditingController();
+    int? reasonId;
+    final result = await showDialog<(Money, int?)>(
       context: context,
       builder: (dialogContext) => StatefulBuilder(
         builder: (dialogContext, setDialogState) => AlertDialog(
-          title: Text(AppLocalizations.of(context).sellOfflinePaymentTitle),
-          content: SingleChildScrollView(
-              child: Column(mainAxisSize: MainAxisSize.min, children: [
-            Text(
-              AppLocalizations.of(context)
-                  .sellSaleTotalLabel(formatMoney(_total)),
-            ),
-            const SizedBox(height: 12),
-            DropdownButtonFormField<String>(
-              initialValue: method,
-              decoration: InputDecoration(
-                  labelText:
-                      AppLocalizations.of(context).sellPaymentMethodLabel),
-              items: _offlinePaymentLabels.entries
-                  .map((entry) => DropdownMenuItem(
-                        value: entry.key,
-                        child: Text(entry.value),
-                      ))
-                  .toList(),
-              onChanged: (value) {
-                if (value != null) setDialogState(() => method = value);
-              },
-            ),
-            const SizedBox(height: 12),
-            TextField(
-              controller: amountController,
-              decoration: InputDecoration(
-                labelText:
-                    method == 'cash' ? 'Amount received' : 'Amount confirmed',
-                prefixText: 'KSh ',
-                helperText: method == 'cash'
-                    ? 'Extra amount is recorded as change.'
-                    : 'Must match the sale total.',
+          title: const Text('Order discount'),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              TextField(
+                controller: amountController,
+                autofocus: true,
+                keyboardType:
+                    const TextInputType.numberWithOptions(decimal: true),
+                decoration: const InputDecoration(
+                  labelText: 'Discount (KSh)',
+                  hintText: '0.00',
+                ),
               ),
-              keyboardType:
-                  const TextInputType.numberWithOptions(decimal: true),
-              inputFormatters: [
-                FilteringTextInputFormatter.allow(RegExp(r'[0-9.]'))
-              ],
-              autofocus: true,
-            ),
-            const SizedBox(height: 12),
-            TextField(
-              controller: referenceController,
-              decoration: InputDecoration(
-                labelText: AppLocalizations.of(context).sellReferenceLabel,
-              ),
-              textInputAction: TextInputAction.done,
-            ),
-          ])),
+              if (reasons.isNotEmpty)
+                DropdownButtonFormField<int?>(
+                  initialValue: reasonId,
+                  decoration: const InputDecoration(labelText: 'Reason'),
+                  items: [
+                    const DropdownMenuItem<int?>(
+                        value: null, child: Text('No reason')),
+                    for (final row in reasons)
+                      DropdownMenuItem<int?>(
+                        value: row['id'] as int,
+                        child: Text(row['name'] as String),
+                      ),
+                  ],
+                  onChanged: (value) => setDialogState(() => reasonId = value),
+                ),
+              const SizedBox(height: 8),
+              Text('Allowed here: up to $capPercent%'),
+            ],
+          ),
           actions: [
             TextButton(
-                onPressed: () => Navigator.pop(dialogContext),
-                child: Text(AppLocalizations.of(context).actionCancel)),
+              onPressed: () => Navigator.pop(dialogContext),
+              child: const Text('Cancel'),
+            ),
             FilledButton(
               onPressed: () {
-                final typed = double.tryParse(amountController.text.trim());
-                final amount = typed == null ? null : Money.fromMajor(typed);
-                if (amount == null ||
-                    amount < _total ||
-                    (method != 'cash' &&
-                        (amount - _total).minorUnits.abs() > 1)) {
-                  ScaffoldMessenger.of(dialogContext).showSnackBar(SnackBar(
-                    content: Text(method == 'cash'
-                        ? 'Amount received must be at least ${formatMoney(_total)}.'
-                        : 'Amount confirmed must equal ${formatMoney(_total)}.'),
-                  ));
-                  return;
-                }
-                Navigator.pop(dialogContext, {
-                  'method': method,
-                  'amount': amount.minorUnits.toString(),
-                  'reference': referenceController.text.trim(),
-                });
+                final parsed = double.tryParse(amountController.text.trim());
+                if (parsed == null || parsed < 0) return;
+                Navigator.pop(
+                    dialogContext, (Money.fromMajor(parsed), reasonId));
               },
-              child: Text(AppLocalizations.of(context).sellRecordSaleAction),
+              child: const Text('Apply'),
             ),
           ],
         ),
       ),
     );
     amountController.dispose();
+    if (!mounted || result == null) return;
+
+    final requested = result.$1;
+    final gross = _cart
+        .map((line) => line.unitPrice.times(line.qty))
+        .toList(growable: false);
+    final available = sumMoney(gross).minorUnits -
+        _cart.fold<int>(0, (sum, line) => sum + line.discountMinor);
+    if (requested.minorUnits > available) return;
+    final cap = Money.fromMinor(
+        divideMoneyHalfUp(sumMoney(gross).minorUnits * capPercent, 100));
+    final requiresPermissionApproval =
+        state.permissionMode(PermissionKey.giveDiscount) ==
+            PermissionMode.approval;
+    if ((requested > cap && !isManager) || requiresPermissionApproval) {
+      final approver = await showManagerApprovalSheet(
+        context,
+        purpose: 'Approve this order discount',
+      );
+      if (!mounted || approver == null) return;
+      _discountApprovedBy = approver.id;
+    }
+    if (await db.getDiscountReasonRequired() &&
+        requested.minorUnits > 0 &&
+        result.$2 == null) {
+      return;
+    }
+
+    // Allocate cents by largest remainder, using the line gross as the weight.
+    // No double enters this calculation, and the shares always sum exactly to
+    // the requested order discount.
+    final weightTotal =
+        gross.fold<int>(0, (sum, value) => sum + value.minorUnits);
+    if (weightTotal <= 0) return;
+    final shares = largestRemainderAllocation(
+      requested.minorUnits,
+      gross.map((value) => value.minorUnits).toList(),
+    );
+    if (!await db.getDiscountBelowCostAllowed()) {
+      for (var i = 0; i < _cart.length; i++) {
+        final line = _cart[i];
+        final newDiscount = line.discountMinor + shares[i];
+        if (line.unitPrice.times(line.qty).minorUnits - newDiscount <
+            line.unitCost.times(line.qty).minorUnits) {
+          return;
+        }
+      }
+    }
+    setState(() {
+      _orderDiscountReasonId = result.$2;
+      for (var i = 0; i < _cart.length; i++) {
+        _cart[i]
+          ..discountMinor += shares[i]
+          ..discountReasonId = result.$2;
+      }
+    });
+  }
+
+  Future<void> _checkoutOffline() async {
+    if (_cart.isEmpty || _processingPayment) return;
+
+    // Credit, read BEFORE the dialog opens: a sheet that queries the
+    // database while painting itself does I/O mid-build.
+    final AppState dialogState = context.read<AppState>();
+    final DatabaseHelper dialogDb = DatabaseHelper.instance;
+    final bool creditEnabled = await dialogDb.getCreditEnabled();
+    final bool cashiersAllowed = await dialogDb.getCreditCashiersAllowed();
+    final bool canSellOnAccount = creditEnabled &&
+        dialogState.hasPermission(PermissionKey.sellOnCredit) &&
+        (dialogState.isOwnerSession ||
+            dialogState.role == ShopRole.manager ||
+            cashiersAllowed);
+    final bool canApproveTillOverpayment =
+        dialogState.isOwnerSession || dialogState.role == ShopRole.manager;
+    final IncomingPayment? incomingTillPayment =
+        await _matchingIncomingTillPayment();
+
+    final amountController =
+        TextEditingController(text: _total.asMajor.toStringAsFixed(2));
+    final splitAmountController =
+        TextEditingController(text: (_total.asMajor / 2).toStringAsFixed(2));
+    final referenceController = TextEditingController();
+    var method = 'cash';
+    var firstSplitMethod = 'cash';
+    var splitMethod = 'card';
+    Customer? onAccountCustomer;
+    if (_heldCustomerId != null) {
+      onAccountCustomer = await dialogDb.getCustomerById(_heldCustomerId!);
+    }
+    // Every fact the dialog itself reads was taken before the await above;
+    // the one context the dialog always needs is guarded here by mounted.
+    if (!mounted) return;
+    final AppLocalizations l10n = AppLocalizations.of(context);
+    final result = await showDialog<Map<String, String>>(
+      context: context,
+      builder: (dialogContext) => StatefulBuilder(
+        builder: (dialogContext, setDialogState) {
+          int? minorAmount(String value) {
+            final parsed = double.tryParse(value.trim());
+            return parsed == null ? null : Money.fromMajor(parsed).minorUnits;
+          }
+
+          final firstMinor = minorAmount(amountController.text);
+          final secondMinor = minorAmount(splitAmountController.text);
+          final paidMinor = (firstMinor ?? 0) + (secondMinor ?? 0);
+          final remainingMinor = _total.minorUnits - paidMinor;
+
+          return AlertDialog(
+            title: Text(l10n.sellOfflinePaymentTitle),
+            content: SingleChildScrollView(
+                child: Column(mainAxisSize: MainAxisSize.min, children: [
+              Text(
+                AppLocalizations.of(context)
+                    .sellSaleTotalLabel(formatMoney(_total)),
+              ),
+              const SizedBox(height: 12),
+              DropdownButtonFormField<String>(
+                initialValue: method,
+                decoration:
+                    InputDecoration(labelText: l10n.sellPaymentMethodLabel),
+                items: <DropdownMenuItem<String>>[
+                  for (final entry in _offlinePaymentLabels.entries)
+                    DropdownMenuItem<String>(
+                      value: entry.key,
+                      child: Text(entry.value),
+                    ),
+                  if (incomingTillPayment != null)
+                    const DropdownMenuItem<String>(
+                      value: 'mpesa_till',
+                      child: Text('M-Pesa paid to till'),
+                    ),
+                  const DropdownMenuItem<String>(
+                      value: 'split', child: Text('Split payment')),
+                  // On account, only when the shop sells credit and the
+                  // signed-in person may offer it.
+                  if (canSellOnAccount)
+                    DropdownMenuItem<String>(
+                      value: 'credit',
+                      child: Text(l10n.sellPaymentOnAccount),
+                    ),
+                ],
+                onChanged: (value) {
+                  if (value != null) setDialogState(() => method = value);
+                },
+              ),
+              // On account: WHO takes the goods — the picker beside a clear
+              // label, and no amount field at all (nothing is "received").
+              if (method == 'credit') ...<Widget>[
+                const SizedBox(height: 12),
+                ListTile(
+                  contentPadding: EdgeInsets.zero,
+                  dense: true,
+                  leading: const Icon(Icons.account_balance_outlined),
+                  title: Text(
+                    onAccountCustomer?.name ?? l10n.sellCreditNoCustomer,
+                  ),
+                  subtitle: onAccountCustomer == null
+                      ? null
+                      : Text(onAccountCustomer?.phoneDisplay ?? ''),
+                  trailing: const Icon(Icons.chevron_right),
+                  onTap: () async {
+                    final Customer? picked =
+                        await _pickCustomerForCredit(context);
+                    if (picked == null) return;
+                    setDialogState(() => onAccountCustomer = picked);
+                  },
+                ),
+              ] else if (method == 'split') ...<Widget>[
+                const SizedBox(height: 12),
+                Text('First tender · remaining is paid by the second tender'),
+                DropdownButtonFormField<String>(
+                  initialValue: firstSplitMethod,
+                  decoration: const InputDecoration(labelText: 'First tender'),
+                  items: [
+                    for (final entry in _offlinePaymentLabels.entries)
+                      DropdownMenuItem(
+                          value: entry.key, child: Text(entry.value)),
+                  ],
+                  onChanged: (value) {
+                    if (value != null) {
+                      setDialogState(() => firstSplitMethod = value);
+                    }
+                  },
+                ),
+                TextField(
+                  controller: amountController,
+                  decoration: const InputDecoration(labelText: 'First amount'),
+                  keyboardType:
+                      const TextInputType.numberWithOptions(decimal: true),
+                  onChanged: (_) => setDialogState(() {}),
+                ),
+                DropdownButtonFormField<String>(
+                  initialValue: splitMethod,
+                  decoration: const InputDecoration(labelText: 'Second tender'),
+                  items: [
+                    for (final entry in _offlinePaymentLabels.entries)
+                      if (entry.key != 'credit')
+                        DropdownMenuItem(
+                            value: entry.key, child: Text(entry.value)),
+                  ],
+                  onChanged: (value) {
+                    if (value != null) {
+                      setDialogState(() => splitMethod = value);
+                    }
+                  },
+                ),
+                TextField(
+                  controller: splitAmountController,
+                  decoration: const InputDecoration(labelText: 'Second amount'),
+                  keyboardType:
+                      const TextInputType.numberWithOptions(decimal: true),
+                  onChanged: (_) => setDialogState(() {}),
+                ),
+                const SizedBox(height: 8),
+                Align(
+                  alignment: AlignmentDirectional.centerStart,
+                  child: Text(
+                    'Due ${formatMoney(_total)} · Paid ${formatMoney(Money.fromMinor(paidMinor))} · '
+                    'Remaining ${formatMoney(Money.fromMinor(remainingMinor))}',
+                  ),
+                ),
+                const SizedBox(height: 12),
+                TextField(
+                  controller: referenceController,
+                  decoration:
+                      InputDecoration(labelText: l10n.sellReferenceLabel),
+                ),
+              ] else ...<Widget>[
+                const SizedBox(height: 12),
+                if (method == 'mpesa_till')
+                  ListTile(
+                    contentPadding: EdgeInsets.zero,
+                    leading: const Icon(Icons.account_balance_wallet_outlined),
+                    title: const Text('Incoming payment'),
+                    subtitle: Text(
+                      '${formatMoney(incomingTillPayment!.amount)} · '
+                      '${incomingTillPayment.transactionId}'
+                      '${incomingTillPayment.amount > _total ? ' · overpayment' : ''}',
+                    ),
+                  )
+                else
+                  TextField(
+                    controller: amountController,
+                    decoration: InputDecoration(
+                      labelText: method == 'cash'
+                          ? 'Amount received'
+                          : 'Amount confirmed',
+                      prefixText: 'KSh ',
+                      helperText: method == 'cash'
+                          ? 'Extra amount is recorded as change.'
+                          : 'Must match the sale total.',
+                    ),
+                    keyboardType:
+                        const TextInputType.numberWithOptions(decimal: true),
+                    inputFormatters: [
+                      FilteringTextInputFormatter.allow(RegExp(r'[0-9.]'))
+                    ],
+                    autofocus: true,
+                  ),
+                const SizedBox(height: 12),
+                TextField(
+                  controller: referenceController,
+                  decoration: InputDecoration(
+                    labelText: l10n.sellReferenceLabel,
+                  ),
+                  textInputAction: TextInputAction.done,
+                ),
+              ],
+            ])),
+            actions: [
+              TextButton(
+                  onPressed: () => Navigator.pop(dialogContext),
+                  child: Text(AppLocalizations.of(context).actionCancel)),
+              FilledButton(
+                onPressed: () async {
+                  if (method == 'credit') {
+                    // Who takes it: the customer is the sale's address, and
+                    // the charge lands on their ledger inside the sale txn.
+                    if (onAccountCustomer == null) {
+                      ScaffoldMessenger.of(dialogContext).showSnackBar(SnackBar(
+                        content: Text(l10n.sellCreditPickCustomer),
+                      ));
+                      return;
+                    }
+                    Navigator.pop(dialogContext, <String, String>{
+                      'method': 'credit',
+                      'customer_id': '${onAccountCustomer!.id}',
+                    });
+                    return;
+                  }
+                  if (method == 'split') {
+                    final first = double.tryParse(amountController.text.trim());
+                    final second =
+                        double.tryParse(splitAmountController.text.trim());
+                    final firstMoney =
+                        first == null ? null : Money.fromMajor(first);
+                    final secondMoney =
+                        second == null ? null : Money.fromMajor(second);
+                    if (firstMoney == null ||
+                        secondMoney == null ||
+                        firstMoney + secondMoney != _total ||
+                        firstMoney.isNegative ||
+                        secondMoney.isNegative) {
+                      ScaffoldMessenger.of(dialogContext).showSnackBar(
+                          const SnackBar(
+                              content: Text('Tenders must equal the total.')));
+                      return;
+                    }
+                    Navigator.pop(dialogContext, {
+                      'method': 'split',
+                      'first_method': firstSplitMethod,
+                      'first_amount': '${firstMoney.minorUnits}',
+                      'split_method': splitMethod,
+                      'split_amount': '${secondMoney.minorUnits}',
+                      'reference': referenceController.text.trim(),
+                    });
+                    return;
+                  }
+                  final typed = method == 'mpesa_till'
+                      ? incomingTillPayment!.amount.asMajor
+                      : double.tryParse(amountController.text.trim());
+                  final amount = typed == null ? null : Money.fromMajor(typed);
+                  if (amount == null ||
+                      amount < _total ||
+                      (method != 'cash' &&
+                          method != 'mpesa_till' &&
+                          (amount - _total).minorUnits.abs() > 1)) {
+                    ScaffoldMessenger.of(dialogContext).showSnackBar(SnackBar(
+                      content: Text(method == 'cash'
+                          ? 'Amount received must be at least ${formatMoney(_total)}.'
+                          : 'Amount confirmed must equal ${formatMoney(_total)}.'),
+                    ));
+                    return;
+                  }
+                  if (method == 'mpesa_till' &&
+                      incomingTillPayment!.amount > _total &&
+                      !canApproveTillOverpayment) {
+                    final approver = await showManagerApprovalSheet(
+                      dialogContext,
+                      purpose: 'Approve M-Pesa overpayment and change',
+                    );
+                    if (approver == null ||
+                        !mounted ||
+                        !dialogContext.mounted) {
+                      return;
+                    }
+                  }
+                  Navigator.pop(dialogContext, {
+                    'method': method,
+                    'amount': amount.minorUnits.toString(),
+                    'reference': method == 'mpesa_till'
+                        ? incomingTillPayment!.remoteId
+                        : referenceController.text.trim(),
+                  });
+                },
+                child: Text(l10n.sellRecordSaleAction),
+              ),
+            ],
+          );
+        },
+      ),
+    );
+    amountController.dispose();
+    splitAmountController.dispose();
     referenceController.dispose();
     if (result == null || !mounted) return;
+    if (result['method'] == 'credit') {
+      await _checkout(
+        'credit',
+        amountTendered: _total,
+        customerId: int.tryParse(result['customer_id'] ?? ''),
+      );
+      return;
+    }
+    if (result['method'] == 'split') {
+      await _checkout(
+        'split',
+        amountTendered: _total,
+        paymentReference:
+            result['reference']!.isEmpty ? null : result['reference'],
+        tenders: [
+          SaleTender(
+              method: result['first_method']!,
+              amount: Money.fromMinor(int.parse(result['first_amount']!))),
+          SaleTender(
+              method: result['split_method']!,
+              amount: Money.fromMinor(int.parse(result['split_amount']!))),
+        ],
+      );
+      return;
+    }
     await _checkout(
       result['method']!,
       amountTendered: Money.fromMinor(int.parse(result['amount']!)),
@@ -902,6 +1675,8 @@ class _SellScreenState extends State<SellScreen>
     String paymentMethod, {
     required Money amountTendered,
     String? paymentReference,
+    int? customerId,
+    List<SaleTender>? tenders,
   }) async {
     if (_cart.isEmpty || _processingPayment) return;
 
@@ -928,6 +1703,46 @@ class _SellScreenState extends State<SellScreen>
       staffId = match.isEmpty ? null : match.first.id;
     }
 
+    // The credit wall, judged BEFORE anything is written: the limit comes
+    // from the ledger's balance, and an over-limit sale in block mode goes
+    // through the wall only with a manager's PIN — the approval sheet names
+    // who allowed it, and the database re-judges the same rule inside its
+    // transaction.
+    int? creditApprovedBy;
+    if (paymentMethod == 'credit' && customerId != null) {
+      final Customer? customer =
+          await DatabaseHelper.instance.getCustomerById(customerId);
+      if (customer != null && customer.active) {
+        final int defaultLimit =
+            await DatabaseHelper.instance.getCreditDefaultLimit();
+        final int limit = customer.effectiveLimit(defaultLimit);
+        final int wouldOwe = customer.balanceMinor + _total.minorUnits;
+        if (wouldOwe > limit) {
+          // The mode is read BEFORE anything opens: a context cannot cross
+          // an awaited gap, and the message belongs beside the wall, not
+          // beside the vote.
+          final String mode =
+              await DatabaseHelper.instance.getCreditLimitMode();
+          // The reads above crossed an await: the sheet may open only while
+          // this screen still fronts the user.
+          if (!mounted) return;
+          final AppLocalizations l10n = AppLocalizations.of(context);
+          final String purpose = l10n.sellCreditOverLimit(
+              customer.name, formatMoney(Money.fromMinor(wouldOwe)));
+          if (mode != 'warn') {
+            // No answer is NOT an approval; the sale stops here.
+            final Staff? approver =
+                await showManagerApprovalSheet(context, purpose: purpose);
+            if (approver == null) {
+              if (mounted) setState(() => _processingPayment = false);
+              return;
+            }
+            creditApprovedBy = approver.id;
+          }
+        }
+      }
+    }
+
     // Prevent double-submit
     setState(() => _processingPayment = true);
 
@@ -942,7 +1757,59 @@ class _SellScreenState extends State<SellScreen>
         amountTendered: amountTendered,
         staffId: staffId,
         etimsPending: etimsEnabled,
+        customerId: customerId,
+        creditApprovedBy: creditApprovedBy,
+        discountApprovedBy: _discountApprovedBy,
+        orderDiscountReasonId: _orderDiscountReasonId,
+        tenders: tenders,
       );
+      if (paymentMethod == 'mpesa_till' &&
+          paymentReference != null &&
+          paymentReference.isNotEmpty) {
+        try {
+          await BackendService.claimIncomingMpesa(
+            remoteId: paymentReference,
+            saleUuid: 'local-sale-$saleId',
+          );
+          final cached = await DatabaseHelper.instance
+              .getIncomingPayments(status: 'unclaimed', limit: 200);
+          final match = cached.where((p) => p.remoteId == paymentReference);
+          if (match.isNotEmpty) {
+            final payment = match.first;
+            await DatabaseHelper.instance.upsertIncomingPayment(IncomingPayment(
+              remoteId: payment.remoteId,
+              transactionId: payment.transactionId,
+              amount: payment.amount,
+              payerMasked: payment.payerMasked,
+              receivedAt: payment.receivedAt,
+              status: 'claimed',
+              claimedAt: DateTime.now(),
+              claimedBy: state.currentStaffName,
+            ));
+          }
+        } catch (error) {
+          // The sale is already committed. Persist the ownership work instead
+          // of silently losing it: offline transport failures retry, while a
+          // server 409 is a genuine cross-till dispute.
+          final disputed =
+              error is DioException && error.response?.statusCode == 409;
+          await DatabaseHelper.instance.recordIncomingPaymentClaim(
+            remoteId: paymentReference,
+            saleId: saleId,
+            saleUuid: 'local-sale-$saleId',
+            status: disputed ? 'disputed' : 'pending',
+            reason: disputed
+                ? 'This payment was claimed by another till.'
+                : 'Claim is waiting for a connection.',
+          );
+          if (disputed) {
+            await DatabaseHelper.instance.markIncomingPaymentClaimDisputed(
+              paymentReference,
+              'This payment was claimed by another till.',
+            );
+          }
+        }
+      }
       // Every sale is attributed. The ledger records THAT money changed hands;
       // the log records WHO rang it, which is the question a variance review
       // asks and the sales table answers only by a display name.
@@ -953,6 +1820,39 @@ class _SellScreenState extends State<SellScreen>
         entityId: 'id-$saleId',
         detail: '${items.length} line(s), $paymentMethod',
       );
+      final drawerEnabled = await DatabaseHelper.instance
+              .getSetting(DatabaseHelper.settingCashDrawerEnabled) ==
+          '1';
+      final drawerOnCashSale = await DatabaseHelper.instance
+              .getSetting(DatabaseHelper.settingCashDrawerOnCashSale) ==
+          '1';
+      if (paymentMethod == 'cash' && drawerEnabled && drawerOnCashSale) {
+        final openShift = await DatabaseHelper.instance.getAnyOpenShift();
+        final db = DatabaseHelper.instance;
+        final opened = await CashDrawerService().open(
+          pin: int.tryParse(
+                  await db.getSetting(DatabaseHelper.settingCashDrawerPin) ??
+                      '') ??
+              0,
+          onMs: int.tryParse(
+                  await db.getSetting(DatabaseHelper.settingCashDrawerOnMs) ??
+                      '') ??
+              50,
+          offMs: int.tryParse(
+                  await db.getSetting(DatabaseHelper.settingCashDrawerOffMs) ??
+                      '') ??
+              500,
+        );
+        await db.recordDrawerEvent(
+          uuid: generateUuid(),
+          shiftId: openShift?.id,
+          eventType: 'sale',
+          saleId: saleId,
+          staffId: staffId,
+          staffName: state.currentStaffName ?? 'Unknown',
+          success: opened,
+        );
+      }
 
       // The variant counts moved with the sale itself, inside its transaction.
       // Nothing is deducted here: a second, later deduction was the window in
@@ -972,6 +1872,7 @@ class _SellScreenState extends State<SellScreen>
         final Money change = amountTendered - saleTotal;
         setState(() {
           _cart.clear();
+          _heldCustomerId = null;
           _rebuildReservations();
         });
         _loadProducts(); // Refresh stock
@@ -987,6 +1888,7 @@ class _SellScreenState extends State<SellScreen>
         // customer.
         if (paymentMethod == 'cash') {
           await _showSaleComplete(
+            saleId: saleId,
             method: AppLocalizations.of(context).sellCompletePaidCash,
             total: saleTotal,
             paid: amountTendered,
@@ -1040,6 +1942,7 @@ class _SellScreenState extends State<SellScreen>
   /// Dismissable by tapping outside it and by dragging it down, so a sheet
   /// that somehow cannot be dismissed can never hold the till hostage.
   Future<void> _showSaleComplete({
+    required int saleId,
     required String method,
     required Money total,
     required Money paid,
@@ -1076,9 +1979,111 @@ class _SellScreenState extends State<SellScreen>
           ],
           onNext: () => Navigator.pop(sheetContext),
           nextLabel: l10n.sellCompleteNext,
+          secondaryAction: Wrap(
+            spacing: 8,
+            runSpacing: 8,
+            alignment: WrapAlignment.center,
+            children: <Widget>[
+              OutlinedButton.icon(
+                onPressed: () => _shareSale(saleId),
+                icon: const Icon(Icons.share_outlined),
+                label: const Text('Share receipt'),
+              ),
+              OutlinedButton.icon(
+                onPressed: () => _shareSalePdf(saleId),
+                icon: const Icon(Icons.picture_as_pdf_outlined),
+                label: const Text('Share PDF'),
+              ),
+            ],
+          ),
         ),
       ),
     );
+  }
+
+  Future<void> _shareSale(int saleId) async {
+    final sale = await DatabaseHelper.instance.getSaleById(saleId);
+    if (sale == null || !mounted) return;
+    final recipientMasked = await askReceiptRecipient(context);
+    if (!mounted) return;
+    final state = context.read<AppState>();
+    String? link;
+    final snapshot = <String, dynamic>{
+      'shop_name': state.owner?.shopName ?? 'Duka POS',
+      'receipt_id': sale.id,
+      'staff_name': sale.staffName,
+      'created_at': sale.createdAt,
+      'payment_method': sale.paymentMethod,
+      'total_minor': sale.total.minorUnits,
+      'items': [
+        for (final item in sale.items)
+          {
+            'name': item.productName,
+            'qty': item.qty,
+            'total_minor': item.total.minorUnits
+          },
+      ],
+    };
+    try {
+      final response = await BackendService.createReceiptLink(snapshot);
+      final relative = response?['url'] as String?;
+      if (relative != null) {
+        link = BackendService.backendUrl.replaceFirst(RegExp(r'/api$'), '') +
+            relative;
+        await DatabaseHelper.instance.recordReceiptShare(
+          uuid: 'receipt-share-${DateTime.now().microsecondsSinceEpoch}',
+          saleId: saleId,
+          token: response?['token'] as String?,
+          url: link,
+          recipientMasked: recipientMasked,
+          expiresAt: response?['expires_at']?.toString(),
+        );
+      } else {
+        await DatabaseHelper.instance.recordReceiptShare(
+          uuid: 'receipt-share-${DateTime.now().microsecondsSinceEpoch}',
+          saleId: saleId,
+          recipientMasked: recipientMasked,
+        );
+      }
+    } on Object catch (_) {
+      // Offline text sharing remains available when a public link cannot be minted.
+      await DatabaseHelper.instance.recordReceiptShare(
+        uuid: 'receipt-share-${DateTime.now().microsecondsSinceEpoch}',
+        saleId: saleId,
+        recipientMasked: recipientMasked,
+      );
+    }
+    final lines = <String>[
+      if ((state.owner?.shopName ?? '').isNotEmpty) state.owner!.shopName,
+      'Receipt ${sale.id ?? ''}'.trim(),
+      for (final item in sale.items)
+        '${item.productName} × ${item.qty}  ${formatMoney(item.total)}',
+      'Total: ${formatMoney(sale.total)}',
+      if (link != null) link,
+    ];
+    await SharePlus.instance.share(ShareParams(
+      text: lines.join('\n'),
+      subject: 'Receipt from ${state.owner?.shopName ?? 'Duka POS'}',
+    ));
+  }
+
+  Future<void> _shareSalePdf(int saleId) async {
+    final sale = await DatabaseHelper.instance.getSaleById(saleId);
+    if (sale == null || !mounted) return;
+    try {
+      final state = context.read<AppState>();
+      final file = await const ReceiptPdfService().write(
+        sale: sale,
+        shopName: state.owner?.shopName ?? 'Duka POS',
+      );
+      if (!mounted) return;
+      await SharePlus.instance.share(ShareParams(
+        files: <XFile>[XFile(file.path, mimeType: 'application/pdf')],
+        subject: 'Receipt ${sale.id ?? ''}'.trim(),
+      ));
+    } on Object catch (_) {
+      // The sale is already committed; an export failure must not change it.
+    }
   }
 
   /// Prints the receipt and reconciles the tax invoice for a committed sale.
@@ -1110,6 +2115,9 @@ class _SellScreenState extends State<SellScreen>
   Future<PrintResult> _printReceipt(int saleId, PrinterConfig config,
       {bool etimsPending = false}) async {
     final state = context.read<AppState>();
+    final receiptLanguage = Localizations.localeOf(context).languageCode == 'sw'
+        ? ReceiptLanguage.swahili
+        : ReceiptLanguage.english;
     final saleRow = await DatabaseHelper.instance.getSaleRowById(saleId);
     final vatRate = saleRow == null
         ? await DatabaseHelper.instance.getVatRatePercent()
@@ -1126,6 +2134,7 @@ class _SellScreenState extends State<SellScreen>
       etimsReceiptNumber: _pendingEtimsReceipt?.receiptNumber,
       etimsVerificationPayload: _pendingEtimsReceipt?.verificationUrl,
       etimsPending: etimsPending,
+      receiptLanguage: receiptLanguage,
     );
     if (!mounted) return result;
     if (result.outcome == PrintOutcome.printed ||
@@ -1174,7 +2183,10 @@ class _SellScreenState extends State<SellScreen>
       );
       if (!mounted) return;
       _announceStatus('M-Pesa sale recorded. Payment not yet confirmed.');
-      setState(_cart.clear);
+      setState(() {
+        _cart.clear();
+        _heldCustomerId = null;
+      });
       _loadProducts();
       ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
         content: Text(
@@ -1357,6 +2369,8 @@ class _SellScreenState extends State<SellScreen>
                 // record of a sale whose money already moved.
                 'unitPrice': c.unitPrice.minorUnits,
                 'unitCost': c.unitCost.minorUnits,
+                'discountMinor': c.discountMinor,
+                'discountReasonId': c.discountReasonId,
                 'portion': c.portion,
                 'portionMl': c.portionMl,
               })
@@ -1368,6 +2382,7 @@ class _SellScreenState extends State<SellScreen>
         phoneNumber: result['phone'],
         staffName: state.currentStaffName,
         staffId: state.isOwnerSession ? null : cashierProfile?.id,
+        intendedTotal: _total,
       );
 
       // Show waiting dialog.
@@ -1430,6 +2445,8 @@ class _SellScreenState extends State<SellScreen>
               paymentReference: reference,
               staffId: state.isOwnerSession ? null : cashierProfile?.id,
               etimsPending: etimsEnabled,
+              discountApprovedBy: _discountApprovedBy,
+              orderDiscountReasonId: _orderDiscountReasonId,
             );
             await recordActionAudit(
               state,
@@ -1458,6 +2475,7 @@ class _SellScreenState extends State<SellScreen>
             );
             setState(() {
               _cart.clear();
+              _heldCustomerId = null;
               _rebuildReservations();
             });
             _loadProducts();
@@ -1470,6 +2488,7 @@ class _SellScreenState extends State<SellScreen>
           final Money mpesaTotal = _total;
           setState(() {
             _cart.clear();
+            _heldCustomerId = null;
             _rebuildReservations();
           });
           _loadProducts();
@@ -1633,6 +2652,9 @@ class _SellScreenState extends State<SellScreen>
                       mpesaLabel: l10n.settingsMpesaMethod,
                       onOffline: _checkoutOffline,
                       onMpesa: _checkoutMpesa,
+                      onHold: _holdCart,
+                      onHeld: _showHeldCarts,
+                      onDiscount: _applyOrderDiscount,
                       processing: _processingPayment,
                       statusMessage: _statusMessage,
                     ),
@@ -1663,6 +2685,7 @@ class _SellScreenState extends State<SellScreen>
           onDecrease: () => _updateQty(i, -1),
           onIncrease: () => _updateQty(i, 1),
           onRemove: () => _removeFromCart(i),
+          onEdit: () => _editCartLine(i),
         ),
     ];
   }
@@ -1689,8 +2712,11 @@ class CartItem {
   final ProductVariant? variant;
 
   final ShotCup? shotCup;
+  final ProductPack? pack;
 
   double qty;
+  int discountMinor = 0;
+  int? discountReasonId;
 
   CartItem({
     required this.product,
@@ -1698,10 +2724,12 @@ class CartItem {
     required this.qty,
     this.variant,
     this.shotCup,
+    this.pack,
   });
 
   bool get isVariant => variant != null;
   bool get isShot => shotCup != null;
+  bool get isPack => pack != null;
 
   double get fraction {
     if (isVariant) return 1;
@@ -1735,6 +2763,7 @@ class CartItem {
     if (shot != null) return '${product.name} · ${shot.label}';
     final v = variant;
     if (v != null) return foldedVariantName(product, v);
+    if (pack != null) return '${product.name} · ${pack!.name}';
     return product.name;
   }
 
@@ -1744,16 +2773,30 @@ class CartItem {
   }
 
   Money get unitPrice {
+    final carton = pack;
+    if (carton?.sellPrice != null) {
+      return Money.fromMinor(divideMoneyHalfUp(
+          carton!.sellPrice!.minorUnits, carton.unitsPerPack.round()));
+    }
     final shot = shotCup;
     if (shot != null) return shot.price;
     return variant?.sellPrice ?? product.priceFor(portion);
   }
 
-  Money get unitCost => variant?.costPrice ?? product.costPrice.times(fraction);
+  Money get unitCost {
+    final carton = pack;
+    if (carton != null) {
+      return Money.fromMinor(divideMoneyHalfUp(
+          carton.unitCost.minorUnits, carton.unitsPerPack.round()));
+    }
+    return variant?.costPrice ?? product.costPrice.times(fraction);
+  }
+
   String get portionLabel => portion[0].toUpperCase() + portion.substring(1);
 
   String get cartTitle {
     if (isVariant) return '${product.name} · ${variant!.label}';
+    if (isPack) return '${product.name} · ${pack!.name}';
     final shot = shotCup;
     if (shot != null) return '${product.name} · ${shot.label}';
     return '${product.name} · $portionLabel';
@@ -1761,8 +2804,11 @@ class CartItem {
 
   String get cartSubtitle {
     final amount = formatMoney(total);
-    return sizeLabel.isEmpty ? amount : '$sizeLabel · $amount';
+    final price = sizeLabel.isEmpty ? amount : '$sizeLabel · $amount';
+    if (discountMinor == 0) return price;
+    final original = formatMoney(unitPrice.times(qty));
+    return '${sizeLabel.isEmpty ? '' : '$sizeLabel · '}$original → $amount';
   }
 
-  Money get total => unitPrice.times(qty);
+  Money get total => unitPrice.times(qty) - Money.fromMinor(discountMinor);
 }
