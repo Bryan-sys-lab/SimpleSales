@@ -5,17 +5,24 @@ import { useEffect, useState } from 'react';
 import { removeToken } from '@/lib/auth';
 import { Nav } from './nav';
 
-const NAV_ITEMS = [
+const NAV_ITEMS: import('./nav').NavItem[] = [
   { href: '/dashboard', label: 'Dashboard', icon: 'dashboard' },
   { href: '/churn', label: 'Churn', icon: 'churn' },
   { href: '/sales', label: 'Sales', icon: 'sales' },
+  { href: '/laybys', label: 'Lay-bys', icon: 'laybys' },
+  { href: '/exchanges', label: 'Exchanges', icon: 'exchanges' },
   { href: '/sessions', label: 'Sessions', icon: 'sessions' },
   { href: '/tenants', label: 'Tenants', icon: 'tenants' },
+  { href: '/tax-rules', label: 'Tax rules', icon: 'tax-rules' },
+  { href: '/tax-compliance', label: 'Tax compliance', icon: 'tax-compliance' },
+  { href: '/commercial-policy', label: 'Commercial policy', icon: 'commercial-policy' },
+  { href: '/commercial-ledger', label: 'Contribution ledger', icon: 'commercial-ledger' },
+  { href: '/commercial-quality', label: 'Data quality', icon: 'commercial-quality' },
   { href: '/support', label: 'Support', icon: 'support' },
   { href: '/audit', label: 'Audit log', icon: 'audit' },
 ];
 
-export default function ShellLayout({ children }: { children: React.ReactNode }) {
+export function ShellLayout({ children }: { children: React.ReactNode }) {
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const pathname = usePathname();
   const router = useRouter();
@@ -106,3 +113,5 @@ export default function ShellLayout({ children }: { children: React.ReactNode })
     </div>
   );
 }
+
+export default ShellLayout;

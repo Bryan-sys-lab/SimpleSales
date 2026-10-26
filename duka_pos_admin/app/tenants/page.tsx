@@ -76,7 +76,8 @@ export default function TenantsPage() {
                 </span>
               );
             }
-            return <span className="text-base-900">{row[key as keyof Tenant] ?? '—'}</span>;
+            const value = row[key as keyof Tenant];
+            return <span className="text-base-900">{typeof value === 'object' ? '—' : value ?? '—'}</span>;
           }}
           emptyMessage="No tenants"
         />

@@ -7,7 +7,7 @@ export interface MetricCardProps {
   caption?: string;
 }
 
-export default function MetricCard({
+export function MetricCard({
   label,
   value,
   trend,
@@ -35,3 +35,5 @@ export default function MetricCard({
     </div>
   );
 }
+
+export default MetricCard;

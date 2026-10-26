@@ -5,7 +5,7 @@ import Link from 'next/link';
 export type NavItem = {
   href: string;
   label: string;
-  icon: 'dashboard' | 'churn' | 'sales' | 'sessions' | 'tenants' | 'support' | 'audit';
+  icon: 'dashboard' | 'churn' | 'sales' | 'laybys' | 'exchanges' | 'sessions' | 'tenants' | 'tax-rules' | 'tax-compliance' | 'commercial-policy' | 'commercial-ledger' | 'commercial-quality' | 'support' | 'audit';
 };
 
 const ICONS: Record<string, React.ReactNode> = {
@@ -28,6 +28,15 @@ const ICONS: Record<string, React.ReactNode> = {
       <path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/>
     </svg>
   ),
+  laybys: (
+    <svg className="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <rect x="3" y="4" width="18" height="16" rx="2" />
+      <path d="M7 8h10M7 12h6M7 16h4" />
+    </svg>
+  ),
+  exchanges: (
+    <svg className="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M17 3l4 4-4 4"/><path d="M3 7h18"/><path d="M7 21l-4-4 4-4"/><path d="M21 17H3"/></svg>
+  ),
   sessions: (
     <svg className="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
       <rect x="2" y="7" width="20" height="14" rx="2" ry="2"/>
@@ -42,6 +51,33 @@ const ICONS: Record<string, React.ReactNode> = {
       <circle cx="9" cy="7" r="4"/>
       <path d="M23 21v-2a4 4 0 0 0-3-3.87"/>
       <path d="M16 3.13a4 4 0 0 1 0 7.75"/>
+    </svg>
+  ),
+  'tax-rules': (
+    <svg className="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M4 4h16v16H4z" />
+      <path d="M8 8h8M8 12h5M8 16h8" />
+    </svg>
+  ),
+  'tax-compliance': (
+    <svg className="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M5 3h14v18H5z" /><path d="M8 7h8M8 11h8M8 15h5" />
+    </svg>
+  ),
+  'commercial-policy': (
+    <svg className="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M12 3l8 4v5c0 4.5-3.2 7.7-8 9-4.8-1.3-8-4.5-8-9V7l8-4z" />
+      <path d="M9 12l2 2 4-4" />
+    </svg>
+  ),
+  'commercial-ledger': (
+    <svg className="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M4 4h16v16H4z" /><path d="M8 8h8M8 12h8M8 16h5" />
+    </svg>
+  ),
+  'commercial-quality': (
+    <svg className="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M4 19V5M4 19h16" /><path d="M7 15l3-4 3 2 5-7" />
     </svg>
   ),
   support: (

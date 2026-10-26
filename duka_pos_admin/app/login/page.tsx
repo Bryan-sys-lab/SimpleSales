@@ -1,11 +1,10 @@
 'use client';
 
-import { useRouter, useSearchParams } from 'next/navigation';
-import { useCallback, useState } from 'react';
-import { oidcAuthorizeUrl, pkceVerifier, setTokenCookie } from '@/lib/auth';
+import { useSearchParams } from 'next/navigation';
+import { Suspense, useCallback, useState } from 'react';
+import { oidcAuthorizeUrl, pkceVerifier } from '@/lib/auth';
 
-export default function LoginPage() {
-  const router = useRouter();
+function LoginContent() {
   const searchParams = useSearchParams();
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
@@ -26,7 +25,7 @@ export default function LoginPage() {
     const redirectUri = `${window.location.origin}/login/callback`;
     const url = await oidcAuthorizeUrl(redirectUri, state, verifier);
     window.location.href = url;
-  }, [returnTo, router]);
+  }, [returnTo]);
 
   return (
     <div className="flex min-h-screen items-center justify-center bg-base-50 px-4">
@@ -60,5 +59,13 @@ export default function LoginPage() {
         </div>
       </div>
     </div>
+  );
+}
+
+export default function LoginPage() {
+  return (
+    <Suspense fallback={<div className="min-h-screen bg-base-50" />}>
+      <LoginContent />
+    </Suspense>
   );
 }

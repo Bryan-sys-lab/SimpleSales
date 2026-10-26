@@ -87,7 +87,7 @@ export function pkceVerifier(): string {
     .replace(/=+$/, '');
 }
 
-export function sha256Base64Url(input: string): Promise<string> {
+export async function sha256Base64Url(input: string): Promise<string> {
   const buf = new TextEncoder().encode(input);
   const hash = await crypto.subtle.digest('SHA-256', buf);
   const bytes = new Uint8Array(hash);
@@ -132,3 +132,4 @@ export function getTokenExpiry(token: string | null): Date | null {
     return null;
   }
 }
+import { NextResponse } from 'next/server';

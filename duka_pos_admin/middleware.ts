@@ -9,6 +9,9 @@ const PROTECTED_PREFIXES = [
   '/sessions',
   '/churn',
   '/support',
+  '/commercial-policy',
+  '/commercial-ledger',
+  '/commercial-quality',
 ];
 
 export function middleware(request: NextRequest) {
@@ -39,5 +42,5 @@ export function middleware(request: NextRequest) {
 }
 
 export const config = {
-  matcher: ['/dashboard/:path*', '/tenants/:path*', '/sales/:path*', '/audit/:path*', '/sessions/:path*', '/churn/:path*', '/support/:path*'],
+  matcher: ['/dashboard/:path*', '/tenants/:path*', '/sales/:path*', '/audit/:path*', '/sessions/:path*', '/churn/:path*', '/support/:path*', '/commercial-policy/:path*', '/commercial-ledger/:path*', '/commercial-quality/:path*'],
 };
