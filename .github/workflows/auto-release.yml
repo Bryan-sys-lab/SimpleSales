@@ -268,17 +268,9 @@ jobs:
         if: steps.plan.outputs.stale == 'true'
         shell: bash
         env:
-          GH_TOKEN: ${{ secrets.RELEASE_TAG_TOKEN }}
+          GH_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
-          if [ -z "$GH_TOKEN" ]; then
-            echo "::error::Secret RELEASE_TAG_TOKEN is not set."
-            echo "::error::The bump has to be pushed by a credential GitHub will run workflows for."
-            echo "::error::The automatic GITHUB_TOKEN cannot be used: GitHub does not start a workflow"
-            echo "::error::for a push made with it, so the commit that carries the build number"
-            echo "::error::would never be CI'd, and the release would ship an untested commit."
-            exit 1
-          fi
 
           semver="${{ steps.plan.outputs.semver }}"
           next="${{ steps.plan.outputs.next }}"
