@@ -1,0 +1,104 @@
+name: Publish release to Nerva
+
+# GitHub Release is the source artifact. Once it is published, mirror its
+# metadata into Nerva's product catalogue so the customer-facing release
+# channel advances automatically with the signed APK.
+on:
+  release:
+    types: [published]
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: Existing GitHub release tag to publish (for example v2.0.0+32)
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: nerva-release-${{ github.event.release.tag_name || inputs.tag }}
+  cancel-in-progress: false
+
+jobs:
+  publish:
+    name: Publish signed APK metadata to Nerva
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    env:
+      GH_TOKEN: ${{ github.token }}
+      NERVA_CI_TOKEN: ${{ secrets.NERVA_CI_TOKEN }}
+      NERVA_RELEASE_URL: https://nerva.co.ke
+      NERVA_PRODUCT_ID: security-operations
+
+    steps:
+      - name: Publish the GitHub release to Nerva
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+
+          tag="${{ github.event.release.tag_name || inputs.tag }}"
+          if [[ -z "$tag" || "$tag" != v* ]]; then
+            echo "::error::Expected a release tag beginning with v, got '$tag'."
+            exit 1
+          fi
+          if [[ -z "${NERVA_CI_TOKEN}" ]]; then
+            echo "::error::NERVA_CI_TOKEN is not configured in GitHub Actions secrets."
+            exit 1
+          fi
+
+          release_json="$(gh release view "$tag" --repo "$GITHUB_REPOSITORY" \
+            --json tagName,body,publishedAt,assets)"
+          apk_json="$(jq -c --arg tag "$tag" \
+            '.assets[] | select(.name == ("duka-pos-" + $tag + ".apk")) | {url: .browserDownloadUrl, size: .size}' \
+            <<<"$release_json" | head -n 1)"
+          if [[ -z "$apk_json" || "$apk_json" == "null" ]]; then
+            echo "::error::No signed APK asset named duka-pos-${tag}.apk exists on ${tag}."
+            exit 1
+          fi
+
+          version="${tag#v}"
+          published_at="$(jq -r '.publishedAt // empty' <<<"$release_json")"
+          notes="$(jq -r '.body // ""' <<<"$release_json")"
+          download_url="$(jq -r '.url' <<<"$apk_json")"
+          size="$(jq -r '.size' <<<"$apk_json")"
+
+          payload="$(jq -n \
+            --arg id "$NERVA_PRODUCT_ID" \
+            --arg version "$version" \
+            --arg url "$download_url" \
+            --arg notes "$notes" \
+            --arg releasedAt "$published_at" \
+            --argjson size "$size" \
+            '{
+              id: $id,
+              version: {
+                version: $version,
+                url: $url,
+                notes: $notes,
+                releasedAt: $releasedAt,
+                size: $size,
+                channel: "stable"
+              }
+            }')"
+
+          response_file="$(mktemp)"
+          status="$(curl --fail-with-body --silent --show-error --location \
+            --retry 3 --retry-delay 2 --max-time 30 \
+            -X POST "${NERVA_RELEASE_URL}/api/releases" \
+            -H "x-ci-token: ${NERVA_CI_TOKEN}" \
+            -H 'Content-Type: application/json' \
+            --data "$payload" \
+            -o "$response_file" -w '%{http_code}')" || {
+              echo "::error::Nerva release API request failed with HTTP ${status:-unknown}."
+              sed -n '1,120p' "$response_file"
+              exit 1
+            }
+
+          if [[ "$status" != 2?? ]]; then
+            echo "::error::Nerva release API returned HTTP ${status}."
+            sed -n '1,120p' "$response_file"
+            exit 1
+          fi
+          echo "Published ${tag} (${version}) to Nerva product ${NERVA_PRODUCT_ID}."
+          sed -n '1,120p' "$response_file"
