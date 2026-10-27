@@ -433,7 +433,9 @@ class ExcelService {
       return const InventoryImportResult(imported: 0);
     }
     final selected = files.single;
-    final bytes = await selected.readAsBytes();
+    final bytes = selected.path != null
+        ? await File(selected.path!).readAsBytes()
+        : await selected.readAsBytes();
     if (bytes.isEmpty) {
       throw const FormatException('The selected workbook could not be read');
     }
