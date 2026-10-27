@@ -172,11 +172,11 @@ class BackendService {
   /// this URL points every shop's till at a server on the phone's own
   /// machine — no KRA receipt for the money taken, no M-Pesa, no sync, and no
   /// error message to explain any of it.
-  static const String defaultBackendUrl = 'https://localhost:3000/api';
+  static const String defaultBackendUrl = 'https://duka-pos-backend.brianbmk332.workers.dev/api';
 
   static const backendUrl = String.fromEnvironment(
     'BACKEND_URL',
-    defaultValue: defaultBackendUrl,
+    defaultValue: 'https://duka-pos-backend.brianbmk332.workers.dev/api',
   );
 
   /// Why this build may not reach a server, or null when it may.
@@ -185,7 +185,7 @@ class BackendService {
   /// [backendUrl] is fixed at compile time: a test cannot change it, so the
   /// RULE has to be testable on its own.
   ///
-  /// A debug build is never a problem — localhost is exactly where the
+  /// A debug build is never a problem — the
   /// development server lives. A release build with no address is: it is the
   /// build that reaches a shop, and a shop whose till cannot reach the backend
   /// cannot issue a tax receipt for the money it has taken.

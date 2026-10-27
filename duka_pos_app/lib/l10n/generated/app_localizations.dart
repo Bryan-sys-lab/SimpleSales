@@ -1107,6 +1107,18 @@ abstract class AppLocalizations {
   /// **'Help'**
   String get navSupportShort;
 
+  /// No description provided for @navOpenBusiness.
+  ///
+  /// In en, this message translates to:
+  /// **'Business'**
+  String get navOpenBusiness;
+
+  /// No description provided for @navOpenBusinessShort.
+  ///
+  /// In en, this message translates to:
+  /// **'Biz'**
+  String get navOpenBusinessShort;
+
   /// No description provided for @shellRoleOwner.
   ///
   /// In en, this message translates to:

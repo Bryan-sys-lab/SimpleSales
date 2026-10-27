@@ -4,6 +4,7 @@ import 'package:go_router/go_router.dart';
 import 'package:provider/provider.dart';
 
 import '../db/database_helper.dart';
+import '../screens/tank_form_sheet.dart';
 import '../l10n/generated/app_localizations.dart';
 import '../models/models.dart';
 import '../routing/home_shell.dart';
@@ -671,12 +672,7 @@ class _DashboardContent extends StatelessWidget {
                       // by whom — so the card opens the list that answers it.
                       onTransactions: () => context.push(Routes.transactions),
                     ),
-                    if (appState.shopProfile == ShopProfile.open)
-                      FilledButton.icon(
-                        onPressed: () => context.push(Routes.portfolio),
-                        icon: const Icon(Icons.business_center_outlined),
-                        label: const Text('Business record'),
-                      ),
+                    _DashboardQuickActions(profile: appState.shopProfile),
                   ],
                   gap,
                 ),
@@ -688,5 +684,71 @@ class _DashboardContent extends StatelessWidget {
         ),
       ),
     );
+  }
+}
+
+
+class _DashboardQuickActions extends StatelessWidget {
+  const _DashboardQuickActions({required this.profile});
+
+  final ShopProfile profile;
+
+  @override
+  Widget build(BuildContext context) {
+    final children = <Widget>[];
+    switch (profile) {
+      case ShopProfile.open:
+        children.addAll(<Widget>[
+          FilledButton.tonalIcon(
+            onPressed: () => context.push(Routes.openBusiness),
+            icon: const Icon(Icons.work_outline),
+            label: const Text('Jobs'),
+          ),
+          FilledButton.tonalIcon(
+            onPressed: () => context.push(Routes.openBusiness),
+            icon: const Icon(Icons.account_balance_wallet_outlined),
+            label: const Text('Pots'),
+          ),
+          FilledButton.tonalIcon(
+            onPressed: () => context.push(Routes.portfolio),
+            icon: const Icon(Icons.business_center_outlined),
+            label: const Text('Business record'),
+          ),
+        ]);
+      case ShopProfile.drinks:
+        children.addAll(<Widget>[
+          FilledButton.tonalIcon(
+            onPressed: () => showTankFormSheet(context),
+            icon: const Icon(Icons.propane_tank_outlined),
+            label: const Text('Tanks'),
+          ),
+          FilledButton.tonalIcon(
+            onPressed: () => context.push(Routes.shotCups),
+            icon: const Icon(Icons.local_drink_outlined),
+            label: const Text('Shots'),
+          ),
+        ]);
+      case ShopProfile.fashion:
+        children.addAll(<Widget>[
+          FilledButton.tonalIcon(
+            onPressed: () => context.push(Routes.laybys),
+            icon: const Icon(Icons.bookmark_border),
+            label: const Text('Lay-bys'),
+          ),
+          FilledButton.tonalIcon(
+            onPressed: () => context.push(Routes.transactions),
+            icon: const Icon(Icons.swap_horiz_outlined),
+            label: const Text('Exchanges'),
+          ),
+        ]);
+      case ShopProfile.duka:
+        children.add(FilledButton.tonalIcon(
+          onPressed: () => context.read<HomeShellTabs>().goTo(AppDestination.inventory),
+          icon: const Icon(Icons.inventory_2_outlined),
+          label: const Text('Stock'),
+        ));
+    }
+    if (children.isEmpty) return const SizedBox.shrink();
+    return Wrap(spacing: 8, runSpacing: 8, children: children);
   }
 }

@@ -385,18 +385,6 @@ List<RouteBase> _shellRoutes(AppState appState) {
                       (BuildContext context, GoRouterState routerState) =>
                           _fadeThrough(routerState, const ExpensesScreen()),
                 ),
-                GoRoute(
-                  path: 'open-business',
-                  parentNavigatorKey: rootNavigatorKey,
-                  pageBuilder:
-                      (BuildContext context, GoRouterState routerState) =>
-                          _fadeThrough(
-                    routerState,
-                    appState.shopProfile == ShopProfile.open
-                        ? const OpenBusinessScreen()
-                        : NotFoundScreen(location: routerState.matchedLocation),
-                  ),
-                ),
                 // The all-shops view. A sibling of Reports rather than a tab:
                 // it answers a question a single shop cannot, so it is only
                 // offered where the answer exists.
@@ -511,6 +499,21 @@ List<RouteBase> _shellRoutes(AppState appState) {
               path: Routes.support,
               pageBuilder: (BuildContext context, GoRouterState routerState) =>
                   _fadeThrough(routerState, const SupportScreen()),
+            ),
+          ],
+        ),
+        StatefulShellBranch(
+          navigatorKey: branchNavigatorKeys[AppDestination.openBusiness.index],
+          routes: <RouteBase>[
+            GoRoute(
+              path: Routes.openBusiness,
+              pageBuilder: (BuildContext context, GoRouterState routerState) =>
+                  _fadeThrough(
+                routerState,
+                appState.shopProfile == ShopProfile.open
+                    ? const OpenBusinessScreen()
+                    : NotFoundScreen(location: routerState.matchedLocation),
+              ),
             ),
           ],
         ),

@@ -349,16 +349,17 @@ class _LoginScreenState extends State<LoginScreen> {
         child: Center(
           child: ConstrainedBox(
             constraints: const BoxConstraints(maxWidth: _kPadWidth),
-            child: Padding(
-              padding: EdgeInsetsDirectional.fromSTEB(
-                spacing.xl,
-                spacing.lg,
-                spacing.xl,
-                spacing.lg,
-              ),
-              child: Column(
-                mainAxisSize: MainAxisSize.max,
-                children: <Widget>[
+            child: SingleChildScrollView(
+              child: Padding(
+                padding: EdgeInsetsDirectional.fromSTEB(
+                  spacing.xl,
+                  spacing.lg,
+                  spacing.xl,
+                  spacing.lg,
+                ),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: <Widget>[
                   OnboardStyle.header(
                     context: context,
                     onSignIn: () => context.go(Routes.welcome),
@@ -391,25 +392,23 @@ class _LoginScreenState extends State<LoginScreen> {
                     spacing: spacing,
                   ),
                   SizedBox(height: spacing.lg),
-                  Expanded(
-                    child: _choosingShop
-                        ? _ShopChooser(
-                            shops: _shops,
-                            onChosen: _chooseShop,
-                          )
-                        : switch (_rosterState) {
-                            _RosterState.loading => const _RosterLoading(),
-                            _RosterState.noAccounts => _NoAccountsPanel(
-                                onSetUp: _setUpShop,
-                              ),
-                            _RosterState.ready => _WhoPicker(
-                                ownerName: owner?.name,
-                                staff: _staff,
-                                selected: _selected,
-                                onChanged: _selectIdentity,
-                              ),
-                          },
-                  ),
+                  _choosingShop
+                      ? _ShopChooser(
+                          shops: _shops,
+                          onChosen: _chooseShop,
+                        )
+                      : switch (_rosterState) {
+                          _RosterState.loading => const _RosterLoading(),
+                          _RosterState.noAccounts => _NoAccountsPanel(
+                              onSetUp: _setUpShop,
+                            ),
+                          _RosterState.ready => _WhoPicker(
+                              ownerName: owner?.name,
+                              staff: _staff,
+                              selected: _selected,
+                              onChanged: _selectIdentity,
+                            ),
+                        },
                   if (!_choosingShop && _shops.length > 1)
                     Align(
                       alignment: AlignmentDirectional.centerStart,
@@ -481,6 +480,7 @@ class _LoginScreenState extends State<LoginScreen> {
           ),
         ),
       ),
+      ),
     );
   }
 }
@@ -515,9 +515,10 @@ class _ShopChooser extends StatelessWidget {
           style: type.bodySmall?.copyWith(color: colors.onSurfaceMuted),
         ),
         SizedBox(height: spacing.md),
-        Expanded(
-          child: ListView.separated(
-            itemCount: shops.length,
+        ListView.separated(
+          shrinkWrap: true,
+          physics: const NeverScrollableScrollPhysics(),
+          itemCount: shops.length,
             separatorBuilder: (_, __) => SizedBox(height: spacing.sm),
             itemBuilder: (BuildContext context, int index) {
               final LocalShop shop = shops[index];
@@ -527,7 +528,6 @@ class _ShopChooser extends StatelessWidget {
               );
             },
           ),
-        ),
       ],
     );
   }
@@ -751,12 +751,13 @@ class _WhoPicker extends StatelessWidget {
           child: Text(l10n.loginWhoAreYou, style: type.titleMedium),
         ),
         SizedBox(height: spacing.sm),
-        Expanded(
-          child: Builder(
-            builder: (BuildContext context) {
-              final List<_RosterRow> rows = _rows(AppLocalizations.of(context));
-              return ListView.builder(
-                padding: EdgeInsets.zero,
+        Builder(
+          builder: (BuildContext context) {
+            final List<_RosterRow> rows = _rows(AppLocalizations.of(context));
+            return ListView.builder(
+              shrinkWrap: true,
+              physics: const NeverScrollableScrollPhysics(),
+              padding: EdgeInsets.zero,
                 itemCount: rows.length,
                 itemBuilder: (BuildContext context, int index) {
                   final _RosterRow row = rows[index];
@@ -780,7 +781,6 @@ class _WhoPicker extends StatelessWidget {
               );
             },
           ),
-        ),
         if (hasChosen)
           Padding(
             padding: EdgeInsetsDirectional.only(top: spacing.sm),

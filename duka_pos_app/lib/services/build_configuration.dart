@@ -36,7 +36,7 @@ class BuildConfiguration {
 
   /// Why this build may not be able to reach a server, or null when it can.
   ///
-  /// Null in a debug build: localhost is exactly where the development server
+  /// Null in a debug build:  the development server
   /// lives, so a debug build is never "unconfigured".
   static String? get problem {
     final String? backend = BackendService.releaseConfigurationProblem(

@@ -602,6 +602,12 @@ class AppLocalizationsEn extends AppLocalizations {
   String get navSupportShort => 'Help';
 
   @override
+  String get navOpenBusiness => 'Business';
+
+  @override
+  String get navOpenBusinessShort => 'Biz';
+
+  @override
   String get shellRoleOwner => 'Owner';
 
   @override

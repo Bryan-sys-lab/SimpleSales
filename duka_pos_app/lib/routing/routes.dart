@@ -87,7 +87,8 @@ enum AppDestination {
   analytics('navAnalytics', 'navAnalyticsShort'),
   settings('navSettings', 'navSettingsShort'),
   more('navMore', 'navMoreShort'),
-  support('navSupport', 'navSupportShort');
+  support('navSupport', 'navSupportShort'),
+  openBusiness('navOpenBusiness', 'navOpenBusinessShort');
 
   const AppDestination(this.labelKey, this.shortLabelKey);
 
@@ -118,6 +119,7 @@ enum AppDestination {
         AppDestination.settings => Routes.settings,
         AppDestination.more => Routes.more,
         AppDestination.support => Routes.support,
+        AppDestination.openBusiness => Routes.openBusiness,
       };
 
   /// The indexed shell has no branch for More; it is an action that opens a
@@ -130,6 +132,7 @@ enum AppDestination {
         AppDestination.analytics => 3,
         AppDestination.settings => 4,
         AppDestination.support => 5,
+        AppDestination.openBusiness => 6,
         AppDestination.more => -1,
       };
 
@@ -140,6 +143,7 @@ enum AppDestination {
         AppDestination.analytics,
         AppDestination.settings,
         AppDestination.support,
+        AppDestination.openBusiness,
       ][index];
 
   /// The glyph.
@@ -157,6 +161,7 @@ enum AppDestination {
         AppDestination.settings => Icons.tune_outlined,
         AppDestination.more => Icons.more_horiz,
         AppDestination.support => Icons.help_outline,
+        AppDestination.openBusiness => Icons.work_outline,
       };
 
   static AppDestination? fromPath(String path) {

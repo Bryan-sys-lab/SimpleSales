@@ -246,14 +246,17 @@ class _OwnerSetupScreenState extends State<OwnerSetupScreen> {
         backgroundColor: colors.canvas,
         body: SafeArea(
           child: Center(
-            child: SingleChildScrollView(
-              padding: EdgeInsets.all(spacing.xl),
-              child: ConstrainedBox(
-                constraints: const BoxConstraints(maxWidth: _kFormWidth),
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  crossAxisAlignment: CrossAxisAlignment.stretch,
-                  children: <Widget>[
+            child: ConstrainedBox(
+              constraints: const BoxConstraints(maxWidth: _kFormWidth),
+              child: Column(
+                children: <Widget>[
+                  Expanded(
+                    child: SingleChildScrollView(
+                      padding: EdgeInsets.all(spacing.xl),
+                      child: Column(
+                        mainAxisSize: MainAxisSize.min,
+                        crossAxisAlignment: CrossAxisAlignment.stretch,
+                        children: <Widget>[
                     // Header
                     Row(
                       children: <Widget>[
@@ -265,7 +268,7 @@ class _OwnerSetupScreenState extends State<OwnerSetupScreen> {
                         const SimplePosMark(size: 36),
                       ],
                     ),
-                    SizedBox(height: spacing.lg),
+                    SizedBox(height: spacing.sm),
                     // Media window style header
                     OnboardStyle.window(
                       context: context,
@@ -296,7 +299,7 @@ class _OwnerSetupScreenState extends State<OwnerSetupScreen> {
                       colors: colors,
                       spacing: spacing,
                     ),
-                    SizedBox(height: spacing.lg),
+                    SizedBox(height: spacing.sm),
                     // Profile picker
                     _ProfilePicker(
                       value: _shopProfile,
@@ -304,7 +307,7 @@ class _OwnerSetupScreenState extends State<OwnerSetupScreen> {
                         if (value != null) setState(() => _shopProfile = value);
                       },
                     ),
-                    SizedBox(height: spacing.md),
+                    SizedBox(height: spacing.sm),
                     // Form
                     _SetupFields(
                       formKey: _formKey,
@@ -328,16 +331,21 @@ class _OwnerSetupScreenState extends State<OwnerSetupScreen> {
                         tone: StatusTone.danger,
                       ),
                     ],
-                    SizedBox(height: spacing.xl),
-                    OnboardStyle.primaryButton(
+                  ],
+                ),
+              ),
+            ),
+                  Padding(
+                    padding: EdgeInsets.all(spacing.xl),
+                    child: OnboardStyle.primaryButton(
                       context: context,
                       onPressed: _saving ? null : _create,
                       label: _saving ? 'Creating the shop' : 'Create shop admin account',
                       colors: colors,
                       spacing: spacing,
                     ),
-                  ],
-                ),
+                  ),
+                ],
               ),
             ),
           ),

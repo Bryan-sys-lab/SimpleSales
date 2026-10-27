@@ -10,6 +10,7 @@ import '../l10n/l10n_keys.dart';
 import '../services/app_state.dart';
 import '../services/roles.dart';
 import '../profile/profile_navigation.dart';
+import '../profile/shop_profile.dart';
 import '../theme/app_colors.dart';
 import '../theme/app_spacing.dart';
 import '../theme/typography.dart';
@@ -36,6 +37,19 @@ List<AppDestination> visibleDestinations(AppState state) {
   // split is as even as each role can make it — a cashier gets one on each
   // side, a manager two and two, an owner two and three — and so the
   // everyday destinations are the ones nearest the ball.
+  
+  // Open profile primary navigation: Jobs/Pots/Business Record instead of inventory
+  if (state.shopProfile == ShopProfile.open) {
+    return <AppDestination>[
+      AppDestination.dashboard,
+      AppDestination.openBusiness,
+      AppDestination.sell,
+      AppDestination.analytics,
+      AppDestination.more,
+      AppDestination.support,
+    ];
+  }
+  
   return <AppDestination>[
     AppDestination.dashboard,
     // Inventory and Reports report the whole shop. A cashier's business is
@@ -471,7 +485,10 @@ class _MoreSheet extends StatelessWidget {
             title: const Text('Fashion lay-bys'),
             onTap: () => Navigator.pop(context, _MoreAction.laybys),
           ),
-        if (context.read<AppState>().shopProfile.navigation.showJobs)
+        // Open business record is now primary navigation for Open profile
+        // so it's not in the more sheet for that profile
+        if (context.read<AppState>().shopProfile.navigation.showJobs && 
+            context.read<AppState>().shopProfile != ShopProfile.open)
           ListTile(
             leading: const Icon(Icons.work_outline),
             title: const Text('Open business record'),

@@ -177,7 +177,7 @@ void main() {
           body: SingleChildScrollView(
             child: BuildConfigurationNotice(
               problem: 'BACKEND_URL was never set, so this build points at '
-                  'https://localhost:3000/api. Rebuild with '
+                  'https://duka-pos-backend.brianbmk332.workers.dev/api. Rebuild with '
                   '--dart-define=BACKEND_URL=https://your-backend/api',
             ),
           ),

@@ -2,6 +2,10 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
 import '../db/database_helper.dart';
+import '../models/models.dart';
+import '../profile/profile_product_forms.dart';
+import '../profile/shop_profile.dart';
+import '../screens/receive_stock_sheet.dart';
 import '../services/app_state.dart';
 import '../utils/money.dart';
 
@@ -21,6 +25,8 @@ class _OpenBusinessScreenState extends State<OpenBusinessScreen> {
   List<Map<String, dynamic>> _pools = const [];
   List<Map<String, dynamic>> _jobs = const [];
   List<Map<String, dynamic>> _ownerTransactions = const [];
+  List<Product> _products = const [];
+  List<Supplier> _suppliers = const [];
   bool _loading = true;
   String? _error;
 
@@ -38,16 +44,20 @@ class _OpenBusinessScreenState extends State<OpenBusinessScreen> {
       _error = null;
     });
     try {
-      final values = await Future.wait<List<Map<String, dynamic>>>([
+      final values = await Future.wait<Object>([
         _db.getCostPools(),
         _db.getOpenJobs(),
         _db.getOwnerTransactions(),
+        _db.getProducts(),
+        _db.getSuppliers(),
       ]);
       if (!mounted) return;
       setState(() {
-        _pools = values[0];
-        _jobs = values[1];
-        _ownerTransactions = values[2];
+        _pools = values[0] as List<Map<String, dynamic>>;
+        _jobs = values[1] as List<Map<String, dynamic>>;
+        _ownerTransactions = values[2] as List<Map<String, dynamic>>;
+        _products = values[3] as List<Product>;
+        _suppliers = values[4] as List<Supplier>;
         _loading = false;
       });
     } catch (error) {
@@ -93,6 +103,39 @@ class _OpenBusinessScreenState extends State<OpenBusinessScreen> {
           amount: amount,
           paidFrom: values['paidFrom'] ?? 'other',
           description: values['description'],
+        ));
+  }
+
+  Future<void> _applyOldestPoolCost() async {
+    final values = await _form('Apply stock cost to a sale', [
+      const _Field('saleId', 'Sale number'),
+      const _Field('amount', 'Amount (KES)'),
+    ]);
+    if (values == null) return;
+    final saleId = int.tryParse(values['saleId'] ?? '');
+    final amount = _money(values['amount']);
+    if (saleId == null || amount == null) {
+      return _showError('Enter a valid sale number and amount.');
+    }
+    final pools = (await _db.getCostPools())
+      ..sort((a, b) => (a['created_at'] as String? ?? '')
+          .compareTo(b['created_at'] as String? ?? ''));
+    Map<String, dynamic>? chosen;
+    for (final pool in pools) {
+      final invested = (pool['invested_minor'] as num).toInt();
+      final recovered = (pool['recovered_minor'] as num).toInt();
+      if (invested - recovered >= amount.minorUnits) {
+        chosen = pool;
+        break;
+      }
+    }
+    if (chosen == null) {
+      return _showError('No cost group has enough left for that amount.');
+    }
+    await _run(() => _db.allocateCostPoolToSale(
+          poolId: (chosen!['id'] as num).toInt(),
+          saleId: saleId,
+          amount: amount,
         ));
   }
 
@@ -219,6 +262,53 @@ class _OpenBusinessScreenState extends State<OpenBusinessScreen> {
         ));
   }
 
+  Future<void> _addOptionalProduct() async {
+    final values = await ProfileProductForms.showForm(
+      context: context,
+      profile: ShopProfile.open,
+    );
+    if (values == null) return;
+    final name = values['name'] as String?;
+    final priceMajor = (values['price'] as num?)?.toDouble();
+    if (name == null || name.trim().isEmpty || priceMajor == null) {
+      return _showError('Enter a valid name and selling price.');
+    }
+    final price = Money.fromMajor(priceMajor);
+    final optionalStock = values['optional_stock'] == true;
+    final costMajor = (values['cost'] as num?)?.toDouble() ?? 0;
+    final stock = (values['stock'] as num?)?.toDouble() ?? 0;
+    final now = DateTime.now().toIso8601String();
+    final product = Product(
+      name: name.trim(),
+      category: 'Optional stock',
+      costPrice: Money.fromMajor(costMajor),
+      sellPrice: price,
+      stockQty: optionalStock ? stock : 0,
+      reorderLevel: 0,
+      updatedAt: now,
+    );
+    await _run(() => _db.upsertProduct(product));
+  }
+
+  Future<void> _receiveOptionalStock() async {
+    if (_products.isEmpty) {
+      return _showError('Add an item first.');
+    }
+    await showReceiveStockSheet(
+      context,
+      products: _products,
+      suppliers: _suppliers,
+      lastCostFor: (productId) async {
+        final product = _products.firstWhere((p) => p.id == productId,
+            orElse: () => _products.first);
+        return product.costPrice;
+      },
+      staffName: context.read<AppState>().currentStaffName ?? 'Owner',
+      staffId: context.read<AppState>().currentStaffId,
+    );
+    await _load();
+  }
+
   Future<void> _run(Future<Object?> Function() action) async {
     try {
       await action();
@@ -320,7 +410,7 @@ class _OpenBusinessScreenState extends State<OpenBusinessScreen> {
                             fontSize: 24, fontWeight: FontWeight.bold)),
                     const SizedBox(height: 6),
                     const Text(
-                        'Use pots for lots or rolling stock, jobs for work, and owner money for capital and drawings. Each action posts to the shared finance ledger.'),
+                        'Use cost groups for lots or rolling stock, jobs for work, and owner money for capital and drawings. Each action posts to the shared finance ledger.'),
                     const SizedBox(height: 16),
                     Row(children: [
                       Expanded(
@@ -334,7 +424,7 @@ class _OpenBusinessScreenState extends State<OpenBusinessScreen> {
                               onPressed: _newPool,
                               icon: const Icon(
                                   Icons.account_balance_wallet_outlined),
-                              label: const Text('New pot'))),
+                              label: const Text('New cost group'))),
                       const SizedBox(width: 8),
                       Expanded(
                           child: FilledButton.icon(
@@ -343,22 +433,32 @@ class _OpenBusinessScreenState extends State<OpenBusinessScreen> {
                               label: const Text('New job')))
                     ]),
                     const SizedBox(height: 8),
+                    Row(children: [
+                      Expanded(
+                          child: OutlinedButton.icon(
+                              onPressed: _applyOldestPoolCost,
+                              icon: const Icon(Icons.link_outlined),
+                              label: const Text('Apply cost to sale'))),
+                      const SizedBox(width: 8),
+                      Expanded(
+                          child: OutlinedButton.icon(
+                              onPressed: _ownerMoney,
+                              icon: const Icon(Icons.swap_horiz),
+                              label: const Text('Owner money')))
+                    ]),
+                    const SizedBox(height: 8),
                     const Text(
                         'Quick sales record revenue and payment only; no stock cost or tax is inferred. Add a pot or job cost separately when known.'),
                     const SizedBox(height: 8),
-                    OutlinedButton.icon(
-                        onPressed: _ownerMoney,
-                        icon: const Icon(Icons.swap_horiz),
-                        label: const Text('Record owner money')),
                     const SizedBox(height: 24),
                     _section(
-                      'Cost pots',
+                      'Stock costs',
                       _pools.isEmpty
                           ? [
                               const ListTile(
-                                title: Text('No cost pots yet'),
+                                title: Text('No stock costs yet'),
                                 subtitle: Text(
-                                    'Create a lot or rolling stock pot when you buy working stock.'),
+                                    'Create a lot or rolling stock cost group when you buy working stock.'),
                               ),
                             ]
                           : [
@@ -368,7 +468,7 @@ class _OpenBusinessScreenState extends State<OpenBusinessScreen> {
                                     title: Text(
                                         '${pool['name']} · ${pool['pool_type']}'),
                                     subtitle: Text(
-                                      'Invested ${formatMoney(Money.fromMinor((pool['invested_minor'] as num).toInt()))} · Recovered ${formatMoney(Money.fromMinor((pool['recovered_minor'] as num).toInt()))}',
+                                      'Paid in ${formatMoney(Money.fromMinor((pool['invested_minor'] as num).toInt()))} · Recovered ${formatMoney(Money.fromMinor((pool['recovered_minor'] as num).toInt()))} · Left ${formatMoney(Money.fromMinor((pool['invested_minor'] as num).toInt() - (pool['recovered_minor'] as num).toInt()))} · Profit ${formatMoney(Money.fromMinor((pool['recovered_minor'] as num).toInt() - (pool['invested_minor'] as num).toInt() > 0 ? (pool['recovered_minor'] as num).toInt() - (pool['invested_minor'] as num).toInt() : 0))}',
                                     ),
                                     trailing: IconButton(
                                       tooltip: 'Add pot cost',
@@ -424,6 +524,37 @@ class _OpenBusinessScreenState extends State<OpenBusinessScreen> {
                                   ),
                                 ),
                             ],
+                    ),
+                    _section(
+                      'Optional stock',
+                      <Widget>[
+                        Row(children: [
+                          Expanded(
+                              child: FilledButton.icon(
+                                  onPressed: _addOptionalProduct,
+                                  icon: const Icon(Icons.add),
+                                  label: const Text('Add item'))),
+                          const SizedBox(width: 8),
+                          Expanded(
+                              child: OutlinedButton.icon(
+                                  onPressed: _receiveOptionalStock,
+                                  icon: const Icon(Icons.inventory_2_outlined),
+                                  label: const Text('Receive stock'))),
+                        ]),
+                        if (_products.isEmpty)
+                          const ListTile(
+                            title: Text('No optional stock items yet'),
+                            subtitle: Text(
+                                'Add an item when you want to track stock for an open business.'),
+                          )
+                        else
+                          for (final product in _products)
+                            ListTile(
+                              title: Text(product.name),
+                              subtitle: Text(
+                                  '${product.stockQty} in stock · ${formatMoney(product.sellPrice)}'),
+                            ),
+                      ],
                     ),
                     _section(
                       'Owner money',

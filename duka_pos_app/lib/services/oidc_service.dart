@@ -13,7 +13,7 @@ import '../models/session_renewal.dart';
 class OidcService {
   static const _issuer = String.fromEnvironment(
     'OIDC_ISSUER_URL',
-    defaultValue: 'https://id.example.com/realms/duka',
+    defaultValue: 'https://simplesales-keycloak.brianbmk332.workers.dev/realms/master',
   );
   static const _clientId = String.fromEnvironment(
     'OIDC_CLIENT_ID',

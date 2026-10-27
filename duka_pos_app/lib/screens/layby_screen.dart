@@ -233,7 +233,7 @@ class _LaybyScreenState extends State<LaybyScreen> {
                     const ScreenTitle(
                       title: 'Fashion lay-bys',
                       subtitle:
-                          'Reserve an item now; recognise revenue only when it is completed.',
+                          'A customer pays a deposit now, pays the rest later, and takes the item when fully paid. The sale is recorded only when completed.',
                     ),
                     if (_error != null)
                       Padding(

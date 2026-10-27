@@ -602,6 +602,12 @@ class AppLocalizationsSw extends AppLocalizations {
   String get navSupportShort => 'Msaada';
 
   @override
+  String get navOpenBusiness => 'Biashara';
+
+  @override
+  String get navOpenBusinessShort => 'Biz';
+
+  @override
   String get shellRoleOwner => 'Mmiliki';
 
   @override

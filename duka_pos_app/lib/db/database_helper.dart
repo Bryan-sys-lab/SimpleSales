@@ -2488,7 +2488,7 @@ SELECT name FROM staff GROUP BY name HAVING COUNT(*) = 1
     if (!salesNames.contains('etims_receipt_number')) return;
     const backendUrl = String.fromEnvironment(
       'BACKEND_URL',
-      defaultValue: 'https://localhost:3000/api',
+      defaultValue: 'https://duka-pos-backend.brianbmk332.workers.dev/api',
     );
     final base = backendUrl.replaceAll(RegExp(r'/+$'), '');
     if (base.isNotEmpty) {

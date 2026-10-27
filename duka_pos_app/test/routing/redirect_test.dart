@@ -295,9 +295,9 @@ void main() {
       expect(AppDestination.fromPath('/nope'), isNull);
     });
 
-    test('there are six branches plus More, and Reports is not one of them',
+    test('there are seven branches plus More, and Reports is not one of them',
         () {
-      expect(AppDestination.values.length, 7);
+      expect(AppDestination.values.length, 8);
       expect(
         AppDestination.values.map((AppDestination d) => d.path),
         isNot(contains(Routes.reports)),

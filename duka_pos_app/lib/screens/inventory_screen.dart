@@ -157,6 +157,7 @@ class _InventoryScreenState extends State<InventoryScreen>
         existing: existing,
         allowVariants:
             context.read<AppState>().shopProfile.navigation.showVariants,
+        shopProfile: context.read<AppState>().shopProfile,
         onSaved: _load,
       ),
     );
@@ -913,7 +914,8 @@ class _InventoryScreenState extends State<InventoryScreen>
             icon: const Icon(Icons.propane_tank_outlined, size: 18),
             label: Text(l10n.tankAddEntry),
           ),
-        if (appState.shopProfile == ShopProfile.duka &&
+        if ((appState.shopProfile == ShopProfile.duka ||
+            appState.shopProfile == ShopProfile.drinks) &&
             appState.hasPermission(PermissionKey.adjustStock))
           TextButton.icon(
             onPressed: _repackStock,
@@ -1949,10 +1951,12 @@ String _sizeLabelOf(BuildContext context, ProductUnit unit) {
 class _ProductEditor extends StatefulWidget {
   final Product? existing;
   final bool allowVariants;
+  final ShopProfile shopProfile;
   final VoidCallback onSaved;
   const _ProductEditor({
     this.existing,
     required this.allowVariants,
+    required this.shopProfile,
     required this.onSaved,
   });
   @override
@@ -3016,7 +3020,8 @@ class _ProductEditorState extends State<_ProductEditor> {
                 onChanged: (ProductUnit unit) => setState(() => _unit = unit),
               ),
               SizedBox(height: spacing.md),
-              TextField(
+              if (widget.shopProfile.navigation.showDrinkService)
+                TextField(
                   controller: _bottleMl,
                   decoration: InputDecoration(
                       labelText: _sizeLabelOf(context, _unit),
@@ -3044,8 +3049,9 @@ class _ProductEditorState extends State<_ProductEditor> {
                   ),
                 ),
               if (_visibleSizeSuggestions.isNotEmpty) _sizeSuggestionChips(),
-              Row(children: [
-                Expanded(
+              if (widget.shopProfile.navigation.showDrinkService)
+                Row(children: [
+                  Expanded(
                     child: TextField(
                         controller: _halfPrice,
                         decoration: InputDecoration(

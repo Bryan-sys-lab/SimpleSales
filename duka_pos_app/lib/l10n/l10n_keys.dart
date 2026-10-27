@@ -33,6 +33,8 @@ extension AppLocalizationsKeys on AppLocalizations {
         'navSettingsShort' => navSettingsShort,
         'navSupport' => navSupport,
         'navSupportShort' => navSupportShort,
+        'navOpenBusiness' => navOpenBusiness,
+        'navOpenBusinessShort' => navOpenBusinessShort,
         _ => key,
       };
 
@@ -58,5 +60,7 @@ extension AppLocalizationsKeys on AppLocalizations {
     'navSettingsShort',
     'navSupport',
     'navSupportShort',
+    'navOpenBusiness',
+    'navOpenBusinessShort',
   ];
 }

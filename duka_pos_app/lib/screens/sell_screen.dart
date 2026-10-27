@@ -46,6 +46,7 @@ import '../utils/money.dart';
 import '../utils/units.dart';
 import '../models/product_pack.dart';
 import '../profile/profile_navigation.dart';
+import '../profile/shop_profile.dart';
 import '../models/incoming_payment.dart';
 
 class SellScreen extends StatefulWidget {
@@ -2548,6 +2549,78 @@ class _SellScreenState extends State<SellScreen>
     }
   }
 
+  Future<void> _openQuickSale() async {
+    final values = await showDialog<Map<String, String>>(
+      context: context,
+      builder: (context) {
+        final amountController = TextEditingController();
+        final referenceController = TextEditingController();
+        String method = 'cash';
+        return StatefulBuilder(builder: (context, setState) {
+          return AlertDialog(
+            title: const Text('Quick sale'),
+            content: Column(mainAxisSize: MainAxisSize.min, children: [
+              TextField(
+                controller: amountController,
+                decoration: const InputDecoration(labelText: 'Amount (KES)'),
+                keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                autofocus: true,
+              ),
+              DropdownButtonFormField<String>(
+                initialValue: method,
+                decoration: const InputDecoration(labelText: 'Payment method'),
+                items: const [
+                  DropdownMenuItem(value: 'cash', child: Text('cash')),
+                  DropdownMenuItem(value: 'mpesa', child: Text('mpesa')),
+                  DropdownMenuItem(value: 'bank_transfer', child: Text('bank transfer')),
+                ],
+                onChanged: (value) {
+                  if (value != null) setState(() => method = value);
+                },
+              ),
+              TextField(
+                controller: referenceController,
+                decoration: const InputDecoration(labelText: 'Reference (optional)'),
+              ),
+            ]),
+            actions: [
+              TextButton(onPressed: () => Navigator.pop(context), child: const Text('Cancel')),
+              FilledButton(
+                onPressed: () {
+                  Navigator.pop(context, {
+                    'amount': amountController.text.trim(),
+                    'method': method,
+                    'reference': referenceController.text.trim(),
+                  });
+                },
+                child: const Text('Save'),
+              ),
+            ],
+          );
+        });
+      },
+    );
+    if (values == null) return;
+    final amount = double.tryParse(values['amount'] ?? '');
+    if (amount == null || amount <= 0) return;
+    if (!mounted) return;
+    final appState = context.read<AppState>();
+    try {
+      await DatabaseHelper.instance.recordOpenQuickSale(
+        amount: Money.fromMajor(amount),
+        paymentMethod: values['method'] ?? 'cash',
+        paymentReference: (values['reference'] ?? '').isEmpty ? null : values['reference'],
+        staffId: appState.currentStaffId,
+        staffName: appState.currentStaffName ?? 'Owner',
+      );
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Quick sale recorded.')));
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('$e')));
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     // Published for the sign-out sheet, which warns about a part-built cart
@@ -2623,6 +2696,19 @@ class _SellScreenState extends State<SellScreen>
                 // it divided infinity, the grid's scroll extent became
                 // infinite, and the sliver's index arithmetic threw "Infinity
                 // or NaN to Int" the moment the till opened on a phone.
+                if (context.read<AppState>().shopProfile == ShopProfile.open)
+                  Padding(
+                    padding: EdgeInsetsDirectional.only(
+                      start: PageGutter.of(context).left,
+                      end: PageGutter.of(context).right,
+                      bottom: spacing.sm,
+                    ),
+                    child: FilledButton.icon(
+                      onPressed: _openQuickSale,
+                      icon: const Icon(Icons.point_of_sale_outlined),
+                      label: const Text('Record sale amount'),
+                    ),
+                  ),
                 Expanded(
                   child: SellPaneLayout(
                     compact: compact,
