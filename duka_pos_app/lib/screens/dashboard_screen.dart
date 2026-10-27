@@ -11,6 +11,7 @@ import '../routing/routes.dart';
 import '../services/analytics.dart';
 import '../app_brand.dart';
 import '../services/app_state.dart';
+import '../profile/shop_profile.dart';
 import '../services/roles.dart';
 import '../services/live_channel_service.dart';
 import '../services/live_refresh_mixin.dart';
@@ -670,6 +671,12 @@ class _DashboardContent extends StatelessWidget {
                       // by whom — so the card opens the list that answers it.
                       onTransactions: () => context.push(Routes.transactions),
                     ),
+                    if (appState.shopProfile == ShopProfile.open)
+                      FilledButton.icon(
+                        onPressed: () => context.push(Routes.portfolio),
+                        icon: const Icon(Icons.business_center_outlined),
+                        label: const Text('Business record'),
+                      ),
                   ],
                   gap,
                 ),
