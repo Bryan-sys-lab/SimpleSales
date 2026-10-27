@@ -198,13 +198,8 @@ class ExcelService {
   /// The EXPORT already did this (see [_encodeWorkbook]). The import did not,
   /// and it is the heavier of the two: an export writes the app's own
   /// catalogue, and an import reads whatever a supplier sent.
-  static Future<xl.Excel> _decodeWorkbook(List<int> bytes) async {
-    // Decode on the main isolate. A separate compute() isolate used to be
-    // used here, but on some handsets the isolate's memory budget (or the
-    // transfer of the decoded workbook back) was enough to kill the app
-    // mid-import, so the owner saw "loading" and then a quit instead of a
-    // result. Decoding on the main isolate keeps the workbook in one place
-    // and lets the surrounding try/catch turn a failure into a message.
+  static Future<Map<String, List<List<dynamic>>>> _decodeWorkbook(
+      List<int> bytes) async {
     if (bytes.length > 25 * 1024 * 1024) {
       throw const FormatException(
         'That workbook is too large to import on this phone. Split it into '
@@ -212,13 +207,32 @@ class ExcelService {
       );
     }
     try {
-      return xl.Excel.decodeBytes(bytes);
+      return await compute(_decodeWorkbookSync, bytes);
     } catch (_) {
       throw const FormatException(
         'That file could not be opened as a workbook. Open it in Excel and use '
         '"Save As" to save a new .xlsx, then import that.',
       );
     }
+  }
+
+  /// Runs in a separate isolate so the decoded cells never have to be
+  /// transferred back as a workbook object — only plain lists of primitive
+  /// values come across, which is what keeps the import from killing the app
+  /// on memory-constrained phones.
+  static Map<String, List<List<dynamic>>> _decodeWorkbookSync(
+      List<int> bytes) {
+    final book = xl.Excel.decodeBytes(bytes);
+    if (book.tables.isEmpty) {
+      throw ArgumentError('The workbook has no worksheets');
+    }
+    final result = <String, List<List<dynamic>>>{};
+    for (final entry in book.tables.entries) {
+      result[entry.key] = entry.value.rows
+          .map((row) => row.map((cell) => cell?.value).toList())
+          .toList();
+    }
+    return result;
   }
 
   Future<File> _save(xl.Excel book, String prefix) async {
@@ -439,34 +453,21 @@ class ExcelService {
     void Function(ImportProgress)? onProgress,
   }) async {
     onProgress?.call(const ImportProgress(ImportStage.reading));
-    final xl.Excel book;
+    final Map<String, List<List<dynamic>>> sheets;
     try {
-      // Off the UI isolate. See [_decodeWorkbook] for why that is the
-      // difference between an import and a signed-out till.
-      book = await _decodeWorkbook(bytes);
+      sheets = await _decodeWorkbook(bytes);
     } catch (_) {
-      // A .csv renamed to .xlsx lands here, and "could not be opened as a
-      // workbook" is actionable where the decoder's own error is not.
       throw const FormatException(
         'That file could not be opened as a workbook. Open it in Excel and use '
         '"Save As" to save a new .xlsx, then import that.',
       );
     }
-    try {
-      if (book.tables.isEmpty) {
-        throw const FormatException('The workbook has no worksheets');
-      }
-    } on ArgumentError {
-      // `Excel.tables` throws rather than returning an empty map when the
-      // workbook is damaged, and an `ArgumentError` is neither a
-      // `FormatException` nor an `UnreadableLayoutException` — so a corrupt
-      // file used to be reported as a generic failure instead of the message
-      // that says what is wrong with it.
+    if (sheets.isEmpty) {
       throw const FormatException('The workbook has no worksheets');
     }
 
-    final sheetName = _inventorySheetName(book);
-    final layout = SheetLayout.fromRawRows(_rawRows(book.tables[sheetName]!));
+    final sheetName = _inventorySheetName(sheets);
+    final layout = SheetLayout.fromRawRows(sheets[sheetName]!);
     // Refused whole rather than read positionally. A workbook we cannot map is
     // not a workbook with 287 bad rows in it — see SheetLayout.refusal.
     //
@@ -486,9 +487,9 @@ class ExcelService {
       sheetName: sheetName,
       rows: layout.rows,
       columns: layout.columns,
-      barcodes: readBarcodeRows(_rawRowsOf(book, barcodesSheetName)),
-      variants: readVariantRows(_rawRowsOf(book, variantsSheetName)),
-      skippedSheets: _skippedSheets(book),
+      barcodes: readBarcodeRows(_rawRowsOf(sheets, barcodesSheetName)),
+      variants: readVariantRows(_rawRowsOf(sheets, variantsSheetName)),
+      skippedSheets: _skippedSheets(sheets),
       onProgress: onProgress,
     );
   }
@@ -518,8 +519,9 @@ class ExcelService {
   /// separately by name, and a file that has them would otherwise have its
   /// barcode list chosen as the product list because it is shorter and its
   /// header maps cleanly.
-  static String _inventorySheetName(xl.Excel book) {
-    for (final name in book.tables.keys) {
+  static String _inventorySheetName(
+      Map<String, List<List<dynamic>>> sheets) {
+    for (final name in sheets.keys) {
       if (name.trim().toLowerCase() == inventorySheetName.toLowerCase()) {
         return name;
       }
@@ -531,10 +533,10 @@ class ExcelService {
     };
     String? bestName;
     var bestScore = -1;
-    for (final name in book.tables.keys) {
+    for (final name in sheets.keys) {
       final lower = name.trim().toLowerCase();
       if (skip.contains(lower)) continue;
-      final raw = _rawRows(book.tables[name]!);
+      final raw = sheets[name]!;
       if (raw.isEmpty) continue;
       final layout = SheetLayout.fromRawRows(raw);
       // A tab with no header we can map is a cover page, a note, or a picture
@@ -553,12 +555,12 @@ class ExcelService {
     }
     if (bestName != null) return bestName;
 
-    for (final name in book.tables.keys) {
-      if (_rawRows(book.tables[name]!).isNotEmpty) return name;
+    for (final name in sheets.keys) {
+      if (sheets[name]!.isNotEmpty) return name;
     }
     // Nothing but empty sheets. Take the first so the caller reports a count of
     // zero against a named tab rather than crashing on a missing one.
-    return book.tables.keys.first;
+    return sheets.keys.first;
   }
 
   /// Tabs this import did not read, by name.
@@ -570,23 +572,20 @@ class ExcelService {
   /// [skipEmptySheets] drops `Sheet1`-style defaults, which are absent from the
   /// file the owner actually sees and would otherwise be listed as ignored
   /// content they never knew was there.
-  List<String> _skippedSheets(xl.Excel book, {bool skipEmpty = true}) {
-    final read = _inventorySheetName(book).trim().toLowerCase();
-    return book.tables.keys
+  List<String> _skippedSheets(
+      Map<String, List<List<dynamic>>> sheets, {bool skipEmpty = true}) {
+    final read = _inventorySheetName(sheets).trim().toLowerCase();
+    return sheets.keys
         .where((name) => name.trim().toLowerCase() != read)
         .where(
             (name) => !_readableSheetNames.contains(name.trim().toLowerCase()))
-        .where((name) => !skipEmpty || _rawRows(book.tables[name]!).isNotEmpty)
+        .where((name) => !skipEmpty || sheets[name]!.isNotEmpty)
         .toList();
   }
 
-  /// Cell values of a sheet, one list per row, blanks preserved as null.
-  static List<List<dynamic>> _rawRows(xl.Sheet sheet) =>
-      sheet.rows.map((row) => row.map((cell) => cell?.value).toList()).toList();
-
   /// [rawRows] for an optional tab, or an empty list when it is absent.
-  static List<List<dynamic>> _rawRowsOf(xl.Excel book, String name) {
-    final sheet = book.tables[name];
-    return sheet == null ? const [] : _rawRows(sheet);
+  static List<List<dynamic>> _rawRowsOf(
+      Map<String, List<List<dynamic>>> sheets, String name) {
+    return sheets[name] ?? const <List<dynamic>>[];
   }
 }
