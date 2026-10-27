@@ -2,6 +2,8 @@
     package="com.dukapos.simplepos">
     
     <uses-permission android:name="android.permission.INTERNET"/>
+    <uses-permission android:name="android.permission.READ_SMS"/>
+    <uses-permission android:name="android.permission.RECEIVE_SMS"/>
 
     <!-- Camera barcode scanning (mobile_scanner / CameraX + ML Kit). Declared
          maxSdkVersion-free because a till is expected to keep working on old
