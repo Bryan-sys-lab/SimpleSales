@@ -48,7 +48,7 @@ class ProfileNavigation {
             showJobs: false,
           ),
         ShopProfile.open => const ProfileNavigation(
-            showInventory: false,
+            showInventory: true,
             showMeasuredGoods: false,
             showVariants: false,
             showDrinkService: false,

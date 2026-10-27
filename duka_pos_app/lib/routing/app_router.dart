@@ -315,7 +315,12 @@ List<RouteBase> _shellRoutes(AppState appState) {
             GoRoute(
               path: Routes.inventory,
               pageBuilder: (BuildContext context, GoRouterState routerState) =>
-                  _fadeThrough(routerState, const InventoryScreen()),
+                  _fadeThrough(
+                routerState,
+                appState.shopProfile == ShopProfile.open
+                    ? const PortfolioScreen()
+                    : const InventoryScreen(),
+              ),
               routes: <RouteBase>[
                 // Identity in the PATH, so a cold deep link fully reconstructs the
                 // screen. `extra` would be null after process death.
