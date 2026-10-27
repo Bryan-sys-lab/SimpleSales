@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import 'package:provider/provider.dart';
@@ -8,11 +10,12 @@ import '../routing/routes.dart';
 import '../services/app_stage.dart';
 import '../l10n/generated/app_localizations.dart';
 import '../theme/app_colors.dart';
-import '../ui/brand/nerva_wordmark.dart';
 import '../theme/app_haptics.dart';
 import '../theme/app_spacing.dart';
 import '../theme/typography.dart';
+import '../ui/brand/nerva_wordmark.dart';
 import '../ui/brand/simple_pos_mark.dart';
+import '../ui/onboarding_style.dart';
 import 'product_onboarding_screen.dart';
 
 /// The first screen a person sees when there is no signed-in session.
@@ -100,17 +103,17 @@ class _WelcomeChooserScreenState extends State<WelcomeChooserScreen> {
 
   void _choose(BuildContext context, AppChooserIntent choice) {
     HapticTheme.of(context).fire(HapticEvent.select);
-    // Both halves are needed. `choose` records WHY, which the setup screen
-    // reads to change its own copy. `go` asks the router where that lands.
-    // Recording alone would be a no-op whenever the intent was already current
-    // (and "sign in" is the intent a chooser starts on), so the one choice a
-    // returning user makes every single day would do nothing at all.
     context.read<AppStageController>().choose(choice);
     context.go(choice == AppChooserIntent.signIn ? Routes.login : Routes.setup);
   }
 
   @override
   Widget build(BuildContext context) {
+    final AppColors colors = AppColors.of(context);
+    final AppSpacing spacing = AppSpacing.of(context);
+    final TextTheme type = AppTypography.of(context);
+    final l10n = AppLocalizations.of(context);
+
     if (_introLoading) {
       return const Scaffold(
         body: Center(child: CircularProgressIndicator()),
@@ -125,14 +128,11 @@ class _WelcomeChooserScreenState extends State<WelcomeChooserScreen> {
       );
     }
 
-    final AppColors colors = AppColors.of(context);
-    final AppSpacing spacing = AppSpacing.of(context);
-    final TextTheme type = AppTypography.of(context);
-
     final bool addingAnother = _setupIntent == AppChooserIntent.addShop;
     final bool showShop = widget.hasShop && widget.shopName.trim().isNotEmpty;
 
     return Scaffold(
+      backgroundColor: colors.canvas,
       body: SafeArea(
         child: Center(
           child: SingleChildScrollView(
@@ -143,17 +143,18 @@ class _WelcomeChooserScreenState extends State<WelcomeChooserScreen> {
                 mainAxisSize: MainAxisSize.min,
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: <Widget>[
-                  // The VECTOR mark, not the PNG. Three other screens still
-                  // load `screen.png` for the same lockup, and a raster image
-                  // of a mark that is drawn as paths in the app is the one
-                  // place the brand can land fuzzy: this is on the very first
-                  // screen a shop owner sees, at whatever density the device
-                  // ships with. It is also the same mark the launcher icon is
-                  // built from, so the icon and the app finally agree.
-                  const Center(
-                    child: SimplePosMark(size: 72),
+                  // Header: mark left, sign-in link right.
+                  OnboardStyle.header(
+                    context: context,
+                    onSignIn: () => _choose(context, AppChooserIntent.signIn),
+                    colors: colors,
+                    spacing: spacing,
+                    type: type,
                   ),
                   SizedBox(height: spacing.lg),
+
+                const Center(child: SimplePosMark(size: 64)),
+                  SizedBox(height: spacing.md),
                   const Center(child: SimplePosWordmark()),
                   SizedBox(height: spacing.lg),
 
@@ -166,9 +167,8 @@ class _WelcomeChooserScreenState extends State<WelcomeChooserScreen> {
                     header: true,
                     child: Text(
                       showShop
-                          ? AppLocalizations.of(context)
-                              .chooserSignedInShop(widget.shopName)
-                          : AppLocalizations.of(context).chooserHeading,
+                          ? l10n.chooserSignedInShop(widget.shopName)
+                          : l10n.chooserHeading,
                       textAlign: TextAlign.center,
                       style: showShop ? type.bodyMedium : type.titleMedium,
                     ),
@@ -177,7 +177,7 @@ class _WelcomeChooserScreenState extends State<WelcomeChooserScreen> {
                   if (addingAnother) ...<Widget>[
                     SizedBox(height: spacing.sm),
                     Text(
-                      AppLocalizations.of(context).chooserHasShopWarning,
+                      l10n.chooserHasShopWarning,
                       textAlign: TextAlign.center,
                       style: type.bodySmall?.copyWith(
                         color: colors.onSurfaceMuted,
@@ -187,75 +187,46 @@ class _WelcomeChooserScreenState extends State<WelcomeChooserScreen> {
 
                   SizedBox(height: spacing.xxl),
 
-                  // HIERARCHY, which this screen did not have.
-                  //
-                  // It used to be three buttons of equal weight: two
-                  // `OutlinedButton`s and one `FilledButton`, all the same size,
-                  // all with the same icon-first treatment. A shop owner's daily
-                  // choice — sign in — competed for attention with the one thing
-                  // they do once in the app's life.
-                  //
-                  // Now the two sign-in paths sit together as the primary
-                  // group, each sized for a thumb, and setting up a shop is
-                  // demoted to a quiet text button at the bottom, where it is
-                  // still reachable in one tap but stops reading as the main
-                  // event. The pair is ordered by how often it is used: owner
-                  // every day, staff on a shift start.
-                  FilledButton.icon(
-                    autofocus: true,
+                  // Sign-in paths grouped as the primary choice, ordered by how
+                  // often they are used: owner every day, staff at shift start.
+                  OnboardStyle.primaryButton(
+                    context: context,
                     onPressed: () => _choose(context, AppChooserIntent.signIn),
-                    icon:
-                        const ExcludeSemantics(child: Icon(Icons.pin_outlined)),
-                    label: Padding(
-                      padding: EdgeInsets.symmetric(vertical: spacing.lg),
-                      child: Text(
-                          AppLocalizations.of(context).chooserSignInAction),
-                    ),
+                    label: l10n.chooserSignInAction,
+                    colors: colors,
+                    spacing: spacing,
                   ),
                   SizedBox(height: spacing.md),
-                  FilledButton.tonalIcon(
+                  OnboardStyle.primaryButton(
+                    context: context,
                     onPressed: () => context.go(Routes.staffLogin),
-                    icon: const ExcludeSemantics(
-                        child: Icon(Icons.person_outline)),
-                    label: Padding(
-                      padding: EdgeInsets.symmetric(vertical: spacing.lg),
-                      child: Text(
-                        AppLocalizations.of(context).chooserSignInAsStaffAction,
-                      ),
-                    ),
+                    label: l10n.chooserSignInAsStaffAction,
+                    colors: colors,
+                    spacing: spacing,
                   ),
 
                   SizedBox(height: spacing.xl),
                   Divider(color: colors.outline),
                   SizedBox(height: spacing.md),
 
-                  // Setup is the LAST choice, and it is deliberately the quietest
-                  // thing on the screen: someone who has never set a shop up
-                  // will read the two buttons above and reach this, and someone
-                  // who has done it once will scroll past it for years.
-                  TextButton.icon(
+                  // Setup is the LAST choice, deliberately the quietest thing on
+                  // the screen: someone who has never set a shop up will read the
+                  // two buttons above and reach this, and someone who has done it
+                  // once will scroll past it for years.
+                  OnboardStyle.primaryButton(
+                    context: context,
                     onPressed: () => _choose(context, _setupIntent),
-                    icon: ExcludeSemantics(
-                      child: Icon(
-                        addingAnother
-                            ? Icons.add_business_outlined
-                            : Icons.storefront_outlined,
-                      ),
-                    ),
-                    label: Padding(
-                      padding: EdgeInsets.symmetric(vertical: spacing.lg),
-                      child: Text(
-                        addingAnother
-                            ? AppLocalizations.of(context).chooserSetupAnother
-                            : AppLocalizations.of(context).chooserSetupFirst,
-                      ),
-                    ),
+                    label: addingAnother
+                        ? l10n.chooserSetupAnother
+                        : l10n.chooserSetupFirst,
+                    colors: colors,
+                    spacing: spacing,
                   ),
 
                   Text(
                     widget.hasShop
-                        ? AppLocalizations.of(context).chooserSignInHelp
-                        : AppLocalizations.of(context).chooserSetupHelp,
+                        ? l10n.chooserSignInHelp
+                        : l10n.chooserSetupHelp,
                     textAlign: TextAlign.center,
                     style:
                         type.bodySmall?.copyWith(color: colors.onSurfaceMuted),

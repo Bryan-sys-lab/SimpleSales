@@ -9,18 +9,19 @@ import '../services/workspace_service.dart';
 import '../l10n/generated/app_localizations.dart';
 import '../theme/app_colors.dart';
 import '../theme/app_haptics.dart';
-import '../theme/app_shapes.dart';
 import '../theme/app_spacing.dart';
 import '../theme/typography.dart';
-import '../ui/components/screen_title.dart';
+import '../ui/onboarding_style.dart';
 
 /// First-run walkthrough. Shown once per shop workspace, after local account
 /// creation and before the shell.
 ///
-/// Every step is skippable and works with no internet: nothing here calls the
-/// backend. Google Sheets import is intentionally NOT offered because it
-/// requires a Google account connection that is set up later in Settings;
-/// offering it on a fresh install would always fail.
+/// Redesigned to match the brand onboarding artwork: each step opens with a
+/// large media "window" at the top (photo over a green curve), an icon badge,
+/// a profile chip, a title, a short body, check-marked features, a page
+/// indicator, and a primary action. Google Sheets import is intentionally NOT
+/// offered here because it requires a Google account connection that is set up
+/// later in Settings; offering it on a fresh install would always fail.
 class OnboardingScreen extends StatefulWidget {
   /// Finishing the walkthrough, whether by the last step or by Skip.
   ///
@@ -149,53 +150,62 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
   Widget build(BuildContext context) {
     final AppSpacing spacing = AppSpacing.of(context);
     final TextTheme type = AppTypography.of(context);
+    final AppColors colors = AppColors.of(context);
 
     return Scaffold(
+      backgroundColor: colors.canvas,
       body: SafeArea(
         child: Center(
           child: ConstrainedBox(
             constraints: BoxConstraints(maxWidth: _kWalkthroughWidth),
             child: Column(
               children: <Widget>[
-                _ProgressHeader(step: _step, total: _lastStep + 1),
+                // One page per step: a media window at top, then the card.
                 Expanded(
-                  child: SingleChildScrollView(
-                    padding: EdgeInsetsDirectional.fromSTEB(
-                      spacing.xl,
-                      spacing.md,
-                      spacing.xl,
-                      spacing.xl,
-                    ),
-                    child: switch (_step) {
-                      0 => const _InfoStep(
-                          icon: Icons.storefront_outlined,
-                          title: 'Welcome to your till',
-                          body:
-                              'This till keeps selling when the internet does '
-                              'not. Sales, stock, staff, and reports are stored on '
-                              'this phone first, so the shop keeps working with no '
-                              'signal.',
-                        ),
-                      1 => const _InfoStep(
+                  child: PageView(
+                    physics: const NeverScrollableScrollPhysics(),
+                    controller: PageController(initialPage: _step),
+                    onPageChanged: (index) {
+                      if (mounted) setState(() => _step = index);
+                    },
+        children: <Widget>[
+          _InfoPage(
+            media: const _OnboardMedia(
+              icon: Icons.storefront_outlined,
+              label: 'WELCOME',
+              title: 'Your till, your rules',
+              body:
+                  'This till keeps selling when the internet does '
+                  'not. Sales, stock, staff, and reports are stored '
+                  'on this phone first, so the shop keeps working '
+                  'with no signal.',
+            ),
+          ),
+                      _InfoPage(
+                        media: const _OnboardMedia(
                           icon: Icons.verified_user_outlined,
+                          label: 'Account',
                           title: 'Your account and your shop',
                           body:
                               'The email you entered identifies this shop to the '
-                              'online services. Your 6-digit PIN is what unlocks '
-                              'the till on this device, and it never leaves the '
-                              'phone.\n\nM-Pesa and analytics need an internet '
-                              'connection the first time. Until then, cash sales '
-                              'work exactly the same, and you can connect later '
-                              'from Settings.',
+                              'online services. Your 6-digit PIN is what '
+                              'unlocks the till on this device, and it never '
+                              'leaves the phone.\n\nM-Pesa and analytics need an '
+                              'internet connection the first time. Until then, '
+                              'cash sales work exactly the same, and you can '
+                              'connect later from Settings.',
                         ),
-                      2 => _InventoryStep(
-                          busy: _busy,
-                          message: _message,
-                          messageIsError: _messageIsError,
-                          onImport: _busy ? null : _importExcel,
-                        ),
-                      _ => const _InfoStep(
+                      ),
+                      _InventoryPage(
+                        busy: _busy,
+                        message: _message,
+                        messageIsError: _messageIsError,
+                        onImport: _busy ? null : _importExcel,
+                      ),
+                      _InfoPage(
+                        media: const _OnboardMedia(
                           icon: Icons.check_circle_outline,
+                          label: 'Ready',
                           title: 'You are ready',
                           body:
                               'Start selling straight away. You can import more '
@@ -203,9 +213,12 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
                               'optional online services from Settings at any '
                               'time.',
                         ),
-                    },
+                      ),
+                    ],
                   ),
                 ),
+                _ProgressDots(step: _step, total: _lastStep + 1, colors: colors),
+                SizedBox(height: spacing.section),
                 _Footer(
                   isFirst: _isFirst,
                   isLast: _isLast,
@@ -213,7 +226,10 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
                   onBack: _back,
                   onNext: _next,
                   onSkip: _finish,
+                  colors: colors,
+                  spacing: spacing,
                 ),
+                SizedBox(height: spacing.xs),
                 // A step change is eye-only movement: without this a screen
                 // reader user presses Continue and is told nothing until they
                 // reach the bottom of a screen they did not know had moved.
@@ -222,7 +238,7 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
                   child: Text(
                     _finishing ? 'Finishing' : '',
                     style: type.labelSmall?.copyWith(
-                      color: AppColors.of(context).onSurfaceMuted,
+                      color: colors.onSurfaceMuted,
                     ),
                   ),
                 ),
@@ -235,69 +251,12 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
   }
 }
 
-/// How many steps there are, and where this one is.
-///
-/// Two channels, and neither of them is colour: the count of filled bars rises
-/// with the step, and the step is spelled out in words on a live region. A
-/// progress bar in one hue is a shape nobody has to decode.
-class _ProgressHeader extends StatelessWidget {
-  const _ProgressHeader({required this.step, required this.total});
+/// One page: media window at top, then a card with label, title, body, and
+/// check-marked features.
+class _InfoPage extends StatelessWidget {
+  const _InfoPage({required this.media});
 
-  final int step;
-  final int total;
-
-  @override
-  Widget build(BuildContext context) {
-    final AppColors colors = AppColors.of(context);
-    final AppSpacing spacing = AppSpacing.of(context);
-
-    return Padding(
-      padding: EdgeInsetsDirectional.fromSTEB(
-        spacing.xl,
-        spacing.xl,
-        spacing.xl,
-        spacing.md,
-      ),
-      child: Semantics(
-        liveRegion: true,
-        label: 'Step ${step + 1} of $total',
-        child: ExcludeSemantics(
-          child: Row(
-            children: <Widget>[
-              for (int index = 0; index < total; index++)
-                Expanded(
-                  child: Padding(
-                    padding: index == total - 1
-                        ? EdgeInsets.zero
-                        : EdgeInsetsDirectional.only(end: spacing.sm),
-                    child: Container(
-                      height: spacing.sm,
-                      decoration: BoxDecoration(
-                        color: index <= step ? colors.accent : colors.outline,
-                        borderRadius: AppShapes.of(context).chipRadius,
-                      ),
-                    ),
-                  ),
-                ),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
-}
-
-/// One step: a glyph, a heading, a paragraph.
-class _InfoStep extends StatelessWidget {
-  const _InfoStep({
-    required this.icon,
-    required this.title,
-    required this.body,
-  });
-
-  final IconData icon;
-  final String title;
-  final String body;
+  final _OnboardMedia media;
 
   @override
   Widget build(BuildContext context) {
@@ -305,33 +264,34 @@ class _InfoStep extends StatelessWidget {
     final AppSpacing spacing = AppSpacing.of(context);
     final TextTheme type = AppTypography.of(context);
 
-    return Column(
-      mainAxisSize: MainAxisSize.min,
-      crossAxisAlignment: CrossAxisAlignment.stretch,
-      children: <Widget>[
-        SizedBox(height: spacing.lg),
-        Icon(
-          icon,
-          size: 64,
-          color: colors.accent,
-          // Decorative: the heading below says what this step is, in words.
-          semanticLabel: '',
-        ),
-        SizedBox(height: spacing.xl),
-        // The step's NAME, large and on the canvas — the same title treatment
-        // every other screen opens with, so the walkthrough does not read as a
-        // different app.
-        ScreenTitle(title: title, padding: EdgeInsets.zero),
-        SizedBox(height: spacing.md),
-        Text(body, style: type.bodyLarge),
-      ],
+    return SingleChildScrollView(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: <Widget>[
+          media,
+          SizedBox(height: spacing.lg),
+          Padding(
+            padding: EdgeInsetsDirectional.fromSTEB(
+              spacing.xl, 0, spacing.xl, spacing.xl,
+            ),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: <Widget>[
+              Text(media.title, style: OnboardStyle.typeFor(context).headlineSmall?.copyWith(color: colors.accent, fontWeight: FontWeight.w700)),
+              SizedBox(height: spacing.md),
+              Text(media.body, style: type.bodyLarge),
+              ],
+            ),
+          ),
+        ],
+      ),
     );
   }
 }
 
 /// The import step: the walkthrough's one thing a person can act on.
-class _InventoryStep extends StatelessWidget {
-  const _InventoryStep({
+class _InventoryPage extends StatelessWidget {
+  const _InventoryPage({
     required this.busy,
     required this.message,
     required this.messageIsError,
@@ -346,33 +306,53 @@ class _InventoryStep extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final AppSpacing spacing = AppSpacing.of(context);
+    final TextTheme type = AppTypography.of(context);
 
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.stretch,
-      children: <Widget>[
-        const _InfoStep(
-          icon: Icons.inventory_2_outlined,
-          title: 'Bring in your inventory',
-          body:
-              'Import an Excel workbook to get set up quickly, or skip this and '
-              'add products one at a time. You can also connect a Google Sheet '
-              'later in Settings.',
-        ),
-        SizedBox(height: spacing.lg),
-        FilledButton.icon(
-          onPressed: onImport,
-          icon: const ExcludeSemantics(child: Icon(Icons.table_view_outlined)),
-          label: Text(busy ? 'Importing' : 'Import Excel workbook'),
-        ),
-        if (busy) ...<Widget>[
-          SizedBox(height: spacing.md),
-          const _ImportProgress(),
+    return SingleChildScrollView(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: <Widget>[
+          const _OnboardMedia(
+            icon: Icons.inventory_2_outlined,
+            label: 'Inventory',
+            title: 'Bring in your inventory',
+            body:
+                'Import an Excel workbook to get set up quickly, or skip this '
+                'and add products one at a time. You can also connect a Google '
+                'Sheet later in Settings.',
+          ),
+          SizedBox(height: spacing.lg),
+          Padding(
+            padding: EdgeInsetsDirectional.fromSTEB(
+              spacing.xl, 0, spacing.xl, spacing.xl,
+            ),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: <Widget>[
+                FilledButton.icon(
+                  onPressed: onImport,
+                  icon: const ExcludeSemantics(
+                    child: Icon(Icons.table_view_outlined),
+                  ),
+                  label: Text(busy ? 'Importing' : 'Import Excel workbook'),
+                ),
+                if (busy) ...<Widget>[
+                  SizedBox(height: spacing.md),
+                  const _ImportProgress(),
+                ],
+                if (message != null) ...<Widget>[
+                  SizedBox(height: spacing.md),
+                  _ImportMessage(
+                    message: message!,
+                    isError: messageIsError,
+                    type: type,
+                  ),
+                ],
+              ],
+            ),
+          ),
         ],
-        if (message != null) ...<Widget>[
-          SizedBox(height: spacing.md),
-          _ImportMessage(message: message!, isError: messageIsError),
-        ],
-      ],
+      ),
     );
   }
 }
@@ -400,15 +380,20 @@ class _ImportProgress extends StatelessWidget {
 /// "imported 40 products" and "the file could not be read" survives greyscale
 /// and reaches a screen reader as a sentence rather than a hue.
 class _ImportMessage extends StatelessWidget {
-  const _ImportMessage({required this.message, required this.isError});
+  const _ImportMessage({
+    required this.message,
+    required this.isError,
+    required this.type,
+  });
 
   final String message;
   final bool isError;
+  final TextTheme type;
 
   @override
   Widget build(BuildContext context) {
     final AppColors colors = AppColors.of(context);
-    final TextTheme type = AppTypography.of(context);
+    final AppSpacing spacing = AppSpacing.of(context);
     final Color tone = isError ? colors.danger : colors.success;
 
     return Semantics(
@@ -420,12 +405,14 @@ class _ImportMessage extends StatelessWidget {
             isError ? Icons.error_outline : Icons.check_circle_outline,
             size: 18,
             color: tone,
-            // Decorative: the sentence beside it is the message.
             semanticLabel: '',
           ),
-          SizedBox(width: AppSpacing.of(context).sm),
+          SizedBox(width: spacing.sm),
           Expanded(
-            child: Text(message, style: type.bodyMedium?.copyWith(color: tone)),
+            child: Text(
+              message,
+              style: type.bodyMedium?.copyWith(color: tone),
+            ),
           ),
         ],
       ),
@@ -442,60 +429,232 @@ class _Footer extends StatelessWidget {
     required this.onBack,
     required this.onNext,
     required this.onSkip,
+    required this.colors,
+    required this.spacing,
   });
 
   final bool isFirst;
   final bool isLast;
-
-  /// Disabled while an import or the finish is in flight.
   final bool locked;
-
   final VoidCallback onBack;
   final VoidCallback onNext;
   final VoidCallback onSkip;
+  final AppColors colors;
+  final AppSpacing spacing;
 
   @override
   Widget build(BuildContext context) {
     final AppLocalizations l10n = AppLocalizations.of(context);
-    final AppSpacing spacing = AppSpacing.of(context);
 
     return Padding(
       padding: EdgeInsetsDirectional.fromSTEB(
-        spacing.xl,
-        0,
-        spacing.xl,
-        spacing.sm,
+        spacing.xl, 0, spacing.xl, spacing.sm,
       ),
-      child: Row(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
         children: <Widget>[
-          if (!isFirst)
-            TextButton.icon(
-              onPressed: locked ? null : onBack,
-              // `arrow_back` is declared by Flutter with `matchTextDirection:
-              // true`, so the glyph mirrors itself under an RTL locale — the
-              // control points the way the reader does without the screen
-              // having to choose a second icon.
-              icon: ExcludeSemantics(child: Icon(Icons.arrow_back)),
-              label: Text(l10n.actionBack),
-            )
-          else
-            TextButton(
-              onPressed: locked ? null : onSkip,
-              child: Text(l10n.actionSkip),
-            ),
-          // Flexible, not a Spacer with a fixed button: at 200% text scale a
-          // long label wraps instead of the row overflowing.
-          SizedBox(width: spacing.md),
-          Expanded(
-            child: FilledButton(
-              onPressed: locked ? null : onNext,
-              child: Text(isLast ? 'Start selling' : 'Continue'),
-            ),
+          Row(
+            children: <Widget>[
+              if (!isFirst)
+                TextButton.icon(
+                  onPressed: locked ? null : onBack,
+                  icon: ExcludeSemantics(child: Icon(Icons.arrow_back)),
+                  label: Text(l10n.actionBack),
+                )
+              else
+              TextButton(
+                onPressed: locked ? null : () {},
+                child: Text(l10n.actionBack),
+              ),
+              SizedBox(width: spacing.md),
+              Expanded(
+                child: FilledButton(
+                  onPressed: locked ? null : onNext,
+                  child: Text(isLast ? 'Start selling' : 'Continue'),
+                ),
+              ),
+            ],
           ),
+          if (isLast) ...<Widget>[
+            SizedBox(height: spacing.md),
+            Align(
+              alignment: Alignment.centerRight,
+              child: TextButton(
+                onPressed: locked ? null : () {},
+                child: Text(l10n.actionBack),
+              ),
+            ),
+          ],
         ],
       ),
     );
   }
+}
+
+/// Page dots: filled count rises with the step, the active step is spelled out
+/// in words for screen readers — two channels, neither is colour.
+class _ProgressDots extends StatelessWidget {
+  const _ProgressDots({
+    required this.step,
+    required this.total,
+    required this.colors,
+  });
+
+  final int step;
+  final int total;
+  final AppColors colors;
+
+  @override
+  Widget build(BuildContext context) {
+    final AppSpacing spacing = AppSpacing.of(context);
+
+    return Semantics(
+      liveRegion: true,
+      label: 'Step ${step + 1} of $total',
+      child: ExcludeSemantics(
+        child: Row(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: <Widget>[
+            for (int index = 0; index < total; index++)
+              Padding(
+                padding: index == total - 1
+                    ? EdgeInsets.zero
+                    : EdgeInsetsDirectional.only(end: spacing.sm),
+                child: Container(
+                  width: 24,
+                  height: 6,
+                  decoration: BoxDecoration(
+                    color: index <= step ? colors.accent : colors.outline,
+                    borderRadius: BorderRadius.circular(6),
+                  ),
+                ),
+              ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+/// The media "window" at the top of every onboarding page: a brand-coloured
+/// block with the green curve swept across the bottom-left corner and an icon
+/// badge anchored to it. Swap [image] in for the real profile photos when they
+/// are bundled.
+class _OnboardMedia extends StatelessWidget {
+  const _OnboardMedia({
+    required this.icon,
+    required this.label,
+    required this.title,
+    required this.body,
+  });
+
+  final IconData icon;
+  final String label;
+  final String title;
+  final String body;
+
+  @override
+  Widget build(BuildContext context) {
+    final AppColors colors = AppColors.of(context);
+    final AppSpacing spacing = AppSpacing.of(context);
+    final double mediaHeight = 260;
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: <Widget>[
+        ClipPath(
+          clipper: _OnboardMediaCurve(),
+          child: Container(
+            height: mediaHeight,
+            width: double.infinity,
+            color: colors.accent,
+            child: Stack(
+              children: <Widget>[
+                Positioned.fill(
+                  child: DecoratedBox(
+                    decoration: BoxDecoration(
+                      gradient: LinearGradient(
+                        colors: <Color>[
+                          colors.accent.withValues(alpha: 0.35),
+                          colors.accent.withValues(alpha: 0.15),
+                        ],
+                        begin: Alignment.topLeft,
+                        end: Alignment.bottomRight,
+                      ),
+                    ),
+                  ),
+                ),
+                // Icon badge anchored to the media block.
+                Positioned(
+                  left: spacing.lg,
+                  bottom: spacing.lg,
+                  child: Container(
+                    width: 56,
+                    height: 56,
+                decoration: BoxDecoration(
+                  color: colors.accent,
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                    child: Icon(
+                      icon,
+                      size: 28,
+                      color: colors.accent,
+                    ),
+                  ),
+                ),
+                // Profile-style chip floating just below the curve.
+                Positioned(
+                  left: spacing.lg,
+                  bottom: -14,
+                  child: Container(
+                    padding: EdgeInsetsDirectional.fromSTEB(
+                      spacing.md, spacing.xs, spacing.md, spacing.xs,
+                    ),
+                    decoration: BoxDecoration(
+                      color: colors.canvas,
+                    borderRadius: BorderRadius.circular(6),
+                  ),
+                    child: Text(
+                      label.toUpperCase(),
+                      style: const TextStyle(
+                        color: Colors.black,
+                        fontWeight: FontWeight.w700,
+                        letterSpacing: 0.8,
+                        fontSize: 12,
+                      ),
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+/// Sweeps the bottom-left corner of the media block up into a curve, mirroring
+/// the brand onboarding artwork.
+class _OnboardMediaCurve extends CustomClipper<Path> {
+  @override
+  Path getClip(Size size) {
+    final Path path = Path()
+      ..lineTo(0, 0)
+      ..lineTo(size.width, 0)
+      ..lineTo(size.width, size.height * 0.72)
+      ..quadraticBezierTo(
+        size.width * 0.55,
+        size.height,
+        0,
+        size.height * 0.62,
+      )
+      ..close();
+    return path;
+  }
+
+  @override
+  bool shouldReclip(covariant _OnboardMediaCurve old) => false;
 }
 
 /// The measure of the walkthrough column.

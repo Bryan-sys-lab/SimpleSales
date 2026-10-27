@@ -15,11 +15,12 @@ import '../services/workspace_service.dart';
 import '../routing/app_stage_controller.dart';
 import '../theme/app_haptics.dart';
 import '../theme/app_spacing.dart';
+import '../theme/app_colors.dart';
 import '../theme/typography.dart';
 import '../ui/brand/simple_pos_mark.dart';
 import '../ui/components/controls.dart';
-import '../ui/components/screen_title.dart';
 import '../ui/components/status.dart';
+import '../ui/onboarding_style.dart';
 import '../utils/pin_rules.dart';
 
 /// Creates the shop and its admin account, or adds a second shop to a device
@@ -102,22 +103,9 @@ class _OwnerSetupScreenState extends State<OwnerSetupScreen> {
     super.dispose();
   }
 
-  // -------------------------------------------------------------- validation
-  //
-  // Every rule and every message below is the one this screen already enforced
-  // at submit time. They are duplicated onto the fields rather than moved, so a
-  // person is told what is wrong WHILE they type, and the submit-time guard is
-  // still there for fields an autofill filled in without ever being focused.
-
   static final RegExp _emailPattern = RegExp(r'^[^\s@]+@[^\s@]+\.[^\s@]+$');
 
   /// The owner's PIN is an ADMIN PIN, and an admin PIN is six digits.
-  ///
-  /// It used to be four, which meant the owner could not prove ownership
-  /// anywhere: the sheet that asks for the admin PIN — the one in front of
-  /// account deletion — asked for six, and there was no six-digit PIN in the
-  /// shop. The shop's cashiers keep their four-digit PINs; the owner's is
-  /// longer because it is asked for less often and guards more.
   static final RegExp _pinPattern = PinRules.adminPattern;
 
   String? _required(String? value, String label) =>
@@ -159,9 +147,6 @@ class _OwnerSetupScreenState extends State<OwnerSetupScreen> {
     if (_saving) return;
 
     final String email = _email.text.trim().toLowerCase();
-    // The original submit gate, unchanged and in the original order: one
-    // message for the three required fields, because that is what this screen
-    // has always said.
     if (_name.text.trim().isEmpty ||
         _shop.text.trim().isEmpty ||
         email.isEmpty) {
@@ -178,10 +163,6 @@ class _OwnerSetupScreenState extends State<OwnerSetupScreen> {
       HapticTheme.of(context).fire(HapticEvent.reject);
       return;
     }
-    // The PIN is ALWAYS asked for. It used to be skipped on a second shop, so
-    // that adding a branch did not feel like registering from scratch — and
-    // the cost was that one PIN opened every shop on the phone. Each shop has
-    // its own admin PIN now.
     if (!_pinPattern.hasMatch(_pin.text)) {
       setState(() =>
           _error = AppLocalizations.of(context).validationPinNotSixDigits);
@@ -194,8 +175,6 @@ class _OwnerSetupScreenState extends State<OwnerSetupScreen> {
       HapticTheme.of(context).fire(HapticEvent.reject);
       return;
     }
-    // Then the same rules again, per field, for anything the gate above let
-    // through but the field has not seen.
     if (!(_formKey.currentState?.validate() ?? false)) {
       HapticTheme.of(context).fire(HapticEvent.reject);
       return;
@@ -209,7 +188,6 @@ class _OwnerSetupScreenState extends State<OwnerSetupScreen> {
       final Owner owner = Owner(
         id: 1,
         name: _name.text.trim(),
-        // The new shop's own admin PIN. Never the old shop's.
         pinHash: await AuthService.hashPin(_pin.text),
         email: email,
         shopName: _shop.text.trim(),
@@ -221,9 +199,6 @@ class _OwnerSetupScreenState extends State<OwnerSetupScreen> {
         workspaceKey: await WorkspaceService.activeWorkspaceKey(),
         shopName: owner.shopName,
       );
-      // The profile tour now happens before account creation. Do not send a
-      // new owner through the old post-creation demo/import walkthrough; the
-      // permissions prompt that follows remains functional and intentional.
       final SharedPreferences prefs = await SharedPreferences.getInstance();
       await prefs.setBool(
         'onboarding_completed_${await WorkspaceService.activeWorkspaceKey()}',
@@ -236,14 +211,8 @@ class _OwnerSetupScreenState extends State<OwnerSetupScreen> {
         businessProfile: _shopProfile,
       ).catchError((_) {}));
       if (!mounted) return;
-      // Land the person straight into the new shop. Choosing from a shop list
-      // used to happen here, and it dumped them on a landing page asking to
-      // create an admin they had already created.
       await context.read<AppState>().loadOwner();
       if (!mounted) return;
-      // Keep the in-memory router snapshot aligned with the persisted choice;
-      // otherwise the guard would still send this newly-created owner through
-      // the retired post-account demo walkthrough once after sign-in.
       await context.read<AppStageController>().completeOnboarding();
       if (!mounted) return;
       context.read<AppState>().signInAsOwner();
@@ -264,24 +233,17 @@ class _OwnerSetupScreenState extends State<OwnerSetupScreen> {
   @override
   Widget build(BuildContext context) {
     final AppSpacing spacing = AppSpacing.of(context);
+    final AppColors colors = AppColors.of(context);
+    final TextTheme type = AppTypography.of(context);
 
     return PopScope(
-      // The system back button gets the same treatment as the visible Back row.
-      //
-      // Without this, Android's back on a setup screen either does nothing or
-      // leaves the app, while the on-screen Back works — two different answers
-      // to the same question, and the hardware one is what a thumb on the edge
-      // of the phone actually presses.
-      //
-      // `canPop: false` because there is nowhere in the stack to pop TO at this
-      // point: setup is reached by the chooser's intent rather than by a push,
-      // and the guard above it resolves where the user should be.
       canPop: false,
       onPopInvokedWithResult: (bool didPop, Object? result) {
         if (didPop) return;
         widget.onCancel?.call();
       },
       child: Scaffold(
+        backgroundColor: colors.canvas,
         body: SafeArea(
           child: Center(
             child: SingleChildScrollView(
@@ -292,12 +254,50 @@ class _OwnerSetupScreenState extends State<OwnerSetupScreen> {
                   mainAxisSize: MainAxisSize.min,
                   crossAxisAlignment: CrossAxisAlignment.stretch,
                   children: <Widget>[
-                    if (widget.onCancel != null)
-                      _BackRow(onBack: widget.onCancel!),
-                    const _SetupLockup(),
+                    // Header
+                    Row(
+                      children: <Widget>[
+                        if (widget.onCancel != null)
+                          IconButton(
+                            onPressed: widget.onCancel,
+                            icon: const Icon(Icons.arrow_back),
+                          ),
+                        const SimplePosMark(size: 36),
+                      ],
+                    ),
                     SizedBox(height: spacing.lg),
-                    _SetupHeading(isAdditionalShop: widget.isAdditionalShop),
-                    SizedBox(height: spacing.md),
+                    // Media window style header
+                    OnboardStyle.window(
+                      context: context,
+                      image: const DecoratedBox(
+                        decoration: BoxDecoration(
+                          gradient: LinearGradient(
+                            colors: <Color>[
+                              Color(0xFF0B0F14),
+                              Color(0xFF11161D),
+                            ],
+                            begin: Alignment.topLeft,
+                            end: Alignment.bottomRight,
+                          ),
+                        ),
+                        child: Center(
+                          child: Icon(Icons.storefront_outlined, size: 56, color: Color(0xFF4ADE7E)),
+                        ),
+                      ),
+                      badgeIcon: Icons.storefront_outlined,
+                      label: widget.isAdditionalShop ? 'ADD SHOP' : 'SET UP',
+                      title: widget.isAdditionalShop
+                          ? 'Add another shop'
+                          : 'Set up your shop',
+                      body: widget.isAdditionalShop
+                          ? 'This shop gets its own admin PIN, so a PIN that opens one shop on this phone does not open another. Give the new shop its name and you will go straight into it.'
+                          : 'Create the shop admin account. The admin can create managers and cashiers, manage stock, and connect optional services.',
+                      type: type,
+                      colors: colors,
+                      spacing: spacing,
+                    ),
+                    SizedBox(height: spacing.lg),
+                    // Profile picker
                     _ProfilePicker(
                       value: _shopProfile,
                       onChanged: (value) {
@@ -305,6 +305,7 @@ class _OwnerSetupScreenState extends State<OwnerSetupScreen> {
                       },
                     ),
                     SizedBox(height: spacing.md),
+                    // Form
                     _SetupFields(
                       formKey: _formKey,
                       shop: _shop,
@@ -328,16 +329,12 @@ class _OwnerSetupScreenState extends State<OwnerSetupScreen> {
                       ),
                     ],
                     SizedBox(height: spacing.xl),
-                    FilledButton(
+                    OnboardStyle.primaryButton(
+                      context: context,
                       onPressed: _saving ? null : _create,
-                      child: Padding(
-                        padding: EdgeInsets.symmetric(vertical: spacing.md),
-                        child: Text(
-                          _saving
-                              ? 'Creating the shop'
-                              : 'Create shop admin account',
-                        ),
-                      ),
+                      label: _saving ? 'Creating the shop' : 'Create shop admin account',
+                      colors: colors,
+                      spacing: spacing,
                     ),
                   ],
                 ),
@@ -376,110 +373,6 @@ class _ProfilePicker extends StatelessWidget {
   }
 }
 
-/// The mark and the logotype, above the form.
-///
-/// The wordmark is the product's own name, so the mark beside it is decorative:
-/// two nodes announcing "SimpleSales" is a screen reader stuttering.
-class _SetupLockup extends StatelessWidget {
-  const _SetupLockup();
-
-  @override
-  Widget build(BuildContext context) {
-    final AppSpacing spacing = AppSpacing.of(context);
-
-    // A `Wrap`, not a `Row`.
-    //
-    // The mark is a fixed 36px and the wordmark scales with the user's text
-    // setting, so at 200% on a 320dp phone the pair is ~334px wide against288
-    // available — a 1.4px overflow, which the overflow matrix catches and a
-    // design review never would.
-    //
-    // `Wrap` is the fix rather than a smaller wordmark or a `FittedBox`: the
-    // logotype drops onto its own line at accessibility text sizes instead of the
-    // layout giving up something. Clamping the scale or shrinking the type would
-    // defeat the very setting that caused the problem.
-    return Wrap(
-      alignment: WrapAlignment.start,
-      crossAxisAlignment: WrapCrossAlignment.center,
-      spacing: spacing.md,
-      children: const <Widget>[
-        Image(
-          image: AssetImage(
-            'assets/branding/stitch_simple_pos_launcher_icon/simple_pos_geometric_s_icon/screen.png',
-          ),
-          width: 36,
-          height: 36,
-          fit: BoxFit.contain,
-        ),
-        SimplePosWordmark(),
-      ],
-    );
-  }
-}
-
-/// The heading and what this screen is for.
-class _SetupHeading extends StatelessWidget {
-  const _SetupHeading({required this.isAdditionalShop});
-
-  final bool isAdditionalShop;
-
-  @override
-  Widget build(BuildContext context) {
-    final TextTheme type = AppTypography.of(context);
-
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.stretch,
-      children: <Widget>[
-        // The screen's NAME, large and on the canvas — the same title block
-        // every other screen opens with, left aligned rather than centred.
-        ScreenTitle(
-          title: isAdditionalShop
-              ? AppLocalizations.of(context).settingsAddShopTitle
-              : 'Set up your shop',
-          padding: EdgeInsets.zero,
-        ),
-        SizedBox(height: AppSpacing.of(context).sm),
-        Text(
-          isAdditionalShop
-              ? 'This shop gets its own admin PIN, so a PIN that opens one '
-                  'shop on this phone does not open another. Give the new '
-                  'shop its name and you will go straight into it.'
-              : 'Create the shop admin account. The admin can create managers '
-                  'and cashiers, manage stock, and connect optional services.',
-          style: type.bodyMedium,
-        ),
-      ],
-    );
-  }
-}
-
-/// The way out, when there is one.
-class _BackRow extends StatelessWidget {
-  const _BackRow({required this.onBack});
-
-  final VoidCallback onBack;
-
-  @override
-  Widget build(BuildContext context) {
-    return Align(
-      alignment: AlignmentDirectional.centerStart,
-      child: TextButton.icon(
-        onPressed: onBack,
-        // `arrow_back` is declared by Flutter with `matchTextDirection: true`,
-        // so the glyph mirrors itself under an RTL locale — the same control
-        // points the way the reader does, and the screen never has to choose
-        // between two icons.
-        icon: ExcludeSemantics(child: Icon(Icons.arrow_back)),
-        label: Text(AppLocalizations.of(context).actionBack),
-      ),
-    );
-  }
-}
-
-/// The five fields, in the order a person fills them.
-///
-/// One widget so the screen's own build stays a list of what it is rather than
-/// a transcription of five sets of decoration.
 class _SetupFields extends StatelessWidget {
   const _SetupFields({
     required this.formKey,
@@ -515,8 +408,6 @@ class _SetupFields extends StatelessWidget {
 
     return Form(
       key: formKey,
-      // Validated as a person leaves a field, not on submit and not while they
-      // are still typing the first character of their email address.
       autovalidateMode: AutovalidateMode.onUserInteraction,
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -570,12 +461,6 @@ class _SetupFields extends StatelessWidget {
   }
 }
 
-/// One labelled field.
-///
-/// Focus traversal is by `TextInputAction`: `next` moves to the next field and
-/// the last field submits. That is the platform's own traversal, and threading
-/// five `FocusNode`s through this screen to reproduce it by hand would be one
-/// more thing to dispose.
 class _SetupField extends StatelessWidget {
   const _SetupField({
     required this.controller,
@@ -597,8 +482,6 @@ class _SetupField extends StatelessWidget {
   final List<String>? autofillHints;
   final String? Function(String?)? validator;
   final VoidCallback? onSubmitted;
-
-  /// The last field in the form: Enter finishes it rather than moving on.
   final bool isLast;
 
   @override
@@ -617,8 +500,4 @@ class _SetupField extends StatelessWidget {
   }
 }
 
-/// The measure of the form.
-///
-/// A form, not prose: five fields and a button, which stay legible and reachable
-/// far wider than this but start to look like a settings table past it.
 const double _kFormWidth = 460;

@@ -13,16 +13,17 @@ import '../services/auth_service.dart';
 import '../services/backend_service.dart';
 import '../services/staff_credential_cache.dart';
 import '../services/workspace_service.dart';
+import '../theme/app_colors.dart';
 import '../theme/app_spacing.dart';
+import '../theme/typography.dart';
 import '../ui/components/controls.dart';
-import '../ui/components/screen_title.dart';
 import '../ui/components/status.dart';
+import '../ui/onboarding_style.dart';
 
 /// The username + password entry point for staff.
 ///
-/// A staff member is verified against the till's local roster first, so the
-/// same PIN can be used offline. When online, the backend is an additional
-/// active-account check; it is never the source of an unverified PIN.
+/// Redesigned to match the inspiration: dark canvas, emerald accent,
+/// media window header, and styled actions.
 class StaffLoginScreen extends StatefulWidget {
   const StaffLoginScreen({super.key});
 
@@ -102,9 +103,6 @@ class _StaffLoginScreenState extends State<StaffLoginScreen> {
     );
   }
 
-  /// Credentials are never used to discover a shop. When this phone has more
-  /// than one workspace, the operator must select the destination first; the
-  /// selected workspace then scopes the local roster, cache and backend tenant.
   Future<bool> _ensureShopSelected() async {
     if (_shopChosen || _shops.length <= 1) return true;
     if (_askingShop) return false;
@@ -136,10 +134,6 @@ class _StaffLoginScreenState extends State<StaffLoginScreen> {
     super.dispose();
   }
 
-  /// Completes an online authentication response without making the backend
-  /// the offline source of truth. A known local staff member may continue when
-  /// the request returns null (the offline case); a fresh device must receive
-  /// a real active staff record before it can create its local roster row.
   Future<Staff?> _mergeOnlineStaff(
     Map<String, dynamic>? response,
     Staff? fallback, {
@@ -153,10 +147,6 @@ class _StaffLoginScreenState extends State<StaffLoginScreen> {
     final Map<String, dynamic> staffMap =
         nested is Map ? Map<String, dynamic>.from(nested) : response;
     if (staffMap['active'] == false) return null;
-    // The selected workspace is the authority for shop identity. Never
-    // materialise a local roster row from a response belonging to another
-    // tenant, even if a stale token or proxy returned valid-looking staff
-    // credentials.
     var selectedTenant = await BackendService.tenantId;
     final responseTenant = staffMap['tenant_id'] as String?;
     if (responseTenant == null || responseTenant.isEmpty) return null;
@@ -165,9 +155,6 @@ class _StaffLoginScreenState extends State<StaffLoginScreen> {
         responseTenant != requestedTenant) {
       return null;
     }
-    // A fresh install has no workspace registry yet. The authenticated
-    // response is the first trusted binding; only then is a local shop and
-    // database created for offline use.
     if (selectedTenant == null) {
       final workspaceKey =
           'tenant_${responseTenant.replaceAll(RegExp(r'[^A-Za-z0-9_-]'), '_')}';
@@ -184,9 +171,6 @@ class _StaffLoginScreenState extends State<StaffLoginScreen> {
     }
     final rawRemoteId = staffMap['remoteId'] ?? staffMap['staff_id'];
     final remoteId = rawRemoteId is String ? rawRemoteId : null;
-    // A reachable response must contain a complete server identity. Treat an
-    // empty/malformed success as a rejection rather than silently converting
-    // it into an offline login.
     if (remoteId == null || remoteId.isEmpty) return null;
     return DatabaseHelper.instance.mergeAuthenticatedStaff(
       remoteId: remoteId,
@@ -215,10 +199,6 @@ class _StaffLoginScreenState extends State<StaffLoginScreen> {
         return;
       }
 
-      // Throttle BEFORE any sign-in attempt. The online backend has its own
-      // rate limiting, but the local fallback below verifies a 4-digit PIN
-      // against a local hash — a keyspace an attacker with physical access
-      // walks in minutes if it is not throttled.
       final String userKey = username;
       if (await AuthService.isTillLockedOut()) {
         final Duration? remaining = await AuthService.tillLockoutRemaining();
@@ -236,10 +216,6 @@ class _StaffLoginScreenState extends State<StaffLoginScreen> {
         return;
       }
 
-      // Only an ACTIVE member of staff can sign in. The roster is read with
-      // inactive rows excluded, and a local PIN is checked before a backend
-      // response is trusted. A fresh device is the one deliberate exception:
-      // it may bootstrap its offline roster from a successful online auth.
       final List<Staff> localStaff = await DatabaseHelper.instance.getStaff();
       Staff? staff = localStaff.cast<Staff?>().firstWhere(
             (Staff? s) => s?.username?.toLowerCase() == username.toLowerCase(),
@@ -261,8 +237,6 @@ class _StaffLoginScreenState extends State<StaffLoginScreen> {
             pin: password,
             requestedTenant: requestedTenant);
       } else {
-        // No local row means offline access is impossible. The backend must
-        // authenticate this first sign-in before a PIN hash is cached locally.
         final backendResponse = await BackendService.authenticateStaff(
           username: username,
           pin: password,
@@ -317,8 +291,11 @@ class _StaffLoginScreenState extends State<StaffLoginScreen> {
   Widget build(BuildContext context) {
     final AppSpacing spacing = AppSpacing.of(context);
     final AppLocalizations l10n = AppLocalizations.of(context);
+    final AppColors colors = AppColors.of(context);
+    final TextTheme type = AppTypography.of(context);
 
     return Scaffold(
+      backgroundColor: colors.canvas,
       body: SafeArea(
         child: Center(
           child: SingleChildScrollView(
@@ -332,21 +309,38 @@ class _StaffLoginScreenState extends State<StaffLoginScreen> {
                   mainAxisSize: MainAxisSize.min,
                   crossAxisAlignment: CrossAxisAlignment.stretch,
                   children: <Widget>[
-                    // The screen's NAME, large and on the canvas, left aligned —
-                    // the same title block every other screen opens with.
-                    ScreenTitle(
-                      title: l10n.staffLoginTitle,
-                      padding: EdgeInsets.zero,
+                    OnboardStyle.header(
+                      context: context,
+                      onSignIn: () => context.go(Routes.welcome),
+                      colors: colors,
+                      spacing: spacing,
+                      type: type,
                     ),
-                    if (_activeShopName != null) ...<Widget>[
-                      SizedBox(height: spacing.xs),
-                      Text(
-                        'Signing in to $_activeShopName',
-                        style: Theme.of(context).textTheme.bodyMedium,
+                    SizedBox(height: spacing.lg),
+                    OnboardStyle.window(
+                      context: context,
+                      image: const DecoratedBox(
+                        decoration: BoxDecoration(
+                          gradient: LinearGradient(
+                            colors: <Color>[Color(0xFF0B0F14), Color(0xFF11161D)],
+                            begin: Alignment.topLeft,
+                            end: Alignment.bottomRight,
+                          ),
+                        ),
+                        child: Center(
+                          child: Icon(Icons.person_outline, size: 56, color: Color(0xFF4ADE7E)),
+                        ),
                       ),
-                    ],
+                      badgeIcon: Icons.person_outline,
+                      label: 'STAFF',
+                      title: l10n.staffLoginTitle,
+                      body: _activeShopName != null ? 'Signing in to $_activeShopName' : 'Sign in to your shop',
+                      type: type,
+                      colors: colors,
+                      spacing: spacing,
+                    ),
+                    SizedBox(height: spacing.lg),
                     if (_needsShopId) ...<Widget>[
-                      SizedBox(height: spacing.md),
                       TextFormField(
                         controller: _shopIdController,
                         textInputAction: TextInputAction.next,
@@ -361,8 +355,8 @@ class _StaffLoginScreenState extends State<StaffLoginScreen> {
                                 ? 'Shop ID is required on a new device'
                                 : null,
                       ),
+                      SizedBox(height: spacing.md),
                     ],
-                    SizedBox(height: spacing.lg),
                     TextFormField(
                       controller: _usernameController,
                       textInputAction: TextInputAction.next,
@@ -412,24 +406,19 @@ class _StaffLoginScreenState extends State<StaffLoginScreen> {
                         tone: StatusTone.danger,
                       ),
                     SizedBox(height: spacing.md),
-                    FilledButton(
+                    OnboardStyle.primaryButton(
+                      context: context,
                       onPressed: _loading ? null : _submit,
-                      child: _loading
-                          ? SizedBox(
-                              height: spacing.minTapTarget,
-                              width: spacing.minTapTarget,
-                              child: const CircularProgressIndicator(
-                                strokeWidth: 2,
-                              ),
-                            )
-                          : Text(l10n.loginSignInAction),
+                      label: _loading ? 'Signing in...' : l10n.loginSignInAction,
+                      colors: colors,
+                      spacing: spacing,
                     ),
                     SizedBox(height: spacing.md),
-                    TextButton.icon(
-                      onPressed:
-                          _loading ? null : () => context.go(Routes.login),
-                      icon: const Icon(Icons.arrow_back_ios_new_rounded),
-                      label: Text(l10n.backToPinPadAction),
+                    OnboardStyle.link(
+                      context: context,
+                      onPressed: _loading ? null : () => context.go(Routes.login),
+                      label: l10n.backToPinPadAction,
+                      colors: colors,
                     ),
                   ],
                 ),
