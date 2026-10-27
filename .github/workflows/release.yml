@@ -510,6 +510,35 @@ jobs:
           gh release edit "${GITHUB_REF_NAME}" --draft=false
           echo "Published ${GITHUB_REF_NAME}."
 
+      - name: Update backend release manifest
+        if: success()
+        shell: bash
+        env:
+          BACKEND_URL: ${{ secrets.BACKEND_URL }}
+          CI_TOKEN: ${{ secrets.NERVA_CI_TOKEN }}
+        run: |
+          set -euo pipefail
+          if [ -z "${BACKEND_URL}" ] || [ -z "${CI_TOKEN}" ]; then
+            echo "::warning::BACKEND_URL or NERVA_CI_TOKEN not set; skipping backend manifest update."
+            exit 0
+          fi
+          version="${GITHUB_REF_NAME#v}"
+          build="${{ steps.version.outputs.code }}"
+          download_url="https://github.com/${{ github.repository }}/releases/download/${GITHUB_REF_NAME}/duka-pos-${GITHUB_REF_NAME}.apk"
+          payload="$(jq -n \
+            --arg version "$version" \
+            --argjson build "$build" \
+            --arg url "$download_url" \
+            '{version: $version, build: $build, downloadUrl: $url, channel: "stable"}')"
+          curl --fail-with-body --silent --show-error --location \
+            --retry 3 --retry-delay 2 --max-time 30 \
+            -X POST "${BACKEND_URL%/}/api/app/release" \
+            -H "x-ci-token: ${CI_TOKEN}" \
+            -H 'Content-Type: application/json' \
+            --data "$payload"
+          echo
+          echo "Backend manifest updated to ${version} (build ${build})."
+
       # Publishing the release above with the default GITHUB_TOKEN does not
       # start another workflow run (GitHub suppresses cascading runs for its
       # own token), so publish-nerva-release.yml would never fire on its own.
