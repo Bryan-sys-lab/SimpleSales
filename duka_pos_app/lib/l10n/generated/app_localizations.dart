@@ -3421,7 +3421,7 @@ abstract class AppLocalizations {
   /// No description provided for @pinResetSentTo.
   ///
   /// In en, this message translates to:
-  /// **'Code sent to {email}. Enter it here, then your new PIN.'**
+  /// **'Code sent to {email}. Enter it here, then your new PIN. Check spam if you don’t see it.'**
   String pinResetSentTo(Object email);
 
   /// No description provided for @pinResetCodeLabel.
@@ -3607,7 +3607,7 @@ abstract class AppLocalizations {
   /// No description provided for @settingsVerifyCodeSent.
   ///
   /// In en, this message translates to:
-  /// **'Code sent to {email}.'**
+  /// **'Code sent to {email}. Check spam if you don’t see it.'**
   String settingsVerifyCodeSent(Object email);
 
   /// No description provided for @settingsVerifyCodeWrong.

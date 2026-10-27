@@ -2001,7 +2001,7 @@ class AppLocalizationsSw extends AppLocalizations {
 
   @override
   String pinResetSentTo(Object email) {
-    return 'Code sent to $email. Enter it here, then your new PIN.';
+    return 'Code sent to $email. Enter it here, then your new PIN. Check spam if you don’t see it.';
   }
 
   @override
@@ -2114,7 +2114,7 @@ class AppLocalizationsSw extends AppLocalizations {
 
   @override
   String settingsVerifyCodeSent(Object email) {
-    return 'Code sent to $email.';
+    return 'Code sent to $email. Check spam if you don’t see it.';
   }
 
   @override
