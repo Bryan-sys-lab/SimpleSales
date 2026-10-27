@@ -28,7 +28,7 @@ jobs:
     env:
       GH_TOKEN: ${{ github.token }}
       NERVA_CI_TOKEN: ${{ secrets.NERVA_CI_TOKEN }}
-      NERVA_RELEASE_URL: https://nerva.co.ke
+      NERVA_RELEASE_URL: https://nerva.brianbmk332.workers.dev
       NERVA_PRODUCT_ID: security-operations
 
     steps:
