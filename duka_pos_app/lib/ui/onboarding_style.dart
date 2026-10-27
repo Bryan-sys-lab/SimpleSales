@@ -185,7 +185,13 @@ abstract class OnboardStyle {
       child: Row(
         mainAxisSize: MainAxisSize.min,
         children: <Widget>[
-          Text(label, style: type.titleMedium?.copyWith(fontWeight: FontWeight.w700, color: colors.onAccent)),
+          Flexible(
+            child: Text(
+              label,
+              style: type.titleMedium?.copyWith(fontWeight: FontWeight.w700, color: colors.onAccent),
+              overflow: TextOverflow.ellipsis,
+            ),
+          ),
           const SizedBox(width: 8),
           Icon(Icons.arrow_forward_rounded, size: 20, color: colors.onAccent),
         ],
@@ -226,15 +232,17 @@ abstract class OnboardStyle {
         children: <Widget>[
           const SimplePosMark(size: _markSize, variant: SimplePosMarkVariant.full),
           const Spacer(),
-          TextButton(
-            onPressed: onSignIn,
-            style: TextButton.styleFrom(
-              foregroundColor: colors.accent,
-              padding: EdgeInsets.zero,
-              minimumSize: Size.zero,
-              tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+          Flexible(
+            child: TextButton(
+              onPressed: onSignIn,
+              style: TextButton.styleFrom(
+                foregroundColor: colors.accent,
+                padding: EdgeInsets.zero,
+                minimumSize: Size.zero,
+                tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+              ),
+              child: Text('I have an account', style: type.labelMedium?.copyWith(fontWeight: FontWeight.w600), overflow: TextOverflow.ellipsis),
             ),
-            child: Text('I have an account', style: type.labelMedium?.copyWith(fontWeight: FontWeight.w600)),
           ),
         ],
       ),
@@ -300,7 +308,7 @@ class OnboardImportBox extends StatelessWidget {
         ),
         if (busy) ...<Widget>[
           SizedBox(height: spacing.md),
-          const _ImportProgress(),
+          const _ImportProgress(key: ValueKey('import-progress')),
         ],
         if (message != null) ...<Widget>[
           SizedBox(height: spacing.md),
@@ -312,7 +320,7 @@ class OnboardImportBox extends StatelessWidget {
 }
 
 class _ImportProgress extends StatelessWidget {
-  const _ImportProgress();
+  const _ImportProgress({super.key});
 
   @override
   Widget build(BuildContext context) {
@@ -329,6 +337,7 @@ class OnboardImportMessage extends StatelessWidget {
     required this.message,
     required this.isError,
     required this.type,
+    super.key,
   });
 
   final String message;

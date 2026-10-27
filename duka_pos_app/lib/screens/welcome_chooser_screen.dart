@@ -153,8 +153,6 @@ class _WelcomeChooserScreenState extends State<WelcomeChooserScreen> {
                   ),
                   SizedBox(height: spacing.lg),
 
-                const Center(child: SimplePosMark(size: 64)),
-                  SizedBox(height: spacing.md),
                   const Center(child: SimplePosWordmark()),
                   SizedBox(height: spacing.lg),
 
@@ -213,14 +211,23 @@ class _WelcomeChooserScreenState extends State<WelcomeChooserScreen> {
                   // the screen: someone who has never set a shop up will read the
                   // two buttons above and reach this, and someone who has done it
                   // once will scroll past it for years.
-                  OnboardStyle.primaryButton(
-                    context: context,
+                  TextButton.icon(
                     onPressed: () => _choose(context, _setupIntent),
-                    label: addingAnother
-                        ? l10n.chooserSetupAnother
-                        : l10n.chooserSetupFirst,
-                    colors: colors,
-                    spacing: spacing,
+                    icon: ExcludeSemantics(
+                      child: Icon(
+                        addingAnother
+                            ? Icons.add_business_outlined
+                            : Icons.storefront_outlined,
+                      ),
+                    ),
+                    label: Padding(
+                      padding: EdgeInsets.symmetric(vertical: spacing.lg),
+                      child: Text(
+                        addingAnother
+                            ? l10n.chooserSetupAnother
+                            : l10n.chooserSetupFirst,
+                      ),
+                    ),
                   ),
 
                   Text(
