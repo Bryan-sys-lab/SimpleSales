@@ -2129,6 +2129,7 @@ class _SettingsScreenState extends State<SettingsScreen>
         ),
       );
       await DatabaseHelper.instance.setShopProfile(details.profile);
+      state.setShopProfile(details.profile);
     } catch (e) {
       await rollbackFailedShopCreation(
         state: state,

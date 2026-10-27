@@ -1302,6 +1302,31 @@ class AppLocalizationsEn extends AppLocalizations {
   String get inventoryFieldStockQty => 'Stock qty';
 
   @override
+  String inventoryFieldStockQtyUnit(Object unit) {
+    return 'Stock qty ($unit)';
+  }
+
+  @override
+  String inventoryFieldReorderLevelUnit(Object unit) {
+    return 'Reorder level ($unit)';
+  }
+
+  @override
+  String get unitSuffixEach => 'items';
+
+  @override
+  String get unitSuffixLitre => 'L';
+
+  @override
+  String get unitSuffixMillilitre => 'ml';
+
+  @override
+  String get unitSuffixCup => 'cups';
+
+  @override
+  String get unitSuffixKilogram => 'kg';
+
+  @override
   String get inventoryFieldTotalStock => 'Total stock (from variants)';
 
   @override

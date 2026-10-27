@@ -2254,6 +2254,48 @@ abstract class AppLocalizations {
   /// **'Stock qty'**
   String get inventoryFieldStockQty;
 
+  /// No description provided for @inventoryFieldStockQtyUnit.
+  ///
+  /// In en, this message translates to:
+  /// **'Stock qty ({unit})'**
+  String inventoryFieldStockQtyUnit(Object unit);
+
+  /// No description provided for @inventoryFieldReorderLevelUnit.
+  ///
+  /// In en, this message translates to:
+  /// **'Reorder level ({unit})'**
+  String inventoryFieldReorderLevelUnit(Object unit);
+
+  /// No description provided for @unitSuffixEach.
+  ///
+  /// In en, this message translates to:
+  /// **'items'**
+  String get unitSuffixEach;
+
+  /// No description provided for @unitSuffixLitre.
+  ///
+  /// In en, this message translates to:
+  /// **'L'**
+  String get unitSuffixLitre;
+
+  /// No description provided for @unitSuffixMillilitre.
+  ///
+  /// In en, this message translates to:
+  /// **'ml'**
+  String get unitSuffixMillilitre;
+
+  /// No description provided for @unitSuffixCup.
+  ///
+  /// In en, this message translates to:
+  /// **'cups'**
+  String get unitSuffixCup;
+
+  /// No description provided for @unitSuffixKilogram.
+  ///
+  /// In en, this message translates to:
+  /// **'kg'**
+  String get unitSuffixKilogram;
+
   /// No description provided for @inventoryFieldTotalStock.
   ///
   /// In en, this message translates to:

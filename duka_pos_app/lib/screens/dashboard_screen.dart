@@ -670,7 +670,6 @@ class _DashboardContent extends StatelessWidget {
                       // by whom — so the card opens the list that answers it.
                       onTransactions: () => context.push(Routes.transactions),
                     ),
-                    credit,
                   ],
                   gap,
                 ),

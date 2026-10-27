@@ -358,6 +358,7 @@ class AppState extends ChangeNotifier {
     workspaceKey = key;
     await DatabaseHelper.instance.initializeWorkspace(key);
     Owner? nextOwner = await DatabaseHelper.instance.getOwner();
+    shopProfile = await DatabaseHelper.instance.getShopProfile();
     if (nextOwner == null && createOwnerFor != null) {
       await DatabaseHelper.instance.createOwner(createOwnerFor);
       nextOwner = createOwnerFor;

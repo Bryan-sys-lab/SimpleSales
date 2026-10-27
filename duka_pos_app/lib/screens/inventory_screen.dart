@@ -30,6 +30,7 @@ import '../screens/deliveries_history_sheet.dart';
 import '../screens/receive_stock_sheet.dart';
 import '../utils/error_utils.dart';
 import '../utils/money.dart';
+import '../utils/text_input.dart';
 import '../utils/units.dart';
 import '../widgets/variant_catalogue.dart';
 import '../widgets/variant_form_sheet.dart';
@@ -2294,7 +2295,7 @@ class _ProductEditorState extends State<_ProductEditor> {
   Product _draftParent() {
     final existing = widget.existing;
     double number(String text, double fallback) =>
-        double.tryParse(text.trim()) ?? fallback;
+        parseUserNumber(text) ?? fallback;
     return Product(
       id: existing?.id,
       name: _name.text.trim().isEmpty
@@ -2310,7 +2311,7 @@ class _ProductEditorState extends State<_ProductEditor> {
           number(_price.text, existing?.sellPrice.asMajor ?? 0)),
       stockQty: number(_stock.text, existing?.stockQty ?? 0),
       reorderLevel:
-          int.tryParse(_reorder.text.trim()) ?? existing?.reorderLevel ?? 0,
+          parseUserCount(_reorder.text) ?? existing?.reorderLevel ?? 0,
       bottleMl: int.tryParse(_bottleMl.text.trim()) ?? existing?.bottleMl ?? 0,
       unit: _unit,
       trackVariants:
@@ -2685,7 +2686,7 @@ class _ProductEditorState extends State<_ProductEditor> {
   Money? _optionalPrice(TextEditingController controller, String label) {
     final text = controller.text.trim();
     if (text.isEmpty) return null;
-    final parsed = double.tryParse(text);
+    final parsed = parseUserNumber(text);
     if (parsed == null) {
       throw FormatException(
           AppLocalizations.of(context).inventoryLabelMustNumberEmpty(label));
@@ -2723,11 +2724,11 @@ class _ProductEditorState extends State<_ProductEditor> {
       return;
     }
 
-    final cost = double.tryParse(_cost.text.trim());
-    final price = double.tryParse(_price.text.trim());
-    final stock = double.tryParse(_stock.text.trim());
-    final reorder = int.tryParse(_reorder.text.trim());
-    final bottleMl = int.tryParse(_bottleMl.text.trim());
+    final cost = parseUserNumber(_cost.text);
+    final price = parseUserNumber(_price.text);
+    final stock = parseUserNumber(_stock.text);
+    final reorder = parseUserCount(_reorder.text);
+    final bottleMl = parseUserCount(_bottleMl.text);
 
     if (cost == null || price == null || stock == null) {
       setState(() => _error = cost == null
@@ -2927,12 +2928,22 @@ class _ProductEditorState extends State<_ProductEditor> {
     }
   }
 
+  /// The unit suffix to append to the stock/reorder labels so the person
+  /// knows what they are entering — litres, millilitres, cups, kg, or items
+  /// for a countable product.
+  String _unitStockSuffix(AppLocalizations l10n, ProductUnit unit) {
+    return switch (unit) {
+      ProductUnit.each => l10n.unitSuffixEach,
+      ProductUnit.litre => l10n.unitSuffixLitre,
+      ProductUnit.millilitre => l10n.unitSuffixMillilitre,
+      ProductUnit.cup => l10n.unitSuffixCup,
+      ProductUnit.kilogram => l10n.unitSuffixKilogram,
+    };
+  }
+
   @override
   Widget build(BuildContext context) {
-    // The spacing scale, so the editor's rhythm is the app's rhythm. These used
-    // to be raw `SizedBox(height: n)` values, which is how a form ends up with
-    // 12, 8, 4 and 16 all meaning "between fields" at once — the congestion the
-    // brief asked to remove, and a value no other screen shares.
+    final AppLocalizations l10n = AppLocalizations.of(context);
     final AppSpacing spacing = AppSpacing.of(context);
     return Padding(
       padding: EdgeInsetsDirectional.only(
@@ -2970,7 +2981,11 @@ class _ProductEditorState extends State<_ProductEditor> {
                         decoration: InputDecoration(
                             labelText: AppLocalizations.of(context)
                                 .inventoryFieldCostPrice),
-                        keyboardType: TextInputType.number)),
+                        keyboardType: const TextInputType.numberWithOptions(
+                            decimal: true),
+                        inputFormatters: <TextInputFormatter>[
+                      FilteringTextInputFormatter.allow(userNumberPattern),
+                    ])),
                 SizedBox(width: spacing.md),
                 Expanded(
                     child: TextField(
@@ -2978,7 +2993,11 @@ class _ProductEditorState extends State<_ProductEditor> {
                         decoration: InputDecoration(
                             labelText: AppLocalizations.of(context)
                                 .inventoryFieldSellPrice),
-                        keyboardType: TextInputType.number)),
+                        keyboardType: const TextInputType.numberWithOptions(
+                            decimal: true),
+                        inputFormatters: <TextInputFormatter>[
+                      FilteringTextInputFormatter.allow(userNumberPattern),
+                    ])),
               ]),
               SizedBox(height: spacing.md),
               // What the product is measured in, and the one control this form
@@ -3003,7 +3022,10 @@ class _ProductEditorState extends State<_ProductEditor> {
                       labelText: _sizeLabelOf(context, _unit),
                       helperText: AppLocalizations.of(context)
                           .inventoryFieldSizeMlHelper),
-                  keyboardType: TextInputType.number),
+                  keyboardType: TextInputType.number,
+                  inputFormatters: <TextInputFormatter>[
+                    FilteringTextInputFormatter.allow(userDigitsPattern),
+                  ]),
               // The one thing a cup product needs to be told: it is poured from
               // something bigger, and where. Without this the next screen is a
               // dead end, which is exactly how this used to read.
@@ -3032,7 +3054,10 @@ class _ProductEditorState extends State<_ProductEditor> {
                             helperText: AppLocalizations.of(context)
                                 .inventoryFieldHalfPriceHelper),
                         keyboardType: const TextInputType.numberWithOptions(
-                            decimal: true))),
+                            decimal: true),
+                        inputFormatters: <TextInputFormatter>[
+                      FilteringTextInputFormatter.allow(userNumberPattern),
+                    ])),
                 SizedBox(width: spacing.md),
                 Expanded(
                     child: TextField(
@@ -3043,7 +3068,10 @@ class _ProductEditorState extends State<_ProductEditor> {
                             helperText: AppLocalizations.of(context)
                                 .inventoryFieldQuarterPriceHelper),
                         keyboardType: const TextInputType.numberWithOptions(
-                            decimal: true))),
+                            decimal: true),
+                        inputFormatters: <TextInputFormatter>[
+                      FilteringTextInputFormatter.allow(userNumberPattern),
+                    ])),
               ]),
               SizedBox(height: spacing.md),
               Row(children: [
@@ -3052,23 +3080,36 @@ class _ProductEditorState extends State<_ProductEditor> {
                         controller: _stock,
                         decoration: InputDecoration(
                             labelText: _trackVariants
-                                ? AppLocalizations.of(context)
-                                    .inventoryFieldTotalStock
-                                : AppLocalizations.of(context)
-                                    .inventoryFieldStockQty,
+                                ? l10n.inventoryFieldTotalStock
+                                : _unit == ProductUnit.each
+                                    ? l10n.inventoryFieldStockQty
+                                    : l10n.inventoryFieldStockQtyUnit(
+                                        _unitStockSuffix(l10n, _unit)),
                             helperText: _trackVariants
-                                ? AppLocalizations.of(context)
-                                    .inventoryStockIsDerived
+                                ? l10n.inventoryStockIsDerived
                                 : null),
-                        keyboardType: TextInputType.number)),
+                        keyboardType: const TextInputType.numberWithOptions(
+                            decimal: true),
+                        inputFormatters: <TextInputFormatter>[
+                      FilteringTextInputFormatter.allow(userNumberPattern),
+                    ])),
                 SizedBox(width: spacing.md),
                 Expanded(
                     child: TextField(
                         controller: _reorder,
                         decoration: InputDecoration(
-                            labelText: AppLocalizations.of(context)
-                                .inventoryFieldReorderLevel),
-                        keyboardType: TextInputType.number)),
+                            labelText: _unit == ProductUnit.each
+                                ? l10n.inventoryFieldReorderLevel
+                                : l10n.inventoryFieldReorderLevelUnit(
+                                    _unitStockSuffix(l10n, _unit))),
+                        keyboardType: TextInputType.numberWithOptions(
+                            decimal: _unit != ProductUnit.each),
+                        inputFormatters: <TextInputFormatter>[
+                      FilteringTextInputFormatter.allow(
+                          _unit == ProductUnit.each
+                              ? userDigitsPattern
+                              : userNumberPattern),
+                    ])),
               ]),
               SizedBox(height: spacing.md),
               TextField(
