@@ -50,10 +50,10 @@ jobs:
           release_json="$(gh release view "$tag" --repo "$GITHUB_REPOSITORY" \
             --json tagName,body,publishedAt,assets)"
           apk_json="$(jq -c --arg tag "$tag" \
-            '.assets[] | select(.name == ("duka-pos-" + $tag + ".apk")) | {url: .url, size: .size}' \
+            '.assets[] | select(.name == ("SimpleSales-" + $tag + ".apk")) | {url: .url, size: .size}' \
             <<<"$release_json" | head -n 1)"
           if [[ -z "$apk_json" || "$apk_json" == "null" ]]; then
-            echo "::error::No signed APK asset named duka-pos-${tag}.apk exists on ${tag}."
+            echo "::error::No signed APK asset named SimpleSales-${tag}.apk exists on ${tag}."
             exit 1
           fi
 
