@@ -211,8 +211,8 @@ abstract class OnboardStyle {
       style: TextButton.styleFrom(
         foregroundColor: colors.accent,
         padding: EdgeInsets.zero,
-        minimumSize: Size.zero,
-        tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+        minimumSize: const Size(0, 44),
+        tapTargetSize: MaterialTapTargetSize.padded,
       ),
       child: Text(label, style: typeFor(context).labelLarge?.copyWith(fontWeight: FontWeight.w600)),
     );
@@ -227,21 +227,27 @@ abstract class OnboardStyle {
     required TextTheme type,
   }) {
     return Padding(
-      padding: EdgeInsetsDirectional.fromSTEB(spacing.xl, spacing.xs, spacing.xl, spacing.xs),
+      padding: EdgeInsetsDirectional.fromSTEB(spacing.md, spacing.xs, spacing.md, spacing.xs),
       child: Row(
         children: <Widget>[
           const SimplePosMark(size: _markSize, variant: SimplePosMarkVariant.full),
           const Spacer(),
-          Flexible(
+          Expanded(
             child: TextButton(
               onPressed: onSignIn,
               style: TextButton.styleFrom(
                 foregroundColor: colors.accent,
                 padding: EdgeInsets.zero,
-                minimumSize: Size.zero,
-                tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                minimumSize: const Size(0, 44),
+                tapTargetSize: MaterialTapTargetSize.padded,
               ),
-              child: Text('I have an account', style: type.labelMedium?.copyWith(fontWeight: FontWeight.w600), overflow: TextOverflow.ellipsis),
+              child: Text(
+                'I have an account',
+                style: type.labelMedium?.copyWith(fontWeight: FontWeight.w600),
+                softWrap: true,
+                maxLines: 2,
+                textAlign: TextAlign.end,
+              ),
             ),
           ),
         ],

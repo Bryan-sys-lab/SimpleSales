@@ -139,15 +139,23 @@ class _ProductOnboardingScreenState extends State<ProductOnboardingScreen> {
                 children: <Widget>[
                   const SimplePosMark(size: 36),
                   const Spacer(),
-                  TextButton(
-                    onPressed: widget.onSignIn,
-                    style: TextButton.styleFrom(
-                      foregroundColor: colors.accent,
-                      padding: EdgeInsets.zero,
-                      minimumSize: Size.zero,
-                      tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                  Expanded(
+                    child: TextButton(
+                      onPressed: widget.onSignIn,
+                      style: TextButton.styleFrom(
+                        foregroundColor: colors.accent,
+                        padding: EdgeInsets.zero,
+                        minimumSize: const Size(0, 44),
+                        tapTargetSize: MaterialTapTargetSize.padded,
+                      ),
+                      child: Text(
+                        'I have an account',
+                        style: type.labelMedium?.copyWith(fontWeight: FontWeight.w600),
+                        softWrap: true,
+                        maxLines: 2,
+                        textAlign: TextAlign.end,
+                      ),
                     ),
-                    child: Text('I have an account', style: type.labelMedium?.copyWith(fontWeight: FontWeight.w600)),
                   ),
                 ],
               ),
@@ -165,7 +173,7 @@ class _ProductOnboardingScreenState extends State<ProductOnboardingScreen> {
                       children: <Widget>[
                         OnboardStyle.window(
                           context: context,
-                          image: Image.asset(page.image, fit: BoxFit.cover, alignment: Alignment.topCenter),
+                          image: Image.asset(page.image, fit: BoxFit.cover, alignment: Alignment.topCenter, semanticLabel: 'Kenyan shop business'),
                           badgeIcon: page.badgeIcon,
                           label: page.label,
                           title: page.title,
