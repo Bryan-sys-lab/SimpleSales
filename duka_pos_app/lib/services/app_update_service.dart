@@ -167,6 +167,7 @@ class AppUpdateService extends ChangeNotifier {
 
   set autoUpdateEnabled(bool value) {
     telemetry.autoUpdateEnabled = value;
+    notifyListeners();
   }
 
   /// Downloads the pending APK when the till is idle, if the owner has
