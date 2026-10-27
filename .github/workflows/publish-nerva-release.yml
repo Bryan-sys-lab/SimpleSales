@@ -23,7 +23,7 @@ jobs:
     needs: []
     uses: zxds1/nerva/.github/workflows/publish-release.yml@main
     with:
-      product: simplesales
+      product: bussiness-and-finance
       version: ${{ github.event.release.tag_name || inputs.tag }}
     secrets:
       CI_TOKEN: ${{ secrets.NERVA_CI_TOKEN }}
