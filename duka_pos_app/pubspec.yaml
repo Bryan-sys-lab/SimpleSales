@@ -118,7 +118,6 @@ dependencies:
   # 3.13 requires xml ^7, while excel 4.x currently requires xml <7.
   # Keep the latest compatible PDF line until excel releases that constraint.
   pdf: ^3.12.0
-  telephony: ^0.2.0
 
 dev_dependencies:
   flutter_test:
@@ -197,3 +196,4 @@ flutter:
     - assets/onboarding/fashion_shop_photo.jpg
     - assets/onboarding/open_shop.jpg
     - assets/onboarding/open_shop_photo.jpg
+    - assets/ref.jpg
