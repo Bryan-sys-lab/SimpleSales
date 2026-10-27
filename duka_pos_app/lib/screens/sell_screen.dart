@@ -625,6 +625,7 @@ class _SellScreenState extends State<SellScreen>
           sellsAsVariants: sellsAsVariants,
           shots: shots,
           remainingStock: product.stockQty - _cartUnitsFor(product),
+          onChoose: (choice) => Navigator.of(sheetContext).pop(choice),
         ),
       );
     } finally {
