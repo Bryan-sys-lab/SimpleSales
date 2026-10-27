@@ -18,9 +18,9 @@
 // Publishing an app version is then a matter of writing one JSON file, with no
 // redeploy of anything.
 
-import { readFile } from 'node:fs/promises';
+import { mkdir, readFile, writeFile } from 'node:fs/promises';
 import { existsSync } from 'node:fs';
-import { join } from 'node:path';
+import { dirname, join } from 'node:path';
 
 import express, { type Request, type Response } from 'express';
 
@@ -115,6 +115,48 @@ router.get('/api/app/latest', async (_request: Request, response: Response) => {
   // `stale-while-revalidate` keeps a shop on a flaky connection working.
   response.setHeader('Cache-Control', 'public, max-age=300, stale-while-revalidate=600');
   response.json(manifest);
+});
+
+
+router.post('/api/app/release', async (request: Request, response: Response) => {
+  const token = request.header('x-ci-token');
+  if (!process.env.CI_TOKEN || token !== process.env.CI_TOKEN) {
+    response.status(401).json({ error: 'unauthorized' });
+    return;
+  }
+
+  const body = request.body as Record<string, unknown> | undefined;
+  const build = body?.build;
+  const version = body?.version;
+  const downloadUrl = body?.downloadUrl;
+  if (
+    typeof build !== 'number' ||
+    !Number.isInteger(build) ||
+    build <= 0 ||
+    typeof version !== 'string' ||
+    version.trim() === '' ||
+    typeof downloadUrl !== 'string' ||
+    downloadUrl.trim() === ''
+  ) {
+    response.status(400).json({ error: 'invalid manifest' });
+    return;
+  }
+
+  const manifest = {
+    build,
+    version: version.trim(),
+    downloadUrl: downloadUrl.trim(),
+    notes: typeof body?.notes === 'string' ? body.notes.trim() : '',
+    required: body?.required === true,
+    minimumBuild:
+      typeof body?.minimumBuild === 'number' ? body.minimumBuild : undefined,
+  };
+
+  const path = manifestPath();
+  await mkdir(dirname(path), { recursive: true });
+  await writeFile(path, JSON.stringify(manifest, null, 2), 'utf8');
+
+  response.json({ ok: true, build: manifest.build, version: manifest.version });
 });
 
 export default router;
