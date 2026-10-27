@@ -2236,7 +2236,7 @@ class _SettingsScreenState extends State<SettingsScreen>
           : null,
       onExport: _exportInventory,
       onImport: _importInventory,
-      onSeedBlackbee: ownerSession
+      onSeedBlackbee: ownerSession && context.read<AppState>().shopProfile == ShopProfile.drinks
           ? () => Navigator.of(context).push(
                 MaterialPageRoute<void>(
                   builder: (_) => const BlackbeeSeedScreen(),
