@@ -613,6 +613,7 @@ class _SellScreenState extends State<SellScreen>
     try {
       choice = await showModalBottomSheet<ServingChoice>(
         context: context,
+        useRootNavigator: true,
         // The sheet scrolls now. It used to be a column in a sheet limited to
         // half the screen, and the quarter — the last portion before the
         // shots — was the first thing to go when the sheet was too short. On a
@@ -874,6 +875,7 @@ class _SellScreenState extends State<SellScreen>
     if (!mounted) return;
     final cartId = await showModalBottomSheet<int>(
       context: context,
+      useRootNavigator: true,
       showDragHandle: true,
       builder: (context) => SafeArea(
         child: held.isEmpty
@@ -1952,6 +1954,7 @@ class _SellScreenState extends State<SellScreen>
     if (!mounted) return;
     await showModalBottomSheet<void>(
       context: context,
+      useRootNavigator: true,
       isScrollControlled: true,
       // The sheet covers most of the screen: the amount is the answer to the
       // question the cashier came here for, and it is read at arm's length
