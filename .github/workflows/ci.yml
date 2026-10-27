@@ -12,6 +12,8 @@ name: CI
 # release pipeline was therefore the one kind of change that could not be
 # validated by it, and got through unvalidated for exactly that reason. Every
 # file that decides what ships is now covered by the check that gates shipping.
+# Keep this workflow path-sensitive: verification commits must touch `.github/`
+# or `duka_pos_app/` so GitHub schedules the same release gate as a real change.
 on:
   pull_request:
     branches: [app]
