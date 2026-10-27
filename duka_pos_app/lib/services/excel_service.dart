@@ -198,12 +198,28 @@ class ExcelService {
   /// The EXPORT already did this (see [_encodeWorkbook]). The import did not,
   /// and it is the heavier of the two: an export writes the app's own
   /// catalogue, and an import reads whatever a supplier sent.
-  static Future<xl.Excel> _decodeWorkbook(List<int> bytes) =>
-      compute(_decodeWorkbookSync, bytes);
-
-  /// The isolate's half of the decode.
-  static xl.Excel _decodeWorkbookSync(List<int> bytes) =>
-      xl.Excel.decodeBytes(bytes);
+  static Future<xl.Excel> _decodeWorkbook(List<int> bytes) async {
+    // Decode on the main isolate. A separate compute() isolate used to be
+    // used here, but on some handsets the isolate's memory budget (or the
+    // transfer of the decoded workbook back) was enough to kill the app
+    // mid-import, so the owner saw "loading" and then a quit instead of a
+    // result. Decoding on the main isolate keeps the workbook in one place
+    // and lets the surrounding try/catch turn a failure into a message.
+    if (bytes.length > 25 * 1024 * 1024) {
+      throw const FormatException(
+        'That workbook is too large to import on this phone. Split it into '
+        'smaller files and import them one at a time.',
+      );
+    }
+    try {
+      return xl.Excel.decodeBytes(bytes);
+    } catch (_) {
+      throw const FormatException(
+        'That file could not be opened as a workbook. Open it in Excel and use '
+        '"Save As" to save a new .xlsx, then import that.',
+      );
+    }
+  }
 
   Future<File> _save(xl.Excel book, String prefix) async {
     final dir = await getApplicationDocumentsDirectory();
