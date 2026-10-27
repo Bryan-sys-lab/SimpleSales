@@ -48,7 +48,7 @@ import {
   newSalt,
 } from '../lib/verification';
 import { createKeycloakAdminClient, keycloakAdminOptionsFromEnv } from '../lib/keycloak_admin';
-import { createEmailJsTransport, type EmailTransport } from '../lib/email_sender';
+import { createCloudflareEmailTransport, type EmailTransport } from '../lib/email_sender';
 import { APP_SESSION_TTL_MS, issueAppSession } from '../lib/app_session';
 
 const router = Router();
@@ -81,10 +81,8 @@ function identityConfigured(): boolean {
 
 function mailerConfigured(): boolean {
   return Boolean(
-    process.env.EMAILJS_SERVICE_ID &&
-      process.env.EMAILJS_TEMPLATE_ID &&
-      process.env.EMAILJS_PUBLIC_KEY &&
-      process.env.EMAILJS_PRIVATE_KEY,
+    process.env.CLOUDFLARE_ACCOUNT_ID &&
+      process.env.CLOUDFLARE_API_TOKEN,
   );
 }
 
@@ -122,11 +120,10 @@ const verifyLimiter = rateLimit({
 });
 
 function buildMailer(): EmailTransport {
-  const transport = createEmailJsTransport({
-    serviceId: process.env.EMAILJS_SERVICE_ID ?? '',
-    templateId: process.env.EMAILJS_TEMPLATE_ID ?? '',
-    publicKey: process.env.EMAILJS_PUBLIC_KEY ?? '',
-    privateKey: process.env.EMAILJS_PRIVATE_KEY ?? '',
+  const transport = createCloudflareEmailTransport({
+    accountId: process.env.CLOUDFLARE_ACCOUNT_ID ?? '',
+    apiToken: process.env.CLOUDFLARE_API_TOKEN ?? '',
+    from: process.env.CLOUDFLARE_EMAIL_FROM ?? 'security@nerva.co.ke',
     appName: process.env.APP_NAME ?? 'SimpleSales',
   });
   return transport.send;

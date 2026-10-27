@@ -1,18 +1,7 @@
 /**
- * Verification email, sent through EmailJS.
+ * Verification email, sent through Cloudflare Email Service.
  *
- * WHY EMAILJS AND WHY SERVER-SIDE
- * The alternative was shipping an SMTP password (or an EmailJS keypair) inside
- * the APK. Anything in an APK is public: an attacker extracts it, sends a
- * thousand codes to a mailbox they chose, and the shop's domain is
- * rate-limited into the ground by a provider who blames the shop. Keys
- * therefore live only in this process, and the app asks the server to send the
- * mail rather than sending it itself.
- *
- * EmailJS is a convenience the operator opts into: without the keys the flow
- * reports that email is not configured rather than pretending a code was sent.
- * Swapping in SES or Postmark means writing one more transport with the same
- * shape and nothing else in the flow changes.
+ * Keys live only in this process; the app asks the server to send the mail.
  */
 
 export type VerificationEmail = {
@@ -24,20 +13,17 @@ export type VerificationEmail = {
 
 export type EmailTransport = (message: VerificationEmail) => Promise<void>;
 
-export type EmailJsOptions = {
-  serviceId: string;
-  templateId: string;
-  /** EmailJS public key — the half that is safe to ship. */
-  publicKey: string;
-  /** EmailJS private key — the half that is not. Never leaves the server. */
-  privateKey: string;
+export type CloudflareEmailOptions = {
+  accountId: string;
+  apiToken: string;
+  from?: string;
   appName?: string;
-  endpoint?: string;
   /** Injectable for tests; the default is global fetch. */
   post?: (url: string, init: { method: string; headers: Record<string, string>; body: string }) => Promise<{ status: number; text: () => Promise<string> }>;
 };
 
-export const EMAILJS_ENDPOINT = 'https://api.emailjs.com/api/v1.0/email/send';
+export const CLOUDFLARE_EMAIL_ENDPOINT = (accountId: string) =>
+  `https://api.cloudflare.com/client/v4/accounts/${accountId}/email/sending/send`;
 
 export class EmailSendError extends Error {
   readonly status: number;
@@ -48,8 +34,10 @@ export class EmailSendError extends Error {
   }
 }
 
-export function createEmailJsTransport(options: EmailJsOptions): { configured: boolean; send: EmailTransport } {
-  const endpoint = options.endpoint ?? EMAILJS_ENDPOINT;
+const DEFAULT_FROM = 'security@nerva.co.ke';
+
+export function createCloudflareEmailTransport(options: CloudflareEmailOptions): { configured: boolean; send: EmailTransport } {
+  const from = options.from || DEFAULT_FROM;
   const post =
     options.post ??
     (async (url, init) => {
@@ -57,29 +45,66 @@ export function createEmailJsTransport(options: EmailJsOptions): { configured: b
       return { status: response.status, text: () => response.text() };
     });
 
-  const configured = Boolean(options.serviceId && options.templateId && options.publicKey && options.privateKey);
+  const configured = Boolean(options.accountId && options.apiToken && from);
+
+  const buildBody = (message: VerificationEmail) => {
+    const appName = options.appName ?? 'SimpleSales';
+    const subject = `${appName} verification code`;
+    const text = [
+      `${appName}`,
+      '',
+      'Confirm your account',
+      '',
+      'Hi,',
+      '',
+      "You're almost there. Enter the verification code below to confirm your email address.",
+      '',
+      message.code,
+      '',
+      `Expires in ${message.ttlMinutes} minutes`,
+      '',
+      "If you didn't request this code, no action is required. For your security, never share your verification code with anyone.",
+      '',
+      `Thank you for choosing ${appName}.`,
+      '',
+      `${appName} Security`,
+      '',
+      'This is an automated security email. Please do not reply.',
+    ].join('\n');
+
+    const html = `
+      <p><strong>${appName}</strong></p>
+      <h2>Confirm your account</h2>
+      <p>Hi,</p>
+      <p>You're almost there. Enter the verification code below to confirm your email address.</p>
+      <p><strong>${message.code}</strong></p>
+      <p><strong>Expires in ${message.ttlMinutes} minutes</strong></p>
+      <p>If you didn't request this code, no action is required. For your security, never share your verification code with anyone.</p>
+      <p>Thank you for choosing <strong>${appName}</strong>.</p>
+      <p><strong>${appName} Security</strong></p>
+      <p><em>This is an automated security email. Please do not reply.</em></p>
+    `.trim();
+
+    return {
+      to: message.to,
+      from,
+      subject,
+      text,
+      html,
+    };
+  };
 
   return {
     configured,
-    // The code is in the request body once, to EmailJS, over TLS. It is never
-    // logged and never returned to a caller.
     send: async (message: VerificationEmail) => {
-      const response = await post(endpoint, {
+      const url = CLOUDFLARE_EMAIL_ENDPOINT(options.accountId);
+      const response = await post(url, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          service_id: options.serviceId,
-          template_id: options.templateId,
-          user_id: options.publicKey,
-          accessToken: options.privateKey,
-          template_params: {
-            to_email: message.to,
-            code: message.code,
-            shop_name: message.shopName,
-            app_name: options.appName ?? 'SimpleSales',
-            expires_minutes: message.ttlMinutes,
-          },
-        }),
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${options.apiToken}`,
+        },
+        body: JSON.stringify(buildBody(message)),
       });
       if (response.status < 200 || response.status >= 300) {
         throw new EmailSendError(response.status);
@@ -87,3 +112,6 @@ export function createEmailJsTransport(options: EmailJsOptions): { configured: b
     },
   };
 }
+
+// Backwards-compatible alias while callers migrate.
+export const createEmailJsTransport = createCloudflareEmailTransport;
