@@ -879,50 +879,63 @@ class _InventoryScreenState extends State<InventoryScreen>
       // Receiving stock is for managers AND owners — it is the shop's stock
       // coming in, and the money it cost. A tank is the owner's own setup
       // decision, so it stays behind the owner's door.
-      persistentFooterButtons: <Widget>[
-        if (canReceive)
-          TextButton.icon(
-            onPressed: () => _receiveStock(),
-            icon: const Icon(Icons.local_shipping_outlined, size: 18),
-            label: Text(l10n.inventoryManualRestock),
+      bottomNavigationBar: SafeArea(
+        child: SingleChildScrollView(
+          scrollDirection: Axis.horizontal,
+          padding: EdgeInsets.symmetric(
+            horizontal: AppSpacing.of(context).md,
+            vertical: AppSpacing.of(context).sm,
           ),
-        if (canReceive)
-          TextButton.icon(
-            onPressed: () => _openDeliveries(),
-            icon: const Icon(Icons.receipt_long_outlined, size: 18),
-            label: Text(l10n.receiveDeliveriesAction),
+          child: Row(
+            children: <Widget>[
+              if (canReceive)
+                TextButton.icon(
+                  onPressed: () => _receiveStock(),
+                  icon: const Icon(Icons.local_shipping_outlined, size: 18),
+                  label: Text(l10n.inventoryManualRestock),
+                ),
+              if (canReceive)
+                TextButton.icon(
+                  onPressed: () => _openDeliveries(),
+                  icon: const Icon(Icons.receipt_long_outlined, size: 18),
+                  label: Text(l10n.receiveDeliveriesAction),
+                ),
+              if (canStocktake)
+                TextButton.icon(
+                  onPressed: () => Navigator.of(context).push(
+                    MaterialPageRoute<void>(
+                        builder: (_) => const StocktakeScreen()),
+                  ),
+                  icon: const Icon(Icons.fact_check_outlined, size: 18),
+                  label: const Text('Stocktake'),
+                ),
+              if (canReorder)
+                TextButton.icon(
+                  onPressed: () => Navigator.of(context).push(
+                    MaterialPageRoute<void>(
+                        builder: (_) => const ReorderScreen()),
+                  ),
+                  icon: const Icon(Icons.playlist_add_check_outlined, size: 18),
+                  label: const Text('Reorder'),
+                ),
+              if (isOwner && showDrinkService)
+                TextButton.icon(
+                  onPressed: () => showTankFormSheet(context),
+                  icon: const Icon(Icons.propane_tank_outlined, size: 18),
+                  label: Text(l10n.tankAddEntry),
+                ),
+              if ((appState.shopProfile == ShopProfile.duka ||
+                  appState.shopProfile == ShopProfile.drinks) &&
+                  appState.hasPermission(PermissionKey.adjustStock))
+                TextButton.icon(
+                  onPressed: _repackStock,
+                  icon: const Icon(Icons.swap_horiz_outlined, size: 18),
+                  label: Text(l10n.inventoryRepackAction),
+                ),
+            ],
           ),
-        if (canStocktake)
-          TextButton.icon(
-            onPressed: () => Navigator.of(context).push(
-              MaterialPageRoute<void>(builder: (_) => const StocktakeScreen()),
-            ),
-            icon: const Icon(Icons.fact_check_outlined, size: 18),
-            label: const Text('Stocktake'),
-          ),
-        if (canReorder)
-          TextButton.icon(
-            onPressed: () => Navigator.of(context).push(
-              MaterialPageRoute<void>(builder: (_) => const ReorderScreen()),
-            ),
-            icon: const Icon(Icons.playlist_add_check_outlined, size: 18),
-            label: const Text('Reorder'),
-          ),
-        if (isOwner && showDrinkService)
-          TextButton.icon(
-            onPressed: () => showTankFormSheet(context),
-            icon: const Icon(Icons.propane_tank_outlined, size: 18),
-            label: Text(l10n.tankAddEntry),
-          ),
-        if ((appState.shopProfile == ShopProfile.duka ||
-            appState.shopProfile == ShopProfile.drinks) &&
-            appState.hasPermission(PermissionKey.adjustStock))
-          TextButton.icon(
-            onPressed: _repackStock,
-            icon: const Icon(Icons.swap_horiz_outlined, size: 18),
-            label: Text(l10n.inventoryRepackAction),
-          ),
-      ],
+        ),
+      ),
       body: RefreshIndicator(
         onRefresh: _load,
         child: Column(
