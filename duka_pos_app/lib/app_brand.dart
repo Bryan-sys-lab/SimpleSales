@@ -26,5 +26,5 @@ abstract final class SimplePosBrand {
   /// see `lib/ui/brand/nerva_wordmark.dart` — because a brand set in the app's
   /// typeface looks like a line of the app's own copy. This stays as the
   /// plain-text form of the attribution, for anything that needs it as text.
-  static const String poweredByTag = 'Powered by $vendorName';
+  static const String poweredByTag = 'A product of $vendorName';
 }

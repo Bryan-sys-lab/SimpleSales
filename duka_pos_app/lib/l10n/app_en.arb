@@ -63,7 +63,7 @@
   "validationDuplicateNameMessage": "A product with this name already exists. Create anyway?",
   "validationDuplicateNameConfirm": "Create it anyway",
   "actionContinue": "Continue",
-  "poweredBy": "Powered by",
+  "poweredBy": "A product of",
   "actionDone": "Done",
   "shiftScreenTitle": "Shift & reconciliation",
   "shiftLoadFailedTitle": "Could not load this till's shifts",

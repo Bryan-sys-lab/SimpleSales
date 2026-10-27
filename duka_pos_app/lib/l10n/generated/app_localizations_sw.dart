@@ -229,7 +229,7 @@ class AppLocalizationsSw extends AppLocalizations {
   String get actionContinue => 'Endelea';
 
   @override
-  String get poweredBy => 'Powered by';
+  String get poweredBy => 'A product of';
 
   @override
   String get actionDone => 'Imekamilika';

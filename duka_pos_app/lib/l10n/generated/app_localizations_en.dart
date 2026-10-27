@@ -229,7 +229,7 @@ class AppLocalizationsEn extends AppLocalizations {
   String get actionContinue => 'Continue';
 
   @override
-  String get poweredBy => 'Powered by';
+  String get poweredBy => 'A product of';
 
   @override
   String get actionDone => 'Done';

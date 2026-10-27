@@ -479,7 +479,7 @@ abstract class AppLocalizations {
   /// No description provided for @poweredBy.
   ///
   /// In en, this message translates to:
-  /// **'Powered by'**
+  /// **'A product of'**
   String get poweredBy;
 
   /// No description provided for @actionDone.
