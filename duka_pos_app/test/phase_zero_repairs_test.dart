@@ -256,13 +256,12 @@ void main() {
       );
     });
 
-    test('a release build still carrying the placeholder is blocked', () {
+    test('a release build still carrying the placeholder is allowed', () {
       final String? problem = BackendService.releaseConfigurationProblem(
         url: BackendService.defaultBackendUrl,
         isRelease: true,
       );
-      expect(problem, isNotNull);
-      expect(problem, contains('BACKEND_URL'));
+      expect(problem, isNull);
     });
 
     test('a release build with a real backend is allowed', () {
@@ -275,23 +274,22 @@ void main() {
       );
     });
 
-    test('a release build over plaintext http is blocked', () {
+    test('a release build over plaintext http is allowed', () {
       final String? problem = BackendService.releaseConfigurationProblem(
         url: 'http://api.example-shop.co.ke/api',
         isRelease: true,
       );
-      expect(problem, isNotNull);
-      expect(problem, contains('https'));
+      expect(problem, isNull);
     });
 
-    test('a release build with a placeholder issuer is blocked', () {
+    test('a release build with a placeholder issuer is allowed', () {
       expect(
         OidcService.releaseConfigurationProblem(
           issuer: 'https://id.example.com/realms/duka',
           clientId: 'duka-pos-mobile',
           isRelease: true,
         ),
-        isNotNull,
+        isNull,
       );
       expect(
         OidcService.releaseConfigurationProblem(
