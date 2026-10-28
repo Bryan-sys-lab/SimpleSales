@@ -1,9 +1,9 @@
-/// Android SMS payment support is intentionally disabled in this app build.
+/// This app no longer uses the Android telephony package.
 ///
-/// The project does not ship the `telephony` package anymore, so the app must
-/// not import it or reference its public API. The service is kept as a tiny,
-/// compatibility stub so any legacy callers still compile without crashing the
-/// analyzer or the build.
+/// The package was removed from `pubspec.yaml` because the SMS payment flow was
+/// disabled and the dependency caused Gradle configuration failures on Android.
+/// We keep a tiny compatibility shim here so any stale callers still compile
+/// cleanly without importing `package:telephony/telephony.dart`.
 class SmsMessage {
   const SmsMessage({
     this.address = '',
@@ -27,11 +27,11 @@ class OrderBy {
   final Sort sort;
 }
 
-/// A compatibility shim for the old SMS-payment feature.
+/// Legacy SMS payment entry point.
 ///
-/// This app deliberately does not read SMS messages for payments. The service
-/// therefore returns an empty list unless the feature is reintroduced with a
-/// supported Android API or a different dependency.
+/// The feature is intentionally disabled in this build, so this service returns
+/// no messages. If SMS payment support is reinstated later, this file should be
+/// replaced with a real implementation backed by a supported dependency.
 class SmsPaymentService {
   SmsPaymentService._();
   static final SmsPaymentService instance = SmsPaymentService._();
