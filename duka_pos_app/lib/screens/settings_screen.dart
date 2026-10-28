@@ -1768,6 +1768,8 @@ class _SettingsScreenState extends State<SettingsScreen>
         );
       }
       if (!mounted) return;
+      context.read<AppState>().notifyProductsChanged();
+      if (!mounted) return;
       await recordActionAudit(
         state,
         action: AuditAction.backupRestored,

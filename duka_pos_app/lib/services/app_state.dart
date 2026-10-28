@@ -601,4 +601,5 @@ class AppState extends ChangeNotifier {
       seesAllSales ? null : (currentStaffId ?? kUnmatchedStaffId);
 
   void refresh() => notifyListeners();
+  void notifyProductsChanged() => notifyListeners();
 }
