@@ -54,7 +54,7 @@ void main() {
     // "Powered by Nerva" — the words and the mark together, as ONE node.
     // The mark's own node is excluded by the attribution, so a screen-reader
     // user hears a sentence rather than a word and then a name.
-    expect(find.bySemanticsLabel('Powered by Nerva'), findsOneWidget);
+    expect(find.bySemanticsLabel('A product of Nerva'), findsOneWidget);
     expect(find.bySemanticsLabel('Nerva'), findsNothing);
   });
 
