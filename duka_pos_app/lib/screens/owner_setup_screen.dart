@@ -166,6 +166,10 @@ class _OwnerSetupScreenState extends State<OwnerSetupScreen> {
 
   Future<void> _create() async {
     if (_saving) return;
+    if (!_acceptedTerms || !_acceptedPrivacy) {
+      setState(() => _error = 'Accept the Terms of Service and Privacy Policy.');
+      return;
+    }
 
     final String email = _email.text.trim().toLowerCase();
     if (_name.text.trim().isEmpty ||
@@ -397,7 +401,7 @@ class _OwnerSetupScreenState extends State<OwnerSetupScreen> {
                     padding: EdgeInsets.all(spacing.xl),
                     child: OnboardStyle.primaryButton(
                       context: context,
-                      onPressed: (_saving || !_acceptedTerms || !_acceptedPrivacy) ? null : _create,
+                      onPressed: _saving ? null : _create,
                       label: _saving ? 'Creating the shop' : 'Create shop admin account',
                       colors: colors,
                       spacing: spacing,

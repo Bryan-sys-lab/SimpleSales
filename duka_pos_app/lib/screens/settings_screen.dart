@@ -3225,7 +3225,8 @@ class _AboutFooterState extends State<_AboutFooter> {
           ),
         ),
         SizedBox(height: AppSpacing.of(context).sm),
-        Row(
+        Wrap(
+          spacing: 8,
           children: <Widget>[
             TextButton(
               onPressed: () => _openAssetPdf('assets/SimpleSales_Terms_of_Service.pdf'),
