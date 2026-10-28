@@ -1,6 +1,10 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart' show rootBundle;
+import 'package:path_provider/path_provider.dart';
+import 'package:url_launcher/url_launcher.dart';
+import 'dart:io';
 import 'package:provider/provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
@@ -79,6 +83,8 @@ class _OwnerSetupScreenState extends State<OwnerSetupScreen> {
   /// support call, so the button stops accepting taps rather than relying on
   /// the person not pressing it twice.
   bool _saving = false;
+  bool _acceptedTerms = false;
+  bool _acceptedPrivacy = false;
   ShopProfile _shopProfile = ShopProfile.duka;
 
   @override
@@ -141,6 +147,21 @@ class _OwnerSetupScreenState extends State<OwnerSetupScreen> {
       return l10n.validationPinConfirmRequired;
     }
     return value == _pin.text ? null : l10n.validationPinMismatch;
+  }
+
+  Future<void> _openAssetPdf(String asset) async {
+    try {
+      final data = await rootBundle.load(asset);
+      final file = File('${(await getTemporaryDirectory()).path}/${asset.split('/').last}');
+      await file.writeAsBytes(data.buffer.asUint8List());
+      await launchUrl(Uri.file(file.path));
+    } catch (_) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Could not open document')),
+        );
+      }
+    }
   }
 
   Future<void> _create() async {
@@ -323,6 +344,43 @@ class _OwnerSetupScreenState extends State<OwnerSetupScreen> {
                       validatePinConfirm: _validatePinConfirm,
                       onSubmit: _create,
                     ),
+                    SizedBox(height: spacing.md),
+                    Row(
+                      children: [
+                        Checkbox(
+                          value: _acceptedTerms,
+                          onChanged: (v) => setState(() => _acceptedTerms = v ?? false),
+                        ),
+                        Expanded(
+                          child: GestureDetector(
+                            onTap: () => _openAssetPdf(
+                                'assets/SimpleSales_Terms_of_Service.pdf'),
+                            child: Text('I agree to the Terms of Service',
+                                style: TextStyle(
+                                    decoration: TextDecoration.underline,
+                                    color: Theme.of(context).colorScheme.primary)),
+                          ),
+                        ),
+                      ],
+                    ),
+                    Row(
+                      children: [
+                        Checkbox(
+                          value: _acceptedPrivacy,
+                          onChanged: (v) => setState(() => _acceptedPrivacy = v ?? false),
+                        ),
+                        Expanded(
+                          child: GestureDetector(
+                            onTap: () => _openAssetPdf(
+                                'assets/SimpleSales_Privacy_Policy.pdf'),
+                            child: Text('I agree to the Privacy Policy',
+                                style: TextStyle(
+                                    decoration: TextDecoration.underline,
+                                    color: Theme.of(context).colorScheme.primary)),
+                          ),
+                        ),
+                      ],
+                    ),
                     if (_error != null) ...<Widget>[
                       SizedBox(height: spacing.md),
                       PersistentBanner(
@@ -339,7 +397,7 @@ class _OwnerSetupScreenState extends State<OwnerSetupScreen> {
                     padding: EdgeInsets.all(spacing.xl),
                     child: OnboardStyle.primaryButton(
                       context: context,
-                      onPressed: _saving ? null : _create,
+                      onPressed: (_saving || !_acceptedTerms || !_acceptedPrivacy) ? null : _create,
                       label: _saving ? 'Creating the shop' : 'Create shop admin account',
                       colors: colors,
                       spacing: spacing,

@@ -50,6 +50,7 @@ abstract final class Routes {
   static const String taxSettings = '/settings/tax';
   static const String cameraScan = '/sell/scan';
   static const String support = '/support';
+  static const String help = '/help';
   static const String marketplace = '/marketplace';
 
   // ------------------------------------------------------------- the doors

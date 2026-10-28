@@ -279,6 +279,8 @@ class _HomeShellState extends State<HomeShell> {
         _tabs.goTo(AppDestination.support);
       case _MoreAction.marketplace:
         context.push(Routes.marketplace);
+      case _MoreAction.help:
+        context.push(Routes.help);
       case _MoreAction.notifications:
         final destination = await showNotificationSheet(
           context,
@@ -463,6 +465,7 @@ enum _MoreAction {
   settings,
   support,
   marketplace,
+  help,
   notifications,
   laybys,
   openBusiness
@@ -501,6 +504,11 @@ class _MoreSheet extends StatelessWidget {
             title: Text(l10n.navSettings),
             onTap: () => Navigator.pop(context, _MoreAction.settings),
           ),
+        ListTile(
+          leading: const Icon(Icons.menu_book_outlined),
+          title: const Text('Help'),
+          onTap: () => Navigator.pop(context, _MoreAction.help),
+        ),
         ListTile(
           leading: const Icon(Icons.help_outline),
           title: Text(l10n.navSupport),

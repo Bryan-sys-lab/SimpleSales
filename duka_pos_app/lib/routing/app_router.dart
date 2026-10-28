@@ -34,6 +34,7 @@ import '../screens/shot_cups_screen.dart';
 import '../screens/splash_screen.dart';
 import '../screens/support_screen.dart';
 import '../screens/marketplace_screen.dart';
+import '../screens/help_screen.dart';
 import '../screens/open_business_screen.dart';
 import '../screens/tax_settings_screen.dart';
 import '../widgets/camera_scan_screen.dart';
@@ -114,6 +115,12 @@ GoRouter buildAppRouter({
         parentNavigatorKey: rootNavigatorKey,
         pageBuilder: (BuildContext context, GoRouterState routerState) =>
             _fadeThrough(routerState, const MarketplaceScreen()),
+      ),
+      GoRoute(
+        path: Routes.help,
+        parentNavigatorKey: rootNavigatorKey,
+        pageBuilder: (BuildContext context, GoRouterState routerState) =>
+            _fadeThrough(routerState, const HelpScreen()),
       ),
       ..._shellRoutes(appState),
     ],
