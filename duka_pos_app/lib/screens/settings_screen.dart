@@ -2,6 +2,9 @@ import 'dart:async';
 
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
+import 'package:path_provider/path_provider.dart';
+import 'package:url_launcher/url_launcher.dart';
+import 'dart:io';
 import 'package:flutter/services.dart';
 import 'package:go_router/go_router.dart';
 import 'package:provider/provider.dart';
@@ -3151,6 +3154,21 @@ class _AboutFooter extends StatefulWidget {
 class _AboutFooterState extends State<_AboutFooter> {
   String _version = '';
 
+  Future<void> _openAssetPdf(String asset) async {
+    try {
+      final data = await rootBundle.load(asset);
+      final file = File('${(await getTemporaryDirectory()).path}/${asset.split('/').last}');
+      await file.writeAsBytes(data.buffer.asUint8List());
+      await launchUrl(Uri.file(file.path));
+    } catch (_) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Could not open document')),
+        );
+      }
+    }
+  }
+
   @override
   void initState() {
     super.initState();
@@ -3205,6 +3223,19 @@ class _AboutFooterState extends State<_AboutFooter> {
                 ),
             ],
           ),
+        ),
+        SizedBox(height: AppSpacing.of(context).sm),
+        Row(
+          children: <Widget>[
+            TextButton(
+              onPressed: () => _openAssetPdf('assets/SimpleSales_Terms_of_Service.pdf'),
+              child: const Text('Terms of Service'),
+            ),
+            TextButton(
+              onPressed: () => _openAssetPdf('assets/SimpleSales_Privacy_Policy.pdf'),
+              child: const Text('Privacy Policy'),
+            ),
+          ],
         ),
       ],
     );
