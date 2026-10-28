@@ -1,22 +1,42 @@
-import 'package:telephony/telephony.dart';
-
-/// Reads mobile-money SMS from the device and extracts payment details.
+/// Android SMS payment support is intentionally disabled in this app build.
 ///
-/// Requires the READ_SMS/RECEIVE_SMS permissions declared in the manifest and
-/// granted by the owner at runtime.
+/// The project does not ship the `telephony` package anymore, so the app must
+/// not import it or reference its public API. The service is kept as a tiny,
+/// compatibility stub so any legacy callers still compile without crashing the
+/// analyzer or the build.
+class SmsMessage {
+  const SmsMessage({
+    this.address = '',
+    this.body = '',
+    this.date = 0,
+  });
+
+  final String address;
+  final String body;
+  final int date;
+}
+
+enum SmsColumn { address, body, date }
+
+enum Sort { asc, desc }
+
+class OrderBy {
+  const OrderBy(this.column, {required this.sort});
+
+  final SmsColumn column;
+  final Sort sort;
+}
+
+/// A compatibility shim for the old SMS-payment feature.
+///
+/// This app deliberately does not read SMS messages for payments. The service
+/// therefore returns an empty list unless the feature is reintroduced with a
+/// supported Android API or a different dependency.
 class SmsPaymentService {
   SmsPaymentService._();
   static final SmsPaymentService instance = SmsPaymentService._();
 
-  final Telephony _telephony = Telephony.instance;
-
-  /// Returns the most recent mobile-money messages on the device.
   Future<List<SmsMessage>> recentMessages({int limit = 50}) async {
-    final granted = await _telephony.requestPhoneAndSmsPermissions;
-    if (granted != true) return const [];
-    return _telephony.getInboxSms(
-      columns: <SmsColumn>[SmsColumn.ADDRESS, SmsColumn.BODY, SmsColumn.DATE],
-      sortOrder: <OrderBy>[OrderBy(SmsColumn.DATE, sort: Sort.DESC)],
-    ).then((list) => list.take(limit).toList());
+    return const <SmsMessage>[];
   }
 }
