@@ -9,19 +9,14 @@
 //
 // The vendor's own mark is a CHROME WORDMARK with a blue "A", and it is
 // recognisable in a way "Nerva" in Plus Jakarta Sans is not. So the footer
-// shows the mark, and the words beside it shrink to the role they play: "Powered
-// by".
+// shows the mark, and the words beside it shrink to the role they play: "A
+// product of".
 //
 // ## WHY TWO VARIANTS
 //
 // The master is silver on black. The app has a near-black night theme — close
 // enough to the master's own ground that the mark reads exactly as generated —
 // and a near-white day theme, where silver on white would be a ghost.
-//
-// So there are two assets, rendered by ONE script from ONE master:
-// `assets/branding/generate_nerva_logo.py`. The day variant is the same
-// wordmark in the app's own ink with the blue deepened for contrast; the
-// night variant is the master, with the black ground removed.
 //
 // ## WHY THE HEIGHT IS FIXED AND THE WIDTH IS NOT
 //
@@ -78,7 +73,7 @@ class NervaWordmark extends StatelessWidget {
 /// The attribution footer: the words, and the mark.
 ///
 /// One widget, so all four places Nerva appears look the same and say the
-/// same thing. The words are LOCALISED — "Powered by" is a sentence, and the
+/// same thing. The words are LOCALISED — "A product of" is a sentence, and the
 /// app localises its sentences — while the mark is a brand constant and is not
 /// localised at all.
 class PoweredByNerva extends StatelessWidget {
@@ -105,7 +100,7 @@ class PoweredByNerva extends StatelessWidget {
 
     return Semantics(
       // One node for the whole attribution, so a screen reader hears
-      // "Powered by Nerva" rather than the words and the mark separately.
+      // "A product of Nerva" rather than the words and the mark separately.
       // The image child is already excluded from semantics, and MergeSemantics
       // collapses the remaining text node into this single label.
       label: label,
@@ -137,5 +132,5 @@ class PoweredByNerva extends StatelessWidget {
 String _poweredByLabel(BuildContext context) {
   final AppLocalizations? l10n =
       Localizations.of<AppLocalizations>(context, AppLocalizations);
-  return l10n?.poweredBy ?? 'Powered by';
+  return l10n?.poweredBy ?? 'A product of';
 }
