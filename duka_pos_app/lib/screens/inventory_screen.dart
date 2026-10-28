@@ -3033,7 +3033,8 @@ class _ProductEditorState extends State<_ProductEditor> {
                 onChanged: (ProductUnit unit) => setState(() => _unit = unit),
               ),
               SizedBox(height: spacing.md),
-              if (widget.shopProfile.navigation.showDrinkService)
+              if (widget.shopProfile.navigation.showDrinkService ||
+                  widget.shopProfile == ShopProfile.duka)
                 TextField(
                   controller: _bottleMl,
                   decoration: InputDecoration(
@@ -3062,7 +3063,8 @@ class _ProductEditorState extends State<_ProductEditor> {
                   ),
                 ),
               if (_visibleSizeSuggestions.isNotEmpty) _sizeSuggestionChips(),
-              if (widget.shopProfile.navigation.showDrinkService)
+              if (widget.shopProfile.navigation.showDrinkService ||
+                  widget.shopProfile == ShopProfile.duka)
                 Row(children: [
                   Expanded(
                     child: TextField(
