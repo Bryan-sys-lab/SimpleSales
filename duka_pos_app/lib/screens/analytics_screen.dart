@@ -645,7 +645,6 @@ class _AnalyticsScaffold extends StatelessWidget {
               // default inset would push it off the gutter the cards sit on.
               padding: EdgeInsetsDirectional.only(bottom: spacing.md),
             ),
-            _RangeBar(range: range, onChanged: onRangeChanged),
             if (context
                 .read<AppState>()
                 .hasPermission(PermissionKey.recordExpense)) ...<Widget>[
@@ -1403,25 +1402,6 @@ class _TakingsHero extends StatelessWidget {
 /// rather than a dropdown. [SegmentedChoice] scrolls horizontally at large text
 /// scales instead of squeezing, and names the group for a screen reader, which
 /// would otherwise hear a row of unrelated buttons.
-class _RangeBar extends StatelessWidget {
-  const _RangeBar({required this.range, required this.onChanged});
-
-  final AnalyticsRange range;
-  final ValueChanged<AnalyticsRange> onChanged;
-
-  @override
-  Widget build(BuildContext context) {
-    return SegmentedChoice<AnalyticsRange>(
-      value: range,
-      onChanged: onChanged,
-      semanticLabel: AppLocalizations.of(context).analyticsReportingPeriod,
-      options: <SegmentedOption<AnalyticsRange>>[
-        for (final AnalyticsRange option in AnalyticsRange.values)
-          SegmentedOption<AnalyticsRange>(value: option, label: option.label),
-      ],
-    );
-  }
-}
 
 /// The figures that support the headline, as KPI cards.
 ///
