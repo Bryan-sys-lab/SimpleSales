@@ -26,7 +26,7 @@ publish_to: 'none'
 # carries over automatically — hence a major version rather than a patch.
 # It also means the release key and the update checker's identity both need
 # to be read as new, so do not expect 1.1.0 devices to see this as an update.
-version: 2.0.0+44
+version: 2.0.0+45
 
 environment:
   sdk: '>=3.0.0 <4.0.0'
