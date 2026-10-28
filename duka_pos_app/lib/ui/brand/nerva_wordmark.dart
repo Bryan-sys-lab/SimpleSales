@@ -79,7 +79,7 @@ class NervaWordmark extends StatelessWidget {
 ///
 /// One widget, so all four places Nerva appears look the same and say the
 /// same thing. The words are LOCALISED — "Powered by" is a sentence, and the
-// app localises its sentences — while the mark is a brand constant and is not
+/// app localises its sentences — while the mark is a brand constant and is not
 /// localised at all.
 class PoweredByNerva extends StatelessWidget {
   const PoweredByNerva({
@@ -101,26 +101,30 @@ class PoweredByNerva extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final String words = _poweredByLabel(context);
+    final String label = '$words ${SimplePosBrand.vendorName}';
 
     return Semantics(
       // One node for the whole attribution, so a screen reader hears
       // "Powered by Nerva" rather than the words and the mark separately.
-      label: '$words ${SimplePosBrand.vendorName}',
-      excludeSemantics: true,
-      child: Wrap(
-        alignment: WrapAlignment.center,
-        crossAxisAlignment: switch (alignment) {
-          CrossAxisAlignment.start => WrapCrossAlignment.start,
-          CrossAxisAlignment.end => WrapCrossAlignment.end,
-          _ => WrapCrossAlignment.center,
-        },
-        runAlignment: WrapAlignment.center,
-        spacing: 6,
-        runSpacing: 4,
-        children: <Widget>[
-          Text(words, style: style),
-          NervaWordmark(height: wordmarkHeight),
-        ],
+      // The image child is already excluded from semantics, and MergeSemantics
+      // collapses the remaining text node into this single label.
+      label: label,
+      child: MergeSemantics(
+        child: Wrap(
+          alignment: WrapAlignment.center,
+          crossAxisAlignment: switch (alignment) {
+            CrossAxisAlignment.start => WrapCrossAlignment.start,
+            CrossAxisAlignment.end => WrapCrossAlignment.end,
+            _ => WrapCrossAlignment.center,
+          },
+          runAlignment: WrapAlignment.center,
+          spacing: 6,
+          runSpacing: 4,
+          children: <Widget>[
+            Text(words, style: style),
+            NervaWordmark(height: wordmarkHeight),
+          ],
+        ),
       ),
     );
   }
