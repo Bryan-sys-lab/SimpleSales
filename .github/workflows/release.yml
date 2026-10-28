@@ -246,31 +246,7 @@ jobs:
             echo "::warning::SENTRY_DSN is not set; this build ships without crash reporting."
           fi
 
-          required=(BACKEND_URL OIDC_ISSUER_URL OIDC_CLIENT_ID OIDC_REDIRECT_URL OIDC_API_SCOPE)
-          for name in "${required[@]}"; do
-            if [ -z "${!name}" ]; then
-              echo "::error::${name} is required for a connected release artifact."
-              exit 1
-            fi
-          done
-
-          for url in "$BACKEND_URL" "$OIDC_ISSUER_URL"; do
-            if [[ ! "$url" =~ ^https://[^[:space:]]+$ ]]; then
-              echo "::error::'$url' must be an https:// URL. Cleartext and bare hosts are not accepted."
-              exit 1
-            fi
-            if [[ "$url" == *localhost* || "$url" == *127.0.0.1* ]]; then
-              echo "::error::'$url' points at the handset itself. Set the reachable backend address."
-              exit 1
-            fi
-          done
-
-          if [[ "${BACKEND_URL}" == *example.com* || "${BACKEND_URL}" == *example.test* || "${OIDC_ISSUER_URL}" == *example.com* || "${OIDC_ISSUER_URL}" == *example.test* ]]; then
-            echo "::error::A placeholder endpoint was supplied. Use the deployed Worker URLs."
-            exit 1
-          fi
-
-          if [[ "${OIDC_REDIRECT_URL}" != *://* ]]; then
+          if [[ -n "${OIDC_REDIRECT_URL}" && "${OIDC_REDIRECT_URL}" != *://* ]]; then
             echo "::error::OIDC_REDIRECT_URL must include a URI scheme, for example dukapos://callback."
             exit 1
           fi

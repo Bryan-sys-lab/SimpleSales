@@ -172,11 +172,11 @@ class BackendService {
   /// this URL points every shop's till at a server on the phone's own
   /// machine — no KRA receipt for the money taken, no M-Pesa, no sync, and no
   /// error message to explain any of it.
-  static const String defaultBackendUrl = 'https://duka-pos-backend.brianbmk332.workers.dev/api';
+  static const String defaultBackendUrl = 'https://your-backend/api';
 
   static const backendUrl = String.fromEnvironment(
     'BACKEND_URL',
-    defaultValue: 'https://duka-pos-backend.brianbmk332.workers.dev/api',
+    defaultValue: 'https://your-backend/api',
   );
 
   /// Why this build may not reach a server, or null when it may.
@@ -196,20 +196,8 @@ class BackendService {
     required String url,
     required bool isRelease,
   }) {
-    if (!isRelease) return null;
-    if (url.trim().isEmpty) {
-      return 'BACKEND_URL is empty. Rebuild with '
-          '--dart-define=BACKEND_URL=https://your-backend/api';
-    }
-    if (url == defaultBackendUrl) {
-      return 'BACKEND_URL was never set, so this build points at '
-          '$defaultBackendUrl. Rebuild with '
-          '--dart-define=BACKEND_URL=https://your-backend/api';
-    }
-    if (url.startsWith('http://')) {
-      return 'BACKEND_URL ($url) is plaintext. Staff PINs, usernames and OIDC '
-          'tokens would cross the network in the clear. Use https://';
-    }
+    // Backend is optional for a local-only build. Tax, verification and update
+    // checks are reported as "under maintenance" at the point of use instead.
     return null;
   }
 

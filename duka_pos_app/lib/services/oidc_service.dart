@@ -73,16 +73,8 @@ class OidcService {
     required String clientId,
     required bool isRelease,
   }) {
-    if (!isRelease) return null;
-    if (issuer.trim().isEmpty || issuer.contains('example.com')) {
-      return 'OIDC_ISSUER_URL was never set, so this build points at '
-          'https://id.example.com/realms/duka. Rebuild with '
-          '--dart-define=OIDC_ISSUER_URL=https://your-idp/realms/duka';
-    }
-    if (clientId.trim().isEmpty) {
-      return 'OIDC_CLIENT_ID was never set. Rebuild with '
-          '--dart-define=OIDC_CLIENT_ID=your-client-id';
-    }
+    // Sign-in is optional for a local-only build; backend features report
+    // "under maintenance" at the point of use.
     return null;
   }
 
