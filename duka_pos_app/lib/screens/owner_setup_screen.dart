@@ -166,10 +166,6 @@ class _OwnerSetupScreenState extends State<OwnerSetupScreen> {
 
   Future<void> _create() async {
     if (_saving) return;
-    if (!_acceptedTerms || !_acceptedPrivacy) {
-      setState(() => _error = 'Accept the Terms of Service and Privacy Policy.');
-      return;
-    }
 
     final String email = _email.text.trim().toLowerCase();
     if (_name.text.trim().isEmpty ||
@@ -185,6 +181,11 @@ class _OwnerSetupScreenState extends State<OwnerSetupScreen> {
       setState(
         () => _error = AppLocalizations.of(context).ownerSetupInvalidEmail,
       );
+      HapticTheme.of(context).fire(HapticEvent.reject);
+      return;
+    }
+    if (!_acceptedTerms || !_acceptedPrivacy) {
+      setState(() => _error = 'Accept the Terms of Service and Privacy Policy.');
       HapticTheme.of(context).fire(HapticEvent.reject);
       return;
     }
