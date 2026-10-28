@@ -618,7 +618,44 @@ class _SellScreenState extends State<SellScreen>
       await _addToCartDirect(product, 'full', qty: qty);
       return;
     }
-    // Re-entrancy guard. `_addToCart` is async and opens a modal; a fast
+    if (appState.shopProfile == ShopProfile.drinks) {
+      final shots = _shotsFor(product);
+      final hasSomethingToSell = product.sellsWhole ||
+          product.halfPrice != null ||
+          product.quarterPrice != null ||
+          shots.isNotEmpty;
+      if (!hasSomethingToSell) {
+        final controller = TextEditingController();
+        final qty = await showDialog<double>(
+          context: context,
+          builder: (ctx) => AlertDialog(
+            title: Text(product.name),
+            content: TextField(
+              controller: controller,
+              autofocus: true,
+              keyboardType: const TextInputType.numberWithOptions(decimal: true),
+              decoration: const InputDecoration(labelText: 'Amount'),
+            ),
+            actions: [
+              TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Cancel')),
+              FilledButton(
+                onPressed: () {
+                  final parsed = double.tryParse(controller.text.trim());
+                  if (parsed == null || parsed <= 0) return;
+                  Navigator.pop(ctx, parsed);
+                },
+                child: const Text('Add'),
+              ),
+            ],
+          ),
+        );
+        controller.dispose();
+        if (qty == null || !mounted) return;
+        await _addToCartDirect(product, 'full', qty: qty);
+        return;
+      }
+    }
+    // Re-entrancy guard. `_addToCart` is async and opens a modal; a fast `_addToCart` is async and opens a modal; a fast
     // double-tap on a product tile, or a wedge scan landing mid-sheet, would
     // otherwise stack two sheets on top of each other.
     if (_portionSheetOpen) return;
@@ -1930,21 +1967,12 @@ class _SellScreenState extends State<SellScreen>
             change: change,
           );
         } else {
-          // The method is NAMED, not assumed. This used to say "Paid in cash"
-          // for a card payment, and "Change due KSh 0.00" under it — two
-          // statements that were both false on a sale where no cash changed
-          // hands.
-          //
-          // gen-l10n sorts the placeholders ALPHABETICALLY, so the generated
-          // signature is (amount, method) even though the sentence reads
-          // "{method} · {amount}". Passing the label first printed the amount
-          // where the method belongs.
-          showAppSnackBar(
-            context,
-            message: AppLocalizations.of(context).sellCompletePaidOther(
-              formatMoney(saleTotal),
-              _paymentLabel(paymentMethod),
-            ),
+          await _showSaleComplete(
+            saleId: saleId,
+            method: _paymentLabel(paymentMethod),
+            total: saleTotal,
+            paid: saleTotal,
+            change: Money.zero,
           );
         }
       }
