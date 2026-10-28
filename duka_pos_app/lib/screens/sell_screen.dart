@@ -587,6 +587,37 @@ class _SellScreenState extends State<SellScreen>
   }
 
   Future<void> _addToCart(Product product) async {
+    final appState = context.read<AppState>();
+    if (appState.shopProfile == ShopProfile.open) {
+      final controller = TextEditingController();
+      final qty = await showDialog<double>(
+        context: context,
+        builder: (ctx) => AlertDialog(
+          title: Text(product.name),
+          content: TextField(
+            controller: controller,
+            autofocus: true,
+            keyboardType: const TextInputType.numberWithOptions(decimal: true),
+            decoration: const InputDecoration(labelText: 'Amount'),
+          ),
+          actions: [
+            TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Cancel')),
+            FilledButton(
+              onPressed: () {
+                final parsed = double.tryParse(controller.text.trim());
+                if (parsed == null || parsed <= 0) return;
+                Navigator.pop(ctx, parsed);
+              },
+              child: const Text('Add'),
+            ),
+          ],
+        ),
+      );
+      controller.dispose();
+      if (qty == null || !mounted) return;
+      await _addToCartDirect(product, 'full', qty: qty);
+      return;
+    }
     // Re-entrancy guard. `_addToCart` is async and opens a modal; a fast
     // double-tap on a product tile, or a wedge scan landing mid-sheet, would
     // otherwise stack two sheets on top of each other.
