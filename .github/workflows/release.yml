@@ -494,8 +494,8 @@ jobs:
           CI_TOKEN: ${{ secrets.NERVA_CI_TOKEN }}
         run: |
           set -euo pipefail
-          if [ -z "${BACKEND_URL}" ] || [ -z "${CI_TOKEN}" ]; then
-            echo "::warning::BACKEND_URL or NERVA_CI_TOKEN not set; skipping backend manifest update."
+          if [ -z "${BACKEND_URL}" ] || [ -z "${CI_TOKEN}" ] || [[ "${BACKEND_URL}" == *your-backend* ]] || [[ "${BACKEND_URL}" == *example.com* ]] || [[ "${BACKEND_URL}" == *example.test* ]]; then
+            echo "::warning::BACKEND_URL is not a reachable deployment; skipping backend manifest update."
             exit 0
           fi
           version="${GITHUB_REF_NAME#v}"
