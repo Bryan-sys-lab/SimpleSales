@@ -119,6 +119,7 @@ class _SellScreenState extends State<SellScreen>
       });
     });
     _loadProducts();
+    context.read<AppState>().addListener(_reloadCatalogue);
   }
 
   int _seenCatalogueGeneration = 0;
@@ -144,6 +145,7 @@ class _SellScreenState extends State<SellScreen>
 
   @override
   void dispose() {
+    context.read<AppState>().removeListener(_reloadCatalogue);
     _shellTabs.removeListener(_onShellChanged);
     _searchController.dispose();
     _searchFocus.dispose();
@@ -157,6 +159,11 @@ class _SellScreenState extends State<SellScreen>
   /// rather than being a toast: the error says what happened, and the retry
   /// button is the one thing that can fix it.
   String? _catalogueError;
+
+  void _reloadCatalogue() {
+    if (!mounted) return;
+    _loadProducts();
+  }
 
   Future<void> _loadProducts() async {
     final db = DatabaseHelper.instance;
@@ -2058,6 +2065,14 @@ class _SellScreenState extends State<SellScreen>
                 icon: const Icon(Icons.picture_as_pdf_outlined),
                 label: const Text('Share PDF'),
               ),
+              OutlinedButton.icon(
+                onPressed: () async {
+                  final config = await PrinterConfig.load();
+                  await _printReceipt(saleId, config);
+                },
+                icon: const Icon(Icons.print_outlined),
+                label: const Text('Print receipt'),
+              ),
             ],
           ),
         ),
@@ -2613,12 +2628,17 @@ class _SellScreenState extends State<SellScreen>
       context: context,
       builder: (context) {
         final amountController = TextEditingController();
+        final nameController = TextEditingController();
         final referenceController = TextEditingController();
         String method = 'cash';
         return StatefulBuilder(builder: (context, setState) {
           return AlertDialog(
             title: const Text('Quick sale'),
             content: Column(mainAxisSize: MainAxisSize.min, children: [
+              TextField(
+                controller: nameController,
+                decoration: const InputDecoration(labelText: 'Product name (optional)'),
+              ),
               TextField(
                 controller: amountController,
                 decoration: const InputDecoration(labelText: 'Amount (KES)'),
@@ -2647,6 +2667,7 @@ class _SellScreenState extends State<SellScreen>
               FilledButton(
                 onPressed: () {
                   Navigator.pop(context, {
+                    'name': nameController.text.trim(),
                     'amount': amountController.text.trim(),
                     'method': method,
                     'reference': referenceController.text.trim(),
@@ -2672,6 +2693,19 @@ class _SellScreenState extends State<SellScreen>
         staffId: appState.currentStaffId,
         staffName: appState.currentStaffName ?? 'Owner',
       );
+      final name = (values['name'] ?? '').trim();
+      if (name.isNotEmpty) {
+        final product = Product(
+          name: name,
+          category: 'Quick sale',
+          costPrice: Money.zero,
+          sellPrice: Money.fromMajor(amount),
+          stockQty: 0,
+          reorderLevel: 0,
+          updatedAt: DateTime.now().toIso8601String(),
+        );
+        await DatabaseHelper.instance.upsertProduct(product);
+      }
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Quick sale recorded.')));
     } catch (e) {
@@ -2755,7 +2789,8 @@ class _SellScreenState extends State<SellScreen>
                 // it divided infinity, the grid's scroll extent became
                 // infinite, and the sliver's index arithmetic threw "Infinity
                 // or NaN to Int" the moment the till opened on a phone.
-                if (context.read<AppState>().shopProfile == ShopProfile.open)
+                if (context.read<AppState>().shopProfile == ShopProfile.open ||
+                    context.read<AppState>().shopProfile == ShopProfile.duka)
                   Padding(
                     padding: EdgeInsetsDirectional.only(
                       start: PageGutter.of(context).left,
