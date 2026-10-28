@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import 'package:flutter/semantics.dart';
 import 'package:go_router/go_router.dart';
 import 'package:provider/provider.dart';
@@ -89,6 +90,7 @@ final class _DashboardReady extends _DashboardState {
 class _DashboardScreenState extends State<DashboardScreen>
     with LiveRefresh<DashboardScreen>, SessionRefresh<DashboardScreen> {
   _DashboardState? _state;
+  Set<String> _dismissedAttention = <String>{};
 
   int _loadSerial = 0;
 
@@ -116,6 +118,7 @@ class _DashboardScreenState extends State<DashboardScreen>
   @override
   void initState() {
     super.initState();
+    _loadDismissed();
     _load();
   }
 
@@ -462,6 +465,18 @@ class _DashboardScreenState extends State<DashboardScreen>
     }
   }
 
+  Future<void> _loadDismissed() async {
+    final prefs = await SharedPreferences.getInstance();
+    final list = prefs.getStringList('dismissed_attention') ?? <String>[];
+    if (mounted) setState(() => _dismissedAttention = list.toSet());
+  }
+
+  Future<void> _dismissAttention(String id) async {
+    setState(() => _dismissedAttention = {..._dismissedAttention, id});
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setStringList('dismissed_attention', _dismissedAttention.toList());
+  }
+
   @override
   Widget build(BuildContext context) {
     return switch (_state) {
@@ -482,6 +497,8 @@ class _DashboardScreenState extends State<DashboardScreen>
           onOpenProduct: _openProduct,
           onRetryEtims: _retryEtims,
           onRetryRejectedEtims: _retryRejectedEtims,
+          dismissed: _dismissedAttention,
+          onDismiss: _dismissAttention,
         ),
     };
   }
@@ -518,6 +535,8 @@ class _DashboardContent extends StatelessWidget {
     required this.onOpenProduct,
     required this.onRetryEtims,
     required this.onRetryRejectedEtims,
+    this.dismissed = const <String>{},
+    this.onDismiss,
   });
 
   final _DashboardReady data;
@@ -530,6 +549,8 @@ class _DashboardContent extends StatelessWidget {
   final ValueChanged<Product> onOpenProduct;
   final Future<void> Function() onRetryEtims;
   final Future<void> Function() onRetryRejectedEtims;
+  final Set<String> dismissed;
+  final void Function(String)? onDismiss;
 
   static List<Widget> _spaced(List<Widget?> items, double gap) {
     final List<Widget> present = items.whereType<Widget>().toList();
@@ -561,6 +582,8 @@ class _DashboardContent extends StatelessWidget {
             // is still wrong gets the same refusal and a lot less patience.
             onRetryRejectedEtims:
                 appState.isAdmin ? onRetryRejectedEtims : null,
+            dismissed: dismissed,
+            onDismiss: onDismiss,
           );
 
     final Widget shift = DashboardShiftCard(
