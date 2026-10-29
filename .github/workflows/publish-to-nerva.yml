@@ -1,0 +1,29 @@
+name: Publish to Nerva
+
+on:
+  workflow_dispatch:
+  release:
+    types: [published]
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Download build artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: app-release
+          path: build
+
+      - name: Publish release to Nerva
+        env:
+          CI_TOKEN: ${{ secrets.NERVA_CI_TOKEN }}
+        run: |
+          APK=$(find build -name '*.apk' | head -n 1)
+          test -n "$APK"
+          curl -fSs -X POST https://nerva.co.ke/api/releases \
+            -H "x-ci-token: $CI_TOKEN" \
+            -F "productId=bussiness-and-finance" \
+            -F "version=${{ github.ref_name }}" \
+            -F "channel=beta" \
+            -F "file=@$APK"
