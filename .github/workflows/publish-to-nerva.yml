@@ -9,27 +9,22 @@ jobs:
   publish:
     runs-on: ubuntu-latest
     steps:
-      - name: Download release APK
-        env:
-          GH_TOKEN: ${{ github.token }}
-        run: |
-          set -euo pipefail
-          tag="${{ github.event.release.tag_name || github.ref_name }}"
-          gh release download "$tag" --repo "${{ github.repository }}" --pattern '*.apk' --dir build
-          ls -lh build
-
       - name: Publish release to Nerva
         env:
           CI_TOKEN: ${{ secrets.NERVA_CI_TOKEN }}
         run: |
           set -euo pipefail
-          APK=$(find build -name '*.apk' | head -n 1)
-          test -n "$APK"
-          tag="${{ github.event.release.tag_name || github.ref_name }}"
-          version="${tag#v}"
+          version="${{ github.ref_name }}"
+          version="${version#v}"
+          apk_name="SimpleSales-${{ github.ref_name }}.apk"
+          url="https://github.com/${{ github.repository }}/releases/download/${{ github.ref_name }}/${apk_name}"
+          payload="$(jq -n \
+            --arg id "bussiness-and-finance" \
+            --arg version "$version" \
+            --arg url "$url" \
+            '{id: $id, version: {version: $version, url: $url, channel: "beta"}}')"
           curl -fSs -X POST https://nerva.brianbmk332.workers.dev/api/releases \
             -H "x-ci-token: $CI_TOKEN" \
-            -F "productId=bussiness-and-finance" \
-            -F "version=${version}" \
-            -F "channel=beta" \
-            -F "file=@$APK"
+            -H "Content-Type: application/json" \
+            -d "$payload"
+          echo
