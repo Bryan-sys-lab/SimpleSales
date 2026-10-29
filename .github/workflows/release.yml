@@ -517,7 +517,7 @@ jobs:
 
       # Publishing the release above with the default GITHUB_TOKEN does not
       # start another workflow run (GitHub suppresses cascading runs for its
-      # own token), so publish-nerva-release.yml would never fire on its own.
+      # own token), so publish-to-nerva.yml would never fire on its own.
       # Dispatch it explicitly, the same way auto-release.yml drives this
       # workflow, so the build's metadata actually reaches Nerva.
       - name: Publish release metadata to Nerva
@@ -534,18 +534,18 @@ jobs:
           fi
           tag="${GITHUB_REF_NAME}"
           started_at="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
-          if ! gh workflow run publish-nerva-release.yml --ref app -f "tag=${tag}"; then
-            echo "::warning::Could not dispatch publish-nerva-release.yml for ${tag}; release metadata not published."
+          if ! gh workflow run publish-to-nerva.yml --ref "${tag}"; then
+            echo "::warning::Could not dispatch publish-to-nerva.yml for ${tag}; release metadata not published."
             exit 0
           fi
           for attempt in 1 2 3 4 5 6; do
             sleep 10
-            run_id="$(gh run list --workflow publish-nerva-release.yml --branch app --limit 10 --json databaseId,createdAt --jq "[.[] | select(.createdAt > \"${started_at}\")][0].databaseId" 2>/dev/null || true)"
+            run_id="$(gh run list --workflow publish-to-nerva.yml --branch app --limit 10 --json databaseId,createdAt --jq "[.[] | select(.createdAt > \"${started_at}\")][0].databaseId" 2>/dev/null || true)"
             if [ -n "${run_id}" ]; then
-              echo "publish-nerva-release.yml is running for ${tag} (run ${run_id})."
+              echo "publish-to-nerva.yml is running for ${tag} (run ${run_id})."
               exit 0
             fi
             echo "Waiting for the ${tag} Nerva publish run to appear (attempt ${attempt}/6)."
           done
-          echo "::error::Dispatched publish-nerva-release.yml for ${tag} but no run appeared within a minute."
+          echo "::error::Dispatched publish-to-nerva.yml for ${tag} but no run appeared within a minute."
           exit 1
