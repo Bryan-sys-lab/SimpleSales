@@ -2623,6 +2623,86 @@ class _SellScreenState extends State<SellScreen>
     }
   }
 
+  Future<void> _sellShot() async {
+    if (_shots.isEmpty) return;
+    final parentIds = _shots.map((c) => c.productId).toSet();
+    final parents = _products.where((p) => parentIds.contains(p.id)).toList();
+    if (parents.isEmpty) return;
+
+    int? selectedParentId = parents.first.id;
+    int? selectedCupId = _shots
+        .where((c) => c.productId == selectedParentId)
+        .firstOrNull
+        ?.id;
+
+    final result = await showDialog<ShotCup>(
+      context: context,
+      builder: (ctx) => StatefulBuilder(
+        builder: (ctx, setState) {
+          final cups = _shots
+              .where((c) => c.productId == selectedParentId)
+              .toList();
+          if (selectedCupId == null || !cups.any((c) => c.id == selectedCupId)) {
+            selectedCupId = cups.isEmpty ? null : cups.first.id;
+          }
+          return AlertDialog(
+            title: const Text('Sell shot'),
+            content: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: <Widget>[
+                DropdownButtonFormField<int>(
+                  initialValue: selectedParentId,
+                  decoration: const InputDecoration(labelText: 'Drink'),
+                  items: <DropdownMenuItem<int>>[
+                    for (final p in parents)
+                      DropdownMenuItem<int>(value: p.id, child: Text(p.name)),
+                  ],
+                  onChanged: (v) => setState(() => selectedParentId = v),
+                ),
+                const SizedBox(height: 12),
+                DropdownButtonFormField<int>(
+                  initialValue: selectedCupId,
+                  decoration: const InputDecoration(labelText: 'Shot glass'),
+                  items: <DropdownMenuItem<int>>[
+                    for (final c in cups)
+                      DropdownMenuItem<int>(
+                        value: c.id,
+                        child: Text('${c.label} - ${formatMoney(c.price)}'),
+                      ),
+                  ],
+                  onChanged: (v) => setState(() => selectedCupId = v),
+                ),
+              ],
+            ),
+            actions: <Widget>[
+              TextButton(
+                onPressed: () => Navigator.pop(ctx),
+                child: const Text('Cancel'),
+              ),
+              FilledButton(
+                onPressed: () {
+                  final cup = cups.firstWhere(
+                    (c) => c.id == selectedCupId,
+                    orElse: () => cups.first,
+                  );
+                  Navigator.pop(ctx, cup);
+                },
+                child: const Text('Add'),
+              ),
+            ],
+          );
+        },
+      ),
+    );
+
+    if (result == null || !mounted) return;
+    final parent = parents.firstWhere(
+      (p) => p.id == result.productId,
+      orElse: () => parents.first,
+    );
+    await _addToCartDirect(parent, SalePortion.measured, shotCup: result);
+  }
+
   Future<void> _openQuickSale() async {
     final values = await showDialog<Map<String, String>>(
       context: context,
@@ -2801,6 +2881,20 @@ class _SellScreenState extends State<SellScreen>
                       onPressed: _openQuickSale,
                       icon: const Icon(Icons.point_of_sale_outlined),
                       label: const Text('Record sale amount'),
+                    ),
+                  ),
+                if (context.read<AppState>().shopProfile == ShopProfile.drinks &&
+                    _shots.isNotEmpty)
+                  Padding(
+                    padding: EdgeInsetsDirectional.only(
+                      start: PageGutter.of(context).left,
+                      end: PageGutter.of(context).right,
+                      bottom: spacing.sm,
+                    ),
+                    child: FilledButton.icon(
+                      onPressed: _sellShot,
+                      icon: const Icon(Icons.local_drink_outlined),
+                      label: const Text('Sell shot'),
                     ),
                   ),
                 Expanded(
