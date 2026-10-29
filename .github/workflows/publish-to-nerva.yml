@@ -26,10 +26,11 @@ jobs:
           APK=$(find build -name '*.apk' | head -n 1)
           test -n "$APK"
           tag="${{ github.event.release.tag_name || github.ref_name }}"
+          version="${tag#v}"
           curl -fSs -X POST https://nerva.co.ke/api/releases \
             -H "x-ci-token: $CI_TOKEN" \
             -H "User-Agent: Mozilla/5.0" \
             -F "productId=bussiness-and-finance" \
-            -F "version=${tag}" \
+            -F "version=${version}" \
             -F "channel=beta" \
             -F "file=@$APK"
