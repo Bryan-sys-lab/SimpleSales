@@ -20,29 +20,10 @@ concurrency:
 jobs:
   publish:
     name: Publish signed APK to Nerva
-    runs-on: ubuntu-latest
-    steps:
-      - name: Download release APK
-        env:
-          GH_TOKEN: ${{ github.token }}
-        run: |
-          set -euo pipefail
-          tag="${{ github.event.release.tag_name || inputs.tag }}"
-          gh release download "$tag" --repo "${{ github.repository }}" --pattern '*.apk' --dir .
-          ls -lh *.apk
-
-      - name: Upload APK to Nerva
-        env:
-          CI_TOKEN: ${{ secrets.NERVA_CI_TOKEN }}
-        run: |
-          set -euo pipefail
-          tag="${{ github.event.release.tag_name || inputs.tag }}"
-          apk="$(ls *.apk | head -1)"
-          curl --fail-with-body --silent --show-error --location \
-            --retry 3 --retry-delay 2 --max-time 300 \
-            -X POST "https://nerva.co.ke/api/releases" \
-            -H "x-ci-token: ${CI_TOKEN}" \
-            -F "product=bussiness-and-finance" \
-            -F "version=${tag}" \
-            -F "file=@${apk}"
-          echo
+    needs: []
+    uses: zxds1/nerva/.github/workflows/publish-release.yml@main
+    with:
+      product: bussiness-and-finance
+      version: ${{ github.event.release.tag_name || inputs.tag }}
+    secrets:
+      CI_TOKEN: ${{ secrets.NERVA_CI_TOKEN }}
