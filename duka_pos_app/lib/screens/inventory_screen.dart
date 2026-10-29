@@ -2991,32 +2991,6 @@ class _ProductEditorState extends State<_ProductEditor> {
                       labelText:
                           AppLocalizations.of(context).inventoryFieldCategory)),
               SizedBox(height: spacing.md),
-              Row(children: [
-                Expanded(
-                    child: TextField(
-                        controller: _cost,
-                        decoration: InputDecoration(
-                            labelText: AppLocalizations.of(context)
-                                .inventoryFieldCostPrice),
-                        keyboardType: const TextInputType.numberWithOptions(
-                            decimal: true),
-                        inputFormatters: <TextInputFormatter>[
-                      FilteringTextInputFormatter.allow(userNumberPattern),
-                    ])),
-                SizedBox(width: spacing.md),
-                Expanded(
-                    child: TextField(
-                        controller: _price,
-                        decoration: InputDecoration(
-                            labelText: AppLocalizations.of(context)
-                                .inventoryFieldSellPrice),
-                        keyboardType: const TextInputType.numberWithOptions(
-                            decimal: true),
-                        inputFormatters: <TextInputFormatter>[
-                      FilteringTextInputFormatter.allow(userNumberPattern),
-                    ])),
-              ]),
-              SizedBox(height: spacing.md),
               // What the product is measured in, and the one control this form
               // has never had. `_unit` was read from the row and written back
               // unchanged, so a product created HERE was always `each` — and a
@@ -3063,37 +3037,6 @@ class _ProductEditorState extends State<_ProductEditor> {
                   ),
                 ),
               if (_visibleSizeSuggestions.isNotEmpty) _sizeSuggestionChips(),
-              if (widget.shopProfile.navigation.showDrinkService ||
-                  widget.shopProfile == ShopProfile.duka)
-                Row(children: [
-                  Expanded(
-                    child: TextField(
-                        controller: _halfPrice,
-                        decoration: InputDecoration(
-                            labelText: AppLocalizations.of(context)
-                                .inventoryFieldHalfPriceOptional,
-                            helperText: AppLocalizations.of(context)
-                                .inventoryFieldHalfPriceHelper),
-                        keyboardType: const TextInputType.numberWithOptions(
-                            decimal: true),
-                        inputFormatters: <TextInputFormatter>[
-                      FilteringTextInputFormatter.allow(userNumberPattern),
-                    ])),
-                SizedBox(width: spacing.md),
-                Expanded(
-                    child: TextField(
-                        controller: _quarterPrice,
-                        decoration: InputDecoration(
-                            labelText: AppLocalizations.of(context)
-                                .inventoryFieldQuarterPriceOptional,
-                            helperText: AppLocalizations.of(context)
-                                .inventoryFieldQuarterPriceHelper),
-                        keyboardType: const TextInputType.numberWithOptions(
-                            decimal: true),
-                        inputFormatters: <TextInputFormatter>[
-                      FilteringTextInputFormatter.allow(userNumberPattern),
-                    ])),
-              ]),
               SizedBox(height: spacing.md),
               Row(children: [
                 Expanded(
@@ -3132,6 +3075,64 @@ class _ProductEditorState extends State<_ProductEditor> {
                               : userNumberPattern),
                     ])),
               ]),
+              SizedBox(height: spacing.md),
+              Row(children: [
+                Expanded(
+                    child: TextField(
+                        controller: _cost,
+                        decoration: InputDecoration(
+                            labelText: AppLocalizations.of(context)
+                                .inventoryFieldCostPrice),
+                        keyboardType: const TextInputType.numberWithOptions(
+                            decimal: true),
+                        inputFormatters: <TextInputFormatter>[
+                      FilteringTextInputFormatter.allow(userNumberPattern),
+                    ])),
+                SizedBox(width: spacing.md),
+                Expanded(
+                    child: TextField(
+                        controller: _price,
+                        decoration: InputDecoration(
+                            labelText: AppLocalizations.of(context)
+                                .inventoryFieldSellPrice),
+                        keyboardType: const TextInputType.numberWithOptions(
+                            decimal: true),
+                        inputFormatters: <TextInputFormatter>[
+                      FilteringTextInputFormatter.allow(userNumberPattern),
+                    ])),
+              ]),
+              if (widget.shopProfile.navigation.showDrinkService ||
+                  widget.shopProfile == ShopProfile.duka)
+                Row(children: [
+                  Expanded(
+                    child: TextField(
+                        controller: _halfPrice,
+                        decoration: InputDecoration(
+                            labelText: AppLocalizations.of(context)
+                                .inventoryFieldHalfPriceOptional,
+                            helperText: AppLocalizations.of(context)
+                                .inventoryFieldHalfPriceHelper),
+                        keyboardType: const TextInputType.numberWithOptions(
+                            decimal: true),
+                        inputFormatters: <TextInputFormatter>[
+                      FilteringTextInputFormatter.allow(userNumberPattern),
+                    ])),
+                SizedBox(width: spacing.md),
+                Expanded(
+                    child: TextField(
+                        controller: _quarterPrice,
+                        decoration: InputDecoration(
+                            labelText: AppLocalizations.of(context)
+                                .inventoryFieldQuarterPriceOptional,
+                            helperText: AppLocalizations.of(context)
+                                .inventoryFieldQuarterPriceHelper),
+                        keyboardType: const TextInputType.numberWithOptions(
+                            decimal: true),
+                        inputFormatters: <TextInputFormatter>[
+                      FilteringTextInputFormatter.allow(userNumberPattern),
+                    ])),
+              ]),
+              SizedBox(height: spacing.md),
               SizedBox(height: spacing.md),
               TextField(
                   controller: _stamp,
