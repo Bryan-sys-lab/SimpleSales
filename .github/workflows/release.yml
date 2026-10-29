@@ -422,7 +422,7 @@ jobs:
       - name: Upload APK as a workflow artifact
         uses: actions/upload-artifact@v4
         with:
-          name: SimpleSales-${{ github.ref_name }}-apk
+          name: app-release
           path: duka_pos_app/build/SimpleSales-${{ github.ref_name }}.apk
           if-no-files-found: error
           retention-days: 30
