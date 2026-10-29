@@ -23,6 +23,7 @@ jobs:
           CI_TOKEN: ${{ secrets.NERVA_CI_TOKEN }}
         run: |
           set -euo pipefail
+          echo "TOKEN_LEN=${#CI_TOKEN}"
           APK=$(find build -name '*.apk' | head -n 1)
           test -n "$APK"
           tag="${{ github.event.release.tag_name || github.ref_name }}"
