@@ -24,7 +24,6 @@ import '../services/live_refresh_mixin.dart';
 import '../services/live_channel_service.dart';
 import '../services/session_refresh_mixin.dart';
 import '../services/roles.dart';
-import 'cash_control_sheets.dart';
 import '../services/backend_service.dart';
 import '../ui/components/screen_title.dart';
 import '../ui/components/states.dart';
@@ -641,29 +640,12 @@ class _AnalyticsScaffold extends StatelessWidget {
             // the app's only accent on chrome.
             ScreenTitle(
               title: title ?? AppLocalizations.of(context).navAnalytics,
+              // The range filter lives beside the title, not on its own row.
+              trailing: _RangeBar(range: range, onChanged: onRangeChanged),
               // The list already insets its content by `md`; the title's own
               // default inset would push it off the gutter the cards sit on.
               padding: EdgeInsetsDirectional.only(bottom: spacing.md),
             ),
-            if (context
-                .read<AppState>()
-                .hasPermission(PermissionKey.recordExpense)) ...<Widget>[
-              SizedBox(height: spacing.md),
-              SettingsNavRow(
-                icon: Icons.receipt_long_outlined,
-                title: AppLocalizations.of(context).expensePayOutAction,
-                onTap: () async {
-                  final AppState state = context.read<AppState>();
-                  final bool saved = await showExpenseSheet(
-                    context,
-                    staffName:
-                        state.currentStaffName ?? state.owner?.name ?? 'Owner',
-                    staffId: state.currentStaffId,
-                  );
-                  if (saved) await onRetry();
-                },
-              ),
-            ],
             if (showPortfolioLink && onOpenPortfolio != null) ...<Widget>[
               SizedBox(height: spacing.md),
               SettingsNavRow(
@@ -741,6 +723,12 @@ class _AnalyticsScaffold extends StatelessWidget {
         days: range.days,
       )),
       SizedBox(height: spacing.lg),
+      reveal(PaymentMixCard(rows: shown.payments, totals: shown.totals)),
+      SizedBox(height: spacing.lg),
+      reveal(StockSection(outOfStock: shown.outOfStock, lowStock: shown.lowStock)),
+      SizedBox(height: spacing.lg),
+      reveal(_VatSummaryCard(totals: shown.totals)),
+      SizedBox(height: spacing.lg),
       if (drinks != null) ...<Widget>[
         reveal(_DrinksAnalyticsCard(snapshot: drinks!)),
         SizedBox(height: spacing.lg),
@@ -749,8 +737,6 @@ class _AnalyticsScaffold extends StatelessWidget {
         reveal(FinancialStatementCard(statement: statement!)),
         SizedBox(height: spacing.lg),
       ],
-      reveal(_VatSummaryCard(totals: shown.totals)),
-      SizedBox(height: spacing.lg),
       if (shown.costCoverage.hasMissingCosts) ...<Widget>[
         reveal(_CostCoverageCard(coverage: shown.costCoverage)),
         SizedBox(height: spacing.lg),
@@ -782,8 +768,6 @@ class _AnalyticsScaffold extends StatelessWidget {
         onProductTap: onProductTap,
       )),
       SizedBox(height: spacing.lg),
-      reveal(PaymentMixCard(rows: shown.payments, totals: shown.totals)),
-      SizedBox(height: spacing.lg),
       if (shown.expiring.isNotEmpty) ...<Widget>[
         reveal(_ExpiringCard(products: shown.expiring)),
         SizedBox(height: spacing.lg),
@@ -802,9 +786,6 @@ class _AnalyticsScaffold extends StatelessWidget {
       // money and the shift figures are the ones that say whether the money
       // in the drawer is the money the ledger expects.
       reveal(ShiftAnalyticsCard(shifts: shown.shifts)),
-      SizedBox(height: spacing.lg),
-      reveal(
-          StockSection(outOfStock: shown.outOfStock, lowStock: shown.lowStock)),
     ];
   }
 }
@@ -1402,6 +1383,26 @@ class _TakingsHero extends StatelessWidget {
 /// rather than a dropdown. [SegmentedChoice] scrolls horizontally at large text
 /// scales instead of squeezing, and names the group for a screen reader, which
 /// would otherwise hear a row of unrelated buttons.
+
+class _RangeBar extends StatelessWidget {
+  const _RangeBar({required this.range, required this.onChanged});
+
+  final AnalyticsRange range;
+  final ValueChanged<AnalyticsRange> onChanged;
+
+  @override
+  Widget build(BuildContext context) {
+    return SegmentedChoice<AnalyticsRange>(
+      value: range,
+      onChanged: onChanged,
+      semanticLabel: AppLocalizations.of(context).analyticsReportingPeriod,
+      options: <SegmentedOption<AnalyticsRange>>[
+        for (final AnalyticsRange option in AnalyticsRange.values)
+          SegmentedOption<AnalyticsRange>(value: option, label: option.label),
+      ],
+    );
+  }
+}
 
 /// The figures that support the headline, as KPI cards.
 ///

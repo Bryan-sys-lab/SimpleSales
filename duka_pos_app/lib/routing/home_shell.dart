@@ -17,6 +17,7 @@ import '../theme/typography.dart';
 import '../ui/components/brand_header.dart';
 import '../ui/components/status_bar.dart';
 import '../ui/components/notification_sheet.dart';
+import '../screens/cash_control_sheets.dart';
 import '../ui/layout/window_size_class.dart';
 import '../widgets/sign_out_sheet.dart';
 import 'idle_guard.dart';
@@ -377,6 +378,18 @@ class _ShellScaffold extends StatelessWidget {
             onOpenProfile: () => context.push(Routes.profile),
             onOpenCredit: () => context.push(Routes.customers),
             showCredit: state.isOwnerSession || state.role == ShopRole.manager,
+            showPayOut: state.hasPermission(PermissionKey.recordExpense),
+            onPayOut: () async {
+              final AppState st = context.read<AppState>();
+              final bool saved = await showExpenseSheet(
+                context,
+                staffName: st.currentStaffName ?? st.owner?.name ?? 'Owner',
+                staffId: st.currentStaffId,
+              );
+              if (saved && context.mounted) {
+                // no-op: screens refresh via live/session channels
+              }
+            },
           ),
           // The body.
           //
@@ -561,6 +574,8 @@ class _ShellAppBar extends StatelessWidget implements PreferredSizeWidget {
     required this.onOpenProfile,
     required this.onOpenCredit,
     required this.showCredit,
+    this.showPayOut = false,
+    this.onPayOut,
   });
 
   final String title;
@@ -585,6 +600,8 @@ class _ShellAppBar extends StatelessWidget implements PreferredSizeWidget {
 
   final VoidCallback onOpenCredit;
   final bool showCredit;
+  final bool showPayOut;
+  final Future<void> Function()? onPayOut;
 
   @override
   Size get preferredSize => const Size.fromHeight(48);
@@ -607,6 +624,18 @@ class _ShellAppBar extends StatelessWidget implements PreferredSizeWidget {
         // Non-identity actions live in More. Only identity and sign-out stay
         // on the app bar, with credit restored as the one operational shortcut
         // owners and managers need at a glance.
+        if (showPayOut)
+          Semantics(
+            button: true,
+            label: l10n.expensePayOutAction,
+            child: IconButton(
+              tooltip: l10n.expensePayOutAction,
+              onPressed: () {
+                onPayOut?.call();
+              },
+              icon: const Icon(Icons.receipt_long_outlined),
+            ),
+          ),
         if (showCredit)
           Semantics(
             button: true,

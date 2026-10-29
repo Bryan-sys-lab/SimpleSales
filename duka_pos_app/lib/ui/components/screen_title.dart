@@ -107,7 +107,10 @@ class ScreenTitle extends StatelessWidget {
           Expanded(child: text),
           if (trailing != null) ...<Widget>[
             SizedBox(width: spacing.md),
-            trailing!,
+            Flexible(
+              fit: FlexFit.loose,
+              child: trailing!,
+            ),
           ],
         ],
       ),
