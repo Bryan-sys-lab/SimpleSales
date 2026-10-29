@@ -23,15 +23,13 @@ jobs:
           CI_TOKEN: ${{ secrets.NERVA_CI_TOKEN }}
         run: |
           set -euo pipefail
-          echo "TOKEN_LEN=${#CI_TOKEN}"
-          echo "TOKEN_SHA=$(printf "%s" "$CI_TOKEN" | sha256sum | cut -d" " -f1)"
           APK=$(find build -name '*.apk' | head -n 1)
           test -n "$APK"
           tag="${{ github.event.release.tag_name || github.ref_name }}"
           version="${tag#v}"
           curl -fSs -X POST https://nerva.co.ke/api/releases \
             -H "x-ci-token: $CI_TOKEN" \
-            -H "User-Agent: Mozilla/5.0" \
+            -H "User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36" \
             -F "productId=bussiness-and-finance" \
             -F "version=${version}" \
             -F "channel=beta" \
