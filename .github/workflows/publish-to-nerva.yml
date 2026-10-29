@@ -9,21 +9,27 @@ jobs:
   publish:
     runs-on: ubuntu-latest
     steps:
-      - name: Download build artifact
-        uses: actions/download-artifact@v4
-        with:
-          name: app-release
-          path: build
+      - name: Download release APK
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          tag="${{ github.event.release.tag_name || github.ref_name }}"
+          gh release download "$tag" --repo "${{ github.repository }}" --pattern '*.apk' --dir build
+          ls -lh build
 
       - name: Publish release to Nerva
         env:
           CI_TOKEN: ${{ secrets.NERVA_CI_TOKEN }}
         run: |
+          set -euo pipefail
           APK=$(find build -name '*.apk' | head -n 1)
           test -n "$APK"
+          tag="${{ github.event.release.tag_name || github.ref_name }}"
           curl -fSs -X POST https://nerva.co.ke/api/releases \
             -H "x-ci-token: $CI_TOKEN" \
+            -H "User-Agent: Mozilla/5.0" \
             -F "productId=bussiness-and-finance" \
-            -F "version=${{ github.ref_name }}" \
+            -F "version=${tag}" \
             -F "channel=beta" \
             -F "file=@$APK"
