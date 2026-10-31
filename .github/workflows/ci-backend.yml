@@ -136,7 +136,7 @@ jobs:
         shell: bash
         run: |
           set +e
-          TAX_REPORTING_ACTIVATED=true docker compose up -d
+          TAX_REPORTING_ACTIVATED=true docker compose --env-file .env.ci up -d
           status=$?
           if [[ $status -ne 0 ]]; then
             docker compose ps
