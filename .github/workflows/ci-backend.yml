@@ -139,6 +139,10 @@ jobs:
           set -a
           . .env.ci
           set +a
+          # Force known-good credentials so Keycloak and keycloak-init agree,
+          # regardless of whether .env.ci was sourced cleanly.
+          KEYCLOAK_ADMIN_PASSWORD=admin_local_dev
+          KC_DB_PASSWORD=keycloak_local_dev
           TAX_REPORTING_ACTIVATED=true docker compose up -d
           status=$?
           if [[ $status -ne 0 ]]; then
