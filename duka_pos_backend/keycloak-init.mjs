@@ -69,15 +69,17 @@ async function initRealm(token) {
 }
 
 async function getToken() {
-  const form = new URLSearchParams({
-    grant_type: 'password',
-    client_id: 'admin-cli',
-    username: admin,
-    password: adminPassword,
-  });
-  const passwordCandidates = [adminPassword, 'admin', 'admin_local_dev'];
-  for (const pwd of passwordCandidates) {
-    form.set('password', pwd);
+  // Try the configured password, then compose defaults, then common fallbacks.
+  // Keycloak creates the admin user from KEYCLOAK_ADMIN_PASSWORD on first
+  // startup, but that can race with keycloak-init starting to authenticate.
+  const candidates = [adminPassword, 'admin_local_dev', 'admin'];
+  for (const pwd of candidates) {
+    const form = new URLSearchParams({
+      grant_type: 'password',
+      client_id: 'admin-cli',
+      username: admin,
+      password: pwd,
+    });
     const result = await request('/realms/master/protocol/openid-connect/token', {
       method: 'POST',
       headers: { 'content-type': 'application/x-www-form-urlencoded' },
@@ -106,9 +108,11 @@ for (let attempt = 1; attempt <= 60; attempt += 1) {
 }
 if (!ready) throw new Error('Keycloak did not become ready within 5 minutes');
 
+// Obtain admin token (with retries). Keycloak may not have created the admin
+// user yet when we first try, so retry for up to ~2 minutes.
 let token = null;
 let tokenError = null;
-for (let attempt = 1; attempt <= 15; attempt += 1) {
+for (let attempt = 1; attempt <= 24; attempt += 1) {
   token = await getToken();
   if (token) {
     tokenError = null;
@@ -121,8 +125,12 @@ if (!token) {
   throw new Error(`Could not obtain Keycloak admin token after retries: ${tokenError}`);
 }
 
+// Retry the entire realm provisioning flow with fresh auth on each attempt.
+// Keycloak's admin API may not be fully provisioned yet even after the
+// server reports ready, so a 401 on realm creation means we re-authenticate
+// and try again.
 let initError = null;
-for (let attempt = 1; attempt <= 15; attempt += 1) {
+for (let attempt = 1; attempt <= 24; attempt += 1) {
   try {
     await initRealm(token);
     initError = null;
