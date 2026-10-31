@@ -62,13 +62,23 @@ const form = new URLSearchParams({
   username: admin,
   password: adminPassword,
 });
-const tokenResult = await request('/realms/master/protocol/openid-connect/token', {
-  method: 'POST',
-  headers: { 'content-type': 'application/x-www-form-urlencoded' },
-  body: form,
-});
-if (!tokenResult.response.ok || typeof tokenResult.data?.access_token !== 'string') {
-  throw new Error(`Could not obtain Keycloak admin token: ${tokenResult.response.status}`);
+let tokenResult;
+let tokenError = null;
+for (let attempt = 1; attempt <= 15; attempt += 1) {
+  tokenResult = await request('/realms/master/protocol/openid-connect/token', {
+    method: 'POST',
+    headers: { 'content-type': 'application/x-www-form-urlencoded' },
+    body: form,
+  });
+  if (tokenResult.response.ok && typeof tokenResult.data?.access_token === 'string') {
+    tokenError = null;
+    break;
+  }
+  tokenError = `status ${tokenResult.response.status}`;
+  await sleep(5000);
+}
+if (tokenError) {
+  throw new Error(`Could not obtain Keycloak admin token after retries: ${tokenError}`);
 }
 const token = tokenResult.data.access_token;
 
