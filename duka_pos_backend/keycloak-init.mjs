@@ -68,6 +68,28 @@ async function initRealm(token) {
   }, `user ${testUser}`);
 }
 
+async function getToken() {
+  const form = new URLSearchParams({
+    grant_type: 'password',
+    client_id: 'admin-cli',
+    username: admin,
+    password: adminPassword,
+  });
+  const passwordCandidates = [adminPassword, 'admin', 'admin_local_dev'];
+  for (const pwd of passwordCandidates) {
+    form.set('password', pwd);
+    const result = await request('/realms/master/protocol/openid-connect/token', {
+      method: 'POST',
+      headers: { 'content-type': 'application/x-www-form-urlencoded' },
+      body: form,
+    });
+    if (result.response.ok && typeof result.data?.access_token === 'string') {
+      return result.data.access_token;
+    }
+  }
+  return null;
+}
+
 console.log(`Waiting for Keycloak at ${baseUrl}...`);
 let ready = false;
 for (let attempt = 1; attempt <= 60; attempt += 1) {
@@ -84,40 +106,21 @@ for (let attempt = 1; attempt <= 60; attempt += 1) {
 }
 if (!ready) throw new Error('Keycloak did not become ready within 5 minutes');
 
-const form = new URLSearchParams({
-  grant_type: 'password',
-  client_id: 'admin-cli',
-  username: admin,
-  password: adminPassword,
-});
-const passwordCandidates = [adminPassword, 'admin', 'admin_local_dev'];
-let tokenResult;
+let token = null;
 let tokenError = null;
 for (let attempt = 1; attempt <= 15; attempt += 1) {
-  for (const pwd of passwordCandidates) {
-    form.set('password', pwd);
-    tokenResult = await request('/realms/master/protocol/openid-connect/token', {
-      method: 'POST',
-      headers: { 'content-type': 'application/x-www-form-urlencoded' },
-      body: form,
-    });
-    if (tokenResult.response.ok && typeof tokenResult.data?.access_token === 'string') {
-      tokenError = null;
-      break;
-    }
+  token = await getToken();
+  if (token) {
+    tokenError = null;
+    break;
   }
-  if (!tokenError) break;
-  tokenError = `status ${tokenResult.response.status}`;
+  tokenError = 'no valid token';
   await sleep(5000);
 }
-if (tokenError) {
+if (!token) {
   throw new Error(`Could not obtain Keycloak admin token after retries: ${tokenError}`);
 }
-const token = tokenResult.data.access_token;
 
-// Retry the entire realm provisioning flow: Keycloak's admin API may not be
-// fully provisioned yet even after the server reports ready, so a 401 on
-// realm creation means we need to wait and try again.
 let initError = null;
 for (let attempt = 1; attempt <= 15; attempt += 1) {
   try {
@@ -126,6 +129,8 @@ for (let attempt = 1; attempt <= 15; attempt += 1) {
     break;
   } catch (err) {
     initError = err;
+    const freshToken = await getToken();
+    if (freshToken) token = freshToken;
     await sleep(5000);
   }
 }
