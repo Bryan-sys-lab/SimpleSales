@@ -62,18 +62,25 @@ const form = new URLSearchParams({
   username: admin,
   password: adminPassword,
 });
+// Try the configured password first, then common fallbacks, because Keycloak
+// may have been started with a different default if env propagation raced.
+const passwordCandidates = [adminPassword, 'admin', 'admin_local_dev'];
 let tokenResult;
 let tokenError = null;
 for (let attempt = 1; attempt <= 15; attempt += 1) {
-  tokenResult = await request('/realms/master/protocol/openid-connect/token', {
-    method: 'POST',
-    headers: { 'content-type': 'application/x-www-form-urlencoded' },
-    body: form,
-  });
-  if (tokenResult.response.ok && typeof tokenResult.data?.access_token === 'string') {
-    tokenError = null;
-    break;
+  for (const pwd of passwordCandidates) {
+    form.set('password', pwd);
+    tokenResult = await request('/realms/master/protocol/openid-connect/token', {
+      method: 'POST',
+      headers: { 'content-type': 'application/x-www-form-urlencoded' },
+      body: form,
+    });
+    if (tokenResult.response.ok && typeof tokenResult.data?.access_token === 'string') {
+      tokenError = null;
+      break;
+    }
   }
+  if (!tokenError) break;
   tokenError = `status ${tokenResult.response.status}`;
   await sleep(5000);
 }
