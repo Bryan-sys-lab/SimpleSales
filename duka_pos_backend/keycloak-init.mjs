@@ -37,13 +37,41 @@ async function createIfMissing(path, token, payload, label) {
   throw new Error(`${label} failed (${response.status}): ${JSON.stringify(data)}`);
 }
 
+async function initRealm(token) {
+  await createIfMissing('/admin/realms', token, {
+    enabled: true,
+    realm,
+    displayName: 'Duka POS',
+  }, `realm ${realm}`);
+
+  await createIfMissing(`/admin/realms/${encodeURIComponent(realm)}/clients`, token, {
+    clientId,
+    enabled: true,
+    publicClient: true,
+    protocol: 'openid-connect',
+    standardFlowEnabled: true,
+    implicitFlowEnabled: false,
+    directAccessGrantsEnabled: true,
+    serviceAccountsEnabled: false,
+    redirectUris: ['http://localhost:*'],
+    webOrigins: ['*'],
+  }, `client ${clientId}`);
+
+  await createIfMissing(`/admin/realms/${encodeURIComponent(realm)}/users`, token, {
+    username: testUser,
+    email: testEmail,
+    enabled: true,
+    emailVerified: true,
+    firstName: 'Test',
+    lastName: 'User',
+    credentials: [{ type: 'password', value: testPassword, temporary: false }],
+  }, `user ${testUser}`);
+}
+
 console.log(`Waiting for Keycloak at ${baseUrl}...`);
 let ready = false;
 for (let attempt = 1; attempt <= 60; attempt += 1) {
   try {
-    // Keycloak 24's dev distribution does not expose /health/ready unless
-    // health endpoints are explicitly enabled. The public master realm is
-    // available only after the server and its database are ready.
     const { response } = await request('/realms/master');
     if (response.ok) {
       ready = true;
@@ -62,8 +90,6 @@ const form = new URLSearchParams({
   username: admin,
   password: adminPassword,
 });
-// Try the configured password first, then common fallbacks, because Keycloak
-// may have been started with a different default if env propagation raced.
 const passwordCandidates = [adminPassword, 'admin', 'admin_local_dev'];
 let tokenResult;
 let tokenError = null;
@@ -89,33 +115,20 @@ if (tokenError) {
 }
 const token = tokenResult.data.access_token;
 
-await createIfMissing('/admin/realms', token, {
-  enabled: true,
-  realm,
-  displayName: 'Duka POS',
-}, `realm ${realm}`);
-
-await createIfMissing(`/admin/realms/${encodeURIComponent(realm)}/clients`, token, {
-  clientId,
-  enabled: true,
-  publicClient: true,
-  protocol: 'openid-connect',
-  standardFlowEnabled: true,
-  implicitFlowEnabled: false,
-  directAccessGrantsEnabled: true,
-  serviceAccountsEnabled: false,
-  redirectUris: ['http://localhost:*'],
-  webOrigins: ['*'],
-}, `client ${clientId}`);
-
-await createIfMissing(`/admin/realms/${encodeURIComponent(realm)}/users`, token, {
-  username: testUser,
-  email: testEmail,
-  enabled: true,
-  emailVerified: true,
-  firstName: 'Test',
-  lastName: 'User',
-  credentials: [{ type: 'password', value: testPassword, temporary: false }],
-}, `user ${testUser}`);
+// Retry the entire realm provisioning flow: Keycloak's admin API may not be
+// fully provisioned yet even after the server reports ready, so a 401 on
+// realm creation means we need to wait and try again.
+let initError = null;
+for (let attempt = 1; attempt <= 15; attempt += 1) {
+  try {
+    await initRealm(token);
+    initError = null;
+    break;
+  } catch (err) {
+    initError = err;
+    await sleep(5000);
+  }
+}
+if (initError) throw initError;
 
 console.log('Keycloak initialization complete');
