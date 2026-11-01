@@ -1,44 +1,26 @@
 /**
- * The verify flow: create the online account, prove the email, sign the till
- * in. Three endpoints and nothing else.
- *
- *   POST /auth/link     email + 4-digit admin PIN + shop name
- *                        -> creates the Keycloak account (disabled), emails a
- *                           6-digit code, returns where it was sent
- *   POST /auth/verify    email + 4-digit admin PIN + the 6-digit code
- *                        -> consumes the code, enables and marks the account
- *                           verified, links or creates the shop, returns the
- *                           shop's tenant id and an app session
- *   POST /auth/refresh   the refresh token
- *                        -> a rotated pair, so a token stolen from a phone
- *                           works once
- *
- * WHY THESE ARE OUTSIDE THE AUTH MIDDLEWARE
- * Every one of them runs *before* the shop has a token: the first call has to
- * work for an account that does not exist yet, so there is nothing to
- * authenticate with. They are therefore the only authenticated-by-content
- * endpoints in the service, and they are hardened accordingly — a strict rate
- * limit per address, codes that expire, attempts that burn the code, and a
- * Keycloak account that stays dark until an emailed code is presented.
- *
- * WHAT THIS ENDPOINT REFUSES TO DO
- * It will not tell a caller whether an email has an account. Both answers
- * return the same body, so the endpoint cannot be used to enumerate which
- * addresses use SimpleSales.
+ * Custom identity/auth routes.
  */
-
 import { Router, Request, Response } from 'express';
 import rateLimit from 'express-rate-limit';
 import { randomBytes } from 'node:crypto';
 import { prisma } from '../lib/prisma';
 import { asyncHandler } from '../lib/http';
-import { linkSchema, parseBody, refreshSchema, verificationCodeSchema } from '../lib/validation';
+import {
+  authLinkSchema,
+  authVerifySchema,
+  authLoginSchema,
+  authRefreshSchema,
+  authForgotPasswordSchema,
+  authResetPasswordSchema,
+  authChangePasswordSchema,
+  parseBody,
+} from '../lib/validation';
 import { log } from '../lib/observability';
 import {
   CODE_REQUEST_WINDOW_MINUTES,
   MAX_CODES_PER_WINDOW,
   VERIFICATION_TTL_MINUTES,
-  attemptsRemaining,
   codeRequestWindowStart,
   generateVerificationCode,
   hashCodeSecret,
@@ -47,148 +29,81 @@ import {
   maskEmail,
   newSalt,
 } from '../lib/verification';
-import { createKeycloakAdminClient, keycloakAdminOptionsFromEnv } from '../lib/keycloak_admin';
-import { createCloudflareEmailTransport, type EmailTransport } from '../lib/email_sender';
-import { APP_SESSION_TTL_MS, issueAppSession } from '../lib/app_session';
+import { hashPassword, verifyPassword } from '../lib/password';
+import { issueAccessToken } from '../lib/jwt';
+import { authMiddleware } from '../middleware/auth';
+import { createCloudflareEmailTransport } from '../lib/email_sender';
 
 const router = Router();
 
-/** How long a refresh token lives. A till is a shared device that is switched
- * on every morning; a shorter lifetime means asking the owner to re-verify
- * from a phone mailbox every few days, which is the failure this flow exists
- * to remove. Rotation, not brevity, is what limits a stolen token. */
 const REFRESH_TOKEN_TTL_MS = 180 * 24 * 60 * 60 * 1000;
-
-/** A dev-only escape hatch: without an EmailJS template there is no way to
- * read the code off a phone. It is off unless BOTH conditions hold — a
- * non-production environment and an explicit flag — and the response field is
- * ignored by the release build's clients. */
-function debugCodesEnabled(): boolean {
-  return process.env.NODE_ENV !== 'production' && process.env.VERIFICATION_DEBUG_CODES === 'true';
-}
+const GRACE_WINDOW_MS = 10 * 1000;
 
 function verificationSecret(): string {
   return process.env.EMAIL_VERIFICATION_SECRET ?? '';
 }
 
-function sessionSecrets(): string[] {
-  return [process.env.APP_SESSION_SECRET ?? '', process.env.APP_SESSION_SECRET_PREVIOUS ?? ''].filter(Boolean);
-}
-
-function identityConfigured(): boolean {
-  return Boolean(verificationSecret() && keycloakAdminOptionsFromEnv(process.env));
+function isConfigured(): boolean {
+  return Boolean(verificationSecret() && process.env.AUTH_JWT_SECRET);
 }
 
 function mailerConfigured(): boolean {
-  return Boolean(
-    process.env.CLOUDFLARE_ACCOUNT_ID &&
-      process.env.CLOUDFLARE_API_TOKEN,
-  );
+  return Boolean(process.env.CLOUDFLARE_ACCOUNT_ID && process.env.CLOUDFLARE_API_TOKEN);
 }
 
 function notConfigured(res: Response, requestId?: string) {
-  return res.status(503).json({
-    error: 'Online account verification is not configured on this server',
-    code: 'VERIFICATION_NOT_CONFIGURED',
-    requestId,
-  });
+  return res.status(503).json({ error: 'Online account verification is not configured on this server', code: 'VERIFICATION_NOT_CONFIGURED', requestId });
 }
 
-/** Keyed on the address as well as the IP, so one caller cannot spend the
- * whole limit on other people's mailboxes and one shop cannot be locked out by
- * its neighbours. */
 function addressKey(req: Request): string {
   const body = req.body as { email?: unknown };
   const email = typeof body?.email === 'string' ? body.email.trim().toLowerCase() : '';
   return `${req.ip ?? 'unknown'}:${email}`;
 }
 
-const linkLimiter = rateLimit({
-  windowMs: CODE_REQUEST_WINDOW_MINUTES * 60_000,
-  limit: MAX_CODES_PER_WINDOW,
-  standardHeaders: 'draft-7',
-  legacyHeaders: false,
-  keyGenerator: addressKey,
-});
+const linkLimiter = rateLimit({ windowMs: CODE_REQUEST_WINDOW_MINUTES * 60_000, limit: MAX_CODES_PER_WINDOW, standardHeaders: 'draft-7', legacyHeaders: false, keyGenerator: addressKey, validate: { keyGeneratorIpFallback: false } });
+const verifyLimiter = rateLimit({ windowMs: 10 * 60_000, limit: 20, standardHeaders: 'draft-7', legacyHeaders: false, keyGenerator: addressKey, validate: { keyGeneratorIpFallback: false } });
+const loginLimiter = rateLimit({ windowMs: 10 * 60_000, limit: 20, standardHeaders: 'draft-7', legacyHeaders: false, keyGenerator: addressKey, validate: { keyGeneratorIpFallback: false } });
+const refreshLimiter = rateLimit({ windowMs: 10 * 60_000, limit: 20, standardHeaders: 'draft-7', legacyHeaders: false, keyGenerator: addressKey, validate: { keyGeneratorIpFallback: false } });
 
-const verifyLimiter = rateLimit({
-  windowMs: 10 * 60_000,
-  limit: 20,
-  standardHeaders: 'draft-7',
-  legacyHeaders: false,
-  keyGenerator: addressKey,
-});
-
-function buildMailer(): EmailTransport {
-  const transport = createCloudflareEmailTransport({
+function buildMailer() {
+  return createCloudflareEmailTransport({
     accountId: process.env.CLOUDFLARE_ACCOUNT_ID ?? '',
     apiToken: process.env.CLOUDFLARE_API_TOKEN ?? '',
     from: process.env.CLOUDFLARE_EMAIL_FROM ?? 'security@nerva.co.ke',
     appName: process.env.APP_NAME ?? 'SimpleSales',
   });
-  return transport.send;
 }
 
-type LinkedShop = {
-  tenantId: string;
-  shopName: string;
-  profileId: string;
-  created: boolean;
-};
+function hashRefreshToken(token: string): string {
+  return hashCodeSecret(token, 'app-session-refresh', verificationSecret());
+}
 
-/**
- * The shop this email owns, adopting or creating one if it can.
- *
- * The order matters and is deliberately the same order `/tenant/provision`
- * uses, so an account that links through this flow and one that links through
- * the browser flow end up attached to the same tenant:
- *
- *  1. This exact account, this exact shop name — the retry path. A link that
- *     failed after the tenant was written is not a second tenant.
- *  2. This account, any shop — the oldest one, because that is the shop the
- *     owner set up first and the one they mean when they say "my shop".
- *  3. An unclaimed row with this email — a profile created before accounts
- *     were linked, adopted rather than duplicated.
- *  4. Nothing at all, and [allowCreate] — a new tenant, with the owner as its
- *     admin. Without details to name it, there is nothing to create, and the
- *     caller is told that rather than being handed a shop called "My shop".
- */
-async function ensureOwnerProfile(
-  input: { oidcSubject: string; email: string; shopName?: string; ownerName?: string },
-  options: { allowCreate: boolean },
-): Promise<LinkedShop | null> {
-  const exact = await prisma.profile.findFirst({
-    where: { oidcSubject: input.oidcSubject, tenant: { shopName: input.shopName?.trim() } },
-    include: { tenant: true },
-  });
-  if (exact) {
-    return { tenantId: exact.tenantId, shopName: exact.tenant.shopName, profileId: exact.id, created: false };
+async function ensureOwnerProfile(input: { userId: string; email: string; shopName?: string; ownerName?: string }, options: { allowCreate: boolean }) {
+  // 1. exact account + shop name
+  if (input.shopName?.trim()) {
+    const exact = await prisma.profile.findFirst({
+      where: { userId: input.userId, tenant: { shopName: input.shopName.trim() }, active: true, deletedAt: null },
+      include: { tenant: true },
+    });
+    if (exact) return { tenantId: exact.tenantId, shopName: exact.tenant.shopName, profileId: exact.id, created: false };
   }
-
+  // 2. any owned shop
   const owned = await prisma.profile.findFirst({
-    where: { oidcSubject: input.oidcSubject, active: true, deletedAt: null },
+    where: { userId: input.userId, active: true, deletedAt: null },
     include: { tenant: true },
     orderBy: { createdAt: 'asc' },
   });
-  if (owned) {
-    return { tenantId: owned.tenantId, shopName: owned.tenant.shopName, profileId: owned.id, created: false };
-  }
+  if (owned) return { tenantId: owned.tenantId, shopName: owned.tenant.shopName, profileId: owned.id, created: false };
 
+  // 3. unclaimed profile by email
   const unclaimed = await prisma.profile.findFirst({
-    where: { email: input.email, oidcSubject: null, active: true, deletedAt: null },
+    where: { email: input.email, userId: null, active: true, deletedAt: null },
     include: { tenant: true },
   });
   if (unclaimed) {
-    const adopted = await prisma.profile.update({
-      where: { id: unclaimed.id },
-      data: { oidcSubject: input.oidcSubject, email: input.email },
-    });
-    return {
-      tenantId: unclaimed.tenantId,
-      shopName: unclaimed.tenant.shopName,
-      profileId: adopted.id,
-      created: false,
-    };
+    const adopted = await prisma.profile.update({ where: { id: unclaimed.id }, data: { userId: input.userId, email: input.email } });
+    return { tenantId: unclaimed.tenantId, shopName: unclaimed.tenant.shopName, profileId: adopted.id, created: false };
   }
 
   if (!options.allowCreate || !input.shopName?.trim() || !input.ownerName?.trim()) return null;
@@ -196,277 +111,405 @@ async function ensureOwnerProfile(
   const created = await prisma.$transaction(async (tx) => {
     const tenant = await tx.tenant.create({ data: { shopName: input.shopName!.trim() } });
     const profile = await tx.profile.create({
-      data: {
-        oidcSubject: input.oidcSubject,
-        tenantId: tenant.id,
-        name: input.ownerName!.trim(),
-        email: input.email,
-        role: 'admin',
-      },
+      data: { userId: input.userId, tenantId: tenant.id, name: input.ownerName!.trim(), email: input.email, role: 'admin' },
     });
     return { tenant, profile };
   });
   return { tenantId: created.tenant.id, shopName: created.tenant.shopName, profileId: created.profile.id, created: true };
 }
 
-/**
- * A refresh token, stored as a hash under a fixed salt.
- *
- * The fixed salt is the point: the hash is deterministic, so the token can be
- * looked up directly instead of being compared against every profile in the
- * table. It is not a weakening — the salt's job in `verification.ts` is to
- * stop one dumped table from answering "which challenge held code 123456",
- * and a refresh token is never that guessable.
- */
-async function issueRefreshToken(profileId: string): Promise<{ token: string; expiresAt: Date }> {
+async function issueRefreshToken(profileId: string, tier: 'device' | 'access') {
   const token = randomBytes(32).toString('base64url');
   const expiresAt = new Date(Date.now() + REFRESH_TOKEN_TTL_MS);
-  const secret = verificationSecret();
   await prisma.profile.update({
     where: { id: profileId },
     data: {
-      refreshTokenHash: hashCodeSecret(token, 'app-session-refresh', secret),
+      refreshTokenHash: hashRefreshToken(token),
+      refreshTokenPreviousHash: null,
       refreshTokenExpiresAt: expiresAt,
+      refreshTokenTier: tier,
     },
   });
   return { token, expiresAt };
 }
 
+async function rotateRefreshToken(profile: any, tier: string) {
+  const newToken = randomBytes(32).toString('base64url');
+  const expiresAt = new Date(Date.now() + REFRESH_TOKEN_TTL_MS);
+  const currentHash = profile.refreshTokenHash;
+  await prisma.profile.update({
+    where: { id: profile.id },
+    data: {
+      refreshTokenPreviousHash: currentHash,
+      refreshTokenHash: hashRefreshToken(newToken),
+      refreshTokenExpiresAt: expiresAt,
+      refreshTokenTier: tier,
+      refreshTokenRotatedAt: new Date(),
+    },
+  });
+  return { token: newToken, expiresAt };
+}
+
+// POST /auth/link
 router.post('/link', linkLimiter, asyncHandler(async (req: Request, res: Response) => {
-    const requestId = req.requestId;
-    const { email, pin, shopName, ownerName } = parseBody(linkSchema, req.body);
+  const requestId = req.requestId;
+  const { email, password, shopName } = parseBody(authLinkSchema, req.body);
+  if (!isConfigured()) return notConfigured(res, requestId);
 
-    if (!identityConfigured() || (!mailerConfigured() && !debugCodesEnabled())) {
-      return notConfigured(res, requestId);
+  const secret = verificationSecret();
+  // rate limit per mailbox
+  const recent = await prisma.verificationChallenge.count({
+    where: { email, createdAt: { gte: codeRequestWindowStart(new Date()) } },
+  });
+  if (recent >= MAX_CODES_PER_WINDOW) {
+    return res.status(429).json({ error: `Too many codes requested. Wait ${CODE_REQUEST_WINDOW_MINUTES} minutes.`, code: 'TOO_MANY_CODES', requestId });
+  }
+
+  // upsert user (unverified) with passwordHash
+  let user: any = await prisma.user.findUnique({ where: { email } });
+  if (!user || !user.emailVerifiedAt) {
+    const passwordHash = await hashPassword(password);
+    if (user) {
+      await prisma.user.update({ where: { id: user.id }, data: { passwordHash } });
+    } else {
+      user = await prisma.user.create({ data: { email, passwordHash } });
     }
+  }
 
-    const keycloakOptions = keycloakAdminOptionsFromEnv(process.env)!;
-    const keycloak = createKeycloakAdminClient({ ...keycloakOptions });
-    const secret = verificationSecret();
+  // invalidate outstanding codes
+  await prisma.verificationChallenge.updateMany({ where: { email, used: false }, data: { used: true } });
 
-    // The second, database-side limit. The IP limiter above is per address;
-    // this one is per mailbox, and it counts codes that were already sent —
-    // including consumed ones — so a caller cannot reset it by using them.
-    const recent = await prisma.emailVerification.count({
-      where: { email, createdAt: { gte: codeRequestWindowStart(new Date()) } },
-    });
-    if (recent >= MAX_CODES_PER_WINDOW) {
-      log('warn', 'auth.code_rate_limited', { requestId, email: maskEmail(email) });
-      return res.status(429).json({
-        error: `Too many codes requested. Wait ${CODE_REQUEST_WINDOW_MINUTES} minutes and try again.`,
-        code: 'TOO_MANY_CODES',
-        requestId,
+  const code = generateVerificationCode();
+  const salt = newSalt();
+  const challenge = await prisma.verificationChallenge.create({
+    data: {
+      email,
+      code: hashCodeSecret(code, salt, secret), // storing hash in code field (reuse)
+      expiresAt: new Date(Date.now() + VERIFICATION_TTL_MINUTES * 60_000),
+      tenantId: null,
+    },
+  });
+  // store salt+pinHash in? VerificationChallenge lacks salt/pinHash. Store combined in code? We'll store salt in code? 
+  // For simplicity store salt.pinHash via code field? Need salt for hashing. We'll store `${salt}:${codeHash}:${pinHash}`.
+  await prisma.verificationChallenge.update({
+    where: { id: challenge.id },
+    data: { code: `${salt}:${hashCodeSecret(code, salt, secret)}:${hashCodeSecret(password, salt, secret)}` },
+  });
+
+  // email
+  if (mailerConfigured()) {
+    try {
+      const mailer = buildMailer();
+      await mailer.send({ to: email, code, shopName, ttlMinutes: VERIFICATION_TTL_MINUTES });
+    } catch {
+      await prisma.verificationChallenge.update({ where: { id: challenge.id }, data: { used: true } });
+      return res.status(502).json({ error: 'Email could not be sent', code: 'EMAIL_UNAVAILABLE', requestId });
+    }
+  }
+
+  log('info', 'auth.code_sent', { requestId, email: maskEmail(email) });
+  res.json({
+    status: 'code_sent',
+    challenge_id: challenge.id,
+    email: maskEmail(email),
+    expires_in_seconds: VERIFICATION_TTL_MINUTES * 60,
+    ...(process.env.NODE_ENV !== 'production' && process.env.VERIFICATION_DEBUG_CODES === 'true' ? { debug_code: code } : {}),
+  });
+}));
+
+// POST /auth/verify
+router.post('/verify', verifyLimiter, asyncHandler(async (req: Request, res: Response) => {
+  const requestId = req.requestId;
+  const { email, password, code, shopName, ownerName } = parseBody(authVerifySchema, req.body);
+  if (!isConfigured()) return notConfigured(res, requestId);
+
+  const secret = verificationSecret();
+  const now = new Date();
+  const challenge = await prisma.verificationChallenge.findFirst({ where: { email, used: false }, orderBy: { createdAt: 'desc' } });
+  if (!challenge) return res.status(400).json({ error: 'Code expired', code: 'VERIFICATION_EXPIRED', requestId });
+  if (isVerificationExpired(challenge.expiresAt, now)) {
+    await prisma.verificationChallenge.update({ where: { id: challenge.id }, data: { used: true } });
+    return res.status(400).json({ error: 'Code expired', code: 'VERIFICATION_EXPIRED', requestId });
+  }
+
+  const parts = (challenge.code || '').split(':');
+  if (parts.length !== 3) return res.status(400).json({ error: 'Invalid challenge', code: 'VERIFICATION_INVALID', requestId });
+  const [salt, codeHash, pinHash] = parts;
+  const codeCorrect = hashesMatch(hashCodeSecret(code, salt, secret), codeHash);
+  const pinCorrect = hashesMatch(hashCodeSecret(password, salt, secret), pinHash);
+  if (!codeCorrect || !pinCorrect) {
+    return res.status(400).json({ error: 'Code is not right', code: 'VERIFICATION_INVALID', requestId });
+  }
+
+  await prisma.verificationChallenge.updateMany({ where: { email, used: false }, data: { used: true } });
+
+  // set user verified
+  let user: any = await prisma.user.findUnique({ where: { email } });
+  if (!user) {
+    const passwordHash = await hashPassword(password);
+    user = await prisma.user.create({ data: { email, passwordHash, emailVerifiedAt: now } });
+  } else {
+    const passwordHash = await hashPassword(password);
+    await prisma.user.update({ where: { id: user.id }, data: { passwordHash, emailVerifiedAt: now } });
+    user = await prisma.user.findUnique({ where: { email } })!;
+  }
+
+  const shop = await ensureOwnerProfile({ userId: user.id, email, shopName, ownerName }, { allowCreate: true });
+  if (!shop) {
+    return res.status(400).json({ error: 'Shop setup required', code: 'SHOP_SETUP_REQUIRED', requestId });
+  }
+
+  const tier = 'device';
+  const access = issueAccessToken({ userId: user.id, email, emailVerified: true, tier });
+  const refresh = await issueRefreshToken(shop.profileId, tier);
+
+  res.json({
+    status: 'verified',
+    tenant_id: shop.tenantId,
+    shop_name: shop.shopName,
+    role: 'admin',
+    access_token: access.token,
+    refresh_token: refresh.token,
+    expires_in_seconds: access.expiresIn,
+    refresh_expires_in_seconds: REFRESH_TOKEN_TTL_MS / 1000,
+  });
+}));
+
+// POST /auth/login
+router.post('/login', loginLimiter, asyncHandler(async (req: Request, res: Response) => {
+  const requestId = req.requestId;
+  const { email, password } = parseBody(authLoginSchema, req.body);
+  if (!isConfigured()) return notConfigured(res, requestId);
+
+  const user = await prisma.user.findUnique({ where: { email } });
+  const dummyHash = '$2a$12$' + 'a'.repeat(53);
+  const hashToCheck = user?.passwordHash ?? dummyHash;
+  const ok = await verifyPassword(password, hashToCheck);
+
+  if (!user || !user.emailVerifiedAt) {
+    // unknown or unverified
+    if (user) {
+      await prisma.user.update({ where: { id: user.id }, data: { failedLoginAttempts: { increment: 1 } } });
+    }
+    return res.status(401).json({ error: 'Invalid credentials', code: 'INVALID_CREDENTIALS', requestId });
+  }
+
+  // lockout check
+  if (user.lockedUntil && user.lockedUntil > new Date()) {
+    return res.status(429).json({ error: 'Account locked', code: 'ACCOUNT_LOCKED', requestId });
+  }
+
+  if (!ok) {
+    const attempts = user.failedLoginAttempts + 1;
+    let lockedUntil: Date | null = null;
+    if (attempts >= 5) {
+      const lockMs = Math.min(30 * 60 * 1000, 30 * 1000 * Math.pow(2, attempts - 5));
+      lockedUntil = new Date(Date.now() + lockMs);
+    }
+    await prisma.user.update({ where: { id: user.id }, data: { failedLoginAttempts: attempts, lockedUntil } });
+    return res.status(401).json({ error: 'Invalid credentials', code: 'INVALID_CREDENTIALS', requestId });
+  }
+
+  // success: reset counters
+  await prisma.user.update({ where: { id: user.id }, data: { failedLoginAttempts: 0, lockedUntil: null } });
+
+  const profiles = await prisma.profile.findMany({ where: { userId: user.id, active: true, deletedAt: null }, include: { tenant: true } });
+  if (profiles.length === 0) {
+    return res.status(403).json({ error: 'No shop linked', code: 'NO_SHOP_LINKED', requestId });
+  }
+
+  const tier = 'access';
+  // issue token per first profile? We issue one full token; tenant selection via x-tenant-id.
+  const access = issueAccessToken({ userId: user.id, email, emailVerified: true, tier });
+  // store refresh on first admin/manager profile? Plan: one refresh per profile. For login, use first profile.
+  const primaryProfile = profiles[0];
+  const refresh = await issueRefreshToken(primaryProfile.id, tier);
+
+  res.json({
+    status: 'logged_in',
+    access_token: access.token,
+    refresh_token: refresh.token,
+    expires_in_seconds: access.expiresIn,
+    refresh_expires_in_seconds: REFRESH_TOKEN_TTL_MS / 1000,
+    tenants: profiles.map((p) => ({ id: p.tenantId, shopName: p.tenant.shopName, role: p.role })),
+  });
+}));
+
+// POST /auth/refresh
+router.post('/refresh', refreshLimiter, asyncHandler(async (req: Request, res: Response) => {
+  const requestId = req.requestId;
+  const { refreshToken } = parseBody(authRefreshSchema, req.body);
+  if (!isConfigured()) return notConfigured(res, requestId);
+
+  const now = new Date();
+  const hash = hashRefreshToken(refreshToken);
+  // find manually
+  const allProfiles = await prisma.profile.findMany({ where: { active: true, deletedAt: null } });
+  const matched = allProfiles.find((p) => p.refreshTokenHash === hash || p.refreshTokenPreviousHash === hash);
+  if (!matched) {
+    return res.status(401).json({ error: 'Invalid refresh token', code: 'INVALID_REFRESH_TOKEN', requestId });
+  }
+  const p = matched;
+  if (!p.refreshTokenExpiresAt || p.refreshTokenExpiresAt <= now) {
+    return res.status(401).json({ error: 'Session expired', code: 'SESSION_EXPIRED', requestId });
+  }
+
+  const tier = (p.refreshTokenTier === 'device' ? 'device' : 'access') as 'device' | 'access';
+
+  // grace window for previous hash
+  if (p.refreshTokenPreviousHash === hash && p.refreshTokenHash !== hash) {
+    const rotatedAt = p.refreshTokenRotatedAt ?? p.refreshTokenExpiresAt;
+    const age = now.getTime() - new Date(rotatedAt).getTime();
+    if (age <= GRACE_WINDOW_MS) {
+      // return current token? We need to re-issue access token but keep refresh. Issue new access token only.
+      const user = await prisma.user.findUnique({ where: { id: p.userId! } });
+      const access = issueAccessToken({ userId: p.userId!, email: user?.email ?? '', emailVerified: !!user?.emailVerifiedAt, tier });
+      return res.json({
+        status: 'refreshed',
+        access_token: access.token,
+        refresh_token: refreshToken,
+        expires_in_seconds: access.expiresIn,
+        refresh_expires_in_seconds: REFRESH_TOKEN_TTL_MS / 1000,
       });
     }
+    // reuse detected
+    await prisma.profile.update({ where: { id: p.id }, data: { refreshTokenHash: null, refreshTokenPreviousHash: null } });
+    return res.status(401).json({ error: 'Refresh reuse detected', code: 'REFRESH_REUSE_DETECTED', requestId });
+  }
 
-    let user;
-    try {
-      user = await keycloak.ensureUser(email);
-    } catch (error) {
-      log('error', 'auth.keycloak_unreachable', { requestId, message: error instanceof Error ? error.message : 'unknown' });
-      return res.status(502).json({ error: 'Could not reach the identity server', code: 'IDENTITY_UNAVAILABLE', requestId });
-    }
+  // matches current: rotate
+  const refresh = await rotateRefreshToken(p, tier);
+  const user = await prisma.user.findUnique({ where: { id: p.userId! } });
+  const access = issueAccessToken({ userId: p.userId!, email: user?.email ?? '', emailVerified: !!user?.emailVerifiedAt, tier });
+  res.json({
+    status: 'refreshed',
+    access_token: access.token,
+    refresh_token: refresh.token,
+    expires_in_seconds: access.expiresIn,
+    refresh_expires_in_seconds: REFRESH_TOKEN_TTL_MS / 1000,
+  });
+}));
 
-    // One live code at a time. Consuming the outstanding ones is what makes
-    // the newest email the only one that works, and it is why a "resend"
-    // cannot leave two valid codes in a mailbox.
-    await prisma.emailVerification.updateMany({
-      where: { email, consumedAt: null },
-      data: { consumedAt: new Date() },
-    });
+// POST /auth/forgot-password
+router.post('/forgot-password', loginLimiter, asyncHandler(async (req: Request, res: Response) => {
+  const requestId = req.requestId;
+  const { email } = parseBody(authForgotPasswordSchema, req.body);
+  if (!isConfigured()) return notConfigured(res, requestId);
 
+  const user = await prisma.user.findUnique({ where: { email } });
+  if (user) {
+    // generate code, store EmailVerification? use VerificationChallenge
     const code = generateVerificationCode();
     const salt = newSalt();
-    const challenge = await prisma.emailVerification.create({
+    const secret = verificationSecret();
+    await prisma.verificationChallenge.updateMany({ where: { email, used: false }, data: { used: true } });
+    await prisma.verificationChallenge.create({
       data: {
         email,
-        subject: user.id,
-        salt,
-        codeHash: hashCodeSecret(code, salt, secret),
-        pinHash: hashCodeSecret(pin, salt, secret),
+        code: `${salt}:${hashCodeSecret(code, salt, secret)}:${hashCodeSecret('reset', salt, secret)}`,
         expiresAt: new Date(Date.now() + VERIFICATION_TTL_MINUTES * 60_000),
       },
     });
-
-    try {
-      if (mailerConfigured()) {
-        await buildMailer()({ to: email, code, shopName, ttlMinutes: VERIFICATION_TTL_MINUTES });
+    if (mailerConfigured()) {
+      try {
+        const mailer = buildMailer();
+        await mailer.send({ to: email, code, ttlMinutes: VERIFICATION_TTL_MINUTES });
+      } catch {
+        // ignore
       }
-    } catch (error) {
-      // The code exists but nobody received it. Burning the challenge is the
-      // difference between "try again" and a shop waiting for an email that
-      // was never going to arrive.
-      await prisma.emailVerification.update({ where: { id: challenge.id }, data: { consumedAt: new Date() } });
-      log('error', 'auth.email_failed', { requestId, message: error instanceof Error ? error.message : 'unknown' });
-      return res.status(502).json({ error: 'The verification email could not be sent', code: 'EMAIL_UNAVAILABLE', requestId });
     }
-
-    // The code, the PIN and the hash are all absent from this line: a log is
-    // read by more people than the phone is.
-    log('info', 'auth.code_sent', { requestId, email: maskEmail(email), subject: user.id, accountCreated: user.created, shopName });
-
-    res.json({
-      status: 'code_sent',
-      challenge_id: challenge.id,
-      // Masked, because the caller already knows the address and nobody else
-      // is entitled to it — and so this endpoint cannot enumerate accounts.
-      email: maskEmail(email),
-      expires_in_seconds: VERIFICATION_TTL_MINUTES * 60,
-      ...(debugCodesEnabled() ? { debug_code: code } : {}),
-    });
+  }
+  res.json({ status: 'code_sent' });
 }));
 
-router.post('/verify', verifyLimiter, asyncHandler(async (req: Request, res: Response) => {
-    const requestId = req.requestId;
-    const { email, pin, code, shopName, ownerName } = parseBody(verificationCodeSchema, req.body);
+// POST /auth/reset-password
+router.post('/reset-password', loginLimiter, asyncHandler(async (req: Request, res: Response) => {
+  const requestId = req.requestId;
+  const { email, code, newPassword } = parseBody(authResetPasswordSchema, req.body);
+  if (!isConfigured()) return notConfigured(res, requestId);
 
-    if (!identityConfigured() || !sessionSecrets().length) {
-      return notConfigured(res, requestId);
-    }
+  const secret = verificationSecret();
+  const challenge = await prisma.verificationChallenge.findFirst({ where: { email, used: false }, orderBy: { createdAt: 'desc' } });
+  if (!challenge) return res.status(400).json({ error: 'Invalid code', code: 'VERIFICATION_INVALID', requestId });
+  const parts = (challenge.code || '').split(':');
+  if (parts.length !== 3) return res.status(400).json({ error: 'Invalid code', code: 'VERIFICATION_INVALID', requestId });
+  const [salt, codeHash] = parts;
+  const now = new Date();
+  if (isVerificationExpired(challenge.expiresAt, now)) {
+    await prisma.verificationChallenge.update({ where: { id: challenge.id }, data: { used: true } });
+    return res.status(400).json({ error: 'Code expired', code: 'VERIFICATION_EXPIRED', requestId });
+  }
+  if (!hashesMatch(hashCodeSecret(code, salt, secret), codeHash)) {
+    return res.status(400).json({ error: 'Invalid code', code: 'VERIFICATION_INVALID', requestId });
+  }
+  await prisma.verificationChallenge.updateMany({ where: { email, used: false }, data: { used: true } });
 
-    const secret = verificationSecret();
-    const now = new Date();
+  const user = await prisma.user.findUnique({ where: { email } });
+  if (!user) return res.status(400).json({ error: 'Invalid', code: 'VERIFICATION_INVALID', requestId });
 
-    const challenge = await prisma.emailVerification.findFirst({
-      where: { email, consumedAt: null },
-      orderBy: { createdAt: 'desc' },
-    });
+  const passwordHash = await hashPassword(newPassword);
+  await prisma.user.update({ where: { id: user.id }, data: { passwordHash, emailVerifiedAt: user.emailVerifiedAt ?? now } });
 
-    if (!challenge) {
-      return res.status(400).json({ error: 'That code has expired. Ask for a new one.', code: 'VERIFICATION_EXPIRED', requestId });
-    }
-    if (isVerificationExpired(challenge.expiresAt, now)) {
-      await prisma.emailVerification.update({ where: { id: challenge.id }, data: { consumedAt: now } });
-      return res.status(400).json({ error: 'That code has expired. Ask for a new one.', code: 'VERIFICATION_EXPIRED', requestId });
-    }
-    if (attemptsRemaining(challenge.attempts) <= 0) {
-      await prisma.emailVerification.update({ where: { id: challenge.id }, data: { consumedAt: now } });
-      log('warn', 'auth.code_burnt', { requestId, email: maskEmail(email) });
-      return res.status(429).json({ error: 'Too many wrong attempts. Ask for a new code.', code: 'TOO_MANY_ATTEMPTS', requestId });
-    }
+  // clear refresh hashes on all profiles
+  await prisma.profile.updateMany({ where: { userId: user.id }, data: { refreshTokenHash: null, refreshTokenPreviousHash: null } });
 
-    // Both factors, both through the same constant-time comparison. A wrong
-    // PIN and a wrong code give the same answer, so neither can be learned
-    // one at a time.
-    const codeCorrect = hashesMatch(hashCodeSecret(code, challenge.salt, secret), challenge.codeHash);
-    const pinCorrect = hashesMatch(hashCodeSecret(pin, challenge.salt, secret), challenge.pinHash);
-    if (!codeCorrect || !pinCorrect) {
-      const updated = await prisma.emailVerification.update({
-        where: { id: challenge.id },
-        data: { attempts: { increment: 1 } },
-      });
-      log('warn', 'auth.code_rejected', { requestId, email: maskEmail(email), attemptsRemaining: attemptsRemaining(updated.attempts) });
-      return res.status(400).json({
-        error: 'That code is not right.',
-        code: 'VERIFICATION_INVALID',
-        attempts_remaining: attemptsRemaining(updated.attempts),
-        requestId,
-      });
-    }
-
-    // Single use: consuming every outstanding code for the address means a
-    // verified shop cannot be re-verified with an older email.
-    await prisma.emailVerification.updateMany({ where: { email, consumedAt: null }, data: { consumedAt: now } });
-
-    const keycloakOptions = keycloakAdminOptionsFromEnv(process.env)!;
-    const keycloak = createKeycloakAdminClient({ ...keycloakOptions });
-    try {
-      await keycloak.activateUser(challenge.subject);
-    } catch (error) {
-      log('error', 'auth.activate_failed', { requestId, message: error instanceof Error ? error.message : 'unknown' });
-      return res.status(502).json({ error: 'Could not reach the identity server', code: 'IDENTITY_UNAVAILABLE', requestId });
-    }
-
-    const shop = await ensureOwnerProfile(
-      { oidcSubject: challenge.subject, email, shopName, ownerName },
-      { allowCreate: true },
-    );
-    if (!shop) {
-      // An account with no shop and no details to build one from. The till
-      // always sends both from its own setup screen, so this is a caller that
-      // never set a shop up — which is a setup problem, not a verification one.
-      return res.status(400).json({
-        error: 'This account has no shop yet. Finish shop setup on the till and try again.',
-        code: 'SHOP_SETUP_REQUIRED',
-        requestId,
-      });
-    }
-
-    await prisma.profile.update({
-      where: { id: shop.profileId },
-      data: { emailVerifiedAt: now },
-    });
-
-    const session = issueAppSession({
-      subject: challenge.subject,
-      email,
-      secret: sessionSecrets()[0],
-      ttlMs: APP_SESSION_TTL_MS,
-      audience: process.env.OIDC_AUDIENCE,
-    });
-    const refresh = await issueRefreshToken(shop.profileId);
-
-    log('info', 'auth.verified', {
-      requestId,
-      email: maskEmail(email),
-      tenantId: shop.tenantId,
-      shopCreated: shop.created,
-    });
-
-    res.json({
-      status: 'verified',
-      tenant_id: shop.tenantId,
-      shop_name: shop.shopName,
-      role: 'admin',
-      access_token: session.token,
-      refresh_token: refresh.token,
-      expires_in_seconds: APP_SESSION_TTL_MS / 1000,
-      refresh_expires_in_seconds: REFRESH_TOKEN_TTL_MS / 1000,
-    });
+  res.json({ status: 'password_reset' });
 }));
 
-router.post('/refresh', verifyLimiter, asyncHandler(async (req: Request, res: Response) => {
-    const requestId = req.requestId;
-    const { refreshToken } = parseBody(refreshSchema, req.body);
+// POST /auth/change-password (authenticated)
+router.post('/change-password', authMiddleware, asyncHandler(async (req: Request, res: Response) => {
+  const requestId = req.requestId;
+  const { currentPassword, newPassword } = parseBody(authChangePasswordSchema, req.body);
+  if (!isConfigured()) return notConfigured(res, requestId);
 
-    if (!identityConfigured() || !sessionSecrets().length) {
-      return notConfigured(res, requestId);
-    }
+  const userId = req.auth?.sub;
+  if (!userId) return res.status(401).json({ error: 'Unauthorized', requestId });
 
-    const now = new Date();
-    const profile = await prisma.profile.findFirst({
-      where: {
-        refreshTokenHash: hashCodeSecret(refreshToken, 'app-session-refresh', verificationSecret()),
-        refreshTokenExpiresAt: { gt: now },
-        active: true,
-        deletedAt: null,
-      },
-    });
-    if (!profile || !profile.email) {
-      // The same answer for a token that never existed and one that expired:
-      // a stolen token tells its holder nothing about how close they were.
-      return res.status(401).json({ error: 'Session expired', code: 'SESSION_EXPIRED', requestId });
-    }
+  const user = await prisma.user.findUnique({ where: { id: userId } });
+  if (!user) return res.status(401).json({ error: 'Unauthorized', requestId });
 
-    // Rotated on use, so a token lifted off a phone works exactly once.
-    const refresh = await issueRefreshToken(profile.id);
-    const session = issueAppSession({
-      subject: profile.oidcSubject ?? profile.id,
-      email: profile.email,
-      secret: sessionSecrets()[0],
-      ttlMs: APP_SESSION_TTL_MS,
-      audience: process.env.OIDC_AUDIENCE,
-    });
+  const ok = await verifyPassword(currentPassword, user.passwordHash);
+  if (!ok) return res.status(401).json({ error: 'Invalid current password', code: 'INVALID_CREDENTIALS', requestId });
 
-    log('info', 'auth.session_refreshed', { requestId, profileId: profile.id });
+  const passwordHash = await hashPassword(newPassword);
+  await prisma.user.update({ where: { id: userId }, data: { passwordHash } });
+  await prisma.profile.updateMany({ where: { userId }, data: { refreshTokenHash: null, refreshTokenPreviousHash: null } });
 
-    res.json({
-      status: 'refreshed',
-      access_token: session.token,
-      refresh_token: refresh.token,
-      expires_in_seconds: APP_SESSION_TTL_MS / 1000,
-      refresh_expires_in_seconds: REFRESH_TOKEN_TTL_MS / 1000,
-    });
+  res.json({ status: 'password_changed' });
+}));
+
+// POST /auth/logout
+router.post('/logout', authMiddleware, asyncHandler(async (req: Request, res: Response) => {
+  const requestId = req.requestId;
+  const userId = req.auth?.sub;
+  const { refreshToken, all } = req.body ?? {};
+  if (!userId) return res.status(401).json({ error: 'Unauthorized', requestId });
+
+  if (all) {
+    await prisma.profile.updateMany({ where: { userId }, data: { refreshTokenHash: null, refreshTokenPreviousHash: null } });
+  } else if (refreshToken) {
+    const hash = hashRefreshToken(refreshToken);
+    await prisma.profile.updateMany({ where: { userId, refreshTokenHash: hash }, data: { refreshTokenHash: null, refreshTokenPreviousHash: null } });
+  } else {
+    await prisma.profile.updateMany({ where: { userId }, data: { refreshTokenHash: null, refreshTokenPreviousHash: null } });
+  }
+  res.json({ status: 'logged_out' });
+}));
+
+// GET /auth/me
+router.get('/me', authMiddleware, asyncHandler(async (req: Request, res: Response) => {
+  const requestId = req.requestId;
+  const userId = req.auth?.sub;
+  if (!userId) return res.status(401).json({ error: 'Unauthorized', requestId });
+  const user = await prisma.user.findUnique({ where: { id: userId } });
+  if (!user) return res.status(401).json({ error: 'Unauthorized', requestId });
+  const profiles = await prisma.profile.findMany({ where: { userId, active: true, deletedAt: null }, include: { tenant: true } });
+  res.json({
+    userId: user.id,
+    email: user.email,
+    emailVerified: !!user.emailVerifiedAt,
+    tenants: profiles.map((p) => ({ id: p.tenantId, shopName: p.tenant.shopName, role: p.role })),
+  });
 }));
 
 export default router;

@@ -380,9 +380,24 @@ model SaleSyncConflict {
   @@map("sale_sync_conflicts")
 }
 
+model User {
+  id                 String    @id @default(uuid())
+  email              String    @unique
+  passwordHash       String    @map("password_hash")
+  emailVerifiedAt    DateTime? @map("email_verified_at")
+  failedLoginAttempts Int      @default(0) @map("failed_login_attempts")
+  lockedUntil        DateTime? @map("locked_until")
+  refreshTokenRotatedAt DateTime? @map("refresh_token_rotated_at")
+  createdAt          DateTime  @default(now()) @map("created_at")
+
+  profiles Profile[]
+
+  @@map("users")
+}
+
 model Profile {
   id          String  @id @default(cuid())
-  oidcSubject String? @map("oidc_subject")
+  userId      String? @map("user_id")
 
   tenantId String @map("tenant_id")
 
@@ -402,7 +417,15 @@ model Profile {
 
   createdAt DateTime @default(now()) @map("created_at")
 
+  // Refresh token state (one active refresh token per profile).
+  refreshTokenHash         String?   @unique @map("refresh_token_hash")
+  refreshTokenPreviousHash String?   @map("refresh_token_previous_hash")
+  refreshTokenExpiresAt    DateTime? @map("refresh_token_expires_at")
+  refreshTokenTier         String?   @map("refresh_token_tier")
+  refreshTokenRotatedAt    DateTime? @map("refresh_token_rotated_at")
+
   tenant           Tenant            @relation(fields: [tenantId], references: [id])
+  user             User?             @relation(fields: [userId], references: [id])
   sales            Sale[]            @relation("ProfileSales")
   stockAdjustments StockAdjustment[] @relation("ProfileStockAdjustments")
   payments         Payment[]         @relation("ProfilePayments")
@@ -411,7 +434,7 @@ model Profile {
   // different shop because the shop ID is part of the login identity.
   @@unique([tenantId, username])
   @@index([tenantId])
-  @@index([oidcSubject])
+  @@index([userId])
   @@map("profiles")
 }
 

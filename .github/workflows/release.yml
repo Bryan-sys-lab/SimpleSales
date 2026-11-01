@@ -154,7 +154,6 @@ jobs:
         env:
           SENTRY_DSN: ${{ secrets.SENTRY_DSN }}
           BACKEND_URL: ${{ secrets.BACKEND_URL }}
-          OIDC_ISSUER_URL: ${{ secrets.OIDC_ISSUER_URL }}
         run: |
           set -euo pipefail
 
@@ -165,11 +164,7 @@ jobs:
           if [ -z "${BACKEND_URL}" ]; then
             echo "::warning::BACKEND_URL is not set. This is an offline-only build: sales are recorded locally, but sync and M-Pesa will not work."
           fi
-          if [ -z "${OIDC_ISSUER_URL}" ]; then
-            echo "::warning::OIDC_ISSUER_URL is not set. This is an offline-only build: staff sign in with their PIN, but online sign-in will not work."
-          fi
-
-          for url in "$BACKEND_URL" "$OIDC_ISSUER_URL"; do
+          for url in "$BACKEND_URL"; do
             [ -z "$url" ] && continue
             if [[ ! "$url" =~ ^https://[^[:space:]]+$ ]]; then
               echo "::error::'$url' must be an https:// URL. Cleartext and bare hosts are not accepted."
@@ -181,16 +176,10 @@ jobs:
             fi
           done
 
-          # A placeholder is https and non-local, so it survives the checks
-          # above — but it is still obviously not a real deployment.
-          if [[ "${OIDC_ISSUER_URL}" == *example.com* || "${OIDC_ISSUER_URL}" == *example.test* ]]; then
-            echo "::warning::OIDC_ISSUER_URL looks like a placeholder ('$OIDC_ISSUER_URL'). Online sign-in will not work."
-          fi
-
           # Recorded so the published release is self-documenting about what
           # this particular APK can and cannot do.
           offline_only=false
-          if [ -z "${BACKEND_URL}" ] || [ -z "${OIDC_ISSUER_URL}" ]; then
+          if [ -z "${BACKEND_URL}" ]; then
             offline_only=true
           fi
           echo "offline_only=${offline_only}" >> "$GITHUB_OUTPUT"
@@ -206,7 +195,6 @@ jobs:
         env:
           SENTRY_DSN: ${{ secrets.SENTRY_DSN }}
           BACKEND_URL: ${{ secrets.BACKEND_URL }}
-          OIDC_ISSUER_URL: ${{ secrets.OIDC_ISSUER_URL }}
           OIDC_REDIRECT_URL: ${{ secrets.OIDC_REDIRECT_URL }}
           OIDC_CLIENT_ID: ${{ secrets.OIDC_CLIENT_ID }}
           OIDC_API_SCOPE: ${{ secrets.OIDC_API_SCOPE }}
@@ -239,10 +227,6 @@ jobs:
           }
           add_define SENTRY_DSN "$SENTRY_DSN"
           add_define BACKEND_URL "$BACKEND_URL"
-          add_define OIDC_ISSUER_URL "$OIDC_ISSUER_URL"
-          add_define OIDC_CLIENT_ID "$OIDC_CLIENT_ID"
-          add_define OIDC_REDIRECT_URL "$OIDC_REDIRECT_URL"
-          add_define OIDC_API_SCOPE "$OIDC_API_SCOPE"
 
           # The manifest placeholder and the dart-define have to agree on the
           # scheme: AppAuth's manifest filters the callback on

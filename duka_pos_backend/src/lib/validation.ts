@@ -365,7 +365,7 @@ export const stockMovementsSyncSchema = z.object({
  */
 export const authLinkSchema = z.object({
   email: z.string().trim().toLowerCase().email().max(254),
-  pin: z.string().trim().min(4).max(8),
+  password: z.string().trim().regex(/^\d{6}$/),
   shopName: boundedName,
   ownerName: boundedName,
 });
@@ -375,16 +375,37 @@ export const authLinkSchema = z.object({
  */
 export const authVerifySchema = z.object({
   email: z.string().trim().toLowerCase().email().max(254),
-  pin: z.string().trim().min(4).max(8),
+  password: z.string().trim().regex(/^\d{6}$/),
   code: z.string().trim().length(6),
+  shopName: boundedName.optional(),
+  ownerName: boundedName.optional(),
 });
 
-/**
- * Refresh an app session using its refresh token.
- */
+export const authLoginSchema = z.object({
+  email: z.string().trim().toLowerCase().email().max(254),
+  password: z.string().trim().regex(/^\d{6}$/),
+});
+
 export const authRefreshSchema = z.object({
   refreshToken: z.string().min(1),
 });
+
+export const authForgotPasswordSchema = z.object({
+  email: z.string().trim().toLowerCase().email().max(254),
+});
+
+export const authResetPasswordSchema = z.object({
+  email: z.string().trim().toLowerCase().email().max(254),
+  code: z.string().trim().length(6),
+  newPassword: z.string().trim().regex(/^\d{6}$/),
+});
+
+export const authChangePasswordSchema = z.object({
+  currentPassword: z.string().trim().regex(/^\d{6}$/),
+  newPassword: z.string().trim().regex(/^\d{6}$/),
+});
+
+
 
 /**
  * Step 1 of Forgot PIN: request a reset code by email.

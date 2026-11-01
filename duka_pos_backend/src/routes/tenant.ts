@@ -137,14 +137,14 @@ router.post(
   '/provision',
   asyncHandler(async (req, res) => {
     const { shopName, ownerName, email, businessProfile } = parseBody(provisionSchema, req.body);
-    const oidcUserId = req.auth?.sub;
-    if (!oidcUserId) {
+    const userId = req.auth?.sub;
+    if (!userId) {
       return res.status(401).json({ error: 'Authenticated user required' });
     }
     // Verify the OIDC email matches the account email.
     // (identity.isVerifiedEmailMatch is imported where needed.)
     const existingShop = await prisma.profile.findFirst({
-      where: { oidcSubject: oidcUserId, tenant: { shopName: shopName.trim() } },
+      where: { userId: userId, tenant: { shopName: shopName.trim() } },
     });
     if (existingShop) {
       return res.status(409).json({ error: 'This account is already linked to this shop', tenant_id: existingShop.tenantId });
@@ -155,7 +155,7 @@ router.post(
       });
       const profile = await tx.profile.create({
         data: {
-          oidcSubject: oidcUserId,
+          userId: userId,
           tenantId: tenant.id,
           name: ownerName.trim(),
           email,
@@ -180,12 +180,12 @@ router.get(
     const accountWhere = identity?.email
       ? {
           OR: [
-            ...(identity.sub ? [{ oidcSubject: identity.sub }] : []),
+            ...(identity.sub ? [{ userId: identity.sub }] : []),
             { email: identity.email },
           ],
         }
       : identity?.sub
-        ? { oidcSubject: identity.sub }
+        ? { userId: identity.sub }
         : { id: user.id };
     const profiles = await prisma.profile.findMany({
       where: { ...accountWhere, active: true, deletedAt: null },
@@ -1163,12 +1163,12 @@ router.get(
     const accountWhere = identity?.email
       ? {
           OR: [
-            ...(identity.sub ? [{ oidcSubject: identity.sub }] : []),
+            ...(identity.sub ? [{ userId: identity.sub }] : []),
             { email: identity.email },
           ],
         }
       : identity?.sub
-        ? { oidcSubject: identity.sub }
+        ? { userId: identity.sub }
         : { id: user.id };
     const profiles = await prisma.profile.findMany({
       where: {
@@ -1319,9 +1319,9 @@ router.get(
 
     const identity = req.auth;
     const accountWhere = identity?.email
-      ? { OR: [...(identity.sub ? [{ oidcSubject: identity.sub }] : []), { email: identity.email }] }
+      ? { OR: [...(identity.sub ? [{ userId: identity.sub }] : []), { email: identity.email }] }
       : identity?.sub
-        ? { oidcSubject: identity.sub }
+        ? { userId: identity.sub }
         : { id: user.id };
     const profiles = await prisma.profile.findMany({
       where: { ...accountWhere, role: 'admin', active: true, deletedAt: null },

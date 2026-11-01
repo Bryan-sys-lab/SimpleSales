@@ -7,7 +7,7 @@
 export type VerificationEmail = {
   to: string;
   code: string;
-  shopName: string;
+  shopName?: string;
   ttlMinutes: number;
 };
 

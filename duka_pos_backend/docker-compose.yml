@@ -1,4 +1,4 @@
-# The development stack: PostgreSQL, Keycloak, its realm setup, and the API.
+# The development stack: PostgreSQL, object storage, and the API.
 #
 # Every value below is a LOCAL-DEV default, never a secret: the overrides live
 # in .env (gitignored), via `${VAR:-default}`. What a real deployment needs —
@@ -18,9 +18,12 @@ x-backend-env: &backend-env
   # Prisma's pool bounded so a laptop or small container cannot exhaust DB
   # connections during sync bursts.
   DATABASE_URL: ${DATABASE_URL:-postgresql://duka_pos:${DUKA_DB_PASSWORD:-duka_local_dev}@db:5432/duka_pos?schema=public&connection_limit=5&pool_timeout=10}
-  OIDC_ISSUER_URL: ${OIDC_ISSUER_URL:-http://keycloak:8080/realms/duka}
-  OIDC_AUDIENCE: ${OIDC_AUDIENCE:-duka-app}
-  OIDC_JWKS_URI: ${OIDC_JWKS_URI:-http://keycloak:8080/realms/duka/protocol/openid-connect/certs}
+  AUTH_JWT_SECRET: ${AUTH_JWT_SECRET:-local-dev-secret-change-me}
+  AUTH_JWT_SECRET_PREVIOUS: ${AUTH_JWT_SECRET_PREVIOUS:-}
+  EMAIL_VERIFICATION_SECRET: ${EMAIL_VERIFICATION_SECRET:-local-dev-verify-secret}
+  CLOUDFLARE_ACCOUNT_ID: ${CLOUDFLARE_ACCOUNT_ID:-}
+  CLOUDFLARE_API_TOKEN: ${CLOUDFLARE_API_TOKEN:-}
+  CLOUDFLARE_EMAIL_FROM: ${CLOUDFLARE_EMAIL_FROM:-security@nerva.co.ke}
   # The real credential comes from .env; the placeholder is refused by the
   # PayHero checks, so a misconfigured deploy says so instead of failing a
   # payment in the field.
@@ -67,7 +70,7 @@ services:
       POSTGRES_DB: duka_pos
     volumes:
       - duka_pos_db_data:/var/lib/postgresql/data
-      - ./docker/db-init.sql:/docker-entrypoint-initdb.d/10-keycloak.sql:ro
+
     ports:
       - '5432:5432'
     healthcheck:
@@ -121,54 +124,6 @@ services:
         condition: service_healthy
     restart: 'no'
 
-  # ------------------------------------------------------------------
-  # Keycloak - OIDC identity provider
-  # ------------------------------------------------------------------
-  keycloak:
-    image: quay.io/keycloak/keycloak:24.0.1
-    container_name: duka_pos_keycloak
-    command: start-dev
-    environment:
-      KC_DB: postgres
-      KC_DB_URL: jdbc:postgresql://db:5432/keycloak
-      KC_DB_USERNAME: keycloak
-      KC_DB_PASSWORD: ${KC_DB_PASSWORD:-keycloak_local_dev}
-      KEYCLOAK_ADMIN: ${KEYCLOAK_ADMIN:-admin}
-      KEYCLOAK_ADMIN_PASSWORD: ${KEYCLOAK_ADMIN_PASSWORD:-admin_local_dev}
-    ports:
-      - '8080:8080'
-    depends_on:
-      db:
-        condition: service_healthy
-    # The image ships no curl, so a curl-based check fails FOREVER and every
-    # depends_on silently starves. The realm answers on 8080; TCP says when
-    # it is listening, which is what a dependent needs.
-    healthcheck:
-      test: ['CMD-SHELL', 'echo > /dev/tcp/127.0.0.1/8080']
-      interval: 5s
-      timeout: 5s
-      retries: 60
-
-  # ------------------------------------------------------------------
-  # Keycloak init - creates realm, client, and test user
-  # ------------------------------------------------------------------
-  keycloak-init:
-    image: duka_pos_backend:local
-    container_name: duka_pos_keycloak_init
-    environment:
-      KEYCLOAK_URL: http://keycloak:8080
-      KEYCLOAK_ADMIN: ${KEYCLOAK_ADMIN:-admin}
-      KEYCLOAK_ADMIN_PASSWORD: ${KEYCLOAK_ADMIN_PASSWORD:-admin_local_dev}
-      REALM_NAME: duka
-      CLIENT_ID: ${OIDC_AUDIENCE:-duka-app}
-      TEST_USER: test-user
-      TEST_USER_PASSWORD: ${TEST_USER_PASSWORD:-test_local_dev}
-      TEST_USER_EMAIL: test-user@example.com
-    command: ['node', 'keycloak-init.mjs']
-    depends_on:
-      keycloak:
-        condition: service_healthy
-
   # Apply the repository's additive schema chain before the API accepts
   # traffic. A green liveness probe is not enough when Prisma knows about a
   # column the database volume does not yet have.
@@ -200,10 +155,6 @@ services:
     depends_on:
       db:
         condition: service_healthy
-      keycloak:
-        condition: service_healthy
-      keycloak-init:
-        condition: service_completed_successfully
       migrate:
         condition: service_completed_successfully
       storage-init:
@@ -235,8 +186,6 @@ services:
     depends_on:
       backend:
         condition: service_healthy
-      keycloak-init:
-        condition: service_completed_successfully
 
 volumes:
   duka_pos_db_data:

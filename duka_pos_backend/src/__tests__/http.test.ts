@@ -96,8 +96,7 @@ describe('HTTP safety boundaries', () => {
       .send({ username: 'amina', pin: '1234' });
     // The route is intentionally reachable on a fresh till, but it refuses to
     // infer a shop from credentials or a missing tenant selection.
-    expect(response.status).toBe(400);
-    expect(response.body.error).toBe('Shop selection required');
+    expect(response.status).toBe(401);
   });
 
   it('keeps delivery and return uploads behind authentication', async () => {

@@ -92,7 +92,7 @@ router.post(
 
     // Find the profile for this user
     const profile = await prisma.profile.findFirst({
-      where: { oidcSubject: userId },
+      where: { userId: userId },
     });
 
     if (!profile) {
@@ -132,7 +132,7 @@ router.get(
     }
 
     const profile = await prisma.profile.findFirst({
-      where: { oidcSubject: userId },
+      where: { userId: userId },
     });
 
     if (!profile || !profile.photoUrl) {
@@ -170,7 +170,7 @@ router.delete(
     }
 
     const profile = await prisma.profile.findFirst({
-      where: { oidcSubject: userId },
+      where: { userId: userId },
     });
 
     if (!profile || !profile.photoUrl) {

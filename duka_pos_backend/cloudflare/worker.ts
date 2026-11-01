@@ -2,10 +2,8 @@ import { DurableObject } from 'cloudflare:workers';
 
 type BackendEnv = {
   BACKEND_CONTAINER: DurableObjectNamespace<BackendContainer>;
-  DATABASE_URL: string; OIDC_ISSUER_URL: string; OIDC_AUDIENCE: string; OIDC_JWKS_URI: string;
-  KC_DB_URL: string; KC_DB_USERNAME: string; KC_DB_PASSWORD: string;
-  KEYCLOAK_ADMIN: string; KEYCLOAK_ADMIN_PASSWORD: string;
-  KC_HOSTNAME: string;
+  DATABASE_URL: string;
+  AUTH_JWT_SECRET: string; AUTH_JWT_SECRET_PREVIOUS?: string;
   FRONTEND_URL?: string; PUBLIC_API_URL: string; PAYHERO_AUTH_TOKEN: string; PAYHERO_ACCOUNT_ID: string;
   MPESA_CALLBACK_KEY: string; SYSTEM_ADMIN_SUBJECTS: string; R2_ENDPOINT: string; R2_ACCESS_KEY_ID: string;
   R2_SECRET_ACCESS_KEY: string; R2_BUCKET_NAME: string; R2_PUBLIC_URL: string;
@@ -23,10 +21,6 @@ export class BackendContainer extends DurableObject<BackendEnv> {
     const url = new URL(request.url); url.protocol = 'http:'; url.host = 'container';
     const forwarded = new Request(url, request); forwarded.headers.delete('host');
 
-    // Route Keycloak/OIDC requests to port 8080, everything else to backend on 3000
-    if (url.pathname.startsWith('/realms/') || url.pathname.startsWith('/auth/')) {
-      return this.ctx.container!.getTcpPort(8080).fetch(forwarded);
-    }
     return this.ctx.container!.getTcpPort(3000).fetch(forwarded);
   }
 
@@ -36,8 +30,9 @@ export class BackendContainer extends DurableObject<BackendEnv> {
       image: container.images.base, instance: 'standard-1', enableInternet: true,
       env: {
         NODE_ENV: 'production', PORT: '3000', DATABASE_URL: this.env.DATABASE_URL,
-        OIDC_ISSUER_URL: this.env.OIDC_ISSUER_URL, OIDC_AUDIENCE: this.env.OIDC_AUDIENCE,
-        OIDC_JWKS_URI: this.env.OIDC_JWKS_URI, ...(this.env.FRONTEND_URL ? { FRONTEND_URL: this.env.FRONTEND_URL } : {}),
+        AUTH_JWT_SECRET: this.env.AUTH_JWT_SECRET,
+        ...(this.env.AUTH_JWT_SECRET_PREVIOUS ? { AUTH_JWT_SECRET_PREVIOUS: this.env.AUTH_JWT_SECRET_PREVIOUS } : {}),
+        ...(this.env.FRONTEND_URL ? { FRONTEND_URL: this.env.FRONTEND_URL } : {}),
         PUBLIC_API_URL: this.env.PUBLIC_API_URL, PAYHERO_AUTH_TOKEN: this.env.PAYHERO_AUTH_TOKEN,
         PAYHERO_ACCOUNT_ID: this.env.PAYHERO_ACCOUNT_ID, MPESA_CALLBACK_KEY: this.env.MPESA_CALLBACK_KEY,
         SYSTEM_ADMIN_SUBJECTS: this.env.SYSTEM_ADMIN_SUBJECTS, R2_ENDPOINT: this.env.R2_ENDPOINT,
@@ -49,10 +44,6 @@ export class BackendContainer extends DurableObject<BackendEnv> {
         APP_VERSION_CODE: this.env.APP_VERSION_CODE, APP_DOWNLOAD_URL: this.env.APP_DOWNLOAD_URL,
         APP_UPDATE_REQUIRED: this.env.APP_UPDATE_REQUIRED, APP_RELEASE_NOTES: this.env.APP_RELEASE_NOTES,
         ...(this.env.APP_RELEASE_REPOSITORY ? { APP_RELEASE_REPOSITORY: this.env.APP_RELEASE_REPOSITORY } : {}),
-        // Keycloak env
-        KC_DB_URL: this.env.KC_DB_URL, KC_DB_USERNAME: this.env.KC_DB_USERNAME,
-        KC_DB_PASSWORD: this.env.KC_DB_PASSWORD, KC_HOSTNAME: this.env.KC_HOSTNAME,
-        KEYCLOAK_ADMIN: this.env.KEYCLOAK_ADMIN, KEYCLOAK_ADMIN_PASSWORD: this.env.KEYCLOAK_ADMIN_PASSWORD,
       },
     });
     await container.setInactivityTimeout(10 * 60 * 1000);
