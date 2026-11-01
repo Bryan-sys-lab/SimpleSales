@@ -16,12 +16,6 @@ const DEVICE_TTL_SECONDS = 12 * 60 * 60;
 const ACCESS_TTL_SECONDS = 60 * 60;
 const CLOCK_SKEW_SECONDS = 60;
 
-function secrets(): string[] {
-  const primary = process.env.AUTH_JWT_SECRET ?? '';
-  const previous = process.env.AUTH_JWT_SECRET_PREVIOUS ?? '';
-  return [primary, previous].filter(Boolean);
-}
-
 export function issueAccessToken(params: {
   userId: string;
   email: string;
@@ -47,7 +41,7 @@ export function issueAccessToken(params: {
 }
 
 export function verifyAccessToken(token: string): AccessTokenClaims | null {
-  const candidateSecrets = secrets();
+  const candidateSecrets = [process.env.AUTH_JWT_SECRET ?? '', process.env.AUTH_JWT_SECRET_PREVIOUS ?? ''].filter(Boolean);
   if (candidateSecrets.length === 0) return null;
   for (const secret of candidateSecrets) {
     try {
@@ -56,7 +50,6 @@ export function verifyAccessToken(token: string): AccessTokenClaims | null {
         clockTolerance: CLOCK_SKEW_SECONDS,
       }) as AccessTokenClaims;
       if (!decoded || typeof decoded.sub !== 'string') return null;
-      // Max lifetime guard.
       if (typeof decoded.iat === 'number' && typeof decoded.exp === 'number') {
         const maxLifetime = decoded.token_use === 'device' ? DEVICE_TTL_SECONDS : ACCESS_TTL_SECONDS;
         if (decoded.exp - decoded.iat > maxLifetime + CLOCK_SKEW_SECONDS) return null;
@@ -64,7 +57,7 @@ export function verifyAccessToken(token: string): AccessTokenClaims | null {
       if (decoded.token_use !== 'device' && decoded.token_use !== 'access') return null;
       return decoded;
     } catch {
-      // try next secret
+      // try next
     }
   }
   return null;

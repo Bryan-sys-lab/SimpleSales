@@ -1,12 +1,15 @@
-node_modules/
+
+cloudflare/worker-configuration.d.ts
 dist/
+.DS_Store
 .env
 .env.local
+.env.production
 *.log
-.DS_Store
+newman-e2e-report.json
+node_modules/
 prisma/*.db
 prisma/*.db-journal
-newman-e2e-report.json
+# Production env (never commit)
 reports/*.json
 src/generated/
-cloudflare/worker-configuration.d.ts

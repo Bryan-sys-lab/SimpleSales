@@ -178,7 +178,7 @@ async function publishedAppRelease(): Promise<PublishedAppRelease> {
       if (!asset || typeof asset !== 'object') return false;
       const candidate = asset as { name?: unknown; browser_download_url?: unknown };
       return typeof candidate.name === 'string'
-          && candidate.name === `duka-pos-${payload.tag_name}.apk`
+          && candidate.name === `SimpleSales-${payload.tag_name}.apk`
           && typeof candidate.browser_download_url === 'string';
     });
     if (!match || !apk || typeof apk.browser_download_url !== 'string') return fallback;
