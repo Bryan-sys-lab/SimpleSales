@@ -1,30 +1,25 @@
-# Multi-stage Dockerfile for Duka POS Backend
+# Multi-stage Dockerfile for Duka POS Backend (optimized for small containers)
 # Stage 1: Build
-FROM node:26-bookworm-slim AS builder
-RUN apt-get update \
-  && apt-get install -y --no-install-recommends libssl3 ca-certificates \
-  && rm -rf /var/lib/apt/lists/*
+FROM node:20-alpine AS builder
 WORKDIR /app
-COPY package.json package-lock.json* ./
-RUN npm ci --include=dev
+COPY package*.json ./
+RUN npm ci
 COPY . .
 RUN npx prisma generate
 RUN npm run build
 
-# Stage 2: Runtime
-FROM node:26-bookworm-slim AS runner
-RUN apt-get update && apt-get install -y --no-install-recommends libssl3 ca-certificates && rm -rf /var/lib/apt/lists/*
+# Stage 2: Ultra-lean runtime
+FROM node:20-alpine
 WORKDIR /app
-ENV NODE_ENV=production
-RUN addgroup --system --gid 1001 nodejs
-RUN adduser --system --uid 1001 nodejs
-COPY --from=builder /app/node_modules ./node_modules
+COPY --from=builder /app/package*.json ./
+RUN npm ci --only=production
 COPY --from=builder /app/dist ./dist
-COPY --from=builder /app/scripts ./scripts
-COPY --from=builder /app/keycloak-init.mjs ./keycloak-init.mjs
 COPY --from=builder /app/prisma ./prisma
-USER nodejs
+COPY --from=builder /app/node_modules/.prisma ./node_modules/.prisma
+
+ENV NODE_ENV=production
+ENV NODE_OPTIONS="--max-old-space-size=180"
+
 EXPOSE 3000
-HEALTHCHECK --interval=15s --timeout=5s --start-period=40s --retries=10 \
-  CMD node -e "fetch('http://localhost:3000/health').then((r) => process.exit(r.ok ? 0 : 1)).catch(() => process.exit(1))"
 CMD ["node", "dist/index.js"]
+PY
