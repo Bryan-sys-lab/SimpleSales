@@ -14,7 +14,7 @@ RUN npm run build
 # Stage 2: Download and build Keycloak
 FROM node:26-bookworm-slim AS keycloak-builder
 RUN apt-get update \
-  && apt-get install -y --no-install-recommends wget ca-certificates \
+  && apt-get install -y --no-install-recommends wget ca-certificates openjdk-17-jre-headless \
   && rm -rf /var/lib/apt/lists/*
 RUN wget -q https://github.com/keycloak/keycloak/releases/download/24.0.1/keycloak-24.0.1.tar.gz \
   && tar -xzf keycloak-24.0.1.tar.gz -C /opt/ \
