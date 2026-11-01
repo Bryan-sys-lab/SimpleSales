@@ -6,8 +6,7 @@
 # there, or the placeholder is honest: `unset-local-dev` values that only ever
 # serve localhost.
 #
-# The keycloak role and database do not exist in a fresh postgres volume (the
-# image can only seed ONE), so `db-init` creates them once, quietly, idempotently.
+# The application database is seeded by Prisma migrations.
 
 x-backend-env: &backend-env
   # The container below is the DEV stack: production behaviour (the https
