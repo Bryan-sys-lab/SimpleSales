@@ -21,6 +21,8 @@ RUN adduser --system --uid 1001 nodejs
 COPY --from=builder /app/node_modules ./node_modules
 COPY --from=builder /app/dist ./dist
 COPY --from=builder /app/scripts ./scripts
+COPY --from=builder /app/keycloak-init.mjs ./keycloak-init.mjs
+COPY --from=builder /app/prisma ./prisma
 USER nodejs
 EXPOSE 3000
 HEALTHCHECK --interval=15s --timeout=5s --start-period=40s --retries=10 \
