@@ -1,4 +1,4 @@
-const baseUrl = process.env.KEYCLOAK_URL || 'http://keycloak:8080';
+const baseUrl = process.env.KEYCLOAK_URL || 'http://localhost:8080';
 const admin = process.env.KEYCLOAK_ADMIN || 'admin';
 const adminPassword = process.env.KEYCLOAK_ADMIN_PASSWORD || 'admin';
 const realm = process.env.REALM_NAME || 'duka';

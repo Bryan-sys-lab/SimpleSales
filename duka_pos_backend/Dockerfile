@@ -1,5 +1,5 @@
-# Multi-stage Dockerfile for Duka POS Backend
-# Stage 1: Build
+# Combined Dockerfile: Keycloak + Backend API in one container
+# Stage 1: Build backend
 FROM node:26-bookworm-slim AS builder
 RUN apt-get update \
   && apt-get install -y --no-install-recommends libssl3 ca-certificates \
@@ -11,16 +11,25 @@ COPY . .
 RUN npx prisma generate
 RUN npm run build
 
-# Stage 2: Runtime
-# Debian (glibc, OpenSSL 3), not Alpine: the Prisma query engine this
-# version ships is a glibc build, and the musl one wants libssl1.1, which no
-# modern base carries. A `/health` passing while every QUERY 500s is the
-# exact failure an alpine runner produced — see the stack start probes.
-# OpenSSL, explicitly: the slim image ships neither libssl nor the CA store,
-# and Prisma's runtime detects "no OpenSSL, therefore the 1.1 engine" — which
-# is how a query engine goes missing on a machine by architecture alone.
+# Stage 2: Download and build Keycloak
+FROM node:26-bookworm-slim AS keycloak-builder
+RUN apt-get update \
+  && apt-get install -y --no-install-recommends wget ca-certificates \
+  && rm -rf /var/lib/apt/lists/*
+RUN wget -q https://github.com/keycloak/keycloak/releases/download/24.0.1/keycloak-24.0.1.tar.gz \
+  && tar -xzf keycloak-24.0.1.tar.gz -C /opt/ \
+  && mv /opt/keycloak-24.0.1 /opt/keycloak \
+  && rm keycloak-24.0.1.tar.gz
+RUN /opt/keycloak/bin/kc.sh build
+
+# Stage 3: Runtime - combined Keycloak + Backend
 FROM node:26-bookworm-slim AS runner
-RUN apt-get update && apt-get install -y --no-install-recommends libssl3 ca-certificates && rm -rf /var/lib/apt/lists/*
+# Install OpenJDK for Keycloak
+RUN apt-get update \
+  && apt-get install -y --no-install-recommends openjdk-17-jre-headless ca-certificates \
+  && rm -rf /var/lib/apt/lists/*
+# Copy Keycloak from builder
+COPY --from=keycloak-builder /opt/keycloak /opt/keycloak
 WORKDIR /app
 ENV NODE_ENV=production
 RUN addgroup --system --gid 1001 nodejs
@@ -30,8 +39,10 @@ COPY --from=builder /app/dist ./dist
 COPY --from=builder /app/scripts ./scripts
 COPY --from=builder /app/keycloak-init.mjs ./keycloak-init.mjs
 COPY --from=builder /app/prisma ./prisma
-USER nodejs
-EXPOSE 3000
-HEALTHCHECK --interval=15s --timeout=5s --start-period=40s --retries=10 \
+COPY start-combined.sh ./start-combined.sh
+RUN chmod +x ./start-combined.sh
+USER root
+EXPOSE 3000 8080
+HEALTHCHECK --interval=15s --timeout=5s --start-period=60s --retries=10 \
   CMD node -e "fetch('http://localhost:3000/health').then((r) => process.exit(r.ok ? 0 : 1)).catch(() => process.exit(1))"
-CMD ["node", "dist/index.js"]
+CMD ["./start-combined.sh"]
