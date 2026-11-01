@@ -1,11 +1,8 @@
 #!/bin/bash
 set -e
 
-# Start Keycloak in background (dev mode auto-creates DB schema)
-export KC_DB="${KC_DB:-postgres}"
-export KC_DB_URL="${KC_DB_URL:-jdbc:h2:file:./data/keycloak}"
-export KC_DB_USERNAME="${KC_DB_USERNAME:-keycloak}"
-export KC_DB_PASSWORD="${KC_DB_PASSWORD:-keycloak}"
+# Start Keycloak in background
+export KC_DB="${KC_DB:-h2}"
 export KC_HEALTH_ENABLED=true
 export KC_METRICS_ENABLED=true
 export KC_HTTP_ENABLED=true
@@ -13,6 +10,13 @@ export KC_HTTP_PORT=8080
 export KC_PROXY_HEADERS=xforwarded
 export KEYCLOAK_ADMIN="${KEYCLOAK_ADMIN:-admin}"
 export KEYCLOAK_ADMIN_PASSWORD="${KEYCLOAK_ADMIN_PASSWORD:-admin_local_dev}"
+
+# Only set DB URL for non-H2 databases (H2 uses embedded default)
+if [ "$KC_DB" != "h2" ]; then
+  export KC_DB_URL="${KC_DB_URL}"
+  export KC_DB_USERNAME="${KC_DB_USERNAME:-keycloak}"
+  export KC_DB_PASSWORD="${KC_DB_PASSWORD:-keycloak}"
+fi
 
 /opt/keycloak/bin/kc.sh start-dev &
 KC_PID=$!
