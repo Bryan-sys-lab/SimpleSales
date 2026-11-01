@@ -2,10 +2,10 @@
 set -e
 
 # Start Keycloak in background (dev mode auto-creates DB schema)
-export KC_DB=postgres
-export KC_DB_URL="${KC_DB_URL}"
-export KC_DB_USERNAME="${KC_DB_USERNAME}"
-export KC_DB_PASSWORD="${KC_DB_PASSWORD}"
+export KC_DB="${KC_DB:-postgres}"
+export KC_DB_URL="${KC_DB_URL:-jdbc:h2:file:./data/keycloak}"
+export KC_DB_USERNAME="${KC_DB_USERNAME:-keycloak}"
+export KC_DB_PASSWORD="${KC_DB_PASSWORD:-keycloak}"
 export KC_HEALTH_ENABLED=true
 export KC_METRICS_ENABLED=true
 export KC_HTTP_ENABLED=true
