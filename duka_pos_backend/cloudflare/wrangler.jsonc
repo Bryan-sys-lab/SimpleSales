@@ -12,7 +12,7 @@
       "class_name": "BackendContainer",
       "scheduling_policy": "durable_object",
       "images": {
-        "base": { "image": "__BACKEND_IMAGE__" }
+        "base": { "image": "registry.cloudflare.com/0d995e8087844342ed0da43d9ccd9993/duka-pos-backend@sha256:bfe23d132c6f91733ab781cc10a995526fabebb6f7ee7a3c72abf141d4c67be9" }
       },
       "observability": { "enabled": true }
     }
