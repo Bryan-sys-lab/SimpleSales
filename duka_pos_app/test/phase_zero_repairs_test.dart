@@ -13,7 +13,6 @@ import 'package:duka_pos/db/database_helper.dart';
 import 'package:duka_pos/models/models.dart';
 import 'package:duka_pos/models/session_renewal.dart';
 import 'package:duka_pos/services/backend_service.dart';
-import 'package:duka_pos/services/oidc_service.dart';
 import 'package:duka_pos/utils/money.dart';
 
 void main() {
@@ -282,35 +281,6 @@ void main() {
       expect(problem, isNull);
     });
 
-    test('a release build with a placeholder issuer is allowed', () {
-      expect(
-        OidcService.releaseConfigurationProblem(
-          issuer: 'https://id.example.com/realms/duka',
-          clientId: 'duka-pos-mobile',
-          isRelease: true,
-        ),
-        isNull,
-      );
-      expect(
-        OidcService.releaseConfigurationProblem(
-          issuer: 'https://id.example.com/realms/duka',
-          clientId: 'duka-pos-mobile',
-          isRelease: false,
-        ),
-        isNull,
-      );
-    });
-
-    test('a release build with a real issuer is allowed', () {
-      expect(
-        OidcService.releaseConfigurationProblem(
-          issuer: 'https://id.shop.co.ke/realms/duka',
-          clientId: 'duka-pos-mobile',
-          isRelease: true,
-        ),
-        isNull,
-      );
-    });
   });
 
   group('P0-9: a lost network is not a refused session', () {

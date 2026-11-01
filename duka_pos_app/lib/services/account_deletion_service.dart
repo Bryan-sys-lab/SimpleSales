@@ -13,7 +13,7 @@ import 'audit_actor.dart';
 import 'auth_service.dart';
 import 'backend_service.dart';
 import 'encrypted_backup_service.dart';
-import 'oidc_service.dart';
+import 'identity_service.dart';
 import 'product_image_store.dart';
 import 'staff_credential_cache.dart';
 import 'workspace_service.dart';
@@ -296,7 +296,7 @@ class AccountDeletionService {
   /// token on a device whose account no longer exists.
   static Future<void> _clearSessionLocally() async {
     try {
-      await OidcService.clearLocalSession();
+      await IdentityService.clearLocalSession();
     } catch (_) {
       // Nothing here may throw. The deletion has already happened.
     }

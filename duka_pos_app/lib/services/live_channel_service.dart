@@ -34,7 +34,7 @@ import 'package:web_socket_channel/web_socket_channel.dart';
 
 import 'backend_service.dart';
 import 'app_release.dart';
-import 'oidc_service.dart';
+import 'identity_service.dart';
 
 /// What changed, as far as the phone is concerned.
 ///
@@ -203,7 +203,7 @@ class LiveChannelService extends ChangeNotifier {
       // The ONE credential: the Keycloak access token. The server's live
       // channel verifies it against the identity server's own signing keys,
       // and accepts nothing else.
-      token = await OidcService.accessToken;
+      token = await IdentityService.accessToken;
     } on Object catch (_) {
       _scheduleReconnect();
       return;

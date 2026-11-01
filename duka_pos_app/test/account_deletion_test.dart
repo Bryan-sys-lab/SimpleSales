@@ -25,7 +25,7 @@ import 'package:duka_pos/models/models.dart';
 import 'package:duka_pos/services/account_deletion_service.dart';
 import 'package:duka_pos/services/app_state.dart';
 import 'package:duka_pos/services/auth_service.dart';
-import 'package:duka_pos/services/oidc_service.dart';
+import 'package:duka_pos/services/identity_service.dart';
 import 'package:duka_pos/services/staff_credential_cache.dart';
 import 'package:duka_pos/utils/money.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -510,12 +510,12 @@ void main() {
     // middle of deleting their account.
     test('no provider session is ended while the account is erased', () async {
       await seed();
-      OidcService.browserSessionsEnded = 0;
+      IdentityService.browserSessionsEnded = 0;
 
       await AccountDeletionService.deleteAccount(pin: validPin);
 
       expect(
-        OidcService.browserSessionsEnded,
+        IdentityService.browserSessionsEnded,
         0,
         reason: 'the erasure must clear the session LOCALLY. Ending the '
             'provider\'s session opens the browser, and that browser lands '

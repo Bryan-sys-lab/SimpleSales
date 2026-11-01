@@ -1,7 +1,6 @@
 import 'package:flutter/foundation.dart';
 
 import 'backend_service.dart';
-import 'oidc_service.dart';
 
 /// What this build was compiled with, and what it is therefore missing.
 ///
@@ -44,11 +43,7 @@ class BuildConfiguration {
       isRelease: kReleaseMode,
     );
     if (backend != null) return backend;
-    return OidcService.releaseConfigurationProblem(
-      issuer: OidcService.issuerForChecks,
-      clientId: OidcService.clientIdForChecks,
-      isRelease: kReleaseMode,
-    );
+    return null;
   }
 
   /// Whether this build is missing something it would need.

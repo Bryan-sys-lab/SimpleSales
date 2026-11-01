@@ -95,7 +95,7 @@ void main() {
       // a question, and a question is safe to ask.
       for (final String path in <String>[
         'lib/services/backend_service.dart',
-        'lib/services/oidc_service.dart',
+        'lib/services/identity_service.dart',
       ]) {
         final String source = File(path).readAsStringSync();
         expect(

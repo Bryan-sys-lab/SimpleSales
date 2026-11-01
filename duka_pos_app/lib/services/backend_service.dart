@@ -11,7 +11,7 @@ import '../models/stock_movement.dart';
 import '../models/session_renewal.dart';
 import 'etims/etims_service.dart';
 import 'encrypted_backup_service.dart';
-import 'oidc_service.dart';
+import 'identity_service.dart';
 import 'row_scope.dart';
 import 'workspace_service.dart';
 import 'portfolio_kpis.dart';
@@ -226,7 +226,7 @@ class BackendService {
         // The normal mobile credential is the Keycloak access token. The
         // backend also accepts its short-lived email-code session for API
         // clients that complete verification without Keycloak.
-        final token = await OidcService.accessToken;
+        final token = await IdentityService.accessToken;
         if (token != null) options.headers['Authorization'] = 'Bearer $token';
         // The tenant this shop on this device maps to, NOT a global preference.
         //
@@ -260,9 +260,9 @@ class BackendService {
 
           // The Keycloak session, if there is one.
           final SessionRenewal browser =
-              await OidcService.renewBrowserSession();
+              await IdentityService.renew();
           if (browser is SessionRenewed) {
-            final renewed = await OidcService.accessToken;
+            final renewed = await IdentityService.accessToken;
             if (renewed != null) {
               requestOptions.headers['Authorization'] = 'Bearer $renewed';
               try {
@@ -274,7 +274,7 @@ class BackendService {
           }
           if (browser is SessionRejected) {
             // The provider refused the refresh token. The session is over.
-            await OidcService.logout();
+            await IdentityService.logout();
             return handler.next(error);
           }
           // Unreachable or absent: nothing is known to be wrong with the
@@ -340,7 +340,7 @@ class BackendService {
     try {
       final response = await _dio.post('$backendUrl/auth/link', data: {
         'email': email,
-        'pin': pin,
+        'password': pin,
         'shopName': shopName,
         'ownerName': ownerName,
       });
@@ -368,16 +368,14 @@ class BackendService {
     try {
       final response = await _dio.post('$backendUrl/auth/verify', data: {
         'email': email,
-        'pin': pin,
+        'password': pin,
         'code': code,
       });
       final identity = VerifiedIdentity.fromJson(
           response.data as Map<String, dynamic>? ?? const {});
       await _adoptVerifiedIdentity(identity);
       // The credential, from the authority that issues them.
-      if (!await OidcService.login()) {
-        throw StateError('Could not sign in to the identity server');
-      }
+      // Tokens already issued by /auth/verify; nothing further to sign in to.
       if (identity.shopName.isNotEmpty) {
         await WorkspaceService.register(
           workspaceKey: await WorkspaceService.activeWorkspaceKey(),
@@ -837,7 +835,7 @@ class BackendService {
   /// Platform backend configuration is restricted to the explicit system
   /// administrator allowlist; shop admins manage only their own shop data.
   static Future<void> requireSystemAdmin() async {
-    if (!await OidcService.isAuthenticated && !await OidcService.login()) {
+    if (!await IdentityService.isAuthenticated) {
       throw StateError('System administrator authentication required');
     }
     await ensureInitialized();
@@ -858,7 +856,7 @@ class BackendService {
     String email = '',
     ShopProfile businessProfile = ShopProfile.duka,
   }) async {
-    if (!await OidcService.isAuthenticated && !await OidcService.login()) {
+    if (!await IdentityService.isAuthenticated) {
       throw StateError('Could not authenticate with backend');
     }
     await ensureInitialized();

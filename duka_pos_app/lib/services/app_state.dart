@@ -6,7 +6,7 @@ import '../models/models.dart';
 import '../db/database_helper.dart';
 import 'analytics.dart';
 import 'failure_recorder.dart';
-import 'oidc_service.dart';
+import 'identity_service.dart';
 import 'roles.dart';
 import 'staff_credential_cache.dart';
 import 'workspace_service.dart';
@@ -495,7 +495,7 @@ class AppState extends ChangeNotifier {
   /// surface an error to someone who has already walked away from the till.
   Future<void> tearDownOnlineSession() async {
     try {
-      await OidcService.logout();
+      await IdentityService.logout();
     } catch (_) {
       // Intentionally swallowed — see above.
     }

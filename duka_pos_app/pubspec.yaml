@@ -71,7 +71,6 @@ dependencies:
   file_picker: ^13.2.0
 
   # Self-hosted Keycloak/OIDC authentication; mobile uses PKCE, no client secret
-  flutter_appauth: ^12.1.0
   dio: ^5.4.0
 
   # Google Sheets live sync (online path)
