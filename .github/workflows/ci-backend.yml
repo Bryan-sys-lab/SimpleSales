@@ -84,8 +84,8 @@ jobs:
       - name: Run tests
         env:
           DATABASE_URL: postgresql://localhost:5432/duka_pos_test
-          OIDC_ISSUER_URL: https://id.example.test/realms/duka
-          OIDC_AUDIENCE: duka-api
+          AUTH_JWT_SECRET: ci_auth_jwt_secret_of_at_least_32_bytes_long_xxx
+          EMAIL_VERIFICATION_SECRET: ci_email_verification_secret_of_32_bytes_long
         run: npm test
 
   # ------------------------------------------------------------------
@@ -139,10 +139,6 @@ jobs:
           set -a
           . .env.ci
           set +a
-          # Force known-good credentials so Keycloak and keycloak-init agree,
-          # regardless of whether .env.ci was sourced cleanly.
-          KEYCLOAK_ADMIN_PASSWORD=admin_local_dev
-          KC_DB_PASSWORD=keycloak_local_dev
           TAX_REPORTING_ACTIVATED=true docker compose up -d
           status=$?
           if [[ $status -ne 0 ]]; then

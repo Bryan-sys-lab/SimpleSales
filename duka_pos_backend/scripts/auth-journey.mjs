@@ -20,7 +20,7 @@ const link = await request('/api/auth/link', {
   method: 'POST',
   body: JSON.stringify({
     email,
-    pin: '1234',
+    password: '123456',
     shopName: `CI Auth ${suffix}`,
     ownerName: 'CI Owner',
   }),
@@ -31,7 +31,7 @@ const secondLink = await request('/api/auth/link', {
   method: 'POST',
   body: JSON.stringify({
     email,
-    pin: '1234',
+    password: '123456',
     shopName: `CI Auth Other ${suffix}`,
     ownerName: 'CI Owner',
   }),
@@ -42,7 +42,7 @@ if (secondLink.status !== 200) {
 
 const verified = await request('/api/auth/verify', {
   method: 'POST',
-  body: JSON.stringify({ email, pin: '1234', code }),
+  body: JSON.stringify({ email, password: '123456', code }),
 });
 if (verified.status !== 200) throw new Error(`auth/verify returned ${verified.status}`);
 const session = await verified.json();
