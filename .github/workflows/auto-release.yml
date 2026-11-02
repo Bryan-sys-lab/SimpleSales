@@ -304,11 +304,15 @@ jobs:
 
           # Revalidate the branch tip immediately before writing: another run may
           # have pushed to app while this one was bumping. Never push stale code.
-          git fetch origin app --prune
-          if ! git merge-base --is-ancestor origin/app HEAD; then
-            echo "::error::Stale: app moved on after this run started."
-            echo "::error::Abort without releasing stale code; let the newer run handle it."
-            exit 1
+          # A missing origin/app (first release) is not stale; there is nothing
+          # to be based on yet.
+          if git rev-parse --verify --quiet origin/app >/dev/null; then
+            git fetch origin app --prune
+            if ! git merge-base --is-ancestor origin/app HEAD; then
+              echo "::error::Stale: app moved on after this run started."
+              echo "::error::Abort without releasing stale code; let the newer run handle it."
+              exit 1
+            fi
           fi
 
           if ! git -c http.extraheader="AUTHORIZATION: basic ${auth}" push origin HEAD:app; then
