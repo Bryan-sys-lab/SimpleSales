@@ -12905,6 +12905,7 @@ SELECT name FROM staff GROUP BY name HAVING COUNT(*) = 1
     required String staffName,
     int? staffId,
     String? paymentReference,
+    Money? costAmount,
   }) async {
     if (amount.minorUnits <= 0) {
       throw StateError('A quick sale must be more than zero');
@@ -12919,7 +12920,7 @@ SELECT name FROM staff GROUP BY name HAVING COUNT(*) = 1
         'staff_name': staffName.trim().isEmpty ? 'Open business' : staffName,
         'staff_id': staffId,
         'total': amount.minorUnits,
-        'profit': 0,
+        'profit': (amount.minorUnits - (costAmount?.minorUnits ?? 0)),
         'payment_method': paymentMethod,
         'payment_reference': paymentReference,
         'amount_tendered': amount.minorUnits,

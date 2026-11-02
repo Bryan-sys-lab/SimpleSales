@@ -258,12 +258,18 @@ class _OpenBusinessScreenState extends State<OpenBusinessScreen> {
     final product = values['product']?.toString().trim();
     final ref = values['reference']?.toString().trim();
     final combined = [if (product != null && product.isNotEmpty) product, if (ref != null && ref.isNotEmpty) ref].join(' · ');
+    Money? costAmount;
+    if (product != null && product.isNotEmpty) {
+      final match = _products.where((p) => p.name.toLowerCase() == product.toLowerCase()).firstOrNull;
+      if (match != null) costAmount = match.costPrice;
+    }
     await _run(() => _db.recordOpenQuickSale(
           amount: amount,
           paymentMethod: values['method'] ?? 'cash',
           paymentReference: combined.isEmpty ? null : combined,
           staffId: state.currentStaffId,
           staffName: state.currentStaffName ?? 'Owner',
+          costAmount: costAmount,
         ));
   }
 

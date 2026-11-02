@@ -2802,19 +2802,26 @@ class _SellScreenState extends State<SellScreen>
     if (!mounted) return;
     final appState = context.read<AppState>();
     try {
+      final name = (values['name'] ?? '').trim();
+      Money? costAmount;
+      if (name.isNotEmpty) {
+        final products = await DatabaseHelper.instance.getProducts();
+        final match = products.where((p) => p.name.toLowerCase() == name.toLowerCase()).firstOrNull;
+        if (match != null) costAmount = match.costPrice;
+      }
       await DatabaseHelper.instance.recordOpenQuickSale(
         amount: Money.fromMajor(amount),
         paymentMethod: values['method'] ?? 'cash',
         paymentReference: (values['reference'] ?? '').isEmpty ? null : values['reference'],
         staffId: appState.currentStaffId,
         staffName: appState.currentStaffName ?? 'Owner',
+        costAmount: costAmount,
       );
-      final name = (values['name'] ?? '').trim();
       if (name.isNotEmpty) {
         final product = Product(
           name: name,
           category: 'Quick sale',
-          costPrice: Money.zero,
+          costPrice: costAmount ?? Money.zero,
           sellPrice: Money.fromMajor(amount),
           stockQty: 0,
           reorderLevel: 0,
