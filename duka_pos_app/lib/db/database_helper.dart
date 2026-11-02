@@ -12920,7 +12920,7 @@ SELECT name FROM staff GROUP BY name HAVING COUNT(*) = 1
         'staff_name': staffName.trim().isEmpty ? 'Open business' : staffName,
         'staff_id': staffId,
         'total': amount.minorUnits,
-        'profit': (amount.minorUnits - (costAmount?.minorUnits ?? 0)),
+        'profit': 0,
         'payment_method': paymentMethod,
         'payment_reference': paymentReference,
         'amount_tendered': amount.minorUnits,
