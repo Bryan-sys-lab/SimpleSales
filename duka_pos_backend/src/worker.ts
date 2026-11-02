@@ -18,6 +18,11 @@ export default {
     }
 
     const url = new URL(request.url);
+    if (url.pathname === '/live' || url.pathname === '/api/live') {
+      const id = env.LIVE_ROOM.idFromName('default');
+      const stub = env.LIVE_ROOM.get(id);
+      return stub.fetch(request);
+    }
 
     // Read body up front (Workers-friendly) to avoid stream timing issues.
     let bodyText = '';
@@ -69,3 +74,36 @@ export default {
     });
   },
 };
+
+
+// Durable Object backing the /live WebSocket channel.
+export class LiveRoom {
+  private sessions: Set<any> = new Set();
+
+  constructor(_state: any, _env: any) {}
+
+  async fetch(request: any): Promise<Response> {
+    if (request.headers.get('Upgrade') !== 'websocket') {
+      return new Response('Expected websocket', { status: 426 });
+    }
+    const pair: any = new (globalThis as any).WebSocketPair();
+    const client = pair[0];
+    const server = pair[1];
+    server.accept();
+    this.sessions.add(server);
+    server.send(JSON.stringify({ type: 'connected', at: new Date().toISOString() }));
+    server.addEventListener('close', () => this.sessions.delete(server));
+    server.addEventListener('message', (ev: any) => {
+      for (const s of this.sessions) {
+        if (s.readyState === 1) s.send(ev.data);
+      }
+    });
+    return new Response(null, { status: 101, webSocket: client } as any);
+  }
+
+  async broadcast(message: string) {
+    for (const s of this.sessions) {
+      if (s.readyState === 1) s.send(message);
+    }
+  }
+}
