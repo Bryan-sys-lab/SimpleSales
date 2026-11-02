@@ -3,6 +3,7 @@ import 'package:provider/provider.dart';
 
 import '../db/database_helper.dart';
 import '../models/models.dart';
+import '../utils/units.dart';
 import '../profile/profile_product_forms.dart';
 import '../profile/shop_profile.dart';
 import '../screens/receive_stock_sheet.dart';
@@ -243,6 +244,7 @@ class _OpenBusinessScreenState extends State<OpenBusinessScreen> {
 
   Future<void> _quickSale() async {
     final values = await _form('Quick sale', [
+      const _Field('product', 'Product name (optional)', required: false),
       const _Field('amount', 'Amount (KES)'),
       const _Field('reference', 'Reference (optional)', required: false),
     ], choices: const {
@@ -253,10 +255,13 @@ class _OpenBusinessScreenState extends State<OpenBusinessScreen> {
     if (amount == null) return _showError('Enter a valid positive amount.');
     if (!mounted) return;
     final state = context.read<AppState>();
+    final product = values['product']?.toString().trim();
+    final ref = values['reference']?.toString().trim();
+    final combined = [if (product != null && product.isNotEmpty) product, if (ref != null && ref.isNotEmpty) ref].join(' · ');
     await _run(() => _db.recordOpenQuickSale(
           amount: amount,
           paymentMethod: values['method'] ?? 'cash',
-          paymentReference: values['reference'],
+          paymentReference: combined.isEmpty ? null : combined,
           staffId: state.currentStaffId,
           staffName: state.currentStaffName ?? 'Owner',
         ));
@@ -281,6 +286,7 @@ class _OpenBusinessScreenState extends State<OpenBusinessScreen> {
     final product = Product(
       name: name.trim(),
       category: 'Optional stock',
+      unit: ProductUnit.parse(optionalStock ? (values['unit']) : null),
       costPrice: Money.fromMajor(costMajor),
       sellPrice: price,
       stockQty: optionalStock ? stock : 0,

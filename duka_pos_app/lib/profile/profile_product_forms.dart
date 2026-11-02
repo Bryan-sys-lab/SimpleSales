@@ -446,6 +446,8 @@ class ProfileProductForms {
         text: existing?.costPrice.asMajor.toStringAsFixed(2) ?? '');
     final stockController = TextEditingController(
         text: existing?.stockQty.toString() ?? '0');
+    final unitController = TextEditingController(
+        text: existing?.unit.wire ?? 'each');
 
     bool optionalStock = existing != null;
 
@@ -475,6 +477,10 @@ class ProfileProductForms {
                   controlAffinity: ListTileControlAffinity.leading,
                 ),
                 if (optionalStock) ...[
+                  TextField(
+                    controller: unitController,
+                    decoration: const InputDecoration(labelText: 'Unit (e.g. each, kg, litre)'),
+                  ),
                   TextField(
                     controller: costController,
                     decoration: const InputDecoration(labelText: 'Cost (KES, optional)'),
@@ -510,6 +516,7 @@ class ProfileProductForms {
                   'price': price,
                   'cost': cost ?? 0,
                   'stock': stock ?? 0,
+                  'unit': optionalStock ? (unitController.text.trim().isEmpty ? 'each' : unitController.text.trim()) : 'each',
                   'optional_stock': optionalStock,
                 });
               },
