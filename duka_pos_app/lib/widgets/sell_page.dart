@@ -282,6 +282,7 @@ class SellCartLine {
     required this.onIncrease,
     required this.onRemove,
     this.onEdit,
+    this.profitLabel,
   });
 
   /// The product and its portion, as the cashier knows it.
@@ -301,6 +302,7 @@ class SellCartLine {
   final VoidCallback onIncrease;
   final VoidCallback onRemove;
   final VoidCallback? onEdit;
+  final String? profitLabel;
 }
 
 /// The cart: what is in it, and what it costs.
@@ -462,7 +464,9 @@ class SellCartPane extends StatelessWidget {
                         // The subtitle carries the price — "500ml · KSh
                         // 1,240.00" — and a truncated price is a WRONG price.
                         // A number may not be cut, so the row grows instead.
-                        line.subtitle,
+                        line.profitLabel == null
+                            ? line.subtitle
+                            : '${line.subtitle} · Profit ${line.profitLabel}',
                       ),
                       trailing: Row(
                         mainAxisSize: MainAxisSize.min,

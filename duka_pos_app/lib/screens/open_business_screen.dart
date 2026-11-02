@@ -28,6 +28,11 @@ class _OpenBusinessScreenState extends State<OpenBusinessScreen> {
   List<Map<String, dynamic>> _ownerTransactions = const [];
   List<Product> _products = const [];
   List<Supplier> _suppliers = const [];
+  Map<int, int> _jobCostTotals = const {};
+  Map<int, int> _jobRevenueTotals = const {};
+  int _quickSalesRevenueMinor = 0;
+  int _jobRevenueTotalMinor = 0;
+  int _potCostTotalMinor = 0;
   bool _loading = true;
   String? _error;
 
@@ -51,16 +56,53 @@ class _OpenBusinessScreenState extends State<OpenBusinessScreen> {
         _db.getOwnerTransactions(),
         _db.getProducts(),
         _db.getSuppliers(),
+        _db.getFinancialEvents(),
       ]);
-      if (!mounted) return;
-      setState(() {
-        _pools = values[0] as List<Map<String, dynamic>>;
-        _jobs = values[1] as List<Map<String, dynamic>>;
-        _ownerTransactions = values[2] as List<Map<String, dynamic>>;
-        _products = values[3] as List<Product>;
-        _suppliers = values[4] as List<Supplier>;
-        _loading = false;
-      });
+       if (!mounted) return;
+       final jobCostTotals = <int, int>{};
+       final jobRevenueTotals = <int, int>{};
+       for (final job in values[1] as List<Map<String, dynamic>>) {
+         final id = (job['id'] as num).toInt();
+         final costs = await _db.getJobCosts(id);
+         jobCostTotals[id] =
+             costs.fold<int>(0, (sum, row) => sum + (row['amount_minor'] as num).toInt());
+         final payments = await _db.getJobPayments(id);
+         final paid = payments.fold<int>(
+             0, (sum, row) => sum + (row['amount_minor'] as num).toInt());
+         final finalPrice = (job['final_price_minor'] as num?)?.toInt();
+         jobRevenueTotals[id] = finalPrice ?? paid;
+       }
+        final events = values[5] as List<dynamic>;
+        int quick = 0;
+        int jobRevenue = 0;
+        for (final e in events) {
+          final revenue = (e.revenueMinor as num?)?.toInt() ?? 0;
+          final sourceType = e.sourceType as String?;
+          final metadata = e.metadataJson as String?;
+          if (sourceType == 'sale' &&
+              metadata != null &&
+              metadata.contains('open_quick_sale')) {
+            quick += revenue;
+          }
+          if (sourceType == 'job' || sourceType == 'job_completion') {
+            jobRevenue += revenue;
+          }
+        }
+        final potCost = (values[0] as List<Map<String, dynamic>>).fold<int>(
+            0, (sum, pool) => sum + (pool['invested_minor'] as num).toInt());
+        setState(() {
+          _pools = values[0] as List<Map<String, dynamic>>;
+          _jobs = values[1] as List<Map<String, dynamic>>;
+          _ownerTransactions = values[2] as List<Map<String, dynamic>>;
+          _products = values[3] as List<Product>;
+          _suppliers = values[4] as List<Supplier>;
+          _jobCostTotals = jobCostTotals;
+          _jobRevenueTotals = jobRevenueTotals;
+          _quickSalesRevenueMinor = quick;
+          _jobRevenueTotalMinor = jobRevenue;
+          _potCostTotalMinor = potCost;
+          _loading = false;
+        });
     } catch (error) {
       if (!mounted) return;
       setState(() {
@@ -73,16 +115,22 @@ class _OpenBusinessScreenState extends State<OpenBusinessScreen> {
   Future<void> _newPool() async {
     final values = await _form('New cost pot', [
       const _Field('name', 'Name'),
+      const _Field('amount', 'Total cost (KES)'),
       const _Field('note', 'Note (optional)', required: false),
     ], choices: const {
-      'type': ['lot', 'rolling_stock']
+      'type': ['lot', 'rolling_stock'],
+      'paidFrom': ['other', 'till_cash', 'credit'],
     });
     if (values == null) return;
+    final amount = _money(values['amount']);
+    if (amount == null) return _showError('Enter a valid positive amount.');
     await _run(() => _db.createCostPool(
           uuid: 'pool-${DateTime.now().microsecondsSinceEpoch}',
           name: values['name']!,
           poolType: values['type'] ?? 'lot',
           note: values['note'],
+          totalCost: amount,
+          paidFrom: values['paidFrom'] ?? 'other',
         ));
   }
 
@@ -107,54 +155,83 @@ class _OpenBusinessScreenState extends State<OpenBusinessScreen> {
         ));
   }
 
-  Future<void> _applyOldestPoolCost() async {
-    final values = await _form('Apply stock cost to a sale', [
-      const _Field('saleId', 'Sale number'),
-      const _Field('amount', 'Amount (KES)'),
-    ]);
-    if (values == null) return;
-    final saleId = int.tryParse(values['saleId'] ?? '');
-    final amount = _money(values['amount']);
-    if (saleId == null || amount == null) {
-      return _showError('Enter a valid sale number and amount.');
-    }
-    final pools = (await _db.getCostPools())
-      ..sort((a, b) => (a['created_at'] as String? ?? '')
-          .compareTo(b['created_at'] as String? ?? ''));
-    Map<String, dynamic>? chosen;
-    for (final pool in pools) {
-      final invested = (pool['invested_minor'] as num).toInt();
-      final recovered = (pool['recovered_minor'] as num).toInt();
-      if (invested - recovered >= amount.minorUnits) {
-        chosen = pool;
-        break;
-      }
-    }
-    if (chosen == null) {
-      return _showError('No cost group has enough left for that amount.');
-    }
-    await _run(() => _db.allocateCostPoolToSale(
-          poolId: (chosen!['id'] as num).toInt(),
-          saleId: saleId,
-          amount: amount,
-        ));
-  }
-
   Future<void> _newJob() async {
-    final values = await _form('New job', [
-      const _Field('title', 'Job title'),
-      const _Field('customer', 'Customer (optional)', required: false),
-      const _Field('quote', 'Quote (KES, optional)', required: false),
-    ]);
-    if (values == null) return;
-    final quote = values['quote']?.trim().isEmpty == true
+    final titleController = TextEditingController();
+    final customerController = TextEditingController();
+    final quoteController = TextEditingController();
+    int? selectedPoolId =
+        _pools.isNotEmpty ? (_pools.first['id'] as num).toInt() : null;
+    bool hasPool = _pools.isNotEmpty;
+    final result = await showDialog<Map<String, String>>(
+      context: context,
+      builder: (context) => StatefulBuilder(builder: (context, setState) {
+        return AlertDialog(
+          title: const Text('New job'),
+          content: SingleChildScrollView(
+            child: Column(mainAxisSize: MainAxisSize.min, children: [
+              TextField(
+                  controller: titleController,
+                  decoration: const InputDecoration(labelText: 'Job title'),
+                  autofocus: true),
+              TextField(
+                  controller: customerController,
+                  decoration:
+                      const InputDecoration(labelText: 'Customer (optional)')),
+              TextField(
+                  controller: quoteController,
+                  decoration:
+                      const InputDecoration(labelText: 'Quote (KES, optional)'),
+                  keyboardType:
+                      const TextInputType.numberWithOptions(decimal: true)),
+              if (hasPool)
+                DropdownButtonFormField<int?>(
+                  initialValue: selectedPoolId,
+                  decoration: const InputDecoration(labelText: 'Linked cost pot'),
+                  items: [
+                    const DropdownMenuItem<int?>(value: null, child: Text('None')),
+                    for (final pool in _pools)
+                      DropdownMenuItem<int?>(
+                        value: (pool['id'] as num).toInt(),
+                        child: Text(pool['name'] as String),
+                      ),
+                  ],
+                  onChanged: (value) => setState(() => selectedPoolId = value),
+                ),
+            ]),
+          ),
+          actions: [
+            TextButton(
+                onPressed: () => Navigator.pop(context),
+                child: const Text('Cancel')),
+            FilledButton(
+                onPressed: () {
+                  if (titleController.text.trim().isEmpty) return;
+                  Navigator.pop(context, <String, String>{
+                    'title': titleController.text.trim(),
+                    'customer': customerController.text.trim(),
+                    'quote': quoteController.text.trim(),
+                    'pool': selectedPoolId?.toString() ?? '',
+                  });
+                },
+                child: const Text('Save')),
+          ],
+        );
+      }),
+    );
+    for (final c in [titleController, customerController, quoteController]) {
+      c.dispose();
+    }
+    if (result == null) return;
+    final quote = result['quote']?.trim().isEmpty == true
         ? null
-        : _money(values['quote']);
+        : _money(result['quote']);
+    final poolId = int.tryParse(result['pool'] ?? '');
     await _run(() => _db.createJob(
           uuid: 'job-${DateTime.now().microsecondsSinceEpoch}',
-          title: values['title']!,
-          customerName: values['customer'],
+          title: result['title']!,
+          customerName: result['customer'],
           quote: quote,
+          costPoolId: poolId,
         ));
   }
 
@@ -273,6 +350,83 @@ class _OpenBusinessScreenState extends State<OpenBusinessScreen> {
         ));
   }
 
+  Future<void> _recordJobSale() async {
+    if (_jobs.isEmpty) return _showError('Create a job first.');
+    int? selectedJobId = (_jobs.first['id'] as num).toInt();
+    final amountController = TextEditingController();
+    String method = 'cash';
+    final result = await showDialog<Map<String, String>>(
+      context: context,
+      builder: (context) => StatefulBuilder(builder: (context, setState) {
+        return AlertDialog(
+          title: const Text('Record sale against job'),
+          content: SingleChildScrollView(
+            child: Column(mainAxisSize: MainAxisSize.min, children: [
+              DropdownButtonFormField<int>(
+                initialValue: selectedJobId,
+                decoration: const InputDecoration(labelText: 'Job'),
+                items: [
+                  for (final job in _jobs)
+                    DropdownMenuItem<int>(
+                      value: (job['id'] as num).toInt(),
+                      child: Text(job['title'] as String),
+                    ),
+                ],
+                onChanged: (value) {
+                  if (value != null) setState(() => selectedJobId = value);
+                },
+              ),
+              TextField(
+                controller: amountController,
+                decoration: const InputDecoration(labelText: 'Amount (KES)'),
+                keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                autofocus: true,
+              ),
+              DropdownButtonFormField<String>(
+                initialValue: method,
+                decoration: const InputDecoration(labelText: 'Payment method'),
+                items: const [
+                  DropdownMenuItem(value: 'cash', child: Text('cash')),
+                  DropdownMenuItem(value: 'mpesa', child: Text('mpesa')),
+                  DropdownMenuItem(value: 'bank_transfer', child: Text('bank transfer')),
+                ],
+                onChanged: (value) {
+                  if (value != null) setState(() => method = value);
+                },
+              ),
+            ]),
+          ),
+          actions: [
+            TextButton(onPressed: () => Navigator.pop(context), child: const Text('Cancel')),
+            FilledButton(
+              onPressed: () {
+                if (_money(amountController.text) == null) return;
+                Navigator.pop(context, <String, String>{
+                  'jobId': selectedJobId.toString(),
+                  'amount': amountController.text.trim(),
+                  'method': method,
+                });
+              },
+              child: const Text('Save'),
+            ),
+          ],
+        );
+      }),
+    );
+    amountController.dispose();
+    if (result == null) return;
+    final jobId = int.tryParse(result['jobId'] ?? '');
+    final amount = _money(result['amount']);
+    if (jobId == null || amount == null) return _showError('Enter a valid amount.');
+    await _run(() => _db.recordJobSale(
+          jobId: jobId,
+          amount: amount,
+          paymentMethod: result['method'] ?? 'cash',
+          staffName: context.read<AppState>().currentStaffName ?? 'Owner',
+          staffId: context.read<AppState>().currentStaffId,
+        ));
+  }
+
   Future<void> _addOptionalProduct() async {
     final values = await ProfileProductForms.showForm(
       context: context,
@@ -329,6 +483,12 @@ class _OpenBusinessScreenState extends State<OpenBusinessScreen> {
       _showError(error.toString());
     }
   }
+
+  int _jobCost(Map<String, dynamic> job) =>
+      _jobCostTotals[(job['id'] as num).toInt()] ?? 0;
+
+  int _jobRevenue(Map<String, dynamic> job) =>
+      _jobRevenueTotals[(job['id'] as num).toInt()] ?? 0;
 
   Money? _money(String? raw) {
     final value = double.tryParse((raw ?? '').trim());
@@ -444,20 +604,20 @@ class _OpenBusinessScreenState extends State<OpenBusinessScreen> {
                               icon: const Icon(Icons.work_outline),
                               label: const Text('New job')))
                     ]),
-                    const SizedBox(height: 8),
-                    Row(children: [
-                      Expanded(
-                          child: OutlinedButton.icon(
-                              onPressed: _applyOldestPoolCost,
-                              icon: const Icon(Icons.link_outlined),
-                              label: const Text('Apply cost to sale'))),
-                      const SizedBox(width: 8),
-                      Expanded(
-                          child: OutlinedButton.icon(
-                              onPressed: _ownerMoney,
-                              icon: const Icon(Icons.swap_horiz),
-                              label: const Text('Owner money')))
-                    ]),
+                     const SizedBox(height: 8),
+                     Row(children: [
+                       Expanded(
+                           child: OutlinedButton.icon(
+                               onPressed: _recordJobSale,
+                               icon: const Icon(Icons.point_of_sale),
+                               label: const Text('Record job sale'))),
+                       const SizedBox(width: 8),
+                       Expanded(
+                           child: OutlinedButton.icon(
+                               onPressed: _ownerMoney,
+                               icon: const Icon(Icons.swap_horiz),
+                               label: const Text('Owner money')))
+                     ]),
                     const SizedBox(height: 8),
                     const Text(
                         'Quick sales record revenue and payment only; no stock cost or tax is inferred. Add a pot or job cost separately when known.'),
@@ -501,44 +661,70 @@ class _OpenBusinessScreenState extends State<OpenBusinessScreen> {
                                     'Create a job to track quote, payments and direct costs.'),
                               ),
                             ]
-                          : [
-                              for (final job in _jobs)
-                                Card(
-                                  child: ListTile(
-                                    title: Text(job['title'] as String),
-                                    subtitle: Text(
-                                        '${job['customer_name'] ?? 'No customer'} · ${job['status']}'),
-                                    isThreeLine: true,
-                                    trailing: PopupMenuButton<String>(
-                                      onSelected: (action) {
-                                        if (action == 'cost') {
-                                          _addJobCost(job);
-                                        }
-                                        if (action == 'payment') {
-                                          _takeJobPayment(job);
-                                        }
-                                        if (action == 'complete') {
-                                          _completeJob(job);
-                                        }
-                                      },
-                                      itemBuilder: (_) => const [
-                                        PopupMenuItem(
-                                            value: 'cost',
-                                            child: Text('Add direct cost')),
-                                        PopupMenuItem(
-                                            value: 'payment',
-                                            child: Text('Take payment')),
-                                        PopupMenuItem(
-                                            value: 'complete',
-                                            child: Text('Complete job')),
-                                      ],
-                                    ),
-                                  ),
-                                ),
-                            ],
+                           : [
+                               for (final job in _jobs)
+                                 Card(
+                                   child: ListTile(
+                                     title: Text(job['title'] as String),
+                                     subtitle: Text(
+                                       '${job['customer_name'] ?? 'No customer'} · ${job['status']} · '
+                                       'Revenue ${formatMoney(Money.fromMinor(_jobRevenue(job)))} · '
+                                       'Cost ${formatMoney(Money.fromMinor(_jobCost(job)))} · '
+                                       'Net ${formatMoney(Money.fromMinor(_jobRevenue(job) - _jobCost(job)))}',
+                                     ),
+                                     isThreeLine: true,
+                                     trailing: PopupMenuButton<String>(
+                                       onSelected: (action) {
+                                         if (action == 'cost') {
+                                           _addJobCost(job);
+                                         }
+                                         if (action == 'payment') {
+                                           _takeJobPayment(job);
+                                         }
+                                         if (action == 'complete') {
+                                           _completeJob(job);
+                                         }
+                                         if (action == 'sale') {
+                                           _recordJobSale();
+                                         }
+                                       },
+                                       itemBuilder: (_) => const [
+                                         PopupMenuItem(
+                                             value: 'cost',
+                                             child: Text('Add direct cost')),
+                                         PopupMenuItem(
+                                             value: 'payment',
+                                             child: Text('Take payment')),
+                                         PopupMenuItem(
+                                             value: 'sale',
+                                             child: Text('Record sale')),
+                                         PopupMenuItem(
+                                             value: 'complete',
+                                             child: Text('Complete job')),
+                                       ],
+                                     ),
+                                   ),
+                                 ),
+                             ],
                     ),
-                    _section(
-                      'Optional stock',
+                     _section(
+                       'Profit',
+                       <Widget>[
+                         Card(
+                           child: ListTile(
+                             title: const Text('Open profile profit'),
+                             subtitle: Text(
+                               'Quick sales ${formatMoney(Money.fromMinor(_quickSalesRevenueMinor))} · '
+                               'Job revenue ${formatMoney(Money.fromMinor(_jobRevenueTotalMinor))} · '
+                               'Pot costs ${formatMoney(Money.fromMinor(_potCostTotalMinor))} · '
+                               'Net ${formatMoney(Money.fromMinor(_quickSalesRevenueMinor + _jobRevenueTotalMinor - _potCostTotalMinor))}',
+                             ),
+                           ),
+                         ),
+                       ],
+                     ),
+                     _section(
+                       'Optional stock',
                       <Widget>[
                         Row(children: [
                           Expanded(

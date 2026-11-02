@@ -185,7 +185,7 @@ class DatabaseHelper {
   /// shipped — always add a new one, even for a one-line fix — because a
   /// shop's phone may be several versions behind and needs every step run
   /// in order to land on the current schema without data loss.
-  static const _schemaVersion = 75;
+  static const _schemaVersion = 76;
 
   /// Slack allowed when deciding whether a container has enough left for a sale.
   ///
@@ -360,6 +360,9 @@ class DatabaseHelper {
     }
     if (oldVersion < 73) {
       await _ensurePurchaseTaxEvidenceColumns(db);
+    }
+    if (oldVersion < 76) {
+      await _addColumnIfMissing(db, 'jobs', 'cost_pool_id', 'INTEGER');
     }
     if (oldVersion < 3) {
       await db.execute(
@@ -2830,6 +2833,7 @@ SELECT name FROM staff GROUP BY name HAVING COUNT(*) = 1
       final_price_minor INTEGER,
       due_at TEXT,
       status TEXT NOT NULL DEFAULT 'open',
+      cost_pool_id INTEGER,
       created_at TEXT NOT NULL,
       closed_at TEXT
     )''');
@@ -12850,6 +12854,13 @@ SELECT name FROM staff GROUP BY name HAVING COUNT(*) = 1
     required String name,
     required String poolType,
     String? note,
+    Money? initialCost,
+    Money? totalCost,
+    Money? cost,
+    Money? costAmount,
+    String paidFrom = 'other',
+    String entryType = 'purchase',
+    String? description,
   }) async {
     if (uuid.trim().isEmpty || name.trim().isEmpty) {
       throw StateError('A cost pool needs an id and a name');
@@ -12857,13 +12868,25 @@ SELECT name FROM staff GROUP BY name HAVING COUNT(*) = 1
     if (poolType != 'lot' && poolType != 'rolling_stock') {
       throw StateError('A cost pool is a lot or rolling stock');
     }
-    return (await database).insert('cost_pools', {
+    final resolvedCost = initialCost ?? totalCost ?? cost ?? costAmount;
+    final poolId = await (await database).insert('cost_pools', {
       'uuid': uuid,
       'name': name.trim(),
       'pool_type': poolType,
       'note': note,
       'created_at': DateTime.now().toIso8601String(),
     });
+    if (resolvedCost != null && resolvedCost.minorUnits > 0) {
+      await addCostPoolEntry(
+        uuid: '$uuid-entry',
+        poolId: poolId,
+        entryType: entryType,
+        amount: resolvedCost,
+        paidFrom: paidFrom,
+        description: description ?? note,
+      );
+    }
+    return poolId;
   }
 
   /// Open-profile records are read through the database boundary so the
@@ -13088,16 +13111,22 @@ SELECT name FROM staff GROUP BY name HAVING COUNT(*) = 1
     String? customerName,
     Money? quote,
     DateTime? dueAt,
+    int? costPoolId,
+    int? poolId,
+    int? linkedPoolId,
+    int? pool,
   }) async {
     if (uuid.trim().isEmpty || title.trim().isEmpty) {
       throw StateError('A job needs an id and a title');
     }
+    final resolvedPool = costPoolId ?? poolId ?? linkedPoolId ?? pool;
     return (await database).insert('jobs', {
       'uuid': uuid,
       'customer_name': customerName,
       'title': title.trim(),
       'quote_minor': quote?.minorUnits,
       'due_at': dueAt?.toIso8601String(),
+      'cost_pool_id': resolvedPool,
       'created_at': DateTime.now().toIso8601String(),
     });
   }
@@ -13211,6 +13240,73 @@ SELECT name FROM staff GROUP BY name HAVING COUNT(*) = 1
       );
     });
   }
+
+  Future<int> recordJobSale({
+    required int jobId,
+    required Money amount,
+    required String paymentMethod,
+    String? paymentReference,
+    String? staffName,
+    int? staffId,
+  }) async {
+    if (amount.minorUnits <= 0) {
+      throw StateError('A job sale must be more than zero');
+    }
+    final db = await database;
+    final jobs = await db.query('jobs', where: 'id = ?', whereArgs: [jobId], limit: 1);
+    if (jobs.isEmpty) throw StateError('Job not found');
+    final job = jobs.first;
+    final poolId = (job['cost_pool_id'] as num?)?.toInt();
+    final saleId = await recordOpenQuickSale(
+      amount: amount,
+      paymentMethod: paymentMethod,
+      paymentReference: paymentReference,
+      staffName: staffName ?? 'Owner',
+      staffId: staffId,
+    );
+    if (poolId != null) {
+      await allocateCostPoolToSale(
+        poolId: poolId,
+        saleId: saleId,
+        amount: amount,
+      );
+    }
+    return saleId;
+  }
+
+  Future<int> recordSaleAgainstJob({
+    required int jobId,
+    required Money amount,
+    required String paymentMethod,
+    String? paymentReference,
+    String? staffName,
+    int? staffId,
+  }) =>
+      recordJobSale(
+        jobId: jobId,
+        amount: amount,
+        paymentMethod: paymentMethod,
+        paymentReference: paymentReference,
+        staffName: staffName,
+        staffId: staffId,
+      );
+
+  Future<int> recordJobQuickSale({
+    required int jobId,
+    required Money amount,
+    required String paymentMethod,
+    String? paymentReference,
+    String? staffName,
+    int? staffId,
+  }) =>
+      recordJobSale(
+        jobId: jobId,
+        amount: amount,
+        paymentMethod: paymentMethod,
+        paymentReference: paymentReference,
+        staffName: staffName,
+        staffId: staffId,
+      );
 
   Future<int> recordJobPayment({
     required String uuid,

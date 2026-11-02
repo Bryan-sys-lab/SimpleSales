@@ -2804,10 +2804,46 @@ class _SellScreenState extends State<SellScreen>
     try {
       final name = (values['name'] ?? '').trim();
       Money? costAmount;
+      bool warnNoCost = false;
       if (name.isNotEmpty) {
         final products = await DatabaseHelper.instance.getProducts();
         final match = products.where((p) => p.name.toLowerCase() == name.toLowerCase()).firstOrNull;
-        if (match != null) costAmount = match.costPrice;
+        if (match != null) {
+          costAmount = match.costPrice;
+        } else {
+          if (!mounted) return;
+          // New/unmatched product: ask for a cost price so profit is not overstated.
+          final costController = TextEditingController();
+          final entered = await showDialog<double?>(
+            context: context,
+            builder: (context) => AlertDialog(
+              title: const Text('Is this a new product? Add cost price'),
+              content: TextField(
+                controller: costController,
+                decoration: const InputDecoration(labelText: 'Cost price (KES)'),
+                keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                autofocus: true,
+              ),
+              actions: [
+                TextButton(onPressed: () => Navigator.pop(context), child: const Text('Skip')),
+                FilledButton(
+                  onPressed: () {
+                    final v = double.tryParse(costController.text.trim());
+                    Navigator.pop(context, v);
+                  },
+                  child: const Text('Save'),
+                ),
+              ],
+            ),
+          );
+          costController.dispose();
+          if (entered != null && entered > 0) {
+            costAmount = Money.fromMajor(entered);
+          } else {
+            costAmount = Money.zero;
+            warnNoCost = true;
+          }
+        }
       }
       await DatabaseHelper.instance.recordOpenQuickSale(
         amount: Money.fromMajor(amount),
@@ -2831,7 +2867,11 @@ class _SellScreenState extends State<SellScreen>
         await DatabaseHelper.instance.upsertProduct(product);
       }
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Quick sale recorded.')));
+      if (warnNoCost) {
+        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Cost not recorded; profit may be overstated.')));
+      } else {
+        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Quick sale recorded.')));
+      }
     } catch (e) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('$e')));
@@ -3008,6 +3048,9 @@ class _SellScreenState extends State<SellScreen>
           onIncrease: () => _updateQty(i, 1),
           onRemove: () => _removeFromCart(i),
           onEdit: () => _editCartLine(i),
+          profitLabel: formatMoney(Money.fromMinor(
+              _cart[i].total.minorUnits -
+                  _cart[i].unitCost.times(_cart[i].qty).minorUnits)),
         ),
     ];
   }

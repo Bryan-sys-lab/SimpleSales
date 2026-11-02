@@ -133,7 +133,15 @@ jobs:
 
       - name: Build release APK
         if: ${{ env.BUILD_RELEASE == 'true' }}
-        run: flutter build apk --release
+        env:
+          BACKEND_URL: ${{ secrets.BACKEND_URL }}
+        run: |
+          set -euo pipefail
+          defines=()
+          if [ -n "${BACKEND_URL:-}" ]; then
+            defines+=("--dart-define=BACKEND_URL=${BACKEND_URL}")
+          fi
+          flutter build apk --release ${defines[@]+"${defines[@]}"}
 
       # The version this build carries, read from the same place Flutter reads
       # it. It labels the artefact below, because an APK that reports
