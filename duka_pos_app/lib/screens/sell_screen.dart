@@ -2816,6 +2816,7 @@ class _SellScreenState extends State<SellScreen>
         staffId: appState.currentStaffId,
         staffName: appState.currentStaffName ?? 'Owner',
         costAmount: costAmount,
+        trackCost: true,
       );
       if (name.isNotEmpty) {
         final product = Product(
