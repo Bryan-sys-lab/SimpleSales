@@ -301,6 +301,16 @@ jobs:
           # with the token in it is written to .git/config and can be read
           # off the machine by anything that can read the repository.
           auth="$(printf 'x-access-token:%s' "$GH_TOKEN" | base64 -w0)"
+
+          # Revalidate the branch tip immediately before writing: another run may
+          # have pushed to app while this one was bumping. Never push stale code.
+          git fetch origin app --prune
+          if ! git merge-base --is-ancestor origin/app HEAD; then
+            echo "::error::Stale: app moved on after this run started."
+            echo "::error::Abort without releasing stale code; let the newer run handle it."
+            exit 1
+          fi
+
           if ! git -c http.extraheader="AUTHORIZATION: basic ${auth}" push origin HEAD:app; then
             # FAILED, not "nothing to do".
             #
