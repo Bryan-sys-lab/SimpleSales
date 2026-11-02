@@ -16,6 +16,9 @@ export default {
     for (const [k, v] of Object.entries(env || {})) {
       if (typeof v === 'string') process.env[k] = v;
     }
+    if (env?.HYPERDRIVE?.connectionString) {
+      process.env.DATABASE_URL = env.HYPERDRIVE.connectionString;
+    }
 
     const url = new URL(request.url);
     if (url.pathname === '/live' || url.pathname === '/api/live') {
@@ -37,7 +40,7 @@ export default {
     const socket = makeSocket();
 
     return new Promise<Response>((resolve) => {
-      const timer = setTimeout(() => resolve(new Response('gateway timeout', { status: 504 })), 10000);
+      const timer = setTimeout(() => resolve(new Response('gateway timeout', { status: 504 })), 25000);
 
       const req = new IncomingMessage(socket as any);
       req.method = request.method;
