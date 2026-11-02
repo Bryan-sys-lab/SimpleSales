@@ -185,9 +185,9 @@ jobs:
           echo "offline_only=${offline_only}" >> "$GITHUB_OUTPUT"
 
           if [ "$offline_only" = true ]; then
-            echo "::warning::Releasing an OFFLINE-ONLY build. Set BACKEND_URL and OIDC_ISSUER_URL before you need M-Pesa or online sign-in."
+            echo "::warning::Releasing an OFFLINE-ONLY build. Set BACKEND_URL before you need M-Pesa or online sign-in."
           else
-            echo "BACKEND_URL and OIDC_ISSUER_URL are set, https and non-local."
+            echo "BACKEND_URL is set, https and non-local."
           fi
 
       - name: Build signed release APK
@@ -195,9 +195,6 @@ jobs:
         env:
           SENTRY_DSN: ${{ secrets.SENTRY_DSN }}
           BACKEND_URL: ${{ secrets.BACKEND_URL }}
-          OIDC_REDIRECT_URL: ${{ secrets.OIDC_REDIRECT_URL }}
-          OIDC_CLIENT_ID: ${{ secrets.OIDC_CLIENT_ID }}
-          OIDC_API_SCOPE: ${{ secrets.OIDC_API_SCOPE }}
         run: |
           set -euo pipefail
           apk="build/app/outputs/flutter-apk/app-release.apk"
@@ -228,27 +225,8 @@ jobs:
           add_define SENTRY_DSN "$SENTRY_DSN"
           add_define BACKEND_URL "$BACKEND_URL"
 
-          # The manifest placeholder and the dart-define have to agree on the
-          # scheme: AppAuth's manifest filters the callback on
-          # ${appAuthRedirectScheme} while OidcService passes OIDC_REDIRECT_URL
-          # to the authorization request. Deriving both from the one secret
-          # removes the drift where sign-in silently never returns to the app.
-          gradle_args=()
-          if [ -n "${OIDC_REDIRECT_URL}" ]; then
-            redirect_scheme="${OIDC_REDIRECT_URL%%:*}"
-            redirect_scheme="$(printf '%s' "$redirect_scheme" | tr '[:upper:]' '[:lower:]')"
-            if [ -z "$redirect_scheme" ]; then
-              echo "::error::Could not read a scheme out of OIDC_REDIRECT_URL='${OIDC_REDIRECT_URL}'."
-              exit 1
-            fi
-            echo "Callback scheme: ${redirect_scheme}"
-            gradle_args+=("--android-project-arg=appAuthRedirectScheme=${redirect_scheme}")
-          else
-            echo "::warning::OIDC_REDIRECT_URL is not set; the manifest keeps its built-in default scheme."
-          fi
-
           echo "dart-defines injected: ${#defines[@]}"
-          flutter build apk --release ${gradle_args[@]+"${gradle_args[@]}"} ${defines[@]+"${defines[@]}"}
+          flutter build apk --release ${defines[@]+"${defines[@]}"}
 
           test -f "$apk" || { echo "::error::Expected APK not found at $apk"; exit 1; }
 
@@ -357,7 +335,7 @@ jobs:
             if [ "${{ steps.config.outputs.offline_only }}" = "true" ]; then
               echo "> **Offline-only build.**"
               echo ">"
-              echo "> This APK was built without \`BACKEND_URL\` and/or \`OIDC_ISSUER_URL\`, so it"
+              echo "> This APK was built without \`BACKEND_URL\`, so it"
               echo "> was compiled against the app's built-in placeholder endpoints."
               echo ">"
               echo "> - **Works:** cash sales, stock, reports, staff PIN sign-in, backups."
@@ -366,7 +344,7 @@ jobs:
               echo ">   sign-in. Do not sell to customers expecting change from M-Pesa on"
               echo ">   this build."
               echo ">"
-              echo "> Set the repository secrets \`BACKEND_URL\` and \`OIDC_ISSUER_URL\` and"
+              echo "> Set the repository secret \`BACKEND_URL\` and"
               echo "> re-tag to publish a fully wired build."
             else
               echo "Backend and sign-in endpoints are configured in this build."
