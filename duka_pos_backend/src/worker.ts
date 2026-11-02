@@ -76,6 +76,21 @@ export default {
       req.push(null);
     });
   },
+  async scheduled(event: any, env: any, ctx: any) {
+    for (const [k, v] of Object.entries(env || {})) {
+      if (typeof v === 'string') process.env[k] = v;
+    }
+    if (env?.HYPERDRIVE?.connectionString) {
+      process.env.DATABASE_URL = env.HYPERDRIVE.connectionString;
+    }
+    try {
+      const { prisma } = await import('./lib/prisma.js');
+      await (prisma as any).user.count();
+      console.log('db warm ping ok');
+    } catch (e) {
+      console.error('db warm ping failed', e);
+    }
+  },
 };
 
 
