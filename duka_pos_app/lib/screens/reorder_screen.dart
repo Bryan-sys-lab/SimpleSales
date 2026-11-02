@@ -254,7 +254,7 @@ class _ReorderScreenState extends State<ReorderScreen> {
                                   contentPadding: EdgeInsets.zero,
                                   title: Text(line.product.name),
                                   subtitle: Text(
-                                      '${line.product.stockQty} in stock · reorder at ${line.product.reorderLevel} · ${formatMoney(line.product.costPrice)} each'),
+                                      '${line.product.stockQty} in stock · reorder at ${line.product.reorderLevel}'),
                                   trailing: SizedBox(
                                     width: 78,
                                     child: TextField(

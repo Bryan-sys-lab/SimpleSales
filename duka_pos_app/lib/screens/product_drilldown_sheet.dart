@@ -105,8 +105,6 @@ class _ProductDrilldownSheet extends StatelessWidget {
                       children: [
                         _Metric('Sell price',
                             formatMoney(data.catalogueProduct!.sellPrice)),
-                        _Metric('Cost',
-                            formatMoney(data.catalogueProduct!.costPrice)),
                         _Metric(
                             'On hand', _units(data.catalogueProduct!.stockQty)),
                       ],
@@ -212,8 +210,7 @@ class _ProductDrilldownSheet extends StatelessWidget {
                       ListTile(
                         contentPadding: EdgeInsets.zero,
                         title: Text(
-                          '${formatMoney(Money.fromMinor(point.sellPriceMinor))} sell · '
-                          '${formatMoney(Money.fromMinor(point.costPriceMinor))} cost',
+                          '${formatMoney(Money.fromMinor(point.sellPriceMinor))} sell',
                         ),
                         subtitle: Text(
                             '${point.recordedAt}${point.reason == null ? '' : ' · ${point.reason}'}'),
