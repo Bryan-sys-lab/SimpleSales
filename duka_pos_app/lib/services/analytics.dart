@@ -317,15 +317,20 @@ class DrinkTankLevel {
     required this.name,
     required this.litresRemaining,
     required this.tankCount,
+    this.capacityLitres = 0,
     this.costInvestedMinor = 0,
   });
 
   final String name;
   final double litresRemaining;
   final double tankCount;
+  final double capacityLitres;
   final int costInvestedMinor;
 
   Money get costInvested => Money.fromMinor(costInvestedMinor);
+
+  double get fillPercent =>
+      capacityLitres <= 0 ? 0 : (litresRemaining / capacityLitres).clamp(0.0, 1.0);
 }
 
 CostCoverage costCoverageFor(

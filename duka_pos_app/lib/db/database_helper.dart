@@ -11374,6 +11374,9 @@ SELECT name FROM staff GROUP BY name HAVING COUNT(*) = 1
             litresRemaining: ((tank['stock_qty'] as num?)?.toDouble() ?? 0) *
                 ((tank['bottle_ml'] as num?)?.toDouble() ?? 0) /
                 1000,
+            capacityLitres: (((tank['bottle_ml'] as num?)?.toDouble() ?? 0) *
+                    ((tank['stock_qty'] as num?)?.toDouble() ?? 0)) /
+                1000,
             costInvestedMinor: (((tank['stock_qty'] as num?)?.toDouble() ?? 0) *
                     ((tank['cost_price'] as num?)?.toInt() ?? 0))
                 .round(),

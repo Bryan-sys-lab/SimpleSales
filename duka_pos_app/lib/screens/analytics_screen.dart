@@ -910,6 +910,10 @@ class _DrinksAnalyticsCard extends StatelessWidget {
                             style: type.labelLarge,
                           ),
                           Text(
+                            '${(tank.fillPercent * 100).toStringAsFixed(0)}% full',
+                            style: type.bodySmall,
+                          ),
+                          Text(
                             'Cost: ${formatMoney(tank.costInvested)}',
                             style: type.bodySmall,
                           ),
