@@ -526,13 +526,13 @@ void main() {
     test('the session is still cleared', () async {
       await seed();
       // A token on the device, as a signed-in shop would have.
-      keystore.values['oidc_access_token'] = 'an-access-token';
-      keystore.values['oidc_refresh_token'] = 'a-refresh-token';
+      keystore.values['access_token'] = 'an-access-token';
+      keystore.values['refresh_token'] = 'a-refresh-token';
 
       await AccountDeletionService.deleteAccount(pin: validPin);
 
-      expect(keystore.values['oidc_access_token'], isNull);
-      expect(keystore.values['oidc_refresh_token'], isNull);
+      expect(keystore.values['access_token'], isNull);
+      expect(keystore.values['refresh_token'], isNull);
     });
   });
 
