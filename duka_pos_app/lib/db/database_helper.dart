@@ -11326,7 +11326,7 @@ SELECT name FROM staff GROUP BY name HAVING COUNT(*) = 1
     );
 
     final tankRows = await db.rawQuery('''
-      SELECT name, stock_qty, bottle_ml
+      SELECT name, stock_qty, bottle_ml, cost_price
       FROM products
       WHERE active = 1 AND category = 'Tanks'
       ORDER BY name ASC
@@ -11374,6 +11374,9 @@ SELECT name FROM staff GROUP BY name HAVING COUNT(*) = 1
             litresRemaining: ((tank['stock_qty'] as num?)?.toDouble() ?? 0) *
                 ((tank['bottle_ml'] as num?)?.toDouble() ?? 0) /
                 1000,
+            costInvestedMinor: (((tank['stock_qty'] as num?)?.toDouble() ?? 0) *
+                    ((tank['cost_price'] as num?)?.toInt() ?? 0))
+                .round(),
           ),
       ],
       wasteLitres: wasteMl / 1000,
@@ -12911,14 +12914,6 @@ SELECT name FROM staff GROUP BY name HAVING COUNT(*) = 1
     }
     final db = await database;
     return db.transaction<int>((txn) async {
-      if (paymentMethod == 'cash') {
-        final shifts = await txn.query('shifts',
-            where: 'status = ?',
-            whereArgs: ['open'],
-            orderBy: 'start_time DESC',
-            limit: 1);
-        if (shifts.isEmpty) throw StateError('Open a shift before taking cash');
-      }
       final now = DateTime.now().toIso8601String();
       final saleId = await txn.insert('sales', <String, Object?>{
         'staff_name': staffName.trim().isEmpty ? 'Open business' : staffName,

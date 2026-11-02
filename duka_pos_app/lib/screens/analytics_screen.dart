@@ -902,9 +902,18 @@ class _DrinksAnalyticsCard extends StatelessWidget {
                   child: Row(
                     children: <Widget>[
                       Expanded(child: Text(tank.name)),
-                      Text(
-                        _litres(tank.litresRemaining),
-                        style: type.labelLarge,
+                      Column(
+                        crossAxisAlignment: CrossAxisAlignment.end,
+                        children: <Widget>[
+                          Text(
+                            _litres(tank.litresRemaining),
+                            style: type.labelLarge,
+                          ),
+                          Text(
+                            'Cost: ${formatMoney(tank.costInvested)}',
+                            style: type.bodySmall,
+                          ),
+                        ],
                       ),
                     ],
                   ),

@@ -3103,6 +3103,10 @@ class CartItem {
       return Money.fromMinor(divideMoneyHalfUp(
           carton.unitCost.minorUnits, carton.unitsPerPack.round()));
     }
+    final shot = shotCup;
+    if (shot != null && product.bottleMl > 0) {
+      return product.costPrice.times(shot.capacityMl / product.bottleMl);
+    }
     return variant?.costPrice ?? product.costPrice.times(fraction);
   }
 
