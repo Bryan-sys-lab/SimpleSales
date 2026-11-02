@@ -1,0 +1,10 @@
+{
+  "$schema": "./node_modules/wrangler/config-schema.json",
+  "name": "duka-pos-backend",
+  "main": "dist/worker.js",
+  "compatibility_date": "2026-10-26",
+  "compatibility_flags": ["nodejs_compat"],
+  "vars": {
+    "APP_RELEASE_REPOSITORY": "Bryan-sys-lab/SimpleSales"
+  }
+}
