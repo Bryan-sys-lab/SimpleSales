@@ -8425,7 +8425,7 @@ abstract class AppLocalizations {
   /// No description provided for @portionFullLabel.
   ///
   /// In en, this message translates to:
-  /// **'Full bottle'**
+  /// **'Full'**
   String get portionFullLabel;
 
   /// No description provided for @portionHalfLabel.

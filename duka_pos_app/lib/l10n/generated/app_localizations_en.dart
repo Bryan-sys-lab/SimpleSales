@@ -5197,7 +5197,7 @@ class AppLocalizationsEn extends AppLocalizations {
   String get sellNoStockLeft => 'There is none left';
 
   @override
-  String get portionFullLabel => 'Full bottle';
+  String get portionFullLabel => 'Full';
 
   @override
   String get portionHalfLabel => 'Half';

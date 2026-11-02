@@ -4262,6 +4262,22 @@ SELECT name FROM staff GROUP BY name HAVING COUNT(*) = 1
     return rows.isEmpty ? null : Product.fromMap(rows.first);
   }
 
+  /// Attaches [barcode] to [productId] so future scans resolve to it.
+  /// Returns true on success, false if the barcode is already attached
+  /// (primary-key conflict).
+  Future<bool> attachBarcodeToProduct(String barcode, int productId) async {
+    try {
+      await (await database).insert('product_barcodes', <String, Object?>{
+        'barcode': barcode,
+        'product_id': productId,
+        'variant_id': null,
+      });
+      return true;
+    } on Object {
+      return false;
+    }
+  }
+
   /// Resolves either a product barcode or a pack barcode in one lookup path.
   /// Pack codes are checked against product codes before insertion, so this is
   /// deterministic even though the two ledgers are separate tables.

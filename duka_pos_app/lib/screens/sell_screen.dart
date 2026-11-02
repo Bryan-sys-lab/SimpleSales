@@ -22,7 +22,6 @@ import '../services/backend_service.dart';
 import '../services/receipt_share_service.dart';
 import '../services/receipt_pdf_service.dart';
 import '../services/session_refresh_mixin.dart';
-import '../services/barcode/barcode_service.dart';
 import '../services/barcode/scan_input_service.dart';
 import '../services/etims/etims_service.dart';
 import '../services/printer/printer_config.dart';
@@ -448,6 +447,37 @@ class _SellScreenState extends State<SellScreen>
     }
   }
 
+  Future<Product?> _promptAttachBarcode(String barcode) async {
+    final products = _products;
+    if (products.isEmpty) return null;
+    return showDialog<Product>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: Text('Attach barcode $barcode to a product'),
+        content: SizedBox(
+          width: double.maxFinite,
+          height: 300,
+          child: ListView.builder(
+            itemCount: products.length,
+            itemBuilder: (ctx, i) {
+              final p = products[i];
+              return ListTile(
+                title: Text(p.name),
+                onTap: () => Navigator.of(ctx).pop(p),
+              );
+            },
+          ),
+        ),
+        actions: <Widget>[
+          TextButton(
+            onPressed: () => Navigator.of(ctx).pop(),
+            child: const Text('Cancel'),
+          ),
+        ],
+      ),
+    );
+  }
+
   /// Adds ONE scanned code to the cart.
   ///
   /// Resolved through `getScanTarget` rather than by barcode alone, because a
@@ -459,15 +489,21 @@ class _SellScreenState extends State<SellScreen>
     final target = await DatabaseHelper.instance.getScanTarget(scan.normalised);
     if (!mounted) return;
     if (target == null) {
-      final problem = Barcode.rejectionReason(scan.normalised);
-      // Names the variant case in the same message, because a code that was
-      // never attached to anything is usually a code the owner typed into the
-      // wrong field — a variant's code belongs on that variant.
-      final message =
-          problem ?? AppLocalizations.of(context).sellScanNoProductBarcode;
-      _announceStatus(message);
-      ScaffoldMessenger.of(context)
-          .showSnackBar(SnackBar(content: Text(message)));
+      // Unknown code: offer to attach it to an existing product so the next
+      // scan resolves without re-typing the code.
+      final chosen = await _promptAttachBarcode(scan.normalised);
+      if (!mounted) return;
+      if (chosen == null) {
+        final message = AppLocalizations.of(context).sellScanNoProductBarcode;
+        _announceStatus(message);
+        ScaffoldMessenger.of(context)
+            .showSnackBar(SnackBar(content: Text(message)));
+        return;
+      }
+      await DatabaseHelper.instance.attachBarcodeToProduct(scan.normalised, chosen.id!);
+      if (!mounted) return;
+      // Re-resolve now that the code is attached.
+      await _applyScan(scan);
       return;
     }
     final product = target.product;

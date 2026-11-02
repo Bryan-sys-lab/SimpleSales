@@ -1387,7 +1387,7 @@
   "shiftNeedsStaffEntry": "A shift needs a worker. Add yourself in Settings, then open the shift again.",
   "sellTileStockCountLow": "{quantity} in stock · running low",
   "sellNoStockLeft": "There is none left",
-  "portionFullLabel": "Full bottle",
+  "portionFullLabel": "Full",
   "portionHalfLabel": "Half",
   "portionQuarterLabel": "Quarter",
   "supportStatusOpen": "Open",
