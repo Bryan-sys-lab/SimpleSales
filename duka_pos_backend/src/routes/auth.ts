@@ -399,9 +399,11 @@ router.post('/forgot-password', loginLimiter, asyncHandler(async (req: Request, 
   if (!isConfigured()) return notConfigured(res, requestId);
 
   const user = await prisma.user.findUnique({ where: { email } });
+  let debugCode: string | undefined;
   if (user) {
     // generate code, store EmailVerification? use VerificationChallenge
     const code = generateVerificationCode();
+    debugCode = (process.env.NODE_ENV !== 'production' && process.env.VERIFICATION_DEBUG_CODES === 'true') ? code : undefined;
     const salt = newSalt();
     const secret = verificationSecret();
     await prisma.verificationChallenge.updateMany({ where: { email, used: false }, data: { used: true } });
@@ -421,7 +423,10 @@ router.post('/forgot-password', loginLimiter, asyncHandler(async (req: Request, 
       }
     }
   }
-  res.json({ status: 'code_sent' });
+  res.json({
+    status: 'code_sent',
+    ...(debugCode ? { debug_code: debugCode } : {}),
+  });
 }));
 
 // POST /auth/reset-password
