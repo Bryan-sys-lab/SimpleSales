@@ -65,6 +65,7 @@ final class _DashboardReady extends _DashboardState {
     required this.expectedTill,
     this.creditOwedMinor = 0,
     this.creditCustomerCount = 0,
+    this.tanks = const <Product>[],
   });
 
   final DailyTotals totals;
@@ -85,6 +86,7 @@ final class _DashboardReady extends _DashboardState {
   final Money expectedTill;
   final int creditOwedMinor;
   final int creditCustomerCount;
+  final List<Product> tanks;
 }
 
 class _DashboardScreenState extends State<DashboardScreen>
@@ -169,6 +171,8 @@ class _DashboardScreenState extends State<DashboardScreen>
       final DateTime tomorrow = dayStart.add(const Duration(days: 1));
 
       final List<Product> products = await db.getProducts();
+      final List<Product> tanks =
+          products.where((p) => p.category == 'Tanks' && p.active).toList();
       final DailyTotals totalsToday =
           await db.salesTotalsFor(since: dayStart, staffId: staffId);
       final DailyTotals totalsAll = await db.salesTotalsFor(staffId: staffId);
@@ -208,6 +212,7 @@ class _DashboardScreenState extends State<DashboardScreen>
             expectedTill: Money.zero,
             creditOwedMinor: creditSummary.totalOwedMinor,
             creditCustomerCount: creditSummary.customerCount,
+            tanks: tanks,
           );
         });
         if (shift == null) return;
@@ -280,6 +285,7 @@ class _DashboardScreenState extends State<DashboardScreen>
           expectedTill: Money.zero,
           creditOwedMinor: creditSummary.totalOwedMinor,
           creditCustomerCount: creditSummary.customerCount,
+          tanks: tanks,
         );
       });
 
@@ -302,6 +308,7 @@ class _DashboardScreenState extends State<DashboardScreen>
             expectedTill: expected,
             creditOwedMinor: ready.creditOwedMinor,
             creditCustomerCount: ready.creditCustomerCount,
+            tanks: ready.tanks,
           ));
     } catch (_) {
       if (!_current(serial, session, appState)) return;
@@ -695,6 +702,30 @@ class _DashboardContent extends StatelessWidget {
                       // by whom — so the card opens the list that answers it.
                       onTransactions: () => context.push(Routes.transactions),
                     ),
+                    if (appState.shopProfile == ShopProfile.drinks &&
+                        data.tanks.isNotEmpty)
+                      Card(
+                        child: Padding(
+                          padding: const EdgeInsets.all(12),
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: <Widget>[
+                              Text('Tanks',
+                                  style: Theme.of(context).textTheme.titleMedium),
+                              for (final t in data.tanks)
+                                Padding(
+                                  padding: const EdgeInsets.only(top: 4),
+                                  child: Row(
+                                    children: <Widget>[
+                                      Expanded(child: Text(t.name)),
+                                      Text('${t.stockQty.toStringAsFixed(1)} ${t.unit.wire}'),
+                                    ],
+                                  ),
+                                ),
+                            ],
+                          ),
+                        ),
+                      ),
                     _DashboardQuickActions(profile: appState.shopProfile),
                   ],
                   gap,
