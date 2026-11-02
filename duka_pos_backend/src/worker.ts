@@ -40,7 +40,7 @@ export default {
     const socket = makeSocket();
 
     return new Promise<Response>((resolve) => {
-      const timer = setTimeout(() => resolve(new Response('gateway timeout', { status: 504 })), 25000);
+      const timer = setTimeout(() => resolve(new Response('gateway timeout', { status: 504 })), 28000);
 
       const req = new IncomingMessage(socket as any);
       req.method = request.method;
