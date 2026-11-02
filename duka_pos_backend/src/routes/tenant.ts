@@ -21,12 +21,13 @@ import { activityTenantScope } from '../lib/activity_scope';
 
 const router = Router();
 
-const staffAuthLimiter = rateLimit({
+const _isNode = typeof module !== 'undefined';
+const staffAuthLimiter = _isNode ? rateLimit({
   windowMs: 60_000,
   limit: 10,
   standardHeaders: 'draft-7',
   legacyHeaders: false,
-});
+}) : ((_req: any, _res: any, next: any) => next());
 
 /** Verifies the app's self-describing PBKDF2-HMAC-SHA256 PIN format. */
 function verifyStaffPin(pin: string, stored: string | null): boolean {

@@ -2,7 +2,7 @@ import express from 'express';
 import supertest from 'supertest';
 import { beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import { errorHandler } from '../lib/http';
-import { authMiddleware } from '../middleware/auth';
+// import { authMiddleware } from '../middleware/auth';
 
 const mocks = vi.hoisted(() => ({
   prisma: {

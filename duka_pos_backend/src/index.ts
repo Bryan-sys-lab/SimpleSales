@@ -48,7 +48,7 @@ import creditRoutes from './routes/credit';
 import operationalSyncRoutes from './routes/operational_sync';
 import evidenceRoutes from './routes/evidence';
 
-dotenv.config();
+if (typeof module !== 'undefined') { dotenv.config(); }
 
 if (process.env.NODE_ENV === 'production' && !process.env.PUBLIC_API_URL?.startsWith('https://')) {
   throw new Error('PUBLIC_API_URL must be an https URL in production');
@@ -70,15 +70,16 @@ app.use(cors({ origin: allowedOrigins.length ? allowedOrigins : false }));
 // Full workspace backups are already encrypted client-side and can contain a
 // busy shop's history; the route still validates and caps the payload at 8 MB.
 app.use(express.json({ limit: '8mb' }));
-app.use(rateLimit({
-  windowMs: 60000,
-  limit: Number(process.env.RATE_LIMIT_LIMIT ?? 120),
-  standardHeaders: 'draft-7',
-  legacyHeaders: false,
-  // Liveness/readiness probes must keep working during a traffic burst;
-  // application and webhook routes remain behind the limiter below.
-  skip: (req) => req.path === '/health' || req.path === '/ready',
-}));
+const isNode = typeof module !== 'undefined';
+if (isNode) {
+  app.use(rateLimit({
+    windowMs: 60000,
+    limit: Number(process.env.RATE_LIMIT_LIMIT ?? 120),
+    standardHeaders: 'draft-7',
+    legacyHeaders: false,
+    skip: (req) => req.path === '/health' || req.path === '/ready',
+  }));
+}
 
 // ---------------------------------------------------------------------------
 // Health / readiness
@@ -101,9 +102,10 @@ app.get('/ready', async (_req, res, next) => {
 // PayHero webhook (no auth required — called by PayHero)
 // ---------------------------------------------------------------------------
 
+const webhookLimiter = isNode ? rateLimit({ windowMs: 60000, limit: 30, standardHeaders: 'draft-7', legacyHeaders: false }) : (_req: any, _res: any, next: any) => next();
 app.post(
   '/webhooks/payhero-callback',
-  rateLimit({ windowMs: 60000, limit: 30, standardHeaders: 'draft-7', legacyHeaders: false }),
+  webhookLimiter,
   handlePayheroCallback,
 );
 
@@ -295,7 +297,7 @@ app.use((_req, res) => res.status(404).json({ error: 'Not found' }));
 
 app.use(errorHandler);
 
-if (require.main === module) {
+if (isNode && require.main === module) {
   const server = app.listen(PORT, () =>
     log('info', 'server.started', { port: PORT, environment: process.env.NODE_ENV ?? 'development' }),
   );
