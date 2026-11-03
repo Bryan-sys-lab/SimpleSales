@@ -1286,6 +1286,8 @@ class _SettingsScreenState extends State<SettingsScreen>
               email: owner.email,
               pin: pin,
               code: code,
+              shopName: owner.shopName,
+              ownerName: owner.name,
             );
             return null;
           } on VerificationException catch (error) {

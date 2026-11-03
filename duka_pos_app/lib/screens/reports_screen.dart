@@ -122,6 +122,7 @@ class _ReportsScreenState extends State<ReportsScreen>
 
   ReportsView _view = const ReportsLoading(ReportsData.empty);
   ReportsData _shown = ReportsData.empty;
+  List<Map<String, dynamic>> _cupSales = const <Map<String, dynamic>>[];
   String _query = '';
   ReportsRange _range = ReportsRange.month;
 
@@ -168,16 +169,23 @@ class _ReportsScreenState extends State<ReportsScreen>
         db.getDrawerEvents(
           staffId: state.currentRole == 'cashier' ? state.currentStaffId : null,
         ),
+        db.cupSales(
+          since: since,
+          staffId: state.currentRole == 'cashier' ? state.currentStaffId : null,
+        ),
       ]);
       final List<Sale> sales = results[0] as List<Sale>;
       final List<Shift> shifts = results[1] as List<Shift>;
       final List<Map<String, dynamic>> drawerEvents =
           results[2] as List<Map<String, dynamic>>;
+      final List<Map<String, dynamic>> cupSales =
+          results[3] as List<Map<String, dynamic>>;
       final List<ShiftReportRow> shiftRows =
           await loadShiftReports(shifts, sales);
       if (!mounted) return;
       setState(() {
         _unfilteredCount = sales.length;
+        _cupSales = cupSales;
         _shown = _filter(
           ReportsData(
             sales: sales,
@@ -572,6 +580,34 @@ class _ReportsScreenState extends State<ReportsScreen>
             _NoSaleDrawerCard(count: data.noSaleOpens),
             SizedBox(height: spacing.lg),
             _StaffTakingsCard(rows: staff),
+            SizedBox(height: spacing.lg),
+            if (_cupSales.isNotEmpty)
+              Card(
+                child: Padding(
+                  padding: const EdgeInsets.all(12),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: <Widget>[
+                      Text('Cup sales',
+                          style: Theme.of(context).textTheme.titleMedium),
+                      for (final row in _cupSales)
+                        Padding(
+                          padding: const EdgeInsets.only(top: 4),
+                          child: Row(
+                            children: <Widget>[
+                              Expanded(
+                                  child: Text(
+                                      '${row['label']} · ${row['product_name']}')),
+                              Text(
+                                  '${(row['units'] as num).toStringAsFixed(0)} · '
+                                  '${formatMoney(Money.fromMinor((row['revenue_minor'] as num).toInt()))}'),
+                            ],
+                          ),
+                        ),
+                    ],
+                  ),
+                ),
+              ),
             SizedBox(height: spacing.lg),
             _RecentSalesCard(sales: sales, onReprint: _reprint),
             if (_unfilteredCount > sales.length)

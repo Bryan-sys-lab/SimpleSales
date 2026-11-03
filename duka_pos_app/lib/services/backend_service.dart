@@ -363,6 +363,8 @@ class BackendService {
     required String email,
     required String pin,
     required String code,
+    String? shopName,
+    String? ownerName,
   }) async {
     await ensureInitialized();
     try {
@@ -370,9 +372,15 @@ class BackendService {
         'email': email,
         'password': pin,
         'code': code,
+        if (shopName != null && shopName.isNotEmpty) 'shopName': shopName,
+        if (ownerName != null && ownerName.isNotEmpty) 'ownerName': ownerName,
       });
-      final identity = VerifiedIdentity.fromJson(
-          response.data as Map<String, dynamic>? ?? const {});
+      final data = response.data as Map<String, dynamic>? ?? const {};
+      final identity = VerifiedIdentity.fromJson(data);
+      // Persist the session the backend just issued so every later request
+      // carries the bearer token. Without this the till is verified on paper
+      // but unauthenticated on the wire.
+      await IdentityService.storeVerificationTokens(data);
       await _adoptVerifiedIdentity(identity);
       // The credential, from the authority that issues them.
       // Tokens already issued by /auth/verify; nothing further to sign in to.

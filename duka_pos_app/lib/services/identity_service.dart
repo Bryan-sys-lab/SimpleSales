@@ -43,6 +43,24 @@ class IdentityService {
 
   static Future<bool> get isAuthenticated async => (await accessToken) != null;
 
+  /// Stores the tokens returned by the verification flow.
+  ///
+  /// The verification endpoint issues the same kind of session a login does,
+  /// but [BackendService] is the one that calls it. This keeps the storage
+  /// logic in one place rather than duplicating it.
+  static Future<void> storeVerificationTokens(Map<String, dynamic> data) async {
+    final access = data['access_token'] as String?;
+    final refresh = data['refresh_token'] as String?;
+    final expiresIn = (data['expires_in_seconds'] as num?)?.toInt() ?? (12 * 3600);
+    if (access == null) return;
+    await _storeTokens(
+      accessToken: access,
+      refreshToken: refresh,
+      expiry: DateTime.now().add(Duration(seconds: expiresIn)),
+      tier: 'device',
+    );
+  }
+
   static Future<void> _storeTokens({
     required String? accessToken,
     required String? refreshToken,

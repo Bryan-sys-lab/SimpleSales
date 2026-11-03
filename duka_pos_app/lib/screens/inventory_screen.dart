@@ -150,6 +150,11 @@ class _InventoryScreenState extends State<InventoryScreen>
   }
 
   Future<void> _openEditor([Product? existing]) async {
+    if (existing != null && existing.category == kTankCategory) {
+      await showTankFormSheet(context, existing: existing);
+      await _load();
+      return;
+    }
     await showModalBottomSheet(
       context: context,
       isScrollControlled: true,
@@ -216,6 +221,77 @@ class _InventoryScreenState extends State<InventoryScreen>
         AuditEntity.product,
         entityId: 'id-$sourceId',
         detail: 'repack $sourceQty → $outputQty into product $outputId',
+      );
+      await _load();
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+          content: Text(l10n.inventoryRepackSaved),
+        ));
+      }
+    } on Object catch (error) {
+      if (!mounted) return;
+      final message = error.toString().contains('more source stock')
+          ? l10n.inventoryRepackInsufficientStock
+          : l10n.inventoryRepackFailed;
+      ScaffoldMessenger.of(context)
+          .showSnackBar(SnackBar(content: Text(message)));
+    }
+  }
+
+  Future<void> _repackIntoNewProduct() async {
+    final state = context.read<AppState>();
+    final l10n = AppLocalizations.of(context);
+    if (!state.hasPermission(PermissionKey.adjustStock)) return;
+    if (!state.isOwnerSession &&
+        state.permissionMode(PermissionKey.adjustStock) ==
+            PermissionMode.approval) {
+      final approver = await showManagerApprovalSheet(
+        context,
+        purpose: l10n.inventoryRepackTitle,
+      );
+      if (!mounted || approver == null) return;
+    }
+    final result = await showDialog<Map<String, String>>(
+      context: context,
+      builder: (_) => _RepackNewDialog(products: _products),
+    );
+    if (result == null || !mounted) return;
+    final sourceId = int.tryParse(result['source_id'] ?? '');
+    final sourceQty = double.tryParse(result['source_qty'] ?? '');
+    final outputQty = double.tryParse(result['output_qty'] ?? '');
+    final price = double.tryParse(result['price'] ?? '');
+    final name = result['name']?.trim() ?? '';
+    final unitWire = result['unit'] ?? 'each';
+    if (sourceId == null ||
+        sourceQty == null ||
+        outputQty == null ||
+        price == null ||
+        name.isEmpty) {
+      return;
+    }
+    final unit = ProductUnit.values.firstWhere(
+      (u) => u.wire == unitWire,
+      orElse: () => ProductUnit.each,
+    );
+    final newProduct = Product(
+      name: name,
+      category: 'General',
+      costPrice: Money.zero,
+      sellPrice: Money.fromMajor(price),
+      stockQty: 0,
+      reorderLevel: 0,
+      unit: unit,
+      updatedAt: DateTime.now().toIso8601String(),
+    );
+    try {
+      final newId = await DatabaseHelper.instance.upsertProduct(newProduct);
+      await DatabaseHelper.instance.repackStock(
+        sourceProductId: sourceId,
+        outputProductId: newId,
+        sourceQty: sourceQty,
+        outputQty: outputQty,
+        staffName: state.currentStaffName ?? 'Owner',
+        staffId: state.currentStaffId,
       );
       await _load();
       if (mounted) {
@@ -932,6 +1008,12 @@ class _InventoryScreenState extends State<InventoryScreen>
                   icon: const Icon(Icons.swap_horiz_outlined, size: 18),
                   label: Text(l10n.inventoryRepackAction),
                 ),
+                if (appState.shopProfile == ShopProfile.duka)
+                  TextButton.icon(
+                    onPressed: _repackIntoNewProduct,
+                    icon: const Icon(Icons.add_box_outlined, size: 18),
+                    label: const Text('Repack to new'),
+                  ),
             ],
           ),
         ),
@@ -3437,6 +3519,122 @@ class _StockCountBadge extends StatelessWidget {
           ).copyWith(color: tone.onContainer(colors)),
         ),
       ),
+    );
+  }
+}
+
+class _RepackNewDialog extends StatefulWidget {
+  const _RepackNewDialog({required this.products});
+
+  final List<Product> products;
+
+  @override
+  State<_RepackNewDialog> createState() => _RepackNewDialogState();
+}
+
+class _RepackNewDialogState extends State<_RepackNewDialog> {
+  late int? _sourceId =
+      widget.products.isEmpty ? null : widget.products.first.id;
+  final _sourceQty = TextEditingController();
+  final _outputQty = TextEditingController();
+  final _name = TextEditingController();
+  final _price = TextEditingController();
+  String _unit = 'each';
+
+  @override
+  void dispose() {
+    _sourceQty.dispose();
+    _outputQty.dispose();
+    _name.dispose();
+    _price.dispose();
+    super.dispose();
+  }
+
+  void _save() {
+    final sourceQty = double.tryParse(_sourceQty.text.trim());
+    final outputQty = double.tryParse(_outputQty.text.trim());
+    final price = double.tryParse(_price.text.trim());
+    if (_sourceId == null ||
+        sourceQty == null ||
+        outputQty == null ||
+        price == null ||
+        _name.text.trim().isEmpty ||
+        sourceQty <= 0 ||
+        outputQty <= 0) {
+      return;
+    }
+    Navigator.of(context).pop(<String, String>{
+      'source_id': '$_sourceId',
+      'source_qty': '$sourceQty',
+      'output_qty': '$outputQty',
+      'name': _name.text.trim(),
+      'unit': _unit,
+      'price': '$price',
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return AlertDialog(
+      title: const Text('Repack to new product'),
+      content: SingleChildScrollView(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: <Widget>[
+            DropdownButtonFormField<int>(
+              initialValue: _sourceId,
+              decoration: const InputDecoration(labelText: 'Source product'),
+              items: [
+                for (final product in widget.products)
+                  DropdownMenuItem<int>(
+                    value: product.id,
+                    child: Text('${product.name} · ${product.stockQty}'),
+                  ),
+              ],
+              onChanged: (value) => setState(() => _sourceId = value),
+            ),
+            TextField(
+              controller: _sourceQty,
+              keyboardType:
+                  const TextInputType.numberWithOptions(decimal: true),
+              decoration: const InputDecoration(labelText: 'Source quantity'),
+            ),
+            TextField(
+              controller: _name,
+              decoration: const InputDecoration(labelText: 'New product name'),
+            ),
+            DropdownButtonFormField<String>(
+              initialValue: _unit,
+              decoration: const InputDecoration(labelText: 'Unit'),
+              items: const [
+                DropdownMenuItem(value: 'each', child: Text('Each')),
+                DropdownMenuItem(value: 'kg', child: Text('Kilogram')),
+                DropdownMenuItem(value: 'litre', child: Text('Litre')),
+              ],
+              onChanged: (value) => setState(() => _unit = value ?? 'each'),
+            ),
+            TextField(
+              controller: _price,
+              keyboardType:
+                  const TextInputType.numberWithOptions(decimal: true),
+              decoration: const InputDecoration(labelText: 'Selling price'),
+            ),
+            TextField(
+              controller: _outputQty,
+              keyboardType:
+                  const TextInputType.numberWithOptions(decimal: true),
+              decoration: const InputDecoration(labelText: 'Output quantity'),
+            ),
+          ],
+        ),
+      ),
+      actions: <Widget>[
+        TextButton(
+          onPressed: () => Navigator.pop(context),
+          child: const Text('Cancel'),
+        ),
+        FilledButton(onPressed: _save, child: const Text('Create & repack')),
+      ],
     );
   }
 }

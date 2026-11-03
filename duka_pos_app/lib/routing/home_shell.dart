@@ -293,6 +293,8 @@ class _HomeShellState extends State<HomeShell> {
         context.push(Routes.laybys);
       case _MoreAction.openBusiness:
         context.push(Routes.openBusiness);
+      case _MoreAction.reports:
+        context.push(Routes.reports);
     }
   }
 
@@ -481,7 +483,8 @@ enum _MoreAction {
   help,
   notifications,
   laybys,
-  openBusiness
+  openBusiness,
+  reports
 }
 
 class _MoreSheet extends StatelessWidget {
@@ -510,6 +513,12 @@ class _MoreSheet extends StatelessWidget {
             title: const Text('Open business record'),
             subtitle: const Text('Pots, jobs and owner money'),
             onTap: () => Navigator.pop(context, _MoreAction.openBusiness),
+          ),
+        if (context.read<AppState>().canViewReports)
+          ListTile(
+            leading: const Icon(Icons.assessment_outlined),
+            title: const Text('Reports & exports'),
+            onTap: () => Navigator.pop(context, _MoreAction.reports),
           ),
         if (context.read<AppState>().isAdmin)
           ListTile(

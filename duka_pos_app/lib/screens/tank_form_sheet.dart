@@ -51,6 +51,7 @@ import 'package:flutter/material.dart';
 import 'package:sqflite/sqflite.dart' show Database;
 
 import '../db/database_helper.dart';
+import '../models/models.dart';
 import '../l10n/generated/app_localizations.dart';
 import '../models/stock_movement.dart';
 import '../routing/home_shell.dart';
@@ -72,11 +73,11 @@ import '../ui/components/screen_title.dart';
 const String kTankCategory = 'Tanks';
 
 /// Opens the tank form.
-Future<void> showTankFormSheet(BuildContext context) {
+Future<void> showTankFormSheet(BuildContext context, {Product? existing}) {
   return showModalBottomSheet<void>(
     context: context,
     isScrollControlled: true,
-    builder: (BuildContext context) => const TankFormSheet(),
+    builder: (BuildContext context) => TankFormSheet(existing: existing),
   );
 }
 
@@ -140,48 +141,69 @@ class TankValues {
 /// in ("I have two drums left"). A cup sale takes its own fraction out of it
 /// through the measured-pour path, so 330 ml out of a 50-litre drum is 330/50000
 /// of a tank.
-Future<void> saveTank(Database database, TankValues values) async {
+Future<void> saveTank(Database database, TankValues values,
+    {int? existingProductId}) async {
   await database.transaction((txn) async {
-    final int productId = await txn.insert('products', <String, Object?>{
-      'name': values.name,
-      'category': kTankCategory,
-      'cost_price': Money.fromMajor(values.cost).minorUnits,
-      // Zero on purpose: a tank is never sold whole — only the cups are.
-      'sell_price': 0,
-      'stock_qty': values.tankCount.toDouble(),
-      'reorder_level': 0,
-      'bottle_ml': values.capacityMl,
-      // The tank is a pourable product. It is never sold whole; its cups are
-      // the configured servings, and the unit keeps it volumetric on every
-      // other till after catalogue sync.
-      'unit': ProductUnit.cup.wire,
-      // 0, not false: sqflite carries no boolean, and a bool handed to it is a
-      // type error at the moment of the write.
-      'track_variants': 0,
-      'active': 1,
-      'updated_at': DateTime.now().toIso8601String(),
-    });
+    int productId;
+    if (existingProductId != null) {
+      productId = existingProductId;
+      await txn.update('products', <String, Object?>{
+        'name': values.name,
+        'category': kTankCategory,
+        'cost_price': Money.fromMajor(values.cost).minorUnits,
+        'sell_price': 0,
+        'stock_qty': values.tankCount.toDouble(),
+        'reorder_level': 0,
+        'bottle_ml': values.capacityMl,
+        'unit': ProductUnit.cup.wire,
+        'track_variants': 0,
+        'active': 1,
+        'updated_at': DateTime.now().toIso8601String(),
+      }, where: 'id = ?', whereArgs: <Object?>[productId]);
+      await txn.delete('shot_cups',
+          where: 'product_id = ?', whereArgs: <Object?>[productId]);
+    } else {
+      productId = await txn.insert('products', <String, Object?>{
+        'name': values.name,
+        'category': kTankCategory,
+        'cost_price': Money.fromMajor(values.cost).minorUnits,
+        // Zero on purpose: a tank is never sold whole — only the cups are.
+        'sell_price': 0,
+        'stock_qty': values.tankCount.toDouble(),
+        'reorder_level': 0,
+        'bottle_ml': values.capacityMl,
+        // The tank is a pourable product. It is never sold whole; its cups are
+        // the configured servings, and the unit keeps it volumetric on every
+        // other till after catalogue sync.
+        'unit': ProductUnit.cup.wire,
+        // 0, not false: sqflite carries no boolean, and a bool handed to it is a
+        // type error at the moment of the write.
+        'track_variants': 0,
+        'active': 1,
+        'updated_at': DateTime.now().toIso8601String(),
+      });
 
-    // The tank is a product with an opening balance, not an exception to the
-    // stock ledger. Keep this in the same transaction as the product and its
-    // servings so a newly-created tank is immediately reconcileable and its
-    // baseline can be sent to the backend on the first product sync.
-    await txn.insert('stock_movements', <String, Object?>{
-      'uuid': generateUuid(),
-      'created_at': DateTime.now().toIso8601String(),
-      'product_id': productId,
-      'variant_id': null,
-      'movement_type': StockMovementType.opening.wire,
-      'qty_delta': values.tankCount.toDouble(),
-      'unit_cost_minor': null,
-      'reference_type': null,
-      'reference_id': null,
-      'batch_id': null,
-      'staff_id': null,
-      'staff_name': null,
-      'note': 'Opening balance',
-      'balance_after': values.tankCount.toDouble(),
-    });
+      // The tank is a product with an opening balance, not an exception to the
+      // stock ledger. Keep this in the same transaction as the product and its
+      // servings so a newly-created tank is immediately reconcileable and its
+      // baseline can be sent to the backend on the first product sync.
+      await txn.insert('stock_movements', <String, Object?>{
+        'uuid': generateUuid(),
+        'created_at': DateTime.now().toIso8601String(),
+        'product_id': productId,
+        'variant_id': null,
+        'movement_type': StockMovementType.opening.wire,
+        'qty_delta': values.tankCount.toDouble(),
+        'unit_cost_minor': null,
+        'reference_type': null,
+        'reference_id': null,
+        'batch_id': null,
+        'staff_id': null,
+        'staff_name': null,
+        'note': 'Opening balance',
+        'balance_after': values.tankCount.toDouble(),
+      });
+    }
 
     for (final TankServingValues serving in values.servings) {
       await txn.insert('shot_cups', <String, Object?>{
@@ -198,7 +220,9 @@ Future<void> saveTank(Database database, TankValues values) async {
 }
 
 class TankFormSheet extends StatefulWidget {
-  const TankFormSheet({super.key});
+  const TankFormSheet({this.existing, super.key});
+
+  final Product? existing;
 
   @override
   State<TankFormSheet> createState() => _TankFormSheetState();
@@ -230,6 +254,58 @@ class _TankFormSheetState extends State<TankFormSheet> {
 
   bool _saving = false;
   String? _error;
+
+  @override
+  void initState() {
+    super.initState();
+    final existing = widget.existing;
+    if (existing != null) {
+      _nameCtrl.text = existing.name;
+      if (existing.bottleMl > 0) {
+        _capacityCtrl.text = (existing.bottleMl / 1000).toString();
+      }
+      _costCtrl.text = _editAmount(existing.costPrice);
+      _countCtrl.text = _editQuantity(existing.stockQty);
+      _loadServings(existing.id);
+    }
+  }
+
+  Future<void> _loadServings(int? productId) async {
+    if (productId == null) return;
+    try {
+      final db = await DatabaseHelper.instance.database;
+      final rows = await db.query('shot_cups',
+          where: 'product_id = ?', whereArgs: [productId]);
+      if (!mounted) return;
+      if (rows.isNotEmpty) {
+        for (final s in _servings) {
+          s.dispose();
+        }
+        _servings.clear();
+        for (final row in rows) {
+          final serving = _ServingState();
+          serving.name.text = (row['label'] as String?) ?? '';
+          serving.sizeMl.text = (row['capacity_ml'] as num?)?.toString() ?? '';
+          final priceMinor = (row['price'] as num?)?.toInt() ?? 0;
+          serving.price.text = _editAmount(Money.fromMinor(priceMinor));
+          _servings.add(serving);
+        }
+      }
+    } finally {
+    }
+  }
+
+  static String _editAmount(Money? value) {
+    if (value == null) return '';
+    final major = value.minorUnits ~/ 100;
+    final cents = value.minorUnits % 100;
+    return cents == 0 ? '$major' : '$major.${cents.toString().padLeft(2, '0')}';
+  }
+
+  static String _editQuantity(double? value) {
+    if (value == null) return '';
+    return value % 1 == 0 ? value.toInt().toString() : value.toString();
+  }
 
   @override
   void dispose() {
@@ -357,6 +433,7 @@ class _TankFormSheetState extends State<TankFormSheet> {
           cost: cost,
           servings: servings,
         ),
+        existingProductId: widget.existing?.id,
       );
 
       markCatalogueChanged();

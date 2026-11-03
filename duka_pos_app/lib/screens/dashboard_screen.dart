@@ -66,6 +66,7 @@ final class _DashboardReady extends _DashboardState {
     this.creditOwedMinor = 0,
     this.creditCustomerCount = 0,
     this.tanks = const <Product>[],
+    this.tankSales = const <int, ProductSalesRow>{},
   });
 
   final DailyTotals totals;
@@ -87,6 +88,7 @@ final class _DashboardReady extends _DashboardState {
   final int creditOwedMinor;
   final int creditCustomerCount;
   final List<Product> tanks;
+  final Map<int, ProductSalesRow> tankSales;
 }
 
 class _DashboardScreenState extends State<DashboardScreen>
@@ -213,6 +215,7 @@ class _DashboardScreenState extends State<DashboardScreen>
             creditOwedMinor: creditSummary.totalOwedMinor,
             creditCustomerCount: creditSummary.customerCount,
             tanks: tanks,
+            tankSales: const <int, ProductSalesRow>{},
           );
         });
         if (shift == null) return;
@@ -247,6 +250,7 @@ class _DashboardScreenState extends State<DashboardScreen>
         appState.currentStaffId == null
             ? Future<Shift?>.value(null)
             : db.getOpenShift(appState.currentStaffId!),
+        db.topProducts(since: DateTime(2000), staffId: staffId, limit: 1000),
       ]);
 
       final List<Product> low = (await db.getProducts())
@@ -259,6 +263,11 @@ class _DashboardScreenState extends State<DashboardScreen>
         });
 
       final Shift? shift = results[4] as Shift?;
+      final List<ProductSalesRow> allTimeSales =
+          results[5] as List<ProductSalesRow>;
+      final Map<int, ProductSalesRow> tankSales = <int, ProductSalesRow>{
+        for (final row in allTimeSales) row.productId: row,
+      };
 
       // Every session read from here on — the scope label and the greeting —
       // is behind the guard, so a sign-out that landed during the batch above
@@ -286,6 +295,7 @@ class _DashboardScreenState extends State<DashboardScreen>
           creditOwedMinor: creditSummary.totalOwedMinor,
           creditCustomerCount: creditSummary.customerCount,
           tanks: tanks,
+          tankSales: tankSales,
         );
       });
 
@@ -309,6 +319,7 @@ class _DashboardScreenState extends State<DashboardScreen>
             creditOwedMinor: ready.creditOwedMinor,
             creditCustomerCount: ready.creditCustomerCount,
             tanks: ready.tanks,
+            tankSales: ready.tankSales,
           ));
     } catch (_) {
       if (!_current(serial, session, appState)) return;
@@ -712,16 +723,43 @@ class _DashboardContent extends StatelessWidget {
                             children: <Widget>[
                               Text('Tanks',
                                   style: Theme.of(context).textTheme.titleMedium),
-                              for (final t in data.tanks)
-                                Padding(
-                                  padding: const EdgeInsets.only(top: 4),
-                                  child: Row(
-                                    children: <Widget>[
-                                      Expanded(child: Text(t.name)),
-                                      Text('${t.stockQty.toStringAsFixed(1)} ${t.unit.wire}'),
+                              Builder(builder: (context) {
+                                // Overall tanks card (kept).
+                                int totalValueMinor = 0;
+                                int totalRevenueMinor = 0;
+                                int totalCostMinor = 0;
+                                for (final t in data.tanks) {
+                                  final valueMinor =
+                                      t.costPrice.times(t.stockQty).minorUnits;
+                                  totalValueMinor += valueMinor;
+                                  final row = data.tankSales[t.id];
+                                  final revenue = row?.revenueMinor ?? 0;
+                                  final profit = row?.profitMinor ?? 0;
+                                  final soldCost = revenue - profit;
+                                  totalRevenueMinor += revenue;
+                                  totalCostMinor += soldCost + valueMinor;
+                                }
+                                final breakEvenMinor =
+                                    (totalCostMinor - totalRevenueMinor)
+                                        .clamp(0, 1 << 62);
+                                return Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: <Widget>[
+                                    Text(
+                                      'Value ${formatMoney(Money.fromMinor(totalValueMinor))} · '
+                                      'Sales ${formatMoney(Money.fromMinor(totalRevenueMinor))} · '
+                                      'Break-even ${formatMoney(Money.fromMinor(breakEvenMinor))}',
+                                    ),
+                                    for (final t in data.tanks) ...<Widget>[
+                                      const SizedBox(height: 8),
+                                      _TankProfitCard(
+                                        tank: t,
+                                        row: data.tankSales[t.id],
+                                      ),
                                     ],
-                                  ),
-                                ),
+                                  ],
+                                );
+                              }),
                             ],
                           ),
                         ),
@@ -804,5 +842,40 @@ class _DashboardQuickActions extends StatelessWidget {
     }
     if (children.isEmpty) return const SizedBox.shrink();
     return Wrap(spacing: 8, runSpacing: 8, children: children);
+  }
+}
+
+class _TankProfitCard extends StatelessWidget {
+  const _TankProfitCard({required this.tank, required this.row});
+
+  final Product tank;
+  final ProductSalesRow? row;
+
+  @override
+  Widget build(BuildContext context) {
+    final revenueMinor = row?.revenueMinor ?? 0;
+    final profitMinor = row?.profitMinor ?? 0;
+    final soldCostMinor = revenueMinor - profitMinor;
+    final valueMinor = tank.costPrice.times(tank.stockQty).minorUnits;
+    final totalCostMinor = soldCostMinor + valueMinor;
+    final breakEvenMinor = (totalCostMinor - revenueMinor).clamp(0, 1 << 62);
+    final isProfit = revenueMinor >= totalCostMinor && totalCostMinor > 0;
+    return Card(
+      child: Padding(
+        padding: const EdgeInsets.all(8),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: <Widget>[
+            Text(tank.name, style: Theme.of(context).textTheme.titleSmall),
+            Text('Value ${formatMoney(Money.fromMinor(valueMinor))}'),
+            Text('Sales ${formatMoney(Money.fromMinor(revenueMinor))}'),
+            Text('Profit ${formatMoney(Money.fromMinor(profitMinor))}'),
+            Text(isProfit
+                ? 'In profit'
+                : 'Break-even ${formatMoney(Money.fromMinor(breakEvenMinor))}'),
+          ],
+        ),
+      ),
+    );
   }
 }

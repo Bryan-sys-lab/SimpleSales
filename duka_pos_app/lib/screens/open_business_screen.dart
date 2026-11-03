@@ -134,6 +134,32 @@ class _OpenBusinessScreenState extends State<OpenBusinessScreen> {
         ));
   }
 
+  Future<void> _editPool(Map<String, dynamic> pool) async {
+    final values = await _form('Edit cost pot', [
+      const _Field('name', 'Name'),
+      const _Field('note', 'Note (optional)', required: false),
+    ]);
+    if (values == null) return;
+    await _run(() => _db.updateCostPool(
+          id: (pool['id'] as num).toInt(),
+          name: values['name'],
+          note: values['note'],
+        ));
+  }
+
+  Future<void> _editJob(Map<String, dynamic> job) async {
+    final values = await _form('Edit job', [
+      const _Field('title', 'Title'),
+      const _Field('customer', 'Customer (optional)', required: false),
+    ]);
+    if (values == null) return;
+    await _run(() => _db.updateJob(
+          id: (job['id'] as num).toInt(),
+          title: values['title'],
+          customerName: values['customer'],
+        ));
+  }
+
   Future<void> _addPoolCost(Map<String, dynamic> pool) async {
     final values = await _form('Add pot cost', [
       const _Field('amount', 'Amount (KES)'),
@@ -456,6 +482,30 @@ class _OpenBusinessScreenState extends State<OpenBusinessScreen> {
     await _run(() => _db.upsertProduct(product));
   }
 
+  Future<void> _editOptionalProduct(Product existing) async {
+    final values = await ProfileProductForms.showForm(
+      context: context,
+      profile: ShopProfile.open,
+      existingProduct: existing,
+    );
+    if (values == null) return;
+    final name = (values['name'] as String?)?.trim();
+    final priceMajor = (values['price'] as num?)?.toDouble();
+    if (name == null || name.isEmpty || priceMajor == null) {
+      return _showError('Enter a valid name and selling price.');
+    }
+    final price = Money.fromMajor(priceMajor);
+    final costMajor = (values['cost'] as num?)?.toDouble() ?? 0;
+    final stock = (values['stock'] as num?)?.toDouble() ?? existing.stockQty;
+    final updated = existing.copyWith(
+      name: name,
+      costPrice: Money.fromMajor(costMajor),
+      sellPrice: price,
+      stockQty: stock,
+    );
+    await _run(() => _db.upsertProduct(updated));
+  }
+
   Future<void> _receiveOptionalStock() async {
     if (_products.isEmpty) {
       return _showError('Add an item first.');
@@ -642,10 +692,15 @@ class _OpenBusinessScreenState extends State<OpenBusinessScreen> {
                                     subtitle: Text(
                                       'Paid in ${formatMoney(Money.fromMinor((pool['invested_minor'] as num).toInt()))} · Recovered ${formatMoney(Money.fromMinor((pool['recovered_minor'] as num).toInt()))} · Left ${formatMoney(Money.fromMinor((pool['invested_minor'] as num).toInt() - (pool['recovered_minor'] as num).toInt()))} · Profit ${formatMoney(Money.fromMinor((pool['recovered_minor'] as num).toInt() - (pool['invested_minor'] as num).toInt() > 0 ? (pool['recovered_minor'] as num).toInt() - (pool['invested_minor'] as num).toInt() : 0))}',
                                     ),
-                                    trailing: IconButton(
-                                      tooltip: 'Add pot cost',
-                                      onPressed: () => _addPoolCost(pool),
-                                      icon: const Icon(Icons.add),
+                                    trailing: PopupMenuButton<String>(
+                                      onSelected: (action) {
+                                        if (action == 'cost') _addPoolCost(pool);
+                                        if (action == 'edit') _editPool(pool);
+                                      },
+                                      itemBuilder: (_) => const [
+                                        PopupMenuItem(value: 'cost', child: Text('Add pot cost')),
+                                        PopupMenuItem(value: 'edit', child: Text('Edit pot')),
+                                      ],
                                     ),
                                   ),
                                 ),
@@ -678,6 +733,9 @@ class _OpenBusinessScreenState extends State<OpenBusinessScreen> {
                                          if (action == 'cost') {
                                            _addJobCost(job);
                                          }
+                                         if (action == 'edit') {
+                                           _editJob(job);
+                                         }
                                          if (action == 'payment') {
                                            _takeJobPayment(job);
                                          }
@@ -692,6 +750,9 @@ class _OpenBusinessScreenState extends State<OpenBusinessScreen> {
                                          PopupMenuItem(
                                              value: 'cost',
                                              child: Text('Add direct cost')),
+                                         PopupMenuItem(
+                                             value: 'edit',
+                                             child: Text('Edit job')),
                                          PopupMenuItem(
                                              value: 'payment',
                                              child: Text('Take payment')),
@@ -751,6 +812,10 @@ class _OpenBusinessScreenState extends State<OpenBusinessScreen> {
                               title: Text(product.name),
                               subtitle: Text(
                                   '${product.stockQty} in stock · ${formatMoney(product.sellPrice)}'),
+                              trailing: IconButton(
+                                icon: const Icon(Icons.edit),
+                                onPressed: () => _editOptionalProduct(product),
+                              ),
                             ),
                       ],
                     ),

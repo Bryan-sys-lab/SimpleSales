@@ -189,6 +189,37 @@ class _ShotCupsScreenState extends State<ShotCupsScreen> {
     await _load();
   }
 
+  Future<void> _copyCup(ShotCup cup) async {
+    if (_products.isEmpty) return;
+    final Product? selected = await showDialog<Product>(
+      context: context,
+      builder: (context) => SimpleDialog(
+        title: const Text('Copy cup to product'),
+        children: <Widget>[
+          for (final Product p in _products)
+            SimpleDialogOption(
+              onPressed: () => Navigator.pop(context, p),
+              child: Text(p.name),
+            ),
+        ],
+      ),
+    );
+    if (selected == null || !mounted) return;
+    final DatabaseHelper db = DatabaseHelper.instance;
+    final ShotCup copy = ShotCup(
+      productId: selected.id!,
+      productName: selected.name,
+      capacityMl: cup.capacityMl,
+      price: cup.price,
+      label: cup.label,
+      active: cup.active,
+      updatedAt: DateTime.now().toIso8601String(),
+    );
+    await db.upsertShotCup(copy);
+    markCatalogueChanged();
+    await _load();
+  }
+
   static int? shotsPerBottle(Product product, ShotCup cup) {
     if (cup.capacityMl <= 0 || product.bottleMl <= 0) return null;
     return product.bottleMl ~/ cup.capacityMl;
@@ -228,6 +259,7 @@ class _ShotCupsScreenState extends State<ShotCupsScreen> {
             onAdd: _edit,
             onEdit: _edit,
             onStopSelling: _remove,
+            onCopy: _copyCup,
           ),
       },
     );
@@ -271,6 +303,7 @@ class _ShotCupsList extends StatelessWidget {
     required this.onAdd,
     required this.onEdit,
     required this.onStopSelling,
+    required this.onCopy,
   });
 
   final List<ShotCup> cups;
@@ -281,6 +314,7 @@ class _ShotCupsList extends StatelessWidget {
   final VoidCallback onAdd;
   final void Function(ShotCup cup) onEdit;
   final void Function(ShotCup cup) onStopSelling;
+  final void Function(ShotCup cup) onCopy;
 
   @override
   Widget build(BuildContext context) {
@@ -315,6 +349,7 @@ class _ShotCupsList extends StatelessWidget {
               canEdit: canEdit,
               onEdit: () => onEdit(cup),
               onStopSelling: () => onStopSelling(cup),
+              onCopy: () => onCopy(cup),
             );
           },
         ),
@@ -330,6 +365,7 @@ class _ShotCupCard extends StatelessWidget {
     required this.canEdit,
     required this.onEdit,
     required this.onStopSelling,
+    required this.onCopy,
   });
 
   final ShotCup cup;
@@ -339,6 +375,7 @@ class _ShotCupCard extends StatelessWidget {
   final bool canEdit;
   final VoidCallback onEdit;
   final VoidCallback onStopSelling;
+  final VoidCallback onCopy;
 
   String _detail(AppLocalizations l10n) {
     final int? perBottle = shotsPerBottle;
@@ -430,7 +467,7 @@ class _ShotCupCard extends StatelessWidget {
             ),
           ),
           if (canEdit)
-            _ShotCupMenu(onEdit: onEdit, onStopSelling: onStopSelling),
+            _ShotCupMenu(onEdit: onEdit, onStopSelling: onStopSelling, onCopy: onCopy),
         ],
       ),
     );
@@ -443,10 +480,15 @@ class _ShotCupCard extends StatelessWidget {
 /// popup button whose only name is a three-dot glyph announces as "button" in
 /// most screen readers.
 class _ShotCupMenu extends StatelessWidget {
-  const _ShotCupMenu({required this.onEdit, required this.onStopSelling});
+  const _ShotCupMenu({
+    required this.onEdit,
+    required this.onStopSelling,
+    required this.onCopy,
+  });
 
   final VoidCallback onEdit;
   final VoidCallback onStopSelling;
+  final VoidCallback onCopy;
 
   @override
   Widget build(BuildContext context) {
@@ -460,6 +502,7 @@ class _ShotCupMenu extends StatelessWidget {
           onSelected: (String value) {
             if (value == 'edit') onEdit();
             if (value == 'remove') onStopSelling();
+            if (value == 'copy') onCopy();
           },
           itemBuilder: (BuildContext context) => <PopupMenuEntry<String>>[
             PopupMenuItem<String>(
@@ -467,6 +510,10 @@ class _ShotCupMenu extends StatelessWidget {
             PopupMenuItem<String>(
               value: 'remove',
               child: Text(l10n.shotCupsStopSellingAction),
+            ),
+            PopupMenuItem<String>(
+              value: 'copy',
+              child: Text('Copy to another product'),
             ),
           ],
         ),

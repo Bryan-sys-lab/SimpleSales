@@ -59,6 +59,7 @@ class _SellScreenState extends State<SellScreen>
     with SessionRefresh<SellScreen> {
   static const _pollTimeout = Duration(seconds: 20);
   final List<CartItem> _cart = [];
+  bool _cartOpen = false;
 
   final Map<int, double> _reservedByProduct = <int, double>{};
   final Map<int, double> _reservedByVariant = <int, double>{};
@@ -2899,7 +2900,6 @@ class _SellScreenState extends State<SellScreen>
 
     return LayoutBuilder(
       builder: (BuildContext context, BoxConstraints constraints) {
-        final compact = constraints.maxWidth < 720;
         // `autofocus: true` is not a nicety, it is what makes the scanner work.
         //
         // Flutter dispatches a key event ONLY to `primaryFocus` and its
@@ -2982,44 +2982,92 @@ class _SellScreenState extends State<SellScreen>
                     ),
                   ),
                 Expanded(
-                  child: SellPaneLayout(
-                    compact: compact,
-                    catalogue: SellCataloguePane(
-                      controller: _searchController,
-                      focusNode: _searchFocus,
-                      query: _searchQuery,
-                      onQueryChanged: (String value) =>
-                          setState(() => _searchQuery = value),
-                      onClearQuery: () {
-                        _searchController.clear();
-                        setState(() => _searchQuery = '');
-                      },
-                      onScan: _scanWithCamera,
-                      scanning: _scanInFlight,
-                      loading: _loading,
-                      items: <ProductTileData>[
-                        for (final Product p in filteredProducts)
-                          _tileDataFor(p),
-                      ],
-                      onProduct: _addToCart,
-                      error: _catalogueError,
-                      onRetry: _loadProducts,
-                    ),
-                    cart: SellCartPane(
-                      lines: _cartLines(l10n),
-                      itemCountLabel: l10n.sellCartItemCount(_cart.length),
-                      totalLabel: formatMoney(_total),
-                      emptyHint: l10n.sellCartEmptyHint,
-                      offlineLabel: l10n.sellOfflinePaymentAction,
-                      mpesaLabel: l10n.settingsMpesaMethod,
-                      onOffline: _checkoutOffline,
-                      onMpesa: _checkoutMpesa,
-                      onHold: _holdCart,
-                      onHeld: _showHeldCarts,
-                      onDiscount: _applyOrderDiscount,
-                      processing: _processingPayment,
-                      statusMessage: _statusMessage,
-                    ),
+                  child: Stack(
+                    children: <Widget>[
+                      SellCataloguePane(
+                        controller: _searchController,
+                        focusNode: _searchFocus,
+                        query: _searchQuery,
+                        onQueryChanged: (String value) =>
+                            setState(() => _searchQuery = value),
+                        onClearQuery: () {
+                          _searchController.clear();
+                          setState(() => _searchQuery = '');
+                        },
+                        onScan: _scanWithCamera,
+                        scanning: _scanInFlight,
+                        loading: _loading,
+                        items: <ProductTileData>[
+                          for (final Product p in filteredProducts)
+                            _tileDataFor(p),
+                        ],
+                        onProduct: _addToCart,
+                        error: _catalogueError,
+                        onRetry: _loadProducts,
+                      ),
+                      if (_cartOpen)
+                        Positioned.fill(
+                          child: Material(
+                            color: Theme.of(context).colorScheme.surface,
+                            child: Column(
+                              children: <Widget>[
+                                Row(
+                                  children: <Widget>[
+                                    IconButton(
+                                      icon: const Icon(Icons.close),
+                                      onPressed: () =>
+                                          setState(() => _cartOpen = false),
+                                    ),
+                                    Expanded(
+                                      child: Text(
+                                        l10n.sellCartItemCount(_cart.length),
+                                        style: AppTypography.of(context)
+                                            .titleMedium,
+                                      ),
+                                    ),
+                                    TextButton(
+                                      onPressed: () =>
+                                          setState(() => _cartOpen = false),
+                                      child: const Text('Add more products'),
+                                    ),
+                                  ],
+                                ),
+                                const Divider(height: 1),
+                                Expanded(
+                                  child: SellCartPane(
+                                    lines: _cartLines(l10n),
+                                    itemCountLabel:
+                                        l10n.sellCartItemCount(_cart.length),
+                                    totalLabel: formatMoney(_total),
+                                    emptyHint: l10n.sellCartEmptyHint,
+                                    offlineLabel: l10n.sellOfflinePaymentAction,
+                                    mpesaLabel: l10n.settingsMpesaMethod,
+                                    onOffline: _checkoutOffline,
+                                    onMpesa: _checkoutMpesa,
+                                    onHold: _holdCart,
+                                    onHeld: _showHeldCarts,
+                                    onDiscount: _applyOrderDiscount,
+                                    processing: _processingPayment,
+                                    statusMessage: _statusMessage,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                        ),
+                      Positioned(
+                        right: 16,
+                        bottom: 16,
+                        child: Badge(
+                          label: Text('${_cart.length}'),
+                          child: FloatingActionButton(
+                            onPressed: () =>
+                                setState(() => _cartOpen = true),
+                            child: const Icon(Icons.shopping_cart),
+                          ),
+                        ),
+                      ),
+                    ],
                   ),
                 ),
               ],
