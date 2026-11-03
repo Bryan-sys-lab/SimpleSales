@@ -3,7 +3,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart' show rootBundle;
 import 'package:path_provider/path_provider.dart';
-import 'package:url_launcher/url_launcher.dart';
+import 'package:share_plus/share_plus.dart';
 import 'dart:io';
 import 'package:provider/provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -154,7 +154,10 @@ class _OwnerSetupScreenState extends State<OwnerSetupScreen> {
       final data = await rootBundle.load(asset);
       final file = File('${(await getTemporaryDirectory()).path}/${asset.split('/').last}');
       await file.writeAsBytes(data.buffer.asUint8List());
-      await launchUrl(Uri.file(file.path));
+      await SharePlus.instance.share(ShareParams(
+        files: <XFile>[XFile(file.path, mimeType: 'application/pdf')],
+        subject: asset.split('/').last,
+      ));
     } catch (_) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
