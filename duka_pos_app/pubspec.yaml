@@ -193,6 +193,8 @@ flutter:
     - assets/onboarding/duka_shop_photo.jpg
     - assets/onboarding/fashion_shop.jpg
     - assets/onboarding/fashion_shop_photo.jpg
+    - assets/SimpleSales_Terms_of_Service.pdf
+    - assets/SimpleSales_Privacy_Policy.pdf
     - assets/onboarding/open_shop.jpg
     - assets/onboarding/open_shop_photo.jpg
     - assets/ref.jpg
