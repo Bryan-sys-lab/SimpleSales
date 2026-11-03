@@ -173,7 +173,7 @@ class _ProductOnboardingScreenState extends State<ProductOnboardingScreen> {
                       children: <Widget>[
                         OnboardStyle.window(
                           context: context,
-                          image: Image.asset(page.image, fit: BoxFit.cover, alignment: Alignment.topCenter, semanticLabel: 'Kenyan shop business'),
+                          image: Image.asset(page.image, fit: BoxFit.contain, alignment: Alignment.center, semanticLabel: 'Kenyan shop business'),
                           badgeIcon: page.badgeIcon,
                           label: page.label,
                           title: page.title,
