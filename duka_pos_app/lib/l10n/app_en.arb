@@ -768,7 +768,7 @@
   "shotCupsStopSellingAction": "Stop selling",
   "shotCupsStopSellingMessage": "{product} cups stop appearing at the till. Sales already recorded are untouched.",
   "shotCupsStopSellingTitle": "Stop selling {name}?",
-  "shotCupsTitle": "Cups",
+  "shotCupsTitle": "Cups / Bottles",
   "taxSettingsAdminOnly": "Only the shop admin can change tax settings.",
   "taxSettingsVatRateLine": "VAT rate {percent}%",
   "taxSettingsVatRateSpoken": "VAT rate {percent} percent",

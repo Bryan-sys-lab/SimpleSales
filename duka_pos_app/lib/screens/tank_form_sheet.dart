@@ -118,7 +118,7 @@ class TankValues {
   final int capacityMl;
 
   /// How many full tanks the shop has.
-  final int tankCount;
+  final num tankCount;
 
   /// What one full tank cost.
   final double cost;
@@ -325,12 +325,9 @@ class _TankFormSheetState extends State<TankFormSheet> {
     return litresToMillilitres(litres).round();
   }
 
-  int? get _tankCount {
-    final value = int.tryParse(_countCtrl.text.trim());
-    // A product can be created before the delivery arrives. Zero is a real
-    // opening balance; the owner can then record the delivery through the
-    // ordinary manual receiving flow without inventing stock.
-    if (value == null || value < 0) return null;
+  double? get _tankCount {
+    final value = double.tryParse(_countCtrl.text.trim());
+    if (value == null || value <= 0) return null;
     return value;
   }
 

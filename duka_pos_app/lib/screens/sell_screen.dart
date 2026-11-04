@@ -2752,9 +2752,27 @@ class _SellScreenState extends State<SellScreen>
           return AlertDialog(
             title: const Text('Quick sale'),
             content: Column(mainAxisSize: MainAxisSize.min, children: [
+              DropdownButtonFormField<Product?>(
+                initialValue: null,
+                decoration: const InputDecoration(labelText: 'Product (optional)'),
+                items: <DropdownMenuItem<Product?>>[
+                  const DropdownMenuItem<Product?>(value: null, child: Text('None / new')),
+                  for (final Product p in _products)
+                    DropdownMenuItem<Product?>(value: p, child: Text(p.name)),
+                ],
+                onChanged: (value) {
+                  if (value != null) {
+                    nameController.text = value.name;
+                  }
+                },
+              ),
               TextField(
                 controller: nameController,
                 decoration: const InputDecoration(labelText: 'Product name (optional)'),
+              ),
+              TextField(
+                controller: TextEditingController(),
+                decoration: const InputDecoration(labelText: 'Unit (optional)'),
               ),
               TextField(
                 controller: amountController,
@@ -2790,7 +2808,7 @@ class _SellScreenState extends State<SellScreen>
                     'reference': referenceController.text.trim(),
                   });
                 },
-                child: const Text('Save'),
+                child: const Text('Sell'),
               ),
             ],
           );

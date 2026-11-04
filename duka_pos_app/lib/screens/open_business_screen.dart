@@ -346,34 +346,140 @@ class _OpenBusinessScreenState extends State<OpenBusinessScreen> {
   }
 
   Future<void> _quickSale() async {
-    final values = await _form('Quick sale', [
-      const _Field('product', 'Product name (optional)', required: false),
-      const _Field('amount', 'Amount (KES)'),
-      const _Field('reference', 'Reference (optional)', required: false),
-    ], choices: const {
-      'method': ['cash', 'mpesa', 'bank_transfer']
-    });
+    final values = await showDialog<Map<String, String>>(
+      context: context,
+      builder: (context) {
+        final amountController = TextEditingController();
+        final nameController = TextEditingController();
+        final referenceController = TextEditingController();
+        String method = 'cash';
+        return StatefulBuilder(builder: (context, setState) {
+          return AlertDialog(
+            title: const Text('Quick sale'),
+            content: Column(mainAxisSize: MainAxisSize.min, children: [
+              DropdownButtonFormField<Product?>(
+                initialValue: null,
+                decoration: const InputDecoration(labelText: 'Product (optional)'),
+                items: <DropdownMenuItem<Product?>>[
+                  const DropdownMenuItem<Product?>(value: null, child: Text('None / new')),
+                  for (final Product p in _products)
+                    DropdownMenuItem<Product?>(value: p, child: Text(p.name)),
+                ],
+                onChanged: (value) {
+                  if (value != null) nameController.text = value.name;
+                },
+              ),
+              TextField(
+                controller: nameController,
+                decoration: const InputDecoration(labelText: 'Product name (optional)'),
+              ),
+              TextField(
+                controller: amountController,
+                decoration: const InputDecoration(labelText: 'Amount (KES)'),
+                keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                autofocus: true,
+              ),
+              DropdownButtonFormField<String>(
+                initialValue: method,
+                decoration: const InputDecoration(labelText: 'Payment method'),
+                items: const [
+                  DropdownMenuItem(value: 'cash', child: Text('cash')),
+                  DropdownMenuItem(value: 'mpesa', child: Text('mpesa')),
+                  DropdownMenuItem(value: 'bank_transfer', child: Text('bank transfer')),
+                ],
+                onChanged: (value) {
+                  if (value != null) setState(() => method = value);
+                },
+              ),
+              TextField(
+                controller: referenceController,
+                decoration: const InputDecoration(labelText: 'Reference (optional)'),
+              ),
+            ]),
+            actions: [
+              TextButton(onPressed: () => Navigator.pop(context), child: const Text('Cancel')),
+              FilledButton(
+                onPressed: () {
+                  Navigator.pop(context, {
+                    'name': nameController.text.trim(),
+                    'amount': amountController.text.trim(),
+                    'method': method,
+                    'reference': referenceController.text.trim(),
+                  });
+                },
+                child: const Text('Sell'),
+              ),
+            ],
+          );
+        });
+      },
+    );
     if (values == null) return;
-    final amount = _money(values['amount']);
-    if (amount == null) return _showError('Enter a valid positive amount.');
+    final amount = double.tryParse(values['amount'] ?? '');
+    if (amount == null || amount <= 0) return;
     if (!mounted) return;
     final state = context.read<AppState>();
-    final product = values['product']?.toString().trim();
-    final ref = values['reference']?.toString().trim();
-    final combined = [if (product != null && product.isNotEmpty) product, if (ref != null && ref.isNotEmpty) ref].join(' · ');
+    final name = (values['name'] ?? '').trim();
     Money? costAmount;
-    if (product != null && product.isNotEmpty) {
-      final match = _products.where((p) => p.name.toLowerCase() == product.toLowerCase()).firstOrNull;
-      if (match != null) costAmount = match.costPrice;
+    if (name.isNotEmpty) {
+      final match = _products.where((p) => p.name.toLowerCase() == name.toLowerCase()).firstOrNull;
+      if (match != null) {
+        costAmount = match.costPrice;
+      } else {
+        if (!mounted) return;
+        final costController = TextEditingController();
+        final entered = await showDialog<double?>(
+          context: context,
+          builder: (context) => AlertDialog(
+            title: const Text('Is this a new product? Add cost price'),
+            content: TextField(
+              controller: costController,
+              decoration: const InputDecoration(labelText: 'Cost price (KES)'),
+              keyboardType: const TextInputType.numberWithOptions(decimal: true),
+              autofocus: true,
+            ),
+            actions: [
+              TextButton(onPressed: () => Navigator.pop(context), child: const Text('Skip')),
+              FilledButton(
+                onPressed: () {
+                  final v = double.tryParse(costController.text.trim());
+                  Navigator.pop(context, v);
+                },
+                child: const Text('Sell'),
+              ),
+            ],
+          ),
+        );
+        costController.dispose();
+        if (entered != null && entered > 0) {
+          costAmount = Money.fromMajor(entered);
+        } else {
+          costAmount = Money.zero;
+        }
+      }
     }
     await _run(() => _db.recordOpenQuickSale(
-          amount: amount,
+          amount: Money.fromMajor(amount),
           paymentMethod: values['method'] ?? 'cash',
-          paymentReference: combined.isEmpty ? null : combined,
+          paymentReference: (values['reference'] ?? '').isEmpty ? null : values['reference'],
           staffId: state.currentStaffId,
           staffName: state.currentStaffName ?? 'Owner',
           costAmount: costAmount,
+          trackCost: true,
         ));
+    if (name.isNotEmpty) {
+      final product = Product(
+        name: name,
+        category: 'Quick sale',
+        costPrice: costAmount ?? Money.zero,
+        sellPrice: Money.fromMajor(amount),
+        stockQty: 0,
+        reorderLevel: 0,
+        updatedAt: DateTime.now().toIso8601String(),
+      );
+      await _db.upsertProduct(product);
+    }
+    await _load();
   }
 
   Future<void> _recordJobSale() async {

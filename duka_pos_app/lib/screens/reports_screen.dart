@@ -6,6 +6,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 import '../app_brand.dart';
 import '../db/database_helper.dart';
+import '../services/analytics.dart';
 import '../l10n/generated/app_localizations.dart';
 import '../models/models.dart';
 import '../routing/routes.dart';
@@ -123,6 +124,7 @@ class _ReportsScreenState extends State<ReportsScreen>
   ReportsView _view = const ReportsLoading(ReportsData.empty);
   ReportsData _shown = ReportsData.empty;
   List<Map<String, dynamic>> _cupSales = const <Map<String, dynamic>>[];
+  List<ProductSalesRow> _topMovers = const <ProductSalesRow>[];
   String _query = '';
   ReportsRange _range = ReportsRange.month;
 
@@ -173,6 +175,11 @@ class _ReportsScreenState extends State<ReportsScreen>
           since: since,
           staffId: state.currentRole == 'cashier' ? state.currentStaffId : null,
         ),
+        db.topProducts(
+          since: since,
+          staffId: state.currentRole == 'cashier' ? state.currentStaffId : null,
+          limit: 10,
+        ),
       ]);
       final List<Sale> sales = results[0] as List<Sale>;
       final List<Shift> shifts = results[1] as List<Shift>;
@@ -180,12 +187,15 @@ class _ReportsScreenState extends State<ReportsScreen>
           results[2] as List<Map<String, dynamic>>;
       final List<Map<String, dynamic>> cupSales =
           results[3] as List<Map<String, dynamic>>;
+      final List<ProductSalesRow> topMovers =
+          results[4] as List<ProductSalesRow>;
       final List<ShiftReportRow> shiftRows =
           await loadShiftReports(shifts, sales);
       if (!mounted) return;
       setState(() {
         _unfilteredCount = sales.length;
         _cupSales = cupSales;
+        _topMovers = topMovers;
         _shown = _filter(
           ReportsData(
             sales: sales,
@@ -601,6 +611,31 @@ class _ReportsScreenState extends State<ReportsScreen>
                               Text(
                                   '${(row['units'] as num).toStringAsFixed(0)} · '
                                   '${formatMoney(Money.fromMinor((row['revenue_minor'] as num).toInt()))}'),
+                            ],
+                          ),
+                        ),
+                    ],
+                  ),
+                ),
+              ),
+            SizedBox(height: spacing.lg),
+            if (_topMovers.isNotEmpty)
+              Card(
+                child: Padding(
+                  padding: const EdgeInsets.all(12),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: <Widget>[
+                      Text('Top movers',
+                          style: Theme.of(context).textTheme.titleMedium),
+                      for (final row in _topMovers)
+                        Padding(
+                          padding: const EdgeInsets.only(top: 4),
+                          child: Row(
+                            children: <Widget>[
+                              Expanded(child: Text(row.productName)),
+                              Text('${row.units} · '
+                                  '${formatMoney(Money.fromMinor(row.revenueMinor))}'),
                             ],
                           ),
                         ),

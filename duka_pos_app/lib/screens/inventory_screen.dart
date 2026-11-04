@@ -48,6 +48,7 @@ import '../services/product_image_store.dart';
 import '../ui/components/product_photo.dart';
 import '../utils/validation_utils.dart';
 import 'tank_form_sheet.dart';
+import 'loose_goods_form_sheet.dart';
 import 'stocktake_screen.dart';
 import 'reorder_screen.dart';
 import '../models/product_pack.dart';
@@ -1004,9 +1005,9 @@ class _InventoryScreenState extends State<InventoryScreen>
                   appState.shopProfile == ShopProfile.drinks) &&
                   appState.hasPermission(PermissionKey.adjustStock))
                 TextButton.icon(
-                  onPressed: _repackStock,
-                  icon: const Icon(Icons.swap_horiz_outlined, size: 18),
-                  label: Text(l10n.inventoryRepackAction),
+                  onPressed: () => showLooseGoodsFormSheet(context),
+                  icon: const Icon(Icons.inventory_2_outlined, size: 18),
+                  label: const Text('Loose goods'),
                 ),
                 if (appState.shopProfile == ShopProfile.duka)
                   TextButton.icon(

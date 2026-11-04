@@ -87,7 +87,7 @@ enum AppDestination {
   inventory('navInventory', 'navInventoryShort'),
   analytics('navAnalytics', 'navAnalyticsShort'),
   settings('navSettings', 'navSettingsShort'),
-  more('navMore', 'navMoreShort'),
+  more('navMore', 'navMore'),
   support('navSupport', 'navSupportShort'),
   openBusiness('navOpenBusiness', 'navOpenBusinessShort');
 
