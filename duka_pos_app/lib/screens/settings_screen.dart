@@ -1286,8 +1286,8 @@ class _SettingsScreenState extends State<SettingsScreen>
               email: owner.email,
               pin: pin,
               code: code,
-              shopName: owner.shopName,
-              ownerName: owner.name,
+              shopName: (owner.shopName.trim().isEmpty ? 'My Shop' : owner.shopName).trim(),
+              ownerName: (owner.name.trim().isEmpty ? 'Owner' : owner.name).trim(),
             );
             return null;
           } on VerificationException catch (error) {
@@ -1301,8 +1301,8 @@ class _SettingsScreenState extends State<SettingsScreen>
             await BackendService.requestVerificationCode(
               email: owner.email,
               pin: pin,
-              shopName: owner.shopName,
-              ownerName: owner.name,
+              shopName: (owner.shopName.trim().isEmpty ? 'My Shop' : owner.shopName).trim(),
+              ownerName: (owner.name.trim().isEmpty ? 'Owner' : owner.name).trim(),
             );
             return l10n
                 .settingsVerifyCodeSent(PinResetService.maskEmail(owner.email));
