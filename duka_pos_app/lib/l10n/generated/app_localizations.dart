@@ -4707,7 +4707,7 @@ abstract class AppLocalizations {
   /// No description provided for @shotCupsTitle.
   ///
   /// In en, this message translates to:
-  /// **'Cups'**
+  /// **'Cups / Bottles'**
   String get shotCupsTitle;
 
   /// No description provided for @taxSettingsAdminOnly.

@@ -395,6 +395,10 @@ class _OpenBusinessScreenState extends State<OpenBusinessScreen> {
                 controller: referenceController,
                 decoration: const InputDecoration(labelText: 'Reference (optional)'),
               ),
+              TextField(
+                controller: TextEditingController(),
+                decoration: const InputDecoration(labelText: 'Unit (optional)'),
+              ),
             ]),
             actions: [
               TextButton(onPressed: () => Navigator.pop(context), child: const Text('Cancel')),

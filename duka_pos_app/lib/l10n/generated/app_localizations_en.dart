@@ -2829,7 +2829,7 @@ class AppLocalizationsEn extends AppLocalizations {
   }
 
   @override
-  String get shotCupsTitle => 'Cups';
+  String get shotCupsTitle => 'Cups / Bottles';
 
   @override
   String get taxSettingsAdminOnly =>
