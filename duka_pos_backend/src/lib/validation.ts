@@ -421,6 +421,7 @@ export const pinResetConfirmSchema = z.object({
   email: z.string().trim().toLowerCase().email().max(254),
   challengeId: z.string().min(1),
   code: z.string().trim().length(6),
+  newPin: z.string().trim().regex(/^\d{6}$/),
 });
 
 // ---------------------------------------------------------------------------

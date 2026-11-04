@@ -14,6 +14,8 @@ import {
   authForgotPasswordSchema,
   authResetPasswordSchema,
   authChangePasswordSchema,
+  pinResetRequestSchema,
+  pinResetConfirmSchema,
   parseBody,
 } from '../lib/validation';
 import { log } from '../lib/observability';
@@ -67,6 +69,7 @@ const linkLimiter = _isNode ? rateLimit({ windowMs: CODE_REQUEST_WINDOW_MINUTES 
 const verifyLimiter = _isNode ? rateLimit({ windowMs: 10 * 60_000, limit: 20, standardHeaders: 'draft-7', legacyHeaders: false, keyGenerator: addressKey, validate: { keyGeneratorIpFallback: false } }) : _noop;
 const loginLimiter = _isNode ? rateLimit({ windowMs: 10 * 60_000, limit: 20, standardHeaders: 'draft-7', legacyHeaders: false, keyGenerator: addressKey, validate: { keyGeneratorIpFallback: false } }) : _noop;
 const refreshLimiter = _isNode ? rateLimit({ windowMs: 10 * 60_000, limit: 20, standardHeaders: 'draft-7', legacyHeaders: false, keyGenerator: addressKey, validate: { keyGeneratorIpFallback: false } }) : _noop;
+const pinResetLimiter = _isNode ? rateLimit({ windowMs: CODE_REQUEST_WINDOW_MINUTES * 60_000, limit: MAX_CODES_PER_WINDOW, standardHeaders: 'draft-7', legacyHeaders: false, keyGenerator: addressKey, validate: { keyGeneratorIpFallback: false } }) : _noop;
 
 function buildMailer() {
   return createCloudflareEmailTransport({
@@ -517,6 +520,102 @@ router.get('/me', authMiddleware, asyncHandler(async (req: Request, res: Respons
     emailVerified: !!user.emailVerifiedAt,
     tenants: profiles.map((p) => ({ id: p.tenantId, shopName: p.tenant.shopName, role: p.role })),
   });
+}));
+
+
+// POST /auth/pin-reset/request
+router.post('/pin-reset/request', pinResetLimiter, asyncHandler(async (req: Request, res: Response) => {
+  const requestId = req.requestId;
+  const { email } = parseBody(pinResetRequestSchema, req.body);
+  if (!isConfigured()) return notConfigured(res, requestId);
+
+  const secret = verificationSecret();
+  const recent = await prisma.verificationChallenge.count({
+    where: { email, createdAt: { gte: codeRequestWindowStart(new Date()) } },
+  });
+  if (recent >= MAX_CODES_PER_WINDOW) {
+    return res.status(429).json({ error: `Too many codes requested. Wait ${CODE_REQUEST_WINDOW_MINUTES} minutes.`, code: 'TOO_MANY_CODES', requestId });
+  }
+
+  const user = await prisma.user.findUnique({ where: { email } });
+
+  await prisma.verificationChallenge.updateMany({ where: { email, used: false }, data: { used: true } });
+
+  const code = generateVerificationCode();
+  const salt = newSalt();
+  const challenge = await prisma.verificationChallenge.create({
+    data: {
+      email,
+      code: `${salt}:${hashCodeSecret(code, salt, secret)}`,
+      expiresAt: new Date(Date.now() + VERIFICATION_TTL_MINUTES * 60_000),
+      tenantId: null,
+    },
+  });
+
+  if (user && mailerConfigured()) {
+    try {
+      const mailer = buildMailer();
+      const profile = await prisma.profile.findFirst({ where: { userId: user.id, active: true, deletedAt: null }, include: { tenant: true }, orderBy: { createdAt: 'asc' } });
+      await mailer.send({ to: email, code, shopName: profile?.tenant?.shopName ?? process.env.APP_NAME ?? 'SimpleSales', ttlMinutes: VERIFICATION_TTL_MINUTES });
+    } catch {
+      await prisma.verificationChallenge.update({ where: { id: challenge.id }, data: { used: true } });
+      return res.status(502).json({ error: 'Email could not be sent', code: 'EMAIL_UNAVAILABLE', requestId });
+    }
+  }
+
+  log('info', 'auth.pin_reset_code_sent', { requestId, email: maskEmail(email) });
+  res.json({
+    status: 'code_sent',
+    challengeId: challenge.id,
+    challenge_id: challenge.id,
+    email: maskEmail(email),
+    expires_in_seconds: VERIFICATION_TTL_MINUTES * 60,
+    ...(process.env.NODE_ENV !== 'production' && process.env.VERIFICATION_DEBUG_CODES === 'true' && user ? { debug_code: code } : {}),
+  });
+}));
+
+// POST /auth/pin-reset/confirm
+router.post('/pin-reset/confirm', loginLimiter, asyncHandler(async (req: Request, res: Response) => {
+  const requestId = req.requestId;
+  const { email, challengeId, code, newPin } = parseBody(pinResetConfirmSchema, req.body);
+  if (!isConfigured()) return notConfigured(res, requestId);
+
+  const secret = verificationSecret();
+  const now = new Date();
+  const challenge = await prisma.verificationChallenge.findUnique({ where: { id: challengeId } });
+  if (!challenge || challenge.email !== email) {
+    return res.status(400).json({ error: 'Invalid or expired reset code', code: 'CODE_REJECTED', requestId });
+  }
+  if (challenge.used) {
+    return res.status(400).json({ error: 'Invalid or expired reset code', code: 'CODE_REJECTED', requestId });
+  }
+  if (isVerificationExpired(challenge.expiresAt, now)) {
+    await prisma.verificationChallenge.update({ where: { id: challenge.id }, data: { used: true } });
+    return res.status(400).json({ error: 'Invalid or expired reset code', code: 'CODE_REJECTED', requestId });
+  }
+
+  const parts = (challenge.code || '').split(':');
+  if (parts.length !== 2) {
+    return res.status(400).json({ error: 'Invalid or expired reset code', code: 'CODE_REJECTED', requestId });
+  }
+  const [salt, codeHash] = parts;
+  if (!hashesMatch(hashCodeSecret(code, salt, secret), codeHash)) {
+    return res.status(400).json({ error: 'Invalid or expired reset code', code: 'CODE_REJECTED', requestId });
+  }
+
+  await prisma.verificationChallenge.updateMany({ where: { email, used: false }, data: { used: true } });
+
+  const user = await prisma.user.findUnique({ where: { email } });
+  if (!user) {
+    return res.status(400).json({ error: 'Invalid or expired reset code', code: 'CODE_REJECTED', requestId });
+  }
+
+  const passwordHash = await hashPassword(newPin);
+  await prisma.user.update({ where: { id: user.id }, data: { passwordHash, emailVerifiedAt: user.emailVerifiedAt ?? now } });
+  await prisma.profile.updateMany({ where: { userId: user.id }, data: { refreshTokenHash: null, refreshTokenPreviousHash: null } });
+
+  log('info', 'auth.pin_reset', { requestId, email: maskEmail(email) });
+  res.json({ status: 'password_reset' });
 }));
 
 export default router;
