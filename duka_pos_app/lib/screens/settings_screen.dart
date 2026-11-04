@@ -818,8 +818,13 @@ class _SettingsScreenState extends State<SettingsScreen>
         context: context, builder: (_) => const _StaffDialog());
     if (result == null) return;
     final name = (result['name'] ?? '').trim();
+    final username = (result['username'] ?? '').trim().toLowerCase();
     if (name.isEmpty) {
       _err(l10n.settingsEnterStaffName);
+      return;
+    }
+    if (username.isEmpty) {
+      _err('Username is required');
       return;
     }
     if (!RegExp(r'^\d{4}$').hasMatch(result['pin'] ?? '')) {
@@ -830,9 +835,14 @@ class _SettingsScreenState extends State<SettingsScreen>
       _err(l10n.settingsStaffNameTaken(name));
       return;
     }
+    if (_staff.any((s) => (s.username ?? '').toLowerCase() == username)) {
+      _err('That username is already used');
+      return;
+    }
     try {
       await DatabaseHelper.instance.addStaff(Staff(
           name: name,
+          username: username,
           role: result['role'] ?? 'cashier',
           pinHash: await AuthService.hashPin(result['pin']!)));
       // Logged after the row exists, and carrying the role: "a cashier was
@@ -3260,12 +3270,14 @@ class _StaffDialog extends StatefulWidget {
 
 class _StaffDialogState extends State<_StaffDialog> {
   final _name = TextEditingController();
+  final _username = TextEditingController();
   final _pin = TextEditingController();
   String _role = 'cashier';
 
   @override
   void dispose() {
     _name.dispose();
+    _username.dispose();
     _pin.dispose();
     super.dispose();
   }
@@ -3293,6 +3305,15 @@ class _StaffDialogState extends State<_StaffDialog> {
                     labelText:
                         AppLocalizations.of(context).settingsStaffNameLabel),
                 autofillHints: const [AutofillHints.name]),
+            SizedBox(height: AppSpacing.of(context).md),
+            TextField(
+                controller: _username,
+                decoration: InputDecoration(
+                    labelText: 'Username',
+                    helperText: 'Used by this staff member to sign in on any till'),
+                textInputAction: TextInputAction.next,
+                textCapitalization: TextCapitalization.none,
+                autofillHints: const [AutofillHints.username]),
             SizedBox(height: AppSpacing.of(context).md),
             DropdownButtonFormField<String>(
                 initialValue: ShopRole.parse(_role).wire,
@@ -3339,6 +3360,7 @@ class _StaffDialogState extends State<_StaffDialog> {
         FilledButton(
           onPressed: () => Navigator.pop(context, {
             'name': widget.existingName ?? _name.text.trim(),
+            'username': _username.text.trim(),
             'pin': _pin.text,
             'role': _role
           }),
