@@ -16,7 +16,6 @@ import '../ui/components/status.dart';
 import '../ui/layout/page.dart';
 import '../utils/money.dart';
 import '../widgets/backup_reminder_banner.dart';
-import 'dashboard_shared.dart';
 
 const double _openDashboardMaxWidth = 1200;
 
@@ -489,7 +488,9 @@ class _CountTile extends StatelessWidget {
   }
 }
 
-/// Quick actions: New job, Record payment, Record sale, Add job cost, New cost group.
+/// Quick actions: New job, Record sale, Record payment, Add job cost, New cost
+/// group — as a 2x2 grid of tiles with icon + label + subtitle, mirroring
+/// the mockup.
 class _OpenQuickActions extends StatelessWidget {
   const _OpenQuickActions({
     required this.onNewJob,
@@ -514,42 +515,138 @@ class _OpenQuickActions extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final AppSpacing spacing = AppSpacing.of(context);
-    final l10n = AppLocalizations.of(context);
 
-    return Wrap(
-      spacing: spacing.sm,
-      runSpacing: spacing.sm,
-      children: <Widget>[
-        QuickAction(
-          onPressed: onNewJob,
-          icon: const Icon(Icons.add_task),
-          label: Text(l10n.openDashboardNewJob),
-          primary: true,
+    final List<Widget> tiles = <Widget>[
+      _OpenQuickTile(
+        icon: Icons.add_task,
+        label: 'New job',
+        subtitle: 'Create a job',
+        onTap: onNewJob,
+        primary: true,
+      ),
+      if (canRecordSales)
+        _OpenQuickTile(
+          icon: Icons.point_of_sale_outlined,
+          label: 'Record sale',
+          subtitle: 'Quick sale',
+          onTap: onRecordSale,
         ),
-        if (canRecordSales)
-          QuickAction(
-            onPressed: onRecordSale,
-            icon: const Icon(Icons.point_of_sale_outlined),
-            label: Text(l10n.openDashboardRecordSale),
-          ),
-        if (canReceivePayments)
-          QuickAction(
-            onPressed: onRecordPayment,
-            icon: const Icon(Icons.payment_outlined),
-            label: Text(l10n.openDashboardRecordPayment),
-          ),
-        if (canManageJobs)
-          QuickAction(
-            onPressed: onAddJobCost,
-            icon: const Icon(Icons.add_circle_outline),
-            label: Text(l10n.openDashboardAddJobCost),
-          ),
-        QuickAction(
-          onPressed: onNewCostGroup,
-          icon: const Icon(Icons.account_balance_wallet_outlined),
-          label: Text(l10n.openDashboardNewCostGroup),
+      if (canReceivePayments)
+        _OpenQuickTile(
+          icon: Icons.payment_outlined,
+          label: 'Record payment',
+          subtitle: 'Receive payment',
+          onTap: onRecordPayment,
         ),
-      ],
+      if (canManageJobs)
+        _OpenQuickTile(
+          icon: Icons.add_circle_outline,
+          label: 'Add job cost',
+          subtitle: 'Log a cost',
+          onTap: onAddJobCost,
+        ),
+      _OpenQuickTile(
+        icon: Icons.account_balance_wallet_outlined,
+        label: 'New cost group',
+        subtitle: 'Pooled costs',
+        onTap: onNewCostGroup,
+      ),
+    ];
+
+    return LayoutBuilder(
+      builder: (BuildContext context, BoxConstraints constraints) {
+        final bool twoColumns = constraints.maxWidth >= 320;
+        if (twoColumns) {
+          return Wrap(
+            spacing: spacing.md,
+            runSpacing: spacing.md,
+            children: <Widget>[
+              for (final tile in tiles)
+                SizedBox(
+                  width: (constraints.maxWidth - spacing.md) / 2,
+                  child: tile,
+                ),
+            ],
+          );
+        }
+        return Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: <Widget>[
+            for (int i = 0; i < tiles.length; i++) ...<Widget>[
+              if (i > 0) SizedBox(height: spacing.md),
+              tiles[i],
+            ],
+          ],
+        );
+      },
+    );
+  }
+}
+
+/// One quick-action tile for the open dashboard.
+class _OpenQuickTile extends StatelessWidget {
+  const _OpenQuickTile({
+    required this.icon,
+    required this.label,
+    required this.subtitle,
+    required this.onTap,
+    this.primary = false,
+  });
+
+  final IconData icon;
+  final String label;
+  final String subtitle;
+  final VoidCallback onTap;
+  final bool primary;
+
+  @override
+  Widget build(BuildContext context) {
+    final AppSpacing spacing = AppSpacing.of(context);
+    final AppColors colors = AppColors.of(context);
+    final TextTheme type = AppTypography.of(context);
+
+    return Semantics(
+      button: true,
+      label: '$label, $subtitle',
+      child: SurfaceCard(
+        padding: EdgeInsets.all(spacing.md),
+        onTap: onTap,
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          mainAxisSize: MainAxisSize.min,
+          children: <Widget>[
+            Container(
+              padding: EdgeInsets.all(spacing.xs),
+              decoration: BoxDecoration(
+                color: primary
+                    ? colors.accentContainer
+                    : colors.surfaceSunken,
+                borderRadius: AppShapes.of(context).controlRadius,
+              ),
+              child: Icon(
+                icon,
+                size: 20,
+                color: primary ? colors.accent : colors.onSurfaceVariant,
+              ),
+            ),
+            SizedBox(height: spacing.md),
+            Text(
+              label,
+              style: type.titleSmall?.copyWith(
+                fontWeight: FontWeight.w700,
+                color: primary ? colors.accent : colors.onSurface,
+              ),
+            ),
+            SizedBox(height: 2),
+            Text(
+              subtitle,
+              style: type.bodySmall?.copyWith(
+                color: colors.onSurfaceMuted,
+              ),
+            ),
+          ],
+        ),
+      ),
     );
   }
 }
