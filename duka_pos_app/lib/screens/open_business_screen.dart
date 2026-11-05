@@ -293,9 +293,6 @@ class _OpenBusinessScreenState extends State<OpenBusinessScreen> {
     final amount = _money(values['amount']);
     if (amount == null) return _showError('Enter a valid positive amount.');
     final shift = await _db.getAnyOpenShift();
-    if (values['method'] == 'cash' && shift == null) {
-      return _showError('Open a shift before taking cash.');
-    }
     await _run(() => _db.recordJobPayment(
           uuid: 'job-payment-${DateTime.now().microsecondsSinceEpoch}',
           jobId: (job['id'] as num).toInt(),
@@ -325,12 +322,8 @@ class _OpenBusinessScreenState extends State<OpenBusinessScreen> {
     });
     if (values == null) return;
     final amount = _money(values['amount']);
-    final shift = await _db.getAnyOpenShift();
     if (amount == null) {
       return _showError('Enter a valid positive amount.');
-    }
-    if (shift == null) {
-      return _showError('Open a shift before recording owner money.');
     }
     if (!mounted) return;
     final state = context.read<AppState>();
@@ -338,7 +331,7 @@ class _OpenBusinessScreenState extends State<OpenBusinessScreen> {
           uuid: 'owner-${DateTime.now().microsecondsSinceEpoch}',
           transactionType: values['type'] ?? 'capital_in',
           amount: amount,
-          shiftId: shift.id!,
+          shiftId: null,
           staffId: state.currentStaffId,
           staffName: state.currentStaffName ?? 'Owner',
           note: values['note'],

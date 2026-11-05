@@ -13502,7 +13502,7 @@ SELECT name FROM staff GROUP BY name HAVING COUNT(*) = 1
     required String uuid,
     required String transactionType,
     required Money amount,
-    required int shiftId,
+    int? shiftId,
     required String staffName,
     int? staffId,
     String? note,
@@ -13522,9 +13522,11 @@ SELECT name FROM staff GROUP BY name HAVING COUNT(*) = 1
     }
     final db = await database;
     return db.transaction<int>((txn) async {
-      final shifts = await txn.query('shifts',
-          where: 'id = ? AND status = ?', whereArgs: [shiftId, 'open']);
-      if (shifts.isEmpty) throw StateError('Shift is not open');
+      if (shiftId != null) {
+        final shifts = await txn.query('shifts',
+            where: 'id = ? AND status = ?', whereArgs: [shiftId, 'open']);
+        if (shifts.isEmpty) throw StateError('Shift is not open');
+      }
       final now = DateTime.now().toIso8601String();
       final eventAtUtc = DateTime.now().toUtc().toIso8601String();
       final transactionId = await txn.insert('owner_transactions', {
