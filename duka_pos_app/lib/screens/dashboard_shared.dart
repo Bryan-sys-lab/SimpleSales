@@ -50,6 +50,9 @@ final class DashboardReady extends DashboardState {
     this.creditCustomerCount = 0,
     this.tanks = const <Product>[],
     this.tankSales = const <int, ProductSalesRow>{},
+    this.totalProducts = 0,
+    this.outOfStockCount = 0,
+    this.stockValue = Money.zero,
   });
 
   final DailyTotals totals;
@@ -72,6 +75,9 @@ final class DashboardReady extends DashboardState {
   final int creditCustomerCount;
   final List<Product> tanks;
   final Map<int, ProductSalesRow> tankSales;
+  final int totalProducts;
+  final int outOfStockCount;
+  final Money stockValue;
 }
 
 List<Widget> spaced(List<Widget?> children, double gap) {

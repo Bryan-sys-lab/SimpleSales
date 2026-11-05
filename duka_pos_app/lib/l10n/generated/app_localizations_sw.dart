@@ -1348,6 +1348,12 @@ class AppLocalizationsSw extends AppLocalizations {
   String get unitSuffixKilogram => 'kg';
 
   @override
+  String get unitSuffixPack => 'pk';
+
+  @override
+  String get unitSuffixCarton => 'ctn';
+
+  @override
   String get inventoryFieldTotalStock => 'Total stock (from variants)';
 
   @override
@@ -4970,6 +4976,12 @@ class AppLocalizationsSw extends AppLocalizations {
   String get productUnitKilogram => 'Tank (kg)';
 
   @override
+  String get productUnitPack => 'Pekee paketi';
+
+  @override
+  String get productUnitCarton => 'Pekee karton';
+
+  @override
   String get variantUnitKilogram => 'Tank (kg)';
 
   @override
@@ -5524,4 +5536,99 @@ class AppLocalizationsSw extends AppLocalizations {
 
   @override
   String get dashboardSellAction => 'Anza mauzo';
+
+  @override
+  String get dashboardStockOverview => 'Muhtasari wa hisa';
+
+  @override
+  String get dashboardTotalProducts => 'Bidhaa zote';
+
+  @override
+  String get dashboardLowStockCount => 'Bidhaa hasi';
+
+  @override
+  String get dashboardOutOfStockCount => 'Bidhaa haipo';
+
+  @override
+  String get dashboardStockValue => 'Thamani ya hisa';
+
+  @override
+  String get dashboardQuickAddProduct => 'Ongeza bidhaa';
+
+  @override
+  String get dashboardQuickReceiveStock => 'Pokea hisa';
+
+  @override
+  String get dashboardQuickStocktake => 'Angalia hisa';
+
+  @override
+  String get sellRecentlySold => 'Viliyouzwa hivi karibuni';
+
+  @override
+  String get sellFrequentlySold => 'Vinavyouzwa mara nyingi';
+
+  @override
+  String get inventorySearchProducts => 'Bafadhili bidhaa';
+
+  @override
+  String get inventoryFilterAll => 'Bidhaa zote';
+
+  @override
+  String get inventoryFilterCounted => 'Bidhaa ya kiasi';
+
+  @override
+  String get inventoryFilterMeasured => 'Bidhaa ya ukota';
+
+  @override
+  String get inventoryFilterLow => 'Hiasi chini';
+
+  @override
+  String get inventoryFilterOut => 'Haipo';
+
+  @override
+  String get inventoryUnitEach => 'ila';
+
+  @override
+  String get inventoryUnitKilogram => 'kg';
+
+  @override
+  String get inventoryUnitLitre => 'litre';
+
+  @override
+  String get inventoryUnitPack => 'pack';
+
+  @override
+  String get inventoryUnitCarton => 'carton';
+
+  @override
+  String get inventoryProductDetail => 'Product detail';
+
+  @override
+  String get inventoryCostPrice => 'Gharama za kuunga';
+
+  @override
+  String get inventorySellingPrice => 'Gharama ya kuuza';
+
+  @override
+  String get inventoryReorderLevel => 'Kiwango cha kuongeza';
+
+  @override
+  String get inventoryStockValue => 'Thamani ya hisa';
+
+  @override
+  String get inventoryStockMovement => 'Unganisho wa hisa';
+
+  @override
+  String get inventoryNoMovement => 'Hakuna mzunguko wa hisa ya hivi';
+
+  @override
+  String get inventorySalesPerformance => 'Ufikiaji wa uuzaji';
+
+  @override
+  String inventoryUnitsSold(Object count) {
+    return '$count vya kiasi vliyuuziwa';
+  }
+
+  @override
+  String get inventoryRevenue => 'Mapato';
 }

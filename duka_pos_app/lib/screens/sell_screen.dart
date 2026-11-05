@@ -14,6 +14,7 @@ import '../models/credit.dart';
 import '../screens/customer_credit_sheets.dart';
 import '../ui/dialogs/manager_approval_sheet.dart';
 import '../services/app_state.dart';
+import '../services/analytics.dart';
 import '../services/roles.dart';
 import '../services/printer/cash_drawer_service.dart';
 import '../utils/crypto_utils.dart';
@@ -37,7 +38,9 @@ import '../l10n/generated/app_localizations.dart';
 import '../ui/components/controls.dart';
 import '../ui/components/success_view.dart';
 import '../theme/app_spacing.dart';
+import '../theme/app_colors.dart';
 import '../theme/typography.dart';
+import '../ui/components/surface.dart';
 import '../ui/layout/page.dart';
 import '../models/models.dart';
 import '../db/database_helper.dart';
@@ -75,6 +78,12 @@ class _SellScreenState extends State<SellScreen>
   VariantCatalogue _variants = VariantCatalogue.empty;
 
   List<ShotCup> _shots = const [];
+
+  /// Products sold in recent sales, newest first.
+  List<Product> _recentlySold = const [];
+
+  /// Top-selling products today, as tile data.
+  List<ProductTileData> _frequentlySold = const [];
 
   String _searchQuery = '';
   String? _selectedCategory;
@@ -139,6 +148,8 @@ class _SellScreenState extends State<SellScreen>
     _reservedByVariant.clear();
     _statusMessage = null;
     _searchController.clear();
+    _recentlySold = const <Product>[];
+    _frequentlySold = const <ProductTileData>[];
   }
 
   @override
@@ -170,6 +181,11 @@ class _SellScreenState extends State<SellScreen>
     final db = DatabaseHelper.instance;
     final List<Object> results;
     try {
+      final DateTime dayStart = DateTime(
+        DateTime.now().year,
+        DateTime.now().month,
+        DateTime.now().day,
+      );
       results = await Future.wait<Object>([
         db.getProducts(),
         VariantCatalogue.load(
@@ -177,6 +193,8 @@ class _SellScreenState extends State<SellScreen>
               context.read<AppState>().shopProfile.navigation.showVariants,
         ),
         db.getShotCups(),
+        db.topProducts(since: dayStart, limit: 10),
+        db.getSales(since: dayStart, limit: 20, withItems: true),
       ]);
     } on Object {
       // The read failed. Without this the loader's future ended in an
@@ -194,6 +212,8 @@ class _SellScreenState extends State<SellScreen>
     final products = results[0] as List<Product>;
     final catalogue = results[1] as VariantCatalogue;
     final cups = results[2] as List<ShotCup>;
+    final topRows = results[3] as List<ProductSalesRow>;
+    final recentSales = results[4] as List<Sale>;
     final liveIds = products.where((p) => p.active).map((p) => p.id).toSet();
     final shots = cups.where((c) => liveIds.contains(c.productId)).toList();
     if (mounted) {
@@ -205,6 +225,37 @@ class _SellScreenState extends State<SellScreen>
         // The catalogue is readable again, so the error has gone.
         _catalogueError = null;
       });
+      // Frequently sold: top products by revenue today.
+      final byId = <int, Product>{};
+      for (final p in products.where((p) => p.active && p.id != null)) {
+        byId[p.id!] = p;
+      }
+      final frequent = <ProductTileData>[];
+      for (final row in topRows) {
+        final p = byId[row.productId];
+        if (p != null && frequent.length < 8) {
+          frequent.add(_tileDataFor(p));
+        }
+      }
+      // Recently sold: unique products from recent sales, newest first.
+      final seen = <int>{};
+      final recent = <Product>[];
+      for (final sale in recentSales) {
+        for (final item in sale.items) {
+          final pid = item.productId;
+          if (pid != 0 && !seen.contains(pid)) {
+            seen.add(pid);
+            final p = byId[pid];
+            if (p != null) recent.add(p);
+          }
+        }
+      }
+      if (mounted) {
+        setState(() {
+          _frequentlySold = frequent;
+          _recentlySold = recent;
+        });
+      }
     }
   }
 
@@ -3037,6 +3088,36 @@ class _SellScreenState extends State<SellScreen>
                       ),
                     ),
                   ),
+                // Recently sold products: quick re-sell of what just went out.
+                if (_recentlySold.isNotEmpty)
+                  Padding(
+                    padding: EdgeInsetsDirectional.only(
+                      start: PageGutter.of(context).left,
+                      end: PageGutter.of(context).right,
+                      bottom: spacing.sm,
+                    ),
+                    child: _ProductDiscoveryRow(
+                      title: l10n.sellRecentlySold,
+                      items: _recentlySold
+                          .map((p) => _tileDataFor(p))
+                          .toList(growable: false),
+                      onProduct: _addToCart,
+                    ),
+                  ),
+                // Frequently sold products: the shop's movers, one tap away.
+                if (_frequentlySold.isNotEmpty)
+                  Padding(
+                    padding: EdgeInsetsDirectional.only(
+                      start: PageGutter.of(context).left,
+                      end: PageGutter.of(context).right,
+                      bottom: spacing.sm,
+                    ),
+                    child: _ProductDiscoveryRow(
+                      title: l10n.sellFrequentlySold,
+                      items: _frequentlySold,
+                      onProduct: _addToCart,
+                    ),
+                  ),
                 Expanded(
                   child: Stack(
                     children: <Widget>[
@@ -3164,6 +3245,108 @@ class _SellScreenState extends State<SellScreen>
   /// 2, or 0.5 — never 0.5 written as "1" and never 0.4 written as "0".
   static String _quantityText(double qty) =>
       qty % 1 == 0 ? '${qty.toInt()}' : qty.toStringAsFixed(1);
+}
+
+/// A horizontal row of quick-reach product tiles for recently sold and
+/// frequently sold products.
+class _ProductDiscoveryRow extends StatelessWidget {
+  const _ProductDiscoveryRow({
+    required this.title,
+    required this.items,
+    required this.onProduct,
+  });
+
+  final String title;
+  final List<ProductTileData> items;
+  final void Function(Product product) onProduct;
+
+  @override
+  Widget build(BuildContext context) {
+    final AppSpacing spacing = AppSpacing.of(context);
+    final l10n = AppLocalizations.of(context);
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: <Widget>[
+        Padding(
+          padding: EdgeInsetsDirectional.only(
+            start: PageGutter.of(context).left,
+            end: PageGutter.of(context).right,
+            bottom: spacing.xs,
+          ),
+          child: Text(
+            title,
+            style: AppTypography.of(context).titleMedium,
+          ),
+        ),
+        SizedBox(
+          height: 140,
+          child: ListView.builder(
+            scrollDirection: Axis.horizontal,
+            padding: EdgeInsetsDirectional.only(
+              start: PageGutter.of(context).left,
+              end: PageGutter.of(context).right,
+            ),
+            itemCount: items.length,
+            itemBuilder: (context, index) {
+              final item = items[index];
+              return Semantics(
+                button: true,
+                label:
+                    '${item.product.name}, ${formatMoney(item.product.sellPrice)}, ${item.stockLine(l10n)}',
+                child: ExcludeSemantics(
+                  child: Padding(
+                    padding: EdgeInsets.only(right: spacing.sm),
+                    child: SizedBox(
+                      width: 120,
+                      child: SurfaceCard(
+                        onTap: () => onProduct(item.product),
+                        padding: EdgeInsets.all(spacing.md),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          mainAxisSize: MainAxisSize.min,
+                          children: <Widget>[
+                            Flexible(
+                              child: Text(
+                                item.product.name,
+                                maxLines: 2,
+                                overflow: TextOverflow.ellipsis,
+                                style:
+                                    AppTypography.of(context).bodyMedium,
+                              ),
+                            ),
+                            SizedBox(height: spacing.xs),
+                            Text(
+                              formatMoney(item.product.sellPrice),
+                              style: AppTypography.money(
+                                context,
+                                size: 14,
+                                weight: FontWeight.w700,
+                              ),
+                            ),
+                            SizedBox(height: spacing.xs),
+                            Text(
+                              item.stockLine(l10n),
+                              style: AppTypography.of(context)
+                                  .labelSmall
+                                  ?.copyWith(
+                                    color:
+                                        AppColors.of(context).onSurfaceMuted,
+                                  ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
+                  ),
+                ),
+              );
+            },
+          ),
+        ),
+      ],
+    );
+  }
 }
 
 /// One line in the cart.

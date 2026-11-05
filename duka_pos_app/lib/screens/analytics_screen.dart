@@ -112,6 +112,7 @@ class AnalyticsSnapshot {
     this.expired = const <Product>[],
     this.slowMovers = const <SlowMoverRow>[],
     this.costCoverage = CostCoverage.empty,
+    required this.stockValue,
     this.shifts = const ShiftAnalytics.empty(),
     this.drinks = DrinksAnalyticsSnapshot.empty,
     this.statement,
@@ -131,6 +132,7 @@ class AnalyticsSnapshot {
     expired: <Product>[],
     slowMovers: <SlowMoverRow>[],
     costCoverage: CostCoverage.empty,
+    stockValue: Money.zero,
     shifts: ShiftAnalytics.empty(),
     drinks: DrinksAnalyticsSnapshot.empty,
     statement: null,
@@ -147,6 +149,7 @@ class AnalyticsSnapshot {
   final List<Product> expired;
   final List<SlowMoverRow> slowMovers;
   final CostCoverage costCoverage;
+  final Money stockValue;
 
   /// The shifts over the window, and what the drawers did.
   final ShiftAnalytics shifts;
@@ -320,6 +323,12 @@ class _AnalyticsScreenState extends State<AnalyticsScreen>
           : null;
       if (!mounted) return;
       final List<Product> products = results[4] as List<Product>;
+      final Money stockValue = Money.fromMinor(
+        products.where((p) => p.active).fold<int>(
+          0,
+          (sum, p) => sum + (p.stockQty * p.costPrice.minorUnits).round(),
+        ),
+      );
       final List<Product> expiring = results[5] as List<Product>;
       final List<Product> expired = results[6] as List<Product>;
       final List<SlowMoverRow> slowMovers = results[7] as List<SlowMoverRow>;
@@ -398,6 +407,7 @@ class _AnalyticsScreenState extends State<AnalyticsScreen>
               ..sort(
                   (Product a, Product b) => a.stockQty.compareTo(b.stockQty)),
             costCoverage: costCoverage,
+            stockValue: stockValue,
             expiring: expiring,
             expired: expired,
             slowMovers: slowMovers,

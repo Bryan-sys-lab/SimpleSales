@@ -2338,6 +2338,18 @@ abstract class AppLocalizations {
   /// **'kg'**
   String get unitSuffixKilogram;
 
+  /// No description provided for @unitSuffixPack.
+  ///
+  /// In en, this message translates to:
+  /// **'pk'**
+  String get unitSuffixPack;
+
+  /// No description provided for @unitSuffixCarton.
+  ///
+  /// In en, this message translates to:
+  /// **'ctn'**
+  String get unitSuffixCarton;
+
   /// No description provided for @inventoryFieldTotalStock.
   ///
   /// In en, this message translates to:
@@ -8062,6 +8074,18 @@ abstract class AppLocalizations {
   /// **'Tank (kg)'**
   String get productUnitKilogram;
 
+  /// No description provided for @productUnitPack.
+  ///
+  /// In en, this message translates to:
+  /// **'By the pack'**
+  String get productUnitPack;
+
+  /// No description provided for @productUnitCarton.
+  ///
+  /// In en, this message translates to:
+  /// **'By the carton'**
+  String get productUnitCarton;
+
   /// No description provided for @variantUnitKilogram.
   ///
   /// In en, this message translates to:
@@ -9003,6 +9027,192 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'Start a sale'**
   String get dashboardSellAction;
+
+  /// No description provided for @dashboardStockOverview.
+  ///
+  /// In en, this message translates to:
+  /// **'Stock overview'**
+  String get dashboardStockOverview;
+
+  /// No description provided for @dashboardTotalProducts.
+  ///
+  /// In en, this message translates to:
+  /// **'Total products'**
+  String get dashboardTotalProducts;
+
+  /// No description provided for @dashboardLowStockCount.
+  ///
+  /// In en, this message translates to:
+  /// **'Low stock'**
+  String get dashboardLowStockCount;
+
+  /// No description provided for @dashboardOutOfStockCount.
+  ///
+  /// In en, this message translates to:
+  /// **'Out of stock'**
+  String get dashboardOutOfStockCount;
+
+  /// No description provided for @dashboardStockValue.
+  ///
+  /// In en, this message translates to:
+  /// **'Stock value'**
+  String get dashboardStockValue;
+
+  /// No description provided for @dashboardQuickAddProduct.
+  ///
+  /// In en, this message translates to:
+  /// **'Add product'**
+  String get dashboardQuickAddProduct;
+
+  /// No description provided for @dashboardQuickReceiveStock.
+  ///
+  /// In en, this message translates to:
+  /// **'Receive stock'**
+  String get dashboardQuickReceiveStock;
+
+  /// No description provided for @dashboardQuickStocktake.
+  ///
+  /// In en, this message translates to:
+  /// **'Stocktake'**
+  String get dashboardQuickStocktake;
+
+  /// No description provided for @sellRecentlySold.
+  ///
+  /// In en, this message translates to:
+  /// **'Recently sold'**
+  String get sellRecentlySold;
+
+  /// No description provided for @sellFrequentlySold.
+  ///
+  /// In en, this message translates to:
+  /// **'Frequently sold'**
+  String get sellFrequentlySold;
+
+  /// No description provided for @inventorySearchProducts.
+  ///
+  /// In en, this message translates to:
+  /// **'Search products'**
+  String get inventorySearchProducts;
+
+  /// No description provided for @inventoryFilterAll.
+  ///
+  /// In en, this message translates to:
+  /// **'All products'**
+  String get inventoryFilterAll;
+
+  /// No description provided for @inventoryFilterCounted.
+  ///
+  /// In en, this message translates to:
+  /// **'Counted goods'**
+  String get inventoryFilterCounted;
+
+  /// No description provided for @inventoryFilterMeasured.
+  ///
+  /// In en, this message translates to:
+  /// **'Measured goods'**
+  String get inventoryFilterMeasured;
+
+  /// No description provided for @inventoryFilterLow.
+  ///
+  /// In en, this message translates to:
+  /// **'Low stock'**
+  String get inventoryFilterLow;
+
+  /// No description provided for @inventoryFilterOut.
+  ///
+  /// In en, this message translates to:
+  /// **'Out of stock'**
+  String get inventoryFilterOut;
+
+  /// No description provided for @inventoryUnitEach.
+  ///
+  /// In en, this message translates to:
+  /// **'each'**
+  String get inventoryUnitEach;
+
+  /// No description provided for @inventoryUnitKilogram.
+  ///
+  /// In en, this message translates to:
+  /// **'kg'**
+  String get inventoryUnitKilogram;
+
+  /// No description provided for @inventoryUnitLitre.
+  ///
+  /// In en, this message translates to:
+  /// **'litre'**
+  String get inventoryUnitLitre;
+
+  /// No description provided for @inventoryUnitPack.
+  ///
+  /// In en, this message translates to:
+  /// **'pack'**
+  String get inventoryUnitPack;
+
+  /// No description provided for @inventoryUnitCarton.
+  ///
+  /// In en, this message translates to:
+  /// **'carton'**
+  String get inventoryUnitCarton;
+
+  /// No description provided for @inventoryProductDetail.
+  ///
+  /// In en, this message translates to:
+  /// **'Product detail'**
+  String get inventoryProductDetail;
+
+  /// No description provided for @inventoryCostPrice.
+  ///
+  /// In en, this message translates to:
+  /// **'Cost price'**
+  String get inventoryCostPrice;
+
+  /// No description provided for @inventorySellingPrice.
+  ///
+  /// In en, this message translates to:
+  /// **'Selling price'**
+  String get inventorySellingPrice;
+
+  /// No description provided for @inventoryReorderLevel.
+  ///
+  /// In en, this message translates to:
+  /// **'Reorder level'**
+  String get inventoryReorderLevel;
+
+  /// No description provided for @inventoryStockValue.
+  ///
+  /// In en, this message translates to:
+  /// **'Stock value'**
+  String get inventoryStockValue;
+
+  /// No description provided for @inventoryStockMovement.
+  ///
+  /// In en, this message translates to:
+  /// **'Stock movement'**
+  String get inventoryStockMovement;
+
+  /// No description provided for @inventoryNoMovement.
+  ///
+  /// In en, this message translates to:
+  /// **'No stock movement yet'**
+  String get inventoryNoMovement;
+
+  /// No description provided for @inventorySalesPerformance.
+  ///
+  /// In en, this message translates to:
+  /// **'Sales performance'**
+  String get inventorySalesPerformance;
+
+  /// No description provided for @inventoryUnitsSold.
+  ///
+  /// In en, this message translates to:
+  /// **'{count} units sold'**
+  String inventoryUnitsSold(Object count);
+
+  /// No description provided for @inventoryRevenue.
+  ///
+  /// In en, this message translates to:
+  /// **'Revenue'**
+  String get inventoryRevenue;
 }
 
 class _AppLocalizationsDelegate

@@ -42,7 +42,9 @@ enum ProductUnit {
   /// per product: a 50-kg tank of lager holds about 50 litres, and a liqueur or a
   /// syrup holds a different amount per kilogram, which is why it is not baked
   /// into the unit.
-  kilogram('kilogram', 'kg');
+  kilogram('kilogram', 'kg'),
+  pack('pack', 'pk'),
+  carton('carton', 'ctn');
 
   const ProductUnit(this.wire, this.suffix);
 
@@ -61,7 +63,9 @@ enum ProductUnit {
   /// the flag that says "this product can be poured from", which is exactly what
   /// a tank is for. The weight lives only in the form and the stock count; the
   /// pour never sees it.
-  bool get isVolumetric => this != ProductUnit.each;
+  bool get isVolumetric =>
+      this == ProductUnit.litre || this == ProductUnit.millilitre ||
+      this == ProductUnit.cup || this == ProductUnit.kilogram;
 
   /// One of these, in millilitres.
   ///
@@ -78,6 +82,8 @@ enum ProductUnit {
         ProductUnit.litre => 1000,
         ProductUnit.cup => 1, // a cup is not a fixed size; size_ml says how big
         ProductUnit.kilogram => 0, // per product: the tank's ml per kg
+        ProductUnit.pack => 0, // a pack is countable, not volumetric
+        ProductUnit.carton => 0, // a carton is countable, not volumetric
       };
 
   /// Whether this unit is stocked by weight rather than by volume or count.
@@ -107,6 +113,8 @@ enum ProductUnit {
         ProductUnit.litre => 'Per litre',
         ProductUnit.cup => 'Per cup',
         ProductUnit.kilogram => 'Per kilogram (tank)',
+        ProductUnit.pack => 'Per pack',
+        ProductUnit.carton => 'Per carton',
       };
 }
 

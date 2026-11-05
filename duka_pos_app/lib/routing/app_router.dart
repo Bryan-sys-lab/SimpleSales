@@ -35,6 +35,8 @@ import '../screens/splash_screen.dart';
 import '../screens/support_screen.dart';
 import '../screens/tank_detail_screen.dart';
 import '../screens/tank_register_screen.dart';
+import '../screens/product_detail_screen.dart';
+import '../models/models.dart';
 import '../screens/marketplace_screen.dart';
 import '../screens/help_screen.dart';
 import '../screens/open_business_screen.dart';
@@ -381,6 +383,20 @@ List<RouteBase> _shellRoutes(AppState appState) {
                     appState.shopProfile.navigation.showDrinkService
                         ? const TankDetailScreen()
                         : NotFoundScreen(location: routerState.matchedLocation),
+                  ),
+                ),
+                // One product's full detail: quantity, unit, cost, price,
+                // reorder level, stock value, actions.
+                GoRoute(
+                  path: 'product-detail',
+                  parentNavigatorKey: rootNavigatorKey,
+                  pageBuilder:
+                      (BuildContext context, GoRouterState routerState) =>
+                          _fadeThrough(
+                    routerState,
+                    ProductDetailScreen(
+                      product: routerState.extra as Product,
+                    ),
                   ),
                 ),
               ],

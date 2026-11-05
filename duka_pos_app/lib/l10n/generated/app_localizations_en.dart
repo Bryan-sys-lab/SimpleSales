@@ -1348,6 +1348,12 @@ class AppLocalizationsEn extends AppLocalizations {
   String get unitSuffixKilogram => 'kg';
 
   @override
+  String get unitSuffixPack => 'pk';
+
+  @override
+  String get unitSuffixCarton => 'ctn';
+
+  @override
   String get inventoryFieldTotalStock => 'Total stock (from variants)';
 
   @override
@@ -4969,6 +4975,12 @@ class AppLocalizationsEn extends AppLocalizations {
   String get productUnitKilogram => 'Tank (kg)';
 
   @override
+  String get productUnitPack => 'By the pack';
+
+  @override
+  String get productUnitCarton => 'By the carton';
+
+  @override
   String get variantUnitKilogram => 'Tank (kg)';
 
   @override
@@ -5522,4 +5534,99 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get dashboardSellAction => 'Start a sale';
+
+  @override
+  String get dashboardStockOverview => 'Stock overview';
+
+  @override
+  String get dashboardTotalProducts => 'Total products';
+
+  @override
+  String get dashboardLowStockCount => 'Low stock';
+
+  @override
+  String get dashboardOutOfStockCount => 'Out of stock';
+
+  @override
+  String get dashboardStockValue => 'Stock value';
+
+  @override
+  String get dashboardQuickAddProduct => 'Add product';
+
+  @override
+  String get dashboardQuickReceiveStock => 'Receive stock';
+
+  @override
+  String get dashboardQuickStocktake => 'Stocktake';
+
+  @override
+  String get sellRecentlySold => 'Recently sold';
+
+  @override
+  String get sellFrequentlySold => 'Frequently sold';
+
+  @override
+  String get inventorySearchProducts => 'Search products';
+
+  @override
+  String get inventoryFilterAll => 'All products';
+
+  @override
+  String get inventoryFilterCounted => 'Counted goods';
+
+  @override
+  String get inventoryFilterMeasured => 'Measured goods';
+
+  @override
+  String get inventoryFilterLow => 'Low stock';
+
+  @override
+  String get inventoryFilterOut => 'Out of stock';
+
+  @override
+  String get inventoryUnitEach => 'each';
+
+  @override
+  String get inventoryUnitKilogram => 'kg';
+
+  @override
+  String get inventoryUnitLitre => 'litre';
+
+  @override
+  String get inventoryUnitPack => 'pack';
+
+  @override
+  String get inventoryUnitCarton => 'carton';
+
+  @override
+  String get inventoryProductDetail => 'Product detail';
+
+  @override
+  String get inventoryCostPrice => 'Cost price';
+
+  @override
+  String get inventorySellingPrice => 'Selling price';
+
+  @override
+  String get inventoryReorderLevel => 'Reorder level';
+
+  @override
+  String get inventoryStockValue => 'Stock value';
+
+  @override
+  String get inventoryStockMovement => 'Stock movement';
+
+  @override
+  String get inventoryNoMovement => 'No stock movement yet';
+
+  @override
+  String get inventorySalesPerformance => 'Sales performance';
+
+  @override
+  String inventoryUnitsSold(Object count) {
+    return '$count units sold';
+  }
+
+  @override
+  String get inventoryRevenue => 'Revenue';
 }

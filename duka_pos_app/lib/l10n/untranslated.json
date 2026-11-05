@@ -1332,6 +1332,9 @@
     "sellOutOfStockHint",
     "sellNoPriceSetYet",
     "loginNotInThisShop",
-    "analyticsMarginLabel"
+    "analyticsMarginLabel",
+    "inventoryUnitPack",
+    "inventoryUnitCarton",
+    "inventoryProductDetail"
   ]
 }

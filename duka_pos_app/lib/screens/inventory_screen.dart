@@ -75,6 +75,10 @@ class _InventoryScreenState extends State<InventoryScreen>
 
   int _lowStockLimit = 5;
 
+  String _searchQuery = '';
+
+  InventoryFilter _filter = InventoryFilter.all;
+
   /// 0 = packaged stock, 1 = tank inventory. Only meaningful for drinks.
   int _inventoryTab = 0;
 
@@ -105,6 +109,8 @@ class _InventoryScreenState extends State<InventoryScreen>
     _loading = true;
     _products = const <Product>[];
     _variants = VariantCatalogue.empty;
+    _searchQuery = '';
+    _filter = InventoryFilter.all;
   }
 
   @override
@@ -819,6 +825,26 @@ class _InventoryScreenState extends State<InventoryScreen>
     await _load();
   }
 
+  List<Product> _filteredProducts() {
+    final query = _searchQuery.trim().toLowerCase();
+    return _products.where((p) {
+      final matchesQuery = query.isEmpty ||
+          p.name.toLowerCase().contains(query) ||
+          p.category.toLowerCase().contains(query);
+      final matchesFilter = switch (_filter) {
+        InventoryFilter.all => true,
+        InventoryFilter.counted =>
+            p.unit == ProductUnit.each,
+        InventoryFilter.measured =>
+            p.unit == ProductUnit.kilogram || p.unit == ProductUnit.litre,
+        InventoryFilter.low =>
+            p.stockQty > 0 && p.stockQty <= p.reorderLevel,
+        InventoryFilter.out => p.stockQty <= 0,
+      };
+      return matchesQuery && matchesFilter;
+    }).toList();
+  }
+
   @override
   Widget build(BuildContext context) {
     final appState = context.watch<AppState>();
@@ -922,6 +948,76 @@ class _InventoryScreenState extends State<InventoryScreen>
                 bottom: AppSpacing.of(context).sm,
               ),
             ),
+            // Search: the fastest way to find a product in a long list.
+            Padding(
+              padding: EdgeInsetsDirectional.only(
+                start: AppSpacing.of(context).xl,
+                end: AppSpacing.of(context).xl,
+                bottom: AppSpacing.of(context).sm,
+              ),
+              child: TextField(
+                decoration: InputDecoration(
+                  labelText: l10n.inventorySearchProducts,
+                  hintText: l10n.inventorySearchProducts,
+                  prefixIcon: const Icon(Icons.search),
+                  isDense: true,
+                  constraints: BoxConstraints(
+                    minHeight: AppSpacing.of(context).textFieldHeight,
+                  ),
+                ),
+                onChanged: (value) =>
+                    setState(() => _searchQuery = value),
+              ),
+            ),
+            // Filters: All, counted, measured, low, out.
+            Padding(
+              padding: EdgeInsetsDirectional.only(
+                start: AppSpacing.of(context).xl,
+                end: AppSpacing.of(context).xl,
+                bottom: AppSpacing.of(context).sm,
+              ),
+              child: SingleChildScrollView(
+                scrollDirection: Axis.horizontal,
+                child: Row(
+                  children: <Widget>[
+                    FilterChip(
+                      selected: _filter == InventoryFilter.all,
+                      label: Text(l10n.inventoryFilterAll),
+                      onSelected: (v) =>
+                          setState(() => _filter = InventoryFilter.all),
+                    ),
+                    SizedBox(width: AppSpacing.of(context).sm),
+                    FilterChip(
+                      selected: _filter == InventoryFilter.counted,
+                      label: Text(l10n.inventoryFilterCounted),
+                      onSelected: (v) =>
+                          setState(() => _filter = InventoryFilter.counted),
+                    ),
+                    SizedBox(width: AppSpacing.of(context).sm),
+                    FilterChip(
+                      selected: _filter == InventoryFilter.measured,
+                      label: Text(l10n.inventoryFilterMeasured),
+                      onSelected: (v) =>
+                          setState(() => _filter = InventoryFilter.measured),
+                    ),
+                    SizedBox(width: AppSpacing.of(context).sm),
+                    FilterChip(
+                      selected: _filter == InventoryFilter.low,
+                      label: Text(l10n.inventoryFilterLow),
+                      onSelected: (v) =>
+                          setState(() => _filter = InventoryFilter.low),
+                    ),
+                    SizedBox(width: AppSpacing.of(context).sm),
+                    FilterChip(
+                      selected: _filter == InventoryFilter.out,
+                      label: Text(l10n.inventoryFilterOut),
+                      onSelected: (v) =>
+                          setState(() => _filter = InventoryFilter.out),
+                    ),
+                  ],
+                ),
+              ),
+            ),
             // Two distinct inventory views for drinks: packaged stock and tank
             // inventory. The tabs only appear when a tank exists, so a duka
             // (which never has tanks) keeps its simple list.
@@ -955,7 +1051,7 @@ class _InventoryScreenState extends State<InventoryScreen>
               child: _products.isEmpty && _loading
                   ? const _InventorySkeleton()
                   : ListView.separated(
-                      itemCount: _products.isEmpty ? 1 : _products.length + 1,
+                      itemCount: _filteredProducts().isEmpty ? 1 : _filteredProducts().length + 1,
                       separatorBuilder: (_, i) => Divider(
                         height: 1,
                         indent: _rowDividerInset(context),
@@ -964,7 +1060,7 @@ class _InventoryScreenState extends State<InventoryScreen>
                       itemBuilder: (_, i) {
                         // An empty catalogue is a setup problem, not an empty list:
                         // say what is missing and offer the one action that fixes it.
-                        if (i == 0 && _products.isEmpty) {
+                        if (i == 0 && _filteredProducts().isEmpty) {
                           return _InventoryEmptyState(
                               onAdd: () => _openEditor());
                         }
@@ -972,7 +1068,7 @@ class _InventoryScreenState extends State<InventoryScreen>
                         // way of selling what is already in the catalogue, not another
                         // line of it, and burying it under the first hundred sodas is
                         // how a bar never finds the feature that makes it a bar.
-                        if (_products.isEmpty || i == 0) {
+                        if (_filteredProducts().isEmpty || i == 0) {
                           return Column(
                             children: <Widget>[
                               if (showDrinkService)
@@ -1001,7 +1097,7 @@ class _InventoryScreenState extends State<InventoryScreen>
                             ],
                           );
                         }
-                        final p = _products[i - 1];
+                        final p = _filteredProducts()[i - 1];
                         final variantCount = _variants.of(p).length;
                         return Semantics(
                           label: l10n.inventoryNameStock(
@@ -1023,6 +1119,10 @@ class _InventoryScreenState extends State<InventoryScreen>
                             onAssignBarcode: () => _assignInternalBarcode(p),
                             onPrintBarcode: () => _printBarcodeLabel(p),
                             onDelete: () => _delete(p),
+                            onTap: () => context.push(
+                              Routes.productDetail,
+                              extra: p,
+                            ),
                           ),
                         );
                       },
@@ -1294,6 +1394,7 @@ class _ProductListTile extends StatelessWidget {
     required this.onAssignBarcode,
     required this.onPrintBarcode,
     required this.onDelete,
+    this.onTap,
     super.key,
   });
 
@@ -1308,6 +1409,7 @@ class _ProductListTile extends StatelessWidget {
   final VoidCallback onAssignBarcode;
   final VoidCallback onPrintBarcode;
   final VoidCallback onDelete;
+  final VoidCallback? onTap;
 
   @override
   Widget build(BuildContext context) {
@@ -1345,8 +1447,8 @@ class _ProductListTile extends StatelessWidget {
 
     return Semantics(
       button: true,
-      child: InkWell(
-        onTap: onEdit,
+        child: InkWell(
+          onTap: onTap ?? onEdit,
         child: Padding(
           padding: EdgeInsetsDirectional.only(
             start: spacing.md,
@@ -1417,6 +1519,31 @@ class _ProductListTile extends StatelessWidget {
                         style: type.bodySmall?.copyWith(
                           color: colors.onSurfaceMuted,
                         ),
+                      ),
+                      SizedBox(height: spacing.xs),
+                      Row(
+                        children: <Widget>[
+                          Text(
+                            product.unit.suffix,
+                            style: type.labelSmall?.copyWith(
+                              color: colors.onSurfaceMuted,
+                            ),
+                          ),
+                          SizedBox(width: spacing.xs),
+                          Text(
+                            formatMoney(
+                              Money.fromMinor(
+                                (product.stockQty *
+                                        product.costPrice.minorUnits)
+                                    .round(),
+                              ),
+                            ),
+                            style: type.labelSmall?.copyWith(
+                              color: colors.onSurfaceMuted,
+                              fontWeight: FontWeight.w600,
+                            ),
+                          ),
+                        ],
                       ),
                       // The state chip, on EVERY row.
                       //
@@ -1933,6 +2060,13 @@ class _UnitPicker extends StatelessWidget {
       if (showMeasuredGoods || value == ProductUnit.cup)
         SegmentedOption<ProductUnit>(
             value: ProductUnit.cup, label: l10n.productUnitCup),
+      if (showMeasuredGoods || value == ProductUnit.kilogram)
+        SegmentedOption<ProductUnit>(
+            value: ProductUnit.kilogram, label: l10n.productUnitKilogram),
+      SegmentedOption<ProductUnit>(
+          value: ProductUnit.pack, label: l10n.productUnitPack),
+      SegmentedOption<ProductUnit>(
+          value: ProductUnit.carton, label: l10n.productUnitCarton),
     ];
     return SegmentedChoice<ProductUnit>(
       value: value,
@@ -1950,9 +2084,10 @@ String _sizeLabelOf(BuildContext context, ProductUnit unit) {
     ProductUnit.litre => l10n.productSizeLabelLitre,
     ProductUnit.millilitre => l10n.productSizeLabelMillilitre,
     ProductUnit.cup => l10n.productSizeLabelCup,
-    // A tank's capacity, in the litres it holds once its kilograms have been
-    // converted: the same field, read from the other side of the conversion.
     ProductUnit.kilogram => l10n.productSizeLabelKilogram,
+    // Pack and carton are countable: no size field is needed.
+    ProductUnit.pack => l10n.inventoryFieldSizeMl,
+    ProductUnit.carton => l10n.inventoryFieldSizeMl,
   };
 }
 
@@ -2950,6 +3085,8 @@ class _ProductEditorState extends State<_ProductEditor> {
       ProductUnit.millilitre => l10n.unitSuffixMillilitre,
       ProductUnit.cup => l10n.unitSuffixCup,
       ProductUnit.kilogram => l10n.unitSuffixKilogram,
+      ProductUnit.pack => l10n.unitSuffixPack,
+      ProductUnit.carton => l10n.unitSuffixCarton,
     };
   }
 
@@ -3550,4 +3687,13 @@ class _RepackNewDialogState extends State<_RepackNewDialog> {
       ],
     );
   }
+}
+
+/// How the inventory list is filtered.
+enum InventoryFilter {
+  all,
+  counted,
+  measured,
+  low,
+  out,
 }

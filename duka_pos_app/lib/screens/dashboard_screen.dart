@@ -212,6 +212,17 @@ class _DashboardScreenState extends State<DashboardScreen>
       final List<Product> products = await db.getProducts();
       final List<Product> tanks =
           products.where((p) => p.category == 'Tanks' && p.active).toList();
+      final int totalProducts = products.where((p) => p.active).length;
+      final int outOfStockCount = products
+          .where((p) => p.active && p.stockQty <= 0)
+          .length;
+      final Money stockValue = Money.fromMinor(
+        products.where((p) => p.active).fold<int>(
+          0,
+          (sum, p) =>
+              sum + (p.stockQty * p.costPrice.minorUnits).round(),
+        ),
+      );
       final DailyTotals totalsToday =
           await db.salesTotalsFor(since: dayStart, staffId: staffId);
       final DailyTotals totalsAll = await db.salesTotalsFor(staffId: staffId);
@@ -253,6 +264,9 @@ class _DashboardScreenState extends State<DashboardScreen>
             creditCustomerCount: creditSummary.customerCount,
             tanks: tanks,
             tankSales: const <int, ProductSalesRow>{},
+            totalProducts: totalProducts,
+            outOfStockCount: outOfStockCount,
+            stockValue: stockValue,
           );
         });
         if (shift == null) return;
@@ -274,6 +288,9 @@ class _DashboardScreenState extends State<DashboardScreen>
               expectedTill: expected,
               creditOwedMinor: ready.creditOwedMinor,
               creditCustomerCount: ready.creditCustomerCount,
+              totalProducts: ready.totalProducts,
+              outOfStockCount: ready.outOfStockCount,
+              stockValue: ready.stockValue,
             ));
         return;
       }
@@ -333,6 +350,9 @@ class _DashboardScreenState extends State<DashboardScreen>
           creditCustomerCount: creditSummary.customerCount,
           tanks: tanks,
           tankSales: tankSales,
+          totalProducts: totalProducts,
+          outOfStockCount: outOfStockCount,
+          stockValue: stockValue,
         );
       });
 
@@ -357,6 +377,9 @@ class _DashboardScreenState extends State<DashboardScreen>
             creditCustomerCount: ready.creditCustomerCount,
             tanks: ready.tanks,
             tankSales: ready.tankSales,
+            totalProducts: ready.totalProducts,
+            outOfStockCount: ready.outOfStockCount,
+            stockValue: ready.stockValue,
           ));
     } catch (_) {
       if (!_current(serial, session, appState)) return;

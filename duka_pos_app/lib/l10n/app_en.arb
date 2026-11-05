@@ -373,7 +373,9 @@
   "unitSuffixLitre": "L",
   "unitSuffixMillilitre": "ml",
   "unitSuffixCup": "cups",
-"unitSuffixKilogram": "kg",
+  "unitSuffixKilogram": "kg",
+  "unitSuffixPack": "pk",
+  "unitSuffixCarton": "ctn",
 "inventoryFieldTotalStock": "Total stock (from variants)",
 "inventoryGoBack": "Go back",
   "inventoryLowStockLimitTitle": "Low stock limit",
@@ -1327,6 +1329,8 @@
   "portfolioShopRowSpoken": "{shop}, {revenue} takings, {profit} profit, {count, plural, =1{1 transaction} other{{count} transactions}}, {share} of all shops",
   "productSizeLabelKilogram": "How many litres the tank holds (ml)",
   "productUnitKilogram": "Tank (kg)",
+  "productUnitPack": "By the pack",
+  "productUnitCarton": "By the carton",
   "variantUnitKilogram": "Tank (kg)",
   "tankFormTitle": "Add a tank",
   "tankFormSubtitle": "A tank is a big container you pour drinks from. It can hold beer, soda or anything else you sell by the cup. Write what is in it and how you sell it. You can add as many tanks as you want.",
@@ -1484,4 +1488,35 @@
   ,"dashboardCurrentBusiness": "Current business — {shopName}"
   ,"dashboardCurrentBusinessLabel": "Current business"
   ,"dashboardSellAction": "Start a sale"
+  ,"dashboardStockOverview": "Stock overview"
+  ,"dashboardTotalProducts": "Total products"
+  ,"dashboardLowStockCount": "Low stock"
+  ,"dashboardOutOfStockCount": "Out of stock"
+  ,"dashboardStockValue": "Stock value"
+  ,"dashboardQuickAddProduct": "Add product"
+  ,"dashboardQuickReceiveStock": "Receive stock"
+  ,"dashboardQuickStocktake": "Stocktake"
+  ,"sellRecentlySold": "Recently sold"
+  ,"sellFrequentlySold": "Frequently sold"
+  ,"inventorySearchProducts": "Search products"
+  ,"inventoryFilterAll": "All products"
+  ,"inventoryFilterCounted": "Counted goods"
+  ,"inventoryFilterMeasured": "Measured goods"
+  ,"inventoryFilterLow": "Low stock"
+  ,"inventoryFilterOut": "Out of stock"
+  ,"inventoryUnitEach": "each"
+  ,"inventoryUnitKilogram": "kg"
+  ,"inventoryUnitLitre": "litre"
+  ,"inventoryUnitPack": "pack"
+  ,"inventoryUnitCarton": "carton"
+  ,"inventoryProductDetail": "Product detail"
+  ,"inventoryCostPrice": "Cost price"
+  ,"inventorySellingPrice": "Selling price"
+  ,"inventoryReorderLevel": "Reorder level"
+  ,"inventoryStockValue": "Stock value"
+  ,"inventoryStockMovement": "Stock movement"
+  ,"inventoryNoMovement": "No stock movement yet"
+  ,"inventorySalesPerformance": "Sales performance"
+  ,"inventoryUnitsSold": "{count} units sold"
+  ,"inventoryRevenue": "Revenue"
 }
