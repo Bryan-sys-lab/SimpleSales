@@ -43,6 +43,9 @@ import '../screens/open_dashboard_screen.dart';
 import '../screens/open_jobs_screen.dart';
 import '../screens/open_job_form_screen.dart';
 import '../screens/open_job_detail_screen.dart';
+import '../screens/fashion_catalogue_screen.dart';
+import '../screens/fashion_product_detail_screen.dart';
+import '../screens/fashion_product_form_screen.dart';
 import '../screens/open_job_add_cost_screen.dart';
 import '../screens/open_cost_groups_screen.dart';
 import '../screens/open_cost_group_form_screen.dart';
@@ -338,7 +341,9 @@ List<RouteBase> _shellRoutes(AppState appState) {
                 routerState,
                 appState.shopProfile == ShopProfile.open
                     ? const PortfolioScreen()
-                    : const InventoryScreen(),
+                    : appState.shopProfile == ShopProfile.fashion
+                        ? const FashionCatalogueScreen()
+                        : const InventoryScreen(),
               ),
               routes: <RouteBase>[
                 // Identity in the PATH, so a cold deep link fully reconstructs the
@@ -405,6 +410,33 @@ List<RouteBase> _shellRoutes(AppState appState) {
                     ProductDetailScreen(
                       product: routerState.extra as Product,
                     ),
+                  ),
+                ),
+                // One fashion product's variants table.
+                GoRoute(
+                  path: 'fashion-product/:productId',
+                  parentNavigatorKey: rootNavigatorKey,
+                  pageBuilder:
+                      (BuildContext context, GoRouterState routerState) =>
+                          _fadeThrough(
+                    routerState,
+                    FashionProductDetailScreen(
+                      productId: int.tryParse(
+                            routerState.pathParameters['productId'] ?? '',
+                          ) ??
+                          0,
+                    ),
+                  ),
+                ),
+                // Add a new fashion style with variants.
+                GoRoute(
+                  path: 'fashion-product/new',
+                  parentNavigatorKey: rootNavigatorKey,
+                  pageBuilder:
+                      (BuildContext context, GoRouterState routerState) =>
+                          _fadeThrough(
+                    routerState,
+                    const FashionProductFormScreen(),
                   ),
                 ),
               ],
