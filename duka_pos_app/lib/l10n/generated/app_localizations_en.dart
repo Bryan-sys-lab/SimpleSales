@@ -6081,4 +6081,69 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get fashionProductDetailEditVariant => 'Edit variant';
+
+  @override
+  String get fashionProductFormAddStyle => 'Add style';
+
+  @override
+  String get fashionProductFormEditStyle => 'Edit style';
+
+  @override
+  String get fashionProductFormAddStyleSubtitle =>
+      'Create a style and its size/colour variants.';
+
+  @override
+  String get fashionProductFormEditStyleSubtitle =>
+      'Change the style\'s name, category, and variants.';
+
+  @override
+  String get fashionProductFormProductInfo => 'Product information';
+
+  @override
+  String get fashionProductFormStyleName => 'Style name';
+
+  @override
+  String get fashionProductFormStyleNameRequired => 'Give the style a name';
+
+  @override
+  String get fashionProductFormCategory => 'Category';
+
+  @override
+  String get fashionProductFormBrand => 'Brand';
+
+  @override
+  String get fashionProductFormDescription => 'Description';
+
+  @override
+  String get fashionProductFormVariants => 'Variants';
+
+  @override
+  String get fashionProductFormAddVariant => 'Add variant';
+
+  @override
+  String get fashionProductFormVariantName => 'Variant name';
+
+  @override
+  String get fashionProductFormSize => 'Size';
+
+  @override
+  String get fashionProductFormColour => 'Colour';
+
+  @override
+  String get fashionProductFormSKU => 'SKU';
+
+  @override
+  String get fashionProductFormBarcode => 'Barcode';
+
+  @override
+  String get fashionProductFormStock => 'Starting stock';
+
+  @override
+  String get fashionProductFormSellPrice => 'Sell price';
+
+  @override
+  String get fashionProductFormCostPrice => 'Cost price';
+
+  @override
+  String get fashionProductFormReorderLevel => 'Reorder level';
 }

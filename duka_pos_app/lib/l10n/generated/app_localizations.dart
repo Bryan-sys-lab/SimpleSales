@@ -10095,6 +10095,132 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'Edit variant'**
   String get fashionProductDetailEditVariant;
+
+  /// No description provided for @fashionProductFormAddStyle.
+  ///
+  /// In en, this message translates to:
+  /// **'Add style'**
+  String get fashionProductFormAddStyle;
+
+  /// No description provided for @fashionProductFormEditStyle.
+  ///
+  /// In en, this message translates to:
+  /// **'Edit style'**
+  String get fashionProductFormEditStyle;
+
+  /// No description provided for @fashionProductFormAddStyleSubtitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Create a style and its size/colour variants.'**
+  String get fashionProductFormAddStyleSubtitle;
+
+  /// No description provided for @fashionProductFormEditStyleSubtitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Change the style\'s name, category, and variants.'**
+  String get fashionProductFormEditStyleSubtitle;
+
+  /// No description provided for @fashionProductFormProductInfo.
+  ///
+  /// In en, this message translates to:
+  /// **'Product information'**
+  String get fashionProductFormProductInfo;
+
+  /// No description provided for @fashionProductFormStyleName.
+  ///
+  /// In en, this message translates to:
+  /// **'Style name'**
+  String get fashionProductFormStyleName;
+
+  /// No description provided for @fashionProductFormStyleNameRequired.
+  ///
+  /// In en, this message translates to:
+  /// **'Give the style a name'**
+  String get fashionProductFormStyleNameRequired;
+
+  /// No description provided for @fashionProductFormCategory.
+  ///
+  /// In en, this message translates to:
+  /// **'Category'**
+  String get fashionProductFormCategory;
+
+  /// No description provided for @fashionProductFormBrand.
+  ///
+  /// In en, this message translates to:
+  /// **'Brand'**
+  String get fashionProductFormBrand;
+
+  /// No description provided for @fashionProductFormDescription.
+  ///
+  /// In en, this message translates to:
+  /// **'Description'**
+  String get fashionProductFormDescription;
+
+  /// No description provided for @fashionProductFormVariants.
+  ///
+  /// In en, this message translates to:
+  /// **'Variants'**
+  String get fashionProductFormVariants;
+
+  /// No description provided for @fashionProductFormAddVariant.
+  ///
+  /// In en, this message translates to:
+  /// **'Add variant'**
+  String get fashionProductFormAddVariant;
+
+  /// No description provided for @fashionProductFormVariantName.
+  ///
+  /// In en, this message translates to:
+  /// **'Variant name'**
+  String get fashionProductFormVariantName;
+
+  /// No description provided for @fashionProductFormSize.
+  ///
+  /// In en, this message translates to:
+  /// **'Size'**
+  String get fashionProductFormSize;
+
+  /// No description provided for @fashionProductFormColour.
+  ///
+  /// In en, this message translates to:
+  /// **'Colour'**
+  String get fashionProductFormColour;
+
+  /// No description provided for @fashionProductFormSKU.
+  ///
+  /// In en, this message translates to:
+  /// **'SKU'**
+  String get fashionProductFormSKU;
+
+  /// No description provided for @fashionProductFormBarcode.
+  ///
+  /// In en, this message translates to:
+  /// **'Barcode'**
+  String get fashionProductFormBarcode;
+
+  /// No description provided for @fashionProductFormStock.
+  ///
+  /// In en, this message translates to:
+  /// **'Starting stock'**
+  String get fashionProductFormStock;
+
+  /// No description provided for @fashionProductFormSellPrice.
+  ///
+  /// In en, this message translates to:
+  /// **'Sell price'**
+  String get fashionProductFormSellPrice;
+
+  /// No description provided for @fashionProductFormCostPrice.
+  ///
+  /// In en, this message translates to:
+  /// **'Cost price'**
+  String get fashionProductFormCostPrice;
+
+  /// No description provided for @fashionProductFormReorderLevel.
+  ///
+  /// In en, this message translates to:
+  /// **'Reorder level'**
+  String get fashionProductFormReorderLevel;
 }
 
 class _AppLocalizationsDelegate

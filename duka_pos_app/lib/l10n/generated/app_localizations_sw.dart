@@ -6082,4 +6082,69 @@ class AppLocalizationsSw extends AppLocalizations {
 
   @override
   String get fashionProductDetailEditVariant => 'Hariri hiasi';
+
+  @override
+  String get fashionProductFormAddStyle => 'Ongeza fungu';
+
+  @override
+  String get fashionProductFormEditStyle => 'Hariri fungu';
+
+  @override
+  String get fashionProductFormAddStyleSubtitle =>
+      'Unda fungu na hiasi za uzigo/rangi.';
+
+  @override
+  String get fashionProductFormEditStyleSubtitle =>
+      'Badiliza jina, kategori na hiasi za fungu.';
+
+  @override
+  String get fashionProductFormProductInfo => 'Muhtasari wa bidhaa';
+
+  @override
+  String get fashionProductFormStyleName => 'Jina la fungu';
+
+  @override
+  String get fashionProductFormStyleNameRequired => 'Peana jina la fungu';
+
+  @override
+  String get fashionProductFormCategory => 'Kategoria';
+
+  @override
+  String get fashionProductFormBrand => 'Yombo';
+
+  @override
+  String get fashionProductFormDescription => 'Elezo';
+
+  @override
+  String get fashionProductFormVariants => 'Hiasi';
+
+  @override
+  String get fashionProductFormAddVariant => 'Ongeza hiasi';
+
+  @override
+  String get fashionProductFormVariantName => 'Jina la hiasi';
+
+  @override
+  String get fashionProductFormSize => 'Uzigo';
+
+  @override
+  String get fashionProductFormColour => 'Rangi';
+
+  @override
+  String get fashionProductFormSKU => 'SKU';
+
+  @override
+  String get fashionProductFormBarcode => 'Barcode';
+
+  @override
+  String get fashionProductFormStock => 'Hisa ya awali';
+
+  @override
+  String get fashionProductFormSellPrice => 'Gharama ya kuuza';
+
+  @override
+  String get fashionProductFormCostPrice => 'Gharama ya kuunga';
+
+  @override
+  String get fashionProductFormReorderLevel => 'Kiwango cha kuongeza';
 }
