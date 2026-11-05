@@ -604,7 +604,12 @@ List<RouteBase> _shellRoutes(AppState appState) {
                       (BuildContext context, GoRouterState routerState) =>
                           _fadeThrough(
                     routerState,
-                    const OpenJobDetailScreen(),
+                    OpenJobDetailScreen(
+                      jobId: int.tryParse(
+                            routerState.pathParameters['jobId'] ?? '',
+                          ) ??
+                          0,
+                    ),
                   ),
                 ),
                 // Add a direct cost to a job.
