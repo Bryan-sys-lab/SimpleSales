@@ -298,6 +298,7 @@ class _OpenBusinessScreenState extends State<OpenBusinessScreen> {
     final BuildContext localContext = context;
     final AppState localAppState = context.read<AppState>();
     final shift = await _db.getAnyOpenShift();
+    if (!localContext.mounted) return;
     // Cash needs a drawer: if no shift is open, prompt to start one first.
     if (method == 'cash' && shift == null) {
       final started = await promptToStartShift(
@@ -355,6 +356,7 @@ class _OpenBusinessScreenState extends State<OpenBusinessScreen> {
     final BuildContext localContext = context;
     final AppState localAppState = state;
     final shift = await _db.getAnyOpenShift();
+    if (!localContext.mounted) return;
     // Owner money movements are drawer movements too: prompt to start a shift
     // if none is open, so the money lands somewhere the till can account for.
     if (shift == null) {
