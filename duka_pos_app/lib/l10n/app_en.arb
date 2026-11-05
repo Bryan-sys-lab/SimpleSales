@@ -1708,4 +1708,9 @@
   ,"laybyCustomerLabel": "Customer"
   ,"laybyDue": "Due"
   ,"laybyPaid": "Paid"
+  ,"fashionAnalyticsFinancialPerformance": "Financial performance"
+  ,"fashionAnalyticsNetProfit": "Net profit"
+  ,"fashionAnalyticsStockValue": "Stock value"
+  ,"fashionAnalyticsLowStockVariants": "Low-stock variants"
+  ,"fashionAnalyticsOutOfStock": "Out of stock"
 }

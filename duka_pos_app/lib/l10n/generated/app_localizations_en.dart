@@ -6198,4 +6198,19 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get laybyPaid => 'Paid';
+
+  @override
+  String get fashionAnalyticsFinancialPerformance => 'Financial performance';
+
+  @override
+  String get fashionAnalyticsNetProfit => 'Net profit';
+
+  @override
+  String get fashionAnalyticsStockValue => 'Stock value';
+
+  @override
+  String get fashionAnalyticsLowStockVariants => 'Low-stock variants';
+
+  @override
+  String get fashionAnalyticsOutOfStock => 'Out of stock';
 }

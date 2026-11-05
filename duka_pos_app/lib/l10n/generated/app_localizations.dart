@@ -10323,6 +10323,36 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'Paid'**
   String get laybyPaid;
+
+  /// No description provided for @fashionAnalyticsFinancialPerformance.
+  ///
+  /// In en, this message translates to:
+  /// **'Financial performance'**
+  String get fashionAnalyticsFinancialPerformance;
+
+  /// No description provided for @fashionAnalyticsNetProfit.
+  ///
+  /// In en, this message translates to:
+  /// **'Net profit'**
+  String get fashionAnalyticsNetProfit;
+
+  /// No description provided for @fashionAnalyticsStockValue.
+  ///
+  /// In en, this message translates to:
+  /// **'Stock value'**
+  String get fashionAnalyticsStockValue;
+
+  /// No description provided for @fashionAnalyticsLowStockVariants.
+  ///
+  /// In en, this message translates to:
+  /// **'Low-stock variants'**
+  String get fashionAnalyticsLowStockVariants;
+
+  /// No description provided for @fashionAnalyticsOutOfStock.
+  ///
+  /// In en, this message translates to:
+  /// **'Out of stock'**
+  String get fashionAnalyticsOutOfStock;
 }
 
 class _AppLocalizationsDelegate

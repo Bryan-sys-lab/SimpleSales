@@ -6199,4 +6199,19 @@ class AppLocalizationsSw extends AppLocalizations {
 
   @override
   String get laybyPaid => 'Lipwa';
+
+  @override
+  String get fashionAnalyticsFinancialPerformance => 'Ufikiaji wa fedha';
+
+  @override
+  String get fashionAnalyticsNetProfit => 'Faida yote';
+
+  @override
+  String get fashionAnalyticsStockValue => 'Thamani ya hisa';
+
+  @override
+  String get fashionAnalyticsLowStockVariants => 'Hiasi zisipo';
+
+  @override
+  String get fashionAnalyticsOutOfStock => 'Haipo';
 }
