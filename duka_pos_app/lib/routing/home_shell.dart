@@ -5,9 +5,11 @@ import 'package:go_router/go_router.dart';
 import 'package:provider/provider.dart';
 
 import '../app_brand.dart';
+import '../db/database_helper.dart';
 import '../l10n/generated/app_localizations.dart';
 import '../l10n/l10n_keys.dart';
 import '../services/app_state.dart';
+import '../services/backend_service.dart';
 import '../services/roles.dart';
 import '../profile/profile_navigation.dart';
 import '../profile/shop_profile.dart';
@@ -270,6 +272,8 @@ class _HomeShellState extends State<HomeShell> {
       useSafeArea: true,
       builder: (_) => _MoreSheet(
         showLayby: state.shopProfile.navigation.showLayby,
+        profiles: ShopProfile.values,
+        currentProfile: state.shopProfile,
       ),
     );
     if (!context.mounted || action == null) return;
@@ -295,6 +299,12 @@ class _HomeShellState extends State<HomeShell> {
         context.push(Routes.openBusiness);
       case _MoreAction.reports:
         context.push(Routes.reports);
+      case _MoreAction.switchProfile:
+        // Profile switching happens inside the sheet itself; the sheet pops
+        // with switchProfile when the person picks a different profile, and
+        // the sheet's own builder already applied it. Nothing to do here but
+        // let the shell rebuild on notifyListeners.
+        break;
     }
   }
 
@@ -484,20 +494,114 @@ enum _MoreAction {
   notifications,
   reserves,
   openBusiness,
-  reports
+  reports,
+  switchProfile
 }
 
 class _MoreSheet extends StatelessWidget {
-  const _MoreSheet({required this.showLayby});
+  const _MoreSheet({
+    required this.showLayby,
+    required this.profiles,
+    required this.currentProfile,
+  });
 
   final bool showLayby;
+  final List<ShopProfile> profiles;
+  final ShopProfile currentProfile;
 
   @override
   Widget build(BuildContext context) {
     final l10n = AppLocalizations.of(context);
+    final state = context.read<AppState>();
     return ListView(
       shrinkWrap: true,
       children: <Widget>[
+        // Profile switching — profiles overlaid like circles: pick one and the
+        // whole till changes to it, dashboard first.
+        ListTile(
+          leading: const Icon(Icons.business_outlined),
+          title: const Text('Switch business profile'),
+          subtitle: Text(currentProfile.displayName),
+          trailing: const Icon(Icons.chevron_right),
+          onTap: () {
+            showDialog<ShopProfile>(
+              context: context,
+              builder: (dialogContext) => AlertDialog(
+                title: Text(l10n.settingsBusinessProfileChangeTitle),
+                content: SizedBox(
+                  height: 260,
+                  child: ListView.builder(
+                    shrinkWrap: true,
+                    itemCount: profiles.length,
+                    itemBuilder: (dialogContext, index) {
+                      final profile = profiles[index];
+                      final isCurrent = profile == currentProfile;
+                      return ListTile(
+                        leading: Container(
+                          width: 40,
+                          height: 40,
+                          decoration: BoxDecoration(
+                            color: isCurrent
+                                ? Theme.of(context).primaryColor
+                                : Theme.of(context).colorScheme.surfaceContainerHighest,
+                            shape: BoxShape.circle,
+                          ),
+                          child: isCurrent
+                              ? const Icon(
+                                  Icons.check,
+                                  color: Colors.white,
+                                  size: 24,
+                                )
+                              : Text(
+                                  profile.displayName[0],
+                                  style: const TextStyle(
+                                    fontSize: 20,
+                                    fontWeight: FontWeight.bold,
+                                  ),
+                                ),
+                        ),
+                        title: Text(profile.displayName),
+                        subtitle: Text(profile.description),
+                        trailing: isCurrent
+                            ? const Icon(Icons.check_circle,
+                                color: Colors.green)
+                            : null,
+                        selected: isCurrent,
+                        onTap: isCurrent
+                            ? null
+                            : () {
+                                Navigator.pop(dialogContext, profile);
+                              },
+                      );
+                    },
+                  ),
+                ),
+                actions: <Widget>[
+                  TextButton(
+                    onPressed: () => Navigator.pop(dialogContext),
+                    child: Text(l10n.actionCancel),
+                  ),
+                ],
+              ),
+            ).then((selected) {
+              if (selected != null && selected != currentProfile) {
+                state.setShopProfile(selected);
+                DatabaseHelper.instance.setShopProfile(selected);
+                try {
+                  BackendService.setBusinessProfile(selected);
+                } catch (_) {
+                  // Local shop records remain usable offline; the next
+                  // sync/retry can reconcile the linked tenant profile.
+                }
+                // Advance the session so every screen reloads for the new
+                // profile, then pop the sheet.
+                if (context.mounted) {
+                  Navigator.pop(context, _MoreAction.switchProfile);
+                }
+              }
+            });
+          },
+        ),
         if (showLayby)
           ListTile(
             leading: const Icon(Icons.bookmark_border),
@@ -506,8 +610,8 @@ class _MoreSheet extends StatelessWidget {
           ),
         // Open business record is now primary navigation for Open profile
         // so it's not in the more sheet for that profile
-        if (context.read<AppState>().shopProfile.navigation.showJobs && 
-            context.read<AppState>().shopProfile != ShopProfile.open)
+        if (state.shopProfile.navigation.showJobs &&
+            state.shopProfile != ShopProfile.open)
           ListTile(
             leading: const Icon(Icons.work_outline),
             title: const Text('Open business record'),
@@ -532,7 +636,7 @@ class _MoreSheet extends StatelessWidget {
           onTap: () => Navigator.pop(context, _MoreAction.help),
         ),
         ListTile(
-          leading: const Icon(Icons.help_outline),
+          leading: const Icon(Icons.help_outlined),
           title: Text(l10n.navSupport),
           onTap: () => Navigator.pop(context, _MoreAction.support),
         ),

@@ -1,5 +1,4 @@
 // Tests for the Drinks tank data model and its register screen.
-import 'package:duka_pos/l10n/generated/app_localizations.dart';
 import 'package:duka_pos/screens/tank_register_screen.dart';
 import 'package:duka_pos/services/analytics.dart';
 import '../support/harness.dart';
@@ -46,7 +45,8 @@ void main() {
   });
 
   group('TankRegisterScreen pumps', () {
-    testWidgets('compact phone shows all summary figures', (WidgetTester tester) async {
+    testWidgets('compact phone shows all summary figures',
+        (WidgetTester tester) async {
       await loadAppFonts();
       tester.useDevice(Device.compact);
 
@@ -73,7 +73,8 @@ void main() {
       );
 
       expect(find.text('Tank register'), findsOneWidget);
-      expect(find.textContaining('L'), findsAtLeastNWidgets(2)); // capacity + remaining
+      expect(find.textContaining('L'),
+          findsAtLeastNWidgets(2)); // capacity + remaining
       expect(find.textContaining('KSh'), findsAtLeastNWidgets(1)); // invested
       tester.expectNoOverflow('tank register');
     });
@@ -99,7 +100,8 @@ void main() {
       tester.expectNoOverflow('tank register tablet');
     });
 
-    testWidgets('low attention strip shows amber warning', (WidgetTester tester) async {
+    testWidgets('low attention strip shows amber warning',
+        (WidgetTester tester) async {
       await loadAppFonts();
       tester.useDevice(Device.compact);
 

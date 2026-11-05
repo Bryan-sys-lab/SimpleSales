@@ -634,6 +634,13 @@ class BackendService {
 
   static Future<bool> get isBackendLinked async => (await tenantId) != null;
 
+  /// Clears the backend tenant link for the active workspace.
+  ///
+  /// Called on sign-out so the live channel does not keep trying to reconnect
+  /// with no credentials after logout and app restart.
+  static Future<void> clearBackendLink() async =>
+      WorkspaceService.clearActiveTenantId();
+
   /// Uploads the already-compressed local avatar to object storage. The
   /// profile row receives only the returned URL; image bytes never enter
   /// PostgreSQL or a backup payload. A presigned URL keeps the binary off the

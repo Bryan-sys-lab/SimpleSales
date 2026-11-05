@@ -112,6 +112,21 @@ class WorkspaceService {
     return _adoptLegacyTenant(active, all);
   }
 
+  /// Clears the tenant link for the active workspace.
+  ///
+  /// Used on sign-out so the live channel does not keep trying to reconnect
+  /// with no credentials: `isBackendLinked` then returns `false` and the
+  /// channel stays offline until the shop is linked again.
+  static Future<void> clearActiveTenantId() async {
+    final active = await activeWorkspaceKey();
+    final all = await registry();
+    final entry = all[active];
+    if (entry == null || entry['tenantId'] == null) return;
+    entry.remove('tenantId');
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString(registryKey, jsonEncode(all));
+  }
+
   /// One-time adoption of the pre-per-workspace global `tenant_id`.
   ///
   /// Moving the active tenant from a global preference into the registry is

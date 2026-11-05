@@ -29,11 +29,21 @@ class AppState extends ChangeNotifier {
   ShopProfile shopProfile = ShopProfile.duka;
 
   /// Applies a deliberately requested profile change to the active shop.
+  ///
+  /// A profile change is a full reset: every screen re-reads its data for the
+  /// new profile, the shell switches to that profile's visible destinations,
+  /// and the person lands on the dashboard. Nothing from the old profile
+  /// leaks through — no cart, no filters, no selected variant, nothing.
+  ///
   /// The database write is owned by the caller so this notification only
   /// follows a successful commit.
   void setShopProfile(ShopProfile profile) {
     if (shopProfile == profile) return;
     shopProfile = profile;
+    // Advance the session so every watching screen reloads for the new
+    // profile. Without this, a screen that cached the old profile's figures
+    // keeps showing them — the "two profiles at once" bug.
+    _advanceSession();
     notifyListeners();
   }
 
@@ -481,6 +491,9 @@ class AppState extends ChangeNotifier {
     // Its own doc has always claimed "cleared on sign-out"; nothing did it, and
     // the account-deletion erasure had to learn the cache existed the hard way.
     unawaited(StaffCredentialCache.clearAll());
+    // Clear the backend tenant link so the live channel does not keep trying to
+    // reconnect with no credentials after logout and app restart.
+    unawaited(BackendService.clearBackendLink());
     unawaited(tearDownOnlineSession());
   }
 

@@ -213,9 +213,11 @@ class LiveChannelService extends ChangeNotifier {
     _setState(LiveConnectionState.connecting);
 
     if (token == null || token.isEmpty) {
-      // No session: nothing to subscribe as. Back off rather than spin, so an
-      // unlinked-or-signed-out shop does not retry every frame.
-      _scheduleReconnect();
+      // No session: nothing to subscribe as. Stay off rather than scheduling
+      // a reconnect that will just fail again — an unlinked or signed-out
+      // shop does not retry every frame. The channel reconnects when the
+      // user signs in and setLinked is called again with a real token.
+      _setState(LiveConnectionState.off);
       return;
     }
 
