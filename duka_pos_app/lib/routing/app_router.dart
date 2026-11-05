@@ -653,7 +653,12 @@ List<RouteBase> _shellRoutes(AppState appState) {
                       (BuildContext context, GoRouterState routerState) =>
                           _fadeThrough(
                     routerState,
-                    const OpenCostGroupDetailScreen(),
+                    OpenCostGroupDetailScreen(
+                      poolId: int.tryParse(
+                            routerState.pathParameters['poolId'] ?? '',
+                          ) ??
+                          0,
+                    ),
                   ),
                 ),
                 // Receivables / customer payment history.
