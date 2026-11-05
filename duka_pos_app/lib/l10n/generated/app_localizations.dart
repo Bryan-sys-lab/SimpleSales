@@ -9946,11 +9946,11 @@ abstract class AppLocalizations {
   /// **'Receive stock'**
   String get fashionDashboardReceiveStock;
 
-  /// No description provided for @fashionDashboardCreateLayby.
+  /// No description provided for @fashionDashboardCreateReserve.
   ///
   /// In en, this message translates to:
-  /// **'Create layby'**
-  String get fashionDashboardCreateLayby;
+  /// **'Create reserve'**
+  String get fashionDashboardCreateReserve;
 
   /// No description provided for @fashionDashboardViewCatalogue.
   ///
@@ -9964,29 +9964,29 @@ abstract class AppLocalizations {
   /// **'Low-stock variants'**
   String get fashionDashboardLowStockVariants;
 
-  /// No description provided for @fashionDashboardLaybys.
+  /// No description provided for @fashionDashboardReserves.
   ///
   /// In en, this message translates to:
-  /// **'Lay-bys'**
-  String get fashionDashboardLaybys;
+  /// **'Reserves'**
+  String get fashionDashboardReserves;
 
-  /// No description provided for @fashionDashboardLaybysOpen.
+  /// No description provided for @fashionDashboardReservesOpen.
   ///
   /// In en, this message translates to:
-  /// **'Open lay-bys'**
-  String get fashionDashboardLaybysOpen;
+  /// **'Open reserves'**
+  String get fashionDashboardReservesOpen;
 
-  /// No description provided for @fashionDashboardLaybysAwaitingPayment.
+  /// No description provided for @fashionDashboardReservesAwaitingPayment.
   ///
   /// In en, this message translates to:
   /// **'Awaiting payment'**
-  String get fashionDashboardLaybysAwaitingPayment;
+  String get fashionDashboardReservesAwaitingPayment;
 
-  /// No description provided for @fashionDashboardLaybysReady.
+  /// No description provided for @fashionDashboardReservesReady.
   ///
   /// In en, this message translates to:
   /// **'Ready for collection'**
-  String get fashionDashboardLaybysReady;
+  String get fashionDashboardReservesReady;
 
   /// No description provided for @fashionDashboardViewAll.
   ///
@@ -10222,107 +10222,107 @@ abstract class AppLocalizations {
   /// **'Reorder level'**
   String get fashionProductFormReorderLevel;
 
-  /// No description provided for @laybyScreenTitle.
+  /// No description provided for @reserveScreenTitle.
   ///
   /// In en, this message translates to:
-  /// **'Lay-bys'**
-  String get laybyScreenTitle;
+  /// **'Reserves'**
+  String get reserveScreenTitle;
 
-  /// No description provided for @laybyScreenSubtitle.
+  /// No description provided for @reserveScreenSubtitle.
   ///
   /// In en, this message translates to:
   /// **'Reserve a variant, take a deposit, collect when fully paid'**
-  String get laybyScreenSubtitle;
+  String get reserveScreenSubtitle;
 
-  /// No description provided for @laybyNewLayby.
+  /// No description provided for @reserveNewReserve.
   ///
   /// In en, this message translates to:
-  /// **'New lay-by'**
-  String get laybyNewLayby;
+  /// **'New reserve'**
+  String get reserveNewReserve;
 
-  /// No description provided for @laybyCustomer.
+  /// No description provided for @reserveCustomer.
   ///
   /// In en, this message translates to:
   /// **'Customer'**
-  String get laybyCustomer;
+  String get reserveCustomer;
 
-  /// No description provided for @laybyStyle.
+  /// No description provided for @reserveStyle.
   ///
   /// In en, this message translates to:
   /// **'Style'**
-  String get laybyStyle;
+  String get reserveStyle;
 
-  /// No description provided for @laybyVariant.
+  /// No description provided for @reserveVariant.
   ///
   /// In en, this message translates to:
   /// **'Variant'**
-  String get laybyVariant;
+  String get reserveVariant;
 
-  /// No description provided for @laybyQuantity.
+  /// No description provided for @reserveQuantity.
   ///
   /// In en, this message translates to:
   /// **'Quantity'**
-  String get laybyQuantity;
+  String get reserveQuantity;
 
-  /// No description provided for @laybyDeposit.
+  /// No description provided for @reserveDeposit.
   ///
   /// In en, this message translates to:
   /// **'Deposit (KES)'**
-  String get laybyDeposit;
+  String get reserveDeposit;
 
-  /// No description provided for @laybyPaymentMethod.
+  /// No description provided for @reservePaymentMethod.
   ///
   /// In en, this message translates to:
   /// **'Payment method'**
-  String get laybyPaymentMethod;
+  String get reservePaymentMethod;
 
-  /// No description provided for @laybyReference.
+  /// No description provided for @reserveReference.
   ///
   /// In en, this message translates to:
   /// **'Reference'**
-  String get laybyReference;
+  String get reserveReference;
 
-  /// No description provided for @laybyDueDays.
+  /// No description provided for @reserveDueDays.
   ///
   /// In en, this message translates to:
   /// **'Due days'**
-  String get laybyDueDays;
+  String get reserveDueDays;
 
-  /// No description provided for @laybyCreate.
+  /// No description provided for @reserveCreate.
   ///
   /// In en, this message translates to:
-  /// **'Create lay-by'**
-  String get laybyCreate;
+  /// **'Create reserve'**
+  String get reserveCreate;
 
-  /// No description provided for @laybyReservations.
+  /// No description provided for @reserveReservations.
   ///
   /// In en, this message translates to:
   /// **'Reservations'**
-  String get laybyReservations;
+  String get reserveReservations;
 
-  /// No description provided for @laybyNoLaybys.
+  /// No description provided for @reserveNoReserves.
   ///
   /// In en, this message translates to:
-  /// **'No lay-bys yet'**
-  String get laybyNoLaybys;
+  /// **'No reserves yet'**
+  String get reserveNoReserves;
 
-  /// No description provided for @laybyCustomerLabel.
+  /// No description provided for @reserveCustomerLabel.
   ///
   /// In en, this message translates to:
   /// **'Customer'**
-  String get laybyCustomerLabel;
+  String get reserveCustomerLabel;
 
-  /// No description provided for @laybyDue.
+  /// No description provided for @reserveDue.
   ///
   /// In en, this message translates to:
   /// **'Due'**
-  String get laybyDue;
+  String get reserveDue;
 
-  /// No description provided for @laybyPaid.
+  /// No description provided for @reservePaid.
   ///
   /// In en, this message translates to:
   /// **'Paid'**
-  String get laybyPaid;
+  String get reservePaid;
 
   /// No description provided for @fashionAnalyticsFinancialPerformance.
   ///

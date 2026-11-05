@@ -409,7 +409,7 @@ class _FashionLaybyOverview extends StatelessWidget {
     final AppLocalizations l10n = AppLocalizations.of(context);
 
     return DashboardPanel(
-      title: l10n.fashionDashboardLaybys,
+      title: l10n.fashionDashboardReserves,
       trailing: TextButton(
         onPressed: onOpenLaybys,
         child: Text(l10n.fashionDashboardViewAll),
@@ -420,21 +420,21 @@ class _FashionLaybyOverview extends StatelessWidget {
         mainAxisSize: MainAxisSize.min,
         children: <Widget>[
           _LaybyMetric(
-            label: l10n.fashionDashboardLaybysOpen,
+            label: l10n.fashionDashboardReservesOpen,
             value: '3',
             tone: StatusTone.warning,
             icon: Icons.schedule_outlined,
           ),
           SizedBox(height: spacing.sm),
           _LaybyMetric(
-            label: l10n.fashionDashboardLaybysAwaitingPayment,
+            label: l10n.fashionDashboardReservesAwaitingPayment,
             value: '2',
             tone: StatusTone.warning,
             icon: Icons.payment_outlined,
           ),
           SizedBox(height: spacing.sm),
           _LaybyMetric(
-            label: l10n.fashionDashboardLaybysReady,
+            label: l10n.fashionDashboardReservesReady,
             value: '1',
             tone: StatusTone.success,
             icon: Icons.check_circle_outlined,
@@ -552,7 +552,7 @@ class _FashionDashboardQuickActions extends StatelessWidget {
         QuickAction(
           onPressed: onOpenLaybys,
           icon: const Icon(Icons.bookmark_border),
-          label: Text(l10n.fashionDashboardCreateLayby),
+          label: Text(l10n.fashionDashboardCreateReserve),
         ),
         QuickAction(
           onPressed: onViewCatalogue,

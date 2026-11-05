@@ -6007,7 +6007,7 @@ class AppLocalizationsSw extends AppLocalizations {
   String get fashionDashboardReceiveStock => 'Pokea hisa';
 
   @override
-  String get fashionDashboardCreateLayby => 'Funga layby';
+  String get fashionDashboardCreateReserve => 'Funga hifadhi';
 
   @override
   String get fashionDashboardViewCatalogue => 'Angalia katalo';
@@ -6016,16 +6016,16 @@ class AppLocalizationsSw extends AppLocalizations {
   String get fashionDashboardLowStockVariants => 'Hiasi zisipo';
 
   @override
-  String get fashionDashboardLaybys => 'Laybies';
+  String get fashionDashboardReserves => 'Hifadhi';
 
   @override
-  String get fashionDashboardLaybysOpen => 'Laybies zote';
+  String get fashionDashboardReservesOpen => 'Hifadhi zote';
 
   @override
-  String get fashionDashboardLaybysAwaitingPayment => 'Malipo yasubiri';
+  String get fashionDashboardReservesAwaitingPayment => 'Malipo yasubiri';
 
   @override
-  String get fashionDashboardLaybysReady => 'Tayari kwa kuwa chukua';
+  String get fashionDashboardReservesReady => 'Tayari kwa kuwa chukua';
 
   @override
   String get fashionDashboardViewAll => 'Angalia zote';
@@ -6149,56 +6149,56 @@ class AppLocalizationsSw extends AppLocalizations {
   String get fashionProductFormReorderLevel => 'Kiwango cha kuongeza';
 
   @override
-  String get laybyScreenTitle => 'Laybies';
+  String get reserveScreenTitle => 'Hifadhi';
 
   @override
-  String get laybyScreenSubtitle =>
+  String get reserveScreenSubtitle =>
       'Funga hiasi, pokea uleketa, chukua kiapo kabisa';
 
   @override
-  String get laybyNewLayby => 'Layby mpya';
+  String get reserveNewReserve => 'Hifadhi mpya';
 
   @override
-  String get laybyCustomer => 'Mteja';
+  String get reserveCustomer => 'Mteja';
 
   @override
-  String get laybyStyle => 'Fungu';
+  String get reserveStyle => 'Fungu';
 
   @override
-  String get laybyVariant => 'Hiasi';
+  String get reserveVariant => 'Hiasi';
 
   @override
-  String get laybyQuantity => 'Kiasi';
+  String get reserveQuantity => 'Kiasi';
 
   @override
-  String get laybyDeposit => 'Uleketa (KES)';
+  String get reserveDeposit => 'Uleketa (KES)';
 
   @override
-  String get laybyPaymentMethod => 'Nguzo ya malipo';
+  String get reservePaymentMethod => 'Nguzo ya malipo';
 
   @override
-  String get laybyReference => 'Nambari ya mambo';
+  String get reserveReference => 'Nambari ya mambo';
 
   @override
-  String get laybyDueDays => 'Siku za malipo';
+  String get reserveDueDays => 'Siku za malipo';
 
   @override
-  String get laybyCreate => 'Unda layby';
+  String get reserveCreate => 'Unda hifadhi';
 
   @override
-  String get laybyReservations => 'Magazi';
+  String get reserveReservations => 'Magazi';
 
   @override
-  String get laybyNoLaybys => 'Hakuna laybies hivi';
+  String get reserveNoReserves => 'Hakuna hifadhi hivi';
 
   @override
-  String get laybyCustomerLabel => 'Mteja';
+  String get reserveCustomerLabel => 'Mteja';
 
   @override
-  String get laybyDue => 'Inapigwa';
+  String get reserveDue => 'Inapigwa';
 
   @override
-  String get laybyPaid => 'Lipwa';
+  String get reservePaid => 'Lipwa';
 
   @override
   String get fashionAnalyticsFinancialPerformance => 'Ufikiaji wa fedha';

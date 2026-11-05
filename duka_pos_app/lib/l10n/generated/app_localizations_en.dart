@@ -6006,7 +6006,7 @@ class AppLocalizationsEn extends AppLocalizations {
   String get fashionDashboardReceiveStock => 'Receive stock';
 
   @override
-  String get fashionDashboardCreateLayby => 'Create layby';
+  String get fashionDashboardCreateReserve => 'Create reserve';
 
   @override
   String get fashionDashboardViewCatalogue => 'View catalogue';
@@ -6015,16 +6015,16 @@ class AppLocalizationsEn extends AppLocalizations {
   String get fashionDashboardLowStockVariants => 'Low-stock variants';
 
   @override
-  String get fashionDashboardLaybys => 'Lay-bys';
+  String get fashionDashboardReserves => 'Reserves';
 
   @override
-  String get fashionDashboardLaybysOpen => 'Open lay-bys';
+  String get fashionDashboardReservesOpen => 'Open reserves';
 
   @override
-  String get fashionDashboardLaybysAwaitingPayment => 'Awaiting payment';
+  String get fashionDashboardReservesAwaitingPayment => 'Awaiting payment';
 
   @override
-  String get fashionDashboardLaybysReady => 'Ready for collection';
+  String get fashionDashboardReservesReady => 'Ready for collection';
 
   @override
   String get fashionDashboardViewAll => 'View all';
@@ -6148,56 +6148,56 @@ class AppLocalizationsEn extends AppLocalizations {
   String get fashionProductFormReorderLevel => 'Reorder level';
 
   @override
-  String get laybyScreenTitle => 'Lay-bys';
+  String get reserveScreenTitle => 'Reserves';
 
   @override
-  String get laybyScreenSubtitle =>
+  String get reserveScreenSubtitle =>
       'Reserve a variant, take a deposit, collect when fully paid';
 
   @override
-  String get laybyNewLayby => 'New lay-by';
+  String get reserveNewReserve => 'New reserve';
 
   @override
-  String get laybyCustomer => 'Customer';
+  String get reserveCustomer => 'Customer';
 
   @override
-  String get laybyStyle => 'Style';
+  String get reserveStyle => 'Style';
 
   @override
-  String get laybyVariant => 'Variant';
+  String get reserveVariant => 'Variant';
 
   @override
-  String get laybyQuantity => 'Quantity';
+  String get reserveQuantity => 'Quantity';
 
   @override
-  String get laybyDeposit => 'Deposit (KES)';
+  String get reserveDeposit => 'Deposit (KES)';
 
   @override
-  String get laybyPaymentMethod => 'Payment method';
+  String get reservePaymentMethod => 'Payment method';
 
   @override
-  String get laybyReference => 'Reference';
+  String get reserveReference => 'Reference';
 
   @override
-  String get laybyDueDays => 'Due days';
+  String get reserveDueDays => 'Due days';
 
   @override
-  String get laybyCreate => 'Create lay-by';
+  String get reserveCreate => 'Create reserve';
 
   @override
-  String get laybyReservations => 'Reservations';
+  String get reserveReservations => 'Reservations';
 
   @override
-  String get laybyNoLaybys => 'No lay-bys yet';
+  String get reserveNoReserves => 'No reserves yet';
 
   @override
-  String get laybyCustomerLabel => 'Customer';
+  String get reserveCustomerLabel => 'Customer';
 
   @override
-  String get laybyDue => 'Due';
+  String get reserveDue => 'Due';
 
   @override
-  String get laybyPaid => 'Paid';
+  String get reservePaid => 'Paid';
 
   @override
   String get fashionAnalyticsFinancialPerformance => 'Financial performance';

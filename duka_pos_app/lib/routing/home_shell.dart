@@ -289,7 +289,7 @@ class _HomeShellState extends State<HomeShell> {
           role: state.role.wire,
         );
         if (destination != null && context.mounted) context.push(destination);
-      case _MoreAction.laybys:
+      case _MoreAction.reserves:
         context.push(Routes.laybys);
       case _MoreAction.openBusiness:
         context.push(Routes.openBusiness);
@@ -482,7 +482,7 @@ enum _MoreAction {
   marketplace,
   help,
   notifications,
-  laybys,
+  reserves,
   openBusiness,
   reports
 }
@@ -501,8 +501,8 @@ class _MoreSheet extends StatelessWidget {
         if (showLayby)
           ListTile(
             leading: const Icon(Icons.bookmark_border),
-            title: const Text('Fashion lay-bys'),
-            onTap: () => Navigator.pop(context, _MoreAction.laybys),
+            title: const Text('Fashion reserves'),
+            onTap: () => Navigator.pop(context, _MoreAction.reserves),
           ),
         // Open business record is now primary navigation for Open profile
         // so it's not in the more sheet for that profile
