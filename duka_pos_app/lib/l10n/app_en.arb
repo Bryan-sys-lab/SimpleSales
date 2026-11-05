@@ -1630,4 +1630,10 @@
   ,"openReceivablesNoOutstandingSubtitle": "All customers are paid up."
   ,"openReceivablesLoading": "Loading receivables"
   ,"openReceivablesLoadingSubtitle": "Please wait while receivables load."
+  ,"openAnalyticsFinancialPerformance": "Financial performance"
+  ,"openAnalyticsNetProfit": "Net profit"
+  ,"openAnalyticsCashPosition": "Cash position"
+  ,"openAnalyticsPooledCosts": "Pooled costs"
+  ,"openAnalyticsJobsCompleted": "Jobs completed"
+  ,"openAnalyticsReceivables": "Receivables"
 }

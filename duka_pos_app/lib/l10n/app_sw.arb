@@ -291,4 +291,10 @@
   ,"openReceivablesNoOutstandingSubtitle": "Wateja wote wamelepea."
   ,"openReceivablesLoading": "Inapakia malipo ya mwisho"
   ,"openReceivablesLoadingSubtitle": "Subiri kidogo malipo ya mwisho yanaulizwa."
+  ,"openAnalyticsFinancialPerformance": "Ufikiaji wa fedha"
+  ,"openAnalyticsNetProfit": "Faida yote"
+  ,"openAnalyticsCashPosition": "Hali ya pesa"
+  ,"openAnalyticsPooledCosts": "Gharama zilipangwa"
+  ,"openAnalyticsJobsCompleted": "Kazi zimesimamishwa"
+  ,"openAnalyticsReceivables": "Watu wanaolipia"
 }
