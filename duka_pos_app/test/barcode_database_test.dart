@@ -44,11 +44,13 @@ void main() {
     db = await DatabaseHelper.openInMemoryForTests();
   });
 
-  tearDown(() {
-    // The helper owns the connection and there is no public close: each test
-    // gets a fresh in-memory database, and the old one is released when the
-    // handle is replaced.
+  tearDown(() async {
+    // Close the current test's in-memory database before the next test opens
+    // a fresh one. Without awaiting the close here, `_pendingTestClose` is
+    // left pending after the final teardown and Flutter reports "Bad state:
+    // Cannot close sink while adding stream" as the engine tears down.
     DatabaseHelper.resetForTests();
+    await DatabaseHelper.closeForTests();
   });
 
   group('barcodes', () {

@@ -180,6 +180,19 @@ class DatabaseHelper {
     _pendingTestClose = previous?.close();
   }
 
+  /// Test-only: Wait for any pending database close to finish.
+  ///
+  /// Call this from [testWidgets]/`test` `tearDown` so the last test's
+  /// in-memory connection is fully closed before the test process shuts down.
+  /// Without it, `_pendingTestClose` is left pending after the final `tearDown`
+  /// and Flutter reports "Bad state: Cannot close sink while adding stream"
+  /// as the engine tears down the test binding.
+  @visibleForTesting
+  static Future<void> closeForTests() async {
+    await _pendingTestClose;
+    _pendingTestClose = null;
+  }
+
   /// Bump this every time the schema changes, and add the matching branch in
   /// [_onUpgrade]. Never edit an already-released migration after it has
   /// shipped — always add a new one, even for a one-line fix — because a
