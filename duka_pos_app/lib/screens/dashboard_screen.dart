@@ -1,20 +1,16 @@
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
-import 'package:flutter/semantics.dart';
 import 'package:go_router/go_router.dart';
 import 'package:provider/provider.dart';
 
 import '../db/database_helper.dart';
-import '../screens/tank_form_sheet.dart';
 import '../l10n/generated/app_localizations.dart';
 import '../models/models.dart';
 import '../routing/home_shell.dart';
 import '../routing/routes.dart';
 import '../services/analytics.dart';
-import '../app_brand.dart';
 import '../services/app_state.dart';
 import '../profile/shop_profile.dart';
-import '../services/roles.dart';
 import '../services/live_channel_service.dart';
 import '../services/live_refresh_mixin.dart';
 import '../services/session_refresh_mixin.dart';
@@ -27,9 +23,11 @@ import '../ui/components/operation_result.dart';
 import '../ui/components/states.dart';
 import '../ui/layout/page.dart';
 import '../utils/money.dart';
-import '../widgets/backup_reminder_banner.dart';
-import 'dashboard_attention.dart';
-import 'dashboard_sections.dart';
+import 'dashboard_shared.dart';
+import 'drinks_dashboard_screen.dart';
+import 'duka_dashboard_screen.dart';
+import 'fashion_dashboard_screen.dart';
+import 'open_business_screen.dart';
 
 class DashboardScreen extends StatefulWidget {
   const DashboardScreen({super.key});
@@ -38,62 +36,101 @@ class DashboardScreen extends StatefulWidget {
   State<DashboardScreen> createState() => _DashboardScreenState();
 }
 
-sealed class _DashboardState {
-  const _DashboardState();
-}
-
-final class _DashboardLoading extends _DashboardState {
-  const _DashboardLoading();
-}
-
-final class _DashboardFailed extends _DashboardState {
-  const _DashboardFailed();
-}
-
-final class _DashboardReady extends _DashboardState {
-  const _DashboardReady({
-    required this.totals,
-    required this.hasEverSold,
-    required this.hours,
-    required this.topProducts,
-    required this.lowStock,
-    required this.lowStockCount,
-    required this.attention,
-    required this.scopeLabel,
-    required this.greeting,
-    required this.openShift,
-    required this.expectedTill,
-    this.creditOwedMinor = 0,
-    this.creditCustomerCount = 0,
-    this.tanks = const <Product>[],
-    this.tankSales = const <int, ProductSalesRow>{},
+/// Routes the dashboard loader to the correct per-profile screen.
+///
+/// Every profile owns its dashboard body. Open is handled earlier in
+/// [_DashboardScreenState.build] because it loads its own data; drinks, duka
+/// and fashion take the shared [DashboardReady] shape.
+class _DashboardContent extends StatelessWidget {
+  const _DashboardContent({
+    required this.data,
+    required this.shopProfile,
+    required this.onRefresh,
+    required this.onBackupNow,
+    required this.onOpenShift,
+    required this.onOpenSell,
+    required this.onOpenInventory,
+    required this.onOpenEtimsSettings,
+    required this.onOpenProduct,
+    required this.onRetryEtims,
+    required this.onRetryRejectedEtims,
+    this.dismissed = const <String>{},
+    this.onDismiss,
   });
 
-  final DailyTotals totals;
+  final DashboardReady data;
+  final ShopProfile shopProfile;
+  final Future<void> Function() onRefresh;
+  final Future<void> Function() onBackupNow;
+  final Future<void> Function() onOpenShift;
+  final VoidCallback onOpenSell;
+  final VoidCallback onOpenInventory;
+  final VoidCallback onOpenEtimsSettings;
+  final ValueChanged<Product> onOpenProduct;
+  final Future<void> Function() onRetryEtims;
+  final Future<void> Function() onRetryRejectedEtims;
+  final Set<String> dismissed;
+  final void Function(String)? onDismiss;
 
-  final bool hasEverSold;
-
-  final List<TimeBucket> hours;
-  final List<ProductSalesRow> topProducts;
-  final List<Product> lowStock;
-  final int lowStockCount;
-  final AttentionSummary attention;
-
-  final String scopeLabel;
-
-  final String greeting;
-
-  final Shift? openShift;
-  final Money expectedTill;
-  final int creditOwedMinor;
-  final int creditCustomerCount;
-  final List<Product> tanks;
-  final Map<int, ProductSalesRow> tankSales;
+  @override
+  Widget build(BuildContext context) {
+    switch (shopProfile) {
+      case ShopProfile.drinks:
+        return DrinksDashboardScreen(
+          data: data,
+          onRefresh: onRefresh,
+          onBackupNow: onBackupNow,
+          onOpenShift: onOpenShift,
+          onOpenSell: onOpenSell,
+          onOpenInventory: onOpenInventory,
+          onOpenEtimsSettings: onOpenEtimsSettings,
+          onOpenProduct: onOpenProduct,
+          onRetryEtims: onRetryEtims,
+          onRetryRejectedEtims: onRetryRejectedEtims,
+          dismissed: dismissed,
+          onDismiss: onDismiss == null ? null : (String id) => onDismiss!(id),
+        );
+      case ShopProfile.duka:
+        return DukaDashboardScreen(
+          data: data,
+          onRefresh: onRefresh,
+          onBackupNow: onBackupNow,
+          onOpenShift: onOpenShift,
+          onOpenSell: onOpenSell,
+          onOpenInventory: onOpenInventory,
+          onOpenEtimsSettings: onOpenEtimsSettings,
+          onOpenProduct: onOpenProduct,
+          onRetryEtims: onRetryEtims,
+          onRetryRejectedEtims: onRetryRejectedEtims,
+          dismissed: dismissed,
+          onDismiss: onDismiss == null ? null : (String id) => onDismiss!(id),
+        );
+      case ShopProfile.fashion:
+        return FashionDashboardScreen(
+          data: data,
+          onRefresh: onRefresh,
+          onBackupNow: onBackupNow,
+          onOpenShift: onOpenShift,
+          onOpenSell: onOpenSell,
+          onOpenInventory: onOpenInventory,
+          onOpenEtimsSettings: onOpenEtimsSettings,
+          onOpenProduct: onOpenProduct,
+          onRetryEtims: onRetryEtims,
+          onRetryRejectedEtims: onRetryRejectedEtims,
+          dismissed: dismissed,
+          onDismiss: onDismiss == null ? null : (String id) => onDismiss!(id),
+        );
+      case ShopProfile.open:
+        // Unreachable: handled in _DashboardScreenState.build().
+        break;
+    }
+    throw UnimplementedError('No dashboard for profile $shopProfile');
+  }
 }
 
 class _DashboardScreenState extends State<DashboardScreen>
     with LiveRefresh<DashboardScreen>, SessionRefresh<DashboardScreen> {
-  _DashboardState? _state;
+  DashboardState? _state;
   Set<String> _dismissedAttention = <String>{};
 
   int _loadSerial = 0;
@@ -140,7 +177,7 @@ class _DashboardScreenState extends State<DashboardScreen>
     // with one session's scope and another session's greeting.
     final int session = appState.sessionGeneration;
     setState(() {
-      _state ??= const _DashboardLoading();
+      _state ??= const DashboardLoading();
     });
 
     try {
@@ -192,7 +229,7 @@ class _DashboardScreenState extends State<DashboardScreen>
         if (!_current(serial, session, appState)) return;
         final String scopeLabel = _scopeLabel(l10n, ownOnly: ownOnly);
         setState(() {
-          _state = _DashboardReady(
+          _state = DashboardReady(
             totals: totalsToday,
             hasEverSold: totalsAll.hasSales,
             hours: const <TimeBucket>[],
@@ -221,9 +258,9 @@ class _DashboardScreenState extends State<DashboardScreen>
         if (shift == null) return;
         final Money expected = await db.expectedTillBalance(shift);
         if (!_current(serial, session, appState)) return;
-        final _DashboardReady? ready = _state as _DashboardReady?;
+        final DashboardReady? ready = _state as DashboardReady?;
         if (ready == null || ready.openShift?.id != shift.id) return;
-        setState(() => _state = _DashboardReady(
+        setState(() => _state = DashboardReady(
               totals: ready.totals,
               hasEverSold: ready.hasEverSold,
               hours: ready.hours,
@@ -277,7 +314,7 @@ class _DashboardScreenState extends State<DashboardScreen>
           ownOnly ? (appState.currentStaffName ?? 'you') : 'the shop';
 
       setState(() {
-        _state = _DashboardReady(
+        _state = DashboardReady(
           totals: totalsToday,
           hasEverSold: totalsAll.hasSales,
           hours: results[0] as List<TimeBucket>,
@@ -302,9 +339,9 @@ class _DashboardScreenState extends State<DashboardScreen>
       if (shift == null) return;
       final Money expected = await db.expectedTillBalance(shift);
       if (!_current(serial, session, appState)) return;
-      final _DashboardReady? ready = _state as _DashboardReady?;
+      final DashboardReady? ready = _state as DashboardReady?;
       if (ready == null || ready.openShift?.id != shift.id) return;
-      setState(() => _state = _DashboardReady(
+      setState(() => _state = DashboardReady(
             totals: ready.totals,
             hasEverSold: ready.hasEverSold,
             hours: ready.hours,
@@ -324,7 +361,7 @@ class _DashboardScreenState extends State<DashboardScreen>
     } catch (_) {
       if (!_current(serial, session, appState)) return;
       setState(() {
-        _state ??= const _DashboardFailed();
+        _state ??= const DashboardFailed();
       });
     }
   }
@@ -497,15 +534,23 @@ class _DashboardScreenState extends State<DashboardScreen>
 
   @override
   Widget build(BuildContext context) {
+    final AppState appState = context.read<AppState>();
+    // Open has its own screen that loads its own data (pools, jobs, owner
+    // money) — it does not take the shared DashboardReady shape. Route it
+    // straight through and skip the dashboard loader entirely.
+    if (appState.shopProfile == ShopProfile.open) {
+      return const OpenBusinessScreen();
+    }
     return switch (_state) {
-      null || _DashboardLoading() => const _DashboardSkeleton(),
-      _DashboardFailed() => ErrorStateView(
+      null || DashboardLoading() => const _DashboardSkeleton(),
+      DashboardFailed() => ErrorStateView(
           message: AppLocalizations.of(context).dashboardCouldNotLoad,
           detail: AppLocalizations.of(context).dashboardStillWorksDetail,
           onRetry: _load,
         ),
-      _DashboardReady() => _DashboardContent(
-          data: _state! as _DashboardReady,
+      DashboardReady() => _DashboardContent(
+          data: _state! as DashboardReady,
+          shopProfile: context.read<AppState>().shopProfile,
           onRefresh: _load,
           onBackupNow: _backupNow,
           onOpenShift: _openShift,
@@ -538,344 +583,3 @@ class _DashboardSkeleton extends StatelessWidget {
 }
 
 const double _kDashboardMaxWidth = 1200;
-
-const double _kTwoColumnBreakpoint = 840;
-
-class _DashboardContent extends StatelessWidget {
-  const _DashboardContent({
-    required this.data,
-    required this.onRefresh,
-    required this.onBackupNow,
-    required this.onOpenShift,
-    required this.onOpenSell,
-    required this.onOpenInventory,
-    required this.onOpenEtimsSettings,
-    required this.onOpenProduct,
-    required this.onRetryEtims,
-    required this.onRetryRejectedEtims,
-    this.dismissed = const <String>{},
-    this.onDismiss,
-  });
-
-  final _DashboardReady data;
-  final Future<void> Function() onRefresh;
-  final Future<void> Function() onBackupNow;
-  final Future<void> Function() onOpenShift;
-  final VoidCallback onOpenSell;
-  final VoidCallback onOpenInventory;
-  final VoidCallback onOpenEtimsSettings;
-  final ValueChanged<Product> onOpenProduct;
-  final Future<void> Function() onRetryEtims;
-  final Future<void> Function() onRetryRejectedEtims;
-  final Set<String> dismissed;
-  final void Function(String)? onDismiss;
-
-  static List<Widget> _spaced(List<Widget?> items, double gap) {
-    final List<Widget> present = items.whereType<Widget>().toList();
-    return <Widget>[
-      for (int i = 0; i < present.length; i++) ...<Widget>[
-        if (i > 0) SizedBox(height: gap),
-        present[i],
-      ],
-    ];
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    final AppSpacing spacing = AppSpacing.of(context);
-    final AppState appState = context.watch<AppState>();
-    final double gap = spacing.xl;
-
-    final bool hasSales = data.totals.hasSales;
-
-    final Widget? attention = data.attention.isEmpty
-        ? null
-        : DashboardAttentionCard(
-            summary: data.attention,
-            canFixEtims: appState.isAdmin,
-            onRetryEtims: onRetryEtims,
-            onOpenEtimsSettings: onOpenEtimsSettings,
-            // Only the people who can fix the cause may put the refused
-            // receipts back: a cashier tapping "Try again" on a shop whose TIN
-            // is still wrong gets the same refusal and a lot less patience.
-            onRetryRejectedEtims:
-                appState.isAdmin ? onRetryRejectedEtims : null,
-            dismissed: dismissed,
-            onDismiss: onDismiss,
-          );
-
-    final Widget shift = DashboardShiftCard(
-      shift: data.openShift,
-      expected: data.expectedTill,
-      onOpen: onOpenShift,
-    );
-
-    final Widget sales = hasSales
-        ? DashboardHourlySales(buckets: data.hours)
-        : DashboardNoSalesCard(hasEverSold: data.hasEverSold);
-
-    final Widget? topProducts =
-        hasSales ? DashboardTopProducts(rows: data.topProducts) : null;
-
-    final Widget reorder = DashboardLowStockList(
-      products: data.lowStock,
-      totalCount: data.lowStockCount,
-      canOpen: appState.canManageStock,
-      onOpenProduct: onOpenProduct,
-      onViewAll: onOpenInventory,
-    );
-
-    final bool canManageCredit =
-        appState.isOwnerSession || appState.role == ShopRole.manager;
-    final Widget? credit = canManageCredit
-        ? DashboardCreditCard(
-            owedMinor: data.creditOwedMinor,
-            customerCount: data.creditCustomerCount,
-            onOpen: () => context.push(Routes.customers),
-          )
-        : null;
-
-    return RefreshIndicator(
-      onRefresh: onRefresh,
-      child: AdaptivePage(
-        scrollable: true,
-        maxContentWidth: _kDashboardMaxWidth,
-        // The page's gutter, from the shared helper: a phone gets a smaller
-        // one, because 16dp of page padding plus 16dp of card padding plus a
-        // border is 33dp of nothing before the first word.
-        padding: PageGutter.of(context),
-        child: LayoutBuilder(
-          builder: (BuildContext context, BoxConstraints constraints) {
-            final bool twoColumns =
-                constraints.maxWidth >= _kTwoColumnBreakpoint;
-
-            final List<Widget> panels = twoColumns
-                ? <Widget>[
-                    Row(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: <Widget>[
-                        Expanded(
-                          flex: 3,
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.stretch,
-                            children: _spaced(
-                              <Widget?>[sales, topProducts],
-                              gap,
-                            ),
-                          ),
-                        ),
-                        SizedBox(width: gap),
-                        Expanded(
-                          flex: 2,
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.stretch,
-                            children: _spaced(
-                              <Widget?>[shift, credit, reorder],
-                              gap,
-                            ),
-                          ),
-                        ),
-                      ],
-                    ),
-                  ]
-                : _spaced(
-                    <Widget?>[shift, credit, sales, topProducts, reorder],
-                    gap,
-                  );
-
-            return Column(
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: <Widget>[
-                BackupReminderBanner(onBackupNow: onBackupNow),
-                SizedBox(height: spacing.section),
-                ..._spaced(
-                  <Widget?>[
-                    DashboardHeader(
-                      shopName:
-                          appState.owner?.shopName ?? SimplePosBrand.appName,
-                      subtitle: data.greeting,
-                      onSell: onOpenSell,
-                    ),
-                    // First after the header because it is the only thing that
-                    // stops a sale, and a section that is usually empty and
-                    // occasionally urgent is read far more seriously than one
-                    // that is always on screen. Traversal priority goes to the
-                    // attention list before every figure on screen.
-                    if (attention != null)
-                      Semantics(
-                        sortKey: const OrdinalSortKey(0),
-                        child: attention,
-                      ),
-                    DashboardKpis(
-                      totals: data.totals,
-                      scopeLabel: data.scopeLabel,
-                      // A count of transactions is a question — which ones, and
-                      // by whom — so the card opens the list that answers it.
-                      onTransactions: () => context.push(Routes.transactions),
-                    ),
-                    if (appState.shopProfile == ShopProfile.drinks &&
-                        data.tanks.isNotEmpty)
-                      Card(
-                        child: Padding(
-                          padding: const EdgeInsets.all(12),
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: <Widget>[
-                              Text('Tanks',
-                                  style: Theme.of(context).textTheme.titleMedium),
-                              Builder(builder: (context) {
-                                // Overall tanks card (kept).
-                                int totalValueMinor = 0;
-                                int totalRevenueMinor = 0;
-                                int totalCostMinor = 0;
-                                for (final t in data.tanks) {
-                                  final valueMinor =
-                                      t.costPrice.times(t.stockQty).minorUnits;
-                                  totalValueMinor += valueMinor;
-                                  final row = data.tankSales[t.id];
-                                  final revenue = row?.revenueMinor ?? 0;
-                                  final profit = row?.profitMinor ?? 0;
-                                  final soldCost = revenue - profit;
-                                  totalRevenueMinor += revenue;
-                                  totalCostMinor += soldCost + valueMinor;
-                                }
-                                final breakEvenMinor =
-                                    (totalCostMinor - totalRevenueMinor)
-                                        .clamp(0, 1 << 62);
-                                return Column(
-                                  crossAxisAlignment: CrossAxisAlignment.start,
-                                  children: <Widget>[
-                                    Text(
-                                      'Value ${formatMoney(Money.fromMinor(totalValueMinor))} · '
-                                      'Sales ${formatMoney(Money.fromMinor(totalRevenueMinor))} · '
-                                      'Break-even ${formatMoney(Money.fromMinor(breakEvenMinor))}',
-                                    ),
-                                    for (final t in data.tanks) ...<Widget>[
-                                      const SizedBox(height: 8),
-                                      _TankProfitCard(
-                                        tank: t,
-                                        row: data.tankSales[t.id],
-                                      ),
-                                    ],
-                                  ],
-                                );
-                              }),
-                            ],
-                          ),
-                        ),
-                      ),
-                    _DashboardQuickActions(profile: appState.shopProfile),
-                  ],
-                  gap,
-                ),
-                SizedBox(height: gap),
-                ...panels,
-              ],
-            );
-          },
-        ),
-      ),
-    );
-  }
-}
-
-
-class _DashboardQuickActions extends StatelessWidget {
-  const _DashboardQuickActions({required this.profile});
-
-  final ShopProfile profile;
-
-  @override
-  Widget build(BuildContext context) {
-    final children = <Widget>[];
-    switch (profile) {
-      case ShopProfile.open:
-        children.addAll(<Widget>[
-          FilledButton.tonalIcon(
-            onPressed: () => context.push(Routes.openBusiness),
-            icon: const Icon(Icons.work_outline),
-            label: const Text('Jobs'),
-          ),
-          FilledButton.tonalIcon(
-            onPressed: () => context.push(Routes.openBusiness),
-            icon: const Icon(Icons.account_balance_wallet_outlined),
-            label: const Text('Pots'),
-          ),
-          FilledButton.tonalIcon(
-            onPressed: () => context.push(Routes.portfolio),
-            icon: const Icon(Icons.business_center_outlined),
-            label: const Text('Business record'),
-          ),
-        ]);
-      case ShopProfile.drinks:
-        children.addAll(<Widget>[
-          FilledButton.tonalIcon(
-            onPressed: () => showTankFormSheet(context),
-            icon: const Icon(Icons.propane_tank_outlined),
-            label: const Text('Tanks'),
-          ),
-          FilledButton.tonalIcon(
-            onPressed: () => context.push(Routes.shotCups),
-            icon: const Icon(Icons.local_drink_outlined),
-            label: const Text('Shots'),
-          ),
-        ]);
-      case ShopProfile.fashion:
-        children.addAll(<Widget>[
-          FilledButton.tonalIcon(
-            onPressed: () => context.push(Routes.laybys),
-            icon: const Icon(Icons.bookmark_border),
-            label: const Text('Lay-bys'),
-          ),
-          FilledButton.tonalIcon(
-            onPressed: () => context.push(Routes.transactions),
-            icon: const Icon(Icons.swap_horiz_outlined),
-            label: const Text('Exchanges'),
-          ),
-        ]);
-      case ShopProfile.duka:
-        children.add(FilledButton.tonalIcon(
-          onPressed: () => context.read<HomeShellTabs>().goTo(AppDestination.inventory),
-          icon: const Icon(Icons.inventory_2_outlined),
-          label: const Text('Stock'),
-        ));
-    }
-    if (children.isEmpty) return const SizedBox.shrink();
-    return Wrap(spacing: 8, runSpacing: 8, children: children);
-  }
-}
-
-class _TankProfitCard extends StatelessWidget {
-  const _TankProfitCard({required this.tank, required this.row});
-
-  final Product tank;
-  final ProductSalesRow? row;
-
-  @override
-  Widget build(BuildContext context) {
-    final revenueMinor = row?.revenueMinor ?? 0;
-    final profitMinor = row?.profitMinor ?? 0;
-    final soldCostMinor = revenueMinor - profitMinor;
-    final valueMinor = tank.costPrice.times(tank.stockQty).minorUnits;
-    final totalCostMinor = soldCostMinor + valueMinor;
-    final breakEvenMinor = (totalCostMinor - revenueMinor).clamp(0, 1 << 62);
-    final isProfit = revenueMinor >= totalCostMinor && totalCostMinor > 0;
-    return Card(
-      child: Padding(
-        padding: const EdgeInsets.all(8),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: <Widget>[
-            Text(tank.name, style: Theme.of(context).textTheme.titleSmall),
-            Text('Value ${formatMoney(Money.fromMinor(valueMinor))}'),
-            Text('Sales ${formatMoney(Money.fromMinor(revenueMinor))}'),
-            Text('Profit ${formatMoney(Money.fromMinor(profitMinor))}'),
-            Text(isProfit
-                ? 'In profit'
-                : 'Break-even ${formatMoney(Money.fromMinor(breakEvenMinor))}'),
-          ],
-        ),
-      ),
-    );
-  }
-}

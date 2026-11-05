@@ -33,6 +33,8 @@ import '../screens/expenses_screen.dart';
 import '../screens/shot_cups_screen.dart';
 import '../screens/splash_screen.dart';
 import '../screens/support_screen.dart';
+import '../screens/tank_detail_screen.dart';
+import '../screens/tank_register_screen.dart';
 import '../screens/marketplace_screen.dart';
 import '../screens/help_screen.dart';
 import '../screens/open_business_screen.dart';
@@ -352,6 +354,32 @@ List<RouteBase> _shellRoutes(AppState appState) {
                     routerState,
                     appState.shopProfile.navigation.showDrinkService
                         ? const ShotCupsScreen()
+                        : NotFoundScreen(location: routerState.matchedLocation),
+                  ),
+                ),
+                // The tank register: every drum and keg the shop keeps.
+                GoRoute(
+                  path: 'tank-register',
+                  parentNavigatorKey: rootNavigatorKey,
+                  pageBuilder:
+                      (BuildContext context, GoRouterState routerState) =>
+                          _fadeThrough(
+                    routerState,
+                    appState.shopProfile.navigation.showDrinkService
+                        ? const TankRegisterScreen()
+                        : NotFoundScreen(location: routerState.matchedLocation),
+                  ),
+                ),
+                // One tank's detail: capacity, investment, remaining, actions.
+                GoRoute(
+                  path: 'tank/:tankId',
+                  parentNavigatorKey: rootNavigatorKey,
+                  pageBuilder:
+                      (BuildContext context, GoRouterState routerState) =>
+                          _fadeThrough(
+                    routerState,
+                    appState.shopProfile.navigation.showDrinkService
+                        ? const TankDetailScreen()
                         : NotFoundScreen(location: routerState.matchedLocation),
                   ),
                 ),

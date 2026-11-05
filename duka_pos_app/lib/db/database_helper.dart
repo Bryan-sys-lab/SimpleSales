@@ -11394,7 +11394,7 @@ SELECT name FROM staff GROUP BY name HAVING COUNT(*) = 1
     );
 
     final tankRows = await db.rawQuery('''
-      SELECT name, stock_qty, bottle_ml, cost_price
+      SELECT id, name, stock_qty, bottle_ml, cost_price
       FROM products
       WHERE active = 1 AND category = 'Tanks'
       ORDER BY name ASC
@@ -11437,6 +11437,7 @@ SELECT name FROM staff GROUP BY name HAVING COUNT(*) = 1
       tanks: [
         for (final tank in tankRows)
           DrinkTankLevel(
+            productId: (tank['id'] as num?)?.toInt() ?? 0,
             name: tank['name'] as String? ?? 'Unnamed tank',
             tankCount: (tank['stock_qty'] as num?)?.toDouble() ?? 0,
             litresRemaining: ((tank['stock_qty'] as num?)?.toDouble() ?? 0) *

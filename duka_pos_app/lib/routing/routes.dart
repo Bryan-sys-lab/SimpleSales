@@ -52,6 +52,8 @@ abstract final class Routes {
   static const String support = '/support';
   static const String help = '/help';
   static const String marketplace = '/marketplace';
+  static const String tankRegister = '/inventory/tank-register';
+  static const String tankDetail = '/inventory/tank/:tankId';
 
   // ------------------------------------------------------------- the doors
   // Outside the shell: no navigation affordance, because there is no session to

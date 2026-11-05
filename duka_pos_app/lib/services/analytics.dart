@@ -314,6 +314,7 @@ class DrinksAnalyticsSnapshot {
 @immutable
 class DrinkTankLevel {
   const DrinkTankLevel({
+    required this.productId,
     required this.name,
     required this.litresRemaining,
     required this.tankCount,
@@ -321,6 +322,7 @@ class DrinkTankLevel {
     this.costInvestedMinor = 0,
   });
 
+  final int productId;
   final String name;
   final double litresRemaining;
   final double tankCount;

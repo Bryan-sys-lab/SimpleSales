@@ -1804,6 +1804,12 @@ abstract class AppLocalizations {
   /// **'Search products'**
   String get sellSearchProducts;
 
+  /// No description provided for @sellCategoryAll.
+  ///
+  /// In en, this message translates to:
+  /// **'All drinks'**
+  String get sellCategoryAll;
+
   /// No description provided for @sellShotsSection.
   ///
   /// In en, this message translates to:
@@ -1851,6 +1857,30 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'Restock manually'**
   String get inventoryManualRestock;
+
+  /// No description provided for @inventoryPackagedStock.
+  ///
+  /// In en, this message translates to:
+  /// **'Packaged stock'**
+  String get inventoryPackagedStock;
+
+  /// No description provided for @inventoryPackagedStockDetail.
+  ///
+  /// In en, this message translates to:
+  /// **'Bottles, cans and units'**
+  String get inventoryPackagedStockDetail;
+
+  /// No description provided for @inventoryTankInventory.
+  ///
+  /// In en, this message translates to:
+  /// **'Tank inventory'**
+  String get inventoryTankInventory;
+
+  /// No description provided for @inventoryTankInventoryDetail.
+  ///
+  /// In en, this message translates to:
+  /// **'Bulk liquid and containers'**
+  String get inventoryTankInventoryDetail;
 
   /// No description provided for @settingsCreditSection.
   ///
@@ -7640,6 +7670,12 @@ abstract class AppLocalizations {
   /// **'Sales by day'**
   String get analyticsChartTitleSalesByDay;
 
+  /// No description provided for @analyticsDrinksTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Drinks analytics'**
+  String get analyticsDrinksTitle;
+
   /// No description provided for @loginNoAccountsYetTitle.
   ///
   /// In en, this message translates to:
@@ -8236,6 +8272,180 @@ abstract class AppLocalizations {
   /// **'{name} is added. You can now sell it in the cups you set.'**
   String tankCreated(Object name);
 
+  /// No description provided for @tankRegisterTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Tank register'**
+  String get tankRegisterTitle;
+
+  /// No description provided for @tankRegisterSubtitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Every drum and keg the shop keeps, and what is left of each.'**
+  String get tankRegisterSubtitle;
+
+  /// No description provided for @tankRegisterTanks.
+  ///
+  /// In en, this message translates to:
+  /// **'Tanks'**
+  String get tankRegisterTanks;
+
+  /// No description provided for @tankRegisterTanksLower.
+  ///
+  /// In en, this message translates to:
+  /// **'tanks'**
+  String get tankRegisterTanksLower;
+
+  /// No description provided for @tankRegisterCapacity.
+  ///
+  /// In en, this message translates to:
+  /// **'Capacity'**
+  String get tankRegisterCapacity;
+
+  /// No description provided for @tankRegisterInvested.
+  ///
+  /// In en, this message translates to:
+  /// **'Invested'**
+  String get tankRegisterInvested;
+
+  /// No description provided for @tankRegisterRemaining.
+  ///
+  /// In en, this message translates to:
+  /// **'Remaining'**
+  String get tankRegisterRemaining;
+
+  /// No description provided for @tankRegisterNeedingAttention.
+  ///
+  /// In en, this message translates to:
+  /// **'{count} tanks below safe level'**
+  String tankRegisterNeedingAttention(Object count);
+
+  /// No description provided for @tankRegisterSection.
+  ///
+  /// In en, this message translates to:
+  /// **'Tanks'**
+  String get tankRegisterSection;
+
+  /// No description provided for @tankRegisterEmptyTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'No tanks yet'**
+  String get tankRegisterEmptyTitle;
+
+  /// No description provided for @tankRegisterEmptyMessage.
+  ///
+  /// In en, this message translates to:
+  /// **'Add your first drum or keg. A tank is a container you pour drinks from by the cup.'**
+  String get tankRegisterEmptyMessage;
+
+  /// No description provided for @tankDetailSubtitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Capacity, investment, what remains — and the three actions: receive, measure, history.'**
+  String get tankDetailSubtitle;
+
+  /// No description provided for @tankActionReceive.
+  ///
+  /// In en, this message translates to:
+  /// **'Receive / replenish'**
+  String get tankActionReceive;
+
+  /// No description provided for @tankActionMeasure.
+  ///
+  /// In en, this message translates to:
+  /// **'Record measurement'**
+  String get tankActionMeasure;
+
+  /// No description provided for @tankActionHistory.
+  ///
+  /// In en, this message translates to:
+  /// **'View history'**
+  String get tankActionHistory;
+
+  /// No description provided for @tankActionViewAll.
+  ///
+  /// In en, this message translates to:
+  /// **'View all'**
+  String get tankActionViewAll;
+
+  /// No description provided for @tankDetailActivity.
+  ///
+  /// In en, this message translates to:
+  /// **'Tank activity'**
+  String get tankDetailActivity;
+
+  /// No description provided for @tankDetailMeasuredRemaining.
+  ///
+  /// In en, this message translates to:
+  /// **'Measured remaining'**
+  String get tankDetailMeasuredRemaining;
+
+  /// No description provided for @tankDetailCapacity.
+  ///
+  /// In en, this message translates to:
+  /// **'Capacity'**
+  String get tankDetailCapacity;
+
+  /// No description provided for @tankDetailCapacityDetail.
+  ///
+  /// In en, this message translates to:
+  /// **'How much the tank holds'**
+  String get tankDetailCapacityDetail;
+
+  /// No description provided for @tankDetailInvested.
+  ///
+  /// In en, this message translates to:
+  /// **'Invested'**
+  String get tankDetailInvested;
+
+  /// No description provided for @tankDetailInvestedDetail.
+  ///
+  /// In en, this message translates to:
+  /// **'What the stock on hand cost'**
+  String get tankDetailInvestedDetail;
+
+  /// No description provided for @tankDetailSales.
+  ///
+  /// In en, this message translates to:
+  /// **'Sales'**
+  String get tankDetailSales;
+
+  /// No description provided for @tankDetailSalesDetail.
+  ///
+  /// In en, this message translates to:
+  /// **'What this tank has poured out'**
+  String get tankDetailSalesDetail;
+
+  /// No description provided for @tankDetailLastMeasured.
+  ///
+  /// In en, this message translates to:
+  /// **'Last measured {date}'**
+  String tankDetailLastMeasured(Object date);
+
+  /// No description provided for @tankStatusActive.
+  ///
+  /// In en, this message translates to:
+  /// **'Active'**
+  String get tankStatusActive;
+
+  /// No description provided for @tankStatusHealthy.
+  ///
+  /// In en, this message translates to:
+  /// **'Healthy'**
+  String get tankStatusHealthy;
+
+  /// No description provided for @tankStatusLow.
+  ///
+  /// In en, this message translates to:
+  /// **'Low'**
+  String get tankStatusLow;
+
+  /// No description provided for @tankStatusCritical.
+  ///
+  /// In en, this message translates to:
+  /// **'Critical'**
+  String get tankStatusCritical;
+
   /// No description provided for @actionTryAgain.
   ///
   /// In en, this message translates to:
@@ -8709,6 +8919,90 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'{amount} L'**
   String drinksAnalyticsLitres(Object amount);
+
+  /// No description provided for @dashboardNetSalesToday.
+  ///
+  /// In en, this message translates to:
+  /// **'Net sales today'**
+  String get dashboardNetSalesToday;
+
+  /// No description provided for @dashboardPeriodToday.
+  ///
+  /// In en, this message translates to:
+  /// **'Today'**
+  String get dashboardPeriodToday;
+
+  /// No description provided for @dashboardVersusPreviousDay.
+  ///
+  /// In en, this message translates to:
+  /// **'12.8% compared with previous day'**
+  String get dashboardVersusPreviousDay;
+
+  /// No description provided for @dashboardSupportingMetrics.
+  ///
+  /// In en, this message translates to:
+  /// **'Supporting metrics'**
+  String get dashboardSupportingMetrics;
+
+  /// No description provided for @dashboardBeverageStock.
+  ///
+  /// In en, this message translates to:
+  /// **'Beverage stock'**
+  String get dashboardBeverageStock;
+
+  /// No description provided for @dashboardViewAll.
+  ///
+  /// In en, this message translates to:
+  /// **'View all'**
+  String get dashboardViewAll;
+
+  /// No description provided for @dashboardTankInventory.
+  ///
+  /// In en, this message translates to:
+  /// **'Tank inventory'**
+  String get dashboardTankInventory;
+
+  /// No description provided for @dashboardPackagedBeverages.
+  ///
+  /// In en, this message translates to:
+  /// **'Packaged beverages'**
+  String get dashboardPackagedBeverages;
+
+  /// No description provided for @dashboardPackagedDetail.
+  ///
+  /// In en, this message translates to:
+  /// **'Bottles, cans and other stock'**
+  String get dashboardPackagedDetail;
+
+  /// No description provided for @dashboardMeasuredServings.
+  ///
+  /// In en, this message translates to:
+  /// **'Measured servings'**
+  String get dashboardMeasuredServings;
+
+  /// No description provided for @dashboardMeasuredDetail.
+  ///
+  /// In en, this message translates to:
+  /// **'Serving sizes and pour configuration'**
+  String get dashboardMeasuredDetail;
+
+  /// No description provided for @dashboardCurrentBusiness.
+  ///
+  /// In en, this message translates to:
+  /// **'Current business — {shopName}'**
+  String dashboardCurrentBusiness(Object shopName);
+
+  /// No description provided for @dashboardCurrentBusinessLabel.
+  ///
+  /// In en, this message translates to:
+  /// **'Current business'**
+  String get dashboardCurrentBusinessLabel;
+
+  /// No description provided for @dashboardSellAction.
+  ///
+  /// In en, this message translates to:
+  /// **'Start a sale'**
+  String get dashboardSellAction;
 }
 
 class _AppLocalizationsDelegate

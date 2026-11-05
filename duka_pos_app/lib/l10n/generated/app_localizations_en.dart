@@ -1036,6 +1036,9 @@ class AppLocalizationsEn extends AppLocalizations {
   String get sellSearchProducts => 'Search products';
 
   @override
+  String get sellCategoryAll => 'All drinks';
+
+  @override
   String get sellShotsSection => 'Cups';
 
   @override
@@ -1074,6 +1077,18 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get inventoryManualRestock => 'Restock manually';
+
+  @override
+  String get inventoryPackagedStock => 'Packaged stock';
+
+  @override
+  String get inventoryPackagedStockDetail => 'Bottles, cans and units';
+
+  @override
+  String get inventoryTankInventory => 'Tank inventory';
+
+  @override
+  String get inventoryTankInventoryDetail => 'Bulk liquid and containers';
 
   @override
   String get settingsCreditSection => 'Credit sales';
@@ -4712,6 +4727,9 @@ class AppLocalizationsEn extends AppLocalizations {
   String get analyticsChartTitleSalesByDay => 'Sales by day';
 
   @override
+  String get analyticsDrinksTitle => 'Drinks analytics';
+
+  @override
   String get loginNoAccountsYetTitle => 'This till has no accounts yet';
 
   @override
@@ -5073,6 +5091,100 @@ class AppLocalizationsEn extends AppLocalizations {
   }
 
   @override
+  String get tankRegisterTitle => 'Tank register';
+
+  @override
+  String get tankRegisterSubtitle =>
+      'Every drum and keg the shop keeps, and what is left of each.';
+
+  @override
+  String get tankRegisterTanks => 'Tanks';
+
+  @override
+  String get tankRegisterTanksLower => 'tanks';
+
+  @override
+  String get tankRegisterCapacity => 'Capacity';
+
+  @override
+  String get tankRegisterInvested => 'Invested';
+
+  @override
+  String get tankRegisterRemaining => 'Remaining';
+
+  @override
+  String tankRegisterNeedingAttention(Object count) {
+    return '$count tanks below safe level';
+  }
+
+  @override
+  String get tankRegisterSection => 'Tanks';
+
+  @override
+  String get tankRegisterEmptyTitle => 'No tanks yet';
+
+  @override
+  String get tankRegisterEmptyMessage =>
+      'Add your first drum or keg. A tank is a container you pour drinks from by the cup.';
+
+  @override
+  String get tankDetailSubtitle =>
+      'Capacity, investment, what remains — and the three actions: receive, measure, history.';
+
+  @override
+  String get tankActionReceive => 'Receive / replenish';
+
+  @override
+  String get tankActionMeasure => 'Record measurement';
+
+  @override
+  String get tankActionHistory => 'View history';
+
+  @override
+  String get tankActionViewAll => 'View all';
+
+  @override
+  String get tankDetailActivity => 'Tank activity';
+
+  @override
+  String get tankDetailMeasuredRemaining => 'Measured remaining';
+
+  @override
+  String get tankDetailCapacity => 'Capacity';
+
+  @override
+  String get tankDetailCapacityDetail => 'How much the tank holds';
+
+  @override
+  String get tankDetailInvested => 'Invested';
+
+  @override
+  String get tankDetailInvestedDetail => 'What the stock on hand cost';
+
+  @override
+  String get tankDetailSales => 'Sales';
+
+  @override
+  String get tankDetailSalesDetail => 'What this tank has poured out';
+
+  @override
+  String tankDetailLastMeasured(Object date) {
+    return 'Last measured $date';
+  }
+
+  @override
+  String get tankStatusActive => 'Active';
+
+  @override
+  String get tankStatusHealthy => 'Healthy';
+
+  @override
+  String get tankStatusLow => 'Low';
+
+  @override
+  String get tankStatusCritical => 'Critical';
+
+  @override
   String get actionTryAgain => 'Try again';
 
   @override
@@ -5366,4 +5478,48 @@ class AppLocalizationsEn extends AppLocalizations {
   String drinksAnalyticsLitres(Object amount) {
     return '$amount L';
   }
+
+  @override
+  String get dashboardNetSalesToday => 'Net sales today';
+
+  @override
+  String get dashboardPeriodToday => 'Today';
+
+  @override
+  String get dashboardVersusPreviousDay => '12.8% compared with previous day';
+
+  @override
+  String get dashboardSupportingMetrics => 'Supporting metrics';
+
+  @override
+  String get dashboardBeverageStock => 'Beverage stock';
+
+  @override
+  String get dashboardViewAll => 'View all';
+
+  @override
+  String get dashboardTankInventory => 'Tank inventory';
+
+  @override
+  String get dashboardPackagedBeverages => 'Packaged beverages';
+
+  @override
+  String get dashboardPackagedDetail => 'Bottles, cans and other stock';
+
+  @override
+  String get dashboardMeasuredServings => 'Measured servings';
+
+  @override
+  String get dashboardMeasuredDetail => 'Serving sizes and pour configuration';
+
+  @override
+  String dashboardCurrentBusiness(Object shopName) {
+    return 'Current business — $shopName';
+  }
+
+  @override
+  String get dashboardCurrentBusinessLabel => 'Current business';
+
+  @override
+  String get dashboardSellAction => 'Start a sale';
 }

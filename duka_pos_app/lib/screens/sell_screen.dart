@@ -77,6 +77,7 @@ class _SellScreenState extends State<SellScreen>
   List<ShotCup> _shots = const [];
 
   String _searchQuery = '';
+  String? _selectedCategory;
   bool _loading = true;
   bool _processingPayment = false;
   EtimsIssuedReceipt? _pendingEtimsReceipt;
@@ -2909,11 +2910,15 @@ class _SellScreenState extends State<SellScreen>
     final AppSpacing spacing = AppSpacing.of(context);
 
     final query = _searchQuery.trim().toLowerCase();
+    final categories = <String>{
+      for (final Product p in _products) if (p.category.isNotEmpty) p.category,
+    };
     final filteredProducts = _products
         .where((p) =>
-            query.isEmpty ||
-            p.name.toLowerCase().contains(query) ||
-            p.category.toLowerCase().contains(query))
+            (_selectedCategory == null || p.category == _selectedCategory) &&
+            (query.isEmpty ||
+                p.name.toLowerCase().contains(query) ||
+                p.category.toLowerCase().contains(query)))
         .toList();
 
     return LayoutBuilder(
@@ -2997,6 +3002,39 @@ class _SellScreenState extends State<SellScreen>
                       onPressed: _sellShot,
                       icon: const Icon(Icons.local_drink_outlined),
                       label: const Text('Sell shot'),
+                    ),
+                  ),
+                // Category chips: "All drinks" plus each distinct product
+                // category, horizontally scrollable. Tapping one filters the
+                // catalogue; tapping "All drinks" shows everything again.
+                if (categories.length > 1 || _selectedCategory != null)
+                  Padding(
+                    padding: EdgeInsetsDirectional.only(
+                      start: PageGutter.of(context).left,
+                      end: PageGutter.of(context).right,
+                      bottom: spacing.sm,
+                    ),
+                    child: SingleChildScrollView(
+                      scrollDirection: Axis.horizontal,
+                      child: Row(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: <Widget>[
+                          ChoiceChip(
+                            label: Text(l10n.sellCategoryAll),
+                            selected: _selectedCategory == null,
+                            onSelected: (bool selected) =>
+                                setState(() => _selectedCategory = null),
+                          ),
+                          for (final String category in categories
+                              .toList(growable: false)..sort())
+                            ChoiceChip(
+                              label: Text(category),
+                              selected: _selectedCategory == category,
+                              onSelected: (bool selected) =>
+                                  setState(() => _selectedCategory = category),
+                            ),
+                        ],
+                      ),
                     ),
                   ),
                 Expanded(

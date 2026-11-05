@@ -1036,6 +1036,9 @@ class AppLocalizationsSw extends AppLocalizations {
   String get sellSearchProducts => 'Search products';
 
   @override
+  String get sellCategoryAll => 'Vinywaji zote';
+
+  @override
   String get sellShotsSection => 'Cups';
 
   @override
@@ -1074,6 +1077,18 @@ class AppLocalizationsSw extends AppLocalizations {
 
   @override
   String get inventoryManualRestock => 'Restock manually';
+
+  @override
+  String get inventoryPackagedStock => 'Hisa za kipaketi';
+
+  @override
+  String get inventoryPackagedStockDetail => 'Bobilu, kannu na units';
+
+  @override
+  String get inventoryTankInventory => 'Hisa ya matenki';
+
+  @override
+  String get inventoryTankInventoryDetail => 'Sikio kubwa na mifereji';
 
   @override
   String get settingsCreditSection => 'Credit sales';
@@ -4713,6 +4728,9 @@ class AppLocalizationsSw extends AppLocalizations {
   String get analyticsChartTitleSalesByDay => 'Sales by day';
 
   @override
+  String get analyticsDrinksTitle => 'Drinks analytics';
+
+  @override
   String get loginNoAccountsYetTitle => 'This till has no accounts yet';
 
   @override
@@ -5074,6 +5092,100 @@ class AppLocalizationsSw extends AppLocalizations {
   }
 
   @override
+  String get tankRegisterTitle => 'Hisa ya matenki';
+
+  @override
+  String get tankRegisterSubtitle =>
+      'Mifereji yote na kazi yao, na ambayo bado ni baki kila mfereji.';
+
+  @override
+  String get tankRegisterTanks => 'Matenki';
+
+  @override
+  String get tankRegisterTanksLower => 'matenki';
+
+  @override
+  String get tankRegisterCapacity => 'Uwezo';
+
+  @override
+  String get tankRegisterInvested => 'Uwekezaji';
+
+  @override
+  String get tankRegisterRemaining => 'Baki';
+
+  @override
+  String tankRegisterNeedingAttention(Object count) {
+    return 'Mifereji $count hiviinifu';
+  }
+
+  @override
+  String get tankRegisterSection => 'Matenki';
+
+  @override
+  String get tankRegisterEmptyTitle => 'Hakuna matenki tena';
+
+  @override
+  String get tankRegisterEmptyMessage =>
+      'Ongeza mfereji wa kwanza. Mfereji ni kifundo unachopinda vinywaji kila kikombe.';
+
+  @override
+  String get tankDetailSubtitle =>
+      'Uwezo, uwekezaji, ambayo bado ni baki — na vitendo tatu: pokea, angalia, historia.';
+
+  @override
+  String get tankActionReceive => 'Pokea / ongeza stock';
+
+  @override
+  String get tankActionMeasure => 'Rejesta ukubwa';
+
+  @override
+  String get tankActionHistory => 'Angalia historia';
+
+  @override
+  String get tankActionViewAll => 'Ona zote';
+
+  @override
+  String get tankDetailActivity => 'Serikali ya mfereji';
+
+  @override
+  String get tankDetailMeasuredRemaining => 'Baki iliyopimwa';
+
+  @override
+  String get tankDetailCapacity => 'Uwezo';
+
+  @override
+  String get tankDetailCapacityDetail => 'Kiasi cha mfereji';
+
+  @override
+  String get tankDetailInvested => 'Uwekezaji';
+
+  @override
+  String get tankDetailInvestedDetail => 'Gharama ya stock iliyo sehemu';
+
+  @override
+  String get tankDetailSales => 'Mauzo';
+
+  @override
+  String get tankDetailSalesDetail => 'Kiasi cha vinywaji vilivyopindwa';
+
+  @override
+  String tankDetailLastMeasured(Object date) {
+    return 'Ilipimwa $date';
+  }
+
+  @override
+  String get tankStatusActive => 'Inaendeshwa';
+
+  @override
+  String get tankStatusHealthy => 'Nzuri';
+
+  @override
+  String get tankStatusLow => 'Chini';
+
+  @override
+  String get tankStatusCritical => 'Mwelekeo';
+
+  @override
   String get actionTryAgain => 'Try again';
 
   @override
@@ -5368,4 +5480,48 @@ class AppLocalizationsSw extends AppLocalizations {
   String drinksAnalyticsLitres(Object amount) {
     return '$amount L';
   }
+
+  @override
+  String get dashboardNetSalesToday => 'Mauzo ya leo';
+
+  @override
+  String get dashboardPeriodToday => 'Leo';
+
+  @override
+  String get dashboardVersusPreviousDay => '12.8% compared with previous day';
+
+  @override
+  String get dashboardSupportingMetrics => 'Mtaa wa sawa';
+
+  @override
+  String get dashboardBeverageStock => 'Hisa ya vinywaji';
+
+  @override
+  String get dashboardViewAll => 'Ona zote';
+
+  @override
+  String get dashboardTankInventory => 'Hisa ya matenki';
+
+  @override
+  String get dashboardPackagedBeverages => 'Vinywaji vipakete';
+
+  @override
+  String get dashboardPackagedDetail => 'Bobilu, kannu na hisa nyingine';
+
+  @override
+  String get dashboardMeasuredServings => 'Vipimo';
+
+  @override
+  String get dashboardMeasuredDetail => 'Ukubwa wa kipimo na mipango ya kupima';
+
+  @override
+  String dashboardCurrentBusiness(Object shopName) {
+    return 'Biashara ya sasa — $shopName';
+  }
+
+  @override
+  String get dashboardCurrentBusinessLabel => 'Biashara ya sasa';
+
+  @override
+  String get dashboardSellAction => 'Anza mauzo';
 }

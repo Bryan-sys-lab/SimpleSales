@@ -284,6 +284,7 @@
   "sellScanNoProductBarcode": "No product carries that barcode. Add it in Inventory — on the product or on one of its variants — or pick the product by name.",
   "sellSearchNameOrCategory": "Name or category",
   "sellSearchProducts": "Search products",
+  "sellCategoryAll": "All drinks",
   "sellShotsSection": "Cups",
   "sellVariantCount": "{count, plural, =1{1 variant} other{{count} variants}}",
   "sellCartItemCount": "{count, plural, =1{1 item} other{{count} items}}",
@@ -292,6 +293,10 @@
   "inventoryAddFirstVariant": "Add its first variant",
   "inventoryAddProduct": "Add product",
   "inventoryManualRestock": "Restock manually",
+  "inventoryPackagedStock": "Packaged stock",
+  "inventoryPackagedStockDetail": "Bottles, cans and units",
+  "inventoryTankInventory": "Tank inventory",
+  "inventoryTankInventoryDetail": "Bulk liquid and containers",
   "settingsCreditSection": "Credit sales",
   "settingsCreditOffSummary": "Off — on-account sales are not offered.",
   "settingsCreditOnSummary": "On — default limit {limit}.",
@@ -1257,6 +1262,7 @@
   "attentionImportProblemsDetail": "Fill in what the file was missing and they are imported.",
   "attentionImportProblemsAction": "Finish now",
   "analyticsChartTitleSalesByDay": "Sales by day",
+  "analyticsDrinksTitle": "Drinks analytics",
   "loginNoAccountsYetTitle": "This till has no accounts yet",
   "reportsTransactionCaption": "{count, plural, =1{1 transaction} other{{count} transactions}}",
   "activityTitle": "Activity",
@@ -1356,6 +1362,35 @@
   "tankServingTooBig": "That cup is bigger than the tank.",
   "tankServingMinOne": "Write at least one cup you sell.",
   "tankCreated": "{name} is added. You can now sell it in the cups you set.",
+  "tankRegisterTitle": "Tank register",
+  "tankRegisterSubtitle": "Every drum and keg the shop keeps, and what is left of each.",
+  "tankRegisterTanks": "Tanks",
+  "tankRegisterTanksLower": "tanks",
+  "tankRegisterCapacity": "Capacity",
+  "tankRegisterInvested": "Invested",
+  "tankRegisterRemaining": "Remaining",
+  "tankRegisterNeedingAttention": "{count} tanks below safe level",
+  "tankRegisterSection": "Tanks",
+  "tankRegisterEmptyTitle": "No tanks yet",
+  "tankRegisterEmptyMessage": "Add your first drum or keg. A tank is a container you pour drinks from by the cup.",
+  "tankDetailSubtitle": "Capacity, investment, what remains — and the three actions: receive, measure, history.",
+  "tankActionReceive": "Receive / replenish",
+  "tankActionMeasure": "Record measurement",
+  "tankActionHistory": "View history",
+  "tankActionViewAll": "View all",
+  "tankDetailActivity": "Tank activity",
+  "tankDetailMeasuredRemaining": "Measured remaining",
+  "tankDetailCapacity": "Capacity",
+  "tankDetailCapacityDetail": "How much the tank holds",
+  "tankDetailInvested": "Invested",
+  "tankDetailInvestedDetail": "What the stock on hand cost",
+  "tankDetailSales": "Sales",
+  "tankDetailSalesDetail": "What this tank has poured out",
+  "tankDetailLastMeasured": "Last measured {date}",
+  "tankStatusActive": "Active",
+  "tankStatusHealthy": "Healthy",
+  "tankStatusLow": "Low",
+  "tankStatusCritical": "Critical",
   "actionTryAgain": "Try again",
   "actionBack": "Back",
   "actionSkip": "Skip",
@@ -1435,4 +1470,18 @@
   "drinksAnalyticsDipAbove": "above expected",
   "drinksAnalyticsNoTankData": "No tank balance recorded",
   "drinksAnalyticsLitres": "{amount} L"
+  ,"dashboardNetSalesToday": "Net sales today"
+  ,"dashboardPeriodToday": "Today"
+  ,"dashboardVersusPreviousDay": "12.8% compared with previous day"
+  ,"dashboardSupportingMetrics": "Supporting metrics"
+  ,"dashboardBeverageStock": "Beverage stock"
+  ,"dashboardViewAll": "View all"
+  ,"dashboardTankInventory": "Tank inventory"
+  ,"dashboardPackagedBeverages": "Packaged beverages"
+  ,"dashboardPackagedDetail": "Bottles, cans and other stock"
+  ,"dashboardMeasuredServings": "Measured servings"
+  ,"dashboardMeasuredDetail": "Serving sizes and pour configuration"
+  ,"dashboardCurrentBusiness": "Current business — {shopName}"
+  ,"dashboardCurrentBusinessLabel": "Current business"
+  ,"dashboardSellAction": "Start a sale"
 }

@@ -65,7 +65,8 @@ class InventoryScreen extends StatefulWidget {
 }
 
 class _InventoryScreenState extends State<InventoryScreen>
-    with LiveRefresh<InventoryScreen>, SessionRefresh<InventoryScreen> {
+    with LiveRefresh<InventoryScreen>, SessionRefresh<InventoryScreen>,
+        TickerProviderStateMixin {
   List<Product> _products = [];
 
   bool _loading = true;
@@ -73,6 +74,19 @@ class _InventoryScreenState extends State<InventoryScreen>
   VariantCatalogue _variants = VariantCatalogue.empty;
 
   int _lowStockLimit = 5;
+
+  /// 0 = packaged stock, 1 = tank inventory. Only meaningful for drinks.
+  int _inventoryTab = 0;
+
+  TabController? _tabController;
+
+  static const _kTankTab = 1;
+
+  @override
+  void dispose() {
+    _tabController?.dispose();
+    super.dispose();
+  }
 
   @override
   Set<LiveReason> get liveReasons => const <LiveReason>{
@@ -122,7 +136,12 @@ class _InventoryScreenState extends State<InventoryScreen>
     if (!mounted) return;
     setState(() {
       _loading = false;
-      _products = p;
+      final List<Product> all = p;
+      // Tanks live under their own category; everything else is packaged stock.
+      // Tab 0 = packaged, tab 1 = tanks.
+      _products = _inventoryTab == _kTankTab
+          ? all.where((Product product) => product.category == kTankCategory).toList()
+          : all.where((Product product) => product.category != kTankCategory).toList();
       _variants = catalogue;
       // The level the shop actually uses, when every product agrees on one. If
       // they disagree, the dialog starts on the default rather than silently
@@ -903,6 +922,35 @@ class _InventoryScreenState extends State<InventoryScreen>
                 bottom: AppSpacing.of(context).sm,
               ),
             ),
+            // Two distinct inventory views for drinks: packaged stock and tank
+            // inventory. The tabs only appear when a tank exists, so a duka
+            // (which never has tanks) keeps its simple list.
+            if (showDrinkService && _products.any((p) => p.category == kTankCategory))
+              Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: <Widget>[
+                  TabBar(
+                    controller: _tabController ??= TabController(
+                      length: 2,
+                      vsync: this,
+                      initialIndex: _inventoryTab,
+                    )..addListener(() {
+                        if (_tabController!.index.isFinite &&
+                            _tabController!.index != _inventoryTab) {
+                          setState(() => _inventoryTab = _tabController!.index);
+                        }
+                      }),
+                    tabs: <Widget>[
+                      Tab(
+                        text: l10n.inventoryPackagedStock,
+                      ),
+                      Tab(
+                        text: l10n.inventoryTankInventory,
+                      ),
+                    ],
+                  ),
+                ],
+              ),
             Expanded(
               child: _products.isEmpty && _loading
                   ? const _InventorySkeleton()

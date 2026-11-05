@@ -1,9 +1,11 @@
 import 'package:flutter/material.dart';
+import 'package:go_router/go_router.dart';
 
 import '../models/models.dart';
 import '../services/analytics.dart';
 import '../services/shift_analytics.dart';
 import '../l10n/generated/app_localizations.dart';
+import '../routing/routes.dart';
 import '../theme/app_colors.dart';
 import '../theme/app_spacing.dart';
 import '../theme/typography.dart';
@@ -804,7 +806,11 @@ class StockSection extends StatelessWidget {
                 spacing.md,
                 spacing.md,
               ),
-              child: const OpenInventoryAction(),
+              child: FilledButton.tonalIcon(
+                onPressed: () => context.push(Routes.inventory),
+                icon: const Icon(Icons.inventory_2_outlined),
+                label: Text(AppLocalizations.of(context).inventoryFieldStock),
+              ),
             ),
           ],
         ],
