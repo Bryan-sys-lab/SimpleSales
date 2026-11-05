@@ -39,7 +39,15 @@ import '../screens/product_detail_screen.dart';
 import '../models/models.dart';
 import '../screens/marketplace_screen.dart';
 import '../screens/help_screen.dart';
-import '../screens/open_business_screen.dart';
+import '../screens/open_dashboard_screen.dart';
+import '../screens/open_jobs_screen.dart';
+import '../screens/open_job_form_screen.dart';
+import '../screens/open_job_detail_screen.dart';
+import '../screens/open_job_add_cost_screen.dart';
+import '../screens/open_cost_groups_screen.dart';
+import '../screens/open_cost_group_form_screen.dart';
+import '../screens/open_cost_group_detail_screen.dart';
+import '../screens/open_receivables_screen.dart';
 import '../screens/tax_settings_screen.dart';
 import '../widgets/camera_scan_screen.dart';
 import '../screens/welcome_chooser_screen.dart';
@@ -562,9 +570,99 @@ List<RouteBase> _shellRoutes(AppState appState) {
                   _fadeThrough(
                 routerState,
                 appState.shopProfile == ShopProfile.open
-                    ? const OpenBusinessScreen()
+                    ? const OpenDashboardScreen()
                     : NotFoundScreen(location: routerState.matchedLocation),
               ),
+              routes: <RouteBase>[
+                // Jobs list — the heart of the Open profile.
+                GoRoute(
+                  path: 'jobs',
+                  parentNavigatorKey: rootNavigatorKey,
+                  pageBuilder:
+                      (BuildContext context, GoRouterState routerState) =>
+                          _fadeThrough(
+                    routerState,
+                    const OpenJobsScreen(),
+                  ),
+                ),
+                // New job form.
+                GoRoute(
+                  path: 'jobs/new',
+                  parentNavigatorKey: rootNavigatorKey,
+                  pageBuilder:
+                      (BuildContext context, GoRouterState routerState) =>
+                          _fadeThrough(
+                    routerState,
+                    const OpenJobFormScreen(),
+                  ),
+                ),
+                // One job's detail: overview, financials, activity, actions.
+                GoRoute(
+                  path: 'jobs/:jobId',
+                  parentNavigatorKey: rootNavigatorKey,
+                  pageBuilder:
+                      (BuildContext context, GoRouterState routerState) =>
+                          _fadeThrough(
+                    routerState,
+                    const OpenJobDetailScreen(),
+                  ),
+                ),
+                // Add a direct cost to a job.
+                GoRoute(
+                  path: 'jobs/:jobId/cost',
+                  parentNavigatorKey: rootNavigatorKey,
+                  pageBuilder:
+                      (BuildContext context, GoRouterState routerState) =>
+                          _fadeThrough(
+                    routerState,
+                    const OpenJobAddCostScreen(),
+                  ),
+                ),
+                // Cost groups list.
+                GoRoute(
+                  path: 'cost-groups',
+                  parentNavigatorKey: rootNavigatorKey,
+                  pageBuilder:
+                      (BuildContext context, GoRouterState routerState) =>
+                          _fadeThrough(
+                    routerState,
+                    const OpenCostGroupsScreen(),
+                  ),
+                ),
+                // New cost group.
+                GoRoute(
+                  path: 'cost-groups/new',
+                  parentNavigatorKey: rootNavigatorKey,
+                  pageBuilder:
+                      (BuildContext context, GoRouterState routerState) =>
+                          _fadeThrough(
+                    routerState,
+                    const OpenCostGroupFormScreen(),
+                  ),
+                ),
+                // One cost group's detail.
+                GoRoute(
+                  path: 'cost-groups/:poolId',
+                  parentNavigatorKey: rootNavigatorKey,
+                  pageBuilder:
+                      (BuildContext context, GoRouterState routerState) =>
+                          _fadeThrough(
+                    routerState,
+                    const OpenCostGroupDetailScreen(),
+                  ),
+                ),
+                // Receivables / customer payment history.
+                GoRoute(
+                  path: 'receivables',
+                  parentNavigatorKey: rootNavigatorKey,
+                  pageBuilder:
+                      (BuildContext context, GoRouterState routerState) =>
+                          _fadeThrough(
+                    routerState,
+                    const OpenReceivablesScreen(),
+                  ),
+                ),
+              ],
             ),
           ],
         ),
