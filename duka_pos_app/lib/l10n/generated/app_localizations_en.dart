@@ -6146,4 +6146,56 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get fashionProductFormReorderLevel => 'Reorder level';
+
+  @override
+  String get laybyScreenTitle => 'Lay-bys';
+
+  @override
+  String get laybyScreenSubtitle =>
+      'Reserve a variant, take a deposit, collect when fully paid';
+
+  @override
+  String get laybyNewLayby => 'New lay-by';
+
+  @override
+  String get laybyCustomer => 'Customer';
+
+  @override
+  String get laybyStyle => 'Style';
+
+  @override
+  String get laybyVariant => 'Variant';
+
+  @override
+  String get laybyQuantity => 'Quantity';
+
+  @override
+  String get laybyDeposit => 'Deposit (KES)';
+
+  @override
+  String get laybyPaymentMethod => 'Payment method';
+
+  @override
+  String get laybyReference => 'Reference';
+
+  @override
+  String get laybyDueDays => 'Due days';
+
+  @override
+  String get laybyCreate => 'Create lay-by';
+
+  @override
+  String get laybyReservations => 'Reservations';
+
+  @override
+  String get laybyNoLaybys => 'No lay-bys yet';
+
+  @override
+  String get laybyCustomerLabel => 'Customer';
+
+  @override
+  String get laybyDue => 'Due';
+
+  @override
+  String get laybyPaid => 'Paid';
 }

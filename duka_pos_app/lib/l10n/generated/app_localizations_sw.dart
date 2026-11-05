@@ -6147,4 +6147,56 @@ class AppLocalizationsSw extends AppLocalizations {
 
   @override
   String get fashionProductFormReorderLevel => 'Kiwango cha kuongeza';
+
+  @override
+  String get laybyScreenTitle => 'Laybies';
+
+  @override
+  String get laybyScreenSubtitle =>
+      'Funga hiasi, pokea uleketa, chukua kiapo kabisa';
+
+  @override
+  String get laybyNewLayby => 'Layby mpya';
+
+  @override
+  String get laybyCustomer => 'Mteja';
+
+  @override
+  String get laybyStyle => 'Fungu';
+
+  @override
+  String get laybyVariant => 'Hiasi';
+
+  @override
+  String get laybyQuantity => 'Kiasi';
+
+  @override
+  String get laybyDeposit => 'Uleketa (KES)';
+
+  @override
+  String get laybyPaymentMethod => 'Nguzo ya malipo';
+
+  @override
+  String get laybyReference => 'Nambari ya mambo';
+
+  @override
+  String get laybyDueDays => 'Siku za malipo';
+
+  @override
+  String get laybyCreate => 'Unda layby';
+
+  @override
+  String get laybyReservations => 'Magazi';
+
+  @override
+  String get laybyNoLaybys => 'Hakuna laybies hivi';
+
+  @override
+  String get laybyCustomerLabel => 'Mteja';
+
+  @override
+  String get laybyDue => 'Inapigwa';
+
+  @override
+  String get laybyPaid => 'Lipwa';
 }

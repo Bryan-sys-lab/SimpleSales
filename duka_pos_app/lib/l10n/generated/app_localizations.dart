@@ -10221,6 +10221,108 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'Reorder level'**
   String get fashionProductFormReorderLevel;
+
+  /// No description provided for @laybyScreenTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Lay-bys'**
+  String get laybyScreenTitle;
+
+  /// No description provided for @laybyScreenSubtitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Reserve a variant, take a deposit, collect when fully paid'**
+  String get laybyScreenSubtitle;
+
+  /// No description provided for @laybyNewLayby.
+  ///
+  /// In en, this message translates to:
+  /// **'New lay-by'**
+  String get laybyNewLayby;
+
+  /// No description provided for @laybyCustomer.
+  ///
+  /// In en, this message translates to:
+  /// **'Customer'**
+  String get laybyCustomer;
+
+  /// No description provided for @laybyStyle.
+  ///
+  /// In en, this message translates to:
+  /// **'Style'**
+  String get laybyStyle;
+
+  /// No description provided for @laybyVariant.
+  ///
+  /// In en, this message translates to:
+  /// **'Variant'**
+  String get laybyVariant;
+
+  /// No description provided for @laybyQuantity.
+  ///
+  /// In en, this message translates to:
+  /// **'Quantity'**
+  String get laybyQuantity;
+
+  /// No description provided for @laybyDeposit.
+  ///
+  /// In en, this message translates to:
+  /// **'Deposit (KES)'**
+  String get laybyDeposit;
+
+  /// No description provided for @laybyPaymentMethod.
+  ///
+  /// In en, this message translates to:
+  /// **'Payment method'**
+  String get laybyPaymentMethod;
+
+  /// No description provided for @laybyReference.
+  ///
+  /// In en, this message translates to:
+  /// **'Reference'**
+  String get laybyReference;
+
+  /// No description provided for @laybyDueDays.
+  ///
+  /// In en, this message translates to:
+  /// **'Due days'**
+  String get laybyDueDays;
+
+  /// No description provided for @laybyCreate.
+  ///
+  /// In en, this message translates to:
+  /// **'Create lay-by'**
+  String get laybyCreate;
+
+  /// No description provided for @laybyReservations.
+  ///
+  /// In en, this message translates to:
+  /// **'Reservations'**
+  String get laybyReservations;
+
+  /// No description provided for @laybyNoLaybys.
+  ///
+  /// In en, this message translates to:
+  /// **'No lay-bys yet'**
+  String get laybyNoLaybys;
+
+  /// No description provided for @laybyCustomerLabel.
+  ///
+  /// In en, this message translates to:
+  /// **'Customer'**
+  String get laybyCustomerLabel;
+
+  /// No description provided for @laybyDue.
+  ///
+  /// In en, this message translates to:
+  /// **'Due'**
+  String get laybyDue;
+
+  /// No description provided for @laybyPaid.
+  ///
+  /// In en, this message translates to:
+  /// **'Paid'**
+  String get laybyPaid;
 }
 
 class _AppLocalizationsDelegate

@@ -2,15 +2,25 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
 import '../db/database_helper.dart';
+import '../l10n/generated/app_localizations.dart';
 import '../models/credit.dart';
 import '../models/layby.dart';
 import '../models/models.dart';
 import '../services/app_state.dart';
-import '../ui/components/screen_title.dart';
+import '../theme/app_colors.dart';
+import '../theme/app_spacing.dart';
+import '../theme/typography.dart';
+import '../ui/components/surface.dart';
+import '../ui/layout/page.dart';
 import '../utils/money.dart';
+import '../widgets/backup_reminder_banner.dart';
 
-/// Fashion's lay-by desk. The database owns all lifecycle invariants; this
-/// screen is deliberately a thin operator surface over those transactions.
+const double _laybyScreenMaxWidth = 1200;
+
+/// Fashion's lay-by desk with variant-aware selection and multi-method payments.
+///
+/// Each layby reserves a specific variant (colour + size) so stock can't be
+/// sold twice. Payments support cash, M-Pesa and bank transfer with references.
 class LaybyScreen extends StatefulWidget {
   const LaybyScreen({super.key});
 
@@ -20,17 +30,22 @@ class LaybyScreen extends StatefulWidget {
 
 class _LaybyScreenState extends State<LaybyScreen> {
   final _db = DatabaseHelper.instance;
-  final _qty = TextEditingController(text: '1');
-  final _deposit = TextEditingController();
-  final _dueDays = TextEditingController(text: '30');
+  final _qtyCtrl = TextEditingController(text: '1');
+  final _depositCtrl = TextEditingController();
+  final _referenceCtrl = TextEditingController();
+  final _dueDaysCtrl = TextEditingController(text: '30');
+
   List<Customer> _customers = const [];
   List<Product> _products = const [];
+  List<ProductVariant> _variants = const [];
   List<Layby> _laybys = const [];
+
   Customer? _customer;
   Product? _product;
-  bool _loading = true;
+  ProductVariant? _variant;
+
+  String _depositMethod = 'cash';
   bool _saving = false;
-  String? _error;
 
   String get _staffName =>
       context.read<AppState>().currentStaffName ?? 'Current staff';
@@ -44,39 +59,53 @@ class _LaybyScreenState extends State<LaybyScreen> {
 
   @override
   void dispose() {
-    _qty.dispose();
-    _deposit.dispose();
-    _dueDays.dispose();
+    _qtyCtrl.dispose();
+    _depositCtrl.dispose();
+    _referenceCtrl.dispose();
+    _dueDaysCtrl.dispose();
     super.dispose();
   }
 
   Future<void> _load() async {
-    setState(() {
-      _loading = true;
-      _error = null;
-    });
     try {
-      final customers = await _db.getCustomers(sort: 'name');
-      final products = await _db.getProducts(activeOnly: true);
-      await _db.expireDueLaybys(staffName: _staffName, staffId: _staffId);
-      final laybys = await _db.getLaybys();
+      await Future.wait([
+        _db.getCustomers(sort: 'name').then((c) {
+          if (!mounted) return;
+          setState(() => _customers = c);
+        }),
+        _db.getProducts(activeOnly: true).then((p) {
+          if (!mounted) return;
+          setState(() => _products = p.where((x) => x.trackVariants).toList());
+        }),
+        _db.expireDueLaybys(
+            staffName: _staffName, staffId: _staffId),
+        _db.getLaybys().then((l) {
+          if (!mounted) return;
+          setState(() => _laybys = l);
+        }),
+      ]);
       if (!mounted) return;
       setState(() {
-        _customers = customers;
-        _products = products;
-        _laybys = laybys;
-        _customer ??= customers.isEmpty ? null : customers.first;
-        _product ??= products.isEmpty ? null : products.first;
-        _loading = false;
+        _customer = _customers.isNotEmpty ? _customers.first : null;
+        _product = _products.isNotEmpty ? _products.first : null;
+        if (_product != null) {
+          _loadVariants(_product!.id!);
+        }
       });
     } catch (error) {
       if (mounted) {
-        setState(() {
-          _loading = false;
-          _error = '$error';
-        });
+        _message('$error');
       }
     }
+  }
+
+  Future<void> _loadVariants(int productId) async {
+    final variants = await _db.getVariants(productId);
+    if (!mounted) return;
+    setState(() {
+      _variants = variants;
+      _variant = variants.isNotEmpty ? variants.first : null;
+    });
   }
 
   void _message(String message) {
@@ -88,12 +117,17 @@ class _LaybyScreenState extends State<LaybyScreen> {
   Future<void> _create() async {
     final customer = _customer;
     final product = _product;
-    final qty = double.tryParse(_qty.text.trim());
-    final depositMajor = double.tryParse(_deposit.text.trim());
-    final days = int.tryParse(_dueDays.text.trim());
+    final variant = _variant;
+    final qty = double.tryParse(_qtyCtrl.text.trim());
+    final depositMajor = double.tryParse(_depositCtrl.text.trim());
+    final reference = _referenceCtrl.text.trim();
+    final days = int.tryParse(_dueDaysCtrl.text.trim());
+
     if (customer == null ||
         product == null ||
         product.id == null ||
+        variant == null ||
+        variant.id == null ||
         qty == null ||
         qty <= 0 ||
         depositMajor == null ||
@@ -101,9 +135,18 @@ class _LaybyScreenState extends State<LaybyScreen> {
         days == null ||
         days <= 0) {
       _message(
-          'Choose a customer and product, then enter valid quantity, deposit and due days.');
+          'Choose a customer, style and variant, then enter valid quantity, deposit and due days.');
       return;
     }
+
+    final sellPrice = variant.sellPrice;
+    final total = Money.fromMinor((sellPrice.minorUnits * qty).round());
+    final deposit = Money.fromMajor(depositMajor);
+    if (deposit.isZero || deposit.isNegative || deposit > total) {
+      _message('Deposit must be positive and no greater than the total.');
+      return;
+    }
+
     setState(() => _saving = true);
     try {
       await _db.createLayby(
@@ -113,20 +156,26 @@ class _LaybyScreenState extends State<LaybyScreen> {
             saleId: 0,
             productId: product.id!,
             productName: product.name,
+            variantId: variant.id,
+            variantName: variant.label,
             qty: qty,
-            unitPrice: product.sellPrice,
-            unitCost: product.costPrice,
+            unitPrice: sellPrice,
+            unitCost: variant.costPrice,
           )
         ],
-        deposit: Money.fromMajor(depositMajor),
-        depositMethod: 'cash',
+        deposit: deposit,
+        depositMethod: _depositMethod,
+        depositReference: reference.isEmpty ? null : reference,
         dueAt: DateTime.now().add(Duration(days: days)),
         staffName: _staffName,
         staffId: _staffId,
       );
-      _deposit.clear();
+      _qtyCtrl.text = '1';
+      _depositCtrl.clear();
+      _referenceCtrl.clear();
+      _dueDaysCtrl.text = '30';
       await _load();
-      _message('Lay-by created and stock reserved.');
+      _message('Lay-by created and variant stock reserved.');
     } catch (error) {
       _message('$error');
     } finally {
@@ -137,11 +186,17 @@ class _LaybyScreenState extends State<LaybyScreen> {
   Future<void> _pay(Layby layby) async {
     final amount = await _amountDialog('Record payment', layby.balance);
     if (amount == null) return;
+
+    final method = await _paymentMethodDialog();
+    if (method == null) return;
+
+    final reference = await _referenceDialog();
     try {
       await _db.addLaybyPayment(
         laybyId: layby.id,
         amount: amount,
-        method: 'cash',
+        method: method,
+        reference: reference,
         staffName: _staffName,
         staffId: _staffId,
       );
@@ -149,6 +204,59 @@ class _LaybyScreenState extends State<LaybyScreen> {
     } catch (error) {
       _message('$error');
     }
+  }
+
+  Future<String?> _paymentMethodDialog() async {
+    return await showDialog<String>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Payment method'),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: <Widget>[
+            ListTile(
+              leading: const Icon(Icons.money_outlined),
+              title: const Text('Cash'),
+              onTap: () => Navigator.pop(ctx, 'cash'),
+            ),
+            ListTile(
+              leading: const Icon(Icons.phone_android),
+              title: const Text('M-Pesa'),
+              onTap: () => Navigator.pop(ctx, 'mpesa'),
+            ),
+            ListTile(
+              leading: const Icon(Icons.account_balance_outlined),
+              title: const Text('Bank transfer'),
+              onTap: () => Navigator.pop(ctx, 'bank_transfer'),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Future<String?> _referenceDialog() async {
+    final controller = TextEditingController();
+    return await showDialog<String>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Payment reference (optional)'),
+        content: TextField(
+          controller: controller,
+          autofocus: true,
+          decoration: const InputDecoration(
+            labelText: 'Reference number'),
+        ),
+        actions: [
+          TextButton(
+              onPressed: () => Navigator.pop(ctx, null),
+              child: const Text('Skip')),
+          FilledButton(
+              onPressed: () => Navigator.pop(ctx, controller.text.trim()),
+              child: const Text('Save')),
+        ],
+      ),
+    );
   }
 
   Future<Money?> _amountDialog(String title, Money maximum) async {
@@ -221,146 +329,293 @@ class _LaybyScreenState extends State<LaybyScreen> {
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      body: SafeArea(
-        child: _loading && _laybys.isEmpty
-            ? const Center(child: CircularProgressIndicator())
-            : RefreshIndicator(
-                onRefresh: _load,
-                child: ListView(
-                  padding: const EdgeInsets.only(bottom: 32),
-                  children: [
-                    const ScreenTitle(
-                      title: 'Fashion lay-bys',
-                      subtitle:
-                          'A customer pays a deposit now, pays the rest later, and takes the item when fully paid. The sale is recorded only when completed.',
-                    ),
-                    if (_error != null)
-                      Padding(
-                        padding: const EdgeInsets.all(16),
-                        child: Text(_error!,
-                            style: TextStyle(
-                                color: Theme.of(context).colorScheme.error)),
+    final AppSpacing spacing = AppSpacing.of(context);
+    final AppColors colors = AppColors.of(context);
+    final AppLocalizations l10n = AppLocalizations.of(context);
+    final type = AppTypography.of(context);
+
+    return RefreshIndicator(
+      onRefresh: _load,
+      child: AdaptivePage(
+        scrollable: true,
+        maxContentWidth: _laybyScreenMaxWidth,
+        padding: PageGutter.of(context),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: <Widget>[
+            BackupReminderBanner(onBackupNow: () async {}),
+            SizedBox(height: spacing.section),
+            Row(
+              children: <Widget>[
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: <Widget>[
+                      Text(
+                        l10n.laybyScreenTitle,
+                        style: AppTypography.of(context).headlineSmall,
                       ),
-                    _createCard(),
-                    const Padding(
-                      padding: EdgeInsets.fromLTRB(16, 24, 16, 8),
-                      child: Text('Reservations',
-                          style: TextStyle(
-                              fontSize: 18, fontWeight: FontWeight.w700)),
-                    ),
-                    if (_laybys.isEmpty)
-                      const Padding(
-                        padding: EdgeInsets.all(16),
-                        child: Text('No lay-bys yet.'),
+                      SizedBox(height: spacing.xs),
+                      Text(
+                        l10n.laybyScreenSubtitle,
+                        style: type.bodyMedium?.copyWith(
+                          color: colors.onSurfaceMuted,
+                        ),
                       ),
-                    ..._laybys.map(_laybyCard),
-                  ],
+                    ],
+                  ),
                 ),
+              ],
+            ),
+            SizedBox(height: spacing.sm),
+            // Creation form
+            SurfaceCard(
+              padding: EdgeInsets.all(spacing.lg),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: <Widget>[
+                  Text(
+                    l10n.laybyNewLayby,
+                    style: type.titleMedium?.copyWith(fontWeight: FontWeight.w700),
+                  ),
+                  SizedBox(height: spacing.sm),
+                  DropdownButtonFormField<Customer>(
+                    value: _customer,
+                    decoration: InputDecoration(
+                      labelText: l10n.laybyCustomer,
+                    ),
+                      items: _customers
+                          .map((c) => DropdownMenuItem<Customer>(
+                                value: c,
+                                child: Text(c.name),
+                              ))
+                          .toList(),
+                    onChanged: (v) => setState(() => _customer = v),
+                  ),
+                  SizedBox(height: spacing.sm),
+                  DropdownButtonFormField<Product>(
+                    value: _product,
+                    decoration: InputDecoration(
+                      labelText: l10n.laybyStyle,
+                    ),
+                    items: _products
+                        .map((p) => DropdownMenuItem(
+                              value: p,
+                              child: Text(p.name),
+                            ))
+                        .toList(),
+                    onChanged: (v) {
+                      setState(() {
+                        _product = v;
+                        _variant = null;
+                        if (v != null) {
+                          _loadVariants(v.id!);
+                        }
+                      });
+                    },
+                  ),
+                  SizedBox(height: spacing.sm),
+                  if (_variants.isNotEmpty)
+                    DropdownButtonFormField<ProductVariant>(
+                      value: _variant,
+                      decoration: InputDecoration(
+                        labelText: l10n.laybyVariant,
+                      ),
+                      items: _variants
+                          .map((v) => DropdownMenuItem(
+                                value: v,
+                                child: Text('${v.label} · ${formatMoney(v.sellPrice)} · ${v.availableStockQty.toInt()} left'),
+                              ))
+                          .toList(),
+                      onChanged: (v) => setState(() => _variant = v),
+                    ),
+                  SizedBox(height: spacing.sm),
+                  Row(
+                    children: <Widget>[
+                      Expanded(
+                        child: TextField(
+                          controller: _qtyCtrl,
+                          decoration: InputDecoration(
+                            labelText: l10n.laybyQuantity,
+                          ),
+                          keyboardType:
+                              const TextInputType.numberWithOptions(decimal: true),
+                        ),
+                      ),
+                      SizedBox(width: spacing.sm),
+                      Expanded(
+                        child: TextField(
+                          controller: _depositCtrl,
+                          decoration: InputDecoration(
+                            labelText: l10n.laybyDeposit,
+                          ),
+                          keyboardType:
+                              const TextInputType.numberWithOptions(decimal: true),
+                        ),
+                      ),
+                    ],
+                  ),
+                  SizedBox(height: spacing.sm),
+                  Row(
+                    children: <Widget>[
+                      Expanded(
+                        child: DropdownButtonFormField<String>(
+                          value: _depositMethod,
+                          decoration: InputDecoration(
+                            labelText: l10n.laybyPaymentMethod,
+                          ),
+                          items: const <DropdownMenuItem<String>>[
+                            DropdownMenuItem(value: 'cash', child: Text('Cash')),
+                            DropdownMenuItem(value: 'mpesa', child: Text('M-Pesa')),
+                            DropdownMenuItem(value: 'bank_transfer', child: Text('Bank transfer')),
+                          ],
+                          onChanged: (v) =>
+                              setState(() => _depositMethod = v!),
+                        ),
+                      ),
+                      SizedBox(width: spacing.sm),
+                      Expanded(
+                        child: TextField(
+                          controller: _referenceCtrl,
+                          decoration: InputDecoration(
+                            labelText: l10n.laybyReference,
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                  SizedBox(height: spacing.sm),
+                  TextField(
+                    controller: _dueDaysCtrl,
+                    decoration: InputDecoration(
+                      labelText: l10n.laybyDueDays,
+                    ),
+                    keyboardType: TextInputType.number,
+                  ),
+                  SizedBox(height: spacing.sm),
+                  SizedBox(
+                    width: double.infinity,
+                    child: FilledButton.icon(
+                      onPressed: _saving ? null : _create,
+                      icon: _saving
+                          ? const SizedBox(
+                              width: 16,
+                              height: 16,
+                              child: CircularProgressIndicator(strokeWidth: 2),
+                            )
+                          : const Icon(Icons.bookmark_add_outlined),
+                      label: Text(_saving ? 'Saving…' : l10n.laybyCreate),
+                    ),
+                  ),
+                ],
               ),
+            ),
+            SizedBox(height: spacing.xl),
+            // Existing laybys
+            Text(
+              l10n.laybyReservations,
+              style: type.titleMedium?.copyWith(fontWeight: FontWeight.w700),
+            ),
+            SizedBox(height: spacing.sm),
+            if (_laybys.isEmpty)
+              Padding(
+                padding: EdgeInsets.all(16),
+                child: Text(l10n.laybyNoLaybys),
+              )
+            else
+              ..._laybys.map(_laybyCard),
+            SizedBox(height: spacing.section),
+          ],
+        ),
       ),
     );
   }
 
-  Widget _createCard() => Card(
-        margin: const EdgeInsets.symmetric(horizontal: 16),
-        child: Padding(
-          padding: const EdgeInsets.all(16),
-          child:
-              Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-            const Text('New lay-by',
-                style: TextStyle(fontSize: 17, fontWeight: FontWeight.w700)),
-            const SizedBox(height: 12),
-            DropdownButtonFormField<Customer>(
-              initialValue: _customer,
-              decoration: const InputDecoration(labelText: 'Customer'),
-              items: _customers
-                  .map((customer) => DropdownMenuItem(
-                      value: customer, child: Text(customer.name)))
-                  .toList(),
-              onChanged: (value) => setState(() => _customer = value),
-            ),
-            const SizedBox(height: 10),
-            DropdownButtonFormField<Product>(
-              initialValue: _product,
-              decoration: const InputDecoration(labelText: 'Product'),
-              items: _products
-                  .map((product) => DropdownMenuItem(
-                      value: product,
-                      child: Text(
-                          '${product.name} · ${product.sellPrice.asMajor}')))
-                  .toList(),
-              onChanged: (value) => setState(() => _product = value),
-            ),
-            const SizedBox(height: 10),
-            Row(children: [
-              Expanded(
-                  child: TextField(
-                      controller: _qty,
-                      keyboardType:
-                          const TextInputType.numberWithOptions(decimal: true),
-                      decoration:
-                          const InputDecoration(labelText: 'Quantity'))),
-              const SizedBox(width: 10),
-              Expanded(
-                  child: TextField(
-                      controller: _deposit,
-                      keyboardType:
-                          const TextInputType.numberWithOptions(decimal: true),
-                      decoration:
-                          const InputDecoration(labelText: 'Deposit (KES)'))),
-              const SizedBox(width: 10),
-              Expanded(
-                  child: TextField(
-                      controller: _dueDays,
-                      keyboardType: TextInputType.number,
-                      decoration:
-                          const InputDecoration(labelText: 'Due days'))),
-            ]),
-            const SizedBox(height: 14),
-            FilledButton.icon(
-                onPressed: _saving ? null : _create,
-                icon: const Icon(Icons.bookmark_add_outlined),
-                label: Text(_saving ? 'Saving…' : 'Create lay-by')),
-          ]),
-        ),
-      );
+  Widget _laybyCard(Layby layby) {
+    final AppSpacing spacing = AppSpacing.of(context);
+    final AppColors colors = AppColors.of(context);
+    final type = AppTypography.of(context);
+    final l10n = AppLocalizations.of(context);
 
-  Widget _laybyCard(Layby layby) => Card(
-        margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 5),
-        child: Padding(
-          padding: const EdgeInsets.all(14),
-          child:
-              Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-            Row(children: [
-              Expanded(
-                  child: Text(
-                      layby.items.map((item) => item.productName).join(', '),
-                      style: const TextStyle(fontWeight: FontWeight.w700))),
-              Chip(label: Text(layby.status.wire)),
-            ]),
+    return Card(
+      margin: EdgeInsets.symmetric(horizontal: 16, vertical: 5),
+      child: Padding(
+        padding: EdgeInsets.all(14),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: <Widget>[
+            Row(
+              children: <Widget>[
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: <Widget>[
+                      Text(
+                        layby.items.map((item) => item.variantName.isNotEmpty ? item.variantName : item.productName).join(', '),
+                        style: type.bodyMedium?.copyWith(fontWeight: FontWeight.w700),
+                      ),
+                      SizedBox(height: spacing.xs),
+                      Chip(
+                        label: Text(layby.status.wire),
+                        backgroundColor: _statusColor(layby.status, colors),
+                      ),
+                    ],
+                  ),
+                ),
+                Text(
+                  'KSh ${layby.balance.asMajor.toStringAsFixed(0)}',
+                  style: type.bodyMedium?.copyWith(
+                    fontWeight: FontWeight.w700,
+                    color: layby.balance.isZero
+                        ? colors.success
+                        : colors.onSurface,
+                  ),
+                ),
+              ],
+            ),
+            SizedBox(height: spacing.xs),
             Text(
-                'Customer #${layby.customerId} · Due ${layby.dueAt.substring(0, 10)}'),
-            const SizedBox(height: 6),
+              '${l10n.laybyCustomer} #${layby.customerId} · ${l10n.laybyDue} ${layby.dueAt.substring(0, 10)}',
+              style: type.labelSmall?.copyWith(color: colors.onSurfaceMuted),
+            ),
+            SizedBox(height: spacing.xs),
             Text(
-                'Paid ${layby.paid.asMajor} / ${layby.total.asMajor} · Balance ${layby.balance.asMajor}'),
-            if (layby.isOpen)
+              '${l10n.laybyPaid} ${layby.paid.asMajor} / ${layby.total.asMajor}',
+              style: type.labelSmall?.copyWith(color: colors.onSurfaceMuted),
+            ),
+            if (layby.isOpen) ...<Widget>[
+              SizedBox(height: spacing.sm),
               Wrap(spacing: 8, children: [
                 TextButton.icon(
-                    onPressed: () => _pay(layby),
-                    icon: const Icon(Icons.payments_outlined),
-                    label: const Text('Payment')),
+                  onPressed: () => _pay(layby),
+                  icon: const Icon(Icons.payments_outlined),
+                  label: const Text('Payment'),
+                ),
                 if (layby.balance.isZero)
                   TextButton.icon(
-                      onPressed: () => _complete(layby),
-                      icon: const Icon(Icons.check_circle_outline),
-                      label: const Text('Complete')),
+                    onPressed: () => _complete(layby),
+                    icon: const Icon(Icons.check_circle_outline),
+                    label: const Text('Complete'),
+                  ),
                 TextButton.icon(
-                    onPressed: () => _cancel(layby),
-                    icon: const Icon(Icons.cancel_outlined),
-                    label: const Text('Cancel')),
+                  onPressed: () => _cancel(layby),
+                  icon: const Icon(Icons.cancel_outlined),
+                  label: const Text('Cancel'),
+                ),
               ]),
-          ]),
+            ],
+          ],
         ),
-      );
+      ),
+    );
+  }
+
+  Color? _statusColor(LaybyStatus status, AppColors colors) {
+    return switch (status) {
+      LaybyStatus.open => colors.warning,
+      LaybyStatus.completed => colors.success,
+      LaybyStatus.cancelled => colors.danger,
+      LaybyStatus.expired => colors.danger,
+    };
+  }
 }
