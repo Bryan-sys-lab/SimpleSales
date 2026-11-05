@@ -53,6 +53,7 @@ final class DashboardReady extends DashboardState {
     this.totalProducts = 0,
     this.outOfStockCount = 0,
     this.stockValue = Money.zero,
+    this.lowStockVariants = const <ProductVariant>[],
   });
 
   final DailyTotals totals;
@@ -63,6 +64,7 @@ final class DashboardReady extends DashboardState {
   final List<ProductSalesRow> topProducts;
   final List<Product> lowStock;
   final int lowStockCount;
+  final List<ProductVariant> lowStockVariants;
   final AttentionSummary attention;
 
   final String scopeLabel;

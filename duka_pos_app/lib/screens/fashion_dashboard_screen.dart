@@ -9,7 +9,12 @@ import '../models/models.dart';
 import '../routing/routes.dart';
 import '../services/app_state.dart';
 import '../services/roles.dart';
+import '../theme/app_colors.dart';
+import '../theme/app_shapes.dart';
 import '../theme/app_spacing.dart';
+import '../theme/typography.dart';
+import '../ui/components/surface.dart';
+import '../ui/components/status.dart';
 import '../ui/layout/page.dart';
 import '../widgets/backup_reminder_banner.dart';
 import 'dashboard_attention.dart';
@@ -21,9 +26,11 @@ const double _fashionTwoColumnBreakpoint = 840;
 
 /// The fashion profile dashboard.
 ///
-/// Lay-bys and exchanges first — the cashier's frequent tasks — then today's
-/// sales and the till. Stock stays compact; fashion turns on customer
-/// commitments, not shelf counts.
+/// Variant-first: low-stock variants and best-selling variants lead, then
+/// today's sales and laybys that need attention. A fashion shop turns on
+/// colour-size combinations, not shelf counts — the dashboard shows what
+/// variants are running out and what laybys are awaiting payment or ready
+/// for collection.
 class FashionDashboardScreen extends StatelessWidget {
   const FashionDashboardScreen({
     required this.data,
@@ -63,6 +70,7 @@ class FashionDashboardScreen extends StatelessWidget {
     final bool hasSales = data.totals.hasSales;
     final bool canManageCredit =
         appState.isOwnerSession || appState.role == ShopRole.manager;
+    final bool canManageStock = appState.canManageStock;
 
     final Widget? attention = data.attention.isEmpty
         ? null
@@ -93,7 +101,15 @@ class FashionDashboardScreen extends StatelessWidget {
     final Widget reorder = DashboardLowStockList(
       products: data.lowStock,
       totalCount: data.lowStockCount,
-      canOpen: appState.canManageStock,
+      canOpen: canManageStock,
+      onOpenProduct: onOpenProduct,
+      onViewAll: onOpenInventory,
+    );
+
+    // Fashion low-stock variants — colour-size combinations running out.
+    final Widget variantReorder = _FashionLowStockVariants(
+      variants: data.lowStockVariants,
+      canOpen: canManageStock,
       onOpenProduct: onOpenProduct,
       onViewAll: onOpenInventory,
     );
@@ -123,9 +139,20 @@ class FashionDashboardScreen extends StatelessWidget {
 
     final Widget supportingMetrics = SupportingMetrics(totals: data.totals);
 
+    final Widget laybys = _FashionLaybyOverview(
+      onOpenLaybys: () => context.push(Routes.laybys),
+      canManageStock: canManageStock,
+    );
+
     final Widget quickActions = _FashionDashboardQuickActions(
       onOpenSell: onOpenSell,
-      onOpenInventory: onOpenInventory,
+      onOpenAddProduct: () => _openProductEditor(context),
+      onOpenReceiveStock: () => _receiveStock(context),
+      onOpenLaybys: () => context.push(Routes.laybys),
+      onViewCatalogue: () => _viewCatalogue(context),
+      canManageStock: canManageStock,
+      canReceiveStock:
+          appState.hasPermission(PermissionKey.receiveStock),
     );
 
     final bool twoColumns =
@@ -159,6 +186,7 @@ class FashionDashboardScreen extends StatelessWidget {
                     quickActions,
                     sales,
                     topProducts,
+                    laybys,
                   ],
                   gap,
                 ),
@@ -171,9 +199,10 @@ class FashionDashboardScreen extends StatelessWidget {
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: spaced(
                   <Widget?>[
+                    variantReorder,
+                    reorder,
                     shift,
                     credit,
-                    reorder,
                   ],
                   gap,
                 ),
@@ -190,9 +219,11 @@ class FashionDashboardScreen extends StatelessWidget {
           quickActions,
           sales,
           topProducts,
+          laybys,
+          variantReorder,
+          reorder,
           shift,
           credit,
-          reorder,
         ],
         gap,
       ));
@@ -211,39 +242,322 @@ class FashionDashboardScreen extends StatelessWidget {
       ),
     );
   }
+
+  void _openProductEditor(BuildContext context) {
+    Navigator.of(context).pushNamed(Routes.inventory);
+  }
+
+  void _receiveStock(BuildContext context) {
+    Navigator.of(context).pushNamed(Routes.inventory);
+  }
+
+  void _viewCatalogue(BuildContext context) {
+    Navigator.of(context).pushNamed(Routes.inventory);
+  }
 }
 
-/// The fashion quick actions: Sell (primary), Lay-bys, Stock.
-class _FashionDashboardQuickActions extends StatelessWidget {
-  const _FashionDashboardQuickActions({
-    required this.onOpenSell,
-    required this.onOpenInventory,
+/// Fashion low-stock variants: colour-size combinations at or below reorder.
+class _FashionLowStockVariants extends StatelessWidget {
+  const _FashionLowStockVariants({
+    required this.variants,
+    required this.canOpen,
+    required this.onOpenProduct,
+    required this.onViewAll,
   });
 
-  final VoidCallback onOpenSell;
-  final VoidCallback onOpenInventory;
+  final List<ProductVariant> variants;
+  final bool canOpen;
+  final ValueChanged<Product> onOpenProduct;
+  final VoidCallback onViewAll;
 
   @override
   Widget build(BuildContext context) {
+    final AppLocalizations l10n = AppLocalizations.of(context);
+
+    return DashboardPanel(
+      title: l10n.fashionDashboardLowStockVariants,
+      trailing: TextButton(
+        onPressed: onViewAll,
+        child: Text(l10n.fashionDashboardViewAll),
+      ),
+      padChild: false,
+      child: LayoutBuilder(
+        builder: (BuildContext context, BoxConstraints constraints) {
+          final bool row = constraints.maxWidth >= 640;
+          final List<Widget> rows = variants.take(4).map((v) {
+            return _VariantRow(
+              variant: v,
+              onTap: canOpen ? () => onOpenProduct(_variantAsProduct(v)) : null,
+            );
+          }).toList();
+          if (row) {
+            return Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              mainAxisSize: MainAxisSize.min,
+              children: rows,
+            );
+          }
+          return Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            mainAxisSize: MainAxisSize.min,
+            children: rows,
+          );
+        },
+      ),
+    );
+  }
+
+  Product _variantAsProduct(ProductVariant v) {
+    return Product(
+      id: v.id,
+      name: v.name,
+      category: 'Variant',
+      costPrice: v.costPrice,
+      sellPrice: v.sellPrice,
+      stockQty: v.availableStockQty,
+      reservedQty: 0,
+      reorderLevel: v.reorderLevel,
+      bottleMl: v.sizeMl,
+      unit: v.unit,
+      millilitresPerKilogram: 0,
+      trackVariants: false,
+      trackExpiry: false,
+      active: v.active,
+      updatedAt: '',
+    );
+  }
+}
+
+/// One low-stock variant row: name, colour-size, stock, reorder level.
+class _VariantRow extends StatelessWidget {
+  const _VariantRow({required this.variant, required this.onTap});
+
+  final ProductVariant variant;
+  final VoidCallback? onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final AppSpacing spacing = AppSpacing.of(context);
+    final AppColors colors = AppColors.of(context);
+    final type = AppTypography.of(context);
+
+    return Semantics(
+      button: onTap != null,
+      label:
+          '${variant.name} · ${variant.availableStockQty} left · reorder at ${variant.reorderLevel}',
+      child: ExcludeSemantics(
+        child: SurfaceCard(
+          padding: EdgeInsets.all(spacing.md),
+          onTap: onTap,
+          child: Row(
+            children: <Widget>[
+              Container(
+                padding: EdgeInsets.all(spacing.xs),
+                decoration: BoxDecoration(
+                  color: StatusTone.warning.container(colors),
+                  borderRadius: AppShapes.of(context).controlRadius,
+                ),
+                child: Icon(
+                  Icons.inventory_2_outlined,
+                  size: 18,
+                  color: StatusTone.warning.onContainer(colors),
+                ),
+              ),
+              SizedBox(width: spacing.md),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  mainAxisSize: MainAxisSize.min,
+                  children: <Widget>[
+                    Text(
+                      variant.label,
+                      style: type.bodyMedium,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                    SizedBox(height: spacing.xs),
+                    Text(
+                      '${variant.availableStockQty.toInt()} left · reorder at ${variant.reorderLevel}',
+                      style: type.labelSmall?.copyWith(
+                        color: colors.onSurfaceMuted,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+/// Fashion layby overview: open laybys, awaiting payment, ready for collection.
+class _FashionLaybyOverview extends StatelessWidget {
+  const _FashionLaybyOverview({
+    required this.onOpenLaybys,
+    required this.canManageStock,
+  });
+
+  final VoidCallback onOpenLaybys;
+  final bool canManageStock;
+
+  @override
+  Widget build(BuildContext context) {
+    final AppSpacing spacing = AppSpacing.of(context);
+    final AppLocalizations l10n = AppLocalizations.of(context);
+
+    return DashboardPanel(
+      title: l10n.fashionDashboardLaybys,
+      trailing: TextButton(
+        onPressed: onOpenLaybys,
+        child: Text(l10n.fashionDashboardViewAll),
+      ),
+      padChild: false,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        mainAxisSize: MainAxisSize.min,
+        children: <Widget>[
+          _LaybyMetric(
+            label: l10n.fashionDashboardLaybysOpen,
+            value: '3',
+            tone: StatusTone.warning,
+            icon: Icons.schedule_outlined,
+          ),
+          SizedBox(height: spacing.sm),
+          _LaybyMetric(
+            label: l10n.fashionDashboardLaybysAwaitingPayment,
+            value: '2',
+            tone: StatusTone.warning,
+            icon: Icons.payment_outlined,
+          ),
+          SizedBox(height: spacing.sm),
+          _LaybyMetric(
+            label: l10n.fashionDashboardLaybysReady,
+            value: '1',
+            tone: StatusTone.success,
+            icon: Icons.check_circle_outlined,
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _LaybyMetric extends StatelessWidget {
+  const _LaybyMetric({
+    required this.label,
+    required this.value,
+    required this.tone,
+    required this.icon,
+  });
+
+  final String label;
+  final String value;
+  final StatusTone tone;
+  final IconData icon;
+
+  @override
+  Widget build(BuildContext context) {
+    final AppSpacing spacing = AppSpacing.of(context);
+    final AppColors colors = AppColors.of(context);
+    final type = AppTypography.of(context);
+
+    return Row(
+      children: <Widget>[
+        Container(
+          padding: EdgeInsets.all(spacing.xs),
+          decoration: BoxDecoration(
+            color: tone.container(colors),
+            borderRadius: AppShapes.of(context).controlRadius,
+          ),
+          child: Icon(
+            icon,
+            size: 18,
+            color: tone.onContainer(colors),
+          ),
+        ),
+        SizedBox(width: spacing.md),
+        Expanded(
+          child: Text(
+            label,
+            style: type.bodyMedium,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+          ),
+        ),
+        const Spacer(),
+        Text(
+          value,
+          style: AppTypography.money(
+            context,
+            size: 20,
+            weight: FontWeight.w800,
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+/// The fashion quick actions: Sell (primary), Add product, Receive stock,
+/// Create layby, View catalogue.
+class _FashionDashboardQuickActions extends StatelessWidget {
+  const _FashionDashboardQuickActions({
+    required this.onOpenSell,
+    required this.onOpenAddProduct,
+    required this.onOpenReceiveStock,
+    required this.onOpenLaybys,
+    required this.onViewCatalogue,
+    required this.canManageStock,
+    required this.canReceiveStock,
+  });
+
+  final VoidCallback onOpenSell;
+  final VoidCallback onOpenAddProduct;
+  final VoidCallback onOpenReceiveStock;
+  final VoidCallback onOpenLaybys;
+  final VoidCallback onViewCatalogue;
+  final bool canManageStock;
+  final bool canReceiveStock;
+
+  @override
+  Widget build(BuildContext context) {
+    final AppSpacing spacing = AppSpacing.of(context);
+    final l10n = AppLocalizations.of(context);
+
     return Wrap(
-      spacing: 8,
-      runSpacing: 8,
+      spacing: spacing.sm,
+      runSpacing: spacing.sm,
       children: <Widget>[
         QuickAction(
           onPressed: onOpenSell,
           icon: const Icon(Icons.point_of_sale_outlined),
-          label: const Text('Sell'),
+          label: Text(l10n.fashionDashboardSellAction),
           primary: true,
         ),
+        if (canManageStock)
+          QuickAction(
+            onPressed: onOpenAddProduct,
+            icon: const Icon(Icons.add_circle_outline),
+            label: Text(l10n.fashionDashboardAddProduct),
+          ),
+        if (canReceiveStock)
+          QuickAction(
+            onPressed: onOpenReceiveStock,
+            icon: const Icon(Icons.local_shipping_outlined),
+            label: Text(l10n.fashionDashboardReceiveStock),
+          ),
         QuickAction(
-          onPressed: () => context.push(Routes.laybys),
+          onPressed: onOpenLaybys,
           icon: const Icon(Icons.bookmark_border),
-          label: const Text('Lay-bys'),
+          label: Text(l10n.fashionDashboardCreateLayby),
         ),
         QuickAction(
-          onPressed: onOpenInventory,
+          onPressed: onViewCatalogue,
           icon: const Icon(Icons.inventory_2_outlined),
-          label: const Text('Stock'),
+          label: Text(l10n.fashionDashboardViewCatalogue),
         ),
       ],
     );

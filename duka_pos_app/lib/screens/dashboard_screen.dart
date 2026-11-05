@@ -222,6 +222,14 @@ class _DashboardScreenState extends State<DashboardScreen>
               sum + (p.stockQty * p.costPrice.minorUnits).round(),
         ),
       );
+      // Variant-level low stock for fashion: a variant is low when its own
+      // available count is at or below its reorder level.
+      final List<ProductVariant> lowVariants =
+          appState.shopProfile == ShopProfile.fashion
+              ? (await db.getAllVariants())
+                  .where((ProductVariant v) => v.active && v.isLow)
+                  .toList()
+              : const <ProductVariant>[];
       final DailyTotals totalsToday =
           await db.salesTotalsFor(since: dayStart, staffId: staffId);
       final DailyTotals totalsAll = await db.salesTotalsFor(staffId: staffId);
@@ -266,6 +274,7 @@ class _DashboardScreenState extends State<DashboardScreen>
             totalProducts: totalProducts,
             outOfStockCount: outOfStockCount,
             stockValue: stockValue,
+            lowStockVariants: lowVariants,
           );
         });
         if (shift == null) return;
@@ -352,6 +361,7 @@ class _DashboardScreenState extends State<DashboardScreen>
           totalProducts: totalProducts,
           outOfStockCount: outOfStockCount,
           stockValue: stockValue,
+          lowStockVariants: lowVariants,
         );
       });
 
@@ -379,6 +389,7 @@ class _DashboardScreenState extends State<DashboardScreen>
             totalProducts: ready.totalProducts,
             outOfStockCount: ready.outOfStockCount,
             stockValue: ready.stockValue,
+            lowStockVariants: ready.lowStockVariants,
           ));
     } catch (_) {
       if (!_current(serial, session, appState)) return;
