@@ -5975,4 +5975,25 @@ class AppLocalizationsSw extends AppLocalizations {
 
   @override
   String get openAnalyticsReceivables => 'Watu wanaolipia';
+
+  @override
+  String get shiftStartTitle => 'Fungua mfuasi';
+
+  @override
+  String get shiftStartSubtitle => 'Hakuna mfuasi uliopangwa';
+
+  @override
+  String shiftStartPurpose(Object purpose) {
+    return 'Unahitaji mfuasi uliopangwa ili $purpose.';
+  }
+
+  @override
+  String get shiftStartNeedDrawer =>
+      'Pesa ya roho hushuka kwenye mfuasi, mfuasi haitakuwa uliofungwa kwanza.';
+
+  @override
+  String get shiftStartOpenShift => 'Floati ya pembejeo';
+
+  @override
+  String get shiftStartStartShift => 'Funga mfuasi';
 }

@@ -5974,4 +5974,25 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get openAnalyticsReceivables => 'Receivables';
+
+  @override
+  String get shiftStartTitle => 'Start a shift';
+
+  @override
+  String get shiftStartSubtitle => 'No shift is open';
+
+  @override
+  String shiftStartPurpose(Object purpose) {
+    return 'You need an open shift to $purpose.';
+  }
+
+  @override
+  String get shiftStartNeedDrawer =>
+      'Cash goes into the shift drawer, so a shift must be open first.';
+
+  @override
+  String get shiftStartOpenShift => 'Opening float';
+
+  @override
+  String get shiftStartStartShift => 'Start shift';
 }

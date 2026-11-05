@@ -9891,6 +9891,42 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'Receivables'**
   String get openAnalyticsReceivables;
+
+  /// No description provided for @shiftStartTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Start a shift'**
+  String get shiftStartTitle;
+
+  /// No description provided for @shiftStartSubtitle.
+  ///
+  /// In en, this message translates to:
+  /// **'No shift is open'**
+  String get shiftStartSubtitle;
+
+  /// No description provided for @shiftStartPurpose.
+  ///
+  /// In en, this message translates to:
+  /// **'You need an open shift to {purpose}.'**
+  String shiftStartPurpose(Object purpose);
+
+  /// No description provided for @shiftStartNeedDrawer.
+  ///
+  /// In en, this message translates to:
+  /// **'Cash goes into the shift drawer, so a shift must be open first.'**
+  String get shiftStartNeedDrawer;
+
+  /// No description provided for @shiftStartOpenShift.
+  ///
+  /// In en, this message translates to:
+  /// **'Opening float'**
+  String get shiftStartOpenShift;
+
+  /// No description provided for @shiftStartStartShift.
+  ///
+  /// In en, this message translates to:
+  /// **'Start shift'**
+  String get shiftStartStartShift;
 }
 
 class _AppLocalizationsDelegate
