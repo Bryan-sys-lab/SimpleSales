@@ -19,7 +19,6 @@ import '../theme/app_shapes.dart';
 import '../theme/app_spacing.dart';
 import '../theme/typography.dart';
 import '../ui/components/surface.dart';
-import '../ui/components/status.dart';
 import '../ui/components/states.dart';
 import '../ui/layout/page.dart';
 import '../utils/money.dart';
@@ -40,7 +39,6 @@ class TankDetailScreen extends StatefulWidget {
 class _TankDetailScreenState extends State<TankDetailScreen> {
   DrinkTankLevel? _tank;
   int _tankSalesMinor = 0;
-  String? _lastMeasured;
   List<TankActivityEntry> _activity = const <TankActivityEntry>[];
   bool _loading = true;
   String? _error;
@@ -123,7 +121,6 @@ class _TankDetailScreenState extends State<TankDetailScreen> {
       _tank = tankEntry;
 
       _tankSalesMinor = 0;
-      _lastMeasured = null;
 
       // Build activity from the tank's own data.
       _activity = <TankActivityEntry>[
@@ -204,25 +201,22 @@ class _TankDetailScreenState extends State<TankDetailScreen> {
     final AppSpacing spacing = AppSpacing.of(context);
     final l10n = AppLocalizations.of(context);
     final tank = _tank!;
-    final percent = tank.fillPercent;
+    final percent = tank.fillPercent.clamp(0.0, 1.0);
 
     return Scaffold(
       appBar: AppBar(
         title: Text(tank.name),
+        leading: IconButton(
+          icon: const Icon(Icons.chevron_left),
+          onPressed: () => context.pop(),
+        ),
         actions: <Widget>[
-          if (context.read<AppState>().canManageStock) ...<Widget>[
+          if (context.read<AppState>().canManageStock)
             OutlinedButton.icon(
-              onPressed: _recordMeasurement,
-              icon: const Icon(Icons.query_stats),
-              label: Text(l10n.tankActionMeasure),
+              onPressed: _viewHistory,
+              icon: const Icon(Icons.history),
+              label: Text(l10n.tankActionViewAll),
             ),
-            SizedBox(width: spacing.sm),
-            FilledButton.icon(
-              onPressed: _receive,
-              icon: const Icon(Icons.inventory),
-              label: Text(l10n.tankActionReceive),
-            ),
-          ],
         ],
       ),
       body: AdaptivePage(
@@ -238,44 +232,93 @@ class _TankDetailScreenState extends State<TankDetailScreen> {
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: <Widget>[
             SizedBox(height: spacing.sm),
-            _TankDetailHeader(
+
+            // Centered tank identity card: circular art badge, name, status.
+            _TankIdentityCard(
               name: tank.name,
               percent: percent,
-              litresRemaining: tank.litresRemaining,
-              capacityLitres: tank.capacityLitres,
-              costInvestedMinor: tank.costInvestedMinor,
-              salesMinor: _tankSalesMinor,
-              lastMeasured: _lastMeasured,
+              status: percent > 0.3
+                  ? l10n.tankStatusHealthy
+                  : (percent > 0.1 ? l10n.tankStatusLow : l10n.tankStatusCritical),
+              onImageTap: null,
             ),
             SizedBox(height: spacing.lg),
+
+            // Fill progress bar — the tank's level as a wide thin bar.
+            _TankFillBar(
+              percent: percent,
+              label: l10n.tankDetailSubtitle,
+            ),
+            SizedBox(height: spacing.lg),
+
+            // Three stats: remaining, capacity, invested.
             Row(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
               children: <Widget>[
                 Expanded(
-                  child: OutlinedButton.icon(
-                    onPressed: _receive,
-                    icon: const Icon(Icons.inventory),
-                    label: Text(l10n.tankActionReceive),
+                  child: _TankStatCard(
+                    label: l10n.tankDetailMeasuredRemaining,
+                    value: '${tank.litresRemaining.toStringAsFixed(0)} ml',
+                    detail: l10n.tankDetailSalesDetail,
+                    icon: Icons.local_drink_outlined,
                   ),
                 ),
-                SizedBox(width: spacing.sm),
+                SizedBox(width: spacing.md),
                 Expanded(
-                  child: FilledButton.icon(
-                    onPressed: _recordMeasurement,
-                    icon: const Icon(Icons.query_stats),
-                    label: Text(l10n.tankActionMeasure),
+                  child: _TankStatCard(
+                    label: l10n.tankDetailCapacity,
+                    value: '${tank.capacityLitres.toStringAsFixed(0)} ml',
+                    detail: l10n.tankDetailCapacityDetail,
+                    icon: Icons.warehouse,
                   ),
                 ),
-                SizedBox(width: spacing.sm),
+                SizedBox(width: spacing.md),
                 Expanded(
-                  child: OutlinedButton.icon(
-                    onPressed: _viewHistory,
-                    icon: const Icon(Icons.history),
-                    label: Text(l10n.tankActionHistory),
+                  child: _TankStatCard(
+                    label: l10n.tankDetailInvested,
+                    value: formatMoney(Money.fromMinor(tank.costInvestedMinor)),
+                    detail: l10n.tankDetailInvestedDetail,
+                    icon: Icons.attach_money,
                   ),
                 ),
               ],
             ),
             SizedBox(height: spacing.lg),
+
+            // Three full-width action buttons: Receive, Measure, History.
+            if (context.read<AppState>().canManageStock) ...<Widget>[
+              Row(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: <Widget>[
+                  Expanded(
+                    child: OutlinedButton.icon(
+                      onPressed: _receive,
+                      icon: const Icon(Icons.inventory),
+                      label: Text(l10n.tankActionReceive),
+                    ),
+                  ),
+                  SizedBox(width: spacing.md),
+                  Expanded(
+                    child: FilledButton.icon(
+                      onPressed: _recordMeasurement,
+                      icon: const Icon(Icons.query_stats),
+                      label: Text(l10n.tankActionMeasure),
+                    ),
+                  ),
+                  SizedBox(width: spacing.md),
+                  Expanded(
+                    child: OutlinedButton.icon(
+                      onPressed: _viewHistory,
+                      icon: const Icon(Icons.history),
+                      label: Text(l10n.tankActionHistory),
+                    ),
+                  ),
+                ],
+              ),
+              SizedBox(height: spacing.lg),
+            ],
+
+            // Activity section.
             if (_activity.isNotEmpty) ...<Widget>[
               SectionHeader(
                 label: l10n.tankDetailActivity,
@@ -311,172 +354,198 @@ class _TankDetailScreenState extends State<TankDetailScreen> {
   }
 }
 
-/// The tank's headline numbers: status chip, measured remaining, capacity.
-class _TankDetailHeader extends StatelessWidget {
-  const _TankDetailHeader({
+/// The tank's identity card — centered: circular art badge, name bold,
+/// muted status subtitle. Mirrors the mockup's tank header.
+class _TankIdentityCard extends StatelessWidget {
+  const _TankIdentityCard({
     required this.name,
     required this.percent,
-    required this.litresRemaining,
-    required this.capacityLitres,
-    required this.costInvestedMinor,
-    required this.salesMinor,
-    required this.lastMeasured,
+    required this.status,
+    this.onImageTap,
   });
 
   final String name;
   final double percent;
-  final double litresRemaining;
-  final double capacityLitres;
-  final int costInvestedMinor;
-  final int salesMinor;
-  final String? lastMeasured;
+  final String status;
+  final VoidCallback? onImageTap;
 
   @override
   Widget build(BuildContext context) {
     final AppSpacing spacing = AppSpacing.of(context);
     final AppColors colors = AppColors.of(context);
-    final type = AppTypography.of(context);
-    final l10n = AppLocalizations.of(context);
+    final TextTheme type = AppTypography.of(context);
 
     return SurfaceCard(
       padding: EdgeInsets.all(spacing.lg),
       child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
+        crossAxisAlignment: CrossAxisAlignment.center,
+        mainAxisSize: MainAxisSize.min,
         children: <Widget>[
-          Row(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: <Widget>[
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: <Widget>[
-                    Text(
-                      name,
-                      style: type.titleMedium?.copyWith(
-                        fontWeight: FontWeight.w700,
-                        color: colors.onSurface,
-                        height: 1.2,
-                      ),
-                    ),
-                    SizedBox(height: spacing.xs),
-                    StatusChip(
-                      tone: percent > 0.3
-                          ? StatusTone.success
-                          : (percent > 0.1 ? StatusTone.warning : StatusTone.danger),
-                      text: l10n.tankStatusActive,
-                      dense: true,
-                    ),
-                  ],
-                ),
-              ),
-              Column(
-                crossAxisAlignment: CrossAxisAlignment.end,
-                children: <Widget>[
-                  Text(
-                    '${litresRemaining.toStringAsFixed(0)} L',
-                    style: AppTypography.money(
-                      context,
-                      size: 40,
-                      weight: FontWeight.w800,
-                    ),
-                  ),
-                  SizedBox(height: spacing.xs),
-                  Text(
-                    l10n.tankDetailMeasuredRemaining,
-                    style: type.bodySmall?.copyWith(color: colors.onSurfaceMuted),
-                  ),
-                ],
-              ),
-            ],
-          ),
-          SizedBox(height: spacing.md),
-          Row(
-            children: <Widget>[
-              Expanded(
-                child: _TankDetailMetric(
-                  label: l10n.tankDetailCapacity,
-                  value: '${capacityLitres.toStringAsFixed(0)} L',
-                  detail: l10n.tankDetailCapacityDetail,
-                ),
-              ),
-              Expanded(
-                child: _TankDetailMetric(
-                  label: l10n.tankDetailInvested,
-                  value: formatMoney(Money.fromMinor(costInvestedMinor)),
-                  detail: l10n.tankDetailInvestedDetail,
-                ),
-              ),
-              Expanded(
-                child: _TankDetailMetric(
-                  label: l10n.tankDetailSales,
-                  value: formatMoney(Money.fromMinor(salesMinor)),
-                  detail: l10n.tankDetailSalesDetail,
-                ),
-              ),
-            ],
-          ),
-          SizedBox(height: spacing.md),
-          if (lastMeasured != null)
-            Padding(
-              padding: EdgeInsetsDirectional.only(start: spacing.xs),
-              child: Row(
-                children: <Widget>[
-                  Icon(Icons.access_time,
-                      size: 16, color: colors.onSurfaceMuted),
-                  SizedBox(width: spacing.xs),
-                  Text(
-                    l10n.tankDetailLastMeasured(lastMeasured!),
-                    style: type.bodySmall?.copyWith(color: colors.onSurfaceMuted),
-                  ),
-                ],
-              ),
+          Container(
+            width: 64,
+            height: 64,
+            decoration: BoxDecoration(
+              color: colors.surfaceSunken,
+              shape: BoxShape.circle,
             ),
+            child: const Icon(
+              Icons.local_bar,
+              size: 32,
+              color: Colors.white,
+            ),
+          ),
+          SizedBox(height: spacing.md),
+          Text(
+            name,
+            style: type.titleMedium?.copyWith(
+              fontWeight: FontWeight.w700,
+              color: colors.onSurface,
+              height: 1.2,
+            ),
+            textAlign: TextAlign.center,
+          ),
+          SizedBox(height: spacing.xs),
+          Text(
+            status,
+            style: type.bodySmall?.copyWith(
+              color: colors.onSurfaceMuted,
+            ),
+            textAlign: TextAlign.center,
+          ),
         ],
       ),
     );
   }
 }
 
-/// One metric: label, value, detail.
-class _TankDetailMetric extends StatelessWidget {
-  const _TankDetailMetric({
+/// A wide thin fill bar showing the tank's level as a percentage.
+class _TankFillBar extends StatelessWidget {
+  const _TankFillBar({
+    required this.percent,
     required this.label,
-    required this.value,
-    required this.detail,
   });
 
+  final double percent;
   final String label;
-  final String value;
-  final String detail;
 
   @override
   Widget build(BuildContext context) {
     final AppSpacing spacing = AppSpacing.of(context);
     final AppColors colors = AppColors.of(context);
-    final type = AppTypography.of(context);
 
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      mainAxisSize: MainAxisSize.min,
-      children: <Widget>[
-        Text(label,
-            style: type.labelMedium?.copyWith(color: colors.onSurfaceMuted)),
-        SizedBox(height: spacing.xs),
-        Text(value,
-            style: AppTypography.money(
-              context,
-              size: 20,
-              weight: FontWeight.w700,
-            )),
-        SizedBox(height: spacing.xs),
-        Text(detail,
-            style: type.bodySmall?.copyWith(color: colors.onSurfaceMuted)),
-      ],
+    return SurfaceCard(
+      padding: EdgeInsetsDirectional.only(
+        start: spacing.lg,
+        end: spacing.lg,
+        top: spacing.lg,
+        bottom: spacing.md,
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        mainAxisSize: MainAxisSize.min,
+        children: <Widget>[
+          Row(
+            children: <Widget>[
+              Text(
+                label,
+                style: AppTypography.of(context).labelMedium?.copyWith(
+                  color: colors.onSurfaceMuted,
+                ),
+              ),
+              const Spacer(),
+              Text(
+                '${(percent * 100).round()}%',
+                style: AppTypography.of(context).bodyMedium?.copyWith(
+                  fontWeight: FontWeight.w700,
+                  color: colors.onSurface,
+                ),
+              ),
+            ],
+          ),
+          SizedBox(height: spacing.sm),
+          ClipRRect(
+            borderRadius: BorderRadius.circular(4),
+            child: LinearProgressIndicator(
+              value: percent,
+              minHeight: 6,
+              backgroundColor: colors.surfaceSunken,
+              valueColor: AlwaysStoppedAnimation<Color>(colors.accent),
+            ),
+          ),
+        ],
+      ),
     );
   }
 }
 
-/// One activity entry: when, what, how much, who.
+/// One stat card: icon badge, label above, bold value, muted detail.
+class _TankStatCard extends StatelessWidget {
+  const _TankStatCard({
+    required this.label,
+    required this.value,
+    required this.detail,
+    required this.icon,
+  });
+
+  final String label;
+  final String value;
+  final String detail;
+  final IconData icon;
+
+  @override
+  Widget build(BuildContext context) {
+    final AppSpacing spacing = AppSpacing.of(context);
+    final AppColors colors = AppColors.of(context);
+    final TextTheme type = AppTypography.of(context);
+
+    return SurfaceCard(
+      padding: EdgeInsets.all(spacing.md),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        mainAxisSize: MainAxisSize.min,
+        children: <Widget>[
+          Row(
+            children: <Widget>[
+              Container(
+                padding: const EdgeInsets.all(8),
+                decoration: BoxDecoration(
+                  color: colors.surfaceSunken,
+                  borderRadius: AppShapes.of(context).controlRadius,
+                ),
+                child: Icon(
+                  icon,
+                  size: 18,
+                  color: colors.onSurfaceVariant,
+                ),
+              ),
+            ],
+          ),
+          SizedBox(height: spacing.md),
+          Text(
+            label,
+            style: type.labelMedium?.copyWith(color: colors.onSurfaceMuted),
+          ),
+          SizedBox(height: spacing.xs),
+          Text(
+            value,
+            style: AppTypography.money(
+              context,
+              size: 20,
+              weight: FontWeight.w800,
+            ),
+          ),
+          SizedBox(height: spacing.xs),
+          Text(
+            detail,
+            style: type.bodySmall?.copyWith(color: colors.onSurfaceMuted),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+/// One activity entry: icon circle, label/detail, value and time trailing.
 class _TankActivityRow extends StatelessWidget {
   const _TankActivityRow({
     required this.entry,
@@ -490,7 +559,7 @@ class _TankActivityRow extends StatelessWidget {
   Widget build(BuildContext context) {
     final AppSpacing spacing = AppSpacing.of(context);
     final AppColors colors = AppColors.of(context);
-    final type = AppTypography.of(context);
+    final TextTheme type = AppTypography.of(context);
 
     return Semantics(
       button: true,
@@ -506,14 +575,14 @@ class _TankActivityRow extends StatelessWidget {
             children: <Widget>[
               ExcludeSemantics(
                 child: Container(
-                  padding: const EdgeInsets.all(6),
+                  padding: const EdgeInsets.all(8),
                   decoration: BoxDecoration(
                     color: colors.surfaceSunken,
-                    borderRadius: AppShapes.of(context).controlRadius,
+                    shape: BoxShape.circle,
                   ),
                   child: Icon(
                     entry.icon,
-                    size: 16,
+                    size: 20,
                     color: colors.onSurfaceVariant,
                   ),
                 ),
@@ -535,11 +604,17 @@ class _TankActivityRow extends StatelessWidget {
                 crossAxisAlignment: CrossAxisAlignment.end,
                 mainAxisSize: MainAxisSize.min,
                 children: <Widget>[
-                  Text(entry.value,
-                      style: AppTypography.money(context, size: 15)),
+                  Text(
+                    entry.value,
+                    style: AppTypography.money(context, size: 15),
+                  ),
                   SizedBox(height: spacing.xs),
-                  Text(entry.when,
-                      style: type.bodySmall?.copyWith(color: colors.onSurfaceMuted)),
+                  Text(
+                    entry.when,
+                    style: type.bodySmall?.copyWith(
+                      color: colors.onSurfaceMuted,
+                    ),
+                  ),
                 ],
               ),
             ],

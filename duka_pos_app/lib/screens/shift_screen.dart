@@ -41,6 +41,7 @@ import '../utils/crypto_utils.dart';
 import '../routing/routes.dart';
 import '../theme/app_colors.dart';
 import '../theme/app_haptics.dart';
+import '../theme/app_shapes.dart';
 import '../theme/app_spacing.dart';
 import '../theme/typography.dart';
 import '../ui/components/controls.dart';
@@ -681,6 +682,7 @@ class OpenShiftCard extends StatelessWidget {
   Widget build(BuildContext context) {
     final AppSpacing spacing = AppSpacing.of(context);
     final AppLocalizations l10n = AppLocalizations.of(context);
+    final AppColors colors = AppColors.of(context);
     final TextTheme type = AppTypography.of(context);
 
     final Widget card = SurfaceCard(
@@ -694,27 +696,61 @@ class OpenShiftCard extends StatelessWidget {
         variance.spoken,
         formatInstant(shift.startTime),
       ),
+      padding: EdgeInsets.all(spacing.lg),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         mainAxisSize: MainAxisSize.min,
         children: <Widget>[
-          Text(shift.staffName, style: type.titleSmall),
-          SizedBox(height: spacing.xs),
-          Text(
-            l10n.shiftStartedAt(formatInstant(shift.startTime)),
-            style: type.bodySmall,
+          // Centered shift identity: pill, duration, started-at — mirroring
+          // the mockup's shift header.
+          Column(
+            crossAxisAlignment: CrossAxisAlignment.center,
+            children: <Widget>[
+              StatusChip(
+                tone: StatusTone.success,
+                text: l10n.shiftOpenChip,
+                dense: true,
+              ),
+              SizedBox(height: spacing.md),
+              Text(
+                _shiftDuration(shift.startTime),
+                style: AppTypography.money(
+                  context,
+                  size: 32,
+                  weight: FontWeight.w800,
+                ).copyWith(color: colors.onSurface),
+              ),
+              SizedBox(height: spacing.xs),
+              Text(
+                l10n.shiftStartedAt(formatInstant(shift.startTime)),
+                style: type.bodySmall?.copyWith(
+                  color: colors.onSurfaceMuted,
+                ),
+                textAlign: TextAlign.center,
+              ),
+            ],
           ),
-          SizedBox(height: spacing.md),
-          StatTile(
-            label: l10n.shiftExpectedLabel,
-            value: formatMoney(expected),
-            emphasis: StatEmphasis.strong,
-          ),
-          SizedBox(height: spacing.xs),
-          KeyValueRow(
-            label: l10n.shiftOpeningFloat,
-            value: formatMoney(shift.startFloat),
-            showDivider: false,
+          SizedBox(height: spacing.lg),
+          // Cash / M-Pesa sales stats.
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: <Widget>[
+              Expanded(
+                child: _ShiftStatTile(
+                  label: l10n.shiftExpectedLabel,
+                  value: formatMoney(expected),
+                  icon: Icons.attach_money,
+                ),
+              ),
+              SizedBox(width: spacing.md),
+              Expanded(
+                child: _ShiftStatTile(
+                  label: 'Cash sales',
+                  value: formatMoney(expected),
+                  icon: Icons.payments_outlined,
+                ),
+              ),
+            ],
           ),
           SizedBox(height: spacing.md),
           VarianceStrip(variance: variance),
@@ -782,6 +818,76 @@ class OpenShiftCard extends StatelessWidget {
             ? SingleChildScrollView(child: content)
             : content;
       },
+    );
+  }
+
+  String _shiftDuration(String start) {
+    final now = DateTime.now();
+    try {
+      final started = DateTime.parse(start);
+      final diff = now.difference(started);
+      final hours = diff.inHours;
+      final minutes = diff.inMinutes.remainder(60);
+      return '${hours}h ${minutes}m';
+    } on FormatException {
+      return '--h --m';
+    }
+  }
+}
+
+/// One stat tile for the open shift card: label above bold value, icon badge.
+class _ShiftStatTile extends StatelessWidget {
+  const _ShiftStatTile({
+    required this.label,
+    required this.value,
+    required this.icon,
+  });
+
+  final String label;
+  final String value;
+  final IconData icon;
+
+  @override
+  Widget build(BuildContext context) {
+    final AppSpacing spacing = AppSpacing.of(context);
+    final AppColors colors = AppColors.of(context);
+    final TextTheme type = AppTypography.of(context);
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      mainAxisSize: MainAxisSize.min,
+      children: <Widget>[
+        Row(
+          children: <Widget>[
+            Container(
+              padding: const EdgeInsets.all(8),
+              decoration: BoxDecoration(
+                color: colors.surfaceSunken,
+                borderRadius: AppShapes.of(context).controlRadius,
+              ),
+              child: Icon(
+                icon,
+                size: 18,
+                color: colors.onSurfaceVariant,
+              ),
+            ),
+          ],
+        ),
+        SizedBox(height: spacing.md),
+        Text(
+          label,
+          style: type.labelMedium?.copyWith(color: colors.onSurfaceMuted),
+        ),
+        SizedBox(height: spacing.xs),
+        Text(
+          value,
+          style: AppTypography.money(
+            context,
+            size: 20,
+            weight: FontWeight.w800,
+          ),
+        ),
+      ],
     );
   }
 }

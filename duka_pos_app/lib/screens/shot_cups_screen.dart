@@ -235,14 +235,15 @@ class _ShotCupsScreenState extends State<ShotCupsScreen> {
     return Scaffold(
       appBar: AppBar(
         title: Text(l10n.shotCupsTitle),
-      ),
-      floatingActionButton: canEdit
-          ? FloatingActionButton(
+        actions: <Widget>[
+          if (canEdit)
+            TextButton.icon(
               onPressed: () => _edit(),
-              tooltip: l10n.shotCupsAddAction,
-              child: Icon(Icons.add, semanticLabel: l10n.shotCupsAddAction),
-            )
-          : null,
+              icon: const Icon(Icons.add),
+              label: Text(l10n.shotCupsAddAction),
+            ),
+        ],
+      ),
       body: switch (_loadState) {
         _CupsLoading() => const _CupsLoadingView(),
         _CupsFailed(:final String message) => ErrorStateView(
@@ -334,24 +335,45 @@ class _ShotCupsList extends StatelessWidget {
       padding: EdgeInsets.zero,
       child: RefreshIndicator(
         onRefresh: onRetry,
-        child: ListView.builder(
-          // Always scrollable so pull-to-refresh works on a short list.
-          physics: const AlwaysScrollableScrollPhysics(),
-          padding: EdgeInsets.all(spacing.md),
-          itemCount: cups.length,
-          itemBuilder: (BuildContext context, int index) {
-            final ShotCup cup = cups[index];
-            final Product? product = productOf(cup);
-            return _ShotCupCard(
-              cup: cup,
-              shotsPerBottle:
-                  product == null ? null : shotsPerBottle(product, cup),
-              canEdit: canEdit,
-              onEdit: () => onEdit(cup),
-              onStopSelling: () => onStopSelling(cup),
-              onCopy: () => onCopy(cup),
-            );
-          },
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: <Widget>[
+            // Search field at the top of the list, mirroring the mockup.
+            Padding(
+              padding: EdgeInsets.all(spacing.md),
+              child: TextField(
+                decoration: InputDecoration(
+                  hintText: 'Search serving definitions',
+                  prefixIcon: const Icon(Icons.search),
+                  isDense: true,
+                  constraints: BoxConstraints(
+                    minHeight: spacing.minTapTarget,
+                  ),
+                ),
+              ),
+            ),
+            Expanded(
+              child: ListView.builder(
+                // Always scrollable so pull-to-refresh works on a short list.
+                physics: const AlwaysScrollableScrollPhysics(),
+                padding: EdgeInsets.all(spacing.md),
+                itemCount: cups.length,
+                itemBuilder: (BuildContext context, int index) {
+                  final ShotCup cup = cups[index];
+                  final Product? product = productOf(cup);
+                  return _ShotCupCard(
+                    cup: cup,
+                    shotsPerBottle:
+                        product == null ? null : shotsPerBottle(product, cup),
+                    canEdit: canEdit,
+                    onEdit: () => onEdit(cup),
+                    onStopSelling: () => onStopSelling(cup),
+                    onCopy: () => onCopy(cup),
+                  );
+                },
+              ),
+            ),
+          ],
         ),
       ),
     );
@@ -422,15 +444,22 @@ class _ShotCupCard extends StatelessWidget {
           : l10n.shotCupsCardSpokenInactive(detail, name, price),
       child: Row(
         children: <Widget>[
-          // Decorative: the name and the price beside it say everything the
-          // glyph was saying, and an unlabelled icon is silence.
+          // Circular icon badge like the mockup.
           ExcludeSemantics(
-            child: Icon(
-              cup.active
-                  ? Icons.local_drink_outlined
-                  : Icons.remove_circle_outline,
-              color:
-                  cup.active ? colors.onSurfaceMuted : colors.onSurfaceVariant,
+            child: Container(
+              padding: const EdgeInsets.all(8),
+              decoration: BoxDecoration(
+                color: colors.surfaceSunken,
+                shape: BoxShape.circle,
+              ),
+              child: Icon(
+                cup.active
+                    ? Icons.local_drink_outlined
+                    : Icons.remove_circle_outline,
+                size: 20,
+                color:
+                    cup.active ? colors.onSurfaceMuted : colors.onSurfaceVariant,
+              ),
             ),
           ),
           SizedBox(width: spacing.md),

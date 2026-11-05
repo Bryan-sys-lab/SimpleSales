@@ -21,15 +21,12 @@ import '../routing/routes.dart';
 import '../services/app_state.dart';
 import '../services/analytics.dart';
 import '../theme/app_colors.dart';
-import '../theme/app_shapes.dart';
 import '../theme/app_spacing.dart';
 import '../theme/typography.dart';
-import '../ui/components/screen_title.dart';
 import '../ui/components/surface.dart';
 import '../ui/components/status.dart';
 import '../ui/components/states.dart';
 import '../ui/layout/page.dart';
-import '../utils/money.dart';
 import 'tank_form_sheet.dart';
 
 const double _tankRegisterMaxWidth = 1200;
@@ -64,8 +61,6 @@ class TankRegisterScreen extends StatefulWidget {
 class _TankRegisterScreenState extends State<TankRegisterScreen> {
   List<DrinkTankLevel> _tanks = const <DrinkTankLevel>[];
   double _totalTankCount = 0;
-  double _totalCapacityLitres = 0;
-  int _totalInvestedMinor = 0;
   double _totalRemainingLitres = 0;
   int _tanksNeedingAttention = 0;
   bool _loading = true;
@@ -82,23 +77,17 @@ class _TankRegisterScreenState extends State<TankRegisterScreen> {
   }
 
   void _applyProvided(List<DrinkTankLevel> tanks) {
-    double totalCapacity = 0;
     double totalRemaining = 0;
-    int totalInvested = 0;
     int needingAttention = 0;
 
     for (final tank in tanks) {
-      totalCapacity += tank.capacityLitres;
       totalRemaining += tank.litresRemaining;
-      totalInvested += tank.costInvestedMinor;
       if (tank.fillPercent < 0.3) needingAttention++;
     }
 
     setState(() {
       _tanks = tanks;
       _totalTankCount = tanks.length.toDouble();
-      _totalCapacityLitres = totalCapacity;
-      _totalInvestedMinor = totalInvested;
       _totalRemainingLitres = totalRemaining;
       _tanksNeedingAttention = needingAttention;
       _loading = false;
@@ -118,15 +107,11 @@ class _TankRegisterScreenState extends State<TankRegisterScreen> {
       final snapshot = await db.drinksAnalytics(since: since);
 
       final tanks = snapshot.tanks;
-      double totalCapacity = 0;
       double totalRemaining = 0;
-      int totalInvested = 0;
       int needingAttention = 0;
 
       for (final tank in tanks) {
-        totalCapacity += tank.capacityLitres;
         totalRemaining += tank.litresRemaining;
-        totalInvested += tank.costInvestedMinor;
         if (tank.fillPercent < 0.3) needingAttention++;
       }
 
@@ -134,8 +119,6 @@ class _TankRegisterScreenState extends State<TankRegisterScreen> {
       setState(() {
         _tanks = tanks;
         _totalTankCount = tanks.length.toDouble();
-        _totalCapacityLitres = totalCapacity;
-        _totalInvestedMinor = totalInvested;
         _totalRemainingLitres = totalRemaining;
         _tanksNeedingAttention = needingAttention;
         _loading = false;
@@ -167,48 +150,101 @@ class _TankRegisterScreenState extends State<TankRegisterScreen> {
     final AppSpacing spacing = AppSpacing.of(context);
     final l10n = AppLocalizations.of(context);
 
-    return AdaptivePage(
-      scrollable: true,
-      maxContentWidth: _tankRegisterMaxWidth,
-      padding: EdgeInsetsDirectional.only(
-        start: spacing.md,
-        end: spacing.md,
-        top: spacing.md,
-        bottom: spacing.xxl,
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: <Widget>[
-          ScreenTitle(
-            title: l10n.tankRegisterTitle,
-            subtitle: l10n.tankRegisterSubtitle,
-            trailing: context.read<AppState>().canManageStock
-                ? FilledButton.icon(
-                    onPressed: _addTank,
-                    icon: const Icon(Icons.add),
-                    label: Text(l10n.tankAddAction),
-                  )
-                : null,
-            padding: EdgeInsetsDirectional.only(bottom: spacing.md),
-          ),
-          SizedBox(height: spacing.sm),
-          _TankRegisterSummary(
-            tankCount: _totalTankCount,
-            capacityLitres: _totalCapacityLitres,
-            investedMinor: _totalInvestedMinor,
-            remainingLitres: _totalRemainingLitres,
-            needingAttention: _tanksNeedingAttention,
-          ),
-          SizedBox(height: spacing.lg),
-          if (_tanks.isEmpty)
-            const _EmptyTankRegister()
-          else ...<Widget>[
-            _TankRegisterList(
-              tanks: _tanks,
-              onOpenTank: _openTank,
+    final lowStock = _tanks.where((t) => t.fillPercent < 0.3).toList();
+
+    return Scaffold(
+      appBar: AppBar(
+        title: Text(l10n.tankRegisterTitle),
+        actions: <Widget>[
+          if (context.read<AppState>().canManageStock)
+            TextButton.icon(
+              onPressed: _addTank,
+              icon: const Icon(Icons.add),
+              label: Text(l10n.tankAddAction),
             ),
-          ],
         ],
+      ),
+      body: AdaptivePage(
+        scrollable: true,
+        maxContentWidth: _tankRegisterMaxWidth,
+        padding: EdgeInsetsDirectional.only(
+          start: spacing.md,
+          end: spacing.md,
+          top: spacing.md,
+          bottom: spacing.xxl,
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: <Widget>[
+            SizedBox(height: spacing.sm),
+
+            // Search + chips row.
+            _TankRegisterSearch(
+              query: '',
+              chips: const <String>['All', 'Tanks', 'Packaged', 'Low stock'],
+              selected: 'All',
+            ),
+            SizedBox(height: spacing.lg),
+
+            // Operations section.
+            SectionHeader(
+              label: l10n.tankRegisterSection,
+              trailing: TextButton(
+                onPressed: () => context.push(Routes.tankRegister),
+                child: const Text('History'),
+              ),
+            ),
+            SizedBox(height: spacing.sm),
+            _TankRegisterOperationRow(
+              icon: Icons.local_bar,
+              title: 'Tank inventory',
+              detail:
+                  '${_totalTankCount.toInt()} tanks · ${_totalRemainingLitres.toStringAsFixed(0)} L remaining',
+              onTap: () {},
+            ),
+            _TankRegisterOperationRow(
+              icon: Icons.inventory_2_outlined,
+              title: 'Packaged beverages',
+                  detail: '${_tanks.length} products · $_tanksNeedingAttention low stock',
+              onTap: () {},
+            ),
+            _TankRegisterOperationRow(
+              icon: Icons.local_drink_outlined,
+              title: 'Measured servings',
+              detail: '12 active pour definitions',
+              onTap: () => context.push(Routes.shotCups),
+            ),
+            SizedBox(height: spacing.lg),
+
+            // Low stock section.
+            if (lowStock.isNotEmpty) ...<Widget>[
+              SectionHeader(
+                label: 'Low stock',
+              ),
+              SizedBox(height: spacing.sm),
+              ...lowStock.take(6).map(
+                (tank) => _TankRegisterLowStockRow(
+                  name: tank.name,
+                  remaining: '${tank.litresRemaining.toStringAsFixed(0)} L remaining',
+                  percent: tank.fillPercent,
+                  onTap: () => _openTank(tank),
+                ),
+              ),
+              SizedBox(height: spacing.lg),
+            ],
+
+            // Receive stock button.
+            if (context.read<AppState>().canManageStock)
+              SizedBox(
+                width: double.infinity,
+                child: FilledButton.icon(
+                  onPressed: _addTank,
+                  icon: const Icon(Icons.add),
+                  label: const Text('Receive stock'),
+                ),
+              ),
+          ],
+        ),
       ),
     );
   }
@@ -232,264 +268,134 @@ class _TankRegisterScreenState extends State<TankRegisterScreen> {
   }
 }
 
-/// The register headline: tank count, capacity, investment, remaining.
-class _TankRegisterSummary extends StatelessWidget {
-  const _TankRegisterSummary({
-    required this.tankCount,
-    required this.capacityLitres,
-    required this.investedMinor,
-    required this.remainingLitres,
-    required this.needingAttention,
+/// Search field + filter chips for the tank register.
+class _TankRegisterSearch extends StatelessWidget {
+  const _TankRegisterSearch({
+    required this.query,
+    required this.chips,
+    required this.selected,
   });
 
-  final double tankCount;
-  final double capacityLitres;
-  final int investedMinor;
-  final double remainingLitres;
-  final int needingAttention;
+  final String query;
+  final List<String> chips;
+  final String selected;
 
   @override
   Widget build(BuildContext context) {
     final AppSpacing spacing = AppSpacing.of(context);
-    final AppColors colors = AppColors.of(context);
-    final type = AppTypography.of(context);
-    final l10n = AppLocalizations.of(context);
 
-    return SurfaceCard(
-      padding: EdgeInsets.all(spacing.lg),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: <Widget>[
-          Row(
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: <Widget>[
+        Padding(
+          padding: EdgeInsetsDirectional.only(
+            start: spacing.xl,
+            end: spacing.md,
+            bottom: spacing.sm,
+          ),
+          child: Row(
             children: <Widget>[
               Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  mainAxisSize: MainAxisSize.min,
-                  children: <Widget>[
-                    Text(l10n.tankRegisterTanks, style: type.labelMedium),
-                    Text(
-                      '${tankCount.toInt()}',
-                      style: AppTypography.money(
-                        context,
-                        size: 32,
-                        weight: FontWeight.w800,
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  mainAxisSize: MainAxisSize.min,
-                  children: <Widget>[
-                    Text(l10n.tankRegisterCapacity, style: type.labelMedium),
-                    Text(
-                      '${capacityLitres.toStringAsFixed(0)} L',
-                      style: AppTypography.money(
-                        context,
-                        size: 32,
-                        weight: FontWeight.w800,
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  mainAxisSize: MainAxisSize.min,
-                  children: <Widget>[
-                    Text(l10n.tankRegisterInvested, style: type.labelMedium),
-                    Text(
-                      formatMoney(Money.fromMinor(investedMinor)),
-                      style: AppTypography.money(
-                        context,
-                        size: 32,
-                        weight: FontWeight.w800,
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  mainAxisSize: MainAxisSize.min,
-                  children: <Widget>[
-                    Text(l10n.tankRegisterRemaining, style: type.labelMedium),
-                    Text(
-                      '${remainingLitres.toStringAsFixed(0)} L',
-                      style: AppTypography.money(
-                        context,
-                        size: 32,
-                        weight: FontWeight.w800,
-                      ),
-                    ),
-                  ],
+                  child: Text(
+                  'Search inventory',
+                  style: AppTypography.of(context).bodyMedium?.copyWith(
+                    color: AppColors.of(context).onSurfaceMuted,
+                  ),
                 ),
               ),
             ],
           ),
-          SizedBox(height: spacing.md),
-          if (needingAttention > 0)
-            Padding(
-              padding: EdgeInsetsDirectional.only(start: spacing.xs),
-              child: Row(
-                children: <Widget>[
-                  Icon(Icons.warning_amber_outlined,
-                      size: 18, color: colors.warning),
-                  SizedBox(width: spacing.xs),
-                  Expanded(
-                    child: Text(
-                      l10n.tankRegisterNeedingAttention(needingAttention),
-                      style: type.bodyMedium,
-                    ),
-                  ),
-                ],
-              ),
-            ),
-        ],
-      ),
-    );
-  }
-}
-
-/// One tank row: name, capacity, remaining, investment, sales.
-class _TankRegisterList extends StatelessWidget {
-  const _TankRegisterList({
-    required this.tanks,
-    required this.onOpenTank,
-  });
-
-  final List<DrinkTankLevel> tanks;
-  final void Function(DrinkTankLevel tank) onOpenTank;
-
-  @override
-  Widget build(BuildContext context) {
-    final AppSpacing spacing = AppSpacing.of(context);
-    final AppColors colors = AppColors.of(context);
-    final type = AppTypography.of(context);
-    final l10n = AppLocalizations.of(context);
-
-    return SurfaceCard(
-      margin: EdgeInsets.zero,
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: <Widget>[
-          Padding(
-            padding: EdgeInsetsDirectional.only(
-              start: spacing.md,
-              end: spacing.md,
-              top: spacing.md,
-              bottom: spacing.sm,
-            ),
-            child: Row(
-              children: <Widget>[
-                Text(l10n.tankRegisterSection, style: type.titleMedium),
-                const Spacer(),
-                Text(
-                  '${tanks.length} ${l10n.tankRegisterTanksLower}',
-                  style: type.bodySmall?.copyWith(color: colors.onSurfaceMuted),
-                ),
-              ],
-            ),
+        ),
+        SizedBox(height: spacing.md),
+        SingleChildScrollView(
+          scrollDirection: Axis.horizontal,
+          padding: EdgeInsetsDirectional.only(
+            start: spacing.xl,
+            end: spacing.md,
           ),
-          for (final tank in tanks)
-            _TankRegisterRow(
-              tank: tank,
-              onTap: () => onOpenTank(tank),
-            ),
-        ],
-      ),
+          child: Row(
+            children: <Widget>[
+              for (final chip in chips)
+                Padding(
+                  padding: EdgeInsets.only(right: spacing.sm),
+                  child: FilterChip(
+                    label: Text(chip),
+                    selected: chip == selected,
+                    onSelected: (_) {},
+                  ),
+                ),
+            ],
+          ),
+        ),
+      ],
     );
   }
 }
 
-/// One tank row: name, remaining, capacity percent, investment.
-class _TankRegisterRow extends StatelessWidget {
-  const _TankRegisterRow({
-    required this.tank,
+/// One operation row: icon badge, title/detail, trailing chevron.
+class _TankRegisterOperationRow extends StatelessWidget {
+  const _TankRegisterOperationRow({
+    required this.icon,
+    required this.title,
+    required this.detail,
     required this.onTap,
   });
 
-  final DrinkTankLevel tank;
+  final IconData icon;
+  final String title;
+  final String detail;
   final VoidCallback onTap;
 
   @override
   Widget build(BuildContext context) {
     final AppSpacing spacing = AppSpacing.of(context);
     final AppColors colors = AppColors.of(context);
-    final type = AppTypography.of(context);
-    final l10n = AppLocalizations.of(context);
-    final percent = tank.fillPercent;
+    final TextTheme type = AppTypography.of(context);
 
     return Semantics(
       button: true,
-      label: '${tank.name}, ${tank.litresRemaining.toStringAsFixed(0)} litres remaining, ${(percent * 100).toStringAsFixed(0)} percent full',
-      child: Material(
-        color: Colors.transparent,
-        child: InkWell(
-          onTap: onTap,
-          child: Padding(
-            padding: EdgeInsetsDirectional.symmetric(
-              horizontal: spacing.md,
-              vertical: spacing.sm,
-            ),
-            child: Row(
-              children: <Widget>[
-                ExcludeSemantics(
-                  child: Container(
-                    padding: const EdgeInsets.all(8),
-                    decoration: BoxDecoration(
-                      color: colors.surfaceSunken,
-                      borderRadius: AppShapes.of(context).controlRadius,
-                    ),
-                    child: Icon(Icons.local_drink_outlined,
-                        size: 20, color: colors.onSurfaceVariant),
+      label: '$title, $detail',
+      child: InkWell(
+        onTap: onTap,
+        child: Padding(
+          padding: EdgeInsetsDirectional.symmetric(
+            horizontal: spacing.md,
+            vertical: spacing.sm,
+          ),
+          child: Row(
+            children: <Widget>[
+              ExcludeSemantics(
+                child: Container(
+                  padding: const EdgeInsets.all(8),
+                  decoration: BoxDecoration(
+                    color: colors.surfaceSunken,
+                    shape: BoxShape.circle,
+                  ),
+                  child: Icon(
+                    icon,
+                    size: 20,
+                    color: colors.onSurfaceVariant,
                   ),
                 ),
-                SizedBox(width: spacing.md),
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    mainAxisSize: MainAxisSize.min,
-                    children: <Widget>[
-                      Text(tank.name, style: type.bodyMedium),
-                      SizedBox(height: 2),
-                      Text(
-                        '${tank.litresRemaining.toStringAsFixed(0)} L remaining · ${(percent * 100).toStringAsFixed(0)}% of ${tank.capacityLitres.toStringAsFixed(0)} L',
-                        style: type.bodySmall?.copyWith(
-                          color: colors.onSurfaceMuted,
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-                SizedBox(width: spacing.sm),
-                Column(
-                  crossAxisAlignment: CrossAxisAlignment.end,
+              ),
+              SizedBox(width: spacing.md),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
                   mainAxisSize: MainAxisSize.min,
                   children: <Widget>[
-                    Text(
-                      formatMoney(tank.costInvested),
-                      style: AppTypography.money(context, size: 15),
-                    ),
-                    SizedBox(height: spacing.xs),
-                    StatusChip(
-                      tone: percent > 0.3
-                          ? StatusTone.success
-                          : (percent > 0.1 ? StatusTone.warning : StatusTone.danger),
-                      text: percent > 0.3
-                          ? l10n.tankStatusHealthy
-                          : (percent > 0.1 ? l10n.tankStatusLow : l10n.tankStatusCritical),
-                      dense: true,
-                    ),
+                    Text(title, style: type.bodyMedium),
+                    SizedBox(height: 2),
+                    Text(detail, style: type.bodySmall),
                   ],
                 ),
-              ],
-            ),
+              ),
+              Icon(
+                Icons.chevron_right,
+                color: colors.onSurfaceMuted,
+                size: 20,
+              ),
+            ],
           ),
         ),
       ),
@@ -497,25 +403,71 @@ class _TankRegisterRow extends StatelessWidget {
   }
 }
 
-/// Empty state for the tank register.
-class _EmptyTankRegister extends StatelessWidget {
-  const _EmptyTankRegister();
+/// One low stock row: name, remaining, low pill.
+class _TankRegisterLowStockRow extends StatelessWidget {
+  const _TankRegisterLowStockRow({
+    required this.name,
+    required this.remaining,
+    required this.percent,
+    required this.onTap,
+  });
+
+  final String name;
+  final String remaining;
+  final double percent;
+  final VoidCallback onTap;
 
   @override
   Widget build(BuildContext context) {
-    final AppLocalizations l10n = AppLocalizations.of(context);
-    final bool canEdit = context.read<AppState>().canManageStock;
+    final AppSpacing spacing = AppSpacing.of(context);
+    final AppColors colors = AppColors.of(context);
+    final TextTheme type = AppTypography.of(context);
 
-    return AdaptivePage(
-      padding: EdgeInsets.zero,
-      child: RefreshIndicator(
-        onRefresh: () => Future.value(),
-        child: EmptyStateView(
-          kind: EmptyKind.collection,
-          title: l10n.tankRegisterEmptyTitle,
-          message: l10n.tankRegisterEmptyMessage,
-          actionLabel: canEdit ? l10n.tankAddAction : null,
-          onAction: canEdit ? () {} : null,
+    return Semantics(
+      button: true,
+      label: '$name, $remaining, low stock',
+      child: InkWell(
+        onTap: onTap,
+        child: Padding(
+          padding: EdgeInsetsDirectional.symmetric(
+            horizontal: spacing.md,
+            vertical: spacing.xs,
+          ),
+          child: Row(
+            children: <Widget>[
+              ExcludeSemantics(
+                child: Container(
+                  padding: const EdgeInsets.all(8),
+                  decoration: BoxDecoration(
+                    color: colors.surfaceSunken,
+                    shape: BoxShape.circle,
+                  ),
+                  child: Icon(
+                    Icons.local_drink_outlined,
+                    size: 20,
+                    color: colors.onSurfaceVariant,
+                  ),
+                ),
+              ),
+              SizedBox(width: spacing.md),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  mainAxisSize: MainAxisSize.min,
+                  children: <Widget>[
+                    Text(name, style: type.bodyMedium),
+                    SizedBox(height: 2),
+                    Text(remaining, style: type.bodySmall),
+                  ],
+                ),
+              ),
+              StatusChip(
+                tone: StatusTone.warning,
+                text: 'Low',
+                dense: true,
+              ),
+            ],
+          ),
         ),
       ),
     );
