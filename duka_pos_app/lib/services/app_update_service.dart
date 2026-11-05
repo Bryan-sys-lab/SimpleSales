@@ -175,6 +175,9 @@ class AppUpdateService extends ChangeNotifier {
   ///
   /// Called by the idle guard when the till goes quiet. If auto-update is not
   /// enabled, or there is nothing to download, this is a silent no-op.
+  ///
+  /// When the download completes, the APK is installed automatically — the
+  /// owner sees the OS install prompt, not a lingering "downloaded" button.
   Future<void> autoDownloadWhenIdle() async {
     if (!autoUpdateEnabled) return;
     if (pendingRelease == null) return;
@@ -182,6 +185,7 @@ class AppUpdateService extends ChangeNotifier {
     if (!telemetry.isIdle) return;
     try {
       await download();
+      await installDownloaded();
     } on Object {
       // A failed auto-download is not shown to the owner: the manual check in
       // Settings is the visible path, and an unattended till must not surface
@@ -358,6 +362,11 @@ class AppUpdateService extends ChangeNotifier {
     }
     try {
       const channel = MethodChannel('duka.app.update');
+
+      // Request "install unknown apps" permission before installing.
+      // Android refuses to install from an APK file unless this permission is
+      // granted for this app. Requesting here is safe: if already granted it is
+      // a no-op; if not, the system prompt appears and the shop can grant it.
       final granted =
           await channel.invokeMethod<bool>('requestInstallPermission') ?? false;
       if (!granted) {
@@ -365,6 +374,7 @@ class AppUpdateService extends ChangeNotifier {
         // from here except tell them, and the answer is a settings screen.
         return false;
       }
+
       final installed =
           await channel.invokeMethod<bool>('installApk', <String, Object?>{
         'path': file.path,
@@ -401,6 +411,19 @@ class AppUpdateService extends ChangeNotifier {
     }
   }
 
+  /// Whether "install unknown apps" is already granted for this app.
+  ///
+  /// Used by Settings so it can show a grant button only when needed, rather
+  /// than failing silently at install time.
+  Future<bool> isInstallPermissionGranted() async {
+    try {
+      const channel = MethodChannel('duka.app.update');
+      return await channel.invokeMethod<bool>('isInstallPermissionGranted') ?? false;
+    } on PlatformException {
+      return false;
+    }
+  }
+
   /// Clears the state after a check, so a second one is not mistaken for a retry.
   void reset() {
     _check = null;
@@ -408,6 +431,15 @@ class AppUpdateService extends ChangeNotifier {
     _error = null;
     _downloadedApk = null;
     notifyListeners();
+  }
+
+  /// Closes the HTTP client so the service does not leave sockets open when
+  /// the provider that owns it is disposed — which was the source of
+  /// "Cannot close sink while adding stream" on test teardown and app restart.
+  @override
+  void dispose() {
+    _client.close();
+    super.dispose();
   }
 
   /// The file the APK is written to.

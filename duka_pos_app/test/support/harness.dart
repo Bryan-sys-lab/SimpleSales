@@ -5,10 +5,8 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:provider/provider.dart';
-import 'dart:math' as math;
 import 'package:duka_pos/routing/app_stage_controller.dart';
 import 'package:duka_pos/services/app_state.dart';
-import 'package:duka_pos/services/live_channel_service.dart';
 import 'package:duka_pos/services/app_update_service.dart';
 
 /// One place that pins the surface every widget test in this app runs on.
@@ -164,11 +162,9 @@ extension TestHarness on WidgetTester {
         // preferences, and a harness that booted the app would make every
         // widget test depend on both.
         ChangeNotifierProvider<AppStageController>(
-          create: (BuildContext context) =>
-              AppStageController(context.read<AppState>()),
+            create: (BuildContext context) =>
+                AppStageController(context.read<AppState>()),
         ),
-        ChangeNotifierProvider<LiveChannelService>(
-            create: (_) => LiveChannelService(random: _FakeRandomForHarness())),
         ChangeNotifierProvider<AppUpdateService>(
             create: (_) => AppUpdateService()),
       ],
@@ -338,13 +334,4 @@ const List<double> kTextScales = <double>[1.0, 1.3, 1.5, 2.0, 3.0];
 /// The channel jitters its reconnect to stop a room full of phones
 /// reconnecting on the same frame; in a test that jitter is a source of
 /// nondeterminism for no benefit.
-class _FakeRandomForHarness implements math.Random {
-  @override
-  bool nextBool() => true;
 
-  @override
-  double nextDouble() => 1;
-
-  @override
-  int nextInt(int max) => 0;
-}
