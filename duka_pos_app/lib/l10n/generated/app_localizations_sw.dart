@@ -5631,4 +5631,348 @@ class AppLocalizationsSw extends AppLocalizations {
 
   @override
   String get inventoryRevenue => 'Mapato';
+
+  @override
+  String get openDashboardGreeting => 'Karibu tena';
+
+  @override
+  String get openDashboardScopeShop => 'Duka yote';
+
+  @override
+  String get openDashboardScopeOwn => 'Mwenendo wako';
+
+  @override
+  String get openDashboardFinancialOverview => 'Muhtasari wa fedha';
+
+  @override
+  String get openDashboardRevenue => 'Mapato';
+
+  @override
+  String get openDashboardNetProfit => 'Faida yote';
+
+  @override
+  String get openDashboardCashPosition => 'Hali ya pesa';
+
+  @override
+  String get openDashboardReceivables => 'Watu wanaolipia';
+
+  @override
+  String get openDashboardOperationalOverview => 'Muhtasari wa kazi';
+
+  @override
+  String get openDashboardActiveJobs => 'Kazi za sasa';
+
+  @override
+  String get openDashboardJobsAwaitingPayment => 'Kazi zinalipwa';
+
+  @override
+  String get openDashboardOverdueJobs => 'Kazi zimeumiza';
+
+  @override
+  String get openDashboardCostGroups => 'Kundi la gharama';
+
+  @override
+  String get openDashboardNewJob => 'Kazi mpya';
+
+  @override
+  String get openDashboardRecordSale => 'Rekodi uuzaji';
+
+  @override
+  String get openDashboardRecordPayment => 'Rekodi malipo';
+
+  @override
+  String get openDashboardAddJobCost => 'Ongeza gharama ya kazi';
+
+  @override
+  String get openDashboardNewCostGroup => 'Kundi la gharama mpya';
+
+  @override
+  String get openDashboardRecentActivity => 'Shughuli hivi karibuni';
+
+  @override
+  String get openDashboardViewAll => 'Tangulia zote';
+
+  @override
+  String get openDashboardGoodMorning => 'Bwakia asubuhi';
+
+  @override
+  String get openDashboardGoodAfternoon => 'Bwakia mchana';
+
+  @override
+  String get openDashboardGoodEvening => 'Bwakia jioni';
+
+  @override
+  String get openJobsTitle => 'Kazi';
+
+  @override
+  String get openJobsSubtitle => 'Fuatilia kazi kutoka kwa uwakala hadi malipo';
+
+  @override
+  String get openJobsNewJob => 'Kazi mpya';
+
+  @override
+  String get openJobsSearch => 'Bafadhili kazi';
+
+  @override
+  String get openJobsSearchHint => 'Anwa au mteja';
+
+  @override
+  String get openJobsFilterAll => 'Zote';
+
+  @override
+  String get openJobsFilterActive => 'Inayendeleza';
+
+  @override
+  String get openJobsFilterAwaitingPayment => 'Lipwa baadaye';
+
+  @override
+  String get openJobsFilterCompleted => 'Imesimama';
+
+  @override
+  String get openJobsNoJobs => 'Hakuna kazi hivi';
+
+  @override
+  String get openJobsNoJobsSubtitle =>
+      'Unda kazi ili kufuatili uwakala, malipo na gharama.';
+
+  @override
+  String get openJobsLoading => 'Inapakia kazi';
+
+  @override
+  String get openJobsLoadingSubtitle => 'Subiri kidogo kazi zinakuatwa.';
+
+  @override
+  String get openJobsNoCustomer => 'Hakuna mteja';
+
+  @override
+  String get openJobStatusDraft => 'Mwendelezi';
+
+  @override
+  String get openJobStatusInProgress => 'Inayendelezwa';
+
+  @override
+  String get openJobStatusAwaitingPayment => 'Lipwa baadaye';
+
+  @override
+  String get openJobStatusCompleted => 'Imesimamisha';
+
+  @override
+  String get openJobStatusCancelled => 'Ingawanywe';
+
+  @override
+  String get openJobFormTitle => 'Kazi mpya';
+
+  @override
+  String get openJobDetailTitle => 'Muhtasari wa kazi';
+
+  @override
+  String get openJobAddCostTitle => 'Ongeza gharama ya kazi';
+
+  @override
+  String get openCostGroupsTitle => 'Kundi za gharama';
+
+  @override
+  String get openCostGroupFormTitle => 'Kundi la gharama mpya';
+
+  @override
+  String get openCostGroupDetailTitle => 'Muhtasari wa kundi la gharama';
+
+  @override
+  String get openReceivablesTitle => 'Watu wanaolipia';
+
+  @override
+  String get openJobDetailNotFound => 'Kazi haijapatikana';
+
+  @override
+  String get openJobDetailNoCustomer => 'Hakuna mteja';
+
+  @override
+  String get openJobDetailOverview => 'Muhtasari wa kazi';
+
+  @override
+  String get openJobDetailQuote => 'Thamani ya uwakala';
+
+  @override
+  String get openJobDetailFinalPrice => 'Gharama ya mwisho';
+
+  @override
+  String get openJobDetailStatus => 'Hali';
+
+  @override
+  String get openJobDetailCreated => 'Ilianza';
+
+  @override
+  String get openJobDetailFinancials => 'Muhtasari wa fedha';
+
+  @override
+  String get openJobDetailQuotedAmount => 'Thamani ya uwakala';
+
+  @override
+  String get openJobDetailDirectCosts => 'Gharama za moja kwa moja';
+
+  @override
+  String get openJobDetailPaymentsReceived => 'Malipo yaliyopokea';
+
+  @override
+  String get openJobDetailOutstanding => 'Kiasi kilipatika';
+
+  @override
+  String get openJobDetailEstimatedProfit => 'Faida inayopatikana';
+
+  @override
+  String get openJobDetailActivity => 'Shughuli za kazi';
+
+  @override
+  String get openJobDetailCostAdded => 'Gharama iliyongezwa';
+
+  @override
+  String get openJobDetailPaymentReceived => 'Malipo yaliyopokea';
+
+  @override
+  String get openJobDetailNoActivity => 'Hakuna shughuli hivi';
+
+  @override
+  String get openJobDetailActions => 'Mazoezi';
+
+  @override
+  String get openJobDetailEditJob => 'Hariri kazi';
+
+  @override
+  String get openJobDetailAddCost => 'Ongeza gharama ya moja kwa moja';
+
+  @override
+  String get openJobDetailReceivePayment => 'Pokea malipo';
+
+  @override
+  String get openJobDetailRecordSale => 'Rekodi uuzaji';
+
+  @override
+  String get openJobDetailCompleteJob => 'Kamilisha kazi';
+
+  @override
+  String get openJobDetailCompleteJobConfirm =>
+      'Kufuta kazi ni tofauti na malipo. Kazi inaweza kuingiliwa isipokuwa lipilipwe kabisa.';
+
+  @override
+  String get openJobDetailCancel => 'Ghairi';
+
+  @override
+  String get openJobDetailCompleteAndSettle => 'Kamilisha na malipo';
+
+  @override
+  String get openCostGroupsSubtitle => 'Gharama zilipangwa kwa kazi nyingi';
+
+  @override
+  String get openCostGroupsNewGroup => 'Kundi la gharama mpya';
+
+  @override
+  String get openCostGroupsInvested => 'Ilivunajiwa';
+
+  @override
+  String get openCostGroupsRecovered => 'Ilipigwa mkato';
+
+  @override
+  String get openCostGroupsRemaining => 'Baki';
+
+  @override
+  String get openCostGroupsHasRemaining => 'Haiwezekanishiwa';
+
+  @override
+  String get openCostGroupsFullyAllocated => 'Imewekwa mkato';
+
+  @override
+  String get openCostGroupsNoGroups => 'Hakuna kundi la gharama hivi';
+
+  @override
+  String get openCostGroupsNoGroupsSubtitle =>
+      'Unda kundi la gharama ili kufuatili gharama iliyopangwa kwa kazi nyingi.';
+
+  @override
+  String get openCostGroupsLoading => 'Inapakia kundi la gharama';
+
+  @override
+  String get openCostGroupsLoadingSubtitle =>
+      'Subiri kidogo kundi la gharama zinakuatwa.';
+
+  @override
+  String get openCostGroupDetailNotFound => 'Kundi la gharama haijapatikana';
+
+  @override
+  String get openCostGroupDetailNoNote => 'Hakuna takwimu';
+
+  @override
+  String get openCostGroupDetailInvestment => 'Uwekezaji';
+
+  @override
+  String get openCostGroupDetailInitialInvestment => 'Uwekezaji wa awali';
+
+  @override
+  String get openCostGroupDetailAllocated => 'Imewekwa mkato';
+
+  @override
+  String get openCostGroupDetailRemaining => 'Baki';
+
+  @override
+  String get openCostGroupDetailHasRemaining => 'Haiwezekanishiwa';
+
+  @override
+  String get openCostGroupDetailFullyAllocated => 'Imewekwa mkato kabisa';
+
+  @override
+  String get openCostGroupDetailMovementHistory => 'Historia ya mzunguko';
+
+  @override
+  String get openCostGroupDetailNoMovements => 'Hakuna mzunguko hivi';
+
+  @override
+  String get openCostGroupDetailEntry => 'Eneo';
+
+  @override
+  String get openReceivablesSubtitle => 'Pesa wateja wanaolipia biashara';
+
+  @override
+  String get openReceivablesTotalOutstanding => 'Kiasi kilichopatikana jumla';
+
+  @override
+  String get openReceivablesCustomersOwed => 'Wateja wanaolipiwa';
+
+  @override
+  String get openReceivablesCustomers => 'Wateja wenye saldo';
+
+  @override
+  String get openReceivablesOutstanding => 'Kiasi kilipatika';
+
+  @override
+  String get openReceivablesOldestUnpaid => 'La zamani lisilo lipwa';
+
+  @override
+  String get openReceivablesNoOutstanding => 'Hakuna salio kilipatika';
+
+  @override
+  String get openReceivablesNoOutstandingSubtitle => 'Wateja wote wamelepea.';
+
+  @override
+  String get openReceivablesLoading => 'Inapakia malipo ya mwisho';
+
+  @override
+  String get openReceivablesLoadingSubtitle =>
+      'Subiri kidogo malipo ya mwisho yanaulizwa.';
+
+  @override
+  String get openAnalyticsFinancialPerformance => 'Ufikiaji wa fedha';
+
+  @override
+  String get openAnalyticsNetProfit => 'Faida yote';
+
+  @override
+  String get openAnalyticsCashPosition => 'Hali ya pesa';
+
+  @override
+  String get openAnalyticsPooledCosts => 'Gharama zilipangwa';
+
+  @override
+  String get openAnalyticsJobsCompleted => 'Kazi zimesimamishwa';
+
+  @override
+  String get openAnalyticsReceivables => 'Watu wanaolipia';
 }

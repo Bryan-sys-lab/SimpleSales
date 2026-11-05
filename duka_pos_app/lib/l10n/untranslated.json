@@ -322,6 +322,8 @@
     "unitSuffixMillilitre",
     "unitSuffixCup",
     "unitSuffixKilogram",
+    "unitSuffixPack",
+    "unitSuffixCarton",
     "inventoryFieldTotalStock",
     "inventoryGoBack",
     "inventoryLowStockLimitTitle",

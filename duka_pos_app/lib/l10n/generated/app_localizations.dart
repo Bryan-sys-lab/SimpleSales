@@ -9213,6 +9213,684 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'Revenue'**
   String get inventoryRevenue;
+
+  /// No description provided for @openDashboardGreeting.
+  ///
+  /// In en, this message translates to:
+  /// **'Welcome back'**
+  String get openDashboardGreeting;
+
+  /// No description provided for @openDashboardScopeShop.
+  ///
+  /// In en, this message translates to:
+  /// **'Whole shop'**
+  String get openDashboardScopeShop;
+
+  /// No description provided for @openDashboardScopeOwn.
+  ///
+  /// In en, this message translates to:
+  /// **'Your scope'**
+  String get openDashboardScopeOwn;
+
+  /// No description provided for @openDashboardFinancialOverview.
+  ///
+  /// In en, this message translates to:
+  /// **'Financial overview'**
+  String get openDashboardFinancialOverview;
+
+  /// No description provided for @openDashboardRevenue.
+  ///
+  /// In en, this message translates to:
+  /// **'Revenue'**
+  String get openDashboardRevenue;
+
+  /// No description provided for @openDashboardNetProfit.
+  ///
+  /// In en, this message translates to:
+  /// **'Net profit'**
+  String get openDashboardNetProfit;
+
+  /// No description provided for @openDashboardCashPosition.
+  ///
+  /// In en, this message translates to:
+  /// **'Cash position'**
+  String get openDashboardCashPosition;
+
+  /// No description provided for @openDashboardReceivables.
+  ///
+  /// In en, this message translates to:
+  /// **'Receivables'**
+  String get openDashboardReceivables;
+
+  /// No description provided for @openDashboardOperationalOverview.
+  ///
+  /// In en, this message translates to:
+  /// **'Operational overview'**
+  String get openDashboardOperationalOverview;
+
+  /// No description provided for @openDashboardActiveJobs.
+  ///
+  /// In en, this message translates to:
+  /// **'Active jobs'**
+  String get openDashboardActiveJobs;
+
+  /// No description provided for @openDashboardJobsAwaitingPayment.
+  ///
+  /// In en, this message translates to:
+  /// **'Jobs awaiting payment'**
+  String get openDashboardJobsAwaitingPayment;
+
+  /// No description provided for @openDashboardOverdueJobs.
+  ///
+  /// In en, this message translates to:
+  /// **'Overdue jobs'**
+  String get openDashboardOverdueJobs;
+
+  /// No description provided for @openDashboardCostGroups.
+  ///
+  /// In en, this message translates to:
+  /// **'Cost groups'**
+  String get openDashboardCostGroups;
+
+  /// No description provided for @openDashboardNewJob.
+  ///
+  /// In en, this message translates to:
+  /// **'New job'**
+  String get openDashboardNewJob;
+
+  /// No description provided for @openDashboardRecordSale.
+  ///
+  /// In en, this message translates to:
+  /// **'Record sale'**
+  String get openDashboardRecordSale;
+
+  /// No description provided for @openDashboardRecordPayment.
+  ///
+  /// In en, this message translates to:
+  /// **'Record payment'**
+  String get openDashboardRecordPayment;
+
+  /// No description provided for @openDashboardAddJobCost.
+  ///
+  /// In en, this message translates to:
+  /// **'Add job cost'**
+  String get openDashboardAddJobCost;
+
+  /// No description provided for @openDashboardNewCostGroup.
+  ///
+  /// In en, this message translates to:
+  /// **'New cost group'**
+  String get openDashboardNewCostGroup;
+
+  /// No description provided for @openDashboardRecentActivity.
+  ///
+  /// In en, this message translates to:
+  /// **'Recent activity'**
+  String get openDashboardRecentActivity;
+
+  /// No description provided for @openDashboardViewAll.
+  ///
+  /// In en, this message translates to:
+  /// **'View all'**
+  String get openDashboardViewAll;
+
+  /// No description provided for @openDashboardGoodMorning.
+  ///
+  /// In en, this message translates to:
+  /// **'Good morning'**
+  String get openDashboardGoodMorning;
+
+  /// No description provided for @openDashboardGoodAfternoon.
+  ///
+  /// In en, this message translates to:
+  /// **'Good afternoon'**
+  String get openDashboardGoodAfternoon;
+
+  /// No description provided for @openDashboardGoodEvening.
+  ///
+  /// In en, this message translates to:
+  /// **'Good evening'**
+  String get openDashboardGoodEvening;
+
+  /// No description provided for @openJobsTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Jobs'**
+  String get openJobsTitle;
+
+  /// No description provided for @openJobsSubtitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Track work from quote to payment'**
+  String get openJobsSubtitle;
+
+  /// No description provided for @openJobsNewJob.
+  ///
+  /// In en, this message translates to:
+  /// **'New job'**
+  String get openJobsNewJob;
+
+  /// No description provided for @openJobsSearch.
+  ///
+  /// In en, this message translates to:
+  /// **'Search jobs'**
+  String get openJobsSearch;
+
+  /// No description provided for @openJobsSearchHint.
+  ///
+  /// In en, this message translates to:
+  /// **'Title or customer'**
+  String get openJobsSearchHint;
+
+  /// No description provided for @openJobsFilterAll.
+  ///
+  /// In en, this message translates to:
+  /// **'All'**
+  String get openJobsFilterAll;
+
+  /// No description provided for @openJobsFilterActive.
+  ///
+  /// In en, this message translates to:
+  /// **'Active'**
+  String get openJobsFilterActive;
+
+  /// No description provided for @openJobsFilterAwaitingPayment.
+  ///
+  /// In en, this message translates to:
+  /// **'Awaiting payment'**
+  String get openJobsFilterAwaitingPayment;
+
+  /// No description provided for @openJobsFilterCompleted.
+  ///
+  /// In en, this message translates to:
+  /// **'Completed'**
+  String get openJobsFilterCompleted;
+
+  /// No description provided for @openJobsNoJobs.
+  ///
+  /// In en, this message translates to:
+  /// **'No jobs yet'**
+  String get openJobsNoJobs;
+
+  /// No description provided for @openJobsNoJobsSubtitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Create a job to track quote, payments and costs.'**
+  String get openJobsNoJobsSubtitle;
+
+  /// No description provided for @openJobsLoading.
+  ///
+  /// In en, this message translates to:
+  /// **'Loading jobs'**
+  String get openJobsLoading;
+
+  /// No description provided for @openJobsLoadingSubtitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Please wait while your jobs load.'**
+  String get openJobsLoadingSubtitle;
+
+  /// No description provided for @openJobsNoCustomer.
+  ///
+  /// In en, this message translates to:
+  /// **'No customer'**
+  String get openJobsNoCustomer;
+
+  /// No description provided for @openJobStatusDraft.
+  ///
+  /// In en, this message translates to:
+  /// **'Draft'**
+  String get openJobStatusDraft;
+
+  /// No description provided for @openJobStatusInProgress.
+  ///
+  /// In en, this message translates to:
+  /// **'In progress'**
+  String get openJobStatusInProgress;
+
+  /// No description provided for @openJobStatusAwaitingPayment.
+  ///
+  /// In en, this message translates to:
+  /// **'Awaiting payment'**
+  String get openJobStatusAwaitingPayment;
+
+  /// No description provided for @openJobStatusCompleted.
+  ///
+  /// In en, this message translates to:
+  /// **'Completed'**
+  String get openJobStatusCompleted;
+
+  /// No description provided for @openJobStatusCancelled.
+  ///
+  /// In en, this message translates to:
+  /// **'Cancelled'**
+  String get openJobStatusCancelled;
+
+  /// No description provided for @openJobFormTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'New job'**
+  String get openJobFormTitle;
+
+  /// No description provided for @openJobDetailTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Job detail'**
+  String get openJobDetailTitle;
+
+  /// No description provided for @openJobAddCostTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Add job cost'**
+  String get openJobAddCostTitle;
+
+  /// No description provided for @openCostGroupsTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Cost groups'**
+  String get openCostGroupsTitle;
+
+  /// No description provided for @openCostGroupFormTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'New cost group'**
+  String get openCostGroupFormTitle;
+
+  /// No description provided for @openCostGroupDetailTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Cost group detail'**
+  String get openCostGroupDetailTitle;
+
+  /// No description provided for @openReceivablesTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Receivables'**
+  String get openReceivablesTitle;
+
+  /// No description provided for @openJobDetailNotFound.
+  ///
+  /// In en, this message translates to:
+  /// **'Job not found'**
+  String get openJobDetailNotFound;
+
+  /// No description provided for @openJobDetailNoCustomer.
+  ///
+  /// In en, this message translates to:
+  /// **'No customer'**
+  String get openJobDetailNoCustomer;
+
+  /// No description provided for @openJobDetailOverview.
+  ///
+  /// In en, this message translates to:
+  /// **'Job overview'**
+  String get openJobDetailOverview;
+
+  /// No description provided for @openJobDetailQuote.
+  ///
+  /// In en, this message translates to:
+  /// **'Quoted amount'**
+  String get openJobDetailQuote;
+
+  /// No description provided for @openJobDetailFinalPrice.
+  ///
+  /// In en, this message translates to:
+  /// **'Final price'**
+  String get openJobDetailFinalPrice;
+
+  /// No description provided for @openJobDetailStatus.
+  ///
+  /// In en, this message translates to:
+  /// **'Status'**
+  String get openJobDetailStatus;
+
+  /// No description provided for @openJobDetailCreated.
+  ///
+  /// In en, this message translates to:
+  /// **'Created'**
+  String get openJobDetailCreated;
+
+  /// No description provided for @openJobDetailFinancials.
+  ///
+  /// In en, this message translates to:
+  /// **'Financial breakdown'**
+  String get openJobDetailFinancials;
+
+  /// No description provided for @openJobDetailQuotedAmount.
+  ///
+  /// In en, this message translates to:
+  /// **'Quoted amount'**
+  String get openJobDetailQuotedAmount;
+
+  /// No description provided for @openJobDetailDirectCosts.
+  ///
+  /// In en, this message translates to:
+  /// **'Direct costs'**
+  String get openJobDetailDirectCosts;
+
+  /// No description provided for @openJobDetailPaymentsReceived.
+  ///
+  /// In en, this message translates to:
+  /// **'Payments received'**
+  String get openJobDetailPaymentsReceived;
+
+  /// No description provided for @openJobDetailOutstanding.
+  ///
+  /// In en, this message translates to:
+  /// **'Outstanding'**
+  String get openJobDetailOutstanding;
+
+  /// No description provided for @openJobDetailEstimatedProfit.
+  ///
+  /// In en, this message translates to:
+  /// **'Estimated profit'**
+  String get openJobDetailEstimatedProfit;
+
+  /// No description provided for @openJobDetailActivity.
+  ///
+  /// In en, this message translates to:
+  /// **'Job activity'**
+  String get openJobDetailActivity;
+
+  /// No description provided for @openJobDetailCostAdded.
+  ///
+  /// In en, this message translates to:
+  /// **'Cost added'**
+  String get openJobDetailCostAdded;
+
+  /// No description provided for @openJobDetailPaymentReceived.
+  ///
+  /// In en, this message translates to:
+  /// **'Payment received'**
+  String get openJobDetailPaymentReceived;
+
+  /// No description provided for @openJobDetailNoActivity.
+  ///
+  /// In en, this message translates to:
+  /// **'No activity yet'**
+  String get openJobDetailNoActivity;
+
+  /// No description provided for @openJobDetailActions.
+  ///
+  /// In en, this message translates to:
+  /// **'Actions'**
+  String get openJobDetailActions;
+
+  /// No description provided for @openJobDetailEditJob.
+  ///
+  /// In en, this message translates to:
+  /// **'Edit job'**
+  String get openJobDetailEditJob;
+
+  /// No description provided for @openJobDetailAddCost.
+  ///
+  /// In en, this message translates to:
+  /// **'Add direct cost'**
+  String get openJobDetailAddCost;
+
+  /// No description provided for @openJobDetailReceivePayment.
+  ///
+  /// In en, this message translates to:
+  /// **'Receive payment'**
+  String get openJobDetailReceivePayment;
+
+  /// No description provided for @openJobDetailRecordSale.
+  ///
+  /// In en, this message translates to:
+  /// **'Record sale'**
+  String get openJobDetailRecordSale;
+
+  /// No description provided for @openJobDetailCompleteJob.
+  ///
+  /// In en, this message translates to:
+  /// **'Complete job'**
+  String get openJobDetailCompleteJob;
+
+  /// No description provided for @openJobDetailCompleteJobConfirm.
+  ///
+  /// In en, this message translates to:
+  /// **'Marking a job complete is separate from settlement. The job can be completed without being fully paid.'**
+  String get openJobDetailCompleteJobConfirm;
+
+  /// No description provided for @openJobDetailCancel.
+  ///
+  /// In en, this message translates to:
+  /// **'Cancel'**
+  String get openJobDetailCancel;
+
+  /// No description provided for @openJobDetailCompleteAndSettle.
+  ///
+  /// In en, this message translates to:
+  /// **'Complete and settle'**
+  String get openJobDetailCompleteAndSettle;
+
+  /// No description provided for @openCostGroupsSubtitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Pooled costs shared across jobs'**
+  String get openCostGroupsSubtitle;
+
+  /// No description provided for @openCostGroupsNewGroup.
+  ///
+  /// In en, this message translates to:
+  /// **'New cost group'**
+  String get openCostGroupsNewGroup;
+
+  /// No description provided for @openCostGroupsInvested.
+  ///
+  /// In en, this message translates to:
+  /// **'Invested'**
+  String get openCostGroupsInvested;
+
+  /// No description provided for @openCostGroupsRecovered.
+  ///
+  /// In en, this message translates to:
+  /// **'Recovered'**
+  String get openCostGroupsRecovered;
+
+  /// No description provided for @openCostGroupsRemaining.
+  ///
+  /// In en, this message translates to:
+  /// **'Remaining'**
+  String get openCostGroupsRemaining;
+
+  /// No description provided for @openCostGroupsHasRemaining.
+  ///
+  /// In en, this message translates to:
+  /// **'Unallocated'**
+  String get openCostGroupsHasRemaining;
+
+  /// No description provided for @openCostGroupsFullyAllocated.
+  ///
+  /// In en, this message translates to:
+  /// **'Fully allocated'**
+  String get openCostGroupsFullyAllocated;
+
+  /// No description provided for @openCostGroupsNoGroups.
+  ///
+  /// In en, this message translates to:
+  /// **'No cost groups yet'**
+  String get openCostGroupsNoGroups;
+
+  /// No description provided for @openCostGroupsNoGroupsSubtitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Create a cost group to track pooled costs shared across jobs.'**
+  String get openCostGroupsNoGroupsSubtitle;
+
+  /// No description provided for @openCostGroupsLoading.
+  ///
+  /// In en, this message translates to:
+  /// **'Loading cost groups'**
+  String get openCostGroupsLoading;
+
+  /// No description provided for @openCostGroupsLoadingSubtitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Please wait while your cost groups load.'**
+  String get openCostGroupsLoadingSubtitle;
+
+  /// No description provided for @openCostGroupDetailNotFound.
+  ///
+  /// In en, this message translates to:
+  /// **'Cost group not found'**
+  String get openCostGroupDetailNotFound;
+
+  /// No description provided for @openCostGroupDetailNoNote.
+  ///
+  /// In en, this message translates to:
+  /// **'No note'**
+  String get openCostGroupDetailNoNote;
+
+  /// No description provided for @openCostGroupDetailInvestment.
+  ///
+  /// In en, this message translates to:
+  /// **'Investment'**
+  String get openCostGroupDetailInvestment;
+
+  /// No description provided for @openCostGroupDetailInitialInvestment.
+  ///
+  /// In en, this message translates to:
+  /// **'Initial investment'**
+  String get openCostGroupDetailInitialInvestment;
+
+  /// No description provided for @openCostGroupDetailAllocated.
+  ///
+  /// In en, this message translates to:
+  /// **'Allocated'**
+  String get openCostGroupDetailAllocated;
+
+  /// No description provided for @openCostGroupDetailRemaining.
+  ///
+  /// In en, this message translates to:
+  /// **'Remaining'**
+  String get openCostGroupDetailRemaining;
+
+  /// No description provided for @openCostGroupDetailHasRemaining.
+  ///
+  /// In en, this message translates to:
+  /// **'Unallocated'**
+  String get openCostGroupDetailHasRemaining;
+
+  /// No description provided for @openCostGroupDetailFullyAllocated.
+  ///
+  /// In en, this message translates to:
+  /// **'Fully allocated'**
+  String get openCostGroupDetailFullyAllocated;
+
+  /// No description provided for @openCostGroupDetailMovementHistory.
+  ///
+  /// In en, this message translates to:
+  /// **'Movement history'**
+  String get openCostGroupDetailMovementHistory;
+
+  /// No description provided for @openCostGroupDetailNoMovements.
+  ///
+  /// In en, this message translates to:
+  /// **'No movements yet'**
+  String get openCostGroupDetailNoMovements;
+
+  /// No description provided for @openCostGroupDetailEntry.
+  ///
+  /// In en, this message translates to:
+  /// **'Entry'**
+  String get openCostGroupDetailEntry;
+
+  /// No description provided for @openReceivablesSubtitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Money customers owe the business'**
+  String get openReceivablesSubtitle;
+
+  /// No description provided for @openReceivablesTotalOutstanding.
+  ///
+  /// In en, this message translates to:
+  /// **'Total outstanding'**
+  String get openReceivablesTotalOutstanding;
+
+  /// No description provided for @openReceivablesCustomersOwed.
+  ///
+  /// In en, this message translates to:
+  /// **'Customers owed'**
+  String get openReceivablesCustomersOwed;
+
+  /// No description provided for @openReceivablesCustomers.
+  ///
+  /// In en, this message translates to:
+  /// **'Customers with balances'**
+  String get openReceivablesCustomers;
+
+  /// No description provided for @openReceivablesOutstanding.
+  ///
+  /// In en, this message translates to:
+  /// **'Outstanding'**
+  String get openReceivablesOutstanding;
+
+  /// No description provided for @openReceivablesOldestUnpaid.
+  ///
+  /// In en, this message translates to:
+  /// **'Oldest unpaid'**
+  String get openReceivablesOldestUnpaid;
+
+  /// No description provided for @openReceivablesNoOutstanding.
+  ///
+  /// In en, this message translates to:
+  /// **'No outstanding balances'**
+  String get openReceivablesNoOutstanding;
+
+  /// No description provided for @openReceivablesNoOutstandingSubtitle.
+  ///
+  /// In en, this message translates to:
+  /// **'All customers are paid up.'**
+  String get openReceivablesNoOutstandingSubtitle;
+
+  /// No description provided for @openReceivablesLoading.
+  ///
+  /// In en, this message translates to:
+  /// **'Loading receivables'**
+  String get openReceivablesLoading;
+
+  /// No description provided for @openReceivablesLoadingSubtitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Please wait while receivables load.'**
+  String get openReceivablesLoadingSubtitle;
+
+  /// No description provided for @openAnalyticsFinancialPerformance.
+  ///
+  /// In en, this message translates to:
+  /// **'Financial performance'**
+  String get openAnalyticsFinancialPerformance;
+
+  /// No description provided for @openAnalyticsNetProfit.
+  ///
+  /// In en, this message translates to:
+  /// **'Net profit'**
+  String get openAnalyticsNetProfit;
+
+  /// No description provided for @openAnalyticsCashPosition.
+  ///
+  /// In en, this message translates to:
+  /// **'Cash position'**
+  String get openAnalyticsCashPosition;
+
+  /// No description provided for @openAnalyticsPooledCosts.
+  ///
+  /// In en, this message translates to:
+  /// **'Pooled costs'**
+  String get openAnalyticsPooledCosts;
+
+  /// No description provided for @openAnalyticsJobsCompleted.
+  ///
+  /// In en, this message translates to:
+  /// **'Jobs completed'**
+  String get openAnalyticsJobsCompleted;
+
+  /// No description provided for @openAnalyticsReceivables.
+  ///
+  /// In en, this message translates to:
+  /// **'Receivables'**
+  String get openAnalyticsReceivables;
 }
 
 class _AppLocalizationsDelegate

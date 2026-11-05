@@ -5629,4 +5629,349 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get inventoryRevenue => 'Revenue';
+
+  @override
+  String get openDashboardGreeting => 'Welcome back';
+
+  @override
+  String get openDashboardScopeShop => 'Whole shop';
+
+  @override
+  String get openDashboardScopeOwn => 'Your scope';
+
+  @override
+  String get openDashboardFinancialOverview => 'Financial overview';
+
+  @override
+  String get openDashboardRevenue => 'Revenue';
+
+  @override
+  String get openDashboardNetProfit => 'Net profit';
+
+  @override
+  String get openDashboardCashPosition => 'Cash position';
+
+  @override
+  String get openDashboardReceivables => 'Receivables';
+
+  @override
+  String get openDashboardOperationalOverview => 'Operational overview';
+
+  @override
+  String get openDashboardActiveJobs => 'Active jobs';
+
+  @override
+  String get openDashboardJobsAwaitingPayment => 'Jobs awaiting payment';
+
+  @override
+  String get openDashboardOverdueJobs => 'Overdue jobs';
+
+  @override
+  String get openDashboardCostGroups => 'Cost groups';
+
+  @override
+  String get openDashboardNewJob => 'New job';
+
+  @override
+  String get openDashboardRecordSale => 'Record sale';
+
+  @override
+  String get openDashboardRecordPayment => 'Record payment';
+
+  @override
+  String get openDashboardAddJobCost => 'Add job cost';
+
+  @override
+  String get openDashboardNewCostGroup => 'New cost group';
+
+  @override
+  String get openDashboardRecentActivity => 'Recent activity';
+
+  @override
+  String get openDashboardViewAll => 'View all';
+
+  @override
+  String get openDashboardGoodMorning => 'Good morning';
+
+  @override
+  String get openDashboardGoodAfternoon => 'Good afternoon';
+
+  @override
+  String get openDashboardGoodEvening => 'Good evening';
+
+  @override
+  String get openJobsTitle => 'Jobs';
+
+  @override
+  String get openJobsSubtitle => 'Track work from quote to payment';
+
+  @override
+  String get openJobsNewJob => 'New job';
+
+  @override
+  String get openJobsSearch => 'Search jobs';
+
+  @override
+  String get openJobsSearchHint => 'Title or customer';
+
+  @override
+  String get openJobsFilterAll => 'All';
+
+  @override
+  String get openJobsFilterActive => 'Active';
+
+  @override
+  String get openJobsFilterAwaitingPayment => 'Awaiting payment';
+
+  @override
+  String get openJobsFilterCompleted => 'Completed';
+
+  @override
+  String get openJobsNoJobs => 'No jobs yet';
+
+  @override
+  String get openJobsNoJobsSubtitle =>
+      'Create a job to track quote, payments and costs.';
+
+  @override
+  String get openJobsLoading => 'Loading jobs';
+
+  @override
+  String get openJobsLoadingSubtitle => 'Please wait while your jobs load.';
+
+  @override
+  String get openJobsNoCustomer => 'No customer';
+
+  @override
+  String get openJobStatusDraft => 'Draft';
+
+  @override
+  String get openJobStatusInProgress => 'In progress';
+
+  @override
+  String get openJobStatusAwaitingPayment => 'Awaiting payment';
+
+  @override
+  String get openJobStatusCompleted => 'Completed';
+
+  @override
+  String get openJobStatusCancelled => 'Cancelled';
+
+  @override
+  String get openJobFormTitle => 'New job';
+
+  @override
+  String get openJobDetailTitle => 'Job detail';
+
+  @override
+  String get openJobAddCostTitle => 'Add job cost';
+
+  @override
+  String get openCostGroupsTitle => 'Cost groups';
+
+  @override
+  String get openCostGroupFormTitle => 'New cost group';
+
+  @override
+  String get openCostGroupDetailTitle => 'Cost group detail';
+
+  @override
+  String get openReceivablesTitle => 'Receivables';
+
+  @override
+  String get openJobDetailNotFound => 'Job not found';
+
+  @override
+  String get openJobDetailNoCustomer => 'No customer';
+
+  @override
+  String get openJobDetailOverview => 'Job overview';
+
+  @override
+  String get openJobDetailQuote => 'Quoted amount';
+
+  @override
+  String get openJobDetailFinalPrice => 'Final price';
+
+  @override
+  String get openJobDetailStatus => 'Status';
+
+  @override
+  String get openJobDetailCreated => 'Created';
+
+  @override
+  String get openJobDetailFinancials => 'Financial breakdown';
+
+  @override
+  String get openJobDetailQuotedAmount => 'Quoted amount';
+
+  @override
+  String get openJobDetailDirectCosts => 'Direct costs';
+
+  @override
+  String get openJobDetailPaymentsReceived => 'Payments received';
+
+  @override
+  String get openJobDetailOutstanding => 'Outstanding';
+
+  @override
+  String get openJobDetailEstimatedProfit => 'Estimated profit';
+
+  @override
+  String get openJobDetailActivity => 'Job activity';
+
+  @override
+  String get openJobDetailCostAdded => 'Cost added';
+
+  @override
+  String get openJobDetailPaymentReceived => 'Payment received';
+
+  @override
+  String get openJobDetailNoActivity => 'No activity yet';
+
+  @override
+  String get openJobDetailActions => 'Actions';
+
+  @override
+  String get openJobDetailEditJob => 'Edit job';
+
+  @override
+  String get openJobDetailAddCost => 'Add direct cost';
+
+  @override
+  String get openJobDetailReceivePayment => 'Receive payment';
+
+  @override
+  String get openJobDetailRecordSale => 'Record sale';
+
+  @override
+  String get openJobDetailCompleteJob => 'Complete job';
+
+  @override
+  String get openJobDetailCompleteJobConfirm =>
+      'Marking a job complete is separate from settlement. The job can be completed without being fully paid.';
+
+  @override
+  String get openJobDetailCancel => 'Cancel';
+
+  @override
+  String get openJobDetailCompleteAndSettle => 'Complete and settle';
+
+  @override
+  String get openCostGroupsSubtitle => 'Pooled costs shared across jobs';
+
+  @override
+  String get openCostGroupsNewGroup => 'New cost group';
+
+  @override
+  String get openCostGroupsInvested => 'Invested';
+
+  @override
+  String get openCostGroupsRecovered => 'Recovered';
+
+  @override
+  String get openCostGroupsRemaining => 'Remaining';
+
+  @override
+  String get openCostGroupsHasRemaining => 'Unallocated';
+
+  @override
+  String get openCostGroupsFullyAllocated => 'Fully allocated';
+
+  @override
+  String get openCostGroupsNoGroups => 'No cost groups yet';
+
+  @override
+  String get openCostGroupsNoGroupsSubtitle =>
+      'Create a cost group to track pooled costs shared across jobs.';
+
+  @override
+  String get openCostGroupsLoading => 'Loading cost groups';
+
+  @override
+  String get openCostGroupsLoadingSubtitle =>
+      'Please wait while your cost groups load.';
+
+  @override
+  String get openCostGroupDetailNotFound => 'Cost group not found';
+
+  @override
+  String get openCostGroupDetailNoNote => 'No note';
+
+  @override
+  String get openCostGroupDetailInvestment => 'Investment';
+
+  @override
+  String get openCostGroupDetailInitialInvestment => 'Initial investment';
+
+  @override
+  String get openCostGroupDetailAllocated => 'Allocated';
+
+  @override
+  String get openCostGroupDetailRemaining => 'Remaining';
+
+  @override
+  String get openCostGroupDetailHasRemaining => 'Unallocated';
+
+  @override
+  String get openCostGroupDetailFullyAllocated => 'Fully allocated';
+
+  @override
+  String get openCostGroupDetailMovementHistory => 'Movement history';
+
+  @override
+  String get openCostGroupDetailNoMovements => 'No movements yet';
+
+  @override
+  String get openCostGroupDetailEntry => 'Entry';
+
+  @override
+  String get openReceivablesSubtitle => 'Money customers owe the business';
+
+  @override
+  String get openReceivablesTotalOutstanding => 'Total outstanding';
+
+  @override
+  String get openReceivablesCustomersOwed => 'Customers owed';
+
+  @override
+  String get openReceivablesCustomers => 'Customers with balances';
+
+  @override
+  String get openReceivablesOutstanding => 'Outstanding';
+
+  @override
+  String get openReceivablesOldestUnpaid => 'Oldest unpaid';
+
+  @override
+  String get openReceivablesNoOutstanding => 'No outstanding balances';
+
+  @override
+  String get openReceivablesNoOutstandingSubtitle =>
+      'All customers are paid up.';
+
+  @override
+  String get openReceivablesLoading => 'Loading receivables';
+
+  @override
+  String get openReceivablesLoadingSubtitle =>
+      'Please wait while receivables load.';
+
+  @override
+  String get openAnalyticsFinancialPerformance => 'Financial performance';
+
+  @override
+  String get openAnalyticsNetProfit => 'Net profit';
+
+  @override
+  String get openAnalyticsCashPosition => 'Cash position';
+
+  @override
+  String get openAnalyticsPooledCosts => 'Pooled costs';
+
+  @override
+  String get openAnalyticsJobsCompleted => 'Jobs completed';
+
+  @override
+  String get openAnalyticsReceivables => 'Receivables';
 }
