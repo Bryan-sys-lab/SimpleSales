@@ -46,6 +46,7 @@ import '../screens/open_job_detail_screen.dart';
 import '../screens/fashion_catalogue_screen.dart';
 import '../screens/fashion_product_detail_screen.dart';
 import '../screens/fashion_product_form_screen.dart';
+import '../screens/exchange_screen.dart';
 import '../screens/open_job_add_cost_screen.dart';
 import '../screens/open_cost_groups_screen.dart';
 import '../screens/open_cost_group_form_screen.dart';
@@ -709,6 +710,15 @@ List<RouteBase> _shellRoutes(AppState appState) {
           ],
         ),
       ],
+    ),
+    // Exchange: return goods from one sale and sell replacements — one atomic
+    // transaction. Reachable from the dashboard's More area and from sale
+    // detail wherever the profile exposes it.
+    GoRoute(
+      path: Routes.exchangeScreen,
+      parentNavigatorKey: rootNavigatorKey,
+      pageBuilder: (BuildContext context, GoRouterState routerState) =>
+          _fadeThrough(routerState, const ExchangeScreen()),
     ),
   ];
 }

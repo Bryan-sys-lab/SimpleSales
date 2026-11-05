@@ -61,6 +61,7 @@ abstract final class Routes {
   static const String fashionProductDetail = '/fashion/product/:productId';
   static const String fashionProductForm = '/fashion/product/new';
   static const String fashionVariantSelector = '/fashion/variant-selector/:productId';
+  static const String exchangeScreen = '/fashion/exchange';
   static const String openJobs = '/open/jobs';
   static const String openJobNew = '/open/jobs/new';
   static const String openJobDetail = '/open/jobs/:jobId';

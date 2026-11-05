@@ -6214,4 +6214,80 @@ class AppLocalizationsSw extends AppLocalizations {
 
   @override
   String get fashionAnalyticsOutOfStock => 'Haipo';
+
+  @override
+  String get exchangeFindSaleTitle => 'Pata uuzaji kubadiliwa';
+
+  @override
+  String get exchangeReturnLinesTitle => 'Chagua kinachorudi';
+
+  @override
+  String get exchangeReplacementTitle => 'Chagua mabadiliko';
+
+  @override
+  String get exchangeConfirmTitle => 'Thibitisha kubadiliko';
+
+  @override
+  String get exchangeSearchLabel => 'Tafuta mauzo';
+
+  @override
+  String get exchangeSearchHint => 'Resepi, mtu, taraji, au mteja';
+
+  @override
+  String get exchangeNoSalesFound => 'Hakuna mauzo yaliyokumbuka';
+
+  @override
+  String get exchangeStartOver => 'Zingatia tena';
+
+  @override
+  String get exchangeTotal => 'Jumla';
+
+  @override
+  String get exchangeReturning => 'Kurudi kutoka kiuzaji';
+
+  @override
+  String get exchangeReturnTotal => 'Thamani ya kurudi';
+
+  @override
+  String get exchangeSold => 'Uliuziwa';
+
+  @override
+  String get exchangeAvailable => 'inayopatikana kuwasilisha tena';
+
+  @override
+  String get exchangeLess => 'Rudisha kidogo';
+
+  @override
+  String get exchangeMore => 'Rudisha zaidi';
+
+  @override
+  String get exchangeRestock => 'Rudi kwenye taka';
+
+  @override
+  String get exchangeWriteOff => 'Rudi';
+
+  @override
+  String get exchangeChooseReplacement => 'Chagua hiasi za mabadiliko';
+
+  @override
+  String get exchangeReplacementTotal => 'Thamani ya mabadiliko';
+
+  @override
+  String get exchangeNoReplacements =>
+      'Ongeza hiasi ya mabadiliko angalau moja';
+
+  @override
+  String get exchangeReview => 'Angalia kubadiliko';
+
+  @override
+  String get exchangeReturned => 'Vilivorudi';
+
+  @override
+  String get exchangeDifference => 'Tofauti';
+
+  @override
+  String get exchangeCommit => 'Thibitisha kubadiliko';
+
+  @override
+  String get exchangeNoLines => 'Kiuzaji hiki haina mstari inayorudishiwa';
 }

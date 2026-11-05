@@ -6213,4 +6213,79 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get fashionAnalyticsOutOfStock => 'Out of stock';
+
+  @override
+  String get exchangeFindSaleTitle => 'Find the sale to exchange';
+
+  @override
+  String get exchangeReturnLinesTitle => 'Choose what comes back';
+
+  @override
+  String get exchangeReplacementTitle => 'Choose the replacement';
+
+  @override
+  String get exchangeConfirmTitle => 'Confirm exchange';
+
+  @override
+  String get exchangeSearchLabel => 'Search sales';
+
+  @override
+  String get exchangeSearchHint => 'Receipt, staff, date, or customer';
+
+  @override
+  String get exchangeNoSalesFound => 'No matching sales';
+
+  @override
+  String get exchangeStartOver => 'Start over';
+
+  @override
+  String get exchangeTotal => 'Total';
+
+  @override
+  String get exchangeReturning => 'Returning from sale';
+
+  @override
+  String get exchangeReturnTotal => 'Return value';
+
+  @override
+  String get exchangeSold => 'Sold';
+
+  @override
+  String get exchangeAvailable => 'available to return';
+
+  @override
+  String get exchangeLess => 'Return less';
+
+  @override
+  String get exchangeMore => 'Return more';
+
+  @override
+  String get exchangeRestock => 'Put back on shelf';
+
+  @override
+  String get exchangeWriteOff => 'Write off';
+
+  @override
+  String get exchangeChooseReplacement => 'Choose replacement variants';
+
+  @override
+  String get exchangeReplacementTotal => 'Replacement value';
+
+  @override
+  String get exchangeNoReplacements => 'Add at least one replacement variant';
+
+  @override
+  String get exchangeReview => 'Review exchange';
+
+  @override
+  String get exchangeReturned => 'Goods returned';
+
+  @override
+  String get exchangeDifference => 'Difference';
+
+  @override
+  String get exchangeCommit => 'Commit exchange';
+
+  @override
+  String get exchangeNoLines => 'This sale has no returnable lines';
 }

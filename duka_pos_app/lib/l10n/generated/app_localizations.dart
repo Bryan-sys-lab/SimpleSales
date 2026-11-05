@@ -10353,6 +10353,156 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'Out of stock'**
   String get fashionAnalyticsOutOfStock;
+
+  /// No description provided for @exchangeFindSaleTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Find the sale to exchange'**
+  String get exchangeFindSaleTitle;
+
+  /// No description provided for @exchangeReturnLinesTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Choose what comes back'**
+  String get exchangeReturnLinesTitle;
+
+  /// No description provided for @exchangeReplacementTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Choose the replacement'**
+  String get exchangeReplacementTitle;
+
+  /// No description provided for @exchangeConfirmTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Confirm exchange'**
+  String get exchangeConfirmTitle;
+
+  /// No description provided for @exchangeSearchLabel.
+  ///
+  /// In en, this message translates to:
+  /// **'Search sales'**
+  String get exchangeSearchLabel;
+
+  /// No description provided for @exchangeSearchHint.
+  ///
+  /// In en, this message translates to:
+  /// **'Receipt, staff, date, or customer'**
+  String get exchangeSearchHint;
+
+  /// No description provided for @exchangeNoSalesFound.
+  ///
+  /// In en, this message translates to:
+  /// **'No matching sales'**
+  String get exchangeNoSalesFound;
+
+  /// No description provided for @exchangeStartOver.
+  ///
+  /// In en, this message translates to:
+  /// **'Start over'**
+  String get exchangeStartOver;
+
+  /// No description provided for @exchangeTotal.
+  ///
+  /// In en, this message translates to:
+  /// **'Total'**
+  String get exchangeTotal;
+
+  /// No description provided for @exchangeReturning.
+  ///
+  /// In en, this message translates to:
+  /// **'Returning from sale'**
+  String get exchangeReturning;
+
+  /// No description provided for @exchangeReturnTotal.
+  ///
+  /// In en, this message translates to:
+  /// **'Return value'**
+  String get exchangeReturnTotal;
+
+  /// No description provided for @exchangeSold.
+  ///
+  /// In en, this message translates to:
+  /// **'Sold'**
+  String get exchangeSold;
+
+  /// No description provided for @exchangeAvailable.
+  ///
+  /// In en, this message translates to:
+  /// **'available to return'**
+  String get exchangeAvailable;
+
+  /// No description provided for @exchangeLess.
+  ///
+  /// In en, this message translates to:
+  /// **'Return less'**
+  String get exchangeLess;
+
+  /// No description provided for @exchangeMore.
+  ///
+  /// In en, this message translates to:
+  /// **'Return more'**
+  String get exchangeMore;
+
+  /// No description provided for @exchangeRestock.
+  ///
+  /// In en, this message translates to:
+  /// **'Put back on shelf'**
+  String get exchangeRestock;
+
+  /// No description provided for @exchangeWriteOff.
+  ///
+  /// In en, this message translates to:
+  /// **'Write off'**
+  String get exchangeWriteOff;
+
+  /// No description provided for @exchangeChooseReplacement.
+  ///
+  /// In en, this message translates to:
+  /// **'Choose replacement variants'**
+  String get exchangeChooseReplacement;
+
+  /// No description provided for @exchangeReplacementTotal.
+  ///
+  /// In en, this message translates to:
+  /// **'Replacement value'**
+  String get exchangeReplacementTotal;
+
+  /// No description provided for @exchangeNoReplacements.
+  ///
+  /// In en, this message translates to:
+  /// **'Add at least one replacement variant'**
+  String get exchangeNoReplacements;
+
+  /// No description provided for @exchangeReview.
+  ///
+  /// In en, this message translates to:
+  /// **'Review exchange'**
+  String get exchangeReview;
+
+  /// No description provided for @exchangeReturned.
+  ///
+  /// In en, this message translates to:
+  /// **'Goods returned'**
+  String get exchangeReturned;
+
+  /// No description provided for @exchangeDifference.
+  ///
+  /// In en, this message translates to:
+  /// **'Difference'**
+  String get exchangeDifference;
+
+  /// No description provided for @exchangeCommit.
+  ///
+  /// In en, this message translates to:
+  /// **'Commit exchange'**
+  String get exchangeCommit;
+
+  /// No description provided for @exchangeNoLines.
+  ///
+  /// In en, this message translates to:
+  /// **'This sale has no returnable lines'**
+  String get exchangeNoLines;
 }
 
 class _AppLocalizationsDelegate
