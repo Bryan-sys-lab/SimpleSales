@@ -501,8 +501,9 @@ class _LaybyMetric extends StatelessWidget {
   }
 }
 
-/// The fashion quick actions: Sell (primary), Add product, Receive stock,
-/// Create layby, View catalogue.
+/// The fashion quick actions: Sell, Add style, Receive stock, Create layby,
+/// View catalogue — as a 2x2 grid of tiles with icon + label + subtitle,
+/// mirroring the mockup.
 class _FashionDashboardQuickActions extends StatelessWidget {
   const _FashionDashboardQuickActions({
     required this.onOpenSell,
@@ -525,41 +526,137 @@ class _FashionDashboardQuickActions extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final AppSpacing spacing = AppSpacing.of(context);
-    final l10n = AppLocalizations.of(context);
 
-    return Wrap(
-      spacing: spacing.sm,
-      runSpacing: spacing.sm,
-      children: <Widget>[
-        QuickAction(
-          onPressed: onOpenSell,
-          icon: const Icon(Icons.point_of_sale_outlined),
-          label: Text(l10n.fashionDashboardSellAction),
-          primary: true,
+    final List<Widget> tiles = <Widget>[
+      _FashionQuickTile(
+        icon: Icons.point_of_sale_outlined,
+        label: 'Sell',
+        subtitle: 'New sale',
+        onTap: onOpenSell,
+        primary: true,
+      ),
+      if (canManageStock)
+        _FashionQuickTile(
+          icon: Icons.add_circle_outline,
+          label: 'Add style',
+          subtitle: 'Catalogue',
+          onTap: onOpenAddProduct,
         ),
-        if (canManageStock)
-          QuickAction(
-            onPressed: onOpenAddProduct,
-            icon: const Icon(Icons.add_circle_outline),
-            label: Text(l10n.fashionDashboardAddProduct),
-          ),
-        if (canReceiveStock)
-          QuickAction(
-            onPressed: onOpenReceiveStock,
-            icon: const Icon(Icons.local_shipping_outlined),
-            label: Text(l10n.fashionDashboardReceiveStock),
-          ),
-        QuickAction(
-          onPressed: onOpenLaybys,
-          icon: const Icon(Icons.bookmark_border),
-          label: Text(l10n.fashionDashboardCreateReserve),
+      if (canReceiveStock)
+        _FashionQuickTile(
+          icon: Icons.local_shipping_outlined,
+          label: 'Receive stock',
+          subtitle: 'New delivery',
+          onTap: onOpenReceiveStock,
         ),
-        QuickAction(
-          onPressed: onViewCatalogue,
-          icon: const Icon(Icons.inventory_2_outlined),
-          label: Text(l10n.fashionDashboardViewCatalogue),
+      _FashionQuickTile(
+        icon: Icons.bookmark_border,
+        label: 'New layby',
+        subtitle: 'Reserve item',
+        onTap: onOpenLaybys,
+      ),
+      _FashionQuickTile(
+        icon: Icons.inventory_2_outlined,
+        label: 'Catalogue',
+        subtitle: 'View all',
+        onTap: onViewCatalogue,
+      ),
+    ];
+
+    return LayoutBuilder(
+      builder: (BuildContext context, BoxConstraints constraints) {
+        final bool twoColumns = constraints.maxWidth >= 320;
+        if (twoColumns) {
+          return Wrap(
+            spacing: spacing.md,
+            runSpacing: spacing.md,
+            children: <Widget>[
+              for (final tile in tiles)
+                SizedBox(
+                  width: (constraints.maxWidth - spacing.md) / 2,
+                  child: tile,
+                ),
+            ],
+          );
+        }
+        return Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: <Widget>[
+            for (int i = 0; i < tiles.length; i++) ...<Widget>[
+              if (i > 0) SizedBox(height: spacing.md),
+              tiles[i],
+            ],
+          ],
+        );
+      },
+    );
+  }
+}
+
+/// One quick-action tile for the fashion dashboard.
+class _FashionQuickTile extends StatelessWidget {
+  const _FashionQuickTile({
+    required this.icon,
+    required this.label,
+    required this.subtitle,
+    required this.onTap,
+    this.primary = false,
+  });
+
+  final IconData icon;
+  final String label;
+  final String subtitle;
+  final VoidCallback onTap;
+  final bool primary;
+
+  @override
+  Widget build(BuildContext context) {
+    final AppSpacing spacing = AppSpacing.of(context);
+    final AppColors colors = AppColors.of(context);
+    final TextTheme type = AppTypography.of(context);
+
+    return Semantics(
+      button: true,
+      label: '$label, $subtitle',
+      child: SurfaceCard(
+        padding: EdgeInsets.all(spacing.md),
+        onTap: onTap,
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          mainAxisSize: MainAxisSize.min,
+          children: <Widget>[
+            Container(
+              padding: EdgeInsets.all(spacing.xs),
+              decoration: BoxDecoration(
+                color: primary
+                    ? colors.accentContainer
+                    : colors.surfaceSunken,
+                borderRadius: AppShapes.of(context).controlRadius,
+              ),
+              child: Icon(
+                icon,
+                size: 20,
+                color: primary ? colors.accent : colors.onSurfaceVariant,
+              ),
+            ),
+            SizedBox(height: spacing.md),
+            Text(
+              label,
+              style: type.titleSmall?.copyWith(
+                fontWeight: FontWeight.w700,
+                color: primary ? colors.accent : colors.onSurface,
+              ),
+            ),
+            SizedBox(height: 2),
+            Text(
+              subtitle,
+              style: type.bodySmall?.copyWith(
+                color: colors.onSurfaceMuted,
+              ),
+            ),
+          ],
         ),
-      ],
+      ),
     );
   }
 }
