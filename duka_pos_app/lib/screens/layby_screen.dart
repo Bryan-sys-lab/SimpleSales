@@ -77,8 +77,7 @@ class _LaybyScreenState extends State<LaybyScreen> {
           if (!mounted) return;
           setState(() => _products = p.where((x) => x.trackVariants).toList());
         }),
-        _db.expireDueLaybys(
-            staffName: _staffName, staffId: _staffId),
+        _db.expireDueLaybys(staffName: _staffName, staffId: _staffId),
         _db.getLaybys().then((l) {
           if (!mounted) return;
           setState(() => _laybys = l);
@@ -244,8 +243,7 @@ class _LaybyScreenState extends State<LaybyScreen> {
         content: TextField(
           controller: controller,
           autofocus: true,
-          decoration: const InputDecoration(
-            labelText: 'Reference number'),
+          decoration: const InputDecoration(labelText: 'Reference number'),
         ),
         actions: [
           TextButton(
@@ -376,25 +374,26 @@ class _LaybyScreenState extends State<LaybyScreen> {
                 children: <Widget>[
                   Text(
                     l10n.reserveNewReserve,
-                    style: type.titleMedium?.copyWith(fontWeight: FontWeight.w700),
+                    style:
+                        type.titleMedium?.copyWith(fontWeight: FontWeight.w700),
                   ),
                   SizedBox(height: spacing.sm),
                   DropdownButtonFormField<Customer>(
-                    value: _customer,
+                    initialValue: _customer,
                     decoration: InputDecoration(
                       labelText: l10n.reserveCustomer,
                     ),
-                      items: _customers
-                          .map((c) => DropdownMenuItem<Customer>(
-                                value: c,
-                                child: Text(c.name),
-                              ))
-                          .toList(),
+                    items: _customers
+                        .map((c) => DropdownMenuItem<Customer>(
+                              value: c,
+                              child: Text(c.name),
+                            ))
+                        .toList(),
                     onChanged: (v) => setState(() => _customer = v),
                   ),
                   SizedBox(height: spacing.sm),
                   DropdownButtonFormField<Product>(
-                    value: _product,
+                    initialValue: _product,
                     decoration: InputDecoration(
                       labelText: l10n.reserveStyle,
                     ),
@@ -417,14 +416,15 @@ class _LaybyScreenState extends State<LaybyScreen> {
                   SizedBox(height: spacing.sm),
                   if (_variants.isNotEmpty)
                     DropdownButtonFormField<ProductVariant>(
-                      value: _variant,
+                      initialValue: _variant,
                       decoration: InputDecoration(
                         labelText: l10n.reserveVariant,
                       ),
                       items: _variants
                           .map((v) => DropdownMenuItem(
                                 value: v,
-                                child: Text('${v.label} · ${formatMoney(v.sellPrice)} · ${v.availableStockQty.toInt()} left'),
+                                child: Text(
+                                    '${v.label} · ${formatMoney(v.sellPrice)} · ${v.availableStockQty.toInt()} left'),
                               ))
                           .toList(),
                       onChanged: (v) => setState(() => _variant = v),
@@ -438,8 +438,8 @@ class _LaybyScreenState extends State<LaybyScreen> {
                           decoration: InputDecoration(
                             labelText: l10n.reserveQuantity,
                           ),
-                          keyboardType:
-                              const TextInputType.numberWithOptions(decimal: true),
+                          keyboardType: const TextInputType.numberWithOptions(
+                              decimal: true),
                         ),
                       ),
                       SizedBox(width: spacing.sm),
@@ -449,8 +449,8 @@ class _LaybyScreenState extends State<LaybyScreen> {
                           decoration: InputDecoration(
                             labelText: l10n.reserveDeposit,
                           ),
-                          keyboardType:
-                              const TextInputType.numberWithOptions(decimal: true),
+                          keyboardType: const TextInputType.numberWithOptions(
+                              decimal: true),
                         ),
                       ),
                     ],
@@ -460,17 +460,20 @@ class _LaybyScreenState extends State<LaybyScreen> {
                     children: <Widget>[
                       Expanded(
                         child: DropdownButtonFormField<String>(
-                          value: _depositMethod,
+                          initialValue: _depositMethod,
                           decoration: InputDecoration(
                             labelText: l10n.reservePaymentMethod,
                           ),
                           items: const <DropdownMenuItem<String>>[
-                            DropdownMenuItem(value: 'cash', child: Text('Cash')),
-                            DropdownMenuItem(value: 'mpesa', child: Text('M-Pesa')),
-                            DropdownMenuItem(value: 'bank_transfer', child: Text('Bank transfer')),
+                            DropdownMenuItem(
+                                value: 'cash', child: Text('Cash')),
+                            DropdownMenuItem(
+                                value: 'mpesa', child: Text('M-Pesa')),
+                            DropdownMenuItem(
+                                value: 'bank_transfer',
+                                child: Text('Bank transfer')),
                           ],
-                          onChanged: (v) =>
-                              setState(() => _depositMethod = v!),
+                          onChanged: (v) => setState(() => _depositMethod = v!),
                         ),
                       ),
                       SizedBox(width: spacing.sm),
@@ -551,8 +554,13 @@ class _LaybyScreenState extends State<LaybyScreen> {
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: <Widget>[
                       Text(
-                        layby.items.map((item) => item.variantName.isNotEmpty ? item.variantName : item.productName).join(', '),
-                        style: type.bodyMedium?.copyWith(fontWeight: FontWeight.w700),
+                        layby.items
+                            .map((item) => item.variantName.isNotEmpty
+                                ? item.variantName
+                                : item.productName)
+                            .join(', '),
+                        style: type.bodyMedium
+                            ?.copyWith(fontWeight: FontWeight.w700),
                       ),
                       SizedBox(height: spacing.xs),
                       Chip(
@@ -575,7 +583,7 @@ class _LaybyScreenState extends State<LaybyScreen> {
             ),
             SizedBox(height: spacing.xs),
             Text(
-              '${l10n.reserveCustomerLabel} #${layby.customerId} · ${l10n.reserveDue} ${layby.dueAt.substring(0, 10)}',
+              '${l10n.reserveCustomer} #${layby.customerId} · ${l10n.reserveDue} ${layby.dueAt.substring(0, 10)}',
               style: type.labelSmall?.copyWith(color: colors.onSurfaceMuted),
             ),
             SizedBox(height: spacing.xs),

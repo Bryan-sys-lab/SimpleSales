@@ -556,7 +556,7 @@ class _ReturnExchangeLine extends StatelessWidget {
                       ),
                       SizedBox(height: spacing.xs),
                       Text(
-                        '${l10n.exchangeSold} ${item.qty} · ${l10n.exchangeAvailable} ${remaining}',
+                        '${l10n.exchangeSold} ${item.qty} · ${l10n.exchangeAvailable} $remaining',
                         style: type.labelSmall?.copyWith(
                           color: colors.onSurfaceMuted,
                         ),
