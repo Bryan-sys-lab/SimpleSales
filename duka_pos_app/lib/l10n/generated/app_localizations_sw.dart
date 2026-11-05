@@ -5996,4 +5996,90 @@ class AppLocalizationsSw extends AppLocalizations {
 
   @override
   String get shiftStartStartShift => 'Funga mfuasi';
+
+  @override
+  String get fashionDashboardSellAction => 'Uuza';
+
+  @override
+  String get fashionDashboardAddProduct => 'Ongeza fungu';
+
+  @override
+  String get fashionDashboardReceiveStock => 'Pokea hisa';
+
+  @override
+  String get fashionDashboardCreateLayby => 'Funga layby';
+
+  @override
+  String get fashionDashboardViewCatalogue => 'Angalia katalo';
+
+  @override
+  String get fashionDashboardLowStockVariants => 'Hiasi zisipo';
+
+  @override
+  String get fashionDashboardLaybys => 'Laybies';
+
+  @override
+  String get fashionDashboardLaybysOpen => 'Laybies zote';
+
+  @override
+  String get fashionDashboardLaybysAwaitingPayment => 'Malipo yasubiri';
+
+  @override
+  String get fashionDashboardLaybysReady => 'Tayari kwa kuwa chukua';
+
+  @override
+  String get fashionDashboardViewAll => 'Angalia zote';
+
+  @override
+  String get fashionCatalogueTitle => 'Katalo';
+
+  @override
+  String get fashionCatalogueSubtitle => 'Fungu na hiasi zake';
+
+  @override
+  String get fashionCatalogueAddStyle => 'Ongeza fungu';
+
+  @override
+  String get fashionCatalogueSearch => 'Bafadhili fungu';
+
+  @override
+  String get fashionCatalogueSearchHint => 'Anwa au SKU';
+
+  @override
+  String get fashionCatalogueNoStyles => 'Hakuna fungu hivi';
+
+  @override
+  String get fashionCatalogueNoStylesSubtitle =>
+      'Ongeza fungu ili kuanziana katalo.';
+
+  @override
+  String get fashionCatalogueLoading => 'Inapakia katalo';
+
+  @override
+  String get fashionCatalogueLoadingSubtitle =>
+      'Subiri kidogo fungu zinakuatwa.';
+
+  @override
+  String get fashionProductDetailTitle => 'Muhtasari wa fungu';
+
+  @override
+  String get fashionProductDetailNotFound => 'Fungu haijapatikana';
+
+  @override
+  String get fashionProductDetailVariants => 'Hiasi';
+
+  @override
+  String get fashionProductDetailNoVariants => 'Hakuna hiasi hivi';
+
+  @override
+  String get fashionProductDetailTotalStock => 'Hisa jumla';
+
+  @override
+  String get fashionProductDetailLowStock => 'Hiasi zisipo';
+
+  @override
+  String get fashionProductDetailEditStyle => 'Hariri fungu';
+
+  @override
+  String get fashionProductDetailEditVariant => 'Hariri hiasi';
 }

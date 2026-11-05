@@ -5995,4 +5995,90 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get shiftStartStartShift => 'Start shift';
+
+  @override
+  String get fashionDashboardSellAction => 'Sell';
+
+  @override
+  String get fashionDashboardAddProduct => 'Add style';
+
+  @override
+  String get fashionDashboardReceiveStock => 'Receive stock';
+
+  @override
+  String get fashionDashboardCreateLayby => 'Create layby';
+
+  @override
+  String get fashionDashboardViewCatalogue => 'View catalogue';
+
+  @override
+  String get fashionDashboardLowStockVariants => 'Low-stock variants';
+
+  @override
+  String get fashionDashboardLaybys => 'Lay-bys';
+
+  @override
+  String get fashionDashboardLaybysOpen => 'Open lay-bys';
+
+  @override
+  String get fashionDashboardLaybysAwaitingPayment => 'Awaiting payment';
+
+  @override
+  String get fashionDashboardLaybysReady => 'Ready for collection';
+
+  @override
+  String get fashionDashboardViewAll => 'View all';
+
+  @override
+  String get fashionCatalogueTitle => 'Catalogue';
+
+  @override
+  String get fashionCatalogueSubtitle => 'Styles and their variants';
+
+  @override
+  String get fashionCatalogueAddStyle => 'Add style';
+
+  @override
+  String get fashionCatalogueSearch => 'Search styles';
+
+  @override
+  String get fashionCatalogueSearchHint => 'Name or SKU';
+
+  @override
+  String get fashionCatalogueNoStyles => 'No styles yet';
+
+  @override
+  String get fashionCatalogueNoStylesSubtitle =>
+      'Add a style to start building your catalogue.';
+
+  @override
+  String get fashionCatalogueLoading => 'Loading catalogue';
+
+  @override
+  String get fashionCatalogueLoadingSubtitle =>
+      'Please wait while your styles load.';
+
+  @override
+  String get fashionProductDetailTitle => 'Style detail';
+
+  @override
+  String get fashionProductDetailNotFound => 'Style not found';
+
+  @override
+  String get fashionProductDetailVariants => 'Variants';
+
+  @override
+  String get fashionProductDetailNoVariants => 'No variants yet';
+
+  @override
+  String get fashionProductDetailTotalStock => 'Total stock';
+
+  @override
+  String get fashionProductDetailLowStock => 'Low-stock variants';
+
+  @override
+  String get fashionProductDetailEditStyle => 'Edit style';
+
+  @override
+  String get fashionProductDetailEditVariant => 'Edit variant';
 }

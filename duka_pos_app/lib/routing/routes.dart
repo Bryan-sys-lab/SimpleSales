@@ -56,7 +56,11 @@ abstract final class Routes {
   static const String tankDetail = '/inventory/tank/:tankId';
   static const String productDetail = '/inventory/product-detail';
 
-  // Open profile routes (job-centred rather than product-centred)
+  // Fashion profile routes (variant-centred rather than product-centred)
+  static const String fashionCatalogue = '/fashion/catalogue';
+  static const String fashionProductDetail = '/fashion/product/:productId';
+  static const String fashionProductForm = '/fashion/product/new';
+  static const String fashionVariantSelector = '/fashion/variant-selector/:productId';
   static const String openJobs = '/open/jobs';
   static const String openJobNew = '/open/jobs/new';
   static const String openJobDetail = '/open/jobs/:jobId';

@@ -9927,6 +9927,174 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'Start shift'**
   String get shiftStartStartShift;
+
+  /// No description provided for @fashionDashboardSellAction.
+  ///
+  /// In en, this message translates to:
+  /// **'Sell'**
+  String get fashionDashboardSellAction;
+
+  /// No description provided for @fashionDashboardAddProduct.
+  ///
+  /// In en, this message translates to:
+  /// **'Add style'**
+  String get fashionDashboardAddProduct;
+
+  /// No description provided for @fashionDashboardReceiveStock.
+  ///
+  /// In en, this message translates to:
+  /// **'Receive stock'**
+  String get fashionDashboardReceiveStock;
+
+  /// No description provided for @fashionDashboardCreateLayby.
+  ///
+  /// In en, this message translates to:
+  /// **'Create layby'**
+  String get fashionDashboardCreateLayby;
+
+  /// No description provided for @fashionDashboardViewCatalogue.
+  ///
+  /// In en, this message translates to:
+  /// **'View catalogue'**
+  String get fashionDashboardViewCatalogue;
+
+  /// No description provided for @fashionDashboardLowStockVariants.
+  ///
+  /// In en, this message translates to:
+  /// **'Low-stock variants'**
+  String get fashionDashboardLowStockVariants;
+
+  /// No description provided for @fashionDashboardLaybys.
+  ///
+  /// In en, this message translates to:
+  /// **'Lay-bys'**
+  String get fashionDashboardLaybys;
+
+  /// No description provided for @fashionDashboardLaybysOpen.
+  ///
+  /// In en, this message translates to:
+  /// **'Open lay-bys'**
+  String get fashionDashboardLaybysOpen;
+
+  /// No description provided for @fashionDashboardLaybysAwaitingPayment.
+  ///
+  /// In en, this message translates to:
+  /// **'Awaiting payment'**
+  String get fashionDashboardLaybysAwaitingPayment;
+
+  /// No description provided for @fashionDashboardLaybysReady.
+  ///
+  /// In en, this message translates to:
+  /// **'Ready for collection'**
+  String get fashionDashboardLaybysReady;
+
+  /// No description provided for @fashionDashboardViewAll.
+  ///
+  /// In en, this message translates to:
+  /// **'View all'**
+  String get fashionDashboardViewAll;
+
+  /// No description provided for @fashionCatalogueTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Catalogue'**
+  String get fashionCatalogueTitle;
+
+  /// No description provided for @fashionCatalogueSubtitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Styles and their variants'**
+  String get fashionCatalogueSubtitle;
+
+  /// No description provided for @fashionCatalogueAddStyle.
+  ///
+  /// In en, this message translates to:
+  /// **'Add style'**
+  String get fashionCatalogueAddStyle;
+
+  /// No description provided for @fashionCatalogueSearch.
+  ///
+  /// In en, this message translates to:
+  /// **'Search styles'**
+  String get fashionCatalogueSearch;
+
+  /// No description provided for @fashionCatalogueSearchHint.
+  ///
+  /// In en, this message translates to:
+  /// **'Name or SKU'**
+  String get fashionCatalogueSearchHint;
+
+  /// No description provided for @fashionCatalogueNoStyles.
+  ///
+  /// In en, this message translates to:
+  /// **'No styles yet'**
+  String get fashionCatalogueNoStyles;
+
+  /// No description provided for @fashionCatalogueNoStylesSubtitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Add a style to start building your catalogue.'**
+  String get fashionCatalogueNoStylesSubtitle;
+
+  /// No description provided for @fashionCatalogueLoading.
+  ///
+  /// In en, this message translates to:
+  /// **'Loading catalogue'**
+  String get fashionCatalogueLoading;
+
+  /// No description provided for @fashionCatalogueLoadingSubtitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Please wait while your styles load.'**
+  String get fashionCatalogueLoadingSubtitle;
+
+  /// No description provided for @fashionProductDetailTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Style detail'**
+  String get fashionProductDetailTitle;
+
+  /// No description provided for @fashionProductDetailNotFound.
+  ///
+  /// In en, this message translates to:
+  /// **'Style not found'**
+  String get fashionProductDetailNotFound;
+
+  /// No description provided for @fashionProductDetailVariants.
+  ///
+  /// In en, this message translates to:
+  /// **'Variants'**
+  String get fashionProductDetailVariants;
+
+  /// No description provided for @fashionProductDetailNoVariants.
+  ///
+  /// In en, this message translates to:
+  /// **'No variants yet'**
+  String get fashionProductDetailNoVariants;
+
+  /// No description provided for @fashionProductDetailTotalStock.
+  ///
+  /// In en, this message translates to:
+  /// **'Total stock'**
+  String get fashionProductDetailTotalStock;
+
+  /// No description provided for @fashionProductDetailLowStock.
+  ///
+  /// In en, this message translates to:
+  /// **'Low-stock variants'**
+  String get fashionProductDetailLowStock;
+
+  /// No description provided for @fashionProductDetailEditStyle.
+  ///
+  /// In en, this message translates to:
+  /// **'Edit style'**
+  String get fashionProductDetailEditStyle;
+
+  /// No description provided for @fashionProductDetailEditVariant.
+  ///
+  /// In en, this message translates to:
+  /// **'Edit variant'**
+  String get fashionProductDetailEditVariant;
 }
 
 class _AppLocalizationsDelegate
