@@ -27,7 +27,7 @@ import 'dashboard_shared.dart';
 import 'drinks_dashboard_screen.dart';
 import 'duka_dashboard_screen.dart';
 import 'fashion_dashboard_screen.dart';
-import 'open_business_screen.dart';
+import 'open_dashboard_screen.dart';
 
 class DashboardScreen extends StatefulWidget {
   const DashboardScreen({super.key});
@@ -121,7 +121,6 @@ class _DashboardContent extends StatelessWidget {
           onDismiss: onDismiss == null ? null : (String id) => onDismiss!(id),
         );
       case ShopProfile.open:
-        // Unreachable: handled in _DashboardScreenState.build().
         break;
     }
     throw UnimplementedError('No dashboard for profile $shopProfile');
@@ -557,12 +556,8 @@ class _DashboardScreenState extends State<DashboardScreen>
 
   @override
   Widget build(BuildContext context) {
-    final AppState appState = context.read<AppState>();
-    // Open has its own screen that loads its own data (pools, jobs, owner
-    // money) — it does not take the shared DashboardReady shape. Route it
-    // straight through and skip the dashboard loader entirely.
-    if (appState.shopProfile == ShopProfile.open) {
-      return const OpenBusinessScreen();
+    if (context.read<AppState>().shopProfile == ShopProfile.open) {
+      return const OpenDashboardScreen();
     }
     return switch (_state) {
       null || DashboardLoading() => const _DashboardSkeleton(),

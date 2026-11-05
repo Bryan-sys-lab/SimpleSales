@@ -56,6 +56,20 @@ abstract final class Routes {
   static const String tankDetail = '/inventory/tank/:tankId';
   static const String productDetail = '/inventory/product-detail';
 
+  // Open profile routes (job-centred rather than product-centred)
+  static const String openJobs = '/open/jobs';
+  static const String openJobNew = '/open/jobs/new';
+  static const String openJobDetail = '/open/jobs/:jobId';
+  static const String openJobAddCost = '/open/jobs/:jobId/cost';
+  static const String openCostGroups = '/open/cost-groups';
+  static const String openCostGroupNew = '/open/cost-groups/new';
+  static const String openCostGroupDetail = '/open/cost-groups/:poolId';
+  static const String openReceivables = '/open/receivables';
+  static const String openRecordPayment = '/open/payments/record';
+  static const String openSell = '/sell';
+  static const String openAddJobCost = '/open/jobs/:jobId/cost';
+  static const String openNewCostGroup = '/open/cost-groups/new';
+
   // ------------------------------------------------------------- the doors
   // Outside the shell: no navigation affordance, because there is no session to
   // navigate within.
