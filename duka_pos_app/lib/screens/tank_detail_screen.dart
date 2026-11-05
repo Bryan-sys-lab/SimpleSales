@@ -388,10 +388,10 @@ class _TankIdentityCard extends StatelessWidget {
               color: colors.surfaceSunken,
               shape: BoxShape.circle,
             ),
-            child: const Icon(
+            child: Icon(
               Icons.local_bar,
               size: 32,
-              color: Colors.white,
+              color: colors.onSurfaceVariant,
             ),
           ),
           SizedBox(height: spacing.md),
