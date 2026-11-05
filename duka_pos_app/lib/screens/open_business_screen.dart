@@ -9,6 +9,7 @@ import '../profile/shop_profile.dart';
 import '../screens/receive_stock_sheet.dart';
 import '../services/app_state.dart';
 import '../utils/money.dart';
+import 'shift_start_sheet.dart';
 
 /// Money-first tools for the Open profile.
 ///
@@ -292,12 +293,36 @@ class _OpenBusinessScreenState extends State<OpenBusinessScreen> {
     if (values == null) return;
     final amount = _money(values['amount']);
     if (amount == null) return _showError('Enter a valid positive amount.');
+    final method = values['method'] ?? 'cash';
+    if (!mounted) return;
+    final BuildContext localContext = context;
+    final AppState localAppState = context.read<AppState>();
     final shift = await _db.getAnyOpenShift();
+    // Cash needs a drawer: if no shift is open, prompt to start one first.
+    if (method == 'cash' && shift == null) {
+      final started = await promptToStartShift(
+        context: localContext,
+        appState: localAppState,
+        purpose: 'take cash job payments',
+      );
+      if (!started || !mounted) return;
+      // Re-read the shift after starting.
+      final newShift = await _db.getAnyOpenShift();
+      await _run(() => _db.recordJobPayment(
+            uuid: 'job-payment-${DateTime.now().microsecondsSinceEpoch}',
+            jobId: (job['id'] as num).toInt(),
+            amount: amount,
+            paymentMethod: method,
+            reference: values['reference'],
+            shiftId: newShift?.id,
+          ));
+      return;
+    }
     await _run(() => _db.recordJobPayment(
           uuid: 'job-payment-${DateTime.now().microsecondsSinceEpoch}',
           jobId: (job['id'] as num).toInt(),
           amount: amount,
-          paymentMethod: values['method'] ?? 'cash',
+          paymentMethod: method,
           reference: values['reference'],
           shiftId: shift?.id,
         ));
@@ -327,11 +352,36 @@ class _OpenBusinessScreenState extends State<OpenBusinessScreen> {
     }
     if (!mounted) return;
     final state = context.read<AppState>();
+    final BuildContext localContext = context;
+    final AppState localAppState = state;
+    final shift = await _db.getAnyOpenShift();
+    // Owner money movements are drawer movements too: prompt to start a shift
+    // if none is open, so the money lands somewhere the till can account for.
+    if (shift == null) {
+      final started = await promptToStartShift(
+        context: localContext,
+        appState: localAppState,
+        purpose: 'record owner money movements',
+      );
+      if (!started || !mounted) return;
+      final newShift = await _db.getAnyOpenShift();
+      if (newShift == null || !mounted) return;
+      await _run(() => _db.recordOwnerTransaction(
+            uuid: 'owner-${DateTime.now().microsecondsSinceEpoch}',
+            transactionType: values['type'] ?? 'capital_in',
+            amount: amount,
+            shiftId: newShift.id,
+            staffId: state.currentStaffId,
+            staffName: state.currentStaffName ?? 'Owner',
+            note: values['note'],
+          ));
+      return;
+    }
     await _run(() => _db.recordOwnerTransaction(
           uuid: 'owner-${DateTime.now().microsecondsSinceEpoch}',
           transactionType: values['type'] ?? 'capital_in',
           amount: amount,
-          shiftId: null,
+          shiftId: shift.id,
           staffId: state.currentStaffId,
           staffName: state.currentStaffName ?? 'Owner',
           note: values['note'],

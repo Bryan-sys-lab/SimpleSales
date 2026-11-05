@@ -297,4 +297,10 @@
   ,"openAnalyticsPooledCosts": "Gharama zilipangwa"
   ,"openAnalyticsJobsCompleted": "Kazi zimesimamishwa"
   ,"openAnalyticsReceivables": "Watu wanaolipia"
+  ,"shiftStartTitle": "Fungua mfuasi"
+  ,"shiftStartSubtitle": "Hakuna mfuasi uliopangwa"
+  ,"shiftStartPurpose": "Unahitaji mfuasi uliopangwa ili {purpose}."
+  ,"shiftStartNeedDrawer": "Pesa ya roho hushuka kwenye mfuasi, mfuasi haitakuwa uliofungwa kwanza."
+  ,"shiftStartOpenShift": "Floati ya pembejeo"
+  ,"shiftStartStartShift": "Funga mfuasi"
 }

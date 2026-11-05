@@ -28,6 +28,7 @@ import '../theme/app_spacing.dart';
 import '../theme/typography.dart';
 import '../ui/components/controls.dart';
 import '../ui/components/states.dart';
+import 'shift_start_sheet.dart';
 import '../ui/components/status.dart';
 import '../utils/kenya_phone.dart';
 import '../utils/money.dart';
@@ -710,6 +711,24 @@ class _CreditPaymentSheetState extends State<_CreditPaymentSheet> {
           _error = l10n.creditPaymentAmountInvalid;
         });
         return;
+      }
+      // Cash repayments need a drawer: if no shift is open, prompt to start one.
+      if (_method == 'cash') {
+        final shift = await DatabaseHelper.instance.getAnyOpenShift();
+        if (shift == null) {
+          if (!mounted) return;
+          final started = await promptToStartShift(
+            context: context,
+            appState: state,
+            purpose: 'record a cash credit repayment',
+          );
+          if (!started || !mounted) {
+            setState(() {
+              _saving = false;
+            });
+            return;
+          }
+        }
       }
       await DatabaseHelper.instance.recordCreditRepayment(
         customerId: widget.customer.id!,
