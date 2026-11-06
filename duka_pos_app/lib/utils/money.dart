@@ -221,13 +221,6 @@ int divideMoneyHalfUp(int numerator, int denominator) {
   return ((numerator * 2) + denominator) ~/ (denominator * 2);
 }
 
-/// Quantises a raw major-unit figure. Retained for the places that still hold a
-/// plain `double` mid-edit (spreadsheet cells, legacy columns during migration).
-double roundMoney(num amount) {
-  if (!amount.isFinite) return 0;
-  return (amount * kMinorUnitsPerMajor).roundToDouble() / kMinorUnitsPerMajor;
-}
-
 String formatMoney(Money amount) {
   final hasFraction = amount.minorUnits % kMinorUnitsPerMajor != 0;
   return NumberFormat.currency(
@@ -237,10 +230,3 @@ String formatMoney(Money amount) {
   ).format(amount.asMajor);
 }
 
-/// Formats a figure that is still a raw `double`, converting it first.
-///
-/// Only for values that have not been migrated to [Money] yet. Every such use
-/// is a candidate for replacement, not a permanent API.
-@Deprecated(
-    'Pass a Money instead of a raw double. Use Money.fromMajor to convert.')
-String formatMoneyMajor(num amount) => formatMoney(Money.fromMajor(amount));

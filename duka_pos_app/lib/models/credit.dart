@@ -259,36 +259,6 @@ enum DebtAgeBucket {
   }
 }
 
-/// Spreads [availableMinor] of payment money across [chargeIds] oldest first,
-/// giving each charge up to its own outstanding amount.
-///
-/// The invariant the tests hold: the allocations it returns NEVER exceed
-/// [availableMinor] in total, and no charge is allocated more than
-/// [remainingOnCharge]. Charges are given in age order — oldest first.
-List<CreditAllocation> allocateOldestFirst({
-  required List<({int entryId, int outstandingMinor})> charges,
-  required int availableMinor,
-  required int paymentEntryId,
-  int alreadyAllocated = 0,
-}) {
-  var remaining = availableMinor - alreadyAllocated;
-  final out = <CreditAllocation>[];
-  for (final charge in charges) {
-    if (remaining <= 0) break;
-    final applied = remaining < charge.outstandingMinor
-        ? remaining
-        : charge.outstandingMinor;
-    if (applied <= 0) continue;
-    out.add(CreditAllocation(
-      paymentEntryId: paymentEntryId,
-      chargeEntryId: charge.entryId,
-      amountMinor: applied,
-    ));
-    remaining -= applied;
-  }
-  return out;
-}
-
 /// The default template a reminder message is built from, before the shop
 /// overrides it. Placeholders are {shop}, {name}, {balance} and {till}.
 const String kDefaultReminderTemplate =

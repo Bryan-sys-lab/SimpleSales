@@ -13,6 +13,7 @@
 //    the opening float and report it as a variance.
 
 import 'package:flutter_test/flutter_test.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import 'package:sqflite_common_ffi/sqflite_ffi.dart';
 
 import 'package:duka_pos/db/database_helper.dart';
@@ -24,6 +25,7 @@ import 'package:duka_pos/utils/money.dart';
 void main() {
   setUpAll(() {
     TestWidgetsFlutterBinding.ensureInitialized();
+    SharedPreferences.setMockInitialValues(<String, Object>{});
     sqfliteFfiInit();
     databaseFactory = databaseFactoryFfi;
   });
@@ -234,10 +236,3 @@ void main() {
   });
 }
 
-/// The role a session resolves to after a sign-out.
-///
-/// Named here rather than imported so the test states the expectation instead
-/// of restating the implementation's own constant.
-class ShopRoleFallback {
-  static const String cashier = 'cashier';
-}

@@ -854,6 +854,7 @@ class _InventoryScreenState extends State<InventoryScreen>
     final canReorder = appState.hasPermission(PermissionKey.manageSuppliers);
     final showDrinkService = appState.shopProfile.navigation.showDrinkService;
     final l10n = AppLocalizations.of(context);
+    final filteredProducts = _filteredProducts();
     return Scaffold(
       floatingActionButton: FloatingActionButton(
         onPressed: () => _openEditor(),
@@ -1034,6 +1035,7 @@ class _InventoryScreenState extends State<InventoryScreen>
                         if (_tabController!.index.isFinite &&
                             _tabController!.index != _inventoryTab) {
                           setState(() => _inventoryTab = _tabController!.index);
+                          _load();
                         }
                       }),
                     tabs: <Widget>[
@@ -1051,7 +1053,7 @@ class _InventoryScreenState extends State<InventoryScreen>
               child: _products.isEmpty && _loading
                   ? const _InventorySkeleton()
                   : ListView.separated(
-                      itemCount: _filteredProducts().isEmpty ? 1 : _filteredProducts().length + 1,
+                      itemCount: filteredProducts.isEmpty ? 1 : filteredProducts.length + 1,
                       separatorBuilder: (_, i) => Divider(
                         height: 1,
                         indent: _rowDividerInset(context),
@@ -1060,7 +1062,7 @@ class _InventoryScreenState extends State<InventoryScreen>
                       itemBuilder: (_, i) {
                         // An empty catalogue is a setup problem, not an empty list:
                         // say what is missing and offer the one action that fixes it.
-                        if (i == 0 && _filteredProducts().isEmpty) {
+                        if (i == 0 && filteredProducts.isEmpty) {
                           return _InventoryEmptyState(
                               onAdd: () => _openEditor());
                         }
@@ -1068,7 +1070,7 @@ class _InventoryScreenState extends State<InventoryScreen>
                         // way of selling what is already in the catalogue, not another
                         // line of it, and burying it under the first hundred sodas is
                         // how a bar never finds the feature that makes it a bar.
-                        if (_filteredProducts().isEmpty || i == 0) {
+                        if (filteredProducts.isEmpty || i == 0) {
                           return Column(
                             children: <Widget>[
                               if (showDrinkService)
@@ -1097,7 +1099,7 @@ class _InventoryScreenState extends State<InventoryScreen>
                             ],
                           );
                         }
-                        final p = _filteredProducts()[i - 1];
+                        final p = filteredProducts[i - 1];
                         final variantCount = _variants.of(p).length;
                         return Semantics(
                           label: l10n.inventoryNameStock(
@@ -1956,6 +1958,8 @@ class _PhotoRow extends StatelessWidget {
               picked!,
               width: 72,
               height: 72,
+              cacheWidth: 144,
+              cacheHeight: 144,
               fit: BoxFit.cover,
             ),
           ),

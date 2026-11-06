@@ -40,7 +40,7 @@
 
 import 'package:flutter/material.dart';
 
-import '../../theme/app_spacing.dart';
+
 import '../../ui/components/controls.dart';
 
 /// Shows what an operation DID.
@@ -142,8 +142,3 @@ Future<bool> runOperation(
   return true;
 }
 
-/// The space a popup needs above the bottom of the screen.
-///
-/// Used by the screens that keep a full-height sheet, so the popup is not
-/// hidden behind it.
-double operationPopupInset(BuildContext context) => AppSpacing.of(context).lg;

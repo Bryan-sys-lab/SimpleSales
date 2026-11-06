@@ -198,13 +198,6 @@ class AdaptiveGrid extends StatelessWidget {
   }
 }
 
-/// Whether the window can afford two panes.
-///
-/// Reads the size class rather than a device flag, so a resized desktop window
-/// gets the two-pane layout and a foldable's cover display does not.
-bool canSplitPanes(BuildContext context) =>
-    windowSizeClassOf(context).splitsTwoPanes;
-
 /// The page's edge gutter, and the padding inside a card on the page.
 ///
 /// WHY THIS IS A FUNCTION OF THE WINDOW

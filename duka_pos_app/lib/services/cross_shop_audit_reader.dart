@@ -201,23 +201,7 @@ class CrossShopAuditReader {
 
   /// The actions the owner's cross-shop view shows — sales and other noise are
   /// excluded, just as `DatabaseHelper.ownerRelevantAudit` excludes them.
-  static const List<AuditAction> _ownerVisibleActions = <AuditAction>[
-    AuditAction.staffAdded,
-    AuditAction.staffRemoved,
-    AuditAction.staffPinReset,
-    AuditAction.productVariantRemoved,
-    AuditAction.barcodeRemoved,
-    AuditAction.barcodeKindChanged,
-    AuditAction.taxSettingsChanged,
-    AuditAction.paymentMethodChanged,
-    AuditAction.printerSaved,
-    AuditAction.backupErased,
-    AuditAction.backupRestored,
-    AuditAction.shopCreated,
-    AuditAction.shopSwitched,
-    AuditAction.profileChanged,
-    AuditAction.identityLinked,
-  ];
+  static const List<AuditAction> _ownerVisibleActions = ownerVisibleAuditActions;
 
   /// Every audit row on this device, merged and sorted newest-first.
   ///

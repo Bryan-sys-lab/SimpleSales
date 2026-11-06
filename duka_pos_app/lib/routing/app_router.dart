@@ -399,18 +399,33 @@ List<RouteBase> _shellRoutes(AppState appState) {
                         : NotFoundScreen(location: routerState.matchedLocation),
                   ),
                 ),
-                // One product's full detail: quantity, unit, cost, price,
-                // reorder level, stock value, actions.
                 GoRoute(
                   path: 'product-detail',
+                  parentNavigatorKey: rootNavigatorKey,
+                  pageBuilder:
+                      (BuildContext context, GoRouterState routerState) {
+                    final extra = routerState.extra;
+                    if (extra is! Product) {
+                      return _fadeThrough(
+                        routerState,
+                        NotFoundScreen(location: routerState.matchedLocation),
+                      );
+                    }
+                    return _fadeThrough(
+                      routerState,
+                      ProductDetailScreen(product: extra),
+                    );
+                  },
+                ),
+                // Add a new fashion style with variants.
+                GoRoute(
+                  path: 'fashion-product/new',
                   parentNavigatorKey: rootNavigatorKey,
                   pageBuilder:
                       (BuildContext context, GoRouterState routerState) =>
                           _fadeThrough(
                     routerState,
-                    ProductDetailScreen(
-                      product: routerState.extra as Product,
-                    ),
+                    const FashionProductFormScreen(),
                   ),
                 ),
                 // One fashion product's variants table.
@@ -427,17 +442,6 @@ List<RouteBase> _shellRoutes(AppState appState) {
                           ) ??
                           0,
                     ),
-                  ),
-                ),
-                // Add a new fashion style with variants.
-                GoRoute(
-                  path: 'fashion-product/new',
-                  parentNavigatorKey: rootNavigatorKey,
-                  pageBuilder:
-                      (BuildContext context, GoRouterState routerState) =>
-                          _fadeThrough(
-                    routerState,
-                    const FashionProductFormScreen(),
                   ),
                 ),
               ],
@@ -838,15 +842,3 @@ CustomTransitionPage<void> _fadeThrough(
     },
   );
 }
-
-/// The app's one router, as a provider.
-///
-/// `ref.watch` on both dependencies so a role change rebuilds the router with the
-/// new session's route set — which matters because the route *list* is
-/// role-independent but the redirect's answer is not.
-final Provider<GoRouter> appRouterProvider = Provider<GoRouter>(
-  create: (BuildContext context) => buildAppRouter(
-    stage: context.read<AppStageController>(),
-    appState: context.read<AppState>(),
-  ),
-);

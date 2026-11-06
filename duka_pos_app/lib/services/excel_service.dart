@@ -37,21 +37,6 @@ class InventoryBackupRequest {
 ///
 /// This must run on the **main** isolate. Reading the catalogue needs sqflite
 /// and writing the file needs path_provider, and neither plugin is registered
-/// inside a `compute` isolate — dispatching this function wholesale threw on
-/// every run and the caller's `catch` swallowed it, so automatic backups
-/// silently stopped happening. The genuinely CPU-bound part (AES-GCM over the
-/// workbook) is dispatched separately by [EncryptedBackupService.encryptToFile],
-/// so the expensive work still leaves the frame loop.
-///
-/// This is the scheduler-facing entry point and is a thin delegate:
-/// [ExcelService.saveAutomaticInventoryBackup] holds the single implementation,
-/// so a manual backup and an automatic one can never drift apart.
-Future<String> writeAutomaticInventoryBackup(
-    InventoryBackupRequest request) async {
-  final file = await ExcelService().saveAutomaticInventoryBackup();
-  return file.path;
-}
-
 /// Writes the complete local workspace for the opt-in automatic backup path.
 /// Unlike the spreadsheet export, this includes staff, queues, audit history,
 /// credit, shifts, and every analytics source table.

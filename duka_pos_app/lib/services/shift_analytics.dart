@@ -117,13 +117,17 @@ Future<ShiftAnalytics> loadShiftAnalytics({
       .where((Shift shift) => startedIn(shift) || closedIn(shift))
       .toList(growable: false);
 
+  final reconciliationsByShift = await db.getReconciliationsForShifts(
+    inWindow.where((s) => s.id != null).map((s) => s.id!).toList(),
+  );
+
   int expectedMinor = 0;
   int countedMinor = 0;
   int reconciled = 0;
   for (final Shift shift in inWindow) {
     final int? id = shift.id;
     if (id == null) continue;
-    final List<Reconciliation> rows = await db.getReconciliationsForShift(id);
+    final List<Reconciliation> rows = reconciliationsByShift[id] ?? const [];
     if (rows.isEmpty) continue;
     // The LAST reconciliation is the one that was signed off: a drawer can be
     // counted twice while the person checks the figure, and the later count

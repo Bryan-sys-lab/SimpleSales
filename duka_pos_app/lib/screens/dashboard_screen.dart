@@ -315,7 +315,7 @@ class _DashboardScreenState extends State<DashboardScreen>
         db.topProducts(since: DateTime(2000), staffId: staffId, limit: 1000),
       ]);
 
-      final List<Product> low = (await db.getProducts())
+      final List<Product> low = products
           .where((Product product) => product.isLow)
           .toList()
         ..sort((Product a, Product b) {

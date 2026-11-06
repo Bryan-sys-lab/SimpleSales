@@ -44,23 +44,4 @@ extension AppLocalizationsKeys on AppLocalizations {
   String roleLabel(bool isAdmin) =>
       isAdmin ? shellRoleOwner : settingsRoleCashier;
 
-  /// Every key [byKey] can resolve, so a test can assert the mapping is TOTAL
-  /// against the keys the enums actually use rather than against this file's own
-  /// contents — a key present here but absent from the ARB would otherwise pass.
-  static const List<String> resolvableKeys = <String>[
-    'navDashboard',
-    'navDashboardShort',
-    'navSell',
-    'navSellShort',
-    'navInventory',
-    'navInventoryShort',
-    'navAnalytics',
-    'navAnalyticsShort',
-    'navSettings',
-    'navSettingsShort',
-    'navSupport',
-    'navSupportShort',
-    'navOpenBusiness',
-    'navOpenBusinessShort',
-  ];
 }

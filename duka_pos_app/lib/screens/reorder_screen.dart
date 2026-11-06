@@ -70,17 +70,34 @@ class _ReorderScreenState extends State<ReorderScreen> {
       for (final supplier in suppliers)
         if (supplier.id != null) supplier.id!: supplier,
     };
+    // Batch-load supplier links and packs for every product once, instead of
+    // querying per low-stock product.
+    final allSupplierLinks = await (await db.database).rawQuery('''
+      SELECT ps.*, s.name AS supplier_name, s.phone AS supplier_phone
+      FROM product_suppliers ps JOIN suppliers s ON s.id = ps.supplier_id
+      ORDER BY ps.preferred DESC, s.name
+    ''');
+    final supplierLinksByProduct = <int, List<Map<String, dynamic>>>{};
+    for (final link in allSupplierLinks) {
+      final pid = link['product_id'] as int;
+      (supplierLinksByProduct[pid] ??= <Map<String, dynamic>>[]).add(link);
+    }
+    final allPacks = await db.getProductPacksForAll();
+    final packsByProduct = <int, List<ProductPack>>{};
+    for (final pack in allPacks) {
+      (packsByProduct[pack.productId] ??= <ProductPack>[]).add(pack);
+    }
     final next = <_ReorderLine>[];
     for (final product in products) {
       if (product.id == null || product.reorderLevel <= product.stockQty) {
         continue;
       }
-      final links = await db.getProductSuppliers(product.id!);
+      final links = supplierLinksByProduct[product.id!] ?? const [];
       final link = links.isEmpty ? null : links.first;
       final supplier = link == null ? null : byId[link['supplier_id'] as int];
       ProductPack? pack;
       if (link?['pack_id'] != null) {
-        final packs = await db.getProductPacks(product.id!);
+        final packs = packsByProduct[product.id!] ?? const [];
         for (final candidate in packs) {
           if (candidate.id == link!['pack_id']) pack = candidate;
         }

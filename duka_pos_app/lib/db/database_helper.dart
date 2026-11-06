@@ -2341,13 +2341,16 @@ SELECT name FROM staff GROUP BY name HAVING COUNT(*) = 1
         FROM sales
        ORDER BY id
     ''');
+    final paidSaleIds = (await db.rawQuery(
+            'SELECT DISTINCT sale_id FROM sale_payments'))
+        .map((r) => (r['sale_id'] as num).toInt())
+        .toSet();
     for (var offset = 0; offset < rows.length; offset += batchSize) {
       final end =
           (offset + batchSize > rows.length) ? rows.length : offset + batchSize;
       for (final row in rows.sublist(offset, end)) {
         final int saleId = row['id'] as int;
-        final bool exists = await _hasPaymentFor(db, saleId);
-        if (exists) continue;
+        if (paidSaleIds.contains(saleId)) continue;
         // The amounts are numbers, not necessarily integers: a database older
         // than the money migration stored them as REAL. The payment table
         // holds minor units, so they are read as numbers and rounded once,
@@ -2372,11 +2375,6 @@ SELECT name FROM staff GROUP BY name HAVING COUNT(*) = 1
     }
   }
 
-  Future<bool> _hasPaymentFor(Database db, int saleId) async {
-    final rows = await db.rawQuery(
-        'SELECT COUNT(*) AS c FROM sale_payments WHERE sale_id = ?', [saleId]);
-    return ((rows.first['c'] as int?) ?? 0) > 0;
-  }
 
   /// The VAT on the sales that predate the tax columns.
   ///
@@ -2443,9 +2441,9 @@ SELECT name FROM staff GROUP BY name HAVING COUNT(*) = 1
   /// figure in the ledger, on the paper and with KRA are the same cent.
   static int _vatFromInclusive(int amountMinor, int ratePercent) {
     if (amountMinor <= 0 || ratePercent <= 0) return 0;
-    // amount = net * (1 + rate)  =>  vat = amount - amount / (1 + rate)
-    final int net = (amountMinor * 100) ~/ (100 + ratePercent);
-    return amountMinor - net;
+    // VAT contained in a VAT-inclusive gross: amount * rate / (100 + rate),
+    // rounded half up — same rule as vatComponentOf in utils/money.dart.
+    return divideMoneyHalfUp(amountMinor * ratePercent, 100 + ratePercent);
   }
 
   /// A fresh identity for a ledger row.
@@ -2509,7 +2507,7 @@ SELECT name FROM staff GROUP BY name HAVING COUNT(*) = 1
     if (!salesNames.contains('etims_receipt_number')) return;
     const backendUrl = String.fromEnvironment(
       'BACKEND_URL',
-      defaultValue: 'https://duka-pos-backend.brianbmk332.workers.dev/api',
+      defaultValue: 'https://your-backend/api',
     );
     final base = backendUrl.replaceAll(RegExp(r'/+$'), '');
     if (base.isNotEmpty) {
@@ -4130,6 +4128,34 @@ SELECT name FROM staff GROUP BY name HAVING COUNT(*) = 1
     return (rows.first['balance_after'] as num?)?.toDouble();
   }
 
+  /// Batch variant: opening stock for many products in one query.
+  Future<Map<int, double?>> openingStockQtyForProducts(
+      List<int> productIds) async {
+    if (productIds.isEmpty) return <int, double?>{};
+    final db = await database;
+    final placeholders = List.filled(productIds.length, '?').join(',');
+    final rows = await db.rawQuery(
+      '''SELECT product_id, balance_after
+         FROM stock_movements
+         WHERE product_id IN ($placeholders)
+           AND variant_id IS NULL
+           AND movement_type = ?
+         ORDER BY id ASC''',
+      [...productIds, StockMovementType.opening.wire],
+    );
+    final result = <int, double?>{};
+    for (final id in productIds) {
+      result[id] = null;
+    }
+    for (final row in rows) {
+      final pid = (row['product_id'] as num).toInt();
+      if (result[pid] == null && row['balance_after'] != null) {
+        result[pid] = (row['balance_after'] as num).toDouble();
+      }
+    }
+    return result;
+  }
+
   /// The local stock changes the server has not acknowledged yet.
   ///
   /// A pulled product count is a remote baseline. Adding only these
@@ -4363,6 +4389,15 @@ SELECT name FROM staff GROUP BY name HAVING COUNT(*) = 1
     return rows.map(ProductPack.fromMap).toList();
   }
 
+  Future<List<ProductPack>> getProductPacksForAll() async {
+    final rows = await (await database).query(
+      'product_packs',
+      where: 'active = 1',
+      orderBy: 'name',
+    );
+    return rows.map(ProductPack.fromMap).toList();
+  }
+
   Future<int> addProductPack({
     required String uuid,
     required int productId,
@@ -4507,6 +4542,30 @@ SELECT name FROM staff GROUP BY name HAVING COUNT(*) = 1
       [barcode],
     );
     return rows.isEmpty ? null : Product.fromMap(rows.first);
+  }
+
+  Future<Map<String, Product?>> getProductOwningBarcodes(
+      List<String> barcodes) async {
+    if (barcodes.isEmpty) return <String, Product?>{};
+    final db = await database;
+    final placeholders = List.filled(barcodes.length, '?').join(',');
+    final rows = await db.rawQuery(
+      '''SELECT p.*, b.barcode AS _barcode FROM products p
+         JOIN product_barcodes b ON b.product_id = p.id
+        WHERE b.barcode IN ($placeholders)''',
+      barcodes,
+    );
+    final result = <String, Product?>{};
+    for (final code in barcodes) {
+      result[code] = null;
+    }
+    for (final row in rows) {
+      final code = row['_barcode'] as String?;
+      if (code != null && result[code] == null) {
+        result[code] = Product.fromMap(row);
+      }
+    }
+    return result;
   }
 
   /// Attaches [barcode] to [productId].
@@ -4762,6 +4821,29 @@ SELECT name FROM staff GROUP BY name HAVING COUNT(*) = 1
     final rows = await (await database).query('sale_payments',
         where: 'sale_id = ?', whereArgs: [saleId], orderBy: 'id');
     return rows.map(SalePayment.fromMap).toList();
+  }
+
+  /// Batch variant: payments for many sales in one query.
+  Future<Map<int, List<SalePayment>>> getSalePaymentsForSales(
+      List<int> saleIds) async {
+    if (saleIds.isEmpty) return <int, List<SalePayment>>{};
+    final db = await database;
+    final placeholders = List.filled(saleIds.length, '?').join(',');
+    final rows = await db.query(
+      'sale_payments',
+      where: 'sale_id IN ($placeholders)',
+      whereArgs: saleIds,
+      orderBy: 'id',
+    );
+    final result = <int, List<SalePayment>>{};
+    for (final id in saleIds) {
+      result[id] = <SalePayment>[];
+    }
+    for (final row in rows) {
+      final sid = (row['sale_id'] as num).toInt();
+      (result[sid] ??= <SalePayment>[]).add(SalePayment.fromMap(row));
+    }
+    return result;
   }
 
   /// Every product whose count disagrees with its ledger.
@@ -6945,7 +7027,8 @@ SELECT name FROM staff GROUP BY name HAVING COUNT(*) = 1
       }
       for (final item in items) {
         final product = productRows[item.productId]!;
-        final qty = item.qty;
+        final containerMl = (product['bottle_ml'] as num?)?.toDouble() ?? 0;
+        final qty = item.qty * _portionFactor(item, containerMl);
         if (item.variantId != null) {
           final variant = variantRows[item.variantId]!;
           final available = (variant['stock_qty'] as num).toDouble() -
@@ -7777,22 +7860,39 @@ SELECT name FROM staff GROUP BY name HAVING COUNT(*) = 1
         ...directUnitsByProduct,
         for (final entry in requiredByVariant.entries) -entry.key: entry.value,
       };
+      // Batch-load stock batches for every expiry-tracked product/variant once.
+      final trackedProductIds = <int>{
+        for (final entry in expiryKeys.entries)
+          (entry.key < 0
+              ? variantRowsById[-entry.key]!['product_id'] as int
+              : entry.key),
+      }.where((pid) => trackExpiryByProduct[pid] == true).toSet();
+      final batchRowsByProduct = <int, List<Map<String, dynamic>>>{};
+      if (trackedProductIds.isNotEmpty) {
+        final placeholders = List.filled(trackedProductIds.length, '?').join(',');
+        final allBatchRows = await txn.rawQuery(
+          '''SELECT * FROM stock_batches
+             WHERE product_id IN ($placeholders)
+               AND qty_remaining > 0
+               AND expires_at >= ?
+             ORDER BY expires_at ASC, id ASC''',
+          [...trackedProductIds, now],
+        );
+        for (final row in allBatchRows) {
+          final pid = (row['product_id'] as num).toInt();
+          (batchRowsByProduct[pid] ??= <Map<String, dynamic>>[]).add(row);
+        }
+      }
       for (final entry in expiryKeys.entries) {
         final productId = entry.key < 0
             ? variantRowsById[-entry.key]!['product_id'] as int
             : entry.key;
         if (trackExpiryByProduct[productId] != true) continue;
         final variantId = entry.key < 0 ? -entry.key : null;
-        final batchRows = await txn.query(
-          'stock_batches',
-          where: variantId == null
-              ? 'product_id = ? AND variant_id IS NULL AND qty_remaining > 0 AND expires_at >= ?'
-              : 'product_id = ? AND variant_id = ? AND qty_remaining > 0 AND expires_at >= ?',
-          whereArgs: variantId == null
-              ? [productId, now]
-              : [productId, variantId, now],
-          orderBy: 'expires_at ASC, id ASC',
-        );
+        final batchRows = (batchRowsByProduct[productId] ?? const [])
+            .where((r) =>
+                (r['variant_id'] as num?)?.toInt() == variantId)
+            .toList();
         final rows = <Map<String, dynamic>>[
           for (final row in batchRows) Map<String, dynamic>.from(row),
         ];
@@ -9181,6 +9281,8 @@ SELECT name FROM staff GROUP BY name HAVING COUNT(*) = 1
       sales.add(Sale(
         id: sale.id,
         staffName: sale.staffName,
+        buyerName: sale.buyerName,
+        buyerTin: sale.buyerTin,
         total: sale.total,
         profit: sale.profit,
         createdAt: sale.createdAt,
@@ -9392,6 +9494,8 @@ SELECT name FROM staff GROUP BY name HAVING COUNT(*) = 1
       int restockedMilliunits = 0;
       final now = DateTime.now().toIso8601String();
 
+      final containerMlByProduct = <int, double>{};
+
       for (final ReturnLineDraft draft in lines) {
         final SaleItem? sold = saleItems[draft.saleItemId];
         if (sold == null) {
@@ -9429,7 +9533,14 @@ SELECT name FROM staff GROUP BY name HAVING COUNT(*) = 1
         // A write-off writes a row too — the ledger is append-only, and the
         // missing bottle has to be somewhere. It just does not put the
         // quantity back on the shelf.
-        final double units = draft.qty * _portionFactor(sold, 0);
+        containerMlByProduct[sold.productId] ??= ((await txn.query(
+          'products',
+          columns: ['bottle_ml'],
+          where: 'id = ?',
+          whereArgs: [sold.productId],
+          limit: 1,
+        )).firstOrNull?['bottle_ml'] as num?)?.toDouble() ?? 0;
+        final double units = draft.qty * _portionFactor(sold, containerMlByProduct[sold.productId]!);
         final int returnCostMinor = _roundHalfUp(
           sold.unitCost.minorUnits * draft.qty,
         );
@@ -9601,8 +9712,7 @@ SELECT name FROM staff GROUP BY name HAVING COUNT(*) = 1
 
       for (final ReturnLineDraft draft in lines) {
         final SaleItem sold = saleItems[draft.saleItemId]!;
-        final int lineTotal =
-            _roundHalfUp(sold.unitPrice.minorUnits * sold.qty);
+        final int lineTotal = sold.total.minorUnits;
         await txn.insert('sale_return_items', {
           'return_id': returnId,
           'sale_item_id': draft.saleItemId,
@@ -12326,6 +12436,28 @@ SELECT name FROM staff GROUP BY name HAVING COUNT(*) = 1
     return rows.map(Reconciliation.fromMap).toList();
   }
 
+  Future<Map<int, List<Reconciliation>>> getReconciliationsForShifts(
+      List<int> shiftIds) async {
+    if (shiftIds.isEmpty) return <int, List<Reconciliation>>{};
+    final db = await database;
+    final placeholders = List.filled(shiftIds.length, '?').join(',');
+    final rows = await db.query(
+      'reconciliations',
+      where: 'shift_id IN ($placeholders)',
+      whereArgs: shiftIds,
+      orderBy: 'recorded_at DESC',
+    );
+    final result = <int, List<Reconciliation>>{};
+    for (final id in shiftIds) {
+      result[id] = <Reconciliation>[];
+    }
+    for (final row in rows) {
+      final sid = (row['shift_id'] as num).toInt();
+      (result[sid] ??= <Reconciliation>[]).add(Reconciliation.fromMap(row));
+    }
+    return result;
+  }
+
   /// The cash the sales ledger says was rung up as cash during [shift]'s window.
   ///
   /// Scoped on **both** the window and [Shift.staffId]: a shared till can have
@@ -12354,6 +12486,25 @@ SELECT name FROM staff GROUP BY name HAVING COUNT(*) = 1
       [shift.staffId, since.toIso8601String(), until.toIso8601String()],
     );
     final minor = (rows.first['total_minor'] as num?)?.toInt() ?? 0;
+
+    // Plus the cash leg of split-tender sales: those rows have
+    // payment_method = 'split' but carry a cash tender in sale_payments, and
+    // that cash reached this drawer too.
+    final cashTenderRows = await (await database).rawQuery(
+      '''SELECT COALESCE(SUM(sp.amount_minor), 0) AS total_minor
+         FROM sale_payments sp
+         JOIN sales s ON s.id = sp.sale_id
+         WHERE s.staff_id = ?
+           AND s.created_at >= ?
+           AND s.created_at < ?
+           AND sp.method = 'cash'
+           AND s.payment_verified = 1
+           AND s.payment_method = 'split' ''',
+      [shift.staffId, since.toIso8601String(), until.toIso8601String()],
+    );
+    final cashTenderMinor =
+        (cashTenderRows.first['total_minor'] as num?)?.toInt() ?? 0;
+    final totalCashMinor = minor + cashTenderMinor;
 
     // MINUS the cash that was given back out of THIS drawer.
     //
@@ -12408,7 +12559,7 @@ SELECT name FROM staff GROUP BY name HAVING COUNT(*) = 1
     );
     final moved = (movements.first['total_minor'] as num?)?.toInt() ?? 0;
 
-    return Money.fromMinor(minor - refunded + repaid - paidOut + moved);
+    return Money.fromMinor(totalCashMinor - refunded + repaid - paidOut + moved);
   }
 
   /// Active expense categories, in the order shown to the person paying out.
@@ -14013,23 +14164,7 @@ SELECT name FROM staff GROUP BY name HAVING COUNT(*) = 1
 
   /// The rows an owner's activity view opens on: the actions that change what
   /// the shop can do, rather than the thousands of sale rows.
-  static const List<AuditAction> _ownerVisibleActions = <AuditAction>[
-    AuditAction.staffAdded,
-    AuditAction.staffRemoved,
-    AuditAction.staffPinReset,
-    AuditAction.productVariantRemoved,
-    AuditAction.barcodeRemoved,
-    AuditAction.barcodeKindChanged,
-    AuditAction.taxSettingsChanged,
-    AuditAction.paymentMethodChanged,
-    AuditAction.printerSaved,
-    AuditAction.backupErased,
-    AuditAction.backupRestored,
-    AuditAction.shopCreated,
-    AuditAction.shopSwitched,
-    AuditAction.profileChanged,
-    AuditAction.identityLinked,
-  ];
+  static const List<AuditAction> _ownerVisibleActions = ownerVisibleAuditActions;
 
   /// The control-relevant rows only.
   ///

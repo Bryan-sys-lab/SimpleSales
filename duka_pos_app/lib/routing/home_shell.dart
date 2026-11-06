@@ -8,7 +8,9 @@ import '../app_brand.dart';
 import '../db/database_helper.dart';
 import '../l10n/generated/app_localizations.dart';
 import '../l10n/l10n_keys.dart';
+import '../models/audit_log.dart';
 import '../services/app_state.dart';
+import '../services/audit_actor.dart';
 import '../services/backend_service.dart';
 import '../services/roles.dart';
 import '../profile/profile_navigation.dart';
@@ -583,16 +585,23 @@ class _MoreSheet extends StatelessWidget {
                   ),
                 ],
               ),
-            ).then((selected) {
+            ).then((selected) async {
               if (selected != null && selected != currentProfile) {
+                await DatabaseHelper.instance.setShopProfile(selected);
                 state.setShopProfile(selected);
-                DatabaseHelper.instance.setShopProfile(selected);
                 try {
-                  BackendService.setBusinessProfile(selected);
+                  await BackendService.setBusinessProfile(selected);
                 } catch (_) {
                   // Local shop records remain usable offline; the next
                   // sync/retry can reconcile the linked tenant profile.
                 }
+                await recordActionAudit(
+                  state,
+                  action: AuditAction.profileChanged,
+                  entity: AuditEntity.workspace,
+                  entityId: 'profile',
+                  detail: '${currentProfile.displayName} → ${selected.displayName}',
+                );
                 // Advance the session so every screen reloads for the new
                 // profile, then pop the sheet.
                 if (context.mounted) {

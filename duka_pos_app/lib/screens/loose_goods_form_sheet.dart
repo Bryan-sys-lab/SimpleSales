@@ -64,14 +64,6 @@ import '../utils/money.dart';
 import '../utils/units.dart';
 import '../ui/components/screen_title.dart';
 
-/// The category a tank's product row is filed under.
-///
-/// A fixed name rather than a picker: the tank is not a thing anybody shops
-/// for by category, and a category the owner has to type is a category they
-/// will get wrong. It is also what makes a tank findable later — the stock
-/// list can show "the drums" as one group.
-const String kLooseGoodsCategory = 'Loose goods';
-
 /// Opens the tank form.
 Future<void> showLooseGoodsFormSheet(BuildContext context, {Product? existing}) {
   return showModalBottomSheet<void>(

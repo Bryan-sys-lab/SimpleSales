@@ -1072,27 +1072,38 @@ class _SellScreenState extends State<SellScreen>
     final rows = await DatabaseHelper.instance.getHeldCartLines(cartId);
     final restored = <CartItem>[];
     bool priceChanged = false;
+    // Pre-fetch packs for every product that has a pack line, once.
+    final packsByProduct = <int, List<ProductPack>>{};
+    final productIdsWithPacks = rows
+        .map((r) => (r['product_id'] as num).toInt())
+        .toSet();
+    for (final pid in productIdsWithPacks) {
+      packsByProduct[pid] =
+          await DatabaseHelper.instance.getProductPacks(pid);
+    }
+    final productsById = <int, Product>{
+      for (final candidate in _products)
+        if (candidate.id != null) candidate.id!: candidate,
+    };
     for (final row in rows) {
       final productId = (row['product_id'] as num).toInt();
-      Product? product;
-      for (final candidate in _products) {
-        if (candidate.id == productId) product = candidate;
-      }
+      final product = productsById[productId];
       if (product == null) {
         _announceStatus('A held product is no longer available.');
         return;
       }
       final variantId = (row['variant_id'] as num?)?.toInt();
       final variant = _variants.byId(variantId);
-      ShotCup? shot;
+      final shotsById = <int, ShotCup>{
+        for (final candidate in _shots)
+          if (candidate.id != null) candidate.id!: candidate,
+      };
       final shotId = (row['shot_cup_id'] as num?)?.toInt();
-      for (final candidate in _shots) {
-        if (candidate.id == shotId) shot = candidate;
-      }
+      final shot = shotsById[shotId];
       ProductPack? pack;
       final packId = (row['pack_id'] as num?)?.toInt();
       if (packId != null) {
-        final packs = await DatabaseHelper.instance.getProductPacks(productId);
+        final packs = packsByProduct[productId] ?? const <ProductPack>[];
         pack = packs.where((candidate) => candidate.id == packId).firstOrNull;
       }
       final line = CartItem(

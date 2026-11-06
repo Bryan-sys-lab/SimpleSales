@@ -50,9 +50,11 @@ JobStatus _statusOf(Map<String, dynamic> job) {
   final raw = (job['status'] as String?) ?? 'draft';
   return switch (raw) {
     'draft' => JobStatus.draft,
+    'open' => JobStatus.inProgress,
     'in_progress' => JobStatus.inProgress,
     'awaiting_payment' => JobStatus.awaitingPayment,
     'completed' => JobStatus.completed,
+    'closed' => JobStatus.completed,
     'cancelled' => JobStatus.cancelled,
     _ => JobStatus.draft,
   };

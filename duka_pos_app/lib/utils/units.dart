@@ -165,10 +165,6 @@ double millilitresToKilograms(
 double litresToMillilitres(num litres) =>
     litres.isFinite && litres >= 0 ? litres * 1000 : 0;
 
-/// Millilitres to litres, for reading a volume back the way a delivery note or
-/// a tank's own gauge states it.
-double millilitresToLitres(num millilitres) =>
-    millilitres.isFinite && millilitres >= 0 ? millilitres / 1000 : 0;
 
 /// Conversions between a typed volume and millilitres.
 ///

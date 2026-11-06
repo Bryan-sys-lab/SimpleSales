@@ -27,6 +27,7 @@ import '../ui/components/surface.dart';
 import '../ui/components/status.dart';
 import '../ui/components/states.dart';
 import '../ui/layout/page.dart';
+import '../utils/money.dart';
 import 'tank_form_sheet.dart';
 
 const double _tankRegisterMaxWidth = 1200;
@@ -61,7 +62,9 @@ class TankRegisterScreen extends StatefulWidget {
 class _TankRegisterScreenState extends State<TankRegisterScreen> {
   List<DrinkTankLevel> _tanks = const <DrinkTankLevel>[];
   double _totalTankCount = 0;
+  double _totalCapacityLitres = 0;
   double _totalRemainingLitres = 0;
+  int _totalInvestedMinor = 0;
   int _tanksNeedingAttention = 0;
   bool _loading = true;
   String? _error;
@@ -87,9 +90,11 @@ class _TankRegisterScreenState extends State<TankRegisterScreen> {
 
     setState(() {
       _tanks = tanks;
-      _totalTankCount = tanks.length.toDouble();
-      _totalRemainingLitres = totalRemaining;
-      _tanksNeedingAttention = needingAttention;
+      _totalTankCount = widget.totalTankCount > 0 ? widget.totalTankCount : tanks.length.toDouble();
+      _totalCapacityLitres = widget.totalCapacityLitres;
+      _totalRemainingLitres = widget.totalRemainingLitres > 0 ? widget.totalRemainingLitres : totalRemaining;
+      _totalInvestedMinor = widget.totalInvestedMinor;
+      _tanksNeedingAttention = widget.tanksNeedingAttention > 0 ? widget.tanksNeedingAttention : needingAttention;
       _loading = false;
     });
   }
@@ -214,6 +219,8 @@ class _TankRegisterScreenState extends State<TankRegisterScreen> {
               detail: '12 active pour definitions',
               onTap: () => context.push(Routes.shotCups),
             ),
+            SizedBox(height: spacing.sm),
+            Text('${_totalCapacityLitres.toStringAsFixed(0)} L · ${formatMoney(Money.fromMinor(_totalInvestedMinor))}'),
             SizedBox(height: spacing.lg),
 
             // Low stock section.
@@ -221,6 +228,8 @@ class _TankRegisterScreenState extends State<TankRegisterScreen> {
               SectionHeader(
                 label: 'Low stock',
               ),
+              SizedBox(height: spacing.sm),
+              Text('$_tanksNeedingAttention tanks below safe level'),
               SizedBox(height: spacing.sm),
               ...lowStock.take(6).map(
                 (tank) => _TankRegisterLowStockRow(
@@ -232,6 +241,12 @@ class _TankRegisterScreenState extends State<TankRegisterScreen> {
               ),
               SizedBox(height: spacing.lg),
             ],
+
+            if (_tanks.isEmpty)
+              Padding(
+                padding: const EdgeInsets.all(16),
+                child: Text('No tanks yet'),
+              ),
 
             // Receive stock button.
             if (context.read<AppState>().canManageStock)

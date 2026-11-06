@@ -454,4 +454,4 @@ String timeOfDayWord(AppLocalizations l10n) {
 }
 
 /// Reads localisations without holding a [BuildContext] across an await.
-AppLocalizations l10nOf(BuildContext context) => AppLocalizations.of(context);
+

@@ -1439,13 +1439,20 @@ class BackendService {
     // if a later request fails, the next cycle resumes with only that suffix.
     const batchSize = 200;
     for (var start = 0; start < products.length; start += batchSize) {
-      final batch = products.skip(start).take(batchSize);
+      final batch = products.skip(start).take(batchSize).toList();
+      final openingStockByProduct =
+          await DatabaseHelper.instance.openingStockQtyForProducts(
+        batch
+            .where((p) => p.remoteId == null && p.id != null)
+            .map((p) => p.id!)
+            .toList(),
+      );
       final payloads = <Map<String, dynamic>>[];
       for (final product in batch) {
-        final openingStockQty = product.remoteId == null && product.id != null
-            ? await DatabaseHelper.instance
-                .openingStockQtyForProduct(product.id!)
-            : null;
+        final openingStockQty =
+            product.remoteId == null && product.id != null
+                ? openingStockByProduct[product.id]
+                : null;
         payloads.add(_productPayload(
           product,
           openingStockQty: openingStockQty,
@@ -1580,11 +1587,15 @@ class BackendService {
     while (true) {
       final List<Sale> sales = await DatabaseHelper.instance.getUnsyncedSales();
       if (sales.isEmpty) return;
+      final paymentsBySale = await DatabaseHelper.instance
+          .getSalePaymentsForSales(
+        sales.where((s) => s.id != null).map((s) => s.id!).toList(),
+      );
       final payloads = <Map<String, dynamic>>[];
       for (final Sale sale in sales) {
         final tenders = sale.id == null
             ? const <SalePayment>[]
-            : await DatabaseHelper.instance.getSalePayments(sale.id!);
+            : (paymentsBySale[sale.id!] ?? const <SalePayment>[]);
         payloads.add(_salePayload(sale, remotes, deviceId, tenders));
       }
       final response = await _dio.post('$backendUrl/sales/sync', data: {

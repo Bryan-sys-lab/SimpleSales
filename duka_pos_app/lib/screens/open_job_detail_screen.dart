@@ -114,9 +114,11 @@ class _OpenJobDetailScreenState extends State<OpenJobDetailScreen> {
     final raw = (job['status'] as String?) ?? 'draft';
     return switch (raw) {
       'draft' => JobStatus.draft,
+      'open' => JobStatus.inProgress,
       'in_progress' => JobStatus.inProgress,
       'awaiting_payment' => JobStatus.awaitingPayment,
       'completed' => JobStatus.completed,
+      'closed' => JobStatus.completed,
       'cancelled' => JobStatus.cancelled,
       _ => JobStatus.draft,
     };
@@ -344,25 +346,54 @@ class _OpenJobDetailScreenState extends State<OpenJobDetailScreen> {
 
   void _completeJob(BuildContext context) {
     final l10n = AppLocalizations.of(context);
-    // Completion requires a final price — shown in a separate flow so the
-    // owner confirms settlement separately from marking work done.
-    showDialog<bool>(
+    final controller = TextEditingController();
+    final initialMajor = ((_finalPriceMinor() > 0 ? _finalPriceMinor() : _quoteMinor()) / 100.0)
+        .toStringAsFixed(2);
+    controller.text = initialMajor;
+    showDialog<void>(
       context: context,
-      builder: (context) => AlertDialog(
+      builder: (dialogContext) => AlertDialog(
         title: Text(l10n.openJobDetailCompleteJob),
-        content: Text(l10n.openJobDetailCompleteJobConfirm),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: <Widget>[
+            Text(l10n.openJobDetailCompleteJobConfirm),
+            const SizedBox(height: 12),
+            TextField(
+              controller: controller,
+              keyboardType: const TextInputType.numberWithOptions(decimal: true),
+              decoration: const InputDecoration(labelText: 'Final price'),
+            ),
+          ],
+        ),
         actions: <Widget>[
           TextButton(
-            onPressed: () => Navigator.pop(context, false),
+            onPressed: () => Navigator.pop(dialogContext),
             child: Text(l10n.openJobDetailCancel),
           ),
           FilledButton(
-            onPressed: () => Navigator.pop(context, true),
+            onPressed: () async {
+              final parsed = double.tryParse(controller.text.trim());
+              if (parsed == null || parsed <= 0) return;
+              final finalPrice = Money.fromMajor(parsed);
+              final messenger = ScaffoldMessenger.of(context);
+              Navigator.pop(dialogContext);
+              try {
+                await _db.completeJob(jobId: widget.jobId, finalPrice: finalPrice);
+                if (mounted) await _load();
+              } catch (_) {
+                if (mounted) {
+                  messenger.showSnackBar(
+                    const SnackBar(content: Text('Could not complete job')),
+                  );
+                }
+              }
+            },
             child: Text(l10n.openJobDetailCompleteAndSettle),
           ),
         ],
       ),
-    );
+    ).then((_) => controller.dispose());
   }
 }
 

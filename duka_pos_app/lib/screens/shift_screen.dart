@@ -733,21 +733,13 @@ class OpenShiftCard extends StatelessWidget {
           SizedBox(height: spacing.lg),
           // Cash / M-Pesa sales stats.
           Row(
-            crossAxisAlignment: CrossAxisAlignment.stretch,
+            crossAxisAlignment: CrossAxisAlignment.start,
             children: <Widget>[
               Expanded(
                 child: _ShiftStatTile(
                   label: l10n.shiftExpectedLabel,
                   value: formatMoney(expected),
                   icon: Icons.attach_money,
-                ),
-              ),
-              SizedBox(width: spacing.md),
-              Expanded(
-                child: _ShiftStatTile(
-                  label: 'Cash sales',
-                  value: formatMoney(expected),
-                  icon: Icons.payments_outlined,
                 ),
               ),
             ],

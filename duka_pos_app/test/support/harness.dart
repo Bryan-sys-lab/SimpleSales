@@ -1,12 +1,14 @@
 import 'package:duka_pos/l10n/generated/app_localizations.dart';
 import 'package:duka_pos/theme/app_haptics.dart';
 import 'package:duka_pos/theme/app_theme.dart';
+import 'dart:math' as math;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:provider/provider.dart';
 import 'package:duka_pos/routing/app_stage_controller.dart';
 import 'package:duka_pos/services/app_state.dart';
+import 'package:duka_pos/services/live_channel_service.dart';
 import 'package:duka_pos/services/app_update_service.dart';
 
 /// One place that pins the surface every widget test in this app runs on.
@@ -165,6 +167,8 @@ extension TestHarness on WidgetTester {
             create: (BuildContext context) =>
                 AppStageController(context.read<AppState>()),
         ),
+        ChangeNotifierProvider<LiveChannelService>(
+            create: (_) => LiveChannelService(random: _FakeRandomForHarness())),
         ChangeNotifierProvider<AppUpdateService>(
             create: (_) => AppUpdateService()),
       ],
@@ -328,6 +332,20 @@ const List<Locale> _appLocales = <Locale>[Locale('en'), Locale('sw')];
 /// list precisely because nonlinear scaling makes the MID-RANGE the non-obvious
 /// part — that is where a bug hides from a test that only tries 1.0 and 3.0.
 const List<double> kTextScales = <double>[1.0, 1.3, 1.5, 2.0, 3.0];
+
+/// The channel jitters its reconnect to stop a room full of phones
+/// reconnecting on the same frame; in a test that jitter is a source of
+/// nondeterminism for no benefit.
+class _FakeRandomForHarness implements math.Random {
+  @override
+  bool nextBool() => true;
+
+  @override
+  double nextDouble() => 1;
+
+  @override
+  int nextInt(int max) => 0;
+}
 
 /// A deterministic random for the harness's live channel.
 ///

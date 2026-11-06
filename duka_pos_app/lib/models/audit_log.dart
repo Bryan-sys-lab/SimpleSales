@@ -213,3 +213,22 @@ class AuditLogQuery {
 
   final int limit;
 }
+
+/// Audit actions visible to an owner in both single-shop and cross-shop views.
+const List<AuditAction> ownerVisibleAuditActions = <AuditAction>[
+  AuditAction.staffAdded,
+  AuditAction.staffRemoved,
+  AuditAction.staffPinReset,
+  AuditAction.productVariantRemoved,
+  AuditAction.barcodeRemoved,
+  AuditAction.barcodeKindChanged,
+  AuditAction.taxSettingsChanged,
+  AuditAction.paymentMethodChanged,
+  AuditAction.printerSaved,
+  AuditAction.backupErased,
+  AuditAction.backupRestored,
+  AuditAction.shopCreated,
+  AuditAction.shopSwitched,
+  AuditAction.profileChanged,
+  AuditAction.identityLinked,
+];

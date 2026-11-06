@@ -558,9 +558,10 @@ class InventoryImporter {
       ));
     }
 
-    for (final code in await _db.addBarcodes(codes)) {
-      final owner = await _db.getProductOwningBarcode(code);
-      refusedBarcodes[code] = owner?.name ?? 'another product';
+    final refused = await _db.addBarcodes(codes);
+    final owners = await _db.getProductOwningBarcodes(refused);
+    for (final code in refused) {
+      refusedBarcodes[code] = owners[code]?.name ?? 'another product';
     }
 
     report(ImportStage.variants, 0);

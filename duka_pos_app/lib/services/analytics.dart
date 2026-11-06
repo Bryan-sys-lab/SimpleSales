@@ -913,26 +913,6 @@ String describeDailyBuckets(String title, List<DateBucket> buckets) {
   return parts.join(' ');
 }
 
-/// The spoken equivalent of a product bar chart.
-String describeTopProducts(List<ProductSalesRow> rows) {
-  if (rows.isEmpty) return 'Top products. Nothing sold in this period.';
-  final head = rows
-      .take(5)
-      .map((row) => '${row.productName}, ${_unitsLabel(row.units)}, '
-          '${formatMoney(Money.fromMinor(row.revenueMinor))}')
-      .join('; ');
-  final tail = rows.length > 5 ? ' and ${rows.length - 5} more' : '';
-  return 'Top products. $head$tail.';
-}
-
-/// "1 unit" / "2.5 units" / "12 units" — a quantity, so it is pluralised on the
-/// number rather than assumed to be two or more.
-String _unitsLabel(double units) {
-  final rounded = units == units.roundToDouble();
-  final text = rounded ? units.toStringAsFixed(0) : units.toStringAsFixed(2);
-  return units == 1 ? '$text unit' : '$text units';
-}
-
 /// The spoken equivalent of the payment mix.
 String describePaymentMix(
     List<PaymentMixRow> rows, int rangeTotalMinor, AppLocalizations l10n) {
