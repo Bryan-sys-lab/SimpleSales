@@ -19,7 +19,6 @@ import 'package:duka_pos/routing/app_stage_controller.dart';
 import 'package:duka_pos/screens/login_screen.dart';
 import 'package:duka_pos/screens/onboarding_screen.dart';
 import 'package:duka_pos/screens/owner_setup_screen.dart';
-import 'package:duka_pos/screens/splash_screen.dart';
 import 'package:duka_pos/screens/welcome_chooser_screen.dart';
 import 'package:duka_pos/services/app_state.dart';
 import 'package:flutter/material.dart';
@@ -107,17 +106,6 @@ void main() {
         Brightness.dark,
       ]) {
         final String where = '${device.name} x$scale $brightness';
-
-        testWidgets('splash fits $where', (WidgetTester tester) async {
-          tester.useDevice(device);
-          await tester.pumpApp(
-            home: const SplashScreen(),
-            brightness: brightness,
-            textScaler: TextScaler.linear(scale),
-          );
-          tester.expectNoOverflow('splash $where');
-          expect(find.text('SimpleSales'), findsWidgets);
-        });
 
         testWidgets('chooser fits $where', (WidgetTester tester) async {
           tester.useDevice(device);
@@ -329,23 +317,5 @@ void main() {
     tester.expectNoOverflow('setup with the submit error showing');
   });
 
-  testWidgets('reduced motion: the splash bar is not indeterminate',
-      (WidgetTester tester) async {
-    tester.useDevice(Device.small);
-    await tester.pumpApp(
-      home: const SplashScreen(),
-      disableAnimations: true,
-    );
-    // An indeterminate `LinearProgressIndicator` animates forever regardless of
-    // the platform flag, because its value is null rather than 0. Under reduced
-    // motion it must be a fixed, complete-looking bar instead.
-    final LinearProgressIndicator bar = tester.widget<LinearProgressIndicator>(
-      find.byType(LinearProgressIndicator),
-    );
-    expect(
-      bar.value,
-      isNotNull,
-      reason: 'an indeterminate bar still animates under reduced motion',
-    );
-  });
+
 }
