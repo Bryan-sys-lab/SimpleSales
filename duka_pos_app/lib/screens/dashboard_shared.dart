@@ -85,7 +85,7 @@ final class DashboardReady extends DashboardState {
 List<Widget> spaced(List<Widget?> children, double gap) {
   return children.whereType<Widget>().expand((Widget child) {
     return <Widget>[child, SizedBox(height: gap)];
-  }).toList(growable: false)..removeLast();
+  }).toList()..removeLast();
 }
 
 /// Compact business header: identity, status, date, and the business switch.
