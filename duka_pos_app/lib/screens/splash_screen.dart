@@ -4,7 +4,6 @@ import 'package:flutter/services.dart';
 import '../theme/app_colors.dart';
 import '../theme/app_spacing.dart';
 import '../theme/typography.dart';
-import '../ui/brand/animated_startup_brand.dart';
 import '../ui/brand/nerva_wordmark.dart';
 
 /// The startup page.
@@ -57,8 +56,6 @@ class SplashScreen extends StatelessWidget {
                     // loads. Its plate is the brand ink, the same ink as the
                     // page behind it, so the lockup reads as one mark rather
                     // than as an icon sitting on a background.
-                    const AnimatedStartupBrand(),
-                    SizedBox(height: spacing.lg),
                     // The ATTRIBUTION first, the app's own name after it.
                     //
                     // It used to be the other way round — the shop's app in
