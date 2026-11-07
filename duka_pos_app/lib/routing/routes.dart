@@ -62,18 +62,18 @@ abstract final class Routes {
   static const String fashionProductForm = '/fashion/product/new';
   static const String fashionVariantSelector = '/fashion/variant-selector/:productId';
   static const String exchangeScreen = '/fashion/exchange';
-  static const String openJobs = '/open/jobs';
-  static const String openJobNew = '/open/jobs/new';
-  static const String openJobDetail = '/open/jobs/:jobId';
-  static const String openJobAddCost = '/open/jobs/:jobId/cost';
-  static const String openCostGroups = '/open/cost-groups';
-  static const String openCostGroupNew = '/open/cost-groups/new';
-  static const String openCostGroupDetail = '/open/cost-groups/:poolId';
-  static const String openReceivables = '/open/receivables';
-  static const String openRecordPayment = '/open/payments/record';
+  static const String openJobs = '/analytics/open-business/jobs';
+  static const String openJobNew = '/analytics/open-business/jobs/new';
+  static const String openJobDetail = '/analytics/open-business/jobs/:jobId';
+  static const String openJobAddCost = '/analytics/open-business/jobs/:jobId/cost';
+  static const String openCostGroups = '/analytics/open-business/cost-groups';
+  static const String openCostGroupNew = '/analytics/open-business/cost-groups/new';
+  static const String openCostGroupDetail = '/analytics/open-business/cost-groups/:poolId';
+  static const String openReceivables = '/analytics/open-business/receivables';
+  static const String openRecordPayment = '/analytics/open-business/payments/record';
   static const String openSell = '/sell';
-  static const String openAddJobCost = '/open/jobs/:jobId/cost';
-  static const String openNewCostGroup = '/open/cost-groups/new';
+  static const String openAddJobCost = '/analytics/open-business/jobs/:jobId/cost';
+  static const String openNewCostGroup = '/analytics/open-business/cost-groups/new';
 
   // ------------------------------------------------------------- the doors
   // Outside the shell: no navigation affordance, because there is no session to
