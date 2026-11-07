@@ -6,6 +6,8 @@ import 'package:provider/provider.dart';
 import '../app_brand.dart';
 import '../l10n/generated/app_localizations.dart';
 import '../models/models.dart';
+import '../db/database_helper.dart';
+import '../models/layby.dart';
 import '../routing/routes.dart';
 import '../services/app_state.dart';
 import '../services/roles.dart';
@@ -394,7 +396,7 @@ class _VariantRow extends StatelessWidget {
 }
 
 /// Fashion layby overview: open laybys, awaiting payment, ready for collection.
-class _FashionLaybyOverview extends StatelessWidget {
+class _FashionLaybyOverview extends StatefulWidget {
   const _FashionLaybyOverview({
     required this.onOpenLaybys,
     required this.canManageStock,
@@ -404,6 +406,48 @@ class _FashionLaybyOverview extends StatelessWidget {
   final bool canManageStock;
 
   @override
+  State<_FashionLaybyOverview> createState() => _FashionLaybyOverviewState();
+}
+
+class _FashionLaybyOverviewState extends State<_FashionLaybyOverview> {
+  int _openCount = 0;
+  int _awaitingCount = 0;
+  int _readyCount = 0;
+
+  @override
+  void initState() {
+    super.initState();
+    _load();
+  }
+
+  Future<void> _load() async {
+    try {
+      final laybys = await DatabaseHelper.instance.getLaybys();
+      int open = 0;
+      int awaiting = 0;
+      int ready = 0;
+      for (final layby in laybys) {
+        if (layby.status == LaybyStatus.open) {
+          open++;
+          if (layby.balance.minorUnits > 0) {
+            awaiting++;
+          } else {
+            ready++;
+          }
+        }
+      }
+      if (!mounted) return;
+      setState(() {
+        _openCount = open;
+        _awaitingCount = awaiting;
+        _readyCount = ready;
+      });
+    } catch (_) {
+      // Leave counts at zero rather than showing dummy figures.
+    }
+  }
+
+  @override
   Widget build(BuildContext context) {
     final AppSpacing spacing = AppSpacing.of(context);
     final AppLocalizations l10n = AppLocalizations.of(context);
@@ -411,7 +455,7 @@ class _FashionLaybyOverview extends StatelessWidget {
     return DashboardPanel(
       title: l10n.fashionDashboardReserves,
       trailing: TextButton(
-        onPressed: onOpenLaybys,
+        onPressed: widget.onOpenLaybys,
         child: Text(l10n.fashionDashboardViewAll),
       ),
       padChild: false,
@@ -421,21 +465,21 @@ class _FashionLaybyOverview extends StatelessWidget {
         children: <Widget>[
           _LaybyMetric(
             label: l10n.fashionDashboardReservesOpen,
-            value: '3',
+            value: '$_openCount',
             tone: StatusTone.warning,
             icon: Icons.schedule_outlined,
           ),
           SizedBox(height: spacing.sm),
           _LaybyMetric(
             label: l10n.fashionDashboardReservesAwaitingPayment,
-            value: '2',
+            value: '$_awaitingCount',
             tone: StatusTone.warning,
             icon: Icons.payment_outlined,
           ),
           SizedBox(height: spacing.sm),
           _LaybyMetric(
             label: l10n.fashionDashboardReservesReady,
-            value: '1',
+            value: '$_readyCount',
             tone: StatusTone.success,
             icon: Icons.check_circle_outlined,
           ),
