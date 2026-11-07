@@ -177,7 +177,7 @@ class _OpenDashboardScreenState extends State<OpenDashboardScreen>
               onNewJob: () => context.push(Routes.openJobNew),
               onRecordPayment: () => context.push(Routes.incomingPayments),
               onRecordSale: () => context.push(Routes.openSell),
-              onAddJobCost: () => context.push(Routes.openAddJobCost),
+              onAddJobCost: () => context.push(Routes.openJobs),
               onNewCostGroup: () => context.push(Routes.openNewCostGroup),
               canManageJobs: appState.canManageStock,
               canReceivePayments:
