@@ -90,6 +90,14 @@ class _OpenJobsScreenState extends State<OpenJobsScreen> {
     setState(() => _loading = true);
     try {
       final jobs = await _db.getOpenJobs();
+      for (final job in jobs) {
+        final jobId = (job['id'] as num).toInt();
+        final payments = await _db.getJobPayments(jobId);
+        job['_paid_minor'] = payments.fold<int>(
+          0,
+          (sum, p) => sum + ((p['amount_minor'] as num?)?.toInt() ?? 0),
+        );
+      }
       if (!mounted) return;
       setState(() {
         _jobs = jobs;
@@ -234,7 +242,7 @@ class _OpenJobsScreenState extends State<OpenJobsScreen> {
                       final job = jobs[i];
                       final status = _statusOf(job);
                       final quote = _jobQuote(job);
-                      final paid = 0;
+                      final paid = (job['_paid_minor'] as num?)?.toInt() ?? 0;
                       final outstanding = quote - paid;
 
                       return Semantics(
@@ -307,7 +315,7 @@ class _OpenJobsScreenState extends State<OpenJobsScreen> {
                             dense: true,
                           ),
                           onTap: () => context.push(
-                            '${Routes.openJobDetail}/${job['id']}',
+                            '/analytics/open-business/jobs/${job['id']}',
                           ),
                         ),
                       );

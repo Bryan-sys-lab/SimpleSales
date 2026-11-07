@@ -5,6 +5,7 @@ import 'package:provider/provider.dart';
 import '../app_brand.dart';
 import '../l10n/generated/app_localizations.dart';
 import '../routing/routes.dart';
+import '../db/database_helper.dart';
 import '../services/app_state.dart';
 import '../services/roles.dart';
 import '../theme/app_colors.dart';
@@ -28,8 +29,77 @@ const double _openDashboardMaxWidth = 1200;
 ///
 ///   What money came in?  What profit did we make?
 ///   What is tied up in work?  What is still owed?
-class OpenDashboardScreen extends StatelessWidget {
+class OpenDashboardScreen extends StatefulWidget {
   const OpenDashboardScreen({super.key});
+
+  @override
+  State<OpenDashboardScreen> createState() => _OpenDashboardScreenState();
+}
+
+class _OpenDashboardScreenState extends State<OpenDashboardScreen> {
+  int _revenueMinor = 0;
+  int _netProfitMinor = 0;
+  int _cashPositionMinor = 0;
+  int _receivablesMinor = 0;
+  int _activeJobs = 0;
+  int _jobsAwaitingPayment = 0;
+  int _overdueJobs = 0;
+  int _costGroups = 0;
+  List<String> _recentJobs = const [];
+
+  @override
+  void initState() {
+    super.initState();
+    _load();
+  }
+
+  Future<void> _load() async {
+    try {
+      final db = DatabaseHelper.instance;
+      final jobs = await db.getOpenJobs();
+      final pools = await db.getCostPools();
+      final credit = await db.creditSummary();
+      int revenue = 0;
+      int costs = 0;
+      int active = 0;
+      int awaiting = 0;
+      int overdue = 0;
+      final now = DateTime.now();
+      for (final job in jobs) {
+        final jobId = (job['id'] as num).toInt();
+        final jc = await db.getJobCosts(jobId);
+        final jp = await db.getJobPayments(jobId);
+        costs += jc.fold<int>(0, (s, c) => s + ((c['amount_minor'] as num?)?.toInt() ?? 0));
+        final paid = jp.fold<int>(0, (s, p) => s + ((p['amount_minor'] as num?)?.toInt() ?? 0));
+        revenue += paid;
+        final status = (job['status'] as String?) ?? 'draft';
+        if (status != 'completed' && status != 'closed' && status != 'cancelled') {
+          active++;
+        }
+        if (status == 'awaiting_payment') awaiting++;
+        final due = job['due_at'];
+        if (due is String) {
+          final dt = DateTime.tryParse(due);
+          if (dt != null && dt.isBefore(now) && status != 'completed' && status != 'closed') {
+            overdue++;
+          }
+        }
+      }
+      if (!mounted) return;
+      setState(() {
+        _revenueMinor = revenue;
+        _netProfitMinor = revenue - costs;
+        _cashPositionMinor = revenue - costs;
+        _receivablesMinor = credit.totalOwedMinor;
+        _activeJobs = active;
+        _jobsAwaitingPayment = awaiting;
+        _overdueJobs = overdue;
+        _costGroups = pools.length;
+        _recentJobs = jobs.take(3).map((j) => (j['title'] as String?) ?? '').toList();
+      });
+    } catch (_) {
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -38,7 +108,7 @@ class OpenDashboardScreen extends StatelessWidget {
     final appState = context.watch<AppState>();
 
     return RefreshIndicator(
-      onRefresh: () => context.read<OpenDashboardModel>().load(),
+      onRefresh: _load,
       child: AdaptivePage(
         scrollable: true,
         maxContentWidth: _openDashboardMaxWidth,
@@ -55,20 +125,20 @@ class OpenDashboardScreen extends StatelessWidget {
             ),
             SizedBox(height: spacing.xl),
             _OpenFinancialHero(
-              revenue: Money.fromMinor(125000),
-              netProfit: Money.fromMinor(42000),
-              cashPosition: Money.fromMinor(31000),
-              receivables: Money.fromMinor(18500),
+              revenue: Money.fromMinor(_revenueMinor),
+              netProfit: Money.fromMinor(_netProfitMinor),
+              cashPosition: Money.fromMinor(_cashPositionMinor),
+              receivables: Money.fromMinor(_receivablesMinor),
               scopeLabel: appState.isOwnerSession
                   ? l10n.openDashboardScopeShop
                   : l10n.openDashboardScopeOwn,
             ),
             SizedBox(height: spacing.xl),
             _OpenOperationalOverview(
-              activeJobs: 3,
-              jobsAwaitingPayment: 2,
-              overdueJobs: 1,
-              costGroups: 4,
+              activeJobs: _activeJobs,
+              jobsAwaitingPayment: _jobsAwaitingPayment,
+              overdueJobs: _overdueJobs,
+              costGroups: _costGroups,
               onOpenJobs: () => context.push(Routes.openJobs),
               onOpenReceivables: () => context.push(Routes.openReceivables),
               onOpenCostGroups: () => context.push(Routes.openCostGroups),
@@ -76,7 +146,7 @@ class OpenDashboardScreen extends StatelessWidget {
             SizedBox(height: spacing.xl),
             _OpenQuickActions(
               onNewJob: () => context.push(Routes.openJobNew),
-              onRecordPayment: () => context.push(Routes.openRecordPayment),
+              onRecordPayment: () => context.push(Routes.incomingPayments),
               onRecordSale: () => context.push(Routes.openSell),
               onAddJobCost: () => context.push(Routes.openAddJobCost),
               onNewCostGroup: () => context.push(Routes.openNewCostGroup),
@@ -90,6 +160,7 @@ class OpenDashboardScreen extends StatelessWidget {
             SizedBox(height: spacing.xl),
             _OpenRecentActivity(
               title: l10n.openDashboardRecentActivity,
+              recent: _recentJobs,
               onOpenJob: () => context.push(Routes.openJobs),
             ),
             SizedBox(height: spacing.section),
@@ -655,10 +726,12 @@ class _OpenQuickTile extends StatelessWidget {
 class _OpenRecentActivity extends StatelessWidget {
   const _OpenRecentActivity({
     required this.title,
+    required this.recent,
     required this.onOpenJob,
   });
 
   final String title;
+  final List<String> recent;
   final VoidCallback onOpenJob;
 
   @override
@@ -685,51 +758,45 @@ class _OpenRecentActivity extends StatelessWidget {
           ],
         ),
         SizedBox(height: spacing.sm),
-        ListView.builder(
-          shrinkWrap: true,
-          physics: const NeverScrollableScrollPhysics(),
-          itemCount: 3,
-          itemBuilder: (_, i) {
-            return Padding(
-              padding: EdgeInsets.only(bottom: spacing.sm),
-              child: Row(
-                children: <Widget>[
-                  Container(
-                    padding: EdgeInsets.all(spacing.xs),
-                    decoration: BoxDecoration(
-                      color: colors.surfaceSunken,
-                      borderRadius: AppShapes.of(context).controlRadius,
+        if (recent.isEmpty)
+          Text(
+            'No recent activity yet.',
+            style: type.labelSmall?.copyWith(color: colors.onSurfaceMuted),
+          )
+        else
+          ListView.builder(
+            shrinkWrap: true,
+            physics: const NeverScrollableScrollPhysics(),
+            itemCount: recent.length,
+            itemBuilder: (_, i) {
+              return Padding(
+                padding: EdgeInsets.only(bottom: spacing.sm),
+                child: Row(
+                  children: <Widget>[
+                    Container(
+                      padding: EdgeInsets.all(spacing.xs),
+                      decoration: BoxDecoration(
+                        color: colors.surfaceSunken,
+                        borderRadius: AppShapes.of(context).controlRadius,
+                      ),
+                      child: Icon(
+                        Icons.access_time_outlined,
+                        size: 16,
+                        color: colors.onSurfaceMuted,
+                      ),
                     ),
-                    child: Icon(
-                      Icons.access_time_outlined,
-                      size: 16,
-                      color: colors.onSurfaceMuted,
+                    SizedBox(width: spacing.md),
+                    Expanded(
+                      child: Text(
+                        recent[i],
+                        style: type.bodyMedium,
+                      ),
                     ),
-                  ),
-                  SizedBox(width: spacing.md),
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: <Widget>[
-                        Text(
-                          'Job completion — "Office wiring"',
-                          style: type.bodyMedium,
-                        ),
-                        SizedBox(height: spacing.xs),
-                        Text(
-                          'KSh 12,500 received · 2h ago',
-                          style: type.labelSmall?.copyWith(
-                            color: colors.onSurfaceMuted,
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                ],
-              ),
-            );
-          },
-        ),
+                  ],
+                ),
+              );
+            },
+          ),
       ],
     );
   }

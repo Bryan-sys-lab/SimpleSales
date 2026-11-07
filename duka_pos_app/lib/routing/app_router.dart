@@ -39,7 +39,6 @@ import '../screens/product_detail_screen.dart';
 import '../models/models.dart';
 import '../screens/marketplace_screen.dart';
 import '../screens/help_screen.dart';
-import '../screens/open_dashboard_screen.dart';
 import '../screens/open_jobs_screen.dart';
 import '../screens/open_job_form_screen.dart';
 import '../screens/open_job_detail_screen.dart';
@@ -607,7 +606,7 @@ List<RouteBase> _shellRoutes(AppState appState) {
                   _fadeThrough(
                 routerState,
                 appState.shopProfile == ShopProfile.open
-                    ? const OpenDashboardScreen()
+                    ? const OpenJobsScreen()
                     : NotFoundScreen(location: routerState.matchedLocation),
               ),
               routes: <RouteBase>[
@@ -657,7 +656,12 @@ List<RouteBase> _shellRoutes(AppState appState) {
                       (BuildContext context, GoRouterState routerState) =>
                           _fadeThrough(
                     routerState,
-                    const OpenJobAddCostScreen(),
+                    OpenJobAddCostScreen(
+                      jobId: int.tryParse(
+                            routerState.pathParameters['jobId'] ?? '',
+                          ) ??
+                          0,
+                    ),
                   ),
                 ),
                 // Cost groups list.

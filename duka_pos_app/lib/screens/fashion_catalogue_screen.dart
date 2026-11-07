@@ -190,7 +190,7 @@ class _FashionCatalogueScreenState extends State<FashionCatalogueScreen> {
                               dense: true,
                             ),
                             onTap: () => context.push(
-                              '${Routes.fashionProductDetail}/${p.id}',
+                              '/fashion/product/${p.id}',
                             ),
                           ),
                         );

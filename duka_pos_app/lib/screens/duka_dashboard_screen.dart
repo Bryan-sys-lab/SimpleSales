@@ -240,7 +240,7 @@ class DukaDashboardScreen extends StatelessWidget {
   }
 
   void _openEditor(BuildContext context) {
-    Navigator.of(context).pushNamed(Routes.inventory);
+    context.push(Routes.inventory);
   }
 
   void _receiveStock(BuildContext context) async {

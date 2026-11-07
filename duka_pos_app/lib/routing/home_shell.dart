@@ -617,6 +617,15 @@ class _MoreSheet extends StatelessWidget {
             title: const Text('Fashion reserves'),
             onTap: () => Navigator.pop(context, _MoreAction.reserves),
           ),
+        if (state.shopProfile == ShopProfile.fashion)
+          ListTile(
+            leading: const Icon(Icons.swap_horiz),
+            title: const Text('Exchanges'),
+            onTap: () {
+              Navigator.pop(context);
+              context.push(Routes.exchangeScreen);
+            },
+          ),
         // Open business record is now primary navigation for Open profile
         // so it's not in the more sheet for that profile
         if (state.shopProfile.navigation.showJobs &&

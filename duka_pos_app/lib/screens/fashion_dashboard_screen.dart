@@ -244,15 +244,15 @@ class FashionDashboardScreen extends StatelessWidget {
   }
 
   void _openProductEditor(BuildContext context) {
-    Navigator.of(context).pushNamed(Routes.inventory);
+    context.push(Routes.inventory);
   }
 
   void _receiveStock(BuildContext context) {
-    Navigator.of(context).pushNamed(Routes.inventory);
+    context.push(Routes.inventory);
   }
 
   void _viewCatalogue(BuildContext context) {
-    Navigator.of(context).pushNamed(Routes.inventory);
+    context.push(Routes.inventory);
   }
 }
 

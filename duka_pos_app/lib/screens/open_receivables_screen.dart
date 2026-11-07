@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 
 import '../db/database_helper.dart';
+import '../models/credit.dart';
 import '../l10n/generated/app_localizations.dart';
 import '../routing/routes.dart';
 import '../theme/app_colors.dart';
@@ -32,6 +33,7 @@ class OpenReceivablesScreen extends StatefulWidget {
 class _OpenReceivablesScreenState extends State<OpenReceivablesScreen> {
   int _totalOwedMinor = 0;
   int _customerCount = 0;
+  List<Customer> _customers = const [];
   bool _loading = true;
 
   DatabaseHelper get _db => DatabaseHelper.instance;
@@ -46,10 +48,12 @@ class _OpenReceivablesScreenState extends State<OpenReceivablesScreen> {
     setState(() => _loading = true);
     try {
       final summary = await _db.creditSummary();
+      final customers = await _db.getCustomers(owesOnly: true);
       if (!mounted) return;
       setState(() {
         _totalOwedMinor = summary.totalOwedMinor;
         _customerCount = summary.customerCount;
+        _customers = customers;
         _loading = false;
       });
     } catch (_) {
@@ -142,15 +146,16 @@ class _OpenReceivablesScreenState extends State<OpenReceivablesScreen> {
                   style: type.titleMedium?.copyWith(fontWeight: FontWeight.w700),
                 ),
                 SizedBox(height: spacing.sm),
-                _loading || _customerCount == 0
+                _loading || _customers.isEmpty
                     ? _OpenReceivablesEmpty(
-                        isEmpty: _customerCount == 0 && !_loading,
+                        isEmpty: _customers.isEmpty && !_loading,
                       )
                     : ListView.builder(
                         shrinkWrap: true,
                         physics: const NeverScrollableScrollPhysics(),
-                        itemCount: 3,
+                        itemCount: _customers.length,
                         itemBuilder: (_, i) {
+                          final c = _customers[i];
                           return Padding(
                             padding: EdgeInsets.only(bottom: spacing.sm),
                             child: ListTile(
@@ -168,34 +173,17 @@ class _OpenReceivablesScreenState extends State<OpenReceivablesScreen> {
                                 ),
                               ),
                               title: Text(
-                                'Customer ${i + 1}',
+                                c.name,
                                 style: AppTypography.of(context).bodyMedium,
                               ),
-                              subtitle: Column(
-                                crossAxisAlignment: CrossAxisAlignment.start,
-                                mainAxisSize: MainAxisSize.min,
-                                children: <Widget>[
-                                  Text(
-                                    '${l10n.openReceivablesOutstanding} KSh 2,500',
-                                    style: AppTypography.of(context)
-                                        .labelSmall
-                                        ?.copyWith(
-                                          color: colors.onSurfaceMuted,
-                                        ),
-                                  ),
-                                  SizedBox(height: spacing.xs),
-                                  Text(
-                                    l10n.openReceivablesOldestUnpaid,
-                                    style: AppTypography.of(context)
-                                        .labelSmall
-                                        ?.copyWith(
-                                          color: colors.onSurfaceMuted,
-                                        ),
-                                  ),
-                                ],
+                              subtitle: Text(
+                                '${l10n.openReceivablesOutstanding} ${formatMoney(Money.fromMinor(c.balanceMinor))}',
+                                style: AppTypography.of(context)
+                                    .labelSmall
+                                    ?.copyWith(color: colors.onSurfaceMuted),
                               ),
                               trailing: Text(
-                                'KSh 2,500',
+                                formatMoney(Money.fromMinor(c.balanceMinor)),
                                 style: AppTypography.of(context)
                                     .bodyMedium
                                     ?.copyWith(fontWeight: FontWeight.w700),

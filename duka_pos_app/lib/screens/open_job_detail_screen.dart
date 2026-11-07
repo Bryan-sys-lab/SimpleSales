@@ -314,14 +314,14 @@ class _OpenJobDetailScreenState extends State<OpenJobDetailScreen> {
                     label: l10n.openJobDetailAddCost,
                     icon: Icons.add_circle_outlined,
                     onPressed: () => context.push(
-                      '${Routes.openJobAddCost}/${widget.jobId}',
+                      '/analytics/open-business/jobs/${widget.jobId}/cost',
                     ),
                   ),
                 if (canReceivePayments)
                   _ActionButton(
                     label: l10n.openJobDetailReceivePayment,
                     icon: Icons.payment_outlined,
-                    onPressed: () => context.push(Routes.openRecordPayment),
+                    onPressed: () => context.push(Routes.incomingPayments),
                   ),
                 if (canRecordSales)
                   _ActionButton(

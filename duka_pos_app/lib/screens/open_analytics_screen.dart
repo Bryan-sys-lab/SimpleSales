@@ -9,6 +9,7 @@ import '../theme/app_spacing.dart';
 import '../theme/typography.dart';
 import '../ui/components/surface.dart';
 import '../ui/components/status.dart';
+import '../db/database_helper.dart';
 import '../utils/money.dart';
 import '../widgets/chart.dart';
 import 'analytics_screen.dart';
@@ -116,7 +117,7 @@ class OpenAnalyticsScreen extends StatelessWidget {
 
 /// Revenue, net profit, cash position, pooled costs, jobs completed,
 /// receivables — the six figures an Open business owner opens analytics for.
-class _OpenOpeningKpis extends StatelessWidget {
+class _OpenOpeningKpis extends StatefulWidget {
   const _OpenOpeningKpis({
     required this.totals,
     required this.stockValue,
@@ -130,7 +131,45 @@ class _OpenOpeningKpis extends StatelessWidget {
   final int outOfStockCount;
 
   @override
+  State<_OpenOpeningKpis> createState() => _OpenOpeningKpisState();
+}
+
+class _OpenOpeningKpisState extends State<_OpenOpeningKpis> {
+  int _pooledCostsMinor = 0;
+  int _receivablesMinor = 0;
+  int _jobsCompleted = 0;
+
+  @override
+  void initState() {
+    super.initState();
+    _load();
+  }
+
+  Future<void> _load() async {
+    try {
+      final db = DatabaseHelper.instance;
+      final pools = await db.getCostPools();
+      final credit = await db.creditSummary();
+      final jobs = await db.getOpenJobs();
+      if (!mounted) return;
+      setState(() {
+        _pooledCostsMinor = pools.fold<int>(
+          0,
+          (s, p) => s + ((p['invested_minor'] as num?)?.toInt() ?? 0),
+        );
+        _receivablesMinor = credit.totalOwedMinor;
+        _jobsCompleted = jobs.where((j) {
+          final st = (j['status'] as String?) ?? '';
+          return st == 'completed' || st == 'closed';
+        }).length;
+      });
+    } catch (_) {}
+  }
+
+  @override
   Widget build(BuildContext context) {
+    final totals = widget.totals;
+    final stockValue = widget.stockValue;
     final AppSpacing spacing = AppSpacing.of(context);
     final AppColors colors = AppColors.of(context);
     final l10n = AppLocalizations.of(context);
@@ -174,17 +213,17 @@ class _OpenOpeningKpis extends StatelessWidget {
                 ),
                 _OpeningKpiTile(
                   label: l10n.openAnalyticsPooledCosts,
-                  value: formatMoney(Money.zero),
+                  value: formatMoney(Money.fromMinor(_pooledCostsMinor)),
                   icon: Icons.account_balance_outlined,
                 ),
                 _OpeningKpiTile(
                   label: l10n.openAnalyticsJobsCompleted,
-                  value: '$lowStockCount',
+                  value: '$_jobsCompleted',
                   icon: Icons.check_circle_outline,
                 ),
                 _OpeningKpiTile(
                   label: l10n.openAnalyticsReceivables,
-                  value: formatMoney(Money.zero),
+                  value: formatMoney(Money.fromMinor(_receivablesMinor)),
                   icon: Icons.schedule_outlined,
                   tone: StatusTone.warning,
                 ),

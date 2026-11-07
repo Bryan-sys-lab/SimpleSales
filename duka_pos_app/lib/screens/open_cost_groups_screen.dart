@@ -179,7 +179,7 @@ class _OpenCostGroupsScreenState extends State<OpenCostGroupsScreen> {
                               dense: true,
                             ),
                             onTap: () => context.push(
-                              '${Routes.openCostGroupDetail}/${pool['id']}',
+                              '/analytics/open-business/cost-groups/${pool['id']}',
                             ),
                           ),
                         );
