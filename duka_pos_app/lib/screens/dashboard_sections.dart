@@ -1241,25 +1241,28 @@ class _LowStockRow extends StatelessWidget {
                     Text(
                       product.name,
                       style: type.bodyMedium,
-                      // Wraps rather than ellipsises: a product name is the
-                      // cashier's typing, and a name cut in half is a product
-                      // nobody can find.
                     ),
                     SizedBox(height: 2),
-                    Text(
-                      '${product.stockQty.round()} in stock',
-                      style: type.bodySmall?.copyWith(
-                        color: colors.onSurfaceMuted,
-                      ),
+                    Wrap(
+                      spacing: spacing.sm,
+                      runSpacing: spacing.xs,
+                      crossAxisAlignment: WrapCrossAlignment.center,
+                      children: <Widget>[
+                        Text(
+                          '${product.stockQty.round()} in stock',
+                          style: type.bodySmall?.copyWith(
+                            color: colors.onSurfaceMuted,
+                          ),
+                        ),
+                        StatusChip(
+                          tone: tone,
+                          text: isOut ? 'Out of stock' : 'Low stock',
+                          dense: true,
+                        ),
+                      ],
                     ),
                   ],
                 ),
-              ),
-              SizedBox(width: spacing.md),
-              StatusChip(
-                tone: tone,
-                text: isOut ? 'Out of stock' : 'Low stock',
-                dense: true,
               ),
               if (canOpen) ...[
                 SizedBox(width: spacing.sm),

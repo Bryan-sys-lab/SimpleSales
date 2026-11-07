@@ -328,7 +328,7 @@ class _OpenFinancialHero extends StatelessWidget {
               return Wrap(
                 spacing: spacing.lg,
                 runSpacing: spacing.lg,
-                children: tiles.map((t) => SizedBox(width: 150, child: t)).toList(),
+                children: tiles.map((t) => SizedBox(width: ((constraints.maxWidth - spacing.lg) / 2).clamp(120.0, double.infinity), child: t)).toList(),
               );
             },
           ),
@@ -483,7 +483,7 @@ class _OpenOperationalOverview extends StatelessWidget {
               return Wrap(
                 spacing: spacing.lg,
                 runSpacing: spacing.lg,
-                children: tiles.map((t) => SizedBox(width: 150, child: t)).toList(),
+                children: tiles.map((t) => SizedBox(width: ((constraints.maxWidth - spacing.lg) / 2).clamp(120.0, double.infinity), child: t)).toList(),
               );
             },
           ),
@@ -521,7 +521,11 @@ class _CountTile extends StatelessWidget {
         crossAxisAlignment: CrossAxisAlignment.start,
         mainAxisSize: MainAxisSize.min,
         children: <Widget>[
-          Row(
+          Wrap(
+            alignment: WrapAlignment.spaceBetween,
+            crossAxisAlignment: WrapCrossAlignment.center,
+            spacing: spacing.sm,
+            runSpacing: spacing.xs,
             children: <Widget>[
               Container(
                 padding: EdgeInsets.all(spacing.xs),
@@ -535,7 +539,6 @@ class _CountTile extends StatelessWidget {
                   color: tone.onContainer(colors),
                 ),
               ),
-              const Spacer(),
               StatusChip(tone: tone, text: tone.label, dense: true),
             ],
           ),
@@ -745,11 +748,12 @@ class _OpenRecentActivity extends StatelessWidget {
       crossAxisAlignment: CrossAxisAlignment.start,
       children: <Widget>[
         Row(
-          mainAxisAlignment: MainAxisAlignment.spaceBetween,
           children: <Widget>[
-            Text(
-              title,
-              style: type.titleMedium?.copyWith(fontWeight: FontWeight.w700),
+            Expanded(
+              child: Text(
+                title,
+                style: type.titleMedium?.copyWith(fontWeight: FontWeight.w700),
+              ),
             ),
             TextButton(
               onPressed: onOpenJob,

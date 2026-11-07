@@ -358,7 +358,7 @@ class _DukaStockOverview extends StatelessWidget {
           return Wrap(
             spacing: spacing.lg,
             runSpacing: spacing.lg,
-            children: tiles.map((t) => SizedBox(width: 150, child: t)).toList(),
+            children: tiles.map((t) => SizedBox(width: ((constraints.maxWidth - spacing.lg) / 2).clamp(120.0, double.infinity), child: t)).toList(),
           );
         },
       ),
@@ -398,7 +398,11 @@ class _OverviewTile extends StatelessWidget {
             crossAxisAlignment: CrossAxisAlignment.start,
             mainAxisSize: MainAxisSize.min,
             children: <Widget>[
-              Row(
+              Wrap(
+                alignment: WrapAlignment.spaceBetween,
+                crossAxisAlignment: WrapCrossAlignment.center,
+                spacing: spacing.sm,
+                runSpacing: spacing.xs,
                 children: <Widget>[
                   Container(
                     padding: EdgeInsets.all(spacing.xs),
@@ -416,7 +420,6 @@ class _OverviewTile extends StatelessWidget {
                           : colors.onSurfaceMuted,
                     ),
                   ),
-                  const Spacer(),
                   if (tone != null)
                     StatusChip(tone: tone!, text: tone!.label, dense: true),
                 ],

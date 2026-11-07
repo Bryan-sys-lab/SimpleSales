@@ -389,11 +389,13 @@ class _DrinksSalesHero extends StatelessWidget {
                               size: 18,
                             ),
                             SizedBox(width: spacing.md),
-                            Text(
-                              l10n.dashboardTransactionsLabel,
-                              style: AppTypography.of(context).bodyMedium,
+                            Expanded(
+                              child: Text(
+                                l10n.dashboardTransactionsLabel,
+                                style: AppTypography.of(context).bodyMedium,
+                              ),
                             ),
-                            const Spacer(),
+                            SizedBox(width: spacing.md),
                             Text(
                               '${totals.transactions}',
                               style: AppTypography.money(
@@ -468,7 +470,7 @@ class _DrinksStatsGrid extends StatelessWidget {
           return Wrap(
             spacing: spacing.lg,
             runSpacing: spacing.lg,
-            children: tiles.map((t) => SizedBox(width: 150, child: t)).toList(),
+            children: tiles.map((t) => SizedBox(width: ((constraints.maxWidth - spacing.lg) / 2).clamp(120.0, double.infinity), child: t)).toList(),
           );
         },
       ),

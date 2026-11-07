@@ -128,11 +128,12 @@ class CompactBusinessHeader extends StatelessWidget {
           ),
         ),
         SizedBox(height: spacing.xs),
-        Row(
-          crossAxisAlignment: CrossAxisAlignment.center,
+        Wrap(
+          crossAxisAlignment: WrapCrossAlignment.center,
+          spacing: spacing.sm,
+          runSpacing: spacing.xs,
           children: <Widget>[
             StatusChip(tone: StatusTone.success, text: l10n.shiftOpenChip),
-            SizedBox(width: spacing.sm),
             Text(
               formatted,
               style: AppTypography.of(context)
@@ -144,18 +145,19 @@ class CompactBusinessHeader extends StatelessWidget {
         SizedBox(height: spacing.sm),
         Row(
           children: <Widget>[
-            Semantics(
-              label: l10n.dashboardCurrentBusiness(shopName),
-              child: ExcludeSemantics(
-                child: Text(
-                  l10n.dashboardCurrentBusinessLabel,
-                  style: AppTypography.of(context)
-                      .labelSmall
-                      ?.copyWith(color: AppColors.of(context).onSurfaceMuted),
+            Expanded(
+              child: Semantics(
+                label: l10n.dashboardCurrentBusiness(shopName),
+                child: ExcludeSemantics(
+                  child: Text(
+                    l10n.dashboardCurrentBusinessLabel,
+                    style: AppTypography.of(context)
+                        .labelSmall
+                        ?.copyWith(color: AppColors.of(context).onSurfaceMuted),
+                  ),
                 ),
               ),
             ),
-            const Spacer(),
             if (onSwitchBusiness != null)
               OutlinedButton.icon(
                 onPressed: onSwitchBusiness,
@@ -291,11 +293,13 @@ class FinancialHero extends StatelessWidget {
                   children: <Widget>[
                     const Icon(Icons.receipt_long_outlined, size: 18),
                     SizedBox(width: spacing.md),
-                    Text(
-                      l10n.dashboardTransactionsLabel,
-                      style: AppTypography.of(context).bodyMedium,
+                    Expanded(
+                      child: Text(
+                        l10n.dashboardTransactionsLabel,
+                        style: AppTypography.of(context).bodyMedium,
+                      ),
                     ),
-                    const Spacer(),
+                    SizedBox(width: spacing.md),
                     Text(
                       '${totals.transactions}',
                       style: AppTypography.money(
@@ -363,7 +367,7 @@ class SupportingMetrics extends StatelessWidget {
           return Wrap(
             spacing: spacing.lg,
             runSpacing: spacing.lg,
-            children: tiles.map((t) => SizedBox(width: 150, child: t)).toList(),
+            children: tiles.map((t) => SizedBox(width: ((constraints.maxWidth - spacing.lg) / 2).clamp(120.0, double.infinity), child: t)).toList(),
           );
         },
       ),

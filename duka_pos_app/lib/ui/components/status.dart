@@ -135,14 +135,17 @@ class StatusChip extends StatelessWidget {
               SizedBox(width: spacing.xs),
               // Weight rises with severity (channel 3), so the urgent chip is the
               // bold one in greyscale too.
-              Text(
-                label,
-                style: AppTypography.of(context).labelSmall?.copyWith(
+              Flexible(
+                child: Text(
+                  label,
+                  softWrap: true,
+                  style: AppTypography.of(context).labelSmall?.copyWith(
                       color: tone.onContainer(colors),
                       fontWeight: tone.emphasis >= 3
                           ? FontWeight.w700
                           : FontWeight.w600,
                     ),
+                ),
               ),
             ],
           ),
