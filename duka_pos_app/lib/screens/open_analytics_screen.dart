@@ -10,6 +10,9 @@ import '../theme/typography.dart';
 import '../ui/components/surface.dart';
 import '../ui/components/status.dart';
 import '../db/database_helper.dart';
+import '../services/live_refresh_mixin.dart';
+import '../services/session_refresh_mixin.dart';
+import '../services/live_channel_service.dart';
 import '../utils/money.dart';
 import '../widgets/chart.dart';
 import 'analytics_screen.dart';
@@ -134,10 +137,30 @@ class _OpenOpeningKpis extends StatefulWidget {
   State<_OpenOpeningKpis> createState() => _OpenOpeningKpisState();
 }
 
-class _OpenOpeningKpisState extends State<_OpenOpeningKpis> {
+class _OpenOpeningKpisState extends State<_OpenOpeningKpis>
+    with LiveRefresh<_OpenOpeningKpis>, SessionRefresh<_OpenOpeningKpis> {
   int _pooledCostsMinor = 0;
   int _receivablesMinor = 0;
   int _jobsCompleted = 0;
+
+  @override
+  Set<LiveReason> get liveReasons => const <LiveReason>{};
+
+  @override
+  bool get liveIsVisible => TickerMode.valuesOf(context).enabled;
+
+  @override
+  Future<void> reloadFromLive() => _load();
+
+  @override
+  void clearForSession() {
+    _pooledCostsMinor = 0;
+    _receivablesMinor = 0;
+    _jobsCompleted = 0;
+  }
+
+  @override
+  Future<void> reloadFromSession() => _load();
 
   @override
   void initState() {

@@ -7,6 +7,9 @@ import '../app_brand.dart';
 import '../l10n/generated/app_localizations.dart';
 import '../models/models.dart';
 import '../db/database_helper.dart';
+import '../services/live_refresh_mixin.dart';
+import '../services/session_refresh_mixin.dart';
+import '../services/live_channel_service.dart';
 import '../models/layby.dart';
 import '../routing/routes.dart';
 import '../services/app_state.dart';
@@ -409,10 +412,30 @@ class _FashionLaybyOverview extends StatefulWidget {
   State<_FashionLaybyOverview> createState() => _FashionLaybyOverviewState();
 }
 
-class _FashionLaybyOverviewState extends State<_FashionLaybyOverview> {
+class _FashionLaybyOverviewState extends State<_FashionLaybyOverview>
+    with LiveRefresh<_FashionLaybyOverview>, SessionRefresh<_FashionLaybyOverview> {
   int _openCount = 0;
   int _awaitingCount = 0;
   int _readyCount = 0;
+
+  @override
+  Set<LiveReason> get liveReasons => const <LiveReason>{};
+
+  @override
+  bool get liveIsVisible => TickerMode.valuesOf(context).enabled;
+
+  @override
+  Future<void> reloadFromLive() => _load();
+
+  @override
+  void clearForSession() {
+    _openCount = 0;
+    _awaitingCount = 0;
+    _readyCount = 0;
+  }
+
+  @override
+  Future<void> reloadFromSession() => _load();
 
   @override
   void initState() {

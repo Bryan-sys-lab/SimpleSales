@@ -11,6 +11,9 @@ import '../services/roles.dart';
 import '../theme/app_colors.dart';
 import '../theme/app_shapes.dart';
 import '../theme/app_spacing.dart';
+import '../services/live_refresh_mixin.dart';
+import '../services/live_channel_service.dart';
+import '../services/session_refresh_mixin.dart';
 import '../theme/typography.dart';
 import '../ui/components/surface.dart';
 import '../ui/components/status.dart';
@@ -36,7 +39,8 @@ class OpenDashboardScreen extends StatefulWidget {
   State<OpenDashboardScreen> createState() => _OpenDashboardScreenState();
 }
 
-class _OpenDashboardScreenState extends State<OpenDashboardScreen> {
+class _OpenDashboardScreenState extends State<OpenDashboardScreen>
+    with LiveRefresh<OpenDashboardScreen>, SessionRefresh<OpenDashboardScreen> {
   int _revenueMinor = 0;
   int _netProfitMinor = 0;
   int _cashPositionMinor = 0;
@@ -46,6 +50,31 @@ class _OpenDashboardScreenState extends State<OpenDashboardScreen> {
   int _overdueJobs = 0;
   int _costGroups = 0;
   List<String> _recentJobs = const [];
+
+  @override
+  Set<LiveReason> get liveReasons => const <LiveReason>{};
+
+  @override
+  bool get liveIsVisible => TickerMode.valuesOf(context).enabled;
+
+  @override
+  Future<void> reloadFromLive() => _load();
+
+  @override
+  void clearForSession() {
+    _revenueMinor = 0;
+    _netProfitMinor = 0;
+    _cashPositionMinor = 0;
+    _receivablesMinor = 0;
+    _activeJobs = 0;
+    _jobsAwaitingPayment = 0;
+    _overdueJobs = 0;
+    _costGroups = 0;
+    _recentJobs = const [];
+  }
+
+  @override
+  Future<void> reloadFromSession() => _load();
 
   @override
   void initState() {
