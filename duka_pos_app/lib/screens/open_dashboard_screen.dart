@@ -175,7 +175,7 @@ class _OpenDashboardScreenState extends State<OpenDashboardScreen>
             SizedBox(height: spacing.xl),
             _OpenQuickActions(
               onNewJob: () => context.push(Routes.openJobNew),
-              onRecordPayment: () => context.push(Routes.incomingPayments),
+              onRecordPayment: () => context.push(Routes.openJobs),
               onRecordSale: () => context.push(Routes.openSell),
               onAddJobCost: () => context.push(Routes.openJobs),
               onNewCostGroup: () => context.push(Routes.openNewCostGroup),
