@@ -59,7 +59,7 @@ class ProfileCapabilities {
             enhancedAnalytics: true,
           ),
         ShopProfile.open => const ProfileCapabilities(
-            trackStock: false,
+            trackStock: true,
             measuredGoods: false,
             variants: false,
             drinkService: false,

@@ -30,7 +30,7 @@ import '../screens/layby_screen.dart';
 import '../screens/transactions_screen.dart';
 import '../screens/shift_screen.dart';
 import '../screens/expenses_screen.dart';
-import '../screens/shot_cups_screen.dart';
+import '../screens/servings_screen.dart';
 import '../screens/splash_screen.dart';
 import '../screens/support_screen.dart';
 import '../screens/tank_detail_screen.dart';
@@ -361,14 +361,14 @@ List<RouteBase> _shellRoutes(AppState appState) {
                   ),
                 ),
                 GoRoute(
-                  path: 'shot-cups',
+                  path: 'servings',
                   parentNavigatorKey: rootNavigatorKey,
                   pageBuilder:
                       (BuildContext context, GoRouterState routerState) =>
                           _fadeThrough(
                     routerState,
                     appState.shopProfile.navigation.showDrinkService
-                        ? const ShotCupsScreen()
+                        ? const ServingsScreen()
                         : NotFoundScreen(location: routerState.matchedLocation),
                   ),
                 ),

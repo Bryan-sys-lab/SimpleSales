@@ -1491,11 +1491,11 @@ class AppLocalizationsSw extends AppLocalizations {
   }
 
   @override
-  String get inventoryShotCupsSpoken =>
-      'Cups. Fixed-size cups of any drink in your inventory.';
+  String get inventoryServingsSpoken =>
+      'Servings. Fixed-size servings of any drink in your inventory.';
 
   @override
-  String get inventoryShotCupsTitle => 'Cups';
+  String get inventoryServingsTitle => 'Servings';
 
   @override
   String get inventorySizeSuggestionsSpoken => 'Sizes you have used before';
@@ -2727,130 +2727,134 @@ class AppLocalizationsSw extends AppLocalizations {
   String get transactionsExpenseSourceOther => 'Other funds';
 
   @override
-  String get shotCupsActionsLabel => 'Cup actions';
+  String get servingsActionsLabel => 'Serving actions';
 
   @override
-  String get shotCupsAddAction => 'Add a cup';
+  String get servingsAddAction => 'Add a serving';
 
   @override
-  String get shotCupsCapacityHelper =>
-      'Leave it empty if you do not know the size. With a size, the app works out what each cup cost you to pour.';
+  String get servingsCapacityHelper =>
+      'Leave it empty if you do not know the size. With a size, the app works out what each serving cost you to pour.';
 
   @override
-  String get shotCupsCapacityHint => '30';
+  String get servingsCapacityHint => '30';
 
   @override
-  String get shotCupsCapacityLabel => 'Size in ml (optional)';
+  String get servingsCapacityLabel => 'Size (optional)';
 
   @override
-  String shotCupsCapacityMax(Object max) {
-    return 'Capacity must be $max ml or less.';
+  String servingsCapacityMax(Object max) {
+    return 'Capacity must be $max or less.';
   }
 
   @override
-  String get shotCupsCapacityPositive => 'The size cannot be less than zero.';
+  String get servingsCapacityPositive => 'The size cannot be less than zero.';
 
   @override
-  String shotCupsCapacityValue(Object capacity) {
+  String servingsCapacityValue(Object capacity) {
     return '$capacity ml';
   }
 
   @override
-  String get shotCupsCapacityWholeMl =>
+  String get servingsCapacityWholeMl =>
       'Capacity must be whole millilitres, for example 30 or 45.';
 
   @override
-  String shotCupsCardName(Object capacity, Object label) {
+  String servingsCardName(Object capacity, Object label) {
     return '$label · $capacity ml';
   }
 
   @override
-  String shotCupsCardSpoken(Object detail, Object name, Object price) {
+  String servingsCardSpoken(Object detail, Object name, Object price) {
     return '$name, $detail, $price';
   }
 
   @override
-  String shotCupsCardSpokenInactive(Object detail, Object name, Object price) {
+  String servingsCardSpokenInactive(Object detail, Object name, Object price) {
     return '$name, $detail, $price, not sold';
   }
 
   @override
-  String get shotCupsChooseDrink => 'Choose the drink this cup is poured from.';
+  String get servingsChooseDrink =>
+      'Choose the drink this serving is poured from.';
 
   @override
-  String get shotCupsDefaultName => 'Small cup';
+  String get servingsDefaultName => 'Small serving';
 
   @override
-  String get shotCupsEditAction => 'Edit';
+  String get servingsEditAction => 'Edit';
 
   @override
-  String get shotCupsEmptyMessageNoPermission =>
-      'No cups have been set up for this shop.';
+  String get servingsFilterByProduct => 'Filter by product';
 
   @override
-  String get shotCupsEmptyMessageOwner =>
-      'Add one to sell fixed-size cups of any drink in your inventory.';
+  String get servingsEmptyMessageNoPermission =>
+      'No servings have been set up for this shop.';
 
   @override
-  String get shotCupsEmptyTitle => 'No cups yet';
+  String get servingsEmptyMessageOwner =>
+      'Add one to sell fixed-size servings of any drink in your inventory.';
 
   @override
-  String get shotCupsLoadFailed => 'Couldn’t load the cups. Try again.';
+  String get servingsEmptyTitle => 'No servings yet';
 
   @override
-  String get shotCupsNameAtTillLabel => 'Name at the till';
+  String get servingsLoadFailed => 'Couldn’t load the servings. Try again.';
 
   @override
-  String get shotCupsNameHelper => 'What the cashier taps';
+  String get servingsNameAtTillLabel => 'Name at the till';
 
   @override
-  String get shotCupsNameHint => 'Small cup, Big cup';
+  String get servingsNameHelper => 'What the cashier taps';
 
   @override
-  String get shotCupsNameRequired =>
-      'Give the cup a name, like Small cup or Big cup.';
+  String get servingsNameHint => 'Small serving, Big serving';
 
   @override
-  String get shotCupsNotSold => 'Not sold';
+  String get servingsNameRequired =>
+      'Give the serving a name, like Small serving or Big serving.';
 
   @override
-  String shotCupsPerBottle(Object count) {
-    return '$count cups per bottle';
+  String get servingsNotSold => 'Not sold';
+
+  @override
+  String servingsPerBottle(Object count) {
+    return '$count servings per bottle';
   }
 
   @override
-  String get shotCupsPouredFromLabel => 'Poured from';
+  String get servingsPouredFromLabel => 'Poured from';
 
   @override
-  String get shotCupsPriceHelper => 'For one cup';
+  String get servingsPriceHelper => 'For one serving';
 
   @override
-  String get shotCupsPriceInvalid => 'Price must be a number, 0 or more.';
+  String get servingsPriceInvalid => 'Price must be a number, 0 or more.';
 
   @override
-  String get shotCupsPriceLabel => 'Price (KSh)';
+  String get servingsPriceLabel => 'Price (KSh)';
 
   @override
-  String get shotCupsRetryLoading => 'Try loading again';
+  String get servingsRetryLoading => 'Try loading again';
 
   @override
-  String get shotCupsSaveFailed => 'Couldn’t save the cup. Try again.';
+  String get servingsSaveFailed => 'Couldn’t save the serving. Try again.';
 
   @override
-  String get shotCupsStopSellingAction => 'Stop selling';
+  String get servingsStopSellingAction => 'Stop selling';
 
   @override
-  String shotCupsStopSellingMessage(Object product) {
-    return '$product cups stop appearing at the till. Sales already recorded are untouched.';
+  String servingsStopSellingMessage(Object product) {
+    return '$product servings stop appearing at the till. Sales already recorded are untouched.';
   }
 
   @override
-  String shotCupsStopSellingTitle(Object name) {
+  String servingsStopSellingTitle(Object name) {
     return 'Stop selling $name?';
   }
 
   @override
-  String get shotCupsTitle => 'Cups / Bottles';
+  String get servingsTitle => 'Servings / Bottles';
 
   @override
   String get taxSettingsAdminOnly =>
@@ -4819,7 +4823,7 @@ class AppLocalizationsSw extends AppLocalizations {
   String get activitySaleRecorded => 'Sale recorded';
 
   @override
-  String get activityShotCupSold => 'Cup sold';
+  String get activityServingSold => 'Serving sold';
 
   @override
   String get activityStaffAdded => 'Staff added';
@@ -5093,7 +5097,7 @@ class AppLocalizationsSw extends AppLocalizations {
       'Write how much is in one cup, or leave it empty.';
 
   @override
-  String get tankServingTooBig => 'That cup is bigger than the tank.';
+  String get tankServingTooBig => 'That serving is bigger than the tank.';
 
   @override
   String get tankServingMinOne => 'Write at least one cup you sell.';
@@ -5186,6 +5190,24 @@ class AppLocalizationsSw extends AppLocalizations {
   }
 
   @override
+  String get tankActionViewDetails => 'Tazama maelezo';
+
+  @override
+  String get tankRegisterSold => 'Ilionekana jumla';
+
+  @override
+  String get dashboardLooseGoods => 'Mambo yaliyopandishwa';
+
+  @override
+  String get dashboardLooseGoodsRemaining => 'mpaka kuweka faida';
+
+  @override
+  String get dashboardLooseGoodsSold => 'Ulitajumla';
+
+  @override
+  String get dashboardLooseGoodsViewDetails => 'Tazama maelezo';
+
+  @override
   String get tankStatusActive => 'Inaendeshwa';
 
   @override
@@ -5270,12 +5292,12 @@ class AppLocalizationsSw extends AppLocalizations {
   }
 
   @override
-  String get shotCupNoSize =>
-      'This cup has no size, so the container will not go down when you sell it';
+  String get servingNoSize =>
+      'This serving has no size, so the container will not go down when you sell it';
 
   @override
-  String shotCupTooBig(Object ml) {
-    return 'This cup is bigger than the container ($ml ml)';
+  String servingTooBig(Object ml) {
+    return 'This serving is bigger than the container ($ml ml)';
   }
 
   @override
@@ -5655,6 +5677,27 @@ class AppLocalizationsSw extends AppLocalizations {
 
   @override
   String get openDashboardReceivables => 'Watu wanaolipia';
+
+  @override
+  String get openDashboardProfit => 'Faida';
+
+  @override
+  String get openDashboardNotInProfitYet => 'Hajasidi faida tena';
+
+  @override
+  String get openDashboardBreakEven => 'Isipofaa isipunguu';
+
+  @override
+  String get openDashboardSurplus => 'Ziada';
+
+  @override
+  String get openDashboardShortfall => 'Ukosa';
+
+  @override
+  String get openDashboardOwedToYou => 'Watu wanaolipia';
+
+  @override
+  String get openDashboardYouOwe => 'Unalipia';
 
   @override
   String get openDashboardOperationalOverview => 'Muhtasari wa kazi';

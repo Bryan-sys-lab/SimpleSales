@@ -31,7 +31,7 @@ abstract final class Routes {
   /// Detail routes pushed on top of a branch. Each declares its parent as the
   /// `parentNavigatorKey` so it covers the shell — a sheet pushed from Settings
   /// should hide the navigation, not render inside a 320dp column.
-  static const String shotCups = '/inventory/shot-cups';
+  static const String servings = '/inventory/servings';
   static const String transactions = '/dashboard/transactions';
   static const String customers = '/dashboard/customers';
   static const String laybys = '/dashboard/laybys';

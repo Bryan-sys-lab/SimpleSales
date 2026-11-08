@@ -2090,7 +2090,7 @@ class BackendService {
                   // Zero means the size is not known, and that is a legal
                   // answer: a cup with a size earns its cost exactly, and a cup
                   // without one is counted at its full price.
-                  'capacityMl': cup.capacityMl,
+                  'capacity': cup.capacity,
                   'price': cup.price.minorUnits,
                   'active': cup.active,
                 })
@@ -2150,7 +2150,8 @@ class BackendService {
         await DatabaseHelper.instance.mergeRemoteShotCup(
           productId: localProductId,
           productName: raw['productName'] as String? ?? '',
-          capacityMl: (raw['capacityMl'] as num?)?.toInt() ?? 0,
+          capacity: (raw['capacity'] as num?)?.toDouble() ?? 0,
+          unit: (raw['unit'] as String?) ?? 'ml',
           priceMinor: (raw['price'] as num?)?.toInt() ?? 0,
           label: raw['label'] as String? ?? 'Small cup',
           active: raw['active'] != false,

@@ -19,7 +19,7 @@ enum AuditAction {
   creditRepayment('credit_repayment'),
   creditAdjusted('credit_adjusted'),
   expenseVoided('expense_voided'),
-  shotCupSold('shot_cup_sold'),
+  servingSold('serving_sold'),
   staffAdded('staff_added'),
   staffRemoved('staff_removed'),
   staffPinReset('staff_pin_reset'),

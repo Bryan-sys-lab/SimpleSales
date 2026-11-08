@@ -1,13 +1,13 @@
-// Configuring the fixed shot cups a till sells.
+// Configuring the fixed servings a till sells.
 //
-// A shot is the third way a drink can be sold, alongside a whole bottle and a
+// A serving is the third way a drink can be sold, alongside a whole bottle and a
 // variant. It is not a variant because it has no stock of its own: it is poured
 // out of the parent bottle, and the stock that moves is the parent's. It is not a
 // portion because 30 ml is neither a half nor a quarter.
 //
-// So a cup is a small configuration in its own right: which spirit it comes
+// So a serving is a small configuration in its own right: which drink it comes
 // from, how many millilitres it holds, and what it costs. Those three answers
-// are what the till needs to price a shot and to know how much of the bottle it
+// are what the till needs to price a serving and to know how much of the bottle it
 // just used, and they belong to the shop rather than to the product, which is
 // why they are not another column on `products`.
 
@@ -33,10 +33,11 @@ import '../utils/money.dart';
 import '../utils/units.dart';
 import '../routing/home_shell.dart';
 
-/// A capacity field is whole millilitres, so no decimal point can ever be an
-/// answer: the field refuses one before the parser has to explain why.
+/// A capacity field accepts digits and a decimal point, so a shop can enter
+/// "0.5" (half a unit) or "0.25". Anything below zero is refused by the
+/// validator, not by the formatter.
 final TextInputFormatter _wholeDigitsOnly =
-    FilteringTextInputFormatter.allow(RegExp(r'[0-9]'));
+    FilteringTextInputFormatter.allow(RegExp(r'[0-9.]'));
 
 /// A price field accepts digits and a decimal point, and nothing else. What is
 /// removed is only what no amount can contain, so [Money.fromMajor] still does
@@ -57,60 +58,90 @@ final TextInputFormatter _amountDigitsOnly =
 ///
 /// An empty field is not a mistake; a NEGATIVE one is; and a size bigger than
 /// any bottle in the shop is a typo.
-String? _capacityErrorOf(AppLocalizations l10n, int? capacityMl) {
-  if (capacityMl == null) {
+String? _capacityErrorOf(AppLocalizations l10n, double? capacity) {
+  if (capacity == null) {
     return null;
   }
-  if (capacityMl < 0) return l10n.shotCupsCapacityPositive;
-  if (capacityMl > Product.maxBottleMl) {
-    return l10n.shotCupsCapacityMax(Product.maxBottleMl);
+  if (capacity < 0)     return l10n.servingsCapacityPositive;
+  if (capacity > Product.maxBottleMl.toDouble()) {
+    return l10n.servingsCapacityMax(Product.maxBottleMl);
   }
   return null;
 }
 
 String? _priceErrorOf(AppLocalizations l10n, double? price) {
   if (price == null || !Money.isValidMajor(price)) {
-    return l10n.shotCupsPriceInvalid;
+    return l10n.servingsPriceInvalid;
   }
   return null;
 }
 
 String? _labelErrorOf(AppLocalizations l10n, String? label) {
   if (label == null || label.trim().isEmpty) {
-    return l10n.shotCupsNameRequired;
+    return l10n.servingsNameRequired;
   }
   return null;
 }
 
-class ShotCupsScreen extends StatefulWidget {
-  const ShotCupsScreen({super.key});
+class ServingsScreen extends StatefulWidget {
+  const ServingsScreen({super.key});
 
   @override
-  State<ShotCupsScreen> createState() => _ShotCupsScreenState();
+  State<ServingsScreen> createState() => _ServingsScreenState();
 }
 
-sealed class _CupsLoadState {
-  const _CupsLoadState();
+sealed class _ServingsLoadState {
+  const _ServingsLoadState();
 }
 
-final class _CupsLoading extends _CupsLoadState {
-  const _CupsLoading();
+final class _ServingsLoading extends _ServingsLoadState {
+  const _ServingsLoading();
 }
 
-final class _CupsFailed extends _CupsLoadState {
-  const _CupsFailed(this.message);
+final class _ServingsFailed extends _ServingsLoadState {
+  const _ServingsFailed(this.message);
 
   final String message;
 }
 
-final class _CupsLoaded extends _CupsLoadState {
-  const _CupsLoaded();
+final class _ServingsLoaded extends _ServingsLoadState {
+  const _ServingsLoaded();
 }
 
-class _ShotCupsScreenState extends State<ShotCupsScreen> {
-  List<ShotCup> _cups = const [];
+class _ServingsScreenState extends State<ServingsScreen> {
+  List<Serving> _cups = const [];
   List<Product> _products = const [];
-  _CupsLoadState _loadState = const _CupsLoading();
+  String? _unitFilter; // null = all units
+  int? _productFilter; // null = all products
+  _ServingsLoadState _loadState = const _ServingsLoading();
+
+  /// Servings that pass both active filters (unit and master product).
+  List<Serving> get _filteredServings {
+    var result = _cups.where((s) => s.active);
+    if (_unitFilter != null) {
+      result = result.where((s) => s.unit == _unitFilter);
+    }
+    if (_productFilter != null) {
+      result = result.where((s) => s.productId == _productFilter);
+    }
+    return result.toList()..sort((a, b) => a.label.compareTo(b.label));
+  }
+
+  /// Distinct units in use across all servings, for the unit filter chip row.
+  List<String> get _unitsInUse {
+    final units = <String>{};
+    for (final s in _cups.where((s) => s.active)) {
+      units.add(s.unit);
+    }
+    return units.toList()..sort();
+  }
+
+  /// Master products that have at least one active serving, for the product filter.
+  List<Product> get _productsWithServings {
+    final ids = _cups.where((s) => s.active).map((s) => s.productId).toSet();
+    return _products.where((p) => ids.contains(p.id)).toList()
+      ..sort((a, b) => a.name.compareTo(b.name));
+  }
 
   @override
   void initState() {
@@ -120,76 +151,76 @@ class _ShotCupsScreenState extends State<ShotCupsScreen> {
 
   Future<void> _load() async {
     final db = DatabaseHelper.instance;
-    // Inactive cups too, so an owner can bring one back rather than finding it
+    // Inactive servings too, so an owner can bring one back rather than finding it
     // gone and having to re-enter it.
-    final List<ShotCup> cups;
+    final List<Serving> cups;
     final List<Product> products;
     try {
-      cups = await db.getShotCups(activeOnly: false);
+      cups = await db.getServings(activeOnly: false);
       products = await db.getProducts(activeOnly: false);
     } on Object {
       // A human sentence with a way forward, never the exception: a file path
       // and a stack trace are not help to the person standing at the till.
       if (!mounted) return;
       final l10n = AppLocalizations.of(context);
-      setState(() => _loadState = _CupsFailed(l10n.shotCupsLoadFailed));
+      setState(() => _loadState = _ServingsFailed(l10n.servingsLoadFailed));
       return;
     }
     if (!mounted) return;
     setState(() {
       _cups = cups;
       _products = products;
-      _loadState = const _CupsLoaded();
+      _loadState = const _ServingsLoaded();
     });
   }
 
-  Future<void> _edit([ShotCup? existing]) async {
-    final saved = await showModalBottomSheet<ShotCup>(
+  Future<void> _edit([Serving? existing]) async {
+    final saved = await showModalBottomSheet<Serving>(
       context: context,
       isScrollControlled: true,
-      builder: (_) => _ShotCupEditor(
-        cup: existing,
+      builder: (_) => _ServingEditor(
+        serving: existing,
         products: _products,
       ),
     );
     if (saved == null) return;
-    // A new or changed cup has to reach the till, which is kept alive and would
+    // A new or changed serving has to reach the till, which is kept alive and would
     // otherwise keep offering the old shelf.
     //
     // The module-level signal, NOT `context.read<HomeShellTabs>()`: this route
     // is pushed on the root navigator, so it sits outside the provider the
-    // shell mounts below it — and the lookup threw AFTER the cup was written,
-    // which is why a created cup used to appear in no list and on no shelf.
+    // shell mounts below it — and the lookup threw AFTER the serving was written,
+    // which is why a created serving used to appear in no list and on no shelf.
     if (mounted) markCatalogueChanged();
     await _load();
   }
 
-  Future<void> _remove(ShotCup cup) async {
+  Future<void> _remove(Serving serving) async {
     final l10n = AppLocalizations.of(context);
     // The typed outcome, not a bare `showDialog` result: `showDialog` returns
     // `Future<T?>`, so a dismissal and a refusal are the same null unless one of
-    // them is named — and a null that collapses to "confirmed" is a cup deleted
+    // them is named — and a null that collapses to "confirmed" is a serving deleted
     // by a tap in the wrong place.
     final ConfirmOutcome outcome = await confirmIrreversible(
       context,
-      title: l10n.shotCupsStopSellingTitle(cup.label),
-      message: l10n.shotCupsStopSellingMessage(cup.productName),
-      confirmLabel: l10n.shotCupsStopSellingAction,
+      title: l10n.servingsStopSellingTitle(serving.label),
+      message: l10n.servingsStopSellingMessage(serving.productName),
+      confirmLabel: l10n.servingsStopSellingAction,
       cancelLabel: l10n.actionCancel,
       // Reversible: the row is hidden, not deleted, so this is not a
       // destructive-tone confirmation.
       isDestructive: false,
     );
     if (outcome is! ConfirmAccepted) return;
-    final int? id = cup.id;
+    final int? id = serving.id;
     if (id == null) return;
-    await DatabaseHelper.instance.deleteShotCup(id);
+    await DatabaseHelper.instance.deleteServing(id);
     if (!mounted) return;
     HapticTheme.of(context).fire(HapticEvent.commit);
     await _load();
   }
 
-  Future<void> _copyCup(ShotCup cup) async {
+  Future<void> _copyServing(Serving serving) async {
     if (_products.isEmpty) return;
     final Product? selected = await showDialog<Product>(
       context: context,
@@ -206,69 +237,134 @@ class _ShotCupsScreenState extends State<ShotCupsScreen> {
     );
     if (selected == null || !mounted) return;
     final DatabaseHelper db = DatabaseHelper.instance;
-    final ShotCup copy = ShotCup(
+    final Serving copy = Serving(
       productId: selected.id!,
       productName: selected.name,
-      capacityMl: cup.capacityMl,
-      price: cup.price,
-      label: cup.label,
-      active: cup.active,
+      capacity: serving.capacity,
+      unit: serving.unit,
+      price: serving.price,
+      label: serving.label,
+      active: serving.active,
       updatedAt: DateTime.now().toIso8601String(),
     );
-    await db.upsertShotCup(copy);
+    await db.upsertServing(copy);
     markCatalogueChanged();
     await _load();
   }
 
-  static int? shotsPerBottle(Product product, ShotCup cup) {
-    if (cup.capacityMl <= 0 || product.bottleMl <= 0) return null;
-    return product.bottleMl ~/ cup.capacityMl;
+  static int? servingsPerBottle(Product product, Serving serving) {
+    if (serving.capacity <= 0 || product.bottleMl <= 0) return null;
+    return product.bottleMl ~/ serving.capacity;
   }
 
-  Product? _productOf(ShotCup cup) =>
-      _products.where((p) => p.id == cup.productId).firstOrNull;
+  Product? _productOf(Serving serving) =>
+      _products.where((p) => p.id == serving.productId).firstOrNull;
 
   @override
   Widget build(BuildContext context) {
     final bool canEdit = context.watch<AppState>().canManageStock;
     final AppLocalizations l10n = AppLocalizations.of(context);
+    final AppSpacing spacing = AppSpacing.of(context);
     return Scaffold(
       appBar: AppBar(
-        title: Text(l10n.shotCupsTitle),
+        title: Text(l10n.servingsTitle),
         actions: <Widget>[
           if (canEdit)
             TextButton.icon(
               onPressed: () => _edit(),
               icon: const Icon(Icons.add),
-              label: Text(l10n.shotCupsAddAction),
+              label: Text(l10n.servingsAddAction),
             ),
         ],
       ),
       body: switch (_loadState) {
-        _CupsLoading() => const _CupsLoadingView(),
-        _CupsFailed(:final String message) => ErrorStateView(
+        _ServingsLoading() => const _ServingsLoadingView(),
+        _ServingsFailed(:final String message) => ErrorStateView(
             message: message,
             onRetry: _load,
-            retryLabel: l10n.shotCupsRetryLoading,
+            retryLabel: l10n.servingsRetryLoading,
           ),
-        _CupsLoaded() => _ShotCupsList(
-            cups: _cups,
-            shotsPerBottle: shotsPerBottle,
-            productOf: _productOf,
-            canEdit: canEdit,
-            onRetry: _load,
-            onAdd: _edit,
-            onEdit: _edit,
-            onStopSelling: _remove,
-            onCopy: _copyCup,
+        _ServingsLoaded() => Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: <Widget>[
+              // Unit filter: one chip per unit in use.
+              SizedBox(
+                height: 44,
+                child: ListView.builder(
+                  scrollDirection: Axis.horizontal,
+                  itemCount: _unitsInUse.length,
+                  itemBuilder: (BuildContext context, int index) {
+                    final unit = _unitsInUse[index];
+                    final selected = _unitFilter == unit;
+                    return FilterChip(
+                      selected: selected,
+                      label: Text(unit.toUpperCase()),
+                      onSelected: (bool chosen) {
+                        setState(() {
+                          _unitFilter = chosen ? unit : null;
+                          // Clearing a product filter when a unit is picked
+                          // keeps the two filters from fighting each other.
+                          if (chosen && _productFilter != null) {
+                            _productFilter = null;
+                          }
+                        });
+                      },
+                    );
+                  },
+                ),
+              ),
+              SizedBox(height: spacing.sm),
+              // Master product filter: dropdown of products that have servings.
+              if (_productsWithServings.isNotEmpty)
+                Padding(
+                  padding: EdgeInsetsDirectional.only(
+                      start: spacing.md, end: spacing.md),
+                  child: DropdownButtonFormField<int>(
+                    initialValue: _productFilter,
+                    decoration: InputDecoration(
+                      labelText: l10n.servingsFilterByProduct,
+                      border: const OutlineInputBorder(),
+                      isDense: true,
+                    ),
+                    items: <DropdownMenuItem<int>>[
+                      const DropdownMenuItem<int>(
+                        value: null,
+                        child: Text('All products'),
+                      ),
+                      ..._productsWithServings.map((Product p) =>
+                          DropdownMenuItem<int>(
+                            value: p.id,
+                            child: Text(p.name),
+                          )),
+                    ],
+                    onChanged: (int? id) {
+                      setState(() {
+                        _productFilter = id;
+                      });
+                    },
+                  ),
+                ),
+              SizedBox(height: spacing.md),
+              _ServingsList(
+                servings: _filteredServings,
+                servingsPerBottle: servingsPerBottle,
+                productOf: _productOf,
+                canEdit: canEdit,
+                onRetry: _load,
+                onAdd: _edit,
+                onEdit: _edit,
+                onStopSelling: _remove,
+                onCopy: _copyServing,
+              ),
+            ],
           ),
       },
     );
   }
 }
 
-class _CupsLoadingView extends StatelessWidget {
-  const _CupsLoadingView();
+class _ServingsLoadingView extends StatelessWidget {
+  const _ServingsLoadingView();
 
   @override
   Widget build(BuildContext context) {
@@ -294,10 +390,10 @@ class _CupsLoadingView extends StatelessWidget {
   }
 }
 
-class _ShotCupsList extends StatelessWidget {
-  const _ShotCupsList({
-    required this.cups,
-    required this.shotsPerBottle,
+class _ServingsList extends StatelessWidget {
+  const _ServingsList({
+    required this.servings,
+    required this.servingsPerBottle,
     required this.productOf,
     required this.canEdit,
     required this.onRetry,
@@ -307,26 +403,26 @@ class _ShotCupsList extends StatelessWidget {
     required this.onCopy,
   });
 
-  final List<ShotCup> cups;
-  final int? Function(Product product, ShotCup cup) shotsPerBottle;
-  final Product? Function(ShotCup cup) productOf;
+  final List<Serving> servings;
+  final int? Function(Product product, Serving serving) servingsPerBottle;
+  final Product? Function(Serving serving) productOf;
   final bool canEdit;
   final Future<void> Function() onRetry;
   final VoidCallback onAdd;
-  final void Function(ShotCup cup) onEdit;
-  final void Function(ShotCup cup) onStopSelling;
-  final void Function(ShotCup cup) onCopy;
+  final void Function(Serving serving) onEdit;
+  final void Function(Serving serving) onStopSelling;
+  final void Function(Serving serving) onCopy;
 
   @override
   Widget build(BuildContext context) {
     final AppSpacing spacing = AppSpacing.of(context);
 
-    if (cups.isEmpty) {
+    if (servings.isEmpty) {
       return AdaptivePage(
         padding: EdgeInsets.zero,
         child: RefreshIndicator(
           onRefresh: onRetry,
-          child: _EmptyShots(canEdit: canEdit, onAdd: onAdd),
+          child: _EmptyServings(canEdit: canEdit, onAdd: onAdd),
         ),
       );
     }
@@ -357,18 +453,18 @@ class _ShotCupsList extends StatelessWidget {
                 // Always scrollable so pull-to-refresh works on a short list.
                 physics: const AlwaysScrollableScrollPhysics(),
                 padding: EdgeInsets.all(spacing.md),
-                itemCount: cups.length,
+                itemCount: servings.length,
                 itemBuilder: (BuildContext context, int index) {
-                  final ShotCup cup = cups[index];
-                  final Product? product = productOf(cup);
-                  return _ShotCupCard(
-                    cup: cup,
-                    shotsPerBottle:
-                        product == null ? null : shotsPerBottle(product, cup),
+                  final Serving serving = servings[index];
+                  final Product? product = productOf(serving);
+                  return _ServingCard(
+                    serving: serving,
+                    servingsPerBottle:
+                        product == null ? null : servingsPerBottle(product, serving),
                     canEdit: canEdit,
-                    onEdit: () => onEdit(cup),
-                    onStopSelling: () => onStopSelling(cup),
-                    onCopy: () => onCopy(cup),
+                    onEdit: () => onEdit(serving),
+                    onStopSelling: () => onStopSelling(serving),
+                    onCopy: () => onCopy(serving),
                   );
                 },
               ),
@@ -380,19 +476,19 @@ class _ShotCupsList extends StatelessWidget {
   }
 }
 
-class _ShotCupCard extends StatelessWidget {
-  const _ShotCupCard({
-    required this.cup,
-    required this.shotsPerBottle,
+class _ServingCard extends StatelessWidget {
+  const _ServingCard({
+    required this.serving,
+    required this.servingsPerBottle,
     required this.canEdit,
     required this.onEdit,
     required this.onStopSelling,
     required this.onCopy,
   });
 
-  final ShotCup cup;
+  final Serving serving;
 
-  final int? shotsPerBottle;
+  final int? servingsPerBottle;
 
   final bool canEdit;
   final VoidCallback onEdit;
@@ -400,11 +496,11 @@ class _ShotCupCard extends StatelessWidget {
   final VoidCallback onCopy;
 
   String _detail(AppLocalizations l10n) {
-    final int? perBottle = shotsPerBottle;
+    final int? perBottle = servingsPerBottle;
     return <String>[
-      cup.productName,
-      l10n.shotCupsCapacityValue(cup.capacityMl),
-      if (perBottle != null) l10n.shotCupsPerBottle(perBottle),
+      serving.productName,
+      l10n.servingsCapacityValue(serving.capacity),
+      if (perBottle != null) l10n.servingsPerBottle(perBottle),
     ].join(' · ');
   }
 
@@ -412,14 +508,14 @@ class _ShotCupCard extends StatelessWidget {
   // the reverse of the label's own order "{label} · {capacity} ml". The
   // capacity came first and the label second, so the card read "30 · Shot ml".
   String _name(AppLocalizations l10n) =>
-      l10n.shotCupsCardName(cup.capacityMl, cup.label);
+      l10n.servingsCardName(serving.capacity, serving.label);
 
   @override
   Widget build(BuildContext context) {
     final AppSpacing spacing = AppSpacing.of(context);
     final AppColors colors = AppColors.of(context);
     final TextTheme type = AppTypography.of(context);
-    final String price = formatMoney(cup.price);
+    final String price = formatMoney(serving.price);
     final AppLocalizations l10n = AppLocalizations.of(context);
     final String name = _name(l10n);
     final String detail = _detail(l10n);
@@ -434,14 +530,14 @@ class _ShotCupCard extends StatelessWidget {
       ),
       onTap: canEdit ? onEdit : null,
       // The row's own words, read as one phrase. A screen-reader user stepping
-      // through the shelf should hear "Shot, 30 ml, Tusker, 14 per bottle, KSh
+      // through the shelf should hear "Serving, 30 ml, Tusker, 14 per bottle, KSh
       // 80" as one stop, not five.
       // Both row labels take (detail, name, price) — gen-l10n sorts the three
       // ALPHABETICALLY, which is the reverse of the sentence's own order
       // "{name}, {detail}, {price}". These were passed name-first.
-      semanticLabel: cup.active
-          ? l10n.shotCupsCardSpoken(detail, name, price)
-          : l10n.shotCupsCardSpokenInactive(detail, name, price),
+      semanticLabel: serving.active
+          ? l10n.servingsCardSpoken(detail, name, price)
+          : l10n.servingsCardSpokenInactive(detail, name, price),
       child: Row(
         children: <Widget>[
           // Circular icon badge like the mockup.
@@ -453,12 +549,12 @@ class _ShotCupCard extends StatelessWidget {
                 shape: BoxShape.circle,
               ),
               child: Icon(
-                cup.active
+                serving.active
                     ? Icons.local_drink_outlined
                     : Icons.remove_circle_outline,
                 size: 20,
                 color:
-                    cup.active ? colors.onSurfaceMuted : colors.onSurfaceVariant,
+                    serving.active ? colors.onSurfaceMuted : colors.onSurfaceVariant,
               ),
             ),
           ),
@@ -486,17 +582,17 @@ class _ShotCupCard extends StatelessWidget {
               mainAxisSize: MainAxisSize.min,
               children: <Widget>[
                 MoneyText(amount: price, size: 15),
-                if (!cup.active)
+                if (!serving.active)
                   StatusChip(
                     tone: StatusTone.neutral,
-                    text: l10n.shotCupsNotSold,
+                    text: l10n.servingsNotSold,
                     dense: true,
                   ),
               ],
             ),
           ),
           if (canEdit)
-            _ShotCupMenu(onEdit: onEdit, onStopSelling: onStopSelling, onCopy: onCopy),
+            _ServingMenu(onEdit: onEdit, onStopSelling: onStopSelling, onCopy: onCopy),
         ],
       ),
     );
@@ -508,8 +604,8 @@ class _ShotCupCard extends StatelessWidget {
 /// An explicit [Semantics] wrapper rather than relying on the tooltip alone: a
 /// popup button whose only name is a three-dot glyph announces as "button" in
 /// most screen readers.
-class _ShotCupMenu extends StatelessWidget {
-  const _ShotCupMenu({
+class _ServingMenu extends StatelessWidget {
+  const _ServingMenu({
     required this.onEdit,
     required this.onStopSelling,
     required this.onCopy,
@@ -524,10 +620,10 @@ class _ShotCupMenu extends StatelessWidget {
     final AppLocalizations l10n = AppLocalizations.of(context);
     return Semantics(
       button: true,
-      label: l10n.shotCupsActionsLabel,
+      label: l10n.servingsActionsLabel,
       child: ExcludeSemantics(
         child: PopupMenuButton<String>(
-          tooltip: l10n.shotCupsActionsLabel,
+          tooltip: l10n.servingsActionsLabel,
           onSelected: (String value) {
             if (value == 'edit') onEdit();
             if (value == 'remove') onStopSelling();
@@ -535,10 +631,10 @@ class _ShotCupMenu extends StatelessWidget {
           },
           itemBuilder: (BuildContext context) => <PopupMenuEntry<String>>[
             PopupMenuItem<String>(
-                value: 'edit', child: Text(l10n.shotCupsEditAction)),
+                value: 'edit', child: Text(l10n.servingsEditAction)),
             PopupMenuItem<String>(
               value: 'remove',
-              child: Text(l10n.shotCupsStopSellingAction),
+              child: Text(l10n.servingsStopSellingAction),
             ),
             PopupMenuItem<String>(
               value: 'copy',
@@ -555,8 +651,8 @@ class _ShotCupMenu extends StatelessWidget {
 ///
 /// A collection empty state, not a filtered one: no shelf has been searched and
 /// nothing has been hidden, so the action offered is the one that creates.
-class _EmptyShots extends StatelessWidget {
-  const _EmptyShots({required this.canEdit, required this.onAdd});
+class _EmptyServings extends StatelessWidget {
+  const _EmptyServings({required this.canEdit, required this.onAdd});
 
   final bool canEdit;
   final VoidCallback onAdd;
@@ -566,11 +662,11 @@ class _EmptyShots extends StatelessWidget {
     final AppLocalizations l10n = AppLocalizations.of(context);
     return EmptyStateView(
       kind: EmptyKind.collection,
-      title: l10n.shotCupsEmptyTitle,
+      title: l10n.servingsEmptyTitle,
       message: canEdit
-          ? l10n.shotCupsEmptyMessageOwner
-          : l10n.shotCupsEmptyMessageNoPermission,
-      actionLabel: canEdit ? l10n.shotCupsAddAction : null,
+          ? l10n.servingsEmptyMessageOwner
+          : l10n.servingsEmptyMessageNoPermission,
+      actionLabel: canEdit ? l10n.servingsAddAction : null,
       onAction: canEdit ? onAdd : null,
     );
   }
@@ -583,17 +679,17 @@ class _EmptyShots extends StatelessWidget {
 /// functions so there is no second, drifting copy of a rule. Validation runs on
 /// interaction rather than on submit so a cashier learns a field is wrong while
 /// they are still looking at it.
-class _ShotCupEditor extends StatefulWidget {
-  const _ShotCupEditor({required this.cup, required this.products});
+class _ServingEditor extends StatefulWidget {
+  const _ServingEditor({required this.serving, required this.products});
 
-  final ShotCup? cup;
+  final Serving? serving;
   final List<Product> products;
 
   @override
-  State<_ShotCupEditor> createState() => _ShotCupEditorState();
+  State<_ServingEditor> createState() => _ServingEditorState();
 }
 
-class _ShotCupEditorState extends State<_ShotCupEditor> {
+class _ServingEditorState extends State<_ServingEditor> {
   final GlobalKey<FormState> _formKey = GlobalKey<FormState>();
   late final TextEditingController _capacity;
   late final TextEditingController _price;
@@ -602,7 +698,7 @@ class _ShotCupEditorState extends State<_ShotCupEditor> {
   String? _error;
   bool _saving = false;
 
-  bool get _isNew => widget.cup?.id == null;
+  bool get _isNew => widget.serving?.id == null;
 
   /// Drink-shaped products only.
   ///
@@ -622,7 +718,7 @@ class _ShotCupEditorState extends State<_ShotCupEditor> {
 
   List<Product> get _options {
     final options = _drinkable;
-    final currentId = widget.cup?.productId;
+    final currentId = widget.serving?.productId;
     if (currentId == null) return options;
     if (options.any((p) => p.id == currentId)) return options;
     final current = widget.products.where((p) => p.id == currentId).firstOrNull;
@@ -632,17 +728,17 @@ class _ShotCupEditorState extends State<_ShotCupEditor> {
   @override
   void initState() {
     super.initState();
-    final cup = widget.cup;
-    _productId = cup?.productId;
+    final serving = widget.serving;
+    _productId = serving?.productId;
     _capacity = TextEditingController(
-        text: cup == null ? '' : cup.capacityMl.toString());
+        text: serving == null ? '' : serving.capacity.toString());
     // Prices are stored as `Money`, never `double`. `Money.toString()` is the
     // debug representation in minor units, and seeding a field with it produced
     // an unreadable, unparseable price, the same trap the product editor hit.
     _price =
-        TextEditingController(text: cup == null ? '' : _majorText(cup.price));
+        TextEditingController(text: serving == null ? '' : _majorText(serving.price));
     _label = TextEditingController(
-        text: cup?.label ?? AppLocalizations.of(context).shotCupsDefaultName);
+        text: serving?.label ?? AppLocalizations.of(context).servingsDefaultName);
   }
 
   @override
@@ -672,14 +768,14 @@ class _ShotCupEditorState extends State<_ShotCupEditor> {
     final productId = _productId;
     // An EMPTY size is allowed, and means "not known". It is stored as zero,
     // and zero is what the till reads as "no size".
-    final int? capacity = int.tryParse(_capacity.text.trim());
+    final double? capacity = double.tryParse(_capacity.text.trim());
     final double? price = double.tryParse(_price.text.trim());
     final String label = _label.text.trim();
     final AppLocalizations l10n = AppLocalizations.of(context);
     // The same rules, in the same order as the fields, so what the sheet refuses
     // is exactly what the guard refuses.
     final String? problem = productId == null
-        ? l10n.shotCupsChooseDrink
+        ? l10n.servingsChooseDrink
         : _capacityErrorOf(l10n, capacity) ??
             _priceErrorOf(l10n, price) ??
             _labelErrorOf(l10n, label);
@@ -695,13 +791,14 @@ class _ShotCupEditorState extends State<_ShotCupEditor> {
     });
     final product = _drinkable.where((p) => p.id == productId).firstOrNull ??
         widget.products.where((p) => p.id == productId).firstOrNull;
-    final cup = ShotCup(
-      id: widget.cup?.id,
+    final cup = Serving(
+      id: widget.serving?.id,
       productId: productId!,
       // The name is stored, not joined, so the cup survives the spirit being
       // renamed or removed and the till can still explain what it poured.
-      productName: product?.name ?? widget.cup?.productName ?? '',
-      capacityMl: capacity ?? 0,
+      productName: product?.name ?? widget.serving?.productName ?? '',
+      capacity: capacity?.toDouble() ?? 0,
+      unit: 'ml',
       price: Money.fromMajor(price!),
       label: label,
       // Editing a cup that was stopped selling brings it back, rather than
@@ -710,7 +807,7 @@ class _ShotCupEditorState extends State<_ShotCupEditor> {
       updatedAt: DateTime.now().toIso8601String(),
     );
     try {
-      await DatabaseHelper.instance.upsertShotCup(cup);
+      await DatabaseHelper.instance.upsertServing(cup);
       if (!mounted) return;
       HapticTheme.of(context).fire(HapticEvent.commit);
       Navigator.pop(context, cup);
@@ -725,7 +822,7 @@ class _ShotCupEditorState extends State<_ShotCupEditor> {
       if (mounted) {
         setState(() {
           _saving = false;
-          _error = AppLocalizations.of(context).shotCupsSaveFailed;
+          _error = AppLocalizations.of(context).servingsSaveFailed;
         });
       }
     }
@@ -755,7 +852,7 @@ class _ShotCupEditorState extends State<_ShotCupEditor> {
               Semantics(
                 header: true,
                 child: Text(
-                  _isNew ? l10n.shotCupsAddAction : l10n.shotCupsEditAction,
+                  _isNew ? l10n.servingsAddAction : l10n.servingsEditAction,
                   style: AppTypography.of(context).titleLarge,
                 ),
               ),
@@ -781,15 +878,15 @@ class _ShotCupEditorState extends State<_ShotCupEditor> {
                       inputFormatters: <TextInputFormatter>[_wholeDigitsOnly],
                       validator: (String? raw) => _capacityErrorOf(
                         l10n,
-                        int.tryParse(raw?.trim() ?? ''),
+                        double.tryParse(raw?.trim() ?? ''),
                       ),
                       decoration: InputDecoration(
                         labelText:
-                            AppLocalizations.of(context).shotCupsCapacityLabel,
+                            AppLocalizations.of(context).servingsCapacityLabel,
                         hintText:
-                            AppLocalizations.of(context).shotCupsCapacityHint,
+                            AppLocalizations.of(context).servingsCapacityHint,
                         helperText:
-                            AppLocalizations.of(context).shotCupsCapacityHelper,
+                            AppLocalizations.of(context).servingsCapacityHelper,
                         floatingLabelBehavior: FloatingLabelBehavior.always,
                       ),
                     ),
@@ -809,9 +906,9 @@ class _ShotCupEditorState extends State<_ShotCupEditor> {
                       style: AppTypography.money(context, size: 15),
                       decoration: InputDecoration(
                         labelText:
-                            AppLocalizations.of(context).shotCupsPriceLabel,
+                            AppLocalizations.of(context).servingsPriceLabel,
                         helperText:
-                            AppLocalizations.of(context).shotCupsPriceHelper,
+                            AppLocalizations.of(context).servingsPriceHelper,
                         floatingLabelBehavior: FloatingLabelBehavior.always,
                       ),
                     ),
@@ -826,9 +923,9 @@ class _ShotCupEditorState extends State<_ShotCupEditor> {
                 validator: (String? raw) => _labelErrorOf(l10n, raw),
                 decoration: InputDecoration(
                   labelText:
-                      AppLocalizations.of(context).shotCupsNameAtTillLabel,
-                  hintText: AppLocalizations.of(context).shotCupsNameHint,
-                  helperText: AppLocalizations.of(context).shotCupsNameHelper,
+                      AppLocalizations.of(context).servingsNameAtTillLabel,
+                  hintText: AppLocalizations.of(context).servingsNameHint,
+                  helperText: AppLocalizations.of(context).servingsNameHelper,
                   floatingLabelBehavior: FloatingLabelBehavior.always,
                 ),
                 onFieldSubmitted: (String _) => _submit(),
@@ -841,7 +938,7 @@ class _ShotCupEditorState extends State<_ShotCupEditor> {
               SizedBox(height: spacing.xl),
               FilledButton(
                 onPressed: _saving || options.isEmpty ? null : _submit,
-                child: Text(_isNew ? 'Add cup' : 'Save cup'),
+                child: Text(_isNew ? 'Add serving' : 'Save serving'),
               ),
               SizedBox(height: spacing.md),
             ],
@@ -889,11 +986,11 @@ class _PourFromField extends StatelessWidget {
       initialValue: value,
       isExpanded: true,
       decoration: InputDecoration(
-        labelText: AppLocalizations.of(context).shotCupsPouredFromLabel,
+        labelText: AppLocalizations.of(context).servingsPouredFromLabel,
         floatingLabelBehavior: FloatingLabelBehavior.always,
       ),
       validator: (int? id) =>
-          id == null ? AppLocalizations.of(context).shotCupsChooseDrink : null,
+          id == null ? AppLocalizations.of(context).servingsChooseDrink : null,
       items: <DropdownMenuItem<int>>[
         for (final p in options)
           DropdownMenuItem<int>(

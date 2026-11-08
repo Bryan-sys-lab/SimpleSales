@@ -50,10 +50,11 @@ void main() {
         updatedAt: '2026-01-01T00:00:00.000',
       );
 
-  ShotCup cup({int capacityMl = 30, String label = 'Shot'}) => ShotCup(
+  ShotCup cup({double capacity = 30, String label = 'Shot'}) => ShotCup(
         productId: 1,
         productName: 'AAA Vodka',
-        capacityMl: capacityMl,
+        capacity: capacity,
+        unit: 'ml',
         price: Money.fromMajor(100),
         label: label,
         updatedAt: '2026-01-01T00:00:00.000',
@@ -79,11 +80,11 @@ void main() {
 
     test('a different cup size divides the same bottle differently', () {
       expect(
-        shotAvailability(l10n, spirit(), cup(capacityMl: 50), 2).reason,
+        shotAvailability(l10n, spirit(), cup(capacity: 50), 2).reason,
         '15 cups left in the container',
       );
       expect(
-        shotAvailability(l10n, spirit(), cup(capacityMl: 750), 2).reason,
+        shotAvailability(l10n, spirit(), cup(capacity: 750), 2).reason,
         '1 cups left in the container',
       );
     });
@@ -96,14 +97,14 @@ void main() {
       // but refusing to sell it would be worse: the shot is still a shot, and
       // it still has a price.
       final verdict =
-          shotAvailability(l10n, spirit(), cup(capacityMl: 0), 5);
+          shotAvailability(l10n, spirit(), cup(capacity: 0), 5);
       expect(verdict.canPour, isTrue);
       expect(verdict.reason, contains('no size'));
     });
 
     test('an empty bottle still stops it', () {
       final verdict =
-          shotAvailability(l10n, spirit(), cup(capacityMl: 0), 0);
+          shotAvailability(l10n, spirit(), cup(capacity: 0), 0);
       expect(verdict.canPour, isFalse);
       expect(verdict.reason, 'There is no AAA Vodka left');
     });
@@ -115,9 +116,9 @@ void main() {
       // answer; "no stock" would send the cashier to fix a stock problem they
       // do not have.
       final verdict = shotAvailability(
-          l10n, spirit(bottleMl: 200), cup(capacityMl: 1000), 5);
+          l10n, spirit(bottleMl: 200), cup(capacity: 1000), 5);
       expect(verdict.canPour, isFalse);
-      expect(verdict.reason, 'This cup is bigger than the container (200 ml)');
+      expect(verdict.reason, 'This serving is bigger than the container (200 ml)');
       expect(verdict.reason, isNot(contains('left')));
     });
 

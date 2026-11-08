@@ -798,6 +798,58 @@ class _InventoryScreenState extends State<InventoryScreen>
     );
   }
 
+  /// Repacks stock from one product into another.
+  Future<void> _repackStock() async {
+    final AppState state = context.read<AppState>();
+    if (!state.hasPermission(PermissionKey.adjustStock)) return;
+    final DatabaseHelper db = DatabaseHelper.instance;
+    final List<Product> products = await db.getProducts();
+    if (!mounted) return;
+    final result = await showDialog<Map<String, String>>(
+      context: context,
+      builder: (_) => _RepackDialog(products: products),
+    );
+    if (result == null || !mounted) return;
+    final sourceId = int.tryParse(result['source_id'] ?? '');
+    final outputId = int.tryParse(result['output_id'] ?? '');
+    final sourceQty = double.tryParse(result['source_qty'] ?? '');
+    final outputQty = double.tryParse(result['output_qty'] ?? '');
+    if (sourceId == null ||
+        outputId == null ||
+        sourceQty == null ||
+        outputQty == null) {
+      return;
+    }
+    final staffName = state.currentStaffName ?? 'Unknown';
+    int? staffId;
+    if (!state.isOwnerSession) {
+      final staff = await db.getStaff();
+      final match = staff.where((s) => s.name == staffName);
+      staffId = match.isEmpty ? null : match.first.id;
+    }
+    try {
+      await db.repackStock(
+        sourceProductId: sourceId,
+        outputProductId: outputId,
+        sourceQty: sourceQty,
+        outputQty: outputQty,
+        staffName: staffName,
+        staffId: staffId,
+      );
+      if (!mounted) return;
+      await _load();
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Repack recorded.')),
+      );
+    } catch (_) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Repack could not be recorded.')),
+      );
+    }
+  }
+
   /// The deliveries so far, with the owner's void. A modal history over the
   /// inventory: read by the CALLER (the receipts with their supplier names),
   /// so it opens without I/O in its own build.
@@ -910,20 +962,32 @@ class _InventoryScreenState extends State<InventoryScreen>
                   icon: const Icon(Icons.playlist_add_check_outlined, size: 18),
                   label: const Text('Reorder'),
                 ),
-              if (isOwner && showDrinkService)
-                TextButton.icon(
-                  onPressed: () => showTankFormSheet(context),
-                  icon: const Icon(Icons.propane_tank_outlined, size: 18),
-                  label: Text(l10n.tankAddEntry),
-                ),
-              if ((appState.shopProfile == ShopProfile.duka ||
-                  appState.shopProfile == ShopProfile.drinks) &&
-                  appState.hasPermission(PermissionKey.adjustStock))
-                TextButton.icon(
-                  onPressed: () => showLooseGoodsFormSheet(context),
-                  icon: const Icon(Icons.inventory_2_outlined, size: 18),
-                  label: const Text('Loose goods'),
-                ),
+                if (isOwner && showDrinkService)
+                  TextButton.icon(
+                    onPressed: () => showTankFormSheet(context),
+                    icon: const Icon(Icons.propane_tank_outlined, size: 18),
+                    label: Text(l10n.tankAddEntry),
+                  ),
+                if (showDrinkService)
+                  TextButton.icon(
+                    onPressed: () => context.push(Routes.tankRegister),
+                    icon: const Icon(Icons.list_alt_outlined, size: 18),
+                    label: const Text('Tank register'),
+                  ),
+                if ((appState.shopProfile == ShopProfile.duka ||
+                    appState.shopProfile == ShopProfile.drinks) &&
+                    appState.hasPermission(PermissionKey.adjustStock))
+                  TextButton.icon(
+                    onPressed: () => showLooseGoodsFormSheet(context),
+                    icon: const Icon(Icons.inventory_2_outlined, size: 18),
+                    label: const Text('Loose goods'),
+                  ),
+                if (appState.hasPermission(PermissionKey.adjustStock))
+                  TextButton.icon(
+                    onPressed: _repackStock,
+                    icon: const Icon(Icons.swap_horiz, size: 18),
+                    label: const Text('Repack'),
+                  ),
 
             ],
           ),
@@ -1075,13 +1139,13 @@ class _InventoryScreenState extends State<InventoryScreen>
                             children: <Widget>[
                               if (showDrinkService)
                                 Semantics(
-                                  label: l10n.inventoryShotCupsSpoken,
+                                  label: l10n.inventoryServingsSpoken,
                                   child: ListTile(
                                     leading:
                                         const Icon(Icons.local_drink_outlined),
-                                    title: Text(l10n.inventoryShotCupsTitle),
+                                    title: Text(l10n.inventoryServingsTitle),
                                     trailing: const Icon(Icons.chevron_right),
-                                    onTap: () => context.push(Routes.shotCups),
+                                    onTap: () => context.push(Routes.servings),
                                   ),
                                 ),
                               ListTile(

@@ -7,8 +7,13 @@ import '../app_brand.dart';
 import '../db/database_helper.dart';
 import '../l10n/generated/app_localizations.dart';
 import '../models/models.dart';
+import '../profile/profile_capabilities.dart';
+import '../profile/profile_product_forms.dart';
+import '../profile/profile_terminology.dart';
+import '../profile/shop_profile.dart';
 import '../routing/routes.dart';
 import '../services/app_state.dart';
+import '../services/analytics.dart';
 import '../services/roles.dart';
 import '../theme/app_colors.dart';
 import '../theme/app_shapes.dart';
@@ -20,6 +25,7 @@ import '../ui/components/status.dart';
 import '../ui/dialogs/manager_approval_sheet.dart';
 import '../ui/layout/page.dart';
 import '../utils/money.dart';
+import '../utils/units.dart';
 import '../widgets/backup_reminder_banner.dart';
 import 'dashboard_attention.dart';
 import 'dashboard_sections.dart';
@@ -143,12 +149,16 @@ class DukaDashboardScreen extends StatelessWidget {
       onOpenInventory: onOpenInventory,
     );
 
+    final String addProductLabel = 'Add ${appState.shopProfile.terminology.product}';
+
     final Widget quickActions = _DukaDashboardQuickActions(
       onOpenSell: onOpenSell,
-      onOpenAddProduct: () => _openEditor(context),
+      onOpenAddProduct: () => _openAddProduct(context),
       onOpenReceiveStock: () => _receiveStock(context),
       onOpenStocktake: () => _openStocktake(context),
-      canManageStock: canManageStock,
+      addProductLabel: addProductLabel,
+      canManageStock: canManageStock &&
+          appState.shopProfile.capabilities.trackStock,
       canReceiveStock: appState.hasPermission(PermissionKey.receiveStock),
       canStocktake: appState.hasPermission(PermissionKey.stocktake),
     );
@@ -185,6 +195,12 @@ class DukaDashboardScreen extends StatelessWidget {
                     stockOverview,
                     sales,
                     topProducts,
+                    if (data.tanks.isNotEmpty)
+                      _LooseGoodsCards(
+                        tanks: data.tanks,
+                        tankSales: data.tankSales,
+                        onOpenProduct: onOpenProduct,
+                      ),
                   ],
                   gap,
                 ),
@@ -217,6 +233,12 @@ class DukaDashboardScreen extends StatelessWidget {
           stockOverview,
           sales,
           topProducts,
+          if (data.tanks.isNotEmpty)
+            _LooseGoodsCards(
+              tanks: data.tanks,
+              tankSales: data.tankSales,
+              onOpenProduct: onOpenProduct,
+            ),
           reorder,
           shift,
           credit,
@@ -239,8 +261,37 @@ class DukaDashboardScreen extends StatelessWidget {
     );
   }
 
-  void _openEditor(BuildContext context) {
-    context.push(Routes.inventory);
+  /// Opens the duka-tailored add-product form. This is the visible entry point
+  /// for the profile-defined product creation capability, gated on the profile
+  /// tracking stock.
+  Future<void> _openAddProduct(BuildContext context) async {
+    final result = await ProfileProductForms.showForm(
+      context: context,
+      profile: ShopProfile.duka,
+    );
+    if (!context.mounted || result == null) return;
+    final unit = ProductUnit.parse(result['unit'] as String?);
+    final cost = (result['cost'] as num?)?.toDouble() ?? 0;
+    final price = (result['price'] as num?)?.toDouble() ?? 0;
+    final stock = (result['stock'] as num?)?.toDouble() ?? 0;
+    final trackVariants = result['track_variants'] as bool? ?? false;
+    final reorder = (result['reorder_level'] as num?)?.toInt() ?? 5;
+    final product = Product(
+      name: result['name'] as String,
+      category: (result['category'] as String? ?? 'General'),
+      costPrice: Money.fromMajor(cost),
+      sellPrice: Money.fromMajor(price),
+      stockQty: stock,
+      reorderLevel: reorder,
+      unit: unit,
+      trackVariants: trackVariants,
+      updatedAt: DateTime.now().toIso8601String(),
+    );
+    await DatabaseHelper.instance.upsertProduct(product);
+    if (!context.mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text('${product.name} saved')),
+    );
   }
 
   void _receiveStock(BuildContext context) async {
@@ -454,6 +505,7 @@ class _DukaDashboardQuickActions extends StatelessWidget {
     required this.onOpenAddProduct,
     required this.onOpenReceiveStock,
     required this.onOpenStocktake,
+    required this.addProductLabel,
     required this.canManageStock,
     required this.canReceiveStock,
     required this.canStocktake,
@@ -463,6 +515,7 @@ class _DukaDashboardQuickActions extends StatelessWidget {
   final VoidCallback onOpenAddProduct;
   final VoidCallback onOpenReceiveStock;
   final VoidCallback onOpenStocktake;
+  final String addProductLabel;
   final bool canManageStock;
   final bool canReceiveStock;
   final bool canStocktake;
@@ -482,7 +535,7 @@ class _DukaDashboardQuickActions extends StatelessWidget {
       if (canManageStock)
         _DukaQuickTile(
           icon: Icons.add_circle_outline,
-          label: 'Add product',
+          label: addProductLabel,
           subtitle: 'New catalogue item',
           onTap: onOpenAddProduct,
         ),
@@ -597,6 +650,161 @@ class _DukaQuickTile extends StatelessWidget {
           ],
         ),
       ),
+    );
+  }
+}
+
+/// Per-loose-good cards for the duka dashboard: each card shows one loose
+/// good's total sold, the remaining amount to break even (or profit if past
+/// break-even), and the quantity left — all as absolute numbers, never negatives.
+class _LooseGoodsCards extends StatelessWidget {
+  const _LooseGoodsCards({
+    required this.tanks,
+    required this.tankSales,
+    required this.onOpenProduct,
+  });
+
+  final List<Product> tanks;
+  final Map<int, ProductSalesRow> tankSales;
+  final void Function(Product product) onOpenProduct;
+
+  /// Amount still needed to break even (positive), or profit already made.
+  /// Never renders a negative.
+  (String label, String value, StatusTone tone) _breakEven(Product tank) {
+    final cost = Money.fromMinor(
+      (tank.stockQty * tank.costPrice.minorUnits).round(),
+    );
+    final row = tankSales[tank.id];
+    final sold = row != null ? Money.fromMinor(row.revenueMinor) : Money.zero;
+    final remaining = cost - sold;
+
+    if (remaining.minorUnits > 0) {
+      return ('to break even', formatMoney(remaining.abs), StatusTone.warning);
+    }
+    return ('profit', formatMoney(sold.abs), StatusTone.success);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final AppSpacing spacing = AppSpacing.of(context);
+    final l10n = AppLocalizations.of(context);
+    final colors = AppColors.of(context);
+    final type = AppTypography.of(context);
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: <Widget>[
+        SectionHeader(label: l10n.dashboardLooseGoods),
+        SizedBox(height: spacing.sm),
+        ...tanks.map((tank) {
+          final breakEven = _breakEven(tank);
+          return Semantics(
+            button: true,
+            label:
+                '${tank.name}: ${breakEven.$1} ${breakEven.$2}',
+            child: InkWell(
+              onTap: () => onOpenProduct(tank),
+              child: SurfaceCard(
+                margin: EdgeInsets.only(bottom: spacing.md),
+                padding: EdgeInsets.all(spacing.md),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: <Widget>[
+                    Row(
+                      children: <Widget>[
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: <Widget>[
+                              Text(
+                                tank.name,
+                                style: type.bodyMedium?.copyWith(
+                                  fontWeight: FontWeight.w600,
+                                ),
+                              ),
+                              SizedBox(height: 2),
+                              Text(
+                                l10n.dashboardLooseGoodsRemaining,
+                                style: type.bodySmall?.copyWith(
+                                  color: colors.onSurfaceMuted,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                        Text(
+                          breakEven.$2,
+                          style: type.bodyLarge?.copyWith(
+                            fontWeight: FontWeight.w600,
+                            color: breakEven.$3 == StatusTone.success
+                                ? colors.success
+                                : colors.warning,
+                          ),
+                        ),
+                      ],
+                    ),
+                    SizedBox(height: spacing.md),
+                    Row(
+                      children: <Widget>[
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: <Widget>[
+                              Text(
+                                l10n.dashboardLooseGoodsSold,
+                                style: type.bodySmall?.copyWith(
+                                  color: colors.onSurfaceMuted,
+                                ),
+                              ),
+                              SizedBox(height: 2),
+                              Text(
+                                formatMoney(
+                                  tankSales[tank.id] != null
+                                      ? Money.fromMinor(
+                                          tankSales[tank.id]!
+                                              .revenueMinor,
+                                        )
+                                      : Money.zero,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: <Widget>[
+                              Text(
+                                breakEven.$1,
+                                style: type.bodySmall?.copyWith(
+                                  color: colors.onSurfaceMuted,
+                                ),
+                              ),
+                              SizedBox(height: 2),
+                              Text(
+                                '${tank.stockQty.toStringAsFixed(1)} ${tank.unit.suffix}',
+                                style: type.bodyLarge,
+                              ),
+                            ],
+                          ),
+                        ),
+                      ],
+                    ),
+                    Align(
+                      alignment: AlignmentDirectional.centerEnd,
+                      child: TextButton.icon(
+                        onPressed: () => onOpenProduct(tank),
+                        icon: const Icon(Icons.chevron_right, size: 18),
+                        label: Text(l10n.dashboardLooseGoodsViewDetails),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          );
+        }),
+      ],
     );
   }
 }

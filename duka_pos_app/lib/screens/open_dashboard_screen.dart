@@ -3,9 +3,13 @@ import 'package:go_router/go_router.dart';
 import 'package:provider/provider.dart';
 
 import '../app_brand.dart';
-import '../l10n/generated/app_localizations.dart';
-import '../routing/routes.dart';
 import '../db/database_helper.dart';
+import '../l10n/generated/app_localizations.dart';
+import '../models/models.dart';
+import '../profile/profile_product_forms.dart';
+import '../profile/profile_terminology.dart';
+import '../profile/shop_profile.dart';
+import '../routing/routes.dart';
 import '../services/app_state.dart';
 import '../services/roles.dart';
 import '../theme/app_colors.dart';
@@ -19,6 +23,7 @@ import '../ui/components/surface.dart';
 import '../ui/components/status.dart';
 import '../ui/layout/page.dart';
 import '../utils/money.dart';
+import '../utils/units.dart';
 import '../widgets/backup_reminder_banner.dart';
 
 const double _openDashboardMaxWidth = 1200;
@@ -135,6 +140,7 @@ class _OpenDashboardScreenState extends State<OpenDashboardScreen>
     final AppSpacing spacing = AppSpacing.of(context);
     final l10n = AppLocalizations.of(context);
     final appState = context.watch<AppState>();
+    final String addItemLabel = 'Add ${appState.shopProfile.terminology.product}';
 
     return RefreshIndicator(
       onRefresh: _load,
@@ -179,6 +185,8 @@ class _OpenDashboardScreenState extends State<OpenDashboardScreen>
               onRecordSale: () => context.push(Routes.openSell),
               onAddJobCost: () => context.push(Routes.openJobs),
               onNewCostGroup: () => context.push(Routes.openNewCostGroup),
+              onAddItem: () => _openAddItem(context),
+              addItemLabel: addItemLabel,
               canManageJobs: appState.canManageStock,
               canReceivePayments:
                   appState.hasPermission(PermissionKey.receiveStock),
@@ -196,6 +204,37 @@ class _OpenDashboardScreenState extends State<OpenDashboardScreen>
           ],
         ),
       ),
+    );
+  }
+
+  /// Opens the Open-profile add-item dialog. This is the visible entry point
+  /// for the profile-defined product creation capability, gated on the profile
+  /// tracking stock (now enabled for Open). Persists via upsertProduct.
+  Future<void> _openAddItem(BuildContext context) async {
+    final result = await ProfileProductForms.showForm(
+      context: context,
+      profile: ShopProfile.open,
+    );
+    if (!context.mounted || result == null) return;
+    final unit = ProductUnit.parse(result['unit'] as String?);
+    final cost = (result['cost'] as num?)?.toDouble() ?? 0;
+    final price = (result['price'] as num?)?.toDouble() ?? 0;
+    final stock = (result['stock'] as num?)?.toDouble() ?? 0;
+    final optionalStock = result['optional_stock'] as bool? ?? false;
+    final product = Product(
+      name: result['name'] as String,
+      category: (result['category'] as String? ?? 'Item or service'),
+      costPrice: Money.fromMajor(cost),
+      sellPrice: Money.fromMajor(price),
+      stockQty: stock,
+      reorderLevel: optionalStock ? 5 : 0,
+      unit: unit,
+      updatedAt: DateTime.now().toIso8601String(),
+    );
+    await DatabaseHelper.instance.upsertProduct(product);
+    if (!context.mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text('${product.name} saved')),
     );
   }
 }
@@ -247,6 +286,26 @@ class _OpenFinancialHero extends StatelessWidget {
   final Money receivables;
   final String scopeLabel;
 
+  /// Label + absolute value + tone for a figure that must never render a
+  /// negative number. A negative value is shown as its magnitude with the
+  /// "bad" label/tone; zero uses the neutral label.
+  (String label, String value, StatusTone tone) _signed(
+    Money value, {
+    required String goodLabel,
+    required String badLabel,
+    required String zeroLabel,
+    required StatusTone goodTone,
+    required StatusTone badTone,
+  }) {
+    if (value.minorUnits > 0) {
+      return (goodLabel, formatMoney(value.abs), goodTone);
+    }
+    if (value.minorUnits < 0) {
+      return (badLabel, formatMoney(value.abs), badTone);
+    }
+    return (zeroLabel, formatMoney(Money.zero), StatusTone.neutral);
+  }
+
   @override
   Widget build(BuildContext context) {
     final AppSpacing spacing = AppSpacing.of(context);
@@ -288,6 +347,30 @@ class _OpenFinancialHero extends StatelessWidget {
           LayoutBuilder(
             builder: (BuildContext context, BoxConstraints constraints) {
               final bool row = constraints.maxWidth >= 640;
+              final net = _signed(
+                netProfit,
+                goodLabel: l10n.openDashboardProfit,
+                badLabel: l10n.openDashboardNotInProfitYet,
+                zeroLabel: l10n.openDashboardBreakEven,
+                goodTone: StatusTone.success,
+                badTone: StatusTone.danger,
+              );
+              final cash = _signed(
+                cashPosition,
+                goodLabel: l10n.openDashboardSurplus,
+                badLabel: l10n.openDashboardShortfall,
+                zeroLabel: l10n.openDashboardBreakEven,
+                goodTone: StatusTone.success,
+                badTone: StatusTone.danger,
+              );
+              final rec = _signed(
+                receivables,
+                goodLabel: l10n.openDashboardOwedToYou,
+                badLabel: l10n.openDashboardYouOwe,
+                zeroLabel: l10n.openDashboardBreakEven,
+                goodTone: StatusTone.warning,
+                badTone: StatusTone.danger,
+              );
               final List<Widget> tiles = <Widget>[
                 _MoneyTile(
                   label: l10n.openDashboardRevenue,
@@ -296,23 +379,21 @@ class _OpenFinancialHero extends StatelessWidget {
                   icon: Icons.trending_up_outlined,
                 ),
                 _MoneyTile(
-                  label: l10n.openDashboardNetProfit,
-                  value: formatMoney(netProfit),
-                  tone: StatusTone.success,
+                  label: net.$1,
+                  value: net.$2,
+                  tone: net.$3,
                   icon: Icons.attach_money_outlined,
                 ),
                 _MoneyTile(
-                  label: l10n.openDashboardCashPosition,
-                  value: formatMoney(cashPosition),
-                  tone: StatusTone.neutral,
+                  label: cash.$1,
+                  value: cash.$2,
+                  tone: cash.$3,
                   icon: Icons.account_balance_wallet_outlined,
                 ),
                 _MoneyTile(
-                  label: l10n.openDashboardReceivables,
-                  value: formatMoney(receivables),
-                  tone: receivables.minorUnits > 0
-                      ? StatusTone.warning
-                      : StatusTone.success,
+                  label: rec.$1,
+                  value: rec.$2,
+                  tone: rec.$3,
                   icon: Icons.schedule_outlined,
                 ),
               ];
@@ -574,6 +655,8 @@ class _OpenQuickActions extends StatelessWidget {
     required this.onRecordSale,
     required this.onAddJobCost,
     required this.onNewCostGroup,
+    required this.onAddItem,
+    required this.addItemLabel,
     required this.canManageJobs,
     required this.canReceivePayments,
     required this.canRecordSales,
@@ -584,6 +667,8 @@ class _OpenQuickActions extends StatelessWidget {
   final VoidCallback onRecordSale;
   final VoidCallback onAddJobCost;
   final VoidCallback onNewCostGroup;
+  final VoidCallback onAddItem;
+  final String addItemLabel;
   final bool canManageJobs;
   final bool canReceivePayments;
   final bool canRecordSales;
@@ -607,6 +692,12 @@ class _OpenQuickActions extends StatelessWidget {
           subtitle: 'Quick sale',
           onTap: onRecordSale,
         ),
+      _OpenQuickTile(
+        icon: Icons.add_circle_outline,
+        label: addItemLabel,
+        subtitle: 'New catalogue item',
+        onTap: onAddItem,
+      ),
       if (canReceivePayments)
         _OpenQuickTile(
           icon: Icons.payment_outlined,

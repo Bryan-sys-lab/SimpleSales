@@ -217,7 +217,7 @@ class _TankRegisterScreenState extends State<TankRegisterScreen> {
               icon: Icons.local_drink_outlined,
               title: 'Measured servings',
               detail: '12 active pour definitions',
-              onTap: () => context.push(Routes.shotCups),
+              onTap: () => context.push(Routes.servings),
             ),
             SizedBox(height: spacing.sm),
             Text('${_totalCapacityLitres.toStringAsFixed(0)} L · ${formatMoney(Money.fromMinor(_totalInvestedMinor))}'),

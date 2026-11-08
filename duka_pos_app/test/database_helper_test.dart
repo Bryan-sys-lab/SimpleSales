@@ -282,13 +282,14 @@ void main() {
       await db.mergeRemoteShotCup(
         productId: tank.id!,
         productName: tank.name,
-        capacityMl: 500,
+        capacity: 500,
+        unit: 'ml',
         priceMinor: 8000,
         label: 'Big cup',
         active: true,
       );
       final cups = await db.getShotCups();
-      expect(cups.single.capacityMl, 500);
+      expect(cups.single.capacity, 500.0);
       expect(cups.single.price, Money.fromMinor(8000));
     });
 
@@ -2137,16 +2138,17 @@ void main() {
       final id = await db.upsertShotCup(ShotCup(
         productId: productId,
         productName: 'AAA Vodka',
-        capacityMl: 30,
+        capacity: 30,
+        unit: 'ml',
         price: Money.fromMajor(150),
-        label: 'Shot',
+        label: 'Small serving',
         updatedAt: DateTime.now().toIso8601String(),
       ));
       expect(id, greaterThan(0));
 
       final cups = await db.getShotCups();
       expect(cups.length, 1);
-      expect(cups.first.capacityMl, 30);
+      expect(cups.first.capacity, 30.0);
       expect(cups.first.price.minorUnits, 15000);
     });
 
@@ -2165,9 +2167,10 @@ void main() {
       final id = await db.upsertShotCup(ShotCup(
         productId: productId,
         productName: 'AAA Gin',
-        capacityMl: 30,
+        capacity: 30,
+        unit: 'ml',
         price: Money.fromMajor(150),
-        label: 'Shot',
+        label: 'Small serving',
         updatedAt: DateTime.now().toIso8601String(),
       ));
 
@@ -2175,16 +2178,17 @@ void main() {
         id: id,
         productId: productId,
         productName: 'AAA Gin',
-        capacityMl: 25,
+        capacity: 25,
+        unit: 'ml',
         price: Money.fromMajor(125),
-        label: 'Shot',
+        label: 'Small serving',
         updatedAt: DateTime.now().toIso8601String(),
       ));
       expect(updated, id);
 
       final cup = await db.getShotCupForProduct(productId);
       expect(cup, isNotNull);
-      expect(cup!.capacityMl, 25);
+      expect(cup!.capacity, 25);
       expect(cup.price.minorUnits, 12500);
     });
 
@@ -2203,9 +2207,10 @@ void main() {
       final id = await db.upsertShotCup(ShotCup(
         productId: productId,
         productName: 'AAA Rum',
-        capacityMl: 30,
+        capacity: 30,
+        unit: 'ml',
         price: Money.fromMajor(150),
-        label: 'Shot',
+        label: 'Small serving',
         updatedAt: DateTime.now().toIso8601String(),
       ));
 
@@ -2244,7 +2249,8 @@ void main() {
         db.upsertShotCup(ShotCup(
           productId: 9999,
           productName: 'AAA Deleted Spirit',
-          capacityMl: 30,
+          capacity: 30,
+        unit: 'ml',
           price: Money.fromMajor(100),
           updatedAt: DateTime.now().toIso8601String(),
         )),
@@ -2276,7 +2282,8 @@ void main() {
       final id = await db.upsertShotCup(ShotCup(
         productId: productId,
         productName: 'AAA Unsized Vodka',
-        capacityMl: 0,
+        capacity: 0,
+        unit: 'ml',
         price: Money.fromMajor(100),
         updatedAt: DateTime.now().toIso8601String(),
       ));
@@ -2284,7 +2291,7 @@ void main() {
 
       final loaded = (await db.getShotCups(activeOnly: false))
           .singleWhere((c) => c.id == id);
-      expect(loaded.capacityMl, 0);
+      expect(loaded.capacity, 0);
       expect(loaded.price.minorUnits, 10000);
     });
 
@@ -2304,7 +2311,8 @@ void main() {
         db.upsertShotCup(ShotCup(
           productId: productId,
           productName: 'AAA Negative Vodka',
-          capacityMl: -30,
+          capacity: -30,
+          unit: 'ml',
           price: Money.fromMajor(100),
           updatedAt: DateTime.now().toIso8601String(),
         )),
@@ -2328,14 +2336,15 @@ void main() {
       final id = await db.upsertShotCup(ShotCup(
         productId: productId,
         productName: 'AAA Round Gin',
-        capacityMl: 30,
+        capacity: 30,
+        unit: 'ml',
         price: Money.fromMajor(300),
         updatedAt: DateTime.now().toIso8601String(),
       ));
 
       final loaded = (await db.getShotCups()).singleWhere((c) => c.id == id);
       expect(loaded.price.minorUnits, 30000);
-      expect(loaded.capacityMl, 30);
+      expect(loaded.capacity, 30);
       expect(loaded.productName, 'AAA Round Gin');
     });
   });

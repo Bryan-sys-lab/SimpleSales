@@ -999,7 +999,7 @@ void main() {
       await db.insert('shot_cups', {
         'product_id': productId,
         'product_name': 'AAA Vodka',
-        'capacity_ml': 30,
+        'capacity': 30,
         'price': 3000,
         'label': 'Shot',
         'active': 1,

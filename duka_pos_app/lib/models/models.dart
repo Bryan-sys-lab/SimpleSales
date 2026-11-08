@@ -1513,25 +1513,42 @@ class Reconciliation {
 /// The linkage is by [productId] so the cup configuration can move with the
 /// product if it is renamed, and the cup keeps its own price so changing the
 /// product's sell price does not reprice every shot.
+/// A fixed-size serving of a drink, poured from a parent bottle/tank.
+///
+/// [Serving] is the user-facing name for what the database stores as a
+/// [ShotCup] row in the `shot_cups` table. They are the same thing: a name, a
+/// size, a unit (ml, kg, count, …), a price, and a link to the parent product.
+///
+/// One serving definition can be shared across many products: each product gets
+/// its own row in `product_cups` linking to the same template, and each link can
+/// carry its own price — so a "Small serving" of whiskey and a "Small serving"
+/// of rum can cost different amounts even though they share the same 30 ml size.
+typedef Serving = ShotCup;
+
 class ShotCup {
   final int? id;
   final int productId;
   final String productName;
 
-  /// The capacity of one shot cup, in millilitres.
+  /// The capacity of one serving.
   ///
-  /// ZERO means the size is not known, which is allowed: a shot cup is a name
-  /// for a serving, and the size is the owner's business. A cup WITH a size
-  /// lets the app work out what that shot cost to pour — the drink's cost per
-  /// millilitre times the size — so the profit on the shot is exact. A cup
-  /// WITHOUT one is counted at its full price, because the drink that went
-  /// into it is not being measured.
-  final int capacityMl;
+  /// ZERO means the size is not known, which is allowed: a serving is a name
+  /// for a pour, and the size is the owner's business. A serving WITH a size
+  /// lets the app work out what that pour cost — the drink's cost per unit
+  /// times the size — so the profit on the serve is exact. A serving WITHOUT
+  /// one is counted at its full price.
+  ///
+  /// Stored as a double so a shop can enter "0.5" (half a unit) or "0.25" —
+  /// anything at or above zero is accepted, negatives are refused.
+  final double capacity;
 
-  /// The price of one shot, in minor units.
+  /// The unit the capacity is measured in: 'ml', 'litre', 'kg', 'count', 'pack', 'carton'.
+  final String unit;
+
+  /// The price of one serving, in minor units.
   final Money price;
 
-  /// Display name for the cup, e.g. "Shot".
+  /// Display name for the serving, e.g. "Small serving".
   final String label;
   final bool active;
   final String updatedAt;
@@ -1540,9 +1557,10 @@ class ShotCup {
     this.id,
     required this.productId,
     required this.productName,
-    required this.capacityMl,
+    required this.capacity,
+    required this.unit,
     required this.price,
-    this.label = 'Small cup',
+    this.label = 'Small serving',
     this.active = true,
     required this.updatedAt,
   });
@@ -1551,7 +1569,8 @@ class ShotCup {
         if (id != null) 'id': id,
         'product_id': productId,
         'product_name': productName,
-        'capacity_ml': capacityMl,
+        'capacity': capacity,
+        'unit': unit,
         'price': price.minorUnits,
         'label': label,
         'active': active ? 1 : 0,
@@ -1562,9 +1581,10 @@ class ShotCup {
         id: m['id'] as int?,
         productId: (m['product_id'] as num?)?.toInt() ?? 0,
         productName: (m['product_name'] as String?) ?? '',
-        capacityMl: (m['capacity_ml'] as num?)?.toInt() ?? 30,
+        capacity: (m['capacity'] as num?)?.toDouble() ?? 30,
+        unit: (m['unit'] as String?) ?? 'ml',
         price: Money.fromMinor((m['price'] as num?)?.toInt() ?? 0),
-        label: (m['label'] as String?) ?? 'Small cup',
+        label: (m['label'] as String?) ?? 'Small serving',
         active: m['active'] == 1,
         updatedAt: (m['updated_at'] as String?) ?? '',
       );

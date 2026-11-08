@@ -4,8 +4,13 @@ import 'package:go_router/go_router.dart';
 import 'package:provider/provider.dart';
 
 import '../app_brand.dart';
+import '../db/database_helper.dart';
 import '../l10n/generated/app_localizations.dart';
 import '../models/models.dart';
+import '../profile/profile_capabilities.dart';
+import '../profile/profile_product_forms.dart';
+import '../profile/profile_terminology.dart';
+import '../profile/shop_profile.dart';
 import '../routing/routes.dart';
 import '../services/analytics.dart';
 import '../services/app_state.dart';
@@ -15,8 +20,10 @@ import '../theme/app_shapes.dart';
 import '../theme/app_spacing.dart';
 import '../theme/typography.dart';
 import '../ui/components/status.dart';
+import '../ui/components/surface.dart';
 import '../ui/layout/page.dart';
 import '../utils/money.dart';
+import '../utils/units.dart';
 import '../widgets/backup_reminder_banner.dart';
 import 'dashboard_attention.dart';
 import 'dashboard_sections.dart';
@@ -146,7 +153,7 @@ class DrinksDashboardScreen extends StatelessWidget {
       lowStockCount: data.lowStockCount,
       onOpenShift: onOpenShift,
       onOpenInventory: onOpenInventory,
-      onOpenShots: () => context.push(Routes.shotCups),
+      onOpenShots: () => context.push(Routes.servings),
       l10n: l10n,
     );
 
@@ -172,7 +179,7 @@ class DrinksDashboardScreen extends StatelessWidget {
             tankSales: data.tankSales,
             onOpenTankRegister: () => context.push(Routes.inventory),
             onOpenPackaged: () => context.push(Routes.inventory),
-            onOpenMeasured: () => context.push(Routes.shotCups),
+            onOpenMeasured: () => context.push(Routes.servings),
           )
         : const SizedBox.shrink();
 
@@ -190,6 +197,33 @@ class DrinksDashboardScreen extends StatelessWidget {
       SizedBox(height: spacing.lg),
       shiftOverview,
       SizedBox(height: spacing.lg),
+      if (data.tanks.isNotEmpty)
+        _TankCards(
+          tanks: data.tanks,
+          tankSales: data.tankSales,
+          onOpenTank: (int productId) => context.push(
+            '${Routes.tankDetail}/$productId',
+          ),
+        ),
+      SizedBox(height: spacing.lg),
+      if (appState.shopProfile.capabilities.trackStock) ...<Widget>[
+        Semantics(
+          button: true,
+          label: 'Add ${appState.shopProfile.terminology.product}',
+          child: ExcludeSemantics(
+            child: SizedBox(
+              width: double.infinity,
+              child: FilledButton.tonalIcon(
+                onPressed: () => _openAddProduct(context),
+                icon: const Icon(Icons.add_circle_outline, size: 18),
+                label: Text(
+                    '+ Add ${appState.shopProfile.terminology.product}'),
+              ),
+            ),
+          ),
+        ),
+        SizedBox(height: spacing.lg),
+      ],
       startSale,
     ];
 
@@ -212,6 +246,14 @@ class DrinksDashboardScreen extends StatelessWidget {
                     sales,
                     topProducts,
                     beverageStock,
+                    if (data.tanks.isNotEmpty)
+                      _TankCards(
+                        tanks: data.tanks,
+                        tankSales: data.tankSales,
+                        onOpenTank: (int productId) => context.push(
+                          '${Routes.tankDetail}/$productId',
+                        ),
+                      ),
                   ],
                   gap,
                 ),
@@ -265,6 +307,43 @@ class DrinksDashboardScreen extends StatelessWidget {
           children: body,
         ),
       ),
+    );
+  }
+
+  /// Opens the drinks-tailored add-product form. This is the visible entry
+  /// point for the profile-defined product creation capability, gated on the
+  /// profile tracking stock.
+  Future<void> _openAddProduct(BuildContext context) async {
+    final result = await ProfileProductForms.showForm(
+      context: context,
+      profile: ShopProfile.drinks,
+    );
+    if (!context.mounted || result == null) return;
+    final unit = ProductUnit.parse(result['unit'] as String?);
+    final cost = (result['cost'] as num?)?.toDouble() ?? 0;
+    final price = (result['price'] as num?)?.toDouble() ?? 0;
+    final stock = (result['stock'] as num?)?.toDouble() ?? 0;
+    final bottleMl = (result['bottle_ml'] as num?)?.toInt() ?? 750;
+    final halfPrice = (result['half_price'] as num?)?.toDouble();
+    final quarterPrice = (result['quarter_price'] as num?)?.toDouble();
+    final product = Product(
+      name: result['name'] as String,
+      category: (result['category'] as String? ?? 'Drinks'),
+      costPrice: Money.fromMajor(cost),
+      sellPrice: Money.fromMajor(price),
+      stockQty: stock,
+      reorderLevel: 5,
+      bottleMl: bottleMl,
+      unit: unit,
+      halfPrice: halfPrice != null ? Money.fromMajor(halfPrice) : null,
+      quarterPrice:
+          quarterPrice != null ? Money.fromMajor(quarterPrice) : null,
+      updatedAt: DateTime.now().toIso8601String(),
+    );
+    await DatabaseHelper.instance.upsertProduct(product);
+    if (!context.mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text('${product.name} saved')),
     );
   }
 }
@@ -839,6 +918,169 @@ class _BeverageStockRow extends StatelessWidget {
           ),
         ),
       ),
+    );
+  }
+}
+
+/// Per-tank cards for the drinks dashboard: each card shows one tank's total
+/// sold, the remaining amount to break even (or profit if past break-even),
+/// and the quantity left — all as absolute numbers, never negatives.
+class _TankCards extends StatelessWidget {
+  const _TankCards({
+    required this.tanks,
+    required this.tankSales,
+    required this.onOpenTank,
+  });
+
+  final List<Product> tanks;
+  final Map<int, ProductSalesRow> tankSales;
+  final void Function(int productId) onOpenTank;
+
+  /// Amount still needed to break even (positive), or profit already made
+  /// (shown as "past break-even"). Never renders a negative.
+  (String label, String value, StatusTone tone) _breakEven(Product tank) {
+    final cost = Money.fromMinor(
+      (tank.stockQty * tank.costPrice.minorUnits).round(),
+    );
+    final row = tankSales[tank.id];
+    final sold = row != null ? Money.fromMinor(row.revenueMinor) : Money.zero;
+    final remaining = cost - sold;
+
+    if (remaining.minorUnits > 0) {
+      return (
+        'to break even',
+        formatMoney(remaining.abs),
+        StatusTone.warning,
+      );
+    }
+    return ('profit', formatMoney(sold.abs), StatusTone.success);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final AppSpacing spacing = AppSpacing.of(context);
+    final l10n = AppLocalizations.of(context);
+    final colors = AppColors.of(context);
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: <Widget>[
+        SectionHeader(label: l10n.tankRegisterSection),
+        SizedBox(height: spacing.sm),
+        ...tanks.map((tank) {
+          final breakEven = _breakEven(tank);
+          return Semantics(
+            button: true,
+            label: '${tank.name}: ${breakEven.$1} ${breakEven.$2}',
+            child: InkWell(
+              onTap: () => onOpenTank(tank.id!),
+              child: SurfaceCard(
+                margin: EdgeInsets.only(bottom: spacing.md),
+                padding: EdgeInsets.all(spacing.md),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: <Widget>[
+                    Row(
+                      children: <Widget>[
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: <Widget>[
+                              Text(
+                                tank.name,
+                                style: AppTypography.of(context)
+                                    .bodyMedium
+                                    ?.copyWith(fontWeight: FontWeight.w600),
+                              ),
+                              SizedBox(height: 2),
+                              Text(
+                                l10n.tankRegisterRemaining,
+                                style: AppTypography.of(context)
+                                    .bodySmall
+                                    ?.copyWith(
+                                  color: colors.onSurfaceMuted,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                        Text(
+                          breakEven.$2,
+                          style: AppTypography.of(context).bodyLarge?.copyWith(
+                            fontWeight: FontWeight.w600,
+                            color: breakEven.$3 == StatusTone.success
+                                ? colors.success
+                                : colors.warning,
+                          ),
+                        ),
+                      ],
+                    ),
+                    SizedBox(height: spacing.md),
+                    Row(
+                      children: <Widget>[
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: <Widget>[
+                              Text(
+                                l10n.tankRegisterSold,
+                                style: AppTypography.of(context)
+                                    .bodySmall
+                                    ?.copyWith(
+                                  color: colors.onSurfaceMuted,
+                                ),
+                              ),
+                              SizedBox(height: 2),
+                              Text(
+                                formatMoney(
+                                  tankSales[tank.id] != null
+                                      ? Money.fromMinor(
+                                          tankSales[tank.id]!
+                                              .revenueMinor,
+                                        )
+                                      : Money.zero,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: <Widget>[
+                              Text(
+                                breakEven.$1,
+                                style: AppTypography.of(context)
+                                    .bodySmall
+                                    ?.copyWith(
+                                  color: colors.onSurfaceMuted,
+                                ),
+                              ),
+                              SizedBox(height: 2),
+                              Text(
+                                '${tank.stockQty.toStringAsFixed(1)} ${tank.unit.suffix}',
+                                style: AppTypography.of(context).bodyLarge,
+                              ),
+                            ],
+                          ),
+                        ),
+                      ],
+                    ),
+                    Align(
+                      alignment: AlignmentDirectional.centerEnd,
+                      child: TextButton.icon(
+                        onPressed: () => onOpenTank(tank.id!),
+                        icon: const Icon(Icons.chevron_right, size: 18),
+                        label: Text(l10n.tankActionViewDetails),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          );
+        }),
+      ],
     );
   }
 }

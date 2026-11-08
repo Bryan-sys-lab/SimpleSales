@@ -198,7 +198,7 @@ class DatabaseHelper {
   /// shipped — always add a new one, even for a one-line fix — because a
   /// shop's phone may be several versions behind and needs every step run
   /// in order to land on the current schema without data loss.
-  static const _schemaVersion = 77;
+  static const _schemaVersion = 78;
 
   /// Slack allowed when deciding whether a container has enough left for a sale.
   ///
@@ -381,6 +381,40 @@ class DatabaseHelper {
       await _createCupTemplatesTable(db);
       await _createProductCupsTable(db);
       await _migrateShotCupsToSharedTemplates(db);
+    }
+    if (oldVersion < 78) {
+      // Serving sharing across products with per-product pricing, plus units
+      // (ml, kg, count, …) and decimal capacities (< 1 allowed, < 0 refused).
+      final shotCupsExists = (await db.rawQuery(
+          "SELECT name FROM sqlite_master WHERE type='table' AND name='shot_cups'"))
+          .isNotEmpty;
+      if (shotCupsExists) {
+        await _addColumnIfMissing(db, 'shot_cups', 'unit', "TEXT NOT NULL DEFAULT 'ml'");
+        // Rebuild shot_cups so capacity_ml (INTEGER) becomes capacity (REAL) for
+        // sub-unit sizes like 0.5.
+        await db.execute('''CREATE TABLE IF NOT EXISTS shot_cups_new (
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          product_id INTEGER NOT NULL,
+          product_name TEXT NOT NULL,
+          capacity REAL NOT NULL DEFAULT 30,
+          unit TEXT NOT NULL DEFAULT 'ml',
+          price INTEGER NOT NULL DEFAULT 0,
+          label TEXT NOT NULL DEFAULT 'Shot',
+          active INTEGER NOT NULL DEFAULT 1,
+          updated_at TEXT NOT NULL,
+          synced_to_backend INTEGER NOT NULL DEFAULT 0,
+          FOREIGN KEY (product_id) REFERENCES products (id) ON DELETE CASCADE
+        )''');
+        await db.execute('''
+          INSERT INTO shot_cups_new (id, product_id, product_name, capacity, unit, price, label, active, updated_at, synced_to_backend)
+          SELECT id, product_id, product_name, CAST(capacity_ml AS REAL), 'ml', price, label, active, updated_at, synced_to_backend FROM shot_cups
+        ''');
+        await db.execute('DROP TABLE shot_cups');
+        await db.execute('ALTER TABLE shot_cups_new RENAME TO shot_cups');
+        await db.execute(
+            'CREATE INDEX IF NOT EXISTS idx_shot_cups_product ON shot_cups (product_id)');
+      }
+      await _addColumnIfMissing(db, 'product_cups', 'price', 'INTEGER NOT NULL DEFAULT 0');
     }
     if (oldVersion < 3) {
       await db.execute(
@@ -2662,15 +2696,18 @@ SELECT name FROM staff GROUP BY name HAVING COUNT(*) = 1
 
   /// v14 -> v15: fixed shot cup configurations.
   ///
-  /// Any inventory product can be sold as a shot: the cup has a fixed capacity
-  /// and price, but the product link means the shop can change the spirit
-  /// behind the same cup without touching the cup configuration.
+  /// Any inventory product can be sold as a serving: the serving has a fixed
+  /// capacity, unit (ml, kg, count, …) and price, but the product link means
+  /// the shop can change the drink behind the same serving without touching the
+  /// serving configuration. One serving template can be shared across products;
+  /// each product link carries its own price.
   Future<void> _createShotCupsTable(Database db) async {
     await db.execute('''CREATE TABLE IF NOT EXISTS shot_cups (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       product_id INTEGER NOT NULL,
       product_name TEXT NOT NULL,
-      capacity_ml INTEGER NOT NULL DEFAULT 30,
+      capacity REAL NOT NULL DEFAULT 30,
+      unit TEXT NOT NULL DEFAULT 'ml',
       price INTEGER NOT NULL DEFAULT 0,
       label TEXT NOT NULL DEFAULT 'Shot',
       active INTEGER NOT NULL DEFAULT 1,
@@ -2684,11 +2721,11 @@ SELECT name FROM staff GROUP BY name HAVING COUNT(*) = 1
         'CREATE INDEX IF NOT EXISTS idx_shot_cups_product ON shot_cups (product_id)');
   }
   Future<void> _createCupTemplatesTable(Database db) async {
-    await db.execute('CREATE TABLE IF NOT EXISTS cup_templates (id INTEGER PRIMARY KEY AUTOINCREMENT, label TEXT NOT NULL DEFAULT \'Shot\', capacity_ml INTEGER NOT NULL DEFAULT 0, price INTEGER NOT NULL DEFAULT 0, active INTEGER NOT NULL DEFAULT 1, updated_at TEXT NOT NULL)');
+    await db.execute('CREATE TABLE IF NOT EXISTS cup_templates (id INTEGER PRIMARY KEY AUTOINCREMENT, label TEXT NOT NULL DEFAULT \'Shot\', capacity REAL NOT NULL DEFAULT 0, unit TEXT NOT NULL DEFAULT \'ml\', price INTEGER NOT NULL DEFAULT 0, active INTEGER NOT NULL DEFAULT 1, updated_at TEXT NOT NULL)');
   }
 
   Future<void> _createProductCupsTable(Database db) async {
-    await db.execute('CREATE TABLE IF NOT EXISTS product_cups (product_id INTEGER NOT NULL, template_id INTEGER NOT NULL, PRIMARY KEY (product_id, template_id), FOREIGN KEY (product_id) REFERENCES products (id) ON DELETE CASCADE, FOREIGN KEY (template_id) REFERENCES cup_templates (id) ON DELETE CASCADE)');
+    await db.execute('CREATE TABLE IF NOT EXISTS product_cups (product_id INTEGER NOT NULL, template_id INTEGER NOT NULL, price INTEGER NOT NULL DEFAULT 0, PRIMARY KEY (product_id, template_id), FOREIGN KEY (product_id) REFERENCES products (id) ON DELETE CASCADE, FOREIGN KEY (template_id) REFERENCES cup_templates (id) ON DELETE CASCADE)');
     await db.execute('CREATE INDEX IF NOT EXISTS idx_product_cups_product ON product_cups (product_id)');
     await db.execute('CREATE INDEX IF NOT EXISTS idx_product_cups_template ON product_cups (template_id)');
   }
@@ -2704,14 +2741,14 @@ SELECT name FROM staff GROUP BY name HAVING COUNT(*) = 1
       final label = (row['label'] as String?) ?? 'Shot';
       final capacity = (row['capacity_ml'] as num?)?.toInt() ?? 0;
       final price = (row['price'] as num?)?.toInt() ?? 0;
-      final existing = await db.query('cup_templates', where: 'label = ? AND capacity_ml = ? AND price = ?', whereArgs: [label, capacity, price], limit: 1);
+      final existing = await db.query('cup_templates', where: 'label = ? AND capacity = ? AND price = ?', whereArgs: [label, capacity, price], limit: 1);
       int templateId;
       if (existing.isNotEmpty) {
         templateId = existing.first['id'] as int;
       } else {
-        templateId = await db.insert('cup_templates', {'label': label, 'capacity_ml': capacity, 'price': price, 'active': row['active'] ?? 1, 'updated_at': row['updated_at'] ?? DateTime.now().toIso8601String()});
+        templateId = await db.insert('cup_templates', {'label': label, 'capacity': capacity, 'unit': 'ml', 'price': price, 'active': row['active'] ?? 1, 'updated_at': row['updated_at'] ?? DateTime.now().toIso8601String()});
       }
-      await db.insert('product_cups', {'product_id': productId, 'template_id': templateId}, conflictAlgorithm: ConflictAlgorithm.ignore);
+      await db.insert('product_cups', {'product_id': productId, 'template_id': templateId, 'price': price}, conflictAlgorithm: ConflictAlgorithm.ignore);
     }
   }
 
@@ -13796,7 +13833,7 @@ SELECT name FROM staff GROUP BY name HAVING COUNT(*) = 1
   /// customer's money already in hand.
   Future<int> upsertShotCup(ShotCup cup) async {
     final db = await database;
-    if (cup.capacityMl < 0) {
+      if (cup.capacity < 0) {
       throw StateError('A shot cup cannot have a negative size');
     }
     final exists = await db.query('products',
@@ -13827,14 +13864,15 @@ SELECT name FROM staff GROUP BY name HAVING COUNT(*) = 1
       // Shared template + link (dual-write) so the new schema stays in sync.
       int templateId;
       final existing = await txn.query('cup_templates',
-          where: 'label = ? AND capacity_ml = ? AND price = ?',
-          whereArgs: [cup.label, cup.capacityMl, cup.price.minorUnits],
+          where: 'label = ? AND capacity = ? AND price = ?',
+          whereArgs: [cup.label, cup.capacity, cup.price.minorUnits],
           limit: 1);
       if (existing.isNotEmpty) {
         templateId = existing.first['id'] as int;
         await txn.update('cup_templates', {
           'label': cup.label,
-          'capacity_ml': cup.capacityMl,
+          'capacity': cup.capacity,
+          'unit': cup.unit,
           'price': cup.price.minorUnits,
           'active': cup.active ? 1 : 0,
           'updated_at': cup.updatedAt,
@@ -13842,7 +13880,8 @@ SELECT name FROM staff GROUP BY name HAVING COUNT(*) = 1
       } else {
         templateId = await txn.insert('cup_templates', {
           'label': cup.label,
-          'capacity_ml': cup.capacityMl,
+          'capacity': cup.capacity,
+          'unit': cup.unit,
           'price': cup.price.minorUnits,
           'active': cup.active ? 1 : 0,
           'updated_at': cup.updatedAt,
@@ -13861,13 +13900,35 @@ SELECT name FROM staff GROUP BY name HAVING COUNT(*) = 1
 
 
   /// Active shot cups, ordered by label then product name.
+  ///
+  /// Each row already carries its own price (per product), so a serving
+  /// template shared across products can have a different price on each.
   Future<List<ShotCup>> getShotCups({bool activeOnly = true}) async {
-    final rows = await (await database).query(
+    final db = await database;
+    final rows = await db.query(
       'shot_cups',
       where: activeOnly ? 'active = 1' : null,
       orderBy: 'label ASC, product_name ASC',
     );
     return rows.map(ShotCup.fromMap).toList();
+  }
+
+  /// Serving-named alias for [getShotCups].
+  Future<List<Serving>> getServings({bool activeOnly = true}) async {
+    final cups = await getShotCups(activeOnly: activeOnly);
+    return cups.cast<Serving>();
+  }
+
+  /// Serving-named alias for [upsertShotCup].
+  Future<int> upsertServing(Serving serving) async => upsertShotCup(serving);
+
+  /// Serving-named alias for [deleteShotCup].
+  Future<void> deleteServing(int id) async => deleteShotCup(id);
+
+  /// Serving-named alias for [getShotCupForProduct].
+  Future<Serving?> getServingForProduct(int productId) async {
+    final cup = await getShotCupForProduct(productId);
+    return cup; // Serving is ShotCup (typedef)
   }
 
 
@@ -13878,7 +13939,8 @@ SELECT name FROM staff GROUP BY name HAVING COUNT(*) = 1
   Future<void> mergeRemoteShotCup({
     required int productId,
     required String productName,
-    required int capacityMl,
+    required double capacity,
+    required String unit,
     required int priceMinor,
     required String label,
     required bool active,
@@ -13894,7 +13956,8 @@ SELECT name FROM staff GROUP BY name HAVING COUNT(*) = 1
     final values = <String, Object?>{
       'product_id': productId,
       'product_name': productName,
-      'capacity_ml': capacityMl,
+      'capacity': capacity,
+      'unit': unit,
       'price': priceMinor,
       'label': label,
       'active': active ? 1 : 0,

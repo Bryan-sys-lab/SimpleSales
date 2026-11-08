@@ -188,7 +188,8 @@ void main() {
       final int id = await db.upsertShotCup(ShotCup(
         productId: productId,
         productName: 'Tusker',
-        capacityMl: 30,
+        capacity: 30,
+        unit: 'ml',
         price: Money.fromMajor(50),
         label: 'Single',
         updatedAt: DateTime.now().toIso8601String(),
@@ -210,14 +211,15 @@ void main() {
       final int id = await db.upsertShotCup(ShotCup(
         productId: productId,
         productName: 'Tusker',
-        capacityMl: 0,
+        capacity: 0,
+        unit: 'ml',
         price: Money.fromMajor(50),
         label: 'One shot',
         updatedAt: DateTime.now().toIso8601String(),
       ));
       final List<ShotCup> pending = await db.getUnsyncedShotCups();
       final ShotCup cup = pending.firstWhere((ShotCup c) => c.id == id);
-      expect(cup.capacityMl, 0);
+      expect(cup.capacity, 0.0);
     });
   });
 }

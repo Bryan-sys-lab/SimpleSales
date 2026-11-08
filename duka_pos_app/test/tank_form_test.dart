@@ -165,7 +165,7 @@ void main() {
       await type(tester, 6, '500');
       await save(tester);
 
-      expect(find.text('That cup is bigger than the tank.'), findsOneWidget);
+      expect(find.text('That serving is bigger than the tank.'), findsOneWidget);
     });
 
     testWidgets('a cup with no name is refused', (WidgetTester tester) async {
@@ -261,7 +261,7 @@ void main() {
 
       final List<ShotCup> cups = await DatabaseHelper.instance.getShotCups();
       expect(cups, hasLength(1));
-      expect(cups.single.capacityMl, 0);
+      expect(cups.single.capacity, 0.0);
       expect(cups.single.label, 'Glass');
     });
 

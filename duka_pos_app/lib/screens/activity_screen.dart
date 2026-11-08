@@ -530,7 +530,7 @@ class _ActivityRow extends StatelessWidget {
       AuditAction.barcodeKindChanged => l10n.activityBarcodeKindChanged,
       AuditAction.stockAdjusted => l10n.activityStockAdjusted,
       AuditAction.saleRecorded => l10n.activitySaleRecorded,
-      AuditAction.shotCupSold => l10n.activityShotCupSold,
+        AuditAction.servingSold => l10n.activityServingSold,
       AuditAction.staffAdded => l10n.activityStaffAdded,
       AuditAction.staffRemoved => l10n.activityStaffRemoved,
       AuditAction.staffPinReset => l10n.activityStaffPinReset,

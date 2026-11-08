@@ -2542,17 +2542,17 @@ abstract class AppLocalizations {
   /// **'{count, plural, =0{Save product} =1{Save product and 1 variant} other{Save product and {count} variants}}'**
   String inventorySaveProductAndVariants(num count);
 
-  /// No description provided for @inventoryShotCupsSpoken.
+  /// No description provided for @inventoryServingsSpoken.
   ///
   /// In en, this message translates to:
-  /// **'Cups. Fixed-size cups of any drink in your inventory.'**
-  String get inventoryShotCupsSpoken;
+  /// **'Servings. Fixed-size servings of any drink in your inventory.'**
+  String get inventoryServingsSpoken;
 
-  /// No description provided for @inventoryShotCupsTitle.
+  /// No description provided for @inventoryServingsTitle.
   ///
   /// In en, this message translates to:
-  /// **'Cups'**
-  String get inventoryShotCupsTitle;
+  /// **'Servings'**
+  String get inventoryServingsTitle;
 
   /// No description provided for @inventorySizeSuggestionsSpoken.
   ///
@@ -4542,215 +4542,221 @@ abstract class AppLocalizations {
   /// **'Other funds'**
   String get transactionsExpenseSourceOther;
 
-  /// No description provided for @shotCupsActionsLabel.
+  /// No description provided for @servingsActionsLabel.
   ///
   /// In en, this message translates to:
-  /// **'Cup actions'**
-  String get shotCupsActionsLabel;
+  /// **'Serving actions'**
+  String get servingsActionsLabel;
 
-  /// No description provided for @shotCupsAddAction.
+  /// No description provided for @servingsAddAction.
   ///
   /// In en, this message translates to:
-  /// **'Add a cup'**
-  String get shotCupsAddAction;
+  /// **'Add a serving'**
+  String get servingsAddAction;
 
-  /// No description provided for @shotCupsCapacityHelper.
+  /// No description provided for @servingsCapacityHelper.
   ///
   /// In en, this message translates to:
-  /// **'Leave it empty if you do not know the size. With a size, the app works out what each cup cost you to pour.'**
-  String get shotCupsCapacityHelper;
+  /// **'Leave it empty if you do not know the size. With a size, the app works out what each serving cost you to pour.'**
+  String get servingsCapacityHelper;
 
-  /// No description provided for @shotCupsCapacityHint.
+  /// No description provided for @servingsCapacityHint.
   ///
   /// In en, this message translates to:
   /// **'30'**
-  String get shotCupsCapacityHint;
+  String get servingsCapacityHint;
 
-  /// No description provided for @shotCupsCapacityLabel.
+  /// No description provided for @servingsCapacityLabel.
   ///
   /// In en, this message translates to:
-  /// **'Size in ml (optional)'**
-  String get shotCupsCapacityLabel;
+  /// **'Size (optional)'**
+  String get servingsCapacityLabel;
 
-  /// No description provided for @shotCupsCapacityMax.
+  /// No description provided for @servingsCapacityMax.
   ///
   /// In en, this message translates to:
-  /// **'Capacity must be {max} ml or less.'**
-  String shotCupsCapacityMax(Object max);
+  /// **'Capacity must be {max} or less.'**
+  String servingsCapacityMax(Object max);
 
-  /// No description provided for @shotCupsCapacityPositive.
+  /// No description provided for @servingsCapacityPositive.
   ///
   /// In en, this message translates to:
   /// **'The size cannot be less than zero.'**
-  String get shotCupsCapacityPositive;
+  String get servingsCapacityPositive;
 
-  /// No description provided for @shotCupsCapacityValue.
+  /// No description provided for @servingsCapacityValue.
   ///
   /// In en, this message translates to:
   /// **'{capacity} ml'**
-  String shotCupsCapacityValue(Object capacity);
+  String servingsCapacityValue(Object capacity);
 
-  /// No description provided for @shotCupsCapacityWholeMl.
+  /// No description provided for @servingsCapacityWholeMl.
   ///
   /// In en, this message translates to:
   /// **'Capacity must be whole millilitres, for example 30 or 45.'**
-  String get shotCupsCapacityWholeMl;
+  String get servingsCapacityWholeMl;
 
-  /// No description provided for @shotCupsCardName.
+  /// No description provided for @servingsCardName.
   ///
   /// In en, this message translates to:
   /// **'{label} · {capacity} ml'**
-  String shotCupsCardName(Object capacity, Object label);
+  String servingsCardName(Object capacity, Object label);
 
-  /// No description provided for @shotCupsCardSpoken.
+  /// No description provided for @servingsCardSpoken.
   ///
   /// In en, this message translates to:
   /// **'{name}, {detail}, {price}'**
-  String shotCupsCardSpoken(Object detail, Object name, Object price);
+  String servingsCardSpoken(Object detail, Object name, Object price);
 
-  /// No description provided for @shotCupsCardSpokenInactive.
+  /// No description provided for @servingsCardSpokenInactive.
   ///
   /// In en, this message translates to:
   /// **'{name}, {detail}, {price}, not sold'**
-  String shotCupsCardSpokenInactive(Object detail, Object name, Object price);
+  String servingsCardSpokenInactive(Object detail, Object name, Object price);
 
-  /// No description provided for @shotCupsChooseDrink.
+  /// No description provided for @servingsChooseDrink.
   ///
   /// In en, this message translates to:
-  /// **'Choose the drink this cup is poured from.'**
-  String get shotCupsChooseDrink;
+  /// **'Choose the drink this serving is poured from.'**
+  String get servingsChooseDrink;
 
-  /// No description provided for @shotCupsDefaultName.
+  /// No description provided for @servingsDefaultName.
   ///
   /// In en, this message translates to:
-  /// **'Small cup'**
-  String get shotCupsDefaultName;
+  /// **'Small serving'**
+  String get servingsDefaultName;
 
-  /// No description provided for @shotCupsEditAction.
+  /// No description provided for @servingsEditAction.
   ///
   /// In en, this message translates to:
   /// **'Edit'**
-  String get shotCupsEditAction;
+  String get servingsEditAction;
 
-  /// No description provided for @shotCupsEmptyMessageNoPermission.
+  /// No description provided for @servingsFilterByProduct.
   ///
   /// In en, this message translates to:
-  /// **'No cups have been set up for this shop.'**
-  String get shotCupsEmptyMessageNoPermission;
+  /// **'Filter by product'**
+  String get servingsFilterByProduct;
 
-  /// No description provided for @shotCupsEmptyMessageOwner.
+  /// No description provided for @servingsEmptyMessageNoPermission.
   ///
   /// In en, this message translates to:
-  /// **'Add one to sell fixed-size cups of any drink in your inventory.'**
-  String get shotCupsEmptyMessageOwner;
+  /// **'No servings have been set up for this shop.'**
+  String get servingsEmptyMessageNoPermission;
 
-  /// No description provided for @shotCupsEmptyTitle.
+  /// No description provided for @servingsEmptyMessageOwner.
   ///
   /// In en, this message translates to:
-  /// **'No cups yet'**
-  String get shotCupsEmptyTitle;
+  /// **'Add one to sell fixed-size servings of any drink in your inventory.'**
+  String get servingsEmptyMessageOwner;
 
-  /// No description provided for @shotCupsLoadFailed.
+  /// No description provided for @servingsEmptyTitle.
   ///
   /// In en, this message translates to:
-  /// **'Couldn’t load the cups. Try again.'**
-  String get shotCupsLoadFailed;
+  /// **'No servings yet'**
+  String get servingsEmptyTitle;
 
-  /// No description provided for @shotCupsNameAtTillLabel.
+  /// No description provided for @servingsLoadFailed.
+  ///
+  /// In en, this message translates to:
+  /// **'Couldn’t load the servings. Try again.'**
+  String get servingsLoadFailed;
+
+  /// No description provided for @servingsNameAtTillLabel.
   ///
   /// In en, this message translates to:
   /// **'Name at the till'**
-  String get shotCupsNameAtTillLabel;
+  String get servingsNameAtTillLabel;
 
-  /// No description provided for @shotCupsNameHelper.
+  /// No description provided for @servingsNameHelper.
   ///
   /// In en, this message translates to:
   /// **'What the cashier taps'**
-  String get shotCupsNameHelper;
+  String get servingsNameHelper;
 
-  /// No description provided for @shotCupsNameHint.
+  /// No description provided for @servingsNameHint.
   ///
   /// In en, this message translates to:
-  /// **'Small cup, Big cup'**
-  String get shotCupsNameHint;
+  /// **'Small serving, Big serving'**
+  String get servingsNameHint;
 
-  /// No description provided for @shotCupsNameRequired.
+  /// No description provided for @servingsNameRequired.
   ///
   /// In en, this message translates to:
-  /// **'Give the cup a name, like Small cup or Big cup.'**
-  String get shotCupsNameRequired;
+  /// **'Give the serving a name, like Small serving or Big serving.'**
+  String get servingsNameRequired;
 
-  /// No description provided for @shotCupsNotSold.
+  /// No description provided for @servingsNotSold.
   ///
   /// In en, this message translates to:
   /// **'Not sold'**
-  String get shotCupsNotSold;
+  String get servingsNotSold;
 
-  /// No description provided for @shotCupsPerBottle.
+  /// No description provided for @servingsPerBottle.
   ///
   /// In en, this message translates to:
-  /// **'{count} cups per bottle'**
-  String shotCupsPerBottle(Object count);
+  /// **'{count} servings per bottle'**
+  String servingsPerBottle(Object count);
 
-  /// No description provided for @shotCupsPouredFromLabel.
+  /// No description provided for @servingsPouredFromLabel.
   ///
   /// In en, this message translates to:
   /// **'Poured from'**
-  String get shotCupsPouredFromLabel;
+  String get servingsPouredFromLabel;
 
-  /// No description provided for @shotCupsPriceHelper.
+  /// No description provided for @servingsPriceHelper.
   ///
   /// In en, this message translates to:
-  /// **'For one cup'**
-  String get shotCupsPriceHelper;
+  /// **'For one serving'**
+  String get servingsPriceHelper;
 
-  /// No description provided for @shotCupsPriceInvalid.
+  /// No description provided for @servingsPriceInvalid.
   ///
   /// In en, this message translates to:
   /// **'Price must be a number, 0 or more.'**
-  String get shotCupsPriceInvalid;
+  String get servingsPriceInvalid;
 
-  /// No description provided for @shotCupsPriceLabel.
+  /// No description provided for @servingsPriceLabel.
   ///
   /// In en, this message translates to:
   /// **'Price (KSh)'**
-  String get shotCupsPriceLabel;
+  String get servingsPriceLabel;
 
-  /// No description provided for @shotCupsRetryLoading.
+  /// No description provided for @servingsRetryLoading.
   ///
   /// In en, this message translates to:
   /// **'Try loading again'**
-  String get shotCupsRetryLoading;
+  String get servingsRetryLoading;
 
-  /// No description provided for @shotCupsSaveFailed.
+  /// No description provided for @servingsSaveFailed.
   ///
   /// In en, this message translates to:
-  /// **'Couldn’t save the cup. Try again.'**
-  String get shotCupsSaveFailed;
+  /// **'Couldn’t save the serving. Try again.'**
+  String get servingsSaveFailed;
 
-  /// No description provided for @shotCupsStopSellingAction.
+  /// No description provided for @servingsStopSellingAction.
   ///
   /// In en, this message translates to:
   /// **'Stop selling'**
-  String get shotCupsStopSellingAction;
+  String get servingsStopSellingAction;
 
-  /// No description provided for @shotCupsStopSellingMessage.
+  /// No description provided for @servingsStopSellingMessage.
   ///
   /// In en, this message translates to:
-  /// **'{product} cups stop appearing at the till. Sales already recorded are untouched.'**
-  String shotCupsStopSellingMessage(Object product);
+  /// **'{product} servings stop appearing at the till. Sales already recorded are untouched.'**
+  String servingsStopSellingMessage(Object product);
 
-  /// No description provided for @shotCupsStopSellingTitle.
+  /// No description provided for @servingsStopSellingTitle.
   ///
   /// In en, this message translates to:
   /// **'Stop selling {name}?'**
-  String shotCupsStopSellingTitle(Object name);
+  String servingsStopSellingTitle(Object name);
 
-  /// No description provided for @shotCupsTitle.
+  /// No description provided for @servingsTitle.
   ///
   /// In en, this message translates to:
-  /// **'Cups / Bottles'**
-  String get shotCupsTitle;
+  /// **'Servings / Bottles'**
+  String get servingsTitle;
 
   /// No description provided for @taxSettingsAdminOnly.
   ///
@@ -7802,11 +7808,11 @@ abstract class AppLocalizations {
   /// **'Sale recorded'**
   String get activitySaleRecorded;
 
-  /// No description provided for @activityShotCupSold.
+  /// No description provided for @activityServingSold.
   ///
   /// In en, this message translates to:
-  /// **'Cup sold'**
-  String get activityShotCupSold;
+  /// **'Serving sold'**
+  String get activityServingSold;
 
   /// No description provided for @activityStaffAdded.
   ///
@@ -8281,7 +8287,7 @@ abstract class AppLocalizations {
   /// No description provided for @tankServingTooBig.
   ///
   /// In en, this message translates to:
-  /// **'That cup is bigger than the tank.'**
+  /// **'That serving is bigger than the tank.'**
   String get tankServingTooBig;
 
   /// No description provided for @tankServingMinOne.
@@ -8446,6 +8452,42 @@ abstract class AppLocalizations {
   /// **'Last measured {date}'**
   String tankDetailLastMeasured(Object date);
 
+  /// No description provided for @tankActionViewDetails.
+  ///
+  /// In en, this message translates to:
+  /// **'View details'**
+  String get tankActionViewDetails;
+
+  /// No description provided for @tankRegisterSold.
+  ///
+  /// In en, this message translates to:
+  /// **'Total sold'**
+  String get tankRegisterSold;
+
+  /// No description provided for @dashboardLooseGoods.
+  ///
+  /// In en, this message translates to:
+  /// **'Loose goods'**
+  String get dashboardLooseGoods;
+
+  /// No description provided for @dashboardLooseGoodsRemaining.
+  ///
+  /// In en, this message translates to:
+  /// **'to break even'**
+  String get dashboardLooseGoodsRemaining;
+
+  /// No description provided for @dashboardLooseGoodsSold.
+  ///
+  /// In en, this message translates to:
+  /// **'Total sold'**
+  String get dashboardLooseGoodsSold;
+
+  /// No description provided for @dashboardLooseGoodsViewDetails.
+  ///
+  /// In en, this message translates to:
+  /// **'View details'**
+  String get dashboardLooseGoodsViewDetails;
+
   /// No description provided for @tankStatusActive.
   ///
   /// In en, this message translates to:
@@ -8578,17 +8620,17 @@ abstract class AppLocalizations {
   /// **'There is no {name} left'**
   String shotNoneLeft(Object name);
 
-  /// No description provided for @shotCupNoSize.
+  /// No description provided for @servingNoSize.
   ///
   /// In en, this message translates to:
-  /// **'This cup has no size, so the container will not go down when you sell it'**
-  String get shotCupNoSize;
+  /// **'This serving has no size, so the container will not go down when you sell it'**
+  String get servingNoSize;
 
-  /// No description provided for @shotCupTooBig.
+  /// No description provided for @servingTooBig.
   ///
   /// In en, this message translates to:
-  /// **'This cup is bigger than the container ({ml} ml)'**
-  String shotCupTooBig(Object ml);
+  /// **'This serving is bigger than the container ({ml} ml)'**
+  String servingTooBig(Object ml);
 
   /// No description provided for @shotCountLeft.
   ///
@@ -9261,6 +9303,48 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'Receivables'**
   String get openDashboardReceivables;
+
+  /// No description provided for @openDashboardProfit.
+  ///
+  /// In en, this message translates to:
+  /// **'Profit'**
+  String get openDashboardProfit;
+
+  /// No description provided for @openDashboardNotInProfitYet.
+  ///
+  /// In en, this message translates to:
+  /// **'Not in profit yet'**
+  String get openDashboardNotInProfitYet;
+
+  /// No description provided for @openDashboardBreakEven.
+  ///
+  /// In en, this message translates to:
+  /// **'Break-even'**
+  String get openDashboardBreakEven;
+
+  /// No description provided for @openDashboardSurplus.
+  ///
+  /// In en, this message translates to:
+  /// **'Surplus'**
+  String get openDashboardSurplus;
+
+  /// No description provided for @openDashboardShortfall.
+  ///
+  /// In en, this message translates to:
+  /// **'Shortfall'**
+  String get openDashboardShortfall;
+
+  /// No description provided for @openDashboardOwedToYou.
+  ///
+  /// In en, this message translates to:
+  /// **'Owed to you'**
+  String get openDashboardOwedToYou;
+
+  /// No description provided for @openDashboardYouOwe.
+  ///
+  /// In en, this message translates to:
+  /// **'You owe'**
+  String get openDashboardYouOwe;
 
   /// No description provided for @openDashboardOperationalOverview.
   ///

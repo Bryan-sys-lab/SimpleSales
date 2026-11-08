@@ -281,7 +281,7 @@ class _SellScreenState extends State<SellScreen>
       } else if (line.shotCup != null) {
         final fraction = line.product.bottleMl <= 0
             ? 1.0
-            : (line.shotCup!.capacityMl / line.product.bottleMl)
+            : (line.shotCup!.capacity / line.product.bottleMl)
                 .clamp(0.0, 1.0);
         if (line.product.id != null) {
           _reservedByProduct[line.product.id!] =
@@ -909,9 +909,9 @@ class _SellScreenState extends State<SellScreen>
       // A cup with NO size takes nothing that can be measured, so nothing is
       // reserved against the bottle: the owner did not say how big the shot
       // is, and the app does not guess. The shot is still sold, at its price.
-      final needed = shotCup.capacityMl <= 0 || current.bottleMl <= 0
+      final needed = shotCup.capacity <= 0 || current.bottleMl <= 0
           ? 0.0
-          : (shotCup.capacityMl / current.bottleMl).clamp(0.0, 1.0);
+          : (shotCup.capacity / current.bottleMl).clamp(0.0, 1.0);
       final available = current.stockQty - _cartUnitsFor(current);
       if (available < needed) {
         _say(AppLocalizations.of(context).sellNotEnoughForShot(current.name));
@@ -1009,7 +1009,7 @@ class _SellScreenState extends State<SellScreen>
           'variant_name': line.variant?.name ?? '',
           'shot_cup_id': line.shotCup?.id,
           'shot_label': line.shotCup?.label,
-          'shot_capacity_ml': line.shotCup?.capacityMl,
+          'shot_capacity_ml': line.shotCup?.capacity,
           'shot_price': line.shotCup?.price.minorUnits,
           'unit_price': line.unitPrice.minorUnits,
           'unit_cost': line.unitCost.minorUnits,
@@ -1265,7 +1265,7 @@ class _SellScreenState extends State<SellScreen>
         // A variant's own serving size, not a fraction of the parent's bottle:
         // "Dark 500 ml" is 500ml however big the parent bottle is. A shot's is
         // its cup's fixed capacity, which is the same idea.
-        portionMl: line.portionMl,
+        portionMl: line.portionMl.toInt(),
         // Which variant was sold, so the sale transaction can move that
         // variant's OWN count. The deduction happens inside the sale's
         // transaction, not after it — see [DatabaseHelper.recordSale].
@@ -2809,6 +2809,7 @@ class _SellScreenState extends State<SellScreen>
       builder: (context) {
         final amountController = TextEditingController();
         final nameController = TextEditingController();
+        final unitController = TextEditingController();
         final referenceController = TextEditingController();
         String method = 'cash';
         return StatefulBuilder(builder: (context, setState) {
@@ -2834,7 +2835,7 @@ class _SellScreenState extends State<SellScreen>
                 decoration: const InputDecoration(labelText: 'Product name (optional)'),
               ),
               TextField(
-                controller: TextEditingController(),
+                controller: unitController,
                 decoration: const InputDecoration(labelText: 'Unit (optional)'),
               ),
               TextField(
@@ -2867,6 +2868,7 @@ class _SellScreenState extends State<SellScreen>
                   Navigator.pop(context, {
                     'name': nameController.text.trim(),
                     'amount': amountController.text.trim(),
+                    'unit': unitController.text.trim(),
                     'method': method,
                     'reference': referenceController.text.trim(),
                   });
@@ -2944,6 +2946,7 @@ class _SellScreenState extends State<SellScreen>
           sellPrice: Money.fromMajor(amount),
           stockQty: 0,
           reorderLevel: 0,
+          unit: ProductUnit.parse((values['unit'] ?? '').isEmpty ? null : (values['unit'] as String)),
           updatedAt: DateTime.now().toIso8601String(),
         );
         await DatabaseHelper.instance.upsertProduct(product);
@@ -3404,8 +3407,8 @@ class CartItem {
       // A shot with no size takes nothing that can be measured, so it costs
       // the drink nothing and reserves nothing: the whole price is the
       // profit, because the drink that went into it is not being counted.
-      if (shot.capacityMl <= 0 || product.bottleMl <= 0) return 0;
-      final f = shot.capacityMl / product.bottleMl;
+      if (shot.capacity <= 0 || product.bottleMl <= 0) return 0;
+      final f = shot.capacity / product.bottleMl;
       return f > 1 ? 1 : f;
     }
     return product.fractionFor(portion);
@@ -3413,10 +3416,10 @@ class CartItem {
 
   double get stockUnits => qty * fraction;
 
-  int get portionMl {
+  double get portionMl {
     final shot = shotCup;
-    if (shot != null) return shot.capacityMl;
-    return variant?.sizeMl ?? product.mlFor(portion);
+    if (shot != null) return shot.capacity;
+    return (variant?.sizeMl)?.toDouble() ?? product.mlFor(portion).toDouble();
   }
 
   String get label => variant?.label ?? product.name;
@@ -3454,7 +3457,7 @@ class CartItem {
     }
     final shot = shotCup;
     if (shot != null && product.bottleMl > 0) {
-      return product.costPrice.times(shot.capacityMl / product.bottleMl);
+      return product.costPrice.times(shot.capacity / product.bottleMl);
     }
     return variant?.costPrice ?? product.costPrice.times(fraction);
   }

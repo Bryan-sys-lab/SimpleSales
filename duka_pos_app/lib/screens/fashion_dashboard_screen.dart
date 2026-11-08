@@ -249,7 +249,7 @@ class FashionDashboardScreen extends StatelessWidget {
   }
 
   void _openProductEditor(BuildContext context) {
-    context.push(Routes.inventory);
+    context.push(Routes.fashionProductForm);
   }
 
   void _receiveStock(BuildContext context) {

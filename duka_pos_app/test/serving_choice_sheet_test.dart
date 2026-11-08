@@ -126,20 +126,21 @@ void main() {
         tester,
         item: product(sellPriceMinor: 0),
         shots: <ShotCup>[
-          ShotCup(
-            id: 1,
-            productId: 1,
-            productName: 'Tusker',
-            capacityMl: 330,
-            price: Money.fromMinor(10000),
-            updatedAt: '',
-          ),
+            ShotCup(
+              id: 1,
+              productId: 1,
+              productName: 'Tusker',
+              capacity: 330,
+              unit: 'ml',
+              price: Money.fromMinor(10000),
+              updatedAt: '',
+            ),
         ],
       );
 
       expect(find.textContaining('Full'), findsNothing);
       // The cup is still there: it is how the tank is sold.
-      expect(find.text('Small cup · 330 ml'), findsOneWidget);
+      expect(find.text('Small serving · 330 ml'), findsOneWidget);
     });
   });
 
@@ -186,7 +187,8 @@ void main() {
               id: i,
               productId: 1,
               productName: 'Tusker',
-              capacityMl: 30 * i,
+              capacity: (30 * i).toDouble(),
+              unit: 'ml',
               price: Money.fromMinor(1000 * i),
               updatedAt: '',
             ),

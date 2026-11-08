@@ -184,13 +184,13 @@ class HomeShellTabs extends ChangeNotifier {
 
 /// A catalogue change that happened ABOVE the shell.
 ///
-/// Product detail, shot cups and the imports answer are pushed on the ROOT
+/// Product detail, servings and the imports answer are pushed on the ROOT
 /// navigator, so they cover the whole shell — which means they sit OUTSIDE the
 /// subtree `ChangeNotifierProvider<HomeShellTabs>` is in, and
 /// `context.read<HomeShellTabs>()` throws `ProviderNotFoundException` where
-/// they stand. That is exactly what shot cups did: the cup was written, the
+/// they stand. That is exactly what servings did: the serving was written, the
 /// notification threw, and neither the list nor the till ever saw it — "I
-/// created a cup and nothing happened".
+/// created a serving and nothing happened".
 ///
 /// So the generation count and its listeners live at module level, the shell
 /// subscribes to them, and any screen anywhere can announce. Same shape as

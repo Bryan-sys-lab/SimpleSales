@@ -86,6 +86,13 @@ class ServingChoiceShot extends ServingChoice {
   final ShotCup cup;
 }
 
+/// Formats a serving capacity for display: whole numbers show without a
+/// decimal point, fractions show as-is.
+String _capacityText(double capacity) {
+  final rounded = capacity.round();
+  return rounded == capacity ? rounded.toString() : capacity.toString();
+}
+
 /// The sheet: which way is this one sold?
 ///
 /// Every part of it is a parameter, so the whole sheet can be rendered in a
@@ -298,7 +305,7 @@ class _ShotOption extends StatelessWidget {
           ? Icons.local_drink_outlined
           : Icons.warning_amber_outlined),
       title: Text(
-        l10n.sellPourOptionTitle(cup.label, '${cup.capacityMl}'),
+        l10n.sellPourOptionTitle(cup.label, _capacityText(cup.capacity)),
       ),
       trailing: Text(formatMoney(cup.price)),
       enabled: verdict.canPour,
@@ -354,7 +361,7 @@ class _VariantOption extends StatelessWidget {
 ///
 /// The reason is read aloud on the tile and spoken to the person standing at
 /// the counter with a customer in front of them, so it is written in the
-/// shop's words through [l10n] — never as a field name. "capacityMl is null"
+/// shop's words through [l10n] — never as a field name. "capacity is null"
 /// is an error log; "This cup has no size" is something a person can act on.
 ({bool canPour, String reason}) shotAvailability(
   AppLocalizations l10n,
@@ -369,17 +376,17 @@ class _VariantOption extends StatelessWidget {
   // A cup with NO size is still pourable: the owner simply did not say how
   // big it is. The shot is sold at its price and the amount taken from the
   // bottle is not measured, which is what the shot's own note says.
-  if (cup.capacityMl <= 0) {
+  if (cup.capacity <= 0) {
     if (available <= 0) {
       return (canPour: false, reason: l10n.shotNoneLeft(product.name));
     }
-    return (canPour: true, reason: l10n.shotCupNoSize);
+    return (canPour: true, reason: l10n.servingNoSize);
   }
-  final perBottle = (containerMl / cup.capacityMl).floor();
+  final perBottle = (containerMl / cup.capacity).floor();
   if (perBottle <= 0) {
-    return (canPour: false, reason: l10n.shotCupTooBig(containerMl));
+    return (canPour: false, reason: l10n.servingTooBig(containerMl));
   }
-  final needed = cup.capacityMl / containerMl;
+  final needed = cup.capacity / containerMl;
   if (available < needed) {
     return (canPour: false, reason: l10n.shotNoneLeft(product.name));
   }

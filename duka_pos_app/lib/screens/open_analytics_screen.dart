@@ -197,6 +197,11 @@ class _OpenOpeningKpisState extends State<_OpenOpeningKpis>
     final AppColors colors = AppColors.of(context);
     final l10n = AppLocalizations.of(context);
     final type = AppTypography.of(context);
+    final profit = totals.profit.minorUnits > 0
+        ? (l10n.openDashboardProfit, formatMoney(totals.profit.abs), StatusTone.success)
+        : totals.profit.minorUnits < 0
+            ? (l10n.openDashboardNotInProfitYet, formatMoney(totals.profit.abs), StatusTone.danger)
+            : (l10n.openDashboardBreakEven, formatMoney(Money.zero), StatusTone.neutral);
 
     return SurfaceCard(
       padding: EdgeInsets.all(spacing.lg),
@@ -225,8 +230,9 @@ class _OpenOpeningKpisState extends State<_OpenOpeningKpis>
               final bool row = constraints.maxWidth >= 640;
               final List<Widget> tiles = <Widget>[
                 _OpeningKpiTile(
-                  label: l10n.openAnalyticsNetProfit,
-                  value: formatMoney(totals.profit),
+                  label: profit.$1,
+                  value: profit.$2,
+                  tone: profit.$3,
                   icon: Icons.attach_money_outlined,
                 ),
                 _OpeningKpiTile(

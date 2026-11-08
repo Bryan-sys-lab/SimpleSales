@@ -464,7 +464,7 @@ class _LooseGoodsFormSheetState extends State<LooseGoodsFormSheet> {
             // The sheet's NAME, large and on the canvas — the same title block
             // every other screen opens with.
             ScreenTitle(
-              title: l10n.tankFormTitle,
+              title: 'Add loose goods',
               subtitle: l10n.tankFormSubtitle,
               padding: EdgeInsets.zero,
             ),
@@ -527,7 +527,7 @@ class _LooseGoodsFormSheetState extends State<LooseGoodsFormSheet> {
                     borderRadius: shapes.controlRadius,
                   ),
                 ),
-                child: Text(_saving ? l10n.pinResetSaving : l10n.tankAddAction),
+                child: Text(_saving ? l10n.pinResetSaving : 'Save loose goods'),
               ),
             ),
           ],
