@@ -108,6 +108,79 @@ class _OpenJobDetailScreenState extends State<OpenJobDetailScreen> {
         (sum, p) => sum + ((p['amount_minor'] as num?)?.toInt() ?? 0),
       );
 
+  Future<void> _recordPayment() async {
+    final l10n = AppLocalizations.of(context);
+    final amountController = TextEditingController();
+    final referenceController = TextEditingController();
+    String method = 'cash';
+    final result = await showDialog<Map<String, String>>(
+      context: context,
+      builder: (ctx) => StatefulBuilder(
+        builder: (ctx, setState) => AlertDialog(
+          title: Text(l10n.openJobDetailReceivePayment),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: <Widget>[
+              TextField(
+                controller: amountController,
+                keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                decoration: const InputDecoration(labelText: 'Amount (KES)'),
+                autofocus: true,
+              ),
+              const SizedBox(height: 12),
+              DropdownButtonFormField<String>(
+                initialValue: method,
+                decoration: const InputDecoration(labelText: 'Method'),
+                items: const <DropdownMenuItem<String>>[
+                  DropdownMenuItem(value: 'cash', child: Text('Cash')),
+                  DropdownMenuItem(value: 'mpesa', child: Text('M-Pesa')),
+                  DropdownMenuItem(value: 'bank_transfer', child: Text('Bank transfer')),
+                ],
+                onChanged: (v) => setState(() => method = v ?? 'cash'),
+              ),
+              TextField(
+                controller: referenceController,
+                decoration: const InputDecoration(labelText: 'Reference (optional)'),
+              ),
+            ],
+          ),
+          actions: <Widget>[
+            TextButton(onPressed: () => Navigator.pop(ctx), child: Text(l10n.actionCancel)),
+            FilledButton(
+              onPressed: () => Navigator.pop(ctx, <String, String>{
+                'amount': amountController.text.trim(),
+                'method': method,
+                'reference': referenceController.text.trim(),
+              }),
+              child: Text(l10n.openJobDetailReceivePayment),
+            ),
+          ],
+        ),
+      ),
+    );
+    amountController.dispose();
+    referenceController.dispose();
+    if (result == null || !mounted) return;
+    final amount = double.tryParse(result['amount'] ?? '');
+    if (amount == null || amount <= 0) return;
+    try {
+      await _db.recordJobPayment(
+        uuid: 'jobpay-${DateTime.now().microsecondsSinceEpoch}',
+        jobId: widget.jobId,
+        amount: Money.fromMajor(amount),
+        paymentMethod: result['method'] ?? 'cash',
+        reference: (result['reference'] ?? '').isEmpty ? null : result['reference'],
+      );
+      if (mounted) await _load();
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Could not record payment: $e')),
+        );
+      }
+    }
+  }
+
   bool get _isCompleted => _job?['status'] == 'closed';
 
   JobStatus _statusOf(Map<String, dynamic> job) {
@@ -321,7 +394,7 @@ class _OpenJobDetailScreenState extends State<OpenJobDetailScreen> {
                   _ActionButton(
                     label: l10n.openJobDetailReceivePayment,
                     icon: Icons.payment_outlined,
-                    onPressed: () => context.push(Routes.incomingPayments),
+                    onPressed: _recordPayment,
                   ),
                 if (canRecordSales)
                   _ActionButton(
