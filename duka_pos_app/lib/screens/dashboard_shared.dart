@@ -15,7 +15,6 @@ import '../services/analytics.dart';
 import '../theme/app_colors.dart';
 import '../theme/app_spacing.dart';
 import '../theme/typography.dart';
-import '../ui/components/screen_title.dart';
 import '../ui/components/status.dart';
 import '../ui/layout/page.dart';
 import '../utils/money.dart';
@@ -116,15 +115,22 @@ class CompactBusinessHeader extends StatelessWidget {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: <Widget>[
-        ScreenTitle(
-          eyebrow: eyebrow,
-          title: shopName,
-          subtitle: subtitle,
+        Padding(
           padding: EdgeInsetsDirectional.only(
             start: spacing.lg,
             top: spacing.sm,
             end: spacing.lg,
             bottom: spacing.xs,
+          ),
+          child: Semantics(
+            header: true,
+            child: Text(
+              '$eyebrow · $shopName — $subtitle',
+              style: AppTypography.of(context).headlineSmall?.copyWith(
+                    color: AppColors.of(context).onSurface,
+                  ),
+              softWrap: true,
+            ),
           ),
         ),
         SizedBox(height: spacing.xs),

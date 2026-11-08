@@ -214,46 +214,19 @@ class _OpenBusinessHeader extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final AppSpacing spacing = AppSpacing.of(context);
     final AppColors colors = AppColors.of(context);
     final type = AppTypography.of(context);
 
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: <Widget>[
-        Row(
-          children: <Widget>[
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: <Widget>[
-                  Text(
-                    eyebrow,
-                    style: type.labelMedium?.copyWith(
-                      color: colors.onSurfaceMuted,
-                      fontWeight: FontWeight.w600,
-                    ),
-                  ),
-                  SizedBox(height: spacing.xs),
-                  Text(
-                    shopName,
-                    style: type.headlineSmall?.copyWith(
-                      fontWeight: FontWeight.w800,
-                    ),
-                  ),
-                ],
-              ),
-            ),
-          ],
+    return Semantics(
+      header: true,
+      child: Text(
+        '$eyebrow · $shopName — $subtitle',
+        style: type.headlineSmall?.copyWith(
+          fontWeight: FontWeight.w800,
+          color: colors.onSurface,
         ),
-        SizedBox(height: spacing.sm),
-        Text(
-          subtitle,
-          style: type.bodyMedium?.copyWith(
-            color: colors.onSurfaceMuted,
-          ),
-        ),
-      ],
+        softWrap: true,
+      ),
     );
   }
 }
