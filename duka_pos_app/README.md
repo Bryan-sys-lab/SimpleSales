@@ -1,110 +1,202 @@
-# Duka POS — Setup & Build Guide
+# SimpleSales — Developer and Operations Guide
 
-This is a real Flutter project (Dart source, not a demo page) implementing everything in the dev spec: offline-first SQLite storage, owner/staff PIN login, sales/inventory/reports, and hybrid sync to Google Sheets (online) with automatic fallback to Excel export (offline).
+SimpleSales is an offline-first point-of-sale app for African retail. Every sale,
+stock movement, payment and receipt is recorded locally on the handset and keeps
+working when the internet is down. When connectivity returns, data syncs to the
+backend.
 
-It has been written by hand against the current Flutter/Dart package APIs but **has not been compiled** — there's no Flutter/Android/iOS toolchain available in the environment that wrote it. Expect to fix a handful of small issues (a renamed API, a missing import) the first time it's actually built — this is normal for hand-written code and usually a 15–30 minute pass for anyone who knows Flutter, not a rewrite.
+## Product profiles
 
-## What you get an app that installs when this is done
-- Owner account creation on first launch
-- Staff PIN login, owner-only permissions (delete products, manage staff, restore backups)
-- Sell screen with cart checkout, atomic stock deduction
-- Inventory with stock adjustments (restock/breakage) logged separately from sales
-- Reports: sales log, sales-by-staff, shift summaries
-- **Hybrid sync**: "Sync now" tries Google Sheets first; if there's no internet or the owner hasn't linked Google, it automatically saves and shares an Excel (.xlsx) file instead
-- Manual Excel export/import for inventory, for fully offline transfer between devices
+SimpleSales ships in four profiles, selected at build time:
 
-## Not yet included (see the dev spec for design, not yet built)
-- LAN host/client sync between multiple physical tills — this is the multi-till piece and is the most involved remaining feature; the app currently assumes one till per device with manual/Sheets sync between them
-- Bluetooth thermal receipt printing (currently: on-screen receipt only)
+| Profile | Intended for | Key difference |
+|---|---|---|
+| **Duka** | General retail dukas | Full product catalogue, variants, stock |
+| **Drinks** | Bottle stores and bars | Measured pours, shots, bottle decomposition |
+| **Fashion** | Clothing and footwear | Size/colour variants, style matrix |
+| **Open** | Custom retail | Configurable tax, credit, ledger behaviour |
 
----
+All profiles share the same codebase; the profile is a compile-time choice that
+adjusts defaults, visible screens and terminology.
 
-## Part 1 — One-time Google Cloud setup (needed for the Sheets half of sync)
+## Architecture
 
-This can't be done from code — it's account configuration in Google's console, done once by whoever owns the Google account the shop will use:
+- **Flutter app** (`lib/`) — UI and business logic in Dart
+- **Local SQLite database** — system of record, one encrypted file per workspace
+  (shop). SQLCipher 256-bit encryption at rest; keys live in Android Keystore /
+  iOS Keychain via `flutter_secure_storage`
+- **Workspace/profile model** — each till runs one workspace; shops with
+  multiple tills run multiple workspaces, isolated from one another
+- **Backend/API integration** — optional, configured at build time via
+  `--dart-define`; identity, sync, M-Pesa and tax features require a connected
+  backend
+- **Encrypted backup** — automatic and owner-triggered, device-bound or
+  portable (passphrase-protected) formats
+- **Local network** — camera barcode scanning, Bluetooth ESC/POS printing
+- **Error reporting** — Sentry (configured per-release)
 
-1. Go to console.cloud.google.com and create a new project (e.g. "Duka POS").
-2. Under **APIs & Services > Library**, search for and enable the **Google Sheets API**.
-3. Under **APIs & Services > OAuth consent screen**: choose "External," fill in the app name and support email. You can leave it in "Testing" mode and add the owner's Google account as a test user — no need to publish it for a single-shop app.
-4. Under **APIs & Services > Credentials > Create Credentials > OAuth client ID**:
-   - For Android: choose "Android," provide the app's package name (default `com.dukapos.app` — change it in `android/app/build.gradle` if you rename it) and its SHA-1 signing fingerprint (get this by running `./gradlew signingReport` inside `android/` once the project is set up, or from Codemagic's build settings if signing there).
-   - For iOS: choose "iOS," provide the bundle ID (set in `ios/Runner.xcodeproj`).
-5. No client secret or server key needs to go into the app's code — `google_sign_in` handles the OAuth flow using the platform-specific client ID configuration above (Android: via the SHA-1 + package name pairing; iOS: via a `GoogleService-Info.plist` or `CFBundleURLTypes` entry — the `google_sign_in` package docs have the exact file, since this changes with package versions).
+## Feature status
 
-Without this setup, the app still works completely — "Sync now" will just always fall back to the Excel path, which is a legitimate permanent mode to run in if you never want Google involved.
+| Feature | Status | Notes |
+|---|---|---|
+| Offline-first sales | Available | Core path; no backend required |
+| Stock management | Available | Atomic decrement on sale commit |
+| Staff PIN login | Available | Owner + cashier roles, permissions |
+| Reports and dashboards | Available | Sales by staff, shift summaries |
+| Encrypted local database | Available | SQLCipher, per-workspace keys |
+| Automatic encrypted backup | Available | Six-hourly, timestamped filenames |
+| Owner-triggered portable backup | Available | Passphrase-protected, restores on any device |
+| Backend identity (login/link/verify) | Configuration-required | Needs `--dart-define=BACKEND_URL=...` |
+| Backend sync | Configuration-required | Needs connected backend |
+| M-Pesa payments | Configuration-required | Needs provider credentials |
+| eTIMS / KRA receipts | Disabled | Explicitly off in this release; not claimed |
+| LAN multi-till sync | Not planned | One till per workspace |
+| Web / desktop | Not supported | Android and iOS only |
 
----
+## Supported platforms
 
-## Part 1.5 — Running the tests
+| Platform | Minimum OS | Notes |
+|---|---|---|
+| Android phones | Android 8.0 / API 26+ | Primary POS target |
+| Android tablets | Android 8.0 / API 26+ | Compact and expanded layouts |
+| iPhone | iOS 15.0+ | Feature parity under verification |
+| iPad | iPadOS 15.0+ | Split/landscape layouts under verification |
+| Web / desktop | Not supported | See "Platform decision" below |
 
-`test/database_helper_test.dart` covers the database layer, especially the checkout transaction (the part where a bug would silently corrupt real stock/sales data — prioritized over UI tests for that reason). Run it with:
+Google Play submissions target Android 16 / API 36+. CI asserts this on every
+built release artifact.
 
-```
+## Toolchain (pinned)
+
+| Tool | Version |
+|---|---|
+| Flutter | >=3.47.0 |
+| Dart | >=3.13.0 |
+| Java | 17 |
+| Android Gradle Plugin | 9.1.0 |
+| Kotlin Gradle Plugin | 2.4.0 |
+| NDK | As pinned by Flutter 3.47 |
+
+CI prints and records exact `flutter --version`, `dart --version`, Java,
+Gradle wrapper, AGP and Kotlin versions on every run.
+
+## Setup
+
+### Local development (local-only mode)
+
+```bash
+flutter pub get
+dart format --output=none --set-exit-if-changed .
+flutter analyze --fatal-infos
 flutter test
+flutter run
 ```
 
-It uses `sqflite_common_ffi` to run against a real SQLite engine on whatever machine runs the tests — no Android/iOS device or emulator needed, so this can run in CI (including a Codemagic build step) on every commit.
+A local-only build needs no backend — the till sells, stocks and reports
+offline. Connected features (identity, sync, M-Pesa, tax) report "under
+maintenance" at the point of use.
 
----
+### Connected build
 
-## Part 3 — Turning on crash reporting (Firebase Crashlytics)
-
-Crash capture hooks already exist in `main.dart`, currently disabled behind a `firebaseConfigured = false` flag. To turn them on:
-
-1. Go to console.firebase.google.com, create a project (e.g. "Duka POS").
-2. Install the FlutterFire CLI (`dart pub global activate flutterfire_cli`) and run `flutterfire configure` from this project's root — it walks you through linking the Android/iOS app to the Firebase project and generates `lib/firebase_options.dart` automatically.
-3. In `lib/main.dart`: uncomment the `import 'firebase_options.dart';` line, uncomment `await Firebase.initializeApp(...)`, and flip `firebaseConfigured` to `true`.
-4. Rebuild. Crashes now appear in the Firebase console within a few minutes, from any phone running the app anywhere.
-
-This is a separate Google account/project from the Sheets integration in Part 1 — they don't have to be the same project, though they can be if it's simpler to manage one console.
-
----
-
-## Part 2 — Getting this compiled into an installed app, with nothing installed locally
-
-**Recommended: Codemagic (free tier covers this).**
-
-1. Push this project to a GitHub repository (create one, then `git init`, `git add .`, `git commit`, `git remote add origin <your repo url>`, `git push`).
-2. Go to codemagic.io, sign up free, and connect that GitHub repo.
-3. Codemagic auto-detects it as a Flutter project. Choose the default Flutter workflow.
-4. For Android: Codemagic can generate a signing keystore for you automatically for testing (look for "Android code signing" in workflow settings — enable "Automatic" for an unsigned/test build first to confirm it compiles).
-5. Click **Start new build**. When it finishes, Codemagic gives you a downloadable `.apk` — send that file to an Android phone (e.g. via WhatsApp/email/Google Drive) and open it to install (the phone will ask you to allow installs from unknown sources the first time — that's expected for an app not from the Play Store).
-6. For iOS, Codemagic can build an `.ipa`, but Apple requires the phone to be enrolled via an Apple Developer account ($99/year) and the device's UDID registered before it can be installed outside the App Store (or use Codemagic's own ad-hoc/TestFlight distribution, which they document). Budget extra setup time for iOS specifically — Android is meaningfully simpler for a first build with no developer account.
-
-**Alternative: hire a Flutter developer for a fixed-scope task.**
-Given this codebase already exists, "compile this Flutter project, fix any build errors, and produce a signed Android APK (and iOS build if needed)" is a well-scoped, quick task to post on Upwork/Fiverr — most Flutter developers can turn this around in a day since the app logic is already written, not being designed from scratch.
-
-**If you want to try locally instead:**
-Install Flutter (flutter.dev/docs/get-started/install), run `flutter pub get` in this folder, connect an Android phone with USB debugging enabled (or an emulator), and run `flutter run`. For a release `.apk`: `flutter build apk --release`, found afterward in `build/app/outputs/flutter-apk/`.
-
----
-
-## Project structure
-
-```
-lib/
-  main.dart                    — app entry, routes to setup/login/home
-  models/models.dart           — Product, Sale, SaleItem, Staff, Owner, StockAdjustment
-  db/database_helper.dart      — SQLite schema + all queries, atomic checkout
-  services/
-    auth_service.dart          — PIN hashing
-    app_state.dart             — current session (who's signed in)
-    excel_service.dart         — offline .xlsx export/import
-    sheets_service.dart        — Google Sheets live sync
-    sync_service.dart          — hybrid decision: try Sheets, fall back to Excel
-  screens/
-    owner_setup_screen.dart
-    login_screen.dart
-    home_shell.dart            — bottom nav
-    dashboard_screen.dart
-    sell_screen.dart
-    inventory_screen.dart
-    reports_screen.dart
-    settings_screen.dart       — owner-only: staff, sync, backup
+```bash
+flutter build apk --release \
+  --dart-define=DEPLOYMENT_MODE=connected \
+  --dart-define=BACKEND_URL=https://api.example-shop.co.ke/api
 ```
 
-## Next build priorities (in order)
-1. Compile, fix any package-version mismatches, confirm on a real Android phone.
-2. Wire up the Google Cloud OAuth config from Part 1 and test a real Sheets sync.
-3. LAN multi-till sync (see the dev spec's Section 2 for the host/client design) — the biggest remaining piece.
-4. Thermal receipt printer support.
+A connected build without a real `BACKEND_URL` is a configuration error — CI
+rejects it before publication.
+
+### Release build (signed)
+
+Signing material is never in the repository. CI reconstructs the keystore from
+protected secrets (`ANDROID_KEYSTORE_BASE64`, `KEYSTORE_PASSWORD`, `KEY_ALIAS`)
+for every release build and deletes it before the job ends.
+
+## Configuration
+
+Build-time configuration goes in `--dart-define`, never in committed source:
+
+| Define | Values | Purpose |
+|---|---|---|
+| `DEPLOYMENT_MODE` | `local_only` (default), `connected` | Whether the build expects a backend |
+| `BACKEND_URL` | `https://<host>/api` | Required when `DEPLOYMENT_MODE=connected` |
+
+`local_only` is the default so development keeps working without a backend.
+`connected` requires a valid HTTPS URL — placeholder, localhost, HTTP and
+local-dev hosts are rejected by CI.
+
+## Database encryption
+
+Every workspace database is encrypted at rest with SQLCipher:
+
+1. A random 256-bit key is generated per workspace on first open
+2. The key is stored in `flutter_secure_storage` (Android Keystore / iOS Keychain)
+3. Keys are device-local — never synced between tills, never in logs
+4. Portable backups use a separate passphrase and can restore to a new device
+   with a fresh device-local key
+5. Losing the device-local key means losing access to that workspace's data —
+   there is no backdoor
+
+## Backup and restore
+
+- **Automatic backups** run on a six-hourly timer while the till is open, using
+  timestamped filenames so same-day backups never overwrite each other
+- **Portable backups** are encrypted with an owner-chosen passphrase and can be
+  restored on a replacement phone
+- Keys are device-local; a portable restore creates a new local key on the new
+  device
+
+## Release process
+
+1. CI runs on every push and PR: `flutter analyze --fatal-infos`, full test
+   suite, and a signed release APK build
+2. CI asserts target API >= 36 on every release artifact
+3. `.github/workflows/auto-release.yml` computes the release tag and bumps the
+   build number when needed
+4. `.github/workflows/release.yml` builds the signed APK and publishes it to a
+   GitHub Release
+5. Signing keys live only in GitHub Actions secrets — never in source
+
+## App identity
+
+- Android `applicationId`: `com.dukapos.simplepos` (locked in Gradle)
+- iOS `PRODUCT_BUNDLE_IDENTIFIER`: `com.dukapos.simplepos`
+- Version: `2.0.0+67` (see `pubspec.yaml`)
+
+The application ID is frozen. A different ID is a different app to Android —
+existing installs cannot be updated across an ID change. No customer migration
+is planned.
+
+## Privacy and security
+
+- Database files are encrypted at rest (SQLCipher)
+- Keys live in the OS keystore/keychain, never in `SharedPreferences` or source
+- `allowBackup=false` and `fullBackupContent=false` on Android
+- No `READ_SMS` / `RECEIVE_SMS` permissions
+- No `REQUEST_INSTALL_PACKAGES` on Play Store builds (sideload builds only)
+- Sentry crash reports do not include passwords, PINs, tokens or customer data
+
+## Troubleshooting
+
+**App won't open after upgrade:** the signing certificate must match the
+previous install. A different certificate requires uninstalling first (which
+deletes local data — back up first).
+
+**Wrong database key:** if secure storage is cleared, the workspace database
+cannot be opened. Restore from a portable backup with the owner's passphrase,
+or accept data loss for that workspace.
+
+**Backup won't run:** check available storage (150 MB headroom required for
+automatic updates) and that the till is not in battery-saver mode during the
+backup window.
+
+## CI / CD
+
+- `.github/workflows/ci.yml` — analyze, test, build release APK on every push
+  and PR
+- `.github/workflows/auto-release.yml` — tag and bump build numbers
+- `.github/workflows/release.yml` — build and publish signed release APK
+
+All workflows are path-sensitive: changes to `.github/` or `duka_pos_app/`
+trigger the gate.

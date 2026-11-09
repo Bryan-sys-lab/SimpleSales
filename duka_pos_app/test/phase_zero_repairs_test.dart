@@ -249,36 +249,49 @@ void main() {
         BackendService.releaseConfigurationProblem(
           url: BackendService.defaultBackendUrl,
           isRelease: false,
+          mode: DeploymentMode.localOnly,
         ),
         isNull,
         reason: 'localhost is exactly right while developing',
       );
     });
 
-    test('a release build still carrying the placeholder is allowed', () {
+    test('a local-only release carrying the placeholder is allowed', () {
       final String? problem = BackendService.releaseConfigurationProblem(
         url: BackendService.defaultBackendUrl,
         isRelease: true,
+        mode: DeploymentMode.localOnly,
       );
       expect(problem, isNull);
     });
 
-    test('a release build with a real backend is allowed', () {
+    test('a connected release carrying the placeholder is refused', () {
+      final String? problem = BackendService.releaseConfigurationProblem(
+        url: BackendService.defaultBackendUrl,
+        isRelease: true,
+        mode: DeploymentMode.connected,
+      );
+      expect(problem, isNotNull);
+    });
+
+    test('a connected release with a real backend is allowed', () {
       expect(
         BackendService.releaseConfigurationProblem(
           url: 'https://api.example-shop.co.ke/api',
           isRelease: true,
+          mode: DeploymentMode.connected,
         ),
         isNull,
       );
     });
 
-    test('a release build over plaintext http is allowed', () {
+    test('a connected release over plaintext http is refused', () {
       final String? problem = BackendService.releaseConfigurationProblem(
         url: 'http://api.example-shop.co.ke/api',
         isRelease: true,
+        mode: DeploymentMode.connected,
       );
-      expect(problem, isNull);
+      expect(problem, isNotNull);
     });
 
   });

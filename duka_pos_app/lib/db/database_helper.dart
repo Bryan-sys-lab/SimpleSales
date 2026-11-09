@@ -4,11 +4,14 @@ import 'dart:io';
 import 'dart:math' as math;
 import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
+import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:intl/intl.dart';
 import 'package:crypto/crypto.dart' show sha256;
 import 'package:path/path.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:sqflite/sqflite.dart';
+import 'package:sqflite_sqlcipher/sqlite_api.dart';
+import 'package:sqflite_sqlcipher/sqflite.dart' as sqlcipher_pkg;
 import '../models/audit_log.dart';
 import '../models/crash_log.dart';
 import '../models/credit.dart';
@@ -79,6 +82,38 @@ class DatabaseHelper {
   /// database still for as long as it is looking.
   static final _AsyncGate _workspaceGate = _AsyncGate();
   static Future<void>? _pendingTestClose;
+
+  /// OS-backed secure storage for per-workspace SQLCipher keys.
+  ///
+  /// Android Keystore / iOS Keychain back `flutter_secure_storage`, so the
+  /// key never leaves the device and cannot be read by other apps.
+  static final FlutterSecureStorage _secureStorage = FlutterSecureStorage();
+
+  /// Prefix for workspace database keys in secure storage.
+  static const _dbKeyPrefix = 'db_key_';
+
+  /// Generates a random 256-bit key, stores it keyed by workspace, and returns it.
+  static Future<String> _ensureWorkspaceKey(String workspaceKey) async {
+    final storageKey = '$_dbKeyPrefix$workspaceKey';
+    final existing = await _secureStorage.read(key: storageKey);
+    if (existing != null && existing.isNotEmpty) return existing;
+    final key = _generateKey();
+    await _secureStorage.write(key: storageKey, value: key);
+    return key;
+  }
+
+  /// Cryptographically random 256-bit key, hex-encoded.
+  static String _generateKey() {
+    final bytes = List<int>.generate(32, (_) => math.Random.secure().nextInt(256));
+    return sha256.convert(bytes).toString();
+  }
+
+  /// Deletes a workspace's database key. Used only when the database file is
+  /// also being deleted, so a key is never orphaned from its data.
+  static Future<void> _deleteWorkspaceKey(String workspaceKey) async {
+    final storageKey = '$_dbKeyPrefix$workspaceKey';
+    await _secureStorage.delete(key: storageKey);
+  }
 
   /// Must run before the first database access. The legacy path is retained
   /// for existing installations; every additional shop gets a separate file.
@@ -263,6 +298,8 @@ class DatabaseHelper {
   /// already in the field.
   @visibleForTesting
   static Future<Database> openExistingForUpgradeTests(String path) async {
+    // Test databases use the test-injected factory (FFI for local test runs)
+    // and stay unencrypted — SQLCipher is production-only.
     return databaseFactory.openDatabase(
       path,
       options: OpenDatabaseOptions(
@@ -279,8 +316,21 @@ class DatabaseHelper {
     final path = _workspaceKey == 'legacy'
         ? join(dbPath, 'duka_pos.db')
         : join(dbPath, 'duka_pos_$safeKey.db');
-    return openDatabase(path,
-        version: _schemaVersion, onCreate: _onCreate, onUpgrade: _onUpgrade);
+
+    // Production workspace databases are encrypted at rest with SQLCipher.
+    // Each workspace gets a device-local 256-bit key stored in the OS
+    // keystore/keychain via flutter_secure_storage. A missing key means the
+    // workspace has never been opened — generate one now.
+    final key = await _ensureWorkspaceKey(_workspaceKey);
+    return sqlcipher_pkg.databaseFactory.openDatabase(
+      path,
+      options: SqlCipherOpenDatabaseOptions(
+        version: _schemaVersion,
+        onCreate: _onCreate,
+        onUpgrade: _onUpgrade,
+        password: key,
+      ),
+    );
   }
 
   /// The file path a workspace's database lives at, computed the same way
@@ -305,6 +355,7 @@ class DatabaseHelper {
         instance._db = null;
       }
       await databaseFactory.deleteDatabase(await databasePathFor(workspaceKey));
+      await _deleteWorkspaceKey(workspaceKey);
     });
   }
 

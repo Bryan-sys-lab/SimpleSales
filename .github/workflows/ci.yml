@@ -162,6 +162,27 @@ jobs:
           echo "version=v${line}" >> "$GITHUB_OUTPUT"
           echo "This build carries ${line}."
 
+      - name: Assert target SDK is API 36+
+        if: ${{ env.BUILD_RELEASE == 'true' }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          apk="duka_pos_app/build/app/outputs/flutter-apk/app-release.apk"
+          if [ ! -f "$apk" ]; then
+            echo "::error::Release APK not found at $apk."
+            exit 1
+          fi
+          target_sdk="$(aapt dump badging "$apk" | awk -F"'" '/targetSdkVersion:/{print $2; exit}')"
+          if [ -z "$target_sdk" ]; then
+            echo "::error::Could not read targetSdkVersion from APK."
+            exit 1
+          fi
+          if [ "$target_sdk" -lt 36 ]; then
+            echo "::error::targetSdkVersion $target_sdk is below Google Play's required API 36."
+            exit 1
+          fi
+          echo "targetSdkVersion $target_sdk meets API 36+ requirement."
+
       - name: Upload release APK artifact
         if: ${{ env.BUILD_RELEASE == 'true' }}
         uses: actions/upload-artifact@v4

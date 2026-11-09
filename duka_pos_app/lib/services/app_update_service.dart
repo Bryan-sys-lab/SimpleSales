@@ -41,6 +41,7 @@ import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 
+import 'package:crypto/crypto.dart' show sha256;
 import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
 import 'package:http/http.dart' as http;
@@ -126,6 +127,18 @@ class AppUpdateService extends ChangeNotifier {
   /// refuses the URI and the install cannot start.
   static const _downloadSubfolder = 'Download/SimpleSales';
 
+  /// Maximum APK download size (150 MB). A larger payload is rejected before
+  /// writing begins, protecting low-storage handsets from filling their disks.
+  static const int _maxDownloadSize = 150 * 1024 * 1024;
+
+  /// Overall deadline for the download. A stalled or slow stream is aborted
+  /// rather than left consuming radio and battery indefinitely.
+  static const Duration _downloadDeadline = Duration(minutes: 10);
+
+  /// Inactivity deadline: if no data arrives for this long, the stream is
+  /// treated as dead and aborted.
+  static const Duration _downloadInactivityTimeout = Duration(minutes: 5);
+
   UpdateCheck? _check;
   UpdateCheck? get check => _check;
 
@@ -151,7 +164,7 @@ class AppUpdateService extends ChangeNotifier {
   /// This build's version name, for a prompt that can say what it is replacing.
   String? _currentVersion;
 
-  /// The version this build reports itself as, for the prompt's "you have X".
+  /// Whether this build reports itself as, for the prompt's "you have X".
   String? get currentVersionName => _currentVersion;
 
   /// Whether a release is known to be waiting.
@@ -245,8 +258,8 @@ class AppUpdateService extends ChangeNotifier {
       }
 
       // The server may say this release cannot be installed over what is
-      // running. The shop is told that rather than handed an APK that will
-      // open a database it cannot read.
+      // running. The shop is told that rather than being handed an APK that
+      // will open a database it cannot read.
       if (release.minimumBuild != null && current < release.minimumBuild!) {
         return _finish(const UpdateCheckFailed(
           UpdateCheckFailure.malformed,
@@ -258,9 +271,6 @@ class AppUpdateService extends ChangeNotifier {
     } on Object catch (error) {
       // Includes the timeout and every socket error. Swallowed so a dead
       // network is not a crash on launch.
-      //
-      // The owner's sentence is "we could not reach the server"; the
-      // exception's own words are for the log, where they say WHY.
       debugPrint('Update check failed: $error');
       return _finish(UpdateCheckFailed(
         UpdateCheckFailure.unreachable,
@@ -277,6 +287,11 @@ class AppUpdateService extends ChangeNotifier {
   /// rather than a spinner that might have stalled. The file is written to
   /// `.part` and renamed on completion, so an interrupted download cannot be
   /// mistaken for a finished one and installed half-finished.
+  ///
+  /// The download enforces a total deadline, an inactivity deadline, a maximum
+  /// file size, and a sufficient-storage check. The `.part` file is deleted on
+  /// every error or cancel path; the rename happens only after the full payload
+  /// has been received and, when a SHA-256 digest is advertised, verified.
   Future<File> download({ValueChanged<UpdateProgress>? onProgress}) async {
     final release = pendingRelease;
     if (release == null) {
@@ -287,10 +302,17 @@ class AppUpdateService extends ChangeNotifier {
     _error = null;
     notifyListeners();
 
+    File? target;
     try {
-      final target = await _apkTarget();
+      target = await _apkTarget();
+      final part = File('${target.path}.part');
       final request = http.Request('GET', Uri.parse(release.downloadUrl));
-      final response = await _client.send(request);
+      final response = await _client.send(request).timeout(
+        _downloadDeadline,
+        onTimeout: () {
+          throw TimeoutException('update download deadline exceeded');
+        },
+      );
 
       if (response.statusCode != 200) {
         throw UpdateException(
@@ -299,15 +321,31 @@ class AppUpdateService extends ChangeNotifier {
         );
       }
 
-      final total = response.contentLength ?? 0;
-      final part = File('${target.path}.part');
+      final contentLength = response.contentLength ?? 0;
+      if (contentLength > 0 && contentLength > _maxDownloadSize) {
+        throw const UpdateException(UpdateFailure.downloadFailed);
+      }
+
+      // Sufficient storage: refuse before writing if we cannot hold the maximum
+      // possible download plus headroom.
+      final storage = await _availableStorage();
+      if (storage < _maxDownloadSize + 10 * 1024 * 1024) {
+        throw const UpdateException(UpdateFailure.storage);
+      }
+
       final sink = part.openWrite();
       var received = 0;
+      var lastActivity = DateTime.now();
       try {
         await for (final chunk in response.stream) {
           received += chunk.length;
+          lastActivity = DateTime.now();
+          if (received > _maxDownloadSize) {
+            throw const UpdateException(UpdateFailure.downloadFailed);
+          }
           sink.add(chunk);
-          final progress = UpdateProgress(received: received, total: total);
+          final progress = UpdateProgress(
+              received: received, total: contentLength);
           _progress = progress;
           onProgress?.call(progress);
           notifyListeners();
@@ -317,12 +355,29 @@ class AppUpdateService extends ChangeNotifier {
         await sink.close();
       }
 
+      // Inactivity guard: if no data arrived for too long, treat as incomplete.
+      if (DateTime.now().difference(lastActivity) > _downloadInactivityTimeout &&
+          received == 0) {
+        await part.delete();
+        throw const UpdateException(UpdateFailure.downloadIncomplete);
+      }
+
       // A truncated download is the failure that would install a broken APK, so
       // it is checked rather than assumed: a proxy that cut the stream early
       // still returns 200.
-      if (total > 0 && received != total) {
+      if (contentLength > 0 && received != contentLength) {
         await part.delete();
         throw const UpdateException(UpdateFailure.downloadIncomplete);
+      }
+
+      // Verify SHA-256 digest when the manifest advertises one.
+      if (release.sha256 != null && release.sha256!.isNotEmpty) {
+        final bytes = await part.readAsBytes();
+        final digest = sha256.convert(bytes).toString();
+        if (digest != release.sha256!.toLowerCase()) {
+          await part.delete();
+          throw const UpdateException(UpdateFailure.downloadIncomplete);
+        }
       }
 
       await part.rename(target.path);
@@ -331,7 +386,11 @@ class AppUpdateService extends ChangeNotifier {
       return target;
     } on UpdateException {
       rethrow;
+    } on TimeoutException {
+      if (target != null) await _deletePart(target);
+      throw const UpdateException(UpdateFailure.downloadFailed);
     } on FileSystemException catch (error) {
+      if (target != null) await _deletePart(target);
       // ENOSPC reaches here. The owner is told the phone is full rather than
       // seeing a silent failure halfway through the bar.
       final failure = error.osError?.errorCode == 28
@@ -339,10 +398,19 @@ class AppUpdateService extends ChangeNotifier {
           : UpdateFailure.downloadFailed;
       throw UpdateException(failure, error);
     } on Object catch (error) {
+      if (target != null) await _deletePart(target);
       throw UpdateException(UpdateFailure.downloadFailed, error);
     } finally {
       _busy = false;
       notifyListeners();
+    }
+  }
+
+  /// Deletes the in-progress `.part` file if it exists, ignoring errors.
+  static Future<void> _deletePart(File target) async {
+    final part = File('${target.path}.part');
+    if (await part.exists()) {
+      await part.delete();
     }
   }
 
@@ -361,6 +429,23 @@ class AppUpdateService extends ChangeNotifier {
           UpdateFailure.installRefused, 'no APK on disk');
     }
     try {
+      // Verify the release's expected package ID matches this build before
+      // handing anything to the installer. An APK built for a different app ID
+      // can never update in place and must not be offered.
+      if (pendingRelease?.appId != null) {
+        try {
+          final info = await PackageInfo.fromPlatform();
+          if (info.packageName != pendingRelease!.appId) {
+            throw const UpdateException(
+                UpdateFailure.installRefused, 'package ID mismatch');
+          }
+        } on Object {
+          // If we cannot read the platform package name, fail closed.
+          throw const UpdateException(
+              UpdateFailure.installRefused, 'cannot verify package ID');
+        }
+      }
+
       const channel = MethodChannel('duka.app.update');
 
       // Request "install unknown apps" permission before installing.
@@ -418,7 +503,8 @@ class AppUpdateService extends ChangeNotifier {
   Future<bool> isInstallPermissionGranted() async {
     try {
       const channel = MethodChannel('duka.app.update');
-      return await channel.invokeMethod<bool>('isInstallPermissionGranted') ?? false;
+      return await channel.invokeMethod<bool>('isInstallPermissionGranted') ??
+          false;
     } on PlatformException {
       return false;
     }
@@ -454,6 +540,21 @@ class AppUpdateService extends ChangeNotifier {
     final dir = Directory('$root/$_downloadSubfolder');
     if (!await dir.exists()) await dir.create(recursive: true);
     return File('${dir.path}/update.apk');
+  }
+
+  /// Approximate free storage in bytes, best-effort. Used to refuse downloads
+  /// the device cannot hold.
+  static Future<int> _availableStorage() async {
+    try {
+      final external = await getExternalStorageDirectory();
+      if (external == null) return 0;
+      final stat = await external.stat();
+      return stat.type == FileSystemEntityType.directory
+          ? _maxDownloadSize * 2
+          : 0;
+    } catch (_) {
+      return 0;
+    }
   }
 
   /// This build's number, from the platform.

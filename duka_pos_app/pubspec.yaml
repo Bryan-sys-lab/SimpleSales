@@ -1,8 +1,9 @@
 name: duka_pos
 description: >-
   SimpleSales — an offline-first point of sale for African retail: sales,
-  M-Pesa payments, stock and eTIMS receipts that keep working when the internet
-  does not.
+  M-Pesa payments, stock and local tax reporting. eTIMS/KRA receipt issuance is
+  not activated in this release and is explicitly disabled until backend/KRA
+  onboarding and certification are complete.
 publish_to: 'none'
 # The build number must increase on every release: Android refuses to install a
 # build whose code is not higher than the installed one.
@@ -32,7 +33,7 @@ environment:
   sdk: '>=3.0.0 <4.0.0'
   # Pinned so a Flutter upgrade is a deliberate act, not something a transitive
   # bump can trigger underneath the design system.
-  flutter: '>=3.35.0'
+  flutter: '>=3.47.0'
 
 dependencies:
   flutter:
@@ -75,7 +76,7 @@ dependencies:
 
   # Google Sheets live sync (online path)
   google_sign_in: ^7.2.0
-  googleapis: ^17.0.0
+  googleapis: ^18.0.0
   googleapis_auth: ^2.3.5
   extension_google_sign_in_as_googleapis_auth: ^3.0.0
 
@@ -85,6 +86,11 @@ dependencies:
 
   # Security: per-install random PIN salt, kept in the OS keystore/keychain
   flutter_secure_storage: ^11.2.0
+
+  # Encrypted at-rest database. Each local workspace SQLite file is opened with
+  # a device-local 256-bit SQLCipher key derived per-workspace and kept in
+  # flutter_secure_storage (Android Keystore / iOS Keychain). See lib/db/.
+  sqflite_sqlcipher: ^2.2.1
 
   # Crash reporting (Sentry - no Firebase required)
   # 8.x compiles Kotlin with language version 1.6, which the Kotlin 2.4 compiler
@@ -108,7 +114,6 @@ dependencies:
 
   # Formatting
   intl: ^0.20.3
-  sqflite_common_ffi_web: ^1.2.0
   web_socket_channel: ^3.0.3
   image_picker: ^1.2.4
   # 4.12 requires archive 4.x, while excel 4.x requires archive 3.x.
@@ -198,3 +203,8 @@ flutter:
     - assets/onboarding/open_shop.jpg
     - assets/onboarding/open_shop_photo.jpg
     - assets/ref.jpg
+
+dependency_overrides:
+  # sqlite3 3.9.1 has a broken native asset build hook (FFI compilation fails).
+  # Pin to 3.8.0 which builds cleanly; revisit when upstream fixes it.
+  sqlite3: 3.8.0

@@ -20,10 +20,20 @@ import 'workspace_service.dart';
 /// never delete a manual encrypted export the owner has not shared yet.
 ///
 /// Real scheduling should move to WorkManager so the cycle fires even when the
-/// app process is not alive; the timer below is the in-process fallback.
+/// app process is not alive; the timer below is the in-process fallback. Last
+/// success, last attempt and next-due timestamps are persisted so that a
+/// process killed between cycles can pick up on the next launch rather than
+/// drifting its schedule.
 class AutoSyncService {
   static const _enabledKey = 'automatic_backup_sync_enabled';
   static const _jitterSeedKey = 'automatic_backup_sync_jitter_seed';
+  /// Timestamp of the last successful automatic backup, UTC ISO-8601.
+  static const _lastSuccessKey = 'automatic_backup_last_success';
+  /// Timestamp of the last backup attempt (success or failure), UTC ISO-8601.
+  static const _lastAttemptKey = 'automatic_backup_last_attempt';
+  /// UTC ISO-8601 time at which the next backup is due. Persisted so a process
+  /// restart can recompute the schedule rather than restarting the interval.
+  static const _nextDueKey = 'automatic_backup_next_due';
   static Timer? _timer;
   static bool _running = false;
 
@@ -77,6 +87,15 @@ class AutoSyncService {
 
   static Future<void> start() async {
     if (!await enabled) return;
+    // On launch, if a backup is overdue (process was killed or the till was
+    // closed past its due time), run once immediately rather than waiting for
+    // the next interval. This does not replay missed intervals — just one
+    // catch-up cycle.
+    final nextDue = await _nextDueTime();
+    final now = DateTime.now();
+    if (nextDue != null && now.isAfter(nextDue)) {
+      unawaited(runNow());
+    }
     _schedule();
     // Re-opening a till is a sync opportunity, but every till in a shop often
     // opens at the same time. A small per-process jitter prevents a fleet of
@@ -122,7 +141,13 @@ class AutoSyncService {
     // The setting may have been switched off while SharedPreferences was
     // being read. Do not leave a timer behind in that case.
     if (_timer != null || !await enabled) return;
-    _timer = Timer(_interval + Duration(seconds: jitter), () {
+    final delay = _interval + Duration(seconds: jitter);
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString(
+      _nextDueKey,
+      DateTime.now().toUtc().add(delay).toIso8601String(),
+    );
+    _timer = Timer(delay, () {
       _timer = null;
       unawaited(_runScheduled());
     });
@@ -132,6 +157,22 @@ class AutoSyncService {
     final jitter = jitterSecondsForSeed(await _jitterSeed());
     await Future<void>.delayed(Duration(seconds: jitter));
     if (await enabled) await runNow();
+  }
+
+  /// Persists the next-due time based on the interval from now.
+  static Future<void> _persistNextDue(SharedPreferences prefs) async {
+    await prefs.setString(
+      _nextDueKey,
+      DateTime.now().toUtc().add(_interval).toIso8601String(),
+    );
+  }
+
+  /// Reads the persisted next-due time, or null when none has been set.
+  static Future<DateTime?> _nextDueTime() async {
+    final prefs = await SharedPreferences.getInstance();
+    final raw = prefs.getString(_nextDueKey);
+    if (raw == null) return null;
+    return DateTime.tryParse(raw);
   }
 
   static Future<void> _runScheduled() async {
@@ -150,6 +191,8 @@ class AutoSyncService {
     _running = true;
     try {
       if (!force && !await enabled) return;
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setString(_lastAttemptKey, DateTime.now().toUtc().toIso8601String());
       // The local copy is the safety boundary. Write it before any network
       // request so an unreachable server cannot delay the only fresh backup
       // on the device.
@@ -161,6 +204,12 @@ class AutoSyncService {
         // "last backup" timestamp is recorded by the delegate itself, so a
         // manual and an automatic backup stay consistent.
         await writeAutomaticFullBackup(const InventoryBackupRequest());
+        // Record a successful backup and compute the next due time.
+        await prefs.setString(
+          _lastSuccessKey,
+          DateTime.now().toUtc().toIso8601String(),
+        );
+        await _persistNextDue(prefs);
       } catch (error) {
         debugPrint('Automatic local backup failed: $error');
       }

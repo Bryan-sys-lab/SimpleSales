@@ -176,14 +176,33 @@ class EncryptedBackupService {
     });
   }
 
+  /// A unique, collision-resistant suffix for backup filenames: UTC date-time
+  /// with millisecond precision plus a random component, so multiple backups
+  /// taken on the same day never overwrite each other.
+  static String _backupFileSuffix() {
+    final now = DateTime.now().toUtc();
+    final ymd =
+        '${now.year}${now.month.toString().padLeft(2, '0')}${now.day.toString().padLeft(2, '0')}'
+        '-${now.hour.toString().padLeft(2, '0')}${now.minute.toString().padLeft(2, '0')}${now.second.toString().padLeft(2, '0')}'
+        '-${now.millisecond.toString().padLeft(3, '0')}';
+    final random = _randomNextInt(10000).toString().padLeft(4, '0');
+    return '$ymd-$random';
+  }
+
+  static int _seed = DateTime.now().millisecondsSinceEpoch & 0x7fffffff;
+
+  static int _randomNextInt(int bound) {
+    _seed = (_seed * 1103515245 + 12345) & 0x7fffffff;
+    return _seed % bound;
+  }
+
   static Future<File> encryptToFile(List<int> clearBytes,
       {String prefix = 'duka-backup'}) async {
     final keyBytes = await _keyBytes();
     final payload = await compute(
         buildEncryptedPayload, EncryptRequest(keyBytes, clearBytes));
     final dir = await getApplicationDocumentsDirectory();
-    final file = File(
-        '${dir.path}/$prefix-${DateTime.now().toIso8601String().substring(0, 10)}.duka');
+    final file = File('${dir.path}/$prefix-${_backupFileSuffix()}.duka');
     await file.writeAsString(payload, flush: true);
     return file;
   }
@@ -220,7 +239,8 @@ class EncryptedBackupService {
     required String passphrase,
   }) async {
     if (passphrase.length < 8) {
-      throw const FormatException('Backup passphrase must be at least 8 characters');
+      throw const FormatException(
+          'Backup passphrase must be at least 8 characters');
     }
     final salt = randomBytes(16);
     return compute(
@@ -238,7 +258,8 @@ class EncryptedBackupService {
     required String passphrase,
   }) async {
     final value = jsonDecode(utf8.decode(encodedBytes));
-    if (value is! Map || value['format'] != _portableFormat ||
+    if (value is! Map ||
+        value['format'] != _portableFormat ||
         value['kdf'] != 'pbkdf2-sha256' ||
         value['iterations'] != _portableIterations) {
       throw const FormatException('Unsupported portable encrypted backup');
@@ -265,8 +286,7 @@ class EncryptedBackupService {
       passphrase: passphrase,
     );
     final dir = await getApplicationDocumentsDirectory();
-    final file = File(
-        '${dir.path}/$prefix-${DateTime.now().toIso8601String().substring(0, 10)}.duka');
+    final file = File('${dir.path}/$prefix-${_backupFileSuffix()}.duka');
     await file.writeAsString(payload, flush: true);
     return file;
   }

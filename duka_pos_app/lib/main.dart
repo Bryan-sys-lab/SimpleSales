@@ -6,8 +6,6 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:provider/single_child_widget.dart';
 import 'package:sentry_flutter/sentry_flutter.dart';
-import 'package:sqflite/sqflite.dart';
-import 'package:sqflite_common_ffi_web/sqflite_ffi_web.dart';
 
 import 'app_brand.dart';
 import 'l10n/generated/app_localizations.dart';
@@ -34,13 +32,6 @@ const String sentryDsn = String.fromEnvironment(
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
-
-  // The browser has no native sqflite plugin, so the default factory throws on
-  // the first database access. Point it at the IndexedDB-backed wasm build;
-  // native platforms keep their own factory.
-  if (kIsWeb) {
-    databaseFactory = databaseFactoryFfiWeb;
-  }
 
   // The build's own configuration, checked before anything else runs.
   //
@@ -279,6 +270,13 @@ class _LiveChannelGate extends StatefulWidget {
 class _LiveChannelGateState extends State<_LiveChannelGate>
     with WidgetsBindingObserver {
   late LiveChannelService _channel;
+  /// Generation counter for snapshot requests. Incremented on every explicit
+  /// transition that warrants a fresh snapshot (init, foreground resume, link
+  /// change). `_sync()` only requests a snapshot when the generation has
+  /// advanced past the last one served, so rebuilds and pong frames can never
+  /// re-trigger a read.
+  int _snapshotGeneration = 0;
+  int _lastRequestedGeneration = -1;
   @override
   void initState() {
     super.initState();
@@ -326,27 +324,38 @@ class _LiveChannelGateState extends State<_LiveChannelGate>
     // closing the socket for it would drop the channel for no reason.
     final foreground = state == AppLifecycleState.resumed;
     context.read<LiveChannelService>().setForeground(foreground);
-    if (foreground) unawaited(_sync());
+    if (foreground) {
+      // A foreground transition is an explicit sync trigger: advance the
+      // generation so exactly one snapshot is requested.
+      _snapshotGeneration++;
+      unawaited(_sync());
+    }
   }
 
   /// Applies the current link state and asks for a snapshot.
+  ///
+  /// Called once on initialization and once on each foreground transition.
+  /// Never called from `build()`: a rebuild must not trigger a network read.
   Future<void> _sync() async {
     if (!mounted) return;
     final channel = context.read<LiveChannelService>();
     final linked = await BackendService.isBackendLinked;
+    if (!mounted) return;
     channel.setLinked(linked);
-    // One snapshot on entering the foreground, so a returning shop sees current
-    // figures rather than whatever the last visit left on screen.
-    if (linked) channel.requestRead();
+    // Single-flight: request at most one snapshot per generation. Rebuilds,
+    // pong frames and change notifications that fire while a read is pending
+    // see the same generation and skip the request.
+    if (linked && _snapshotGeneration > _lastRequestedGeneration) {
+      _lastRequestedGeneration = _snapshotGeneration;
+      channel.requestRead();
+    }
   }
 
   @override
   Widget build(BuildContext context) {
-    // Signing in, signing out, or unlinking is exactly when the channel's
-    // premise changes, and a socket pointed at the previous shop is worse than
-    // no socket. The session's own notifyListeners triggers this rebuild.
-    context.watch<LiveChannelService>();
-    unawaited(_sync());
+    // build() is pure: no watch, no Future, no network request, no state
+    // mutation. The gate does not rebuild on live messages; screens watch the
+    // channel themselves and re-read when a change signal arrives.
     return widget.child;
   }
 }

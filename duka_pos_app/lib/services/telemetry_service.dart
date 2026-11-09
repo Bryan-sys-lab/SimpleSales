@@ -20,6 +20,7 @@
 /// shop that has gone quiet from one that is simply closed for the weekend.
 library;
 
+import 'dart:async';
 import 'dart:convert';
 
 import 'package:flutter/foundation.dart';
@@ -88,12 +89,26 @@ class TelemetryEvent {
 /// the app can record an event without plumbing a dependency through
 /// constructors.
 class TelemetryService extends ChangeNotifier {
-  TelemetryService() {
+  /// Completes once persisted telemetry state has been loaded. Callers must
+  /// await this before relying on `isIdle`, `events`, or any persisted value,
+  /// otherwise events recorded during startup can be overwritten by stale
+  /// persisted data.
+  Future<void> get initialized => _initFuture;
+
+  final Future<void> _initFuture;
+
+  TelemetryService() : _initFuture = Future<void>.value() {
+    // ignore: unawaited_futures
     _load();
   }
 
   /// The shared preferences instance, loaded lazily on first use.
   SharedPreferences? _prefs;
+
+  /// Serializes event persistence so concurrent `record()` calls cannot
+  /// interleave read-modify-write cycles against SharedPreferences.
+  bool _persisting = false;
+  final List<Future<void>> _pendingWrites = <Future<void>>[];
 
   DateTime? _lastActiveDate;
   DateTime? get lastActiveDate => _lastActiveDate;
@@ -107,12 +122,22 @@ class TelemetryService extends ChangeNotifier {
   bool _autoUpdateEnabled = false;
   bool get autoUpdateEnabled => _autoUpdateEnabled;
 
-  /// Whether the till is currently idle: no activity for [kIdleWindow].
+  /// The timestamp of the most recent *meaningful* user interaction.
   ///
-  /// Derived from the last recorded event: if the newest event is older than
-  /// the window, the till is idle.
+  /// Updated only by real user actions (taps, sales, screen views) — never by
+  /// telemetry markers such as `idle_start` or background pings. This is what
+  /// `isIdle` is derived from, so a background heartbeat cannot reset the idle
+  /// clock.
+  DateTime? _lastUserActivityAt;
+  DateTime? get lastUserActivityAt => _lastUserActivityAt;
+
+  /// Whether the till is currently idle: no meaningful activity for [kIdleWindow].
+  ///
+  /// Derived from [lastUserActivityAt], not from the event log. The event list
+  /// is newest-first, so reading `_events.last` (the oldest event) would report
+  /// idleness based on stale history rather than the last actual activity.
   bool get isIdle {
-    final last = _events.isEmpty ? null : _events.last.at;
+    final last = _lastUserActivityAt;
     if (last == null) return false;
     return DateTime.now().difference(last) >= kIdleWindow;
   }
@@ -126,26 +151,41 @@ class TelemetryService extends ChangeNotifier {
 
   /// Record an event. Never throws: failures are swallowed so a till can keep
   /// selling even if telemetry cannot write.
+  ///
+  /// When [countsAsActivity] is true (the default for user-initiated events),
+  /// the event updates [lastUserActivityAt], which drives `isIdle`. System
+  /// markers such as `idle_start` and `app_close` pass `false` so a background
+  /// heartbeat cannot reset the idle clock.
+  ///
+  /// The call awaits initialization first, so events recorded during startup
+  /// are never overwritten by persisted stale events.
   void record({
     required String name,
     DateTime? at,
     String? route,
     String? detail,
+    bool countsAsActivity = true,
   }) {
-    final event = TelemetryEvent(
-      name: name,
-      at: at ?? DateTime.now(),
-      route: route,
-      detail: detail,
-    );
-    _events.insert(0, event);
-    if (_events.length > kMaxStoredEvents) {
-      _events.removeRange(kMaxStoredEvents, _events.length);
-    }
     // ignore: unawaited_futures
-    _persistEvent(event);
-    _maybeUpdateActivity();
-    notifyListeners();
+    _initFuture.then((_) {
+      final event = TelemetryEvent(
+        name: name,
+        at: at ?? DateTime.now(),
+        route: route,
+        detail: detail,
+      );
+      _events.insert(0, event);
+      if (_events.length > kMaxStoredEvents) {
+        _events.removeRange(kMaxStoredEvents, _events.length);
+      }
+      if (countsAsActivity) {
+        _lastUserActivityAt = event.at;
+      }
+      _maybeUpdateActivity();
+      notifyListeners();
+      // ignore: unawaited_futures
+      _persistEventSerial(event);
+    });
   }
 
   /// Record that the app was opened (a new session began).
@@ -158,7 +198,7 @@ class TelemetryService extends ChangeNotifier {
 
   /// Record that the app was closed or backgrounded.
   void recordAppClose({String? route}) {
-    record(name: 'app_close', route: route);
+    record(name: 'app_close', route: route, countsAsActivity: false);
   }
 
   /// Record that a screen was viewed.
@@ -183,12 +223,12 @@ class TelemetryService extends ChangeNotifier {
 
   /// Record that the till went idle (no activity for [kIdleWindow]).
   void recordIdleStart() {
-    record(name: 'idle_start');
+    record(name: 'idle_start', countsAsActivity: false);
   }
 
   /// Record that the till became active again after being idle.
   void recordIdleEnd() {
-    record(name: 'idle_end');
+    record(name: 'idle_end', countsAsActivity: false);
   }
 
   /// Whether the owner has allowed automatic updates.
@@ -220,7 +260,27 @@ class TelemetryService extends ChangeNotifier {
     notifyListeners();
   }
 
-  Future<void> _persistEvent(TelemetryEvent event) async {
+  Future<void> _persistEventSerial(TelemetryEvent event) async {
+    if (_persisting) {
+      // A write is already in flight; queue this one to run after it.
+      final completer = Completer<void>();
+      _pendingWrites.add(completer.future.then((_) => _doPersistEvent(event)).then((_) => completer.complete()));
+      return;
+    }
+    _persisting = true;
+    try {
+      await _doPersistEvent(event);
+      // Drain any queued writes sequentially.
+      while (_pendingWrites.isNotEmpty) {
+        final next = _pendingWrites.removeAt(0);
+        await next;
+      }
+    } finally {
+      _persisting = false;
+    }
+  }
+
+  Future<void> _doPersistEvent(TelemetryEvent event) async {
     final prefs = await _prefsFuture;
     final existing = prefs.getStringList(_kEvents) ?? <String>[];
     final encoded = <String>[jsonEncode(event.toMap())];

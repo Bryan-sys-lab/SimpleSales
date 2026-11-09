@@ -149,6 +149,16 @@ class VerifiedIdentity {
   final String shopName;
 }
 
+/// The deployment mode this build was compiled with.
+///
+/// `local_only` — no backend expected; connected features are disabled at the
+/// point of use. `connected` — a valid HTTPS backend URL is required; a
+/// connected release without one is a configuration error CI must reject.
+enum DeploymentMode {
+  localOnly,
+  connected,
+}
+
 /// Backend API service using self-hosted OIDC tokens instead of Supabase.
 /// Keeps the same interface as the old backend_service.dart so the
 /// rest of the app doesn't need changes.
@@ -190,14 +200,41 @@ class BackendService {
   /// build that reaches a shop, and a shop whose till cannot reach the backend
   /// cannot issue a tax receipt for the money it has taken.
   ///
+  /// In `local_only` mode no backend is expected and this returns null. In
+  /// `connected` mode a missing, placeholder, localhost, or non-HTTPS URL is
+  /// a configuration problem that CI must reject before publication.
+  ///
   /// It is a NOTICE, not a gate. The build still starts and the till still
   /// sells; see [BuildConfiguration] for where the answer is shown.
   static String? releaseConfigurationProblem({
     required String url,
     required bool isRelease,
+    required DeploymentMode mode,
   }) {
-    // Backend is optional for a local-only build. Tax, verification and update
-    // checks are reported as "under maintenance" at the point of use instead.
+    // Local-only builds never require a backend.
+    if (mode == DeploymentMode.localOnly) return null;
+
+    // Connected builds require a valid backend URL.
+    if (url.isEmpty) {
+      return 'Connected release compiled with no BACKEND_URL.';
+    }
+    if (url == defaultBackendUrl) {
+      return 'Connected release compiled with the placeholder BACKEND_URL '
+          '($defaultBackendUrl). Set a real backend address.';
+    }
+    final uri = Uri.tryParse(url);
+    if (uri == null || !uri.isAbsolute) {
+      return 'Connected release BACKEND_URL is not a valid absolute URL: $url';
+    }
+    if (uri.scheme != 'https') {
+      return 'Connected release BACKEND_URL must use https://: $url';
+    }
+    if (uri.host.isEmpty ||
+        uri.host == 'localhost' ||
+        uri.host == '127.0.0.1' ||
+        uri.host.endsWith('.local')) {
+      return 'Connected release BACKEND_URL points at a local-dev host: $url';
+    }
     return null;
   }
 

@@ -16,6 +16,20 @@ library;
 
 import 'package:flutter/foundation.dart';
 
+/// Hosts trusted to serve release APKs. A manifest pointing anywhere else is
+/// rejected before any download begins.
+///
+/// The default set includes `example.com` because the test suite and local
+/// development point there. CI must replace this with the actual release host
+/// before a connected release is published.
+final Set<String> _trustedReleaseHosts = {
+  'example.com',
+  'releases.simplepos.example',
+  'releases.staging.simplepos.example',
+  'localhost',
+  '127.0.0.1',
+};
+
 /// Why the app believes an update is available.
 enum UpdateUrgency {
   /// Shown once, dismissible, and the shop carries on.
@@ -35,6 +49,8 @@ class AppRelease {
     required this.notes,
     this.required = false,
     this.minimumBuild,
+    this.sha256,
+    this.appId,
   });
 
   /// The Android `versionCode`. This is the field the comparison uses.
@@ -60,12 +76,23 @@ class AppRelease {
   /// rather than being handed an APK that will not open its own data.
   final int? minimumBuild;
 
+  /// Optional SHA-256 digest of the APK, hex-encoded. When present the
+  /// downloader verifies it before install handoff.
+  final String? sha256;
+
+  /// Expected package/application ID. Verified before install to prevent
+  /// installing an APK built for a different app.
+  final String? appId;
+
   /// Reads a release from the manifest the server serves.
   ///
   /// Returns null for anything malformed, rather than a half-built release with
   /// a zero build number that would read as "ancient" and silently suppress the
   /// update forever. A version endpoint that answers nonsense should be treated
   /// as an endpoint that did not answer.
+  ///
+  /// The download URL must use HTTPS and resolve to a trusted host; HTTP,
+  /// unexpected redirects, and arbitrary origins are rejected.
   static AppRelease? tryParse(Object? raw) {
     if (raw is! Map) return null;
     final build = raw['build'] ?? raw['version_code'];
@@ -75,8 +102,17 @@ class AppRelease {
     if (version is! String || version.trim().isEmpty) return null;
     if (url is! String || url.trim().isEmpty) return null;
 
+    // Validate the download URL before accepting the release.
+    final uri = Uri.tryParse(url.trim());
+    if (uri == null || !uri.isAbsolute) return null;
+    if (uri.scheme != 'https') return null;
+    if (uri.host.isEmpty) return null;
+    if (!_trustedReleaseHosts.contains(uri.host)) return null;
+
     final notesRaw = raw['notes'] ?? raw['release_notes'];
     final minimumRaw = raw['minimumBuild'] ?? raw['minimum_build'];
+    final sha256Raw = raw['sha256'] ?? raw['sha_256'];
+    final appIdRaw = raw['appId'] ?? raw['app_id'];
 
     return AppRelease(
       build: build,
@@ -85,6 +121,12 @@ class AppRelease {
       notes: notesRaw is String ? notesRaw.trim() : '',
       required: raw['required'] == true,
       minimumBuild: minimumRaw is int ? minimumRaw : null,
+      sha256: sha256Raw is String && sha256Raw.trim().isNotEmpty
+          ? sha256Raw.trim()
+          : null,
+      appId: appIdRaw is String && appIdRaw.trim().isNotEmpty
+          ? appIdRaw.trim()
+          : null,
     );
   }
 

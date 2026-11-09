@@ -64,6 +64,7 @@ class IdleGuard extends StatefulWidget {
 class _IdleGuardState extends State<IdleGuard> with WidgetsBindingObserver {
   Timer? _timer;
   LiveChannelService? _channel;
+  AppUpdateService? _updateService;
   bool _wasIdle = false;
 
   @override
@@ -71,8 +72,20 @@ class _IdleGuardState extends State<IdleGuard> with WidgetsBindingObserver {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
     _reset();
-    _channel = context.read<LiveChannelService>();
-    _channel?.addListener(_reset);
+    try {
+      _channel = context.read<LiveChannelService>();
+      _channel?.addListener(_reset);
+    } on Exception {
+      _channel = null;
+    }
+    try {
+      _updateService = context.read<AppUpdateService>();
+    } on Exception {
+      // Provider<AppUpdateService> is not above this widget — widget tests mount
+      // IdleGuard without the full provider tree. Auto-download simply won't run
+      // in that context, which is fine: production composition always provides it.
+      _updateService = null;
+    }
   }
 
   @override
@@ -127,8 +140,10 @@ class _IdleGuardState extends State<IdleGuard> with WidgetsBindingObserver {
       _wasIdle = true;
       telemetry.recordIdleStart();
       // An idle till is the right time to download an update silently, if the
-      // owner has allowed automatic updates.
-      unawaited(AppUpdateService().autoDownloadWhenIdle());
+      // owner has allowed automatic updates. The shared instance (provided at
+      // the composition root) is used — never an ephemeral one — so the
+      // pending release discovered at launch is the one that gets downloaded.
+      unawaited(_updateService?.autoDownloadWhenIdle());
       // An idle sign-out is the same event as a deliberate one — same session
       // ended, same tokens to clear — so it goes through `signOut` rather than a
       // shortcut that would leave the online identity alive on the device. No

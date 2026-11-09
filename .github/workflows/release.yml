@@ -377,6 +377,23 @@ jobs:
 
           echo "APK reports versionName=${actual_name} versionCode=${actual_code}, as released."
 
+      - name: Assert target SDK is API 36+
+        shell: bash
+        run: |
+          set -euo pipefail
+          apk="build/SimpleSales-${GITHUB_REF_NAME}.apk"
+          aapt2="$(ls -d "$ANDROID_HOME"/build-tools/*/aapt2 | sort -V | tail -1)"
+          target_sdk=" $("$aapt2" dump badging "$apk" | awk -F"'" '/targetSdkVersion:/{print $2; exit}')"
+          if [ -z "$target_sdk" ]; then
+            echo "::error::Could not read targetSdkVersion from APK."
+            exit 1
+          fi
+          if [ "$target_sdk" -lt 36 ]; then
+            echo "::error::targetSdkVersion $target_sdk is below Google Play's required API 36."
+            exit 1
+          fi
+          echo "targetSdkVersion $target_sdk meets API 36+ requirement."
+
       - name: Remove signing material from the workspace
         if: always()
         shell: bash
