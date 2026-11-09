@@ -390,12 +390,17 @@ class LiveChannelService extends ChangeNotifier {
   static String? _liveUrl() {
     if (BackendService.backendUrl.isEmpty) return null;
     final base = BackendService.backendUrl.replaceAll(RegExp(r'/+$'), '');
-    final scheme = base.startsWith('wss://') || base.startsWith('ws://')
-        ? base
-        : base
-            .replaceFirst(RegExp(r'^https://'), 'wss://')
-            .replaceFirst(RegExp(r'^http://'), 'ws://');
-    return '$scheme/live';
+    // The live channel must never run over plaintext: the bearer token travels
+    // in the WebSocket handshake, and ws:// would send it in cleartext. Only
+    // wss:// is acceptable; https:// upgrades to wss://, anything else is off.
+    if (base.startsWith('wss://')) {
+      return '${base.replaceFirst(RegExp(r'^wss://'), 'wss://')}/live';
+    }
+    if (base.startsWith('https://')) {
+      return '${base.replaceFirst(RegExp(r'^https://'), 'wss://')}/live';
+    }
+    // http:// or ws:// or anything else: refuse plaintext transport.
+    return null;
   }
 
   @override

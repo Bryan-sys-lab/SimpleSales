@@ -1,0 +1,6 @@
+FROM node:26-bookworm-slim
+
+WORKDIR /opt/keycloak-init
+COPY keycloak-init.mjs /opt/keycloak-init/keycloak-init.mjs
+
+ENTRYPOINT ["node", "/opt/keycloak-init/keycloak-init.mjs"]

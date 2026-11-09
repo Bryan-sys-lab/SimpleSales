@@ -1,0 +1,32 @@
+{
+  "$schema": "./node_modules/wrangler/config-schema.json",
+  "name": "duka-pos-backend",
+  "main": "worker.ts",
+  "compatibility_date": "2026-10-26",
+  "compatibility_flags": ["nodejs_compat"],
+  "upload_source_maps": true,
+  "observability": { "enabled": true },
+  "vars": { "APP_RELEASE_REPOSITORY": "Bryan-sys-lab/SimpleSales" },
+  "containers": [
+    {
+      "class_name": "BackendContainer",
+      "scheduling_policy": "durable_object",
+      "images": { "base": { "image": "registry.cloudflare.com/0d995e8087844342ed0da43d9ccd9993/duka-pos-backend@sha256:bfe23d132c6f91733ab781cc10a995526fabebb6f7ee7a3c72abf141d4c67be9" } },
+      "observability": { "enabled": true }
+    }
+  ],
+  "durable_objects": { "bindings": [ { "name": "BACKEND_CONTAINER", "class_name": "BackendContainer" } ] },
+  "exports": { "BackendContainer": { "type": "durable-object", "storage": "sqlite" } },
+  "secrets": {
+    "required": [
+      "DATABASE_URL", "AUTH_JWT_SECRET", "AUTH_JWT_SECRET_PREVIOUS",
+      "EMAIL_VERIFICATION_SECRET", "CLOUDFLARE_ACCOUNT_ID", "CLOUDFLARE_API_TOKEN",
+      "CLOUDFLARE_EMAIL_FROM", "PUBLIC_API_URL", "PAYHERO_AUTH_TOKEN",
+      "PAYHERO_ACCOUNT_ID", "MPESA_CALLBACK_KEY", "SYSTEM_ADMIN_SUBJECTS",
+      "R2_ENDPOINT", "R2_ACCESS_KEY_ID", "R2_SECRET_ACCESS_KEY", "R2_BUCKET_NAME",
+      "R2_PUBLIC_URL", "TAX_ENTITY_ENCRYPTION_KEY", "TAX_REPORTING_ACTIVATED",
+      "RISITI_BASE_URL", "RISITI_API_KEY", "APP_VERSION_NAME", "APP_VERSION_CODE",
+      "APP_DOWNLOAD_URL", "APP_UPDATE_REQUIRED", "APP_RELEASE_NOTES"
+    ]
+  }
+}

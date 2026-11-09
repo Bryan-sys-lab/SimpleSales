@@ -152,7 +152,8 @@ class _OwnerSetupScreenState extends State<OwnerSetupScreen> {
   Future<void> _openAssetPdf(String asset) async {
     try {
       final data = await rootBundle.load(asset);
-      final file = File('${(await getTemporaryDirectory()).path}/${asset.split('/').last}');
+      final file = File(
+          '${(await getTemporaryDirectory()).path}/${asset.split('/').last}');
       await file.writeAsBytes(data.buffer.asUint8List());
       await SharePlus.instance.share(ShareParams(
         files: <XFile>[XFile(file.path, mimeType: 'application/pdf')],
@@ -161,7 +162,9 @@ class _OwnerSetupScreenState extends State<OwnerSetupScreen> {
     } catch (_) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text(AppLocalizations.of(context).ownerSetupCouldNotOpenDocument)),
+          SnackBar(
+              content: Text(
+                  AppLocalizations.of(context).ownerSetupCouldNotOpenDocument)),
         );
       }
     }
@@ -188,7 +191,8 @@ class _OwnerSetupScreenState extends State<OwnerSetupScreen> {
       return;
     }
     if (!_acceptedTerms || !_acceptedPrivacy) {
-      setState(() => _error = 'Accept the Terms of Service and Privacy Policy.');
+      setState(
+          () => _error = 'Accept the Terms of Service and Privacy Policy.');
       HapticTheme.of(context).fire(HapticEvent.reject);
       return;
     }
@@ -286,127 +290,143 @@ class _OwnerSetupScreenState extends State<OwnerSetupScreen> {
                         mainAxisSize: MainAxisSize.min,
                         crossAxisAlignment: CrossAxisAlignment.stretch,
                         children: <Widget>[
-                    // Header
-                    Row(
-                      children: <Widget>[
-                        if (widget.onCancel != null)
-                          IconButton(
-                            onPressed: widget.onCancel,
-                            icon: const Icon(Icons.arrow_back),
-                          ),
-                        const SimplePosMark(size: 36),
-                      ],
-                    ),
-                    SizedBox(height: spacing.sm),
-                    // Media window style header
-                    OnboardStyle.window(
-                      context: context,
-                      image: const DecoratedBox(
-                        decoration: BoxDecoration(
-                          gradient: LinearGradient(
-                            colors: <Color>[
-                              Color(0xFF0B0F14),
-                              Color(0xFF11161D),
+                          // Header
+                          Row(
+                            children: <Widget>[
+                              if (widget.onCancel != null)
+                                IconButton(
+                                  onPressed: widget.onCancel,
+                                  icon: const Icon(Icons.arrow_back),
+                                ),
+                              const SimplePosMark(size: 36),
                             ],
-                            begin: Alignment.topLeft,
-                            end: Alignment.bottomRight,
                           ),
-                        ),
-                        child: Center(
-                          child: Icon(Icons.storefront_outlined, size: 56, color: Color(0xFF4ADE7E)),
-                        ),
+                          SizedBox(height: spacing.sm),
+                          // Media window style header
+                          OnboardStyle.window(
+                            context: context,
+                            image: const DecoratedBox(
+                              decoration: BoxDecoration(
+                                gradient: LinearGradient(
+                                  colors: <Color>[
+                                    Color(0xFF0B0F14),
+                                    Color(0xFF11161D),
+                                  ],
+                                  begin: Alignment.topLeft,
+                                  end: Alignment.bottomRight,
+                                ),
+                              ),
+                              child: Center(
+                                child: Icon(Icons.storefront_outlined,
+                                    size: 56, color: Color(0xFF4ADE7E)),
+                              ),
+                            ),
+                            badgeIcon: Icons.storefront_outlined,
+                            label:
+                                widget.isAdditionalShop ? 'ADD SHOP' : 'SET UP',
+                            title: widget.isAdditionalShop
+                                ? 'Add another shop'
+                                : 'Set up your shop',
+                            body: widget.isAdditionalShop
+                                ? 'This shop gets its own admin PIN, so a PIN that opens one shop on this phone does not open another. Give the new shop its name and you will go straight into it.'
+                                : 'Create the shop admin account. The admin can create managers and cashiers, manage stock, and connect optional services.',
+                            type: type,
+                            colors: colors,
+                            spacing: spacing,
+                          ),
+                          SizedBox(height: spacing.sm),
+                          // Profile picker
+                          _ProfilePicker(
+                            value: _shopProfile,
+                            onChanged: (value) {
+                              if (value != null) {
+                                setState(() => _shopProfile = value);
+                              }
+                            },
+                          ),
+                          SizedBox(height: spacing.sm),
+                          // Form
+                          _SetupFields(
+                            formKey: _formKey,
+                            shop: _shop,
+                            name: _name,
+                            email: _email,
+                            pin: _pin,
+                            pin2: _pin2,
+                            validateShop: _validateShop,
+                            validateName: _validateName,
+                            validateEmail: _validateEmail,
+                            validatePin: _validatePin,
+                            validatePinConfirm: _validatePinConfirm,
+                            onSubmit: _create,
+                          ),
+                          SizedBox(height: spacing.md),
+                          Row(
+                            children: [
+                              Checkbox(
+                                value: _acceptedTerms,
+                                onChanged: (v) =>
+                                    setState(() => _acceptedTerms = v ?? false),
+                              ),
+                              Expanded(
+                                child: GestureDetector(
+                                  onTap: () => _openAssetPdf(
+                                      'assets/SimpleSales_Terms_of_Service.pdf'),
+                                  child: Text(
+                                      AppLocalizations.of(context)
+                                          .ownerSetupAgreeTerms,
+                                      style: TextStyle(
+                                          decoration: TextDecoration.underline,
+                                          color: Theme.of(context)
+                                              .colorScheme
+                                              .primary)),
+                                ),
+                              ),
+                            ],
+                          ),
+                          Row(
+                            children: [
+                              Checkbox(
+                                value: _acceptedPrivacy,
+                                onChanged: (v) => setState(
+                                    () => _acceptedPrivacy = v ?? false),
+                              ),
+                              Expanded(
+                                child: GestureDetector(
+                                  onTap: () => _openAssetPdf(
+                                      'assets/SimpleSales_Privacy_Policy.pdf'),
+                                  child: Text(
+                                      AppLocalizations.of(context)
+                                          .ownerSetupAgreePrivacy,
+                                      style: TextStyle(
+                                          decoration: TextDecoration.underline,
+                                          color: Theme.of(context)
+                                              .colorScheme
+                                              .primary)),
+                                ),
+                              ),
+                            ],
+                          ),
+                          if (_error != null) ...<Widget>[
+                            SizedBox(height: spacing.md),
+                            PersistentBanner(
+                              message: _error!,
+                              icon: Icons.error_outline,
+                              tone: StatusTone.danger,
+                            ),
+                          ],
+                        ],
                       ),
-                      badgeIcon: Icons.storefront_outlined,
-                      label: widget.isAdditionalShop ? 'ADD SHOP' : 'SET UP',
-                      title: widget.isAdditionalShop
-                          ? 'Add another shop'
-                          : 'Set up your shop',
-                      body: widget.isAdditionalShop
-                          ? 'This shop gets its own admin PIN, so a PIN that opens one shop on this phone does not open another. Give the new shop its name and you will go straight into it.'
-                          : 'Create the shop admin account. The admin can create managers and cashiers, manage stock, and connect optional services.',
-                      type: type,
-                      colors: colors,
-                      spacing: spacing,
                     ),
-                    SizedBox(height: spacing.sm),
-                    // Profile picker
-                    _ProfilePicker(
-                      value: _shopProfile,
-                      onChanged: (value) {
-                        if (value != null) setState(() => _shopProfile = value);
-                      },
-                    ),
-                    SizedBox(height: spacing.sm),
-                    // Form
-                    _SetupFields(
-                      formKey: _formKey,
-                      shop: _shop,
-                      name: _name,
-                      email: _email,
-                      pin: _pin,
-                      pin2: _pin2,
-                      validateShop: _validateShop,
-                      validateName: _validateName,
-                      validateEmail: _validateEmail,
-                      validatePin: _validatePin,
-                      validatePinConfirm: _validatePinConfirm,
-                      onSubmit: _create,
-                    ),
-                    SizedBox(height: spacing.md),
-                    Row(
-                      children: [
-                        Checkbox(
-                          value: _acceptedTerms,
-                          onChanged: (v) => setState(() => _acceptedTerms = v ?? false),
-                        ),
-                        Expanded(
-                          child: GestureDetector(
-                            onTap: () => _openAssetPdf(
-                                'assets/SimpleSales_Terms_of_Service.pdf'),
-                            child: Text(AppLocalizations.of(context).ownerSetupAgreeTerms,
-                                style: TextStyle(
-                                    decoration: TextDecoration.underline,
-                                    color: Theme.of(context).colorScheme.primary)),
-                          ),
-                        ),
-                      ],
-                    ),
-                    Row(
-                      children: [
-                        Checkbox(
-                          value: _acceptedPrivacy,
-                          onChanged: (v) => setState(() => _acceptedPrivacy = v ?? false),
-                        ),
-                        Expanded(
-                          child: GestureDetector(
-                            onTap: () => _openAssetPdf(
-                                'assets/SimpleSales_Privacy_Policy.pdf'),
-                            child: Text(AppLocalizations.of(context).ownerSetupAgreePrivacy,
-                                style: TextStyle(
-                                    decoration: TextDecoration.underline,
-                                    color: Theme.of(context).colorScheme.primary)),
-                          ),
-                        ),
-                      ],
-                    ),
-                    if (_error != null) ...<Widget>[
-                      SizedBox(height: spacing.md),
-                      PersistentBanner(
-                        message: _error!,
-                        icon: Icons.error_outline,
-                        tone: StatusTone.danger,
-                      ),
-                    ],
-                  ],
-                ),
-              ),
-            ),
+                  ),
                   Padding(
                     padding: EdgeInsets.all(spacing.xl),
                     child: OnboardStyle.primaryButton(
                       context: context,
                       onPressed: _saving ? null : _create,
-                      label: _saving ? 'Creating the shop' : 'Create shop admin account',
+                      label: _saving
+                          ? 'Creating the shop'
+                          : 'Create shop admin account',
                       colors: colors,
                       spacing: spacing,
                     ),

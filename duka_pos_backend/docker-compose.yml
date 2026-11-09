@@ -1,0 +1,191 @@
+# The development stack: PostgreSQL, object storage, and the API.
+#
+# Every value below is a LOCAL-DEV default, never a secret: the overrides live
+# in .env (gitignored), via `${VAR:-default}`. What a real deployment needs —
+# strong passwords, a live PayHero token, SYSTEM_ADMIN_SUBJECTS — is supplied
+# there, or the placeholder is honest: `unset-local-dev` values that only ever
+# serve localhost.
+#
+# The application database is seeded by Prisma migrations.
+
+x-backend-env: &backend-env
+  # The container below is the DEV stack: production behaviour (the https
+  # startup check, P0-10) is a real deployment's, with .env carrying the
+  # public URL. A laptop has none, and the backend would refuse its own boot.
+  NODE_ENV: development
+  # Production must provide a managed Postgres URL. The local default keeps
+  # Prisma's pool bounded so a laptop or small container cannot exhaust DB
+  # connections during sync bursts.
+  DATABASE_URL: ${DATABASE_URL:-postgresql://duka_pos:${DUKA_DB_PASSWORD:-duka_local_dev}@db:5432/duka_pos?schema=public&connection_limit=5&pool_timeout=10}
+  AUTH_JWT_SECRET: ${AUTH_JWT_SECRET:-local-dev-secret-change-me}
+  AUTH_JWT_SECRET_PREVIOUS: ${AUTH_JWT_SECRET_PREVIOUS:-}
+  EMAIL_VERIFICATION_SECRET: ${EMAIL_VERIFICATION_SECRET:-local-dev-verify-secret}
+  CLOUDFLARE_ACCOUNT_ID: ${CLOUDFLARE_ACCOUNT_ID:-}
+  CLOUDFLARE_API_TOKEN: ${CLOUDFLARE_API_TOKEN:-}
+  CLOUDFLARE_EMAIL_FROM: ${CLOUDFLARE_EMAIL_FROM:-security@nerva.co.ke}
+  # The real credential comes from .env; the placeholder is refused by the
+  # PayHero checks, so a misconfigured deploy says so instead of failing a
+  # payment in the field.
+  PAYHERO_AUTH_TOKEN: ${PAYHERO_AUTH_TOKEN:-unset-local-dev}
+  # The shared key the C2B webhook checks; a deployment sets its own (and
+  # the same value in Daraja) — the placeholder makes the telco callback
+  # surface REFUSE rather than silently listen.
+  MPESA_CALLBACK_KEY: ${MPESA_CALLBACK_KEY:-unset-local-dev}
+  SYSTEM_ADMIN_SUBJECTS: ${SYSTEM_ADMIN_SUBJECTS:-local-admin-subject}
+  FRONTEND_URL: ${FRONTEND_URL:-http://localhost:3100}
+  RATE_LIMIT_LIMIT: ${RATE_LIMIT_LIMIT:-120}
+  APP_VERSION_NAME: '2.0.0'
+  APP_VERSION_CODE: '23'
+  APP_DOWNLOAD_URL: http://localhost:3000/app/app.apk
+  APP_UPDATE_REQUIRED: 'false'
+  APP_RELEASE_NOTES: 'Auto-update manifest'
+  APP_RELEASE_REPOSITORY: ${APP_RELEASE_REPOSITORY:-Bryan-sys-lab/SimpleSales}
+  R2_ENDPOINT: ${R2_ENDPOINT:-http://storage:9000}
+  R2_ACCESS_KEY_ID: ${R2_ACCESS_KEY_ID:-duka_local_storage}
+  R2_SECRET_ACCESS_KEY: ${R2_SECRET_ACCESS_KEY:-duka_local_storage_secret}
+  R2_BUCKET_NAME: ${R2_BUCKET_NAME:-duka-pos-profile-photos}
+  R2_PUBLIC_URL: ${R2_PUBLIC_URL:-http://localhost:9000/duka-pos-profile-photos}
+  # Deterministic verification is available only to local/test runs so the
+  # Postman journey can complete without an email transport. Production never
+  # accepts this override because the generator ignores it there.
+  AUTH_TEST_CODE: ${AUTH_TEST_CODE:-123456}
+  # Tax reporting stays disabled in local development until a merchant is
+  # onboarded and production approval is complete.
+  TAX_REPORTING_PROVIDER: ${TAX_REPORTING_PROVIDER:-risiti}
+  TAX_REPORTING_ACTIVATED: ${TAX_REPORTING_ACTIVATED:-false}
+  RISITI_BASE_URL: ${RISITI_BASE_URL:-https://sandbox-api.getrisiti.com/v1/platform}
+  RISITI_API_KEY: ${RISITI_API_KEY:-}
+
+services:
+  # ------------------------------------------------------------------
+  # PostgreSQL - application database
+  # ------------------------------------------------------------------
+  db:
+    image: postgres:15-alpine
+    container_name: duka_pos_db
+    environment:
+      POSTGRES_USER: duka_pos
+      POSTGRES_PASSWORD: ${DUKA_DB_PASSWORD:-duka_local_dev}
+      POSTGRES_DB: duka_pos
+    volumes:
+      - duka_pos_db_data:/var/lib/postgresql/data
+
+    ports:
+      - '5432:5432'
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U duka_pos -d duka_pos']
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  # S3-compatible local object storage. Production uses Cloudflare R2 with
+  # the same variables; keeping the contract identical makes profile-photo
+  # flows testable without putting binaries in PostgreSQL. RustFS is used for
+  # local development because the old minio/minio Docker Hub image is no
+  # longer a reliable pull target.
+  storage:
+    image: rustfs/rustfs:latest
+    container_name: duka_pos_storage
+    environment:
+      RUSTFS_VOLUMES: /data
+      RUSTFS_ADDRESS: 0.0.0.0:9000
+      RUSTFS_CONSOLE_ADDRESS: 0.0.0.0:9001
+      RUSTFS_CONSOLE_ENABLE: 'true'
+      RUSTFS_CHECK_UPDATE: 'false'
+      RUSTFS_ACCESS_KEY: ${R2_ACCESS_KEY_ID:-duka_local_storage}
+      RUSTFS_SECRET_KEY: ${R2_SECRET_ACCESS_KEY:-duka_local_storage_secret}
+    ports:
+      - '9000:9000'
+      - '9001:9001'
+    volumes:
+      - duka_pos_storage_data:/data
+    healthcheck:
+      test: ['CMD-SHELL', 'curl -fsS http://localhost:9000/health || exit 1']
+      interval: 5s
+      timeout: 5s
+      start_period: 20s
+      retries: 12
+
+  # Create the local bucket once the S3-compatible service is ready. R2
+  # buckets are provisioned outside this compose file; this keeps a fresh
+  # developer volume equivalent to the production object-store contract.
+  storage-init:
+    image: duka_pos_backend:local
+    container_name: duka_pos_storage_init
+    environment:
+      R2_ENDPOINT: http://storage:9000
+      R2_ACCESS_KEY_ID: ${R2_ACCESS_KEY_ID:-duka_local_storage}
+      R2_SECRET_ACCESS_KEY: ${R2_SECRET_ACCESS_KEY:-duka_local_storage_secret}
+      R2_BUCKET_NAME: ${R2_BUCKET_NAME:-duka-pos-profile-photos}
+    command: ['node', 'scripts/ensure-bucket.cjs']
+    depends_on:
+      storage:
+        condition: service_healthy
+    restart: 'no'
+
+  # Apply the repository's additive schema chain before the API accepts
+  # traffic. A green liveness probe is not enough when Prisma knows about a
+  # column the database volume does not yet have.
+  migrate:
+    image: duka_pos_backend:local
+    container_name: duka_pos_migrate
+    environment: *backend-env
+    command: ['npx', 'prisma', 'migrate', 'deploy']
+    depends_on:
+      db:
+        condition: service_healthy
+    restart: 'no'
+
+  # ------------------------------------------------------------------
+  # Backend API - Express + Prisma
+  # ------------------------------------------------------------------
+  backend:
+    image: duka_pos_backend:local
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: duka_pos_backend
+    environment: *backend-env
+    ports:
+      # The host side is not 3000: whatever process holds 3000 on this dev
+      # machine is not ours to kill, and the port the app talks to is a
+      # setting, not an assumption.
+      - '3100:3000'
+    depends_on:
+      db:
+        condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
+      storage-init:
+        condition: service_completed_successfully
+    # The image carries the same check; the service key exists so a container
+    # that had the DEFAULT image check (wget — absent from the slim base)
+    # could never flap. node is certain: the API itself is a node process.
+    healthcheck:
+      test: ['CMD-SHELL', "node -e \"fetch('http://localhost:3000/health').then((r) => process.exit(r.ok ? 0 : 1)).catch(() => process.exit(1))\""]
+      interval: 15s
+      timeout: 5s
+      start_period: 40s
+      retries: 10
+    restart: unless-stopped
+
+  # ------------------------------------------------------------------
+  # Test runner - the integration suite against the live stack
+  # ------------------------------------------------------------------
+  tests:
+    build:
+      context: .
+      dockerfile: Dockerfile.test
+    container_name: duka_pos_tests
+    environment:
+      <<: *backend-env
+      NODE_ENV: test
+    profiles:
+      - verify
+    depends_on:
+      backend:
+        condition: service_healthy
+
+volumes:
+  duka_pos_db_data:
+  duka_pos_storage_data:

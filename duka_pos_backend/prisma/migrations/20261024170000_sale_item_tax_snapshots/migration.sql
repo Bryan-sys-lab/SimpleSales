@@ -1,0 +1,3 @@
+ALTER TABLE "sale_items"
+  ADD COLUMN IF NOT EXISTS "vat_amount" DECIMAL(12,2),
+  ADD COLUMN IF NOT EXISTS "taxable_amount" DECIMAL(12,2);

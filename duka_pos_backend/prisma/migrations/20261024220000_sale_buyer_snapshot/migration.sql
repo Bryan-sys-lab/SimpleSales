@@ -1,0 +1,3 @@
+ALTER TABLE "sales"
+  ADD COLUMN IF NOT EXISTS "buyer_name" TEXT,
+  ADD COLUMN IF NOT EXISTS "buyer_tin" TEXT;

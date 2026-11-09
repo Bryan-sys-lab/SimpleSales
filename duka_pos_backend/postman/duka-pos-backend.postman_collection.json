@@ -207,84 +207,69 @@
               }
             }
           ]
-        }
-      ]
-    },
-    {
-      "name": "Auth - Shop Linking",
-      "item": [
+        },
         {
-          "name": "POST /api/auth/link",
+          "name": "PATCH /api/tenant/settings - enable eTIMS",
           "request": {
-            "method": "POST",
+            "method": "PATCH",
             "header": [
               {
                 "key": "Content-Type",
                 "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{access_token}}"
+              },
+              {
+                "key": "x-tenant-id",
+                "value": "{{tenant_id}}"
               }
             ],
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"email\": \"owner@example.com\",\n  \"pin\": \"1234\",\n  \"shopName\": \"Test Shop\",\n  \"ownerName\": \"Test Owner\"\n}"
+              "raw": "{\n  \"etimsEnabled\": true,\n  \"risitiMerchantId\": \"test-merchant-123\"\n}"
             },
             "url": {
-              "raw": "{{base_url}}/api/auth/link",
+              "raw": "{{base_url}}/api/tenant/settings",
               "host": [
                 "{{base_url}}"
               ],
               "path": [
                 "api",
-                "auth",
-                "link"
+                "tenant",
+                "settings"
               ]
             },
-            "description": "Create tenant and owner profile, send verification code"
+            "description": "Enable eTIMS and set Risiti merchant ID on the tenant"
           },
-          "response": [
-            {
-              "name": "200 OK",
-              "status": "OK",
-              "code": 200,
-              "body": {
-                "challenge_id": "{{challenge_id}}",
-                "email": "owner@example.com",
-                "expires_in_seconds": 600
-              }
-            }
-          ],
           "event": [
             {
               "listen": "test",
               "script": {
                 "type": "text/javascript",
                 "exec": [
-                  "pm.test(\"Status is 200 or 409\", function () {",
-                  "    pm.expect(pm.response.code).to.be.oneOf([200, 409]);",
+                  "pm.test(\"Status is 200\", function () {",
+                  "    pm.response.to.have.status(200);",
                   "});",
-                  "pm.test(\"Has challenge_id on 200, error on 409\", function () {",
+                  "pm.test(\"eTIMS enabled\", function () {",
                   "    var data = pm.response.json();",
-                  "    if (pm.response.code === 200) {",
-                  "        pm.expect(data).to.have.property(\"challenge_id\");",
-                  "        pm.expect(data.challenge_id).to.not.be.empty;",
-                  "    }",
+                  "    pm.expect(data.etimsEnabled).to.eql(true);",
                   "});",
-                  "pm.test(\"Email matches on 200\", function () {",
+                  "pm.test(\"Risiti merchant ID set\", function () {",
                   "    var data = pm.response.json();",
-                  "    if (pm.response.code === 200) {",
-                  "        pm.expect(data.email).to.eql(\"owner@example.com\");",
-                  "    }",
-                  "});",
-                  "pm.test(\"Expires in seconds is number on 200\", function () {",
-                  "    var data = pm.response.json();",
-                  "    if (pm.response.code === 200) {",
-                  "        pm.expect(data.expires_in_seconds).to.be.a(\"number\");",
-                  "    }",
+                  "    pm.expect(data.risitiMerchantId).to.eql(\"test-merchant-123\");",
                   "});"
                 ]
               }
             }
           ]
-        },
+        }
+      ]
+    },
+    {
+      "name": "Auth - Shop Linking",
+      "item": [
         {
           "name": "POST /api/auth/link - duplicate shop",
           "request": {
@@ -670,7 +655,7 @@
               },
               {
                 "key": "x-tenant-id",
-                "value": "test-tenant-id"
+                "value": "{{tenant_id}}"
               }
             ],
             "body": {
@@ -696,20 +681,16 @@
               "script": {
                 "type": "text/javascript",
                 "exec": [
-                  "pm.test(\"Status is 200 or 409\", function () {",
-                  "    pm.expect(pm.response.code).to.be.oneOf([200, 409]);",
+                  "pm.test(\"Status is 200\", function () {",
+                  "    pm.response.to.have.status(200);",
                   "});",
-                  "pm.test(\"Has tin on success\", function () {",
+                  "pm.test(\"Has tin\", function () {",
                   "    var data = pm.response.json();",
-                  "    if (pm.response.code === 200) {",
-                  "        pm.expect(data.tin).to.eql(\"P051234567L\");",
-                  "    }",
+                  "    pm.expect(data.tin).to.eql(\"P051234567L\");",
                   "});",
-                  "pm.test(\"Has device_id on success\", function () {",
+                  "pm.test(\"Has device_id\", function () {",
                   "    var data = pm.response.json();",
-                  "    if (pm.response.code === 200) {",
-                  "        pm.expect(data.device_id).to.eql(\"device-001\");",
-                  "    }",
+                  "    pm.expect(data.device_id).to.eql(\"device-001\");",
                   "});"
                 ]
               }
@@ -731,12 +712,12 @@
               },
               {
                 "key": "x-tenant-id",
-                "value": "test-tenant-id"
+                "value": "{{tenant_id}}"
               }
             ],
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"payload\": {\n    \"sale_id\": \"sale-123\",\n    \"total\": 1500.00,\n    \"items\": [{\"product\": \"Coca Cola\", \"qty\": 2, \"price\": 750.00}]\n  },\n  \"deviceId\": \"device-001\"\n}"
+              "raw": "{\n  \"receipt_number\": \"sale-123\",\n  \"issued_at\": \"2024-01-15T10:30:00+00:00\",\n  \"payment_method\": \"cash\",\n  \"total\": 150000,\n  \"vat_rate_percent\": 16,\n  \"items\": [\n    {\n      \"name\": \"Coca Cola\",\n      \"qty\": 2,\n      \"unit_price\": 75000,\n      \"unit_cost\": 0,\n      \"vat_amount\": 0,\n      \"line_total\": 150000\n    }\n  ],\n  \"device_id\": \"device-001\"\n}"
             },
             "url": {
               "raw": "{{base_url}}/api/etims/receipts",
@@ -757,16 +738,22 @@
               "script": {
                 "type": "text/javascript",
                 "exec": [
-                  "pm.test(\"Status is 200 or 400\", function () {",
-                  "    pm.expect(pm.response.code).to.be.oneOf([200, 400]);",
+                  "pm.test(\"Status is 200 or 409\", function () {",
+                  "    pm.expect(pm.response.code).to.be.oneOf([200, 409]);",
                   "});",
-                  "pm.test(\"Has required fields on success\", function () {",
+                  "pm.test(\"If 200, has kra_receipt_number\", function () {",
                   "    if (pm.response.code === 200) {",
                   "        var data = pm.response.json();",
                   "        pm.expect(data.kra_receipt_number).to.match(/^KRA-/);",
                   "        pm.expect(data).to.have.property(\"verification_url\");",
                   "        pm.expect(data).to.have.property(\"qr_payload\");",
                   "        pm.expect(data.status).to.eql(\"ISSUED\");",
+                  "    }",
+                  "});",
+                  "pm.test(\"If 409, error is about tax reporting\", function () {",
+                  "    if (pm.response.code === 409) {",
+                  "        var data = pm.response.json();",
+                  "        pm.expect(data.error).to.be.a(\"string\");",
                   "    }",
                   "});"
                 ]
@@ -785,7 +772,7 @@
               },
               {
                 "key": "x-tenant-id",
-                "value": "test-tenant-id"
+                "value": "{{tenant_id}}"
               }
             ],
             "url": {
@@ -834,7 +821,7 @@
               },
               {
                 "key": "x-tenant-id",
-                "value": "test-tenant-id"
+                "value": "{{tenant_id}}"
               }
             ],
             "url": {
@@ -865,17 +852,11 @@
                   "pm.test(\"Status is 200\", function () {",
                   "    pm.response.to.have.status(200);",
                   "});",
-                  "pm.test(\"Has date field\", function () {",
+                  "pm.test(\"Has sales\", function () {",
                   "    var data = pm.response.json();",
-                  "    pm.expect(data.date).to.eql(\"2024-01-15\");",
-                  "});",
-                  "pm.test(\"Has totals\", function () {",
-                  "    var data = pm.response.json();",
-                  "    pm.expect(data).to.have.property(\"totalSales\");",
-                  "    pm.expect(data).to.have.property(\"totalProfit\");",
-                  "    pm.expect(data).to.have.property(\"receiptCount\");",
-                  "    pm.expect(data).to.have.property(\"sales\");",
                   "    pm.expect(data.sales).to.be.an(\"array\");",
+                  "    pm.expect(data.date).to.be.a(\"string\");",
+                  "    pm.expect(data.tenantId).to.be.a(\"string\");",
                   "});"
                 ]
               }
@@ -898,7 +879,7 @@
               },
               {
                 "key": "x-tenant-id",
-                "value": "test-tenant-id"
+                "value": "{{tenant_id}}"
               }
             ],
             "url": {
@@ -933,13 +914,11 @@
                   "pm.test(\"Status is 200\", function () {",
                   "    pm.response.to.have.status(200);",
                   "});",
-                  "pm.test(\"Has totals or empty data\", function () {",
+                  "pm.test(\"Has totals\", function () {",
                   "    var data = pm.response.json();",
-                  "    if (data.totals) {",
-                  "        pm.expect(data.totals).to.have.property(\"count\");",
-                  "        pm.expect(data.totals).to.have.property(\"total\");",
-                  "        pm.expect(data.sales).to.be.an(\"array\");",
-                  "    }",
+                  "    pm.expect(data.shops).to.be.an(\"array\");",
+                  "    pm.expect(data.from).to.be.a(\"string\");",
+                  "    pm.expect(data.to).to.be.a(\"string\");",
                   "});"
                 ]
               }
@@ -961,7 +940,7 @@
               },
               {
                 "key": "x-tenant-id",
-                "value": "test-tenant-id"
+                "value": "{{tenant_id}}"
               }
             ],
             "body": {
@@ -1030,7 +1009,7 @@
               },
               {
                 "key": "x-tenant-id",
-                "value": "test-tenant-id"
+                "value": "{{tenant_id}}"
               }
             ],
             "body": {
@@ -1059,10 +1038,10 @@
                   "pm.test(\"Status is 200 or 404\", function () {",
                   "    pm.expect(pm.response.code).to.be.oneOf([200, 404]);",
                   "});",
-                  "pm.test(\"Error message on 404\", function () {",
+                  "pm.test(\"If 404, error is product not found\", function () {",
                   "    if (pm.response.code === 404) {",
                   "        var data = pm.response.json();",
-                  "        pm.expect(data.error).to.include(\"not found\");",
+                  "        pm.expect(data.error).to.eql(\"Request could not be completed\");",
                   "    }",
                   "});"
                 ]

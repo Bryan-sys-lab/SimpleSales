@@ -1,0 +1,13 @@
+# Keep Docker builds small and prevent local credentials/artifacts entering the
+# build context. The Dockerfile installs dependencies from the lockfile.
+node_modules
+**/node_modules
+dist
+.env
+.env.*
+!.env.example
+.git
+.gitignore
+coverage
+*.log
+Dockerfile.test

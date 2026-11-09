@@ -1,0 +1,12 @@
+{
+  "name": "duka-pos-backend-cloudflare",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "deploy": "wrangler deploy --config wrangler.jsonc"
+  },
+  "devDependencies": {
+    "@cloudflare/containers": "latest",
+    "wrangler": "latest"
+  }
+}

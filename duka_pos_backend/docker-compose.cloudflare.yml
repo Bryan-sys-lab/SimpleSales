@@ -1,0 +1,56 @@
+# Production-shaped origin for Cloudflare Workers/Containers.
+#
+# Unlike docker-compose.yml, this file deliberately contains no local
+# PostgreSQL, Keycloak, or S3 service. Those endpoints are supplied by the
+# deployment secret store. R2 is the object store and the database/OIDC
+# services must be externally reachable and durable.
+
+x-backend-env: &backend-env
+  NODE_ENV: production
+  PORT: '3000'
+  DATABASE_URL: ${DATABASE_URL:?DATABASE_URL must point to managed PostgreSQL and include connection_limit=5&pool_timeout=10}
+  OIDC_ISSUER_URL: ${OIDC_ISSUER_URL:?OIDC_ISSUER_URL is required}
+  OIDC_AUDIENCE: ${OIDC_AUDIENCE:?OIDC_AUDIENCE is required}
+  OIDC_JWKS_URI: ${OIDC_JWKS_URI:?OIDC_JWKS_URI is required}
+  FRONTEND_URL: ${FRONTEND_URL:?FRONTEND_URL is required}
+  PUBLIC_API_URL: ${PUBLIC_API_URL:?PUBLIC_API_URL must be an https URL}
+  PAYHERO_AUTH_TOKEN: ${PAYHERO_AUTH_TOKEN:?PAYHERO_AUTH_TOKEN is required}
+  MPESA_CALLBACK_KEY: ${MPESA_CALLBACK_KEY:?MPESA_CALLBACK_KEY is required}
+  SYSTEM_ADMIN_SUBJECTS: ${SYSTEM_ADMIN_SUBJECTS:?SYSTEM_ADMIN_SUBJECTS is required}
+  R2_ENDPOINT: ${R2_ENDPOINT:?R2_ENDPOINT must point to Cloudflare R2}
+  R2_ACCESS_KEY_ID: ${R2_ACCESS_KEY_ID:?R2_ACCESS_KEY_ID is required}
+  R2_SECRET_ACCESS_KEY: ${R2_SECRET_ACCESS_KEY:?R2_SECRET_ACCESS_KEY is required}
+  R2_BUCKET_NAME: ${R2_BUCKET_NAME:?R2_BUCKET_NAME is required}
+  R2_PUBLIC_URL: ${R2_PUBLIC_URL:?R2_PUBLIC_URL is required}
+  APP_VERSION_NAME: ${APP_VERSION_NAME:-2.0.0}
+  APP_VERSION_CODE: ${APP_VERSION_CODE:-23}
+  APP_DOWNLOAD_URL: ${APP_DOWNLOAD_URL:-}
+  APP_UPDATE_REQUIRED: ${APP_UPDATE_REQUIRED:-false}
+  APP_RELEASE_NOTES: ${APP_RELEASE_NOTES:-}
+
+services:
+  migrate:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    environment: *backend-env
+    command: ['npx', 'prisma', 'migrate', 'deploy']
+    restart: 'no'
+
+  backend:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    environment: *backend-env
+    ports:
+      - '3000:3000'
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+    healthcheck:
+      test: ['CMD-SHELL', "node -e \"fetch('http://localhost:3000/ready').then((r) => process.exit(r.ok ? 0 : 1)).catch(() => process.exit(1))\""]
+      interval: 15s
+      timeout: 5s
+      start_period: 40s
+      retries: 10
+    restart: unless-stopped

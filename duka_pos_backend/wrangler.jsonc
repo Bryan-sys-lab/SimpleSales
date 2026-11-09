@@ -1,0 +1,14 @@
+{
+  "$schema": "./node_modules/wrangler/config-schema.json",
+  "name": "duka-pos-backend",
+  "main": "src/worker.ts",
+  "compatibility_date": "2026-10-26",
+  "compatibility_flags": ["nodejs_compat"],
+  "durable_objects": { "bindings": [ { "name": "LIVE_ROOM", "class_name": "LiveRoom" } ] },
+  "hyperdrive": [ { "binding": "HYPERDRIVE", "id": "613edae2cb28470c8d3693a6ab2df1b4" } ],
+  "migrations": [ { "tag": "v1", "new_sqlite_classes": ["LiveRoom"] } ],
+  "triggers": { "crons": ["*/5 * * * *"] },
+  "vars": {
+    "APP_RELEASE_REPOSITORY": "Bryan-sys-lab/SimpleSales"
+  }
+}
