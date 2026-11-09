@@ -421,6 +421,7 @@ export const pinResetConfirmSchema = z.object({
   email: z.string().trim().toLowerCase().email().max(254),
   challengeId: z.string().min(1),
   code: z.string().trim().length(6),
+  newPin: z.string().trim().regex(/^\d{6}$/),
 });
 
 // ---------------------------------------------------------------------------
@@ -604,4 +605,108 @@ export const supportTicketSchema = z.object({
  */
 export const ingestSupportSchema = z.object({
   items: z.array(supportTicketSchema).min(1).max(100),
+}).strict();
+
+// ---------------------------------------------------------------------------
+// Job records from an offline Open-profile till.
+// ---------------------------------------------------------------------------
+
+const jobRecord = z.object({
+  localId: z.number().int().positive(),
+  deviceId: z.string().trim().min(1).max(120).optional(),
+  uuid: z.string().trim().min(1).max(120),
+  title: boundedName,
+  customerName: boundedName.nullable().optional(),
+  quoteMinor: z.number().int().nonnegative().nullable().optional(),
+  finalPriceMinor: z.number().int().nonnegative().nullable().optional(),
+  status: z.string().trim().min(1).max(30),
+  dueAt: z.string().datetime({ offset: true }).nullable().optional(),
+  costPoolId: z.number().int().positive().nullable().optional(),
+  costs: z.array(z.object({
+    uuid: z.string().trim().min(1).max(120),
+    costType: z.string().trim().min(1).max(60),
+    amountMinor: z.number().int().nonnegative(),
+    paidFrom: z.string().trim().min(1).max(40),
+    createdAt: z.string().datetime({ offset: true }),
+  })).optional(),
+  payments: z.array(z.object({
+    uuid: z.string().trim().min(1).max(120),
+    amountMinor: z.number().int().positive(),
+    paymentMethod: z.string().trim().min(1).max(40),
+    paymentReference: z.string().trim().max(120).nullable().optional(),
+    shiftId: z.number().int().positive().nullable().optional(),
+    isDeposit: z.boolean().default(false),
+    createdAt: z.string().datetime({ offset: true }),
+  })).optional(),
+  createdAt: z.string().datetime({ offset: true }).optional(),
+}).passthrough();
+
+export const jobsSyncSchema = z.object({
+  jobs: z.array(jobRecord).max(500),
+}).strict();
+
+/** Cost pool records from an offline Open-profile till. */
+const costPoolEntryRecord = z.object({
+  uuid: z.string().trim().min(1).max(120),
+  costType: z.string().trim().min(1).max(60),
+  amountMinor: z.number().int().nonnegative(),
+  sourceSaleId: z.number().int().positive().nullable().optional(),
+  sourceJobId: z.number().int().positive().nullable().optional(),
+  createdAt: z.string().datetime({ offset: true }),
+}).strict();
+
+const costPoolRecord = z.object({
+  localId: z.number().int().positive(),
+  deviceId: z.string().trim().min(1).max(120).optional(),
+  uuid: z.string().trim().min(1).max(120),
+  name: boundedName,
+  totalMinor: z.number().int().nonnegative(),
+  recoveredMinor: z.number().int().nonnegative(),
+  status: z.string().trim().min(1).max(30),
+  entries: z.array(costPoolEntryRecord).optional(),
+  createdAt: z.string().datetime({ offset: true }).optional(),
+}).passthrough();
+
+export const costPoolsSyncSchema = z.object({
+  pools: z.array(costPoolRecord).max(500),
+}).strict();
+
+/** Owner finance transaction records from an offline Open-profile till. */
+export const ownerTransactionsSyncSchema = z.object({
+  transactions: z.array(z.object({
+    localId: z.number().int().positive(),
+    deviceId: z.string().trim().min(1).max(120).optional(),
+    uuid: z.string().trim().min(1).max(120),
+    transactionType: z.enum(['capital_in', 'drawing', 'loan_received', 'loan_repayment']),
+    amountMinor: z.number().int().positive(),
+    source: z.string().trim().min(1).max(120).nullable().optional(),
+    destination: z.string().trim().min(1).max(120).nullable().optional(),
+    reference: z.string().trim().max(120).nullable().optional(),
+    note: z.string().trim().max(1000).nullable().optional(),
+    occurredAt: z.string().datetime({ offset: true }),
+  })).max(500),
+}).strict();
+
+/** Product variant records for Fashion variant-catalogue sync. */
+const productVariantRecord = z.object({
+  localId: z.number().int().positive(),
+  deviceId: z.string().trim().min(1).max(120).optional(),
+  remoteId: z.string().trim().min(1).max(120).nullable().optional(),
+  productId: z.string().trim().min(1).max(120),
+  name: boundedName,
+  sku: z.string().trim().max(120).default(''),
+  unit: z.enum(['each', 'ml', 'litre', 'cup', 'kilogram']).default('each'),
+  sizeMl: z.number().int().nonnegative().default(0),
+  sellPrice: z.number().finite().nonnegative().max(100000000),
+  costPrice: z.number().finite().nonnegative().max(100000000),
+  stockQty: z.number().finite().nonnegative().max(2000000),
+  reservedQty: z.number().finite().nonnegative().max(2000000),
+  reorderLevel: z.number().int().nonnegative().max(2000000),
+  position: z.number().int().nonnegative().max(1000000),
+  active: z.boolean().default(true),
+  createdAt: z.string().datetime({ offset: true }).optional(),
+}).strict();
+
+export const productVariantsSyncSchema = z.object({
+  variants: z.array(productVariantRecord).max(2000),
 }).strict();
