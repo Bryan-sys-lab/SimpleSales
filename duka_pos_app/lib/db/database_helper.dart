@@ -57,6 +57,18 @@ class _SnapshotMediaRollback {
   }
 }
 
+/// Thrown when the stored SQLCipher key cannot open the existing database
+/// file. The database file is preserved; callers should offer a restore-from-
+///backup path rather than silently creating an empty replacement.
+class DatabaseKeyMismatchException implements Exception {
+  const DatabaseKeyMismatchException(this.message);
+
+  final String message;
+
+  @override
+  String toString() => 'DatabaseKeyMismatchException($message)';
+}
+
 /// Single source of truth for local storage. Every screen reads/writes
 /// through here rather than touching sqflite directly, so the schema only
 /// lives in one place and checkout stays a single atomic transaction
@@ -102,11 +114,23 @@ class DatabaseHelper {
     return key;
   }
 
-  /// Cryptographically random 256-bit key, hex-encoded.
-  static String _generateKey() {
-    final bytes =
-        List<int>.generate(32, (_) => math.Random.secure().nextInt(256));
-    return sha256.convert(bytes).toString();
+  /// Returns the stored key for a workspace, or null if none has been created.
+  static Future<String?> readWorkspaceKey(String workspaceKey) async {
+    final storageKey = '$_dbKeyPrefix$workspaceKey';
+    return _secureStorage.read(key: storageKey);
+  }
+
+  /// Rotates the workspace database key: generates a new one and stores it.
+  ///
+  /// The old key is discarded — any database encrypted with it becomes
+  /// undecryptable. True key rotation (re-encrypting the existing file with
+  /// the new key) requires SQLCipher's `PRAGMA rekey`, which is not exposed
+  /// by the sqflite_sqlcipher Dart API. Callers that need to rotate keys
+  /// should export a portable backup, create a fresh workspace, and restore.
+  static Future<void> rotateWorkspaceKey(String workspaceKey) async {
+    final storageKey = '$_dbKeyPrefix$workspaceKey';
+    await _secureStorage.delete(key: storageKey);
+    await _ensureWorkspaceKey(workspaceKey);
   }
 
   /// Deletes a workspace's database key. Used only when the database file is
@@ -114,6 +138,13 @@ class DatabaseHelper {
   static Future<void> _deleteWorkspaceKey(String workspaceKey) async {
     final storageKey = '$_dbKeyPrefix$workspaceKey';
     await _secureStorage.delete(key: storageKey);
+  }
+
+  /// Cryptographically random 256-bit key, hex-encoded.
+  static String _generateKey() {
+    final bytes =
+        List<int>.generate(32, (_) => math.Random.secure().nextInt(256));
+    return sha256.convert(bytes).toString();
   }
 
   /// Must run before the first database access. The legacy path is retained
@@ -323,15 +354,37 @@ class DatabaseHelper {
     // keystore/keychain via flutter_secure_storage. A missing key means the
     // workspace has never been opened — generate one now.
     final key = await _ensureWorkspaceKey(_workspaceKey);
-    return sqlcipher_pkg.databaseFactory.openDatabase(
-      path,
-      options: SqlCipherOpenDatabaseOptions(
-        version: _schemaVersion,
-        onCreate: _onCreate,
-        onUpgrade: _onUpgrade,
-        password: key,
-      ),
-    );
+
+    // Open with the stored key. If the key is wrong (secure storage cleared,
+    // key corrupted), SQLCipher throws — we must NOT silently generate a new
+    // key and create an empty database over the existing encrypted file. That
+    // would destroy the shop's data. Fail closed and let the caller show a
+    // recovery path.
+    try {
+      return await sqlcipher_pkg.databaseFactory.openDatabase(
+        path,
+        options: SqlCipherOpenDatabaseOptions(
+          version: _schemaVersion,
+          onCreate: _onCreate,
+          onUpgrade: _onUpgrade,
+          password: key,
+        ),
+      );
+    } on Object catch (_) {
+      // If the database file doesn't exist yet, this is a first-open and the
+      // key generation is fine — rethrow so the caller sees the real error.
+      final file = File(path);
+      if (!(await file.exists())) rethrow;
+
+      // File exists but key doesn't work: wrong key, corrupted file, or
+      // plaintext database from before encryption. Preserve the file and
+      // report a recovery condition rather than destroying data.
+      throw DatabaseKeyMismatchException(
+        'Cannot open encrypted workspace database for $_workspaceKey. '
+        'The stored key does not match the database file. Restore from a '
+        'portable backup or contact support.',
+      );
+    }
   }
 
   /// The file path a workspace's database lives at, computed the same way
@@ -13842,7 +13895,47 @@ SELECT name FROM staff GROUP BY name HAVING COUNT(*) = 1
     });
   }
 
-  Future<int> recordOwnerTransaction({
+  /// Verifies a pending job payment — admin-only. Marks the payment as
+  /// 'verified' and updates the corresponding financial event. Rejects if the
+  /// payment is already verified or does not exist.
+  Future<int> verifyJobPayment(int paymentId) async {
+    final db = await database;
+    return db.transaction<int>((txn) async {
+      final rows = await txn.query(
+        'job_payments',
+        where: 'id = ?',
+        whereArgs: [paymentId],
+        limit: 1,
+      );
+      if (rows.isEmpty) throw StateError('Payment not found');
+      final row = rows.first;
+      if ((row['status'] as String?) == 'verified') {
+        throw StateError('Payment already verified');
+      }
+      await txn.update(
+        'job_payments',
+        {'status': 'verified'},
+        where: 'id = ?',
+        whereArgs: [paymentId],
+      );
+      // Mirror the verification in the financial event so the ledger agrees.
+      final events = await txn.query(
+        'financial_events',
+        where: 'source_type = ? AND source_id = ?',
+        whereArgs: ['job_payment', paymentId],
+        limit: 1,
+      );
+      if (events.isNotEmpty) {
+        await txn.update(
+          'financial_events',
+          {'metadata': '{"verified": true}'},
+          where: 'id = ?',
+          whereArgs: [events.first['id']],
+        );
+      }
+      return paymentId;
+    });
+  }
     required String uuid,
     required String transactionType,
     required Money amount,
