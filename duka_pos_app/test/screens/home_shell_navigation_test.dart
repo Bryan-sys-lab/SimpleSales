@@ -76,6 +76,7 @@ GoRouter _testRouter(AppState state) {
     stage: AppStage.ready,
     canManageStock: state.canManageStock,
     isAdmin: state.isAdmin,
+    shopProfile: state.shopProfile,
   ));
 
   return GoRouter(
@@ -87,6 +88,7 @@ GoRouter _testRouter(AppState state) {
         stage: AppStage.ready,
         canManageStock: state.canManageStock,
         isAdmin: state.isAdmin,
+        shopProfile: state.shopProfile,
       ),
       location: routerState.uri.path,
     ),

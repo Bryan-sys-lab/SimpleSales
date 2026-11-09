@@ -367,7 +367,6 @@
   "inventoryFieldStock": "Stock",
   "inventoryFieldStockQty": "Stock qty",
   "inventoryFieldStockQtyUnit": "Stock qty ({unit})",
-  "inventoryFieldReorderLevel": "Reorder level",
   "inventoryFieldReorderLevelUnit": "Reorder level ({unit})",
   "unitSuffixEach": "items",
   "unitSuffixLitre": "L",
@@ -376,8 +375,8 @@
   "unitSuffixKilogram": "kg",
   "unitSuffixPack": "pk",
   "unitSuffixCarton": "ctn",
-"inventoryFieldTotalStock": "Total stock (from variants)",
-"inventoryGoBack": "Go back",
+  "inventoryFieldTotalStock": "Total stock (from variants)",
+  "inventoryGoBack": "Go back",
   "inventoryLowStockLimitTitle": "Low stock limit",
   "inventoryLowStockLimitSubtitle": "Every product warns below {limit}. Tap to change.",
   "inventoryLowStockLimitAudit": "{count, plural, =0{No products} =1{1 product} other{{count} products}} low-stock limit set to {limit}",
@@ -563,7 +562,7 @@
   "pinResetSending": "Sending…",
   "pinResetResend": "Send another code",
   "pinResetSaving": "Saving…",
-  "pinResetSentTo": "Code sent to {email}. Enter it here, then your new PIN. Check spam if you don\u2019t see it.",
+  "pinResetSentTo": "Code sent to {email}. Enter it here, then your new PIN. Check spam if you don’t see it.",
   "pinResetCodeLabel": "Code from the email",
   "pinResetNewPinLabel": "New PIN",
   "pinResetNewPinAgainLabel": "New PIN again",
@@ -594,7 +593,7 @@
   "settingsVerifyPinLocked": "Too many wrong PINs on this till. Try again in {seconds}s.",
   "settingsVerifyCodeLabel": "6-digit code",
   "settingsVerifyCodeInvalid": "Enter the 6-digit code",
-  "settingsVerifyCodeSent": "Code sent to {email}. Check spam if you don\u2019t see it.",
+  "settingsVerifyCodeSent": "Code sent to {email}. Check spam if you don’t see it.",
   "settingsVerifyCodeWrong": "{count, plural, =1{That code is not right. 1 attempt left.} other{That code is not right. {count} attempts left.}}",
   "settingsVerifyCodeExpired": "That code has expired. Send a new one and try again.",
   "settingsVerifyCodeBurnt": "Too many wrong attempts. Send a new code and try again.",
@@ -1480,276 +1479,574 @@
   "drinksAnalyticsDipBelow": "below expected",
   "drinksAnalyticsDipAbove": "above expected",
   "drinksAnalyticsNoTankData": "No tank balance recorded",
-  "drinksAnalyticsLitres": "{amount} L"
-  ,"dashboardNetSalesToday": "Net sales today"
-  ,"dashboardPeriodToday": "Today"
-  ,"dashboardVersusPreviousDay": "12.8% compared with previous day"
-  ,"dashboardSupportingMetrics": "Supporting metrics"
-  ,"dashboardBeverageStock": "Beverage stock"
-  ,"dashboardViewAll": "View all"
-  ,"dashboardTankInventory": "Tank inventory"
-  ,"dashboardPackagedBeverages": "Packaged beverages"
-  ,"dashboardPackagedDetail": "Bottles, cans and other stock"
-  ,"dashboardMeasuredServings": "Measured servings"
-  ,"dashboardMeasuredDetail": "Serving sizes and pour configuration"
-  ,"dashboardCurrentBusiness": "Current business — {shopName}"
-  ,"dashboardCurrentBusinessLabel": "Current business"
-  ,"dashboardSellAction": "Start a sale"
-  ,"dashboardStockOverview": "Stock overview"
-  ,"dashboardTotalProducts": "Total products"
-  ,"dashboardLowStockCount": "Low stock"
-  ,"dashboardOutOfStockCount": "Out of stock"
-  ,"dashboardStockValue": "Stock value"
-  ,"dashboardQuickAddProduct": "Add product"
-  ,"dashboardQuickReceiveStock": "Receive stock"
-  ,"dashboardQuickStocktake": "Stocktake"
-  ,"sellRecentlySold": "Recently sold"
-  ,"sellFrequentlySold": "Frequently sold"
-  ,"inventorySearchProducts": "Search products"
-  ,"inventoryFilterAll": "All products"
-  ,"inventoryFilterCounted": "Counted goods"
-  ,"inventoryFilterMeasured": "Measured goods"
-  ,"inventoryFilterLow": "Low stock"
-  ,"inventoryFilterOut": "Out of stock"
-  ,"inventoryUnitEach": "each"
-  ,"inventoryUnitKilogram": "kg"
-  ,"inventoryUnitLitre": "litre"
-  ,"inventoryUnitPack": "pack"
-  ,"inventoryUnitCarton": "carton"
-  ,"inventoryProductDetail": "Product detail"
-  ,"inventoryCostPrice": "Cost price"
-  ,"inventorySellingPrice": "Selling price"
-  ,"inventoryReorderLevel": "Reorder level"
-  ,"inventoryStockValue": "Stock value"
-  ,"inventoryStockMovement": "Stock movement"
-  ,"inventoryNoMovement": "No stock movement yet"
-  ,"inventorySalesPerformance": "Sales performance"
-  ,"inventoryUnitsSold": "{count} units sold"
-  ,"inventoryRevenue": "Revenue"
-  ,"openDashboardGreeting": "Welcome back"
-  ,"openDashboardScopeShop": "Whole shop"
-  ,"openDashboardScopeOwn": "Your scope"
-  ,"openDashboardFinancialOverview": "Financial overview"
-  ,"openDashboardRevenue": "Revenue"
-  ,"openDashboardNetProfit": "Net profit"
-  ,"openDashboardCashPosition": "Cash position"
-  ,"openDashboardReceivables": "Receivables"
-  ,"openDashboardProfit": "Profit"
-  ,"openDashboardNotInProfitYet": "Not in profit yet"
-  ,"openDashboardBreakEven": "Break-even"
-  ,"openDashboardSurplus": "Surplus"
-  ,"openDashboardShortfall": "Shortfall"
-  ,"openDashboardOwedToYou": "Owed to you"
-  ,"openDashboardYouOwe": "You owe"
-  ,"openDashboardOperationalOverview": "Operational overview"
-  ,"openDashboardActiveJobs": "Active jobs"
-  ,"openDashboardJobsAwaitingPayment": "Jobs awaiting payment"
-  ,"openDashboardOverdueJobs": "Overdue jobs"
-  ,"openDashboardCostGroups": "Cost groups"
-  ,"openDashboardNewJob": "New job"
-  ,"openDashboardRecordSale": "Record sale"
-  ,"openDashboardRecordPayment": "Record payment"
-  ,"openDashboardAddJobCost": "Add job cost"
-  ,"openDashboardNewCostGroup": "New cost group"
-  ,"openDashboardRecentActivity": "Recent activity"
-  ,"openDashboardViewAll": "View all"
-  ,"openDashboardGoodMorning": "Good morning"
-  ,"openDashboardGoodAfternoon": "Good afternoon"
-  ,"openDashboardGoodEvening": "Good evening"
-  ,"openJobsTitle": "Jobs"
-  ,"openJobsSubtitle": "Track work from quote to payment"
-  ,"openJobsNewJob": "New job"
-  ,"openJobsSearch": "Search jobs"
-  ,"openJobsSearchHint": "Title or customer"
-  ,"openJobsFilterAll": "All"
-  ,"openJobsFilterActive": "Active"
-  ,"openJobsFilterAwaitingPayment": "Awaiting payment"
-  ,"openJobsFilterCompleted": "Completed"
-  ,"openJobsNoJobs": "No jobs yet"
-  ,"openJobsNoJobsSubtitle": "Create a job to track quote, payments and costs."
-  ,"openJobsLoading": "Loading jobs"
-  ,"openJobsLoadingSubtitle": "Please wait while your jobs load."
-  ,"openJobsNoCustomer": "No customer"
-  ,"openJobStatusDraft": "Draft"
-  ,"openJobStatusInProgress": "In progress"
-  ,"openJobStatusAwaitingPayment": "Awaiting payment"
-  ,"openJobStatusCompleted": "Completed"
-  ,"openJobStatusCancelled": "Cancelled"
-  ,"openJobFormTitle": "New job"
-  ,"openJobDetailTitle": "Job detail"
-  ,"openJobAddCostTitle": "Add job cost"
-  ,"openCostGroupsTitle": "Cost groups"
-  ,"openCostGroupFormTitle": "New cost group"
-  ,"openCostGroupDetailTitle": "Cost group detail"
-  ,"openReceivablesTitle": "Receivables"
-  ,"openJobDetailTitle": "Job detail"
-  ,"openJobDetailNotFound": "Job not found"
-  ,"openJobDetailNoCustomer": "No customer"
-  ,"openJobDetailOverview": "Job overview"
-  ,"openJobDetailQuote": "Quoted amount"
-  ,"openJobDetailFinalPrice": "Final price"
-  ,"openJobDetailStatus": "Status"
-  ,"openJobDetailCreated": "Created"
-  ,"openJobDetailFinancials": "Financial breakdown"
-  ,"openJobDetailQuotedAmount": "Quoted amount"
-  ,"openJobDetailDirectCosts": "Direct costs"
-  ,"openJobDetailPaymentsReceived": "Payments received"
-  ,"openJobDetailOutstanding": "Outstanding"
-  ,"openJobDetailEstimatedProfit": "Estimated profit"
-  ,"openJobDetailActivity": "Job activity"
-  ,"openJobDetailCostAdded": "Cost added"
-  ,"openJobDetailPaymentReceived": "Payment received"
-  ,"openJobDetailNoActivity": "No activity yet"
-  ,"openJobDetailActions": "Actions"
-  ,"openJobDetailEditJob": "Edit job"
-  ,"openJobDetailAddCost": "Add direct cost"
-  ,"openJobDetailReceivePayment": "Receive payment"
-  ,"openJobDetailRecordSale": "Record sale"
-  ,"openJobDetailCompleteJob": "Complete job"
-  ,"openJobDetailCompleteJobConfirm": "Marking a job complete is separate from settlement. The job can be completed without being fully paid."
-  ,"openJobDetailCancel": "Cancel"
-  ,"openJobDetailCompleteAndSettle": "Complete and settle"
-  ,"openCostGroupsTitle": "Cost groups"
-  ,"openCostGroupsSubtitle": "Pooled costs shared across jobs"
-  ,"openCostGroupsNewGroup": "New cost group"
-  ,"openCostGroupsInvested": "Invested"
-  ,"openCostGroupsRecovered": "Recovered"
-  ,"openCostGroupsRemaining": "Remaining"
-  ,"openCostGroupsHasRemaining": "Unallocated"
-  ,"openCostGroupsFullyAllocated": "Fully allocated"
-  ,"openCostGroupsNoGroups": "No cost groups yet"
-  ,"openCostGroupsNoGroupsSubtitle": "Create a cost group to track pooled costs shared across jobs."
-  ,"openCostGroupsLoading": "Loading cost groups"
-  ,"openCostGroupsLoadingSubtitle": "Please wait while your cost groups load."
-  ,"openCostGroupDetailTitle": "Cost group detail"
-  ,"openCostGroupDetailNotFound": "Cost group not found"
-  ,"openCostGroupDetailNoNote": "No note"
-  ,"openCostGroupDetailInvestment": "Investment"
-  ,"openCostGroupDetailInitialInvestment": "Initial investment"
-  ,"openCostGroupDetailAllocated": "Allocated"
-  ,"openCostGroupDetailRemaining": "Remaining"
-  ,"openCostGroupDetailHasRemaining": "Unallocated"
-  ,"openCostGroupDetailFullyAllocated": "Fully allocated"
-  ,"openCostGroupDetailMovementHistory": "Movement history"
-  ,"openCostGroupDetailNoMovements": "No movements yet"
-  ,"openCostGroupDetailEntry": "Entry"
-  ,"openReceivablesTitle": "Receivables"
-  ,"openReceivablesSubtitle": "Money customers owe the business"
-  ,"openReceivablesTotalOutstanding": "Total outstanding"
-  ,"openReceivablesCustomersOwed": "Customers owed"
-  ,"openReceivablesCustomers": "Customers with balances"
-  ,"openReceivablesOutstanding": "Outstanding"
-  ,"openReceivablesOldestUnpaid": "Oldest unpaid"
-  ,"openReceivablesNoOutstanding": "No outstanding balances"
-  ,"openReceivablesNoOutstandingSubtitle": "All customers are paid up."
-  ,"openReceivablesLoading": "Loading receivables"
-  ,"openReceivablesLoadingSubtitle": "Please wait while receivables load."
-  ,"openAnalyticsFinancialPerformance": "Financial performance"
-  ,"openAnalyticsNetProfit": "Net profit"
-  ,"openAnalyticsCashPosition": "Cash position"
-  ,"openAnalyticsPooledCosts": "Pooled costs"
-  ,"openAnalyticsJobsCompleted": "Jobs completed"
-  ,"openAnalyticsReceivables": "Receivables"
-  ,"shiftStartTitle": "Start a shift"
-  ,"shiftStartSubtitle": "No shift is open"
-  ,"shiftStartPurpose": "You need an open shift to {purpose}."
-  ,"shiftStartNeedDrawer": "Cash goes into the shift drawer, so a shift must be open first."
-  ,"shiftStartOpenShift": "Opening float"
-  ,"shiftStartStartShift": "Start shift"
-  ,"fashionDashboardSellAction": "Sell"
-  ,"fashionDashboardAddProduct": "Add style"
-  ,"fashionDashboardReceiveStock": "Receive stock"
-  ,"fashionDashboardCreateReserve": "Create reserve"
-  ,"fashionDashboardViewCatalogue": "View catalogue"
-  ,"fashionDashboardLowStockVariants": "Low-stock variants"
-  ,"fashionDashboardReserves": "Reserves"
-  ,"fashionDashboardReservesOpen": "Open reserves"
-  ,"fashionDashboardReservesAwaitingPayment": "Awaiting payment"
-  ,"fashionDashboardReservesReady": "Ready for collection"
-  ,"fashionDashboardViewAll": "View all"
-  ,"fashionCatalogueTitle": "Catalogue"
-  ,"fashionCatalogueSubtitle": "Styles and their variants"
-  ,"fashionCatalogueAddStyle": "Add style"
-  ,"fashionCatalogueSearch": "Search styles"
-  ,"fashionCatalogueSearchHint": "Name or SKU"
-  ,"fashionCatalogueNoStyles": "No styles yet"
-  ,"fashionCatalogueNoStylesSubtitle": "Add a style to start building your catalogue."
-  ,"fashionCatalogueLoading": "Loading catalogue"
-  ,"fashionCatalogueLoadingSubtitle": "Please wait while your styles load."
-  ,"fashionProductDetailTitle": "Style detail"
-  ,"fashionProductDetailNotFound": "Style not found"
-  ,"fashionProductDetailVariants": "Variants"
-  ,"fashionProductDetailNoVariants": "No variants yet"
-  ,"fashionProductDetailTotalStock": "Total stock"
-  ,"fashionProductDetailLowStock": "Low-stock variants"
-  ,"fashionProductDetailEditStyle": "Edit style"
-  ,"fashionProductDetailEditVariant": "Edit variant"
-  ,"fashionProductFormAddStyle": "Add style"
-  ,"fashionProductFormEditStyle": "Edit style"
-  ,"fashionProductFormAddStyleSubtitle": "Create a style and its size/colour variants."
-  ,"fashionProductFormEditStyleSubtitle": "Change the style's name, category, and variants."
-  ,"fashionProductFormProductInfo": "Product information"
-  ,"fashionProductFormStyleName": "Style name"
-  ,"fashionProductFormStyleNameRequired": "Give the style a name"
-  ,"fashionProductFormCategory": "Category"
-  ,"fashionProductFormBrand": "Brand"
-  ,"fashionProductFormDescription": "Description"
-  ,"fashionProductFormVariants": "Variants"
-  ,"fashionProductFormAddVariant": "Add variant"
-  ,"fashionProductFormVariantName": "Variant name"
-  ,"fashionProductFormSize": "Size"
-  ,"fashionProductFormColour": "Colour"
-  ,"fashionProductFormSKU": "SKU"
-  ,"fashionProductFormBarcode": "Barcode"
-  ,"fashionProductFormStock": "Starting stock"
-  ,"fashionProductFormSellPrice": "Sell price"
-  ,"fashionProductFormCostPrice": "Cost price"
-  ,"fashionProductFormReorderLevel": "Reorder level"
-  ,"reserveScreenTitle": "Reserves"
-  ,"reserveScreenSubtitle": "Reserve a variant, take a deposit, collect when fully paid"
-  ,"reserveNewReserve": "New reserve"
-  ,"reserveCustomer": "Customer"
-  ,"reserveStyle": "Style"
-  ,"reserveVariant": "Variant"
-  ,"reserveQuantity": "Quantity"
-  ,"reserveDeposit": "Deposit (KES)"
-  ,"reservePaymentMethod": "Payment method"
-  ,"reserveReference": "Reference"
-  ,"reserveDueDays": "Due days"
-  ,"reserveCreate": "Create reserve"
-  ,"reserveReservations": "Reservations"
-  ,"reserveNoReserves": "No reserves yet"
-  ,"reserveCustomerLabel": "Customer"
-  ,"reserveDue": "Due"
-  ,"reservePaid": "Paid"
-  ,"fashionAnalyticsFinancialPerformance": "Financial performance"
-  ,"fashionAnalyticsNetProfit": "Net profit"
-  ,"fashionAnalyticsStockValue": "Stock value"
-  ,"fashionAnalyticsLowStockVariants": "Low-stock variants"
-  ,"fashionAnalyticsOutOfStock": "Out of stock"
-  ,"exchangeFindSaleTitle": "Find the sale to exchange"
-  ,"exchangeReturnLinesTitle": "Choose what comes back"
-  ,"exchangeReplacementTitle": "Choose the replacement"
-  ,"exchangeConfirmTitle": "Confirm exchange"
-  ,"exchangeSearchLabel": "Search sales"
-  ,"exchangeSearchHint": "Receipt, staff, date, or customer"
-  ,"exchangeNoSalesFound": "No matching sales"
-  ,"exchangeStartOver": "Start over"
-  ,"exchangeTotal": "Total"
-  ,"exchangeReturning": "Returning from sale"
-  ,"exchangeReturnTotal": "Return value"
-  ,"exchangeSold": "Sold"
-  ,"exchangeAvailable": "available to return"
-  ,"exchangeLess": "Return less"
-  ,"exchangeMore": "Return more"
-  ,"exchangeRestock": "Put back on shelf"
-  ,"exchangeWriteOff": "Write off"
-  ,"exchangeChooseReplacement": "Choose replacement variants"
-  ,"exchangeReplacementTotal": "Replacement value"
-  ,"exchangeNoReplacements": "Add at least one replacement variant"
-  ,"exchangeReview": "Review exchange"
-  ,"exchangeReturned": "Goods returned"
-  ,"exchangeDifference": "Difference"
-  ,"exchangeCommit": "Commit exchange"
-  ,"exchangeNoLines": "This sale has no returnable lines"
+  "drinksAnalyticsLitres": "{amount} L",
+  "dashboardNetSalesToday": "Net sales today",
+  "dashboardPeriodToday": "Today",
+  "dashboardVersusPreviousDay": "12.8% compared with previous day",
+  "dashboardSupportingMetrics": "Supporting metrics",
+  "dashboardBeverageStock": "Beverage stock",
+  "dashboardViewAll": "View all",
+  "dashboardTankInventory": "Tank inventory",
+  "dashboardPackagedBeverages": "Packaged beverages",
+  "dashboardPackagedDetail": "Bottles, cans and other stock",
+  "dashboardMeasuredServings": "Measured servings",
+  "dashboardMeasuredDetail": "Serving sizes and pour configuration",
+  "dashboardCurrentBusiness": "Current business — {shopName}",
+  "dashboardCurrentBusinessLabel": "Current business",
+  "dashboardSellAction": "Start a sale",
+  "dashboardStockOverview": "Stock overview",
+  "dashboardTotalProducts": "Total products",
+  "dashboardLowStockCount": "Low stock",
+  "dashboardOutOfStockCount": "Out of stock",
+  "dashboardStockValue": "Stock value",
+  "dashboardQuickAddProduct": "Add product",
+  "dashboardQuickReceiveStock": "Receive stock",
+  "dashboardQuickStocktake": "Stocktake",
+  "sellRecentlySold": "Recently sold",
+  "sellFrequentlySold": "Frequently sold",
+  "inventorySearchProducts": "Search products",
+  "inventoryFilterAll": "All products",
+  "inventoryFilterCounted": "Counted goods",
+  "inventoryFilterMeasured": "Measured goods",
+  "inventoryFilterLow": "Low stock",
+  "inventoryFilterOut": "Out of stock",
+  "inventoryUnitEach": "each",
+  "inventoryUnitKilogram": "kg",
+  "inventoryUnitLitre": "litre",
+  "inventoryUnitPack": "pack",
+  "inventoryUnitCarton": "carton",
+  "inventoryProductDetail": "Product detail",
+  "inventoryCostPrice": "Cost price",
+  "inventorySellingPrice": "Selling price",
+  "inventoryReorderLevel": "Reorder level",
+  "inventoryStockValue": "Stock value",
+  "inventoryStockMovement": "Stock movement",
+  "inventoryNoMovement": "No stock movement yet",
+  "inventorySalesPerformance": "Sales performance",
+  "inventoryUnitsSold": "{count} units sold",
+  "inventoryRevenue": "Revenue",
+  "openDashboardGreeting": "Welcome back",
+  "openDashboardScopeShop": "Whole shop",
+  "openDashboardScopeOwn": "Your scope",
+  "openDashboardFinancialOverview": "Financial overview",
+  "openDashboardRevenue": "Revenue",
+  "openDashboardNetProfit": "Net profit",
+  "openDashboardCashPosition": "Cash position",
+  "openDashboardReceivables": "Receivables",
+  "openDashboardProfit": "Profit",
+  "openDashboardNotInProfitYet": "Not in profit yet",
+  "openDashboardBreakEven": "Break-even",
+  "openDashboardSurplus": "Surplus",
+  "openDashboardShortfall": "Shortfall",
+  "openDashboardOwedToYou": "Owed to you",
+  "openDashboardYouOwe": "You owe",
+  "openDashboardOperationalOverview": "Operational overview",
+  "openDashboardActiveJobs": "Active jobs",
+  "openDashboardJobsAwaitingPayment": "Jobs awaiting payment",
+  "openDashboardOverdueJobs": "Overdue jobs",
+  "openDashboardCostGroups": "Cost groups",
+  "openDashboardNewJob": "New job",
+  "openDashboardRecordSale": "Record sale",
+  "openDashboardRecordPayment": "Record payment",
+  "openDashboardAddJobCost": "Add job cost",
+  "openDashboardNewCostGroup": "New cost group",
+  "openDashboardRecentActivity": "Recent activity",
+  "openDashboardViewAll": "View all",
+  "openDashboardGoodMorning": "Good morning",
+  "openDashboardGoodAfternoon": "Good afternoon",
+  "openDashboardGoodEvening": "Good evening",
+  "openJobsTitle": "Jobs",
+  "openJobsSubtitle": "Track work from quote to payment",
+  "openJobsNewJob": "New job",
+  "openJobsSearch": "Search jobs",
+  "openJobsSearchHint": "Title or customer",
+  "openJobsFilterAll": "All",
+  "openJobsFilterActive": "Active",
+  "openJobsFilterAwaitingPayment": "Awaiting payment",
+  "openJobsFilterCompleted": "Completed",
+  "openJobsNoJobs": "No jobs yet",
+  "openJobsNoJobsSubtitle": "Create a job to track quote, payments and costs.",
+  "openJobsLoading": "Loading jobs",
+  "openJobsLoadingSubtitle": "Please wait while your jobs load.",
+  "openJobsNoCustomer": "No customer",
+  "openJobStatusDraft": "Draft",
+  "openJobStatusInProgress": "In progress",
+  "openJobStatusAwaitingPayment": "Awaiting payment",
+  "openJobStatusCompleted": "Completed",
+  "openJobStatusCancelled": "Cancelled",
+  "openJobFormTitle": "New job",
+  "openJobDetailTitle": "Job detail",
+  "openJobAddCostTitle": "Add job cost",
+  "openCostGroupsTitle": "Cost groups",
+  "openCostGroupFormTitle": "New cost group",
+  "openCostGroupDetailTitle": "Cost group detail",
+  "openReceivablesTitle": "Receivables",
+  "openJobDetailNotFound": "Job not found",
+  "openJobDetailNoCustomer": "No customer",
+  "openJobDetailOverview": "Job overview",
+  "openJobDetailQuote": "Quoted amount",
+  "openJobDetailFinalPrice": "Final price",
+  "openJobDetailStatus": "Status",
+  "openJobDetailCreated": "Created",
+  "openJobDetailFinancials": "Financial breakdown",
+  "openJobDetailQuotedAmount": "Quoted amount",
+  "openJobDetailDirectCosts": "Direct costs",
+  "openJobDetailPaymentsReceived": "Payments received",
+  "openJobDetailOutstanding": "Outstanding",
+  "openJobDetailEstimatedProfit": "Estimated profit",
+  "openJobDetailActivity": "Job activity",
+  "openJobDetailCostAdded": "Cost added",
+  "openJobDetailPaymentReceived": "Payment received",
+  "openJobDetailNoActivity": "No activity yet",
+  "openJobDetailActions": "Actions",
+  "openJobDetailEditJob": "Edit job",
+  "openJobDetailAddCost": "Add direct cost",
+  "openJobDetailReceivePayment": "Receive payment",
+  "openJobDetailRecordSale": "Record sale",
+  "openJobDetailCompleteJob": "Complete job",
+  "openJobDetailCompleteJobConfirm": "Marking a job complete is separate from settlement. The job can be completed without being fully paid.",
+  "openJobDetailCancel": "Cancel",
+  "openJobDetailCompleteAndSettle": "Complete and settle",
+  "openCostGroupsSubtitle": "Pooled costs shared across jobs",
+  "openCostGroupsNewGroup": "New cost group",
+  "openCostGroupsInvested": "Invested",
+  "openCostGroupsRecovered": "Recovered",
+  "openCostGroupsRemaining": "Remaining",
+  "openCostGroupsHasRemaining": "Unallocated",
+  "openCostGroupsFullyAllocated": "Fully allocated",
+  "openCostGroupsNoGroups": "No cost groups yet",
+  "openCostGroupsNoGroupsSubtitle": "Create a cost group to track pooled costs shared across jobs.",
+  "openCostGroupsLoading": "Loading cost groups",
+  "openCostGroupsLoadingSubtitle": "Please wait while your cost groups load.",
+  "openCostGroupDetailNotFound": "Cost group not found",
+  "openCostGroupDetailNoNote": "No note",
+  "openCostGroupDetailInvestment": "Investment",
+  "openCostGroupDetailInitialInvestment": "Initial investment",
+  "openCostGroupDetailAllocated": "Allocated",
+  "openCostGroupDetailRemaining": "Remaining",
+  "openCostGroupDetailHasRemaining": "Unallocated",
+  "openCostGroupDetailFullyAllocated": "Fully allocated",
+  "openCostGroupDetailMovementHistory": "Movement history",
+  "openCostGroupDetailNoMovements": "No movements yet",
+  "openCostGroupDetailEntry": "Entry",
+  "openReceivablesSubtitle": "Money customers owe the business",
+  "openReceivablesTotalOutstanding": "Total outstanding",
+  "openReceivablesCustomersOwed": "Customers owed",
+  "openReceivablesCustomers": "Customers with balances",
+  "openReceivablesOutstanding": "Outstanding",
+  "openReceivablesOldestUnpaid": "Oldest unpaid",
+  "openReceivablesNoOutstanding": "No outstanding balances",
+  "openReceivablesNoOutstandingSubtitle": "All customers are paid up.",
+  "openReceivablesLoading": "Loading receivables",
+  "openReceivablesLoadingSubtitle": "Please wait while receivables load.",
+  "openAnalyticsFinancialPerformance": "Financial performance",
+  "openAnalyticsNetProfit": "Net profit",
+  "openAnalyticsCashPosition": "Cash position",
+  "openAnalyticsPooledCosts": "Pooled costs",
+  "openAnalyticsJobsCompleted": "Jobs completed",
+  "openAnalyticsReceivables": "Receivables",
+  "shiftStartTitle": "Start a shift",
+  "shiftStartSubtitle": "No shift is open",
+  "shiftStartPurpose": "You need an open shift to {purpose}.",
+  "shiftStartNeedDrawer": "Cash goes into the shift drawer, so a shift must be open first.",
+  "shiftStartOpenShift": "Opening float",
+  "shiftStartStartShift": "Start shift",
+  "fashionDashboardSellAction": "Sell",
+  "fashionDashboardAddProduct": "Add style",
+  "fashionDashboardReceiveStock": "Receive stock",
+  "fashionDashboardCreateReserve": "Create reserve",
+  "fashionDashboardViewCatalogue": "View catalogue",
+  "fashionDashboardLowStockVariants": "Low-stock variants",
+  "fashionDashboardReserves": "Reserves",
+  "fashionDashboardReservesOpen": "Open reserves",
+  "fashionDashboardReservesAwaitingPayment": "Awaiting payment",
+  "fashionDashboardReservesReady": "Ready for collection",
+  "fashionDashboardViewAll": "View all",
+  "fashionCatalogueTitle": "Catalogue",
+  "fashionCatalogueSubtitle": "Styles and their variants",
+  "fashionCatalogueAddStyle": "Add style",
+  "fashionCatalogueSearch": "Search styles",
+  "fashionCatalogueSearchHint": "Name or SKU",
+  "fashionCatalogueNoStyles": "No styles yet",
+  "fashionCatalogueNoStylesSubtitle": "Add a style to start building your catalogue.",
+  "fashionCatalogueLoading": "Loading catalogue",
+  "fashionCatalogueLoadingSubtitle": "Please wait while your styles load.",
+  "fashionProductDetailTitle": "Style detail",
+  "fashionProductDetailNotFound": "Style not found",
+  "fashionProductDetailVariants": "Variants",
+  "fashionProductDetailNoVariants": "No variants yet",
+  "fashionProductDetailTotalStock": "Total stock",
+  "fashionProductDetailLowStock": "Low-stock variants",
+  "fashionProductDetailEditStyle": "Edit style",
+  "fashionProductDetailEditVariant": "Edit variant",
+  "fashionProductFormAddStyle": "Add style",
+  "fashionProductFormEditStyle": "Edit style",
+  "fashionProductFormAddStyleSubtitle": "Create a style and its size/colour variants.",
+  "fashionProductFormEditStyleSubtitle": "Change the style's name, category, and variants.",
+  "fashionProductFormProductInfo": "Product information",
+  "fashionProductFormStyleName": "Style name",
+  "fashionProductFormStyleNameRequired": "Give the style a name",
+  "fashionProductFormCategory": "Category",
+  "fashionProductFormBrand": "Brand",
+  "fashionProductFormDescription": "Description",
+  "fashionProductFormVariants": "Variants",
+  "fashionProductFormAddVariant": "Add variant",
+  "fashionProductFormVariantName": "Variant name",
+  "fashionProductFormSize": "Size",
+  "fashionProductFormColour": "Colour",
+  "fashionProductFormSKU": "SKU",
+  "fashionProductFormBarcode": "Barcode",
+  "fashionProductFormStock": "Starting stock",
+  "fashionProductFormSellPrice": "Sell price",
+  "fashionProductFormCostPrice": "Cost price",
+  "fashionProductFormReorderLevel": "Reorder level",
+  "reserveScreenTitle": "Reserves",
+  "reserveScreenSubtitle": "Reserve a variant, take a deposit, collect when fully paid",
+  "reserveNewReserve": "New reserve",
+  "reserveCustomer": "Customer",
+  "reserveStyle": "Style",
+  "reserveVariant": "Variant",
+  "reserveQuantity": "Quantity",
+  "reserveDeposit": "Deposit (KES)",
+  "reservePaymentMethod": "Payment method",
+  "reserveReference": "Reference",
+  "reserveDueDays": "Due days",
+  "reserveCreate": "Create reserve",
+  "reserveReservations": "Reservations",
+  "reserveNoReserves": "No reserves yet",
+  "reserveCustomerLabel": "Customer",
+  "reserveDue": "Due",
+  "reservePaid": "Paid",
+  "fashionAnalyticsFinancialPerformance": "Financial performance",
+  "fashionAnalyticsNetProfit": "Net profit",
+  "fashionAnalyticsStockValue": "Stock value",
+  "fashionAnalyticsLowStockVariants": "Low-stock variants",
+  "fashionAnalyticsOutOfStock": "Out of stock",
+  "exchangeFindSaleTitle": "Find the sale to exchange",
+  "exchangeReturnLinesTitle": "Choose what comes back",
+  "exchangeReplacementTitle": "Choose the replacement",
+  "exchangeConfirmTitle": "Confirm exchange",
+  "exchangeSearchLabel": "Search sales",
+  "exchangeSearchHint": "Receipt, staff, date, or customer",
+  "exchangeNoSalesFound": "No matching sales",
+  "exchangeStartOver": "Start over",
+  "exchangeTotal": "Total",
+  "exchangeReturning": "Returning from sale",
+  "exchangeReturnTotal": "Return value",
+  "exchangeSold": "Sold",
+  "exchangeAvailable": "available to return",
+  "exchangeLess": "Return less",
+  "exchangeMore": "Return more",
+  "exchangeRestock": "Put back on shelf",
+  "exchangeWriteOff": "Write off",
+  "exchangeChooseReplacement": "Choose replacement variants",
+  "exchangeReplacementTotal": "Replacement value",
+  "exchangeNoReplacements": "Add at least one replacement variant",
+  "exchangeReview": "Review exchange",
+  "exchangeReturned": "Goods returned",
+  "exchangeDifference": "Difference",
+  "exchangeCommit": "Commit exchange",
+  "exchangeNoLines": "This sale has no returnable lines",
+  "openJobFormJobTitleLabel": "Job title",
+  "openJobFormTitleRequired": "Title required",
+  "openJobFormCustomerLabel": "Customer (optional)",
+  "openJobFormQuoteLabel": "Quoted amount (optional)",
+  "openJobFormCreateAction": "Create job",
+  "openJobFormSaveAction": "Save changes",
+  "openJobFormEditTitle": "Edit job",
+  "openJobFormCouldNotCreate": "Could not create job: {error}",
+  "moreSwitchBusinessProfile": "Switch business profile",
+  "moreFashionReserves": "Fashion reserves",
+  "moreExchanges": "Exchanges",
+  "moreOpenBusinessRecord": "Open business record",
+  "moreOpenBusinessRecordSubtitle": "Pots, jobs and owner money",
+  "moreReportsExports": "Reports & exports",
+  "moreHelp": "Help",
+  "tankRegisterHistory": "History",
+  "tankRegisterTankInventory": "Tank inventory",
+  "tankRegisterPackagedBeverages": "Packaged beverages",
+  "tankRegisterMeasuredServings": "Measured servings",
+  "tankDetailStockReceived": "Stock received",
+  "tankDetailMeasuredSales": "Measured sales",
+  "openJobDetailPaymentCash": "Cash",
+  "openJobDetailPaymentMpesa": "M-Pesa",
+  "openJobDetailPaymentBank": "Bank transfer",
+  "openJobDetailCouldNotRecordPayment": "Could not record payment: {error}",
+  "openJobDetailCouldNotCompleteJob": "Could not complete job",
+  "openJobDetailPaymentMethod": "Method",
+  "crossShopSaleNoLongerOnTill": "This sale is no longer on this till.",
+  "crossShopClose": "Close",
+  "crossShopCouldNotLoadSale": "Could not load this sale.",
+  "crossShopAllShopsActivity": "All shops activity",
+  "crossShopCouldNotReadActivity": "Could not read shop activity. Pull to retry.",
+  "crossShopNoMatchingActivity": "No matching activity.",
+  "crossShopLoadMoreActivity": "Load more activity",
+  "expensesVoidExpenseTitle": "Void expense?",
+  "expensesVoidExpenseBody": "This keeps the record but removes it from totals.",
+  "expensesCancel": "Cancel",
+  "expensesVoid": "Void",
+  "helpTitle": "Help",
+  "cashControlTillCash": "Till cash",
+  "cashControlOtherFunds": "Other funds",
+  "cashControlPayLater": "Pay later",
+  "cashControlCash": "Cash",
+  "cashControlMpesa": "M-Pesa",
+  "cashControlBankTransfer": "Bank transfer",
+  "cashControlRecordPayment": "Record payment",
+  "productDrilldownCouldNotLoad": "Could not load product analytics.",
+  "productDrilldownDetailForPeriod": "Product detail for the selected period",
+  "productDrilldownWhoSellsIt": "Who sells it",
+  "productDrilldownHowCustomersPay": "How customers pay",
+  "productDrilldownWhenItSells": "When it sells",
+  "productDrilldownBoughtTogether": "Bought together",
+  "productDrilldownStockTimeline": "Stock timeline",
+  "productDrilldownPriceCostHistory": "Price and cost history",
+  "productDrilldownTransactionsContaining": "Transactions containing this product",
+  "productDrilldownProductSale": "Product sale",
+  "productDrilldownClose": "Close",
+  "productDrilldownCouldNotLoadRemoteSale": "Could not load this remote sale.",
+  "productDrilldownSaleNoLongerOnTill": "This sale is no longer on this till.",
+  "ownerSetupCouldNotOpenDocument": "Could not open document",
+  "ownerSetupAgreeTerms": "I agree to the Terms of Service",
+  "ownerSetupAgreePrivacy": "I agree to the Privacy Policy",
+  "profileFormAddDrink": "Add drink",
+  "profileFormBottle": "Bottle",
+  "profileFormCrate": "Crate",
+  "profileFormKeg": "Keg",
+  "profileFormShot": "Shot",
+  "profileFormSingleBottle": "Single bottle",
+  "profileFormCrateOfBottles": "Crate of bottles",
+  "profileFormCarton": "Carton",
+  "profileFormCancel": "Cancel",
+  "profileFormSave": "Save",
+  "profileFormAddProduct": "Add product",
+  "profileFormEach": "Each",
+  "profileFormKilogram": "Kilogram",
+  "profileFormLitre": "Litre",
+  "profileFormPack": "Pack",
+  "profileFormTrackVariants": "Track variants (sizes/colours)",
+  "profileFormAddFashionStyle": "Add fashion style",
+  "profileFormVariants": "Variants",
+  "profileFormAddVariant": "Add variant",
+  "profileFormAddItemOrService": "Add item or service",
+  "profileFormTrackStock": "Track stock",
+  "receiveStockNeedsReview": "Needs review",
+  "receiveStockVerified": "Verified",
+  "receiveStockValidException": "Valid exception",
+  "receiveStockUnmatched": "Unmatched",
+  "staffLoginChooseShop": "Choose shop",
+  "staffLoginCancel": "Cancel",
+  "stocktakeEnterAllCounts": "Enter every count before applying",
+  "stocktakeCancel": "Cancel",
+  "stocktakeSave": "Save",
+  "stocktakeBlindCount": "Blind count",
+  "stocktakeHideExpected": "Hide expected quantities while counting",
+  "stocktakeFreezeCounted": "Freeze counted items",
+  "stocktakeBlockSales": "Block sales for items in this count",
+  "stocktakeTankDip": "Tank dip",
+  "stocktakeStart": "Start stocktake",
+  "stocktakeRecent": "Recent stocktakes",
+  "stocktakeApply": "Apply stocktake",
+  "termDrinksProduct": "Drink",
+  "termDrinksProductPlural": "Drinks",
+  "termDrinksSale": "Sale",
+  "termDrinksStock": "Bar stock",
+  "termDrinksPrimaryAction": "Start sale",
+  "termDukaProduct": "Product",
+  "termDukaProductPlural": "Products",
+  "termDukaSale": "Sale",
+  "termDukaStock": "Stock",
+  "termDukaPrimaryAction": "Start sale",
+  "termFashionProduct": "Style",
+  "termFashionProductPlural": "Styles",
+  "termFashionSale": "Sale",
+  "termFashionStock": "Catalogue",
+  "termFashionPrimaryAction": "Start sale",
+  "termOpenProduct": "Item or service",
+  "termOpenProductPlural": "Items and services",
+  "termOpenSale": "Record",
+  "termOpenStock": "Optional stock",
+  "termOpenPrimaryAction": "Record sale",
+  "settingsCashierPayoutApprovalLimit": "Cashier payout approval limit",
+  "settingsDiscountsPriceOverrides": "Discounts and price overrides",
+  "settingsSetupMpesaPayHero": "Set up M-Pesa with PayHero",
+  "settingsMpesaTill": "M-Pesa Till",
+  "settingsMpesaPaybill": "M-Pesa Paybill",
+  "settingsSaveChannel": "Save channel",
+  "settingsCouldNotOpenDocument": "Could not open document",
+  "settingsTermsOfService": "Terms of Service",
+  "settingsPrivacyPolicy": "Privacy Policy",
+  "settingsDrawerConnector": "Drawer connector",
+  "settingsPulseTiming": "Pulse timing",
+  "settingsPulseTimingSubtitle": "Adjust only if the paired drawer needs it",
+  "settingsEnableDiscounts": "Enable discounts",
+  "settingsRequireReason": "Require a reason",
+  "settingsAllowDiscountsBelowCost": "Allow discounts below cost",
+  "settingsIncomingMpesaPayments": "Incoming M-Pesa payments",
+  "settingsOpenSyncCenter": "Open Sync Center",
+  "settingsBackupAllShopData": "Back up all shop data",
+  "settingsRestoreAllShopData": "Restore all shop data",
+  "settingsUploadPortableCloudCopy": "Upload portable cloud copy",
+  "settingsRestoreLatestCloudCopy": "Restore latest cloud copy",
+  "settingsSeedBlackbeeProducts": "Seed BlackBee products",
+  "settingsAddVariant": "Add variant",
+  "settingsCancel": "Cancel",
+  "settingsSave": "Save",
+  "settingsPin1": "Pin 1",
+  "settingsPin2": "Pin 2",
+  "settingsSaveButton": "Save",
+  "reportsDone": "Done",
+  "reportsCupSales": "Cup sales",
+  "reportsTopMovers": "Top movers",
+  "reportsPdfReport": "PDF report",
+  "reportsPeriod": "Period",
+  "reportsReconciledFinancialStatement": "Reconciled financial statement",
+  "reportsZReport": "Z report",
+  "transactionsAll": "All",
+  "exchangeRecorded": "Exchange #$exchangeId recorded — return and replacement committed.",
+  "exchangeAddReplacement": "Add replacement variant",
+  "exchangeCancel": "Cancel",
+  "exchangeAdd": "Add",
+  "exchangeVariantNotFound": "Variant not found",
+  "exchangeInsufficientStock": "Insufficient stock",
+  "exchangeFailed": "Failed: $e",
+  "cancel": "Cancel",
+  "closeShift": "Close shift",
+  "done": "Done",
+  "heldSalesRemain": "Held sales remain",
+  "keepShiftOpen": "Keep shift open",
+  "livePreviewNoReportNumberIsUsed": "Live preview · no report number is used",
+  "open": "Open",
+  "openDrawer": "Open drawer",
+  "xReportPreview": "X report preview",
+  "add": "Add",
+  "addMoreProducts": "Add more products",
+  "apply": "Apply",
+  "attachACustomerToThisHeldSale": "Attach a customer to this held sale?",
+  "chooseCustomer": "Choose customer",
+  "costNotRecordedProfitMayBeOverstated": "Cost not recorded; profit may be overstated.",
+  "couldnTCompleteTheSaleCheckStockAndTryAgain": "Couldn’t complete the sale. Check stock and try again.",
+  "firstTenderRemainingIsPaidByTheSecondTender": "First tender · remaining is paid by the second tender",
+  "holdSale": "Hold sale",
+  "incomingPayment": "Incoming payment",
+  "isThisANewProductAddCostPrice": "Is this a new product? Add cost price",
+  "keepHeldSale": "Keep held sale",
+  "mPesaPaidToTill": "M-Pesa paid to till",
+  "noCustomer": "No customer",
+  "noHeldSales": "No held sales",
+  "noReason": "No reason",
+  "noneNew": "None / new",
+  "orderDiscount": "Order discount",
+  "paymentCouldNotBeStartedCheckYourConnectionAndTryAgain": "Payment could not be started. Check your connection and try again.",
+  "paymentSucceededLocalRecordingFailedContactSupportBeforeReconcilingReports": "Payment succeeded. Local recording failed — contact support before reconciling reports.",
+  "pricesChanged": "Prices changed",
+  "printReceipt": "Print receipt",
+  "quickSale": "Quick sale",
+  "quickSaleRecorded": "Quick sale recorded.",
+  "recordSaleAmount": "Record sale amount",
+  "save": "Save",
+  "sell": "Sell",
+  "sellShot": "Sell shot",
+  "sharePdf": "Share PDF",
+  "shareReceipt": "Share receipt",
+  "skip": "Skip",
+  "splitPayment": "Split payment",
+  "tendersMustEqualTheTotal": "Tenders must equal the total.",
+  "useCurrentPrices": "Use current prices",
+  "heldSales": "Held sales",
+  "company": "Company",
+  "inProgress": "In progress",
+  "individual": "Individual",
+  "needsReview": "Needs review",
+  "nonVatLite": "Non-VAT Lite",
+  "notStarted": "Not started",
+  "oscu": "OSCU",
+  "onboarded": "Onboarded",
+  "onlineEclient": "Online / eClient",
+  "other": "Other",
+  "partnership": "Partnership",
+  "registeredObligations": "Registered obligations",
+  "saveMapping": "Save mapping",
+  "soleProprietor": "Sole proprietor",
+  "taxEntityAndOutletMapping": "Tax entity and outlet mapping",
+  "vscu": "VSCU",
+  "addPack": "Add pack",
+  "addPackOrCarton": "Add pack or carton",
+  "assignABarcodeBeforePrintingItsLabel": "Assign a barcode before printing its label.",
+  "assignInternalBarcode": "Assign internal barcode",
+  "createRepack": "Create & repack",
+  "each": "Each",
+  "kilogram": "Kilogram",
+  "litre": "Litre",
+  "looseGoods": "Loose goods",
+  "noPacksYetAddACaseCartonOrBundleBarcode": "No packs yet. Add a case, carton or bundle barcode.",
+  "packsAndCartons": "Packs and cartons",
+  "print": "Print",
+  "printBarcodeLabel": "Print barcode label",
+  "printBarcodeLabels": "Print barcode labels",
+  "recordWaste": "Record waste",
+  "recordWasteSpillage": "Record waste/spillage",
+  "reorder": "Reorder",
+  "repack": "Repack",
+  "repackCouldNotBeRecorded": "Repack could not be recorded.",
+  "repackRecorded": "Repack recorded.",
+  "repackToNewProduct": "Repack to new product",
+  "stocktake": "Stocktake",
+  "tankRegister": "Tank register",
+  "trackExpiryDates": "Track expiry dates",
+  "wasteCannotBeGreaterThanCurrentStock": "Waste cannot be greater than current stock.",
+  "wasteCouldNotBeRecorded": "Waste could not be recorded.",
+  "bankTransfer": "Bank transfer",
+  "cancelLayBy": "Cancel lay-by",
+  "cancelLayBy2": "Cancel lay-by?",
+  "cash": "Cash",
+  "complete": "Complete",
+  "keep": "Keep",
+  "mPesa": "M-Pesa",
+  "payment": "Payment",
+  "paymentMethod": "Payment method",
+  "paymentReferenceOptional": "Payment reference (optional)",
+  "createCostGroup": "Create cost group",
+  "addCost": "Add cost",
+  "adjustStock": "Adjust stock",
+  "edit": "Edit",
+  "receiveStock": "Receive stock",
+  "viewSales": "View sales",
+  "linkASupplierBeforeCreatingAnOrder": "Link a supplier before creating an order.",
+  "noProductsAreBelowTheirReorderLevel": "No products are below their reorder level.",
+  "receive": "Receive",
+  "receiveAllRemaining": "Receive all remaining",
+  "reorderSuggestions": "Reorder suggestions",
+  "saveShare": "Save & share",
+  "saveDraft": "Save draft",
+  "allProducts": "All products",
+  "copyCupToProduct": "Copy cup to product",
+  "copyToAnotherProduct": "Copy to another product",
+  "tankDetail": "Tank detail",
+  "noTanksYet": "No tanks yet",
+  "revoke": "Revoke",
+  "sharedReceipts": "Shared receipts",
+  "acceptSale": "Accept sale",
+  "kraCouldNotBeReachedTheReceiptsRemainQueuedForTheNextConnection": "KRA could not be reached. The receipts remain queued for the next connection.",
+  "lastLocalBackup": "Last local backup",
+  "leaveOpen": "Leave open",
+  "localStorageAccess": "Local storage access",
+  "onlyAManagerCanViewSyncCenter": "Only a manager can view Sync Center.",
+  "rejectedReceiptsToRetry": "Rejected receipts to retry",
+  "resolveStockConflict": "Resolve stock conflict",
+  "retry": "Retry",
+  "retryQueuedReceipts": "Retry queued receipts",
+  "review": "Review",
+  "syncCenter": "Sync Center",
+  "theseOfflineSalesCouldNotReserveStockAfterAnotherTillSoldTheLastUnitsTheyRemainQueuedAndAreNotSilentlyDiscarded": "These offline sales could not reserve stock after another till sold the last units. They remain queued and are not silently discarded.",
+  "unclaimedMPesa": "Unclaimed M-Pesa",
+  "unverifiedPayments": "Unverified payments",
+  "voidSale": "Void sale"
+  ,"settingsSwitch": "Switch"
+  ,"openDashboardSelectJob": "Select a job"
+  ,"openCostGroupCouldNotCreate": "Could not create cost group: {error}"
+  ,"openJobAddCostCouldNotAdd": "Could not add cost: {error}"
+  ,"inventoryCouldNotSavePack": "Could not save pack: {error}"
+  ,"syncCenterCouldNotResolveConflict": "Could not resolve conflict: {error}"
+  ,"openDashboardNoJobs": "No jobs yet. Create one first."
 }

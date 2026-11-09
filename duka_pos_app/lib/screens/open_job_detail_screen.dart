@@ -130,11 +130,11 @@ class _OpenJobDetailScreenState extends State<OpenJobDetailScreen> {
               const SizedBox(height: 12),
               DropdownButtonFormField<String>(
                 initialValue: method,
-                decoration: const InputDecoration(labelText: 'Method'),
-                items: const <DropdownMenuItem<String>>[
-                  DropdownMenuItem(value: 'cash', child: Text('Cash')),
-                  DropdownMenuItem(value: 'mpesa', child: Text('M-Pesa')),
-                  DropdownMenuItem(value: 'bank_transfer', child: Text('Bank transfer')),
+                decoration: InputDecoration(labelText: l10n.openJobDetailPaymentMethod),
+                items: <DropdownMenuItem<String>>[
+                  DropdownMenuItem(value: 'cash', child: Text(l10n.openJobDetailPaymentCash)),
+                  DropdownMenuItem(value: 'mpesa', child: Text(l10n.openJobDetailPaymentMpesa)),
+                  DropdownMenuItem(value: 'bank_transfer', child: Text(l10n.openJobDetailPaymentBank)),
                 ],
                 onChanged: (v) => setState(() => method = v ?? 'cash'),
               ),
@@ -175,7 +175,7 @@ class _OpenJobDetailScreenState extends State<OpenJobDetailScreen> {
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Could not record payment: $e')),
+          SnackBar(content: Text(l10n.openJobDetailCouldNotRecordPayment(e))),
         );
       }
     }
@@ -225,7 +225,7 @@ class _OpenJobDetailScreenState extends State<OpenJobDetailScreen> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: <Widget>[
-            BackupReminderBanner(onBackupNow: () async {}),
+            BackupReminderBanner(onBackupNow: () => performBackup(context)),
             SizedBox(height: spacing.section),
             Text(
               l10n.openJobDetailNotFound,
@@ -256,7 +256,7 @@ class _OpenJobDetailScreenState extends State<OpenJobDetailScreen> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: <Widget>[
-            BackupReminderBanner(onBackupNow: () async {}),
+            BackupReminderBanner(onBackupNow: () => performBackup(context)),
             SizedBox(height: spacing.section),
             // Job header: title, customer, status chip
             Row(
@@ -380,14 +380,14 @@ class _OpenJobDetailScreenState extends State<OpenJobDetailScreen> {
                   _ActionButton(
                     label: l10n.openJobDetailEditJob,
                     icon: Icons.edit_outlined,
-                    onPressed: () => context.push(Routes.openJobNew),
+                    onPressed: () => context.push(Routes.openJobEdit(widget.jobId)),
                   ),
                 if (canManageJobs)
                   _ActionButton(
                     label: l10n.openJobDetailAddCost,
                     icon: Icons.add_circle_outlined,
                     onPressed: () => context.push(
-                      '/analytics/open-business/jobs/${widget.jobId}/cost',
+                      Routes.openJobAddCost(widget.jobId),
                     ),
                   ),
                 if (canReceivePayments)
@@ -400,7 +400,7 @@ class _OpenJobDetailScreenState extends State<OpenJobDetailScreen> {
                   _ActionButton(
                     label: l10n.openJobDetailRecordSale,
                     icon: Icons.point_of_sale_outlined,
-                    onPressed: () => context.push(Routes.openSell),
+                    onPressed: () => context.push(Routes.sell),
                   ),
                 if (canManageJobs && !_isCompleted)
                   _ActionButton(
@@ -457,7 +457,7 @@ class _OpenJobDetailScreenState extends State<OpenJobDetailScreen> {
               } catch (_) {
                 if (mounted) {
                   messenger.showSnackBar(
-                    const SnackBar(content: Text('Could not complete job')),
+                    SnackBar(content: Text(l10n.openJobDetailCouldNotCompleteJob)),
                   );
                 }
               }

@@ -31,12 +31,12 @@ import '../screens/transactions_screen.dart';
 import '../screens/shift_screen.dart';
 import '../screens/expenses_screen.dart';
 import '../screens/servings_screen.dart';
+import '../screens/stocktake_screen.dart';
 import '../screens/splash_screen.dart';
 import '../screens/support_screen.dart';
 import '../screens/tank_detail_screen.dart';
 import '../screens/tank_register_screen.dart';
 import '../screens/product_detail_screen.dart';
-import '../models/models.dart';
 import '../screens/marketplace_screen.dart';
 import '../screens/help_screen.dart';
 import '../screens/open_jobs_screen.dart';
@@ -398,23 +398,30 @@ List<RouteBase> _shellRoutes(AppState appState) {
                         : NotFoundScreen(location: routerState.matchedLocation),
                   ),
                 ),
+                // Stocktake: full-screen count.
                 GoRoute(
-                  path: 'product-detail',
+                  path: 'stocktake',
                   parentNavigatorKey: rootNavigatorKey,
                   pageBuilder:
-                      (BuildContext context, GoRouterState routerState) {
-                    final extra = routerState.extra;
-                    if (extra is! Product) {
-                      return _fadeThrough(
-                        routerState,
-                        NotFoundScreen(location: routerState.matchedLocation),
-                      );
-                    }
-                    return _fadeThrough(
-                      routerState,
-                      ProductDetailScreen(product: extra),
-                    );
-                  },
+                      (BuildContext context, GoRouterState routerState) =>
+                          _fadeThrough(
+                    routerState,
+                    const StocktakeScreen(),
+                  ),
+                ),
+                GoRoute(
+                  path: 'product-detail/:productId',
+                  parentNavigatorKey: rootNavigatorKey,
+                  pageBuilder:
+                      (BuildContext context, GoRouterState routerState) =>
+                          _fadeThrough(
+                    routerState,
+                    ProductDetailScreen(
+                      productId: int.tryParse(
+                            routerState.pathParameters['productId'] ?? '',
+                          ),
+                    ),
+                  ),
                 ),
                 // Add a new fashion style with variants.
                 GoRoute(
@@ -436,6 +443,22 @@ List<RouteBase> _shellRoutes(AppState appState) {
                           _fadeThrough(
                     routerState,
                     FashionProductDetailScreen(
+                      productId: int.tryParse(
+                            routerState.pathParameters['productId'] ?? '',
+                          ) ??
+                          0,
+                    ),
+                  ),
+                ),
+                // Edit an existing fashion style + variants.
+                GoRoute(
+                  path: 'fashion-product/:productId/edit',
+                  parentNavigatorKey: rootNavigatorKey,
+                  pageBuilder:
+                      (BuildContext context, GoRouterState routerState) =>
+                          _fadeThrough(
+                    routerState,
+                    FashionProductFormScreen(
                       productId: int.tryParse(
                             routerState.pathParameters['productId'] ?? '',
                           ) ??
@@ -630,6 +653,21 @@ List<RouteBase> _shellRoutes(AppState appState) {
                           _fadeThrough(
                     routerState,
                     const OpenJobFormScreen(),
+                  ),
+                ),
+                // Edit an existing job.
+                GoRoute(
+                  path: 'jobs/:jobId/edit',
+                  parentNavigatorKey: rootNavigatorKey,
+                  pageBuilder:
+                      (BuildContext context, GoRouterState routerState) =>
+                          _fadeThrough(
+                    routerState,
+                    OpenJobFormScreen(
+                      jobId: int.tryParse(
+                            routerState.pathParameters['jobId'] ?? '',
+                          ),
+                    ),
                   ),
                 ),
                 // One job's detail: overview, financials, activity, actions.

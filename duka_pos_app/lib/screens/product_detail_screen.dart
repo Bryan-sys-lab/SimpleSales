@@ -4,6 +4,7 @@ import 'package:provider/provider.dart';
 
 import '../l10n/generated/app_localizations.dart';
 import '../models/models.dart';
+import '../db/database_helper.dart';
 import '../services/app_state.dart';
 import '../services/roles.dart';
 import '../theme/app_colors.dart';
@@ -21,13 +22,60 @@ import '../utils/money.dart';
 /// Redesigned to match the SimpleSales duka profile mockup: centered product
 /// art badge, name + category subtitle, stock/selling/buying/stock-value
 /// stats grid, stock activity list, and receive/adjust action buttons.
-class ProductDetailScreen extends StatelessWidget {
-  const ProductDetailScreen({required this.product, super.key});
+class ProductDetailScreen extends StatefulWidget {
+  const ProductDetailScreen({this.product, this.productId, super.key});
 
-  final Product product;
+  final Product? product;
+  final int? productId;
+
+  @override
+  State<ProductDetailScreen> createState() => _ProductDetailScreenState();
+}
+
+class _ProductDetailScreenState extends State<ProductDetailScreen> {
+  Product? _product;
+  bool _loading = true;
+  String? _error;
+
+  @override
+  void initState() {
+    super.initState();
+    _product = widget.product;
+    if (_product == null && widget.productId != null) {
+      _load();
+    } else {
+      _loading = false;
+    }
+  }
+
+  Future<void> _load() async {
+    try {
+      final p = await DatabaseHelper.instance.getProductById(widget.productId!);
+      if (!mounted) return;
+      setState(() {
+        _product = p;
+        _loading = false;
+        if (p == null) _error = 'Product not found';
+      });
+    } catch (e) {
+      if (!mounted) return;
+      setState(() {
+        _loading = false;
+        _error = e.toString();
+      });
+    }
+  }
+
 
   @override
   Widget build(BuildContext context) {
+    if (_loading) {
+      return const Scaffold(body: Center(child: CircularProgressIndicator()));
+    }
+    final product = _product;
+    if (product == null) {
+      return Scaffold(body: Center(child: Text(_error ?? 'Not found')));
+    }
     final AppSpacing spacing = AppSpacing.of(context);
     final AppColors colors = AppColors.of(context);
     final TextTheme type = AppTypography.of(context);
@@ -65,7 +113,7 @@ class ProductDetailScreen extends StatelessWidget {
             TextButton.icon(
               onPressed: () => _openEditor(context),
               icon: const Icon(Icons.edit_outlined),
-              label: const Text('Edit'),
+              label: Text(AppLocalizations.of(context).edit),
             ),
         ],
       ),
@@ -249,7 +297,7 @@ class ProductDetailScreen extends StatelessWidget {
                 child: FilledButton.icon(
                   onPressed: () => _receiveStock(context),
                   icon: const Icon(Icons.local_shipping_outlined, size: 18),
-                  label: const Text('Receive stock'),
+                  label: Text(AppLocalizations.of(context).receiveStock),
                 ),
               ),
             if (canReceive) SizedBox(height: spacing.md),
@@ -259,7 +307,7 @@ class ProductDetailScreen extends StatelessWidget {
                 child: OutlinedButton.icon(
                   onPressed: () => _adjustStock(context),
                   icon: const Icon(Icons.tune_outlined, size: 18),
-                  label: const Text('Adjust stock'),
+                  label: Text(AppLocalizations.of(context).adjustStock),
                 ),
               ),
             if (canAdjust) SizedBox(height: spacing.md),
@@ -268,7 +316,7 @@ class ProductDetailScreen extends StatelessWidget {
               child: OutlinedButton.icon(
                 onPressed: () => _viewSales(context),
                 icon: const Icon(Icons.receipt_long_outlined, size: 18),
-                label: const Text('View sales'),
+                label: Text(AppLocalizations.of(context).viewSales),
               ),
             ),
           ],

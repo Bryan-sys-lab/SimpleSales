@@ -525,7 +525,7 @@ class _LedgerFilters extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: <Widget>[
-          Text('Period', style: AppTypography.of(context).labelLarge),
+          Text(AppLocalizations.of(context).reportsPeriod, style: AppTypography.of(context).labelLarge),
           SizedBox(height: spacing.xs),
           Wrap(
             spacing: spacing.xs,
@@ -609,7 +609,7 @@ class _LedgerDropdown extends StatelessWidget {
       value: value,
       hint: Text(label),
       items: <DropdownMenuItem<String?>>[
-        DropdownMenuItem<String?>(value: null, child: Text('All $label')),
+        DropdownMenuItem<String?>(value: null, child: Text('${AppLocalizations.of(context).transactionsAll} $label')),
         for (final String option in options)
           DropdownMenuItem<String?>(value: option, child: Text(option)),
       ],

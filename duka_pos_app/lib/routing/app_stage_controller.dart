@@ -4,6 +4,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import '../models/crash_log.dart';
 import '../services/app_stage.dart';
 import '../services/app_state.dart';
+import '../profile/shop_profile.dart';
 import '../services/auto_sync_service.dart';
 import '../services/failure_recorder.dart';
 
@@ -265,6 +266,7 @@ class AppStageController extends ChangeNotifier {
         canManageStock: _state.canManageStock,
         canViewReports: _state.canViewReports,
         isAdmin: _state.isAdmin,
+        shopProfile: _state.shopProfile,
       );
 }
 
@@ -279,6 +281,7 @@ class AppStageSnapshot {
     required this.canManageStock,
     this.canViewReports = false,
     required this.isAdmin,
+    required this.shopProfile,
   });
 
   final AppStage stage;
@@ -291,4 +294,7 @@ class AppStageSnapshot {
 
   /// Whether this session may see Settings.
   final bool isAdmin;
+
+  /// Active shop profile; drives profile-specific route availability.
+  final ShopProfile shopProfile;
 }

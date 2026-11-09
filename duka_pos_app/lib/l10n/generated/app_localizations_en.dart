@@ -6331,4 +6331,950 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get exchangeNoLines => 'This sale has no returnable lines';
+
+  @override
+  String get openJobFormJobTitleLabel => 'Job title';
+
+  @override
+  String get openJobFormTitleRequired => 'Title required';
+
+  @override
+  String get openJobFormCustomerLabel => 'Customer (optional)';
+
+  @override
+  String get openJobFormQuoteLabel => 'Quoted amount (optional)';
+
+  @override
+  String get openJobFormCreateAction => 'Create job';
+
+  @override
+  String get openJobFormSaveAction => 'Save changes';
+
+  @override
+  String get openJobFormEditTitle => 'Edit job';
+
+  @override
+  String openJobFormCouldNotCreate(Object error) {
+    return 'Could not create job: $error';
+  }
+
+  @override
+  String get moreSwitchBusinessProfile => 'Switch business profile';
+
+  @override
+  String get moreFashionReserves => 'Fashion reserves';
+
+  @override
+  String get moreExchanges => 'Exchanges';
+
+  @override
+  String get moreOpenBusinessRecord => 'Open business record';
+
+  @override
+  String get moreOpenBusinessRecordSubtitle => 'Pots, jobs and owner money';
+
+  @override
+  String get moreReportsExports => 'Reports & exports';
+
+  @override
+  String get moreHelp => 'Help';
+
+  @override
+  String get tankRegisterHistory => 'History';
+
+  @override
+  String get tankRegisterTankInventory => 'Tank inventory';
+
+  @override
+  String get tankRegisterPackagedBeverages => 'Packaged beverages';
+
+  @override
+  String get tankRegisterMeasuredServings => 'Measured servings';
+
+  @override
+  String get tankDetailStockReceived => 'Stock received';
+
+  @override
+  String get tankDetailMeasuredSales => 'Measured sales';
+
+  @override
+  String get openJobDetailPaymentCash => 'Cash';
+
+  @override
+  String get openJobDetailPaymentMpesa => 'M-Pesa';
+
+  @override
+  String get openJobDetailPaymentBank => 'Bank transfer';
+
+  @override
+  String openJobDetailCouldNotRecordPayment(Object error) {
+    return 'Could not record payment: $error';
+  }
+
+  @override
+  String get openJobDetailCouldNotCompleteJob => 'Could not complete job';
+
+  @override
+  String get openJobDetailPaymentMethod => 'Method';
+
+  @override
+  String get crossShopSaleNoLongerOnTill =>
+      'This sale is no longer on this till.';
+
+  @override
+  String get crossShopClose => 'Close';
+
+  @override
+  String get crossShopCouldNotLoadSale => 'Could not load this sale.';
+
+  @override
+  String get crossShopAllShopsActivity => 'All shops activity';
+
+  @override
+  String get crossShopCouldNotReadActivity =>
+      'Could not read shop activity. Pull to retry.';
+
+  @override
+  String get crossShopNoMatchingActivity => 'No matching activity.';
+
+  @override
+  String get crossShopLoadMoreActivity => 'Load more activity';
+
+  @override
+  String get expensesVoidExpenseTitle => 'Void expense?';
+
+  @override
+  String get expensesVoidExpenseBody =>
+      'This keeps the record but removes it from totals.';
+
+  @override
+  String get expensesCancel => 'Cancel';
+
+  @override
+  String get expensesVoid => 'Void';
+
+  @override
+  String get helpTitle => 'Help';
+
+  @override
+  String get cashControlTillCash => 'Till cash';
+
+  @override
+  String get cashControlOtherFunds => 'Other funds';
+
+  @override
+  String get cashControlPayLater => 'Pay later';
+
+  @override
+  String get cashControlCash => 'Cash';
+
+  @override
+  String get cashControlMpesa => 'M-Pesa';
+
+  @override
+  String get cashControlBankTransfer => 'Bank transfer';
+
+  @override
+  String get cashControlRecordPayment => 'Record payment';
+
+  @override
+  String get productDrilldownCouldNotLoad =>
+      'Could not load product analytics.';
+
+  @override
+  String get productDrilldownDetailForPeriod =>
+      'Product detail for the selected period';
+
+  @override
+  String get productDrilldownWhoSellsIt => 'Who sells it';
+
+  @override
+  String get productDrilldownHowCustomersPay => 'How customers pay';
+
+  @override
+  String get productDrilldownWhenItSells => 'When it sells';
+
+  @override
+  String get productDrilldownBoughtTogether => 'Bought together';
+
+  @override
+  String get productDrilldownStockTimeline => 'Stock timeline';
+
+  @override
+  String get productDrilldownPriceCostHistory => 'Price and cost history';
+
+  @override
+  String get productDrilldownTransactionsContaining =>
+      'Transactions containing this product';
+
+  @override
+  String get productDrilldownProductSale => 'Product sale';
+
+  @override
+  String get productDrilldownClose => 'Close';
+
+  @override
+  String get productDrilldownCouldNotLoadRemoteSale =>
+      'Could not load this remote sale.';
+
+  @override
+  String get productDrilldownSaleNoLongerOnTill =>
+      'This sale is no longer on this till.';
+
+  @override
+  String get ownerSetupCouldNotOpenDocument => 'Could not open document';
+
+  @override
+  String get ownerSetupAgreeTerms => 'I agree to the Terms of Service';
+
+  @override
+  String get ownerSetupAgreePrivacy => 'I agree to the Privacy Policy';
+
+  @override
+  String get profileFormAddDrink => 'Add drink';
+
+  @override
+  String get profileFormBottle => 'Bottle';
+
+  @override
+  String get profileFormCrate => 'Crate';
+
+  @override
+  String get profileFormKeg => 'Keg';
+
+  @override
+  String get profileFormShot => 'Shot';
+
+  @override
+  String get profileFormSingleBottle => 'Single bottle';
+
+  @override
+  String get profileFormCrateOfBottles => 'Crate of bottles';
+
+  @override
+  String get profileFormCarton => 'Carton';
+
+  @override
+  String get profileFormCancel => 'Cancel';
+
+  @override
+  String get profileFormSave => 'Save';
+
+  @override
+  String get profileFormAddProduct => 'Add product';
+
+  @override
+  String get profileFormEach => 'Each';
+
+  @override
+  String get profileFormKilogram => 'Kilogram';
+
+  @override
+  String get profileFormLitre => 'Litre';
+
+  @override
+  String get profileFormPack => 'Pack';
+
+  @override
+  String get profileFormTrackVariants => 'Track variants (sizes/colours)';
+
+  @override
+  String get profileFormAddFashionStyle => 'Add fashion style';
+
+  @override
+  String get profileFormVariants => 'Variants';
+
+  @override
+  String get profileFormAddVariant => 'Add variant';
+
+  @override
+  String get profileFormAddItemOrService => 'Add item or service';
+
+  @override
+  String get profileFormTrackStock => 'Track stock';
+
+  @override
+  String get receiveStockNeedsReview => 'Needs review';
+
+  @override
+  String get receiveStockVerified => 'Verified';
+
+  @override
+  String get receiveStockValidException => 'Valid exception';
+
+  @override
+  String get receiveStockUnmatched => 'Unmatched';
+
+  @override
+  String get staffLoginChooseShop => 'Choose shop';
+
+  @override
+  String get staffLoginCancel => 'Cancel';
+
+  @override
+  String get stocktakeEnterAllCounts => 'Enter every count before applying';
+
+  @override
+  String get stocktakeCancel => 'Cancel';
+
+  @override
+  String get stocktakeSave => 'Save';
+
+  @override
+  String get stocktakeBlindCount => 'Blind count';
+
+  @override
+  String get stocktakeHideExpected => 'Hide expected quantities while counting';
+
+  @override
+  String get stocktakeFreezeCounted => 'Freeze counted items';
+
+  @override
+  String get stocktakeBlockSales => 'Block sales for items in this count';
+
+  @override
+  String get stocktakeTankDip => 'Tank dip';
+
+  @override
+  String get stocktakeStart => 'Start stocktake';
+
+  @override
+  String get stocktakeRecent => 'Recent stocktakes';
+
+  @override
+  String get stocktakeApply => 'Apply stocktake';
+
+  @override
+  String get termDrinksProduct => 'Drink';
+
+  @override
+  String get termDrinksProductPlural => 'Drinks';
+
+  @override
+  String get termDrinksSale => 'Sale';
+
+  @override
+  String get termDrinksStock => 'Bar stock';
+
+  @override
+  String get termDrinksPrimaryAction => 'Start sale';
+
+  @override
+  String get termDukaProduct => 'Product';
+
+  @override
+  String get termDukaProductPlural => 'Products';
+
+  @override
+  String get termDukaSale => 'Sale';
+
+  @override
+  String get termDukaStock => 'Stock';
+
+  @override
+  String get termDukaPrimaryAction => 'Start sale';
+
+  @override
+  String get termFashionProduct => 'Style';
+
+  @override
+  String get termFashionProductPlural => 'Styles';
+
+  @override
+  String get termFashionSale => 'Sale';
+
+  @override
+  String get termFashionStock => 'Catalogue';
+
+  @override
+  String get termFashionPrimaryAction => 'Start sale';
+
+  @override
+  String get termOpenProduct => 'Item or service';
+
+  @override
+  String get termOpenProductPlural => 'Items and services';
+
+  @override
+  String get termOpenSale => 'Record';
+
+  @override
+  String get termOpenStock => 'Optional stock';
+
+  @override
+  String get termOpenPrimaryAction => 'Record sale';
+
+  @override
+  String get settingsCashierPayoutApprovalLimit =>
+      'Cashier payout approval limit';
+
+  @override
+  String get settingsDiscountsPriceOverrides => 'Discounts and price overrides';
+
+  @override
+  String get settingsSetupMpesaPayHero => 'Set up M-Pesa with PayHero';
+
+  @override
+  String get settingsMpesaTill => 'M-Pesa Till';
+
+  @override
+  String get settingsMpesaPaybill => 'M-Pesa Paybill';
+
+  @override
+  String get settingsSaveChannel => 'Save channel';
+
+  @override
+  String get settingsCouldNotOpenDocument => 'Could not open document';
+
+  @override
+  String get settingsTermsOfService => 'Terms of Service';
+
+  @override
+  String get settingsPrivacyPolicy => 'Privacy Policy';
+
+  @override
+  String get settingsDrawerConnector => 'Drawer connector';
+
+  @override
+  String get settingsPulseTiming => 'Pulse timing';
+
+  @override
+  String get settingsPulseTimingSubtitle =>
+      'Adjust only if the paired drawer needs it';
+
+  @override
+  String get settingsEnableDiscounts => 'Enable discounts';
+
+  @override
+  String get settingsRequireReason => 'Require a reason';
+
+  @override
+  String get settingsAllowDiscountsBelowCost => 'Allow discounts below cost';
+
+  @override
+  String get settingsIncomingMpesaPayments => 'Incoming M-Pesa payments';
+
+  @override
+  String get settingsOpenSyncCenter => 'Open Sync Center';
+
+  @override
+  String get settingsBackupAllShopData => 'Back up all shop data';
+
+  @override
+  String get settingsRestoreAllShopData => 'Restore all shop data';
+
+  @override
+  String get settingsUploadPortableCloudCopy => 'Upload portable cloud copy';
+
+  @override
+  String get settingsRestoreLatestCloudCopy => 'Restore latest cloud copy';
+
+  @override
+  String get settingsSeedBlackbeeProducts => 'Seed BlackBee products';
+
+  @override
+  String get settingsAddVariant => 'Add variant';
+
+  @override
+  String get settingsCancel => 'Cancel';
+
+  @override
+  String get settingsSave => 'Save';
+
+  @override
+  String get settingsPin1 => 'Pin 1';
+
+  @override
+  String get settingsPin2 => 'Pin 2';
+
+  @override
+  String get settingsSaveButton => 'Save';
+
+  @override
+  String get reportsDone => 'Done';
+
+  @override
+  String get reportsCupSales => 'Cup sales';
+
+  @override
+  String get reportsTopMovers => 'Top movers';
+
+  @override
+  String get reportsPdfReport => 'PDF report';
+
+  @override
+  String get reportsPeriod => 'Period';
+
+  @override
+  String get reportsReconciledFinancialStatement =>
+      'Reconciled financial statement';
+
+  @override
+  String get reportsZReport => 'Z report';
+
+  @override
+  String get transactionsAll => 'All';
+
+  @override
+  String get exchangeRecorded =>
+      'Exchange #\$exchangeId recorded — return and replacement committed.';
+
+  @override
+  String get exchangeAddReplacement => 'Add replacement variant';
+
+  @override
+  String get exchangeCancel => 'Cancel';
+
+  @override
+  String get exchangeAdd => 'Add';
+
+  @override
+  String get exchangeVariantNotFound => 'Variant not found';
+
+  @override
+  String get exchangeInsufficientStock => 'Insufficient stock';
+
+  @override
+  String get exchangeFailed => 'Failed: \$e';
+
+  @override
+  String get cancel => 'Cancel';
+
+  @override
+  String get closeShift => 'Close shift';
+
+  @override
+  String get done => 'Done';
+
+  @override
+  String get heldSalesRemain => 'Held sales remain';
+
+  @override
+  String get keepShiftOpen => 'Keep shift open';
+
+  @override
+  String get livePreviewNoReportNumberIsUsed =>
+      'Live preview · no report number is used';
+
+  @override
+  String get open => 'Open';
+
+  @override
+  String get openDrawer => 'Open drawer';
+
+  @override
+  String get xReportPreview => 'X report preview';
+
+  @override
+  String get add => 'Add';
+
+  @override
+  String get addMoreProducts => 'Add more products';
+
+  @override
+  String get apply => 'Apply';
+
+  @override
+  String get attachACustomerToThisHeldSale =>
+      'Attach a customer to this held sale?';
+
+  @override
+  String get chooseCustomer => 'Choose customer';
+
+  @override
+  String get costNotRecordedProfitMayBeOverstated =>
+      'Cost not recorded; profit may be overstated.';
+
+  @override
+  String get couldnTCompleteTheSaleCheckStockAndTryAgain =>
+      'Couldn’t complete the sale. Check stock and try again.';
+
+  @override
+  String get firstTenderRemainingIsPaidByTheSecondTender =>
+      'First tender · remaining is paid by the second tender';
+
+  @override
+  String get holdSale => 'Hold sale';
+
+  @override
+  String get incomingPayment => 'Incoming payment';
+
+  @override
+  String get isThisANewProductAddCostPrice =>
+      'Is this a new product? Add cost price';
+
+  @override
+  String get keepHeldSale => 'Keep held sale';
+
+  @override
+  String get mPesaPaidToTill => 'M-Pesa paid to till';
+
+  @override
+  String get noCustomer => 'No customer';
+
+  @override
+  String get noHeldSales => 'No held sales';
+
+  @override
+  String get noReason => 'No reason';
+
+  @override
+  String get noneNew => 'None / new';
+
+  @override
+  String get orderDiscount => 'Order discount';
+
+  @override
+  String get paymentCouldNotBeStartedCheckYourConnectionAndTryAgain =>
+      'Payment could not be started. Check your connection and try again.';
+
+  @override
+  String get paymentSucceededLocalRecordingFailedContactSupportBeforeReconcilingReports =>
+      'Payment succeeded. Local recording failed — contact support before reconciling reports.';
+
+  @override
+  String get pricesChanged => 'Prices changed';
+
+  @override
+  String get printReceipt => 'Print receipt';
+
+  @override
+  String get quickSale => 'Quick sale';
+
+  @override
+  String get quickSaleRecorded => 'Quick sale recorded.';
+
+  @override
+  String get recordSaleAmount => 'Record sale amount';
+
+  @override
+  String get save => 'Save';
+
+  @override
+  String get sell => 'Sell';
+
+  @override
+  String get sellShot => 'Sell shot';
+
+  @override
+  String get sharePdf => 'Share PDF';
+
+  @override
+  String get shareReceipt => 'Share receipt';
+
+  @override
+  String get skip => 'Skip';
+
+  @override
+  String get splitPayment => 'Split payment';
+
+  @override
+  String get tendersMustEqualTheTotal => 'Tenders must equal the total.';
+
+  @override
+  String get useCurrentPrices => 'Use current prices';
+
+  @override
+  String get heldSales => 'Held sales';
+
+  @override
+  String get company => 'Company';
+
+  @override
+  String get inProgress => 'In progress';
+
+  @override
+  String get individual => 'Individual';
+
+  @override
+  String get needsReview => 'Needs review';
+
+  @override
+  String get nonVatLite => 'Non-VAT Lite';
+
+  @override
+  String get notStarted => 'Not started';
+
+  @override
+  String get oscu => 'OSCU';
+
+  @override
+  String get onboarded => 'Onboarded';
+
+  @override
+  String get onlineEclient => 'Online / eClient';
+
+  @override
+  String get other => 'Other';
+
+  @override
+  String get partnership => 'Partnership';
+
+  @override
+  String get registeredObligations => 'Registered obligations';
+
+  @override
+  String get saveMapping => 'Save mapping';
+
+  @override
+  String get soleProprietor => 'Sole proprietor';
+
+  @override
+  String get taxEntityAndOutletMapping => 'Tax entity and outlet mapping';
+
+  @override
+  String get vscu => 'VSCU';
+
+  @override
+  String get addPack => 'Add pack';
+
+  @override
+  String get addPackOrCarton => 'Add pack or carton';
+
+  @override
+  String get assignABarcodeBeforePrintingItsLabel =>
+      'Assign a barcode before printing its label.';
+
+  @override
+  String get assignInternalBarcode => 'Assign internal barcode';
+
+  @override
+  String get createRepack => 'Create & repack';
+
+  @override
+  String get each => 'Each';
+
+  @override
+  String get kilogram => 'Kilogram';
+
+  @override
+  String get litre => 'Litre';
+
+  @override
+  String get looseGoods => 'Loose goods';
+
+  @override
+  String get noPacksYetAddACaseCartonOrBundleBarcode =>
+      'No packs yet. Add a case, carton or bundle barcode.';
+
+  @override
+  String get packsAndCartons => 'Packs and cartons';
+
+  @override
+  String get print => 'Print';
+
+  @override
+  String get printBarcodeLabel => 'Print barcode label';
+
+  @override
+  String get printBarcodeLabels => 'Print barcode labels';
+
+  @override
+  String get recordWaste => 'Record waste';
+
+  @override
+  String get recordWasteSpillage => 'Record waste/spillage';
+
+  @override
+  String get reorder => 'Reorder';
+
+  @override
+  String get repack => 'Repack';
+
+  @override
+  String get repackCouldNotBeRecorded => 'Repack could not be recorded.';
+
+  @override
+  String get repackRecorded => 'Repack recorded.';
+
+  @override
+  String get repackToNewProduct => 'Repack to new product';
+
+  @override
+  String get stocktake => 'Stocktake';
+
+  @override
+  String get tankRegister => 'Tank register';
+
+  @override
+  String get trackExpiryDates => 'Track expiry dates';
+
+  @override
+  String get wasteCannotBeGreaterThanCurrentStock =>
+      'Waste cannot be greater than current stock.';
+
+  @override
+  String get wasteCouldNotBeRecorded => 'Waste could not be recorded.';
+
+  @override
+  String get bankTransfer => 'Bank transfer';
+
+  @override
+  String get cancelLayBy => 'Cancel lay-by';
+
+  @override
+  String get cancelLayBy2 => 'Cancel lay-by?';
+
+  @override
+  String get cash => 'Cash';
+
+  @override
+  String get complete => 'Complete';
+
+  @override
+  String get keep => 'Keep';
+
+  @override
+  String get mPesa => 'M-Pesa';
+
+  @override
+  String get payment => 'Payment';
+
+  @override
+  String get paymentMethod => 'Payment method';
+
+  @override
+  String get paymentReferenceOptional => 'Payment reference (optional)';
+
+  @override
+  String get createCostGroup => 'Create cost group';
+
+  @override
+  String get addCost => 'Add cost';
+
+  @override
+  String get adjustStock => 'Adjust stock';
+
+  @override
+  String get edit => 'Edit';
+
+  @override
+  String get receiveStock => 'Receive stock';
+
+  @override
+  String get viewSales => 'View sales';
+
+  @override
+  String get linkASupplierBeforeCreatingAnOrder =>
+      'Link a supplier before creating an order.';
+
+  @override
+  String get noProductsAreBelowTheirReorderLevel =>
+      'No products are below their reorder level.';
+
+  @override
+  String get receive => 'Receive';
+
+  @override
+  String get receiveAllRemaining => 'Receive all remaining';
+
+  @override
+  String get reorderSuggestions => 'Reorder suggestions';
+
+  @override
+  String get saveShare => 'Save & share';
+
+  @override
+  String get saveDraft => 'Save draft';
+
+  @override
+  String get allProducts => 'All products';
+
+  @override
+  String get copyCupToProduct => 'Copy cup to product';
+
+  @override
+  String get copyToAnotherProduct => 'Copy to another product';
+
+  @override
+  String get tankDetail => 'Tank detail';
+
+  @override
+  String get noTanksYet => 'No tanks yet';
+
+  @override
+  String get revoke => 'Revoke';
+
+  @override
+  String get sharedReceipts => 'Shared receipts';
+
+  @override
+  String get acceptSale => 'Accept sale';
+
+  @override
+  String get kraCouldNotBeReachedTheReceiptsRemainQueuedForTheNextConnection =>
+      'KRA could not be reached. The receipts remain queued for the next connection.';
+
+  @override
+  String get lastLocalBackup => 'Last local backup';
+
+  @override
+  String get leaveOpen => 'Leave open';
+
+  @override
+  String get localStorageAccess => 'Local storage access';
+
+  @override
+  String get onlyAManagerCanViewSyncCenter =>
+      'Only a manager can view Sync Center.';
+
+  @override
+  String get rejectedReceiptsToRetry => 'Rejected receipts to retry';
+
+  @override
+  String get resolveStockConflict => 'Resolve stock conflict';
+
+  @override
+  String get retry => 'Retry';
+
+  @override
+  String get retryQueuedReceipts => 'Retry queued receipts';
+
+  @override
+  String get review => 'Review';
+
+  @override
+  String get syncCenter => 'Sync Center';
+
+  @override
+  String get theseOfflineSalesCouldNotReserveStockAfterAnotherTillSoldTheLastUnitsTheyRemainQueuedAndAreNotSilentlyDiscarded =>
+      'These offline sales could not reserve stock after another till sold the last units. They remain queued and are not silently discarded.';
+
+  @override
+  String get unclaimedMPesa => 'Unclaimed M-Pesa';
+
+  @override
+  String get unverifiedPayments => 'Unverified payments';
+
+  @override
+  String get voidSale => 'Void sale';
+
+  @override
+  String get settingsSwitch => 'Switch';
+
+  @override
+  String get openDashboardSelectJob => 'Select a job';
+
+  @override
+  String openCostGroupCouldNotCreate(Object error) {
+    return 'Could not create cost group: $error';
+  }
+
+  @override
+  String openJobAddCostCouldNotAdd(Object error) {
+    return 'Could not add cost: $error';
+  }
+
+  @override
+  String inventoryCouldNotSavePack(Object error) {
+    return 'Could not save pack: $error';
+  }
+
+  @override
+  String syncCenterCouldNotResolveConflict(Object error) {
+    return 'Could not resolve conflict: $error';
+  }
+
+  @override
+  String get openDashboardNoJobs => 'No jobs yet. Create one first.';
 }

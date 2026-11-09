@@ -209,7 +209,7 @@ class DrinksDashboardScreen extends StatelessWidget {
       if (appState.shopProfile.capabilities.trackStock) ...<Widget>[
         Semantics(
           button: true,
-          label: 'Add ${appState.shopProfile.terminology.product}',
+          label: 'Add ${appState.shopProfile.terminologyLocalized(AppLocalizations.of(context)).product}',
           child: ExcludeSemantics(
             child: SizedBox(
               width: double.infinity,
@@ -217,7 +217,7 @@ class DrinksDashboardScreen extends StatelessWidget {
                 onPressed: () => _openAddProduct(context),
                 icon: const Icon(Icons.add_circle_outline, size: 18),
                 label: Text(
-                    '+ Add ${appState.shopProfile.terminology.product}'),
+                    '+ Add ${appState.shopProfile.terminologyLocalized(AppLocalizations.of(context)).product}'),
               ),
             ),
           ),

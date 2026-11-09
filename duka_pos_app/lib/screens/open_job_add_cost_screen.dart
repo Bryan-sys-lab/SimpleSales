@@ -56,7 +56,7 @@ class _OpenJobAddCostScreenState extends State<OpenJobAddCostScreen> {
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Could not add cost: $e')),
+          SnackBar(content: Text(AppLocalizations.of(context).openJobAddCostCouldNotAdd(e))),
         );
       }
     } finally {
@@ -125,7 +125,7 @@ class _OpenJobAddCostScreenState extends State<OpenJobAddCostScreen> {
                       width: 20,
                       child: CircularProgressIndicator(strokeWidth: 2),
                     )
-                  : const Text('Add cost'),
+                  : Text(AppLocalizations.of(context).addCost),
             ),
             SizedBox(height: spacing.section),
           ],

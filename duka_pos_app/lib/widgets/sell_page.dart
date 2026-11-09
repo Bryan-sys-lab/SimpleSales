@@ -407,15 +407,15 @@ class SellCartPane extends StatelessWidget {
                       PopupMenuItem<String>(
                         value: 'discount',
                         enabled: lines.isNotEmpty && onDiscount != null,
-                        child: const Text('Order discount'),
+                        child: Text(AppLocalizations.of(context).orderDiscount),
                       ),
                       PopupMenuItem<String>(
                         value: 'hold',
                         enabled: lines.isNotEmpty && onHold != null,
-                        child: const Text('Hold sale'),
+                        child: Text(AppLocalizations.of(context).holdSale),
                       ),
-                      const PopupMenuItem<String>(
-                          value: 'held', child: Text('Held sales')),
+                      PopupMenuItem<String>(
+                          value: 'held', child: Text(AppLocalizations.of(context).heldSales)),
                     ],
                   ),
                 ],

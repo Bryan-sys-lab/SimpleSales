@@ -32,6 +32,7 @@ abstract final class Routes {
   /// `parentNavigatorKey` so it covers the shell — a sheet pushed from Settings
   /// should hide the navigation, not render inside a 320dp column.
   static const String servings = '/inventory/servings';
+  static const String stocktake = '/inventory/stocktake';
   static const String transactions = '/dashboard/transactions';
   static const String customers = '/dashboard/customers';
   static const String laybys = '/dashboard/laybys';
@@ -53,26 +54,16 @@ abstract final class Routes {
   static const String help = '/help';
   static const String marketplace = '/marketplace';
   static const String tankRegister = '/inventory/tank-register';
-  static const String tankDetail = '/inventory/tank/:tankId';
-  static const String productDetail = '/inventory/product-detail';
 
   // Fashion profile routes (variant-centred rather than product-centred)
-  static const String fashionCatalogue = '/fashion/catalogue';
-  static const String fashionProductDetail = '/fashion/product/:productId';
-  static const String fashionProductForm = '/fashion/product/new';
-  static const String fashionVariantSelector = '/fashion/variant-selector/:productId';
+  static const String fashionProductDetail = '/inventory/fashion-product/:productId';
+  static const String fashionProductForm = '/inventory/fashion-product/new';
   static const String exchangeScreen = '/fashion/exchange';
   static const String openJobs = '/analytics/open-business/jobs';
   static const String openJobNew = '/analytics/open-business/jobs/new';
-  static const String openJobDetail = '/analytics/open-business/jobs/:jobId';
-  static const String openJobAddCost = '/analytics/open-business/jobs/:jobId/cost';
   static const String openCostGroups = '/analytics/open-business/cost-groups';
   static const String openCostGroupNew = '/analytics/open-business/cost-groups/new';
-  static const String openCostGroupDetail = '/analytics/open-business/cost-groups/:poolId';
   static const String openReceivables = '/analytics/open-business/receivables';
-  static const String openRecordPayment = '/analytics/open-business/payments/record';
-  static const String openSell = '/sell';
-  static const String openAddJobCost = '/analytics/open-business/jobs/:jobId/cost';
   static const String openNewCostGroup = '/analytics/open-business/cost-groups/new';
 
   // ------------------------------------------------------------- the doors
@@ -91,6 +82,33 @@ abstract final class Routes {
 
   /// Deep-link identity that must survive process death.
   static String product(String id) => '/inventory/product/$id';
+
+  /// Product detail by id.
+  static String productDetail(int id) => '/inventory/product-detail/$id';
+
+  /// Tank detail by id.
+  static String tankDetail(int id) => '/inventory/tank/$id';
+
+  /// Fashion product (style) detail by id.
+  static String fashionProduct(int id) => '/inventory/fashion-product/$id';
+
+  /// Fashion product (style) new form.
+  static String fashionProductNew() => '/inventory/fashion-product/new';
+
+  /// Fashion product (style) edit form.
+  static String fashionProductEdit(int id) => '/inventory/fashion-product/$id/edit';
+
+  /// Open job detail by id.
+  static String openJobDetail(int id) => '/analytics/open-business/jobs/$id';
+
+  /// Open job edit form by id.
+  static String openJobEdit(int id) => '/analytics/open-business/jobs/$id/edit';
+
+  /// Open job add cost by id.
+  static String openJobAddCost(int id) => '/analytics/open-business/jobs/$id/cost';
+
+  /// Open cost group detail by id.
+  static String openCostGroupDetail(int id) => '/analytics/open-business/cost-groups/$id';
 
   /// The root the app opens on. The splash is a real route so a cold deep link
   /// into `/login` still shows the boot gate before it is evaluated.

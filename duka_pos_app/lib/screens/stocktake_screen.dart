@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import '../l10n/generated/app_localizations.dart';
 import 'package:provider/provider.dart';
 
 import '../db/database_helper.dart';
@@ -95,7 +96,7 @@ class _StocktakeScreenState extends State<StocktakeScreen> {
     final id = _countId;
     if (id == null || _lines.any((line) => line['counted_qty'] == null)) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Enter every count before applying')),
+        SnackBar(content: Text(AppLocalizations.of(context).stocktakeEnterAllCounts)),
       );
       return;
     }
@@ -135,11 +136,11 @@ class _StocktakeScreenState extends State<StocktakeScreen> {
         actions: [
           TextButton(
               onPressed: () => Navigator.pop(context),
-              child: const Text('Cancel')),
+              child: Text(AppLocalizations.of(context).stocktakeCancel)),
           FilledButton(
             onPressed: () =>
                 Navigator.pop(context, double.tryParse(controller.text)),
-            child: const Text('Save'),
+            child: Text(AppLocalizations.of(context).stocktakeSave),
           ),
         ],
       ),
@@ -173,20 +174,20 @@ class _StocktakeScreenState extends State<StocktakeScreen> {
                       ? 'Record the measured tank level and apply only the variance.'
                       : 'Count the current stock and apply only the variances.'),
                   SwitchListTile(
-                    title: Text('Blind count'),
-                    subtitle: Text('Hide expected quantities while counting'),
+                    title: Text(AppLocalizations.of(context).stocktakeBlindCount),
+                    subtitle: Text(AppLocalizations.of(context).stocktakeHideExpected),
                     value: _blind,
                     onChanged: (value) => setState(() => _blind = value),
                   ),
                   SwitchListTile(
-                    title: Text('Freeze counted items'),
-                    subtitle: Text('Block sales for items in this count'),
+                    title: Text(AppLocalizations.of(context).stocktakeFreezeCounted),
+                    subtitle: Text(AppLocalizations.of(context).stocktakeBlockSales),
                     value: _freeze,
                     onChanged: (value) => setState(() => _freeze = value),
                   ),
                   if (showTankDip)
                     SwitchListTile(
-                      title: const Text('Tank dip'),
+                      title: Text(AppLocalizations.of(context).stocktakeTankDip),
                       subtitle: const Text(
                           'Count only tanks and record the physical dip variance'),
                       value: _tankDip,
@@ -195,11 +196,11 @@ class _StocktakeScreenState extends State<StocktakeScreen> {
                   FilledButton.icon(
                     onPressed: _busy ? null : _start,
                     icon: const Icon(Icons.play_arrow),
-                    label: const Text('Start stocktake'),
+                    label: Text(AppLocalizations.of(context).stocktakeStart),
                   ),
                   if (_history.isNotEmpty) ...[
                     const SizedBox(height: 24),
-                    const Text('Recent stocktakes',
+                    Text(AppLocalizations.of(context).stocktakeRecent,
                         style: TextStyle(fontWeight: FontWeight.w700)),
                     for (final count in _history)
                       ListTile(
@@ -242,7 +243,7 @@ class _StocktakeScreenState extends State<StocktakeScreen> {
                 const SizedBox(height: 16),
                 FilledButton(
                   onPressed: _busy ? null : _apply,
-                  child: const Text('Apply stocktake'),
+                  child: Text(AppLocalizations.of(context).stocktakeApply),
                 ),
               ],
             ),

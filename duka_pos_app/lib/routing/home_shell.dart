@@ -522,7 +522,7 @@ class _MoreSheet extends StatelessWidget {
         // whole till changes to it, dashboard first.
         ListTile(
           leading: const Icon(Icons.business_outlined),
-          title: const Text('Switch business profile'),
+          title: Text(AppLocalizations.of(context).moreSwitchBusinessProfile),
           subtitle: Text(currentProfile.displayName),
           trailing: const Icon(Icons.chevron_right),
           onTap: () {
@@ -614,13 +614,13 @@ class _MoreSheet extends StatelessWidget {
         if (showLayby)
           ListTile(
             leading: const Icon(Icons.bookmark_border),
-            title: const Text('Fashion reserves'),
+            title: Text(AppLocalizations.of(context).moreFashionReserves),
             onTap: () => Navigator.pop(context, _MoreAction.reserves),
           ),
         if (state.shopProfile == ShopProfile.fashion)
           ListTile(
             leading: const Icon(Icons.swap_horiz),
-            title: const Text('Exchanges'),
+            title: Text(AppLocalizations.of(context).moreExchanges),
             onTap: () {
               Navigator.pop(context);
               context.push(Routes.exchangeScreen);
@@ -632,14 +632,14 @@ class _MoreSheet extends StatelessWidget {
             state.shopProfile != ShopProfile.open)
           ListTile(
             leading: const Icon(Icons.work_outline),
-            title: const Text('Open business record'),
-            subtitle: const Text('Pots, jobs and owner money'),
+            title: Text(AppLocalizations.of(context).moreOpenBusinessRecord),
+            subtitle: Text(AppLocalizations.of(context).moreOpenBusinessRecordSubtitle),
             onTap: () => Navigator.pop(context, _MoreAction.openBusiness),
           ),
         if (context.read<AppState>().canViewReports)
           ListTile(
             leading: const Icon(Icons.assessment_outlined),
-            title: const Text('Reports & exports'),
+            title: Text(AppLocalizations.of(context).moreReportsExports),
             onTap: () => Navigator.pop(context, _MoreAction.reports),
           ),
         if (context.read<AppState>().isAdmin)
@@ -650,7 +650,7 @@ class _MoreSheet extends StatelessWidget {
           ),
         ListTile(
           leading: const Icon(Icons.menu_book_outlined),
-          title: const Text('Help'),
+          title: Text(AppLocalizations.of(context).moreHelp),
           onTap: () => Navigator.pop(context, _MoreAction.help),
         ),
         ListTile(

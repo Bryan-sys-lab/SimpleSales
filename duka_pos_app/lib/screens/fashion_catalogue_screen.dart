@@ -79,7 +79,7 @@ class _FashionCatalogueScreenState extends State<FashionCatalogueScreen> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: <Widget>[
-            BackupReminderBanner(onBackupNow: () async {}),
+            BackupReminderBanner(onBackupNow: () => performBackup(context)),
             SizedBox(height: spacing.section),
             Row(
               children: <Widget>[
@@ -190,7 +190,7 @@ class _FashionCatalogueScreenState extends State<FashionCatalogueScreen> {
                               dense: true,
                             ),
                             onTap: () => context.push(
-                              '/fashion/product/${p.id}',
+                              Routes.fashionProduct(p.id ?? 0),
                             ),
                           ),
                         );

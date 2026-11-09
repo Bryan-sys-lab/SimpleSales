@@ -507,7 +507,7 @@ class _TaxSettingsScreenState extends State<TaxSettingsScreen> {
       context: context,
       builder: (dialogContext) => StatefulBuilder(
         builder: (dialogContext, setDialogState) => AlertDialog(
-          title: const Text('Tax entity and outlet mapping'),
+          title: Text(AppLocalizations.of(context).taxEntityAndOutletMapping),
           content: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
@@ -520,29 +520,29 @@ class _TaxSettingsScreenState extends State<TaxSettingsScreen> {
               DropdownButtonFormField<String>(
                 initialValue: legalForm,
                 decoration: const InputDecoration(labelText: 'Legal form'),
-                items: const [
+                items: [
                   DropdownMenuItem(
-                      value: 'individual', child: Text('Individual')),
+                      value: 'individual', child: Text(AppLocalizations.of(context).individual)),
                   DropdownMenuItem(
-                      value: 'sole_proprietor', child: Text('Sole proprietor')),
+                      value: 'sole_proprietor', child: Text(AppLocalizations.of(context).soleProprietor)),
                   DropdownMenuItem(
-                      value: 'partnership', child: Text('Partnership')),
-                  DropdownMenuItem(value: 'company', child: Text('Company')),
-                  DropdownMenuItem(value: 'other', child: Text('Other')),
+                      value: 'partnership', child: Text(AppLocalizations.of(context).partnership)),
+                  DropdownMenuItem(value: 'company', child: Text(AppLocalizations.of(context).company)),
+                  DropdownMenuItem(value: 'other', child: Text(AppLocalizations.of(context).other)),
                 ],
                 onChanged: submitting
                     ? null
                     : (value) =>
                         setDialogState(() => legalForm = value ?? 'other'),
               ),
-              const Align(
+              Align(
                 alignment: AlignmentDirectional.centerStart,
                 child: Padding(
                   padding: EdgeInsets.only(top: 12),
-                  child: Text('Registered obligations'),
+                  child: Text(AppLocalizations.of(context).registeredObligations),
                 ),
               ),
-              for (final obligation in const [
+              for (final obligation in [
                 'vat',
                 'etims',
                 'tot',
@@ -572,15 +572,15 @@ class _TaxSettingsScreenState extends State<TaxSettingsScreen> {
                   initialValue: etimsOnboardingStatus,
                   decoration:
                       const InputDecoration(labelText: 'eTIMS onboarding'),
-                  items: const [
+                  items: [
                     DropdownMenuItem(
-                        value: 'not_started', child: Text('Not started')),
+                        value: 'not_started', child: Text(AppLocalizations.of(context).notStarted)),
                     DropdownMenuItem(
-                        value: 'in_progress', child: Text('In progress')),
+                        value: 'in_progress', child: Text(AppLocalizations.of(context).inProgress)),
                     DropdownMenuItem(
-                        value: 'onboarded', child: Text('Onboarded')),
+                        value: 'onboarded', child: Text(AppLocalizations.of(context).onboarded)),
                     DropdownMenuItem(
-                        value: 'needs_review', child: Text('Needs review')),
+                        value: 'needs_review', child: Text(AppLocalizations.of(context).needsReview)),
                   ],
                   onChanged: submitting
                       ? null
@@ -591,15 +591,15 @@ class _TaxSettingsScreenState extends State<TaxSettingsScreen> {
                 DropdownButtonFormField<String>(
                   initialValue: etimsMethod,
                   decoration: const InputDecoration(labelText: 'eTIMS method'),
-                  items: const [
+                  items: [
                     DropdownMenuItem(
-                        value: 'online', child: Text('Online / eClient')),
-                    DropdownMenuItem(value: 'oscu', child: Text('OSCU')),
-                    DropdownMenuItem(value: 'vscu', child: Text('VSCU')),
+                        value: 'online', child: Text(AppLocalizations.of(context).onlineEclient)),
+                    DropdownMenuItem(value: 'oscu', child: Text(AppLocalizations.of(context).oscu)),
+                    DropdownMenuItem(value: 'vscu', child: Text(AppLocalizations.of(context).vscu)),
                     DropdownMenuItem(value: 'epos', child: Text('ePOS')),
                     DropdownMenuItem(
-                        value: 'non_vat_lite', child: Text('Non-VAT Lite')),
-                    DropdownMenuItem(value: 'other', child: Text('Other')),
+                        value: 'non_vat_lite', child: Text(AppLocalizations.of(context).nonVatLite)),
+                    DropdownMenuItem(value: 'other', child: Text(AppLocalizations.of(context).other)),
                   ],
                   onChanged: submitting
                       ? null
@@ -661,7 +661,7 @@ class _TaxSettingsScreenState extends State<TaxSettingsScreen> {
                       width: 16,
                       height: 16,
                       child: CircularProgressIndicator(strokeWidth: 2))
-                  : const Text('Save mapping'),
+                  : Text(AppLocalizations.of(context).saveMapping),
             ),
           ],
         ),

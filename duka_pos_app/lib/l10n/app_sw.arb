@@ -40,376 +40,674 @@
   "shellAccountMenuLabel": "Akaunti na kutoka",
   "shellCreditMenuLabel": "Wateja wa mkopo",
   "shellSignOutTooltip": "Toka",
-  "settingsRoleCashier": "Muuza bidhaa"
-  ,"marketplaceTitle": "Zana za biashara"
-  ,"marketplaceIntro": "Lifanya duka lako liwe na nguvu zaidi"
-  ,"marketplaceDescription": "Unganisha zana salama za akili, ripoti, watu, fedha na wateja. Data ya POS yako inabaki yako."
-  ,"marketplaceComingSoon": "Inakuja hivi karibuni"
-  ,"marketplaceStamp": "INAKUJA HIVI KARIBUNI"
-  ,"actionClose": "Funga"
-  ,"permissionsMatrixTitle": "Ruhusa"
-  ,"permissionsMatrixOwnerOnly": "Mmiliki pekee anaweza kubadilisha ruhusa."
-  ,"permissionsMatrixRolePermissions": "Ruhusa za jukumu"
-  ,"permissionsMatrixManager": "Msimamizi"
-  ,"permissionsMatrixCashier": "Muuza bidhaa"
-  ,"permissionsMatrixStaffOverrides": "Marekebisho ya wafanyakazi"
-  ,"permissionsMatrixStaffMember": "Mfanyakazi"
-  ,"permissionsMatrixNoOverride": "Hakuna marekebisho binafsi"
-  ,"permissionsMatrixIndividualOverride": "Marekebisho binafsi"
-  ,"permissionsMatrixRoleDefault": "Tumia ruhusa ya jukumu"
-  ,"permissionsMatrixReset": "Rudisha ruhusa ya jukumu"
-  ,"permissionsMatrixAllow": "Ruhusu"
-  ,"permissionsMatrixApproval": "Idhini"
-  ,"permissionsMatrixDeny": "Kataa"
-  ,"blackbeeSeedTitle": "Ongeza bidhaa za BlackBee"
-  ,"blackbeeSeedAdded": "Imeongezwa"
-  ,"blackbeeSeedPriceRequired": "Bei ya ununuzi na ya kuuza inahitajika"
-  ,"incomingPaymentsTitle": "M-Pesa inayoingia"
-  ,"incomingPaymentsManagerOnly": "Msimamizi pekee anaweza kuona malipo yanayoingia."
-  ,"incomingPaymentsUnclaimed": "Hayajadaiwa"
-  ,"incomingPaymentsClaimed": "Yamedaiwa"
-  ,"incomingPaymentsIgnored": "Yamepuuzwa"
-  ,"incomingPaymentsDisputed": "Yamepingwa"
-  ,"incomingPaymentsNewNotice": "Malipo mapya ya M-Pesa ambayo hayajadaiwa yamepokelewa."
-  ,"incomingPaymentsLoadFailed": "Malipo yanayoingia hayakuweza kupakiwa."
-  ,"incomingPaymentsSetAsideTitle": "Weka malipo kando"
-  ,"incomingPaymentsReason": "Sababu"
-  ,"incomingPaymentsSetAsideAction": "Weka kando"
-  ,"incomingPaymentsEmpty": "Hakuna malipo hapa."
-  ,"incomingPaymentsSetAsideFailed": "Malipo hayakuweza kuwekwa kando."
-  ,"inventoryRepackAction": "Fungasha upya bidhaa"
-  ,"inventoryRepackTitle": "Fungasha upya bidhaa"
-  ,"inventoryRepackSourceProduct": "Bidhaa ya chanzo"
-  ,"inventoryRepackSourceQuantity": "Kiasi kilichotumika"
-  ,"inventoryRepackSourceHelp": "Kwa mfano, kilo 10 za sukari nyingi"
-  ,"inventoryRepackOutputProduct": "Bidhaa inayotengenezwa"
-  ,"inventoryRepackOutputQuantity": "Kiasi kilichotengenezwa"
-  ,"inventoryRepackOutputHelp": "Kwa mfano, pakiti 20 za gramu 500"
-  ,"inventoryRepackCancel": "Ghairi"
-  ,"inventoryRepackRecord": "Rekodi ufungashaji"
-  ,"inventoryRepackSaved": "Ufungashaji umerekodiwa. Usawazishaji utajumuisha mizunguko yote miwili."
-  ,"inventoryRepackInsufficientStock": "Huwezi kutumia bidhaa nyingi kuliko zilizo kwenye hisa."
-  ,"inventoryRepackFailed": "Ufungashaji haukuweza kurekodiwa."
-  ,"drinksAnalyticsTitle": "Uendeshaji wa vinywaji"
-  ,"drinksAnalyticsLitresSold": "Lita zilizouzwa"
-  ,"drinksAnalyticsPourSales": "Mauzo ya vipimo"
-  ,"drinksAnalyticsMeasuredLines": "Vipimo vilivyouzwa"
-  ,"drinksAnalyticsOpenTabs": "Tabs zilizo wazi"
-  ,"drinksAnalyticsTankBalance": "Salio la matenki"
-  ,"drinksAnalyticsWaste": "Upotevu/mwagiko"
-  ,"drinksAnalyticsDipVariance": "Tofauti ya dip"
-  ,"drinksAnalyticsDipBelow": "chini ya matarajio"
-  ,"drinksAnalyticsDipAbove": "juu ya matarajio"
-  ,"drinksAnalyticsNoTankData": "Hakuna salio la tanki lililorekodiwa"
-  ,"drinksAnalyticsLitres": "{amount} L"
-  ,"dashboardNetSalesToday": "Mauzo ya leo"
-  ,"dashboardPeriodToday": "Leo"
-  ,"dashboardVersusPreviousDay": "12.8% compared with previous day"
-  ,"dashboardSupportingMetrics": "Mtaa wa sawa"
-  ,"dashboardBeverageStock": "Hisa ya vinywaji"
-  ,"dashboardViewAll": "Ona zote"
-  ,"dashboardTankInventory": "Hisa ya matenki"
-  ,"dashboardPackagedBeverages": "Vinywaji vipakete"
-  ,"dashboardPackagedDetail": "Bobilu, kannu na hisa nyingine"
-  ,"dashboardMeasuredServings": "Vipimo"
-  ,"dashboardMeasuredDetail": "Ukubwa wa kipimo na mipango ya kupima"
-  ,"dashboardCurrentBusiness": "Biashara ya sasa — {shopName}"
-  ,"dashboardCurrentBusinessLabel": "Biashara ya sasa"
-  ,"dashboardSellAction": "Anza mauzo"
-  ,"sellCategoryAll": "Vinywaji zote"
-  ,"inventoryPackagedStock": "Hisa za kipaketi"
-  ,"inventoryPackagedStockDetail": "Bobilu, kannu na units"
-  ,"inventoryTankInventory": "Hisa ya matenki"
-  ,"inventoryTankInventoryDetail": "Sikio kubwa na mifereji"
-  ,"tankRegisterTitle": "Hisa ya matenki"
-  ,"tankRegisterSubtitle": "Mifereji yote na kazi yao, na ambayo bado ni baki kila mfereji."
-  ,"tankRegisterTanks": "Matenki"
-  ,"tankRegisterTanksLower": "matenki"
-  ,"tankRegisterCapacity": "Uwezo"
-  ,"tankRegisterInvested": "Uwekezaji"
-  ,"tankRegisterRemaining": "Baki"
-  ,"tankRegisterNeedingAttention": "Mifereji {count} hiviinifu"
-  ,"tankRegisterSection": "Matenki"
-  ,"tankRegisterEmptyTitle": "Hakuna matenki tena"
-  ,"tankRegisterEmptyMessage": "Ongeza mfereji wa kwanza. Mfereji ni kifundo unachopinda vinywaji kila kikombe."
-  ,"tankDetailSubtitle": "Uwezo, uwekezaji, ambayo bado ni baki — na vitendo tatu: pokea, angalia, historia."
-  ,"tankActionReceive": "Pokea / ongeza stock"
-  ,"tankActionMeasure": "Rejesta ukubwa"
-  ,"tankActionHistory": "Angalia historia"
-  ,"tankActionViewAll": "Ona zote"
-  ,"tankDetailActivity": "Serikali ya mfereji"
-  ,"tankDetailMeasuredRemaining": "Baki iliyopimwa"
-  ,"tankDetailCapacity": "Uwezo"
-  ,"tankDetailCapacityDetail": "Kiasi cha mfereji"
-  ,"tankDetailInvested": "Uwekezaji"
-  ,"tankDetailInvestedDetail": "Gharama ya stock iliyo sehemu"
-  ,"tankDetailSales": "Mauzo"
-  ,"tankDetailSalesDetail": "Kiasi cha vinywaji vilivyopindwa"
-  ,"tankDetailLastMeasured": "Ilipimwa {date}"
-  ,"tankActionViewDetails": "Tazama maelezo"
-  ,"tankRegisterSold": "Ilionekana jumla"
-  ,"dashboardLooseGoods": "Mambo yaliyopandishwa"
-  ,"dashboardLooseGoodsRemaining": "mpaka kuweka faida"
-  ,"dashboardLooseGoodsSold": "Ulitajumla"
-  ,"dashboardLooseGoodsViewDetails": "Tazama maelezo"
-  ,"tankStatusActive": "Inaendeshwa"
-  ,"tankStatusHealthy": "Nzuri"
-  ,"tankStatusLow": "Chini"
-  ,"tankStatusCritical": "Mwelekeo"
-  ,"dashboardStockOverview": "Muhtasari wa hisa"
-  ,"dashboardTotalProducts": "Bidhaa zote"
-  ,"dashboardLowStockCount": "Bidhaa hasi"
-  ,"dashboardOutOfStockCount": "Bidhaa haipo"
-  ,"dashboardStockValue": "Thamani ya hisa"
-  ,"dashboardQuickAddProduct": "Ongeza bidhaa"
-  ,"dashboardQuickReceiveStock": "Pokea hisa"
-  ,"dashboardQuickStocktake": "Angalia hisa"
-  ,"sellRecentlySold": "Viliyouzwa hivi karibuni"
-  ,"sellFrequentlySold": "Vinavyouzwa mara nyingi"
-  ,"inventorySearchProducts": "Bafadhili bidhaa"
-  ,"inventoryFilterAll": "Bidhaa zote"
-  ,"inventoryFilterCounted": "Bidhaa ya kiasi"
-  ,"inventoryFilterMeasured": "Bidhaa ya ukota"
-  ,"inventoryFilterLow": "Hiasi chini"
-  ,"inventoryFilterOut": "Haipo"
-  ,"inventoryUnitEach": "ila"
-  ,"inventoryUnitKilogram": "kg"
-  ,"inventoryUnitLitre": "litre"
-  ,"productUnitPack": "Pekee paketi"
-  ,"productUnitCarton": "Pekee karton"
-  ,"inventoryCostPrice": "Gharama za kuunga"
-  ,"inventorySellingPrice": "Gharama ya kuuza"
-  ,"inventoryReorderLevel": "Kiwango cha kuongeza"
-  ,"inventoryStockValue": "Thamani ya hisa"
-  ,"inventoryStockMovement": "Unganisho wa hisa"
-  ,"inventoryNoMovement": "Hakuna mzunguko wa hisa ya hivi"
-  ,"inventorySalesPerformance": "Ufikiaji wa uuzaji"
-  ,"inventoryUnitsSold": "{count} vya kiasi vliyuuziwa"
-  ,"inventoryRevenue": "Mapato"
-  ,"openDashboardGreeting": "Karibu tena"
-  ,"openDashboardScopeShop": "Duka yote"
-  ,"openDashboardScopeOwn": "Mwenendo wako"
-  ,"openDashboardFinancialOverview": "Muhtasari wa fedha"
-  ,"openDashboardRevenue": "Mapato"
-  ,"openDashboardNetProfit": "Faida yote"
-  ,"openDashboardCashPosition": "Hali ya pesa"
-  ,"openDashboardReceivables": "Watu wanaolipia"
-  ,"openDashboardProfit": "Faida"
-  ,"openDashboardNotInProfitYet": "Hajasidi faida tena"
-  ,"openDashboardBreakEven": "Isipofaa isipunguu"
-  ,"openDashboardSurplus": "Ziada"
-  ,"openDashboardShortfall": "Ukosa"
-  ,"openDashboardOwedToYou": "Watu wanaolipia"
-  ,"openDashboardYouOwe": "Unalipia"
-  ,"openDashboardOperationalOverview": "Muhtasari wa kazi"
-  ,"openDashboardActiveJobs": "Kazi za sasa"
-  ,"openDashboardJobsAwaitingPayment": "Kazi zinalipwa"
-  ,"openDashboardOverdueJobs": "Kazi zimeumiza"
-  ,"openDashboardCostGroups": "Kundi la gharama"
-  ,"openDashboardNewJob": "Kazi mpya"
-  ,"openDashboardRecordSale": "Rekodi uuzaji"
-  ,"openDashboardRecordPayment": "Rekodi malipo"
-  ,"openDashboardAddJobCost": "Ongeza gharama ya kazi"
-  ,"openDashboardNewCostGroup": "Kundi la gharama mpya"
-  ,"openDashboardRecentActivity": "Shughuli hivi karibuni"
-  ,"openDashboardViewAll": "Tangulia zote"
-  ,"openDashboardGoodMorning": "Bwakia asubuhi"
-  ,"openDashboardGoodAfternoon": "Bwakia mchana"
-  ,"openDashboardGoodEvening": "Bwakia jioni"
-  ,"openJobsTitle": "Kazi"
-  ,"openJobsSubtitle": "Fuatilia kazi kutoka kwa uwakala hadi malipo"
-  ,"openJobsNewJob": "Kazi mpya"
-  ,"openJobsSearch": "Bafadhili kazi"
-  ,"openJobsSearchHint": "Anwa au mteja"
-  ,"openJobsFilterAll": "Zote"
-  ,"openJobsFilterActive": "Inayendeleza"
-  ,"openJobsFilterAwaitingPayment": "Lipwa baadaye"
-  ,"openJobsFilterCompleted": "Imesimama"
-  ,"openJobsNoJobs": "Hakuna kazi hivi"
-  ,"openJobsNoJobsSubtitle": "Unda kazi ili kufuatili uwakala, malipo na gharama."
-  ,"openJobsLoading": "Inapakia kazi"
-  ,"openJobsLoadingSubtitle": "Subiri kidogo kazi zinakuatwa."
-  ,"openJobsNoCustomer": "Hakuna mteja"
-  ,"openJobStatusDraft": "Mwendelezi"
-  ,"openJobStatusInProgress": "Inayendelezwa"
-  ,"openJobStatusAwaitingPayment": "Lipwa baadaye"
-  ,"openJobStatusCompleted": "Imesimamisha"
-  ,"openJobStatusCancelled": "Ingawanywe"
-  ,"openJobFormTitle": "Kazi mpya"
-  ,"openJobDetailTitle": "Muhtasari wa kazi"
-  ,"openJobAddCostTitle": "Ongeza gharama ya kazi"
-  ,"openCostGroupsTitle": "Kundi za gharama"
-  ,"openCostGroupFormTitle": "Kundi la gharama mpya"
-  ,"openCostGroupDetailTitle": "Muhtasari wa kundi la gharama"
-  ,"openReceivablesTitle": "Watu wanaolipia"
-  ,"openJobDetailTitle": "Muhtasari wa kazi"
-  ,"openJobDetailNotFound": "Kazi haijapatikana"
-  ,"openJobDetailNoCustomer": "Hakuna mteja"
-  ,"openJobDetailOverview": "Muhtasari wa kazi"
-  ,"openJobDetailQuote": "Thamani ya uwakala"
-  ,"openJobDetailFinalPrice": "Gharama ya mwisho"
-  ,"openJobDetailStatus": "Hali"
-  ,"openJobDetailCreated": "Ilianza"
-  ,"openJobDetailFinancials": "Muhtasari wa fedha"
-  ,"openJobDetailQuotedAmount": "Thamani ya uwakala"
-  ,"openJobDetailDirectCosts": "Gharama za moja kwa moja"
-  ,"openJobDetailPaymentsReceived": "Malipo yaliyopokea"
-  ,"openJobDetailOutstanding": "Kiasi kilipatika"
-  ,"openJobDetailEstimatedProfit": "Faida inayopatikana"
-  ,"openJobDetailActivity": "Shughuli za kazi"
-  ,"openJobDetailCostAdded": "Gharama iliyongezwa"
-  ,"openJobDetailPaymentReceived": "Malipo yaliyopokea"
-  ,"openJobDetailNoActivity": "Hakuna shughuli hivi"
-  ,"openJobDetailActions": "Mazoezi"
-  ,"openJobDetailEditJob": "Hariri kazi"
-  ,"openJobDetailAddCost": "Ongeza gharama ya moja kwa moja"
-  ,"openJobDetailReceivePayment": "Pokea malipo"
-  ,"openJobDetailRecordSale": "Rekodi uuzaji"
-  ,"openJobDetailCompleteJob": "Kamilisha kazi"
-  ,"openJobDetailCompleteJobConfirm": "Kufuta kazi ni tofauti na malipo. Kazi inaweza kuingiliwa isipokuwa lipilipwe kabisa."
-  ,"openJobDetailCancel": "Ghairi"
-  ,"openJobDetailCompleteAndSettle": "Kamilisha na malipo"
-  ,"openCostGroupsTitle": "Kundi za gharama"
-  ,"openCostGroupsSubtitle": "Gharama zilipangwa kwa kazi nyingi"
-  ,"openCostGroupsNewGroup": "Kundi la gharama mpya"
-  ,"openCostGroupsInvested": "Ilivunajiwa"
-  ,"openCostGroupsRecovered": "Ilipigwa mkato"
-  ,"openCostGroupsRemaining": "Baki"
-  ,"openCostGroupsHasRemaining": "Haiwezekanishiwa"
-  ,"openCostGroupsFullyAllocated": "Imewekwa mkato"
-  ,"openCostGroupsNoGroups": "Hakuna kundi la gharama hivi"
-  ,"openCostGroupsNoGroupsSubtitle": "Unda kundi la gharama ili kufuatili gharama iliyopangwa kwa kazi nyingi."
-  ,"openCostGroupsLoading": "Inapakia kundi la gharama"
-  ,"openCostGroupsLoadingSubtitle": "Subiri kidogo kundi la gharama zinakuatwa."
-  ,"openCostGroupDetailTitle": "Muhtasari wa kundi la gharama"
-  ,"openCostGroupDetailNotFound": "Kundi la gharama haijapatikana"
-  ,"openCostGroupDetailNoNote": "Hakuna takwimu"
-  ,"openCostGroupDetailInvestment": "Uwekezaji"
-  ,"openCostGroupDetailInitialInvestment": "Uwekezaji wa awali"
-  ,"openCostGroupDetailAllocated": "Imewekwa mkato"
-  ,"openCostGroupDetailRemaining": "Baki"
-  ,"openCostGroupDetailHasRemaining": "Haiwezekanishiwa"
-  ,"openCostGroupDetailFullyAllocated": "Imewekwa mkato kabisa"
-  ,"openCostGroupDetailMovementHistory": "Historia ya mzunguko"
-  ,"openCostGroupDetailNoMovements": "Hakuna mzunguko hivi"
-  ,"openCostGroupDetailEntry": "Eneo"
-  ,"openReceivablesTitle": "Watu wanaolipia"
-  ,"openReceivablesSubtitle": "Pesa wateja wanaolipia biashara"
-  ,"openReceivablesTotalOutstanding": "Kiasi kilichopatikana jumla"
-  ,"openReceivablesCustomersOwed": "Wateja wanaolipiwa"
-  ,"openReceivablesCustomers": "Wateja wenye saldo"
-  ,"openReceivablesOutstanding": "Kiasi kilipatika"
-  ,"openReceivablesOldestUnpaid": "La zamani lisilo lipwa"
-  ,"openReceivablesNoOutstanding": "Hakuna salio kilipatika"
-  ,"openReceivablesNoOutstandingSubtitle": "Wateja wote wamelepea."
-  ,"openReceivablesLoading": "Inapakia malipo ya mwisho"
-  ,"openReceivablesLoadingSubtitle": "Subiri kidogo malipo ya mwisho yanaulizwa."
-  ,"openAnalyticsFinancialPerformance": "Ufikiaji wa fedha"
-  ,"openAnalyticsNetProfit": "Faida yote"
-  ,"openAnalyticsCashPosition": "Hali ya pesa"
-  ,"openAnalyticsPooledCosts": "Gharama zilipangwa"
-  ,"openAnalyticsJobsCompleted": "Kazi zimesimamishwa"
-  ,"openAnalyticsReceivables": "Watu wanaolipia"
-  ,"shiftStartTitle": "Fungua mfuasi"
-  ,"shiftStartSubtitle": "Hakuna mfuasi uliopangwa"
-  ,"shiftStartPurpose": "Unahitaji mfuasi uliopangwa ili {purpose}."
-  ,"shiftStartNeedDrawer": "Pesa ya roho hushuka kwenye mfuasi, mfuasi haitakuwa uliofungwa kwanza."
-  ,"shiftStartOpenShift": "Floati ya pembejeo"
-  ,"shiftStartStartShift": "Funga mfuasi"
-  ,"fashionDashboardSellAction": "Uuza"
-  ,"fashionDashboardAddProduct": "Ongeza fungu"
-  ,"fashionDashboardReceiveStock": "Pokea hisa"
-  ,"fashionDashboardCreateReserve": "Funga hifadhi"
-  ,"fashionDashboardViewCatalogue": "Angalia katalo"
-  ,"fashionDashboardLowStockVariants": "Hiasi zisipo"
-  ,"fashionDashboardReserves": "Hifadhi"
-  ,"fashionDashboardReservesOpen": "Hifadhi zote"
-  ,"fashionDashboardReservesAwaitingPayment": "Malipo yasubiri"
-  ,"fashionDashboardReservesReady": "Tayari kwa kuwa chukua"
-  ,"fashionDashboardViewAll": "Angalia zote"
-  ,"fashionCatalogueTitle": "Katalo"
-  ,"fashionCatalogueSubtitle": "Fungu na hiasi zake"
-  ,"fashionCatalogueAddStyle": "Ongeza fungu"
-  ,"fashionCatalogueSearch": "Bafadhili fungu"
-  ,"fashionCatalogueSearchHint": "Anwa au SKU"
-  ,"fashionCatalogueNoStyles": "Hakuna fungu hivi"
-  ,"fashionCatalogueNoStylesSubtitle": "Ongeza fungu ili kuanziana katalo."
-  ,"fashionCatalogueLoading": "Inapakia katalo"
-  ,"fashionCatalogueLoadingSubtitle": "Subiri kidogo fungu zinakuatwa."
-  ,"fashionProductDetailTitle": "Muhtasari wa fungu"
-  ,"fashionProductDetailNotFound": "Fungu haijapatikana"
-  ,"fashionProductDetailVariants": "Hiasi"
-  ,"fashionProductDetailNoVariants": "Hakuna hiasi hivi"
-  ,"fashionProductDetailTotalStock": "Hisa jumla"
-  ,"fashionProductDetailLowStock": "Hiasi zisipo"
-  ,"fashionProductDetailEditStyle": "Hariri fungu"
-  ,"fashionProductDetailEditVariant": "Hariri hiasi"
-  ,"fashionProductFormAddStyle": "Ongeza fungu"
-  ,"fashionProductFormEditStyle": "Hariri fungu"
-  ,"fashionProductFormAddStyleSubtitle": "Unda fungu na hiasi za uzigo/rangi."
-  ,"fashionProductFormEditStyleSubtitle": "Badiliza jina, kategori na hiasi za fungu."
-  ,"fashionProductFormProductInfo": "Muhtasari wa bidhaa"
-  ,"fashionProductFormStyleName": "Jina la fungu"
-  ,"fashionProductFormStyleNameRequired": "Peana jina la fungu"
-  ,"fashionProductFormCategory": "Kategoria"
-  ,"fashionProductFormBrand": "Yombo"
-  ,"fashionProductFormDescription": "Elezo"
-  ,"fashionProductFormVariants": "Hiasi"
-  ,"fashionProductFormAddVariant": "Ongeza hiasi"
-  ,"fashionProductFormVariantName": "Jina la hiasi"
-  ,"fashionProductFormSize": "Uzigo"
-  ,"fashionProductFormColour": "Rangi"
-  ,"fashionProductFormSKU": "SKU"
-  ,"fashionProductFormBarcode": "Barcode"
-  ,"fashionProductFormStock": "Hisa ya awali"
-  ,"fashionProductFormSellPrice": "Gharama ya kuuza"
-  ,"fashionProductFormCostPrice": "Gharama ya kuunga"
-  ,"fashionProductFormReorderLevel": "Kiwango cha kuongeza"
-  ,"reserveScreenTitle": "Hifadhi"
-  ,"reserveScreenSubtitle": "Funga hiasi, pokea uleketa, chukua kiapo kabisa"
-  ,"reserveNewReserve": "Hifadhi mpya"
-  ,"reserveCustomer": "Mteja"
-  ,"reserveStyle": "Fungu"
-  ,"reserveVariant": "Hiasi"
-  ,"reserveQuantity": "Kiasi"
-  ,"reserveDeposit": "Uleketa (KES)"
-  ,"reservePaymentMethod": "Nguzo ya malipo"
-  ,"reserveReference": "Nambari ya mambo"
-  ,"reserveDueDays": "Siku za malipo"
-  ,"reserveCreate": "Unda hifadhi"
-  ,"reserveReservations": "Magazi"
-  ,"reserveNoReserves": "Hakuna hifadhi hivi"
-  ,"reserveCustomerLabel": "Mteja"
-  ,"reserveDue": "Inapigwa"
-  ,"reservePaid": "Lipwa"
-  ,"fashionAnalyticsFinancialPerformance": "Ufikiaji wa fedha"
-  ,"fashionAnalyticsNetProfit": "Faida yote"
-  ,"fashionAnalyticsStockValue": "Thamani ya hisa"
-  ,"fashionAnalyticsLowStockVariants": "Hiasi zisipo"
-  ,"fashionAnalyticsOutOfStock": "Haipo"
-  ,"exchangeFindSaleTitle": "Pata uuzaji kubadiliwa"
-  ,"exchangeReturnLinesTitle": "Chagua kinachorudi"
-  ,"exchangeReplacementTitle": "Chagua mabadiliko"
-  ,"exchangeConfirmTitle": "Thibitisha kubadiliko"
-  ,"exchangeSearchLabel": "Tafuta mauzo"
-  ,"exchangeSearchHint": "Resepi, mtu, taraji, au mteja"
-  ,"exchangeNoSalesFound": "Hakuna mauzo yaliyokumbuka"
-  ,"exchangeStartOver": "Zingatia tena"
-  ,"exchangeTotal": "Jumla"
-  ,"exchangeReturning": "Kurudi kutoka kiuzaji"
-  ,"exchangeReturnTotal": "Thamani ya kurudi"
-  ,"exchangeSold": "Uliuziwa"
-  ,"exchangeAvailable": "inayopatikana kuwasilisha tena"
-  ,"exchangeLess": "Rudisha kidogo"
-  ,"exchangeMore": "Rudisha zaidi"
-  ,"exchangeRestock": "Rudi kwenye taka"
-  ,"exchangeWriteOff": "Rudi"
-  ,"exchangeChooseReplacement": "Chagua hiasi za mabadiliko"
-  ,"exchangeReplacementTotal": "Thamani ya mabadiliko"
-  ,"exchangeNoReplacements": "Ongeza hiasi ya mabadiliko angalau moja"
-  ,"exchangeReview": "Angalia kubadiliko"
-  ,"exchangeReturned": "Vilivorudi"
-  ,"exchangeDifference": "Tofauti"
-  ,"exchangeCommit": "Thibitisha kubadiliko"
-  ,"exchangeNoLines": "Kiuzaji hiki haina mstari inayorudishiwa"
+  "settingsRoleCashier": "Muuza bidhaa",
+  "marketplaceTitle": "Zana za biashara",
+  "marketplaceIntro": "Lifanya duka lako liwe na nguvu zaidi",
+  "marketplaceDescription": "Unganisha zana salama za akili, ripoti, watu, fedha na wateja. Data ya POS yako inabaki yako.",
+  "marketplaceComingSoon": "Inakuja hivi karibuni",
+  "marketplaceStamp": "INAKUJA HIVI KARIBUNI",
+  "actionClose": "Funga",
+  "permissionsMatrixTitle": "Ruhusa",
+  "permissionsMatrixOwnerOnly": "Mmiliki pekee anaweza kubadilisha ruhusa.",
+  "permissionsMatrixRolePermissions": "Ruhusa za jukumu",
+  "permissionsMatrixManager": "Msimamizi",
+  "permissionsMatrixCashier": "Muuza bidhaa",
+  "permissionsMatrixStaffOverrides": "Marekebisho ya wafanyakazi",
+  "permissionsMatrixStaffMember": "Mfanyakazi",
+  "permissionsMatrixNoOverride": "Hakuna marekebisho binafsi",
+  "permissionsMatrixIndividualOverride": "Marekebisho binafsi",
+  "permissionsMatrixRoleDefault": "Tumia ruhusa ya jukumu",
+  "permissionsMatrixReset": "Rudisha ruhusa ya jukumu",
+  "permissionsMatrixAllow": "Ruhusu",
+  "permissionsMatrixApproval": "Idhini",
+  "permissionsMatrixDeny": "Kataa",
+  "blackbeeSeedTitle": "Ongeza bidhaa za BlackBee",
+  "blackbeeSeedAdded": "Imeongezwa",
+  "blackbeeSeedPriceRequired": "Bei ya ununuzi na ya kuuza inahitajika",
+  "incomingPaymentsTitle": "M-Pesa inayoingia",
+  "incomingPaymentsManagerOnly": "Msimamizi pekee anaweza kuona malipo yanayoingia.",
+  "incomingPaymentsUnclaimed": "Hayajadaiwa",
+  "incomingPaymentsClaimed": "Yamedaiwa",
+  "incomingPaymentsIgnored": "Yamepuuzwa",
+  "incomingPaymentsDisputed": "Yamepingwa",
+  "incomingPaymentsNewNotice": "Malipo mapya ya M-Pesa ambayo hayajadaiwa yamepokelewa.",
+  "incomingPaymentsLoadFailed": "Malipo yanayoingia hayakuweza kupakiwa.",
+  "incomingPaymentsSetAsideTitle": "Weka malipo kando",
+  "incomingPaymentsReason": "Sababu",
+  "incomingPaymentsSetAsideAction": "Weka kando",
+  "incomingPaymentsEmpty": "Hakuna malipo hapa.",
+  "incomingPaymentsSetAsideFailed": "Malipo hayakuweza kuwekwa kando.",
+  "inventoryRepackAction": "Fungasha upya bidhaa",
+  "inventoryRepackTitle": "Fungasha upya bidhaa",
+  "inventoryRepackSourceProduct": "Bidhaa ya chanzo",
+  "inventoryRepackSourceQuantity": "Kiasi kilichotumika",
+  "inventoryRepackSourceHelp": "Kwa mfano, kilo 10 za sukari nyingi",
+  "inventoryRepackOutputProduct": "Bidhaa inayotengenezwa",
+  "inventoryRepackOutputQuantity": "Kiasi kilichotengenezwa",
+  "inventoryRepackOutputHelp": "Kwa mfano, pakiti 20 za gramu 500",
+  "inventoryRepackCancel": "Ghairi",
+  "inventoryRepackRecord": "Rekodi ufungashaji",
+  "inventoryRepackSaved": "Ufungashaji umerekodiwa. Usawazishaji utajumuisha mizunguko yote miwili.",
+  "inventoryRepackInsufficientStock": "Huwezi kutumia bidhaa nyingi kuliko zilizo kwenye hisa.",
+  "inventoryRepackFailed": "Ufungashaji haukuweza kurekodiwa.",
+  "drinksAnalyticsTitle": "Uendeshaji wa vinywaji",
+  "drinksAnalyticsLitresSold": "Lita zilizouzwa",
+  "drinksAnalyticsPourSales": "Mauzo ya vipimo",
+  "drinksAnalyticsMeasuredLines": "Vipimo vilivyouzwa",
+  "drinksAnalyticsOpenTabs": "Tabs zilizo wazi",
+  "drinksAnalyticsTankBalance": "Salio la matenki",
+  "drinksAnalyticsWaste": "Upotevu/mwagiko",
+  "drinksAnalyticsDipVariance": "Tofauti ya dip",
+  "drinksAnalyticsDipBelow": "chini ya matarajio",
+  "drinksAnalyticsDipAbove": "juu ya matarajio",
+  "drinksAnalyticsNoTankData": "Hakuna salio la tanki lililorekodiwa",
+  "drinksAnalyticsLitres": "{amount} L",
+  "dashboardNetSalesToday": "Mauzo ya leo",
+  "dashboardPeriodToday": "Leo",
+  "dashboardVersusPreviousDay": "12.8% compared with previous day",
+  "dashboardSupportingMetrics": "Mtaa wa sawa",
+  "dashboardBeverageStock": "Hisa ya vinywaji",
+  "dashboardViewAll": "Ona zote",
+  "dashboardTankInventory": "Hisa ya matenki",
+  "dashboardPackagedBeverages": "Vinywaji vipakete",
+  "dashboardPackagedDetail": "Bobilu, kannu na hisa nyingine",
+  "dashboardMeasuredServings": "Vipimo",
+  "dashboardMeasuredDetail": "Ukubwa wa kipimo na mipango ya kupima",
+  "dashboardCurrentBusiness": "Biashara ya sasa — {shopName}",
+  "dashboardCurrentBusinessLabel": "Biashara ya sasa",
+  "dashboardSellAction": "Anza mauzo",
+  "sellCategoryAll": "Vinywaji zote",
+  "inventoryPackagedStock": "Hisa za kipaketi",
+  "inventoryPackagedStockDetail": "Bobilu, kannu na units",
+  "inventoryTankInventory": "Hisa ya matenki",
+  "inventoryTankInventoryDetail": "Sikio kubwa na mifereji",
+  "tankRegisterTitle": "Hisa ya matenki",
+  "tankRegisterSubtitle": "Mifereji yote na kazi yao, na ambayo bado ni baki kila mfereji.",
+  "tankRegisterTanks": "Matenki",
+  "tankRegisterTanksLower": "matenki",
+  "tankRegisterCapacity": "Uwezo",
+  "tankRegisterInvested": "Uwekezaji",
+  "tankRegisterRemaining": "Baki",
+  "tankRegisterNeedingAttention": "Mifereji {count} hiviinifu",
+  "tankRegisterSection": "Matenki",
+  "tankRegisterEmptyTitle": "Hakuna matenki tena",
+  "tankRegisterEmptyMessage": "Ongeza mfereji wa kwanza. Mfereji ni kifundo unachopinda vinywaji kila kikombe.",
+  "tankDetailSubtitle": "Uwezo, uwekezaji, ambayo bado ni baki — na vitendo tatu: pokea, angalia, historia.",
+  "tankActionReceive": "Pokea / ongeza stock",
+  "tankActionMeasure": "Rejesta ukubwa",
+  "tankActionHistory": "Angalia historia",
+  "tankActionViewAll": "Ona zote",
+  "tankDetailActivity": "Serikali ya mfereji",
+  "tankDetailMeasuredRemaining": "Baki iliyopimwa",
+  "tankDetailCapacity": "Uwezo",
+  "tankDetailCapacityDetail": "Kiasi cha mfereji",
+  "tankDetailInvested": "Uwekezaji",
+  "tankDetailInvestedDetail": "Gharama ya stock iliyo sehemu",
+  "tankDetailSales": "Mauzo",
+  "tankDetailSalesDetail": "Kiasi cha vinywaji vilivyopindwa",
+  "tankDetailLastMeasured": "Ilipimwa {date}",
+  "tankActionViewDetails": "Tazama maelezo",
+  "tankRegisterSold": "Ilionekana jumla",
+  "dashboardLooseGoods": "Mambo yaliyopandishwa",
+  "dashboardLooseGoodsRemaining": "mpaka kuweka faida",
+  "dashboardLooseGoodsSold": "Ulitajumla",
+  "dashboardLooseGoodsViewDetails": "Tazama maelezo",
+  "tankStatusActive": "Inaendeshwa",
+  "tankStatusHealthy": "Nzuri",
+  "tankStatusLow": "Chini",
+  "tankStatusCritical": "Mwelekeo",
+  "dashboardStockOverview": "Muhtasari wa hisa",
+  "dashboardTotalProducts": "Bidhaa zote",
+  "dashboardLowStockCount": "Bidhaa hasi",
+  "dashboardOutOfStockCount": "Bidhaa haipo",
+  "dashboardStockValue": "Thamani ya hisa",
+  "dashboardQuickAddProduct": "Ongeza bidhaa",
+  "dashboardQuickReceiveStock": "Pokea hisa",
+  "dashboardQuickStocktake": "Angalia hisa",
+  "sellRecentlySold": "Viliyouzwa hivi karibuni",
+  "sellFrequentlySold": "Vinavyouzwa mara nyingi",
+  "inventorySearchProducts": "Bafadhili bidhaa",
+  "inventoryFilterAll": "Bidhaa zote",
+  "inventoryFilterCounted": "Bidhaa ya kiasi",
+  "inventoryFilterMeasured": "Bidhaa ya ukota",
+  "inventoryFilterLow": "Hiasi chini",
+  "inventoryFilterOut": "Haipo",
+  "inventoryUnitEach": "ila",
+  "inventoryUnitKilogram": "kg",
+  "inventoryUnitLitre": "litre",
+  "productUnitPack": "Pekee paketi",
+  "productUnitCarton": "Pekee karton",
+  "inventoryCostPrice": "Gharama za kuunga",
+  "inventorySellingPrice": "Gharama ya kuuza",
+  "inventoryReorderLevel": "Kiwango cha kuongeza",
+  "inventoryStockValue": "Thamani ya hisa",
+  "inventoryStockMovement": "Unganisho wa hisa",
+  "inventoryNoMovement": "Hakuna mzunguko wa hisa ya hivi",
+  "inventorySalesPerformance": "Ufikiaji wa uuzaji",
+  "inventoryUnitsSold": "{count} vya kiasi vliyuuziwa",
+  "inventoryRevenue": "Mapato",
+  "openDashboardGreeting": "Karibu tena",
+  "openDashboardScopeShop": "Duka yote",
+  "openDashboardScopeOwn": "Mwenendo wako",
+  "openDashboardFinancialOverview": "Muhtasari wa fedha",
+  "openDashboardRevenue": "Mapato",
+  "openDashboardNetProfit": "Faida yote",
+  "openDashboardCashPosition": "Hali ya pesa",
+  "openDashboardReceivables": "Watu wanaolipia",
+  "openDashboardProfit": "Faida",
+  "openDashboardNotInProfitYet": "Hajasidi faida tena",
+  "openDashboardBreakEven": "Isipofaa isipunguu",
+  "openDashboardSurplus": "Ziada",
+  "openDashboardShortfall": "Ukosa",
+  "openDashboardOwedToYou": "Watu wanaolipia",
+  "openDashboardYouOwe": "Unalipia",
+  "openDashboardOperationalOverview": "Muhtasari wa kazi",
+  "openDashboardActiveJobs": "Kazi za sasa",
+  "openDashboardJobsAwaitingPayment": "Kazi zinalipwa",
+  "openDashboardOverdueJobs": "Kazi zimeumiza",
+  "openDashboardCostGroups": "Kundi la gharama",
+  "openDashboardNewJob": "Kazi mpya",
+  "openDashboardRecordSale": "Rekodi uuzaji",
+  "openDashboardRecordPayment": "Rekodi malipo",
+  "openDashboardAddJobCost": "Ongeza gharama ya kazi",
+  "openDashboardNewCostGroup": "Kundi la gharama mpya",
+  "openDashboardRecentActivity": "Shughuli hivi karibuni",
+  "openDashboardViewAll": "Tangulia zote",
+  "openDashboardGoodMorning": "Bwakia asubuhi",
+  "openDashboardGoodAfternoon": "Bwakia mchana",
+  "openDashboardGoodEvening": "Bwakia jioni",
+  "openJobsTitle": "Kazi",
+  "openJobsSubtitle": "Fuatilia kazi kutoka kwa uwakala hadi malipo",
+  "openJobsNewJob": "Kazi mpya",
+  "openJobsSearch": "Bafadhili kazi",
+  "openJobsSearchHint": "Anwa au mteja",
+  "openJobsFilterAll": "Zote",
+  "openJobsFilterActive": "Inayendeleza",
+  "openJobsFilterAwaitingPayment": "Lipwa baadaye",
+  "openJobsFilterCompleted": "Imesimama",
+  "openJobsNoJobs": "Hakuna kazi hivi",
+  "openJobsNoJobsSubtitle": "Unda kazi ili kufuatili uwakala, malipo na gharama.",
+  "openJobsLoading": "Inapakia kazi",
+  "openJobsLoadingSubtitle": "Subiri kidogo kazi zinakuatwa.",
+  "openJobsNoCustomer": "Hakuna mteja",
+  "openJobStatusDraft": "Mwendelezi",
+  "openJobStatusInProgress": "Inayendelezwa",
+  "openJobStatusAwaitingPayment": "Lipwa baadaye",
+  "openJobStatusCompleted": "Imesimamisha",
+  "openJobStatusCancelled": "Ingawanywe",
+  "openJobFormTitle": "Kazi mpya",
+  "openJobDetailTitle": "Muhtasari wa kazi",
+  "openJobAddCostTitle": "Ongeza gharama ya kazi",
+  "openCostGroupsTitle": "Kundi za gharama",
+  "openCostGroupFormTitle": "Kundi la gharama mpya",
+  "openCostGroupDetailTitle": "Muhtasari wa kundi la gharama",
+  "openReceivablesTitle": "Watu wanaolipia",
+  "openJobDetailNotFound": "Kazi haijapatikana",
+  "openJobDetailNoCustomer": "Hakuna mteja",
+  "openJobDetailOverview": "Muhtasari wa kazi",
+  "openJobDetailQuote": "Thamani ya uwakala",
+  "openJobDetailFinalPrice": "Gharama ya mwisho",
+  "openJobDetailStatus": "Hali",
+  "openJobDetailCreated": "Ilianza",
+  "openJobDetailFinancials": "Muhtasari wa fedha",
+  "openJobDetailQuotedAmount": "Thamani ya uwakala",
+  "openJobDetailDirectCosts": "Gharama za moja kwa moja",
+  "openJobDetailPaymentsReceived": "Malipo yaliyopokea",
+  "openJobDetailOutstanding": "Kiasi kilipatika",
+  "openJobDetailEstimatedProfit": "Faida inayopatikana",
+  "openJobDetailActivity": "Shughuli za kazi",
+  "openJobDetailCostAdded": "Gharama iliyongezwa",
+  "openJobDetailPaymentReceived": "Malipo yaliyopokea",
+  "openJobDetailNoActivity": "Hakuna shughuli hivi",
+  "openJobDetailActions": "Mazoezi",
+  "openJobDetailEditJob": "Hariri kazi",
+  "openJobDetailAddCost": "Ongeza gharama ya moja kwa moja",
+  "openJobDetailReceivePayment": "Pokea malipo",
+  "openJobDetailRecordSale": "Rekodi uuzaji",
+  "openJobDetailCompleteJob": "Kamilisha kazi",
+  "openJobDetailCompleteJobConfirm": "Kufuta kazi ni tofauti na malipo. Kazi inaweza kuingiliwa isipokuwa lipilipwe kabisa.",
+  "openJobDetailCancel": "Ghairi",
+  "openJobDetailCompleteAndSettle": "Kamilisha na malipo",
+  "openCostGroupsSubtitle": "Gharama zilipangwa kwa kazi nyingi",
+  "openCostGroupsNewGroup": "Kundi la gharama mpya",
+  "openCostGroupsInvested": "Ilivunajiwa",
+  "openCostGroupsRecovered": "Ilipigwa mkato",
+  "openCostGroupsRemaining": "Baki",
+  "openCostGroupsHasRemaining": "Haiwezekanishiwa",
+  "openCostGroupsFullyAllocated": "Imewekwa mkato",
+  "openCostGroupsNoGroups": "Hakuna kundi la gharama hivi",
+  "openCostGroupsNoGroupsSubtitle": "Unda kundi la gharama ili kufuatili gharama iliyopangwa kwa kazi nyingi.",
+  "openCostGroupsLoading": "Inapakia kundi la gharama",
+  "openCostGroupsLoadingSubtitle": "Subiri kidogo kundi la gharama zinakuatwa.",
+  "openCostGroupDetailNotFound": "Kundi la gharama haijapatikana",
+  "openCostGroupDetailNoNote": "Hakuna takwimu",
+  "openCostGroupDetailInvestment": "Uwekezaji",
+  "openCostGroupDetailInitialInvestment": "Uwekezaji wa awali",
+  "openCostGroupDetailAllocated": "Imewekwa mkato",
+  "openCostGroupDetailRemaining": "Baki",
+  "openCostGroupDetailHasRemaining": "Haiwezekanishiwa",
+  "openCostGroupDetailFullyAllocated": "Imewekwa mkato kabisa",
+  "openCostGroupDetailMovementHistory": "Historia ya mzunguko",
+  "openCostGroupDetailNoMovements": "Hakuna mzunguko hivi",
+  "openCostGroupDetailEntry": "Eneo",
+  "openReceivablesSubtitle": "Pesa wateja wanaolipia biashara",
+  "openReceivablesTotalOutstanding": "Kiasi kilichopatikana jumla",
+  "openReceivablesCustomersOwed": "Wateja wanaolipiwa",
+  "openReceivablesCustomers": "Wateja wenye saldo",
+  "openReceivablesOutstanding": "Kiasi kilipatika",
+  "openReceivablesOldestUnpaid": "La zamani lisilo lipwa",
+  "openReceivablesNoOutstanding": "Hakuna salio kilipatika",
+  "openReceivablesNoOutstandingSubtitle": "Wateja wote wamelepea.",
+  "openReceivablesLoading": "Inapakia malipo ya mwisho",
+  "openReceivablesLoadingSubtitle": "Subiri kidogo malipo ya mwisho yanaulizwa.",
+  "openAnalyticsFinancialPerformance": "Ufikiaji wa fedha",
+  "openAnalyticsNetProfit": "Faida yote",
+  "openAnalyticsCashPosition": "Hali ya pesa",
+  "openAnalyticsPooledCosts": "Gharama zilipangwa",
+  "openAnalyticsJobsCompleted": "Kazi zimesimamishwa",
+  "openAnalyticsReceivables": "Watu wanaolipia",
+  "shiftStartTitle": "Fungua mfuasi",
+  "shiftStartSubtitle": "Hakuna mfuasi uliopangwa",
+  "shiftStartPurpose": "Unahitaji mfuasi uliopangwa ili {purpose}.",
+  "shiftStartNeedDrawer": "Pesa ya roho hushuka kwenye mfuasi, mfuasi haitakuwa uliofungwa kwanza.",
+  "shiftStartOpenShift": "Floati ya pembejeo",
+  "shiftStartStartShift": "Funga mfuasi",
+  "fashionDashboardSellAction": "Uuza",
+  "fashionDashboardAddProduct": "Ongeza fungu",
+  "fashionDashboardReceiveStock": "Pokea hisa",
+  "fashionDashboardCreateReserve": "Funga hifadhi",
+  "fashionDashboardViewCatalogue": "Angalia katalo",
+  "fashionDashboardLowStockVariants": "Hiasi zisipo",
+  "fashionDashboardReserves": "Hifadhi",
+  "fashionDashboardReservesOpen": "Hifadhi zote",
+  "fashionDashboardReservesAwaitingPayment": "Malipo yasubiri",
+  "fashionDashboardReservesReady": "Tayari kwa kuwa chukua",
+  "fashionDashboardViewAll": "Angalia zote",
+  "fashionCatalogueTitle": "Katalo",
+  "fashionCatalogueSubtitle": "Fungu na hiasi zake",
+  "fashionCatalogueAddStyle": "Ongeza fungu",
+  "fashionCatalogueSearch": "Bafadhili fungu",
+  "fashionCatalogueSearchHint": "Anwa au SKU",
+  "fashionCatalogueNoStyles": "Hakuna fungu hivi",
+  "fashionCatalogueNoStylesSubtitle": "Ongeza fungu ili kuanziana katalo.",
+  "fashionCatalogueLoading": "Inapakia katalo",
+  "fashionCatalogueLoadingSubtitle": "Subiri kidogo fungu zinakuatwa.",
+  "fashionProductDetailTitle": "Muhtasari wa fungu",
+  "fashionProductDetailNotFound": "Fungu haijapatikana",
+  "fashionProductDetailVariants": "Hiasi",
+  "fashionProductDetailNoVariants": "Hakuna hiasi hivi",
+  "fashionProductDetailTotalStock": "Hisa jumla",
+  "fashionProductDetailLowStock": "Hiasi zisipo",
+  "fashionProductDetailEditStyle": "Hariri fungu",
+  "fashionProductDetailEditVariant": "Hariri hiasi",
+  "fashionProductFormAddStyle": "Ongeza fungu",
+  "fashionProductFormEditStyle": "Hariri fungu",
+  "fashionProductFormAddStyleSubtitle": "Unda fungu na hiasi za uzigo/rangi.",
+  "fashionProductFormEditStyleSubtitle": "Badiliza jina, kategori na hiasi za fungu.",
+  "fashionProductFormProductInfo": "Muhtasari wa bidhaa",
+  "fashionProductFormStyleName": "Jina la fungu",
+  "fashionProductFormStyleNameRequired": "Peana jina la fungu",
+  "fashionProductFormCategory": "Kategoria",
+  "fashionProductFormBrand": "Yombo",
+  "fashionProductFormDescription": "Elezo",
+  "fashionProductFormVariants": "Hiasi",
+  "fashionProductFormAddVariant": "Ongeza hiasi",
+  "fashionProductFormVariantName": "Jina la hiasi",
+  "fashionProductFormSize": "Uzigo",
+  "fashionProductFormColour": "Rangi",
+  "fashionProductFormSKU": "SKU",
+  "fashionProductFormBarcode": "Barcode",
+  "fashionProductFormStock": "Hisa ya awali",
+  "fashionProductFormSellPrice": "Gharama ya kuuza",
+  "fashionProductFormCostPrice": "Gharama ya kuunga",
+  "fashionProductFormReorderLevel": "Kiwango cha kuongeza",
+  "reserveScreenTitle": "Hifadhi",
+  "reserveScreenSubtitle": "Funga hiasi, pokea uleketa, chukua kiapo kabisa",
+  "reserveNewReserve": "Hifadhi mpya",
+  "reserveCustomer": "Mteja",
+  "reserveStyle": "Fungu",
+  "reserveVariant": "Hiasi",
+  "reserveQuantity": "Kiasi",
+  "reserveDeposit": "Uleketa (KES)",
+  "reservePaymentMethod": "Nguzo ya malipo",
+  "reserveReference": "Nambari ya mambo",
+  "reserveDueDays": "Siku za malipo",
+  "reserveCreate": "Unda hifadhi",
+  "reserveReservations": "Magazi",
+  "reserveNoReserves": "Hakuna hifadhi hivi",
+  "reserveCustomerLabel": "Mteja",
+  "reserveDue": "Inapigwa",
+  "reservePaid": "Lipwa",
+  "fashionAnalyticsFinancialPerformance": "Ufikiaji wa fedha",
+  "fashionAnalyticsNetProfit": "Faida yote",
+  "fashionAnalyticsStockValue": "Thamani ya hisa",
+  "fashionAnalyticsLowStockVariants": "Hiasi zisipo",
+  "fashionAnalyticsOutOfStock": "Haipo",
+  "exchangeFindSaleTitle": "Pata uuzaji kubadiliwa",
+  "exchangeReturnLinesTitle": "Chagua kinachorudi",
+  "exchangeReplacementTitle": "Chagua mabadiliko",
+  "exchangeConfirmTitle": "Thibitisha kubadiliko",
+  "exchangeSearchLabel": "Tafuta mauzo",
+  "exchangeSearchHint": "Resepi, mtu, taraji, au mteja",
+  "exchangeNoSalesFound": "Hakuna mauzo yaliyokumbuka",
+  "exchangeStartOver": "Zingatia tena",
+  "exchangeTotal": "Jumla",
+  "exchangeReturning": "Kurudi kutoka kiuzaji",
+  "exchangeReturnTotal": "Thamani ya kurudi",
+  "exchangeSold": "Uliuziwa",
+  "exchangeAvailable": "inayopatikana kuwasilisha tena",
+  "exchangeLess": "Rudisha kidogo",
+  "exchangeMore": "Rudisha zaidi",
+  "exchangeRestock": "Rudi kwenye taka",
+  "exchangeWriteOff": "Rudi",
+  "exchangeChooseReplacement": "Chagua hiasi za mabadiliko",
+  "exchangeReplacementTotal": "Thamani ya mabadiliko",
+  "exchangeNoReplacements": "Ongeza hiasi ya mabadiliko angalau moja",
+  "exchangeReview": "Angalia kubadiliko",
+  "exchangeReturned": "Vilivorudi",
+  "exchangeDifference": "Tofauti",
+  "exchangeCommit": "Thibitisha kubadiliko",
+  "exchangeNoLines": "Kiuzaji hiki haina mstari inayorudishiwa",
+  "openJobFormJobTitleLabel": "Kichwa cha kazi",
+  "openJobFormTitleRequired": "Kichwa kinahitajika",
+  "openJobFormCustomerLabel": "Mteja (si lazima)",
+  "openJobFormQuoteLabel": "Kiasi kilichokadiriwa (si lazima)",
+  "openJobFormCreateAction": "Unda kazi",
+  "openJobFormSaveAction": "Hifadhi mabadiliko",
+  "openJobFormEditTitle": "Hariri kazi",
+  "openJobFormCouldNotCreate": "Haikuweza kuunda kazi: {error}",
+  "moreSwitchBusinessProfile": "Badilisha wasifu wa biashara",
+  "moreFashionReserves": "Hifadhi za mitindo",
+  "moreExchanges": "Mabadilishano",
+  "moreOpenBusinessRecord": "Rekodi ya biashara wazi",
+  "moreOpenBusinessRecordSubtitle": "Pots, kazi na pesa ya mmiliki",
+  "moreReportsExports": "Ripoti na usafirishaji",
+  "moreHelp": "Msaada",
+  "tankRegisterHistory": "Historia",
+  "tankRegisterTankInventory": "Hifadhi ya vinywaji",
+  "tankRegisterPackagedBeverages": "Vinywaji vilivyopakwa",
+  "tankRegisterMeasuredServings": "Matoleo yaliyopimwa",
+  "tankDetailStockReceived": "Stoki iliyopokelewa",
+  "tankDetailMeasuredSales": "Mauzo yaliyopimwa",
+  "openJobDetailPaymentCash": "Pesa taslimu",
+  "openJobDetailPaymentMpesa": "M-Pesa",
+  "openJobDetailPaymentBank": "Uhamisho wa benki",
+  "openJobDetailCouldNotRecordPayment": "Haikuweza kurekodi malipo: {error}",
+  "openJobDetailCouldNotCompleteJob": "Haikuweza kukamilisha kazi",
+  "openJobDetailPaymentMethod": "Njia",
+  "crossShopSaleNoLongerOnTill": "Uuzaji huu haupo tena kwenye tilia.",
+  "crossShopClose": "Funga",
+  "crossShopCouldNotLoadSale": "Haikuweza kupakia uuzaji huu.",
+  "crossShopAllShopsActivity": "Shughuli za maduka yote",
+  "crossShopCouldNotReadActivity": "Haikuweza kusoma shughuli. Vuta ili kujaribu tena.",
+  "crossShopNoMatchingActivity": "Hakuna shughuli inayolingana.",
+  "crossShopLoadMoreActivity": "Pakia shughuli zaidi",
+  "expensesVoidExpenseTitle": "Futa gharama?",
+  "expensesVoidExpenseBody": "Hii inahifadhi rekodi lakini inaiondoa kwenye jumla.",
+  "expensesCancel": "Ghairi",
+  "expensesVoid": "Futa",
+  "helpTitle": "Msaada",
+  "cashControlTillCash": "Pesa ya tilia",
+  "cashControlOtherFunds": "Fedha nyingine",
+  "cashControlPayLater": "Lipa baadaye",
+  "cashControlCash": "Pesa taslimu",
+  "cashControlMpesa": "M-Pesa",
+  "cashControlBankTransfer": "Uhamisho wa benki",
+  "cashControlRecordPayment": "Rekodi malipo",
+  "productDrilldownCouldNotLoad": "Haikuweza kupakia uchanganuzi wa bidhaa.",
+  "productDrilldownDetailForPeriod": "Maelezo ya bidhaa kwa kipindi kilichochaguliwa",
+  "productDrilldownWhoSellsIt": "Nani anauza",
+  "productDrilldownHowCustomersPay": "Jinsi wateja wanavyolipa",
+  "productDrilldownWhenItSells": "Linapouzwa",
+  "productDrilldownBoughtTogether": "Linanunuliwa pamoja",
+  "productDrilldownStockTimeline": "Mfuatano wa stoki",
+  "productDrilldownPriceCostHistory": "Historia ya bei na gharama",
+  "productDrilldownTransactionsContaining": "Miamala inayojumuisha bidhaa hii",
+  "productDrilldownProductSale": "Uuzaji wa bidhaa",
+  "productDrilldownClose": "Funga",
+  "productDrilldownCouldNotLoadRemoteSale": "Haikuweza kupakia uuzaji huu wa mbali.",
+  "productDrilldownSaleNoLongerOnTill": "Uuzaji huu haupo tena kwenye tilia.",
+  "ownerSetupCouldNotOpenDocument": "Haikuweza kufungua hati",
+  "ownerSetupAgreeTerms": "Nakubali Masharti ya Huduma",
+  "ownerSetupAgreePrivacy": "Nakubali Sera ya Faragha",
+  "profileFormAddDrink": "Ongeza kinywaji",
+  "profileFormBottle": "Chupa",
+  "profileFormCrate": "Kasha",
+  "profileFormKeg": "Kegi",
+  "profileFormShot": "Shoti",
+  "profileFormSingleBottle": "Chupa moja",
+  "profileFormCrateOfBottles": "Kasha la chupa",
+  "profileFormCarton": "Kartoni",
+  "profileFormCancel": "Ghairi",
+  "profileFormSave": "Hifadhi",
+  "profileFormAddProduct": "Ongeza bidhaa",
+  "profileFormEach": "Kila mmoja",
+  "profileFormKilogram": "Kilogramu",
+  "profileFormLitre": "Lita",
+  "profileFormPack": "Pakiti",
+  "profileFormTrackVariants": "Fuatilia hiasi (saizi/rangi)",
+  "profileFormAddFashionStyle": "Ongeza mtindo wa mitindo",
+  "profileFormVariants": "Hiasi",
+  "profileFormAddVariant": "Ongeza hiasco",
+  "profileFormAddItemOrService": "Ongeza bidhaa au huduma",
+  "profileFormTrackStock": "Fuatilia stoki",
+  "receiveStockNeedsReview": "Inahitaji ukaguzi",
+  "receiveStockVerified": "Imethibitishwa",
+  "receiveStockValidException": "Kiasi halali",
+  "receiveStockUnmatched": "Haijaoanishwa",
+  "staffLoginChooseShop": "Chagua duka",
+  "staffLoginCancel": "Ghairi",
+  "stocktakeEnterAllCounts": "Ingiza kila hesabu kabla ya kutumia",
+  "stocktakeCancel": "Ghairi",
+  "stocktakeSave": "Hifadhi",
+  "stocktakeBlindCount": "Hesabu ya siri",
+  "stocktakeHideExpected": "Ficha kiasi kinachotarajiwa wakati wa kuhesabu",
+  "stocktakeFreezeCounted": "Ganda bidhaa zilizohesabiwa",
+  "stocktakeBlockSales": "Zuia mauzo ya bidhaa katika hesabu hii",
+  "stocktakeTankDip": "Kupima tanki",
+  "stocktakeStart": "Anza stocktake",
+  "stocktakeRecent": "Stocktake za hivi karibuni",
+  "stocktakeApply": "Tumia stocktake",
+  "termDrinksProduct": "Drink",
+  "termDrinksProductPlural": "Drinks",
+  "termDrinksSale": "Sale",
+  "termDrinksStock": "Bar stock",
+  "termDrinksPrimaryAction": "Start sale",
+  "termDukaProduct": "Product",
+  "termDukaProductPlural": "Products",
+  "termDukaSale": "Sale",
+  "termDukaStock": "Stock",
+  "termDukaPrimaryAction": "Start sale",
+  "termFashionProduct": "Style",
+  "termFashionProductPlural": "Styles",
+  "termFashionSale": "Sale",
+  "termFashionStock": "Catalogue",
+  "termFashionPrimaryAction": "Start sale",
+  "termOpenProduct": "Item or service",
+  "termOpenProductPlural": "Items and services",
+  "termOpenSale": "Record",
+  "termOpenStock": "Optional stock",
+  "termOpenPrimaryAction": "Record sale",
+  "settingsCashierPayoutApprovalLimit": "Limu ya malipo ya kabla",
+  "settingsDiscountsPriceOverrides": "Ubakaji na mabadiliko ya bei",
+  "settingsSetupMpesaPayHero": "Inaweza kuwekwa na M-Pesa na PayHero",
+  "settingsMpesaTill": "M-Pesa Tilli",
+  "settingsMpesaPaybill": "M-Pesa Lipa Namba",
+  "settingsSaveChannel": "Hifadhi salio",
+  "settingsCouldNotOpenDocument": "Haikuweza kufungua hati",
+  "settingsTermsOfService": "Masharti ya Huduma",
+  "settingsPrivacyPolicy": "Sera ya Faragha",
+  "settingsDrawerConnector": "Megandiko",
+  "settingsPulseTiming": "Muda wa pulu",
+  "settingsPulseTimingSubtitle": "Badilisha ikiwa tu kifuniko cha pamoja kinahitaji",
+  "settingsEnableDiscounts": "Weka ubakaji",
+  "settingsRequireReason": "Inahitaki sababu",
+  "settingsAllowDiscountsBelowCost": "Ichukuze ubakaji chini ya gharama",
+  "settingsIncomingMpesaPayments": "Malipo ya M-Pesa yenye kuingia",
+  "settingsOpenSyncCenter": "Funga Kituo cha Usawazishaji",
+  "settingsBackupAllShopData": "Hifadhi data yote ya duka",
+  "settingsRestoreAllShopData": "Rudisha data yote ya duka",
+  "settingsUploadPortableCloudCopy": "Pakua nakili ya mawimbi ya wingu",
+  "settingsRestoreLatestCloudCopy": "Rudisha nakili ya mwisho ya mawimbi",
+  "settingsSeedBlackbeeProducts": "Zao za BlackBee",
+  "settingsAddVariant": "Ongeza hiasco",
+  "settingsCancel": "Ghairi",
+  "settingsSave": "Hifadhi",
+  "settingsPin1": "Pini 1",
+  "settingsPin2": "Pini 2",
+  "settingsSaveButton": "Hifadhi",
+  "reportsDone": "Funga",
+  "reportsCupSales": "Mauzo ya bakuli",
+  "reportsTopMovers": "Vifaa vya kuanza",
+  "reportsPdfReport": "Ripoti ya PDF",
+  "reportsPeriod": "Muda",
+  "reportsReconciledFinancialStatement": "Huduma ya kifedha iliyosawazisha",
+  "reportsZReport": "Ripoti Z",
+  "transactionsAll": "Yote",
+  "exchangeRecorded": "Ufuasho #$exchangeId imerekodi — kurudi na mabadilishano yameshatikishwa.",
+  "exchangeAddReplacement": "Ongeza hiasco ya kubadili",
+  "exchangeCancel": "Ghairi",
+  "exchangeAdd": "Ongeza",
+  "exchangeVariantNotFound": "Hiasco haijapatikana",
+  "exchangeInsufficientStock": "Sio sawa stoki",
+  "exchangeFailed": "Kushindani: $e",
+  "cancel": "Cancel",
+  "closeShift": "Close shift",
+  "done": "Done",
+  "heldSalesRemain": "Held sales remain",
+  "keepShiftOpen": "Keep shift open",
+  "livePreviewNoReportNumberIsUsed": "Live preview · no report number is used",
+  "open": "Open",
+  "openDrawer": "Open drawer",
+  "xReportPreview": "X report preview",
+  "add": "Add",
+  "addMoreProducts": "Add more products",
+  "apply": "Apply",
+  "attachACustomerToThisHeldSale": "Attach a customer to this held sale?",
+  "chooseCustomer": "Choose customer",
+  "costNotRecordedProfitMayBeOverstated": "Cost not recorded; profit may be overstated.",
+  "couldnTCompleteTheSaleCheckStockAndTryAgain": "Couldn’t complete the sale. Check stock and try again.",
+  "firstTenderRemainingIsPaidByTheSecondTender": "First tender · remaining is paid by the second tender",
+  "holdSale": "Hold sale",
+  "incomingPayment": "Incoming payment",
+  "isThisANewProductAddCostPrice": "Is this a new product? Add cost price",
+  "keepHeldSale": "Keep held sale",
+  "mPesaPaidToTill": "M-Pesa paid to till",
+  "noCustomer": "No customer",
+  "noHeldSales": "No held sales",
+  "noReason": "No reason",
+  "noneNew": "None / new",
+  "orderDiscount": "Order discount",
+  "paymentCouldNotBeStartedCheckYourConnectionAndTryAgain": "Payment could not be started. Check your connection and try again.",
+  "paymentSucceededLocalRecordingFailedContactSupportBeforeReconcilingReports": "Payment succeeded. Local recording failed — contact support before reconciling reports.",
+  "pricesChanged": "Prices changed",
+  "printReceipt": "Print receipt",
+  "quickSale": "Quick sale",
+  "quickSaleRecorded": "Quick sale recorded.",
+  "recordSaleAmount": "Record sale amount",
+  "save": "Save",
+  "sell": "Sell",
+  "sellShot": "Sell shot",
+  "sharePdf": "Share PDF",
+  "shareReceipt": "Share receipt",
+  "skip": "Skip",
+  "splitPayment": "Split payment",
+  "tendersMustEqualTheTotal": "Tenders must equal the total.",
+  "useCurrentPrices": "Use current prices",
+  "heldSales": "Held sales",
+  "company": "Company",
+  "inProgress": "In progress",
+  "individual": "Individual",
+  "needsReview": "Needs review",
+  "nonVatLite": "Non-VAT Lite",
+  "notStarted": "Not started",
+  "oscu": "OSCU",
+  "onboarded": "Onboarded",
+  "onlineEclient": "Online / eClient",
+  "other": "Other",
+  "partnership": "Partnership",
+  "registeredObligations": "Registered obligations",
+  "saveMapping": "Save mapping",
+  "soleProprietor": "Sole proprietor",
+  "taxEntityAndOutletMapping": "Tax entity and outlet mapping",
+  "vscu": "VSCU",
+  "addPack": "Add pack",
+  "addPackOrCarton": "Add pack or carton",
+  "assignABarcodeBeforePrintingItsLabel": "Assign a barcode before printing its label.",
+  "assignInternalBarcode": "Assign internal barcode",
+  "createRepack": "Create & repack",
+  "each": "Each",
+  "kilogram": "Kilogram",
+  "litre": "Litre",
+  "looseGoods": "Loose goods",
+  "noPacksYetAddACaseCartonOrBundleBarcode": "No packs yet. Add a case, carton or bundle barcode.",
+  "packsAndCartons": "Packs and cartons",
+  "print": "Print",
+  "printBarcodeLabel": "Print barcode label",
+  "printBarcodeLabels": "Print barcode labels",
+  "recordWaste": "Record waste",
+  "recordWasteSpillage": "Record waste/spillage",
+  "reorder": "Reorder",
+  "repack": "Repack",
+  "repackCouldNotBeRecorded": "Repack could not be recorded.",
+  "repackRecorded": "Repack recorded.",
+  "repackToNewProduct": "Repack to new product",
+  "stocktake": "Stocktake",
+  "tankRegister": "Tank register",
+  "trackExpiryDates": "Track expiry dates",
+  "wasteCannotBeGreaterThanCurrentStock": "Waste cannot be greater than current stock.",
+  "wasteCouldNotBeRecorded": "Waste could not be recorded.",
+  "bankTransfer": "Bank transfer",
+  "cancelLayBy": "Cancel lay-by",
+  "cancelLayBy2": "Cancel lay-by?",
+  "cash": "Cash",
+  "complete": "Complete",
+  "keep": "Keep",
+  "mPesa": "M-Pesa",
+  "payment": "Payment",
+  "paymentMethod": "Payment method",
+  "paymentReferenceOptional": "Payment reference (optional)",
+  "createCostGroup": "Create cost group",
+  "addCost": "Add cost",
+  "adjustStock": "Adjust stock",
+  "edit": "Edit",
+  "receiveStock": "Receive stock",
+  "viewSales": "View sales",
+  "linkASupplierBeforeCreatingAnOrder": "Link a supplier before creating an order.",
+  "noProductsAreBelowTheirReorderLevel": "No products are below their reorder level.",
+  "receive": "Receive",
+  "receiveAllRemaining": "Receive all remaining",
+  "reorderSuggestions": "Reorder suggestions",
+  "saveShare": "Save & share",
+  "saveDraft": "Save draft",
+  "allProducts": "All products",
+  "copyCupToProduct": "Copy cup to product",
+  "copyToAnotherProduct": "Copy to another product",
+  "tankDetail": "Tank detail",
+  "noTanksYet": "No tanks yet",
+  "revoke": "Revoke",
+  "sharedReceipts": "Shared receipts",
+  "acceptSale": "Accept sale",
+  "kraCouldNotBeReachedTheReceiptsRemainQueuedForTheNextConnection": "KRA could not be reached. The receipts remain queued for the next connection.",
+  "lastLocalBackup": "Last local backup",
+  "leaveOpen": "Leave open",
+  "localStorageAccess": "Local storage access",
+  "onlyAManagerCanViewSyncCenter": "Only a manager can view Sync Center.",
+  "rejectedReceiptsToRetry": "Rejected receipts to retry",
+  "resolveStockConflict": "Resolve stock conflict",
+  "retry": "Retry",
+  "retryQueuedReceipts": "Retry queued receipts",
+  "review": "Review",
+  "syncCenter": "Sync Center",
+  "theseOfflineSalesCouldNotReserveStockAfterAnotherTillSoldTheLastUnitsTheyRemainQueuedAndAreNotSilentlyDiscarded": "These offline sales could not reserve stock after another till sold the last units. They remain queued and are not silently discarded.",
+  "unclaimedMPesa": "Unclaimed M-Pesa",
+  "unverifiedPayments": "Unverified payments",
+  "voidSale": "Void sale"
+  ,"settingsSwitch": "Aldisha"
+  ,"openDashboardSelectJob": "Chagua kazi"
+  ,"openCostGroupCouldNotCreate": "Haikuweza kuunda kundi la gharama: {error}"
+  ,"openJobAddCostCouldNotAdd": "Haikuweza kuongeza gharama: {error}"
+  ,"inventoryCouldNotSavePack": "Haikuweza hifadhi kifungo: {error}"
+  ,"syncCenterCouldNotResolveConflict": "Haikuweza kutatua mgogoro: {error}"
+  ,"openDashboardNoJobs": "Hakuna kazi hivi. Unde moja ya msingi."
 }

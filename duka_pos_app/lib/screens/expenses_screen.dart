@@ -56,16 +56,16 @@ class _ExpensesScreenState extends State<ExpensesScreen> {
     final confirm = await showDialog<bool>(
       context: context,
       builder: (context) => AlertDialog(
-        title: const Text('Void expense?'),
+        title: Text(AppLocalizations.of(context).expensesVoidExpenseTitle),
         content:
-            const Text('This keeps the record but removes it from totals.'),
+            Text(AppLocalizations.of(context).expensesVoidExpenseBody),
         actions: [
           TextButton(
               onPressed: () => Navigator.pop(context, false),
-              child: const Text('Cancel')),
+              child: Text(AppLocalizations.of(context).expensesCancel)),
           FilledButton(
               onPressed: () => Navigator.pop(context, true),
-              child: const Text('Void')),
+              child: Text(AppLocalizations.of(context).expensesVoid)),
         ],
       ),
     );

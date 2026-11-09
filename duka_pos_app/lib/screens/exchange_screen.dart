@@ -211,7 +211,7 @@ class _ExchangeScreenState extends State<ExchangeScreen> {
         _step = 3;
       });
       ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-        content: Text('Exchange #$exchangeId recorded — return and replacement committed.'),
+        content: Text(AppLocalizations.of(context).exchangeRecorded.replaceAll('\$exchangeId', exchangeId.toString())),
       ));
     } catch (e) {
       if (!mounted) return;
@@ -251,7 +251,7 @@ class _ExchangeScreenState extends State<ExchangeScreen> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: <Widget>[
-            BackupReminderBanner(onBackupNow: () async {}),
+            BackupReminderBanner(onBackupNow: () => performBackup(context)),
             SizedBox(height: spacing.section),
             Text(
               _step == 0
@@ -628,17 +628,90 @@ class _ReplacementAdder extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    // Minimal adder: in production this would open a variant selector sheet.
-    // Here it's a stub that shows the pattern; variants come from the
-    // selected sale's products in the real flow.
     return SizedBox(
       width: double.infinity,
       child: OutlinedButton.icon(
-        onPressed: null,
+        onPressed: () => _openVariantPicker(context, onAdd),
         icon: const Icon(Icons.add_circle_outline),
-        label: Text('Add replacement variant (variant selector sheet)'),
+        label: Text(AppLocalizations.of(context).exchangeAddReplacement),
       ),
     );
+  }
+
+  Future<void> _openVariantPicker(
+    BuildContext context,
+    void Function(ProductVariant variant, double qty) onAdd,
+  ) async {
+    final idController = TextEditingController();
+    final qtyController = TextEditingController(text: '1');
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: Text(AppLocalizations.of(context).exchangeAddReplacement),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: <Widget>[
+            TextField(
+              controller: idController,
+              keyboardType: TextInputType.number,
+              decoration: const InputDecoration(labelText: 'Variant ID'),
+            ),
+            TextField(
+              controller: qtyController,
+              keyboardType:
+                  const TextInputType.numberWithOptions(decimal: true),
+              decoration: const InputDecoration(labelText: 'Quantity'),
+            ),
+          ],
+        ),
+        actions: <Widget>[
+          TextButton(
+            onPressed: () => Navigator.of(ctx).pop(false),
+            child: Text(AppLocalizations.of(context).exchangeCancel),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.of(ctx).pop(true),
+            child: Text(AppLocalizations.of(context).exchangeAdd),
+          ),
+        ],
+      ),
+    );
+    if (ok != true) {
+      idController.dispose();
+      qtyController.dispose();
+      return;
+    }
+    final variantId = int.tryParse(idController.text.trim());
+    final qty = double.tryParse(qtyController.text.trim()) ?? 0;
+    idController.dispose();
+    qtyController.dispose();
+    if (variantId == null || qty <= 0) return;
+    try {
+      final variant = await DatabaseHelper.instance.getVariantById(variantId);
+      if (variant == null) {
+        if (context.mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text(AppLocalizations.of(context).exchangeVariantNotFound)),
+          );
+        }
+        return;
+      }
+      if (variant.stockQty < qty) {
+        if (context.mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text(AppLocalizations.of(context).exchangeInsufficientStock)),
+          );
+        }
+        return;
+      }
+      onAdd(variant, qty);
+    } catch (e) {
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text(AppLocalizations.of(context).exchangeFailed.replaceAll('\$e', e.toString()))),
+        );
+      }
+    }
   }
 }
 

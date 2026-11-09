@@ -7,6 +7,7 @@ import 'shop_profile.dart';
 /// database schema.
 class ProfileCapabilities {
   const ProfileCapabilities({
+    required this.showInventory,
     required this.trackStock,
     required this.measuredGoods,
     required this.variants,
@@ -17,6 +18,7 @@ class ProfileCapabilities {
     required this.enhancedAnalytics,
   });
 
+  final bool showInventory;
   final bool trackStock;
   final bool measuredGoods;
   final bool variants;
@@ -29,6 +31,7 @@ class ProfileCapabilities {
   static ProfileCapabilities forProfile(ShopProfile profile) =>
       switch (profile) {
         ShopProfile.drinks => const ProfileCapabilities(
+            showInventory: true,
             trackStock: true,
             measuredGoods: true,
             variants: false,
@@ -39,6 +42,7 @@ class ProfileCapabilities {
             enhancedAnalytics: true,
           ),
         ShopProfile.duka => const ProfileCapabilities(
+            showInventory: true,
             trackStock: true,
             measuredGoods: true,
             variants: false,
@@ -49,6 +53,7 @@ class ProfileCapabilities {
             enhancedAnalytics: true,
           ),
         ShopProfile.fashion => const ProfileCapabilities(
+            showInventory: true,
             trackStock: true,
             measuredGoods: false,
             variants: true,
@@ -59,6 +64,7 @@ class ProfileCapabilities {
             enhancedAnalytics: true,
           ),
         ShopProfile.open => const ProfileCapabilities(
+            showInventory: false,
             trackStock: true,
             measuredGoods: false,
             variants: false,

@@ -328,7 +328,7 @@ class PortfolioPanel extends StatelessWidget {
                   ),
               ],
               child: OutlinedButton.icon(
-                onPressed: null,
+                onPressed: () {},
                 icon: const Icon(Icons.date_range, size: 18),
                 label: Text(switch (range) {
                   PortfolioRange.week => l10n.portfolioRangeWeek,

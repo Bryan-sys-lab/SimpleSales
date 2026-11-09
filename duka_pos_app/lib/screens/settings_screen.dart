@@ -488,7 +488,7 @@ class _SettingsScreenState extends State<SettingsScreen>
     final value = await showDialog<double>(
       context: context,
       builder: (_) => AlertDialog(
-        title: const Text('Cashier payout approval limit'),
+        title: Text(AppLocalizations.of(context).settingsCashierPayoutApprovalLimit),
         content: TextField(
           controller: controller,
           autofocus: true,
@@ -498,11 +498,11 @@ class _SettingsScreenState extends State<SettingsScreen>
         actions: <Widget>[
           TextButton(
               onPressed: () => Navigator.pop(context),
-              child: const Text('Cancel')),
+              child: Text(AppLocalizations.of(context).settingsCancel)),
           FilledButton(
             onPressed: () =>
                 Navigator.pop(context, double.tryParse(controller.text)),
-            child: const Text('Save'),
+            child: Text(AppLocalizations.of(context).settingsSave),
           ),
         ],
       ),
@@ -519,7 +519,7 @@ class _SettingsScreenState extends State<SettingsScreen>
     final result = await showDialog<Map<String, Object?>>(
       context: context,
       builder: (_) => AlertDialog(
-        title: const Text('Discounts and price overrides'),
+        title: Text(AppLocalizations.of(context).settingsDiscountsPriceOverrides),
         content: _DiscountSettingsForm(
           enabled: _discountsEnabled,
           cashierPercent: _cashierDiscountPercent,
@@ -1133,7 +1133,7 @@ class _SettingsScreenState extends State<SettingsScreen>
           actions: <Widget>[
             TextButton(
               onPressed: () => Navigator.pop(dialogContext),
-              child: const Text('Cancel'),
+              child: Text(AppLocalizations.of(context).settingsCancel),
             ),
             FilledButton(
               onPressed: () {
@@ -1149,7 +1149,7 @@ class _SettingsScreenState extends State<SettingsScreen>
                   ),
                 );
               },
-              child: const Text('Save channel'),
+              child: Text(AppLocalizations.of(context).settingsSaveChannel),
             ),
           ],
         ),
@@ -1707,7 +1707,7 @@ class _SettingsScreenState extends State<SettingsScreen>
         actions: [
           TextButton(
               onPressed: () => Navigator.pop(dialogContext),
-              child: const Text('Cancel')),
+              child: Text(AppLocalizations.of(context).settingsCancel)),
           FilledButton(
             onPressed: () {
               if (first.text.length < 8 ||
@@ -3180,7 +3180,7 @@ class _AboutFooterState extends State<_AboutFooter> {
     } catch (_) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Could not open document')),
+          SnackBar(content: Text(AppLocalizations.of(context).settingsCouldNotOpenDocument)),
         );
       }
     }
@@ -3247,11 +3247,11 @@ class _AboutFooterState extends State<_AboutFooter> {
           children: <Widget>[
             TextButton(
               onPressed: () => _openAssetPdf('assets/SimpleSales_Terms_of_Service.pdf'),
-              child: const Text('Terms of Service'),
+              child: Text(AppLocalizations.of(context).settingsTermsOfService),
             ),
             TextButton(
               onPressed: () => _openAssetPdf('assets/SimpleSales_Privacy_Policy.pdf'),
-              child: const Text('Privacy Policy'),
+              child: Text(AppLocalizations.of(context).settingsPrivacyPolicy),
             ),
           ],
         ),
@@ -3757,7 +3757,7 @@ class _CashDrawerPanel extends StatelessWidget {
             ),
             ListTile(
               leading: const Icon(Icons.settings_input_component_outlined),
-              title: const Text('Drawer connector'),
+              title: Text(AppLocalizations.of(context).settingsDrawerConnector),
               subtitle: Text('Pin ${pin + 1} · ${onMs}ms on · ${offMs}ms off'),
               trailing: DropdownButton<int>(
                 value: pin,
@@ -3774,8 +3774,8 @@ class _CashDrawerPanel extends StatelessWidget {
             ),
             ListTile(
               leading: const Icon(Icons.timer_outlined),
-              title: const Text('Pulse timing'),
-              subtitle: const Text('Adjust only if the paired drawer needs it'),
+              title: Text(AppLocalizations.of(context).settingsPulseTiming),
+              subtitle: Text(AppLocalizations.of(context).settingsPulseTimingSubtitle),
               trailing: DropdownButton<int>(
                 value: onMs,
                 items: const [
@@ -3978,7 +3978,7 @@ class _DiscountPanel extends StatelessWidget {
         title: 'Discounts',
         child: SettingsNavRow(
           icon: Icons.sell_outlined,
-          title: 'Discounts and price overrides',
+          title: AppLocalizations.of(context).settingsDiscountsPriceOverrides,
           subtitle: enabled
               ? 'Cashier $cashierPercent% · manager $managerPercent%'
               : 'Off — checkout prices stay unchanged',
@@ -4066,7 +4066,7 @@ class _DiscountSettingsFormState extends State<_DiscountSettingsForm> {
           children: [
             SwitchListTile(
               contentPadding: EdgeInsets.zero,
-              title: const Text('Enable discounts'),
+              title: Text(AppLocalizations.of(context).settingsEnableDiscounts),
               value: enabled,
               onChanged: (value) => setState(() => enabled = value),
             ),
@@ -4082,13 +4082,13 @@ class _DiscountSettingsFormState extends State<_DiscountSettingsForm> {
             ),
             SwitchListTile(
               contentPadding: EdgeInsets.zero,
-              title: const Text('Require a reason'),
+              title: Text(AppLocalizations.of(context).settingsRequireReason),
               value: reasonRequired,
               onChanged: (value) => setState(() => reasonRequired = value),
             ),
             SwitchListTile(
               contentPadding: EdgeInsets.zero,
-              title: const Text('Allow discounts below cost'),
+              title: Text(AppLocalizations.of(context).settingsAllowDiscountsBelowCost),
               value: belowCostAllowed,
               onChanged: (value) => setState(() => belowCostAllowed = value),
             ),
@@ -4097,8 +4097,8 @@ class _DiscountSettingsFormState extends State<_DiscountSettingsForm> {
               children: [
                 TextButton(
                     onPressed: () => Navigator.pop(context),
-                    child: const Text('Cancel')),
-                FilledButton(onPressed: _save, child: const Text('Save')),
+                    child: Text(AppLocalizations.of(context).settingsCancel)),
+                FilledButton(onPressed: _save, child: Text(AppLocalizations.of(context).settingsSave)),
               ],
             ),
           ],
@@ -4330,7 +4330,7 @@ class _SyncPanel extends StatelessWidget {
             OutlinedButton.icon(
               onPressed: onOpenSyncCenter,
               icon: const Icon(Icons.sync_problem_outlined),
-              label: const Text('Open Sync Center'),
+              label: Text(AppLocalizations.of(context).settingsOpenSyncCenter),
             ),
           ],
           // The result of the last sync, announced rather than left to be seen:
@@ -4415,23 +4415,23 @@ class _BackupPanel extends StatelessWidget {
               if (onExportFullBackup != null)
                 OutlinedButton(
                   onPressed: onExportFullBackup,
-                  child: const Text('Back up all shop data'),
+                  child: Text(AppLocalizations.of(context).settingsBackupAllShopData),
                 ),
               if (onRestoreFullBackup != null)
                 OutlinedButton(
                   onPressed: onRestoreFullBackup,
-                  child: const Text('Restore all shop data'),
+                  child: Text(AppLocalizations.of(context).settingsRestoreAllShopData),
                 ),
               if (onUploadCloudFullBackup != null)
                 OutlinedButton.icon(
                   onPressed: onUploadCloudFullBackup,
                   icon: const Icon(Icons.cloud_upload_outlined),
-                  label: const Text('Upload portable cloud copy'),
+                  label: Text(AppLocalizations.of(context).settingsUploadPortableCloudCopy),
                 ),
               if (onRestoreCloudFullBackup != null)
                 OutlinedButton(
                   onPressed: onRestoreCloudFullBackup,
-                  child: const Text('Restore latest cloud copy'),
+                  child: Text(AppLocalizations.of(context).settingsRestoreLatestCloudCopy),
                 ),
               OutlinedButton(
                 onPressed: () => onExport(),
@@ -4447,7 +4447,7 @@ class _BackupPanel extends StatelessWidget {
                 OutlinedButton.icon(
                   onPressed: onSeedBlackbee,
                   icon: const Icon(Icons.playlist_add_outlined),
-                  label: const Text('Seed BlackBee products'),
+                  label: Text(AppLocalizations.of(context).settingsSeedBlackbeeProducts),
                 ),
             ],
           ),

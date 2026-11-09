@@ -1146,7 +1146,7 @@ class FinancialStatementCard extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: <Widget>[
-          Text('Reconciled financial statement', style: type.titleLarge),
+          Text(AppLocalizations.of(context).reportsReconciledFinancialStatement, style: type.titleLarge),
           SizedBox(height: spacing.xs),
           Text(
             statement.openingCashIsKnown

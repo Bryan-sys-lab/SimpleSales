@@ -412,7 +412,7 @@ class _ReportsScreenState extends State<ReportsScreen>
     await showDialog<void>(
       context: context,
       builder: (BuildContext context) => AlertDialog(
-        title: Text('Z report #${report.reportNumber}'),
+        title: Text('${AppLocalizations.of(context).reportsZReport} #${report.reportNumber}'),
         content: SingleChildScrollView(
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -437,7 +437,7 @@ class _ReportsScreenState extends State<ReportsScreen>
         actions: <Widget>[
           TextButton(
             onPressed: () => Navigator.pop(context),
-            child: const Text('Done'),
+            child: Text(AppLocalizations.of(context).reportsDone),
           ),
         ],
       ),
@@ -598,7 +598,7 @@ class _ReportsScreenState extends State<ReportsScreen>
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: <Widget>[
-                      Text('Cup sales',
+                      Text(AppLocalizations.of(context).reportsCupSales,
                           style: Theme.of(context).textTheme.titleMedium),
                       for (final row in _cupSales)
                         Padding(
@@ -626,7 +626,7 @@ class _ReportsScreenState extends State<ReportsScreen>
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: <Widget>[
-                      Text('Top movers',
+                      Text(AppLocalizations.of(context).reportsTopMovers,
                           style: Theme.of(context).textTheme.titleMedium),
                       for (final row in _topMovers)
                         Padding(
@@ -739,7 +739,7 @@ class _ReportsActions extends StatelessWidget {
         OutlinedButton.icon(
           onPressed: canExport ? () => onExportPdf() : null,
           icon: const Icon(Icons.picture_as_pdf_outlined),
-          label: const Text('PDF report'),
+          label: Text(AppLocalizations.of(context).reportsPdfReport),
         ),
       ],
     );

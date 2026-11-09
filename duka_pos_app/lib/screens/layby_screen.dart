@@ -209,23 +209,23 @@ class _LaybyScreenState extends State<LaybyScreen> {
     return await showDialog<String>(
       context: context,
       builder: (ctx) => AlertDialog(
-        title: const Text('Payment method'),
+        title: Text(AppLocalizations.of(context).paymentMethod),
         content: Column(
           mainAxisSize: MainAxisSize.min,
           children: <Widget>[
             ListTile(
               leading: const Icon(Icons.money_outlined),
-              title: const Text('Cash'),
+              title: Text(AppLocalizations.of(context).cash),
               onTap: () => Navigator.pop(ctx, 'cash'),
             ),
             ListTile(
               leading: const Icon(Icons.phone_android),
-              title: const Text('M-Pesa'),
+              title: Text(AppLocalizations.of(context).mPesa),
               onTap: () => Navigator.pop(ctx, 'mpesa'),
             ),
             ListTile(
               leading: const Icon(Icons.account_balance_outlined),
-              title: const Text('Bank transfer'),
+              title: Text(AppLocalizations.of(context).bankTransfer),
               onTap: () => Navigator.pop(ctx, 'bank_transfer'),
             ),
           ],
@@ -239,7 +239,7 @@ class _LaybyScreenState extends State<LaybyScreen> {
     return await showDialog<String>(
       context: context,
       builder: (ctx) => AlertDialog(
-        title: const Text('Payment reference (optional)'),
+        title: Text(AppLocalizations.of(context).paymentReferenceOptional),
         content: TextField(
           controller: controller,
           autofocus: true,
@@ -248,10 +248,10 @@ class _LaybyScreenState extends State<LaybyScreen> {
         actions: [
           TextButton(
               onPressed: () => Navigator.pop(ctx, null),
-              child: const Text('Skip')),
+              child: Text(AppLocalizations.of(context).skip)),
           FilledButton(
               onPressed: () => Navigator.pop(ctx, controller.text.trim()),
-              child: const Text('Save')),
+              child: Text(AppLocalizations.of(context).save)),
         ],
       ),
     );
@@ -273,14 +273,14 @@ class _LaybyScreenState extends State<LaybyScreen> {
         actions: [
           TextButton(
               onPressed: () => Navigator.pop(context),
-              child: const Text('Cancel')),
+              child: Text(AppLocalizations.of(context).cancel)),
           FilledButton(
               onPressed: () {
                 final major = double.tryParse(controller.text.trim());
                 if (major == null || major <= 0) return;
                 Navigator.pop(context, Money.fromMajor(major));
               },
-              child: const Text('Save')),
+              child: Text(AppLocalizations.of(context).save)),
         ],
       ),
     );
@@ -302,16 +302,16 @@ class _LaybyScreenState extends State<LaybyScreen> {
     final confirmed = await showDialog<bool>(
       context: context,
       builder: (context) => AlertDialog(
-        title: const Text('Cancel lay-by?'),
+        title: Text(AppLocalizations.of(context).cancelLayBy2),
         content:
             Text('Refund ${layby.paid.asMajor} and release the reservation?'),
         actions: [
           TextButton(
               onPressed: () => Navigator.pop(context, false),
-              child: const Text('Keep')),
+              child: Text(AppLocalizations.of(context).keep)),
           FilledButton(
               onPressed: () => Navigator.pop(context, true),
-              child: const Text('Cancel lay-by')),
+              child: Text(AppLocalizations.of(context).cancelLayBy)),
         ],
       ),
     );
@@ -341,7 +341,7 @@ class _LaybyScreenState extends State<LaybyScreen> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: <Widget>[
-            BackupReminderBanner(onBackupNow: () async {}),
+            BackupReminderBanner(onBackupNow: () => performBackup(context)),
             SizedBox(height: spacing.section),
             Row(
               children: <Widget>[
@@ -464,14 +464,14 @@ class _LaybyScreenState extends State<LaybyScreen> {
                           decoration: InputDecoration(
                             labelText: l10n.reservePaymentMethod,
                           ),
-                          items: const <DropdownMenuItem<String>>[
+                          items: <DropdownMenuItem<String>>[
                             DropdownMenuItem(
-                                value: 'cash', child: Text('Cash')),
+                                value: 'cash', child: Text(AppLocalizations.of(context).cash)),
                             DropdownMenuItem(
-                                value: 'mpesa', child: Text('M-Pesa')),
+                                value: 'mpesa', child: Text(AppLocalizations.of(context).mPesa)),
                             DropdownMenuItem(
                                 value: 'bank_transfer',
-                                child: Text('Bank transfer')),
+                                child: Text(AppLocalizations.of(context).bankTransfer)),
                           ],
                           onChanged: (v) => setState(() => _depositMethod = v!),
                         ),
@@ -597,18 +597,18 @@ class _LaybyScreenState extends State<LaybyScreen> {
                 TextButton.icon(
                   onPressed: () => _pay(layby),
                   icon: const Icon(Icons.payments_outlined),
-                  label: const Text('Payment'),
+                  label: Text(AppLocalizations.of(context).payment),
                 ),
                 if (layby.balance.isZero)
                   TextButton.icon(
                     onPressed: () => _complete(layby),
                     icon: const Icon(Icons.check_circle_outline),
-                    label: const Text('Complete'),
+                    label: Text(AppLocalizations.of(context).complete),
                   ),
                 TextButton.icon(
                   onPressed: () => _cancel(layby),
                   icon: const Icon(Icons.cancel_outlined),
-                  label: const Text('Cancel'),
+                  label: Text(AppLocalizations.of(context).cancel),
                 ),
               ]),
             ],

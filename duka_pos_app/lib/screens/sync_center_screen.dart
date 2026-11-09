@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import '../l10n/generated/app_localizations.dart';
 import 'package:go_router/go_router.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:provider/provider.dart';
@@ -145,9 +146,8 @@ class _SyncCenterScreenState extends State<SyncCenterScreen>
       await _load();
     } catch (_) {
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
-        content: Text(
-            'KRA could not be reached. The receipts remain queued for the next connection.'),
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+        content: Text(AppLocalizations.of(context).kraCouldNotBeReachedTheReceiptsRemainQueuedForTheNextConnection),
       ));
     } finally {
       if (mounted) setState(() => _syncing = false);
@@ -205,7 +205,7 @@ class _SyncCenterScreenState extends State<SyncCenterScreen>
     final resolution = await showDialog<String>(
       context: context,
       builder: (context) => AlertDialog(
-        title: const Text('Resolve stock conflict'),
+        title: Text(AppLocalizations.of(context).resolveStockConflict),
         content: Text(
           '${_plainConflictReason(conflict['reason'] as String?)}\n\n'
           'Choose how the manager wants this offline sale recorded. The sale is never deleted from the local audit ledger.',
@@ -213,15 +213,15 @@ class _SyncCenterScreenState extends State<SyncCenterScreen>
         actions: [
           TextButton(
             onPressed: () => Navigator.of(context).pop(),
-            child: const Text('Leave open'),
+            child: Text(AppLocalizations.of(context).leaveOpen),
           ),
           FilledButton(
             onPressed: () => Navigator.of(context).pop('void'),
-            child: const Text('Void sale'),
+            child: Text(AppLocalizations.of(context).voidSale),
           ),
           FilledButton(
             onPressed: () => Navigator.of(context).pop('accept_negative_stock'),
-            child: const Text('Accept sale'),
+            child: Text(AppLocalizations.of(context).acceptSale),
           ),
         ],
       ),
@@ -236,7 +236,7 @@ class _SyncCenterScreenState extends State<SyncCenterScreen>
     } catch (error) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Could not resolve conflict: $error')),
+        SnackBar(content: Text(AppLocalizations.of(context).syncCenterCouldNotResolveConflict(error))),
       );
     }
   }
@@ -247,13 +247,13 @@ class _SyncCenterScreenState extends State<SyncCenterScreen>
     final allowed = state.isOwnerSession || state.role == ShopRole.manager;
     if (!allowed) {
       return Scaffold(
-        appBar: AppBar(title: const Text('Sync Center')),
-        body: const Center(child: Text('Only a manager can view Sync Center.')),
+        appBar: AppBar(title: Text(AppLocalizations.of(context).syncCenter)),
+        body: Center(child: Text(AppLocalizations.of(context).onlyAManagerCanViewSyncCenter)),
       );
     }
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Sync Center'),
+        title: Text(AppLocalizations.of(context).syncCenter),
         actions: [
           IconButton(
             tooltip: 'Refresh',
@@ -297,18 +297,18 @@ class _SyncCenterScreenState extends State<SyncCenterScreen>
                             ListTile(
                               contentPadding: EdgeInsets.zero,
                               dense: true,
-                              title: const Text('Rejected receipts to retry'),
+                              title: Text(AppLocalizations.of(context).rejectedReceiptsToRetry),
                               trailing: TextButton(
                                 onPressed: _syncing
                                     ? null
                                     : () => _retryEtims(rejected: true),
-                                child: const Text('Retry'),
+                                child: Text(AppLocalizations.of(context).retry),
                               ),
                             ),
                           ListTile(
                             contentPadding: EdgeInsets.zero,
                             dense: true,
-                            title: const Text('Unverified payments'),
+                            title: Text(AppLocalizations.of(context).unverifiedPayments),
                             trailing: _attention!.unverifiedPayments == 0
                                 ? const Text('0')
                                 : TextButton(
@@ -321,7 +321,7 @@ class _SyncCenterScreenState extends State<SyncCenterScreen>
                           ListTile(
                             contentPadding: EdgeInsets.zero,
                             dense: true,
-                            title: const Text('Unclaimed M-Pesa'),
+                            title: Text(AppLocalizations.of(context).unclaimedMPesa),
                             trailing: _unclaimed == 0
                                 ? const Text('0')
                                 : TextButton(
@@ -349,7 +349,7 @@ class _SyncCenterScreenState extends State<SyncCenterScreen>
                             ListTile(
                               contentPadding: EdgeInsets.zero,
                               dense: true,
-                              title: const Text('Last local backup'),
+                              title: Text(AppLocalizations.of(context).lastLocalBackup),
                               trailing: Text(_lastBackup!.toLocal().toString()),
                             ),
                           _status('Unverified sales', _unverified.length),
@@ -391,7 +391,7 @@ class _SyncCenterScreenState extends State<SyncCenterScreen>
                           ListTile(
                             contentPadding: EdgeInsets.zero,
                             dense: true,
-                            title: const Text('Local storage access'),
+                            title: Text(AppLocalizations.of(context).localStorageAccess),
                             trailing: Text(
                               _storageAvailable ? 'Available' : 'Unavailable',
                               style: TextStyle(
@@ -416,8 +416,7 @@ class _SyncCenterScreenState extends State<SyncCenterScreen>
                                     style:
                                         TextStyle(fontWeight: FontWeight.w700)),
                                 const SizedBox(height: 4),
-                                const Text(
-                                    'These offline sales could not reserve stock after another till sold the last units. They remain queued and are not silently discarded.'),
+                                Text(AppLocalizations.of(context).theseOfflineSalesCouldNotReserveStockAfterAnotherTillSoldTheLastUnitsTheyRemainQueuedAndAreNotSilentlyDiscarded),
                                 for (final conflict in _conflicts)
                                   ListTile(
                                     contentPadding: EdgeInsets.zero,
@@ -430,7 +429,7 @@ class _SyncCenterScreenState extends State<SyncCenterScreen>
                                     trailing: TextButton(
                                       onPressed: () =>
                                           _reviewConflict(conflict),
-                                      child: const Text('Review'),
+                                      child: Text(AppLocalizations.of(context).review),
                                     ),
                                   ),
                               ],
@@ -485,7 +484,7 @@ class _SyncCenterScreenState extends State<SyncCenterScreen>
                                         ? null
                                         : () => _retryEtims(rejected: false),
                                     icon: const Icon(Icons.sync),
-                                    label: const Text('Retry queued receipts'),
+                                    label: Text(AppLocalizations.of(context).retryQueuedReceipts),
                                   ),
                                 ),
                                 for (final receipt in _etims.take(5))

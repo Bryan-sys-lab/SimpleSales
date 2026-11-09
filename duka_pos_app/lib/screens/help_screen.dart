@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import '../l10n/generated/app_localizations.dart';
 import 'package:provider/provider.dart';
 import '../profile/profile_navigation.dart';
 import '../services/app_state.dart';
@@ -33,7 +34,7 @@ class HelpScreen extends StatelessWidget {
           Icons.account_balance_wallet_outlined));
     }
     return Scaffold(
-      appBar: AppBar(title: const Text('Help')),
+      appBar: AppBar(title: Text(AppLocalizations.of(context).helpTitle)),
       body: ListView.separated(
         padding: const EdgeInsets.all(16),
         itemCount: features.length,

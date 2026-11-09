@@ -90,7 +90,7 @@ class _FashionProductDetailScreenState
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: <Widget>[
-            BackupReminderBanner(onBackupNow: () async {}),
+            BackupReminderBanner(onBackupNow: () => performBackup(context)),
             SizedBox(height: spacing.section),
             Text(
               l10n.fashionProductDetailNotFound,
@@ -119,7 +119,7 @@ class _FashionProductDetailScreenState
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: <Widget>[
-            BackupReminderBanner(onBackupNow: () async {}),
+            BackupReminderBanner(onBackupNow: () => performBackup(context)),
             SizedBox(height: spacing.section),
             Row(
               crossAxisAlignment: CrossAxisAlignment.start,
@@ -199,7 +199,7 @@ class _FashionProductDetailScreenState
   }
 
   void _editProduct(BuildContext context) {
-    context.push(Routes.fashionProductForm);
+    context.push(Routes.fashionProductEdit(widget.productId));
   }
 }
 

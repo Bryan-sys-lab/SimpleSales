@@ -75,7 +75,7 @@ class _StaffLoginScreenState extends State<StaffLoginScreen> {
       context: context,
       barrierDismissible: false,
       builder: (dialogContext) => AlertDialog(
-        title: const Text('Choose shop'),
+        title: Text(AppLocalizations.of(context).staffLoginChooseShop),
         content: SizedBox(
           width: double.maxFinite,
           height: (_shops.length * 64).clamp(64, 320).toDouble(),
@@ -96,7 +96,7 @@ class _StaffLoginScreenState extends State<StaffLoginScreen> {
         actions: <Widget>[
           TextButton(
             onPressed: () => Navigator.of(dialogContext).pop(),
-            child: const Text('Cancel'),
+            child: Text(AppLocalizations.of(context).staffLoginCancel),
           ),
         ],
       ),

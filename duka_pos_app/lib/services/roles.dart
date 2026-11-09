@@ -113,6 +113,9 @@ enum PermissionKey {
   manageBackup,
   manageDevices,
   runStocktakeApply,
+  manageJobs,
+  recordJobCost,
+  receiveJobPayment,
 }
 
 enum PermissionMode { allow, approval, deny }
@@ -143,6 +146,9 @@ extension PermissionKeyWire on PermissionKey {
         PermissionKey.manageBackup => 'manage_backup',
         PermissionKey.manageDevices => 'manage_devices',
         PermissionKey.runStocktakeApply => 'run_stocktake_apply',
+        PermissionKey.manageJobs => 'manage_jobs',
+        PermissionKey.recordJobCost => 'record_job_cost',
+        PermissionKey.receiveJobPayment => 'receive_job_payment',
       };
 
   String get label => wire.replaceAll('_', ' ');
@@ -167,6 +173,9 @@ const Map<String, Set<String>> defaultRolePermissions = {
     'edit_price',
     'void_or_cancel',
     'run_stocktake_apply',
+    'manage_jobs',
+    'record_job_cost',
+    'receive_job_payment',
   },
   'cashier': {
     'process_return',

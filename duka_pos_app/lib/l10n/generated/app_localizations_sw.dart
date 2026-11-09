@@ -6333,4 +6333,954 @@ class AppLocalizationsSw extends AppLocalizations {
 
   @override
   String get exchangeNoLines => 'Kiuzaji hiki haina mstari inayorudishiwa';
+
+  @override
+  String get openJobFormJobTitleLabel => 'Kichwa cha kazi';
+
+  @override
+  String get openJobFormTitleRequired => 'Kichwa kinahitajika';
+
+  @override
+  String get openJobFormCustomerLabel => 'Mteja (si lazima)';
+
+  @override
+  String get openJobFormQuoteLabel => 'Kiasi kilichokadiriwa (si lazima)';
+
+  @override
+  String get openJobFormCreateAction => 'Unda kazi';
+
+  @override
+  String get openJobFormSaveAction => 'Hifadhi mabadiliko';
+
+  @override
+  String get openJobFormEditTitle => 'Hariri kazi';
+
+  @override
+  String openJobFormCouldNotCreate(Object error) {
+    return 'Haikuweza kuunda kazi: $error';
+  }
+
+  @override
+  String get moreSwitchBusinessProfile => 'Badilisha wasifu wa biashara';
+
+  @override
+  String get moreFashionReserves => 'Hifadhi za mitindo';
+
+  @override
+  String get moreExchanges => 'Mabadilishano';
+
+  @override
+  String get moreOpenBusinessRecord => 'Rekodi ya biashara wazi';
+
+  @override
+  String get moreOpenBusinessRecordSubtitle => 'Pots, kazi na pesa ya mmiliki';
+
+  @override
+  String get moreReportsExports => 'Ripoti na usafirishaji';
+
+  @override
+  String get moreHelp => 'Msaada';
+
+  @override
+  String get tankRegisterHistory => 'Historia';
+
+  @override
+  String get tankRegisterTankInventory => 'Hifadhi ya vinywaji';
+
+  @override
+  String get tankRegisterPackagedBeverages => 'Vinywaji vilivyopakwa';
+
+  @override
+  String get tankRegisterMeasuredServings => 'Matoleo yaliyopimwa';
+
+  @override
+  String get tankDetailStockReceived => 'Stoki iliyopokelewa';
+
+  @override
+  String get tankDetailMeasuredSales => 'Mauzo yaliyopimwa';
+
+  @override
+  String get openJobDetailPaymentCash => 'Pesa taslimu';
+
+  @override
+  String get openJobDetailPaymentMpesa => 'M-Pesa';
+
+  @override
+  String get openJobDetailPaymentBank => 'Uhamisho wa benki';
+
+  @override
+  String openJobDetailCouldNotRecordPayment(Object error) {
+    return 'Haikuweza kurekodi malipo: $error';
+  }
+
+  @override
+  String get openJobDetailCouldNotCompleteJob => 'Haikuweza kukamilisha kazi';
+
+  @override
+  String get openJobDetailPaymentMethod => 'Njia';
+
+  @override
+  String get crossShopSaleNoLongerOnTill =>
+      'Uuzaji huu haupo tena kwenye tilia.';
+
+  @override
+  String get crossShopClose => 'Funga';
+
+  @override
+  String get crossShopCouldNotLoadSale => 'Haikuweza kupakia uuzaji huu.';
+
+  @override
+  String get crossShopAllShopsActivity => 'Shughuli za maduka yote';
+
+  @override
+  String get crossShopCouldNotReadActivity =>
+      'Haikuweza kusoma shughuli. Vuta ili kujaribu tena.';
+
+  @override
+  String get crossShopNoMatchingActivity => 'Hakuna shughuli inayolingana.';
+
+  @override
+  String get crossShopLoadMoreActivity => 'Pakia shughuli zaidi';
+
+  @override
+  String get expensesVoidExpenseTitle => 'Futa gharama?';
+
+  @override
+  String get expensesVoidExpenseBody =>
+      'Hii inahifadhi rekodi lakini inaiondoa kwenye jumla.';
+
+  @override
+  String get expensesCancel => 'Ghairi';
+
+  @override
+  String get expensesVoid => 'Futa';
+
+  @override
+  String get helpTitle => 'Msaada';
+
+  @override
+  String get cashControlTillCash => 'Pesa ya tilia';
+
+  @override
+  String get cashControlOtherFunds => 'Fedha nyingine';
+
+  @override
+  String get cashControlPayLater => 'Lipa baadaye';
+
+  @override
+  String get cashControlCash => 'Pesa taslimu';
+
+  @override
+  String get cashControlMpesa => 'M-Pesa';
+
+  @override
+  String get cashControlBankTransfer => 'Uhamisho wa benki';
+
+  @override
+  String get cashControlRecordPayment => 'Rekodi malipo';
+
+  @override
+  String get productDrilldownCouldNotLoad =>
+      'Haikuweza kupakia uchanganuzi wa bidhaa.';
+
+  @override
+  String get productDrilldownDetailForPeriod =>
+      'Maelezo ya bidhaa kwa kipindi kilichochaguliwa';
+
+  @override
+  String get productDrilldownWhoSellsIt => 'Nani anauza';
+
+  @override
+  String get productDrilldownHowCustomersPay => 'Jinsi wateja wanavyolipa';
+
+  @override
+  String get productDrilldownWhenItSells => 'Linapouzwa';
+
+  @override
+  String get productDrilldownBoughtTogether => 'Linanunuliwa pamoja';
+
+  @override
+  String get productDrilldownStockTimeline => 'Mfuatano wa stoki';
+
+  @override
+  String get productDrilldownPriceCostHistory => 'Historia ya bei na gharama';
+
+  @override
+  String get productDrilldownTransactionsContaining =>
+      'Miamala inayojumuisha bidhaa hii';
+
+  @override
+  String get productDrilldownProductSale => 'Uuzaji wa bidhaa';
+
+  @override
+  String get productDrilldownClose => 'Funga';
+
+  @override
+  String get productDrilldownCouldNotLoadRemoteSale =>
+      'Haikuweza kupakia uuzaji huu wa mbali.';
+
+  @override
+  String get productDrilldownSaleNoLongerOnTill =>
+      'Uuzaji huu haupo tena kwenye tilia.';
+
+  @override
+  String get ownerSetupCouldNotOpenDocument => 'Haikuweza kufungua hati';
+
+  @override
+  String get ownerSetupAgreeTerms => 'Nakubali Masharti ya Huduma';
+
+  @override
+  String get ownerSetupAgreePrivacy => 'Nakubali Sera ya Faragha';
+
+  @override
+  String get profileFormAddDrink => 'Ongeza kinywaji';
+
+  @override
+  String get profileFormBottle => 'Chupa';
+
+  @override
+  String get profileFormCrate => 'Kasha';
+
+  @override
+  String get profileFormKeg => 'Kegi';
+
+  @override
+  String get profileFormShot => 'Shoti';
+
+  @override
+  String get profileFormSingleBottle => 'Chupa moja';
+
+  @override
+  String get profileFormCrateOfBottles => 'Kasha la chupa';
+
+  @override
+  String get profileFormCarton => 'Kartoni';
+
+  @override
+  String get profileFormCancel => 'Ghairi';
+
+  @override
+  String get profileFormSave => 'Hifadhi';
+
+  @override
+  String get profileFormAddProduct => 'Ongeza bidhaa';
+
+  @override
+  String get profileFormEach => 'Kila mmoja';
+
+  @override
+  String get profileFormKilogram => 'Kilogramu';
+
+  @override
+  String get profileFormLitre => 'Lita';
+
+  @override
+  String get profileFormPack => 'Pakiti';
+
+  @override
+  String get profileFormTrackVariants => 'Fuatilia hiasi (saizi/rangi)';
+
+  @override
+  String get profileFormAddFashionStyle => 'Ongeza mtindo wa mitindo';
+
+  @override
+  String get profileFormVariants => 'Hiasi';
+
+  @override
+  String get profileFormAddVariant => 'Ongeza hiasco';
+
+  @override
+  String get profileFormAddItemOrService => 'Ongeza bidhaa au huduma';
+
+  @override
+  String get profileFormTrackStock => 'Fuatilia stoki';
+
+  @override
+  String get receiveStockNeedsReview => 'Inahitaji ukaguzi';
+
+  @override
+  String get receiveStockVerified => 'Imethibitishwa';
+
+  @override
+  String get receiveStockValidException => 'Kiasi halali';
+
+  @override
+  String get receiveStockUnmatched => 'Haijaoanishwa';
+
+  @override
+  String get staffLoginChooseShop => 'Chagua duka';
+
+  @override
+  String get staffLoginCancel => 'Ghairi';
+
+  @override
+  String get stocktakeEnterAllCounts => 'Ingiza kila hesabu kabla ya kutumia';
+
+  @override
+  String get stocktakeCancel => 'Ghairi';
+
+  @override
+  String get stocktakeSave => 'Hifadhi';
+
+  @override
+  String get stocktakeBlindCount => 'Hesabu ya siri';
+
+  @override
+  String get stocktakeHideExpected =>
+      'Ficha kiasi kinachotarajiwa wakati wa kuhesabu';
+
+  @override
+  String get stocktakeFreezeCounted => 'Ganda bidhaa zilizohesabiwa';
+
+  @override
+  String get stocktakeBlockSales => 'Zuia mauzo ya bidhaa katika hesabu hii';
+
+  @override
+  String get stocktakeTankDip => 'Kupima tanki';
+
+  @override
+  String get stocktakeStart => 'Anza stocktake';
+
+  @override
+  String get stocktakeRecent => 'Stocktake za hivi karibuni';
+
+  @override
+  String get stocktakeApply => 'Tumia stocktake';
+
+  @override
+  String get termDrinksProduct => 'Drink';
+
+  @override
+  String get termDrinksProductPlural => 'Drinks';
+
+  @override
+  String get termDrinksSale => 'Sale';
+
+  @override
+  String get termDrinksStock => 'Bar stock';
+
+  @override
+  String get termDrinksPrimaryAction => 'Start sale';
+
+  @override
+  String get termDukaProduct => 'Product';
+
+  @override
+  String get termDukaProductPlural => 'Products';
+
+  @override
+  String get termDukaSale => 'Sale';
+
+  @override
+  String get termDukaStock => 'Stock';
+
+  @override
+  String get termDukaPrimaryAction => 'Start sale';
+
+  @override
+  String get termFashionProduct => 'Style';
+
+  @override
+  String get termFashionProductPlural => 'Styles';
+
+  @override
+  String get termFashionSale => 'Sale';
+
+  @override
+  String get termFashionStock => 'Catalogue';
+
+  @override
+  String get termFashionPrimaryAction => 'Start sale';
+
+  @override
+  String get termOpenProduct => 'Item or service';
+
+  @override
+  String get termOpenProductPlural => 'Items and services';
+
+  @override
+  String get termOpenSale => 'Record';
+
+  @override
+  String get termOpenStock => 'Optional stock';
+
+  @override
+  String get termOpenPrimaryAction => 'Record sale';
+
+  @override
+  String get settingsCashierPayoutApprovalLimit => 'Limu ya malipo ya kabla';
+
+  @override
+  String get settingsDiscountsPriceOverrides => 'Ubakaji na mabadiliko ya bei';
+
+  @override
+  String get settingsSetupMpesaPayHero =>
+      'Inaweza kuwekwa na M-Pesa na PayHero';
+
+  @override
+  String get settingsMpesaTill => 'M-Pesa Tilli';
+
+  @override
+  String get settingsMpesaPaybill => 'M-Pesa Lipa Namba';
+
+  @override
+  String get settingsSaveChannel => 'Hifadhi salio';
+
+  @override
+  String get settingsCouldNotOpenDocument => 'Haikuweza kufungua hati';
+
+  @override
+  String get settingsTermsOfService => 'Masharti ya Huduma';
+
+  @override
+  String get settingsPrivacyPolicy => 'Sera ya Faragha';
+
+  @override
+  String get settingsDrawerConnector => 'Megandiko';
+
+  @override
+  String get settingsPulseTiming => 'Muda wa pulu';
+
+  @override
+  String get settingsPulseTimingSubtitle =>
+      'Badilisha ikiwa tu kifuniko cha pamoja kinahitaji';
+
+  @override
+  String get settingsEnableDiscounts => 'Weka ubakaji';
+
+  @override
+  String get settingsRequireReason => 'Inahitaki sababu';
+
+  @override
+  String get settingsAllowDiscountsBelowCost =>
+      'Ichukuze ubakaji chini ya gharama';
+
+  @override
+  String get settingsIncomingMpesaPayments => 'Malipo ya M-Pesa yenye kuingia';
+
+  @override
+  String get settingsOpenSyncCenter => 'Funga Kituo cha Usawazishaji';
+
+  @override
+  String get settingsBackupAllShopData => 'Hifadhi data yote ya duka';
+
+  @override
+  String get settingsRestoreAllShopData => 'Rudisha data yote ya duka';
+
+  @override
+  String get settingsUploadPortableCloudCopy =>
+      'Pakua nakili ya mawimbi ya wingu';
+
+  @override
+  String get settingsRestoreLatestCloudCopy =>
+      'Rudisha nakili ya mwisho ya mawimbi';
+
+  @override
+  String get settingsSeedBlackbeeProducts => 'Zao za BlackBee';
+
+  @override
+  String get settingsAddVariant => 'Ongeza hiasco';
+
+  @override
+  String get settingsCancel => 'Ghairi';
+
+  @override
+  String get settingsSave => 'Hifadhi';
+
+  @override
+  String get settingsPin1 => 'Pini 1';
+
+  @override
+  String get settingsPin2 => 'Pini 2';
+
+  @override
+  String get settingsSaveButton => 'Hifadhi';
+
+  @override
+  String get reportsDone => 'Funga';
+
+  @override
+  String get reportsCupSales => 'Mauzo ya bakuli';
+
+  @override
+  String get reportsTopMovers => 'Vifaa vya kuanza';
+
+  @override
+  String get reportsPdfReport => 'Ripoti ya PDF';
+
+  @override
+  String get reportsPeriod => 'Muda';
+
+  @override
+  String get reportsReconciledFinancialStatement =>
+      'Huduma ya kifedha iliyosawazisha';
+
+  @override
+  String get reportsZReport => 'Ripoti Z';
+
+  @override
+  String get transactionsAll => 'Yote';
+
+  @override
+  String get exchangeRecorded =>
+      'Ufuasho #\$exchangeId imerekodi — kurudi na mabadilishano yameshatikishwa.';
+
+  @override
+  String get exchangeAddReplacement => 'Ongeza hiasco ya kubadili';
+
+  @override
+  String get exchangeCancel => 'Ghairi';
+
+  @override
+  String get exchangeAdd => 'Ongeza';
+
+  @override
+  String get exchangeVariantNotFound => 'Hiasco haijapatikana';
+
+  @override
+  String get exchangeInsufficientStock => 'Sio sawa stoki';
+
+  @override
+  String get exchangeFailed => 'Kushindani: \$e';
+
+  @override
+  String get cancel => 'Cancel';
+
+  @override
+  String get closeShift => 'Close shift';
+
+  @override
+  String get done => 'Done';
+
+  @override
+  String get heldSalesRemain => 'Held sales remain';
+
+  @override
+  String get keepShiftOpen => 'Keep shift open';
+
+  @override
+  String get livePreviewNoReportNumberIsUsed =>
+      'Live preview · no report number is used';
+
+  @override
+  String get open => 'Open';
+
+  @override
+  String get openDrawer => 'Open drawer';
+
+  @override
+  String get xReportPreview => 'X report preview';
+
+  @override
+  String get add => 'Add';
+
+  @override
+  String get addMoreProducts => 'Add more products';
+
+  @override
+  String get apply => 'Apply';
+
+  @override
+  String get attachACustomerToThisHeldSale =>
+      'Attach a customer to this held sale?';
+
+  @override
+  String get chooseCustomer => 'Choose customer';
+
+  @override
+  String get costNotRecordedProfitMayBeOverstated =>
+      'Cost not recorded; profit may be overstated.';
+
+  @override
+  String get couldnTCompleteTheSaleCheckStockAndTryAgain =>
+      'Couldn’t complete the sale. Check stock and try again.';
+
+  @override
+  String get firstTenderRemainingIsPaidByTheSecondTender =>
+      'First tender · remaining is paid by the second tender';
+
+  @override
+  String get holdSale => 'Hold sale';
+
+  @override
+  String get incomingPayment => 'Incoming payment';
+
+  @override
+  String get isThisANewProductAddCostPrice =>
+      'Is this a new product? Add cost price';
+
+  @override
+  String get keepHeldSale => 'Keep held sale';
+
+  @override
+  String get mPesaPaidToTill => 'M-Pesa paid to till';
+
+  @override
+  String get noCustomer => 'No customer';
+
+  @override
+  String get noHeldSales => 'No held sales';
+
+  @override
+  String get noReason => 'No reason';
+
+  @override
+  String get noneNew => 'None / new';
+
+  @override
+  String get orderDiscount => 'Order discount';
+
+  @override
+  String get paymentCouldNotBeStartedCheckYourConnectionAndTryAgain =>
+      'Payment could not be started. Check your connection and try again.';
+
+  @override
+  String get paymentSucceededLocalRecordingFailedContactSupportBeforeReconcilingReports =>
+      'Payment succeeded. Local recording failed — contact support before reconciling reports.';
+
+  @override
+  String get pricesChanged => 'Prices changed';
+
+  @override
+  String get printReceipt => 'Print receipt';
+
+  @override
+  String get quickSale => 'Quick sale';
+
+  @override
+  String get quickSaleRecorded => 'Quick sale recorded.';
+
+  @override
+  String get recordSaleAmount => 'Record sale amount';
+
+  @override
+  String get save => 'Save';
+
+  @override
+  String get sell => 'Sell';
+
+  @override
+  String get sellShot => 'Sell shot';
+
+  @override
+  String get sharePdf => 'Share PDF';
+
+  @override
+  String get shareReceipt => 'Share receipt';
+
+  @override
+  String get skip => 'Skip';
+
+  @override
+  String get splitPayment => 'Split payment';
+
+  @override
+  String get tendersMustEqualTheTotal => 'Tenders must equal the total.';
+
+  @override
+  String get useCurrentPrices => 'Use current prices';
+
+  @override
+  String get heldSales => 'Held sales';
+
+  @override
+  String get company => 'Company';
+
+  @override
+  String get inProgress => 'In progress';
+
+  @override
+  String get individual => 'Individual';
+
+  @override
+  String get needsReview => 'Needs review';
+
+  @override
+  String get nonVatLite => 'Non-VAT Lite';
+
+  @override
+  String get notStarted => 'Not started';
+
+  @override
+  String get oscu => 'OSCU';
+
+  @override
+  String get onboarded => 'Onboarded';
+
+  @override
+  String get onlineEclient => 'Online / eClient';
+
+  @override
+  String get other => 'Other';
+
+  @override
+  String get partnership => 'Partnership';
+
+  @override
+  String get registeredObligations => 'Registered obligations';
+
+  @override
+  String get saveMapping => 'Save mapping';
+
+  @override
+  String get soleProprietor => 'Sole proprietor';
+
+  @override
+  String get taxEntityAndOutletMapping => 'Tax entity and outlet mapping';
+
+  @override
+  String get vscu => 'VSCU';
+
+  @override
+  String get addPack => 'Add pack';
+
+  @override
+  String get addPackOrCarton => 'Add pack or carton';
+
+  @override
+  String get assignABarcodeBeforePrintingItsLabel =>
+      'Assign a barcode before printing its label.';
+
+  @override
+  String get assignInternalBarcode => 'Assign internal barcode';
+
+  @override
+  String get createRepack => 'Create & repack';
+
+  @override
+  String get each => 'Each';
+
+  @override
+  String get kilogram => 'Kilogram';
+
+  @override
+  String get litre => 'Litre';
+
+  @override
+  String get looseGoods => 'Loose goods';
+
+  @override
+  String get noPacksYetAddACaseCartonOrBundleBarcode =>
+      'No packs yet. Add a case, carton or bundle barcode.';
+
+  @override
+  String get packsAndCartons => 'Packs and cartons';
+
+  @override
+  String get print => 'Print';
+
+  @override
+  String get printBarcodeLabel => 'Print barcode label';
+
+  @override
+  String get printBarcodeLabels => 'Print barcode labels';
+
+  @override
+  String get recordWaste => 'Record waste';
+
+  @override
+  String get recordWasteSpillage => 'Record waste/spillage';
+
+  @override
+  String get reorder => 'Reorder';
+
+  @override
+  String get repack => 'Repack';
+
+  @override
+  String get repackCouldNotBeRecorded => 'Repack could not be recorded.';
+
+  @override
+  String get repackRecorded => 'Repack recorded.';
+
+  @override
+  String get repackToNewProduct => 'Repack to new product';
+
+  @override
+  String get stocktake => 'Stocktake';
+
+  @override
+  String get tankRegister => 'Tank register';
+
+  @override
+  String get trackExpiryDates => 'Track expiry dates';
+
+  @override
+  String get wasteCannotBeGreaterThanCurrentStock =>
+      'Waste cannot be greater than current stock.';
+
+  @override
+  String get wasteCouldNotBeRecorded => 'Waste could not be recorded.';
+
+  @override
+  String get bankTransfer => 'Bank transfer';
+
+  @override
+  String get cancelLayBy => 'Cancel lay-by';
+
+  @override
+  String get cancelLayBy2 => 'Cancel lay-by?';
+
+  @override
+  String get cash => 'Cash';
+
+  @override
+  String get complete => 'Complete';
+
+  @override
+  String get keep => 'Keep';
+
+  @override
+  String get mPesa => 'M-Pesa';
+
+  @override
+  String get payment => 'Payment';
+
+  @override
+  String get paymentMethod => 'Payment method';
+
+  @override
+  String get paymentReferenceOptional => 'Payment reference (optional)';
+
+  @override
+  String get createCostGroup => 'Create cost group';
+
+  @override
+  String get addCost => 'Add cost';
+
+  @override
+  String get adjustStock => 'Adjust stock';
+
+  @override
+  String get edit => 'Edit';
+
+  @override
+  String get receiveStock => 'Receive stock';
+
+  @override
+  String get viewSales => 'View sales';
+
+  @override
+  String get linkASupplierBeforeCreatingAnOrder =>
+      'Link a supplier before creating an order.';
+
+  @override
+  String get noProductsAreBelowTheirReorderLevel =>
+      'No products are below their reorder level.';
+
+  @override
+  String get receive => 'Receive';
+
+  @override
+  String get receiveAllRemaining => 'Receive all remaining';
+
+  @override
+  String get reorderSuggestions => 'Reorder suggestions';
+
+  @override
+  String get saveShare => 'Save & share';
+
+  @override
+  String get saveDraft => 'Save draft';
+
+  @override
+  String get allProducts => 'All products';
+
+  @override
+  String get copyCupToProduct => 'Copy cup to product';
+
+  @override
+  String get copyToAnotherProduct => 'Copy to another product';
+
+  @override
+  String get tankDetail => 'Tank detail';
+
+  @override
+  String get noTanksYet => 'No tanks yet';
+
+  @override
+  String get revoke => 'Revoke';
+
+  @override
+  String get sharedReceipts => 'Shared receipts';
+
+  @override
+  String get acceptSale => 'Accept sale';
+
+  @override
+  String get kraCouldNotBeReachedTheReceiptsRemainQueuedForTheNextConnection =>
+      'KRA could not be reached. The receipts remain queued for the next connection.';
+
+  @override
+  String get lastLocalBackup => 'Last local backup';
+
+  @override
+  String get leaveOpen => 'Leave open';
+
+  @override
+  String get localStorageAccess => 'Local storage access';
+
+  @override
+  String get onlyAManagerCanViewSyncCenter =>
+      'Only a manager can view Sync Center.';
+
+  @override
+  String get rejectedReceiptsToRetry => 'Rejected receipts to retry';
+
+  @override
+  String get resolveStockConflict => 'Resolve stock conflict';
+
+  @override
+  String get retry => 'Retry';
+
+  @override
+  String get retryQueuedReceipts => 'Retry queued receipts';
+
+  @override
+  String get review => 'Review';
+
+  @override
+  String get syncCenter => 'Sync Center';
+
+  @override
+  String get theseOfflineSalesCouldNotReserveStockAfterAnotherTillSoldTheLastUnitsTheyRemainQueuedAndAreNotSilentlyDiscarded =>
+      'These offline sales could not reserve stock after another till sold the last units. They remain queued and are not silently discarded.';
+
+  @override
+  String get unclaimedMPesa => 'Unclaimed M-Pesa';
+
+  @override
+  String get unverifiedPayments => 'Unverified payments';
+
+  @override
+  String get voidSale => 'Void sale';
+
+  @override
+  String get settingsSwitch => 'Aldisha';
+
+  @override
+  String get openDashboardSelectJob => 'Chagua kazi';
+
+  @override
+  String openCostGroupCouldNotCreate(Object error) {
+    return 'Haikuweza kuunda kundi la gharama: $error';
+  }
+
+  @override
+  String openJobAddCostCouldNotAdd(Object error) {
+    return 'Haikuweza kuongeza gharama: $error';
+  }
+
+  @override
+  String inventoryCouldNotSavePack(Object error) {
+    return 'Haikuweza hifadhi kifungo: $error';
+  }
+
+  @override
+  String syncCenterCouldNotResolveConflict(Object error) {
+    return 'Haikuweza kutatua mgogoro: $error';
+  }
+
+  @override
+  String get openDashboardNoJobs => 'Hakuna kazi hivi. Unde moja ya msingi.';
 }

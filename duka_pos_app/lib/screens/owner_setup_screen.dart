@@ -161,7 +161,7 @@ class _OwnerSetupScreenState extends State<OwnerSetupScreen> {
     } catch (_) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Could not open document')),
+          SnackBar(content: Text(AppLocalizations.of(context).ownerSetupCouldNotOpenDocument)),
         );
       }
     }
@@ -363,7 +363,7 @@ class _OwnerSetupScreenState extends State<OwnerSetupScreen> {
                           child: GestureDetector(
                             onTap: () => _openAssetPdf(
                                 'assets/SimpleSales_Terms_of_Service.pdf'),
-                            child: Text('I agree to the Terms of Service',
+                            child: Text(AppLocalizations.of(context).ownerSetupAgreeTerms,
                                 style: TextStyle(
                                     decoration: TextDecoration.underline,
                                     color: Theme.of(context).colorScheme.primary)),
@@ -381,7 +381,7 @@ class _OwnerSetupScreenState extends State<OwnerSetupScreen> {
                           child: GestureDetector(
                             onTap: () => _openAssetPdf(
                                 'assets/SimpleSales_Privacy_Policy.pdf'),
-                            child: Text('I agree to the Privacy Policy',
+                            child: Text(AppLocalizations.of(context).ownerSetupAgreePrivacy,
                                 style: TextStyle(
                                     decoration: TextDecoration.underline,
                                     color: Theme.of(context).colorScheme.primary)),

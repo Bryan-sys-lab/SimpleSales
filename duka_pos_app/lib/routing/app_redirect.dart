@@ -1,5 +1,6 @@
 import 'routes.dart';
 import '../services/app_stage.dart';
+import '../profile/shop_profile.dart';
 import 'app_stage_controller.dart';
 
 /// The app's only navigation guard.
@@ -124,6 +125,26 @@ String? appRedirect({
 
   if (location.startsWith(Routes.settings) && !snapshot.isAdmin) {
     return Routes.dashboard;
+  }
+
+  // Profile capability guards: a feature that the active profile does not
+  // support is not reachable by a typed or pasted URL either.
+  if (location.startsWith('/analytics/open-business') &&
+      snapshot.shopProfile != ShopProfile.open) {
+    return Routes.dashboard;
+  }
+  if ((location.startsWith('/inventory/fashion-product') ||
+          location == Routes.exchangeScreen) &&
+      snapshot.shopProfile != ShopProfile.fashion) {
+    return Routes.dashboard;
+  }
+  if ((location.startsWith('/inventory/tank') ||
+          location == Routes.servings) &&
+      snapshot.shopProfile != ShopProfile.drinks) {
+    return Routes.dashboard;
+  }
+  if (location == Routes.inventory && snapshot.shopProfile == ShopProfile.open) {
+    return Routes.portfolio;
   }
 
   return null;

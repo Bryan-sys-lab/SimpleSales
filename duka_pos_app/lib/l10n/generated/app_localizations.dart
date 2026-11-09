@@ -10587,6 +10587,1820 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'This sale has no returnable lines'**
   String get exchangeNoLines;
+
+  /// No description provided for @openJobFormJobTitleLabel.
+  ///
+  /// In en, this message translates to:
+  /// **'Job title'**
+  String get openJobFormJobTitleLabel;
+
+  /// No description provided for @openJobFormTitleRequired.
+  ///
+  /// In en, this message translates to:
+  /// **'Title required'**
+  String get openJobFormTitleRequired;
+
+  /// No description provided for @openJobFormCustomerLabel.
+  ///
+  /// In en, this message translates to:
+  /// **'Customer (optional)'**
+  String get openJobFormCustomerLabel;
+
+  /// No description provided for @openJobFormQuoteLabel.
+  ///
+  /// In en, this message translates to:
+  /// **'Quoted amount (optional)'**
+  String get openJobFormQuoteLabel;
+
+  /// No description provided for @openJobFormCreateAction.
+  ///
+  /// In en, this message translates to:
+  /// **'Create job'**
+  String get openJobFormCreateAction;
+
+  /// No description provided for @openJobFormSaveAction.
+  ///
+  /// In en, this message translates to:
+  /// **'Save changes'**
+  String get openJobFormSaveAction;
+
+  /// No description provided for @openJobFormEditTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Edit job'**
+  String get openJobFormEditTitle;
+
+  /// No description provided for @openJobFormCouldNotCreate.
+  ///
+  /// In en, this message translates to:
+  /// **'Could not create job: {error}'**
+  String openJobFormCouldNotCreate(Object error);
+
+  /// No description provided for @moreSwitchBusinessProfile.
+  ///
+  /// In en, this message translates to:
+  /// **'Switch business profile'**
+  String get moreSwitchBusinessProfile;
+
+  /// No description provided for @moreFashionReserves.
+  ///
+  /// In en, this message translates to:
+  /// **'Fashion reserves'**
+  String get moreFashionReserves;
+
+  /// No description provided for @moreExchanges.
+  ///
+  /// In en, this message translates to:
+  /// **'Exchanges'**
+  String get moreExchanges;
+
+  /// No description provided for @moreOpenBusinessRecord.
+  ///
+  /// In en, this message translates to:
+  /// **'Open business record'**
+  String get moreOpenBusinessRecord;
+
+  /// No description provided for @moreOpenBusinessRecordSubtitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Pots, jobs and owner money'**
+  String get moreOpenBusinessRecordSubtitle;
+
+  /// No description provided for @moreReportsExports.
+  ///
+  /// In en, this message translates to:
+  /// **'Reports & exports'**
+  String get moreReportsExports;
+
+  /// No description provided for @moreHelp.
+  ///
+  /// In en, this message translates to:
+  /// **'Help'**
+  String get moreHelp;
+
+  /// No description provided for @tankRegisterHistory.
+  ///
+  /// In en, this message translates to:
+  /// **'History'**
+  String get tankRegisterHistory;
+
+  /// No description provided for @tankRegisterTankInventory.
+  ///
+  /// In en, this message translates to:
+  /// **'Tank inventory'**
+  String get tankRegisterTankInventory;
+
+  /// No description provided for @tankRegisterPackagedBeverages.
+  ///
+  /// In en, this message translates to:
+  /// **'Packaged beverages'**
+  String get tankRegisterPackagedBeverages;
+
+  /// No description provided for @tankRegisterMeasuredServings.
+  ///
+  /// In en, this message translates to:
+  /// **'Measured servings'**
+  String get tankRegisterMeasuredServings;
+
+  /// No description provided for @tankDetailStockReceived.
+  ///
+  /// In en, this message translates to:
+  /// **'Stock received'**
+  String get tankDetailStockReceived;
+
+  /// No description provided for @tankDetailMeasuredSales.
+  ///
+  /// In en, this message translates to:
+  /// **'Measured sales'**
+  String get tankDetailMeasuredSales;
+
+  /// No description provided for @openJobDetailPaymentCash.
+  ///
+  /// In en, this message translates to:
+  /// **'Cash'**
+  String get openJobDetailPaymentCash;
+
+  /// No description provided for @openJobDetailPaymentMpesa.
+  ///
+  /// In en, this message translates to:
+  /// **'M-Pesa'**
+  String get openJobDetailPaymentMpesa;
+
+  /// No description provided for @openJobDetailPaymentBank.
+  ///
+  /// In en, this message translates to:
+  /// **'Bank transfer'**
+  String get openJobDetailPaymentBank;
+
+  /// No description provided for @openJobDetailCouldNotRecordPayment.
+  ///
+  /// In en, this message translates to:
+  /// **'Could not record payment: {error}'**
+  String openJobDetailCouldNotRecordPayment(Object error);
+
+  /// No description provided for @openJobDetailCouldNotCompleteJob.
+  ///
+  /// In en, this message translates to:
+  /// **'Could not complete job'**
+  String get openJobDetailCouldNotCompleteJob;
+
+  /// No description provided for @openJobDetailPaymentMethod.
+  ///
+  /// In en, this message translates to:
+  /// **'Method'**
+  String get openJobDetailPaymentMethod;
+
+  /// No description provided for @crossShopSaleNoLongerOnTill.
+  ///
+  /// In en, this message translates to:
+  /// **'This sale is no longer on this till.'**
+  String get crossShopSaleNoLongerOnTill;
+
+  /// No description provided for @crossShopClose.
+  ///
+  /// In en, this message translates to:
+  /// **'Close'**
+  String get crossShopClose;
+
+  /// No description provided for @crossShopCouldNotLoadSale.
+  ///
+  /// In en, this message translates to:
+  /// **'Could not load this sale.'**
+  String get crossShopCouldNotLoadSale;
+
+  /// No description provided for @crossShopAllShopsActivity.
+  ///
+  /// In en, this message translates to:
+  /// **'All shops activity'**
+  String get crossShopAllShopsActivity;
+
+  /// No description provided for @crossShopCouldNotReadActivity.
+  ///
+  /// In en, this message translates to:
+  /// **'Could not read shop activity. Pull to retry.'**
+  String get crossShopCouldNotReadActivity;
+
+  /// No description provided for @crossShopNoMatchingActivity.
+  ///
+  /// In en, this message translates to:
+  /// **'No matching activity.'**
+  String get crossShopNoMatchingActivity;
+
+  /// No description provided for @crossShopLoadMoreActivity.
+  ///
+  /// In en, this message translates to:
+  /// **'Load more activity'**
+  String get crossShopLoadMoreActivity;
+
+  /// No description provided for @expensesVoidExpenseTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Void expense?'**
+  String get expensesVoidExpenseTitle;
+
+  /// No description provided for @expensesVoidExpenseBody.
+  ///
+  /// In en, this message translates to:
+  /// **'This keeps the record but removes it from totals.'**
+  String get expensesVoidExpenseBody;
+
+  /// No description provided for @expensesCancel.
+  ///
+  /// In en, this message translates to:
+  /// **'Cancel'**
+  String get expensesCancel;
+
+  /// No description provided for @expensesVoid.
+  ///
+  /// In en, this message translates to:
+  /// **'Void'**
+  String get expensesVoid;
+
+  /// No description provided for @helpTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Help'**
+  String get helpTitle;
+
+  /// No description provided for @cashControlTillCash.
+  ///
+  /// In en, this message translates to:
+  /// **'Till cash'**
+  String get cashControlTillCash;
+
+  /// No description provided for @cashControlOtherFunds.
+  ///
+  /// In en, this message translates to:
+  /// **'Other funds'**
+  String get cashControlOtherFunds;
+
+  /// No description provided for @cashControlPayLater.
+  ///
+  /// In en, this message translates to:
+  /// **'Pay later'**
+  String get cashControlPayLater;
+
+  /// No description provided for @cashControlCash.
+  ///
+  /// In en, this message translates to:
+  /// **'Cash'**
+  String get cashControlCash;
+
+  /// No description provided for @cashControlMpesa.
+  ///
+  /// In en, this message translates to:
+  /// **'M-Pesa'**
+  String get cashControlMpesa;
+
+  /// No description provided for @cashControlBankTransfer.
+  ///
+  /// In en, this message translates to:
+  /// **'Bank transfer'**
+  String get cashControlBankTransfer;
+
+  /// No description provided for @cashControlRecordPayment.
+  ///
+  /// In en, this message translates to:
+  /// **'Record payment'**
+  String get cashControlRecordPayment;
+
+  /// No description provided for @productDrilldownCouldNotLoad.
+  ///
+  /// In en, this message translates to:
+  /// **'Could not load product analytics.'**
+  String get productDrilldownCouldNotLoad;
+
+  /// No description provided for @productDrilldownDetailForPeriod.
+  ///
+  /// In en, this message translates to:
+  /// **'Product detail for the selected period'**
+  String get productDrilldownDetailForPeriod;
+
+  /// No description provided for @productDrilldownWhoSellsIt.
+  ///
+  /// In en, this message translates to:
+  /// **'Who sells it'**
+  String get productDrilldownWhoSellsIt;
+
+  /// No description provided for @productDrilldownHowCustomersPay.
+  ///
+  /// In en, this message translates to:
+  /// **'How customers pay'**
+  String get productDrilldownHowCustomersPay;
+
+  /// No description provided for @productDrilldownWhenItSells.
+  ///
+  /// In en, this message translates to:
+  /// **'When it sells'**
+  String get productDrilldownWhenItSells;
+
+  /// No description provided for @productDrilldownBoughtTogether.
+  ///
+  /// In en, this message translates to:
+  /// **'Bought together'**
+  String get productDrilldownBoughtTogether;
+
+  /// No description provided for @productDrilldownStockTimeline.
+  ///
+  /// In en, this message translates to:
+  /// **'Stock timeline'**
+  String get productDrilldownStockTimeline;
+
+  /// No description provided for @productDrilldownPriceCostHistory.
+  ///
+  /// In en, this message translates to:
+  /// **'Price and cost history'**
+  String get productDrilldownPriceCostHistory;
+
+  /// No description provided for @productDrilldownTransactionsContaining.
+  ///
+  /// In en, this message translates to:
+  /// **'Transactions containing this product'**
+  String get productDrilldownTransactionsContaining;
+
+  /// No description provided for @productDrilldownProductSale.
+  ///
+  /// In en, this message translates to:
+  /// **'Product sale'**
+  String get productDrilldownProductSale;
+
+  /// No description provided for @productDrilldownClose.
+  ///
+  /// In en, this message translates to:
+  /// **'Close'**
+  String get productDrilldownClose;
+
+  /// No description provided for @productDrilldownCouldNotLoadRemoteSale.
+  ///
+  /// In en, this message translates to:
+  /// **'Could not load this remote sale.'**
+  String get productDrilldownCouldNotLoadRemoteSale;
+
+  /// No description provided for @productDrilldownSaleNoLongerOnTill.
+  ///
+  /// In en, this message translates to:
+  /// **'This sale is no longer on this till.'**
+  String get productDrilldownSaleNoLongerOnTill;
+
+  /// No description provided for @ownerSetupCouldNotOpenDocument.
+  ///
+  /// In en, this message translates to:
+  /// **'Could not open document'**
+  String get ownerSetupCouldNotOpenDocument;
+
+  /// No description provided for @ownerSetupAgreeTerms.
+  ///
+  /// In en, this message translates to:
+  /// **'I agree to the Terms of Service'**
+  String get ownerSetupAgreeTerms;
+
+  /// No description provided for @ownerSetupAgreePrivacy.
+  ///
+  /// In en, this message translates to:
+  /// **'I agree to the Privacy Policy'**
+  String get ownerSetupAgreePrivacy;
+
+  /// No description provided for @profileFormAddDrink.
+  ///
+  /// In en, this message translates to:
+  /// **'Add drink'**
+  String get profileFormAddDrink;
+
+  /// No description provided for @profileFormBottle.
+  ///
+  /// In en, this message translates to:
+  /// **'Bottle'**
+  String get profileFormBottle;
+
+  /// No description provided for @profileFormCrate.
+  ///
+  /// In en, this message translates to:
+  /// **'Crate'**
+  String get profileFormCrate;
+
+  /// No description provided for @profileFormKeg.
+  ///
+  /// In en, this message translates to:
+  /// **'Keg'**
+  String get profileFormKeg;
+
+  /// No description provided for @profileFormShot.
+  ///
+  /// In en, this message translates to:
+  /// **'Shot'**
+  String get profileFormShot;
+
+  /// No description provided for @profileFormSingleBottle.
+  ///
+  /// In en, this message translates to:
+  /// **'Single bottle'**
+  String get profileFormSingleBottle;
+
+  /// No description provided for @profileFormCrateOfBottles.
+  ///
+  /// In en, this message translates to:
+  /// **'Crate of bottles'**
+  String get profileFormCrateOfBottles;
+
+  /// No description provided for @profileFormCarton.
+  ///
+  /// In en, this message translates to:
+  /// **'Carton'**
+  String get profileFormCarton;
+
+  /// No description provided for @profileFormCancel.
+  ///
+  /// In en, this message translates to:
+  /// **'Cancel'**
+  String get profileFormCancel;
+
+  /// No description provided for @profileFormSave.
+  ///
+  /// In en, this message translates to:
+  /// **'Save'**
+  String get profileFormSave;
+
+  /// No description provided for @profileFormAddProduct.
+  ///
+  /// In en, this message translates to:
+  /// **'Add product'**
+  String get profileFormAddProduct;
+
+  /// No description provided for @profileFormEach.
+  ///
+  /// In en, this message translates to:
+  /// **'Each'**
+  String get profileFormEach;
+
+  /// No description provided for @profileFormKilogram.
+  ///
+  /// In en, this message translates to:
+  /// **'Kilogram'**
+  String get profileFormKilogram;
+
+  /// No description provided for @profileFormLitre.
+  ///
+  /// In en, this message translates to:
+  /// **'Litre'**
+  String get profileFormLitre;
+
+  /// No description provided for @profileFormPack.
+  ///
+  /// In en, this message translates to:
+  /// **'Pack'**
+  String get profileFormPack;
+
+  /// No description provided for @profileFormTrackVariants.
+  ///
+  /// In en, this message translates to:
+  /// **'Track variants (sizes/colours)'**
+  String get profileFormTrackVariants;
+
+  /// No description provided for @profileFormAddFashionStyle.
+  ///
+  /// In en, this message translates to:
+  /// **'Add fashion style'**
+  String get profileFormAddFashionStyle;
+
+  /// No description provided for @profileFormVariants.
+  ///
+  /// In en, this message translates to:
+  /// **'Variants'**
+  String get profileFormVariants;
+
+  /// No description provided for @profileFormAddVariant.
+  ///
+  /// In en, this message translates to:
+  /// **'Add variant'**
+  String get profileFormAddVariant;
+
+  /// No description provided for @profileFormAddItemOrService.
+  ///
+  /// In en, this message translates to:
+  /// **'Add item or service'**
+  String get profileFormAddItemOrService;
+
+  /// No description provided for @profileFormTrackStock.
+  ///
+  /// In en, this message translates to:
+  /// **'Track stock'**
+  String get profileFormTrackStock;
+
+  /// No description provided for @receiveStockNeedsReview.
+  ///
+  /// In en, this message translates to:
+  /// **'Needs review'**
+  String get receiveStockNeedsReview;
+
+  /// No description provided for @receiveStockVerified.
+  ///
+  /// In en, this message translates to:
+  /// **'Verified'**
+  String get receiveStockVerified;
+
+  /// No description provided for @receiveStockValidException.
+  ///
+  /// In en, this message translates to:
+  /// **'Valid exception'**
+  String get receiveStockValidException;
+
+  /// No description provided for @receiveStockUnmatched.
+  ///
+  /// In en, this message translates to:
+  /// **'Unmatched'**
+  String get receiveStockUnmatched;
+
+  /// No description provided for @staffLoginChooseShop.
+  ///
+  /// In en, this message translates to:
+  /// **'Choose shop'**
+  String get staffLoginChooseShop;
+
+  /// No description provided for @staffLoginCancel.
+  ///
+  /// In en, this message translates to:
+  /// **'Cancel'**
+  String get staffLoginCancel;
+
+  /// No description provided for @stocktakeEnterAllCounts.
+  ///
+  /// In en, this message translates to:
+  /// **'Enter every count before applying'**
+  String get stocktakeEnterAllCounts;
+
+  /// No description provided for @stocktakeCancel.
+  ///
+  /// In en, this message translates to:
+  /// **'Cancel'**
+  String get stocktakeCancel;
+
+  /// No description provided for @stocktakeSave.
+  ///
+  /// In en, this message translates to:
+  /// **'Save'**
+  String get stocktakeSave;
+
+  /// No description provided for @stocktakeBlindCount.
+  ///
+  /// In en, this message translates to:
+  /// **'Blind count'**
+  String get stocktakeBlindCount;
+
+  /// No description provided for @stocktakeHideExpected.
+  ///
+  /// In en, this message translates to:
+  /// **'Hide expected quantities while counting'**
+  String get stocktakeHideExpected;
+
+  /// No description provided for @stocktakeFreezeCounted.
+  ///
+  /// In en, this message translates to:
+  /// **'Freeze counted items'**
+  String get stocktakeFreezeCounted;
+
+  /// No description provided for @stocktakeBlockSales.
+  ///
+  /// In en, this message translates to:
+  /// **'Block sales for items in this count'**
+  String get stocktakeBlockSales;
+
+  /// No description provided for @stocktakeTankDip.
+  ///
+  /// In en, this message translates to:
+  /// **'Tank dip'**
+  String get stocktakeTankDip;
+
+  /// No description provided for @stocktakeStart.
+  ///
+  /// In en, this message translates to:
+  /// **'Start stocktake'**
+  String get stocktakeStart;
+
+  /// No description provided for @stocktakeRecent.
+  ///
+  /// In en, this message translates to:
+  /// **'Recent stocktakes'**
+  String get stocktakeRecent;
+
+  /// No description provided for @stocktakeApply.
+  ///
+  /// In en, this message translates to:
+  /// **'Apply stocktake'**
+  String get stocktakeApply;
+
+  /// No description provided for @termDrinksProduct.
+  ///
+  /// In en, this message translates to:
+  /// **'Drink'**
+  String get termDrinksProduct;
+
+  /// No description provided for @termDrinksProductPlural.
+  ///
+  /// In en, this message translates to:
+  /// **'Drinks'**
+  String get termDrinksProductPlural;
+
+  /// No description provided for @termDrinksSale.
+  ///
+  /// In en, this message translates to:
+  /// **'Sale'**
+  String get termDrinksSale;
+
+  /// No description provided for @termDrinksStock.
+  ///
+  /// In en, this message translates to:
+  /// **'Bar stock'**
+  String get termDrinksStock;
+
+  /// No description provided for @termDrinksPrimaryAction.
+  ///
+  /// In en, this message translates to:
+  /// **'Start sale'**
+  String get termDrinksPrimaryAction;
+
+  /// No description provided for @termDukaProduct.
+  ///
+  /// In en, this message translates to:
+  /// **'Product'**
+  String get termDukaProduct;
+
+  /// No description provided for @termDukaProductPlural.
+  ///
+  /// In en, this message translates to:
+  /// **'Products'**
+  String get termDukaProductPlural;
+
+  /// No description provided for @termDukaSale.
+  ///
+  /// In en, this message translates to:
+  /// **'Sale'**
+  String get termDukaSale;
+
+  /// No description provided for @termDukaStock.
+  ///
+  /// In en, this message translates to:
+  /// **'Stock'**
+  String get termDukaStock;
+
+  /// No description provided for @termDukaPrimaryAction.
+  ///
+  /// In en, this message translates to:
+  /// **'Start sale'**
+  String get termDukaPrimaryAction;
+
+  /// No description provided for @termFashionProduct.
+  ///
+  /// In en, this message translates to:
+  /// **'Style'**
+  String get termFashionProduct;
+
+  /// No description provided for @termFashionProductPlural.
+  ///
+  /// In en, this message translates to:
+  /// **'Styles'**
+  String get termFashionProductPlural;
+
+  /// No description provided for @termFashionSale.
+  ///
+  /// In en, this message translates to:
+  /// **'Sale'**
+  String get termFashionSale;
+
+  /// No description provided for @termFashionStock.
+  ///
+  /// In en, this message translates to:
+  /// **'Catalogue'**
+  String get termFashionStock;
+
+  /// No description provided for @termFashionPrimaryAction.
+  ///
+  /// In en, this message translates to:
+  /// **'Start sale'**
+  String get termFashionPrimaryAction;
+
+  /// No description provided for @termOpenProduct.
+  ///
+  /// In en, this message translates to:
+  /// **'Item or service'**
+  String get termOpenProduct;
+
+  /// No description provided for @termOpenProductPlural.
+  ///
+  /// In en, this message translates to:
+  /// **'Items and services'**
+  String get termOpenProductPlural;
+
+  /// No description provided for @termOpenSale.
+  ///
+  /// In en, this message translates to:
+  /// **'Record'**
+  String get termOpenSale;
+
+  /// No description provided for @termOpenStock.
+  ///
+  /// In en, this message translates to:
+  /// **'Optional stock'**
+  String get termOpenStock;
+
+  /// No description provided for @termOpenPrimaryAction.
+  ///
+  /// In en, this message translates to:
+  /// **'Record sale'**
+  String get termOpenPrimaryAction;
+
+  /// No description provided for @settingsCashierPayoutApprovalLimit.
+  ///
+  /// In en, this message translates to:
+  /// **'Cashier payout approval limit'**
+  String get settingsCashierPayoutApprovalLimit;
+
+  /// No description provided for @settingsDiscountsPriceOverrides.
+  ///
+  /// In en, this message translates to:
+  /// **'Discounts and price overrides'**
+  String get settingsDiscountsPriceOverrides;
+
+  /// No description provided for @settingsSetupMpesaPayHero.
+  ///
+  /// In en, this message translates to:
+  /// **'Set up M-Pesa with PayHero'**
+  String get settingsSetupMpesaPayHero;
+
+  /// No description provided for @settingsMpesaTill.
+  ///
+  /// In en, this message translates to:
+  /// **'M-Pesa Till'**
+  String get settingsMpesaTill;
+
+  /// No description provided for @settingsMpesaPaybill.
+  ///
+  /// In en, this message translates to:
+  /// **'M-Pesa Paybill'**
+  String get settingsMpesaPaybill;
+
+  /// No description provided for @settingsSaveChannel.
+  ///
+  /// In en, this message translates to:
+  /// **'Save channel'**
+  String get settingsSaveChannel;
+
+  /// No description provided for @settingsCouldNotOpenDocument.
+  ///
+  /// In en, this message translates to:
+  /// **'Could not open document'**
+  String get settingsCouldNotOpenDocument;
+
+  /// No description provided for @settingsTermsOfService.
+  ///
+  /// In en, this message translates to:
+  /// **'Terms of Service'**
+  String get settingsTermsOfService;
+
+  /// No description provided for @settingsPrivacyPolicy.
+  ///
+  /// In en, this message translates to:
+  /// **'Privacy Policy'**
+  String get settingsPrivacyPolicy;
+
+  /// No description provided for @settingsDrawerConnector.
+  ///
+  /// In en, this message translates to:
+  /// **'Drawer connector'**
+  String get settingsDrawerConnector;
+
+  /// No description provided for @settingsPulseTiming.
+  ///
+  /// In en, this message translates to:
+  /// **'Pulse timing'**
+  String get settingsPulseTiming;
+
+  /// No description provided for @settingsPulseTimingSubtitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Adjust only if the paired drawer needs it'**
+  String get settingsPulseTimingSubtitle;
+
+  /// No description provided for @settingsEnableDiscounts.
+  ///
+  /// In en, this message translates to:
+  /// **'Enable discounts'**
+  String get settingsEnableDiscounts;
+
+  /// No description provided for @settingsRequireReason.
+  ///
+  /// In en, this message translates to:
+  /// **'Require a reason'**
+  String get settingsRequireReason;
+
+  /// No description provided for @settingsAllowDiscountsBelowCost.
+  ///
+  /// In en, this message translates to:
+  /// **'Allow discounts below cost'**
+  String get settingsAllowDiscountsBelowCost;
+
+  /// No description provided for @settingsIncomingMpesaPayments.
+  ///
+  /// In en, this message translates to:
+  /// **'Incoming M-Pesa payments'**
+  String get settingsIncomingMpesaPayments;
+
+  /// No description provided for @settingsOpenSyncCenter.
+  ///
+  /// In en, this message translates to:
+  /// **'Open Sync Center'**
+  String get settingsOpenSyncCenter;
+
+  /// No description provided for @settingsBackupAllShopData.
+  ///
+  /// In en, this message translates to:
+  /// **'Back up all shop data'**
+  String get settingsBackupAllShopData;
+
+  /// No description provided for @settingsRestoreAllShopData.
+  ///
+  /// In en, this message translates to:
+  /// **'Restore all shop data'**
+  String get settingsRestoreAllShopData;
+
+  /// No description provided for @settingsUploadPortableCloudCopy.
+  ///
+  /// In en, this message translates to:
+  /// **'Upload portable cloud copy'**
+  String get settingsUploadPortableCloudCopy;
+
+  /// No description provided for @settingsRestoreLatestCloudCopy.
+  ///
+  /// In en, this message translates to:
+  /// **'Restore latest cloud copy'**
+  String get settingsRestoreLatestCloudCopy;
+
+  /// No description provided for @settingsSeedBlackbeeProducts.
+  ///
+  /// In en, this message translates to:
+  /// **'Seed BlackBee products'**
+  String get settingsSeedBlackbeeProducts;
+
+  /// No description provided for @settingsAddVariant.
+  ///
+  /// In en, this message translates to:
+  /// **'Add variant'**
+  String get settingsAddVariant;
+
+  /// No description provided for @settingsCancel.
+  ///
+  /// In en, this message translates to:
+  /// **'Cancel'**
+  String get settingsCancel;
+
+  /// No description provided for @settingsSave.
+  ///
+  /// In en, this message translates to:
+  /// **'Save'**
+  String get settingsSave;
+
+  /// No description provided for @settingsPin1.
+  ///
+  /// In en, this message translates to:
+  /// **'Pin 1'**
+  String get settingsPin1;
+
+  /// No description provided for @settingsPin2.
+  ///
+  /// In en, this message translates to:
+  /// **'Pin 2'**
+  String get settingsPin2;
+
+  /// No description provided for @settingsSaveButton.
+  ///
+  /// In en, this message translates to:
+  /// **'Save'**
+  String get settingsSaveButton;
+
+  /// No description provided for @reportsDone.
+  ///
+  /// In en, this message translates to:
+  /// **'Done'**
+  String get reportsDone;
+
+  /// No description provided for @reportsCupSales.
+  ///
+  /// In en, this message translates to:
+  /// **'Cup sales'**
+  String get reportsCupSales;
+
+  /// No description provided for @reportsTopMovers.
+  ///
+  /// In en, this message translates to:
+  /// **'Top movers'**
+  String get reportsTopMovers;
+
+  /// No description provided for @reportsPdfReport.
+  ///
+  /// In en, this message translates to:
+  /// **'PDF report'**
+  String get reportsPdfReport;
+
+  /// No description provided for @reportsPeriod.
+  ///
+  /// In en, this message translates to:
+  /// **'Period'**
+  String get reportsPeriod;
+
+  /// No description provided for @reportsReconciledFinancialStatement.
+  ///
+  /// In en, this message translates to:
+  /// **'Reconciled financial statement'**
+  String get reportsReconciledFinancialStatement;
+
+  /// No description provided for @reportsZReport.
+  ///
+  /// In en, this message translates to:
+  /// **'Z report'**
+  String get reportsZReport;
+
+  /// No description provided for @transactionsAll.
+  ///
+  /// In en, this message translates to:
+  /// **'All'**
+  String get transactionsAll;
+
+  /// No description provided for @exchangeRecorded.
+  ///
+  /// In en, this message translates to:
+  /// **'Exchange #\$exchangeId recorded — return and replacement committed.'**
+  String get exchangeRecorded;
+
+  /// No description provided for @exchangeAddReplacement.
+  ///
+  /// In en, this message translates to:
+  /// **'Add replacement variant'**
+  String get exchangeAddReplacement;
+
+  /// No description provided for @exchangeCancel.
+  ///
+  /// In en, this message translates to:
+  /// **'Cancel'**
+  String get exchangeCancel;
+
+  /// No description provided for @exchangeAdd.
+  ///
+  /// In en, this message translates to:
+  /// **'Add'**
+  String get exchangeAdd;
+
+  /// No description provided for @exchangeVariantNotFound.
+  ///
+  /// In en, this message translates to:
+  /// **'Variant not found'**
+  String get exchangeVariantNotFound;
+
+  /// No description provided for @exchangeInsufficientStock.
+  ///
+  /// In en, this message translates to:
+  /// **'Insufficient stock'**
+  String get exchangeInsufficientStock;
+
+  /// No description provided for @exchangeFailed.
+  ///
+  /// In en, this message translates to:
+  /// **'Failed: \$e'**
+  String get exchangeFailed;
+
+  /// No description provided for @cancel.
+  ///
+  /// In en, this message translates to:
+  /// **'Cancel'**
+  String get cancel;
+
+  /// No description provided for @closeShift.
+  ///
+  /// In en, this message translates to:
+  /// **'Close shift'**
+  String get closeShift;
+
+  /// No description provided for @done.
+  ///
+  /// In en, this message translates to:
+  /// **'Done'**
+  String get done;
+
+  /// No description provided for @heldSalesRemain.
+  ///
+  /// In en, this message translates to:
+  /// **'Held sales remain'**
+  String get heldSalesRemain;
+
+  /// No description provided for @keepShiftOpen.
+  ///
+  /// In en, this message translates to:
+  /// **'Keep shift open'**
+  String get keepShiftOpen;
+
+  /// No description provided for @livePreviewNoReportNumberIsUsed.
+  ///
+  /// In en, this message translates to:
+  /// **'Live preview · no report number is used'**
+  String get livePreviewNoReportNumberIsUsed;
+
+  /// No description provided for @open.
+  ///
+  /// In en, this message translates to:
+  /// **'Open'**
+  String get open;
+
+  /// No description provided for @openDrawer.
+  ///
+  /// In en, this message translates to:
+  /// **'Open drawer'**
+  String get openDrawer;
+
+  /// No description provided for @xReportPreview.
+  ///
+  /// In en, this message translates to:
+  /// **'X report preview'**
+  String get xReportPreview;
+
+  /// No description provided for @add.
+  ///
+  /// In en, this message translates to:
+  /// **'Add'**
+  String get add;
+
+  /// No description provided for @addMoreProducts.
+  ///
+  /// In en, this message translates to:
+  /// **'Add more products'**
+  String get addMoreProducts;
+
+  /// No description provided for @apply.
+  ///
+  /// In en, this message translates to:
+  /// **'Apply'**
+  String get apply;
+
+  /// No description provided for @attachACustomerToThisHeldSale.
+  ///
+  /// In en, this message translates to:
+  /// **'Attach a customer to this held sale?'**
+  String get attachACustomerToThisHeldSale;
+
+  /// No description provided for @chooseCustomer.
+  ///
+  /// In en, this message translates to:
+  /// **'Choose customer'**
+  String get chooseCustomer;
+
+  /// No description provided for @costNotRecordedProfitMayBeOverstated.
+  ///
+  /// In en, this message translates to:
+  /// **'Cost not recorded; profit may be overstated.'**
+  String get costNotRecordedProfitMayBeOverstated;
+
+  /// No description provided for @couldnTCompleteTheSaleCheckStockAndTryAgain.
+  ///
+  /// In en, this message translates to:
+  /// **'Couldn’t complete the sale. Check stock and try again.'**
+  String get couldnTCompleteTheSaleCheckStockAndTryAgain;
+
+  /// No description provided for @firstTenderRemainingIsPaidByTheSecondTender.
+  ///
+  /// In en, this message translates to:
+  /// **'First tender · remaining is paid by the second tender'**
+  String get firstTenderRemainingIsPaidByTheSecondTender;
+
+  /// No description provided for @holdSale.
+  ///
+  /// In en, this message translates to:
+  /// **'Hold sale'**
+  String get holdSale;
+
+  /// No description provided for @incomingPayment.
+  ///
+  /// In en, this message translates to:
+  /// **'Incoming payment'**
+  String get incomingPayment;
+
+  /// No description provided for @isThisANewProductAddCostPrice.
+  ///
+  /// In en, this message translates to:
+  /// **'Is this a new product? Add cost price'**
+  String get isThisANewProductAddCostPrice;
+
+  /// No description provided for @keepHeldSale.
+  ///
+  /// In en, this message translates to:
+  /// **'Keep held sale'**
+  String get keepHeldSale;
+
+  /// No description provided for @mPesaPaidToTill.
+  ///
+  /// In en, this message translates to:
+  /// **'M-Pesa paid to till'**
+  String get mPesaPaidToTill;
+
+  /// No description provided for @noCustomer.
+  ///
+  /// In en, this message translates to:
+  /// **'No customer'**
+  String get noCustomer;
+
+  /// No description provided for @noHeldSales.
+  ///
+  /// In en, this message translates to:
+  /// **'No held sales'**
+  String get noHeldSales;
+
+  /// No description provided for @noReason.
+  ///
+  /// In en, this message translates to:
+  /// **'No reason'**
+  String get noReason;
+
+  /// No description provided for @noneNew.
+  ///
+  /// In en, this message translates to:
+  /// **'None / new'**
+  String get noneNew;
+
+  /// No description provided for @orderDiscount.
+  ///
+  /// In en, this message translates to:
+  /// **'Order discount'**
+  String get orderDiscount;
+
+  /// No description provided for @paymentCouldNotBeStartedCheckYourConnectionAndTryAgain.
+  ///
+  /// In en, this message translates to:
+  /// **'Payment could not be started. Check your connection and try again.'**
+  String get paymentCouldNotBeStartedCheckYourConnectionAndTryAgain;
+
+  /// No description provided for @paymentSucceededLocalRecordingFailedContactSupportBeforeReconcilingReports.
+  ///
+  /// In en, this message translates to:
+  /// **'Payment succeeded. Local recording failed — contact support before reconciling reports.'**
+  String
+      get paymentSucceededLocalRecordingFailedContactSupportBeforeReconcilingReports;
+
+  /// No description provided for @pricesChanged.
+  ///
+  /// In en, this message translates to:
+  /// **'Prices changed'**
+  String get pricesChanged;
+
+  /// No description provided for @printReceipt.
+  ///
+  /// In en, this message translates to:
+  /// **'Print receipt'**
+  String get printReceipt;
+
+  /// No description provided for @quickSale.
+  ///
+  /// In en, this message translates to:
+  /// **'Quick sale'**
+  String get quickSale;
+
+  /// No description provided for @quickSaleRecorded.
+  ///
+  /// In en, this message translates to:
+  /// **'Quick sale recorded.'**
+  String get quickSaleRecorded;
+
+  /// No description provided for @recordSaleAmount.
+  ///
+  /// In en, this message translates to:
+  /// **'Record sale amount'**
+  String get recordSaleAmount;
+
+  /// No description provided for @save.
+  ///
+  /// In en, this message translates to:
+  /// **'Save'**
+  String get save;
+
+  /// No description provided for @sell.
+  ///
+  /// In en, this message translates to:
+  /// **'Sell'**
+  String get sell;
+
+  /// No description provided for @sellShot.
+  ///
+  /// In en, this message translates to:
+  /// **'Sell shot'**
+  String get sellShot;
+
+  /// No description provided for @sharePdf.
+  ///
+  /// In en, this message translates to:
+  /// **'Share PDF'**
+  String get sharePdf;
+
+  /// No description provided for @shareReceipt.
+  ///
+  /// In en, this message translates to:
+  /// **'Share receipt'**
+  String get shareReceipt;
+
+  /// No description provided for @skip.
+  ///
+  /// In en, this message translates to:
+  /// **'Skip'**
+  String get skip;
+
+  /// No description provided for @splitPayment.
+  ///
+  /// In en, this message translates to:
+  /// **'Split payment'**
+  String get splitPayment;
+
+  /// No description provided for @tendersMustEqualTheTotal.
+  ///
+  /// In en, this message translates to:
+  /// **'Tenders must equal the total.'**
+  String get tendersMustEqualTheTotal;
+
+  /// No description provided for @useCurrentPrices.
+  ///
+  /// In en, this message translates to:
+  /// **'Use current prices'**
+  String get useCurrentPrices;
+
+  /// No description provided for @heldSales.
+  ///
+  /// In en, this message translates to:
+  /// **'Held sales'**
+  String get heldSales;
+
+  /// No description provided for @company.
+  ///
+  /// In en, this message translates to:
+  /// **'Company'**
+  String get company;
+
+  /// No description provided for @inProgress.
+  ///
+  /// In en, this message translates to:
+  /// **'In progress'**
+  String get inProgress;
+
+  /// No description provided for @individual.
+  ///
+  /// In en, this message translates to:
+  /// **'Individual'**
+  String get individual;
+
+  /// No description provided for @needsReview.
+  ///
+  /// In en, this message translates to:
+  /// **'Needs review'**
+  String get needsReview;
+
+  /// No description provided for @nonVatLite.
+  ///
+  /// In en, this message translates to:
+  /// **'Non-VAT Lite'**
+  String get nonVatLite;
+
+  /// No description provided for @notStarted.
+  ///
+  /// In en, this message translates to:
+  /// **'Not started'**
+  String get notStarted;
+
+  /// No description provided for @oscu.
+  ///
+  /// In en, this message translates to:
+  /// **'OSCU'**
+  String get oscu;
+
+  /// No description provided for @onboarded.
+  ///
+  /// In en, this message translates to:
+  /// **'Onboarded'**
+  String get onboarded;
+
+  /// No description provided for @onlineEclient.
+  ///
+  /// In en, this message translates to:
+  /// **'Online / eClient'**
+  String get onlineEclient;
+
+  /// No description provided for @other.
+  ///
+  /// In en, this message translates to:
+  /// **'Other'**
+  String get other;
+
+  /// No description provided for @partnership.
+  ///
+  /// In en, this message translates to:
+  /// **'Partnership'**
+  String get partnership;
+
+  /// No description provided for @registeredObligations.
+  ///
+  /// In en, this message translates to:
+  /// **'Registered obligations'**
+  String get registeredObligations;
+
+  /// No description provided for @saveMapping.
+  ///
+  /// In en, this message translates to:
+  /// **'Save mapping'**
+  String get saveMapping;
+
+  /// No description provided for @soleProprietor.
+  ///
+  /// In en, this message translates to:
+  /// **'Sole proprietor'**
+  String get soleProprietor;
+
+  /// No description provided for @taxEntityAndOutletMapping.
+  ///
+  /// In en, this message translates to:
+  /// **'Tax entity and outlet mapping'**
+  String get taxEntityAndOutletMapping;
+
+  /// No description provided for @vscu.
+  ///
+  /// In en, this message translates to:
+  /// **'VSCU'**
+  String get vscu;
+
+  /// No description provided for @addPack.
+  ///
+  /// In en, this message translates to:
+  /// **'Add pack'**
+  String get addPack;
+
+  /// No description provided for @addPackOrCarton.
+  ///
+  /// In en, this message translates to:
+  /// **'Add pack or carton'**
+  String get addPackOrCarton;
+
+  /// No description provided for @assignABarcodeBeforePrintingItsLabel.
+  ///
+  /// In en, this message translates to:
+  /// **'Assign a barcode before printing its label.'**
+  String get assignABarcodeBeforePrintingItsLabel;
+
+  /// No description provided for @assignInternalBarcode.
+  ///
+  /// In en, this message translates to:
+  /// **'Assign internal barcode'**
+  String get assignInternalBarcode;
+
+  /// No description provided for @createRepack.
+  ///
+  /// In en, this message translates to:
+  /// **'Create & repack'**
+  String get createRepack;
+
+  /// No description provided for @each.
+  ///
+  /// In en, this message translates to:
+  /// **'Each'**
+  String get each;
+
+  /// No description provided for @kilogram.
+  ///
+  /// In en, this message translates to:
+  /// **'Kilogram'**
+  String get kilogram;
+
+  /// No description provided for @litre.
+  ///
+  /// In en, this message translates to:
+  /// **'Litre'**
+  String get litre;
+
+  /// No description provided for @looseGoods.
+  ///
+  /// In en, this message translates to:
+  /// **'Loose goods'**
+  String get looseGoods;
+
+  /// No description provided for @noPacksYetAddACaseCartonOrBundleBarcode.
+  ///
+  /// In en, this message translates to:
+  /// **'No packs yet. Add a case, carton or bundle barcode.'**
+  String get noPacksYetAddACaseCartonOrBundleBarcode;
+
+  /// No description provided for @packsAndCartons.
+  ///
+  /// In en, this message translates to:
+  /// **'Packs and cartons'**
+  String get packsAndCartons;
+
+  /// No description provided for @print.
+  ///
+  /// In en, this message translates to:
+  /// **'Print'**
+  String get print;
+
+  /// No description provided for @printBarcodeLabel.
+  ///
+  /// In en, this message translates to:
+  /// **'Print barcode label'**
+  String get printBarcodeLabel;
+
+  /// No description provided for @printBarcodeLabels.
+  ///
+  /// In en, this message translates to:
+  /// **'Print barcode labels'**
+  String get printBarcodeLabels;
+
+  /// No description provided for @recordWaste.
+  ///
+  /// In en, this message translates to:
+  /// **'Record waste'**
+  String get recordWaste;
+
+  /// No description provided for @recordWasteSpillage.
+  ///
+  /// In en, this message translates to:
+  /// **'Record waste/spillage'**
+  String get recordWasteSpillage;
+
+  /// No description provided for @reorder.
+  ///
+  /// In en, this message translates to:
+  /// **'Reorder'**
+  String get reorder;
+
+  /// No description provided for @repack.
+  ///
+  /// In en, this message translates to:
+  /// **'Repack'**
+  String get repack;
+
+  /// No description provided for @repackCouldNotBeRecorded.
+  ///
+  /// In en, this message translates to:
+  /// **'Repack could not be recorded.'**
+  String get repackCouldNotBeRecorded;
+
+  /// No description provided for @repackRecorded.
+  ///
+  /// In en, this message translates to:
+  /// **'Repack recorded.'**
+  String get repackRecorded;
+
+  /// No description provided for @repackToNewProduct.
+  ///
+  /// In en, this message translates to:
+  /// **'Repack to new product'**
+  String get repackToNewProduct;
+
+  /// No description provided for @stocktake.
+  ///
+  /// In en, this message translates to:
+  /// **'Stocktake'**
+  String get stocktake;
+
+  /// No description provided for @tankRegister.
+  ///
+  /// In en, this message translates to:
+  /// **'Tank register'**
+  String get tankRegister;
+
+  /// No description provided for @trackExpiryDates.
+  ///
+  /// In en, this message translates to:
+  /// **'Track expiry dates'**
+  String get trackExpiryDates;
+
+  /// No description provided for @wasteCannotBeGreaterThanCurrentStock.
+  ///
+  /// In en, this message translates to:
+  /// **'Waste cannot be greater than current stock.'**
+  String get wasteCannotBeGreaterThanCurrentStock;
+
+  /// No description provided for @wasteCouldNotBeRecorded.
+  ///
+  /// In en, this message translates to:
+  /// **'Waste could not be recorded.'**
+  String get wasteCouldNotBeRecorded;
+
+  /// No description provided for @bankTransfer.
+  ///
+  /// In en, this message translates to:
+  /// **'Bank transfer'**
+  String get bankTransfer;
+
+  /// No description provided for @cancelLayBy.
+  ///
+  /// In en, this message translates to:
+  /// **'Cancel lay-by'**
+  String get cancelLayBy;
+
+  /// No description provided for @cancelLayBy2.
+  ///
+  /// In en, this message translates to:
+  /// **'Cancel lay-by?'**
+  String get cancelLayBy2;
+
+  /// No description provided for @cash.
+  ///
+  /// In en, this message translates to:
+  /// **'Cash'**
+  String get cash;
+
+  /// No description provided for @complete.
+  ///
+  /// In en, this message translates to:
+  /// **'Complete'**
+  String get complete;
+
+  /// No description provided for @keep.
+  ///
+  /// In en, this message translates to:
+  /// **'Keep'**
+  String get keep;
+
+  /// No description provided for @mPesa.
+  ///
+  /// In en, this message translates to:
+  /// **'M-Pesa'**
+  String get mPesa;
+
+  /// No description provided for @payment.
+  ///
+  /// In en, this message translates to:
+  /// **'Payment'**
+  String get payment;
+
+  /// No description provided for @paymentMethod.
+  ///
+  /// In en, this message translates to:
+  /// **'Payment method'**
+  String get paymentMethod;
+
+  /// No description provided for @paymentReferenceOptional.
+  ///
+  /// In en, this message translates to:
+  /// **'Payment reference (optional)'**
+  String get paymentReferenceOptional;
+
+  /// No description provided for @createCostGroup.
+  ///
+  /// In en, this message translates to:
+  /// **'Create cost group'**
+  String get createCostGroup;
+
+  /// No description provided for @addCost.
+  ///
+  /// In en, this message translates to:
+  /// **'Add cost'**
+  String get addCost;
+
+  /// No description provided for @adjustStock.
+  ///
+  /// In en, this message translates to:
+  /// **'Adjust stock'**
+  String get adjustStock;
+
+  /// No description provided for @edit.
+  ///
+  /// In en, this message translates to:
+  /// **'Edit'**
+  String get edit;
+
+  /// No description provided for @receiveStock.
+  ///
+  /// In en, this message translates to:
+  /// **'Receive stock'**
+  String get receiveStock;
+
+  /// No description provided for @viewSales.
+  ///
+  /// In en, this message translates to:
+  /// **'View sales'**
+  String get viewSales;
+
+  /// No description provided for @linkASupplierBeforeCreatingAnOrder.
+  ///
+  /// In en, this message translates to:
+  /// **'Link a supplier before creating an order.'**
+  String get linkASupplierBeforeCreatingAnOrder;
+
+  /// No description provided for @noProductsAreBelowTheirReorderLevel.
+  ///
+  /// In en, this message translates to:
+  /// **'No products are below their reorder level.'**
+  String get noProductsAreBelowTheirReorderLevel;
+
+  /// No description provided for @receive.
+  ///
+  /// In en, this message translates to:
+  /// **'Receive'**
+  String get receive;
+
+  /// No description provided for @receiveAllRemaining.
+  ///
+  /// In en, this message translates to:
+  /// **'Receive all remaining'**
+  String get receiveAllRemaining;
+
+  /// No description provided for @reorderSuggestions.
+  ///
+  /// In en, this message translates to:
+  /// **'Reorder suggestions'**
+  String get reorderSuggestions;
+
+  /// No description provided for @saveShare.
+  ///
+  /// In en, this message translates to:
+  /// **'Save & share'**
+  String get saveShare;
+
+  /// No description provided for @saveDraft.
+  ///
+  /// In en, this message translates to:
+  /// **'Save draft'**
+  String get saveDraft;
+
+  /// No description provided for @allProducts.
+  ///
+  /// In en, this message translates to:
+  /// **'All products'**
+  String get allProducts;
+
+  /// No description provided for @copyCupToProduct.
+  ///
+  /// In en, this message translates to:
+  /// **'Copy cup to product'**
+  String get copyCupToProduct;
+
+  /// No description provided for @copyToAnotherProduct.
+  ///
+  /// In en, this message translates to:
+  /// **'Copy to another product'**
+  String get copyToAnotherProduct;
+
+  /// No description provided for @tankDetail.
+  ///
+  /// In en, this message translates to:
+  /// **'Tank detail'**
+  String get tankDetail;
+
+  /// No description provided for @noTanksYet.
+  ///
+  /// In en, this message translates to:
+  /// **'No tanks yet'**
+  String get noTanksYet;
+
+  /// No description provided for @revoke.
+  ///
+  /// In en, this message translates to:
+  /// **'Revoke'**
+  String get revoke;
+
+  /// No description provided for @sharedReceipts.
+  ///
+  /// In en, this message translates to:
+  /// **'Shared receipts'**
+  String get sharedReceipts;
+
+  /// No description provided for @acceptSale.
+  ///
+  /// In en, this message translates to:
+  /// **'Accept sale'**
+  String get acceptSale;
+
+  /// No description provided for @kraCouldNotBeReachedTheReceiptsRemainQueuedForTheNextConnection.
+  ///
+  /// In en, this message translates to:
+  /// **'KRA could not be reached. The receipts remain queued for the next connection.'**
+  String get kraCouldNotBeReachedTheReceiptsRemainQueuedForTheNextConnection;
+
+  /// No description provided for @lastLocalBackup.
+  ///
+  /// In en, this message translates to:
+  /// **'Last local backup'**
+  String get lastLocalBackup;
+
+  /// No description provided for @leaveOpen.
+  ///
+  /// In en, this message translates to:
+  /// **'Leave open'**
+  String get leaveOpen;
+
+  /// No description provided for @localStorageAccess.
+  ///
+  /// In en, this message translates to:
+  /// **'Local storage access'**
+  String get localStorageAccess;
+
+  /// No description provided for @onlyAManagerCanViewSyncCenter.
+  ///
+  /// In en, this message translates to:
+  /// **'Only a manager can view Sync Center.'**
+  String get onlyAManagerCanViewSyncCenter;
+
+  /// No description provided for @rejectedReceiptsToRetry.
+  ///
+  /// In en, this message translates to:
+  /// **'Rejected receipts to retry'**
+  String get rejectedReceiptsToRetry;
+
+  /// No description provided for @resolveStockConflict.
+  ///
+  /// In en, this message translates to:
+  /// **'Resolve stock conflict'**
+  String get resolveStockConflict;
+
+  /// No description provided for @retry.
+  ///
+  /// In en, this message translates to:
+  /// **'Retry'**
+  String get retry;
+
+  /// No description provided for @retryQueuedReceipts.
+  ///
+  /// In en, this message translates to:
+  /// **'Retry queued receipts'**
+  String get retryQueuedReceipts;
+
+  /// No description provided for @review.
+  ///
+  /// In en, this message translates to:
+  /// **'Review'**
+  String get review;
+
+  /// No description provided for @syncCenter.
+  ///
+  /// In en, this message translates to:
+  /// **'Sync Center'**
+  String get syncCenter;
+
+  /// No description provided for @theseOfflineSalesCouldNotReserveStockAfterAnotherTillSoldTheLastUnitsTheyRemainQueuedAndAreNotSilentlyDiscarded.
+  ///
+  /// In en, this message translates to:
+  /// **'These offline sales could not reserve stock after another till sold the last units. They remain queued and are not silently discarded.'**
+  String
+      get theseOfflineSalesCouldNotReserveStockAfterAnotherTillSoldTheLastUnitsTheyRemainQueuedAndAreNotSilentlyDiscarded;
+
+  /// No description provided for @unclaimedMPesa.
+  ///
+  /// In en, this message translates to:
+  /// **'Unclaimed M-Pesa'**
+  String get unclaimedMPesa;
+
+  /// No description provided for @unverifiedPayments.
+  ///
+  /// In en, this message translates to:
+  /// **'Unverified payments'**
+  String get unverifiedPayments;
+
+  /// No description provided for @voidSale.
+  ///
+  /// In en, this message translates to:
+  /// **'Void sale'**
+  String get voidSale;
+
+  /// No description provided for @settingsSwitch.
+  ///
+  /// In en, this message translates to:
+  /// **'Switch'**
+  String get settingsSwitch;
+
+  /// No description provided for @openDashboardSelectJob.
+  ///
+  /// In en, this message translates to:
+  /// **'Select a job'**
+  String get openDashboardSelectJob;
+
+  /// No description provided for @openCostGroupCouldNotCreate.
+  ///
+  /// In en, this message translates to:
+  /// **'Could not create cost group: {error}'**
+  String openCostGroupCouldNotCreate(Object error);
+
+  /// No description provided for @openJobAddCostCouldNotAdd.
+  ///
+  /// In en, this message translates to:
+  /// **'Could not add cost: {error}'**
+  String openJobAddCostCouldNotAdd(Object error);
+
+  /// No description provided for @inventoryCouldNotSavePack.
+  ///
+  /// In en, this message translates to:
+  /// **'Could not save pack: {error}'**
+  String inventoryCouldNotSavePack(Object error);
+
+  /// No description provided for @syncCenterCouldNotResolveConflict.
+  ///
+  /// In en, this message translates to:
+  /// **'Could not resolve conflict: {error}'**
+  String syncCenterCouldNotResolveConflict(Object error);
+
+  /// No description provided for @openDashboardNoJobs.
+  ///
+  /// In en, this message translates to:
+  /// **'No jobs yet. Create one first.'**
+  String get openDashboardNoJobs;
 }
 
 class _AppLocalizationsDelegate

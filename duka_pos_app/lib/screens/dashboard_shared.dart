@@ -168,7 +168,7 @@ class CompactBusinessHeader extends StatelessWidget {
               OutlinedButton.icon(
                 onPressed: onSwitchBusiness,
                 icon: const Icon(Icons.refresh, size: 18),
-                label: const Text('Switch'),
+                label: Text(AppLocalizations.of(context).settingsSwitch),
               ),
           ],
         ),

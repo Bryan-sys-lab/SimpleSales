@@ -226,8 +226,8 @@ class _InventoryScreenState extends State<InventoryScreen>
         await DatabaseHelper.instance.getBarcodesForProduct(product.id!);
     if (!mounted) return;
     if (codes.isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
-        content: Text('Assign a barcode before printing its label.'),
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+        content: Text(AppLocalizations.of(context).assignABarcodeBeforePrintingItsLabel),
       ));
       return;
     }
@@ -235,7 +235,7 @@ class _InventoryScreenState extends State<InventoryScreen>
     final int? quantity = await showDialog<int>(
       context: context,
       builder: (context) => AlertDialog(
-        title: const Text('Print barcode labels'),
+        title: Text(AppLocalizations.of(context).printBarcodeLabels),
         content: TextField(
           controller: quantityController,
           autofocus: true,
@@ -248,14 +248,14 @@ class _InventoryScreenState extends State<InventoryScreen>
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(context),
-            child: const Text('Cancel'),
+            child: Text(AppLocalizations.of(context).cancel),
           ),
           FilledButton(
             onPressed: () => Navigator.pop(
               context,
               int.tryParse(quantityController.text.trim()),
             ),
-            child: const Text('Print'),
+            child: Text(AppLocalizations.of(context).print),
           ),
         ],
       ),
@@ -518,14 +518,14 @@ class _InventoryScreenState extends State<InventoryScreen>
         actions: <Widget>[
           TextButton(
             onPressed: () => Navigator.pop(dialogContext),
-            child: const Text('Cancel'),
+            child: Text(AppLocalizations.of(context).cancel),
           ),
           FilledButton(
             onPressed: () => Navigator.pop(dialogContext, <String, String>{
               'quantity': quantityController.text.trim(),
               'reason': reasonController.text.trim(),
             }),
-            child: const Text('Record waste'),
+            child: Text(AppLocalizations.of(context).recordWaste),
           ),
         ],
       ),
@@ -536,8 +536,8 @@ class _InventoryScreenState extends State<InventoryScreen>
     final quantity = double.tryParse(result['quantity'] ?? '');
     if (quantity == null || !quantity.isFinite || quantity <= 0) return;
     if (quantity > p.stockQty) {
-      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
-        content: Text('Waste cannot be greater than current stock.'),
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+        content: Text(AppLocalizations.of(context).wasteCannotBeGreaterThanCurrentStock),
       ));
       return;
     }
@@ -592,8 +592,8 @@ class _InventoryScreenState extends State<InventoryScreen>
       }
     } on Object catch (_) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
-          content: Text('Waste could not be recorded.'),
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+          content: Text(AppLocalizations.of(context).wasteCouldNotBeRecorded),
         ));
       }
     }
@@ -840,12 +840,12 @@ class _InventoryScreenState extends State<InventoryScreen>
       await _load();
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Repack recorded.')),
+        SnackBar(content: Text(AppLocalizations.of(context).repackRecorded)),
       );
     } catch (_) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Repack could not be recorded.')),
+        SnackBar(content: Text(AppLocalizations.of(context).repackCouldNotBeRecorded)),
       );
     }
   }
@@ -951,7 +951,7 @@ class _InventoryScreenState extends State<InventoryScreen>
                         builder: (_) => const StocktakeScreen()),
                   ),
                   icon: const Icon(Icons.fact_check_outlined, size: 18),
-                  label: const Text('Stocktake'),
+                  label: Text(AppLocalizations.of(context).stocktake),
                 ),
               if (canReorder)
                 TextButton.icon(
@@ -960,7 +960,7 @@ class _InventoryScreenState extends State<InventoryScreen>
                         builder: (_) => const ReorderScreen()),
                   ),
                   icon: const Icon(Icons.playlist_add_check_outlined, size: 18),
-                  label: const Text('Reorder'),
+                  label: Text(AppLocalizations.of(context).reorder),
                 ),
                 if (isOwner && showDrinkService)
                   TextButton.icon(
@@ -972,7 +972,7 @@ class _InventoryScreenState extends State<InventoryScreen>
                   TextButton.icon(
                     onPressed: () => context.push(Routes.tankRegister),
                     icon: const Icon(Icons.list_alt_outlined, size: 18),
-                    label: const Text('Tank register'),
+                    label: Text(AppLocalizations.of(context).tankRegister),
                   ),
                 if ((appState.shopProfile == ShopProfile.duka ||
                     appState.shopProfile == ShopProfile.drinks) &&
@@ -980,13 +980,13 @@ class _InventoryScreenState extends State<InventoryScreen>
                   TextButton.icon(
                     onPressed: () => showLooseGoodsFormSheet(context),
                     icon: const Icon(Icons.inventory_2_outlined, size: 18),
-                    label: const Text('Loose goods'),
+                    label: Text(AppLocalizations.of(context).looseGoods),
                   ),
                 if (appState.hasPermission(PermissionKey.adjustStock))
                   TextButton.icon(
                     onPressed: _repackStock,
                     icon: const Icon(Icons.swap_horiz, size: 18),
-                    label: const Text('Repack'),
+                    label: Text(AppLocalizations.of(context).repack),
                   ),
 
             ],
@@ -1186,8 +1186,7 @@ class _InventoryScreenState extends State<InventoryScreen>
                             onPrintBarcode: () => _printBarcodeLabel(p),
                             onDelete: () => _delete(p),
                             onTap: () => context.push(
-                              Routes.productDetail,
-                              extra: p,
+                              Routes.productDetail(p.id ?? 0),
                             ),
                           ),
                         );
@@ -1722,43 +1721,43 @@ class _ProductActionMenu extends StatelessWidget {
           ),
         ),
         if (onWaste != null)
-          const PopupMenuItem(
+          PopupMenuItem(
             value: 'waste',
             child: Row(
               children: [
                 Icon(Icons.delete_sweep_outlined, size: 20),
                 SizedBox(width: 12),
-                Text('Record waste/spillage'),
+                Text(AppLocalizations.of(context).recordWasteSpillage),
               ],
             ),
           ),
         PopupMenuItem(
           value: 'packs',
           child: Row(
-            children: const [
+            children: [
               Icon(Icons.inventory_2_outlined, size: 20),
               SizedBox(width: 12),
-              Text('Packs and cartons'),
+              Text(AppLocalizations.of(context).packsAndCartons),
             ],
           ),
         ),
-        const PopupMenuItem(
+        PopupMenuItem(
           value: 'barcode',
           child: Row(
             children: [
               Icon(Icons.qr_code_2_outlined, size: 20),
               SizedBox(width: 12),
-              Text('Assign internal barcode'),
+              Text(AppLocalizations.of(context).assignInternalBarcode),
             ],
           ),
         ),
-        const PopupMenuItem(
+        PopupMenuItem(
           value: 'print-barcode',
           child: Row(
             children: [
               Icon(Icons.print_outlined, size: 20),
               SizedBox(width: 12),
-              Text('Print barcode label'),
+              Text(AppLocalizations.of(context).printBarcodeLabel),
             ],
           ),
         ),
@@ -1834,7 +1833,7 @@ class _ProductPacksSheetState extends State<_ProductPacksSheet> {
     } catch (error) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Could not save pack: $error')),
+        SnackBar(content: Text(AppLocalizations.of(context).inventoryCouldNotSavePack(error))),
       );
     }
   }
@@ -1858,8 +1857,7 @@ class _ProductPacksSheetState extends State<_ProductPacksSheet> {
               if (_loading)
                 const LinearProgressIndicator()
               else if (_packs.isEmpty)
-                const Text(
-                    'No packs yet. Add a case, carton or bundle barcode.'),
+                Text(AppLocalizations.of(context).noPacksYetAddACaseCartonOrBundleBarcode),
               ..._packs.map((pack) => ListTile(
                     contentPadding: EdgeInsets.zero,
                     title: Text(pack.name),
@@ -1875,7 +1873,7 @@ class _ProductPacksSheetState extends State<_ProductPacksSheet> {
               FilledButton.icon(
                 onPressed: _add,
                 icon: const Icon(Icons.add),
-                label: const Text('Add pack'),
+                label: Text(AppLocalizations.of(context).addPack),
               ),
             ],
           ),
@@ -1927,7 +1925,7 @@ class _PackFormDialogState extends State<_PackFormDialog> {
 
   @override
   Widget build(BuildContext context) => AlertDialog(
-        title: const Text('Add pack or carton'),
+        title: Text(AppLocalizations.of(context).addPackOrCarton),
         content: Form(
           key: _formKey,
           child: SingleChildScrollView(
@@ -1971,8 +1969,8 @@ class _PackFormDialogState extends State<_PackFormDialog> {
         actions: [
           TextButton(
               onPressed: () => Navigator.of(context).pop(),
-              child: const Text('Cancel')),
-          FilledButton(onPressed: _save, child: const Text('Save')),
+              child: Text(AppLocalizations.of(context).cancel)),
+          FilledButton(onPressed: _save, child: Text(AppLocalizations.of(context).save)),
         ],
       );
 }
@@ -2672,7 +2670,7 @@ class _ProductEditorState extends State<_ProductEditor> {
           actions: [
             TextButton(
               onPressed: () => Navigator.pop(dialogContext, false),
-              child: const Text('Cancel'),
+              child: Text(AppLocalizations.of(context).cancel),
             ),
             FilledButton(
               onPressed: () => Navigator.pop(dialogContext, true),
@@ -3373,7 +3371,7 @@ class _ProductEditorState extends State<_ProductEditor> {
                 contentPadding: EdgeInsets.zero,
                 value: _trackExpiry,
                 onChanged: (value) => setState(() => _trackExpiry = value),
-                title: const Text('Track expiry dates'),
+                title: Text(AppLocalizations.of(context).trackExpiryDates),
                 subtitle: Text(_trackExpiry
                     ? 'Received stock needs an expiry date and sells oldest first.'
                     : 'Stock is not separated by expiry date.'),
@@ -3590,7 +3588,7 @@ class _AdjustDialogState extends State<_AdjustDialog> {
       actions: [
         TextButton(
             onPressed: () => Navigator.pop(context),
-            child: const Text('Cancel')),
+            child: Text(AppLocalizations.of(context).cancel)),
         FilledButton(
           onPressed: () => Navigator.pop(
               context, {'delta': _delta.text, 'reason': _reason.text}),
@@ -3694,7 +3692,7 @@ class _RepackNewDialogState extends State<_RepackNewDialog> {
   @override
   Widget build(BuildContext context) {
     return AlertDialog(
-      title: const Text('Repack to new product'),
+      title: Text(AppLocalizations.of(context).repackToNewProduct),
       content: SingleChildScrollView(
         child: Column(
           mainAxisSize: MainAxisSize.min,
@@ -3724,10 +3722,10 @@ class _RepackNewDialogState extends State<_RepackNewDialog> {
             DropdownButtonFormField<String>(
               initialValue: _unit,
               decoration: const InputDecoration(labelText: 'Unit'),
-              items: const [
-                DropdownMenuItem(value: 'each', child: Text('Each')),
-                DropdownMenuItem(value: 'kg', child: Text('Kilogram')),
-                DropdownMenuItem(value: 'litre', child: Text('Litre')),
+              items: [
+                DropdownMenuItem(value: 'each', child: Text(AppLocalizations.of(context).each)),
+                DropdownMenuItem(value: 'kg', child: Text(AppLocalizations.of(context).kilogram)),
+                DropdownMenuItem(value: 'litre', child: Text(AppLocalizations.of(context).litre)),
               ],
               onChanged: (value) => setState(() => _unit = value ?? 'each'),
             ),
@@ -3749,9 +3747,9 @@ class _RepackNewDialogState extends State<_RepackNewDialog> {
       actions: <Widget>[
         TextButton(
           onPressed: () => Navigator.pop(context),
-          child: const Text('Cancel'),
+          child: Text(AppLocalizations.of(context).cancel),
         ),
-        FilledButton(onPressed: _save, child: const Text('Create & repack')),
+        FilledButton(onPressed: _save, child: Text(AppLocalizations.of(context).createRepack)),
       ],
     );
   }

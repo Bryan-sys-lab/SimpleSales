@@ -218,18 +218,18 @@ class _ExpenseSheetState extends State<_ExpenseSheet> {
         DropdownButtonFormField<String>(
           initialValue: _paidFrom,
           isExpanded: true,
-          items: const <DropdownMenuItem<String>>[
+          items: <DropdownMenuItem<String>>[
             DropdownMenuItem<String>(
               value: 'till_cash',
-              child: Text('Till cash'),
+              child: Text(l10n.cashControlTillCash),
             ),
             DropdownMenuItem<String>(
               value: 'other',
-              child: Text('Other funds'),
+              child: Text(l10n.cashControlOtherFunds),
             ),
             DropdownMenuItem<String>(
               value: 'payable',
-              child: Text('Pay later'),
+              child: Text(l10n.cashControlPayLater),
             ),
           ],
           onChanged: _saving
@@ -334,11 +334,11 @@ class _ExpensePaymentSheetState extends State<_ExpensePaymentSheet> {
         DropdownButtonFormField<String>(
           initialValue: _method,
           isExpanded: true,
-          items: const <DropdownMenuItem<String>>[
-            DropdownMenuItem(value: 'cash', child: Text('Cash')),
-            DropdownMenuItem(value: 'mpesa', child: Text('M-Pesa')),
+          items: <DropdownMenuItem<String>>[
+            DropdownMenuItem(value: 'cash', child: Text(AppLocalizations.of(context).cashControlCash)),
+            DropdownMenuItem(value: 'mpesa', child: Text(AppLocalizations.of(context).cashControlMpesa)),
             DropdownMenuItem(
-                value: 'bank_transfer', child: Text('Bank transfer')),
+                value: 'bank_transfer', child: Text(AppLocalizations.of(context).cashControlBankTransfer)),
           ],
           onChanged:
               _saving ? null : (value) => setState(() => _method = value!),
@@ -353,7 +353,7 @@ class _ExpensePaymentSheetState extends State<_ExpensePaymentSheet> {
         FilledButton.icon(
           onPressed: _saving ? null : _save,
           icon: const Icon(Icons.check),
-          label: const Text('Record payment'),
+          label: Text(AppLocalizations.of(context).cashControlRecordPayment),
         ),
       ],
     );

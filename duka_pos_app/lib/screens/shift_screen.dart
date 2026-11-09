@@ -248,18 +248,18 @@ class _ShiftScreenState extends State<ShiftScreen>
       final proceed = await showDialog<bool>(
         context: context,
         builder: (dialogContext) => AlertDialog(
-          title: const Text('Held sales remain'),
+          title: Text(AppLocalizations.of(context).heldSalesRemain),
           content: Text(
             '${held.length} held sale(s) will remain saved after this shift closes.',
           ),
           actions: <Widget>[
             TextButton(
               onPressed: () => Navigator.pop(dialogContext, false),
-              child: const Text('Keep shift open'),
+              child: Text(AppLocalizations.of(context).keepShiftOpen),
             ),
             FilledButton(
               onPressed: () => Navigator.pop(dialogContext, true),
-              child: const Text('Close shift'),
+              child: Text(AppLocalizations.of(context).closeShift),
             ),
           ],
         ),
@@ -344,7 +344,7 @@ class _ShiftScreenState extends State<ShiftScreen>
     final reason = await showDialog<String>(
       context: context,
       builder: (context) => AlertDialog(
-        title: const Text('Open drawer'),
+        title: Text(AppLocalizations.of(context).openDrawer),
         content: TextField(
           controller: controller,
           autofocus: true,
@@ -354,10 +354,10 @@ class _ShiftScreenState extends State<ShiftScreen>
         actions: [
           TextButton(
               onPressed: () => Navigator.pop(context),
-              child: const Text('Cancel')),
+              child: Text(AppLocalizations.of(context).cancel)),
           FilledButton(
             onPressed: () => Navigator.pop(context, controller.text.trim()),
-            child: const Text('Open'),
+            child: Text(AppLocalizations.of(context).open),
           ),
         ],
       ),
@@ -428,13 +428,13 @@ class _ShiftScreenState extends State<ShiftScreen>
     await showDialog<void>(
       context: context,
       builder: (context) => AlertDialog(
-        title: const Text('X report preview'),
+        title: Text(AppLocalizations.of(context).xReportPreview),
         content: SingleChildScrollView(
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             mainAxisSize: MainAxisSize.min,
             children: [
-              Text('Live preview · no report number is used'),
+              Text(AppLocalizations.of(context).livePreviewNoReportNumberIsUsed),
               const SizedBox(height: 16),
               _xRow('Sales', '${report['sale_count']}'),
               _xRow('Gross sales',
@@ -456,7 +456,7 @@ class _ShiftScreenState extends State<ShiftScreen>
         actions: [
           TextButton(
               onPressed: () => Navigator.pop(context),
-              child: const Text('Done')),
+              child: Text(AppLocalizations.of(context).done)),
         ],
       ),
     );

@@ -476,22 +476,22 @@ class _ReceiveStockSheetState extends State<ReceiveStockSheet> {
                       decoration: const InputDecoration(
                         labelText: 'Tax evidence status',
                       ),
-                      items: const <DropdownMenuItem<String>>[
+                      items: <DropdownMenuItem<String>>[
                         DropdownMenuItem(
                           value: 'needs_review',
-                          child: Text('Needs review'),
+                          child: Text(AppLocalizations.of(context).receiveStockNeedsReview),
                         ),
                         DropdownMenuItem(
                           value: 'verified',
-                          child: Text('Verified'),
+                          child: Text(AppLocalizations.of(context).receiveStockVerified),
                         ),
                         DropdownMenuItem(
                           value: 'valid_exception',
-                          child: Text('Valid exception'),
+                          child: Text(AppLocalizations.of(context).receiveStockValidException),
                         ),
                         DropdownMenuItem(
                           value: 'unmatched',
-                          child: Text('Unmatched'),
+                          child: Text(AppLocalizations.of(context).receiveStockUnmatched),
                         ),
                       ],
                       onChanged: (value) {

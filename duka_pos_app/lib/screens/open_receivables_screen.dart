@@ -1,10 +1,8 @@
 import 'package:flutter/material.dart';
-import 'package:go_router/go_router.dart';
 
 import '../db/database_helper.dart';
 import '../models/credit.dart';
 import '../l10n/generated/app_localizations.dart';
-import '../routing/routes.dart';
 import '../theme/app_colors.dart';
 import '../theme/app_shapes.dart';
 import '../theme/app_spacing.dart';
@@ -78,7 +76,7 @@ class _OpenReceivablesScreenState extends State<OpenReceivablesScreen> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: <Widget>[
-            BackupReminderBanner(onBackupNow: () async {}),
+            BackupReminderBanner(onBackupNow: () => performBackup(context)),
             SizedBox(height: spacing.section),
             Row(
               children: <Widget>[
@@ -188,7 +186,7 @@ class _OpenReceivablesScreenState extends State<OpenReceivablesScreen> {
                                     .bodyMedium
                                     ?.copyWith(fontWeight: FontWeight.w700),
                               ),
-                              onTap: () => context.push(Routes.customers),
+                              onTap: null,
                             ),
                           );
                         },

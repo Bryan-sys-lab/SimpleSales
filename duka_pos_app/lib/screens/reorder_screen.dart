@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import '../l10n/generated/app_localizations.dart';
 import 'package:provider/provider.dart';
 import 'package:share_plus/share_plus.dart';
 
@@ -205,8 +206,8 @@ class _ReorderScreenState extends State<ReorderScreen> {
             .map((line) => '${line['product_name']}: ${((line['qty'] as num).toDouble() - ((line['received_qty'] as num?)?.toDouble() ?? 0))}')
             .join('\n')),
         actions: [
-          TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('Cancel')),
-          FilledButton(onPressed: () => Navigator.pop(context, true), child: const Text('Receive all remaining')),
+          TextButton(onPressed: () => Navigator.pop(context, false), child: Text(AppLocalizations.of(context).cancel)),
+          FilledButton(onPressed: () => Navigator.pop(context, true), child: Text(AppLocalizations.of(context).receiveAllRemaining)),
         ],
       ),
     );
@@ -242,11 +243,11 @@ class _ReorderScreenState extends State<ReorderScreen> {
   Widget build(BuildContext context) {
     final groups = _grouped;
     return Scaffold(
-      appBar: AppBar(title: const Text('Reorder suggestions')),
+      appBar: AppBar(title: Text(AppLocalizations.of(context).reorderSuggestions)),
       body: _loading
           ? const Center(child: CircularProgressIndicator())
           : groups.isEmpty
-              ? const Center(child: Text('No products are below their reorder level.'))
+              ? Center(child: Text(AppLocalizations.of(context).noProductsAreBelowTheirReorderLevel))
               : ListView(
                   padding: const EdgeInsets.all(16),
                   children: [
@@ -263,9 +264,9 @@ class _ReorderScreenState extends State<ReorderScreen> {
                             Text(supplier?.name ?? 'Supplier not linked',
                                 style: Theme.of(context).textTheme.titleMedium),
                             if (supplier == null)
-                              const Padding(
+                              Padding(
                                 padding: EdgeInsets.only(top: 6),
-                                child: Text('Link a supplier before creating an order.'),
+                                child: Text(AppLocalizations.of(context).linkASupplierBeforeCreatingAnOrder),
                               ),
                             ...lines.map((line) => ListTile(
                                   contentPadding: EdgeInsets.zero,
@@ -292,13 +293,13 @@ class _ReorderScreenState extends State<ReorderScreen> {
                                         : () => _saveSupplierOrder(supplier, lines,
                                             share: true),
                                     icon: const Icon(Icons.share_outlined),
-                                    label: const Text('Save & share'),
+                                    label: Text(AppLocalizations.of(context).saveShare),
                                   ),
                                   FilledButton(
                                     onPressed: _saving
                                         ? null
                                         : () => _saveSupplierOrder(supplier, lines),
-                                    child: const Text('Save draft'),
+                                    child: Text(AppLocalizations.of(context).saveDraft),
                                   ),
                                 ],
                               ),
@@ -317,7 +318,7 @@ class _ReorderScreenState extends State<ReorderScreen> {
                               subtitle: Text('Status: ${order['status']}'),
                               trailing: TextButton(
                                 onPressed: _saving ? null : () => _receiveOrder(order),
-                                child: const Text('Receive'),
+                                child: Text(AppLocalizations.of(context).receive),
                               ),
                             ),
                           )),

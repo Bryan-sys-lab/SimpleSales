@@ -121,24 +121,26 @@ class _TankDetailScreenState extends State<TankDetailScreen> {
       _tank = tankEntry;
 
       _tankSalesMinor = 0;
+      if (!mounted) return;
+      final l10n = AppLocalizations.of(context);
 
       // Build activity from the tank's own data.
       _activity = <TankActivityEntry>[
         TankActivityEntry(
-          label: 'Stock received',
+          label: l10n.tankDetailStockReceived,
           detail: 'Opening balance',
           value: '+${tankEntry.tankCount.toInt()} tanks',
           when: 'Today',
           icon: Icons.inventory,
-          onTap: () {},
+          onTap: null,
         ),
         TankActivityEntry(
-          label: 'Measured sales',
+          label: l10n.tankDetailMeasuredSales,
           detail: 'Pour sales this period',
           value: formatMoney(Money.fromMinor(_tankSalesMinor)),
           when: 'Last 30 days',
           icon: Icons.local_drink_outlined,
-          onTap: () {},
+          onTap: null,
         ),
       ];
 
@@ -162,7 +164,7 @@ class _TankDetailScreenState extends State<TankDetailScreen> {
   }
 
   Future<void> _recordMeasurement() async {
-    await context.push('/inventory/stocktake');
+    await context.push(Routes.stocktake);
     if (!mounted) return;
     await _load();
   }
@@ -180,7 +182,7 @@ class _TankDetailScreenState extends State<TankDetailScreen> {
     }
     if (_error != null) {
       return Scaffold(
-        appBar: AppBar(title: const Text('Tank detail')),
+        appBar: AppBar(title: Text(AppLocalizations.of(context).tankDetail)),
         body: ErrorStateView(
           message: _error!,
           onRetry: _load,
@@ -189,7 +191,7 @@ class _TankDetailScreenState extends State<TankDetailScreen> {
     }
     if (_tank == null) {
       return Scaffold(
-        appBar: AppBar(title: const Text('Tank detail')),
+        appBar: AppBar(title: Text(AppLocalizations.of(context).tankDetail)),
         body: const EmptyStateView(
           kind: EmptyKind.collection,
           title: 'No tank data',
@@ -549,11 +551,11 @@ class _TankStatCard extends StatelessWidget {
 class _TankActivityRow extends StatelessWidget {
   const _TankActivityRow({
     required this.entry,
-    required this.onTap,
+    this.onTap,
   });
 
   final TankActivityEntry entry;
-  final VoidCallback onTap;
+  final VoidCallback? onTap;
 
   @override
   Widget build(BuildContext context) {
@@ -562,7 +564,7 @@ class _TankActivityRow extends StatelessWidget {
     final TextTheme type = AppTypography.of(context);
 
     return Semantics(
-      button: true,
+      button: onTap != null,
       label: '${entry.label}, ${entry.value}, ${entry.when}',
       child: InkWell(
         onTap: onTap,
@@ -633,7 +635,7 @@ class TankActivityEntry {
     required this.value,
     required this.when,
     required this.icon,
-    required this.onTap,
+    this.onTap,
   });
 
   final String label;
@@ -641,7 +643,7 @@ class TankActivityEntry {
   final String value;
   final String when;
   final IconData icon;
-  final VoidCallback onTap;
+  final VoidCallback? onTap;
 }
 
 class _TankDetailSkeleton extends StatelessWidget {

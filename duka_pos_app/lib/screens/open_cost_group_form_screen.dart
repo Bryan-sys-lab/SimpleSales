@@ -64,7 +64,7 @@ class _OpenCostGroupFormScreenState extends State<OpenCostGroupFormScreen> {
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Could not create cost group: $e')),
+          SnackBar(content: Text(AppLocalizations.of(context).openCostGroupCouldNotCreate(e))),
         );
       }
     } finally {
@@ -152,7 +152,7 @@ class _OpenCostGroupFormScreenState extends State<OpenCostGroupFormScreen> {
                       width: 20,
                       child: CircularProgressIndicator(strokeWidth: 2),
                     )
-                  : const Text('Create cost group'),
+                  : Text(AppLocalizations.of(context).createCostGroup),
             ),
             SizedBox(height: spacing.section),
           ],

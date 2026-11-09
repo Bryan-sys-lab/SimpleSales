@@ -1,4 +1,5 @@
 import 'shop_profile.dart';
+import 'profile_capabilities.dart';
 
 /// Navigation capabilities for a shop profile.
 ///
@@ -22,40 +23,17 @@ class ProfileNavigation {
   final bool showLayby;
   final bool showJobs;
 
-  static ProfileNavigation forProfile(ShopProfile profile) => switch (profile) {
-        ShopProfile.drinks => const ProfileNavigation(
-            showInventory: true,
-            showMeasuredGoods: true,
-            showVariants: false,
-            showDrinkService: true,
-            showLayby: false,
-            showJobs: false,
-          ),
-        ShopProfile.duka => const ProfileNavigation(
-            showInventory: true,
-            showMeasuredGoods: true,
-            showVariants: false,
-            showDrinkService: false,
-            showLayby: false,
-            showJobs: false,
-          ),
-        ShopProfile.fashion => const ProfileNavigation(
-            showInventory: true,
-            showMeasuredGoods: false,
-            showVariants: true,
-            showDrinkService: false,
-            showLayby: true,
-            showJobs: false,
-          ),
-        ShopProfile.open => const ProfileNavigation(
-            showInventory: false,
-            showMeasuredGoods: false,
-            showVariants: false,
-            showDrinkService: false,
-            showLayby: false,
-            showJobs: true,
-          ),
-      };
+  static ProfileNavigation forProfile(ShopProfile profile) {
+    final c = profile.capabilities;
+    return ProfileNavigation(
+      showInventory: c.showInventory,
+      showMeasuredGoods: c.measuredGoods,
+      showVariants: c.variants,
+      showDrinkService: c.drinkService,
+      showLayby: c.layby,
+      showJobs: c.jobs,
+    );
+  }
 }
 
 extension ShopProfileNavigation on ShopProfile {

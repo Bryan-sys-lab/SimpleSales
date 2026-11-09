@@ -524,7 +524,7 @@ class _SellScreenState extends State<SellScreen>
         actions: <Widget>[
           TextButton(
             onPressed: () => Navigator.of(ctx).pop(),
-            child: const Text('Cancel'),
+            child: Text(AppLocalizations.of(context).cancel),
           ),
         ],
       ),
@@ -697,14 +697,14 @@ class _SellScreenState extends State<SellScreen>
             decoration: const InputDecoration(labelText: 'Amount'),
           ),
           actions: [
-            TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Cancel')),
+            TextButton(onPressed: () => Navigator.pop(ctx), child: Text(AppLocalizations.of(context).cancel)),
             FilledButton(
               onPressed: () {
                 final parsed = double.tryParse(controller.text.trim());
                 if (parsed == null || parsed <= 0) return;
                 Navigator.pop(ctx, parsed);
               },
-              child: const Text('Add'),
+              child: Text(AppLocalizations.of(context).add),
             ),
           ],
         ),
@@ -733,14 +733,14 @@ class _SellScreenState extends State<SellScreen>
               decoration: const InputDecoration(labelText: 'Amount'),
             ),
             actions: [
-              TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Cancel')),
+              TextButton(onPressed: () => Navigator.pop(ctx), child: Text(AppLocalizations.of(context).cancel)),
               FilledButton(
                 onPressed: () {
                   final parsed = double.tryParse(controller.text.trim());
                   if (parsed == null || parsed <= 0) return;
                   Navigator.pop(ctx, parsed);
                 },
-                child: const Text('Add'),
+                child: Text(AppLocalizations.of(context).add),
               ),
             ],
           ),
@@ -978,16 +978,16 @@ class _SellScreenState extends State<SellScreen>
     final attachCustomer = await showDialog<bool>(
       context: context,
       builder: (dialogContext) => AlertDialog(
-        title: const Text('Hold sale'),
-        content: const Text('Attach a customer to this held sale?'),
+        title: Text(AppLocalizations.of(context).holdSale),
+        content: Text(AppLocalizations.of(context).attachACustomerToThisHeldSale),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(dialogContext, false),
-            child: const Text('No customer'),
+            child: Text(AppLocalizations.of(context).noCustomer),
           ),
           FilledButton(
             onPressed: () => Navigator.pop(dialogContext, true),
-            child: const Text('Choose customer'),
+            child: Text(AppLocalizations.of(context).chooseCustomer),
           ),
         ],
       ),
@@ -1045,8 +1045,8 @@ class _SellScreenState extends State<SellScreen>
       showDragHandle: true,
       builder: (context) => SafeArea(
         child: held.isEmpty
-            ? const Padding(
-                padding: EdgeInsets.all(24), child: Text('No held sales'))
+            ? Padding(
+                padding: EdgeInsets.all(24), child: Text(AppLocalizations.of(context).noHeldSales))
             : ListView(
                 shrinkWrap: true,
                 children: [
@@ -1150,18 +1150,18 @@ class _SellScreenState extends State<SellScreen>
       final proceed = await showDialog<bool>(
         context: context,
         builder: (dialogContext) => AlertDialog(
-          title: const Text('Prices changed'),
+          title: Text(AppLocalizations.of(context).pricesChanged),
           content: const Text(
             'One or more held items have a different current price. The current prices will be used.',
           ),
           actions: <Widget>[
             TextButton(
               onPressed: () => Navigator.pop(dialogContext, false),
-              child: const Text('Keep held sale'),
+              child: Text(AppLocalizations.of(context).keepHeldSale),
             ),
             FilledButton(
               onPressed: () => Navigator.pop(dialogContext, true),
-              child: const Text('Use current prices'),
+              child: Text(AppLocalizations.of(context).useCurrentPrices),
             ),
           ],
         ),
@@ -1316,8 +1316,8 @@ class _SellScreenState extends State<SellScreen>
                   initialValue: reasonId,
                   decoration: const InputDecoration(labelText: 'Reason'),
                   items: [
-                    const DropdownMenuItem<int?>(
-                        value: null, child: Text('No reason')),
+                    DropdownMenuItem<int?>(
+                        value: null, child: Text(AppLocalizations.of(context).noReason)),
                     for (final row in reasons)
                       DropdownMenuItem<int?>(
                           value: row['id'] as int,
@@ -1332,14 +1332,14 @@ class _SellScreenState extends State<SellScreen>
           actions: [
             TextButton(
                 onPressed: () => Navigator.pop(context),
-                child: const Text('Cancel')),
+                child: Text(AppLocalizations.of(context).cancel)),
             FilledButton(
               onPressed: () {
                 final parsed = double.tryParse(amount.text.trim());
                 if (parsed == null || parsed < 0) return;
                 Navigator.pop(context, (Money.fromMajor(parsed), reasonId));
               },
-              child: const Text('Apply'),
+              child: Text(AppLocalizations.of(context).apply),
             ),
           ],
         ),
@@ -1399,7 +1399,7 @@ class _SellScreenState extends State<SellScreen>
       context: context,
       builder: (dialogContext) => StatefulBuilder(
         builder: (dialogContext, setDialogState) => AlertDialog(
-          title: const Text('Order discount'),
+          title: Text(AppLocalizations.of(context).orderDiscount),
           content: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
@@ -1418,8 +1418,8 @@ class _SellScreenState extends State<SellScreen>
                   initialValue: reasonId,
                   decoration: const InputDecoration(labelText: 'Reason'),
                   items: [
-                    const DropdownMenuItem<int?>(
-                        value: null, child: Text('No reason')),
+                    DropdownMenuItem<int?>(
+                        value: null, child: Text(AppLocalizations.of(context).noReason)),
                     for (final row in reasons)
                       DropdownMenuItem<int?>(
                         value: row['id'] as int,
@@ -1435,7 +1435,7 @@ class _SellScreenState extends State<SellScreen>
           actions: [
             TextButton(
               onPressed: () => Navigator.pop(dialogContext),
-              child: const Text('Cancel'),
+              child: Text(AppLocalizations.of(context).cancel),
             ),
             FilledButton(
               onPressed: () {
@@ -1444,7 +1444,7 @@ class _SellScreenState extends State<SellScreen>
                 Navigator.pop(
                     dialogContext, (Money.fromMajor(parsed), reasonId));
               },
-              child: const Text('Apply'),
+              child: Text(AppLocalizations.of(context).apply),
             ),
           ],
         ),
@@ -1578,12 +1578,12 @@ class _SellScreenState extends State<SellScreen>
                       child: Text(entry.value),
                     ),
                   if (incomingTillPayment != null)
-                    const DropdownMenuItem<String>(
+                    DropdownMenuItem<String>(
                       value: 'mpesa_till',
-                      child: Text('M-Pesa paid to till'),
+                      child: Text(AppLocalizations.of(context).mPesaPaidToTill),
                     ),
-                  const DropdownMenuItem<String>(
-                      value: 'split', child: Text('Split payment')),
+                  DropdownMenuItem<String>(
+                      value: 'split', child: Text(AppLocalizations.of(context).splitPayment)),
                   // On account, only when the shop sells credit and the
                   // signed-in person may offer it.
                   if (canSellOnAccount)
@@ -1620,7 +1620,7 @@ class _SellScreenState extends State<SellScreen>
                 ),
               ] else if (method == 'split') ...<Widget>[
                 const SizedBox(height: 12),
-                Text('First tender · remaining is paid by the second tender'),
+                Text(AppLocalizations.of(context).firstTenderRemainingIsPaidByTheSecondTender),
                 DropdownButtonFormField<String>(
                   initialValue: firstSplitMethod,
                   decoration: const InputDecoration(labelText: 'First tender'),
@@ -1684,7 +1684,7 @@ class _SellScreenState extends State<SellScreen>
                   ListTile(
                     contentPadding: EdgeInsets.zero,
                     leading: const Icon(Icons.account_balance_wallet_outlined),
-                    title: const Text('Incoming payment'),
+                    title: Text(AppLocalizations.of(context).incomingPayment),
                     subtitle: Text(
                       '${formatMoney(incomingTillPayment!.amount)} · '
                       '${incomingTillPayment.transactionId}'
@@ -1755,8 +1755,8 @@ class _SellScreenState extends State<SellScreen>
                         firstMoney.isNegative ||
                         secondMoney.isNegative) {
                       ScaffoldMessenger.of(dialogContext).showSnackBar(
-                          const SnackBar(
-                              content: Text('Tenders must equal the total.')));
+                          SnackBar(
+                              content: Text(AppLocalizations.of(context).tendersMustEqualTheTotal)));
                       return;
                     }
                     Navigator.pop(dialogContext, {
@@ -2092,9 +2092,8 @@ class _SellScreenState extends State<SellScreen>
         _announceStatus(
             'Sale could not be completed. Check stock and try again.');
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-              content: Text(
-                  'Couldn’t complete the sale. Check stock and try again.')),
+          SnackBar(
+              content: Text(AppLocalizations.of(context).couldnTCompleteTheSaleCheckStockAndTryAgain)),
         );
       }
     } finally {
@@ -2158,12 +2157,12 @@ class _SellScreenState extends State<SellScreen>
               OutlinedButton.icon(
                 onPressed: () => _shareSale(saleId),
                 icon: const Icon(Icons.share_outlined),
-                label: const Text('Share receipt'),
+                label: Text(AppLocalizations.of(context).shareReceipt),
               ),
               OutlinedButton.icon(
                 onPressed: () => _shareSalePdf(saleId),
                 icon: const Icon(Icons.picture_as_pdf_outlined),
-                label: const Text('Share PDF'),
+                label: Text(AppLocalizations.of(context).sharePdf),
               ),
               OutlinedButton.icon(
                 onPressed: () async {
@@ -2171,7 +2170,7 @@ class _SellScreenState extends State<SellScreen>
                   await _printReceipt(saleId, config);
                 },
                 icon: const Icon(Icons.print_outlined),
-                label: const Text('Print receipt'),
+                label: Text(AppLocalizations.of(context).printReceipt),
               ),
             ],
           ),
@@ -2648,9 +2647,8 @@ class _SellScreenState extends State<SellScreen>
                 'M-Pesa payment succeeded, but the local sale record needs attention.');
             if (!mounted) return;
             ScaffoldMessenger.of(context).showSnackBar(
-              const SnackBar(
-                  content: Text(
-                      'Payment succeeded. Local recording failed — contact support before reconciling reports.')),
+              SnackBar(
+                  content: Text(AppLocalizations.of(context).paymentSucceededLocalRecordingFailedContactSupportBeforeReconcilingReports)),
             );
             setState(() {
               _cart.clear();
@@ -2713,9 +2711,8 @@ class _SellScreenState extends State<SellScreen>
         _announceStatus(
             'M-Pesa payment could not be started. Check your connection and try again.');
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-              content: Text(
-                  'Payment could not be started. Check your connection and try again.')),
+          SnackBar(
+              content: Text(AppLocalizations.of(context).paymentCouldNotBeStartedCheckYourConnectionAndTryAgain)),
         );
       }
     } finally {
@@ -2746,7 +2743,7 @@ class _SellScreenState extends State<SellScreen>
             selectedCupId = cups.isEmpty ? null : cups.first.id;
           }
           return AlertDialog(
-            title: const Text('Sell shot'),
+            title: Text(AppLocalizations.of(context).sellShot),
             content: Column(
               mainAxisSize: MainAxisSize.min,
               children: <Widget>[
@@ -2777,7 +2774,7 @@ class _SellScreenState extends State<SellScreen>
             actions: <Widget>[
               TextButton(
                 onPressed: () => Navigator.pop(ctx),
-                child: const Text('Cancel'),
+                child: Text(AppLocalizations.of(context).cancel),
               ),
               FilledButton(
                 onPressed: () {
@@ -2787,7 +2784,7 @@ class _SellScreenState extends State<SellScreen>
                   );
                   Navigator.pop(ctx, cup);
                 },
-                child: const Text('Add'),
+                child: Text(AppLocalizations.of(context).add),
               ),
             ],
           );
@@ -2814,13 +2811,13 @@ class _SellScreenState extends State<SellScreen>
         String method = 'cash';
         return StatefulBuilder(builder: (context, setState) {
           return AlertDialog(
-            title: const Text('Quick sale'),
+            title: Text(AppLocalizations.of(context).quickSale),
             content: Column(mainAxisSize: MainAxisSize.min, children: [
               DropdownButtonFormField<Product?>(
                 initialValue: null,
                 decoration: const InputDecoration(labelText: 'Product (optional)'),
                 items: <DropdownMenuItem<Product?>>[
-                  const DropdownMenuItem<Product?>(value: null, child: Text('None / new')),
+                  DropdownMenuItem<Product?>(value: null, child: Text(AppLocalizations.of(context).noneNew)),
                   for (final Product p in _products)
                     DropdownMenuItem<Product?>(value: p, child: Text(p.name)),
                 ],
@@ -2862,7 +2859,7 @@ class _SellScreenState extends State<SellScreen>
               ),
             ]),
             actions: [
-              TextButton(onPressed: () => Navigator.pop(context), child: const Text('Cancel')),
+              TextButton(onPressed: () => Navigator.pop(context), child: Text(AppLocalizations.of(context).cancel)),
               FilledButton(
                 onPressed: () {
                   Navigator.pop(context, {
@@ -2873,7 +2870,7 @@ class _SellScreenState extends State<SellScreen>
                     'reference': referenceController.text.trim(),
                   });
                 },
-                child: const Text('Sell'),
+                child: Text(AppLocalizations.of(context).sell),
               ),
             ],
           );
@@ -2901,7 +2898,7 @@ class _SellScreenState extends State<SellScreen>
           final entered = await showDialog<double?>(
             context: context,
             builder: (context) => AlertDialog(
-              title: const Text('Is this a new product? Add cost price'),
+              title: Text(AppLocalizations.of(context).isThisANewProductAddCostPrice),
               content: TextField(
                 controller: costController,
                 decoration: const InputDecoration(labelText: 'Cost price (KES)'),
@@ -2909,13 +2906,13 @@ class _SellScreenState extends State<SellScreen>
                 autofocus: true,
               ),
               actions: [
-                TextButton(onPressed: () => Navigator.pop(context), child: const Text('Skip')),
+                TextButton(onPressed: () => Navigator.pop(context), child: Text(AppLocalizations.of(context).skip)),
                 FilledButton(
                   onPressed: () {
                     final v = double.tryParse(costController.text.trim());
                     Navigator.pop(context, v);
                   },
-                  child: const Text('Save'),
+                  child: Text(AppLocalizations.of(context).save),
                 ),
               ],
             ),
@@ -2953,9 +2950,9 @@ class _SellScreenState extends State<SellScreen>
       }
       if (!mounted) return;
       if (warnNoCost) {
-        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Cost not recorded; profit may be overstated.')));
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(AppLocalizations.of(context).costNotRecordedProfitMayBeOverstated)));
       } else {
-        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Quick sale recorded.')));
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(AppLocalizations.of(context).quickSaleRecorded)));
       }
     } catch (e) {
       if (!mounted) return;
@@ -3052,7 +3049,7 @@ class _SellScreenState extends State<SellScreen>
                     child: FilledButton.icon(
                       onPressed: _openQuickSale,
                       icon: const Icon(Icons.point_of_sale_outlined),
-                      label: const Text('Record sale amount'),
+                      label: Text(AppLocalizations.of(context).recordSaleAmount),
                     ),
                   ),
                 if (context.read<AppState>().shopProfile == ShopProfile.drinks &&
@@ -3066,7 +3063,7 @@ class _SellScreenState extends State<SellScreen>
                     child: FilledButton.icon(
                       onPressed: _sellShot,
                       icon: const Icon(Icons.local_drink_outlined),
-                      label: const Text('Sell shot'),
+                      label: Text(AppLocalizations.of(context).sellShot),
                     ),
                   ),
                 // Category chips: "All drinks" plus each distinct product
@@ -3179,7 +3176,7 @@ class _SellScreenState extends State<SellScreen>
                                     TextButton(
                                       onPressed: () =>
                                           setState(() => _cartOpen = false),
-                                      child: const Text('Add more products'),
+                                      child: Text(AppLocalizations.of(context).addMoreProducts),
                                     ),
                                   ],
                                 ),

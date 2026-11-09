@@ -21,9 +21,10 @@ const double _fashionProductFormMaxWidth = 900;
 /// (size, colour, SKU, barcode, stock, sell price, cost price, reorder level).
 /// Variants can be added one at a time — no forced size × colour matrix.
 class FashionProductFormScreen extends StatefulWidget {
-  const FashionProductFormScreen({super.key, this.product});
+  const FashionProductFormScreen({super.key, this.product, this.productId});
 
   final Product? product;
+  final int? productId;
 
   @override
   State<FashionProductFormScreen> createState() =>
@@ -39,17 +40,62 @@ class _FashionProductFormScreenState extends State<FashionProductFormScreen> {
 
   final List<_VariantEditor> _variants = [];
   bool _saving = false;
+  bool _loading = false;
+  Product? _product;
 
   @override
   void initState() {
     super.initState();
-    final p = widget.product;
-    if (p != null) {
-      _nameCtrl.text = p.name;
-      _categoryCtrl.text = p.category;
+    _product = widget.product;
+    if (_product != null) {
+      _nameCtrl.text = _product!.name;
+      _categoryCtrl.text = _product!.category;
     }
-    // Start with one empty variant.
-    _addVariant();
+    final int? pid = widget.productId ?? widget.product?.id;
+    if (pid != null) {
+      _loading = true;
+      _loadExisting(pid);
+    } else {
+      // Start with one empty variant.
+      _addVariant();
+    }
+  }
+
+  Future<void> _loadExisting(int pid) async {
+    try {
+      final db = DatabaseHelper.instance;
+      final p = await db.getProductById(pid);
+      if (!mounted) return;
+      if (p != null) {
+        _product = p;
+        _nameCtrl.text = p.name;
+        _categoryCtrl.text = p.category;
+      }
+      final variants = await db.getVariants(pid, activeOnly: false);
+      if (!mounted) return;
+      for (final v in _variants) {
+        v.dispose();
+      }
+      _variants.clear();
+      if (variants.isEmpty) {
+        _addVariant();
+      } else {
+        for (final v in variants) {
+          final e = _VariantEditor();
+          e.variantId = v.id;
+          e.productId = v.productId;
+          e.nameCtrl.text = v.name;
+          e.skuCtrl.text = v.sku;
+          e.stockCtrl.text = v.stockQty.toString();
+          e.sellPriceCtrl.text = v.sellPrice.asMajor.toString();
+          e.costPriceCtrl.text = v.costPrice.asMajor.toString();
+          e.reorderCtrl.text = v.reorderLevel.toString();
+          setState(() => _variants.add(e));
+        }
+      }
+    } finally {
+      if (mounted) setState(() => _loading = false);
+    }
   }
 
   @override
@@ -97,7 +143,7 @@ class _FashionProductFormScreenState extends State<FashionProductFormScreen> {
 
       final db = DatabaseHelper.instance;
       final product = Product(
-        id: widget.product?.id,
+        id: _product?.id,
         name: _nameCtrl.text.trim(),
         category: _categoryCtrl.text.trim(),
         costPrice: Money.zero,
@@ -118,6 +164,7 @@ class _FashionProductFormScreenState extends State<FashionProductFormScreen> {
 
       for (final vm in variantMaps) {
         await db.upsertVariant(ProductVariant(
+          id: vm['id'] as int?,
           productId: productId,
           name: vm['name'] as String,
           sku: vm['sku'] as String,
@@ -152,6 +199,9 @@ class _FashionProductFormScreenState extends State<FashionProductFormScreen> {
     final AppLocalizations l10n = AppLocalizations.of(context);
     final type = AppTypography.of(context);
 
+    if (_loading) {
+      return const Center(child: CircularProgressIndicator());
+    }
     return AdaptivePage(
       scrollable: true,
       maxContentWidth: _fashionProductFormMaxWidth,
@@ -159,7 +209,7 @@ class _FashionProductFormScreenState extends State<FashionProductFormScreen> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: <Widget>[
-          BackupReminderBanner(onBackupNow: () async {}),
+          BackupReminderBanner(onBackupNow: () => performBackup(context)),
           SizedBox(height: spacing.section),
           Row(
             children: <Widget>[
@@ -168,14 +218,14 @@ class _FashionProductFormScreenState extends State<FashionProductFormScreen> {
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: <Widget>[
                     Text(
-                      widget.product == null
+                      _product == null
                           ? l10n.fashionProductFormAddStyle
                           : l10n.fashionProductFormEditStyle,
                       style: AppTypography.of(context).headlineSmall,
                     ),
                     SizedBox(height: spacing.xs),
                     Text(
-                      widget.product == null
+                      _product == null
                           ? l10n.fashionProductFormAddStyleSubtitle
                           : l10n.fashionProductFormEditStyleSubtitle,
                       style: type.bodyMedium?.copyWith(
@@ -281,6 +331,8 @@ class _FashionProductFormScreenState extends State<FashionProductFormScreen> {
 
 /// One variant editor row: size, colour, SKU, barcode, stock, prices.
 class _VariantEditor {
+  int? variantId;
+  int? productId;
   final nameCtrl = TextEditingController();
   final sizeCtrl = TextEditingController();
   final colourCtrl = TextEditingController();
@@ -305,6 +357,8 @@ class _VariantEditor {
 
   Map<String, dynamic> toMap() {
     return {
+      'id': variantId,
+      'product_id': productId,
       'name': nameCtrl.text.trim(),
       'size': sizeCtrl.text.trim(),
       'colour': colourCtrl.text.trim(),

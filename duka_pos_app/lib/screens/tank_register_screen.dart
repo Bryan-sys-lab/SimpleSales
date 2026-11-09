@@ -144,7 +144,7 @@ class _TankRegisterScreenState extends State<TankRegisterScreen> {
     }
     if (_error != null) {
       return Scaffold(
-        appBar: AppBar(title: const Text('Tank register')),
+        appBar: AppBar(title: Text(AppLocalizations.of(context).tankRegister)),
         body: ErrorStateView(
           message: _error!,
           onRetry: _load,
@@ -194,29 +194,26 @@ class _TankRegisterScreenState extends State<TankRegisterScreen> {
             // Operations section.
             SectionHeader(
               label: l10n.tankRegisterSection,
-              trailing: TextButton(
-                onPressed: () => context.push(Routes.tankRegister),
-                child: const Text('History'),
-              ),
+              trailing: Text(l10n.tankRegisterHistory),
             ),
             SizedBox(height: spacing.sm),
             _TankRegisterOperationRow(
               icon: Icons.local_bar,
-              title: 'Tank inventory',
+              title: l10n.tankRegisterTankInventory,
               detail:
                   '${_totalTankCount.toInt()} tanks · ${_totalRemainingLitres.toStringAsFixed(0)} L remaining',
-              onTap: () {},
+              onTap: null,
             ),
             _TankRegisterOperationRow(
               icon: Icons.inventory_2_outlined,
-              title: 'Packaged beverages',
+              title: l10n.tankRegisterPackagedBeverages,
                   detail: '${_tanks.length} products · $_tanksNeedingAttention low stock',
-              onTap: () {},
+              onTap: null,
             ),
             _TankRegisterOperationRow(
               icon: Icons.local_drink_outlined,
-              title: 'Measured servings',
-              detail: '12 active pour definitions',
+              title: l10n.tankRegisterMeasuredServings,
+              detail: 'Open serving definitions',
               onTap: () => context.push(Routes.servings),
             ),
             SizedBox(height: spacing.sm),
@@ -245,7 +242,7 @@ class _TankRegisterScreenState extends State<TankRegisterScreen> {
             if (_tanks.isEmpty)
               Padding(
                 padding: const EdgeInsets.all(16),
-                child: Text('No tanks yet'),
+                child: Text(AppLocalizations.of(context).noTanksYet),
               ),
 
             // Receive stock button.
@@ -255,7 +252,7 @@ class _TankRegisterScreenState extends State<TankRegisterScreen> {
                 child: FilledButton.icon(
                   onPressed: _addTank,
                   icon: const Icon(Icons.add),
-                  label: const Text('Receive stock'),
+                  label: Text(AppLocalizations.of(context).receiveStock),
                 ),
               ),
           ],
@@ -279,7 +276,7 @@ class _TankRegisterScreenState extends State<TankRegisterScreen> {
       widget.onOpenTank!(tank);
       return;
     }
-    context.push('${Routes.tankDetail}/${tank.productId}');
+    context.push(Routes.tankDetail(tank.productId));
   }
 }
 
@@ -359,7 +356,7 @@ class _TankRegisterOperationRow extends StatelessWidget {
   final IconData icon;
   final String title;
   final String detail;
-  final VoidCallback onTap;
+  final VoidCallback? onTap;
 
   @override
   Widget build(BuildContext context) {
@@ -368,7 +365,7 @@ class _TankRegisterOperationRow extends StatelessWidget {
     final TextTheme type = AppTypography.of(context);
 
     return Semantics(
-      button: true,
+      button: onTap != null,
       label: '$title, $detail',
       child: InkWell(
         onTap: onTap,

@@ -23,6 +23,7 @@ import 'package:duka_pos/models/models.dart';
 import 'package:duka_pos/routing/app_redirect.dart';
 import 'package:duka_pos/routing/app_stage_controller.dart';
 import 'package:duka_pos/routing/routes.dart';
+import 'package:duka_pos/profile/shop_profile.dart';
 import 'package:duka_pos/services/analytics.dart';
 import 'package:duka_pos/services/app_stage.dart';
 import 'package:duka_pos/services/app_state.dart';
@@ -157,6 +158,7 @@ void main() {
           stage: AppStage.ready,
           canManageStock: false,
           isAdmin: false,
+          shopProfile: ShopProfile.duka,
         );
 
     test('a cashier may open the analytics screen', () {

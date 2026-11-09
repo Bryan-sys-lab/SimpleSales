@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import '../l10n/generated/app_localizations.dart';
 import 'package:provider/provider.dart';
 
 import '../db/database_helper.dart';
@@ -61,9 +62,9 @@ class _ProductDrilldownSheet extends StatelessWidget {
               );
             }
             if (snapshot.hasError) {
-              return const SizedBox(
+              return SizedBox(
                 height: 180,
-                child: Center(child: Text('Could not load product analytics.')),
+                child: Center(child: Text(AppLocalizations.of(context).productDrilldownCouldNotLoad)),
               );
             }
             final data = snapshot.data!;
@@ -111,7 +112,7 @@ class _ProductDrilldownSheet extends StatelessWidget {
                     ),
                   ],
                   SizedBox(height: spacing.xs),
-                  Text('Product detail for the selected period'),
+                  Text(AppLocalizations.of(context).productDrilldownDetailForPeriod),
                   SizedBox(height: spacing.lg),
                   Wrap(
                     spacing: spacing.lg,
@@ -141,7 +142,7 @@ class _ProductDrilldownSheet extends StatelessWidget {
                     ),
                   ],
                   SizedBox(height: spacing.lg),
-                  Text('Who sells it',
+                  Text(AppLocalizations.of(context).productDrilldownWhoSellsIt,
                       style: AppTypography.of(context).titleMedium),
                   for (final staff in data.staff)
                     ListTile(
@@ -152,7 +153,7 @@ class _ProductDrilldownSheet extends StatelessWidget {
                           formatMoney(Money.fromMinor(staff.revenueMinor))),
                     ),
                   SizedBox(height: spacing.md),
-                  Text('How customers pay',
+                  Text(AppLocalizations.of(context).productDrilldownHowCustomersPay,
                       style: AppTypography.of(context).titleMedium),
                   for (final payment in data.payments)
                     ListTile(
@@ -163,7 +164,7 @@ class _ProductDrilldownSheet extends StatelessWidget {
                     ),
                   if (data.hourly.isNotEmpty) ...[
                     SizedBox(height: spacing.md),
-                    Text('When it sells',
+                    Text(AppLocalizations.of(context).productDrilldownWhenItSells,
                         style: AppTypography.of(context).titleMedium),
                     for (final hour in data.hourly)
                       ListTile(
@@ -177,7 +178,7 @@ class _ProductDrilldownSheet extends StatelessWidget {
                   ],
                   if (data.boughtTogether.isNotEmpty) ...[
                     SizedBox(height: spacing.md),
-                    Text('Bought together',
+                    Text(AppLocalizations.of(context).productDrilldownBoughtTogether,
                         style: AppTypography.of(context).titleMedium),
                     for (final companion in data.boughtTogether)
                       ListTile(
@@ -189,7 +190,7 @@ class _ProductDrilldownSheet extends StatelessWidget {
                   ],
                   if (data.stockTimeline.isNotEmpty) ...[
                     SizedBox(height: spacing.md),
-                    Text('Stock timeline',
+                    Text(AppLocalizations.of(context).productDrilldownStockTimeline,
                         style: AppTypography.of(context).titleMedium),
                     for (final movement in data.stockTimeline)
                       ListTile(
@@ -204,7 +205,7 @@ class _ProductDrilldownSheet extends StatelessWidget {
                   ],
                   if (data.priceHistory.isNotEmpty) ...[
                     SizedBox(height: spacing.md),
-                    Text('Price and cost history',
+                    Text(AppLocalizations.of(context).productDrilldownPriceCostHistory,
                         style: AppTypography.of(context).titleMedium),
                     for (final point in data.priceHistory)
                       ListTile(
@@ -218,7 +219,7 @@ class _ProductDrilldownSheet extends StatelessWidget {
                   ],
                   if (data.records.isNotEmpty) ...[
                     SizedBox(height: spacing.md),
-                    Text('Transactions containing this product',
+                    Text(AppLocalizations.of(context).productDrilldownTransactionsContaining,
                         style: AppTypography.of(context).titleMedium),
                     for (final record in data.records)
                       ListTile(
@@ -227,7 +228,7 @@ class _ProductDrilldownSheet extends StatelessWidget {
                         title: Text(formatMoney(record.productSales)),
                         subtitle: Text(
                             '${record.createdAt} · ${record.staffName} · ${record.paymentMethod}'),
-                        trailing: Text('Sale ${formatMoney(record.saleTotal)}'),
+                        trailing: Text('${AppLocalizations.of(context).productDrilldownProductSale} ${formatMoney(record.saleTotal)}'),
                       ),
                   ],
                 ],
@@ -261,14 +262,14 @@ class _ProductDrilldownSheet extends StatelessWidget {
         await showDialog<void>(
           context: context,
           builder: (dialogContext) => AlertDialog(
-            title: const Text('Product sale'),
+            title: Text(AppLocalizations.of(context).productDrilldownProductSale),
             content: SingleChildScrollView(
               child: Text(_remoteSaleText(remote, record)),
             ),
             actions: [
               TextButton(
                 onPressed: () => Navigator.of(dialogContext).pop(),
-                child: const Text('Close'),
+                child: Text(AppLocalizations.of(context).productDrilldownClose),
               ),
             ],
           ),
@@ -276,7 +277,7 @@ class _ProductDrilldownSheet extends StatelessWidget {
       } catch (_) {
         if (!context.mounted) return;
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Could not load this remote sale.')),
+          SnackBar(content: Text(AppLocalizations.of(context).productDrilldownCouldNotLoadRemoteSale)),
         );
       }
       return;
@@ -285,7 +286,7 @@ class _ProductDrilldownSheet extends StatelessWidget {
     if (!context.mounted) return;
     if (sale == null) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('This sale is no longer on this till.')),
+        SnackBar(content: Text(AppLocalizations.of(context).productDrilldownSaleNoLongerOnTill)),
       );
       return;
     }

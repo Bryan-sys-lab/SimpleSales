@@ -225,7 +225,7 @@ class _ServingsScreenState extends State<ServingsScreen> {
     final Product? selected = await showDialog<Product>(
       context: context,
       builder: (context) => SimpleDialog(
-        title: const Text('Copy cup to product'),
+        title: Text(AppLocalizations.of(context).copyCupToProduct),
         children: <Widget>[
           for (final Product p in _products)
             SimpleDialogOption(
@@ -327,9 +327,9 @@ class _ServingsScreenState extends State<ServingsScreen> {
                       isDense: true,
                     ),
                     items: <DropdownMenuItem<int>>[
-                      const DropdownMenuItem<int>(
+                      DropdownMenuItem<int>(
                         value: null,
-                        child: Text('All products'),
+                        child: Text(AppLocalizations.of(context).allProducts),
                       ),
                       ..._productsWithServings.map((Product p) =>
                           DropdownMenuItem<int>(
@@ -638,7 +638,7 @@ class _ServingMenu extends StatelessWidget {
             ),
             PopupMenuItem<String>(
               value: 'copy',
-              child: Text('Copy to another product'),
+              child: Text(AppLocalizations.of(context).copyToAnotherProduct),
             ),
           ],
         ),

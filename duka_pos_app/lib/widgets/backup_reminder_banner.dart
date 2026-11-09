@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../services/excel_service.dart';
+import '../ui/components/operation_result.dart';
 import '../l10n/generated/app_localizations.dart';
 import '../theme/app_colors.dart';
 import '../ui/components/controls.dart';
@@ -98,5 +99,31 @@ class _BackupReminderBannerState extends State<BackupReminderBanner> {
         message: AppLocalizations.of(context).backupFailedMessage,
       );
     }
+  }
+}
+
+/// Shared backup/export workflow used by every [BackupReminderBanner] site so
+/// that "Back up now" performs a real backup everywhere instead of a no-op.
+Future<void> performBackup(BuildContext context) async {
+  final AppLocalizations l10n = AppLocalizations.of(context);
+  try {
+    final file = await ExcelService().exportEncryptedInventory();
+    await ExcelService().shareFile(file);
+    if (!context.mounted) return;
+    showOperationSuccess(
+      context,
+      title: l10n.settingsBackupDoneTitle,
+      message: l10n.settingsBackupDone,
+      detailIcon: Icons.backup_outlined,
+    );
+  } on Object {
+    if (!context.mounted) return;
+    showOperationFailure(
+      context,
+      title: l10n.settingsBackupFailedTitle,
+      message: l10n.settingsBackupFailed,
+      icon: Icons.backup_outlined,
+      onRetry: () => performBackup(context),
+    );
   }
 }

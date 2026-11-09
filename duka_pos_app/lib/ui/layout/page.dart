@@ -157,7 +157,7 @@ class AdaptiveGrid extends StatelessWidget {
 
     return LayoutBuilder(
       builder: (BuildContext context, BoxConstraints constraints) {
-        final double available = constraints.maxWidth - inset.horizontal;
+        final double available = constraints.maxWidth;
         final int columns = columnsFor(
           available: available,
           gap: gap,
@@ -165,21 +165,20 @@ class AdaptiveGrid extends StatelessWidget {
           maxColumns: maxColumns,
         );
 
-        return GridView.builder(
+        final double cellWidth =
+            (available - gap * (columns - 1)) / columns;
+        return Padding(
           padding: inset,
-          shrinkWrap: true,
-          physics: const NeverScrollableScrollPhysics(),
-          // The cell's height is derived from its width, not fixed: a taller
-          // number or a 200% text scale makes a taller cell, and a fixed height
-          // clips it.
-          gridDelegate: SliverGridDelegateWithMaxCrossAxisExtent(
-            maxCrossAxisExtent: available / columns,
-            mainAxisSpacing: gap,
-            crossAxisSpacing: gap,
-            childAspectRatio: 1.7,
-          ),
-          itemCount: itemCount,
-          itemBuilder: itemBuilder,
+          child: Wrap(
+            spacing: gap,
+            runSpacing: gap,
+          children: List<Widget>.generate(itemCount, (int index) {
+            return SizedBox(
+              width: cellWidth,
+              child: itemBuilder(context, index),
+            );
+          }),
+        ),
         );
       },
     );

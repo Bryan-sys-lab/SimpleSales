@@ -2,6 +2,7 @@ import 'package:duka_pos/routing/app_redirect.dart';
 import 'package:duka_pos/routing/app_stage_controller.dart';
 import 'package:duka_pos/routing/routes.dart';
 import 'package:duka_pos/services/app_stage.dart';
+import 'package:duka_pos/profile/shop_profile.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 /// The router's guard, tested as a PURE function.
@@ -16,24 +17,28 @@ AppStageSnapshot snapshot({
   bool canManageStock = true,
   bool? canViewReports,
   bool isAdmin = true,
+  ShopProfile shopProfile = ShopProfile.duka,
 }) =>
     AppStageSnapshot(
       stage: stage,
       canManageStock: canManageStock,
       canViewReports: canViewReports ?? canManageStock,
       isAdmin: isAdmin,
+      shopProfile: shopProfile,
     );
 
 String? guard(AppStage stage, String location,
         {bool canManageStock = true,
         bool? canViewReports,
-        bool isAdmin = true}) =>
+        bool isAdmin = true,
+        ShopProfile shopProfile = ShopProfile.duka}) =>
     appRedirect(
       snapshot: snapshot(
         stage: stage,
         canManageStock: canManageStock,
         canViewReports: canViewReports,
         isAdmin: isAdmin,
+        shopProfile: shopProfile,
       ),
       location: location,
     );

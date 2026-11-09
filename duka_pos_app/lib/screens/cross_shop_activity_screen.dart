@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import '../l10n/generated/app_localizations.dart';
 import 'package:provider/provider.dart';
 
 import '../db/database_helper.dart';
@@ -150,8 +151,8 @@ class _CrossShopActivityScreenState extends State<CrossShopActivityScreen> {
         if (!mounted) return;
         if (sale == null) {
           ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(
-                content: Text('This sale is no longer on this till.')),
+            SnackBar(
+                content: Text(AppLocalizations.of(context).crossShopSaleNoLongerOnTill)),
           );
           return;
         }
@@ -176,7 +177,7 @@ class _CrossShopActivityScreenState extends State<CrossShopActivityScreen> {
             actions: <Widget>[
               TextButton(
                 onPressed: () => Navigator.of(dialogContext).pop(),
-                child: const Text('Close'),
+                child: Text(AppLocalizations.of(context).crossShopClose),
               ),
             ],
           ),
@@ -184,7 +185,7 @@ class _CrossShopActivityScreenState extends State<CrossShopActivityScreen> {
       } catch (_) {
         if (!mounted) return;
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Could not load this sale.')),
+          SnackBar(content: Text(AppLocalizations.of(context).crossShopCouldNotLoadSale)),
         );
       }
       return;
@@ -200,7 +201,7 @@ class _CrossShopActivityScreenState extends State<CrossShopActivityScreen> {
         actions: <Widget>[
           TextButton(
             onPressed: () => Navigator.of(dialogContext).pop(),
-            child: const Text('Close'),
+            child: Text(AppLocalizations.of(context).crossShopClose),
           ),
         ],
       ),
@@ -212,7 +213,7 @@ class _CrossShopActivityScreenState extends State<CrossShopActivityScreen> {
     final colors = AppColors.of(context);
     return Scaffold(
       appBar: AppBar(
-        title: const Text('All shops activity'),
+        title: Text(AppLocalizations.of(context).crossShopAllShopsActivity),
         actions: <Widget>[
           IconButton(onPressed: _load, icon: const Icon(Icons.refresh))
         ],
@@ -295,13 +296,14 @@ class _CrossShopActivityScreenState extends State<CrossShopActivityScreen> {
                     'Showing local activity. Some linked shops may be offline or stale.'),
               ),
             if (_failed)
-              const Padding(
-                  padding: EdgeInsets.only(top: 24),
-                  child: Text('Could not read shop activity. Pull to retry.')),
+              Padding(
+                  padding: const EdgeInsets.only(top: 24),
+                  child: Text(AppLocalizations.of(context).crossShopCouldNotReadActivity)),
             if (!_loading && !_failed && _events.isEmpty)
               const Padding(
-                  padding: EdgeInsets.only(top: 32),
-                  child: Center(child: Text('No matching activity.'))),
+                padding: EdgeInsets.only(top: 24),
+                child: Center(child: Text('No matching activity.')),
+              ),
             ..._events.map((event) => Card(
                   color: colors.surface,
                   child: ListTile(
@@ -320,7 +322,7 @@ class _CrossShopActivityScreenState extends State<CrossShopActivityScreen> {
                 padding: const EdgeInsets.only(top: 12),
                 child: OutlinedButton(
                   onPressed: () => _load(append: true),
-                  child: const Text('Load more activity'),
+                  child: Text(AppLocalizations.of(context).crossShopLoadMoreActivity),
                 ),
               ),
           ],

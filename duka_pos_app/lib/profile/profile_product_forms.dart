@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import '../l10n/generated/app_localizations.dart';
 
 import 'shop_profile.dart';
 import '../models/models.dart';
@@ -55,7 +56,7 @@ class ProfileProductForms {
       context: context,
       builder: (context) => StatefulBuilder(
         builder: (context, setState) => AlertDialog(
-          title: const Text('Add drink'),
+          title: Text(AppLocalizations.of(context).profileFormAddDrink),
           content: SingleChildScrollView(
             child: Column(
               mainAxisSize: MainAxisSize.min,
@@ -72,11 +73,11 @@ class ProfileProductForms {
                 DropdownButtonFormField<String>(
                   initialValue: unit,
                   decoration: const InputDecoration(labelText: 'Unit'),
-                  items: const [
-                    DropdownMenuItem(value: 'bottle', child: Text('Bottle')),
-                    DropdownMenuItem(value: 'crate', child: Text('Crate')),
-                    DropdownMenuItem(value: 'keg', child: Text('Keg')),
-                    DropdownMenuItem(value: 'shot', child: Text('Shot')),
+                  items: [
+                    DropdownMenuItem(value: 'bottle', child: Text(AppLocalizations.of(context).profileFormBottle)),
+                    DropdownMenuItem(value: 'crate', child: Text(AppLocalizations.of(context).profileFormCrate)),
+                    DropdownMenuItem(value: 'keg', child: Text(AppLocalizations.of(context).profileFormKeg)),
+                    DropdownMenuItem(value: 'shot', child: Text(AppLocalizations.of(context).profileFormShot)),
                   ],
                   onChanged: (value) => setState(() => unit = value ?? 'bottle'),
                 ),
@@ -92,10 +93,10 @@ class ProfileProductForms {
                   DropdownButtonFormField<String?>(
                     initialValue: packType,
                     decoration: const InputDecoration(labelText: 'Pack type (optional)'),
-                    items: const [
-                      DropdownMenuItem(value: null, child: Text('Single bottle')),
-                      DropdownMenuItem(value: 'crate', child: Text('Crate of bottles')),
-                      DropdownMenuItem(value: 'carton', child: Text('Carton')),
+                    items: [
+                      DropdownMenuItem(value: null, child: Text(AppLocalizations.of(context).profileFormSingleBottle)),
+                      DropdownMenuItem(value: 'crate', child: Text(AppLocalizations.of(context).profileFormCrateOfBottles)),
+                      DropdownMenuItem(value: 'carton', child: Text(AppLocalizations.of(context).profileFormCarton)),
                     ],
                     onChanged: (value) => setState(() => packType = value),
                   ),
@@ -132,7 +133,7 @@ class ProfileProductForms {
           actions: [
             TextButton(
               onPressed: () => Navigator.pop(context),
-              child: const Text('Cancel'),
+              child: Text(AppLocalizations.of(context).profileFormCancel),
             ),
             FilledButton(
               onPressed: () {
@@ -163,7 +164,7 @@ class ProfileProductForms {
                   if (packType != null) 'pack_type': packType,
                 });
               },
-              child: const Text('Save'),
+              child: Text(AppLocalizations.of(context).profileFormSave),
             ),
           ],
         ),
@@ -193,7 +194,7 @@ class ProfileProductForms {
       context: context,
       builder: (context) => StatefulBuilder(
         builder: (context, setState) => AlertDialog(
-          title: const Text('Add product'),
+          title: Text(AppLocalizations.of(context).profileFormAddProduct),
           content: SingleChildScrollView(
             child: Column(
               mainAxisSize: MainAxisSize.min,
@@ -210,17 +211,17 @@ class ProfileProductForms {
                 DropdownButtonFormField<String>(
                   initialValue: unit,
                   decoration: const InputDecoration(labelText: 'Unit'),
-                  items: const [
-                    DropdownMenuItem(value: 'each', child: Text('Each')),
-                    DropdownMenuItem(value: 'kg', child: Text('Kilogram')),
-                    DropdownMenuItem(value: 'litre', child: Text('Litre')),
-                    DropdownMenuItem(value: 'pack', child: Text('Pack')),
-                    DropdownMenuItem(value: 'carton', child: Text('Carton')),
+                  items: [
+                    DropdownMenuItem(value: 'each', child: Text(AppLocalizations.of(context).profileFormEach)),
+                    DropdownMenuItem(value: 'kg', child: Text(AppLocalizations.of(context).profileFormKilogram)),
+                    DropdownMenuItem(value: 'litre', child: Text(AppLocalizations.of(context).profileFormLitre)),
+                    DropdownMenuItem(value: 'pack', child: Text(AppLocalizations.of(context).profileFormPack)),
+                    DropdownMenuItem(value: 'carton', child: Text(AppLocalizations.of(context).profileFormCarton)),
                   ],
                   onChanged: (value) => setState(() => unit = value ?? 'each'),
                 ),
                 CheckboxListTile(
-                  title: const Text('Track variants (sizes/colours)'),
+                  title: Text(AppLocalizations.of(context).profileFormTrackVariants),
                   value: trackVariants,
                   onChanged: (value) => setState(() => trackVariants = value ?? false),
                   controlAffinity: ListTileControlAffinity.leading,
@@ -251,7 +252,7 @@ class ProfileProductForms {
           actions: [
             TextButton(
               onPressed: () => Navigator.pop(context),
-              child: const Text('Cancel'),
+              child: Text(AppLocalizations.of(context).profileFormCancel),
             ),
             FilledButton(
               onPressed: () {
@@ -278,7 +279,7 @@ class ProfileProductForms {
                   'reorder_level': reorder ?? 5,
                 });
               },
-              child: const Text('Save'),
+              child: Text(AppLocalizations.of(context).profileFormSave),
             ),
           ],
         ),
@@ -324,7 +325,7 @@ class ProfileProductForms {
           }
 
           return AlertDialog(
-            title: const Text('Add fashion style'),
+            title: Text(AppLocalizations.of(context).profileFormAddFashionStyle),
             content: SingleChildScrollView(
               child: Column(
                 mainAxisSize: MainAxisSize.min,
@@ -349,7 +350,7 @@ class ProfileProductForms {
                     keyboardType: TextInputType.numberWithOptions(decimal: true),
                   ),
                   const SizedBox(height: 16),
-                  const Text('Variants', style: TextStyle(fontWeight: FontWeight.bold)),
+                  Text(AppLocalizations.of(context).profileFormVariants, style: TextStyle(fontWeight: FontWeight.bold)),
                   ...variants.asMap().entries.map((entry) {
                     final index = entry.key;
                     final variant = entry.value;
@@ -388,7 +389,7 @@ class ProfileProductForms {
                   OutlinedButton.icon(
                     onPressed: addVariant,
                     icon: const Icon(Icons.add),
-                    label: const Text('Add variant'),
+                    label: Text(AppLocalizations.of(context).profileFormAddVariant),
                   ),
                   if (variants.isEmpty)
                     TextField(
@@ -402,7 +403,7 @@ class ProfileProductForms {
             actions: [
               TextButton(
                 onPressed: () => Navigator.pop(context),
-                child: const Text('Cancel'),
+                child: Text(AppLocalizations.of(context).profileFormCancel),
               ),
               FilledButton(
                 onPressed: () {
@@ -426,7 +427,7 @@ class ProfileProductForms {
                     'variants': variants,
                   });
                 },
-                child: const Text('Save'),
+                child: Text(AppLocalizations.of(context).profileFormSave),
               ),
             ],
           );
@@ -455,7 +456,7 @@ class ProfileProductForms {
       context: context,
       builder: (context) => StatefulBuilder(
         builder: (context, setState) => AlertDialog(
-          title: const Text('Add item or service'),
+          title: Text(AppLocalizations.of(context).profileFormAddItemOrService),
           content: SingleChildScrollView(
             child: Column(
               mainAxisSize: MainAxisSize.min,
@@ -471,7 +472,7 @@ class ProfileProductForms {
                   keyboardType: TextInputType.numberWithOptions(decimal: true),
                 ),
                 CheckboxListTile(
-                  title: const Text('Track stock'),
+                  title: Text(AppLocalizations.of(context).profileFormTrackStock),
                   value: optionalStock,
                   onChanged: (value) => setState(() => optionalStock = value ?? false),
                   controlAffinity: ListTileControlAffinity.leading,
@@ -498,7 +499,7 @@ class ProfileProductForms {
           actions: [
             TextButton(
               onPressed: () => Navigator.pop(context),
-              child: const Text('Cancel'),
+              child: Text(AppLocalizations.of(context).profileFormCancel),
             ),
             FilledButton(
               onPressed: () {
@@ -520,7 +521,7 @@ class ProfileProductForms {
                   'optional_stock': optionalStock,
                 });
               },
-              child: const Text('Save'),
+              child: Text(AppLocalizations.of(context).profileFormSave),
             ),
           ],
         ),

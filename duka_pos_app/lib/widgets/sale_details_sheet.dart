@@ -152,12 +152,12 @@ class _SaleDetailsSheet extends StatelessWidget {
                 OutlinedButton.icon(
                   onPressed: () => _shareReceipt(context),
                   icon: const Icon(Icons.share_outlined),
-                  label: const Text('Share receipt'),
+                  label: Text(AppLocalizations.of(context).shareReceipt),
                 ),
                 OutlinedButton.icon(
                   onPressed: () => _shareReceiptPdf(),
                   icon: const Icon(Icons.picture_as_pdf_outlined),
-                  label: const Text('Share PDF'),
+                  label: Text(AppLocalizations.of(context).sharePdf),
                 ),
                 if (sale.id != null) ...<Widget>[
                   SizedBox(height: spacing.sm),
@@ -376,7 +376,7 @@ class _ReceiptShareHistoryState extends State<_ReceiptShareHistory> {
         return Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: <Widget>[
-            const Text('Shared receipts'),
+            Text(AppLocalizations.of(context).sharedReceipts),
             for (final share in active)
               ListTile(
                 contentPadding: EdgeInsets.zero,
@@ -388,7 +388,7 @@ class _ReceiptShareHistoryState extends State<_ReceiptShareHistory> {
                 subtitle: Text(share['expires_at'] as String? ?? 'No expiry'),
                 trailing: TextButton(
                   onPressed: () => _revoke(share),
-                  child: const Text('Revoke'),
+                  child: Text(AppLocalizations.of(context).revoke),
                 ),
               ),
           ],

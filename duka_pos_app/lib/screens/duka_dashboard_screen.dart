@@ -149,7 +149,7 @@ class DukaDashboardScreen extends StatelessWidget {
       onOpenInventory: onOpenInventory,
     );
 
-    final String addProductLabel = 'Add ${appState.shopProfile.terminology.product}';
+    final String addProductLabel = 'Add ${appState.shopProfile.terminologyLocalized(AppLocalizations.of(context)).product}';
 
     final Widget quickActions = _DukaDashboardQuickActions(
       onOpenSell: onOpenSell,

@@ -54,7 +54,8 @@ class _OpenDashboardScreenState extends State<OpenDashboardScreen>
   int _jobsAwaitingPayment = 0;
   int _overdueJobs = 0;
   int _costGroups = 0;
-  List<String> _recentJobs = const [];
+  List<({int id, String title})> _recentJobs = const [];
+  List<Map<String, dynamic>> _jobs = const [];
 
   @override
   Set<LiveReason> get liveReasons => const <LiveReason>{};
@@ -129,10 +130,37 @@ class _OpenDashboardScreenState extends State<OpenDashboardScreen>
         _jobsAwaitingPayment = awaiting;
         _overdueJobs = overdue;
         _costGroups = pools.length;
-        _recentJobs = jobs.take(3).map((j) => (j['title'] as String?) ?? '').toList();
+        _recentJobs = jobs.take(3).map((j) => (id: (j['id'] as num).toInt(), title: (j['title'] as String?) ?? '')).toList();
+        _jobs = jobs;
       });
     } catch (_) {
     }
+  }
+
+
+  Future<void> _pickJob(void Function(int jobId) onPicked) async {
+    if (_jobs.isEmpty) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(AppLocalizations.of(context).openDashboardNoJobs)),
+      );
+      return;
+    }
+    final picked = await showDialog<int>(
+      context: context,
+      builder: (ctx) => SimpleDialog(
+        title: Text(AppLocalizations.of(context).openDashboardSelectJob),
+        children: _jobs.map((j) {
+          final id = (j['id'] as num).toInt();
+          final title = (j['title'] as String?) ?? 'Untitled';
+          return SimpleDialogOption(
+            onPressed: () => Navigator.of(ctx).pop(id),
+            child: Text(title),
+          );
+        }).toList(),
+      ),
+    );
+    if (picked != null) onPicked(picked);
   }
 
   @override
@@ -140,7 +168,7 @@ class _OpenDashboardScreenState extends State<OpenDashboardScreen>
     final AppSpacing spacing = AppSpacing.of(context);
     final l10n = AppLocalizations.of(context);
     final appState = context.watch<AppState>();
-    final String addItemLabel = 'Add ${appState.shopProfile.terminology.product}';
+    final String addItemLabel = 'Add ${appState.shopProfile.terminologyLocalized(l10n).product}';
 
     return RefreshIndicator(
       onRefresh: _load,
@@ -151,7 +179,7 @@ class _OpenDashboardScreenState extends State<OpenDashboardScreen>
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: <Widget>[
-            BackupReminderBanner(onBackupNow: () async {}),
+            BackupReminderBanner(onBackupNow: () => performBackup(context)),
             SizedBox(height: spacing.section),
             _OpenBusinessHeader(
               shopName: appState.owner?.shopName ?? SimplePosBrand.appName,
@@ -181,15 +209,15 @@ class _OpenDashboardScreenState extends State<OpenDashboardScreen>
             SizedBox(height: spacing.xl),
             _OpenQuickActions(
               onNewJob: () => context.push(Routes.openJobNew),
-              onRecordPayment: () => context.push(Routes.openJobs),
-              onRecordSale: () => context.push(Routes.openSell),
-              onAddJobCost: () => context.push(Routes.openJobs),
-              onNewCostGroup: () => context.push(Routes.openNewCostGroup),
+              onRecordPayment: () => _pickJob((id) => context.push(Routes.openJobDetail(id))),
+              onRecordSale: () => context.push(Routes.sell),
+              onAddJobCost: () => _pickJob((id) => context.push(Routes.openJobAddCost(id))),
+              onNewCostGroup: () => context.push(Routes.openCostGroupNew),
               onAddItem: () => _openAddItem(context),
               addItemLabel: addItemLabel,
-              canManageJobs: appState.canManageStock,
+              canManageJobs: appState.hasPermission(PermissionKey.manageJobs),
               canReceivePayments:
-                  appState.hasPermission(PermissionKey.receiveStock),
+                  appState.hasPermission(PermissionKey.receiveJobPayment),
               canRecordSales:
                   appState.isOwnerSession ||
                       appState.role == ShopRole.manager,
@@ -827,7 +855,7 @@ class _OpenRecentActivity extends StatelessWidget {
   });
 
   final String title;
-  final List<String> recent;
+  final List<({int id, String title})> recent;
   final VoidCallback onOpenJob;
 
   @override
@@ -866,10 +894,13 @@ class _OpenRecentActivity extends StatelessWidget {
             physics: const NeverScrollableScrollPhysics(),
             itemCount: recent.length,
             itemBuilder: (_, i) {
+              final entry = recent[i];
               return Padding(
                 padding: EdgeInsets.only(bottom: spacing.sm),
-                child: Row(
-                  children: <Widget>[
+                child: InkWell(
+                  onTap: () => context.push(Routes.openJobDetail(entry.id)),
+                  child: Row(
+                    children: <Widget>[
                     Container(
                       padding: EdgeInsets.all(spacing.xs),
                       decoration: BoxDecoration(
@@ -885,11 +916,12 @@ class _OpenRecentActivity extends StatelessWidget {
                     SizedBox(width: spacing.md),
                     Expanded(
                       child: Text(
-                        recent[i],
+                        entry.title,
                         style: type.bodyMedium,
                       ),
                     ),
                   ],
+                ),
                 ),
               );
             },
