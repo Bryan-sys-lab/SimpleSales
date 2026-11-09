@@ -2,12 +2,8 @@
 // Run: npx prisma generate
 
 generator client {
-  provider      = "prisma-client-js"
-  // The shipped backend and Cloudflare Container image use Debian with
-  // OpenSSL 3. Keep the target explicit so CI and deployment builds do not
-  // download the retired OpenSSL 1.1 engine or select a host-dependent
-  // "native" engine.
-  binaryTargets = ["debian-openssl-3.0.x"]
+  provider        = "prisma-client-js"
+  previewFeatures = ["driverAdapters"]
 }
 
 datasource db {

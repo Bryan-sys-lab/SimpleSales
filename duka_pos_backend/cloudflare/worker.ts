@@ -44,6 +44,12 @@ export class BackendContainer extends DurableObject<BackendEnv> {
         APP_VERSION_CODE: this.env.APP_VERSION_CODE, APP_DOWNLOAD_URL: this.env.APP_DOWNLOAD_URL,
         APP_UPDATE_REQUIRED: this.env.APP_UPDATE_REQUIRED, APP_RELEASE_NOTES: this.env.APP_RELEASE_NOTES,
         ...(this.env.APP_RELEASE_REPOSITORY ? { APP_RELEASE_REPOSITORY: this.env.APP_RELEASE_REPOSITORY } : {}),
+        EMAIL_VERIFICATION_SECRET: this.env.EMAIL_VERIFICATION_SECRET,
+        CLOUDFLARE_ACCOUNT_ID: this.env.CLOUDFLARE_ACCOUNT_ID,
+        CLOUDFLARE_API_TOKEN: this.env.CLOUDFLARE_API_TOKEN,
+        ...(this.env.CLOUDFLARE_EMAIL_FROM ? { CLOUDFLARE_EMAIL_FROM: this.env.CLOUDFLARE_EMAIL_FROM } : {}),
+        ...(this.env.VERIFICATION_DEBUG_CODES ? { VERIFICATION_DEBUG_CODES: this.env.VERIFICATION_DEBUG_CODES } : {}),
+        ...(this.env.APP_NAME ? { APP_NAME: this.env.APP_NAME } : {}),
       },
     });
     await container.setInactivityTimeout(10 * 60 * 1000);
