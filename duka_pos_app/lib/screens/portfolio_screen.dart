@@ -327,19 +327,9 @@ class PortfolioPanel extends StatelessWidget {
                     ),
                   ),
               ],
-              child: OutlinedButton.icon(
-                onPressed: () {},
-                icon: const Icon(Icons.date_range, size: 18),
-                label: Text(switch (range) {
-                  PortfolioRange.week => l10n.portfolioRangeWeek,
-                  PortfolioRange.month => l10n.portfolioRangeMonth,
-                  PortfolioRange.quarter => l10n.portfolioRangeQuarter,
-                  PortfolioRange.year => '1 year',
-                }),
-              ),
             ),
           ),
-          // The reload indicator, inline: a reloading view is still readable,
+          // The reload indicator,
           // and the figures on screen stay visible while the cross-shop read
           // runs — a spinner in their place would flash values the owner is
           // reading right now.

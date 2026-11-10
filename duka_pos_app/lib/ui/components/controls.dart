@@ -242,7 +242,7 @@ class SelectablePill extends StatelessWidget {
           child: InkWell(
             onTap: onTap,
             child: Container(
-              constraints: const BoxConstraints(minHeight: 32),
+              constraints: const BoxConstraints(minHeight: 44),
               padding: EdgeInsets.symmetric(
                 horizontal: spacing.md,
                 vertical: spacing.xs,

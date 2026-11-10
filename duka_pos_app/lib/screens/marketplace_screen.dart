@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import '../services/plugin_registry.dart';
 import '../l10n/generated/app_localizations.dart';
 import '../theme/app_colors.dart';
+import '../theme/app_shapes.dart';
 import '../theme/app_spacing.dart';
 import '../theme/typography.dart';
 
@@ -48,9 +49,22 @@ class MarketplaceScreen extends StatelessWidget {
                           Icon(_iconFor(plugin.category), color: colors.accent),
                       title: Text(plugin.name),
                       subtitle: Text(plugin.description),
-                      trailing: OutlinedButton(
-                        onPressed: null,
-                        child: Text(l10n.marketplaceComingSoon),
+                      trailing: Container(
+                        padding: EdgeInsets.symmetric(
+                          horizontal: spacing.sm,
+                          vertical: spacing.xs,
+                        ),
+                        decoration: BoxDecoration(
+                          color: colors.surfaceSunken,
+                          borderRadius: AppShapes.of(context).controlRadius,
+                        ),
+                        child: Text(
+                          l10n.marketplaceComingSoon,
+                          style: text.labelMedium?.copyWith(
+                            color: colors.onSurfaceMuted,
+                            fontWeight: FontWeight.w600,
+                          ),
+                        ),
                       ),
                     ),
                   ),
