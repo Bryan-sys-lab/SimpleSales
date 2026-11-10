@@ -98,9 +98,6 @@
 			</array>
 		</dict>
 	</array>
-	<!-- flutter_appauth captures the callback in-app via the
-	     FlutterDeepLinkingEnabled forwardInvocation flag rather than
-	     AppDelegate, so no AppDelegate URL handling is required. -->
 	<key>FlutterDeepLinkingEnabled</key>
 	<true/>
 </dict>

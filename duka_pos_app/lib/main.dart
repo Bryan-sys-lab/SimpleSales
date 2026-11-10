@@ -6,6 +6,7 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:provider/single_child_widget.dart';
 import 'package:sentry_flutter/sentry_flutter.dart';
+import 'package:workmanager/workmanager.dart';
 
 import 'app_brand.dart';
 import 'l10n/generated/app_localizations.dart';
@@ -23,6 +24,7 @@ import 'services/failure_recorder.dart';
 import 'theme/app_theme.dart';
 import 'services/app_release.dart';
 import 'routing/routes.dart';
+import 'services/auto_backup_worker.dart';
 
 /// Sentry DSN for crash reporting - get from https://sentry.io
 const String sentryDsn = String.fromEnvironment(
@@ -114,6 +116,14 @@ Future<void> main() async {
       debugPrint('Crash reporting disabled (invalid SENTRY_DSN): $error');
     }
   }
+  // WorkManager headless callback for automatic backups that survive process
+  // death. Initialized before runApp so the six-hourly cycle can fire even
+  // when Android kills or suspends the till.
+  Workmanager().initialize(
+    autoBackupDispatcher,
+    isInDebugMode: !kReleaseMode,
+  );
+
   runApp(const DukaPosApp());
 }
 

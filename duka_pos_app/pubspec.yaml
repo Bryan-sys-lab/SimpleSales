@@ -98,6 +98,11 @@ dependencies:
   # supported"), failing :sentry_flutter:compileDebugKotlin. 9.x is the line
   # that supports Kotlin 2.x.
   sentry_flutter: ^10.1.0
+
+  # Durable background scheduling for automatic backups. The in-process timer
+  # in AutoSyncService fires while the till is running; WorkManager keeps the
+  # six-hour cycle alive when Android kills or suspends the process.
+  workmanager: ^0.5.2
   
   # Update checker (for sideloaded APKs)
   package_info_plus: ^10.2.1

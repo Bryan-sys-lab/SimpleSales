@@ -72,6 +72,19 @@
          modern handset and the updater could never install anything — a
          feature that looked present in the code and was dead in the field. -->
 
+    <!-- DISTRIBUTION CHANNEL DECISION (F-07):
+         REQUEST_INSTALL_PACKAGES is required by the custom APK updater so a
+         downloaded release can be handed to Android's package installer.
+         - Google Play: Play policy limits this permission to apps whose core
+           purpose is package installation/management. A POS app does not
+           obviously qualify. For Play distribution, remove this permission
+           and use Play Core in-app updates instead.
+         - Direct / enterprise APK: keep this permission; the update flow is
+           user-initiated and the user explicitly authorizes unknown-app
+           installation in Android settings.
+         Do not bundle this permission into a universal artifact unless the
+         selected channel is documented and approved. -->
+
     <uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES"
         android:minSdkVersion="26"/>
 
@@ -130,5 +143,15 @@
         <meta-data
             android:name="flutterEmbedding"
             android:value="2" />
+
+        <!-- WorkManager headless service for automatic backups that survive
+             process death. Required by the workmanager Flutter plugin so the
+             six-hourly backup cycle can fire even when Android kills the app. -->
+        <service
+            android:name="com.ohanin.workmanager.HeadlessJobService"
+            android:permission="android.permission.BIND_JOB_SERVICE"
+            android:exported="false">
+        </service>
+
     </application>
 </manifest>

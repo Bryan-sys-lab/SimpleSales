@@ -71,7 +71,10 @@ android {
         // minSdk explicitly set to 26 because sentry_flutter requires API 26+.
         // This is higher than Flutter's default (24) but required by the Sentry SDK.
         minSdk = 26
-        targetSdk = flutter.targetSdkVersion
+        // Google Play requires API 36+ for new releases as of August 2026.
+        // Pin a floor so a Flutter upgrade can never silently ship a lower
+        // target SDK, while still respecting Flutter if it targets higher.
+        targetSdk = maxOf(flutter.targetSdkVersion, 36)
         // Uses the version code from pubspec.yaml. When using split APKs, 1000 * ABI_VERSION
         // is added automatically by Flutter. (https://developer.android.com/studio/build/configure-apk-splits#configure-APK-versions)
         // You can force using the value of versionCode by specifying the `-P force-version-code-ignoring-abi=true`
@@ -79,22 +82,9 @@ android {
         versionCode = flutter.versionCode
         versionName = flutter.versionName
 
-        // The AppAuth library's own manifest declares its callback activity with
-        // `android:scheme="${appAuthRedirectScheme}"`. The app must supply that
-        // placeholder or manifest merging fails outright:
-        //   :app:processDebugMainManifest — "requires a placeholder substitution
-        //   but no value for <appAuthRedirectScheme> is provided"
-        //
-        // It must be the scheme of OIDC_REDIRECT_URL (see lib/services/
-        // oidc_service.dart and the release workflow's OIDC_REDIRECT_URL secret),
-        // lowercase, and must match the redirect registered on the Keycloak
-        // client. The default below matches OIDC_REDIRECT_URL's own default.
-        //
-        // Overridable with -PappAuthRedirectScheme=... so changing the redirect
-        // scheme does not require editing this file, and so the release workflow
-        // can keep the two in step.
-        manifestPlaceholders["appAuthRedirectScheme"] =
-            providers.gradleProperty("appAuthRedirectScheme").getOrElse("dukapos")
+        // The app uses backend-managed REST authentication
+        // (lib/services/identity_service.dart), not OIDC/AppAuth. No
+        // appAuthRedirectScheme manifest placeholder is required.
     }
 
     signingConfigs {

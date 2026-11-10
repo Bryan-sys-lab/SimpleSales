@@ -235,6 +235,7 @@ jobs:
         env:
           SENTRY_DSN: ${{ secrets.SENTRY_DSN }}
           BACKEND_URL: ${{ secrets.BACKEND_URL }}
+          DEPLOYMENT_MODE: ${{ vars.DEPLOYMENT_MODE || 'local_only' }}
         run: |
           set -euo pipefail
 
@@ -242,7 +243,29 @@ jobs:
             echo "::warning::SENTRY_DSN is not set; this build ships without crash reporting."
           fi
 
-          echo "Connected release configuration validated."
+          # DEPLOYMENT_MODE selects whether this build expects a backend.
+          #   local_only  — no backend expected; connected features disabled at the point of use.
+          #   connected   — a valid HTTPS backend URL is required; CI rejects placeholder/missing URLs.
+          case "${DEPLOYMENT_MODE}" in
+            connected)
+              if [ -z "${BACKEND_URL:-}" ]; then
+                echo "::error::DEPLOYMENT_MODE=connected but BACKEND_URL is unset. Connected releases require a real backend."
+                exit 1
+              fi
+              case "${BACKEND_URL}" in
+                https://your-backend/api|https://localhost*|http://*)
+                  echo "::error::DEPLOYMENT_MODE=connected but BACKEND_URL is a placeholder or insecure URL: ${BACKEND_URL}"
+                  exit 1
+                  ;;
+              esac
+              echo "offline_only=false" >> "$GITHUB_OUTPUT"
+              echo "Connected release configured against ${BACKEND_URL}."
+              ;;
+            local_only|*)
+              echo "offline_only=true" >> "$GITHUB_OUTPUT"
+              echo "Local-only build: no backend URL required. Connected features (M-Pesa, sync, KRA receipts) are disabled at the point of use."
+              ;;
+          esac
 
       - name: Build signed release APK
         shell: bash
@@ -278,6 +301,7 @@ jobs:
           }
           add_define SENTRY_DSN "$SENTRY_DSN"
           add_define BACKEND_URL "$BACKEND_URL"
+          add_define DEPLOYMENT_MODE "${DEPLOYMENT_MODE:-local_only}"
 
           echo "dart-defines injected: ${#defines[@]}"
           flutter build apk --release ${defines[@]+"${defines[@]}"}

@@ -5,10 +5,12 @@ import 'dart:math';
 import 'package:flutter/foundation.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:workmanager/workmanager.dart';
 import 'backend_service.dart';
 import 'excel_service.dart';
 import 'owner_business_sync_service.dart';
 import 'workspace_service.dart';
+import 'auto_backup_worker.dart';
 
 /// Best-effort, opt-in online sync. Offline work never waits for this timer
 /// and mobile OS background execution is not assumed; a retry occurs while
@@ -34,8 +36,41 @@ class AutoSyncService {
   /// UTC ISO-8601 time at which the next backup is due. Persisted so a process
   /// restart can recompute the schedule rather than restarting the interval.
   static const _nextDueKey = 'automatic_backup_next_due';
-  static Timer? _timer;
-  static bool _running = false;
+static Timer? _timer;
+static bool _running = false;
+
+/// WorkManager task name for the six-hour automatic backup cycle.
+static const _workManagerTask = 'autoBackup';
+
+/// Registers a six-hourly periodic WorkManager request so backups fire even
+/// after Android kills or suspends the app process. Safe to call repeatedly;
+/// re-registering replaces the previous request.
+static Future<void> registerWorkManager() async {
+  // Idempotent headless-isolate initializer. Safe to call more than once.
+  Workmanager().initialize(
+    autoBackupDispatcher,
+    isInDebugMode: !kReleaseMode,
+  );
+  await Workmanager().registerPeriodicTask(
+    'auto_backup',
+    _workManagerTask,
+    frequency: const Duration(hours: 6),
+    existingWorkPolicy: ExistingWorkPolicy.replace,
+    constraints: Constraints(
+      networkType: NetworkType.connected,
+    ),
+  );
+}
+
+/// Cancels the WorkManager periodic backup task. Called when automatic
+/// backups are disabled so a dead task does not sit in the queue.
+static Future<void> cancelWorkManager() async {
+  try {
+    await Workmanager().cancelByUniqueName('auto_backup');
+  } on Object {
+    // Ignore: nothing scheduled is not a failure.
+  }
+}
 
   static Future<String> _enabledKeyForActiveWorkspace() async =>
       '$_enabledKey@${await WorkspaceService.activeWorkspaceKey()}';
@@ -97,6 +132,7 @@ class AutoSyncService {
       unawaited(runNow());
     }
     _schedule();
+    await registerWorkManager();
     // Re-opening a till is a sync opportunity, but every till in a shop often
     // opens at the same time. A small per-process jitter prevents a fleet of
     // tills returning after an outage from stampeding the API together.
@@ -109,10 +145,12 @@ class AutoSyncService {
     await prefs.setBool(key, value);
     if (value) {
       _schedule();
+      await registerWorkManager();
       await runNow();
     } else {
       _timer?.cancel();
       _timer = null;
+      await cancelWorkManager();
     }
   }
 
