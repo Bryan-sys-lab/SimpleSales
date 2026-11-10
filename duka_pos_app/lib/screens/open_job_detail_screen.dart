@@ -113,6 +113,7 @@ class _OpenJobDetailScreenState extends State<OpenJobDetailScreen> {
     final amountController = TextEditingController();
     final referenceController = TextEditingController();
     String method = 'cash';
+    bool paymentVerified = false;
     final result = await showDialog<Map<String, String>>(
       context: context,
       builder: (ctx) => StatefulBuilder(
@@ -142,12 +143,24 @@ class _OpenJobDetailScreenState extends State<OpenJobDetailScreen> {
                 controller: referenceController,
                 decoration: const InputDecoration(labelText: 'Reference (optional)'),
               ),
+              if (method != 'cash') ...<Widget>[
+                const SizedBox(height: 12),
+                CheckboxListTile(
+                  title: Text('I have verified this payment was received'),
+                  subtitle: const Text(
+                    'Do not record unless you have confirmation (e.g. M-Pesa SMS, bank notification)',
+                  ),
+                  value: paymentVerified,
+                  onChanged: (v) => setState(() => paymentVerified = v ?? false),
+                  controlAffinity: ListTileControlAffinity.leading,
+                ),
+              ],
             ],
           ),
           actions: <Widget>[
             TextButton(onPressed: () => Navigator.pop(ctx), child: Text(l10n.actionCancel)),
             FilledButton(
-              onPressed: () => Navigator.pop(ctx, <String, String>{
+              onPressed: method != 'cash' && !paymentVerified ? null : () => Navigator.pop(ctx, <String, String>{
                 'amount': amountController.text.trim(),
                 'method': method,
                 'reference': referenceController.text.trim(),
