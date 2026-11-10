@@ -13936,6 +13936,7 @@ SELECT name FROM staff GROUP BY name HAVING COUNT(*) = 1
       return paymentId;
     });
   }
+    Future<int> recordOwnerTransaction({
     required String uuid,
     required String transactionType,
     required Money amount,
