@@ -24,14 +24,14 @@ class ProfileNavigation {
   final bool showJobs;
 
   static ProfileNavigation forProfile(ShopProfile profile) {
-    final c = profile.capabilities;
+    final d = ProfileDefinition.forProfile(profile);
     return ProfileNavigation(
-      showInventory: c.showInventory,
-      showMeasuredGoods: c.measuredGoods,
-      showVariants: c.variants,
-      showDrinkService: c.drinkService,
-      showLayby: c.layby,
-      showJobs: c.jobs,
+      showInventory: d.showInventory,
+      showMeasuredGoods: d.measuredGoods,
+      showVariants: d.variants,
+      showDrinkService: d.drinkService,
+      showLayby: d.layby,
+      showJobs: d.jobs,
     );
   }
 }
