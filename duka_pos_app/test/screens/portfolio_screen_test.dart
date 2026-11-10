@@ -111,7 +111,7 @@ void main() {
       expect(find.text('Amina Duka'), findsWidgets);
       expect(find.text('Njeri Shop'), findsWidgets);
       expect(find.text('Quiet Shop'), findsWidgets);
-      expect(find.text(l10n.portfolioShopsTitle.toUpperCase()), findsOneWidget);
+      expect(find.text(l10n.portfolioShopsTitle), findsOneWidget);
     });
 
     testWidgets('the busiest shop is named, not left to be derived',

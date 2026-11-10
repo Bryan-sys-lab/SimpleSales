@@ -18,6 +18,7 @@ import 'package:duka_pos/models/models.dart';
 import 'package:duka_pos/screens/settings_screen.dart';
 import 'package:duka_pos/services/inventory_importer.dart';
 import 'package:duka_pos/ui/components/controls.dart';
+import 'package:duka_pos/ui/components/surface.dart';
 import 'package:duka_pos/services/printer/printer_config.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -98,20 +99,47 @@ void main() {
       tester.expectNoOverflow('settings at 1.0x on a small phone');
 
       // The sections, by the labels a shopkeeper reads. `SectionHeader`
-      // renders them upper-cased, so that is what a finder has to look for.
+      // renders them in sentence case, so find them through SectionHeader.
       expect(
-          find.text(l10n.settingsYourShopsTitle.toUpperCase()), findsOneWidget);
-      expect(
-          find.text(l10n.settingsStaffSection.toUpperCase()), findsOneWidget);
-      expect(find.text(l10n.settingsPaymentMethodsSection.toUpperCase()),
+          find.descendant(
+              of: find.byType(SectionHeader),
+              matching: find.text(l10n.settingsYourShopsTitle)),
           findsOneWidget);
-      expect(find.text(l10n.settingsCreditSection.toUpperCase()), findsOneWidget);
       expect(
-          find.text(l10n.settingsPrinterSection.toUpperCase()), findsOneWidget);
-      expect(find.text(l10n.taxSettingsTitle.toUpperCase()), findsOneWidget);
-      expect(find.text(l10n.settingsSyncSection.toUpperCase()), findsOneWidget);
+          find.descendant(
+              of: find.byType(SectionHeader),
+              matching: find.text(l10n.settingsStaffSection)),
+          findsOneWidget);
       expect(
-          find.text(l10n.settingsBackupSection.toUpperCase()), findsOneWidget);
+          find.descendant(
+              of: find.byType(SectionHeader),
+              matching: find.text(l10n.settingsPaymentMethodsSection)),
+          findsOneWidget);
+      expect(
+          find.descendant(
+              of: find.byType(SectionHeader),
+              matching: find.text(l10n.settingsCreditSection)),
+          findsOneWidget);
+      expect(
+          find.descendant(
+              of: find.byType(SectionHeader),
+              matching: find.text(l10n.settingsPrinterSection)),
+          findsOneWidget);
+      expect(
+          find.descendant(
+              of: find.byType(SectionHeader),
+              matching: find.text(l10n.taxSettingsTitle)),
+          findsOneWidget);
+      expect(
+          find.descendant(
+              of: find.byType(SectionHeader),
+              matching: find.text(l10n.settingsSyncSection)),
+          findsOneWidget);
+      expect(
+          find.descendant(
+              of: find.byType(SectionHeader),
+              matching: find.text(l10n.settingsBackupSection)),
+          findsOneWidget);
       tester.expectNoOverflow('settings sections');
     });
 
@@ -121,7 +149,11 @@ void main() {
       await tester.pumpApp(home: _panel());
 
       expect(find.text(l10n.settingsCreditOffSummary), findsOneWidget);
-      expect(find.text(l10n.settingsCreditSection.toUpperCase()), findsOneWidget);
+      expect(
+          find.descendant(
+              of: find.byType(SectionHeader),
+              matching: find.text(l10n.settingsCreditSection)),
+          findsOneWidget);
       tester.expectNoOverflow('credit settings section');
     });
 
@@ -332,7 +364,7 @@ void main() {
 
       tester.expectNoOverflow('settings in dark mode');
       expect(
-          find.text(l10n.settingsYourShopsTitle.toUpperCase()), findsOneWidget);
+          find.text(l10n.settingsYourShopsTitle), findsOneWidget);
     });
 
     testWidgets('every control clears the 44px floor', (tester) async {

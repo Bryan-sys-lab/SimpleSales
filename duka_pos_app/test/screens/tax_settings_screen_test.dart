@@ -70,13 +70,13 @@ void main() {
       tester.useDevice(Device.small);
       await tester.pumpApp(home: _panel());
 
-      // `SectionHeader` renders them upper-cased, so that is what a finder
+      // `SectionHeader` renders them in sentence case, so that is what a finder
       // looks for.
       expect(
-          find.text(l10n.taxSettingsVatSection.toUpperCase()), findsOneWidget);
-      expect(find.text(l10n.taxSettingsReceiptNumberingSection.toUpperCase()),
+          find.text(l10n.taxSettingsVatSection), findsOneWidget);
+      expect(find.text(l10n.taxSettingsReceiptNumberingSection),
           findsOneWidget);
-      expect(find.text(l10n.taxSettingsEtimsSection.toUpperCase()),
+      expect(find.text(l10n.taxSettingsEtimsSection),
           findsOneWidget);
       tester.expectNoOverflow('tax sections at 1.0x on a small phone');
     });
@@ -149,7 +149,7 @@ void main() {
 
       // Defence in depth in the widget, not only in the route.
       expect(find.text(l10n.taxSettingsAdminOnly), findsOneWidget);
-      expect(find.text(l10n.taxSettingsVatSection.toUpperCase()), findsNothing);
+      expect(find.text(l10n.taxSettingsVatSection), findsNothing);
     });
 
     testWidgets('loading is a skeleton shaped like the result', (tester) async {
@@ -187,7 +187,7 @@ void main() {
 
       tester.expectNoOverflow('tax panel in dark mode');
       expect(
-          find.text(l10n.taxSettingsVatSection.toUpperCase()), findsOneWidget);
+          find.text(l10n.taxSettingsVatSection), findsOneWidget);
     });
 
     testWidgets('every control clears the 44px floor', (tester) async {
