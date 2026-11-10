@@ -1582,6 +1582,166 @@ class BackendService {
     }
   }
 
+  /// Sync Open profile jobs to the backend (bulk upsert).
+  static Future<void> syncJobsToBackend() async {
+    await ensureInitialized();
+    final tid = await tenantId;
+    if (tid == null) return;
+    await _assertRowsInScope();
+
+    final jobs = await DatabaseHelper.instance.getOpenJobs();
+    if (jobs.isEmpty) return;
+
+    final deviceId = await _syncDeviceId();
+    const batchSize = 200;
+    for (var start = 0; start < jobs.length; start += batchSize) {
+      final batch = jobs.skip(start).take(batchSize).toList();
+      final payloads = batch.map((j) {
+        return {
+          'uuid': j['uuid'],
+          'title': j['title'],
+          'customerName': j['customer_name'],
+          'finalPriceMinor': j['final_price_minor'],
+          'status': j['status'],
+          'dueAt': j['due_at'],
+          'costPoolId': j['cost_pool_id'],
+          'staffId': j['staff_id'],
+          'staffName': j['staff_name'],
+          'createdAt': j['created_at'],
+          'updatedAt': j['updated_at'],
+          'syncKey': '$deviceId:job:${j['id']}',
+        };
+      }).toList();
+      await _dio.post('$backendUrl/jobs/sync', data: {'jobs': payloads});
+    }
+  }
+
+  /// Sync Open profile cost pools to the backend (bulk upsert).
+  static Future<void> syncCostPoolsToBackend() async {
+    await ensureInitialized();
+    final tid = await tenantId;
+    if (tid == null) return;
+    await _assertRowsInScope();
+
+    final pools = await DatabaseHelper.instance.getCostPools();
+    if (pools.isEmpty) return;
+
+    final deviceId = await _syncDeviceId();
+    const batchSize = 200;
+    for (var start = 0; start < pools.length; start += batchSize) {
+      final batch = pools.skip(start).take(batchSize).toList();
+      final payloads = batch.map((p) {
+        return {
+          'uuid': p['uuid'],
+          'name': p['name'],
+          'investedMinor': p['invested_minor'],
+          'recoveredMinor': p['recovered_minor'],
+          'status': p['status'],
+          'createdAt': p['created_at'],
+          'updatedAt': p['updated_at'],
+          'syncKey': '$deviceId:pool:${p['id']}',
+        };
+      }).toList();
+      await _dio.post('$backendUrl/cost-pools/sync', data: {'costPools': payloads});
+    }
+  }
+
+  /// Sync Open profile job costs to the backend (bulk upsert).
+  static Future<void> syncJobCostsToBackend() async {
+    await ensureInitialized();
+    final tid = await tenantId;
+    if (tid == null) return;
+    await _assertRowsInScope();
+
+    final jobs = await DatabaseHelper.instance.getOpenJobs();
+    final deviceId = await _syncDeviceId();
+    for (final job in jobs) {
+      final jobId = (job['id'] as num).toInt();
+      final costs = await DatabaseHelper.instance.getJobCosts(jobId);
+      if (costs.isEmpty) continue;
+      const batchSize = 200;
+      for (var start = 0; start < costs.length; start += batchSize) {
+        final batch = costs.skip(start).take(batchSize).toList();
+        final payloads = batch.map((c) {
+          return {
+            'uuid': c['uuid'],
+            'jobId': c['job_id'],
+            'type': c['type'],
+            'amountMinor': c['amount_minor'],
+            'paymentMethod': c['payment_method'],
+            'reference': c['reference'],
+            'createdAt': c['created_at'],
+            'syncKey': '$deviceId:jobcost:${c['id']}',
+          };
+        }).toList();
+        await _dio.post('$backendUrl/job-costs/sync', data: {'jobCosts': payloads});
+      }
+    }
+  }
+
+  /// Sync Open profile job payments to the backend (bulk upsert).
+  static Future<void> syncJobPaymentsToBackend() async {
+    await ensureInitialized();
+    final tid = await tenantId;
+    if (tid == null) return;
+    await _assertRowsInScope();
+
+    final jobs = await DatabaseHelper.instance.getOpenJobs();
+    final deviceId = await _syncDeviceId();
+    for (final job in jobs) {
+      final jobId = (job['id'] as num).toInt();
+      final payments = await DatabaseHelper.instance.getJobPayments(jobId);
+      if (payments.isEmpty) continue;
+      const batchSize = 200;
+      for (var start = 0; start < payments.length; start += batchSize) {
+        final batch = payments.skip(start).take(batchSize).toList();
+        final payloads = batch.map((p) {
+          return {
+            'uuid': p['uuid'],
+            'jobId': p['job_id'],
+            'amountMinor': p['amount_minor'],
+            'paymentMethod': p['payment_method'],
+            'reference': p['reference'],
+            'createdAt': p['created_at'],
+            'syncKey': '$deviceId:jobpay:${p['id']}',
+          };
+        }).toList();
+        await _dio.post('$backendUrl/job-payments/sync', data: {'jobPayments': payloads});
+      }
+    }
+  }
+
+  /// Sync Open profile owner transactions to the backend (bulk upsert).
+  static Future<void> syncOwnerTransactionsToBackend() async {
+    await ensureInitialized();
+    final tid = await tenantId;
+    if (tid == null) return;
+    await _assertRowsInScope();
+
+    final transactions = await DatabaseHelper.instance.getOwnerTransactions();
+    if (transactions.isEmpty) return;
+
+    final deviceId = await _syncDeviceId();
+    const batchSize = 200;
+    for (var start = 0; start < transactions.length; start += batchSize) {
+      final batch = transactions.skip(start).take(batchSize).toList();
+      final payloads = batch.map((t) {
+        return {
+          'uuid': t['uuid'],
+          'transactionType': t['transaction_type'],
+          'amountMinor': t['amount_minor'],
+          'shiftId': t['shift_id'],
+          'staffId': t['staff_id'],
+          'staffName': t['staff_name'],
+          'note': t['note'],
+          'createdAt': t['created_at'],
+          'syncKey': '$deviceId:owner:${t['id']}',
+        };
+      }).toList();
+      await _dio.post('$backendUrl/owner-transactions/sync', data: {'ownerTransactions': payloads});
+    }
+  }
+
   /// Pulls catalogue and stock changes made by another device in this tenant.
   /// Upload runs first in the automatic cycle, so this cannot overwrite a
   /// local product that has not yet been offered to the server.

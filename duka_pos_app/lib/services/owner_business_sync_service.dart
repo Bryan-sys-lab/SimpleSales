@@ -30,6 +30,11 @@ class OwnerBusinessSyncService {
     'operational_records',
     'incoming_payments',
     'encrypted_full_backup',
+    'jobs',
+    'cost_pools',
+    'job_costs',
+    'job_payments',
+    'owner_transactions',
   ];
 
   static Future<OwnerBusinessSyncReport> run() async {
@@ -85,6 +90,11 @@ class OwnerBusinessSyncService {
     });
     await attempt(
         'encrypted_full_backup', BackendService.syncFullBackupToBackend);
+    await attempt('jobs', BackendService.syncJobsToBackend);
+    await attempt('cost_pools', BackendService.syncCostPoolsToBackend);
+    await attempt('job_costs', BackendService.syncJobCostsToBackend);
+    await attempt('job_payments', BackendService.syncJobPaymentsToBackend);
+    await attempt('owner_transactions', BackendService.syncOwnerTransactionsToBackend);
 
     return OwnerBusinessSyncReport(
       completed: List<String>.unmodifiable(completed),
