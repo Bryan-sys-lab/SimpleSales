@@ -91,7 +91,6 @@ class OpenAnalyticsScreen extends StatelessWidget {
         // position, pooled costs, jobs completed, receivables.
         _OpenOpeningKpis(
           totals: snapshot.totals,
-          stockValue: snapshot.stockValue,
           lowStockCount: snapshot.lowStock.length,
           outOfStockCount: snapshot.outOfStock.length,
         ),
@@ -123,13 +122,11 @@ class OpenAnalyticsScreen extends StatelessWidget {
 class _OpenOpeningKpis extends StatefulWidget {
   const _OpenOpeningKpis({
     required this.totals,
-    required this.stockValue,
     required this.lowStockCount,
     required this.outOfStockCount,
   });
 
   final DailyTotals totals;
-  final Money stockValue;
   final int lowStockCount;
   final int outOfStockCount;
 
@@ -142,6 +139,7 @@ class _OpenOpeningKpisState extends State<_OpenOpeningKpis>
   int _pooledCostsMinor = 0;
   int _receivablesMinor = 0;
   int _jobsCompleted = 0;
+  int _cashPositionMinor = 0;
 
   @override
   Set<LiveReason> get liveReasons => const <LiveReason>{};
@@ -174,6 +172,13 @@ class _OpenOpeningKpisState extends State<_OpenOpeningKpis>
       final pools = await db.getCostPools();
       final credit = await db.creditSummary();
       final jobs = await db.getOpenJobs();
+      final events = await db.getFinancialEvents();
+      int cashIn = 0;
+      int cashOut = 0;
+      for (final e in events) {
+        cashIn += e.cashInMinor;
+        cashOut += e.cashOutMinor;
+      }
       if (!mounted) return;
       setState(() {
         _pooledCostsMinor = pools.fold<int>(
@@ -185,6 +190,7 @@ class _OpenOpeningKpisState extends State<_OpenOpeningKpis>
           final st = (j['status'] as String?) ?? '';
           return st == 'completed' || st == 'closed';
         }).length;
+        _cashPositionMinor = cashIn - cashOut;
       });
     } catch (_) {}
   }
@@ -192,7 +198,6 @@ class _OpenOpeningKpisState extends State<_OpenOpeningKpis>
   @override
   Widget build(BuildContext context) {
     final totals = widget.totals;
-    final stockValue = widget.stockValue;
     final AppSpacing spacing = AppSpacing.of(context);
     final AppColors colors = AppColors.of(context);
     final l10n = AppLocalizations.of(context);
@@ -237,7 +242,7 @@ class _OpenOpeningKpisState extends State<_OpenOpeningKpis>
                 ),
                 _OpeningKpiTile(
                   label: l10n.openAnalyticsCashPosition,
-                  value: formatMoney(stockValue),
+                  value: formatMoney(Money.fromMinor(_cashPositionMinor)),
                   icon: Icons.account_balance_wallet_outlined,
                 ),
                 _OpeningKpiTile(
