@@ -438,7 +438,9 @@ List<RouteBase> _shellRoutes(AppState appState) {
                       (BuildContext context, GoRouterState routerState) =>
                           _fadeThrough(
                     routerState,
-                    const FashionProductFormScreen(),
+                    appState.shopProfile == ShopProfile.fashion
+                        ? const FashionProductFormScreen()
+                        : NotFoundScreen(location: routerState.matchedLocation),
                   ),
                 ),
                 // One fashion product's variants table.
@@ -449,12 +451,14 @@ List<RouteBase> _shellRoutes(AppState appState) {
                       (BuildContext context, GoRouterState routerState) =>
                           _fadeThrough(
                     routerState,
-                    FashionProductDetailScreen(
-                      productId: int.tryParse(
-                            routerState.pathParameters['productId'] ?? '',
-                          ) ??
-                          0,
-                    ),
+                    appState.shopProfile == ShopProfile.fashion
+                        ? FashionProductDetailScreen(
+                            productId: int.tryParse(
+                                  routerState.pathParameters['productId'] ?? '',
+                                ) ??
+                                0,
+                          )
+                        : NotFoundScreen(location: routerState.matchedLocation),
                   ),
                 ),
                 // Edit an existing fashion style + variants.
@@ -465,12 +469,14 @@ List<RouteBase> _shellRoutes(AppState appState) {
                       (BuildContext context, GoRouterState routerState) =>
                           _fadeThrough(
                     routerState,
-                    FashionProductFormScreen(
-                      productId: int.tryParse(
-                            routerState.pathParameters['productId'] ?? '',
-                          ) ??
-                          0,
-                    ),
+                    appState.shopProfile == ShopProfile.fashion
+                        ? FashionProductFormScreen(
+                            productId: int.tryParse(
+                                  routerState.pathParameters['productId'] ?? '',
+                                ) ??
+                                0,
+                          )
+                        : NotFoundScreen(location: routerState.matchedLocation),
                   ),
                 ),
               ],
