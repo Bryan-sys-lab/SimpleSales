@@ -274,7 +274,6 @@ class DukaDashboardScreen extends StatelessWidget {
     final cost = (result['cost'] as num?)?.toDouble() ?? 0;
     final price = (result['price'] as num?)?.toDouble() ?? 0;
     final stock = (result['stock'] as num?)?.toDouble() ?? 0;
-    final trackVariants = result['track_variants'] as bool? ?? false;
     final reorder = (result['reorder_level'] as num?)?.toInt() ?? 5;
     final product = Product(
       name: result['name'] as String,
@@ -284,7 +283,6 @@ class DukaDashboardScreen extends StatelessWidget {
       stockQty: stock,
       reorderLevel: reorder,
       unit: unit,
-      trackVariants: trackVariants,
       updatedAt: DateTime.now().toIso8601String(),
     );
     await DatabaseHelper.instance.upsertProduct(product);

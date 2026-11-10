@@ -188,7 +188,6 @@ class ProfileProductForms {
         text: existing?.reorderLevel.toString() ?? '5');
 
     String unit = existing?.unit.wire ?? 'each';
-    bool trackVariants = existing?.trackVariants ?? false;
 
     return await showDialog<Map<String, dynamic>>(
       context: context,
@@ -219,12 +218,6 @@ class ProfileProductForms {
                     DropdownMenuItem(value: 'carton', child: Text(AppLocalizations.of(context).profileFormCarton)),
                   ],
                   onChanged: (value) => setState(() => unit = value ?? 'each'),
-                ),
-                CheckboxListTile(
-                  title: Text(AppLocalizations.of(context).profileFormTrackVariants),
-                  value: trackVariants,
-                  onChanged: (value) => setState(() => trackVariants = value ?? false),
-                  controlAffinity: ListTileControlAffinity.leading,
                 ),
                 TextField(
                   controller: costController,
@@ -272,7 +265,6 @@ class ProfileProductForms {
                   'name': nameController.text,
                   'category': categoryController.text,
                   'unit': unit,
-                  'track_variants': trackVariants,
                   'cost': cost,
                   'price': price,
                   'stock': stock,
