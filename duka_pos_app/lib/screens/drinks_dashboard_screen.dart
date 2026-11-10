@@ -326,6 +326,7 @@ class DrinksDashboardScreen extends StatelessWidget {
     final bottleMl = (result['bottle_ml'] as num?)?.toInt() ?? 750;
     final halfPrice = (result['half_price'] as num?)?.toDouble();
     final quarterPrice = (result['quarter_price'] as num?)?.toDouble();
+    final packType = result['pack_type'] as String?;
     final product = Product(
       name: result['name'] as String,
       category: (result['category'] as String? ?? 'Drinks'),
@@ -343,7 +344,7 @@ class DrinksDashboardScreen extends StatelessWidget {
     await DatabaseHelper.instance.upsertProduct(product);
     if (!context.mounted) return;
     ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text('${product.name} saved')),
+      SnackBar(content: Text('${product.name} saved (pack: $packType)')),
     );
   }
 }
