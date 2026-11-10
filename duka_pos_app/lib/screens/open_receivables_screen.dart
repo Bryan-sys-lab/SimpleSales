@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:go_router/go_router.dart';
 
 import '../db/database_helper.dart';
 import '../models/credit.dart';
@@ -10,6 +11,7 @@ import '../theme/typography.dart';
 import '../ui/components/surface.dart';
 import '../ui/components/status.dart';
 import '../ui/layout/page.dart';
+import '../routing/routes.dart';
 import '../utils/money.dart';
 import '../widgets/backup_reminder_banner.dart';
 
@@ -32,6 +34,7 @@ class _OpenReceivablesScreenState extends State<OpenReceivablesScreen> {
   int _totalOwedMinor = 0;
   int _customerCount = 0;
   List<Customer> _customers = const [];
+  List<Map<String, dynamic>> _jobReceivables = const [];
   bool _loading = true;
 
   DatabaseHelper get _db => DatabaseHelper.instance;
@@ -47,11 +50,38 @@ class _OpenReceivablesScreenState extends State<OpenReceivablesScreen> {
     try {
       final summary = await _db.creditSummary();
       final customers = await _db.getCustomers(owesOnly: true);
+
+      // Add job receivables: completed/closed jobs with outstanding balances.
+      final allJobs = await _db.getOpenJobs();
+      final jobRecs = <Map<String, dynamic>>[];
+      int jobReceivableTotal = 0;
+      for (final job in allJobs) {
+        final status = (job['status'] as String?) ?? '';
+        if (status != 'completed' && status != 'closed') continue;
+        final finalPrice = (job['final_price_minor'] as num?)?.toInt() ?? 0;
+        if (finalPrice <= 0) continue;
+        final jobId = (job['id'] as num).toInt();
+        final payments = await _db.getJobPayments(jobId);
+        final paid =
+            payments.fold<int>(0, (s, p) => s + ((p['amount_minor'] as num?)?.toInt() ?? 0));
+        final outstanding = finalPrice - paid;
+        if (outstanding > 0) {
+          jobRecs.add({
+            'id': jobId,
+            'title': job['title'] as String? ?? 'Untitled job',
+            'customerName': job['customer_name'] as String? ?? 'Unknown customer',
+            'outstanding': outstanding,
+          });
+          jobReceivableTotal += outstanding;
+        }
+      }
+
       if (!mounted) return;
       setState(() {
-        _totalOwedMinor = summary.totalOwedMinor;
+        _totalOwedMinor = summary.totalOwedMinor + jobReceivableTotal;
         _customerCount = summary.customerCount;
         _customers = customers;
+        _jobReceivables = jobRecs;
         _loading = false;
       });
     } catch (_) {
@@ -144,16 +174,55 @@ class _OpenReceivablesScreenState extends State<OpenReceivablesScreen> {
                   style: type.titleMedium?.copyWith(fontWeight: FontWeight.w700),
                 ),
                 SizedBox(height: spacing.sm),
-                _loading || _customers.isEmpty
+                _loading || (_customers.isEmpty && _jobReceivables.isEmpty)
                     ? _OpenReceivablesEmpty(
-                        isEmpty: _customers.isEmpty && !_loading,
+                        isEmpty:
+                            _customers.isEmpty && _jobReceivables.isEmpty && !_loading,
                       )
                     : ListView.builder(
                         shrinkWrap: true,
                         physics: const NeverScrollableScrollPhysics(),
-                        itemCount: _customers.length,
+                        itemCount: _customers.length + _jobReceivables.length,
                         itemBuilder: (_, i) {
-                          final c = _customers[i];
+                          if (i < _customers.length) {
+                            final c = _customers[i];
+                            return Padding(
+                              padding: EdgeInsets.only(bottom: spacing.sm),
+                              child: ListTile(
+                                leading: Container(
+                                  padding: const EdgeInsets.all(8),
+                                  decoration: BoxDecoration(
+                                    color: colors.surfaceSunken,
+                                    borderRadius: AppShapes.of(context)
+                                        .controlRadius,
+                                  ),
+                                  child: Icon(
+                                    Icons.person_outline,
+                                    size: 18,
+                                    color: colors.onSurfaceMuted,
+                                  ),
+                                ),
+                                title: Text(
+                                  c.name,
+                                  style: AppTypography.of(context).bodyMedium,
+                                ),
+                                subtitle: Text(
+                                  '${l10n.openReceivablesOutstanding} ${formatMoney(Money.fromMinor(c.balanceMinor))}',
+                                  style: AppTypography.of(context)
+                                      .labelSmall
+                                      ?.copyWith(color: colors.onSurfaceMuted),
+                                ),
+                                trailing: Text(
+                                  formatMoney(Money.fromMinor(c.balanceMinor)),
+                                  style: AppTypography.of(context)
+                                      .bodyMedium
+                                      ?.copyWith(fontWeight: FontWeight.w700),
+                                ),
+                                onTap: () => context.push(Routes.customers),
+                              ),
+                            );
+                          }
+                          final j = _jobReceivables[i - _customers.length];
                           return Padding(
                             padding: EdgeInsets.only(bottom: spacing.sm),
                             child: ListTile(
@@ -165,28 +234,30 @@ class _OpenReceivablesScreenState extends State<OpenReceivablesScreen> {
                                       .controlRadius,
                                 ),
                                 child: Icon(
-                                  Icons.person_outline,
+                                  Icons.work_outline,
                                   size: 18,
                                   color: colors.onSurfaceMuted,
                                 ),
                               ),
                               title: Text(
-                                c.name,
+                                j['title'] as String,
                                 style: AppTypography.of(context).bodyMedium,
                               ),
                               subtitle: Text(
-                                '${l10n.openReceivablesOutstanding} ${formatMoney(Money.fromMinor(c.balanceMinor))}',
+                                '${l10n.openReceivablesOutstanding} ${formatMoney(Money.fromMinor(j['outstanding'] as int))}',
                                 style: AppTypography.of(context)
                                     .labelSmall
                                     ?.copyWith(color: colors.onSurfaceMuted),
                               ),
                               trailing: Text(
-                                formatMoney(Money.fromMinor(c.balanceMinor)),
+                                formatMoney(Money.fromMinor(j['outstanding'] as int)),
                                 style: AppTypography.of(context)
                                     .bodyMedium
                                     ?.copyWith(fontWeight: FontWeight.w700),
                               ),
-                              onTap: null,
+                              onTap: () => context.push(
+                                Routes.openJobDetail(j['id'] as int),
+                              ),
                             ),
                           );
                         },
