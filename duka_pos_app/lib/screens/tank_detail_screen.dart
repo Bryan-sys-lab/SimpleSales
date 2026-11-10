@@ -175,9 +175,8 @@ class _TankDetailScreenState extends State<TankDetailScreen> {
   }
 
   Future<void> _viewHistory() async {
-    await context.push(Routes.tankRegister);
-    if (!mounted) return;
-    await _load();
+    // Tank-specific history is not a separate route yet; keep this a
+    // non-interactive label rather than a self-referential push.
   }
 
   @override
@@ -220,9 +219,9 @@ class _TankDetailScreenState extends State<TankDetailScreen> {
         actions: <Widget>[
           if (context.read<AppState>().canManageStock)
             OutlinedButton.icon(
-              onPressed: _viewHistory,
-              icon: const Icon(Icons.history),
-              label: Text(l10n.tankActionViewAll),
+              onPressed: _receive,
+              icon: const Icon(Icons.inventory),
+              label: Text(l10n.tankActionReceive),
             ),
         ],
       ),
@@ -329,9 +328,11 @@ class _TankDetailScreenState extends State<TankDetailScreen> {
             if (_activity.isNotEmpty) ...<Widget>[
               SectionHeader(
                 label: l10n.tankDetailActivity,
-                trailing: TextButton(
-                  onPressed: _viewHistory,
-                  child: Text(l10n.tankActionViewAll),
+                trailing: Text(
+                  l10n.tankActionViewAll,
+                  style: AppTypography.of(context)
+                      .labelMedium
+                      ?.copyWith(color: AppColors.of(context).onSurfaceMuted),
                 ),
               ),
               SizedBox(height: spacing.sm),
@@ -341,18 +342,6 @@ class _TankDetailScreenState extends State<TankDetailScreen> {
                   onTap: entry.onTap,
                 ),
               ),
-              if (_activity.length > 10)
-                Padding(
-                  padding: EdgeInsetsDirectional.only(
-                    start: spacing.md,
-                    end: spacing.md,
-                    top: spacing.md,
-                  ),
-                  child: TextButton(
-                    onPressed: _viewHistory,
-                    child: Text(l10n.tankActionViewAll),
-                  ),
-                ),
             ],
           ],
         ),

@@ -218,7 +218,8 @@ class _OpenReceivablesScreenState extends State<OpenReceivablesScreen> {
                                       .bodyMedium
                                       ?.copyWith(fontWeight: FontWeight.w700),
                                 ),
-                                onTap: () => context.push(Routes.customers),
+                                // No customer detail route exists yet; do not
+                                // expose a tappable row that would lose context.
                               ),
                             );
                           }

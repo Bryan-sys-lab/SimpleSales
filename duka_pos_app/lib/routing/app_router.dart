@@ -772,12 +772,17 @@ List<RouteBase> _shellRoutes(AppState appState) {
     ),
     // Exchange: return goods from one sale and sell replacements — one atomic
     // transaction. Reachable from the dashboard's More area and from sale
-    // detail wherever the profile exposes it.
+    // detail wherever the profile exposes it. Fashion-only.
     GoRoute(
       path: Routes.exchangeScreen,
       parentNavigatorKey: rootNavigatorKey,
       pageBuilder: (BuildContext context, GoRouterState routerState) =>
-          _fadeThrough(routerState, const ExchangeScreen()),
+          _fadeThrough(
+        routerState,
+        appState.shopProfile == ShopProfile.fashion
+            ? const ExchangeScreen()
+            : NotFoundScreen(location: routerState.matchedLocation),
+      ),
     ),
   ];
 }

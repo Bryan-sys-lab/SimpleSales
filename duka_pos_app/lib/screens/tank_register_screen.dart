@@ -174,7 +174,7 @@ class _TankRegisterScreenState extends State<TankRegisterScreen> {
         case 'Tanks':
           return t.fillPercent < 1.0;
         case 'Packaged':
-          return false;
+          return t.fillPercent >= 1.0;
         case 'Low stock':
           return t.fillPercent < 0.3;
         default:
@@ -225,9 +225,11 @@ class _TankRegisterScreenState extends State<TankRegisterScreen> {
             // Operations section.
             SectionHeader(
               label: l10n.tankRegisterSection,
-              trailing: TextButton(
-                onPressed: () => context.push(Routes.tankRegister),
-                child: Text(l10n.tankRegisterHistory),
+              trailing: Text(
+                l10n.tankRegisterHistory,
+                style: AppTypography.of(context)
+                    .labelMedium
+                    ?.copyWith(color: AppColors.of(context).onSurfaceMuted),
               ),
             ),
             SizedBox(height: spacing.sm),
@@ -236,7 +238,7 @@ class _TankRegisterScreenState extends State<TankRegisterScreen> {
               title: l10n.tankRegisterTankInventory,
               detail:
                   '${_totalTankCount.toInt()} tanks · ${_totalRemainingLitres.toStringAsFixed(0)} L remaining',
-              onTap: () => setState(() => _selectedChip = 'All'),
+              onTap: () => context.push(Routes.inventory),
             ),
             _TankRegisterOperationRow(
               icon: Icons.inventory_2_outlined,
