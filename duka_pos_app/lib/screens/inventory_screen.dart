@@ -184,7 +184,7 @@ class _InventoryScreenState extends State<InventoryScreen>
     await showModalBottomSheet(
       context: context,
       isScrollControlled: true,
-      builder: (_) => _ProductEditor(
+      builder: (_) => ProductEditor(
         existing: existing,
         allowVariants:
             context.read<AppState>().shopProfile.navigation.showVariants,
@@ -2157,22 +2157,23 @@ String _sizeLabelOf(BuildContext context, ProductUnit unit) {
   };
 }
 
-class _ProductEditor extends StatefulWidget {
+class ProductEditor extends StatefulWidget {
   final Product? existing;
   final bool allowVariants;
   final ShopProfile shopProfile;
   final VoidCallback onSaved;
-  const _ProductEditor({
+  const ProductEditor({
+    super.key,
     this.existing,
     required this.allowVariants,
     required this.shopProfile,
     required this.onSaved,
   });
   @override
-  State<_ProductEditor> createState() => _ProductEditorState();
+  State<ProductEditor> createState() => ProductEditorState();
 }
 
-class _ProductEditorState extends State<_ProductEditor> {
+class ProductEditorState extends State<ProductEditor> {
   late final TextEditingController _name,
       _category,
       _cost,

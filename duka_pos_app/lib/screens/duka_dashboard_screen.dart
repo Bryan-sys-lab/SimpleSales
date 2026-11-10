@@ -8,9 +8,8 @@ import '../db/database_helper.dart';
 import '../l10n/generated/app_localizations.dart';
 import '../models/models.dart';
 import '../profile/profile_capabilities.dart';
-import '../profile/profile_product_forms.dart';
+import '../profile/profile_navigation.dart';
 import '../profile/profile_terminology.dart';
-import '../profile/shop_profile.dart';
 import '../routing/routes.dart';
 import '../services/app_state.dart';
 import '../services/analytics.dart';
@@ -25,13 +24,13 @@ import '../ui/components/status.dart';
 import '../ui/dialogs/manager_approval_sheet.dart';
 import '../ui/layout/page.dart';
 import '../utils/money.dart';
-import '../utils/units.dart';
 import '../widgets/backup_reminder_banner.dart';
 import 'dashboard_attention.dart';
 import 'dashboard_sections.dart';
 import 'dashboard_shared.dart';
 import 'receive_stock_sheet.dart';
 import 'stocktake_screen.dart';
+import 'inventory_screen.dart';
 
 const double _dukaDashboardMaxWidth = 1200;
 const double _dukaTwoColumnBreakpoint = 840;
@@ -263,32 +262,19 @@ class DukaDashboardScreen extends StatelessWidget {
 
   /// Opens the duka-tailored add-product form. This is the visible entry point
   /// for the profile-defined product creation capability, gated on the profile
-  /// tracking stock.
+  /// tracking stock. Uses the shared ProductEditor so dashboard and inventory
+  /// create/edit through the same widget.
   Future<void> _openAddProduct(BuildContext context) async {
-    final result = await ProfileProductForms.showForm(
+    final appState = context.read<AppState>();
+    await showModalBottomSheet(
       context: context,
-      profile: ShopProfile.duka,
-    );
-    if (!context.mounted || result == null) return;
-    final unit = ProductUnit.parse(result['unit'] as String?);
-    final cost = (result['cost'] as num?)?.toDouble() ?? 0;
-    final price = (result['price'] as num?)?.toDouble() ?? 0;
-    final stock = (result['stock'] as num?)?.toDouble() ?? 0;
-    final reorder = (result['reorder_level'] as num?)?.toInt() ?? 5;
-    final product = Product(
-      name: result['name'] as String,
-      category: (result['category'] as String? ?? 'General'),
-      costPrice: Money.fromMajor(cost),
-      sellPrice: Money.fromMajor(price),
-      stockQty: stock,
-      reorderLevel: reorder,
-      unit: unit,
-      updatedAt: DateTime.now().toIso8601String(),
-    );
-    await DatabaseHelper.instance.upsertProduct(product);
-    if (!context.mounted) return;
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text('${product.name} saved')),
+      isScrollControlled: true,
+      builder: (_) => ProductEditor(
+        existing: null,
+        allowVariants: appState.shopProfile.navigation.showVariants,
+        shopProfile: appState.shopProfile,
+        onSaved: () {},
+      ),
     );
   }
 
