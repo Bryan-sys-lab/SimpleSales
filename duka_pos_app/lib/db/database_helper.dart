@@ -13771,6 +13771,12 @@ $untilClause
     });
   }
 
+  /// Records a sale against an Open job with atomic cost-pool allocation.
+  ///
+  /// STATUS: UNCALLED — no screen invokes this method yet. Routes.sell now
+  /// accepts a jobId extra (see app_router.dart) but SellScreen still calls the
+  /// generic recordSale(). Wire this into SellScreen when the job-linked sale
+  /// flow is complete.
   Future<int> recordJobSale({
     required int jobId,
     required Money amount,
@@ -13811,6 +13817,9 @@ $untilClause
     });
   }
 
+  /// Convenience alias for [recordJobSale].
+  ///
+  /// STATUS: UNCALLED — no screen invokes this method yet.
   Future<int> recordSaleAgainstJob({
     required int jobId,
     required Money amount,
@@ -13828,6 +13837,9 @@ $untilClause
         staffId: staffId,
       );
 
+  /// Quick sale against a job (no cost-pool allocation).
+  ///
+  /// STATUS: UNCALLED — no screen invokes this method yet.
   Future<int> recordJobQuickSale({
     required int jobId,
     required Money amount,

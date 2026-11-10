@@ -7,16 +7,24 @@ import '../models/models.dart';
 /// Profile-specific product creation flows.
 /// 
 /// Each profile gets a tailored add-product flow:
-/// - Drinks: bottle/shot/crate
-/// - Duka: counted/pack/repack
-/// - Fashion: style/size/colour
-/// - Open: money-first optional stock
+/// - Drinks: bottle/shot/crate/keg (via ProfileProductForms)
+/// - Duka: uses shared ProductEditor (see inventory_screen.dart)
+/// - Fashion: style/size/colour variants (via ProfileProductForms)
+/// - Open: money-first optional stock (via ProfileProductForms)
+///
+/// Duka no longer uses ProfileProductForms; it routes through the shared
+/// ProductEditor widget so dashboard and inventory create/edit through one
+/// widget. This keeps a single persistence pipeline (upsertProduct).
 class ProfileProductForms {
   const ProfileProductForms();
 
   /// Creates a product form tailored to the profile.
   /// 
   /// Returns a map of field values keyed by field name.
+  /// 
+  /// Note: ShopProfile.duka is not handled here — Duka uses ProductEditor
+  /// directly (see inventory_screen.dart) so dashboard and inventory share
+  /// one editor. Passing ShopProfile.duka returns null.
   static Future<Map<String, dynamic>?> showForm({
     required BuildContext context,
     required ShopProfile profile,
@@ -24,9 +32,9 @@ class ProfileProductForms {
   }) async {
     return switch (profile) {
       ShopProfile.drinks => _showDrinksForm(context, existingProduct),
-      ShopProfile.duka => _showDukaForm(context, existingProduct),
       ShopProfile.fashion => _showFashionForm(context, existingProduct),
       ShopProfile.open => _showOpenForm(context, existingProduct),
+      ShopProfile.duka => null, // Duka uses ProductEditor directly
     };
   }
 
@@ -162,113 +170,6 @@ class ProfileProductForms {
                   if (halfPrice != null) 'half_price': halfPrice,
                   if (quarterPrice != null) 'quarter_price': quarterPrice,
                   if (packType != null) 'pack_type': packType,
-                });
-              },
-              child: Text(AppLocalizations.of(context).profileFormSave),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-
-  static Future<Map<String, dynamic>?> _showDukaForm(
-    BuildContext context,
-    Product? existing,
-  ) async {
-    final nameController = TextEditingController(text: existing?.name ?? '');
-    final categoryController = TextEditingController(text: existing?.category ?? 'General');
-    final costController = TextEditingController(
-        text: existing?.costPrice.asMajor.toStringAsFixed(2) ?? '');
-    final priceController = TextEditingController(
-        text: existing?.sellPrice.asMajor.toStringAsFixed(2) ?? '');
-    final stockController = TextEditingController(
-        text: existing?.stockQty.toString() ?? '0');
-    final reorderController = TextEditingController(
-        text: existing?.reorderLevel.toString() ?? '5');
-
-    String unit = existing?.unit.wire ?? 'each';
-
-    return await showDialog<Map<String, dynamic>>(
-      context: context,
-      builder: (context) => StatefulBuilder(
-        builder: (context, setState) => AlertDialog(
-          title: Text(AppLocalizations.of(context).profileFormAddProduct),
-          content: SingleChildScrollView(
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                TextField(
-                  controller: nameController,
-                  decoration: const InputDecoration(labelText: 'Product name'),
-                  autofocus: true,
-                ),
-                TextField(
-                  controller: categoryController,
-                  decoration: const InputDecoration(labelText: 'Category'),
-                ),
-                DropdownButtonFormField<String>(
-                  initialValue: unit,
-                  decoration: const InputDecoration(labelText: 'Unit'),
-                  items: [
-                    DropdownMenuItem(value: 'each', child: Text(AppLocalizations.of(context).profileFormEach)),
-                    DropdownMenuItem(value: 'kg', child: Text(AppLocalizations.of(context).profileFormKilogram)),
-                    DropdownMenuItem(value: 'litre', child: Text(AppLocalizations.of(context).profileFormLitre)),
-                    DropdownMenuItem(value: 'pack', child: Text(AppLocalizations.of(context).profileFormPack)),
-                    DropdownMenuItem(value: 'carton', child: Text(AppLocalizations.of(context).profileFormCarton)),
-                  ],
-                  onChanged: (value) => setState(() => unit = value ?? 'each'),
-                ),
-                TextField(
-                  controller: costController,
-                  decoration: const InputDecoration(labelText: 'Cost (KES)'),
-                  keyboardType: TextInputType.numberWithOptions(decimal: true),
-                ),
-                TextField(
-                  controller: priceController,
-                  decoration: const InputDecoration(labelText: 'Selling price (KES)'),
-                  keyboardType: TextInputType.numberWithOptions(decimal: true),
-                ),
-                TextField(
-                  controller: stockController,
-                  decoration: const InputDecoration(labelText: 'Starting stock'),
-                  keyboardType: TextInputType.numberWithOptions(decimal: true),
-                ),
-                TextField(
-                  controller: reorderController,
-                  decoration: const InputDecoration(labelText: 'Reorder level'),
-                  keyboardType: TextInputType.number,
-                ),
-              ],
-            ),
-          ),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.pop(context),
-              child: Text(AppLocalizations.of(context).profileFormCancel),
-            ),
-            FilledButton(
-              onPressed: () {
-                final cost = double.tryParse(costController.text);
-                final price = double.tryParse(priceController.text);
-                final stock = double.tryParse(stockController.text);
-                final reorder = int.tryParse(reorderController.text);
-
-                if (nameController.text.isEmpty ||
-                    cost == null ||
-                    price == null ||
-                    stock == null) {
-                  return;
-                }
-
-                Navigator.pop(context, {
-                  'name': nameController.text,
-                  'category': categoryController.text,
-                  'unit': unit,
-                  'cost': cost,
-                  'price': price,
-                  'stock': stock,
-                  'reorder_level': reorder ?? 5,
                 });
               },
               child: Text(AppLocalizations.of(context).profileFormSave),
