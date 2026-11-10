@@ -128,11 +128,11 @@ class _FashionProductFormScreenState extends State<FashionProductFormScreen> {
     setState(() => _saving = true);
 
     try {
-      final variantMaps = _variants
-          .map((v) => v.toMap())
-          .where((m) => m['name'].toString().isNotEmpty);
+      final variantEditors = _variants
+          .where((v) => v.nameCtrl.text.trim().isNotEmpty)
+          .toList();
 
-      if (variantMaps.isEmpty) {
+      if (variantEditors.isEmpty) {
         if (!mounted) return;
         ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
           content: Text('Add at least one variant.'),
@@ -142,44 +142,59 @@ class _FashionProductFormScreenState extends State<FashionProductFormScreen> {
       }
 
       final db = DatabaseHelper.instance;
-      final product = Product(
-        id: _product?.id,
-        name: _nameCtrl.text.trim(),
-        category: _categoryCtrl.text.trim(),
-        costPrice: Money.zero,
-        sellPrice: Money.zero,
-        stockQty: 0,
-        reservedQty: 0,
-        reorderLevel: 0,
-        bottleMl: 0,
-        unit: ProductUnit.each,
-        millilitresPerKilogram: 0,
-        trackVariants: true,
-        trackExpiry: false,
-        active: true,
-        updatedAt: DateTime.now().toIso8601String(),
-      );
-      await db.upsertProduct(product);
-      final productId = product.id!;
-
-      for (final vm in variantMaps) {
-        await db.upsertVariant(ProductVariant(
-          id: vm['id'] as int?,
-          productId: productId,
-          name: vm['name'] as String,
-          sku: vm['sku'] as String,
-          unit: ProductUnit.each,
-          sizeMl: 0,
-          sellPrice: Money.fromMajor(
-            double.tryParse(vm['sell_price'] as String? ?? '0') ?? 0,
-          ),
-          costPrice: Money.fromMajor(
-            double.tryParse(vm['cost_price'] as String? ?? '0') ?? 0,
-          ),
-          stockQty: double.tryParse(vm['stock'] as String? ?? '0') ?? 0,
-          reorderLevel: int.tryParse(vm['reorder_level'] as String? ?? '0') ?? 0,
-        ));
+      final existingVariants = <ProductVariant>[];
+      final pid = _product?.id;
+      if (pid != null) {
+        existingVariants.addAll(await db.getVariants(pid, activeOnly: false));
       }
+      await (await db.database).transaction((txn) async {
+        final product = Product(
+          id: _product?.id,
+          name: _nameCtrl.text.trim(),
+          category: _categoryCtrl.text.trim(),
+          costPrice: Money.zero,
+          sellPrice: Money.zero,
+          stockQty: 0,
+          reservedQty: 0,
+          reorderLevel: 0,
+          bottleMl: 0,
+          unit: ProductUnit.each,
+          millilitresPerKilogram: 0,
+          trackVariants: true,
+          trackExpiry: false,
+          active: true,
+          updatedAt: DateTime.now().toIso8601String(),
+        );
+        final productId = await db.upsertProductInTransaction(txn, product);
+
+        final keptVariantIds = <int>{};
+        for (final v in variantEditors) {
+          final variant = ProductVariant(
+            id: v.variantId,
+            productId: productId,
+            name: v.nameCtrl.text.trim(),
+            sku: v.skuCtrl.text.trim(),
+            unit: ProductUnit.each,
+            sizeMl: 0,
+            sellPrice: Money.fromMajor(
+              double.tryParse(v.sellPriceCtrl.text) ?? 0,
+            ),
+            costPrice: Money.fromMajor(
+              double.tryParse(v.costPriceCtrl.text) ?? 0,
+            ),
+            stockQty: double.tryParse(v.stockCtrl.text) ?? 0,
+            reorderLevel: int.tryParse(v.reorderCtrl.text) ?? 0,
+          );
+          final savedId = await db.upsertVariantInTransaction(txn, variant);
+          if (savedId > 0) keptVariantIds.add(savedId);
+        }
+
+        for (final existing in existingVariants) {
+            if (!keptVariantIds.contains(existing.id!)) {
+              await db.deleteVariantInTransaction(txn, existing.id!);
+            }
+          }
+      });
 
       if (!mounted) return;
       context.pop(true);
