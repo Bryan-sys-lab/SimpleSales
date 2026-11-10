@@ -305,22 +305,22 @@ class _OwnerSetupScreenState extends State<OwnerSetupScreen> {
                           // Media window style header
                           OnboardStyle.window(
                             context: context,
-                            image: const DecoratedBox(
-                              decoration: BoxDecoration(
-                                gradient: LinearGradient(
-                                  colors: <Color>[
-                                    Color(0xFF0B0F14),
-                                    Color(0xFF11161D),
-                                  ],
-                                  begin: Alignment.topLeft,
-                                  end: Alignment.bottomRight,
-                                ),
-                              ),
-                              child: Center(
-                                child: Icon(Icons.storefront_outlined,
-                                    size: 56, color: Color(0xFF4ADE7E)),
+                          image: DecoratedBox(
+                            decoration: BoxDecoration(
+                              gradient: LinearGradient(
+                                colors: <Color>[
+                                  colors.surface,
+                                  colors.surfaceSunken,
+                                ],
+                                begin: Alignment.topLeft,
+                                end: Alignment.bottomRight,
                               ),
                             ),
+                            child: Center(
+                              child: Icon(Icons.storefront_outlined,
+                                  size: 56, color: colors.accent),
+                            ),
+                          ),
                             badgeIcon: Icons.storefront_outlined,
                             label:
                                 widget.isAdditionalShop ? 'ADD SHOP' : 'SET UP',

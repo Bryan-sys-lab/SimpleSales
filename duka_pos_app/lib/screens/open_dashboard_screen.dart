@@ -302,7 +302,7 @@ class _OpenDashboardScreenState extends State<OpenDashboardScreen>
           mainAxisSize: MainAxisSize.min,
           children: <Widget>[
             DropdownButtonFormField<String>(
-              value: typeCtrl.toString(),
+              initialValue: typeCtrl.toString(),
               decoration: const InputDecoration(labelText: 'Transaction type'),
               items: <String>['capital_in', 'drawing', 'loan_received', 'loan_repayment']
                   .map((t) => DropdownMenuItem<String>(
@@ -457,9 +457,6 @@ class _OpenFinancialHero extends StatelessWidget {
   final Money receivables;
   final String scopeLabel;
 
-  /// Label + absolute value + tone for a figure that must never render a
-  /// negative number. A negative value is shown as its magnitude with the
-  /// "bad" label/tone; zero uses the neutral label.
   (String label, String value, StatusTone tone) _signed(
     Money value, {
     required String goodLabel,
@@ -484,116 +481,137 @@ class _OpenFinancialHero extends StatelessWidget {
     final type = AppTypography.of(context);
     final l10n = AppLocalizations.of(context);
 
-    return SurfaceCard(
-      padding: EdgeInsets.all(spacing.lg),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: <Widget>[
-          Row(
+    final net = _signed(
+      netProfit,
+      goodLabel: l10n.openDashboardProfit,
+      badLabel: l10n.openDashboardNotInProfitYet,
+      zeroLabel: l10n.openDashboardBreakEven,
+      goodTone: StatusTone.success,
+      badTone: StatusTone.danger,
+    );
+    final cash = _signed(
+      cashPosition,
+      goodLabel: l10n.openDashboardSurplus,
+      badLabel: l10n.openDashboardShortfall,
+      zeroLabel: l10n.openDashboardBreakEven,
+      goodTone: StatusTone.success,
+      badTone: StatusTone.danger,
+    );
+    final rec = _signed(
+      receivables,
+      goodLabel: l10n.openDashboardOwedToYou,
+      badLabel: l10n.openDashboardYouOwe,
+      zeroLabel: l10n.openDashboardBreakEven,
+      goodTone: StatusTone.warning,
+      badTone: StatusTone.danger,
+    );
+
+    return Stack(
+      children: <Widget>[
+        Positioned.fill(
+          child: Image.asset(
+            'assets/branding/hero-and-profile-images/open-services-hero.webp',
+            fit: BoxFit.cover,
+            width: double.infinity,
+            height: double.infinity,
+          ),
+        ),
+        Positioned.fill(
+          child: DecoratedBox(
+            decoration: BoxDecoration(
+              gradient: LinearGradient(
+                colors: <Color>[
+                  colors.canvas.withValues(alpha: 0.55),
+                  colors.canvas.withValues(alpha: 0.15),
+                ],
+                begin: Alignment.topLeft,
+                end: Alignment.bottomRight,
+              ),
+            ),
+          ),
+        ),
+        Padding(
+          padding: PageGutter.card(context),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            mainAxisSize: MainAxisSize.min,
             children: <Widget>[
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: <Widget>[
-                    Text(
-                      l10n.openDashboardFinancialOverview,
-                      style: type.labelMedium?.copyWith(
-                        color: colors.onSurfaceMuted,
-                        fontWeight: FontWeight.w600,
-                      ),
+              Row(
+                children: <Widget>[
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: <Widget>[
+                        Text(
+                          l10n.openDashboardFinancialOverview,
+                          style: type.labelMedium?.copyWith(
+                            color: colors.onSurface,
+                            fontWeight: FontWeight.w700,
+                          ),
+                        ),
+                        SizedBox(height: spacing.xs),
+                        Text(
+                          scopeLabel,
+                          style: type.labelSmall?.copyWith(
+                            color: colors.onSurfaceMuted,
+                          ),
+                        ),
+                      ],
                     ),
-                    SizedBox(height: spacing.xs),
-                    Text(
-                      scopeLabel,
-                      style: type.labelSmall?.copyWith(
-                        color: colors.onSurfaceMuted,
-                      ),
+                  ),
+                ],
+              ),
+              SizedBox(height: spacing.lg),
+              Row(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: <Widget>[
+                  Expanded(
+                    child: _OpenMoneyTile(
+                      label: l10n.openDashboardRevenue,
+                      value: formatMoney(revenue),
+                      tone: StatusTone.success,
+                      icon: Icons.trending_up_outlined,
                     ),
-                  ],
-                ),
+                  ),
+                  SizedBox(width: spacing.md),
+                  Expanded(
+                    child: _OpenMoneyTile(
+                      label: net.$1,
+                      value: net.$2,
+                      tone: net.$3,
+                      icon: Icons.attach_money_outlined,
+                    ),
+                  ),
+                  SizedBox(width: spacing.md),
+                  Expanded(
+                    child: _OpenMoneyTile(
+                      label: cash.$1,
+                      value: cash.$2,
+                      tone: cash.$3,
+                      icon: Icons.account_balance_wallet_outlined,
+                    ),
+                  ),
+                  SizedBox(width: spacing.md),
+                  Expanded(
+                    child: _OpenMoneyTile(
+                      label: rec.$1,
+                      value: rec.$2,
+                      tone: rec.$3,
+                      icon: Icons.schedule_outlined,
+                    ),
+                  ),
+                ],
               ),
             ],
           ),
-          SizedBox(height: spacing.lg),
-          LayoutBuilder(
-            builder: (BuildContext context, BoxConstraints constraints) {
-              final bool row = constraints.maxWidth >= 640;
-              final net = _signed(
-                netProfit,
-                goodLabel: l10n.openDashboardProfit,
-                badLabel: l10n.openDashboardNotInProfitYet,
-                zeroLabel: l10n.openDashboardBreakEven,
-                goodTone: StatusTone.success,
-                badTone: StatusTone.danger,
-              );
-              final cash = _signed(
-                cashPosition,
-                goodLabel: l10n.openDashboardSurplus,
-                badLabel: l10n.openDashboardShortfall,
-                zeroLabel: l10n.openDashboardBreakEven,
-                goodTone: StatusTone.success,
-                badTone: StatusTone.danger,
-              );
-              final rec = _signed(
-                receivables,
-                goodLabel: l10n.openDashboardOwedToYou,
-                badLabel: l10n.openDashboardYouOwe,
-                zeroLabel: l10n.openDashboardBreakEven,
-                goodTone: StatusTone.warning,
-                badTone: StatusTone.danger,
-              );
-              final List<Widget> tiles = <Widget>[
-                _MoneyTile(
-                  label: l10n.openDashboardRevenue,
-                  value: formatMoney(revenue),
-                  tone: StatusTone.success,
-                  icon: Icons.trending_up_outlined,
-                ),
-                _MoneyTile(
-                  label: net.$1,
-                  value: net.$2,
-                  tone: net.$3,
-                  icon: Icons.attach_money_outlined,
-                ),
-                _MoneyTile(
-                  label: cash.$1,
-                  value: cash.$2,
-                  tone: cash.$3,
-                  icon: Icons.account_balance_wallet_outlined,
-                ),
-                _MoneyTile(
-                  label: rec.$1,
-                  value: rec.$2,
-                  tone: rec.$3,
-                  icon: Icons.schedule_outlined,
-                ),
-              ];
-              if (row) {
-                return Row(
-                  crossAxisAlignment: CrossAxisAlignment.stretch,
-                  children: <Widget>[
-                    for (int i = 0; i < tiles.length; i++) ...<Widget>[
-                      if (i > 0) SizedBox(width: spacing.lg),
-                      Expanded(child: tiles[i]),
-                    ],
-                  ],
-                );
-              }
-              return Wrap(
-                spacing: spacing.lg,
-                runSpacing: spacing.lg,
-                children: tiles.map((t) => SizedBox(width: ((constraints.maxWidth - spacing.lg) / 2).clamp(120.0, double.infinity), child: t)).toList(),
-              );
-            },
-          ),
-        ],
-      ),
+        ),
+      ],
     );
   }
 }
 
-class _MoneyTile extends StatelessWidget {
-  const _MoneyTile({
+class _OpenMoneyTile extends StatelessWidget {
+  const _OpenMoneyTile({
     required this.label,
     required this.value,
     required this.tone,
@@ -618,7 +636,7 @@ class _MoneyTile extends StatelessWidget {
         Container(
           padding: EdgeInsets.all(spacing.xs),
           decoration: BoxDecoration(
-            color: tone.container(colors),
+            color: tone.container(colors).withValues(alpha: 0.9),
             borderRadius: AppShapes.of(context).controlRadius,
           ),
           child: Icon(
@@ -634,12 +652,12 @@ class _MoneyTile extends StatelessWidget {
             context,
             size: 20,
             weight: FontWeight.w800,
-          ),
+          ).copyWith(color: colors.onSurface),
         ),
         SizedBox(height: spacing.xs),
         Text(
           label,
-          style: type.labelMedium?.copyWith(color: colors.onSurfaceMuted),
+          style: type.labelMedium?.copyWith(color: colors.onSurface),
         ),
       ],
     );

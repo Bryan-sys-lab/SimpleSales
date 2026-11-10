@@ -128,7 +128,7 @@ class DrinksDashboardScreen extends StatelessWidget {
       shopName: appState.owner?.shopName ?? SimplePosBrand.appName,
       eyebrow: timeOfDayWord(AppLocalizations.of(context)),
       subtitle: data.greeting,
-      onSell: onOpenSell,
+      shift: data.openShift,
       onSwitchBusiness: () => context.push(Routes.profile),
     );
 
@@ -196,15 +196,6 @@ class DrinksDashboardScreen extends StatelessWidget {
       stats,
       SizedBox(height: spacing.lg),
       shiftOverview,
-      SizedBox(height: spacing.lg),
-      if (data.tanks.isNotEmpty)
-        _TankCards(
-          tanks: data.tanks,
-          tankSales: data.tankSales,
-          onOpenTank: (int productId) => context.push(
-            Routes.tankDetail(productId),
-          ),
-        ),
       SizedBox(height: spacing.lg),
       if (appState.shopProfile.capabilities.trackStock) ...<Widget>[
         Semantics(
@@ -288,6 +279,14 @@ class DrinksDashboardScreen extends StatelessWidget {
           sales,
           topProducts,
           beverageStock,
+          if (data.tanks.isNotEmpty)
+            _TankCards(
+              tanks: data.tanks,
+              tankSales: data.tankSales,
+              onOpenTank: (int productId) => context.push(
+                Routes.tankDetail(productId),
+              ),
+            ),
           shift,
           credit,
           reorder,
@@ -349,8 +348,8 @@ class DrinksDashboardScreen extends StatelessWidget {
   }
 }
 
-/// Hero card for the drinks dashboard: green-gradient fill with today's sales
-/// figure, a comparison line, and a door into the transaction list.
+/// Hero card for the drinks dashboard: the beverage hero image stretched
+/// end-to-end across the screen, with today's sales figure overlaid.
 class _DrinksSalesHero extends StatelessWidget {
   const _DrinksSalesHero({
     required this.totals,
@@ -366,136 +365,124 @@ class _DrinksSalesHero extends StatelessWidget {
     final AppColors colors = AppColors.of(context);
     final AppLocalizations l10n = AppLocalizations.of(context);
 
-    return DashboardPanel(
-      sortKey: 0,
-      title: l10n.dashboardSalesLabel,
-      padChild: false,
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        mainAxisSize: MainAxisSize.min,
-        children: <Widget>[
-          Padding(
-            padding: PageGutter.card(context),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: <Widget>[
-                Container(
-                  width: double.infinity,
-                  padding: EdgeInsets.all(spacing.lg),
-                  decoration: BoxDecoration(
-                    gradient: LinearGradient(
-                      colors: <Color>[
-                        colors.accent,
-                        Color.alphaBlend(
-                          colors.accent.withValues(alpha: 0.85),
-                          colors.canvas,
-                        ),
-                      ],
-                      begin: Alignment.topLeft,
-                      end: Alignment.bottomRight,
-                    ),
-                    borderRadius: AppShapes.of(context).cardRadius,
-                  ),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    mainAxisSize: MainAxisSize.min,
-                    children: <Widget>[
-                      Text(
-                        l10n.dashboardNetSalesToday,
-                        style: AppTypography.of(context)
-                            .labelMedium
-                            ?.copyWith(
-                              color: colors.onAccent.withValues(alpha: 0.9),
-                              letterSpacing: 0.6,
-                            ),
-                      ),
-                      SizedBox(height: spacing.xs),
-                      Semantics(
-                        label:
-                            '${l10n.dashboardSalesLabel}: ${formatMoney(totals.total)}',
-                        child: ExcludeSemantics(
-                          child: Text(
-                            formatMoney(totals.total),
-                            style: AppTypography.money(
-                              context,
-                              size: 32,
-                              weight: FontWeight.w800,
-                            ).copyWith(color: colors.onAccent),
-                          ),
-                        ),
-                      ),
-                      if (totals.hasSales) ...<Widget>[
-                        SizedBox(height: spacing.xs),
-                        Row(
-                          children: <Widget>[
-                            Icon(
-                              Icons.trending_up_outlined,
-                              size: 14,
-                              color: colors.onAccent.withValues(alpha: 0.9),
-                            ),
-                            SizedBox(width: spacing.xs),
-                            Expanded(
-                              child: Text(
-                                l10n.dashboardVersusPreviousDay,
-                                style: AppTypography.of(context)
-                                    .bodySmall
-                                    ?.copyWith(
-                                      color: colors.onAccent.withValues(
-                                        alpha: 0.9,
-                                      ),
-                                    ),
-                              ),
-                            ),
-                          ],
-                        ),
-                      ],
-                    ],
-                  ),
-                ),
-                SizedBox(height: spacing.lg),
-                Semantics(
-                  button: true,
-                  label:
-                      '${l10n.dashboardTransactionsLabel}: ${totals.transactions}',
-                  child: ExcludeSemantics(
-                    child: InkWell(
-                      onTap: onTransactions,
-                      child: Padding(
-                        padding: PageGutter.card(context),
-                        child: Row(
-                          children: <Widget>[
-                            const Icon(
-                              Icons.receipt_long_outlined,
-                              size: 18,
-                            ),
-                            SizedBox(width: spacing.md),
-                            Expanded(
-                              child: Text(
-                                l10n.dashboardTransactionsLabel,
-                                style: AppTypography.of(context).bodyMedium,
-                              ),
-                            ),
-                            SizedBox(width: spacing.md),
-                            Text(
-                              '${totals.transactions}',
-                              style: AppTypography.money(
-                                context,
-                                size: 18,
-                                weight: FontWeight.w700,
-                              ),
-                            ),
-                          ],
-                        ),
-                      ),
-                    ),
-                  ),
-                ),
-              ],
+    return Stack(
+      children: <Widget>[
+        Positioned.fill(
+          child: Image.asset(
+            'assets/branding/hero-and-profile-images/drinks-beverage-hero.webp',
+            fit: BoxFit.cover,
+            width: double.infinity,
+            height: double.infinity,
+          ),
+        ),
+        Positioned.fill(
+          child: DecoratedBox(
+            decoration: BoxDecoration(
+              gradient: LinearGradient(
+                colors: <Color>[
+                  colors.canvas.withValues(alpha: 0.55),
+                  colors.canvas.withValues(alpha: 0.15),
+                ],
+                begin: Alignment.topLeft,
+                end: Alignment.bottomRight,
+              ),
             ),
           ),
-          Divider(height: 1, color: colors.outline),
-        ],
-      ),
+        ),
+        Padding(
+          padding: PageGutter.card(context),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            mainAxisSize: MainAxisSize.min,
+            children: <Widget>[
+              Text(
+                l10n.dashboardNetSalesToday,
+                style: AppTypography.of(context)
+                    .labelMedium
+                    ?.copyWith(
+                      color: colors.onSurface,
+                      fontWeight: FontWeight.w700,
+                      letterSpacing: 0.6,
+                    ),
+              ),
+              SizedBox(height: spacing.xs),
+              Semantics(
+                label:
+                    '${l10n.dashboardSalesLabel}: ${formatMoney(totals.total)}',
+                child: ExcludeSemantics(
+                  child: Text(
+                    formatMoney(totals.total),
+                    style: AppTypography.money(
+                      context,
+                      size: 32,
+                      weight: FontWeight.w800,
+                    ).copyWith(color: colors.onSurface),
+                  ),
+                ),
+              ),
+              if (totals.hasSales) ...<Widget>[
+                SizedBox(height: spacing.xs),
+                Row(
+                  children: <Widget>[
+                    Icon(
+                      Icons.trending_up_outlined,
+                      size: 14,
+                      color: colors.success,
+                    ),
+                    SizedBox(width: spacing.xs),
+                    Expanded(
+                      child: Text(
+                        l10n.dashboardVersusPreviousDay,
+                        style: AppTypography.of(context)
+                            .bodySmall
+                            ?.copyWith(color: colors.success),
+                      ),
+                    ),
+                  ],
+                ),
+              ],
+              SizedBox(height: spacing.lg),
+              Semantics(
+                button: true,
+                label:
+                    '${l10n.dashboardTransactionsLabel}: ${totals.transactions}',
+                child: ExcludeSemantics(
+                  child: InkWell(
+                    onTap: onTransactions,
+                    child: Padding(
+                      padding: PageGutter.card(context),
+                      child: Row(
+                        children: <Widget>[
+                          const Icon(
+                            Icons.receipt_long_outlined,
+                            size: 18,
+                          ),
+                          SizedBox(width: spacing.md),
+                          Expanded(
+                            child: Text(
+                              l10n.dashboardTransactionsLabel,
+                              style: AppTypography.of(context).bodyMedium,
+                            ),
+                          ),
+                          SizedBox(width: spacing.md),
+                          Text(
+                            '${totals.transactions}',
+                            style: AppTypography.money(
+                              context,
+                              size: 18,
+                              weight: FontWeight.w700,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ],
     );
   }
 }

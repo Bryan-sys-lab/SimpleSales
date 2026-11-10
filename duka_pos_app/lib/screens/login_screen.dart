@@ -371,16 +371,16 @@ class _LoginScreenState extends State<LoginScreen> {
                   // Media window style header
                   OnboardStyle.window(
                     context: context,
-                    image: const DecoratedBox(
+                    image: DecoratedBox(
                       decoration: BoxDecoration(
                         gradient: LinearGradient(
-                          colors: <Color>[Color(0xFF0B0F14), Color(0xFF11161D)],
+                          colors: <Color>[colors.surface, colors.surfaceSunken],
                           begin: Alignment.topLeft,
                           end: Alignment.bottomRight,
                         ),
                       ),
                       child: Center(
-                        child: Icon(Icons.lock_outline, size: 56, color: Color(0xFF4ADE7E)),
+                        child: Icon(Icons.lock_outline, size: 56, color: colors.accent),
                       ),
                     ),
                     badgeIcon: Icons.lock_outline,

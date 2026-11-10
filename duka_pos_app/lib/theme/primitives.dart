@@ -144,7 +144,7 @@ abstract final class Primitives {
   static const green47Light = Color(0xFF1A7A3A);
 
   /// Light-theme success container.
-  static const green95Light = Color(0xFFE4F3E9);
+  static const green95Light = Color(0xFFDCEFE1);
 
   /// Text on green95Light.
   static const green35Light = Color(0xFF0D4D1E);

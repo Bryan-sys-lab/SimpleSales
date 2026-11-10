@@ -20,6 +20,7 @@
 import 'package:duka_pos/app_brand.dart';
 import 'package:duka_pos/main.dart';
 import 'package:duka_pos/theme/app_colors.dart';
+import 'package:duka_pos/theme/appearance_controller.dart';
 import 'package:duka_pos/theme/app_haptics.dart';
 import 'package:duka_pos/theme/app_motion.dart';
 import 'package:duka_pos/theme/app_shapes.dart';
@@ -40,14 +41,17 @@ void main() {
     databaseFactory = databaseFactoryFfi;
   });
 
-  setUp(() {
+  late AppearanceController appearance;
+
+  setUp(() async {
     SharedPreferences.setMockInitialValues(<String, Object>{});
     DatabaseHelper.resetForTests();
+    appearance = AppearanceController(await SharedPreferences.getInstance());
   });
 
   testWidgets('the app is wired to a router, with a title and no debug banner',
       (WidgetTester tester) async {
-    await tester.pumpWidget(const DukaPosApp());
+    await tester.pumpWidget(DukaPosApp(appearance: appearance));
 
     final MaterialApp app =
         tester.widget<MaterialApp>(find.byType(MaterialApp));
@@ -62,7 +66,7 @@ void main() {
 
   testWidgets('BOTH themes are supplied, and each carries every extension',
       (WidgetTester tester) async {
-    await tester.pumpWidget(const DukaPosApp());
+    await tester.pumpWidget(DukaPosApp(appearance: appearance));
 
     final MaterialApp app =
         tester.widget<MaterialApp>(find.byType(MaterialApp));
@@ -71,7 +75,7 @@ void main() {
     // back to the light theme for every dark-mode system setting, so a till in a
     // dim shop renders paper-white at full brightness.
     expect(app.darkTheme, isNotNull);
-    expect(app.themeMode, ThemeMode.system);
+    expect(app.themeMode, appearance.themeMode);
 
     for (final (String name, ThemeData? theme) in <(String, ThemeData?)>[
       ('light', app.theme),
@@ -88,7 +92,7 @@ void main() {
 
   testWidgets('the brand values the launcher icon also uses are pinned',
       (WidgetTester tester) async {
-    await tester.pumpWidget(const DukaPosApp());
+    await tester.pumpWidget(DukaPosApp(appearance: appearance));
 
     final MaterialApp app =
         tester.widget<MaterialApp>(find.byType(MaterialApp));
@@ -114,7 +118,7 @@ void main() {
 
   testWidgets('theme animation is off, so a theme change never half-fades',
       (WidgetTester tester) async {
-    await tester.pumpWidget(const DukaPosApp());
+    await tester.pumpWidget(DukaPosApp(appearance: appearance));
 
     final MaterialApp app =
         tester.widget<MaterialApp>(find.byType(MaterialApp));
@@ -126,7 +130,7 @@ void main() {
 
   testWidgets('boot renders the branded splash, not a blank frame',
       (WidgetTester tester) async {
-    await tester.pumpWidget(const DukaPosApp());
+    await tester.pumpWidget(DukaPosApp(appearance: appearance));
     await tester.pump();
 
     // The assertion is deliberately about "something real rendered", not about a

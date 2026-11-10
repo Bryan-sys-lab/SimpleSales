@@ -22,6 +22,7 @@ import 'services/live_channel_service.dart';
 import 'services/telemetry_service.dart';
 import 'services/failure_recorder.dart';
 import 'theme/app_theme.dart';
+import 'theme/appearance_controller.dart';
 import 'services/app_release.dart';
 import 'routing/routes.dart';
 import 'services/auto_backup_worker.dart';
@@ -34,6 +35,10 @@ const String sentryDsn = String.fromEnvironment(
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
+
+  // The appearance preference is loaded BEFORE anything else, so the first
+  // frame is already the user's chosen brightness — no flash.
+  final appearance = await AppearanceController.load();
 
   // The build's own configuration, checked before anything else runs.
   //
@@ -108,7 +113,7 @@ Future<void> main() async {
           options.tracesSampleRate = kReleaseMode ? 0.1 : 0.0;
           options.environment = kReleaseMode ? 'production' : 'development';
         },
-        appRunner: () => runApp(const DukaPosApp()),
+        appRunner: () => runApp(DukaPosApp(appearance: appearance)),
       );
       _sentryReady = true;
       return;
@@ -124,7 +129,7 @@ Future<void> main() async {
     isInDebugMode: !kReleaseMode,
   );
 
-  runApp(const DukaPosApp());
+  runApp(DukaPosApp(appearance: appearance));
 }
 
 bool _sentryReady = false;
@@ -132,14 +137,19 @@ bool _sentryReady = false;
 /// The composition root.
 ///
 /// Everything the app needs is provided HERE and nowhere else: the session, the
-/// boot gate, the router. A screen reaches downward for its dependencies and
-/// never sideways for someone else's.
+/// boot gate, the router, and the appearance preference. A screen reaches
+/// downward for its dependencies and never sideways for someone else's.
 class DukaPosApp extends StatelessWidget {
-  const DukaPosApp({super.key});
+  const DukaPosApp({required this.appearance, super.key});
+
+  /// The persisted appearance preference (system / light / dark).
+  final AppearanceController appearance;
 
   @override
   Widget build(BuildContext context) {
-    return MultiProvider(
+    return ChangeNotifierProvider<AppearanceController>.value(
+      value: appearance,
+      child: MultiProvider(
       providers: <SingleChildWidget>[
         ChangeNotifierProvider<AppState>(create: (_) => AppState()),
         // The boot gate reads the session, so it is created after it — and both
@@ -171,7 +181,8 @@ class DukaPosApp extends StatelessWidget {
       // The gate sits above the router so a lifecycle change reaches the
       // channel from one place, whatever branch is showing.
       child: const _UpdateGate(child: _LiveChannelGate(child: _ThemedApp())),
-    );
+    ),
+  );
   }
 }
 
@@ -190,6 +201,7 @@ class _ThemedApp extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final appearance = AppearanceController.of(context);
     final ({ThemeData light, ThemeData dark}) themes = buildDukaThemes();
 
     return MaterialApp.router(
@@ -222,12 +234,12 @@ class _ThemedApp extends StatelessWidget {
       routerConfig: context.read<GoRouter>(),
       theme: themes.light,
       darkTheme: themes.dark,
-      // Both themes are hand-authored and both pass AA independently, so the
-      // system setting is honoured rather than forced. The mode is read from
-      // `MediaQuery.platformBrightnessOf` inside each theme's own construction,
-      // which means the OS choice is respected with no stored preference and
-      // therefore no first-frame flash: there is nothing to restore late.
-      themeMode: ThemeMode.system,
+      // The appearance preference overrides the OS when the user has chosen
+      // Light or Dark; System follows the platform. The preference is loaded
+      // before the first frame (see main), so there is no flash of the wrong
+      // brightness. High contrast is applied on top by screens that read
+      // `AppColors.colorsFor()` with `MediaQuery.highContrastOf(context)`.
+      themeMode: appearance.themeMode,
 
       // Localization. Three things have to be wired together or "English-only"
       // silently costs more than it looks:

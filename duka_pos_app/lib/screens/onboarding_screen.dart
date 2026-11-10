@@ -557,6 +557,7 @@ class _OnboardMedia extends StatelessWidget {
   Widget build(BuildContext context) {
     final AppColors colors = AppColors.of(context);
     final AppSpacing spacing = AppSpacing.of(context);
+    final TextTheme type = AppTypography.of(context);
     final double mediaHeight = 260;
 
     return Column(
@@ -592,7 +593,7 @@ class _OnboardMedia extends StatelessWidget {
                     width: 56,
                     height: 56,
                 decoration: BoxDecoration(
-                  color: colors.accent,
+                  color: colors.surface,
                   borderRadius: BorderRadius.circular(12),
                 ),
                     child: Icon(
@@ -611,16 +612,15 @@ class _OnboardMedia extends StatelessWidget {
                       spacing.md, spacing.xs, spacing.md, spacing.xs,
                     ),
                     decoration: BoxDecoration(
-                      color: colors.canvas,
+                      color: colors.surface,
                     borderRadius: BorderRadius.circular(6),
                   ),
                     child: Text(
                       label.toUpperCase(),
-                      style: const TextStyle(
-                        color: Colors.black,
+                      style: type.labelSmall?.copyWith(
+                        color: colors.onSurface,
                         fontWeight: FontWeight.w700,
                         letterSpacing: 0.8,
-                        fontSize: 12,
                       ),
                     ),
                   ),

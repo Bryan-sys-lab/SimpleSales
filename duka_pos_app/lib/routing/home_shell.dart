@@ -538,20 +538,21 @@ class _MoreSheet extends StatelessWidget {
                     itemBuilder: (dialogContext, index) {
                       final profile = profiles[index];
                       final isCurrent = profile == currentProfile;
+                      final colors = AppColors.of(dialogContext);
                       return ListTile(
                         leading: Container(
-                          width: 40,
-                          height: 40,
+                          width: 44,
+                          height: 44,
                           decoration: BoxDecoration(
                             color: isCurrent
-                                ? Theme.of(context).primaryColor
+                                ? colors.accent
                                 : Theme.of(context).colorScheme.surfaceContainerHighest,
                             shape: BoxShape.circle,
                           ),
                           child: isCurrent
-                              ? const Icon(
+                              ? Icon(
                                   Icons.check,
-                                  color: Colors.white,
+                                  color: colors.onAccent,
                                   size: 24,
                                 )
                               : Text(
@@ -565,8 +566,7 @@ class _MoreSheet extends StatelessWidget {
                         title: Text(profile.displayName),
                         subtitle: Text(profile.description),
                         trailing: isCurrent
-                            ? const Icon(Icons.check_circle,
-                                color: Colors.green)
+                            ? Icon(Icons.check_circle, color: colors.accent)
                             : null,
                         selected: isCurrent,
                         onTap: isCurrent

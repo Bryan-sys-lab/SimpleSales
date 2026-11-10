@@ -394,7 +394,7 @@ class _DashboardScreenState extends State<DashboardScreen>
     } catch (_) {
       if (!_current(serial, session, appState)) return;
       setState(() {
-        _state ??= const DashboardFailed();
+        _state = const DashboardFailed();
       });
     }
   }

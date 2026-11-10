@@ -131,7 +131,7 @@ class FashionDashboardScreen extends StatelessWidget {
       shopName: appState.owner?.shopName ?? SimplePosBrand.appName,
       eyebrow: timeOfDayWord(AppLocalizations.of(context)),
       subtitle: data.greeting,
-      onSell: onOpenSell,
+      shift: data.openShift,
       onSwitchBusiness: () => context.push(Routes.profile),
     );
 
@@ -140,6 +140,7 @@ class FashionDashboardScreen extends StatelessWidget {
       scopeLabel: data.scopeLabel,
       hasSales: hasSales,
       onTransactions: () => context.push(Routes.transactions),
+      imageAsset: 'assets/branding/hero-and-profile-images/fashion-retail-hero.webp',
     );
 
     final Widget supportingMetrics = SupportingMetrics(totals: data.totals);

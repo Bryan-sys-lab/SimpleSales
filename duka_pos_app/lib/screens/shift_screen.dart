@@ -128,13 +128,13 @@ class _ShiftScreenState extends State<ShiftScreen>
         seesAllSales: appState.seesAllSales,
       );
       if (!mounted || appState.sessionGeneration != session) return;
-      setState(() => _ShiftReady(ledger: ledger, message: null));
+      setState(() => _state = _ShiftReady(ledger: ledger, message: null));
     } on Object {
       if (!mounted || appState.sessionGeneration != session) return;
       // A refresh that fails keeps what it had: the figures on screen are still
       // true as of the last successful read, and blanking them turns a dropped
       // read into an empty shift ledger.
-      setState(() => _state ??= const _ShiftFailed());
+      setState(() => _state = const _ShiftFailed());
     }
   }
 

@@ -38,7 +38,6 @@
 // finite pulse of light, then rest, then the next beat. The selection of a
 // destination changes colour, which needs no animation to be read.
 
-import 'dart:async';
 import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
@@ -433,12 +432,13 @@ class _DestinationButton extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    // The selection is COLOUR, and nothing else.
-    //
-    // The bar has one saturated thing on it — the sell ball — and a second
-    // pill behind the selected item would compete with it. A green icon and a
-    // green label say "you are here" without adding a shape to read.
+    // The selection is colour PLUS shape: a restrained background container
+    // behind the selected item, so a colour-vision user can still tell which
+    // destination is active. A green icon and green label say "you are here";
+    // the accent-container pill behind them says it again without adding a
+    // second saturated thing that would compete with the sell ball.
     final Color ink = selected ? colors.accent : colors.onSurfaceMuted;
+    final Color fill = selected ? colors.accentContainer : Colors.transparent;
 
     return LayoutBuilder(
       builder: (BuildContext context, BoxConstraints constraints) {
@@ -473,13 +473,20 @@ class _DestinationButton extends StatelessWidget {
               // The group sits HIGH in the bar's body, with the space below the
               // label: the icon and its word read as one pair, and the bar's
               // curve has room to close under them.
-              padding: const EdgeInsets.only(top: 7),
+              padding: const EdgeInsets.only(top: 4),
               child: Column(
                 mainAxisSize: MainAxisSize.min,
                 mainAxisAlignment: MainAxisAlignment.start,
                 children: <Widget>[
-                  Icon(destination.icon, size: 21, color: ink),
-                  SizedBox(height: spacing.xs),
+                  Container(
+                    padding: const EdgeInsets.all(4),
+                    decoration: BoxDecoration(
+                      color: fill,
+                      borderRadius: AppShapes.of(context).controlRadius,
+                    ),
+                    child: Icon(destination.icon, size: 18, color: ink),
+                  ),
+                  SizedBox(height: 2),
                   Text(
                     shown,
                     textAlign: TextAlign.center,
@@ -490,7 +497,7 @@ class _DestinationButton extends StatelessWidget {
                     // made sure it fits.
                     maxLines: 1,
                     softWrap: false,
-                    style: type.labelSmall?.copyWith(
+                    style: type.labelMedium?.copyWith(
                       color: ink,
                       fontWeight: selected ? FontWeight.w700 : FontWeight.w500,
                     ),
@@ -540,88 +547,8 @@ class _SellBall extends StatefulWidget {
   State<_SellBall> createState() => _SellBallState();
 }
 
-class _SellBallState extends State<_SellBall>
-    with SingleTickerProviderStateMixin {
+class _SellBallState extends State<_SellBall> {
   bool _pressed = false;
-
-  /// One heartbeat: a short, FINITE animation.
-  ///
-  /// The curve inside it is the "lub-dub" — a big beat, a pause, a smaller
-  /// one — which is what a resting heart actually does. Copying that is what
-  /// makes the button read as ALIVE rather than as a lamp on a timer. A
-  /// single even pulse reads as a notification badge; two uneven beats read
-  /// as a pulse.
-  ///
-  /// The animation is finite on purpose. A controller that repeats forever
-  /// schedules a frame every tick, which means the app never has an idle
-  /// frame — and a till that never goes idle is a till that never stops
-  /// burning battery. A TIMER starts each beat and lets the app go quiet in
-  /// between, which is also what lets a test settle.
-  late final AnimationController _beat;
-
-  Timer? _beatTimer;
-
-  /// How long one beat lasts.
-  static const Duration _beatDuration = Duration(milliseconds: 460);
-
-  /// How long between beats.
-  static const Duration _beatPeriod = Duration(milliseconds: 2400);
-
-  @override
-  void initState() {
-    super.initState();
-    _beat = AnimationController(vsync: this, duration: _beatDuration);
-  }
-
-  @override
-  void didChangeDependencies() {
-    super.didChangeDependencies();
-    _armBeat();
-  }
-
-  /// Starts the next beat, and keeps starting them.
-  ///
-  /// Re-armed whenever the dependencies change, because the reduced-motion
-  /// flag is one of them: a person who asked the OS to stop animations gets
-  /// a still button, not a faster pulse.
-  void _armBeat() {
-    _beatTimer?.cancel();
-    if (MediaQuery.disableAnimationsOf(context)) {
-      _beat.value = 0;
-      return;
-    }
-    _beatTimer = Timer(_beatPeriod, () {
-      if (!mounted) return;
-      _beat.forward(from: 0).whenComplete(() {
-        if (mounted) _armBeat();
-      });
-    });
-  }
-
-  @override
-  void dispose() {
-    _beatTimer?.cancel();
-    _beat.dispose();
-    super.dispose();
-  }
-
-  /// The glow's strength, 0 at rest and 1 at the top of a beat.
-  ///
-  /// Read from [MediaQuery] rather than from a provider: the flag comes from
-  /// the platform, and the platform state is already reactive.
-  double _pulse(BuildContext context) {
-    if (MediaQuery.disableAnimationsOf(context)) return 0;
-    final double t = _beat.value;
-    // lub: a sharp rise and a slower fall, over the first part of the beat.
-    // dub: a smaller one, a little later.
-    // rest: flat, which is most of the period.
-    if (t <= 0) return 0;
-    if (t < 0.26) return t / 0.26;
-    if (t < 0.60) return 1 - (t - 0.26) / 0.34;
-    if (t < 0.78) return 0.6 * (t - 0.60) / 0.18;
-    if (t < 1) return 0.6 * (1 - (t - 0.78) / 0.22);
-    return 0;
-  }
 
   @override
   Widget build(BuildContext context) {
@@ -642,52 +569,16 @@ class _SellBallState extends State<_SellBall>
         onTapUp: (_) => setState(() => _pressed = false),
         onTapCancel: () => setState(() => _pressed = false),
         child: AnimatedScale(
-          // Ninety-six percent, for the shortest beat the motion scale has.
-          //
-          // The ball is pressed forty times an hour, so this is the shortest
-          // feedback in the app: enough to feel the touch land, short enough
-          // never to be waited for. It collapses to nothing under reduced
-          // motion, where the state change is still there — it just does not
-          // travel.
           scale: _pressed ? 0.96 : 1.0,
           duration: AppMotion.resolve(context, motion.instant),
           curve: AppMotion.resolveCurve(context, motion.enter),
-          child: AnimatedBuilder(
-            animation: _beat,
-            builder: (BuildContext context, Widget? child) {
-              final double pulse = _pulse(context);
-              return Container(
-                width: _NavMetrics.ballSize,
-                height: _NavMetrics.ballSize,
-                decoration: BoxDecoration(
-                  shape: BoxShape.circle,
-                  // SOLID accent, not a gradient. The one saturated thing on the
-                  // screen is one colour, and a second green in the same ball
-                  // reads as a printing error rather than as light.
-                  color: colors.accent,
-                  // The glow: the ball is LIT, and the light spills onto the
-                  // bar. It breathes with the heartbeat — brightest at the top
-                  // of a beat, settling back between them.
-                  boxShadow: <BoxShadow>[
-                    BoxShadow(
-                      color: colors.accent.withValues(
-                        alpha: 0.26 + 0.30 * pulse,
-                      ),
-                      blurRadius: 14 + 14 * pulse,
-                      offset: Offset(0, 5 + 2 * pulse),
-                    ),
-                  ],
-                ),
-                // A GLYPH, and not an image.
-                //
-                // The sell destination used to carry a promotional tile — a dark
-                // card with "NEW SALE" written on it — and at the size of a nav
-                // icon that is unreadable mush, and inside a circle it would be
-                // a square inside a circle. The other items are outline
-                // glyphs, and so is this one: one language across the bar.
-                child: child,
-              );
-            },
+          child: Container(
+            width: _NavMetrics.ballSize,
+            height: _NavMetrics.ballSize,
+            decoration: BoxDecoration(
+              shape: BoxShape.circle,
+              color: colors.accent,
+            ),
             child: Icon(
               AppDestination.sell.icon,
               size: 26,

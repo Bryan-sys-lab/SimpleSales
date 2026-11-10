@@ -10,7 +10,6 @@ import 'package:intl/intl.dart';
 
 import '../l10n/generated/app_localizations.dart';
 import '../models/models.dart';
-import '../routing/routes.dart';
 import '../services/analytics.dart';
 import '../theme/app_colors.dart';
 import '../theme/app_spacing.dart';
@@ -95,7 +94,7 @@ class CompactBusinessHeader extends StatelessWidget {
     required this.shopName,
     required this.eyebrow,
     required this.subtitle,
-    required this.onSell,
+    this.shift,
     this.onSwitchBusiness,
     super.key,
   });
@@ -103,7 +102,12 @@ class CompactBusinessHeader extends StatelessWidget {
   final String shopName;
   final String eyebrow;
   final String subtitle;
-  final VoidCallback onSell;
+
+  /// Authoritative shift state. When null there is no open shift; when
+  /// [status] is 'closed' the shift has been reconciled. The header never
+  /// infers state from the time of day or from whether the dashboard loaded.
+  final Shift? shift;
+
   final VoidCallback? onSwitchBusiness;
 
   @override
@@ -139,7 +143,7 @@ class CompactBusinessHeader extends StatelessWidget {
           spacing: spacing.sm,
           runSpacing: spacing.xs,
           children: <Widget>[
-            StatusChip(tone: StatusTone.success, text: l10n.shiftOpenChip),
+            _ShiftStateChip(shift: shift),
             Text(
               formatted,
               style: AppTypography.of(context)
@@ -173,17 +177,6 @@ class CompactBusinessHeader extends StatelessWidget {
           ],
         ),
         SizedBox(height: spacing.lg),
-        Semantics(
-          button: true,
-          label: l10n.dashboardSellAction,
-          child: ExcludeSemantics(
-            child: FilledButton.icon(
-              onPressed: onSell,
-              icon: const Icon(Icons.point_of_sale_outlined, size: 18),
-              label: Text(AppDestination.sell.label(l10n)),
-            ),
-          ),
-        ),
       ],
     );
   }
@@ -203,6 +196,7 @@ class FinancialHero extends StatelessWidget {
     required this.scopeLabel,
     required this.hasSales,
     required this.onTransactions,
+    required this.imageAsset,
     super.key,
   });
 
@@ -211,116 +205,139 @@ class FinancialHero extends StatelessWidget {
   final bool hasSales;
   final VoidCallback onTransactions;
 
+  /// Profile-specific hero image, stretched end-to-end across the screen.
+  final String imageAsset;
+
   @override
   Widget build(BuildContext context) {
     final AppSpacing spacing = AppSpacing.of(context);
     final AppColors colors = AppColors.of(context);
     final AppLocalizations l10n = AppLocalizations.of(context);
 
-    return DashboardPanel(
-      sortKey: 0,
-      title: l10n.dashboardSalesLabel,
-      padChild: false,
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        mainAxisSize: MainAxisSize.min,
-        children: <Widget>[
-          Padding(
-            padding: PageGutter.card(context),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: <Widget>[
-                Row(
-                  children: <Widget>[
-                    Expanded(
-                      child: Text(
-                        l10n.dashboardNetSalesToday,
-                        style: AppTypography.of(context)
-                            .labelMedium
-                            ?.copyWith(color: colors.onSurfaceMuted),
-                      ),
-                    ),
-                    Text(
-                      l10n.dashboardPeriodToday,
-                      style: AppTypography.of(context)
-                          .labelSmall
-                          ?.copyWith(color: colors.onSurfaceMuted),
-                    ),
-                  ],
-                ),
-                SizedBox(height: spacing.xs),
-                Semantics(
-                  label:
-                      '${l10n.dashboardSalesLabel}: ${formatMoney(totals.total)}',
-                  child: ExcludeSemantics(
-                    child: Text(
-                      formatMoney(totals.total),
-                      style: AppTypography.money(
-                        context,
-                        size: 40,
-                        weight: FontWeight.w800,
-                      ),
-                    ),
-                  ),
-                ),
-                SizedBox(height: spacing.sm),
-                if (totals.hasSales) ...<Widget>[
-                  Row(
-                    children: <Widget>[
-                      Icon(
-                        Icons.trending_up_outlined,
-                        size: 16,
-                        color: colors.success,
-                      ),
-                      SizedBox(width: spacing.xs),
-                      Expanded(
-                        child: Text(
-                          l10n.dashboardVersusPreviousDay,
-                          style: AppTypography.of(context)
-                              .bodySmall
-                              ?.copyWith(color: colors.success),
-                        ),
-                      ),
-                    ],
-                  ),
-                ],
-              ],
-            ),
+    return Stack(
+      children: <Widget>[
+        Positioned.fill(
+          child: Image.asset(
+            imageAsset,
+            fit: BoxFit.cover,
+            width: double.infinity,
+            height: double.infinity,
           ),
-          Divider(height: 1, color: colors.outline),
-          Semantics(
-            button: true,
-            label: '${l10n.dashboardTransactionsLabel}: ${totals.transactions}',
-            child: InkWell(
-              onTap: onTransactions,
-              child: Padding(
-                padding: PageGutter.card(context),
-                child: Row(
-                  children: <Widget>[
-                    const Icon(Icons.receipt_long_outlined, size: 18),
-                    SizedBox(width: spacing.md),
-                    Expanded(
-                      child: Text(
-                        l10n.dashboardTransactionsLabel,
-                        style: AppTypography.of(context).bodyMedium,
-                      ),
-                    ),
-                    SizedBox(width: spacing.md),
-                    Text(
-                      '${totals.transactions}',
-                      style: AppTypography.money(
-                        context,
-                        size: 18,
-                        weight: FontWeight.w700,
-                      ),
-                    ),
-                  ],
-                ),
+        ),
+        Positioned.fill(
+          child: DecoratedBox(
+            decoration: BoxDecoration(
+              gradient: LinearGradient(
+                colors: <Color>[
+                  colors.canvas.withValues(alpha: 0.55),
+                  colors.canvas.withValues(alpha: 0.15),
+                ],
+                begin: Alignment.topLeft,
+                end: Alignment.bottomRight,
               ),
             ),
           ),
-        ],
-      ),
+        ),
+        Padding(
+          padding: PageGutter.card(context),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            mainAxisSize: MainAxisSize.min,
+            children: <Widget>[
+              Row(
+                children: <Widget>[
+                  Expanded(
+                    child: Text(
+                      l10n.dashboardNetSalesToday,
+                      style: AppTypography.of(context)
+                          .labelMedium
+                          ?.copyWith(
+                            color: colors.onSurface,
+                            fontWeight: FontWeight.w700,
+                            letterSpacing: 0.6,
+                          ),
+                    ),
+                  ),
+                  Text(
+                    l10n.dashboardPeriodToday,
+                    style: AppTypography.of(context)
+                        .labelSmall
+                        ?.copyWith(color: colors.onSurfaceMuted),
+                  ),
+                ],
+              ),
+              SizedBox(height: spacing.xs),
+              Semantics(
+                label:
+                    '${l10n.dashboardSalesLabel}: ${formatMoney(totals.total)}',
+                child: ExcludeSemantics(
+                  child: Text(
+                    formatMoney(totals.total),
+                    style: AppTypography.money(
+                      context,
+                      size: 40,
+                      weight: FontWeight.w800,
+                    ).copyWith(color: colors.onSurface),
+                  ),
+                ),
+              ),
+              SizedBox(height: spacing.sm),
+              if (totals.hasSales) ...<Widget>[
+                Row(
+                  children: <Widget>[
+                    Icon(
+                      Icons.trending_up_outlined,
+                      size: 16,
+                      color: colors.success,
+                    ),
+                    SizedBox(width: spacing.xs),
+                    Expanded(
+                      child: Text(
+                        l10n.dashboardVersusPreviousDay,
+                        style: AppTypography.of(context)
+                            .bodySmall
+                            ?.copyWith(color: colors.success),
+                      ),
+                    ),
+                  ],
+                ),
+              ],
+              SizedBox(height: spacing.lg),
+              Semantics(
+                button: true,
+                label: '${l10n.dashboardTransactionsLabel}: ${totals.transactions}',
+                child: InkWell(
+                  onTap: onTransactions,
+                  child: Padding(
+                    padding: PageGutter.card(context),
+                    child: Row(
+                      children: <Widget>[
+                        const Icon(Icons.receipt_long_outlined, size: 18),
+                        SizedBox(width: spacing.md),
+                        Expanded(
+                          child: Text(
+                            l10n.dashboardTransactionsLabel,
+                            style: AppTypography.of(context).bodyMedium,
+                          ),
+                        ),
+                        SizedBox(width: spacing.md),
+                        Text(
+                          '${totals.transactions}',
+                          style: AppTypography.money(
+                            context,
+                            size: 18,
+                            weight: FontWeight.w700,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ],
     );
   }
 }
@@ -461,6 +478,28 @@ String timeOfDayWord(AppLocalizations l10n) {
           ? l10n.dashboardGreetingAfternoon
           : l10n.dashboardGreetingEvening;
   return word.toUpperCase();
+}
+
+/// Truthful shift status chip for the business header.
+///
+/// Never infers state from the time of day or from whether the dashboard
+/// loaded. Reads the authoritative [Shift] status instead.
+class _ShiftStateChip extends StatelessWidget {
+  const _ShiftStateChip({required this.shift});
+
+  final Shift? shift;
+
+  @override
+  Widget build(BuildContext context) {
+    final Shift? s = shift;
+    if (s == null) return const SizedBox.shrink();
+
+    final bool open = s.status == 'open';
+    return StatusChip(
+      tone: open ? StatusTone.success : StatusTone.neutral,
+      text: open ? 'Open' : 'Closed',
+    );
+  }
 }
 
 /// Reads localisations without holding a [BuildContext] across an await.

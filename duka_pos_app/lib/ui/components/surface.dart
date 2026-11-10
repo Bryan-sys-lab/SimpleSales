@@ -56,7 +56,7 @@ class SurfaceCard extends StatelessWidget {
     final AppSpacing spacing = AppSpacing.of(context);
 
     final Widget body = Padding(
-      padding: padding ?? EdgeInsets.all(spacing.lg),
+      padding: padding ?? EdgeInsets.all(spacing.md),
       child: child,
     );
 
@@ -156,10 +156,9 @@ class SectionHeader extends StatelessWidget {
             child: Semantics(
               header: true,
               child: Text(
-                label.toUpperCase(),
-                style: AppTypography.of(context).labelSmall?.copyWith(
-                      color: colors.onSurfaceMuted,
-                      letterSpacing: 0.6,
+                label,
+                style: AppTypography.of(context).titleMedium?.copyWith(
+                      color: colors.onSurface,
                     ),
               ),
             ),
