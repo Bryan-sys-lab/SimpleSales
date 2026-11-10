@@ -36,6 +36,7 @@ model Tenant {
 
   profiles               Profile[]
   products               Product[]
+  productVariants        ProductVariant[]
   sales                  Sale[]
   salePayments           SalePayment[]
   saleItems              SaleItem[]
@@ -58,6 +59,11 @@ model Tenant {
   syncRecords            SyncRecord[]
   saleSyncConflicts      SaleSyncConflict[]
   taxEntityLinks         ShopTaxEntity[]
+  jobs                   Job[]
+  costPools              CostPool[]
+  jobCosts               JobCost[]
+  jobPayments            JobPayment[]
+  ownerTransactions      OwnerTransaction[]
 
   @@map("tenants")
 }
@@ -471,6 +477,7 @@ model Product {
   tenant           Tenant            @relation(fields: [tenantId], references: [id])
   stockAdjustments StockAdjustment[]
   saleItems        SaleItem[]
+  productVariants  ProductVariant[]
 
   @@unique([tenantId, syncKey])
   @@index([tenantId])
@@ -915,6 +922,220 @@ model SupportTicket {
   @@index([status])
   @@index([createdAt])
   @@map("support_tickets")
+}
+
+/// Fashion product variant (size/colour/SKU) synced from offline tills.
+/// A variant belongs to a Product and is the unit that is actually sold.
+model ProductVariant {
+  id       String @id @default(cuid())
+  tenantId String @map("tenant_id")
+
+  /// The till's local variant id is the idempotency key for offline retries.
+  localId Int? @map("local_id")
+
+  /// Stable client key makes a retried offline variant create idempotent.
+  syncKey  String? @map("sync_key")
+
+  /// Backend-assigned opaque id; the till stores this to reference the variant
+  /// in later syncs (e.g. stock movements, sale items).
+  remoteId String? @map("remote_id")
+
+  productId   String   @map("product_id")
+  name        String   @map("variant_name")
+  sku         String   @map("sku")
+  unit        String   @default("each") @map("unit")
+  sizeMl      Int      @default(0) @map("size_ml")
+  sellPrice   Decimal  @default(0) @map("sell_price")
+  costPrice   Decimal  @default(0) @map("cost_price")
+  stockQty    Decimal  @default(0) @map("stock_qty")
+  reservedQty Decimal  @default(0) @map("reserved_qty")
+  reorderLevel Int      @default(0) @map("reorder_level")
+  position    Int      @default(0)
+  active      Boolean  @default(true)
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @updatedAt @map("updated_at")
+
+  tenant    Tenant     @relation(fields: [tenantId], references: [id])
+  product   Product  @relation(fields: [productId], references: [id])
+
+  @@unique([tenantId, syncKey])
+  @@unique([tenantId, productId, localId])
+  @@index([tenantId])
+  @@index([productId])
+  @@map("product_variants")
+}
+
+/// Open profile job (service work order) synced from an offline till.
+model Job {
+  id          String @id @default(cuid())
+  tenantId    String @map("tenant_id")
+
+  /// The till's local job id is the idempotency key for offline retries.
+  localId Int? @map("local_id")
+
+  /// Stable client key makes a retried offline job create idempotent.
+  syncKey  String? @map("sync_key")
+
+  /// Backend-assigned opaque id; the till stores this to reference the job in
+  /// later syncs (e.g. job costs, job payments, cost pools).
+  remoteId String? @map("remote_id")
+
+  uuid         String   @map("uuid")
+  title        String
+  customerName String?  @map("customer_name")
+  customerPhone String? @map("customer_phone")
+  quoteMinor   Int      @default(0) @map("quote_minor")
+  finalPriceMinor Int?   @map("final_price_minor")
+  status       String   @default("draft") @map("status") // draft | awaiting_payment | completed | closed | cancelled
+  dueAt        DateTime? @map("due_at")
+  costPoolId   String? @map("cost_pool_id")
+  staffId      String   @map("staff_id")
+  staffName    String   @map("staff_name")
+  createdAt    DateTime @default(now()) @map("created_at")
+  updatedAt    DateTime @updatedAt @map("updated_at")
+
+  tenant Tenant @relation(fields: [tenantId], references: [id])
+  jobCosts   JobCost[]
+  jobPayments JobPayment[]
+
+  @@unique([tenantId, syncKey])
+  @@unique([tenantId, uuid])
+  @@index([tenantId])
+  @@index([status])
+  @@index([costPoolId])
+  @@map("jobs")
+}
+
+/// Open profile cost pool for shared cost recovery across job sales.
+model CostPool {
+  id          String @id @default(cuid())
+  tenantId    String @map("tenant_id")
+
+  /// The till's local cost pool id is the idempotency key for offline retries.
+  localId Int? @map("local_id")
+
+  /// Stable client key makes a retried offline cost pool create idempotent.
+  syncKey  String? @map("sync_key")
+
+  /// Backend-assigned opaque id.
+  remoteId String? @map("remote_id")
+
+  uuid           String   @map("uuid")
+  name           String
+  poolType       String   @default("lot") @map("pool_type") // lot | hourly | percentage
+  investedMinor  Int      @default(0) @map("invested_minor")
+  recoveredMinor Int      @default(0) @map("recovered_minor")
+  status         String   @default("open") @map("status") // open | closed | cancelled
+  createdAt      DateTime @default(now()) @map("created_at")
+  updatedAt      DateTime @updatedAt @map("updated_at")
+
+  tenant Tenant @relation(fields: [tenantId], references: [id])
+
+  @@unique([tenantId, syncKey])
+  @@unique([tenantId, uuid])
+  @@index([tenantId])
+  @@index([status])
+  @@map("cost_pools")
+}
+
+/// Open profile job cost (materials/transport/helper) synced from an offline till.
+model JobCost {
+  id          String @id @default(cuid())
+  tenantId    String @map("tenant_id")
+
+  /// The till's local cost id is the idempotency key for offline retries.
+  localId Int? @map("local_id")
+
+  /// Stable client key makes a retried offline job cost create idempotent.
+  syncKey  String? @map("sync_key")
+
+  /// Backend-assigned opaque id.
+  remoteId String? @map("remote_id")
+
+  uuid          String   @map("uuid")
+  jobId         String   @map("job_id")
+  type          String   @map("type") // materials | transport | helper | other
+  amountMinor   Int      @map("amount_minor")
+  paymentMethod String   @default("cash") @map("payment_method")
+  reference     String? @map("reference")
+  staffId       String? @map("staff_id")
+  staffName     String? @map("staff_name")
+  createdAt     DateTime @default(now()) @map("created_at")
+
+  tenant Tenant @relation(fields: [tenantId], references: [id])
+  job    Job    @relation(fields: [jobId], references: [id], onDelete: Cascade)
+
+  @@unique([tenantId, syncKey])
+  @@unique([tenantId, jobId, localId])
+  @@index([tenantId])
+  @@index([jobId])
+  @@map("job_costs")
+}
+
+/// Open profile job payment (deposit / balance / partial) synced from an offline till.
+model JobPayment {
+  id          String @id @default(cuid())
+  tenantId    String @map("tenant_id")
+
+  /// The till's local payment id is the idempotency key for offline retries.
+  localId Int? @map("local_id")
+
+  /// Stable client key makes a retried offline job payment create idempotent.
+  syncKey  String? @map("sync_key")
+
+  /// Backend-assigned opaque id.
+  remoteId String? @map("remote_id")
+
+  uuid          String   @map("uuid")
+  jobId         String   @map("job_id")
+  amountMinor   Int      @map("amount_minor")
+  paymentMethod String   @map("payment_method") // cash | mpesa | bank_transfer | card
+  reference     String? @map("reference")
+  staffId       String? @map("staff_id")
+  staffName     String? @map("staff_name")
+  createdAt     DateTime @default(now()) @map("created_at")
+
+  tenant Tenant @relation(fields: [tenantId], references: [id])
+  job    Job    @relation(fields: [jobId], references: [id], onDelete: Cascade)
+
+  @@unique([tenantId, syncKey])
+  @@unique([tenantId, jobId, localId])
+  @@index([tenantId])
+  @@index([jobId])
+  @@map("job_payments")
+}
+
+/// Open profile owner finance transaction (capital / drawing / loan / repayment).
+model OwnerTransaction {
+  id             String @id @default(cuid())
+  tenantId       String @map("tenant_id")
+
+  /// The till's local transaction id is the idempotency key for offline retries.
+  localId Int? @map("local_id")
+
+  /// Stable client key makes a retried offline owner transaction create idempotent.
+  syncKey  String? @map("sync_key")
+
+  /// Backend-assigned opaque id.
+  remoteId String? @map("remote_id")
+
+  uuid              String   @map("uuid")
+  transactionType   String   @map("transaction_type") // capital_in | drawing | loan_received | loan_repayment
+  amountMinor       Int      @map("amount_minor")
+  shiftId           Int? @map("shift_id")
+  staffId           String? @map("staff_id")
+  staffName         String   @map("staff_name")
+  note              String? @map("note")
+  createdAt         DateTime @default(now()) @map("created_at")
+
+  tenant Tenant @relation(fields: [tenantId], references: [id])
+
+  @@unique([tenantId, syncKey])
+  @@unique([tenantId, uuid])
+  @@index([tenantId])
+  @@index([transactionType])
+  @@index([createdAt])
+  @@map("owner_transactions")
 }
 
 /// A customer's payment INTO the shop's Till or Paybill, seen by the server.

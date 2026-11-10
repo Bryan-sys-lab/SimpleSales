@@ -606,3 +606,98 @@ export const supportTicketSchema = z.object({
 export const ingestSupportSchema = z.object({
   items: z.array(supportTicketSchema).min(1).max(100),
 }).strict();
+
+// ---------------------------------------------------------------------------
+// Open profile job / cost-pool sync schemas
+// ---------------------------------------------------------------------------
+
+/** Stable client-side identity for offline sync retries. */
+const syncedRecord = z.object({
+  id: z.number().int().positive(),
+  deviceId: z.string().trim().min(1).max(120).optional(),
+  uuid: z.string().trim().min(1).max(120),
+  syncKey: z.string().trim().min(1).max(200).optional(),
+  remoteId: z.string().trim().min(1).max(120).optional().nullable(),
+  createdAt: z.string().datetime({ offset: true }).optional(),
+}).passthrough();
+
+export const productVariantSyncSchema = z.object({
+  productVariants: z.array(z.object({
+    ...syncedRecord.shape,
+    productId: z.string().trim().min(1).max(120),
+    name: boundedName,
+    sku: z.string().trim().min(1).max(80),
+    unit: z.enum(['each', 'ml', 'litre', 'cup', 'kilogram']).default('each'),
+    sizeMl: z.number().int().nonnegative().max(200000).default(0),
+    sellPrice: z.number().finite().nonnegative().max(100000000),
+    costPrice: z.number().finite().nonnegative().max(100000000),
+    stockQty: z.number().finite().nonnegative().max(2000000),
+    reorderLevel: z.number().int().nonnegative().max(2000000),
+    position: z.number().int().nonnegative().default(0),
+    active: z.boolean().default(true),
+  })).max(2000),
+}).strict();
+
+export const jobSyncSchema = z.object({
+  jobs: z.array(z.object({
+    ...syncedRecord.shape,
+    title: boundedName,
+    customerName: z.string().trim().min(1).max(120).optional().nullable(),
+    customerPhone: z.string().trim().max(40).optional().nullable(),
+    quoteMinor: z.number().int().nonnegative().max(100000000).default(0),
+    finalPriceMinor: z.number().int().nonnegative().max(100000000).optional().nullable(),
+    status: z.enum(['draft', 'awaiting_payment', 'completed', 'closed', 'cancelled']).default('draft'),
+    dueAt: z.string().datetime({ offset: true }).optional().nullable(),
+    costPoolId: z.string().trim().min(1).max(120).optional().nullable(),
+    staffName: boundedName,
+    staffId: z.string().trim().min(1).max(120),
+  })).max(2000),
+}).strict();
+
+export const costPoolSyncSchema = z.object({
+  costPools: z.array(z.object({
+    ...syncedRecord.shape,
+    name: boundedName,
+    poolType: z.enum(['lot', 'hourly', 'percentage']).default('lot'),
+    investedMinor: z.number().int().nonnegative().max(100000000).default(0),
+    recoveredMinor: z.number().int().nonnegative().max(100000000).default(0),
+    status: z.enum(['open', 'closed', 'cancelled']).default('open'),
+  })).max(2000),
+}).strict();
+
+export const jobCostSyncSchema = z.object({
+  jobCosts: z.array(z.object({
+    ...syncedRecord.shape,
+    jobId: z.string().trim().min(1).max(120),
+    type: z.string().trim().min(1).max(40),
+    amountMinor: z.number().int().nonnegative().max(100000000),
+    paymentMethod: z.string().trim().min(1).max(40).default('cash'),
+    reference: z.string().trim().max(120).optional().nullable(),
+    staffName: boundedName.optional().nullable(),
+    staffId: z.string().trim().min(1).max(120).optional().nullable(),
+  })).max(2000),
+}).strict();
+
+export const jobPaymentSyncSchema = z.object({
+  jobPayments: z.array(z.object({
+    ...syncedRecord.shape,
+    jobId: z.string().trim().min(1).max(120),
+    amountMinor: z.number().int().nonnegative().max(100000000),
+    paymentMethod: z.enum(['cash', 'mpesa', 'bank_transfer', 'card']),
+    reference: z.string().trim().max(120).optional().nullable(),
+    staffName: boundedName.optional().nullable(),
+    staffId: z.string().trim().min(1).max(120).optional().nullable(),
+  })).max(2000),
+}).strict();
+
+export const ownerTransactionSyncSchema = z.object({
+  ownerTransactions: z.array(z.object({
+    ...syncedRecord.shape,
+    transactionType: z.enum(['capital_in', 'drawing', 'loan_received', 'loan_repayment']),
+    amountMinor: z.number().int().nonnegative().max(100000000),
+    shiftId: z.number().int().positive().optional().nullable(),
+    staffName: boundedName,
+    staffId: z.string().trim().min(1).max(120).optional().nullable(),
+    note: z.string().trim().max(500).optional().nullable(),
+  })).max(2000),
+}).strict();

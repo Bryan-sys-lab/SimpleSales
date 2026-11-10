@@ -47,6 +47,12 @@ import backupRoutes from './routes/backup';
 import creditRoutes from './routes/credit';
 import operationalSyncRoutes from './routes/operational_sync';
 import evidenceRoutes from './routes/evidence';
+import productVariantRoutes from './routes/product-variants';
+import jobRoutes from './routes/jobs';
+import costPoolRoutes from './routes/cost-pools';
+import jobCostRoutes from './routes/job-costs';
+import jobPaymentRoutes from './routes/job-payments';
+import ownerTransactionRoutes from './routes/owner-transactions';
 
 if (typeof module !== 'undefined') { dotenv.config(); }
 
@@ -273,6 +279,12 @@ app.use('/api/drawer-events', operationalSyncRoutes);
 app.use('/api/laybys', operationalSyncRoutes);
 app.use('/api/exchanges', operationalSyncRoutes);
 app.use('/api/reorder', operationalSyncRoutes);
+app.use('/api/product-variants', productVariantRoutes);
+app.use('/api/jobs', jobRoutes);
+app.use('/api/cost-pools', costPoolRoutes);
+app.use('/api/job-costs', jobCostRoutes);
+app.use('/api/job-payments', jobPaymentRoutes);
+app.use('/api/owner-transactions', ownerTransactionRoutes);
 
 // ---------------------------------------------------------------------------
 // eTIMS KRA tax compliance (OIDC guarded)
