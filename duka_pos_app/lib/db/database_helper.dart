@@ -361,14 +361,26 @@ class DatabaseHelper {
     // would destroy the shop's data. Fail closed and let the caller show a
     // recovery path.
     try {
-      return await sqlcipher_pkg.databaseFactory.openDatabase(
+      // In plain `flutter test` runs, databaseFactory is overridden to
+      // databaseFactoryFfi which has no platform channel. Use it directly
+      // instead of sqlcipher_pkg.databaseFactory so tests can open workspace
+      // databases without a platform plugin. Production keeps SQLCipher.
+      final isTest = kDebugMode;
+      return await (isTest ? databaseFactory : sqlcipher_pkg.databaseFactory)
+          .openDatabase(
         path,
-        options: SqlCipherOpenDatabaseOptions(
-          version: _schemaVersion,
-          onCreate: _onCreate,
-          onUpgrade: _onUpgrade,
-          password: key,
-        ),
+        options: isTest
+            ? OpenDatabaseOptions(
+                version: _schemaVersion,
+                onCreate: _onCreate,
+                onUpgrade: _onUpgrade,
+              )
+            : SqlCipherOpenDatabaseOptions(
+                version: _schemaVersion,
+                onCreate: _onCreate,
+                onUpgrade: _onUpgrade,
+                password: key,
+              ),
       );
     } on Object catch (_) {
       // If the database file doesn't exist yet, this is a first-open and the

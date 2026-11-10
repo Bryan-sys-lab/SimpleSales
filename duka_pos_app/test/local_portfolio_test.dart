@@ -25,6 +25,7 @@ import 'package:duka_pos/services/local_portfolio_service.dart';
 import 'package:duka_pos/services/portfolio_kpis.dart';
 import 'package:duka_pos/services/workspace_service.dart';
 import 'package:duka_pos/utils/money.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:sqflite_common_ffi/sqflite_ffi.dart';
@@ -34,6 +35,33 @@ void main() {
     TestWidgetsFlutterBinding.ensureInitialized();
     sqfliteFfiInit();
     databaseFactory = databaseFactoryFfi;
+    // Mock flutter_secure_storage so workspace key lookups work without a
+    // platform keystore in a plain `flutter test` run.
+    final fake = <String, String>{};
+    TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+        .setMockMethodCallHandler(
+      const MethodChannel('plugins.it_nomads.com/flutter_secure_storage'),
+      (call) async {
+        final args = (call.arguments as Map?) ?? const {};
+        switch (call.method) {
+          case 'read':
+            return fake[args['key'] as String?];
+          case 'write':
+            final value = args['value'] as String?;
+            if (value == null) {
+              fake.remove(args['key'] as String);
+            } else {
+              fake[args['key'] as String] = value;
+            }
+            return null;
+          case 'delete':
+            fake.remove(args['key'] as String);
+            return null;
+          default:
+            return null;
+        }
+      },
+    );
   });
 
   setUp(() async {
