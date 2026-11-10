@@ -225,6 +225,7 @@ class _OpenDashboardScreenState extends State<OpenDashboardScreen>
               onAddJobCost: () => _pickJob((id) => context.push(Routes.openJobAddCost(id))),
               onNewCostGroup: () => context.push(Routes.openCostGroupNew),
               onAddItem: () => _openAddItem(context),
+              onOwnerFinance: () => _recordOwnerTransaction(),
               addItemLabel: addItemLabel,
               canManageJobs: appState.hasPermission(PermissionKey.manageJobs),
               canReceivePayments:
@@ -244,6 +245,104 @@ class _OpenDashboardScreenState extends State<OpenDashboardScreen>
         ),
       ),
     );
+  }
+
+  /// Records an owner transaction (capital/drawing/loan). Gated to owner session.
+  Future<void> _recordOwnerTransaction() async {
+    final appState = context.read<AppState>();
+    if (!appState.isOwnerSession) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Owner-only operation')),
+      );
+      return;
+    }
+    final typeCtrl = StringBuffer('capital_in');
+    final amountCtrl = TextEditingController();
+    final referenceCtrl = TextEditingController();
+    final noteCtrl = TextEditingController();
+    final result = await showDialog<Map<String, String>>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Owner Finance'),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: <Widget>[
+            DropdownButtonFormField<String>(
+              value: typeCtrl.toString(),
+              decoration: const InputDecoration(labelText: 'Transaction type'),
+              items: <String>['capital_in', 'drawing', 'loan_received', 'loan_repayment']
+                  .map((t) => DropdownMenuItem<String>(
+                        value: t,
+                        child: Text(t.replaceAll('_', ' ').toUpperCase()),
+                      ))
+                  .toList(),
+              onChanged: (v) {
+                if (v == null) return;
+                typeCtrl.clear();
+                typeCtrl.write(v);
+              },
+            ),
+            const SizedBox(height: 12),
+            TextField(
+              controller: amountCtrl,
+              keyboardType: const TextInputType.numberWithOptions(decimal: true),
+              decoration: const InputDecoration(labelText: 'Amount (KES)'),
+              autofocus: true,
+            ),
+            const SizedBox(height: 12),
+            TextField(
+              controller: referenceCtrl,
+              decoration: const InputDecoration(labelText: 'Reference (optional)'),
+            ),
+            const SizedBox(height: 12),
+            TextField(
+              controller: noteCtrl,
+              decoration: const InputDecoration(labelText: 'Note (optional)'),
+            ),
+          ],
+        ),
+        actions: <Widget>[
+          TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Cancel')),
+          FilledButton(
+            onPressed: () {
+              final amount = double.tryParse(amountCtrl.text.trim());
+              if (amount == null || amount <= 0) return;
+              Navigator.pop(ctx, <String, String>{
+                'type': typeCtrl.toString(),
+                'amount': amountCtrl.text.trim(),
+                'reference': referenceCtrl.text.trim(),
+                'note': noteCtrl.text.trim(),
+              });
+            },
+            child: const Text('Record'),
+          ),
+        ],
+      ),
+    );
+    amountCtrl.dispose();
+    referenceCtrl.dispose();
+    noteCtrl.dispose();
+    if (result == null || !mounted) return;
+    final amount = double.tryParse(result['amount'] ?? '');
+    if (amount == null || amount <= 0) return;
+    try {
+      await DatabaseHelper.instance.recordOwnerTransaction(
+        uuid: 'own-${DateTime.now().microsecondsSinceEpoch}',
+        transactionType: result['type']!,
+        amount: Money.fromMajor(amount),
+        staffName: appState.currentStaffName ?? 'Owner',
+        staffId: appState.currentStaffId,
+        note: (result['note'] ?? '').isEmpty ? null : result['note'],
+      );
+      if (mounted) await _load();
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Owner transaction failed: $e')),
+        );
+      }
+    }
   }
 
   /// Opens the Open-profile add-item dialog. This is the visible entry point
@@ -695,6 +794,7 @@ class _OpenQuickActions extends StatelessWidget {
     required this.onAddJobCost,
     required this.onNewCostGroup,
     required this.onAddItem,
+    required this.onOwnerFinance,
     required this.addItemLabel,
     required this.canManageJobs,
     required this.canReceivePayments,
@@ -707,6 +807,7 @@ class _OpenQuickActions extends StatelessWidget {
   final VoidCallback onAddJobCost;
   final VoidCallback onNewCostGroup;
   final VoidCallback onAddItem;
+  final VoidCallback onOwnerFinance;
   final String addItemLabel;
   final bool canManageJobs;
   final bool canReceivePayments;
@@ -756,6 +857,12 @@ class _OpenQuickActions extends StatelessWidget {
         label: 'New cost group',
         subtitle: 'Pooled costs',
         onTap: onNewCostGroup,
+      ),
+      _OpenQuickTile(
+        icon: Icons.attach_money,
+        label: 'Owner finance',
+        subtitle: 'Capital, drawing, loan',
+        onTap: onOwnerFinance,
       ),
     ];
 
