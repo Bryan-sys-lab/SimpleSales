@@ -304,7 +304,10 @@ List<RouteBase> _shellRoutes(AppState appState) {
             GoRoute(
               path: Routes.sell,
               pageBuilder: (BuildContext context, GoRouterState routerState) =>
-                  _fadeThrough(routerState, const SellScreen()),
+                  _fadeThrough(
+                routerState,
+                SellScreen(jobId: routerState.extra is int ? routerState.extra as int : null),
+              ),
               routes: <RouteBase>[
                 // Covers the shell: a scanner wants the whole screen, including
                 // the navigation affordance it would otherwise hide behind.

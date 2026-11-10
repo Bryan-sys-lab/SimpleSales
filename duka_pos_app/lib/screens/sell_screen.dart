@@ -52,7 +52,9 @@ import '../profile/shop_profile.dart';
 import '../models/incoming_payment.dart';
 
 class SellScreen extends StatefulWidget {
-  const SellScreen({super.key});
+  const SellScreen({super.key, this.jobId});
+
+  final int? jobId;
 
   @override
   State<SellScreen> createState() => _SellScreenState();

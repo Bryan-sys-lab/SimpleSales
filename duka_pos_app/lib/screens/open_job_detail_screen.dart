@@ -413,7 +413,7 @@ class _OpenJobDetailScreenState extends State<OpenJobDetailScreen> {
                   _ActionButton(
                     label: l10n.openJobDetailRecordSale,
                     icon: Icons.point_of_sale_outlined,
-                    onPressed: () => context.push(Routes.sell),
+                    onPressed: () => context.push(Routes.sell, extra: widget.jobId),
                   ),
                 if (canManageJobs && !_isCompleted)
                   _ActionButton(
