@@ -173,14 +173,14 @@ class DrinksDashboardScreen extends StatelessWidget {
       ),
     );
 
-    final Widget beverageStock = data.tanks.isNotEmpty
-        ? BeverageStockPreview(
-            tanks: data.tanks,
-            tankSales: data.tankSales,
-            onOpenTankRegister: () => context.push(Routes.inventory),
-            onOpenPackaged: () => context.push(Routes.inventory),
-            onOpenMeasured: () => context.push(Routes.servings),
-          )
+  final Widget beverageStock = data.tanks.isNotEmpty
+      ? BeverageStockPreview(
+          tanks: data.tanks,
+          tankSales: data.tankSales,
+          onOpenTankRegister: () => context.push(Routes.tankRegister),
+          onOpenPackaged: () => context.push(Routes.inventory),
+          onOpenMeasured: () => context.push(Routes.servings),
+        )
         : const SizedBox.shrink();
 
     final bool twoColumns =
@@ -202,7 +202,7 @@ class DrinksDashboardScreen extends StatelessWidget {
           tanks: data.tanks,
           tankSales: data.tankSales,
           onOpenTank: (int productId) => context.push(
-            '${Routes.tankDetail}/$productId',
+            Routes.tankDetail(productId),
           ),
         ),
       SizedBox(height: spacing.lg),
@@ -246,12 +246,12 @@ class DrinksDashboardScreen extends StatelessWidget {
                     sales,
                     topProducts,
                     beverageStock,
-                    if (data.tanks.isNotEmpty)
+                      if (data.tanks.isNotEmpty)
                       _TankCards(
                         tanks: data.tanks,
                         tankSales: data.tankSales,
                         onOpenTank: (int productId) => context.push(
-                          '${Routes.tankDetail}/$productId',
+                          Routes.tankDetail(productId),
                         ),
                       ),
                   ],
