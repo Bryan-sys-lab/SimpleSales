@@ -94,7 +94,21 @@ class _OpenDashboardScreenState extends State<OpenDashboardScreen>
       final jobs = await db.getOpenJobs();
       final pools = await db.getCostPools();
       final credit = await db.creditSummary();
+
+      // Revenue comes only from completed jobs (job_completion financial events),
+      // not from deposits collected on open jobs.
+      final events = await db.getFinancialEvents();
       int revenue = 0;
+      int cashIn = 0;
+      int cashOut = 0;
+      for (final e in events) {
+        if (e.eventType == 'job_completion') {
+          revenue += e.revenueMinor;
+        }
+        cashIn += e.cashInMinor;
+        cashOut += e.cashOutMinor;
+      }
+
       int costs = 0;
       int active = 0;
       int awaiting = 0;
@@ -103,10 +117,7 @@ class _OpenDashboardScreenState extends State<OpenDashboardScreen>
       for (final job in jobs) {
         final jobId = (job['id'] as num).toInt();
         final jc = await db.getJobCosts(jobId);
-        final jp = await db.getJobPayments(jobId);
         costs += jc.fold<int>(0, (s, c) => s + ((c['amount_minor'] as num?)?.toInt() ?? 0));
-        final paid = jp.fold<int>(0, (s, p) => s + ((p['amount_minor'] as num?)?.toInt() ?? 0));
-        revenue += paid;
         final status = (job['status'] as String?) ?? 'draft';
         if (status != 'completed' && status != 'closed' && status != 'cancelled') {
           active++;
@@ -124,7 +135,7 @@ class _OpenDashboardScreenState extends State<OpenDashboardScreen>
       setState(() {
         _revenueMinor = revenue;
         _netProfitMinor = revenue - costs;
-        _cashPositionMinor = revenue - costs;
+        _cashPositionMinor = cashIn - cashOut;
         _receivablesMinor = credit.totalOwedMinor;
         _activeJobs = active;
         _jobsAwaitingPayment = awaiting;
