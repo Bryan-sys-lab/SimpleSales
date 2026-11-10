@@ -68,6 +68,8 @@ class _TankRegisterScreenState extends State<TankRegisterScreen> {
   int _tanksNeedingAttention = 0;
   bool _loading = true;
   String? _error;
+  String _searchQuery = '';
+  String _selectedChip = 'All';
 
   @override
   void initState() {
@@ -96,6 +98,8 @@ class _TankRegisterScreenState extends State<TankRegisterScreen> {
       _totalInvestedMinor = widget.totalInvestedMinor;
       _tanksNeedingAttention = widget.tanksNeedingAttention > 0 ? widget.tanksNeedingAttention : needingAttention;
       _loading = false;
+      _searchQuery = '';
+      _selectedChip = 'All';
     });
   }
 
@@ -185,16 +189,23 @@ class _TankRegisterScreenState extends State<TankRegisterScreen> {
 
             // Search + chips row.
             _TankRegisterSearch(
-              query: '',
+              query: _searchQuery,
               chips: const <String>['All', 'Tanks', 'Packaged', 'Low stock'],
-              selected: 'All',
+              selected: _selectedChip,
+              onQueryChanged: (value) =>
+                  setState(() => _searchQuery = value),
+              onChipSelected: (value) =>
+                  setState(() => _selectedChip = value),
             ),
             SizedBox(height: spacing.lg),
 
             // Operations section.
             SectionHeader(
               label: l10n.tankRegisterSection,
-              trailing: Text(l10n.tankRegisterHistory),
+              trailing: TextButton(
+                onPressed: () => context.push(Routes.tankRegister),
+                child: Text(l10n.tankRegisterHistory),
+              ),
             ),
             SizedBox(height: spacing.sm),
             _TankRegisterOperationRow(
@@ -202,13 +213,13 @@ class _TankRegisterScreenState extends State<TankRegisterScreen> {
               title: l10n.tankRegisterTankInventory,
               detail:
                   '${_totalTankCount.toInt()} tanks · ${_totalRemainingLitres.toStringAsFixed(0)} L remaining',
-              onTap: null,
+              onTap: () => setState(() => _selectedChip = 'All'),
             ),
             _TankRegisterOperationRow(
               icon: Icons.inventory_2_outlined,
               title: l10n.tankRegisterPackagedBeverages,
-                  detail: '${_tanks.length} products · $_tanksNeedingAttention low stock',
-              onTap: null,
+              detail: '${_tanks.length} products · $_tanksNeedingAttention low stock',
+              onTap: () => setState(() => _selectedChip = 'Packaged'),
             ),
             _TankRegisterOperationRow(
               icon: Icons.local_drink_outlined,
@@ -286,15 +297,20 @@ class _TankRegisterSearch extends StatelessWidget {
     required this.query,
     required this.chips,
     required this.selected,
+    required this.onQueryChanged,
+    required this.onChipSelected,
   });
 
   final String query;
   final List<String> chips;
   final String selected;
+  final ValueChanged<String> onQueryChanged;
+  final ValueChanged<String> onChipSelected;
 
   @override
   Widget build(BuildContext context) {
     final AppSpacing spacing = AppSpacing.of(context);
+    final colors = AppColors.of(context);
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -305,17 +321,19 @@ class _TankRegisterSearch extends StatelessWidget {
             end: spacing.md,
             bottom: spacing.sm,
           ),
-          child: Row(
-            children: <Widget>[
-              Expanded(
-                  child: Text(
-                  'Search inventory',
-                  style: AppTypography.of(context).bodyMedium?.copyWith(
-                    color: AppColors.of(context).onSurfaceMuted,
-                  ),
-                ),
+          child: TextField(
+            decoration: InputDecoration(
+              hintText: 'Search inventory',
+              hintStyle: AppTypography.of(context)
+                  .bodyMedium
+                  ?.copyWith(color: colors.onSurfaceMuted),
+              prefixIcon: const Icon(Icons.search),
+              isDense: true,
+              constraints: BoxConstraints(
+                minHeight: AppSpacing.of(context).textFieldHeight,
               ),
-            ],
+            ),
+            onChanged: onQueryChanged,
           ),
         ),
         SizedBox(height: spacing.md),
@@ -333,7 +351,7 @@ class _TankRegisterSearch extends StatelessWidget {
                   child: FilterChip(
                     label: Text(chip),
                     selected: chip == selected,
-                    onSelected: (_) {},
+                    onSelected: (_) => onChipSelected(chip),
                   ),
                 ),
             ],
