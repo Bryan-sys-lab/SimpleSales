@@ -37,7 +37,8 @@ class _ExchangeScreenState extends State<ExchangeScreen> {
   final _db = DatabaseHelper.instance;
 
   // Step state
-  int _step = 0; // 0 = find sale, 1 = select return lines, 2 = select replacements, 3 = confirm
+  int _step =
+      0; // 0 = find sale, 1 = select return lines, 2 = select replacements, 3 = confirm
 
   // Step 1: find a sale
   final _searchCtrl = TextEditingController();
@@ -46,7 +47,8 @@ class _ExchangeScreenState extends State<ExchangeScreen> {
   Sale? _selectedSale;
 
   // Step 2: return lines
-  final Map<int, double> _returnQuantities = <int, double>{}; // saleItemId -> qty
+  final Map<int, double> _returnQuantities =
+      <int, double>{}; // saleItemId -> qty
   final Map<int, bool> _returnRestock = <int, bool>{}; // saleItemId -> restock?
 
   // Step 3: replacements
@@ -81,10 +83,15 @@ class _ExchangeScreenState extends State<ExchangeScreen> {
       _error = null;
     });
     try {
-      final sales = await _db.getSales(since: DateTime.now().subtract(const Duration(days: 90)), limit: 50, withItems: true);
+      final sales = await _db.getSales(
+          since: DateTime.now().subtract(const Duration(days: 90)),
+          limit: 50,
+          withItems: true);
       final matched = <Sale>[];
       for (final s in sales) {
-        final haystack = '${s.id} ${s.staffName} ${s.buyerName ?? ''} ${s.paymentReference ?? ''}'.toLowerCase();
+        final haystack =
+            '${s.id} ${s.staffName} ${s.buyerName ?? ''} ${s.paymentReference ?? ''}'
+                .toLowerCase();
         if (haystack.contains(query.toLowerCase())) {
           matched.add(s);
         }
@@ -220,7 +227,9 @@ class _ExchangeScreenState extends State<ExchangeScreen> {
         _step = 3;
       });
       ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-        content: Text(AppLocalizations.of(context).exchangeRecorded.replaceAll('\$exchangeId', exchangeId.toString())),
+        content: Text(AppLocalizations.of(context)
+            .exchangeRecorded
+            .replaceAll('\$exchangeId', exchangeId.toString())),
       ));
     } catch (e) {
       if (!mounted) return;
@@ -291,13 +300,13 @@ class _ExchangeScreenState extends State<ExchangeScreen> {
                           height: 20,
                           child: CircularProgressIndicator(strokeWidth: 2),
                         )
-                        : IconButton(
-                            icon: const Icon(Icons.clear),
-                            onPressed: () {
-                              _searchCtrl.clear();
-                              _searchSales();
-                            },
-                          ),
+                      : IconButton(
+                          icon: const Icon(Icons.clear),
+                          onPressed: () {
+                            _searchCtrl.clear();
+                            _searchSales();
+                          },
+                        ),
                 ),
                 onSubmitted: (_) => _searchSales(),
               ),
@@ -312,7 +321,8 @@ class _ExchangeScreenState extends State<ExchangeScreen> {
                   ),
                   child: Row(
                     children: <Widget>[
-                      Icon(Icons.cancel_outlined, color: colors.danger, size: 18),
+                      Icon(Icons.cancel_outlined,
+                          color: colors.danger, size: 18),
                       SizedBox(width: spacing.sm),
                       Expanded(
                         child: Text(
@@ -363,7 +373,8 @@ class _ExchangeScreenState extends State<ExchangeScreen> {
               else ...<Widget>[
                 Text(
                   '${l10n.exchangeReturning} #${_selectedSale!.id}',
-                  style: type.titleMedium?.copyWith(fontWeight: FontWeight.w700),
+                  style:
+                      type.titleMedium?.copyWith(fontWeight: FontWeight.w700),
                 ),
                 SizedBox(height: spacing.sm),
                 Text(
@@ -423,10 +434,10 @@ class _ExchangeScreenState extends State<ExchangeScreen> {
                     ),
                   );
                 }),
-                SizedBox(height: spacing.lg),
-                _ReplacementAdder(
-                  onAdd: _addReplacement,
-                ),
+              SizedBox(height: spacing.lg),
+              _ReplacementAdder(
+                onAdd: _addReplacement,
+              ),
             ] else ...<Widget>[
               // Step 3: Confirm
               Card(
@@ -439,11 +450,13 @@ class _ExchangeScreenState extends State<ExchangeScreen> {
                       SizedBox(height: spacing.sm),
                       _ConfirmRow(
                         label: l10n.exchangeReturned,
-                        value: formatMoney(Money.fromMinor(_returnedTotalMinor)),
+                        value:
+                            formatMoney(Money.fromMinor(_returnedTotalMinor)),
                       ),
                       _ConfirmRow(
                         label: l10n.exchangeReplacementTotal,
-                        value: formatMoney(Money.fromMinor(_replacementTotalMinor)),
+                        value: formatMoney(
+                            Money.fromMinor(_replacementTotalMinor)),
                       ),
                       _ConfirmRow(
                         label: l10n.exchangeDifference,
@@ -466,7 +479,7 @@ class _ExchangeScreenState extends State<ExchangeScreen> {
                         ),
                         SizedBox(height: spacing.xs),
                         DropdownButtonFormField<String>(
-                          value: _paymentMethod,
+                          initialValue: _paymentMethod,
                           decoration: const InputDecoration(
                             labelText: 'Payment method',
                           ),
@@ -505,10 +518,12 @@ class _ExchangeScreenState extends State<ExchangeScreen> {
                               ? const SizedBox(
                                   width: 18,
                                   height: 18,
-                                  child: CircularProgressIndicator(strokeWidth: 2),
+                                  child:
+                                      CircularProgressIndicator(strokeWidth: 2),
                                 )
                               : const Icon(Icons.check_circle_outline),
-                          label: Text(_saving ? 'Committing…' : l10n.exchangeCommit),
+                          label: Text(
+                              _saving ? 'Committing…' : l10n.exchangeCommit),
                         ),
                       ),
                       SizedBox(height: spacing.sm),
@@ -630,9 +645,8 @@ class _ReturnExchangeLine extends StatelessWidget {
                       children: <Widget>[
                         IconButton(
                           icon: const Icon(Icons.remove_circle_outline),
-                          onPressed: qty > 0
-                              ? () => onQtyChanged(qty - 1)
-                              : null,
+                          onPressed:
+                              qty > 0 ? () => onQtyChanged(qty - 1) : null,
                           tooltip: l10n.exchangeLess,
                         ),
                         Text(
@@ -641,7 +655,9 @@ class _ReturnExchangeLine extends StatelessWidget {
                         ),
                         IconButton(
                           icon: const Icon(Icons.add_circle_outline),
-                          onPressed: qty + 1 > remaining ? null : () => onQtyChanged(qty + 1),
+                          onPressed: qty + 1 > remaining
+                              ? null
+                              : () => onQtyChanged(qty + 1),
                           tooltip: l10n.exchangeMore,
                         ),
                       ],
@@ -742,7 +758,9 @@ class _ReplacementAdder extends StatelessWidget {
       if (variant == null) {
         if (context.mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(content: Text(AppLocalizations.of(context).exchangeVariantNotFound)),
+            SnackBar(
+                content:
+                    Text(AppLocalizations.of(context).exchangeVariantNotFound)),
           );
         }
         return;
@@ -750,7 +768,9 @@ class _ReplacementAdder extends StatelessWidget {
       if (variant.stockQty < qty) {
         if (context.mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(content: Text(AppLocalizations.of(context).exchangeInsufficientStock)),
+            SnackBar(
+                content: Text(
+                    AppLocalizations.of(context).exchangeInsufficientStock)),
           );
         }
         return;
@@ -759,7 +779,10 @@ class _ReplacementAdder extends StatelessWidget {
     } catch (e) {
       if (context.mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text(AppLocalizations.of(context).exchangeFailed.replaceAll('\$e', e.toString()))),
+          SnackBar(
+              content: Text(AppLocalizations.of(context)
+                  .exchangeFailed
+                  .replaceAll('\$e', e.toString()))),
         );
       }
     }

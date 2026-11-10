@@ -92,11 +92,17 @@ class _TankRegisterScreenState extends State<TankRegisterScreen> {
 
     setState(() {
       _tanks = tanks;
-      _totalTankCount = widget.totalTankCount > 0 ? widget.totalTankCount : tanks.length.toDouble();
+      _totalTankCount = widget.totalTankCount > 0
+          ? widget.totalTankCount
+          : tanks.length.toDouble();
       _totalCapacityLitres = widget.totalCapacityLitres;
-      _totalRemainingLitres = widget.totalRemainingLitres > 0 ? widget.totalRemainingLitres : totalRemaining;
+      _totalRemainingLitres = widget.totalRemainingLitres > 0
+          ? widget.totalRemainingLitres
+          : totalRemaining;
       _totalInvestedMinor = widget.totalInvestedMinor;
-      _tanksNeedingAttention = widget.tanksNeedingAttention > 0 ? widget.tanksNeedingAttention : needingAttention;
+      _tanksNeedingAttention = widget.tanksNeedingAttention > 0
+          ? widget.tanksNeedingAttention
+          : needingAttention;
       _loading = false;
       _searchQuery = '';
       _selectedChip = 'All';
@@ -159,7 +165,24 @@ class _TankRegisterScreenState extends State<TankRegisterScreen> {
     final AppSpacing spacing = AppSpacing.of(context);
     final l10n = AppLocalizations.of(context);
 
-    final lowStock = _tanks.where((t) => t.fillPercent < 0.3).toList();
+    final List<DrinkTankLevel> filteredTanks = _tanks.where((t) {
+      if (_searchQuery.isNotEmpty &&
+          !t.name.toLowerCase().contains(_searchQuery.toLowerCase())) {
+        return false;
+      }
+      switch (_selectedChip) {
+        case 'Tanks':
+          return t.fillPercent < 1.0;
+        case 'Packaged':
+          return false;
+        case 'Low stock':
+          return t.fillPercent < 0.3;
+        default:
+          return true;
+      }
+    }).toList();
+
+    final lowStock = filteredTanks.where((t) => t.fillPercent < 0.3).toList();
 
     return Scaffold(
       appBar: AppBar(
@@ -218,7 +241,8 @@ class _TankRegisterScreenState extends State<TankRegisterScreen> {
             _TankRegisterOperationRow(
               icon: Icons.inventory_2_outlined,
               title: l10n.tankRegisterPackagedBeverages,
-              detail: '${_tanks.length} products · $_tanksNeedingAttention low stock',
+              detail:
+                  '${filteredTanks.length} products · ${lowStock.length} low stock',
               onTap: () => setState(() => _selectedChip = 'Packaged'),
             ),
             _TankRegisterOperationRow(
@@ -228,7 +252,8 @@ class _TankRegisterScreenState extends State<TankRegisterScreen> {
               onTap: () => context.push(Routes.servings),
             ),
             SizedBox(height: spacing.sm),
-            Text('${_totalCapacityLitres.toStringAsFixed(0)} L · ${formatMoney(Money.fromMinor(_totalInvestedMinor))}'),
+            Text(
+                '${_totalCapacityLitres.toStringAsFixed(0)} L · ${formatMoney(Money.fromMinor(_totalInvestedMinor))}'),
             SizedBox(height: spacing.lg),
 
             // Low stock section.
@@ -240,13 +265,14 @@ class _TankRegisterScreenState extends State<TankRegisterScreen> {
               Text('$_tanksNeedingAttention tanks below safe level'),
               SizedBox(height: spacing.sm),
               ...lowStock.take(6).map(
-                (tank) => _TankRegisterLowStockRow(
-                  name: tank.name,
-                  remaining: '${tank.litresRemaining.toStringAsFixed(0)} L remaining',
-                  percent: tank.fillPercent,
-                  onTap: () => _openTank(tank),
-                ),
-              ),
+                    (tank) => _TankRegisterLowStockRow(
+                      name: tank.name,
+                      remaining:
+                          '${tank.litresRemaining.toStringAsFixed(0)} L remaining',
+                      percent: tank.fillPercent,
+                      onTap: () => _openTank(tank),
+                    ),
+                  ),
               SizedBox(height: spacing.lg),
             ],
 
