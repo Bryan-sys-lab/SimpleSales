@@ -56,16 +56,12 @@ abstract final class Routes {
   static const String tankRegister = '/inventory/tank-register';
 
   // Fashion profile routes (variant-centred rather than product-centred)
-  static const String fashionProductDetail = '/inventory/fashion-product/:productId';
-  // DEAD: placeholder pattern, not referenced; use fashionProduct(int id) function instead
   static const String fashionProductForm = '/inventory/fashion-product/new';
   static const String exchangeScreen = '/fashion/exchange';
   static const String openJobs = '/analytics/open-business/jobs';
   static const String openJobNew = '/analytics/open-business/jobs/new';
   static const String openCostGroups = '/analytics/open-business/cost-groups';
   static const String openCostGroupNew = '/analytics/open-business/cost-groups/new';
-  // DEAD: duplicate of openCostGroupNew, zero call sites
-  static const String openNewCostGroup = '/analytics/open-business/cost-groups/new';
   static const String openReceivables = '/analytics/open-business/receivables';
 
   // ------------------------------------------------------------- the doors
