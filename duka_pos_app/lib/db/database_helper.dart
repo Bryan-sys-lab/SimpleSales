@@ -11767,6 +11767,30 @@ SELECT name FROM staff GROUP BY name HAVING COUNT(*) = 1
     );
   }
 
+  /// Measured (portion) sales minor units for one tank product within a date
+  /// range. Zero when nothing has been poured.
+  Future<int> tankMeasuredSalesMinor(int productId, DateTime since,
+      {DateTime? until}) async {
+    final db = await database;
+    final untilClause = until == null ? '' : 'AND s.created_at < ?';
+    final args = <Object?>[
+      productId,
+      since.toIso8601String(),
+      if (until != null) until.toIso8601String(),
+    ];
+    final rows = await db.rawQuery('''
+      SELECT COALESCE(SUM((si.unit_price * si.qty) - COALESCE(si.discount_minor, 0)), 0) AS total
+      FROM sale_items si
+      JOIN sales s ON s.id = si.sale_id
+      WHERE si.variant_id IS NOT NULL
+        AND si.portion_ml > 0
+        AND si.variant_id = ?
+        AND s.created_at >= ?
+$untilClause
+    ''', args);
+    return (rows.first['total'] as num?)?.round() ?? 0;
+  }
+
   /// Takings per calendar day from [since] through the day containing [until].
   ///
   /// The range is filled in, so a day with no sales is a zero bar rather than a

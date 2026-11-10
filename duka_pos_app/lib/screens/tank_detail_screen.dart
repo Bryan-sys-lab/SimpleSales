@@ -120,7 +120,10 @@ class _TankDetailScreenState extends State<TankDetailScreen> {
       );
       _tank = tankEntry;
 
-      _tankSalesMinor = 0;
+      _tankSalesMinor = await db.tankMeasuredSalesMinor(
+        productId,
+        since,
+      );
       if (!mounted) return;
       final l10n = AppLocalizations.of(context);
 
@@ -132,7 +135,7 @@ class _TankDetailScreenState extends State<TankDetailScreen> {
           value: '+${tankEntry.tankCount.toInt()} tanks',
           when: 'Today',
           icon: Icons.inventory,
-          onTap: null,
+          onTap: () => context.push(Routes.stocktake, extra: productId),
         ),
         TankActivityEntry(
           label: l10n.tankDetailMeasuredSales,
@@ -140,7 +143,7 @@ class _TankDetailScreenState extends State<TankDetailScreen> {
           value: formatMoney(Money.fromMinor(_tankSalesMinor)),
           when: 'Last 30 days',
           icon: Icons.local_drink_outlined,
-          onTap: null,
+          onTap: () => context.push(Routes.stocktake, extra: productId),
         ),
       ];
 
@@ -164,7 +167,9 @@ class _TankDetailScreenState extends State<TankDetailScreen> {
   }
 
   Future<void> _recordMeasurement() async {
-    await context.push(Routes.stocktake);
+    final productId = _tank?.productId;
+    if (productId == null) return;
+    await context.push(Routes.stocktake, extra: productId);
     if (!mounted) return;
     await _load();
   }

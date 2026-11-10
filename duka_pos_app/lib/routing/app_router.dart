@@ -406,7 +406,11 @@ List<RouteBase> _shellRoutes(AppState appState) {
                       (BuildContext context, GoRouterState routerState) =>
                           _fadeThrough(
                     routerState,
-                    const StocktakeScreen(),
+                    StocktakeScreen(
+                      scopeProductId: routerState.extra is int
+                          ? routerState.extra as int
+                          : null,
+                    ),
                   ),
                 ),
                 GoRoute(

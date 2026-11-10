@@ -13,8 +13,13 @@ import '../profile/profile_navigation.dart';
 
 /// Small, offline-first stocktake surface. The database owns the snapshot and
 /// apply transaction; this screen only edits the operator's count entries.
+///
+/// When [scopeProductId] is provided (tank dip from Tank Detail), the count is
+/// scoped to that single tank/product rather than the whole catalogue.
 class StocktakeScreen extends StatefulWidget {
-  const StocktakeScreen({super.key});
+  const StocktakeScreen({super.key, this.scopeProductId});
+
+  final int? scopeProductId;
 
   @override
   State<StocktakeScreen> createState() => _StocktakeScreenState();
@@ -78,6 +83,7 @@ class _StocktakeScreenState extends State<StocktakeScreen> {
       freeze: _freeze,
       name: tankDip ? 'Tank dip' : 'Stocktake',
       scopeType: tankDip ? 'tanks' : 'all',
+      scopeRef: widget.scopeProductId?.toString(),
       note: tankDip ? 'Next-day tank dip' : null,
     );
     if (!mounted) return;
