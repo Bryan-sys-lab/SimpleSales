@@ -1,46 +1,259 @@
+// Route / profile matrix.
+//
+// Tests the redirect guard (appRedirect) for every profile × location
+// combination. AppStageSnapshot is constructed directly — no database I/O,
+// which is the supported way to test the guard.
+
 import 'package:flutter_test/flutter_test.dart';
-import 'package:duka_pos/profile/shop_profile.dart';
+
 import 'package:duka_pos/routing/app_redirect.dart';
 import 'package:duka_pos/routing/app_stage_controller.dart';
 import 'package:duka_pos/routing/routes.dart';
 import 'package:duka_pos/services/app_stage.dart';
+import 'package:duka_pos/profile/shop_profile.dart';
+import 'package:duka_pos/services/roles.dart';
+import '../support/harness.dart';
 
-AppStageSnapshot snap(ShopProfile p) => AppStageSnapshot(
-      stage: AppStage.ready,
-      canManageStock: true,
-      isAdmin: true,
-      shopProfile: p,
-    );
+/// Builds an [AppStageSnapshot] for a profile × role, signed in and ready.
+AppStageSnapshot snapshotFor({
+  required ShopProfile profile,
+  ShopRole role = ShopRole.admin,
+}) {
+  return AppStageSnapshot(
+    stage: AppStage.ready,
+    canManageStock: role != ShopRole.cashier,
+    canViewReports: role != ShopRole.cashier,
+    isAdmin: role == ShopRole.admin,
+    shopProfile: profile,
+  );
+}
+
+/// Expected redirect target: null means allowed, otherwise the path to redirect to.
+String? expectedRedirect({
+  required ShopProfile profile,
+  required String location,
+}) {
+  // Open profile: inventory → portfolio
+  if (location == Routes.inventory && profile == ShopProfile.open) {
+    return Routes.portfolio;
+  }
+  // Profile capability guards
+  if (location.startsWith('/analytics/open-business') &&
+      profile != ShopProfile.open) {
+    return Routes.dashboard;
+  }
+  if ((location.startsWith('/inventory/fashion-product') ||
+          location == Routes.exchangeScreen) &&
+      profile != ShopProfile.fashion) {
+    return Routes.dashboard;
+  }
+  if ((location.startsWith('/inventory/tank') ||
+          location == Routes.servings) &&
+      profile != ShopProfile.drinks) {
+    return Routes.dashboard;
+  }
+  return null;
+}
 
 void main() {
-  group('profile route matrix', () {
-    test('open-business routes redirect non-open profiles', () {
-      for (final p in [ShopProfile.drinks, ShopProfile.duka, ShopProfile.fashion]) {
-        expect(appRedirect(snapshot: snap(p), location: Routes.openJobs), Routes.dashboard);
-        expect(appRedirect(snapshot: snap(p), location: '/analytics/open-business/jobs/1'), Routes.dashboard);
-      }
-      expect(appRedirect(snapshot: snap(ShopProfile.open), location: Routes.openJobs), isNull);
-    });
+  group('profile route redirect guard', () {
+    for (final profile in ShopProfile.values) {
+      group(profile.displayName.toUpperCase(), () {
+        // Shared routes always allowed for any signed-in profile.
+        final List<String> sharedRoutes = <String>[
+          Routes.dashboard,
+          Routes.sell,
+          Routes.inventory,
+          Routes.analytics,
+          Routes.settings,
+          Routes.support,
+          Routes.help,
+          Routes.marketplace,
+        ];
 
-    test('fashion product routes redirect non-fashion profiles', () {
-      for (final p in [ShopProfile.drinks, ShopProfile.duka, ShopProfile.open]) {
-        expect(appRedirect(snapshot: snap(p), location: '/inventory/fashion-product/new'), Routes.dashboard);
-        expect(appRedirect(snapshot: snap(p), location: '/fashion/exchange'), Routes.dashboard);
-      }
-      expect(appRedirect(snapshot: snap(ShopProfile.fashion), location: '/inventory/fashion-product/new'), isNull);
-    });
+        for (final route in sharedRoutes) {
+          testWidgets(
+            '$route allowed under ${profile.displayName}',
+            (WidgetTester tester) async {
+              tester.useDevice(Device.compact);
+              await loadAppFonts();
 
-    test('tank/servings routes redirect non-drinks profiles', () {
-      for (final p in [ShopProfile.duka, ShopProfile.fashion, ShopProfile.open]) {
-        expect(appRedirect(snapshot: snap(p), location: '/inventory/tank-register'), Routes.dashboard);
-        expect(appRedirect(snapshot: snap(p), location: Routes.servings), Routes.dashboard);
-      }
-      expect(appRedirect(snapshot: snap(ShopProfile.drinks), location: '/inventory/tank-register'), isNull);
-    });
+              final snapshot = snapshotFor(profile: profile);
+              final result = appRedirect(
+                snapshot: snapshot,
+                location: route,
+              );
+              final expected = expectedRedirect(profile: profile, location: route);
+              expect(
+                result,
+                expected,
+                reason:
+                    '$route under ${profile.displayName}: expected $expected, got $result',
+              );
+            },
+          );
+        }
 
-    test('inventory redirects to portfolio for open profile', () {
-      expect(appRedirect(snapshot: snap(ShopProfile.open), location: Routes.inventory), Routes.portfolio);
-      expect(appRedirect(snapshot: snap(ShopProfile.duka), location: Routes.inventory), isNull);
-    });
+        // Profile-specific routes allowed under their own profile.
+        if (profile == ShopProfile.open) {
+          final List<String> openRoutes = <String>[
+            Routes.openBusiness,
+            '${Routes.openBusiness}/jobs',
+            '${Routes.openBusiness}/jobs/new',
+            '${Routes.openBusiness}/jobs/1',
+            '${Routes.openBusiness}/jobs/1/edit',
+            '${Routes.openBusiness}/jobs/1/cost',
+            '${Routes.openBusiness}/cost-groups',
+            '${Routes.openBusiness}/cost-groups/new',
+            '${Routes.openBusiness}/cost-groups/1',
+            '${Routes.openBusiness}/receivables',
+          ];
+          for (final route in openRoutes) {
+            testWidgets(
+              'open route $route allowed',
+              (WidgetTester tester) async {
+                tester.useDevice(Device.compact);
+                await loadAppFonts();
+
+                final snapshot = snapshotFor(profile: profile);
+                final result = appRedirect(
+                  snapshot: snapshot,
+                  location: route,
+                );
+                expect(
+                  result,
+                  isNull,
+                  reason: '$route under Open should be allowed (got $result)',
+                );
+              },
+            );
+          }
+        }
+
+        if (profile == ShopProfile.fashion) {
+          final List<String> fashionRoutes = <String>[
+            Routes.fashionProductForm,
+            Routes.fashionProduct(1),
+            Routes.fashionProductEdit(1),
+            Routes.exchangeScreen,
+          ];
+          for (final route in fashionRoutes) {
+            testWidgets(
+              'fashion route $route allowed',
+              (WidgetTester tester) async {
+                tester.useDevice(Device.compact);
+                await loadAppFonts();
+
+                final snapshot = snapshotFor(profile: profile);
+                final result = appRedirect(
+                  snapshot: snapshot,
+                  location: route,
+                );
+                expect(
+                  result,
+                  isNull,
+                  reason: '$route under Fashion should be allowed (got $result)',
+                );
+              },
+            );
+          }
+        }
+
+        if (profile == ShopProfile.drinks) {
+          final List<String> drinksRoutes = <String>[
+            Routes.servings,
+            Routes.tankRegister,
+            Routes.tankDetail(1),
+          ];
+          for (final route in drinksRoutes) {
+            testWidgets(
+              'drinks route $route allowed',
+              (WidgetTester tester) async {
+                tester.useDevice(Device.compact);
+                await loadAppFonts();
+
+                final snapshot = snapshotFor(profile: profile);
+                final result = appRedirect(
+                  snapshot: snapshot,
+                  location: route,
+                );
+                expect(
+                  result,
+                  isNull,
+                  reason: '$route under Drinks should be allowed (got $result)',
+                );
+              },
+            );
+          }
+        }
+
+        // Cross-profile routes redirected to dashboard.
+        for (final otherProfile in ShopProfile.values) {
+          if (otherProfile == profile) continue;
+
+          List<String> otherRoutes = <String>[];
+          if (otherProfile == ShopProfile.open) {
+            otherRoutes = <String>[
+              Routes.openBusiness,
+              '${Routes.openBusiness}/jobs/1',
+            ];
+          }
+          if (otherProfile == ShopProfile.fashion) {
+            otherRoutes = <String>[
+              Routes.fashionProductForm,
+              Routes.exchangeScreen,
+            ];
+          }
+          if (otherProfile == ShopProfile.drinks) {
+            otherRoutes = <String>[Routes.servings, Routes.tankRegister];
+          }
+
+          for (final route in otherRoutes) {
+            testWidgets(
+              '$route redirected under ${profile.displayName}',
+              (WidgetTester tester) async {
+                tester.useDevice(Device.compact);
+                await loadAppFonts();
+
+                final snapshot = snapshotFor(profile: profile);
+                final result = appRedirect(
+                  snapshot: snapshot,
+                  location: route,
+                );
+                expect(
+                  result,
+                  Routes.dashboard,
+                  reason:
+                      '$route under ${profile.displayName} should redirect to dashboard (got $result)',
+                );
+              },
+            );
+          }
+        }
+
+        // Open profile: inventory → portfolio redirect.
+        if (profile == ShopProfile.open) {
+          testWidgets(
+            '/inventory redirects to /analytics/portfolio under Open',
+            (WidgetTester tester) async {
+              tester.useDevice(Device.compact);
+              await loadAppFonts();
+
+              final snapshot = snapshotFor(profile: profile);
+              final result = appRedirect(
+                snapshot: snapshot,
+                location: Routes.inventory,
+              );
+              expect(
+                result,
+                Routes.portfolio,
+                reason:
+                    '/inventory under Open should redirect to /analytics/portfolio (got $result)',
+              );
+            },
+          );
+        }
+      });
+    }
   });
 }
