@@ -56,6 +56,7 @@ class _OpenDashboardScreenState extends State<OpenDashboardScreen>
   int _costGroups = 0;
   List<({int id, String title})> _recentJobs = const [];
   List<Map<String, dynamic>> _jobs = const [];
+  String? _error;
 
   @override
   Set<LiveReason> get liveReasons => const <LiveReason>{};
@@ -77,6 +78,7 @@ class _OpenDashboardScreenState extends State<OpenDashboardScreen>
     _overdueJobs = 0;
     _costGroups = 0;
     _recentJobs = const [];
+    _error = null;
   }
 
   @override
@@ -144,7 +146,9 @@ class _OpenDashboardScreenState extends State<OpenDashboardScreen>
         _recentJobs = jobs.take(3).map((j) => (id: (j['id'] as num).toInt(), title: (j['title'] as String?) ?? '')).toList();
         _jobs = jobs;
       });
-    } catch (_) {
+    } catch (e) {
+      if (!mounted) return;
+      setState(() => _error = e.toString());
     }
   }
 
@@ -198,15 +202,44 @@ class _OpenDashboardScreenState extends State<OpenDashboardScreen>
               subtitle: l10n.openDashboardGreeting,
             ),
             SizedBox(height: spacing.xl),
-            _OpenFinancialHero(
-              revenue: Money.fromMinor(_revenueMinor),
-              netProfit: Money.fromMinor(_netProfitMinor),
-              cashPosition: Money.fromMinor(_cashPositionMinor),
-              receivables: Money.fromMinor(_receivablesMinor),
-              scopeLabel: appState.isOwnerSession
-                  ? l10n.openDashboardScopeShop
-                  : l10n.openDashboardScopeOwn,
-            ),
+            if (_error != null)
+              SurfaceCard(
+                padding: EdgeInsets.all(spacing.lg),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: <Widget>[
+                    Text(
+                      'Unable to load dashboard data',
+                      style: AppTypography.of(context).bodyMedium?.copyWith(
+                        color: AppColors.of(context).danger,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                    SizedBox(height: spacing.sm),
+                    Text(
+                      _error!,
+                      style: AppTypography.of(context).bodySmall?.copyWith(
+                        color: AppColors.of(context).onSurfaceMuted,
+                      ),
+                    ),
+                    SizedBox(height: spacing.lg),
+                    FilledButton(
+                      onPressed: _load,
+                      child: const Text('Retry'),
+                    ),
+                  ],
+                ),
+              )
+            else
+              _OpenFinancialHero(
+                revenue: Money.fromMinor(_revenueMinor),
+                netProfit: Money.fromMinor(_netProfitMinor),
+                cashPosition: Money.fromMinor(_cashPositionMinor),
+                receivables: Money.fromMinor(_receivablesMinor),
+                scopeLabel: appState.isOwnerSession
+                    ? l10n.openDashboardScopeShop
+                    : l10n.openDashboardScopeOwn,
+              ),
             SizedBox(height: spacing.xl),
             _OpenOperationalOverview(
               activeJobs: _activeJobs,
