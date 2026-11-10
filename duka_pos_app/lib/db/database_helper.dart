@@ -6873,6 +6873,18 @@ SELECT name FROM staff GROUP BY name HAVING COUNT(*) = 1
     });
   }
 
+  /// Batch form of [setVariantRemoteId], applied in a single transaction.
+  Future<void> setVariantRemoteIds(Map<int, String> ids) async {
+    if (ids.isEmpty) return;
+    final db = await database;
+    await db.transaction((txn) async {
+      for (final entry in ids.entries) {
+        await txn.update('product_variants', {'remote_id': entry.value},
+            where: 'id = ?', whereArgs: [entry.key]);
+      }
+    });
+  }
+
   /// Sets (or clears, with null) a product's photograph path.
   ///
   /// Only the photograph and the row's freshness are written. `upsertProduct`

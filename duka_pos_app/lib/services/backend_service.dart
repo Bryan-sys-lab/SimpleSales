@@ -1409,6 +1409,23 @@ class BackendService {
         'active': product.active,
       };
 
+  static Map<String, dynamic> _variantPayload(ProductVariant variant) =>
+      {
+        'id': variant.id,
+        'productId': variant.productId,
+        'name': variant.name,
+        'sku': variant.sku,
+        'unit': variant.unit.wire,
+        'sizeMl': variant.sizeMl,
+        'sellPrice': variant.sellPrice.asMajor,
+        'costPrice': variant.costPrice.asMajor,
+        'stockQty': variant.stockQty,
+        'reservedQty': variant.reservedQty,
+        'reorderLevel': variant.reorderLevel,
+        'position': variant.position,
+        'active': variant.active,
+      };
+
   /// Syncs one product to the backend immediately after it is edited.
   ///
   /// The bulk path runs on the auto-sync timer, so a price or name change is
@@ -1515,6 +1532,52 @@ class BackendService {
       }
       if (pairs.isNotEmpty) {
         await DatabaseHelper.instance.setProductRemoteIds(pairs);
+      }
+    }
+    // Variants are part of the catalogue — sync them alongside products so any
+    // till can browse and sell the current Fashion variant catalogue.
+    await syncVariantsToBackend();
+  }
+
+  /// Sync local product variants to the backend (bulk upsert).
+  ///
+  /// Variants are the per-size/colour rows under a parent product. Without this
+  /// domain, another till cannot browse or sell the current Fashion variant
+  /// catalogue even though parent products sync fine.
+  static Future<void> syncVariantsToBackend() async {
+    await ensureInitialized();
+    final tid = await tenantId;
+    if (tid == null) return;
+
+    await _assertRowsInScope();
+
+    final variants = await DatabaseHelper.instance.getAllVariants();
+    if (variants.isEmpty) return;
+
+    final deviceId = await _syncDeviceId();
+    const batchSize = 200;
+    for (var start = 0; start < variants.length; start += batchSize) {
+      final batch = variants.skip(start).take(batchSize).toList();
+      final payloads = batch
+          .map((v) => _variantPayload(v)
+            ..addAll({'syncKey': '$deviceId:${v.id ?? v.productId}'}))
+          .toList();
+      final response = await _dio.post('$backendUrl/product-variants/sync', data: {
+        'variants': payloads,
+      });
+
+      final synced = response.data['synced'] as List?;
+      if (synced == null) continue;
+      final pairs = <int, String>{};
+      for (final item in synced) {
+        final localId = item['localId'];
+        final remoteId = item['remoteId'];
+        if (localId is int && remoteId is String && remoteId.isNotEmpty) {
+          pairs[localId] = remoteId;
+        }
+      }
+      if (pairs.isNotEmpty) {
+        await DatabaseHelper.instance.setVariantRemoteIds(pairs);
       }
     }
   }
