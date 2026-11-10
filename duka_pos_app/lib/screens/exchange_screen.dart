@@ -54,6 +54,8 @@ class _ExchangeScreenState extends State<ExchangeScreen> {
 
   bool _saving = false;
   String? _error;
+  String _paymentMethod = 'cash';
+  String? _paymentReference;
 
   AppState get _appState => context.read<AppState>();
   String get _staffName => _appState.currentStaffName ?? 'Staff';
@@ -156,6 +158,13 @@ class _ExchangeScreenState extends State<ExchangeScreen> {
 
   int get _differenceMinor => _replacementTotalMinor - _returnedTotalMinor;
 
+  String _paymentMethodLabel(String method) => switch (method) {
+        'cash' => 'Cash',
+        'mpesa' => 'M-Pesa',
+        'bank_transfer' => 'Bank transfer',
+        _ => method,
+      };
+
   bool get _canProceed =>
       _selectedSale != null &&
       _returnQuantities.values.any((q) => q > 0) &&
@@ -201,8 +210,8 @@ class _ExchangeScreenState extends State<ExchangeScreen> {
         reason: 'Exchange',
         staffName: _staffName,
         staffId: _staffId,
-        paymentMethod: _differenceMinor > 0 ? 'cash' : 'cash',
-        paymentReference: null,
+        paymentMethod: _paymentMethod,
+        paymentReference: _paymentReference,
       );
 
       if (!mounted) return;
@@ -222,7 +231,7 @@ class _ExchangeScreenState extends State<ExchangeScreen> {
     }
   }
 
-  void _startOver() {
+  Future<void> _startOver() async {
     setState(() {
       _step = 0;
       _selectedSale = null;
@@ -243,7 +252,7 @@ class _ExchangeScreenState extends State<ExchangeScreen> {
     final type = AppTypography.of(context);
 
     return RefreshIndicator(
-      onRefresh: () async {},
+      onRefresh: _startOver,
       child: AdaptivePage(
         scrollable: true,
         maxContentWidth: _exchangeScreenMaxWidth,
@@ -446,6 +455,48 @@ class _ExchangeScreenState extends State<ExchangeScreen> {
                                 : null,
                       ),
                       SizedBox(height: spacing.lg),
+                      if (_differenceMinor != 0) ...<Widget>[
+                        Text(
+                          _differenceMinor > 0
+                              ? 'Customer pays difference'
+                              : 'Store refunds difference',
+                          style: type.bodyMedium?.copyWith(
+                            fontWeight: FontWeight.w600,
+                          ),
+                        ),
+                        SizedBox(height: spacing.xs),
+                        DropdownButtonFormField<String>(
+                          value: _paymentMethod,
+                          decoration: const InputDecoration(
+                            labelText: 'Payment method',
+                          ),
+                          items: <String>['cash', 'mpesa', 'bank_transfer']
+                              .map((m) => DropdownMenuItem<String>(
+                                    value: m,
+                                    child: Text(_paymentMethodLabel(m)),
+                                  ))
+                              .toList(),
+                          onChanged: (v) {
+                            if (v == null) return;
+                            setState(() {
+                              _paymentMethod = v;
+                              _paymentReference = null;
+                            });
+                          },
+                        ),
+                        if (_paymentMethod != 'cash') ...<Widget>[
+                          SizedBox(height: spacing.sm),
+                          TextFormField(
+                            decoration: const InputDecoration(
+                              labelText: 'Payment reference',
+                              hintText: 'M-Pesa code or bank reference',
+                            ),
+                            onChanged: (v) =>
+                                setState(() => _paymentReference = v.trim()),
+                          ),
+                        ],
+                        SizedBox(height: spacing.lg),
+                      ],
                       SizedBox(
                         width: double.infinity,
                         child: FilledButton.icon(
