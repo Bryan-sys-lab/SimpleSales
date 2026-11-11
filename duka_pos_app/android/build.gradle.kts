@@ -31,7 +31,7 @@ rootProject.afterEvaluate {
     }
 }
 
-subprojects { sub: org.gradle.api.Project ->
+subprojects { sub ->
     sub.afterEvaluate {
         extensions.findByName("android")?.let { ext ->
             (ext as CommonExtension).compileSdk = 36
