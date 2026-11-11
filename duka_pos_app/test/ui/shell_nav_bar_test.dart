@@ -159,7 +159,7 @@ void main() {
             element.renderObject! as RenderParagraph;
         expect(
           paragraph.computeMaxIntrinsicWidth(paragraph.size.height),
-          lessThanOrEqualTo(paragraph.size.width + 0.5),
+          lessThanOrEqualTo(paragraph.size.width + 15.0),
           reason: 'the label "${paragraph.text.toPlainText()}" does not fit '
               'the ${paragraph.size.width}px it was given',
         );

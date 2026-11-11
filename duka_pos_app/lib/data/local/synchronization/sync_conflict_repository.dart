@@ -11,6 +11,25 @@ class SyncConflictRepository {
   SyncConflictRepository._();
   static final SyncConflictRepository instance = SyncConflictRepository._();
 
+  static Future<void> createTable(Database db) async {
+    await db.execute('''
+      CREATE TABLE IF NOT EXISTS sync_conflicts (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        uuid TEXT NOT NULL UNIQUE,
+        kind TEXT NOT NULL,
+        local_id INTEGER,
+        device_id TEXT,
+        reason TEXT NOT NULL,
+        payload_json TEXT,
+        created_at TEXT NOT NULL,
+        resolved_at TEXT,
+        resolution TEXT
+      )
+    ''');
+    await db.execute('CREATE INDEX IF NOT EXISTS idx_sync_conflicts_open '
+        'ON sync_conflicts (resolved_at, created_at DESC)');
+  }
+
   /// Records a conflict within [txn].
   Future<void> recordConflictInTransaction(
     Transaction txn, {

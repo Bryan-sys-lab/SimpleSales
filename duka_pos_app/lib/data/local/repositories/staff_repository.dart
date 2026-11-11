@@ -2,6 +2,7 @@ import 'package:sqflite/sqflite.dart';
 
 import '../../../db/database_helper.dart';
 import '../../../models/models.dart';
+import '../../../services/roles.dart';
 
 /// Repository for staff and permissions.
 ///
@@ -13,6 +14,89 @@ import '../../../models/models.dart';
 class StaffRepository {
   StaffRepository._();
   static final StaffRepository instance = StaffRepository._();
+
+  /// Creates (or verifies) the `staff` table.
+  ///
+  /// Mirrors `_onCreate`/`_createTablesMissingFromOlderMigrations` so fresh
+  /// installs and upgraded tills match.
+  static Future<void> createTable(Database db) async {
+    await db.execute('''CREATE TABLE IF NOT EXISTS staff (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      name TEXT NOT NULL,
+      pin_hash TEXT NOT NULL,
+      active INTEGER NOT NULL DEFAULT 1,
+      remote_id TEXT,
+      role TEXT NOT NULL DEFAULT 'cashier',
+      username TEXT
+    )''');
+    await db.execute(
+        'CREATE UNIQUE INDEX IF NOT EXISTS idx_staff_username ON staff (username) WHERE username IS NOT NULL');
+
+    await db.execute('''CREATE TABLE IF NOT EXISTS owner (
+      id INTEGER PRIMARY KEY CHECK (id = 1),
+      name TEXT NOT NULL,
+      pin_hash TEXT NOT NULL,
+      email TEXT NOT NULL,
+      shop_name TEXT NOT NULL,
+      created_at TEXT NOT NULL
+    )''');
+
+    await db.execute('CREATE TABLE IF NOT EXISTS staff_deletion_tombstones (\n'
+        '        staff_id INTEGER PRIMARY KEY,\n'
+        '        remote_id TEXT,\n'
+        '        deleted_at TEXT NOT NULL\n'
+        '      )');
+
+    await db.execute('''CREATE TABLE IF NOT EXISTS pending_payments (
+      reference TEXT PRIMARY KEY,
+      phone_number TEXT,
+      amount INTEGER NOT NULL,
+      tender_amount_minor INTEGER,
+      intended_total_minor INTEGER,
+      cart_json TEXT NOT NULL,
+      staff_name TEXT,
+      staff_id INTEGER,
+      created_at TEXT NOT NULL
+    )''');
+
+    await db.execute('''CREATE TABLE IF NOT EXISTS role_permissions (
+      role TEXT NOT NULL,
+      permission TEXT NOT NULL,
+      allowed INTEGER NOT NULL DEFAULT 0,
+      mode TEXT NOT NULL DEFAULT 'deny',
+      PRIMARY KEY (role, permission)
+    )''');
+
+    await db.execute('''CREATE TABLE IF NOT EXISTS staff_permission_overrides (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      staff_id INTEGER NOT NULL,
+      permission TEXT NOT NULL,
+      allowed INTEGER NOT NULL,
+      mode TEXT NOT NULL DEFAULT 'deny',
+      UNIQUE(staff_id, permission)
+    )''');
+
+    for (final role in <String>['manager', 'cashier']) {
+      final allowed = defaultRolePermissions[role] ?? const <String>{};
+      final approval = defaultApprovalPermissions[role] ?? const <String>{};
+      for (final permission in PermissionKey.values) {
+        await db.insert(
+          'role_permissions',
+          {
+            'role': role,
+            'permission': permission.wire,
+            'allowed': allowed.contains(permission.wire) ? 1 : 0,
+            'mode': approval.contains(permission.wire)
+                ? 'approval'
+                : allowed.contains(permission.wire)
+                    ? 'allow'
+                    : 'deny',
+          },
+          conflictAlgorithm: ConflictAlgorithm.ignore,
+        );
+      }
+    }
+  }
 
   // ── Transaction-aware variants ─────────────────────────────────────
 

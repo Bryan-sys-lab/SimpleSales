@@ -13,6 +13,24 @@ class SettingsRepository {
   SettingsRepository._();
   static final SettingsRepository instance = SettingsRepository._();
 
+  /// Creates (or verifies) the `shop_settings` and `receipt_counters` tables.
+  static Future<void> createTable(Database db) async {
+    await db.execute('''CREATE TABLE IF NOT EXISTS shop_settings (
+      key TEXT PRIMARY KEY NOT NULL,
+      value TEXT
+    )''');
+    await db.execute('''CREATE TABLE IF NOT EXISTS receipt_counters (
+      key TEXT PRIMARY KEY NOT NULL,
+      value INTEGER NOT NULL
+    )''');
+
+    await db.execute('''CREATE TABLE IF NOT EXISTS shop_profile (
+      id INTEGER PRIMARY KEY CHECK (id = 1),
+      profile TEXT NOT NULL DEFAULT 'duka',
+      updated_at TEXT NOT NULL
+    )''');
+  }
+
   // ── Setting key constants ──────────────────────────────────────────
 
   static const String vatRate = 'vat_rate_percent';

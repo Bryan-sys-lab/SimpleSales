@@ -3,6 +3,8 @@ export 'database_manager.dart';
 export 'database_session.dart';
 export 'database_integrity.dart';
 export 'transaction_manager.dart';
+export 'schema.dart';
 export 'schema_version.dart';
+export 'workspace_database.dart';
 export 'migrations/migration.dart';
 export 'migrations/migration_registry.dart';

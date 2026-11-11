@@ -193,7 +193,7 @@ abstract final class AppColorsLight {
   static const accentContainer = Color(0xFFE4F3E9);
   static const onAccentContainer = Color(0xFF0D3D1E);
   static const success = Color(0xFF1A7A3A);
-  static const successContainer = Color(0xFFE4F3E9);
+  static const successContainer = Color(0xFFDCEFE1);
   static const onSuccessContainer = Color(0xFF0D4D1E);
   static const warning = Color(0xFF8A6508);
   static const warningContainer = Color(0xFFFFF3E0);

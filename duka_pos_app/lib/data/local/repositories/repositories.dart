@@ -7,3 +7,6 @@ export 'job_repository.dart';
 export 'settings_repository.dart';
 export 'drinks_repository.dart';
 export 'fashion_repository.dart';
+export 'audit_log_repository.dart';
+export 'crash_log_repository.dart';
+export 'notification_repository.dart';

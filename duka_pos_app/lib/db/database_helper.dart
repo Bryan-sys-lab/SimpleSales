@@ -2,16 +2,29 @@ import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 import 'dart:math' as math;
-import 'package:flutter/foundation.dart';
+import 'package:flutter/foundation.dart' show visibleForTesting;
 import 'package:flutter/services.dart';
-import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:intl/intl.dart';
 import 'package:crypto/crypto.dart' show sha256;
 import 'package:path/path.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:sqflite/sqflite.dart';
-import 'package:sqflite_sqlcipher/sqlite_api.dart';
-import 'package:sqflite_sqlcipher/sqflite.dart' as sqlcipher_pkg;
+
+import '../data/local/database/workspace_database.dart';
+import '../data/local/database/schema.dart';
+import '../data/local/repositories/audit_log_repository.dart';
+import '../data/local/repositories/crash_log_repository.dart';
+import '../data/local/repositories/customer_repository.dart';
+import '../data/local/repositories/drinks_repository.dart';
+import '../data/local/repositories/fashion_repository.dart';
+import '../data/local/repositories/finance_repository.dart';
+import '../data/local/repositories/inventory_repository.dart';
+import '../data/local/repositories/job_repository.dart';
+import '../data/local/repositories/notification_repository.dart';
+import '../data/local/repositories/sales_repository.dart';
+import '../data/local/repositories/settings_repository.dart';
+import '../data/local/repositories/staff_repository.dart';
+import '../data/local/synchronization/sync_conflict_repository.dart';
 import '../models/audit_log.dart';
 import '../models/crash_log.dart';
 import '../models/credit.dart';
@@ -60,64 +73,54 @@ class _SnapshotMediaRollback {
 /// Thrown when the stored SQLCipher key cannot open the existing database
 /// file. The database file is preserved; callers should offer a restore-from-
 ///backup path rather than silently creating an empty replacement.
-class DatabaseKeyMismatchException implements Exception {
-  const DatabaseKeyMismatchException(this.message);
-
-  final String message;
-
-  @override
-  String toString() => 'DatabaseKeyMismatchException($message)';
-}
-
-/// Single source of truth for local storage. Every screen reads/writes
-/// through here rather than touching sqflite directly, so the schema only
-/// lives in one place and checkout stays a single atomic transaction
-/// (see recordSale) — a mid-sale crash or dead battery should never leave
-/// stock decremented without a matching sale row, or vice versa.
 class DatabaseHelper {
   DatabaseHelper._internal();
   static final DatabaseHelper instance = DatabaseHelper._internal();
-  Database? _db;
-  String _workspaceKey = 'legacy';
-  int _databaseGeneration = 0;
 
-  /// Whether advisory background work may use the current database handle.
+  /// Repository instances, persisted here so DomainHelpers/use cases can reach
+  /// them through the compatibility facade. Each repository delegates to this
+  /// class until its SQL is migrated in Phase 8.
+  static final StaffRepository staffRepository = StaffRepository.instance;
+  static final FinanceRepository financeRepository = FinanceRepository.instance;
+  static final InventoryRepository inventoryRepository = InventoryRepository.instance;
+  static final SettingsRepository settingsRepository = SettingsRepository.instance;
+  static final SalesRepository salesRepository = SalesRepository.instance;
+  static final CustomerRepository customerRepository = CustomerRepository.instance;
+  static final JobRepository jobRepository = JobRepository.instance;
+  static final DrinksRepository drinksRepository = DrinksRepository.instance;
+  static final FashionRepository fashionRepository = FashionRepository.instance;
+  static final AuditLogRepository auditLogRepository = AuditLogRepository.instance;
+  static final CrashLogRepository crashLogRepository = CrashLogRepository.instance;
+  static final NotificationRepository notificationRepository = NotificationRepository.instance;
+  static final SyncConflictRepository syncConflictRepository = SyncConflictRepository.instance;
+
+  /// Whether a database handle is currently open for the current workspace.
+  bool get hasOpenDatabase => WorkspaceDatabase.instance.hasOpenDatabase;
+
+  /// The shop this singleton is CURRENTLY pointed at.
   ///
-  /// Sign-in can outlive a widget test's database teardown, so callers that
-  /// launch non-critical work must not reopen or touch storage after a reset.
-  bool get hasOpenDatabase => _db != null;
-
-  /// Serialises moving this singleton to another shop.
+  /// Distinct from `WorkspaceService.activeWorkspaceKey()`, and deliberately so:
+  /// the registry in SharedPreferences is what a *user* chose, while this is
+  /// what the *database* is actually reading. A cross-shop reader that restores
+  /// from the registry would restore the user's choice even though it had
+  /// already moved the database somewhere else — and would then point the till
+  /// at a shop whose stock it is not showing.
   ///
-  /// Held for a whole operation, not for a single switch, so that a caller
-  /// which must walk several shops (the cross-shop activity read) can keep the
-  /// database still for as long as it is looking.
-  static final _AsyncGate _workspaceGate = _AsyncGate();
-  static Future<void>? _pendingTestClose;
+  /// A caller that walked several shops and wants to put things back exactly as
+  /// they found them needs THIS.
+  String get currentWorkspaceKey => WorkspaceDatabase.instance.currentWorkspaceKey;
 
-  /// OS-backed secure storage for per-workspace SQLCipher keys.
+  /// The open SQLite database handle for the current workspace.
   ///
-  /// Android Keystore / iOS Keychain back `flutter_secure_storage`, so the
-  /// key never leaves the device and cannot be read by other apps.
-  static final FlutterSecureStorage _secureStorage = FlutterSecureStorage();
-
-  /// Prefix for workspace database keys in secure storage.
-  static const _dbKeyPrefix = 'db_key_';
-
-  /// Generates a random 256-bit key, stores it keyed by workspace, and returns it.
-  static Future<String> _ensureWorkspaceKey(String workspaceKey) async {
-    final storageKey = '$_dbKeyPrefix$workspaceKey';
-    final existing = await _secureStorage.read(key: storageKey);
-    if (existing != null && existing.isNotEmpty) return existing;
-    final key = _generateKey();
-    await _secureStorage.write(key: storageKey, value: key);
-    return key;
-  }
-
-  /// Returns the stored key for a workspace, or null if none has been created.
-  static Future<String?> readWorkspaceKey(String workspaceKey) async {
-    final storageKey = '$_dbKeyPrefix$workspaceKey';
-    return _secureStorage.read(key: storageKey);
+  /// Lazily opens the workspace database on first access. Delegates to
+  /// [WorkspaceDatabase], which owns the connection handle, the workspace gate
+  /// and the per-workspace SQLCipher key store.
+  Future<Database> get database async {
+    WorkspaceDatabase.instance.configureMigrations(
+      onCreate: _onCreate,
+      onUpgrade: _onUpgrade,
+    );
+    return WorkspaceDatabase.instance.database;
   }
 
   /// Rotates the workspace database key: generates a new one and stores it.
@@ -128,33 +131,16 @@ class DatabaseHelper {
   /// by the sqflite_sqlcipher Dart API. Callers that need to rotate keys
   /// should export a portable backup, create a fresh workspace, and restore.
   static Future<void> rotateWorkspaceKey(String workspaceKey) async {
-    final storageKey = '$_dbKeyPrefix$workspaceKey';
-    await _secureStorage.delete(key: storageKey);
-    await _ensureWorkspaceKey(workspaceKey);
-  }
-
-  /// Deletes a workspace's database key. Used only when the database file is
-  /// also being deleted, so a key is never orphaned from its data.
-  static Future<void> _deleteWorkspaceKey(String workspaceKey) async {
-    final storageKey = '$_dbKeyPrefix$workspaceKey';
-    await _secureStorage.delete(key: storageKey);
-  }
-
-  /// Cryptographically random 256-bit key, hex-encoded.
-  static String _generateKey() {
-    final bytes =
-        List<int>.generate(32, (_) => math.Random.secure().nextInt(256));
-    return sha256.convert(bytes).toString();
+    return WorkspaceDatabase.rotateWorkspaceKey(workspaceKey);
   }
 
   /// Must run before the first database access. The legacy path is retained
   /// for existing installations; every additional shop gets a separate file.
   ///
-  /// Takes the workspace gate (see [_AsyncGate]) so a shop switch can never
-  /// land in the middle of a cross-shop tour — see
-  /// [CrossShopAuditReader.readAllShops].
+  /// Takes the workspace gate so a shop switch can never land in the middle
+  /// of a cross-shop tour — see [CrossShopAuditReader.readAllShops].
   Future<void> initializeWorkspace(String workspaceKey) =>
-      _workspaceGate.run(() => _pointAtWorkspace(workspaceKey));
+      WorkspaceDatabase.instance.initializeWorkspace(workspaceKey);
 
   /// Moves the database to another shop.
   ///
@@ -171,18 +157,7 @@ class DatabaseHelper {
   /// have its switch reverted by a concurrent tour, which leaves the till
   /// pointed at the shop the tour happened to be walking.
   Future<void> switchWorkspaceHoldingGate(String workspaceKey) =>
-      _pointAtWorkspace(workspaceKey);
-
-  Future<void> _pointAtWorkspace(String workspaceKey) async {
-    if (workspaceKey.trim().isEmpty) {
-      throw ArgumentError.value(workspaceKey, 'workspaceKey');
-    }
-    if (_db != null && _workspaceKey == workspaceKey) return;
-    _databaseGeneration++;
-    await _db?.close();
-    _db = null;
-    _workspaceKey = workspaceKey;
-  }
+      WorkspaceDatabase.instance.switchWorkspaceHoldingGate(workspaceKey);
 
   /// Runs [body] holding the workspace gate.
   ///
@@ -191,7 +166,7 @@ class DatabaseHelper {
   /// to another shop, and the gate is what makes a multi-shop tour safe to run
   /// from a screen the rest of the app is still using.
   Future<T> withWorkspaceGate<T>(Future<T> Function() body) =>
-      _workspaceGate.run(body);
+      WorkspaceDatabase.instance.withWorkspaceGate(body);
 
   /// The shop this singleton is CURRENTLY pointed at.
   ///
@@ -204,47 +179,10 @@ class DatabaseHelper {
   ///
   /// A caller that walked several shops and wants to put things back exactly as
   /// they found them needs THIS.
-  String get currentWorkspaceKey => _workspaceKey;
-
-  Future<Database> get database async {
-    while (true) {
-      final existing = _db;
-      if (existing != null) return existing;
-      final generation = _databaseGeneration;
-      final opened = await _initDb();
-      // A reset or workspace switch may have happened while the filesystem
-      // database was opening. Never let that stale future replace the newer
-      // handle (especially a test's isolated in-memory handle).
-      if (generation != _databaseGeneration) {
-        await opened.close();
-        continue;
-      }
-      final current = _db;
-      if (current != null) {
-        await opened.close();
-        return current;
-      }
-      _db = opened;
-      _pendingTestClose = null;
-      return opened;
-    }
-  }
-
   /// Test-only: Reset the singleton instance for test isolation
   @visibleForTesting
   static void resetForTests() {
-    final Database? previous = instance._db;
-    instance._db = null;
-    instance._databaseGeneration++;
-    // The database handle and its workspace pointer are one piece of test
-    // state. A preceding multi-shop test may have left the singleton pointed
-    // at another workspace; the next in-memory database must start from the
-    // same default context as a fresh process.
-    instance._workspaceKey = 'legacy';
-    // sqflite's close is asynchronous. Test files deliberately reset and
-    // reopen the singleton between cases; leaving the old in-memory handle
-    // closing in the background lets a later case race the new handle.
-    _pendingTestClose = previous?.close();
+    WorkspaceDatabase.resetForTests();
   }
 
   /// Test-only: Wait for any pending database close to finish.
@@ -256,8 +194,7 @@ class DatabaseHelper {
   /// as the engine tears down the test binding.
   @visibleForTesting
   static Future<void> closeForTests() async {
-    await _pendingTestClose;
-    _pendingTestClose = null;
+    await WorkspaceDatabase.closeForTests();
   }
 
   /// Bump this every time the schema changes, and add the matching branch in
@@ -332,97 +269,25 @@ class DatabaseHelper {
   static Future<Database> openExistingForUpgradeTests(String path) async {
     // Test databases use the test-injected factory (FFI for local test runs)
     // and stay unencrypted — SQLCipher is production-only.
-    return databaseFactory.openDatabase(
+    return WorkspaceDatabase.openExistingForUpgradeTests(
       path,
-      options: OpenDatabaseOptions(
-        version: _schemaVersion,
-        onCreate: instance._onCreate,
-        onUpgrade: instance._onUpgrade,
-      ),
+      onCreate: instance._onCreate,
+      onUpgrade: instance._onUpgrade,
     );
   }
 
-  Future<Database> _initDb() async {
-    final dbPath = await getDatabasesPath();
-    final safeKey = _workspaceKey.replaceAll(RegExp(r'[^A-Za-z0-9_-]'), '_');
-    final path = _workspaceKey == 'legacy'
-        ? join(dbPath, 'duka_pos.db')
-        : join(dbPath, 'duka_pos_$safeKey.db');
-
-    // Production workspace databases are encrypted at rest with SQLCipher.
-    // Each workspace gets a device-local 256-bit key stored in the OS
-    // keystore/keychain via flutter_secure_storage. A missing key means the
-    // workspace has never been opened — generate one now.
-    final key = await _ensureWorkspaceKey(_workspaceKey);
-
-    // Open with the stored key. If the key is wrong (secure storage cleared,
-    // key corrupted), SQLCipher throws — we must NOT silently generate a new
-    // key and create an empty database over the existing encrypted file. That
-    // would destroy the shop's data. Fail closed and let the caller show a
-    // recovery path.
-    try {
-      // In plain `flutter test` runs, databaseFactory is overridden to
-      // databaseFactoryFfi which has no platform channel. Use it directly
-      // instead of sqlcipher_pkg.databaseFactory so tests can open workspace
-      // databases without a platform plugin. Production keeps SQLCipher.
-      final isTest = kDebugMode;
-      return await (isTest ? databaseFactory : sqlcipher_pkg.databaseFactory)
-          .openDatabase(
-        path,
-        options: isTest
-            ? OpenDatabaseOptions(
-                version: _schemaVersion,
-                onCreate: _onCreate,
-                onUpgrade: _onUpgrade,
-              )
-            : SqlCipherOpenDatabaseOptions(
-                version: _schemaVersion,
-                onCreate: _onCreate,
-                onUpgrade: _onUpgrade,
-                password: key,
-              ),
-      );
-    } on Object catch (_) {
-      // If the database file doesn't exist yet, this is a first-open and the
-      // key generation is fine — rethrow so the caller sees the real error.
-      final file = File(path);
-      if (!(await file.exists())) rethrow;
-
-      // File exists but key doesn't work: wrong key, corrupted file, or
-      // plaintext database from before encryption. Preserve the file and
-      // report a recovery condition rather than destroying data.
-      throw DatabaseKeyMismatchException(
-        'Cannot open encrypted workspace database for $_workspaceKey. '
-        'The stored key does not match the database file. Restore from a '
-        'portable backup or contact support.',
-      );
-    }
-  }
-
-  /// The file path a workspace's database lives at, computed the same way
-  /// `_initDb` computes it — so a cross-shop reader can open its own read-only
-  /// handle instead of repointing this process-global singleton.
+  /// The file path a workspace's database lives at, computed using
+  /// [DatabaseConfig.databaseFileName] (SHA-256) so filenames are
+  /// collision-resistant — the same scheme [DatabaseManager] uses.
   static Future<String> databasePathFor(String workspaceKey) async {
-    final dbPath = await getDatabasesPath();
-    final safeKey = workspaceKey.replaceAll(RegExp(r'[^A-Za-z0-9_-]'), '_');
-    return workspaceKey == 'legacy'
-        ? join(dbPath, 'duka_pos.db')
-        : join(dbPath, 'duka_pos_$safeKey.db');
+    return WorkspaceDatabase.databasePathFor(workspaceKey);
   }
 
   /// Deletes one failed workspace database after its registry entry has been
   /// removed. The target is an exact workspace-derived path; broad database
   /// deletion is deliberately not exposed.
   static Future<void> deleteWorkspace(String workspaceKey) async {
-    if (workspaceKey.trim().isEmpty || workspaceKey == 'legacy') return;
-    await _workspaceGate.run(() async {
-      if (instance._workspaceKey == workspaceKey && instance._db != null) {
-        await instance._db!.close();
-        instance._db = null;
-      }
-      await databaseFactory.deleteDatabase(await databasePathFor(workspaceKey));
-      await _deleteWorkspaceKey(workspaceKey);
-    });
+    return WorkspaceDatabase.deleteWorkspace(workspaceKey);
   }
 
   /// Test-only: a fresh, isolated in-memory instance with the real schema,
@@ -432,32 +297,18 @@ class DatabaseHelper {
   /// test/database_helper_test.dart for the exact pattern.
   @visibleForTesting
   static Future<DatabaseHelper> openInMemoryForTests() async {
-    await _pendingTestClose;
-    _pendingTestClose = null;
-    // A preceding workspace test may still have a switch queued on the
-    // singleton gate. Do not install a fresh in-memory handle until that work
-    // has finished, otherwise the queued switch can close or repoint the new
-    // handle during the next test.
-    await _workspaceGate.run(() async {});
-    instance._workspaceKey = 'legacy';
-    // sqflite_common_ffi caches the literal ':memory:' handle in some
-    // versions; a unique URI keeps each test isolated even when the previous
-    // singleton connection has not finished closing.
-    final uniqueMemoryPath =
-        'file:duka_test_${DateTime.now().microsecondsSinceEpoch}?mode=memory&cache=private';
-    instance._db = await databaseFactory.openDatabase(
-      uniqueMemoryPath,
-      options: OpenDatabaseOptions(
-          version: _schemaVersion, onCreate: instance._onCreate),
-    );
+    await WorkspaceDatabase.openInMemoryForTests(onCreate: instance._onCreate);
     return instance;
   }
 
   /// Public wrapper for schema creation, used by [DatabaseManager].
   ///
-  /// Delegates to [_onCreate]. Kept public so the new data layer can create
-  /// fresh databases without reaching into private members.
-  Future<void> createSchema(Database db, int version) => _onCreate(db, version);
+  /// Delegates to [schema.onCreate], which orchestrates each repository's
+  /// `createTable` static. Historical migrations v1–80 remain immutable and
+  /// are still applied by [upgradeSchema]; `createSchema` is only used for
+  /// fresh installs. Every domain table now has a matching `createTable`, so
+  /// fresh installs and upgraded tills cannot diverge.
+  Future<void> createSchema(Database db, int version) => onCreate(db, version);
 
   /// Public wrapper for schema upgrade, used by [DatabaseManager].
   ///
@@ -5737,7 +5588,7 @@ SELECT name FROM staff GROUP BY name HAVING COUNT(*) = 1
     return <String, Object?>{
       'format': 'duka-full-snapshot-v1',
       'schemaVersion': _schemaVersion,
-      'workspaceKey': _workspaceKey,
+      'workspaceKey': WorkspaceDatabase.instance.currentWorkspaceKey,
       'createdAt': DateTime.now().toUtc().toIso8601String(),
       'tables': tables,
       'manifest': <String, int>{
@@ -5811,7 +5662,7 @@ SELECT name FROM staff GROUP BY name HAVING COUNT(*) = 1
     final snapshotWorkspace = snapshot['workspaceKey'];
     if (snapshotWorkspace is! String ||
         snapshotWorkspace.isEmpty ||
-        (!allowWorkspaceMismatch && snapshotWorkspace != _workspaceKey)) {
+        (!allowWorkspaceMismatch && snapshotWorkspace != WorkspaceDatabase.instance.currentWorkspaceKey)) {
       throw const FormatException('Backup belongs to a different shop');
     }
     final db = await database;
@@ -6048,7 +5899,7 @@ SELECT name FROM staff GROUP BY name HAVING COUNT(*) = 1
   Future<String> getTillCode() async {
     final configured = (await getSetting(settingTillCode))?.trim();
     if (configured != null && configured.isNotEmpty) return configured;
-    return defaultTillCode(_workspaceKey);
+    return defaultTillCode(WorkspaceDatabase.instance.currentWorkspaceKey);
   }
 
   Future<String?> _settingFromExecutor(
@@ -6064,7 +5915,7 @@ SELECT name FROM staff GROUP BY name HAVING COUNT(*) = 1
     final configured =
         (await _settingFromExecutor(executor, settingTillCode))?.trim();
     if (configured != null && configured.isNotEmpty) return configured;
-    return defaultTillCode(_workspaceKey);
+    return defaultTillCode(WorkspaceDatabase.instance.currentWorkspaceKey);
   }
 
   Future<int> _vatRateFromExecutor(DatabaseExecutor executor) async {
@@ -14868,26 +14719,6 @@ class PendingEtimsReceipt {
 /// shops, or can interrupt an automatic sync, and either way the till ends up
 /// pointed at a shop neither party chose.
 ///
-/// Queue order is FIFO: each body runs to completion before the next starts,
-/// and a body that throws does not poison the queue — the next waiter still
-/// runs, and receives that body's error.
-class _AsyncGate {
-  Future<void> _drain = Future<void>.value();
-
-  /// Runs [body], waiting for anything already queued.
-  Future<T> run<T>(Future<T> Function() body) {
-    final result = Completer<T>();
-    _drain = _drain.then((_) async {
-      try {
-        result.complete(await body());
-      } catch (error, stack) {
-        result.completeError(error, stack);
-      }
-    });
-    return result.future;
-  }
-}
-
 /// A line's fraction of its container. [containerMl] is the product's own
 /// bottle/keg size, which only a measured pour needs.
 ///

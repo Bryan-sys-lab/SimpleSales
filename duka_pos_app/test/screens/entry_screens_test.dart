@@ -221,9 +221,9 @@ void main() {
       await tester.pumpApp(home: _wrap(_loginWithRoster(), seeded));
       await tester.pump(const Duration(milliseconds: 50));
 
-      expect(find.text('ADMINS'), findsOneWidget,
+      expect(find.text('Admins'), findsOneWidget,
           reason: 'one Admins heading, not one per account under it');
-      expect(find.text('CASHIERS'), findsOneWidget);
+      expect(find.text('Cashiers'), findsOneWidget);
       expect(find.text('Amina'), findsOneWidget,
           reason: 'an admin-role account is listed exactly once');
       expect(find.text('Brian'), findsOneWidget);

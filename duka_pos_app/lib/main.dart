@@ -102,6 +102,13 @@ Future<void> main() async {
     return false;
   };
 
+  // Initialize WorkManager headless callback for automatic backups that survive
+  // process death. Must run before runApp so the six-hourly cycle can fire even
+  // when Android kills or suspends the till. Initialized before the Sentry
+  // early-return so WorkManager is set up whether or not a Sentry DSN is
+  // configured.
+  await Workmanager().initialize(autoBackupDispatcher);
+
   // Initialize Sentry for crash reporting (if DSN provided). A malformed DSN
   // must never prevent the app from starting, so init is guarded and the app
   // always runs.
@@ -121,13 +128,6 @@ Future<void> main() async {
       debugPrint('Crash reporting disabled (invalid SENTRY_DSN): $error');
     }
   }
-  // WorkManager headless callback for automatic backups that survive process
-  // death. Initialized before runApp so the six-hourly cycle can fire even
-  // when Android kills or suspends the till.
-  Workmanager().initialize(
-    autoBackupDispatcher,
-    isInDebugMode: !kReleaseMode,
-  );
 
   runApp(DukaPosApp(appearance: appearance));
 }

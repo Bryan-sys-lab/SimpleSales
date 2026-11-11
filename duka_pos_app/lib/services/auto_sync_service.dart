@@ -47,15 +47,12 @@ static const _workManagerTask = 'autoBackup';
 /// re-registering replaces the previous request.
 static Future<void> registerWorkManager() async {
   // Idempotent headless-isolate initializer. Safe to call more than once.
-  Workmanager().initialize(
-    autoBackupDispatcher,
-    isInDebugMode: !kReleaseMode,
-  );
+  await Workmanager().initialize(autoBackupDispatcher);
   await Workmanager().registerPeriodicTask(
     'auto_backup',
     _workManagerTask,
     frequency: const Duration(hours: 6),
-    existingWorkPolicy: ExistingWorkPolicy.replace,
+    existingWorkPolicy: ExistingPeriodicWorkPolicy.update,
     constraints: Constraints(
       networkType: NetworkType.connected,
     ),

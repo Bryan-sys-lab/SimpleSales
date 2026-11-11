@@ -51,7 +51,7 @@ void main() {
             'notice in Diagnostics depends on it',
       );
 
-      final int started = source.indexOf('runApp(const DukaPosApp()');
+      final int started = source.indexOf('runApp(DukaPosApp(');
       expect(
         started,
         isNot(-1),

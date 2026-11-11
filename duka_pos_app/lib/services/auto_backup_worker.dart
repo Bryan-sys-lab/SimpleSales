@@ -8,6 +8,7 @@ import 'auto_sync_service.dart';
 /// scheduled backup rather than waiting until the owner next opens the app.
 ///
 /// Registered as `autoBackupDispatcher` in `AutoSyncService.registerWorkManager`.
+@pragma('vm:entry-point')
 void autoBackupDispatcher() {
   Workmanager().executeTask((task, inputData) async {
     if (task == 'autoBackup') {
