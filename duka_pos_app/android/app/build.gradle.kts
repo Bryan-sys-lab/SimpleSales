@@ -16,13 +16,13 @@ if (hasReleaseSigning) {
 
 android {
     namespace = "com.dukapos.simplepos"
+    // Force compileSdk to 36. flutter.compileSdkVersion resolves to android-31 on
+    // Flutter 3.47, but workmanager 0.10.10's transitive AndroidX dependencies
+    // (androidx.window.extensions.core 1.0.0, androidx.annotation
+    // annotation-experimental 1.4.0, etc.) require compileSdk 33-34+. Flutter's
+    // Gradle plugin re-asserts compileSdk = 31 during evaluation, so this hard
+    // override ensures our value wins.
     compileSdk = 36
-    // Flutter's recommended NDK for this SDK version, which is also what every
-    // plugin in the tree expects — `jni`, `sentry_flutter`, `sqflite_android` and
-    // nine others all pin this revision. Flutter's own diagnostic is to use the
-    // highest version asked for, since they are backward compatible; the earlier
-    // 27.1 pin made the build warn about a dozen plugins and still required a
-    // second NDK locally.
     ndkVersion = "28.2.13676358"
 
     compileOptions {
