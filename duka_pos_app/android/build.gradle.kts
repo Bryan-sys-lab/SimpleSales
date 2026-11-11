@@ -22,12 +22,12 @@ subprojects {
 // resolves to android-31 on Flutter 3.47, but workmanager 0.10.10's
 // transitive AndroidX dependencies require compileSdk 33-34+. Flutter's
 // Gradle plugin re-asserts compileSdk = 31 during project evaluation, so
-// we override it via gradle.projectsEvaluated, which runs after ALL projects
-// are configured (including Flutter's plugin registration of android
-// extensions), guaranteeing our value wins on every subproject.
-gradle.projectsEvaluated {
-    rootProject.subprojects.forEach { sub ->
-        sub.extensions.findByName("android")?.let { ext ->
+// we override it in each subproject's afterEvaluate callback, which runs
+// after Flutter's plugin sets compileSdk = 31 but before the subproject
+// reads compileSdk to configure its compilation.
+configure(subprojects) {
+    afterEvaluate {
+        extensions.findByName("android")?.let { ext ->
             (ext as CommonExtension).compileSdk = 36
         }
     }
