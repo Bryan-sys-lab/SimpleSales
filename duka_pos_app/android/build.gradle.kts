@@ -24,6 +24,7 @@ subprojects {
 // Gradle plugin re-asserts compileSdk = 31 during project evaluation, so
 // we override it via rootProject.afterEvaluate after ALL projects are
 // evaluated, guaranteeing our value wins on every subproject.
+// Retrigger CI after transient NDK download failure.
 rootProject.afterEvaluate {
     subprojects.forEach { sub ->
         sub.extensions.findByName("android")?.let { ext ->
