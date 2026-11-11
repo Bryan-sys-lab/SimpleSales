@@ -792,6 +792,44 @@ void main() {
             reason: 'table $table is missing from the fresh database');
       }
     });
+
+    test('both have exactly the same indexes on every table', () async {
+      // Indexes are part of the schema contract: a query that is fast on a
+      // fresh install must be fast on an upgraded one.
+      await DatabaseHelper.openInMemoryForTests();
+      final fresh = await DatabaseHelper.instance.database;
+      final migratedDb = await migrated();
+
+      Future<Map<String, Set<String>>> indexesOf(Database db) async {
+        final tables = await db.rawQuery(
+            "SELECT name FROM sqlite_master WHERE type='table' ORDER BY name");
+        final result = <String, Set<String>>{};
+        for (final table in tables) {
+          final name = table['name'] as String;
+          final idxs = await db.rawQuery(
+              "SELECT name FROM sqlite_master WHERE type='index' AND tbl_name='$name' AND name NOT LIKE 'sqlite_%' ORDER BY name");
+          result[name] = {for (final i in idxs) i['name'] as String};
+        }
+        return result;
+      }
+
+      final freshIndexes = await indexesOf(fresh);
+      final migratedIndexes = await indexesOf(migratedDb);
+      await migratedDb.close();
+      await fresh.close();
+
+      for (final table in freshIndexes.keys) {
+        expect(migratedIndexes[table], isNotNull,
+            reason: 'table $table is missing from the upgraded database');
+        expect(migratedIndexes[table], freshIndexes[table],
+            reason: 'table $table has different indexes on a fresh and an '
+                'upgraded till');
+      }
+      for (final table in migratedIndexes.keys) {
+        expect(freshIndexes[table], isNotNull,
+            reason: 'table $table is missing from the fresh database');
+      }
+    });
   });
 
   group('v14 -> v15: shifts, till counts, shot cups, cup sizes', () {

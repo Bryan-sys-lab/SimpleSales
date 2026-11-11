@@ -453,6 +453,70 @@ class DatabaseHelper {
     return instance;
   }
 
+  /// Public wrapper for schema creation, used by [DatabaseManager].
+  ///
+  /// Delegates to [_onCreate]. Kept public so the new data layer can create
+  /// fresh databases without reaching into private members.
+  Future<void> createSchema(Database db, int version) => _onCreate(db, version);
+
+  /// Public wrapper for schema upgrade, used by [DatabaseManager].
+  ///
+  /// Delegates to [_onUpgrade]. Kept public so the new data layer can upgrade
+  /// existing databases without reaching into private members.
+  Future<void> upgradeSchema(
+      Database db, int oldVersion, int newVersion) => _onUpgrade(db, oldVersion, newVersion);
+
+  /// Appends a financial event within an existing transaction, used by
+  /// repositories that compose atomic business operations.
+  ///
+  /// Delegates to [_appendFinancialEvent]. Kept public so the new data layer
+  /// can append ledger events without reaching into private members.
+  Future<int> appendFinancialEventInTransaction({
+    required DatabaseExecutor txn,
+    required String eventType,
+    required String sourceType,
+    int? sourceId,
+    required String occurredAtUtc,
+    int revenueMinor = 0,
+    int cashInMinor = 0,
+    int cashOutMinor = 0,
+    int cogsMinor = 0,
+    int operatingExpenseMinor = 0,
+    int taxCollectedMinor = 0,
+    int receivableDeltaMinor = 0,
+    int payableDeltaMinor = 0,
+    int customerDepositDeltaMinor = 0,
+    int inventoryDeltaMilliunits = 0,
+    Map<String, Object?> metadata = const <String, Object?>{},
+  }) =>
+      _appendFinancialEvent(
+        txn: txn,
+        eventType: eventType,
+        sourceType: sourceType,
+        sourceId: sourceId,
+        occurredAtUtc: occurredAtUtc,
+        revenueMinor: revenueMinor,
+        cashInMinor: cashInMinor,
+        cashOutMinor: cashOutMinor,
+        cogsMinor: cogsMinor,
+        operatingExpenseMinor: operatingExpenseMinor,
+        taxCollectedMinor: taxCollectedMinor,
+        receivableDeltaMinor: receivableDeltaMinor,
+        payableDeltaMinor: payableDeltaMinor,
+        customerDepositDeltaMinor: customerDepositDeltaMinor,
+        inventoryDeltaMilliunits: inventoryDeltaMilliunits,
+        metadata: metadata,
+      );
+
+  /// Enables foreign-key enforcement on [db].
+  ///
+  /// Disabled by default for production. Callers must verify compatibility
+  /// with historical migrations before enabling — see
+  /// [DatabaseConfig.foreignKeysEnabled].
+  static Future<void> enableForeignKeys(Database db) async {
+    await db.execute('PRAGMA foreign_keys = ON');
+  }
+
   /// v1 -> v2: adds remote_id, used only once the backend/M-Pesa integration
   /// is turned on (see services/backend_service.dart). Nullable and unused
   /// for shops that stay in pure offline/cash mode — this column costs them
@@ -3740,6 +3804,8 @@ SELECT name FROM staff GROUP BY name HAVING COUNT(*) = 1
         username TEXT
       )
     ''');
+    await db.execute(
+        'CREATE UNIQUE INDEX IF NOT EXISTS idx_staff_username ON staff (username) WHERE username IS NOT NULL');
     await db.execute('''
       CREATE TABLE products (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
