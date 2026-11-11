@@ -26,8 +26,8 @@ subprojects {
 // this runs after ALL projects are evaluated via gradle.projectsEvaluated,
 // guaranteeing our value wins.
 // Retriggering CI to validate the compileSdk override on a fresh runner.
-gradle.projectsEvaluated {
-    it.rootProject.subprojects.forEach { sub ->
+gradle.projectsEvaluated { gradle ->
+    gradle.rootProject.subprojects.forEach { sub: org.gradle.api.Project ->
         sub.extensions.findByName("android")?.let { ext ->
             (ext as CommonExtension).compileSdk = 36
         }
