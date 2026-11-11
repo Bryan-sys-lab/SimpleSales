@@ -16,19 +16,6 @@ subprojects {
     project.layout.buildDirectory.value(newSubprojectBuildDir)
 }
 subprojects {
-    project.plugins.withId("com.android.application") {
-        project.android {
-            compileSdk = 36
-        }
-    }
-    project.plugins.withId("com.android.library") {
-        project.android {
-            compileSdk = 36
-        }
-    }
-}
-
-subprojects {
     project.evaluationDependsOn(":app")
 }
 
