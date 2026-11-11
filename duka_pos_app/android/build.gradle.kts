@@ -1,5 +1,3 @@
-import com.android.build.api.dsl.CommonExtension
-
 allprojects {
     repositories {
         google()
@@ -12,22 +10,6 @@ val newBuildDir: Directory =
         .dir("../../build")
         .get()
 rootProject.layout.buildDirectory.value(newBuildDir)
-
-subprojects {
-    val newSubprojectBuildDir: Directory = newBuildDir.dir(project.name)
-    project.layout.buildDirectory.value(newSubprojectBuildDir)
-}
-
-// Force compileSdk to 36 on every Android subproject (app + library plugins
-// such as :workmanager and :sqflite_sqlcipher). flutter.compileSdkVersion
-// resolves to android-31 on Flutter 3.47, but workmanager 0.10.10's
-// transitive AndroidX dependencies require compileSdk 33-34+. Flutter's
-// Gradle plugin re-asserts compileSdk = 31 during project evaluation, so
-// we override it via extensions.findByName in each subproject,
-// guaranteeing our value wins.
-subprojects {
-    (extensions.findByName("android") as CommonExtension).compileSdk = 36
-}
 
 subprojects {
     project.evaluationDependsOn(":app")
