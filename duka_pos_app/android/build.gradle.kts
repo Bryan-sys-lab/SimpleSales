@@ -25,6 +25,7 @@ subprojects {
 // Gradle plugin re-asserts compileSdk = 31 during project evaluation, so
 // this runs after ALL projects are evaluated via gradle.projectsEvaluated,
 // guaranteeing our value wins.
+// Retriggering CI to validate the compileSdk override on a fresh runner.
 gradle.projectsEvaluated {
     subprojects { sub ->
         sub.extensions.findByName("android")?.let { ext ->
