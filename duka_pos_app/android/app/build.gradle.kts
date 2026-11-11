@@ -19,9 +19,7 @@ android {
     // Force compileSdk to 36. flutter.compileSdkVersion resolves to android-31 on
     // Flutter 3.47, but workmanager 0.10.10's transitive AndroidX dependencies
     // (androidx.window.extensions.core 1.0.0, androidx.annotation
-    // annotation-experimental 1.4.0, etc.) require compileSdk 33-34+. Flutter's
-    // Gradle plugin re-asserts compileSdk = 31 during evaluation, so this hard
-    // override ensures our value wins.
+    // annotation-experimental 1.4.0, etc.) require compileSdk 33-34+.
     compileSdk = 36
     ndkVersion = "28.2.13676358"
 
@@ -143,3 +141,11 @@ kotlin {
 flutter {
     source = "../.."
 }
+
+// Set rootProject.ext.compileSdk = 36 so that Flutter's build.gradle.kts reads
+// flutter.compileSdkVersion = 36 (instead of the default 31) and propagates it
+// to every Flutter plugin subproject (e.g. :sqflite_sqlcipher) that sets
+// `compileSdk = flutter.compileSdkVersion` in its own build.gradle.kts. This
+// runs before Flutter's build.gradle.kts is evaluated, so the value is picked
+// up before any plugin subproject reads it.
+rootProject.ext["compileSdk"] = 36
