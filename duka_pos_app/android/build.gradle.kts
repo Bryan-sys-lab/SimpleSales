@@ -28,7 +28,7 @@ subprojects {
 gradle.projectsEvaluated {
     subprojects { sub ->
         sub.extensions.findByName("android")?.let { ext ->
-            ext.compileSdk = 36
+            (ext as CommonExtension).compileSdk = 36
         }
     }
 }
