@@ -143,14 +143,3 @@ kotlin {
 flutter {
     source = "../.."
 }
-
-// Force compileSdk to 36 after Flutter's Gradle plugin has run, because
-// flutter.compileSdkVersion resolves to android-31 on Flutter 3.47 while
-// workmanager 0.10.10's transitive AndroidX dependencies require 33-34+.
-// Without this, Flutter's plugin re-asserts compileSdk = 31 and
-// :workmanager:compileReleaseKotlin fails resolving androidx APIs.
-afterEvaluate {
-    android {
-        compileSdk = 36
-    }
-}

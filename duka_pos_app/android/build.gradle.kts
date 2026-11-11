@@ -1,4 +1,4 @@
-import com.android.build.gradle.BaseExtension
+import com.android.build.api.dsl.CommonExtension
 
 allprojects {
     repositories {
@@ -27,12 +27,12 @@ subprojects {
 subprojects {
     project.plugins.withId("com.android.application") {
         project.afterEvaluate {
-            (project.extensions.findByName("android") as BaseExtension).compileSdk = 36
+            (project.extensions.findByName("android") as CommonExtension).compileSdk = 36
         }
     }
     project.plugins.withId("com.android.library") {
         project.afterEvaluate {
-            (project.extensions.findByName("android") as BaseExtension).compileSdk = 36
+            (project.extensions.findByName("android") as CommonExtension).compileSdk = 36
         }
     }
 }
