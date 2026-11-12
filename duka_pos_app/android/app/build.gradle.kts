@@ -16,11 +16,13 @@ if (hasReleaseSigning) {
 
 android {
     namespace = "com.dukapos.simplepos"
-    // Force compileSdk to 36. flutter.compileSdkVersion resolves to android-31 on
-    // Flutter 3.47, but workmanager 0.10.10's transitive AndroidX dependencies
-    // (androidx.window.extensions.core 1.0.0, androidx.annotation
-    // annotation-experimental 1.4.0, etc.) require compileSdk 33-34+.
-    compileSdk = 36
+    compileSdk = flutter.compileSdkVersion
+    // Flutter's recommended NDK for this SDK version, which is also what every
+    // plugin in the tree expects — `jni`, `sentry_flutter`, `sqflite_android` and
+    // nine others all pin this revision. Flutter's own diagnostic is to use the
+    // highest version asked for, since they are backward compatible; the earlier
+    // 27.1 pin made the build warn about a dozen plugins and still required a
+    // second NDK locally.
     ndkVersion = "28.2.13676358"
 
     compileOptions {
@@ -69,10 +71,7 @@ android {
         // minSdk explicitly set to 26 because sentry_flutter requires API 26+.
         // This is higher than Flutter's default (24) but required by the Sentry SDK.
         minSdk = 26
-        // Google Play requires API 36+ for new releases as of August 2026.
-        // Pin a floor so a Flutter upgrade can never silently ship a lower
-        // target SDK, while still respecting Flutter if it targets higher.
-        targetSdk = maxOf(flutter.targetSdkVersion, 36)
+        targetSdk = flutter.targetSdkVersion
         // Uses the version code from pubspec.yaml. When using split APKs, 1000 * ABI_VERSION
         // is added automatically by Flutter. (https://developer.android.com/studio/build/configure-apk-splits#configure-APK-versions)
         // You can force using the value of versionCode by specifying the `-P force-version-code-ignoring-abi=true`
@@ -80,9 +79,22 @@ android {
         versionCode = flutter.versionCode
         versionName = flutter.versionName
 
-        // The app uses backend-managed REST authentication
-        // (lib/services/identity_service.dart), not OIDC/AppAuth. No
-        // appAuthRedirectScheme manifest placeholder is required.
+        // The AppAuth library's own manifest declares its callback activity with
+        // `android:scheme="${appAuthRedirectScheme}"`. The app must supply that
+        // placeholder or manifest merging fails outright:
+        //   :app:processDebugMainManifest — "requires a placeholder substitution
+        //   but no value for <appAuthRedirectScheme> is provided"
+        //
+        // It must be the scheme of OIDC_REDIRECT_URL (see lib/services/
+        // oidc_service.dart and the release workflow's OIDC_REDIRECT_URL secret),
+        // lowercase, and must match the redirect registered on the Keycloak
+        // client. The default below matches OIDC_REDIRECT_URL's own default.
+        //
+        // Overridable with -PappAuthRedirectScheme=... so changing the redirect
+        // scheme does not require editing this file, and so the release workflow
+        // can keep the two in step.
+        manifestPlaceholders["appAuthRedirectScheme"] =
+            providers.gradleProperty("appAuthRedirectScheme").getOrElse("dukapos")
     }
 
     signingConfigs {
@@ -141,11 +153,3 @@ kotlin {
 flutter {
     source = "../.."
 }
-
-// Set rootProject.ext.compileSdk = 36 so that Flutter's build.gradle.kts reads
-// flutter.compileSdkVersion = 36 (instead of the default 31) and propagates it
-// to every Flutter plugin subproject (e.g. :sqflite_sqlcipher) that sets
-// `compileSdk = flutter.compileSdkVersion` in its own build.gradle.kts. This
-// runs before Flutter's build.gradle.kts is evaluated, so the value is picked
-// up before any plugin subproject reads it.
-rootProject.ext["compileSdk"] = 36
