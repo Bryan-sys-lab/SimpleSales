@@ -167,7 +167,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          apk="duka_pos_app/build/app/outputs/flutter-apk/app-release.apk"
+          apk="build/app/outputs/flutter-apk/app-release.apk"
           if [ ! -f "$apk" ]; then
             echo "::error::Release APK not found at $apk."
             exit 1
