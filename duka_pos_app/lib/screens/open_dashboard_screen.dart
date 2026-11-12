@@ -509,11 +509,8 @@ class _OpenFinancialHero extends StatelessWidget {
     return Stack(
       children: <Widget>[
         Positioned.fill(
-          child: Image.asset(
-            'assets/branding/hero-and-profile-images/open-services-hero.webp',
-            fit: BoxFit.cover,
-            width: double.infinity,
-            height: double.infinity,
+          child: Container(
+            color: AppColors.of(context).surfaceSunken,
           ),
         ),
         Positioned.fill(

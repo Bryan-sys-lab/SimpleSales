@@ -140,7 +140,6 @@ class FashionDashboardScreen extends StatelessWidget {
       scopeLabel: data.scopeLabel,
       hasSales: hasSales,
       onTransactions: () => context.push(Routes.transactions),
-      imageAsset: 'assets/branding/hero-and-profile-images/fashion-retail-hero.webp',
     );
 
     final Widget supportingMetrics = SupportingMetrics(totals: data.totals);

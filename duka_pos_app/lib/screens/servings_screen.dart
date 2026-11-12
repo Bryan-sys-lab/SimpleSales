@@ -19,6 +19,7 @@ import '../db/database_helper.dart';
 import '../l10n/generated/app_localizations.dart';
 import '../models/models.dart';
 import '../services/app_state.dart';
+import '../services/session_refresh_mixin.dart';
 import '../theme/app_colors.dart';
 import '../theme/app_haptics.dart';
 import '../theme/app_shapes.dart';
@@ -108,12 +109,25 @@ final class _ServingsLoaded extends _ServingsLoadState {
   const _ServingsLoaded();
 }
 
-class _ServingsScreenState extends State<ServingsScreen> {
+class _ServingsScreenState extends State<ServingsScreen>
+    with SessionRefresh<ServingsScreen> {
   List<Serving> _cups = const [];
   List<Product> _products = const [];
   String? _unitFilter; // null = all units
   int? _productFilter; // null = all products
   _ServingsLoadState _loadState = const _ServingsLoading();
+
+  @override
+  void clearForSession() {
+    _cups = const [];
+    _products = const [];
+    _unitFilter = null;
+    _productFilter = null;
+    _loadState = const _ServingsLoading();
+  }
+
+  @override
+  Future<void> reloadFromSession() => _load();
 
   /// Servings that pass both active filters (unit and master product).
   List<Serving> get _filteredServings {

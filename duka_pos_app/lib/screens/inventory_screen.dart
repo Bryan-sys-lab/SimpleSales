@@ -974,14 +974,17 @@ class _InventoryScreenState extends State<InventoryScreen>
                     icon: const Icon(Icons.list_alt_outlined, size: 18),
                     label: Text(AppLocalizations.of(context).tankRegister),
                   ),
-                if ((appState.shopProfile == ShopProfile.duka ||
-                    appState.shopProfile == ShopProfile.drinks) &&
-                    appState.hasPermission(PermissionKey.adjustStock))
-                  TextButton.icon(
-                    onPressed: () => showLooseGoodsFormSheet(context),
-                    icon: const Icon(Icons.inventory_2_outlined, size: 18),
-                    label: Text(AppLocalizations.of(context).looseGoods),
-                  ),
+                  if ((appState.shopProfile == ShopProfile.duka ||
+                      appState.shopProfile == ShopProfile.drinks) &&
+                      appState.hasPermission(PermissionKey.adjustStock))
+                    TextButton.icon(
+                      onPressed: () => showLooseGoodsFormSheet(
+                        context,
+                        profile: appState.shopProfile,
+                      ),
+                      icon: const Icon(Icons.inventory_2_outlined, size: 18),
+                      label: Text(AppLocalizations.of(context).looseGoods),
+                    ),
                 if (appState.hasPermission(PermissionKey.adjustStock))
                   TextButton.icon(
                     onPressed: _repackStock,

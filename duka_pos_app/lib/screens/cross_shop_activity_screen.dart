@@ -9,6 +9,7 @@ import '../services/app_state.dart';
 import '../services/cross_shop_activity.dart';
 import '../services/cross_shop_activity_reader.dart';
 import '../services/roles.dart';
+import '../services/session_refresh_mixin.dart';
 import '../services/workspace_service.dart';
 import '../theme/app_colors.dart';
 import '../utils/money.dart';
@@ -23,7 +24,8 @@ class CrossShopActivityScreen extends StatefulWidget {
       _CrossShopActivityScreenState();
 }
 
-class _CrossShopActivityScreenState extends State<CrossShopActivityScreen> {
+class _CrossShopActivityScreenState extends State<CrossShopActivityScreen>
+    with SessionRefresh<CrossShopActivityScreen> {
   late DateTime _from;
   late DateTime _to;
   String? _shop;
@@ -38,6 +40,19 @@ class _CrossShopActivityScreenState extends State<CrossShopActivityScreen> {
   bool _remoteUnavailable = false;
   int _generation = 0;
   String? _nextCursor;
+
+  @override
+  void clearForSession() {
+    _shops = const <LocalShop>[];
+    _events = const <CrossShopActivity>[];
+    _nextCursor = null;
+    _failed = false;
+    _remoteUnavailable = false;
+    _loading = true;
+  }
+
+  @override
+  Future<void> reloadFromSession() => _load();
 
   @override
   void initState() {

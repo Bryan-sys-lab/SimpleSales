@@ -157,63 +157,76 @@ class _ReportsScreenState extends State<ReportsScreen>
   Future<void> _load() async {
     final AppState state = context.read<AppState>();
     final DateTime since = DateTime.now().subtract(Duration(days: _range.days));
+    final bool ownOnly = state.currentRole == 'cashier';
+    final DatabaseHelper db = DatabaseHelper.instance;
+
+    // Query each source independently so one unreadable table or a missing
+    // shift drawer does not blank the whole report: a partial report is still
+    // a report, and a blank one is a failure screen.
+    final List<Sale> sales = await _safe<List<Sale>>(
+      () => db.getSales(
+        since: since,
+        staffName: ownOnly ? state.currentStaffName : null,
+        withItems: false,
+      ),
+      const <Sale>[],
+    );
+    final List<Shift> shifts = await _safe<List<Shift>>(
+      () => db.getShifts(),
+      const <Shift>[],
+    );
+    final List<Map<String, dynamic>> drawerEvents =
+        await _safe<List<Map<String, dynamic>>>(
+      () => db.getDrawerEvents(
+        staffId: ownOnly ? state.currentStaffId : null,
+      ),
+      const <Map<String, dynamic>>[],
+    );
+    final List<Map<String, dynamic>> cupSales = await _safe(
+      () => db.cupSales(
+        since: since,
+        staffId: ownOnly ? state.currentStaffId : null,
+      ),
+      const <Map<String, dynamic>>[],
+    );
+    final List<ProductSalesRow> topMovers = await _safe<List<ProductSalesRow>>(
+      () => db.topProducts(
+        since: since,
+        staffId: ownOnly ? state.currentStaffId : null,
+        limit: 10,
+      ),
+      const <ProductSalesRow>[],
+    );
+
+    final List<ShiftReportRow> shiftRows =
+        await loadShiftReports(shifts, sales);
+    if (!mounted) return;
+    setState(() {
+      _unfilteredCount = sales.length;
+      _cupSales = cupSales;
+      _topMovers = topMovers;
+      _shown = _filter(
+        ReportsData(
+          sales: sales,
+          shifts: shiftRows,
+          totalShifts: shifts.length,
+          staff: _takingsByStaff(sales),
+          noSaleOpens: drawerEvents
+              .where((row) => row['event_type'] == 'no_sale')
+              .length,
+        ),
+      );
+      _view = ReportsReady(_shown);
+    });
+  }
+
+  /// Runs [query] and returns [fallback] when it throws, so a single source's
+  /// failure never fails the whole report.
+  static Future<T> _safe<T>(Future<T> Function() query, T fallback) async {
     try {
-      final DatabaseHelper db = DatabaseHelper.instance;
-      final List<Object> results = await Future.wait(<Future<Object>>[
-        db.getSales(
-          since: since,
-          staffName:
-              state.currentRole == 'cashier' ? state.currentStaffName : null,
-          // Reports aggregates per sale only; skip hydrating line items.
-          withItems: false,
-        ),
-        db.getShifts(),
-        db.getDrawerEvents(
-          staffId: state.currentRole == 'cashier' ? state.currentStaffId : null,
-        ),
-        db.cupSales(
-          since: since,
-          staffId: state.currentRole == 'cashier' ? state.currentStaffId : null,
-        ),
-        db.topProducts(
-          since: since,
-          staffId: state.currentRole == 'cashier' ? state.currentStaffId : null,
-          limit: 10,
-        ),
-      ]);
-      final List<Sale> sales = results[0] as List<Sale>;
-      final List<Shift> shifts = results[1] as List<Shift>;
-      final List<Map<String, dynamic>> drawerEvents =
-          results[2] as List<Map<String, dynamic>>;
-      final List<Map<String, dynamic>> cupSales =
-          results[3] as List<Map<String, dynamic>>;
-      final List<ProductSalesRow> topMovers =
-          results[4] as List<ProductSalesRow>;
-      final List<ShiftReportRow> shiftRows =
-          await loadShiftReports(shifts, sales);
-      if (!mounted) return;
-      setState(() {
-        _unfilteredCount = sales.length;
-        _cupSales = cupSales;
-        _topMovers = topMovers;
-        _shown = _filter(
-          ReportsData(
-            sales: sales,
-            shifts: shiftRows,
-            totalShifts: shifts.length,
-            staff: _takingsByStaff(sales),
-            noSaleOpens: drawerEvents
-                .where((row) => row['event_type'] == 'no_sale')
-                .length,
-          ),
-        );
-        _view = ReportsReady(_shown);
-      });
+      return await query();
     } catch (_) {
-      if (!mounted) return;
-      setState(() {
-        _view = const ReportsFailure('Couldn’t load sales reports.');
-      });
+      return fallback;
     }
   }
 

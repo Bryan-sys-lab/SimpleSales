@@ -126,7 +126,6 @@ class DukaDashboardScreen extends StatelessWidget {
     final Widget header = CompactBusinessHeader(
       shopName: appState.owner?.shopName ?? SimplePosBrand.appName,
       eyebrow: timeOfDayWord(AppLocalizations.of(context)),
-      subtitle: data.greeting,
       shift: data.openShift,
       onSwitchBusiness: () => context.push(Routes.profile),
     );
@@ -136,7 +135,6 @@ class DukaDashboardScreen extends StatelessWidget {
       scopeLabel: data.scopeLabel,
       hasSales: hasSales,
       onTransactions: () => context.push(Routes.transactions),
-      imageAsset: 'assets/branding/hero-and-profile-images/duka-retail-hero.webp',
     );
 
     final Widget supportingMetrics = SupportingMetrics(totals: data.totals);

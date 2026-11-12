@@ -135,7 +135,8 @@ String? appRedirect({
   }
   if ((location.startsWith('/inventory/fashion-product') ||
           location == Routes.exchangeScreen) &&
-      snapshot.shopProfile != ShopProfile.fashion) {
+      snapshot.shopProfile != ShopProfile.fashion &&
+      snapshot.shopProfile != ShopProfile.drinks) {
     return Routes.dashboard;
   }
   if ((location.startsWith('/inventory/tank') ||

@@ -93,7 +93,7 @@ class CompactBusinessHeader extends StatelessWidget {
   const CompactBusinessHeader({
     required this.shopName,
     required this.eyebrow,
-    required this.subtitle,
+    this.subtitle = '',
     this.shift,
     this.onSwitchBusiness,
     super.key,
@@ -129,7 +129,9 @@ class CompactBusinessHeader extends StatelessWidget {
           child: Semantics(
             header: true,
             child: Text(
-              '$eyebrow · $shopName — $subtitle',
+              subtitle.isEmpty
+                  ? '$eyebrow · $shopName'
+                  : '$eyebrow · $shopName — $subtitle',
               style: AppTypography.of(context).headlineSmall?.copyWith(
                     color: AppColors.of(context).onSurface,
                   ),
@@ -196,7 +198,6 @@ class FinancialHero extends StatelessWidget {
     required this.scopeLabel,
     required this.hasSales,
     required this.onTransactions,
-    required this.imageAsset,
     super.key,
   });
 
@@ -204,9 +205,6 @@ class FinancialHero extends StatelessWidget {
   final String scopeLabel;
   final bool hasSales;
   final VoidCallback onTransactions;
-
-  /// Profile-specific hero image, stretched end-to-end across the screen.
-  final String imageAsset;
 
   @override
   Widget build(BuildContext context) {
@@ -217,11 +215,8 @@ class FinancialHero extends StatelessWidget {
     return Stack(
       children: <Widget>[
         Positioned.fill(
-          child: Image.asset(
-            imageAsset,
-            fit: BoxFit.cover,
-            width: double.infinity,
-            height: double.infinity,
+          child: Container(
+            color: colors.surfaceSunken,
           ),
         ),
         Positioned.fill(
@@ -412,24 +407,27 @@ class _MetricTile extends StatelessWidget {
 
     return ConstrainedBox(
       constraints: BoxConstraints(minHeight: spacing.minTapTarget),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        mainAxisSize: MainAxisSize.min,
-        children: <Widget>[
-          Text(
-            label,
-            style: type.labelMedium?.copyWith(color: colors.onSurfaceMuted),
-          ),
-          SizedBox(height: spacing.xs),
-          Text(
-            value,
-            style: AppTypography.money(
-              context,
-              size: 20,
-              weight: FontWeight.w700,
+      child: Padding(
+        padding: EdgeInsets.all(spacing.md),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          mainAxisSize: MainAxisSize.min,
+          children: <Widget>[
+            Text(
+              label,
+              style: type.labelMedium?.copyWith(color: colors.onSurfaceMuted),
             ),
-          ),
-        ],
+            SizedBox(height: spacing.xs),
+            Text(
+              value,
+              style: AppTypography.money(
+                context,
+                size: 20,
+                weight: FontWeight.w700,
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }

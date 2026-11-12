@@ -52,6 +52,7 @@ import 'package:sqflite/sqflite.dart' show Database;
 
 import '../db/database_helper.dart';
 import '../models/models.dart';
+import '../profile/shop_profile.dart';
 import '../l10n/generated/app_localizations.dart';
 import '../models/stock_movement.dart';
 import '../routing/home_shell.dart';
@@ -64,12 +65,17 @@ import '../utils/money.dart';
 import '../utils/units.dart';
 import '../ui/components/screen_title.dart';
 
-/// Opens the tank form.
-Future<void> showLooseGoodsFormSheet(BuildContext context, {Product? existing}) {
+/// Opens the loose-goods form, worded for the active [profile].
+Future<void> showLooseGoodsFormSheet(
+  BuildContext context, {
+  required ShopProfile profile,
+  Product? existing,
+}) {
   return showModalBottomSheet<void>(
     context: context,
     isScrollControlled: true,
-    builder: (BuildContext context) => LooseGoodsFormSheet(existing: existing),
+    builder: (BuildContext context) =>
+        LooseGoodsFormSheet(profile: profile, existing: existing),
   );
 }
 
@@ -214,8 +220,13 @@ Future<void> saveTank(Database database, TankValues values,
 }
 
 class LooseGoodsFormSheet extends StatefulWidget {
-  const LooseGoodsFormSheet({this.existing, super.key});
+  const LooseGoodsFormSheet({
+    required this.profile,
+    this.existing,
+    super.key,
+  });
 
+  final ShopProfile profile;
   final Product? existing;
 
   @override
@@ -449,6 +460,7 @@ class _LooseGoodsFormSheetState extends State<LooseGoodsFormSheet> {
     final spacing = AppSpacing.of(context);
     final shapes = AppShapes.of(context);
     final type = AppTypography.of(context);
+    final bool isDuka = widget.profile == ShopProfile.duka;
 
     return Padding(
       padding: EdgeInsetsDirectional.only(
@@ -464,12 +476,18 @@ class _LooseGoodsFormSheetState extends State<LooseGoodsFormSheet> {
             // The sheet's NAME, large and on the canvas — the same title block
             // every other screen opens with.
             ScreenTitle(
-              title: 'Add loose goods',
-              subtitle: l10n.tankFormSubtitle,
+              title: isDuka ? l10n.dukaFieldProductName : 'Add loose goods',
+              subtitle: isDuka
+                  ? l10n.dukaServingsTitle
+                  : l10n.tankFormSubtitle,
               padding: EdgeInsets.zero,
             ),
             SizedBox(height: spacing.lg),
-            _field(_nameCtrl, l10n.tankFieldName, l10n.tankFieldNameHint),
+            _field(
+              _nameCtrl,
+              isDuka ? l10n.dukaFieldProductName : l10n.tankFieldName,
+              isDuka ? l10n.dukaFieldProductNameHint : l10n.tankFieldNameHint,
+            ),
             SizedBox(height: spacing.md),
             _field(
               _capacityCtrl,
@@ -492,7 +510,10 @@ class _LooseGoodsFormSheetState extends State<LooseGoodsFormSheet> {
               const TextInputType.numberWithOptions(decimal: false),
             ),
             SizedBox(height: spacing.lg),
-            Text(l10n.tankServingsTitle, style: type.titleMedium),
+            Text(
+              isDuka ? l10n.dukaServingsTitle : l10n.tankServingsTitle,
+              style: type.titleMedium,
+            ),
             SizedBox(height: spacing.xs),
             Text(l10n.tankServingsHint, style: type.bodySmall),
             SizedBox(height: spacing.sm),
@@ -527,7 +548,13 @@ class _LooseGoodsFormSheetState extends State<LooseGoodsFormSheet> {
                     borderRadius: shapes.controlRadius,
                   ),
                 ),
-                child: Text(_saving ? l10n.pinResetSaving : 'Save loose goods'),
+                child: Text(
+                  _saving
+                      ? l10n.pinResetSaving
+                      : isDuka
+                          ? l10n.dukaSaveProduct
+                          : 'Save loose goods',
+                ),
               ),
             ),
           ],
@@ -549,7 +576,13 @@ class _LooseGoodsFormSheetState extends State<LooseGoodsFormSheet> {
       children: <Widget>[
         Row(
           children: <Widget>[
-            Expanded(child: Text(l10n.tankServingLabel(index + 1))),
+            Expanded(
+              child: Text(
+                widget.profile == ShopProfile.duka
+                    ? l10n.dukaServingLabel(index + 1)
+                    : l10n.tankServingLabel(index + 1),
+              ),
+            ),
             // A row can only be removed while at least one is left standing:
             // a tank with no cups cannot be sold at all.
             if (_servings.length > 1)

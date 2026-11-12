@@ -8,23 +8,19 @@ import '../models/models.dart';
 /// 
 /// Each profile gets a tailored add-product flow:
 /// - Drinks: bottle/shot/crate/keg (via ProfileProductForms)
-/// - Duka: uses shared ProductEditor (see inventory_screen.dart)
+/// - Duka: product name + servings wording (via ProfileProductForms)
 /// - Fashion: style/size/colour variants (via ProfileProductForms)
 /// - Open: money-first optional stock (via ProfileProductForms)
 ///
-/// Duka no longer uses ProfileProductForms; it routes through the shared
-/// ProductEditor widget so dashboard and inventory create/edit through one
-/// widget. This keeps a single persistence pipeline (upsertProduct).
+/// Every profile routes through ProfileProductForms so dashboard and inventory
+/// create through one profile-tailored dialog per profile. Persistence is the
+/// caller's responsibility (upsertProduct).
 class ProfileProductForms {
   const ProfileProductForms();
 
   /// Creates a product form tailored to the profile.
   /// 
   /// Returns a map of field values keyed by field name.
-  /// 
-  /// Note: ShopProfile.duka is not handled here — Duka uses ProductEditor
-  /// directly (see inventory_screen.dart) so dashboard and inventory share
-  /// one editor. Passing ShopProfile.duka returns null.
   static Future<Map<String, dynamic>?> showForm({
     required BuildContext context,
     required ShopProfile profile,
@@ -34,7 +30,7 @@ class ProfileProductForms {
       ShopProfile.drinks => _showDrinksForm(context, existingProduct),
       ShopProfile.fashion => _showFashionForm(context, existingProduct),
       ShopProfile.open => _showOpenForm(context, existingProduct),
-      ShopProfile.duka => null, // Duka uses ProductEditor directly
+      ShopProfile.duka => _showDukaForm(context, existingProduct),
     };
   }
 
@@ -418,6 +414,93 @@ class ProfileProductForms {
             ),
           ],
         ),
+      ),
+    );
+  }
+
+  static Future<Map<String, dynamic>?> _showDukaForm(
+    BuildContext context,
+    Product? existing,
+  ) async {
+    final l10n = AppLocalizations.of(context);
+    final nameController = TextEditingController(text: existing?.name ?? '');
+    final categoryController = TextEditingController(
+        text: existing?.category ?? 'General');
+    final costController = TextEditingController(
+        text: existing?.costPrice.asMajor.toStringAsFixed(2) ?? '');
+    final priceController = TextEditingController(
+        text: existing?.sellPrice.asMajor.toStringAsFixed(2) ?? '');
+    final stockController = TextEditingController(
+        text: existing?.stockQty.toString() ?? '0');
+
+    return await showDialog<Map<String, dynamic>>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: Text(l10n.profileFormAddProduct),
+        content: SingleChildScrollView(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: <Widget>[
+              TextField(
+                controller: nameController,
+                decoration: InputDecoration(
+                  labelText: l10n.dukaFieldProductName,
+                  hintText: l10n.dukaFieldProductNameHint,
+                ),
+                autofocus: true,
+              ),
+              TextField(
+                controller: categoryController,
+                decoration: const InputDecoration(labelText: 'Category'),
+              ),
+              TextField(
+                controller: costController,
+                decoration: const InputDecoration(labelText: 'Cost (KES)'),
+                keyboardType: TextInputType.numberWithOptions(decimal: true),
+              ),
+              TextField(
+                controller: priceController,
+                decoration: const InputDecoration(labelText: 'Selling price (KES)'),
+                keyboardType: TextInputType.numberWithOptions(decimal: true),
+              ),
+              TextField(
+                controller: stockController,
+                decoration: const InputDecoration(labelText: 'Starting stock'),
+                keyboardType: TextInputType.numberWithOptions(decimal: true),
+              ),
+            ],
+          ),
+        ),
+        actions: <Widget>[
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: Text(l10n.profileFormCancel),
+          ),
+          FilledButton(
+            onPressed: () {
+              final cost = double.tryParse(costController.text);
+              final price = double.tryParse(priceController.text);
+              final stock = double.tryParse(stockController.text);
+
+              if (nameController.text.isEmpty ||
+                  cost == null ||
+                  price == null ||
+                  stock == null) {
+                return;
+              }
+
+              Navigator.pop(context, <String, dynamic>{
+                'name': nameController.text,
+                'category': categoryController.text,
+                'cost': cost,
+                'price': price,
+                'stock': stock,
+                'unit': 'each',
+              });
+            },
+            child: Text(l10n.profileFormSave),
+          ),
+        ],
       ),
     );
   }

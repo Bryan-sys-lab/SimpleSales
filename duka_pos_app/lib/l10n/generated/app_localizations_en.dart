@@ -6567,6 +6567,26 @@ class AppLocalizationsEn extends AppLocalizations {
   String get profileFormEach => 'Each';
 
   @override
+  String get dukaFieldProductName => 'Product name';
+
+  @override
+  String get dukaFieldProductNameHint => 'Write the product name.';
+
+  @override
+  String get dukaFieldEach => 'Each';
+
+  @override
+  String get dukaServingsTitle => 'Servings';
+
+  @override
+  String dukaServingLabel(Object n) {
+    return 'Serving $n';
+  }
+
+  @override
+  String get dukaSaveProduct => 'Save product';
+
+  @override
   String get profileFormKilogram => 'Kilogram';
 
   @override

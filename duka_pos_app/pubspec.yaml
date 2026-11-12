@@ -208,11 +208,6 @@ flutter:
     - assets/onboarding/open_shop.jpg
     - assets/onboarding/open_shop_photo.jpg
     - assets/ref.jpg
-    # Profile hero images, stretched end-to-end across each dashboard's hero.
-    - assets/branding/hero-and-profile-images/drinks-beverage-hero.webp
-    - assets/branding/hero-and-profile-images/duka-retail-hero.webp
-    - assets/branding/hero-and-profile-images/fashion-retail-hero.webp
-    - assets/branding/hero-and-profile-images/open-services-hero.webp
 
 dependency_overrides:
   # sqlite3 3.9.1 has a broken native asset build hook (FFI compilation fails).

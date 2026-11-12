@@ -32,7 +32,7 @@ class ProfileDefinition {
             showInventory: true,
             trackStock: true,
             measuredGoods: true,
-            variants: false,
+            variants: true,
             drinkService: true,
             layby: false,
             jobs: false,

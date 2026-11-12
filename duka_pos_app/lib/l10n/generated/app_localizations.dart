@@ -11032,6 +11032,24 @@ abstract class AppLocalizations {
   /// **'Each'**
   String get profileFormEach;
 
+  /// No description provided for @dukaFieldProductName.
+  String get dukaFieldProductName;
+
+  /// No description provided for @dukaFieldProductNameHint.
+  String get dukaFieldProductNameHint;
+
+  /// No description provided for @dukaFieldEach.
+  String get dukaFieldEach;
+
+  /// No description provided for @dukaServingsTitle.
+  String get dukaServingsTitle;
+
+  /// No description provided for @dukaServingLabel.
+  String dukaServingLabel(Object n);
+
+  /// No description provided for @dukaSaveProduct.
+  String get dukaSaveProduct;
+
   /// No description provided for @profileFormKilogram.
   ///
   /// In en, this message translates to:

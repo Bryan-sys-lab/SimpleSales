@@ -20,6 +20,7 @@ import '../l10n/generated/app_localizations.dart';
 import '../routing/routes.dart';
 import '../services/app_state.dart';
 import '../services/analytics.dart';
+import '../services/session_refresh_mixin.dart';
 import '../theme/app_colors.dart';
 import '../theme/app_spacing.dart';
 import '../theme/typography.dart';
@@ -59,7 +60,8 @@ class TankRegisterScreen extends StatefulWidget {
   State<TankRegisterScreen> createState() => _TankRegisterScreenState();
 }
 
-class _TankRegisterScreenState extends State<TankRegisterScreen> {
+class _TankRegisterScreenState extends State<TankRegisterScreen>
+    with SessionRefresh<TankRegisterScreen> {
   List<DrinkTankLevel> _tanks = const <DrinkTankLevel>[];
   double _totalTankCount = 0;
   double _totalCapacityLitres = 0;
@@ -70,6 +72,23 @@ class _TankRegisterScreenState extends State<TankRegisterScreen> {
   String? _error;
   String _searchQuery = '';
   String _selectedChip = 'All';
+
+  @override
+  void clearForSession() {
+    _tanks = const <DrinkTankLevel>[];
+    _totalTankCount = 0;
+    _totalCapacityLitres = 0;
+    _totalRemainingLitres = 0;
+    _totalInvestedMinor = 0;
+    _tanksNeedingAttention = 0;
+    _loading = true;
+    _error = null;
+    _searchQuery = '';
+    _selectedChip = 'All';
+  }
+
+  @override
+  Future<void> reloadFromSession() => _load();
 
   @override
   void initState() {

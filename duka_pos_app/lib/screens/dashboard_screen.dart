@@ -121,9 +121,8 @@ class _DashboardContent extends StatelessWidget {
           onDismiss: onDismiss == null ? null : (String id) => onDismiss!(id),
         );
       case ShopProfile.open:
-        break;
+        return const OpenDashboardScreen();
     }
-    throw UnimplementedError('No dashboard for profile $shopProfile');
   }
 }
 

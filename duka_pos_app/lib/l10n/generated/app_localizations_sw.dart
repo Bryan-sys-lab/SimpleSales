@@ -6569,6 +6569,26 @@ class AppLocalizationsSw extends AppLocalizations {
   String get profileFormEach => 'Kila mmoja';
 
   @override
+  String get dukaFieldProductName => 'Jina la bidhaa';
+
+  @override
+  String get dukaFieldProductNameHint => 'Andika jina la bidhaa.';
+
+  @override
+  String get dukaFieldEach => 'Kila mmoja';
+
+  @override
+  String get dukaServingsTitle => 'Sehemu';
+
+  @override
+  String dukaServingLabel(Object n) {
+    return 'Sehemu $n';
+  }
+
+  @override
+  String get dukaSaveProduct => 'Hifadhi bidhaa';
+
+  @override
   String get profileFormKilogram => 'Kilogramu';
 
   @override
