@@ -90,7 +90,7 @@ dependencies:
   # Encrypted at-rest database. Each local workspace SQLite file is opened with
   # a device-local 256-bit SQLCipher key derived per-workspace and kept in
   # flutter_secure_storage (Android Keystore / iOS Keychain). See lib/db/.
-  sqflite_sqlcipher: ^2.2.1
+  sqflite_sqlcipher: ^3.4.1
 
   # Crash reporting (Sentry - no Firebase required)
   # 8.x compiles Kotlin with language version 1.6, which the Kotlin 2.4 compiler
