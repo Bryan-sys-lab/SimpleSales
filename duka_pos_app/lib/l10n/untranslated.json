@@ -1338,6 +1338,12 @@
     "analyticsMarginLabel",
     "inventoryUnitPack",
     "inventoryUnitCarton",
-    "inventoryProductDetail"
+    "inventoryProductDetail",
+    "dukaFieldProductName",
+    "dukaFieldProductNameHint",
+    "dukaFieldEach",
+    "dukaServingsTitle",
+    "dukaServingLabel",
+    "dukaSaveProduct"
   ]
 }

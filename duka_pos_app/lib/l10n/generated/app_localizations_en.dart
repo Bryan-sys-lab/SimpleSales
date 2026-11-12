@@ -6564,9 +6564,6 @@ class AppLocalizationsEn extends AppLocalizations {
   String get profileFormAddProduct => 'Add product';
 
   @override
-  String get profileFormEach => 'Each';
-
-  @override
   String get dukaFieldProductName => 'Product name';
 
   @override
@@ -6585,6 +6582,9 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get dukaSaveProduct => 'Save product';
+
+  @override
+  String get profileFormEach => 'Each';
 
   @override
   String get profileFormKilogram => 'Kilogram';

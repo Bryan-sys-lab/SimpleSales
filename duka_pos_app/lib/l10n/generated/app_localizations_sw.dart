@@ -6566,27 +6566,27 @@ class AppLocalizationsSw extends AppLocalizations {
   String get profileFormAddProduct => 'Ongeza bidhaa';
 
   @override
-  String get profileFormEach => 'Kila mmoja';
+  String get dukaFieldProductName => 'Product name';
 
   @override
-  String get dukaFieldProductName => 'Jina la bidhaa';
+  String get dukaFieldProductNameHint => 'Write the product name.';
 
   @override
-  String get dukaFieldProductNameHint => 'Andika jina la bidhaa.';
+  String get dukaFieldEach => 'Each';
 
   @override
-  String get dukaFieldEach => 'Kila mmoja';
-
-  @override
-  String get dukaServingsTitle => 'Sehemu';
+  String get dukaServingsTitle => 'Servings';
 
   @override
   String dukaServingLabel(Object n) {
-    return 'Sehemu $n';
+    return 'Serving $n';
   }
 
   @override
-  String get dukaSaveProduct => 'Hifadhi bidhaa';
+  String get dukaSaveProduct => 'Save product';
+
+  @override
+  String get profileFormEach => 'Kila mmoja';
 
   @override
   String get profileFormKilogram => 'Kilogramu';
