@@ -19,11 +19,15 @@ subprojects {
     project.evaluationDependsOn(":app")
 }
 
-gradle.projectsEvaluated {
-    rootProject.subprojects.forEach { p ->
-        val androidExt = p.extensions.findByName("android")
-        if (androidExt != null) {
-            androidExt.javaClass.getMethod("setCompileSdk", Int::class.java).invoke(androidExt, 36)
+subprojects {
+    plugins.withId("com.android.application") {
+        extensions.findByName("android")?.let { android ->
+            android.javaClass.methods.find { it.name == "setCompileSdk" }?.invoke(android, 36)
+        }
+    }
+    plugins.withId("com.android.library") {
+        extensions.findByName("android")?.let { android ->
+            android.javaClass.methods.find { it.name == "setCompileSdk" }?.invoke(android, 36)
         }
     }
 }

@@ -16,7 +16,7 @@ if (hasReleaseSigning) {
 
 android {
     namespace = "com.dukapos.simplepos"
-    compileSdk = flutter.compileSdkVersion
+    compileSdk = 36
     // Flutter's recommended NDK for this SDK version, which is also what every
     // plugin in the tree expects — `jni`, `sentry_flutter`, `sqflite_android` and
     // nine others all pin this revision. Flutter's own diagnostic is to use the
