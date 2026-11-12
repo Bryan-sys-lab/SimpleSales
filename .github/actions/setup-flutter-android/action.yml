@@ -167,6 +167,16 @@ runs:
         fi
         echo "Android SDK licences accepted; AGP will provision any other missing component."
 
+    # `aapt` and other build-tools binaries are not on PATH by default.
+    # The assert-target-sdk step in ci.yml needs `aapt`, so add the newest
+    # build-tools directory to PATH here.
+    - name: Add build-tools to PATH
+      shell: bash
+      run: |
+        set -euo pipefail
+        latest_tools="$(ls -1 "$ANDROID_HOME/build-tools" | sort -V | tail -1)"
+        echo "$ANDROID_HOME/build-tools/$latest_tools" >> "$GITHUB_PATH"
+
     # Free the disk this build does not need, before anything large is written.
     #
     # The ubuntu-24.04 image ships several Android NDKs, platform images and
