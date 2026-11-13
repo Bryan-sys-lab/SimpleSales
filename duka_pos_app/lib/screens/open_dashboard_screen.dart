@@ -392,7 +392,6 @@ class _OpenDashboardScreenState extends State<OpenDashboardScreen>
     final price = (result['price'] as num?)?.toDouble() ?? 0;
     final stock = (result['stock'] as num?)?.toDouble() ?? 0;
     final reorderLevel = (result['reorder_level'] as num?)?.toInt() ?? 0;
-    final optionalStock = result['optional_stock'] as bool? ?? false;
     final product = Product(
       name: result['name'] as String,
       category: (result['category'] as String? ?? 'Item or service'),

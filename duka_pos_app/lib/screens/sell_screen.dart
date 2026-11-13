@@ -2827,9 +2827,10 @@ class _SellScreenState extends State<SellScreen>
     final referenceController = TextEditingController();
 
     final values = await showDialog<Map<String, dynamic>>(
-      context: context,
+      context: context, // ignore: use_build_context_synchronously
       builder: (context) {
         return StatefulBuilder(builder: (context, setState) {
+          final dialogContext = context;
           return AlertDialog(
             title: Text(l10n.quickSale),
             content: Column(
@@ -2838,7 +2839,7 @@ class _SellScreenState extends State<SellScreen>
                 // Link the sale to an open job so its proceeds recover the job's
                 // cost pool (a bale bought for this job).
                 DropdownButtonFormField<int?>(
-                  value: selectedJobId,
+                  initialValue: selectedJobId,
                   decoration: const InputDecoration(
                     labelText: 'Link to job (optional)',
                     hintText: 'None',
@@ -2861,7 +2862,7 @@ class _SellScreenState extends State<SellScreen>
                 ),
                 // Link the sale directly to a cost group / bale.
                 DropdownButtonFormField<int?>(
-                  value: selectedPoolId,
+                  initialValue: selectedPoolId,
                   decoration: const InputDecoration(
                     labelText: 'Link to cost group / bale (optional)',
                     hintText: 'None',
@@ -2927,7 +2928,7 @@ class _SellScreenState extends State<SellScreen>
                   autofocus: true,
                 ),
                 DropdownButtonFormField<String>(
-                  value: method,
+                  initialValue: method,
                   decoration: const InputDecoration(
                     labelText: 'Payment method',
                   ),
@@ -2953,7 +2954,7 @@ class _SellScreenState extends State<SellScreen>
                     mainAxisSize: MainAxisSize.min,
                     children: <Widget>[
                       DropdownButtonFormField<Customer?>(
-                        value: selectedCustomer,
+                        initialValue: selectedCustomer,
                         decoration: const InputDecoration(
                           labelText: 'Customer on account',
                           hintText: 'Select or add new customer',
@@ -2971,14 +2972,14 @@ class _SellScreenState extends State<SellScreen>
                               ),
                             ),
                           const DropdownMenuItem<Customer?>(
-                            value: Customer._newCustomerSentinel,
+                            value: Customer.newCustomerSentinel,
                             child: Text('+ Add new customer'),
                           ),
                         ],
                         onChanged: (v) async {
-                          if (v == Customer._newCustomerSentinel) {
+                          if (v == Customer.newCustomerSentinel) {
                             final created = await showCustomerEditSheet(
-                              context,
+                              dialogContext,
                               null,
                             );
                             if (created != null && mounted) {
@@ -2994,6 +2995,7 @@ class _SellScreenState extends State<SellScreen>
                           } else {
                             selectedCustomer = v;
                           }
+                          return;
                         },
                       ),
                       if (selectedCustomer != null)
@@ -3106,6 +3108,7 @@ class _SellScreenState extends State<SellScreen>
             staffId: appState.currentStaffId,
             staffName: appState.currentStaffName ?? 'Owner',
           );
+          return saleId;
         });
       } else if (values['jobId'] != null) {
         await JobRepository.instance.recordJobSale(
@@ -3118,7 +3121,7 @@ class _SellScreenState extends State<SellScreen>
         );
       } else if (values['poolId'] != null) {
         final database = await db.database;
-        final saleId = await database.transaction<int>((txn) async {
+        await database.transaction<int>((txn) async {
           final saleId = await SalesRepository.instance.recordOpenQuickSaleInTransaction(
             txn,
             amount: Money.fromMajor(amount),

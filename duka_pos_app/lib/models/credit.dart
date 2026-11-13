@@ -62,7 +62,7 @@ class Customer {
 
   /// Sentinel value used in the quick-sale credit dropdown to signal
   /// "create a new customer". Never persisted — it only exists in the UI.
-  static const Customer _newCustomerSentinel = Customer._sentinel();
+  static const Customer newCustomerSentinel = Customer._sentinel();
 
   const Customer._sentinel()
       : id = null,

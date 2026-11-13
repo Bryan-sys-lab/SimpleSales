@@ -329,7 +329,6 @@ class ProfileProductForms {
     BuildContext context,
     Product? existing,
   ) async {
-    final l10n = AppLocalizations.of(context);
     final nameController = TextEditingController(text: existing?.name ?? '');
     final priceController = TextEditingController(
         text: existing?.sellPrice.asMajor.toStringAsFixed(2) ?? '');
