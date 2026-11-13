@@ -3041,7 +3041,8 @@ class _SellScreenState extends State<SellScreen>
                 // infinite, and the sliver's index arithmetic threw "Infinity
                 // or NaN to Int" the moment the till opened on a phone.
                 if (context.read<AppState>().shopProfile == ShopProfile.open ||
-                    context.read<AppState>().shopProfile == ShopProfile.duka)
+                    context.read<AppState>().shopProfile == ShopProfile.duka ||
+                    context.read<AppState>().shopProfile == ShopProfile.fashion)
                   Padding(
                     padding: EdgeInsetsDirectional.only(
                       start: PageGutter.of(context).left,
