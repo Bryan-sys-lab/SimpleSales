@@ -2286,6 +2286,20 @@ class AppLocalizationsEn extends AppLocalizations {
   String get diagnosticsCleared => 'Failure log cleared.';
 
   @override
+  String get diagnosticsUpload => 'Send to admin';
+
+  @override
+  String get diagnosticsUploading => 'Sending…';
+
+  @override
+  String get diagnosticsUploaded => 'Report sent to the admin panel.';
+
+  @override
+  String diagnosticsUploadFailed(Object error) {
+    return 'Upload failed: $error';
+  }
+
+  @override
   String get diagnosticsRouteUnknown => 'unknown screen';
 
   @override

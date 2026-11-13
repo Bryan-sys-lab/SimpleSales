@@ -27,6 +27,7 @@ import '../db/database_helper.dart';
 import '../models/crash_log.dart';
 import '../models/stock_movement.dart';
 import '../services/build_configuration.dart';
+import '../services/diagnostics_upload_service.dart';
 import '../services/failure_recorder.dart';
 import '../theme/app_colors.dart';
 import '../theme/app_haptics.dart';
@@ -234,6 +235,9 @@ class DiagnosticsPanel extends StatelessWidget {
     required this.onClear,
     required this.onCopyReport,
     required this.onRefresh,
+    this.onUpload,
+    this.uploading = false,
+    this.uploadResult,
     this.retainedRows = 200,
     this.message,
     this.failed = false,
@@ -254,6 +258,15 @@ class DiagnosticsPanel extends StatelessWidget {
   final Future<void> Function() onCopyReport;
 
   final Future<void> Function() onRefresh;
+
+  /// Pushes the local failure log to the backend so a system admin can see it.
+  final Future<void> Function()? onUpload;
+
+  /// True while an upload is in flight.
+  final bool uploading;
+
+  /// The last upload outcome, if any.
+  final String? uploadResult;
 
   /// The cap, shown so a shop can tell a trimmed log from an empty one.
   final int retainedRows;
@@ -346,7 +359,8 @@ class DiagnosticsPanel extends StatelessWidget {
             children: <Widget>[
               Expanded(
                 child: OutlinedButton.icon(
-                  onPressed: entries.isEmpty ? null : () => onCopyReport(),
+                  onPressed:
+                      entries.isEmpty || uploading ? null : () => onCopyReport(),
                   icon: const Icon(Icons.copy_all_outlined),
                   label: Text(l10n.diagnosticsCopyReport),
                 ),
@@ -354,13 +368,44 @@ class DiagnosticsPanel extends StatelessWidget {
               SizedBox(width: AppSpacing.of(context).sm),
               Expanded(
                 child: OutlinedButton.icon(
-                  onPressed: entries.isEmpty ? null : () => onClear(),
+                  onPressed: entries.isEmpty || uploading ? null : onClear,
                   icon: const Icon(Icons.delete_outline),
                   label: Text(l10n.diagnosticsClear),
                 ),
               ),
+              SizedBox(width: AppSpacing.of(context).sm),
+              Expanded(
+                child: FilledButton.icon(
+                  onPressed:
+                      entries.isEmpty || uploading || onUpload == null
+                          ? null
+                          : () => onUpload!(),
+                  icon: uploading
+                      ? const SizedBox(
+                          width: 16,
+                          height: 16,
+                          child: CircularProgressIndicator(strokeWidth: 2),
+                        )
+                      : const Icon(Icons.cloud_upload_outlined),
+                  label: Text(uploading
+                      ? l10n.diagnosticsUploading
+                      : l10n.diagnosticsUpload),
+                ),
+              ),
             ],
           ),
+          if (uploadResult != null) ...<Widget>[
+            SizedBox(height: AppSpacing.of(context).md),
+            Semantics(
+              liveRegion: true,
+              child: Text(
+                uploadResult!,
+                style: AppTypography.of(context)
+                    .bodySmall
+                    ?.copyWith(color: AppColors.of(context).onSurfaceMuted),
+              ),
+            ),
+          ],
           if (message != null) ...<Widget>[
             SizedBox(height: AppSpacing.of(context).md),
             Semantics(
@@ -533,6 +578,7 @@ class DiagnosticsScreen extends StatefulWidget {
     this.loadLedgerDifferences,
     this.repairLedgerDifference,
     this.canRepairLedger = false,
+    this.onUpload,
     super.key,
   });
 
@@ -550,6 +596,9 @@ class DiagnosticsScreen extends StatefulWidget {
 
   /// Only the owner may correct the books.
   final bool canRepairLedger;
+
+  /// Pushes the local failure log to the backend so a system admin can see it.
+  final Future<void> Function()? onUpload;
 
   @override
   State<DiagnosticsScreen> createState() => _DiagnosticsScreenState();
@@ -571,6 +620,8 @@ class DiagnosticsScreenOpen extends DiagnosticsScreen {
           // platform at build time, and a const map of platform facts is a map
           // of whatever was true when the app started.
           environment: FailureRecorder().environment(),
+          onUpload: () async =>
+              await DiagnosticsUploadService.instance.uploadAndClear(),
         );
 }
 
@@ -580,6 +631,9 @@ class _DiagnosticsScreenState extends State<DiagnosticsScreen> {
 
   bool _failed = false;
   String? _message;
+
+  bool _uploading = false;
+  String? _uploadResult;
 
   @override
   void initState() {
@@ -694,6 +748,29 @@ class _DiagnosticsScreenState extends State<DiagnosticsScreen> {
         onCopyReport: _copyReport,
         onClear: _clear,
         onRefresh: _load,
+        onUpload: () async {
+          setState(() {
+            _uploading = true;
+            _uploadResult = null;
+          });
+          try {
+            await widget.onUpload!();
+            if (!mounted) return;
+            setState(() {
+              _uploading = false;
+              _uploadResult = l10n.diagnosticsUploaded;
+            });
+            await _load();
+          } catch (error) {
+            if (!mounted) return;
+            setState(() {
+              _uploading = false;
+              _uploadResult = l10n.diagnosticsUploadFailed(error.toString());
+            });
+          }
+        },
+        uploading: _uploading,
+        uploadResult: _uploadResult,
         ledgerCheck: widget.loadLedgerDifferences == null
             ? null
             : StockLedgerCheck(

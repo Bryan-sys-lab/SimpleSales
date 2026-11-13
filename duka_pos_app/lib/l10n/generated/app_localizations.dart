@@ -3863,6 +3863,30 @@ abstract class AppLocalizations {
   /// **'Failure log cleared.'**
   String get diagnosticsCleared;
 
+  /// No description provided for @diagnosticsUpload.
+  ///
+  /// In en, this message translates to:
+  /// **'Send to admin'**
+  String get diagnosticsUpload;
+
+  /// No description provided for @diagnosticsUploading.
+  ///
+  /// In en, this message translates to:
+  /// **'Sending…'**
+  String get diagnosticsUploading;
+
+  /// No description provided for @diagnosticsUploaded.
+  ///
+  /// In en, this message translates to:
+  /// **'Report sent to the admin panel.'**
+  String get diagnosticsUploaded;
+
+  /// No description provided for @diagnosticsUploadFailed.
+  ///
+  /// In en, this message translates to:
+  /// **'Upload failed: {error}'**
+  String diagnosticsUploadFailed(Object error);
+
   /// No description provided for @diagnosticsRouteUnknown.
   ///
   /// In en, this message translates to:

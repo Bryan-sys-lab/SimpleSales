@@ -747,4 +747,220 @@ router.post(
   })
 );
 
+// ---------------------------------------------------------------------------
+// POST /api/admin/diagnostics — receive a till phone's failure report
+// GET    /api/admin/diagnostics — list device diagnostics
+// GET    /api/admin/diagnostics/:id — one device with its crash entries
+// ---------------------------------------------------------------------------
+
+const diagnosticEntrySchema = z.object({
+  kind: z.enum(['crash', 'error', 'warning']),
+  message: z.string().trim().min(1).max(4096),
+  stack: z.string().optional().nullable(),
+  route: z.string().optional().nullable(),
+  actorName: z.string().optional().nullable(),
+  action: z.string().optional().nullable(),
+  breadcrumbs: z.array(z.string()).optional().nullable(),
+  createdAt: z.string().datetime().optional(),
+}).strict();
+
+const diagnosticReportSchema = z.object({
+  deviceId: z.string().trim().min(1).max(128),
+  platform: z.string().trim().min(1).max(32),
+  osVersion: z.string().trim().min(1).max(128),
+  appVersion: z.string().trim().min(1).max(64),
+  buildNumber: z.string().trim().min(1).max(64),
+  locale: z.string().trim().min(1).max(16),
+  manufacturer: z.string().trim().max(128).optional().nullable(),
+  model: z.string().trim().max(128).optional().nullable(),
+  tenantId: z.string().uuid().optional().nullable(),
+  crashes: z.array(diagnosticEntrySchema).default([]),
+}).strict();
+
+router.post(
+  '/diagnostics',
+  asyncHandler(async (req: Request, res: Response) => {
+    const input = parseBody(diagnosticReportSchema, req.body);
+
+    // Upsert the device diagnostic row so re-reports merge into one device.
+    const now = new Date();
+    const diagnostic = await prisma.deviceDiagnostic.upsert({
+      where: { deviceId: input.deviceId },
+      update: {
+        platform: input.platform,
+        osVersion: input.osVersion,
+        appVersion: input.appVersion,
+        buildNumber: input.buildNumber,
+        locale: input.locale,
+        manufacturer: input.manufacturer ?? null,
+        model: input.model ?? null,
+        tenantId: input.tenantId ?? null,
+        lastSeen: now,
+        crashCount: { increment: input.crashes.filter((c) => c.kind === 'crash').length },
+        errorCount: { increment: input.crashes.filter((c) => c.kind === 'error').length },
+        warningCount: { increment: input.crashes.filter((c) => c.kind === 'warning').length },
+      },
+      create: {
+        deviceId: input.deviceId,
+        platform: input.platform,
+        osVersion: input.osVersion,
+        appVersion: input.appVersion,
+        buildNumber: input.buildNumber,
+        locale: input.locale,
+        manufacturer: input.manufacturer ?? null,
+        model: input.model ?? null,
+        tenantId: input.tenantId ?? null,
+        firstSeen: now,
+        lastSeen: now,
+        crashCount: input.crashes.filter((c) => c.kind === 'crash').length,
+        errorCount: input.crashes.filter((c) => c.kind === 'error').length,
+        warningCount: input.crashes.filter((c) => c.kind === 'warning').length,
+      },
+    });
+
+    // Insert crash entries.
+    if (input.crashes.length > 0) {
+      await prisma.deviceCrashEntry.createMany({
+        data: input.crashes.map((entry) => ({
+          diagnosticId: diagnostic.id,
+          kind: entry.kind,
+          message: entry.message,
+          stack: entry.stack ?? null,
+          route: entry.route ?? null,
+          actorName: entry.actorName ?? null,
+          action: entry.action ?? null,
+          breadcrumbs: (entry.breadcrumbs ?? []).join('\n') || null,
+          createdAt: entry.createdAt ? new Date(entry.createdAt) : now,
+        })),
+      });
+    }
+
+    await prisma.adminAuditLog.create({
+      data: {
+        adminId: req.auth?.sub ?? 'device',
+        action: 'receive_device_diagnostic',
+        targetType: 'device_diagnostic',
+        targetId: diagnostic.id,
+        tenantId: input.tenantId ?? null,
+      },
+    });
+
+    return res.status(201).json({
+      id: diagnostic.id,
+      deviceId: diagnostic.deviceId,
+      crashesReceived: input.crashes.length,
+    });
+  })
+);
+
+const diagnosticListQuerySchema = z.object({
+  tenantId: z.string().uuid().optional().nullable(),
+  platform: z.string().optional().nullable(),
+  kind: z.enum(['crash', 'error', 'warning']).optional().nullable(),
+  from: z.string().datetime().optional().nullable(),
+  to: z.string().datetime().optional().nullable(),
+  limit: z.coerce.number().int().positive().max(500).default(100),
+}).strict();
+
+router.get(
+  '/diagnostics',
+  asyncHandler(async (req: Request, res: Response) => {
+    const { tenantId, platform, kind, from, to, limit } = parseBody(diagnosticListQuerySchema, req.query);
+
+    const where: Record<string, unknown> = {};
+    if (tenantId) where.tenantId = tenantId;
+    if (platform) where.platform = platform;
+    if (from || to) {
+      where.lastSeen = {};
+      if (from) (where.lastSeen as Record<string, unknown>).gte = from;
+      if (to) (where.lastSeen as Record<string, unknown>).lte = to;
+    }
+
+    const diagnostics = await prisma.deviceDiagnostic.findMany({
+      where,
+      include: {
+        _count: { select: { crashes: true } },
+        crashes: kind
+          ? { where: { kind }, orderBy: { createdAt: 'desc' }, take: 5 }
+          : { orderBy: { createdAt: 'desc' }, take: 5 },
+      },
+      orderBy: { lastSeen: 'desc' },
+      take: limit,
+    });
+
+    return res.json({
+      diagnostics: diagnostics.map((d) => ({
+        id: d.id,
+        deviceId: d.deviceId,
+        tenantId: d.tenantId,
+        platform: d.platform,
+        osVersion: d.osVersion,
+        appVersion: d.appVersion,
+        buildNumber: d.buildNumber,
+        locale: d.locale,
+        manufacturer: d.manufacturer,
+        model: d.model,
+        crashCount: d.crashCount,
+        errorCount: d.errorCount,
+        warningCount: d.warningCount,
+        firstSeen: d.firstSeen,
+        lastSeen: d.lastSeen,
+        recentCrashes: d.crashes.map((c) => ({
+          id: c.id,
+          kind: c.kind,
+          message: c.message,
+          route: c.route,
+          actorName: c.actorName,
+          action: c.action,
+          createdAt: c.createdAt,
+        })),
+      })),
+    });
+  })
+);
+
+router.get(
+  '/diagnostics/:id',
+  asyncHandler(async (req: Request, res: Response) => {
+    const id = Array.isArray(req.params.id) ? req.params.id[0] : req.params.id;
+    const diagnostic = await prisma.deviceDiagnostic.findUnique({
+      where: { id },
+      include: {
+        crashes: { orderBy: { createdAt: 'desc' } },
+        tenant: { select: { id: true, shopName: true } },
+      },
+    });
+    if (!diagnostic) return res.status(404).json({ error: 'Device diagnostic not found' });
+    return res.json({
+      id: diagnostic.id,
+      deviceId: diagnostic.deviceId,
+      tenantId: diagnostic.tenantId,
+      tenant: diagnostic.tenant,
+      platform: diagnostic.platform,
+      osVersion: diagnostic.osVersion,
+      appVersion: diagnostic.appVersion,
+      buildNumber: diagnostic.buildNumber,
+      locale: diagnostic.locale,
+      manufacturer: diagnostic.manufacturer,
+      model: diagnostic.model,
+      crashCount: diagnostic.crashCount,
+      errorCount: diagnostic.errorCount,
+      warningCount: diagnostic.warningCount,
+      firstSeen: diagnostic.firstSeen,
+      lastSeen: diagnostic.lastSeen,
+      crashes: diagnostic.crashes.map((c) => ({
+        id: c.id,
+        kind: c.kind,
+        message: c.message,
+        stack: c.stack,
+        route: c.route,
+        actorName: c.actorName,
+        action: c.action,
+        breadcrumbs: c.breadcrumbs ?? '',
+        createdAt: c.createdAt,
+      })),
+    });
+  })
+);
+
 export default router;

@@ -16,20 +16,32 @@
 // The log is bounded and self-deleting on every write — see
 // [DatabaseHelper.recordCrash]. Nothing here decides retention, because
 // retention has to hold even when nothing calls this class.
+//
+// When the build is connected to a backend, every recorded failure is also
+// pushed to the system admin panel (debounced, best-effort) so an admin can
+// see what broke, on what phone, under what conditions — without the shop
+// owner having to send anything manually.
 
+import 'dart:async';
 import 'dart:io';
 
 import 'package:flutter/foundation.dart';
 
 import '../db/database_helper.dart';
 import '../models/crash_log.dart';
+import 'build_configuration.dart';
+import 'diagnostics_upload_service.dart';
 
 /// How long the trail is.
 ///
-/// Ten events is the difference between "the sell screen" and "the sell screen,
+/// Ten events is the difference between "the sell screen" and the sell screen,
 /// after a shift was opened, after inventory was imported, after a sync
 /// failed" — and it is still one screen of text.
 const int breadcrumbLimit = 10;
+
+/// Debounce window for automatic diagnostic uploads. A crash loop must not
+/// POST to the backend on every single failure.
+const Duration _autoUploadDebounce = Duration(seconds: 30);
 
 /// The trail of what the shop was doing.
 ///
@@ -123,6 +135,9 @@ class FailureRecorder {
   /// a line of code, so it is captured once here rather than per entry.
   Map<String, String>? _environment;
 
+  /// Debounce timer for automatic diagnostic uploads.
+  Timer? _uploadTimer;
+
   /// A message the framework would otherwise only print.
   ///
   /// Bounded, because a message is a body of text: a truncated one is the
@@ -138,6 +153,10 @@ class FailureRecorder {
   /// This is the one method call sites make directly, and it is where
   /// reconstruction happens: an error with a route, an actor, an operation and
   /// a trail is a bug report; an error alone is a mystery.
+  ///
+  /// After the entry is written to the local log, an automatic upload to the
+  /// system admin panel is scheduled (debounced, best-effort) when this build
+  /// is connected to a backend. A shop owner never has to send anything.
   Future<void> record({
     required CrashKind kind,
     required String message,
@@ -162,6 +181,23 @@ class FailureRecorder {
       // Swallowed by design, and documented in the file header: a failed
       // diagnostic write is never the reason a sale does not happen.
     }
+    _scheduleAutoUpload();
+  }
+
+  /// Schedules a best-effort, debounced upload of the local failure log to the
+  /// system admin panel. Only connected builds upload; local-only builds keep
+  /// the log on the phone.
+  void _scheduleAutoUpload() {
+    if (!BuildConfiguration.isConnected) return;
+    _uploadTimer?.cancel();
+    _uploadTimer = Timer(_autoUploadDebounce, () async {
+      _uploadTimer = null;
+      try {
+        await DiagnosticsUploadService.instance.upload();
+      } catch (_) {
+        // Best-effort: a failed upload never stops a till from selling.
+      }
+    });
   }
 
   /// Records a failure without touching SQLite. This is used while the local
