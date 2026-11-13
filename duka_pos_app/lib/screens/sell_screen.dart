@@ -2814,7 +2814,7 @@ class _SellScreenState extends State<SellScreen>
     // Load linkage options once when the dialog opens.
     final jobs = await db.getOpenJobs();
     final pools = await db.getCostPools();
-    final customers = await db.getCustomers(activeOnly: true);
+    var customers = await db.getCustomers(activeOnly: true);
 
     int? selectedJobId;
     int? selectedPoolId;
@@ -2946,25 +2946,69 @@ class _SellScreenState extends State<SellScreen>
                 if (method == 'credit') ...[
                   // Buy now, pay later — the core of the open market. The
                   // customer takes the goods on account and settles when able.
-                  DropdownButtonFormField<Customer?>(
-                    value: selectedCustomer,
-                    decoration: const InputDecoration(
-                      labelText: 'Customer on account',
-                    ),
-                    items: <DropdownMenuItem<Customer?>>[
-                      const DropdownMenuItem<Customer?>(
-                        value: null,
-                        child: Text('Select customer'),
+                  // They can be an existing customer or a brand-new one
+                  // created inline right here.
+                  Column(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    mainAxisSize: MainAxisSize.min,
+                    children: <Widget>[
+                      DropdownButtonFormField<Customer?>(
+                        value: selectedCustomer,
+                        decoration: const InputDecoration(
+                          labelText: 'Customer on account',
+                          hintText: 'Select or add new customer',
+                        ),
+                        items: <DropdownMenuItem<Customer?>>[
+                          const DropdownMenuItem<Customer?>(
+                            value: null,
+                            child: Text('Select existing customer'),
+                          ),
+                          for (final c in customers)
+                            DropdownMenuItem<Customer?>(
+                              value: c,
+                              child: Text(
+                                '${c.name}${c.phone != null ? ' (${c.phone})' : ''}',
+                              ),
+                            ),
+                          const DropdownMenuItem<Customer?>(
+                            value: Customer._newCustomerSentinel,
+                            child: Text('+ Add new customer'),
+                          ),
+                        ],
+                        onChanged: (v) async {
+                          if (v == Customer._newCustomerSentinel) {
+                            final created = await showCustomerEditSheet(
+                              context,
+                              null,
+                            );
+                            if (created != null && mounted) {
+                              final updated =
+                                  await db.getCustomers(activeOnly: true);
+                              if (mounted) {
+                                setState(() {
+                                  selectedCustomer = created;
+                                  customers = updated;
+                                });
+                              }
+                            }
+                          } else {
+                            selectedCustomer = v;
+                          }
+                        },
                       ),
-                      for (final c in customers)
-                        DropdownMenuItem<Customer?>(
-                          value: c,
+                      if (selectedCustomer != null)
+                        Padding(
+                          padding: const EdgeInsets.only(top: 8),
                           child: Text(
-                            '${c.name}${c.phone != null ? ' (${c.phone})' : ''}',
+                            '${selectedCustomer!.name} — '
+                            'owes ${formatMoney(Money.fromMinor(selectedCustomer!.balanceMinor))}',
+                            style: const TextStyle(
+                              fontSize: 12,
+                              color: Colors.grey,
+                            ),
                           ),
                         ),
                     ],
-                    onChanged: (v) => selectedCustomer = v,
                   ),
                 ],
                 TextField(

@@ -6965,6 +6965,87 @@ class AppLocalizationsEn extends AppLocalizations {
   String get quickSaleRecorded => 'Quick sale recorded.';
 
   @override
+  String get quickSaleCreditCustomer => 'Customer on account';
+
+  @override
+  String get quickSaleCreditCustomerHint => 'Select customer';
+
+  @override
+  String get quickSaleLinkJob => 'Link to job (optional)';
+
+  @override
+  String get quickSaleLinkPool => 'Link to cost group / bale (optional)';
+
+  @override
+  String get quickSalePaymentMethod => 'Payment method';
+
+  @override
+  String get quickSalePaymentCredit => 'credit (tab)';
+
+  @override
+  String get quickSaleProduct => 'Product (optional)';
+
+  @override
+  String get quickSaleProductName => 'Product name (optional)';
+
+  @override
+  String get quickSaleUnit => 'Unit (optional)';
+
+  @override
+  String get quickSaleAmount => 'Amount (KES)';
+
+  @override
+  String get quickSaleReference => 'Reference (optional)';
+
+  @override
+  String get quickSaleSelectCustomer => 'Select customer';
+
+  @override
+  String get bulkPurchase => 'Record bulk purchase';
+
+  @override
+  String get bulkPurchaseBale => 'Bale';
+
+  @override
+  String get bulkPurchaseLot => 'Lot';
+
+  @override
+  String get bulkPurchaseRollingStock => 'Rolling stock';
+
+  @override
+  String get bulkPurchaseName => 'Bale / bulk name';
+
+  @override
+  String get bulkPurchaseTotalCost => 'Total cost (KES)';
+
+  @override
+  String get bulkPurchasePaidFrom => 'Paid from';
+
+  @override
+  String get bulkPurchaseTillCash => 'Till cash';
+
+  @override
+  String get bulkPurchaseOther => 'Other';
+
+  @override
+  String get bulkPurchaseCredit => 'Credit';
+
+  @override
+  String get bulkPurchaseNote => 'Note (optional)';
+
+  @override
+  String get reorderLevel => 'Reorder level';
+
+  @override
+  String get reorderLevelHelper => 'Alert when stock drops to this level';
+
+  @override
+  String get creditOverLimit => 'Credit limit exceeded';
+
+  @override
+  String get creditTab => 'Credit (tab)';
+
+  @override
   String get recordSaleAmount => 'Record sale amount';
 
   @override

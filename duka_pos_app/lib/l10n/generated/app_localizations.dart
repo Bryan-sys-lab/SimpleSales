@@ -11801,6 +11801,168 @@ abstract class AppLocalizations {
   /// **'Quick sale recorded.'**
   String get quickSaleRecorded;
 
+  /// No description provided for @quickSaleCreditCustomer.
+  ///
+  /// In en, this message translates to:
+  /// **'Customer on account'**
+  String get quickSaleCreditCustomer;
+
+  /// No description provided for @quickSaleCreditCustomerHint.
+  ///
+  /// In en, this message translates to:
+  /// **'Select customer'**
+  String get quickSaleCreditCustomerHint;
+
+  /// No description provided for @quickSaleLinkJob.
+  ///
+  /// In en, this message translates to:
+  /// **'Link to job (optional)'**
+  String get quickSaleLinkJob;
+
+  /// No description provided for @quickSaleLinkPool.
+  ///
+  /// In en, this message translates to:
+  /// **'Link to cost group / bale (optional)'**
+  String get quickSaleLinkPool;
+
+  /// No description provided for @quickSalePaymentMethod.
+  ///
+  /// In en, this message translates to:
+  /// **'Payment method'**
+  String get quickSalePaymentMethod;
+
+  /// No description provided for @quickSalePaymentCredit.
+  ///
+  /// In en, this message translates to:
+  /// **'credit (tab)'**
+  String get quickSalePaymentCredit;
+
+  /// No description provided for @quickSaleProduct.
+  ///
+  /// In en, this message translates to:
+  /// **'Product (optional)'**
+  String get quickSaleProduct;
+
+  /// No description provided for @quickSaleProductName.
+  ///
+  /// In en, this message translates to:
+  /// **'Product name (optional)'**
+  String get quickSaleProductName;
+
+  /// No description provided for @quickSaleUnit.
+  ///
+  /// In en, this message translates to:
+  /// **'Unit (optional)'**
+  String get quickSaleUnit;
+
+  /// No description provided for @quickSaleAmount.
+  ///
+  /// In en, this message translates to:
+  /// **'Amount (KES)'**
+  String get quickSaleAmount;
+
+  /// No description provided for @quickSaleReference.
+  ///
+  /// In en, this message translates to:
+  /// **'Reference (optional)'**
+  String get quickSaleReference;
+
+  /// No description provided for @quickSaleSelectCustomer.
+  ///
+  /// In en, this message translates to:
+  /// **'Select customer'**
+  String get quickSaleSelectCustomer;
+
+  /// No description provided for @bulkPurchase.
+  ///
+  /// In en, this message translates to:
+  /// **'Record bulk purchase'**
+  String get bulkPurchase;
+
+  /// No description provided for @bulkPurchaseBale.
+  ///
+  /// In en, this message translates to:
+  /// **'Bale'**
+  String get bulkPurchaseBale;
+
+  /// No description provided for @bulkPurchaseLot.
+  ///
+  /// In en, this message translates to:
+  /// **'Lot'**
+  String get bulkPurchaseLot;
+
+  /// No description provided for @bulkPurchaseRollingStock.
+  ///
+  /// In en, this message translates to:
+  /// **'Rolling stock'**
+  String get bulkPurchaseRollingStock;
+
+  /// No description provided for @bulkPurchaseName.
+  ///
+  /// In en, this message translates to:
+  /// **'Bale / bulk name'**
+  String get bulkPurchaseName;
+
+  /// No description provided for @bulkPurchaseTotalCost.
+  ///
+  /// In en, this message translates to:
+  /// **'Total cost (KES)'**
+  String get bulkPurchaseTotalCost;
+
+  /// No description provided for @bulkPurchasePaidFrom.
+  ///
+  /// In en, this message translates to:
+  /// **'Paid from'**
+  String get bulkPurchasePaidFrom;
+
+  /// No description provided for @bulkPurchaseTillCash.
+  ///
+  /// In en, this message translates to:
+  /// **'Till cash'**
+  String get bulkPurchaseTillCash;
+
+  /// No description provided for @bulkPurchaseOther.
+  ///
+  /// In en, this message translates to:
+  /// **'Other'**
+  String get bulkPurchaseOther;
+
+  /// No description provided for @bulkPurchaseCredit.
+  ///
+  /// In en, this message translates to:
+  /// **'Credit'**
+  String get bulkPurchaseCredit;
+
+  /// No description provided for @bulkPurchaseNote.
+  ///
+  /// In en, this message translates to:
+  /// **'Note (optional)'**
+  String get bulkPurchaseNote;
+
+  /// No description provided for @reorderLevel.
+  ///
+  /// In en, this message translates to:
+  /// **'Reorder level'**
+  String get reorderLevel;
+
+  /// No description provided for @reorderLevelHelper.
+  ///
+  /// In en, this message translates to:
+  /// **'Alert when stock drops to this level'**
+  String get reorderLevelHelper;
+
+  /// No description provided for @creditOverLimit.
+  ///
+  /// In en, this message translates to:
+  /// **'Credit limit exceeded'**
+  String get creditOverLimit;
+
+  /// No description provided for @creditTab.
+  ///
+  /// In en, this message translates to:
+  /// **'Credit (tab)'**
+  String get creditTab;
+
   /// No description provided for @recordSaleAmount.
   ///
   /// In en, this message translates to:

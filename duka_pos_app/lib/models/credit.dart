@@ -60,6 +60,22 @@ class Customer {
     required this.createdAt,
   });
 
+  /// Sentinel value used in the quick-sale credit dropdown to signal
+  /// "create a new customer". Never persisted — it only exists in the UI.
+  static const Customer _newCustomerSentinel = Customer._sentinel();
+
+  const Customer._sentinel()
+      : id = null,
+        uuid = '',
+        name = '',
+        phone = null,
+        tin = null,
+        notes = null,
+        creditLimitMinor = null,
+        balanceMinor = 0,
+        active = true,
+        createdAt = '';
+
   Map<String, dynamic> toMap() => {
         if (id != null) 'id': id,
         'uuid': uuid,
