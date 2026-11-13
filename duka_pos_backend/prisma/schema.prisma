@@ -58,6 +58,12 @@ model Tenant {
   syncRecords            SyncRecord[]
   saleSyncConflicts      SaleSyncConflict[]
   taxEntityLinks         ShopTaxEntity[]
+  jobs                   Job[]
+  costPools              CostPool[]
+  jobCosts               JobCost[]
+  jobPayments            JobPayment[]
+  ownerTransactions      OwnerTransaction[]
+  deviceDiagnostics      DeviceDiagnostic[]
 
   @@map("tenants")
 }
@@ -881,6 +887,62 @@ model AdminAuditLog {
   @@map("admin_audit_logs")
 }
 
+/// A till phone's failure report, pushed from the app so system admins can
+/// see what broke, on what phone, under what conditions. One row per device
+/// that has reported; crashes are nested under it.
+model DeviceDiagnostic {
+  id        String @id @default(cuid()) @map("id")
+  tenantId  String? @map("tenant_id")
+
+  /// Stable device identifier, generated on first report and persisted on the
+  /// phone so re-reports merge into the same device row.
+  deviceId  String @unique @map("device_id")
+  platform  String // android | ios | ...
+  osVersion String
+  appVersion String
+  buildNumber String
+  locale    String
+  manufacturer String?
+  model     String?
+
+  crashCount Int @default(0)
+  errorCount Int @default(0)
+  warningCount Int @default(0)
+
+  firstSeen  DateTime @default(now()) @map("first_seen")
+  lastSeen   DateTime @updatedAt @map("last_seen")
+
+  crashes    DeviceCrashEntry[] @relation("DeviceCrashes")
+
+  tenant     Tenant? @relation(fields: [tenantId], references: [id])
+
+  @@index([deviceId])
+  @@index([tenantId])
+  @@index([lastSeen])
+  @@map("device_diagnostics")
+}
+
+/// One failure entry inside a device diagnostic report.
+model DeviceCrashEntry {
+  id          String @id @default(cuid()) @map("id")
+  diagnosticId String @map("diagnostic_id")
+
+  kind        String // crash | error | warning
+  message     String
+  stack       String?
+  route       String?
+  actorName   String?
+  action      String?
+  breadcrumbs String? // newline-joined
+
+  createdAt   DateTime @default(now()) @map("created_at")
+
+  diagnostic  DeviceDiagnostic @relation("DeviceCrashes", fields: [diagnosticId], references: [id])
+
+  @@index([diagnosticId])
+  @@index([createdAt])
+  @@map("device_crash_entries")
+}
 /// Platform-wide settings key/value store.
 model SystemSettings {
   id          String   @id @default(cuid())
