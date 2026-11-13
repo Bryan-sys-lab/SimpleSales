@@ -158,7 +158,7 @@ class FinanceRepository {
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       uuid TEXT NOT NULL UNIQUE,
       name TEXT NOT NULL,
-      pool_type TEXT NOT NULL CHECK (pool_type IN ('lot', 'rolling_stock')),
+      pool_type TEXT NOT NULL CHECK (pool_type IN ('lot', 'rolling_stock', 'bale')),
       invested_minor INTEGER NOT NULL DEFAULT 0,
       recovered_minor INTEGER NOT NULL DEFAULT 0,
       status TEXT NOT NULL DEFAULT 'open',
