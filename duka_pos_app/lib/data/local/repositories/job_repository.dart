@@ -1,6 +1,8 @@
 import 'package:sqflite/sqflite.dart';
 
 import '../../../db/database_helper.dart';
+import 'finance_repository.dart';
+import 'sales_repository.dart';
 import '../../../utils/money.dart';
 
 /// Repository for Open-profile jobs and cost pools.
@@ -141,14 +143,33 @@ class JobRepository {
     String? staffName,
     int? staffId,
   }) async {
-    return DatabaseHelper.instance.recordJobSale(
-      jobId: jobId,
+    if (amount.minorUnits <= 0) {
+      throw StateError('A job sale must be more than zero');
+    }
+    final jobs = await txn.query('jobs',
+        where: 'id = ?', whereArgs: [jobId], limit: 1);
+    if (jobs.isEmpty) throw StateError('Job not found');
+    final job = jobs.first;
+    final poolId = (job['cost_pool_id'] as num?)?.toInt();
+
+    final saleId = await SalesRepository.instance.recordOpenQuickSaleInTransaction(
+      txn,
       amount: amount,
       paymentMethod: paymentMethod,
-      paymentReference: paymentReference,
-      staffName: staffName,
+      staffName: staffName ?? 'Owner',
       staffId: staffId,
+      paymentReference: paymentReference,
     );
+
+    if (poolId != null) {
+      await FinanceRepository.instance.allocateCostPoolToSaleInTransaction(
+        txn: txn,
+        poolId: poolId,
+        saleId: saleId,
+        amount: amount,
+      );
+    }
+    return saleId;
   }
 
   // ── Public methods ─────────────────────────────────────────────────
@@ -161,14 +182,16 @@ class JobRepository {
     String? staffName,
     int? staffId,
   }) async {
-    return DatabaseHelper.instance.recordJobSale(
+    final db = await DatabaseHelper.instance.database;
+    return db.transaction<int>((txn) => recordJobSaleInTransaction(
+      txn,
       jobId: jobId,
       amount: amount,
       paymentMethod: paymentMethod,
       paymentReference: paymentReference,
       staffName: staffName,
       staffId: staffId,
-    );
+    ));
   }
 
   Future<void> completeJob({

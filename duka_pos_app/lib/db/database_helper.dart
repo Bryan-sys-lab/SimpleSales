@@ -320,8 +320,9 @@ class DatabaseHelper {
   /// Appends a financial event within an existing transaction, used by
   /// repositories that compose atomic business operations.
   ///
-  /// Delegates to [_appendFinancialEvent]. Kept public so the new data layer
-  /// can append ledger events without reaching into private members.
+  /// Delegates to [FinanceRepository.appendFinancialEventInTransaction].
+  /// Kept public so the new data layer can append ledger events without
+  /// reaching into private members.
   Future<int> appendFinancialEventInTransaction({
     required DatabaseExecutor txn,
     required String eventType,
@@ -340,7 +341,7 @@ class DatabaseHelper {
     int inventoryDeltaMilliunits = 0,
     Map<String, Object?> metadata = const <String, Object?>{},
   }) =>
-      _appendFinancialEvent(
+      FinanceRepository.instance.appendFinancialEventInTransaction(
         txn: txn,
         eventType: eventType,
         sourceType: sourceType,
@@ -3021,78 +3022,6 @@ SELECT name FROM staff GROUP BY name HAVING COUNT(*) = 1
   /// This method is only called from the same SQLite transaction as its source
   /// writer. A failed event insert therefore rolls back the sale/expense too;
   /// reports never observe a source row without its financial contract.
-  Future<int> _appendFinancialEvent({
-    required DatabaseExecutor txn,
-    required String eventType,
-    required String sourceType,
-    int? sourceId,
-    required String occurredAtUtc,
-    int revenueMinor = 0,
-    int cashInMinor = 0,
-    int cashOutMinor = 0,
-    int cogsMinor = 0,
-    int operatingExpenseMinor = 0,
-    int taxCollectedMinor = 0,
-    int receivableDeltaMinor = 0,
-    int payableDeltaMinor = 0,
-    int customerDepositDeltaMinor = 0,
-    int inventoryDeltaMilliunits = 0,
-    Map<String, Object?> metadata = const <String, Object?>{},
-  }) async {
-    FinancialEventContract.validate(
-      eventType: eventType,
-      sourceType: sourceType,
-      sourceId: sourceId,
-      occurredAtUtc: occurredAtUtc,
-      revenueMinor: revenueMinor,
-      cashInMinor: cashInMinor,
-      cashOutMinor: cashOutMinor,
-      cogsMinor: cogsMinor,
-      operatingExpenseMinor: operatingExpenseMinor,
-      taxCollectedMinor: taxCollectedMinor,
-      receivableDeltaMinor: receivableDeltaMinor,
-      payableDeltaMinor: payableDeltaMinor,
-      customerDepositDeltaMinor: customerDepositDeltaMinor,
-      inventoryDeltaMilliunits: inventoryDeltaMilliunits,
-    );
-    final previousRows = await txn.query(
-      'financial_events',
-      columns: <String>['integrity_hash'],
-      orderBy: 'id DESC',
-      limit: 1,
-    );
-    final previousHash = previousRows.isEmpty
-        ? null
-        : previousRows.first['integrity_hash'] as String;
-    final uuid = _newUuid();
-    final metadataJson = jsonEncode(metadata);
-    final canonical = _financialEventCanonical(
-      uuid: uuid,
-      eventType: eventType,
-      sourceType: sourceType,
-      sourceId: sourceId,
-      occurredAtUtc: occurredAtUtc,
-      revenueMinor: revenueMinor,
-      cashInMinor: cashInMinor,
-      cashOutMinor: cashOutMinor,
-      cogsMinor: cogsMinor,
-      operatingExpenseMinor: operatingExpenseMinor,
-      taxCollectedMinor: taxCollectedMinor,
-      receivableDeltaMinor: receivableDeltaMinor,
-      payableDeltaMinor: payableDeltaMinor,
-      customerDepositDeltaMinor: customerDepositDeltaMinor,
-      inventoryDeltaMilliunits: inventoryDeltaMilliunits,
-      metadataJson: metadataJson,
-      previousHash: previousHash,
-    );
-    final integrityHash =
-        sha256.convert(utf8.encode(jsonEncode(canonical))).toString();
-    return txn.insert('financial_events', {
-      ...canonical,
-      'integrity_hash': integrityHash,
-    });
-  }
-
   Map<String, Object?> _financialEventCanonical({
     required String uuid,
     required String eventType,
@@ -3132,6 +3061,126 @@ SELECT name FROM staff GROUP BY name HAVING COUNT(*) = 1
       'previous_hash': previousHash,
     };
   }
+
+  // ── Public cross-library wrappers for private helpers ──────────────
+  //
+  // Repositories (in other libraries) cannot reach `_`-prefixed members, so
+  // these wrappers expose the helpers that domain methods need after
+  // extraction. The private implementations stay unchanged.
+
+  static String newUuid() => _newUuid();
+
+  Map<String, Object?> financialEventCanonical({
+    required String uuid,
+    required String eventType,
+    required String sourceType,
+    required int? sourceId,
+    required String occurredAtUtc,
+    required int revenueMinor,
+    required int cashInMinor,
+    required int cashOutMinor,
+    required int cogsMinor,
+    required int operatingExpenseMinor,
+    required int taxCollectedMinor,
+    required int receivableDeltaMinor,
+    required int payableDeltaMinor,
+    required int customerDepositDeltaMinor,
+    required int inventoryDeltaMilliunits,
+    required String metadataJson,
+    required String? previousHash,
+  }) =>
+      _financialEventCanonical(
+        uuid: uuid,
+        eventType: eventType,
+        sourceType: sourceType,
+        sourceId: sourceId,
+        occurredAtUtc: occurredAtUtc,
+        revenueMinor: revenueMinor,
+        cashInMinor: cashInMinor,
+        cashOutMinor: cashOutMinor,
+        cogsMinor: cogsMinor,
+        operatingExpenseMinor: operatingExpenseMinor,
+        taxCollectedMinor: taxCollectedMinor,
+        receivableDeltaMinor: receivableDeltaMinor,
+        payableDeltaMinor: payableDeltaMinor,
+        customerDepositDeltaMinor: customerDepositDeltaMinor,
+        inventoryDeltaMilliunits: inventoryDeltaMilliunits,
+        metadataJson: metadataJson,
+        previousHash: previousHash,
+      );
+
+  Future<String?> settingFromExecutor(
+          DatabaseExecutor executor, String key) =>
+      _settingFromExecutor(executor, key);
+
+  Future<String> tillCodeFromExecutor(DatabaseExecutor executor) =>
+      _tillCodeFromExecutor(executor);
+
+  Future<int> vatRateFromExecutor(DatabaseExecutor executor) =>
+      _vatRateFromExecutor(executor);
+
+  Future<int> creditDefaultLimitFromExecutor(DatabaseExecutor executor) =>
+      _creditDefaultLimitFromExecutor(executor);
+
+  static double portionFactor(SaleItem item, double containerMl) =>
+      _portionFactor(item, containerMl);
+
+  static String? canonicalPhone(String raw) => _canonicalPhone(raw);
+
+  static int roundHalfUp(double value) => _roundHalfUp(value);
+
+  static double get qtyEpsilon => _qtyEpsilon;
+
+  static double get volumeTolerance => _volumeTolerance;
+
+  static int weightedAverageCost({
+    required int onHandMinor,
+    required double onHandQty,
+    required double incomingQty,
+    required int incomingMinor,
+  }) => _weightedAverageCost(
+        onHandMinor: onHandMinor,
+        onHandQty: onHandQty,
+        incomingQty: incomingQty,
+        incomingMinor: incomingMinor,
+      );
+
+  Future<double> variantBalanceAfter(DatabaseExecutor txn, int variantId) =>
+      _variantBalanceAfter(txn, variantId);
+
+  Future<double> productBalanceAfter(DatabaseExecutor txn, int productId) =>
+      _productBalanceAfter(txn, productId);
+
+  Future<void> writeStockMovement({
+    required DatabaseExecutor txn,
+    required int productId,
+    int? variantId,
+    required StockMovementType type,
+    required double qtyDelta,
+    required int unitCostMinor,
+    required String referenceType,
+    int? referenceId,
+    int? staffId,
+    required String staffName,
+    required double balanceAfter,
+    required String createdAt,
+    String? note,
+  }) =>
+      _writeStockMovement(
+        txn,
+        productId: productId,
+        variantId: variantId,
+        type: type,
+        qtyDelta: qtyDelta,
+        unitCostMinor: unitCostMinor,
+        referenceType: referenceType,
+        referenceId: referenceId,
+        staffId: staffId,
+        staffName: staffName,
+        balanceAfter: balanceAfter,
+        createdAt: createdAt,
+        note: note,
+      );
 
   /// Verifies the append-only financial-event chain and every event payload.
   ///
@@ -6938,7 +6987,7 @@ SELECT name FROM staff GROUP BY name HAVING COUNT(*) = 1
         balanceAfter: balance,
       );
       if (adj.delta != 0) {
-        await _appendFinancialEvent(
+        await FinanceRepository.instance.appendFinancialEventInTransaction(
           txn: txn,
           eventType: movementType == StockMovementType.writeoff
               ? 'stock_writeoff'
@@ -7064,7 +7113,7 @@ SELECT name FROM staff GROUP BY name HAVING COUNT(*) = 1
         note: operationNote,
         balanceAfter: outputBalance,
       );
-      await _appendFinancialEvent(
+      await FinanceRepository.instance.appendFinancialEventInTransaction(
         txn: txn,
         eventType: 'stock_repack',
         sourceType: 'stock_repack',
@@ -7209,7 +7258,7 @@ SELECT name FROM staff GROUP BY name HAVING COUNT(*) = 1
         'staff_id': staffId,
         'staff_name': staffName,
       });
-      await _appendFinancialEvent(
+      await FinanceRepository.instance.appendFinancialEventInTransaction(
         txn: txn,
         eventType: 'layby_deposit',
         sourceType: 'layby',
@@ -7364,7 +7413,7 @@ SELECT name FROM staff GROUP BY name HAVING COUNT(*) = 1
       await txn.rawUpdate(
           'UPDATE laybys SET paid_minor = paid_minor + ?, synced_to_backend = 0 WHERE id = ?',
           [amount.minorUnits, laybyId]);
-      await _appendFinancialEvent(
+      await FinanceRepository.instance.appendFinancialEventInTransaction(
           txn: txn,
           eventType: 'layby_payment',
           sourceType: 'layby',
@@ -7427,7 +7476,7 @@ SELECT name FROM staff GROUP BY name HAVING COUNT(*) = 1
           },
           where: 'id = ?',
           whereArgs: [laybyId]);
-      await _appendFinancialEvent(
+      await FinanceRepository.instance.appendFinancialEventInTransaction(
           txn: txn,
           eventType: 'layby_cancel',
           sourceType: 'layby',
@@ -7598,7 +7647,7 @@ SELECT name FROM staff GROUP BY name HAVING COUNT(*) = 1
           'amount_minor': returnedTotal - replacementTotal.minorUnits,
           'reference': paymentReference,
         });
-        await _appendFinancialEvent(
+        await FinanceRepository.instance.appendFinancialEventInTransaction(
           txn: txn,
           eventType: 'exchange_difference',
           sourceType: 'exchange',
@@ -7679,762 +7728,63 @@ SELECT name FROM staff GROUP BY name HAVING COUNT(*) = 1
     int? laybyId,
     DatabaseExecutor? existingTransaction,
   }) async {
-    if (items.isEmpty) {
-      throw StateError('A sale must contain at least one item');
-    }
-    const allowedPaymentMethods = {
-      'cash',
-      'card',
-      'bank_transfer',
-      'mobile_money_manual',
-      'mpesa',
-      'mpesa_till',
-      'credit',
-      'layby',
-      'exchange_credit',
-      'split'
-    };
-    if (!allowedPaymentMethods.contains(paymentMethod)) {
-      throw StateError('Unsupported payment method');
-    }
-    if (paymentMethod == 'credit' && customerId == null) {
-      throw StateError('A credit sale must name the customer taking it');
-    }
-    if (paymentMethod == 'layby' && laybyId == null) {
-      throw StateError('A lay-by sale must name the lay-by');
-    }
-    if (paymentMethod != 'layby' && laybyId != null) {
-      throw StateError('A lay-by may only be completed as a lay-by sale');
-    }
-    if (items.any((item) => item.qty <= 0 || !item.qty.isFinite)) {
-      throw StateError('Sale quantities must be positive');
-    }
-    // The cart is keyed on (product, portion), so a single bottle can appear as
-    // several lines (e.g. one full + one half). Stock is therefore accumulated
-    // per product before the availability check instead of rejecting repeats.
-    //
-    // The accumulation happens inside the transaction, below, because a measured
-    // pour is only a fraction once you know how big the container is.
-    final db = existingTransaction == null ? await database : null;
-    // Every amount is quantised as it is accumulated, so the stored total is
-    // exactly the sum of the stored line amounts and `change` is a real number
-    // of shillings rather than a floating-point artefact.
-    // Integer cents throughout: each line is scaled once (which rounds), and
-    // the sums below are exact integer additions. The recorded total is
-    // therefore always exactly the sum of the recorded line amounts.
-    final subtotal = sumMoney(items.map((it) => it.unitPrice.times(it.qty)));
-    final total = sumMoney(items.map((it) => it.total));
-    if (items.any((it) =>
-        it.discount.isNegative || it.discount > it.unitPrice.times(it.qty))) {
-      throw StateError('A discount cannot exceed its line total');
-    }
-    final tenderRows = tenders ??
-        <SaleTender>[
-          SaleTender(
-            method: paymentMethod,
-            amount: total,
-            tendered: amountTendered ?? total,
-            reference: paymentReference,
-            status: paymentVerified ? 'confirmed' : 'unverified',
-          ),
-        ];
-    if (tenderRows.isEmpty ||
-        tenderRows.any(
-            (tender) => tender.amount.isNegative || tender.amount.isZero)) {
-      throw StateError('Payment amounts must be positive');
-    }
-    final tenderTotal = sumMoney(tenderRows.map((tender) => tender.amount));
-    if (tenderTotal != total) {
-      throw StateError('Payment tenders must add up to the sale total');
-    }
-    if (tenders != null) {
-      for (final tender in tenderRows) {
-        if (!allowedPaymentMethods.contains(tender.method)) {
-          throw StateError('Unsupported payment method');
-        }
-      }
-      final largest = tenderRows.reduce((a, b) => a.amount >= b.amount ? a : b);
-      paymentMethod = tenderRows.length == 1 ? largest.method : 'split';
-    }
-    // A credit sale is paid with a promise. The tender is by definition
-    // nothing, because the money has not moved; setting it here (rather than
-    // letting `amountTendered ?? total` imply it) keeps the change arithmetic
-    // honest and the payment row's amount at the full sale.
-    final paid = paymentMethod == 'credit' || paymentMethod == 'layby'
-        ? total
-        : (tenders == null
-            ? (amountTendered ?? total)
-            : sumMoney(
-                tenderRows.map((tender) => tender.tendered ?? tender.amount)));
-    if (paid.isNegative) {
-      throw StateError('Amount received cannot be less than the sale total');
-    }
-    if (paid < total) {
-      throw StateError('Amount received cannot be less than the sale total');
-    }
-    final change = paymentMethod == 'credit' || paymentMethod == 'layby'
-        ? Money.zero
-        : paid - total;
-    final now = DateTime.now().toIso8601String();
-    final eventAtUtc = DateTime.now().toUtc().toIso8601String();
-    // Resolved before the transaction opens: reads that touch the database must
-    // not happen inside the transaction, or sqflite_ffi deadlocks on a read
-    // inside a write transaction.
-    final tillCode = existingTransaction == null
-        ? await getTillCode()
-        : await _tillCodeFromExecutor(existingTransaction);
-    final vatRatePercent = existingTransaction == null
-        ? await getVatRatePercent()
-        : await _vatRateFromExecutor(existingTransaction);
-    final taxRuleId = existingTransaction == null
-        ? await getSetting(settingTaxRuleId)
-        : await _settingFromExecutor(existingTransaction, settingTaxRuleId);
-    final taxRuleVersion = int.tryParse(existingTransaction == null
-        ? await getSetting(settingTaxRuleVersion) ?? ''
-        : await _settingFromExecutor(
-                existingTransaction, settingTaxRuleVersion) ??
-            '');
-    // The shop default a customer's own null limit falls back to, read here
-    // for the same reason: not inside the transaction.
-    final defaultLimitMinor = existingTransaction == null
-        ? await getCreditDefaultLimit()
-        : await _creditDefaultLimitFromExecutor(existingTransaction);
-
-    Future<int> write(DatabaseExecutor txn) async {
-      Map<String, dynamic>? laybyRow;
-      List<Map<String, dynamic>> laybyItemRows = const [];
-      if (laybyId != null) {
-        final rows = await txn.query('laybys',
-            where: 'id = ?', whereArgs: [laybyId], limit: 1);
-        if (rows.isEmpty || rows.first['status'] != LaybyStatus.open.wire) {
-          throw StateError('Lay-by is not open');
-        }
-        laybyRow = rows.first;
-        laybyItemRows = await txn.query('layby_items',
-            where: 'layby_id = ?', whereArgs: [laybyId], orderBy: 'id ASC');
-        if ((laybyRow['total_minor'] as num).toInt() != total.minorUnits ||
-            (laybyRow['paid_minor'] as num).toInt() != total.minorUnits) {
-          throw StateError('Lay-by balance does not match the sale');
-        }
-        customerId = (laybyRow['customer_id'] as num).toInt();
-      }
-      final frozen = await txn.query(
-        'stock_counts',
-        where: "status = 'in_progress' AND freeze = 1",
-        limit: 1,
+    if (existingTransaction != null) {
+      final tillCode = await _tillCodeFromExecutor(existingTransaction);
+      final vatRatePercent =
+          await _vatRateFromExecutor(existingTransaction);
+      final taxRuleId = await _settingFromExecutor(
+          existingTransaction, settingTaxRuleId);
+      final taxRuleVersion = int.tryParse(
+          await _settingFromExecutor(
+                  existingTransaction, settingTaxRuleVersion) ??
+              '');
+      final defaultLimitMinor =
+          await _creditDefaultLimitFromExecutor(existingTransaction);
+      return SalesRepository.instance.recordSaleInTransaction(
+        existingTransaction as Transaction,
+        staffName: staffName,
+        items: items,
+        tenders: tenders,
+        enforceStock: enforceStock,
+        paymentMethod: paymentMethod,
+        paymentReference: paymentReference,
+        amountTendered: amountTendered,
+        staffId: staffId,
+        etimsPending: etimsPending,
+        paymentVerified: paymentVerified,
+        customerId: customerId,
+        creditApprovedBy: creditApprovedBy,
+        discountApprovedBy: discountApprovedBy,
+        orderDiscountReasonId: orderDiscountReasonId,
+        laybyId: laybyId,
+        tillCode: tillCode,
+        vatRatePercent: vatRatePercent,
+        taxRuleId: taxRuleId ?? '',
+        taxRuleVersion: taxRuleVersion ?? 0,
+        defaultLimitMinor: defaultLimitMinor,
       );
-      if (frozen.isNotEmpty) {
-        final countId = frozen.first['id'] as int;
-        for (final item in items) {
-          final variantClause =
-              item.variantId == null ? 'variant_id IS NULL' : 'variant_id = ?';
-          final variantArgs = item.variantId == null
-              ? <Object?>[countId, item.productId]
-              : <Object?>[countId, item.productId, item.variantId];
-          final counted = await txn.query(
-            'stock_count_lines',
-            where:
-                'count_id = ? AND product_id = ? AND $variantClause AND counted_qty IS NOT NULL',
-            whereArgs: variantArgs,
-            limit: 1,
-          );
-          if (counted.isNotEmpty) {
-            throw StateError('This item is frozen during stocktake');
-          }
-        }
-      }
-      // A line's fraction of its container — the shared rule, so a sale and a
-      // return agree on what a portion of a bottle is.
-      double portionFactor(SaleItem item, double containerMl) =>
-          _portionFactor(item, containerMl);
-
-      // Read every product this sale touches once: its stock is needed for the
-      // availability check, its container size for the fraction, and its tax
-      // class for the line's VAT snapshot.
-      final stockByProduct = <int, double>{};
-      final reservedByProduct = <int, double>{};
-      final containerMlByProduct = <int, double>{};
-      final taxClassByProduct = <int, String>{};
-      final trackExpiryByProduct = <int, bool>{};
-      for (final productId in items.map((it) => it.productId).toSet()) {
-        final current = await txn.query('products',
-            where: 'id = ?', whereArgs: [productId], limit: 1);
-        if (current.isEmpty) {
-          final missing = items.firstWhere((it) => it.productId == productId);
-          throw StateError('Product not found: ${missing.productName}');
-        }
-        stockByProduct[productId] =
-            (current.first['stock_qty'] as num).toDouble();
-        reservedByProduct[productId] =
-            (current.first['reserved_qty'] as num?)?.toDouble() ?? 0;
-        containerMlByProduct[productId] =
-            (current.first['bottle_ml'] as num?)?.toDouble() ?? 0;
-        taxClassByProduct[productId] =
-            current.first['tax_class'] as String? ?? 'standard';
-        trackExpiryByProduct[productId] =
-            (current.first['track_expiry'] as num?)?.toInt() == 1;
-      }
-
-      // The variants this sale sells, read inside the transaction.
-      //
-      // A variant's own count used to be adjusted in a SECOND transaction
-      // after the sale had already been committed. A crash, a flat battery or
-      // a killed process in that window left a sold bottle and an unchanged
-      // count — and the error was swallowed, so nothing was ever reported.
-      // Reading the row here and deducting it below means the sale, the count
-      // and the parent's aggregate either all land or none of them do.
-      final variantRowsById = <int, Map<String, dynamic>>{};
-      final variantProducts = <int>{};
-      for (final variantId
-          in items.map((it) => it.variantId).whereType<int>().toSet()) {
-        final variantRows = await txn.query('product_variants',
-            where: 'id = ?', whereArgs: [variantId], limit: 1);
-        if (variantRows.isEmpty) {
-          final offending = items.firstWhere((it) => it.variantId == variantId);
-          throw StateError('Variant not found: ${offending.productName}');
-        }
-        variantRowsById[variantId] = variantRows.first;
-        variantProducts.add(variantRows.first['product_id'] as int);
-      }
-
-      // The units each line takes, split by where they come from.
-      //
-      // A line that names a variant takes from the VARIANT's count; a line
-      // that does not takes from the product's own count. The two are
-      // different, and the product's count is only an aggregate of the
-      // variants' when the product tracks variants — so a sale of a variant
-      // must be checked against the variant, or a product whose aggregate has
-      // drifted refuses a sale the till can actually make.
-      final variantUnitsByProduct = <int, double>{};
-      final directUnitsByProduct = <int, double>{};
-      final requiredByVariant = <int, double>{};
-      final ownReservedByVariant = <int, double>{};
-      final ownReservedByProduct = <int, double>{};
-      if (laybyId != null) {
-        for (final row in laybyItemRows) {
-          final units = (row['qty'] as num).toDouble();
-          final variant = (row['variant_id'] as num?)?.toInt();
-          if (variant != null) {
-            ownReservedByVariant[variant] =
-                (ownReservedByVariant[variant] ?? 0) + units;
-          } else {
-            final product = (row['product_id'] as num).toInt();
-            ownReservedByProduct[product] =
-                (ownReservedByProduct[product] ?? 0) + units;
-          }
-        }
-      }
-      for (final item in items) {
-        final units = item.qty *
-            portionFactor(item, containerMlByProduct[item.productId]!);
-        final variantId = item.variantId;
-        if (variantId == null) {
-          directUnitsByProduct[item.productId] =
-              (directUnitsByProduct[item.productId] ?? 0) + units;
-        } else {
-          variantUnitsByProduct[item.productId] =
-              (variantUnitsByProduct[item.productId] ?? 0) + units;
-          requiredByVariant[variantId] =
-              (requiredByVariant[variantId] ?? 0) + units;
-        }
-      }
-      if (enforceStock) {
-        for (final entry in requiredByVariant.entries) {
-          final double available =
-              (variantRowsById[entry.key]!['stock_qty'] as num?)?.toDouble() ??
-                  0;
-          final reserved = (variantRowsById[entry.key]!['reserved_qty'] as num?)
-                  ?.toDouble() ??
-              0;
-          final own = ownReservedByVariant[entry.key] ?? 0;
-          if (available - reserved + own + _volumeTolerance < entry.value) {
-            final offending =
-                items.firstWhere((it) => it.variantId == entry.key);
-            throw StateError('Not enough stock for ${offending.productName}');
-          }
-        }
-        for (final entry in directUnitsByProduct.entries) {
-          // Compared with a tolerance because these are volumes, and a
-          // measured pour is a ratio: 25 shots of 30 ml from a 750 ml bottle is
-          // exactly one bottle, but 25 x (30/750) evaluates to
-          // 1.0000000000000002 in binary floating point. Without the tolerance
-          // the twenty-fifth shot is refused as an oversell — a bar selling one
-          // bottle of shots cannot sell its last shot.
-          //
-          // The tolerance is far below a microlitre at any bottle size that
-          // exists, so it forgives the arithmetic error and nothing else.
-          final available = stockByProduct[entry.key]! -
-              (reservedByProduct[entry.key] ?? 0) +
-              (ownReservedByProduct[entry.key] ?? 0);
-          if (available + _volumeTolerance < entry.value) {
-            final offending =
-                items.firstWhere((it) => it.productId == entry.key);
-            throw StateError('Not enough stock for ${offending.productName}');
-          }
-        }
-      }
-
-      // Dated stock is a separate availability rule from the aggregate
-      // product balance: an expired bottle must never be sold just because
-      // the cached balance still includes it. Allocate oldest-first and keep
-      // the rows available for the sale-item audit links below.
-      final batchesByProduct = <int, List<Map<String, dynamic>>>{};
-      final expiryKeys = <int, double>{
-        ...directUnitsByProduct,
-        for (final entry in requiredByVariant.entries) -entry.key: entry.value,
-      };
-      // Batch-load stock batches for every expiry-tracked product/variant once.
-      final trackedProductIds = <int>{
-        for (final entry in expiryKeys.entries)
-          (entry.key < 0
-              ? variantRowsById[-entry.key]!['product_id'] as int
-              : entry.key),
-      }.where((pid) => trackExpiryByProduct[pid] == true).toSet();
-      final batchRowsByProduct = <int, List<Map<String, dynamic>>>{};
-      if (trackedProductIds.isNotEmpty) {
-        final placeholders =
-            List.filled(trackedProductIds.length, '?').join(',');
-        final allBatchRows = await txn.rawQuery(
-          '''SELECT * FROM stock_batches
-             WHERE product_id IN ($placeholders)
-               AND qty_remaining > 0
-               AND expires_at >= ?
-             ORDER BY expires_at ASC, id ASC''',
-          [...trackedProductIds, now],
-        );
-        for (final row in allBatchRows) {
-          final pid = (row['product_id'] as num).toInt();
-          (batchRowsByProduct[pid] ??= <Map<String, dynamic>>[]).add(row);
-        }
-      }
-      for (final entry in expiryKeys.entries) {
-        final productId = entry.key < 0
-            ? variantRowsById[-entry.key]!['product_id'] as int
-            : entry.key;
-        if (trackExpiryByProduct[productId] != true) continue;
-        final variantId = entry.key < 0 ? -entry.key : null;
-        final batchRows = (batchRowsByProduct[productId] ?? const [])
-            .where((r) => (r['variant_id'] as num?)?.toInt() == variantId)
-            .toList();
-        final rows = <Map<String, dynamic>>[
-          for (final row in batchRows) Map<String, dynamic>.from(row),
-        ];
-        final available = rows.fold<double>(
-            0, (sum, row) => sum + (row['qty_remaining'] as num).toDouble());
-        if (available + _volumeTolerance < entry.value) {
-          final offending = items.firstWhere((it) => it.productId == entry.key);
-          throw StateError(
-              'Not enough unexpired stock for ${offending.productName}');
-        }
-        batchesByProduct[entry.key] = rows;
-      }
-
-      // Credit: the promise being taken, and the customer who will owe it.
-      //
-      // Read and checked inside the transaction, against the balance AS THE
-      // LEDGER HAS IT NOW — a balance read before the transaction opened would
-      // let two simultaneous sales each think there was room for both.
-      Map<String, dynamic>? customerRow;
-      if (paymentMethod == 'credit') {
-        final rows = await txn.query('customers',
-            where: 'id = ?', whereArgs: [customerId], limit: 1);
-        if (rows.isEmpty) {
-          throw StateError('Customer not found');
-        }
-        customerRow = rows.first;
-        if ((customerRow['active'] as num?)?.toInt() != 1) {
-          throw StateError('That customer is deactivated');
-        }
-        final int balanceBefore =
-            (customerRow['balance_minor'] as num?)?.toInt() ?? 0;
-        final int? ownLimit =
-            (customerRow['credit_limit_minor'] as num?)?.toInt();
-        // Null on the row means "use the shop default"; 0 is a real zero
-        // (this customer may owe nothing at all), which is why the two are
-        // distinguished rather than a null being read as zero.
-        final int limit = ownLimit ?? defaultLimitMinor;
-        // At the limit is allowed; past it is not, unless a manager approved
-        // the sale — whose id arrives in [creditApprovedBy].
-        if (balanceBefore + total.minorUnits > limit &&
-            creditApprovedBy == null) {
-          throw StateError(
-              'That sale would take ${customerRow['name'] as String} past '
-              'their credit limit');
-        }
-      }
-
-      final receiptNumber =
-          await allocateReceiptNumber(txn, tillCode: tillCode);
-
-      // The VAT on this sale, computed once from the lines and stored.
-      //
-      // Prices are VAT-inclusive, so the VAT is extracted from the discounted
-      // gross rather than added to it. It is computed HERE, at the moment of
-      // sale, and never recomputed: a reprint, a report and the eTIMS payload
-      // all read the stored figure, so the paper and the tax filing can never
-      // disagree about the same transaction.
-      final int saleVatMinor = items.fold<int>(
-        0,
-        (sum, it) =>
-            sum +
-            vatComponentForTaxClass(
-              it.total,
-              ratePercent: vatRatePercent,
-              taxClass: taxClassByProduct[it.productId] ?? 'standard',
-            ).minorUnits,
-      );
-      final int saleTaxableMinor = total.minorUnits - saleVatMinor;
-      // Profit is based on VAT-exclusive revenue. The old calculation used
-      // gross (VAT-inclusive) line totals, which overstated margin whenever
-      // the shop collected VAT.
-      final int saleCostMinor = items.fold<int>(
-        0,
-        (sum, item) => sum + item.unitCost.times(item.qty).minorUnits,
-      );
-
-      final saleId = await txn.insert('sales', {
-        'staff_name': staffName,
-        'staff_id': staffId,
-        // The customer who takes an ON-ACCOUNT sale. Null for everything
-        // else — the column is the link the aging, the statement and the
-        // return-to-account all read.
-        'customer_id': customerId,
-        // Snapshot the buyer onto the immutable sale document. Customer rows
-        // may later be edited or deactivated; retries and tax documents must
-        // reproduce what was captured at checkout.
-        'buyer_name': customerRow?['name'],
-        'buyer_tin': customerRow?['tin'],
-        'total': total.minorUnits,
-        'subtotal_minor': subtotal.minorUnits,
-        'order_discount_minor': subtotal.minorUnits - total.minorUnits,
-        'order_discount_reason_id': orderDiscountReasonId,
-        'discount_approved_by': discountApprovedBy,
-        'profit': saleTaxableMinor - saleCostMinor,
-        'payment_method': paymentMethod,
-        'payment_reference': paymentReference,
-        'amount_tendered': paid.minorUnits,
-        'change_given': change.minorUnits,
-        'created_at': now,
-        'receipt_number': receiptNumber,
-        // A sale is only ever pending eTIMS if the shop has eTIMS switched on,
-        // which [etimsPending] decides before the transaction opens. See
-        // queuePendingEtims, which is written in the same transaction as the
-        // sale itself so the two can never disagree.
-        'etims_status':
-            etimsPending ? EtimsStatus.pending : EtimsStatus.notRequired,
-        'payment_verified': paymentVerified ? 1 : 0,
-        'payment_confirmed_at': paymentVerified ? now : null,
-        'vat_rate_percent': vatRatePercent,
-        'vat_minor': saleVatMinor,
-        'taxable_minor': saleTaxableMinor,
-        'document_type': 'sale',
-      });
-
-      // THE CHARGE: the ledger row that makes the promise, and the balance
-      // cache updated beside it — the same transaction, same rule as every
-      // other money move in this file. The row carries the approver when one
-      // approved an over-limit sale, which is the AUDIT of that decision.
-      if (paymentMethod == 'credit' && customerRow != null) {
-        final int balanceBefore =
-            (customerRow['balance_minor'] as num?)?.toInt() ?? 0;
-        await txn.insert('credit_ledger', <String, Object?>{
-          'uuid': _newUuid(),
-          'customer_id': customerId,
-          'entry_type': 'charge',
-          'amount_minor': total.minorUnits,
-          'sale_id': saleId,
-          'staff_id': staffId,
-          'staff_name': staffName,
-          'approved_by': creditApprovedBy,
-          'created_at': now,
-        });
-        await txn.rawUpdate(
-          'UPDATE customers SET balance_minor = ? WHERE id = ?',
-          <Object?>[balanceBefore + total.minorUnits, customerId],
-        );
-      }
-
-      for (final it in items) {
-        final fraction = portionFactor(it, containerMlByProduct[it.productId]!);
-        final int lineVatMinor = vatComponentForTaxClass(
-          it.total,
-          ratePercent: vatRatePercent,
-          taxClass: taxClassByProduct[it.productId] ?? 'standard',
-        ).minorUnits;
-        final saleItemId = await txn.insert('sale_items', {
-          'sale_id': saleId,
-          'product_id': it.productId,
-          'product_name': it.productName,
-          'qty': it.qty,
-          'unit_price': it.unitPrice.minorUnits,
-          'list_unit_price_minor':
-              (it.listUnitPrice ?? it.unitPrice).minorUnits,
-          'unit_cost': it.unitCost.minorUnits,
-          'discount_minor': it.discount.minorUnits,
-          'discount_reason_id': it.discountReasonId,
-          'price_overridden': it.priceOverridden ? 1 : 0,
-          'portion': it.portion,
-          'portion_ml': it.portionMl,
-          // The variant the line was sold as. Recorded as a snapshot, because
-          // the owner renames "Dark" to "Black" next month and a reprint of
-          // today's receipt must still say which size was sold.
-          'variant_id': it.variantId,
-          'variant_name': it.variantName,
-          'pack_id': it.packId,
-          'pack_qty': it.packQty,
-          // The tax on this line, snapshotted at the moment of sale. The
-          // product's own tax class can change tomorrow; today's receipt must
-          // still carry today's figure.
-          'tax_class': taxClassByProduct[it.productId] ?? 'standard',
-          'vat_rate_bps': vatRatePercent * 100,
-          'tax_rule_id': taxRuleId?.trim().isEmpty == true ? null : taxRuleId,
-          'tax_rule_version': taxRuleVersion,
-          'vat_minor': lineVatMinor,
-          'taxable_minor': it.total.minorUnits - lineVatMinor,
-        });
-        final batchKey = it.variantId == null ? it.productId : -it.variantId!;
-        final batchRows = batchesByProduct[batchKey];
-        if (batchRows != null) {
-          double remaining = it.qty * fraction;
-          for (final batch in batchRows) {
-            if (remaining <= _volumeTolerance) break;
-            final available = (batch['qty_remaining'] as num).toDouble();
-            if (available <= _volumeTolerance) continue;
-            final taken = available < remaining ? available : remaining;
-            final batchId = (batch['id'] as num).toInt();
-            await txn.rawUpdate(
-                "UPDATE stock_batches SET qty_remaining = qty_remaining - ?, "
-                "status = CASE WHEN qty_remaining - ? <= ? THEN 'depleted' ELSE 'active' END "
-                'WHERE id = ?',
-                [taken, taken, _qtyEpsilon, batchId]);
-            await txn.insert('sale_item_batches', {
-              'sale_item_id': saleItemId,
-              'batch_id': batchId,
-              'qty': taken,
-            });
-            batch['qty_remaining'] = available - taken;
-            remaining -= taken;
-          }
-          if (remaining > _volumeTolerance) {
-            throw StateError('Unexpired stock changed while recording sale');
-          }
-        }
-        final variantId = it.variantId;
-        if (variantId != null) {
-          // The variant's own count, in the same transaction as the sale.
-          // Clamped at zero for the same reason the parent's is: the money is
-          // already taken, and a clamped count that needs a stock take beats a
-          // till that refuses to hand over change.
-          await txn.rawUpdate(
-            'UPDATE product_variants SET stock_qty = MAX(0, stock_qty - ?) WHERE id = ?',
-            [it.qty * fraction, variantId],
-          );
-        }
-      }
-
-      // The product's own count, set rather than decremented.
-      //
-      // For a product that tracks variants, its count IS the aggregate of its
-      // active variants, and it is that number the till checks and the
-      // dashboard shows. Rewriting it from the variants — inside the same
-      // transaction as the deduction it is correcting — keeps the parent
-      // honest, and it also HEALS an aggregate that had drifted: a variant
-      // added after the last reconciliation, or one an older till deducted
-      // outside the sale.
-      //
-      // A product with variants that does NOT track them keeps its own count,
-      // and both counts move: the product's for what the shop thinks it sold,
-      // the variant's for what it really sold.
-      for (final productId in items.map((it) => it.productId).toSet()) {
-        final flagRows = await txn.query('products',
-            columns: ['track_variants'],
-            where: 'id = ?',
-            whereArgs: [productId],
-            limit: 1);
-        final tracks = flagRows.isNotEmpty &&
-            ((flagRows.first['track_variants'] as num?)?.toInt() ?? 0) == 1;
-        final double directUnits = directUnitsByProduct[productId] ?? 0;
-        if (tracks) {
-          await txn.rawUpdate(
-            'UPDATE products SET stock_qty = MAX(0, (SELECT COALESCE(SUM(stock_qty), 0) '
-            'FROM product_variants WHERE product_id = ? AND active = 1) - ?), '
-            'updated_at = ? WHERE id = ?',
-            [productId, directUnits, now, productId],
-          );
-        } else {
-          final double variantUnits = variantUnitsByProduct[productId] ?? 0;
-          await txn.rawUpdate(
-            'UPDATE products SET stock_qty = MAX(0, stock_qty - ?), updated_at = ? WHERE id = ?',
-            [directUnits + variantUnits, now, productId],
-          );
-        }
-      }
-      // The stock ledger.
-      //
-      // One row per stock row this sale touched, written in the same
-      // transaction as the deduction. A product sold as variants gets a row
-      // for the variant that was sold AND a row for the product's aggregate,
-      // because both counts are real and both have to be explainable.
-      //
-      // The balance on each row is the count the row leaves behind, read back
-      // from the count the transaction has just written — so the ledger is
-      // never a second, separately-maintained truth.
-      for (final it in items) {
-        final fraction = portionFactor(it, containerMlByProduct[it.productId]!);
-        final double units = it.qty * fraction;
-        final variantId = it.variantId;
-        if (variantId != null) {
-          final double balance = await _variantBalanceAfter(txn, variantId);
-          await _writeStockMovement(
-            txn,
-            productId: it.productId,
-            variantId: variantId,
-            type: StockMovementType.sale,
-            qtyDelta: -units,
-            unitCostMinor: it.unitCost.minorUnits,
-            referenceType: 'sale',
-            referenceId: saleId,
-            staffId: staffId,
-            staffName: staffName,
-            balanceAfter: balance,
-            createdAt: now,
-          );
-        }
-        final double productBalance =
-            await _productBalanceAfter(txn, it.productId);
-        await _writeStockMovement(
-          txn,
-          productId: it.productId,
-          variantId: null,
-          type: StockMovementType.sale,
-          qtyDelta: -units,
-          unitCostMinor: it.unitCost.minorUnits,
-          referenceType: 'sale',
-          referenceId: saleId,
-          staffId: staffId,
-          staffName: staffName,
-          balanceAfter: productBalance,
-          createdAt: now,
-        );
-      }
-
-      // The payment.
-      //
-      // One row per part of the tender. A sale paid in one go has one row; a
-      // sale paid in several has several, and the sum of their amounts is the
-      // sale's total. That sum is an invariant, and a test holds it.
-      for (final tender in tenderRows) {
-        final tendered = tender.tendered ?? tender.amount;
-        final tenderChange = tendered - tender.amount;
-        await txn.insert('sale_payments', {
-          'uuid': _newUuid(),
-          'sale_id': saleId,
-          'method': tender.method,
-          // What was paid, without the change. The change is not payment.
-          'amount_minor': tender.amount.minorUnits,
-          'tendered_minor': tendered.minorUnits,
-          'change_minor': tenderChange.minorUnits,
-          'reference': tender.reference,
-          'status': tender.status,
-          'pending_payment_id': null,
-          'created_at': now,
-        });
-      }
-
-      // The queue row is written in the same transaction as the sale. Writing
-      // it afterwards would leave a window where a crash leaves a committed sale
-      // that KRA will never be told about — an unissued tax invoice for money
-      // that was actually taken, which is the one failure an eTIMS integration
-      // cannot have.
-      if (etimsPending) {
-        await txn.insert('pending_etims', {
-          'sale_id': saleId,
-          'receipt_number': receiptNumber,
-          'attempts': 0,
-          'created_at': now,
-          'updated_at': now,
-          'document_type': 'sale',
-        });
-      }
-      await _appendFinancialEvent(
-        txn: txn,
-        eventType: 'sale',
-        sourceType: 'sale',
-        sourceId: saleId,
-        occurredAtUtc: eventAtUtc,
-        revenueMinor: saleTaxableMinor,
-        cashInMinor: paymentMethod == 'credit' || paymentMethod == 'layby'
-            ? 0
-            : tenders == null
-                ? (paymentMethod == 'exchange_credit' ? 0 : total.minorUnits)
-                : sumMoney(tenderRows
-                    .where((tender) => tender.method != 'exchange_credit')
-                    .map((tender) => tender.amount)).minorUnits,
-        cogsMinor: saleCostMinor,
-        taxCollectedMinor: saleVatMinor,
-        receivableDeltaMinor: paymentMethod == 'credit' ? total.minorUnits : 0,
-        inventoryDeltaMilliunits: items.fold<int>(
-          0,
-          (sum, item) =>
-              sum +
-              (item.qty *
-                          portionFactor(
-                            item,
-                            containerMlByProduct[item.productId]!,
-                          ) *
-                          1000)
-                      .round() *
-                  -1,
-        ),
-        metadata: <String, Object?>{
-          'payment_method': paymentMethod,
-          'payment_verified': paymentVerified,
-          'line_count': items.length,
-        },
-      );
-      if (laybyId != null) {
-        for (final item in items) {
-          final units = item.qty *
-              portionFactor(item, containerMlByProduct[item.productId]!);
-          if (item.variantId != null) {
-            await txn.rawUpdate(
-              'UPDATE product_variants SET reserved_qty = MAX(0, reserved_qty - ?) WHERE id = ?',
-              [units, item.variantId],
-            );
-          }
-          await txn.rawUpdate(
-            'UPDATE products SET reserved_qty = MAX(0, reserved_qty - ?) WHERE id = ?',
-            [units, item.productId],
-          );
-        }
-        await txn.update(
-            'laybys',
-            {
-              'status': LaybyStatus.completed.wire,
-              'sale_id': saleId,
-              'completed_at': now,
-              'synced_to_backend': 0,
-            },
-            where: 'id = ?',
-            whereArgs: [laybyId]);
-        await _appendFinancialEvent(
-          txn: txn,
-          eventType: 'layby_complete',
-          sourceType: 'layby',
-          sourceId: laybyId,
-          occurredAtUtc: eventAtUtc,
-          customerDepositDeltaMinor: -total.minorUnits,
-          metadata: {'sale_id': saleId},
-        );
-      }
-      return saleId;
     }
-
-    if (existingTransaction != null) return write(existingTransaction);
-    return db!.transaction<int>((txn) => write(txn));
+    return SalesRepository.instance.recordSale(
+      staffName: staffName,
+      items: items,
+      tenders: tenders,
+      enforceStock: enforceStock,
+      paymentMethod: paymentMethod,
+      paymentReference: paymentReference,
+      amountTendered: amountTendered,
+      staffId: staffId,
+      etimsPending: etimsPending,
+      paymentVerified: paymentVerified,
+      customerId: customerId,
+      creditApprovedBy: creditApprovedBy,
+      discountApprovedBy: discountApprovedBy,
+      orderDiscountReasonId: orderDiscountReasonId,
+      laybyId: laybyId,
+    );
   }
 
   /// The count a variant is left with, read from the row the transaction has
+  /// just written.
   /// just written.
   Future<double> _variantBalanceAfter(
       DatabaseExecutor txn, int variantId) async {
@@ -8529,58 +7879,7 @@ SELECT name FROM staff GROUP BY name HAVING COUNT(*) = 1
   /// Returns the id. Throws [StateError] with the reason when either rule is
   /// broken, which the caller renders in the shop's language.
   Future<int> upsertCustomer(Customer customer) async {
-    final name = customer.name.trim();
-    if (name.isEmpty) {
-      throw StateError('Enter a name');
-    }
-    if (customer.phone != null && customer.phone!.isNotEmpty) {
-      if (normaliseKenyanPhone(customer.phone) == null &&
-          normaliseKenyanPhone(customer.phoneDisplay ?? customer.phone) ==
-              null &&
-          !(customer.phone!.startsWith('+'))) {
-        throw StateError('That phone number is not a Kenyan number we can use');
-      }
-    }
-    final db = await database;
-    return db.transaction<int>((txn) async {
-      final id = customer.id;
-      final clash = await txn.rawQuery(
-        'SELECT id FROM customers WHERE active = 1 AND '
-        'LOWER(name) = LOWER(?) ${id != null ? 'AND id != ?' : ''} LIMIT 1',
-        id == null ? [name] : [name, id],
-      );
-      if (clash.isNotEmpty) {
-        throw StateError('Another active customer already has that name');
-      }
-      final phone = customer.phone == null || customer.phone!.isEmpty
-          ? null
-          : _canonicalPhone(customer.phone!);
-      if (phone != null) {
-        final phoneClash = await txn.rawQuery(
-          'SELECT id FROM customers WHERE active = 1 AND phone = ? '
-          '${id != null ? 'AND id != ?' : ''} LIMIT 1',
-          id == null ? [phone] : [phone, id],
-        );
-        if (phoneClash.isNotEmpty) {
-          throw StateError('Another active customer already has that number');
-        }
-      }
-
-      final row = customer.toMap()
-        ..['name'] = name
-        ..['phone'] = phone;
-      if (id == null) {
-        return txn.insert('customers', row..remove('id'));
-      }
-      final existing = await txn.query('customers',
-          columns: ['id'], where: 'id = ?', whereArgs: [id], limit: 1);
-      if (existing.isEmpty) {
-        throw StateError('Customer not found');
-      }
-      await txn.update('customers', row..remove('id'),
-          where: 'id = ?', whereArgs: [id]);
-      return id;
-    });
+    return CustomerRepository.instance.upsertCustomer(customer);
   }
 
   /// Deactivates a customer.
@@ -8601,7 +7900,7 @@ SELECT name FROM staff GROUP BY name HAVING COUNT(*) = 1
   }
 
   /// The canonical form of a phone as typed, or null.
-  String? _canonicalPhone(String raw) {
+  static String? _canonicalPhone(String raw) {
     if (raw.startsWith('+254')) return normaliseKenyanPhone(raw);
     final fromLocal = normaliseKenyanPhone(raw);
     return fromLocal;
@@ -8854,7 +8153,7 @@ SELECT name FROM staff GROUP BY name HAVING COUNT(*) = 1
         'UPDATE customers SET balance_minor = ? WHERE id = ?',
         [balanceBefore - amount.minorUnits, customerId],
       );
-      await _appendFinancialEvent(
+      await FinanceRepository.instance.appendFinancialEventInTransaction(
         txn: txn,
         eventType: 'credit_repayment',
         sourceType: 'credit_ledger',
@@ -8947,7 +8246,7 @@ SELECT name FROM staff GROUP BY name HAVING COUNT(*) = 1
       }
       await txn.rawUpdate('UPDATE customers SET balance_minor = ? WHERE id = ?',
           [balanceBefore + amountMinor, customerId]);
-      await _appendFinancialEvent(
+      await FinanceRepository.instance.appendFinancialEventInTransaction(
         txn: txn,
         eventType: type == 'writeoff' ? 'credit_writeoff' : 'credit_adjustment',
         sourceType: 'credit_ledger',
@@ -8961,7 +8260,7 @@ SELECT name FROM staff GROUP BY name HAVING COUNT(*) = 1
         },
       );
       if (badDebtExpenseId != null) {
-        await _appendFinancialEvent(
+        await FinanceRepository.instance.appendFinancialEventInTransaction(
           txn: txn,
           eventType: 'bad_debt_expense',
           sourceType: 'expense',
@@ -9549,408 +8848,29 @@ SELECT name FROM staff GROUP BY name HAVING COUNT(*) = 1
     int? staffId,
     DatabaseExecutor? existingTransaction,
   }) async {
-    if (lines.isEmpty) {
-      throw StateError('A return must contain at least one line');
-    }
-    if (reason.trim().isEmpty) {
-      throw StateError('A return must say why');
-    }
-    if (sale.id == null) {
-      throw StateError('That sale cannot be returned');
-    }
-
-    final db = existingTransaction == null ? await database : null;
-    Future<int> write(DatabaseExecutor txn) async {
-      // What has already come back, per sale line.
-      final previous = await txn.rawQuery(
-        'SELECT sale_item_id, COALESCE(SUM(qty), 0) AS returned_qty '
-        'FROM sale_return_items WHERE sale_item_id IN '
-        '(${List.filled(lines.length, '?').join(',')}) '
-        'GROUP BY sale_item_id',
-        lines.map((ReturnLineDraft l) => l.saleItemId).toList(),
-      );
-      final returnedByItem = <int, double>{
-        for (final row in previous)
-          row['sale_item_id'] as int: (row['returned_qty'] as num).toDouble(),
-      };
-
-      // The sale's own lines, so the returned quantity can be checked against
-      // what was sold and the refund scaled by what was sold.
-      final saleItems = <int, SaleItem>{
-        for (final SaleItem item in sale.items)
-          if (item.id != null) item.id!: item,
-      };
-
-      // A mobile-money sale whose payment was never confirmed cannot be
-      // returned: the money may never have arrived.
-      if (sale.paymentMethod == 'mpesa' &&
-          !await _paymentIsVerified(txn, sale.id!)) {
-        throw StateError(
-          'That sale was never confirmed as paid, so it cannot be returned',
-        );
-      }
-
-      // A cash refund needs a drawer to take the money out of.
-      final bool isCashRefund = refundMethod == 'cash';
-      int? openShiftId;
-      if (isCashRefund) {
-        final shift = await txn.query(
-          'shifts',
-          where: 'status = ?',
-          whereArgs: ['open'],
-          orderBy: 'start_time DESC',
-          limit: 1,
-        );
-        if (shift.isEmpty) {
-          throw StateError(
-            'Open a shift before giving cash back, so the drawer can be counted',
-          );
-        }
-        openShiftId = shift.first['id'] as int;
-      }
-
-      int totalMinor = 0;
-      int vatMinor = 0;
-      int profitMinor = 0;
-      int restockedCostMinor = 0;
-      int writtenOffCostMinor = 0;
-      int restockedMilliunits = 0;
-      final now = DateTime.now().toIso8601String();
-
-      final containerMlByProduct = <int, double>{};
-
-      for (final ReturnLineDraft draft in lines) {
-        final SaleItem? sold = saleItems[draft.saleItemId];
-        if (sold == null) {
-          throw StateError('That line is not on the sale');
-        }
-        final double soldQty = sold.qty;
-        final double already = returnedByItem[draft.saleItemId] ?? 0;
-        if (draft.qty <= 0) {
-          throw StateError('A returned quantity must be more than zero');
-        }
-        if (already + draft.qty > soldQty + _qtyEpsilon) {
-          throw StateError(
-            'More was returned than was sold on that line',
-          );
-        }
-
-        // The refund for the line: the line total scaled by the returned
-        // fraction, rounded half-up. The line total is the UNIT price times
-        // the quantity sold, so a half-bottle returns half the line.
-        // SaleItem.total already includes the recorded line discount, so a
-        // partial return refunds the discounted amount rather than today's
-        // list price.
-        final int lineTotal = sold.total.minorUnits;
-        final int refund = _roundHalfUp(lineTotal * (draft.qty / soldQty));
-        final int soldVat = sold.vatMinor ?? 0;
-        final int lineVat = _roundHalfUp(soldVat * (draft.qty / soldQty));
-        totalMinor += refund;
-        vatMinor += lineVat;
-        profitMinor += _roundHalfUp(
-          sold.unitCost.minorUnits * soldQty * (draft.qty / soldQty),
-        );
-
-        // The goods: back on the shelf, or written off.
-        //
-        // A write-off writes a row too — the ledger is append-only, and the
-        // missing bottle has to be somewhere. It just does not put the
-        // quantity back on the shelf.
-        containerMlByProduct[sold.productId] ??= ((await txn.query(
-              'products',
-              columns: ['bottle_ml'],
-              where: 'id = ?',
-              whereArgs: [sold.productId],
-              limit: 1,
-            ))
-                    .firstOrNull?['bottle_ml'] as num?)
-                ?.toDouble() ??
-            0;
-        final double units = draft.qty *
-            _portionFactor(sold, containerMlByProduct[sold.productId]!);
-        final int returnCostMinor = _roundHalfUp(
-          sold.unitCost.minorUnits * draft.qty,
-        );
-        if (draft.restock) {
-          restockedCostMinor += returnCostMinor;
-          restockedMilliunits += (units * 1000).round();
-          final double balance =
-              await _productBalanceAfter(txn, sold.productId);
-          await _writeStockMovement(
-            txn,
-            productId: sold.productId,
-            variantId: sold.variantId,
-            type: StockMovementType.saleReturn,
-            qtyDelta: units,
-            unitCostMinor: sold.unitCost.minorUnits,
-            referenceType: 'sale_return',
-            referenceId: null,
-            staffId: staffId,
-            staffName: staffName,
-            note: 'Returned',
-            balanceAfter: balance,
-            createdAt: now,
-          );
-          // The COUNT, in the same transaction as the movement.
-          //
-          // The product's own `stock_qty` is a cached balance, and the rule
-          // in this app is that it is updated in the same transaction as the
-          // movement that caused it. A movement with no count behind it is a
-          // ledger that disagrees with the shelf, and the check that compares
-          // the two is what catches it — but only if the count is moved here.
-          await _restoreStockCount(
-            txn,
-            productId: sold.productId,
-            variantId: sold.variantId,
-            units: units,
-          );
-          // Put a restocked return back into the exact batches it came from.
-          // Pro-rating keeps a partial return auditable and avoids turning an
-          // older batch into a newer one merely because the product balance is
-          // aggregated at the catalogue level.
-          final batchLinks = await txn.query(
-            'sale_item_batches',
-            where: 'sale_item_id = ?',
-            whereArgs: [draft.saleItemId],
-            orderBy: 'batch_id ASC',
-          );
-          if (batchLinks.isNotEmpty) {
-            for (final link in batchLinks) {
-              final soldFromBatch = (link['qty'] as num).toDouble();
-              final restore = soldFromBatch * (draft.qty / soldQty);
-              await txn.rawUpdate(
-                'UPDATE stock_batches SET qty_remaining = qty_remaining + ? '
-                'WHERE id = ?',
-                [restore, link['batch_id']],
-              );
-            }
-          }
-        } else {
-          writtenOffCostMinor += returnCostMinor;
-          final double balance =
-              await _productBalanceAfter(txn, sold.productId);
-          await _writeStockMovement(
-            txn,
-            productId: sold.productId,
-            variantId: sold.variantId,
-            type: StockMovementType.writeoff,
-            qtyDelta: -units,
-            unitCostMinor: sold.unitCost.minorUnits,
-            referenceType: 'sale_return',
-            referenceId: null,
-            staffId: staffId,
-            staffName: staffName,
-            note: draft.restockReason ?? 'Written off',
-            balanceAfter: balance,
-            createdAt: now,
-          );
-        }
-      }
-
-      final int returnId = await txn.insert('sale_returns', {
-        'sale_id': sale.id,
-        'kind': kind,
-        'reason': reason.trim(),
-        'total': totalMinor,
-        'vat_total': vatMinor,
-        'profit': profitMinor,
-        'refund_method': refundMethod,
-        'payment_reference': paymentReference,
-        'shift_id': openShiftId,
-        'staff_id': staffId,
-        'staff_name': staffName,
-        'created_at': now,
-        'synced_to_backend': 0,
-      });
-
-      // A split refund follows the original payment weights. Integer
-      // largest-remainder allocation makes the rows sum to the exact refund,
-      // including when the amount cannot be divided evenly into cents.
-      final paymentRows = await txn.query(
-        'sale_payments',
-        where: 'sale_id = ? AND status != ? AND amount_minor > 0',
-        whereArgs: [sale.id, 'pending'],
-        orderBy: 'id ASC',
-      );
-      final eligiblePayments = paymentRows.isEmpty
-          ? <Map<String, dynamic>>[
-              <String, dynamic>{
-                'id': null,
-                'method': refundMethod,
-                'amount_minor': totalMinor,
-                'reference': paymentReference,
-              },
-            ]
-          : paymentRows;
-      final allocations = largestRemainderAllocation(
-        totalMinor,
-        eligiblePayments
-            .map((row) => (row['amount_minor'] as num).toInt())
-            .toList(),
-      );
-      for (var i = 0; i < eligiblePayments.length; i++) {
-        final amount = allocations[i];
-        if (amount == 0) continue;
-        final payment = eligiblePayments[i];
-        await txn.insert('sale_return_refunds', {
-          'return_id': returnId,
-          'sale_payment_id': payment['id'],
-          'method': payment['method'] as String? ?? refundMethod,
-          'amount_minor': amount,
-          'reference': payment['reference'] as String? ?? paymentReference,
-        });
-      }
-
-      // A credit-account sale REFUNDS to the account by default (spec
-      // 7.5.4): the reversal is a return_credit entry against the customer's
-      // ledger, in the same transaction as the return — never a drawer
-      // action, never an edit.
-      if (refundMethod == 'credit_to_account') {
-        final customerRows = await txn.query(
-          'sales',
-          columns: <String>['customer_id'],
-          where: 'id = ?',
-          whereArgs: [sale.id],
-          limit: 1,
-        );
-        final int? customerId =
-            (customerRows.first['customer_id'] as num?)?.toInt();
-        if (customerId == null) {
-          throw StateError(
-              'That sale was not taken on account, so there is no account to refund');
-        }
-        await txn.insert('credit_ledger', <String, Object?>{
-          'uuid': _newUuid(),
-          'customer_id': customerId,
-          'entry_type': 'return_credit',
-          'amount_minor': -totalMinor,
-          'sale_id': sale.id,
-          'return_id': returnId,
-          'staff_id': staffId,
-          'staff_name': staffName,
-          'created_at': now,
-        });
-        await txn.rawUpdate(
-          'UPDATE customers SET balance_minor = balance_minor - ? '
-          'WHERE id = ?',
-          <Object?>[totalMinor, customerId],
-        );
-      }
-
-      for (final ReturnLineDraft draft in lines) {
-        final SaleItem sold = saleItems[draft.saleItemId]!;
-        final int lineTotal = sold.total.minorUnits;
-        await txn.insert('sale_return_items', {
-          'return_id': returnId,
-          'sale_item_id': draft.saleItemId,
-          'product_id': sold.productId,
-          'product_name': sold.productName,
-          'qty': draft.qty,
-          'unit_price': sold.unitPrice.minorUnits,
-          'unit_cost': sold.unitCost.minorUnits,
-          'refund_minor': _roundHalfUp(lineTotal * (draft.qty / sold.qty)),
-          'vat_minor': _roundHalfUp(
-            (sold.vatMinor ?? 0) * (draft.qty / sold.qty),
-          ),
-          'portion': sold.portion,
-          'portion_ml': sold.portionMl,
-          'restock': draft.restock ? 1 : 0,
-          'restock_reason': draft.restockReason,
-        });
-      }
-
-      await _appendFinancialEvent(
-        txn: txn,
-        eventType: 'refund',
-        sourceType: 'sale_return',
-        sourceId: returnId,
-        occurredAtUtc: DateTime.now().toUtc().toIso8601String(),
-        revenueMinor: -(totalMinor - vatMinor),
-        cashOutMinor: refundMethod == 'credit_to_account' ||
-                refundMethod == 'exchange_credit'
-            ? 0
-            : totalMinor,
-        cogsMinor: -restockedCostMinor,
-        operatingExpenseMinor: writtenOffCostMinor,
-        taxCollectedMinor: -vatMinor,
-        receivableDeltaMinor:
-            refundMethod == 'credit_to_account' ? -totalMinor : 0,
-        inventoryDeltaMilliunits: restockedMilliunits,
-        metadata: <String, Object?>{
-          'sale_id': sale.id,
-          'refund_method': refundMethod,
-          'line_count': lines.length,
-        },
-      );
-
-      return returnId;
-    }
-
-    if (existingTransaction != null) return write(existingTransaction);
-    return db!.transaction<int>((txn) => write(txn));
+    return CustomerRepository.instance.recordReturn(
+      sale: sale,
+      lines: lines,
+      reason: reason,
+      kind: kind,
+      refundMethod: refundMethod,
+      paymentReference: paymentReference,
+      staffName: staffName,
+      staffId: staffId,
+      existingTransaction: existingTransaction,
+    );
   }
-
   /// Puts [units] back on the shelf, in the same transaction as the movement.
   ///
   /// The shape mirrors the sale's deduction exactly, in reverse: a variant
   /// gets its own count back, and a product that tracks variants has its
   /// aggregate REWRITTEN from its variants — the same healing the sale does,
   /// so a return cannot leave a parent that has drifted.
-  Future<void> _restoreStockCount(
-    DatabaseExecutor txn, {
-    required int productId,
-    int? variantId,
-    required double units,
-  }) async {
-    final String now = DateTime.now().toIso8601String();
-    if (variantId != null) {
-      await txn.rawUpdate(
-        'UPDATE product_variants SET stock_qty = MAX(0, stock_qty + ?) WHERE id = ?',
-        [units, variantId],
-      );
-    }
-    final flagRows = await txn.query(
-      'products',
-      columns: <String>['track_variants'],
-      where: 'id = ?',
-      whereArgs: [productId],
-      limit: 1,
-    );
-    final bool tracks = flagRows.isNotEmpty &&
-        ((flagRows.first['track_variants'] as num?)?.toInt() ?? 0) == 1;
-    if (tracks) {
-      await txn.rawUpdate(
-        'UPDATE products SET stock_qty = (SELECT COALESCE(SUM(stock_qty), 0) '
-        'FROM product_variants WHERE product_id = ? AND active = 1), '
-        'updated_at = ? WHERE id = ?',
-        [productId, now, productId],
-      );
-    } else {
-      await txn.rawUpdate(
-        'UPDATE products SET stock_qty = MAX(0, stock_qty + ?), updated_at = ? '
-        'WHERE id = ?',
-        [units, now, productId],
-      );
-    }
-  }
-
   /// Whether the money for this sale ever arrived.
   ///
   /// A mobile-money sale taken while the phone was offline is a real sale —
   /// the customer paid — but the payment was never confirmed, and a refund
   /// against money that never arrived is money the shop does not have.
-  Future<bool> _paymentIsVerified(DatabaseExecutor txn, int saleId) async {
-    // The flag is on the SALE, not on the payment row: a sale taken while the
-    // phone was offline was recorded with `payment_verified = 0`, and that is
-    // the flag the return has to read.
-    final rows = await txn.rawQuery(
-      'SELECT payment_verified FROM sales WHERE id = ? LIMIT 1',
-      [saleId],
-    );
-    if (rows.isEmpty) return true;
-    return ((rows.first['payment_verified'] as num?)?.toInt() ?? 1) == 1;
-  }
-
   /// A tiny allowance for the arithmetic of a fraction of a bottle.
   ///
   /// A third of a bottle is not exactly representable, and a customer who
@@ -10107,243 +9027,26 @@ SELECT name FROM staff GROUP BY name HAVING COUNT(*) = 1
     required String staffName,
     int? staffId,
     DateTime? receivedAt,
-
-    /// How the delivery prices what it brings: `weighted_average` (the shop
-    /// setting, and the default) blends the incoming cost with what is still
-    /// on the shelf; `last_cost` replaces the product's cost outright.
-    ///
-    /// Read once by the caller from the shop setting and passed in, so the
-    /// mode in force for this posting is the one the owner saw on the screen.
     String costingMode = 'weighted_average',
     int? purchaseOrderId,
   }) async {
-    if (costingMode != 'weighted_average' && costingMode != 'last_cost') {
-      throw ArgumentError.value(
-          costingMode, 'costingMode', 'must be weighted_average or last_cost');
-    }
-    if (lines.isEmpty) {
-      throw StateError('A delivery must contain at least one line');
-    }
-    final db = await database;
-    return db.transaction<int>((txn) async {
-      final String now = (receivedAt ?? DateTime.now()).toIso8601String();
-      int totalCost = 0;
-      final List<({StockReceiptLine line, int oldCost, int newCost})> costs =
-          <({StockReceiptLine line, int oldCost, int newCost})>[];
-
-      final poLines = purchaseOrderId == null
-          ? const <Map<String, Object?>>[]
-          : await txn.query('purchase_order_lines',
-              where: 'purchase_order_id = ?', whereArgs: [purchaseOrderId]);
-      if (purchaseOrderId != null && poLines.isEmpty) {
-        throw StateError('Purchase order not found');
-      }
-
-      for (final StockReceiptLine line in lines) {
-        if (line.qty <= 0) {
-          throw StateError('A received quantity must be more than zero');
-        }
-        final List<Map<String, Object?>> product = await txn.query(
-          'products',
-          columns: <String>[
-            'id',
-            'cost_price',
-            'stock_qty',
-            'track_variants',
-            'track_expiry',
-          ],
-          where: 'id = ?',
-          whereArgs: [line.productId],
-          limit: 1,
-        );
-        if (product.isEmpty) {
-          throw StateError('That product is not in the catalogue');
-        }
-        final tracksExpiry =
-            (product.first['track_expiry'] as num?)?.toInt() == 1;
-        if (tracksExpiry && line.expiryDate == null) {
-          throw StateError(
-              'An expiry date is required for ${line.productName}');
-        }
-        if (tracksExpiry &&
-            !line.expiryDate!.isAfter(receivedAt ?? DateTime.now())) {
-          throw StateError('The expiry date must be after the received date');
-        }
-        if (purchaseOrderId != null) {
-          final matches = poLines.where(
-              (row) => (row['product_id'] as num).toInt() == line.productId);
-          if (matches.isEmpty) {
-            throw StateError('Product is not on the purchase order');
-          }
-          final poLine = matches.first;
-          final ordered = (poLine['qty'] as num).toDouble();
-          final received = (poLine['received_qty'] as num?)?.toDouble() ?? 0;
-          if (received + line.qty > ordered + _qtyEpsilon) {
-            throw StateError('Received quantity exceeds the purchase order');
-          }
-        }
-        final int oldCost = (product.first['cost_price'] as num?)?.toInt() ?? 0;
-        final int newCost;
-        if (costingMode == 'weighted_average') {
-          // Half-up against exact integers, never a float: the ONE division
-          // primitive every average in this app goes through.
-          newCost = _weightedAverageCost(
-            onHandMinor: oldCost,
-            onHandQty: (product.first['stock_qty'] as num?)?.toDouble() ?? 0,
-            incomingQty: line.qty,
-            incomingMinor: line.unitCost.minorUnits,
-          );
-        } else {
-          newCost = line.unitCost.minorUnits;
-        }
-        final int lineCost = (line.unitCost.minorUnits * line.qty).round();
-        totalCost += lineCost;
-        costs.add((line: line, oldCost: oldCost, newCost: newCost));
-
-        // The stock, in the same transaction as the movement that describes
-        // it — the same rule every other stock change in this app follows.
-        final double balance = await _productBalanceAfter(txn, line.productId);
-        await _writeStockMovement(
-          txn,
-          productId: line.productId,
-          variantId: line.variantId,
-          type: StockMovementType.receipt,
-          qtyDelta: line.qty,
-          unitCostMinor: newCost,
-          referenceType: 'stock_receipt',
-          referenceId: null,
-          staffId: staffId,
-          staffName: staffName,
-          note: 'Received',
-          balanceAfter: balance,
-          createdAt: now,
-        );
-        await _restoreStockCount(
-          txn,
-          productId: line.productId,
-          variantId: line.variantId,
-          units: line.qty,
-        );
-      }
-
-      final int receiptId = await txn.insert('stock_receipts', {
-        'supplier_id': supplierId,
-        'supplier_ref': supplierRef,
-        'supplier_pin': supplierPin,
-        'etims_invoice_ref': etimsInvoiceRef,
-        'input_vat_minor': inputVatMinor,
-        'tax_evidence_status': taxEvidenceStatus,
-        'received_at': now,
-        'staff_id': staffId,
-        'staff_name': staffName,
-        'total_cost_minor': totalCost,
-        'status': 'posted',
-        'note': note,
-        'synced_to_backend': 0,
-      });
-
-      for (final ({StockReceiptLine line, int oldCost, int newCost}) cost
-          in costs) {
-        await txn.insert('stock_receipt_items', {
-          'receipt_id': receiptId,
-          'product_id': cost.line.productId,
-          'variant_id': cost.line.variantId,
-          'product_name': cost.line.productName,
-          'qty': cost.line.qty,
-          // What one unit cost HERE — the supplier's price. A blended figure
-          // belongs in new_cost_minor; storing it in BOTH columns would make
-          // the prefill of the next delivery show a book average as if the
-          // supplier had asked for it.
-          'unit_cost_minor': cost.line.unitCost.minorUnits,
-          'line_cost_minor':
-              (cost.line.unitCost.minorUnits * cost.line.qty).round(),
-          'old_cost_minor': cost.oldCost,
-          'new_cost_minor': cost.newCost,
-          'expiry_date': cost.line.expiryDate?.toIso8601String(),
-          'batch_code': cost.line.batchCode,
-        });
-        if (cost.line.expiryDate != null) {
-          final expiry = cost.line.expiryDate!;
-          final endOfDay =
-              DateTime(expiry.year, expiry.month, expiry.day, 23, 59, 59, 999);
-          await txn.insert('stock_batches', {
-            'uuid': _newUuid(),
-            'product_id': cost.line.productId,
-            'variant_id': cost.line.variantId,
-            'batch_code': cost.line.batchCode,
-            'receipt_id': receiptId,
-            'received_at': now,
-            'expires_at': endOfDay.toIso8601String(),
-            'qty_remaining': cost.line.qty,
-            'unit_cost_minor': cost.line.unitCost.minorUnits,
-            'status': 'active',
-          });
-        }
-        // The history: how the cost got to be what it is.
-        await txn.insert('product_cost_history', {
-          'product_id': cost.line.productId,
-          'variant_id': cost.line.variantId,
-          'effective_at': now,
-          'old_cost_minor': cost.oldCost,
-          'new_cost_minor': cost.newCost,
-          'reason': 'receipt',
-          'receipt_id': receiptId,
-        });
-        // The product's cost is now the cost this delivery paid.
-        await txn.rawUpdate(
-          'UPDATE products SET cost_price = ?, updated_at = ? WHERE id = ?',
-          <Object?>[cost.newCost, now, cost.line.productId],
-        );
-      }
-
-      if (purchaseOrderId != null) {
-        for (final line in lines) {
-          await txn.rawUpdate(
-            'UPDATE purchase_order_lines SET received_qty = received_qty + ? '
-            'WHERE purchase_order_id = ? AND product_id = ?',
-            [line.qty, purchaseOrderId, line.productId],
-          );
-        }
-        final remaining = await txn.rawQuery(
-          'SELECT COUNT(*) AS c FROM purchase_order_lines '
-          'WHERE purchase_order_id = ? AND received_qty < qty',
-          [purchaseOrderId],
-        );
-        await txn.update(
-          'purchase_orders',
-          {
-            'status': ((remaining.first['c'] as num?)?.toInt() ?? 0) == 0
-                ? 'received'
-                : 'partial',
-            'synced_to_backend': 0,
-          },
-          where: 'id = ?',
-          whereArgs: [purchaseOrderId],
-        );
-      }
-
-      await _appendFinancialEvent(
-        txn: txn,
-        eventType: 'purchase',
-        sourceType: 'stock_receipt',
-        sourceId: receiptId,
-        occurredAtUtc: DateTime.parse(now).toUtc().toIso8601String(),
-        payableDeltaMinor: totalCost,
-        inventoryDeltaMilliunits: lines.fold<int>(
-          0,
-          (sum, line) => sum + (line.qty * 1000).round(),
-        ),
-        metadata: <String, Object?>{
-          'supplier_id': supplierId,
-          'purchase_order_id': purchaseOrderId,
-          'line_count': lines.length,
-          'costing_mode': costingMode,
-        },
-      );
-
-      return receiptId;
-    });
+    return FinanceRepository.instance.postStockReceipt(
+      lines: lines,
+      supplierId: supplierId,
+      supplierRef: supplierRef,
+      supplierPin: supplierPin,
+      etimsInvoiceRef: etimsInvoiceRef,
+      inputVatMinor: inputVatMinor,
+      taxEvidenceStatus: taxEvidenceStatus,
+      note: note,
+      staffName: staffName,
+      staffId: staffId,
+      receivedAt: receivedAt,
+      costingMode: costingMode,
+      purchaseOrderId: purchaseOrderId,
+    );
   }
+
 
   /// Posts a delivery entered in packs while keeping the stock ledger in base
   /// units. The pack cost is the cost of one pack; the receipt line stores the
@@ -10550,7 +9253,7 @@ SELECT name FROM staff GROUP BY name HAVING COUNT(*) = 1
 
       await txn.update('stock_receipts', {'status': 'voided'},
           where: 'id = ?', whereArgs: [receiptId]);
-      await _appendFinancialEvent(
+      await FinanceRepository.instance.appendFinancialEventInTransaction(
         txn: txn,
         eventType: 'purchase_void',
         sourceType: 'stock_receipt',
@@ -12364,7 +11067,7 @@ $untilClause
         }
       }
       if (totalInventoryDeltaMilliunits != 0) {
-        await _appendFinancialEvent(
+        await FinanceRepository.instance.appendFinancialEventInTransaction(
           txn: txn,
           eventType: 'stock_count',
           sourceType: 'stock_count',
@@ -13020,64 +11723,17 @@ $untilClause
     String? photoPath,
     int? approvedBy,
   }) async {
-    if (uuid.trim().isEmpty) throw ArgumentError.value(uuid, 'uuid');
-    if (amount.minorUnits <= 0) {
-      throw StateError('An expense must be more than zero');
-    }
-    if (paidFrom != 'till_cash' &&
-        paidFrom != 'other' &&
-        paidFrom != 'payable') {
-      throw StateError('An expense is paid from till cash, elsewhere or later');
-    }
-    final db = await database;
-    return db.transaction<int>((txn) async {
-      final category = await txn.query('expense_categories',
-          where: 'id = ? AND active = 1', whereArgs: [categoryId], limit: 1);
-      if (category.isEmpty) throw StateError('Expense category not found');
-
-      int? shiftId;
-      if (paidFrom == 'till_cash') {
-        final shifts = await txn.query('shifts',
-            where: 'status = ?',
-            whereArgs: ['open'],
-            orderBy: 'start_time DESC',
-            limit: 1);
-        if (shifts.isEmpty) {
-          throw StateError('Open a shift before paying from till cash');
-        }
-        shiftId = shifts.first['id'] as int;
-      }
-      final now = DateTime.now().toIso8601String();
-      final eventAtUtc = DateTime.now().toUtc().toIso8601String();
-      final expenseId = await txn.insert('expenses', {
-        'uuid': uuid,
-        'shift_id': shiftId,
-        'category_id': categoryId,
-        'amount_minor': amount.minorUnits,
-        'paid_from': paidFrom,
-        'note': note,
-        'photo_path': photoPath,
-        'staff_id': staffId,
-        'approved_by': approvedBy,
-        'staff_name': staffName,
-        'created_at': now,
-      });
-      await _appendFinancialEvent(
-        txn: txn,
-        eventType: 'expense',
-        sourceType: 'expense',
-        sourceId: expenseId,
-        occurredAtUtc: eventAtUtc,
-        cashOutMinor: paidFrom == 'till_cash' ? amount.minorUnits : 0,
-        operatingExpenseMinor: amount.minorUnits,
-        payableDeltaMinor: paidFrom == 'payable' ? amount.minorUnits : 0,
-        metadata: <String, Object?>{
-          'paid_from': paidFrom,
-          'category_id': categoryId,
-        },
-      );
-      return expenseId;
-    });
+    return FinanceRepository.instance.recordExpense(
+      uuid: uuid,
+      categoryId: categoryId,
+      amount: amount,
+      paidFrom: paidFrom,
+      staffName: staffName,
+      staffId: staffId,
+      note: note,
+      photoPath: photoPath,
+      approvedBy: approvedBy,
+    );
   }
 
   /// Pays an expense that was recorded against a payable. The payment is a
@@ -13091,142 +11747,21 @@ $untilClause
     String? reference,
     int? shiftId,
   }) async {
-    if (uuid.trim().isEmpty) throw ArgumentError.value(uuid, 'uuid');
-    if (amount.minorUnits <= 0) {
-      throw StateError('An expense payment must be more than zero');
-    }
-    if (!<String>{'cash', 'mpesa', 'bank_transfer'}.contains(paymentMethod)) {
-      throw StateError('Unsupported expense payment method');
-    }
-    final db = await database;
-    return db.transaction<int>((txn) async {
-      final expenses = await txn.query(
-        'expenses',
-        columns: <String>['amount_minor', 'paid_from', 'status'],
-        where: 'id = ?',
-        whereArgs: [expenseId],
-        limit: 1,
-      );
-      if (expenses.isEmpty || expenses.first['status'] != 'posted') {
-        throw StateError('Expense not found or already voided');
-      }
-      if (expenses.first['paid_from'] != 'payable') {
-        throw StateError('Only unpaid expenses can receive a payment');
-      }
-      final paidRows = await txn.rawQuery(
-        'SELECT COALESCE(SUM(amount_minor), 0) AS total '
-        'FROM expense_payments WHERE expense_id = ?',
-        [expenseId],
-      );
-      final paid = (paidRows.first['total'] as num?)?.toInt() ?? 0;
-      final expenseAmount = (expenses.first['amount_minor'] as num).toInt();
-      if (paid + amount.minorUnits > expenseAmount) {
-        throw StateError('That payment exceeds the expense payable');
-      }
-
-      int? resolvedShiftId = shiftId;
-      if (paymentMethod == 'cash') {
-        if (resolvedShiftId == null) {
-          final shifts = await txn.query(
-            'shifts',
-            where: 'status = ?',
-            whereArgs: ['open'],
-            orderBy: 'start_time DESC',
-            limit: 1,
-          );
-          if (shifts.isEmpty) {
-            throw StateError('Open a shift before paying cash');
-          }
-          resolvedShiftId = shifts.first['id'] as int;
-        } else {
-          final shifts = await txn.query(
-            'shifts',
-            where: 'id = ? AND status = ?',
-            whereArgs: [resolvedShiftId, 'open'],
-          );
-          if (shifts.isEmpty) throw StateError('Shift is not open');
-        }
-      }
-
-      final now = DateTime.now().toIso8601String();
-      final paymentId = await txn.insert('expense_payments', {
-        'uuid': uuid,
-        'expense_id': expenseId,
-        'amount_minor': amount.minorUnits,
-        'payment_method': paymentMethod,
-        'reference': reference,
-        'shift_id': resolvedShiftId,
-        'created_at': now,
-      });
-      await _appendFinancialEvent(
-        txn: txn,
-        eventType: 'expense_payment',
-        sourceType: 'expense_payment',
-        sourceId: paymentId,
-        occurredAtUtc: DateTime.parse(now).toUtc().toIso8601String(),
-        cashOutMinor: amount.minorUnits,
-        payableDeltaMinor: -amount.minorUnits,
-        metadata: <String, Object?>{
-          'expense_id': expenseId,
-          'payment_method': paymentMethod,
-          'shift_id': resolvedShiftId,
-        },
-      );
-      return paymentId;
-    });
+    return FinanceRepository.instance.recordExpensePayment(
+      uuid: uuid,
+      expenseId: expenseId,
+      amount: amount,
+      paymentMethod: paymentMethod,
+      reference: reference,
+      shiftId: shiftId,
+    );
   }
 
   /// Voids a posted expense without deleting its audit trail. Till-paid
   /// expenses may only be voided while their shift is open; a closed shift is
   /// an immutable reconciliation record.
   Future<void> voidExpense(int expenseId) async {
-    final db = await database;
-    await db.transaction((txn) async {
-      final rows = await txn.query('expenses',
-          columns: ['shift_id', 'status', 'amount_minor', 'paid_from'],
-          where: 'id = ?',
-          whereArgs: [expenseId],
-          limit: 1);
-      if (rows.isEmpty) throw StateError('Expense not found');
-      if (rows.first['status'] != 'posted') {
-        throw StateError('Expense is already voided');
-      }
-      if (rows.first['paid_from'] == 'payable') {
-        final payments = await txn.rawQuery(
-          'SELECT COUNT(*) AS count FROM expense_payments WHERE expense_id = ?',
-          [expenseId],
-        );
-        if ((payments.first['count'] as num).toInt() > 0) {
-          throw StateError('A paid payable expense cannot be voided');
-        }
-      }
-      final shiftId = rows.first['shift_id'] as int?;
-      if (shiftId != null) {
-        final shifts = await txn.query('shifts',
-            columns: ['status'],
-            where: 'id = ?',
-            whereArgs: [shiftId],
-            limit: 1);
-        if (shifts.isNotEmpty && shifts.first['status'] != 'open') {
-          throw StateError('A closed shift cannot be changed');
-        }
-      }
-      await txn.update('expenses', {'status': 'voided'},
-          where: 'id = ?', whereArgs: [expenseId]);
-      final amountMinor = (rows.first['amount_minor'] as num).toInt();
-      final paidFrom = rows.first['paid_from'] as String;
-      await _appendFinancialEvent(
-        txn: txn,
-        eventType: 'expense_void',
-        sourceType: 'expense',
-        sourceId: expenseId,
-        occurredAtUtc: DateTime.now().toUtc().toIso8601String(),
-        cashInMinor: paidFrom == 'till_cash' ? amountMinor : 0,
-        operatingExpenseMinor: -amountMinor,
-        payableDeltaMinor: paidFrom == 'payable' ? -amountMinor : 0,
-        metadata: <String, Object?>{'paid_from': paidFrom},
-      );
-    });
+    return FinanceRepository.instance.voidExpense(expenseId);
   }
 
   /// Records cash entering or leaving a shift. [amount] is signed: positive
@@ -13244,31 +11779,19 @@ $untilClause
     String entryType = 'purchase',
     String? description,
   }) async {
-    if (uuid.trim().isEmpty || name.trim().isEmpty) {
-      throw StateError('A cost pool needs an id and a name');
-    }
-    if (poolType != 'lot' && poolType != 'rolling_stock') {
-      throw StateError('A cost pool is a lot or rolling stock');
-    }
-    final resolvedCost = initialCost ?? totalCost ?? cost ?? costAmount;
-    final poolId = await (await database).insert('cost_pools', {
-      'uuid': uuid,
-      'name': name.trim(),
-      'pool_type': poolType,
-      'note': note,
-      'created_at': DateTime.now().toIso8601String(),
-    });
-    if (resolvedCost != null && resolvedCost.minorUnits > 0) {
-      await addCostPoolEntry(
-        uuid: '$uuid-entry',
-        poolId: poolId,
-        entryType: entryType,
-        amount: resolvedCost,
-        paidFrom: paidFrom,
-        description: description ?? note,
-      );
-    }
-    return poolId;
+    return FinanceRepository.instance.createCostPool(
+      uuid: uuid,
+      name: name,
+      poolType: poolType,
+      note: note,
+      initialCost: initialCost,
+      totalCost: totalCost,
+      cost: cost,
+      costAmount: costAmount,
+      paidFrom: paidFrom,
+      entryType: entryType,
+      description: description,
+    );
   }
 
   /// Open-profile records are read through the database boundary so the
@@ -13350,87 +11873,19 @@ $untilClause
     Money? costAmount,
     bool trackCost = false,
   }) async {
-    if (amount.minorUnits <= 0) {
-      throw StateError('A quick sale must be more than zero');
-    }
-    if (!<String>{'cash', 'mpesa', 'bank_transfer'}.contains(paymentMethod)) {
-      throw StateError('Unsupported quick-sale payment method');
-    }
-    final db = await database;
-    return db.transaction<int>((txn) async {
-      return _recordOpenQuickSaleInTransaction(
-        txn,
-        amount: amount,
-        paymentMethod: paymentMethod,
-        staffName: staffName,
-        staffId: staffId,
-        paymentReference: paymentReference,
-        costAmount: costAmount,
-        trackCost: trackCost,
-      );
-    });
+    return SalesRepository.instance.recordOpenQuickSale(
+      amount: amount,
+      paymentMethod: paymentMethod,
+      staffName: staffName,
+      staffId: staffId,
+      paymentReference: paymentReference,
+      costAmount: costAmount,
+      trackCost: trackCost,
+    );
   }
 
   /// Transaction-aware quick sale so [recordJobSale] can commit the sale and
   /// its cost-pool allocation atomically.
-  Future<int> _recordOpenQuickSaleInTransaction(
-    Transaction txn, {
-    required Money amount,
-    required String paymentMethod,
-    required String staffName,
-    int? staffId,
-    String? paymentReference,
-    Money? costAmount,
-    bool trackCost = false,
-  }) async {
-    final now = DateTime.now().toIso8601String();
-    final saleId = await txn.insert('sales', <String, Object?>{
-      'staff_name': staffName.trim().isEmpty ? 'Open business' : staffName,
-      'staff_id': staffId,
-      'total': amount.minorUnits,
-      'profit':
-          (trackCost ? (amount.minorUnits - (costAmount?.minorUnits ?? 0)) : 0),
-      'payment_method': paymentMethod,
-      'payment_reference': paymentReference,
-      'amount_tendered': amount.minorUnits,
-      'change_given': 0,
-      'created_at': now,
-      'vat_rate_percent': 0,
-      'vat_minor': 0,
-      'taxable_minor': 0,
-      'document_type': 'sale',
-      'etims_status': EtimsStatus.notRequired,
-      'payment_verified': 1,
-    });
-    await txn.insert('sale_payments', <String, Object?>{
-      'uuid': _newUuid(),
-      'sale_id': saleId,
-      'method': paymentMethod,
-      'amount_minor': amount.minorUnits,
-      'tendered_minor': amount.minorUnits,
-      'change_minor': 0,
-      'reference': paymentReference,
-      'status': 'confirmed',
-      'created_at': now,
-    });
-    await _appendFinancialEvent(
-      txn: txn,
-      eventType: 'sale',
-      sourceType: 'sale',
-      sourceId: saleId,
-      occurredAtUtc: DateTime.parse(now).toUtc().toIso8601String(),
-      revenueMinor: amount.minorUnits,
-      cashInMinor: amount.minorUnits,
-      metadata: <String, Object?>{
-        'profile': ShopProfile.open.wireValue,
-        'open_quick_sale': true,
-        'cost_coverage': 'unrecorded',
-        'tax_mode': 'off',
-      },
-    );
-    return saleId;
-  }
-
   Future<int> addCostPoolEntry({
     required String uuid,
     required int poolId,
@@ -13439,59 +11894,14 @@ $untilClause
     String paidFrom = 'other',
     String? description,
   }) async {
-    const entryTypes = <String>{
-      'purchase',
-      'transport',
-      'packaging',
-      'sorting',
-      'other',
-    };
-    if (!entryTypes.contains(entryType)) {
-      throw StateError('Unknown cost-pool entry');
-    }
-    if (paidFrom != 'till_cash' &&
-        paidFrom != 'other' &&
-        paidFrom != 'credit') {
-      throw StateError('A pool cost is paid from cash, elsewhere or credit');
-    }
-    if (amount.minorUnits <= 0) {
-      throw StateError('A cost-pool entry must be more than zero');
-    }
-    final db = await database;
-    return db.transaction<int>((txn) async {
-      final pools = await txn.query('cost_pools',
-          where: "id = ? AND status = 'open'", whereArgs: [poolId], limit: 1);
-      if (pools.isEmpty) throw StateError('Cost pool not found or closed');
-      final now = DateTime.now().toIso8601String();
-      final entryId = await txn.insert('cost_pool_entries', {
-        'uuid': uuid,
-        'pool_id': poolId,
-        'entry_type': entryType,
-        'amount_minor': amount.minorUnits,
-        'paid_from': paidFrom,
-        'description': description,
-        'created_at': now,
-      });
-      await txn.rawUpdate(
-        'UPDATE cost_pools SET invested_minor = invested_minor + ? WHERE id = ?',
-        [amount.minorUnits, poolId],
-      );
-      await _appendFinancialEvent(
-        txn: txn,
-        eventType: 'cost_pool_entry',
-        sourceType: 'cost_pool_entry',
-        sourceId: entryId,
-        occurredAtUtc: DateTime.now().toUtc().toIso8601String(),
-        cashOutMinor: paidFrom == 'till_cash' ? amount.minorUnits : 0,
-        payableDeltaMinor: paidFrom == 'credit' ? amount.minorUnits : 0,
-        metadata: <String, Object?>{
-          'pool_id': poolId,
-          'entry_type': entryType,
-          'paid_from': paidFrom,
-        },
-      );
-      return entryId;
-    });
+    return FinanceRepository.instance.addCostPoolEntry(
+      uuid: uuid,
+      poolId: poolId,
+      entryType: entryType,
+      amount: amount,
+      paidFrom: paidFrom,
+      description: description,
+    );
   }
 
   Future<int> allocateCostPoolToSale({
@@ -13499,71 +11909,17 @@ $untilClause
     required int saleId,
     required Money amount,
   }) async {
-    if (amount.minorUnits <= 0) {
-      throw StateError('A pool allocation must be more than zero');
-    }
     final db = await database;
-    return db.transaction<int>((txn) async {
-      return _allocateCostPoolToSaleInTransaction(
-        txn,
-        poolId: poolId,
-        saleId: saleId,
-        amount: amount,
-      );
-    });
+    return db.transaction<int>((txn) => FinanceRepository.instance
+        .allocateCostPoolToSaleInTransaction(
+      txn: txn,
+      poolId: poolId,
+      saleId: saleId,
+      amount: amount,
+    ));
   }
 
   /// Transaction-aware pool allocation so [recordJobSale] commits atomically.
-  Future<int> _allocateCostPoolToSaleInTransaction(
-    Transaction txn, {
-    required int poolId,
-    required int saleId,
-    required Money amount,
-  }) async {
-    if (amount.minorUnits <= 0) {
-      throw StateError('A pool allocation must be more than zero');
-    }
-    final pools = await txn.query('cost_pools',
-        where: 'id = ?', whereArgs: [poolId], limit: 1);
-    if (pools.isEmpty) throw StateError('Cost pool not found');
-    final pool = pools.first;
-    final invested = (pool['invested_minor'] as num).toInt();
-    final recovered = (pool['recovered_minor'] as num).toInt();
-    if (recovered + amount.minorUnits > invested) {
-      throw StateError('That allocation exceeds the pool remaining cost');
-    }
-    final sale = await txn.query('sales',
-        columns: <String>['id'],
-        where: 'id = ?',
-        whereArgs: [saleId],
-        limit: 1);
-    if (sale.isEmpty) throw StateError('Sale not found');
-    final now = DateTime.now().toIso8601String();
-    final allocationId = await txn.insert('sale_pool_allocations', {
-      'pool_id': poolId,
-      'sale_id': saleId,
-      'amount_minor': amount.minorUnits,
-      'created_at': now,
-    });
-    await txn.rawUpdate(
-      'UPDATE cost_pools SET recovered_minor = recovered_minor + ? WHERE id = ?',
-      [amount.minorUnits, poolId],
-    );
-    await _appendFinancialEvent(
-      txn: txn,
-      eventType: 'cost_pool_allocation',
-      sourceType: 'sale_pool_allocation',
-      sourceId: allocationId,
-      occurredAtUtc: DateTime.now().toUtc().toIso8601String(),
-      cogsMinor: amount.minorUnits,
-      metadata: <String, Object?>{
-        'pool_id': poolId,
-        'sale_id': saleId,
-      },
-    );
-    return allocationId;
-  }
-
   Future<int> createJob({
     required String uuid,
     required String title,
@@ -13622,7 +11978,7 @@ $untilClause
         'description': description,
         'created_at': DateTime.now().toIso8601String(),
       });
-      await _appendFinancialEvent(
+      await FinanceRepository.instance.appendFinancialEventInTransaction(
         txn: txn,
         eventType: 'job_cost',
         sourceType: 'job_cost',
@@ -13683,7 +12039,7 @@ $untilClause
         where: 'id = ?',
         whereArgs: [jobId],
       );
-      await _appendFinancialEvent(
+      await FinanceRepository.instance.appendFinancialEventInTransaction(
         txn: txn,
         eventType: 'job_completion',
         sourceType: 'job',
@@ -13714,36 +12070,14 @@ $untilClause
     String? staffName,
     int? staffId,
   }) async {
-    if (amount.minorUnits <= 0) {
-      throw StateError('A job sale must be more than zero');
-    }
-    final db = await database;
-    return db.transaction<int>((txn) async {
-      final jobs = await txn.query('jobs',
-          where: 'id = ?', whereArgs: [jobId], limit: 1);
-      if (jobs.isEmpty) throw StateError('Job not found');
-      final job = jobs.first;
-      final poolId = (job['cost_pool_id'] as num?)?.toInt();
-
-      final saleId = await _recordOpenQuickSaleInTransaction(
-        txn,
-        amount: amount,
-        paymentMethod: paymentMethod,
-        staffName: staffName ?? 'Owner',
-        staffId: staffId,
-        paymentReference: paymentReference,
-      );
-
-      if (poolId != null) {
-        await _allocateCostPoolToSaleInTransaction(
-          txn,
-          poolId: poolId,
-          saleId: saleId,
-          amount: amount,
-        );
-      }
-      return saleId;
-    });
+    return JobRepository.instance.recordJobSale(
+      jobId: jobId,
+      amount: amount,
+      paymentMethod: paymentMethod,
+      paymentReference: paymentReference,
+      staffName: staffName,
+      staffId: staffId,
+    );
   }
 
   /// Convenience alias for [recordJobSale].
@@ -13852,7 +12186,7 @@ $untilClause
         'status': status,
         'created_at': DateTime.now().toIso8601String(),
       });
-      await _appendFinancialEvent(
+      await FinanceRepository.instance.appendFinancialEventInTransaction(
         txn: txn,
         eventType: 'job_payment',
         sourceType: 'job_payment',
@@ -13956,7 +12290,7 @@ $untilClause
       });
       final cashIn =
           transactionType == 'capital_in' || transactionType == 'loan_received';
-      await _appendFinancialEvent(
+      await FinanceRepository.instance.appendFinancialEventInTransaction(
         txn: txn,
         eventType: 'owner_transaction',
         sourceType: 'owner_transaction',
@@ -13982,43 +12316,17 @@ $untilClause
     int? staffId,
     String? note,
   }) async {
-    if (uuid.trim().isEmpty) throw ArgumentError.value(uuid, 'uuid');
-    if (!<String>{'cash_in', 'cash_drop', 'float_adjustment'}
-        .contains(movementType)) {
-      throw StateError('Unknown till movement');
-    }
-    if (amount.minorUnits == 0) {
-      throw StateError('A till movement must be more than zero');
-    }
-    final db = await database;
-    return db.transaction<int>((txn) async {
-      final shifts = await txn.query('shifts',
-          where: 'id = ? AND status = ?', whereArgs: [shiftId, 'open']);
-      if (shifts.isEmpty) throw StateError('Shift is not open');
-      final now = DateTime.now().toIso8601String();
-      final movementId = await txn.insert('till_movements', {
-        'uuid': uuid,
-        'shift_id': shiftId,
-        'movement_type': movementType,
-        'amount_minor': amount.minorUnits,
-        'note': note,
-        'staff_id': staffId,
-        'staff_name': staffName,
-        'created_at': now,
-      });
-      await _appendFinancialEvent(
-        txn: txn,
-        eventType: 'till_movement',
-        sourceType: 'till_movement',
-        sourceId: movementId,
-        occurredAtUtc: DateTime.now().toUtc().toIso8601String(),
-        cashInMinor: amount.minorUnits > 0 ? amount.minorUnits : 0,
-        cashOutMinor: amount.minorUnits < 0 ? -amount.minorUnits : 0,
-        metadata: <String, Object?>{'movement_type': movementType},
-      );
-      return movementId;
-    });
+    return FinanceRepository.instance.recordTillMovement(
+      uuid: uuid,
+      shiftId: shiftId,
+      movementType: movementType,
+      amount: amount,
+      staffName: staffName,
+      staffId: staffId,
+      note: note,
+    );
   }
+
 
   /// What the drawer should hold for [shift]: the float it opened with plus
   /// the cash rung up since.
