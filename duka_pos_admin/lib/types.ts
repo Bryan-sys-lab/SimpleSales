@@ -163,3 +163,48 @@ export type PageQuery = {
 };
 
 export type RiskColorProps = { risk: string };
+
+/// A till phone's failure report, received from /api/admin/diagnostics.
+export type DeviceDiagnostic = {
+  id: string;
+  deviceId: string;
+  tenantId: string | null;
+  tenant?: { id: string; shopName: string } | null;
+  platform: string;
+  osVersion: string;
+  appVersion: string;
+  buildNumber: string;
+  locale: string;
+  manufacturer: string | null;
+  model: string | null;
+  crashCount: number;
+  errorCount: number;
+  warningCount: number;
+  firstSeen: string;
+  lastSeen: string;
+  recentCrashes?: DeviceCrashEntry[];
+};
+
+/// One failure entry inside a device diagnostic report.
+export type DeviceCrashEntry = {
+  id: string;
+  diagnosticId: string;
+  kind: 'crash' | 'error' | 'warning';
+  message: string;
+  stack: string | null;
+  route: string | null;
+  actorName: string | null;
+  action: string | null;
+  breadcrumbs: string;
+  createdAt: string;
+};
+
+/// Query parameters for listing device diagnostics.
+export type DeviceDiagnosticQuery = {
+  tenantId?: string;
+  platform?: string;
+  kind?: 'crash' | 'error' | 'warning';
+  from?: string;
+  to?: string;
+  limit?: number;
+};

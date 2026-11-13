@@ -20,6 +20,7 @@ const NAV_ITEMS: import('./nav').NavItem[] = [
   { href: '/commercial-quality', label: 'Data quality', icon: 'commercial-quality' },
   { href: '/support', label: 'Support', icon: 'support' },
   { href: '/audit', label: 'Audit log', icon: 'audit' },
+  { href: '/diagnostics', label: 'Device diagnostics', icon: 'diagnostics' },
 ];
 
 export function ShellLayout({ children }: { children: React.ReactNode }) {

@@ -12,6 +12,7 @@ export interface DataTableProps<T> {
   emptyMessage?: string;
   className?: string;
   pageSize?: number;
+  onRowClick?: (row: T) => void;
 }
 
 export function DataTable<T>({
@@ -22,6 +23,7 @@ export function DataTable<T>({
   emptyMessage = 'No data available',
   className,
   pageSize = 25,
+  onRowClick,
 }: DataTableProps<T>) {
   const [sortKey, setSortKey] = useState<string | null>(null);
   const [sortDir, setSortDir] = useState<SortDirection>('asc');
@@ -108,7 +110,11 @@ export function DataTable<T>({
               </tr>
             ) : (
               pageData.map((row) => (
-                <tr key={rowKey(row)} className="group">
+                <tr
+                  key={rowKey(row)}
+                  className={`group ${onRowClick ? 'cursor-pointer hover:bg-base-100 transition-colors' : ''}`}
+                  onClick={() => onRowClick?.(row)}
+                >
                   {columns.map((col) => (
                     <td
                       key={col.key}
