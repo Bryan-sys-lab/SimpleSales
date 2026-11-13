@@ -23,7 +23,7 @@ class _OpenCostGroupFormScreenState extends State<OpenCostGroupFormScreen> {
   final _nameController = TextEditingController();
   final _noteController = TextEditingController();
   final _costController = TextEditingController();
-  String _poolType = 'job';
+  String _poolType = 'lot';
   String _entryType = 'purchase';
   String _paidFrom = 'other';
   bool _saving = false;
@@ -102,10 +102,15 @@ class _OpenCostGroupFormScreenState extends State<OpenCostGroupFormScreen> {
             DropdownButtonFormField<String>(
               initialValue: _poolType,
               decoration: const InputDecoration(labelText: 'Pool type'),
-              items: const <String>['job', 'batch', 'general']
-                  .map((t) => DropdownMenuItem<String>(value: t, child: Text(t)))
+              items: const <String>['lot', 'bale', 'rolling_stock']
+                  .map((t) => DropdownMenuItem<String>(
+                        value: t,
+                        child: Text(t == 'rolling_stock'
+                            ? 'Rolling stock'
+                            : t[0].toUpperCase() + t.substring(1)),
+                      ))
                   .toList(),
-              onChanged: (v) => setState(() => _poolType = v ?? 'job'),
+              onChanged: (v) => setState(() => _poolType = v ?? 'lot'),
             ),
             SizedBox(height: spacing.md),
             TextFormField(

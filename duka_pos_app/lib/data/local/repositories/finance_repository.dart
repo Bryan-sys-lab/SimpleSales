@@ -736,8 +736,8 @@ class FinanceRepository {
     if (uuid.trim().isEmpty || name.trim().isEmpty) {
       throw StateError('A cost pool needs an id and a name');
     }
-    if (poolType != 'lot' && poolType != 'rolling_stock') {
-      throw StateError('A cost pool is a lot or rolling stock');
+    if (poolType != 'lot' && poolType != 'rolling_stock' && poolType != 'bale') {
+      throw StateError('A cost pool is a lot, rolling stock or bale');
     }
     final resolvedCost = initialCost ?? totalCost ?? cost ?? costAmount;
     final poolId = await txn.insert('cost_pools', {

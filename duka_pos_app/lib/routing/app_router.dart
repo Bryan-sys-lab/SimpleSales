@@ -39,6 +39,7 @@ import '../screens/tank_register_screen.dart';
 import '../screens/product_detail_screen.dart';
 import '../screens/marketplace_screen.dart';
 import '../screens/help_screen.dart';
+import '../screens/open_dashboard_screen.dart';
 import '../screens/open_jobs_screen.dart';
 import '../screens/open_job_form_screen.dart';
 import '../screens/open_job_detail_screen.dart';
@@ -260,7 +261,12 @@ List<RouteBase> _shellRoutes(AppState appState) {
             GoRoute(
               path: Routes.dashboard,
               pageBuilder: (BuildContext context, GoRouterState routerState) =>
-                  _fadeThrough(routerState, const DashboardScreen()),
+                  _fadeThrough(
+                routerState,
+                appState.shopProfile == ShopProfile.open
+                    ? const OpenDashboardScreen()
+                    : const DashboardScreen(),
+              ),
               routes: <RouteBase>[
                 // Who sold what. The dashboard's transactions count is the
                 // door into it, so it sits under the same branch it is opened

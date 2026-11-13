@@ -436,49 +436,115 @@ class _OpenJobDetailScreenState extends State<OpenJobDetailScreen> {
     final initialMajor = ((_finalPriceMinor() > 0 ? _finalPriceMinor() : _quoteMinor()) / 100.0)
         .toStringAsFixed(2);
     controller.text = initialMajor;
+    final quote = Money.fromMinor(_quoteMinor());
+    final deposits = Money.fromMinor(_totalPaymentsMinor());
+    final totalCosts = Money.fromMinor(_totalCostsMinor());
     showDialog<void>(
       context: context,
-      builder: (dialogContext) => AlertDialog(
-        title: Text(l10n.openJobDetailCompleteJob),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: <Widget>[
-            Text(l10n.openJobDetailCompleteJobConfirm),
-            const SizedBox(height: 12),
-            TextField(
-              controller: controller,
-              keyboardType: const TextInputType.numberWithOptions(decimal: true),
-              decoration: const InputDecoration(labelText: 'Final price'),
-            ),
-          ],
-        ),
-        actions: <Widget>[
-          TextButton(
-            onPressed: () => Navigator.pop(dialogContext),
-            child: Text(l10n.openJobDetailCancel),
-          ),
-          FilledButton(
-            onPressed: () async {
-              final parsed = double.tryParse(controller.text.trim());
-              if (parsed == null || parsed <= 0) return;
-              final finalPrice = Money.fromMajor(parsed);
-              final messenger = ScaffoldMessenger.of(context);
-              Navigator.pop(dialogContext);
-              try {
-                await _db.completeJob(jobId: widget.jobId, finalPrice: finalPrice);
-                if (mounted) await _load();
-              } catch (_) {
-                if (mounted) {
-                  messenger.showSnackBar(
-                    SnackBar(content: Text(l10n.openJobDetailCouldNotCompleteJob)),
-                  );
-                }
-              }
-            },
-            child: Text(l10n.openJobDetailCompleteAndSettle),
-          ),
-        ],
-      ),
+      builder: (dialogContext) {
+        final dColors = AppColors.of(dialogContext);
+        final dType = AppTypography.of(dialogContext);
+        return StatefulBuilder(
+          builder: (dialogContext, setState) {
+            final parsed = double.tryParse(controller.text.trim());
+            final finalPrice = parsed != null && parsed > 0
+                ? Money.fromMajor(parsed)
+                : null;
+            final variance = finalPrice != null
+                ? Money.fromMinor(finalPrice.minorUnits - quote.minorUnits)
+                : null;
+            final outstanding = finalPrice != null
+                ? Money.fromMinor(finalPrice.minorUnits - deposits.minorUnits)
+                : null;
+            return AlertDialog(
+              title: Text(l10n.openJobDetailCompleteJob),
+              content: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: <Widget>[
+                  Text(
+                    l10n.openJobDetailCompleteJobConfirm,
+                    style: dType.bodySmall?.copyWith(color: dColors.onSurfaceMuted),
+                  ),
+                  const SizedBox(height: 16),
+                  _CloseoutRow(
+                    label: l10n.openJobDetailQuote,
+                    value: formatMoney(quote),
+                  ),
+                  _CloseoutRow(
+                    label: 'Deposits collected',
+                    value: formatMoney(deposits),
+                  ),
+                  _CloseoutRow(
+                    label: 'Total costs',
+                    value: formatMoney(totalCosts),
+                  ),
+                  const Divider(height: 1),
+                  TextField(
+                    controller: controller,
+                    keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                    decoration: const InputDecoration(
+                      labelText: 'Final price',
+                      helperText: 'What the customer actually pays',
+                    ),
+                    onChanged: (_) => setState(() {}),
+                  ),
+                  if (variance != null) ...<Widget>[
+                    const SizedBox(height: 8),
+                    _CloseoutRow(
+                      label: 'Quote vs final',
+                      value: formatMoney(variance.abs),
+                      tone: variance.minorUnits >= 0
+                          ? StatusTone.success
+                          : StatusTone.warning,
+                      suffix: variance.minorUnits >= 0 ? 'above quote' : 'below quote',
+                    ),
+                  ],
+                  if (outstanding != null) ...<Widget>[
+                    const SizedBox(height: 8),
+                    _CloseoutRow(
+                      label: 'Outstanding after close',
+                      value: formatMoney(outstanding.abs),
+                      tone: outstanding.minorUnits > 0
+                          ? StatusTone.warning
+                          : StatusTone.success,
+                      suffix: outstanding.minorUnits > 0 ? 'still owed' : 'settled',
+                    ),
+                  ],
+                ],
+              ),
+              actions: <Widget>[
+                TextButton(
+                  onPressed: () => Navigator.pop(dialogContext),
+                  child: Text(l10n.openJobDetailCancel),
+                ),
+                FilledButton(
+                  onPressed: finalPrice == null
+                      ? null
+                      : () async {
+                          Navigator.pop(dialogContext);
+                          final messenger = ScaffoldMessenger.of(context);
+                          try {
+                            await _db.completeJob(
+                              jobId: widget.jobId,
+                              finalPrice: finalPrice,
+                            );
+                            if (mounted) await _load();
+                          } catch (_) {
+                            if (mounted) {
+                              messenger.showSnackBar(
+                                SnackBar(content: Text(l10n.openJobDetailCouldNotCompleteJob)),
+                              );
+                            }
+                          }
+                        },
+                  child: Text(l10n.openJobDetailCompleteAndSettle),
+                ),
+              ],
+            );
+          },
+        );
+      },
     ).then((_) => controller.dispose());
   }
 }
@@ -640,6 +706,81 @@ class _ActionButton extends StatelessWidget {
         style: OutlinedButton.styleFrom(
           padding: EdgeInsets.symmetric(vertical: spacing.sm),
         ),
+      ),
+    );
+  }
+}
+
+/// A close-out summary row: label, value, optional tone and suffix.
+class _CloseoutRow extends StatelessWidget {
+  const _CloseoutRow({
+    required this.label,
+    required this.value,
+    this.tone,
+    this.suffix,
+  });
+
+  final String label;
+  final String value;
+  final StatusTone? tone;
+  final String? suffix;
+
+  @override
+  Widget build(BuildContext context) {
+    final AppSpacing spacing = AppSpacing.of(context);
+    final AppColors colors = AppColors.of(context);
+    final type = AppTypography.of(context);
+
+    return Padding(
+      padding: EdgeInsets.only(bottom: spacing.sm),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: <Widget>[
+          SizedBox(
+            width: 150,
+            child: Text(
+              label,
+              style: type.bodyMedium?.copyWith(color: colors.onSurfaceMuted),
+            ),
+          ),
+          Expanded(
+            child: Row(
+              children: <Widget>[
+                Expanded(
+                  child: Text(
+                    value,
+                    style: type.bodyMedium?.copyWith(
+                      fontWeight: FontWeight.w700,
+                      color: tone != null
+                          ? (tone == StatusTone.danger
+                              ? colors.danger
+                              : colors.warning)
+                          : colors.onSurface,
+                    ),
+                  ),
+                ),
+                if (suffix != null) ...<Widget>[
+                  SizedBox(width: spacing.sm),
+                  Text(
+                    suffix!,
+                    style: type.bodySmall?.copyWith(
+                      color: colors.onSurfaceMuted,
+                      fontStyle: FontStyle.italic,
+                    ),
+                  ),
+                ],
+                if (tone != null) ...<Widget>[
+                  SizedBox(width: spacing.sm),
+                  StatusChip(
+                    tone: tone!,
+                    text: tone!.label,
+                    dense: true,
+                  ),
+                ],
+              ],
+            ),
+          ),
+        ],
       ),
     );
   }

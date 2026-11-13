@@ -329,6 +329,7 @@ class ProfileProductForms {
     BuildContext context,
     Product? existing,
   ) async {
+    final l10n = AppLocalizations.of(context);
     final nameController = TextEditingController(text: existing?.name ?? '');
     final priceController = TextEditingController(
         text: existing?.sellPrice.asMajor.toStringAsFixed(2) ?? '');
@@ -336,6 +337,8 @@ class ProfileProductForms {
         text: existing?.costPrice.asMajor.toStringAsFixed(2) ?? '');
     final stockController = TextEditingController(
         text: existing?.stockQty.toString() ?? '0');
+    final reorderController = TextEditingController(
+        text: existing?.reorderLevel.toString() ?? '0');
     final unitController = TextEditingController(
         text: existing?.unit.wire ?? 'each');
 
@@ -369,7 +372,7 @@ class ProfileProductForms {
                 if (optionalStock) ...[
                   TextField(
                     controller: unitController,
-                    decoration: const InputDecoration(labelText: 'Unit (e.g. each, kg, litre)'),
+                    decoration: const InputDecoration(labelText: 'Unit (e.g. each, kg, litre, bale, piece)'),
                   ),
                   TextField(
                     controller: costController,
@@ -379,6 +382,14 @@ class ProfileProductForms {
                   TextField(
                     controller: stockController,
                     decoration: const InputDecoration(labelText: 'Starting stock (optional)'),
+                    keyboardType: TextInputType.numberWithOptions(decimal: true),
+                  ),
+                  TextField(
+                    controller: reorderController,
+                    decoration: const InputDecoration(
+                      labelText: 'Reorder level (optional)',
+                      helperText: 'Alert when stock drops to this level',
+                    ),
                     keyboardType: TextInputType.numberWithOptions(decimal: true),
                   ),
                 ],
@@ -395,6 +406,7 @@ class ProfileProductForms {
                 final price = double.tryParse(priceController.text);
                 final cost = optionalStock ? double.tryParse(costController.text) : 0;
                 final stock = optionalStock ? double.tryParse(stockController.text) : 0;
+                final reorder = optionalStock ? double.tryParse(reorderController.text) : 0;
 
                 if (nameController.text.isEmpty || price == null) {
                   return;
@@ -406,6 +418,7 @@ class ProfileProductForms {
                   'price': price,
                   'cost': cost ?? 0,
                   'stock': stock ?? 0,
+                  'reorder_level': reorder ?? 0,
                   'unit': optionalStock ? (unitController.text.trim().isEmpty ? 'each' : unitController.text.trim()) : 'each',
                   'optional_stock': optionalStock,
                 });

@@ -28,6 +28,8 @@ class _OpenJobFormScreenState extends State<OpenJobFormScreen> {
   bool _saving = false;
   bool _loading = false;
   bool _isEdit = false;
+  int? _selectedPoolId;
+  List<Map<String, dynamic>> _pools = const [];
 
   DatabaseHelper get _db => DatabaseHelper.instance;
 
@@ -38,6 +40,8 @@ class _OpenJobFormScreenState extends State<OpenJobFormScreen> {
       _isEdit = true;
       _loading = true;
       _load(widget.jobId!);
+    } else {
+      _loadPools();
     }
   }
 
@@ -52,14 +56,24 @@ class _OpenJobFormScreenState extends State<OpenJobFormScreen> {
       final r = rows.first;
       _titleController.text = (r['title'] as String?) ?? '';
       _customerController.text = (r['customer_name'] as String?) ?? '';
+      _selectedPoolId = (r['cost_pool_id'] as num?)?.toInt();
       final q = r['quote_minor'];
       if (q != null) {
         final minor = q is int ? q : (q as num).toInt();
         _quoteController.text = (minor / 100.0).toStringAsFixed(2);
       }
+      await _loadPools();
     } finally {
       if (mounted) setState(() => _loading = false);
     }
+  }
+
+  Future<void> _loadPools() async {
+    try {
+      final pools = await _db.getCostPools();
+      if (!mounted) return;
+      setState(() => _pools = pools);
+    } catch (_) {}
   }
 
   @override
@@ -95,6 +109,7 @@ class _OpenJobFormScreenState extends State<OpenJobFormScreen> {
               ? null
               : _customerController.text.trim(),
           quote: quote,
+          costPoolId: _selectedPoolId,
         );
       }
       if (mounted) context.pop();
@@ -148,6 +163,20 @@ class _OpenJobFormScreenState extends State<OpenJobFormScreen> {
               controller: _quoteController,
               keyboardType: const TextInputType.numberWithOptions(decimal: true),
               decoration: InputDecoration(labelText: l10n.openJobFormQuoteLabel),
+            ),
+            SizedBox(height: spacing.md),
+            DropdownButtonFormField<int?>(
+              initialValue: _selectedPoolId,
+              decoration: const InputDecoration(labelText: 'Cost group (optional)'),
+              items: <DropdownMenuItem<int?>>[
+                const DropdownMenuItem<int?>(value: null, child: Text('None')),
+                for (final pool in _pools)
+                  DropdownMenuItem<int?>(
+                    value: (pool['id'] as num).toInt(),
+                    child: Text(pool['name'] as String? ?? 'Untitled group'),
+                  ),
+              ],
+              onChanged: (v) => setState(() => _selectedPoolId = v),
             ),
             SizedBox(height: spacing.xl),
             FilledButton(

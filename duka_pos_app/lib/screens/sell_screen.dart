@@ -8,6 +8,10 @@ import 'package:flutter/semantics.dart';
 import 'package:provider/provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:share_plus/share_plus.dart';
+import '../data/local/repositories/customer_repository.dart';
+import '../data/local/repositories/finance_repository.dart';
+import '../data/local/repositories/job_repository.dart';
+import '../data/local/repositories/sales_repository.dart';
 import '../routing/routes.dart';
 import '../models/audit_log.dart';
 import '../models/credit.dart';
@@ -2803,76 +2807,193 @@ class _SellScreenState extends State<SellScreen>
   }
 
   Future<void> _openQuickSale() async {
-    final values = await showDialog<Map<String, String>>(
+    final appState = context.read<AppState>();
+    final db = DatabaseHelper.instance;
+    final l10n = AppLocalizations.of(context);
+
+    // Load linkage options once when the dialog opens.
+    final jobs = await db.getOpenJobs();
+    final pools = await db.getCostPools();
+    final customers = await db.getCustomers(activeOnly: true);
+
+    int? selectedJobId;
+    int? selectedPoolId;
+    Customer? selectedCustomer;
+    String method = 'cash';
+
+    final amountController = TextEditingController();
+    final nameController = TextEditingController();
+    final unitController = TextEditingController();
+    final referenceController = TextEditingController();
+
+    final values = await showDialog<Map<String, dynamic>>(
       context: context,
       builder: (context) {
-        final amountController = TextEditingController();
-        final nameController = TextEditingController();
-        final unitController = TextEditingController();
-        final referenceController = TextEditingController();
-        String method = 'cash';
         return StatefulBuilder(builder: (context, setState) {
           return AlertDialog(
-            title: Text(AppLocalizations.of(context).quickSale),
-            content: Column(mainAxisSize: MainAxisSize.min, children: [
-              DropdownButtonFormField<Product?>(
-                initialValue: null,
-                decoration: const InputDecoration(labelText: 'Product (optional)'),
-                items: <DropdownMenuItem<Product?>>[
-                  DropdownMenuItem<Product?>(value: null, child: Text(AppLocalizations.of(context).noneNew)),
-                  for (final Product p in _products)
-                    DropdownMenuItem<Product?>(value: p, child: Text(p.name)),
+            title: Text(l10n.quickSale),
+            content: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: <Widget>[
+                // Link the sale to an open job so its proceeds recover the job's
+                // cost pool (a bale bought for this job).
+                DropdownButtonFormField<int?>(
+                  value: selectedJobId,
+                  decoration: const InputDecoration(
+                    labelText: 'Link to job (optional)',
+                    hintText: 'None',
+                  ),
+                  items: <DropdownMenuItem<int?>>[
+                    const DropdownMenuItem<int?>(
+                      value: null,
+                      child: Text('None'),
+                    ),
+                    for (final j in jobs)
+                      DropdownMenuItem<int?>(
+                        value: j['id'] as int,
+                        child: Text(j['title'] as String? ?? 'Job'),
+                      ),
+                  ],
+                  onChanged: (v) {
+                    selectedJobId = v;
+                    if (v != null) selectedPoolId = null;
+                  },
+                ),
+                // Link the sale directly to a cost group / bale.
+                DropdownButtonFormField<int?>(
+                  value: selectedPoolId,
+                  decoration: const InputDecoration(
+                    labelText: 'Link to cost group / bale (optional)',
+                    hintText: 'None',
+                  ),
+                  items: <DropdownMenuItem<int?>>[
+                    const DropdownMenuItem<int?>(
+                      value: null,
+                      child: Text('None'),
+                    ),
+                    for (final p in pools)
+                      DropdownMenuItem<int?>(
+                        value: p['id'] as int,
+                        child: Text(
+                          '${p['name'] as String? ?? 'Cost group'} — KES '
+                          '${(((p['invested_minor'] as num).toInt()) - ((p['recovered_minor'] as num?)?.toInt() ?? 0)) / 100} left',
+                        ),
+                      ),
+                  ],
+                  onChanged: (v) {
+                    selectedPoolId = v;
+                    if (v != null) selectedJobId = null;
+                  },
+                ),
+                DropdownButtonFormField<Product?>(
+                  initialValue: null,
+                  decoration: const InputDecoration(labelText: 'Product (optional)'),
+                  items: <DropdownMenuItem<Product?>>[
+                    DropdownMenuItem<Product?>(
+                      value: null,
+                      child: Text(l10n.noneNew),
+                    ),
+                    for (final Product p in _products)
+                      DropdownMenuItem<Product?>(
+                        value: p,
+                        child: Text(p.name),
+                      ),
+                  ],
+                  onChanged: (value) {
+                    if (value != null) {
+                      nameController.text = value.name;
+                    }
+                  },
+                ),
+                TextField(
+                  controller: nameController,
+                  decoration: const InputDecoration(
+                    labelText: 'Product name (optional)',
+                  ),
+                ),
+                TextField(
+                  controller: unitController,
+                  decoration: const InputDecoration(
+                    labelText: 'Unit (optional)',
+                  ),
+                ),
+                TextField(
+                  controller: amountController,
+                  decoration: const InputDecoration(
+                    labelText: 'Amount (KES)',
+                  ),
+                  keyboardType:
+                      const TextInputType.numberWithOptions(decimal: true),
+                  autofocus: true,
+                ),
+                DropdownButtonFormField<String>(
+                  value: method,
+                  decoration: const InputDecoration(
+                    labelText: 'Payment method',
+                  ),
+                  items: const <DropdownMenuItem<String>>[
+                    DropdownMenuItem(value: 'cash', child: Text('cash')),
+                    DropdownMenuItem(value: 'mpesa', child: Text('mpesa')),
+                    DropdownMenuItem(
+                        value: 'bank_transfer', child: Text('bank transfer')),
+                    DropdownMenuItem(
+                        value: 'credit', child: Text('credit (tab)')),
+                  ],
+                  onChanged: (value) {
+                    if (value != null) setState(() => method = value);
+                  },
+                ),
+                if (method == 'credit') ...[
+                  // Buy now, pay later — the core of the open market. The
+                  // customer takes the goods on account and settles when able.
+                  DropdownButtonFormField<Customer?>(
+                    value: selectedCustomer,
+                    decoration: const InputDecoration(
+                      labelText: 'Customer on account',
+                    ),
+                    items: <DropdownMenuItem<Customer?>>[
+                      const DropdownMenuItem<Customer?>(
+                        value: null,
+                        child: Text('Select customer'),
+                      ),
+                      for (final c in customers)
+                        DropdownMenuItem<Customer?>(
+                          value: c,
+                          child: Text(
+                            '${c.name}${c.phone != null ? ' (${c.phone})' : ''}',
+                          ),
+                        ),
+                    ],
+                    onChanged: (v) => selectedCustomer = v,
+                  ),
                 ],
-                onChanged: (value) {
-                  if (value != null) {
-                    nameController.text = value.name;
-                  }
-                },
+                TextField(
+                  controller: referenceController,
+                  decoration: const InputDecoration(
+                    labelText: 'Reference (optional)',
+                  ),
+                ),
+              ],
+            ),
+            actions: <Widget>[
+              TextButton(
+                onPressed: () => Navigator.pop(context),
+                child: Text(l10n.cancel),
               ),
-              TextField(
-                controller: nameController,
-                decoration: const InputDecoration(labelText: 'Product name (optional)'),
-              ),
-              TextField(
-                controller: unitController,
-                decoration: const InputDecoration(labelText: 'Unit (optional)'),
-              ),
-              TextField(
-                controller: amountController,
-                decoration: const InputDecoration(labelText: 'Amount (KES)'),
-                keyboardType: const TextInputType.numberWithOptions(decimal: true),
-                autofocus: true,
-              ),
-              DropdownButtonFormField<String>(
-                initialValue: method,
-                decoration: const InputDecoration(labelText: 'Payment method'),
-                items: const [
-                  DropdownMenuItem(value: 'cash', child: Text('cash')),
-                  DropdownMenuItem(value: 'mpesa', child: Text('mpesa')),
-                  DropdownMenuItem(value: 'bank_transfer', child: Text('bank transfer')),
-                ],
-                onChanged: (value) {
-                  if (value != null) setState(() => method = value);
-                },
-              ),
-              TextField(
-                controller: referenceController,
-                decoration: const InputDecoration(labelText: 'Reference (optional)'),
-              ),
-            ]),
-            actions: [
-              TextButton(onPressed: () => Navigator.pop(context), child: Text(AppLocalizations.of(context).cancel)),
               FilledButton(
                 onPressed: () {
-                  Navigator.pop(context, {
+                  Navigator.pop(context, <String, dynamic>{
                     'name': nameController.text.trim(),
                     'amount': amountController.text.trim(),
                     'unit': unitController.text.trim(),
                     'method': method,
                     'reference': referenceController.text.trim(),
+                    'jobId': selectedJobId,
+                    'poolId': selectedPoolId,
+                    'customerId': selectedCustomer?.id,
                   });
                 },
-                child: Text(AppLocalizations.of(context).sell),
+                child: Text(l10n.sell),
               ),
             ],
           );
@@ -2883,82 +3004,141 @@ class _SellScreenState extends State<SellScreen>
     final amount = double.tryParse(values['amount'] ?? '');
     if (amount == null || amount <= 0) return;
     if (!mounted) return;
-    final appState = context.read<AppState>();
+    final name = (values['name'] ?? '').trim();
+    final payMethod = (values['method'] ?? 'cash') as String;
+    final reference =
+        (values['reference'] ?? '').trim();
     try {
-      final name = (values['name'] ?? '').trim();
-      Money? costAmount;
-      bool warnNoCost = false;
-      if (name.isNotEmpty) {
-        final products = await DatabaseHelper.instance.getProducts();
-        final match = products.where((p) => p.name.toLowerCase() == name.toLowerCase()).firstOrNull;
-        if (match != null) {
-          costAmount = match.costPrice;
-        } else {
+      if (payMethod == 'credit') {
+        final customer = selectedCustomer;
+        if (customer == null || customer.id == null) {
           if (!mounted) return;
-          // New/unmatched product: ask for a cost price so profit is not overstated.
-          final costController = TextEditingController();
-          final entered = await showDialog<double?>(
-            context: context,
-            builder: (context) => AlertDialog(
-              title: Text(AppLocalizations.of(context).isThisANewProductAddCostPrice),
-              content: TextField(
-                controller: costController,
-                decoration: const InputDecoration(labelText: 'Cost price (KES)'),
-                keyboardType: const TextInputType.numberWithOptions(decimal: true),
-                autofocus: true,
-              ),
-              actions: [
-                TextButton(onPressed: () => Navigator.pop(context), child: Text(AppLocalizations.of(context).skip)),
-                FilledButton(
-                  onPressed: () {
-                    final v = double.tryParse(costController.text.trim());
-                    Navigator.pop(context, v);
-                  },
-                  child: Text(AppLocalizations.of(context).save),
-                ),
-              ],
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('Select a customer before recording on credit'),
             ),
           );
-          costController.dispose();
-          if (entered != null && entered > 0) {
-            costAmount = Money.fromMajor(entered);
-          } else {
-            costAmount = Money.zero;
-            warnNoCost = true;
+          return;
+        }
+        // Credit wall: judge before writing.
+        final int defaultLimit = await db.getCreditDefaultLimit();
+        final int limit = customer.effectiveLimit(defaultLimit);
+        final int wouldOwe = customer.balanceMinor + amount.toInt();
+        if (wouldOwe > limit) {
+          final String mode = await db.getCreditLimitMode();
+          if (!mounted) return;
+          if (mode != 'warn') {
+            final Staff? approver =
+                await showManagerApprovalSheet(
+                  context,
+                  purpose: l10n.sellCreditOverLimit(
+                    customer.name,
+                    formatMoney(Money.fromMinor(wouldOwe)),
+                  ),
+                );
+            if (approver == null) {
+              if (mounted) setState(() {});
+              return;
+            }
           }
         }
-      }
-      await DatabaseHelper.instance.recordOpenQuickSale(
-        amount: Money.fromMajor(amount),
-        paymentMethod: values['method'] ?? 'cash',
-        paymentReference: (values['reference'] ?? '').isEmpty ? null : values['reference'],
-        staffId: appState.currentStaffId,
-        staffName: appState.currentStaffName ?? 'Owner',
-        costAmount: costAmount,
-        trackCost: true,
-      );
-      if (name.isNotEmpty) {
-        final product = Product(
-          name: name,
-          category: 'Quick sale',
-          costPrice: costAmount ?? Money.zero,
-          sellPrice: Money.fromMajor(amount),
-          stockQty: 0,
-          reorderLevel: 0,
-          unit: ProductUnit.parse((values['unit'] ?? '').isEmpty ? null : (values['unit'] as String)),
-          updatedAt: DateTime.now().toIso8601String(),
+        // Record the sale and credit charge atomically in one transaction.
+        final database = await db.database;
+        await database.transaction<int>((txn) async {
+          final saleId = await SalesRepository.instance.recordOpenQuickSaleInTransaction(
+            txn,
+            amount: Money.fromMajor(amount),
+            paymentMethod: 'credit',
+            staffName: appState.currentStaffName ?? 'Owner',
+            staffId: appState.currentStaffId,
+            paymentReference: reference.isEmpty ? null : reference,
+          );
+          await CustomerRepository.instance.recordCreditChargeInTransaction(
+            txn: txn,
+            customerId: customer.id!,
+            amount: Money.fromMajor(amount),
+            saleId: saleId,
+            reference: reference.isEmpty ? null : reference,
+            staffId: appState.currentStaffId,
+            staffName: appState.currentStaffName ?? 'Owner',
+          );
+        });
+      } else if (values['jobId'] != null) {
+        await JobRepository.instance.recordJobSale(
+          jobId: (values['jobId'] as int),
+          amount: Money.fromMajor(amount),
+          paymentMethod: payMethod,
+          paymentReference: reference.isEmpty ? null : reference,
+          staffName: appState.currentStaffName ?? 'Owner',
+          staffId: appState.currentStaffId,
         );
-        await DatabaseHelper.instance.upsertProduct(product);
+      } else if (values['poolId'] != null) {
+        final database = await db.database;
+        final saleId = await database.transaction<int>((txn) async {
+          final saleId = await SalesRepository.instance.recordOpenQuickSaleInTransaction(
+            txn,
+            amount: Money.fromMajor(amount),
+            paymentMethod: payMethod,
+            staffName: appState.currentStaffName ?? 'Owner',
+            staffId: appState.currentStaffId,
+            paymentReference: reference.isEmpty ? null : reference,
+          );
+          await FinanceRepository.instance.allocateCostPoolToSaleInTransaction(
+            txn: txn,
+            poolId: (values['poolId'] as int),
+            saleId: saleId,
+            amount: Money.fromMajor(amount),
+          );
+          return saleId;
+        });
+      } else {
+        await DatabaseHelper.instance.recordOpenQuickSale(
+          amount: Money.fromMajor(amount),
+          paymentMethod: payMethod,
+          paymentReference: reference.isEmpty ? null : reference,
+          staffId: appState.currentStaffId,
+          staffName: appState.currentStaffName ?? 'Owner',
+          costAmount: null,
+          trackCost: false,
+        );
+      }
+      // Create / refresh the product from the named item so the catalogue
+      // grows as the seller names what they sell (money-first: tracking is
+      // opt-in and does not block the sale).
+      if (name.isNotEmpty) {
+        final products = await DatabaseHelper.instance.getProducts();
+        final match = products
+            .where((p) => p.name.toLowerCase() == name.toLowerCase())
+            .firstOrNull;
+        if (match == null) {
+          final product = Product(
+            name: name,
+            category: 'Quick sale',
+            costPrice: Money.zero,
+            sellPrice: Money.fromMajor(amount),
+            stockQty: 0,
+            reorderLevel: 0,
+            unit: ProductUnit.parse(
+              (values['unit'] ?? '').isEmpty
+                  ? null
+                  : (values['unit'] as String),
+            ),
+            updatedAt: DateTime.now().toIso8601String(),
+          );
+          await DatabaseHelper.instance.upsertProduct(product);
+        }
       }
       if (!mounted) return;
-      if (warnNoCost) {
-        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(AppLocalizations.of(context).costNotRecordedProfitMayBeOverstated)));
-      } else {
-        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(AppLocalizations.of(context).quickSaleRecorded)));
-      }
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(l10n.quickSaleRecorded),
+        ),
+      );
     } catch (e) {
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('$e')));
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('$e')),
+      );
     }
   }
 

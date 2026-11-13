@@ -712,4 +712,75 @@ class CustomerRepository {
     if (rows.isEmpty) return true;
     return ((rows.first['payment_verified'] as num?)?.toInt() ?? 1) == 1;
   }
+
+  /// Charges a customer's credit account within [txn]. Never opens its own
+  /// transaction — the caller (quick-sale, cart sale, etc.) commits the sale
+  /// and the ledger entry together.
+  Future<int> recordCreditChargeInTransaction({
+    required Transaction txn,
+    required int customerId,
+    required Money amount,
+    int? saleId,
+    String? reference,
+    int? staffId,
+    String? staffName,
+  }) async {
+    if (amount.minorUnits <= 0) {
+      throw StateError('A credit charge must be more than zero');
+    }
+    final now = DateTime.now().toIso8601String();
+    final rows = await txn.query(
+      'customers',
+      where: 'id = ? AND active = 1',
+      whereArgs: [customerId],
+      limit: 1,
+    );
+    if (rows.isEmpty) throw StateError('Customer not found or inactive');
+    final customer = rows.first;
+    final balanceBefore = (customer['balance_minor'] as num?)?.toInt() ?? 0;
+    final limit =
+        (customer['credit_limit_minor'] as num?)?.toInt();
+    if (limit != null && balanceBefore + amount.minorUnits > limit) {
+      throw StateError(
+        'That charge would exceed the customer credit limit',
+      );
+    }
+    final entryId = await txn.insert('credit_ledger', {
+      'uuid': DatabaseHelper.newUuid(),
+      'customer_id': customerId,
+      'entry_type': 'charge',
+      'amount_minor': amount.minorUnits,
+      'sale_id': saleId,
+      'reference': reference,
+      'staff_id': staffId,
+      'staff_name': staffName ?? 'Owner',
+      'created_at': now,
+    });
+    await txn.rawUpdate(
+      'UPDATE customers SET balance_minor = ? WHERE id = ?',
+      <Object?>[balanceBefore + amount.minorUnits, customerId],
+    );
+    return entryId;
+  }
+
+  /// Charges a customer's credit account, opening its own transaction.
+  Future<int> recordCreditCharge({
+    required int customerId,
+    required Money amount,
+    int? saleId,
+    String? reference,
+    int? staffId,
+    String? staffName,
+  }) async {
+    final db = await DatabaseHelper.instance.database;
+    return db.transaction<int>((txn) => recordCreditChargeInTransaction(
+      txn: txn,
+      customerId: customerId,
+      amount: amount,
+      saleId: saleId,
+      reference: reference,
+      staffId: staffId,
+      staffName: staffName,
+    ));
+  }
 }
