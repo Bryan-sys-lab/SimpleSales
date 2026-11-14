@@ -1649,6 +1649,9 @@ class AppLocalizationsSw extends AppLocalizations {
   String get statusConnecting => 'Reconnecting to the server.';
 
   @override
+  String get statusOnline => 'Mtandaoni — inasawazisha na seva.';
+
+  @override
   String get importRepairedTitle => 'Row repaired';
 
   @override

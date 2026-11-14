@@ -292,6 +292,8 @@ class _LiveChannelGate extends StatefulWidget {
 class _LiveChannelGateState extends State<_LiveChannelGate>
     with WidgetsBindingObserver {
   late LiveChannelService _channel;
+  late AppState _appState;
+  int _lastSeenGeneration = -1;
   /// Generation counter for snapshot requests. Incremented on every explicit
   /// transition that warrants a fresh snapshot (init, foreground resume, link
   /// change). `_sync()` only requests a snapshot when the generation has
@@ -304,6 +306,8 @@ class _LiveChannelGateState extends State<_LiveChannelGate>
     super.initState();
     _channel = context.read<LiveChannelService>();
     _channel.addListener(_onLiveMessage);
+    _appState = context.read<AppState>();
+    _appState.addListener(_onSessionChanged);
     WidgetsBinding.instance.addObserver(this);
     // Read in the first frame, not in initState: the session completes its own
     // bootstrap before this widget is mounted, but reading a provider before
@@ -314,8 +318,20 @@ class _LiveChannelGateState extends State<_LiveChannelGate>
   @override
   void dispose() {
     _channel.removeListener(_onLiveMessage);
+    _appState.removeListener(_onSessionChanged);
     WidgetsBinding.instance.removeObserver(this);
     super.dispose();
+  }
+
+  /// Re-syncs the channel whenever the session changes (sign-in, sign-out,
+  /// workspace switch). Without this the channel stays `off` after login
+  /// until the next foreground resume.
+  void _onSessionChanged() {
+    final gen = _appState.sessionGeneration;
+    if (gen == _lastSeenGeneration) return;
+    _lastSeenGeneration = gen;
+    _snapshotGeneration++;
+    unawaited(_sync());
   }
 
   void _onLiveMessage() {

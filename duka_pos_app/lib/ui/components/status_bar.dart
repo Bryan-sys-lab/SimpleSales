@@ -30,6 +30,7 @@ import 'package:provider/provider.dart';
 
 import '../../l10n/generated/app_localizations.dart';
 import '../../services/account_deletion_service.dart';
+import '../../services/app_state.dart';
 import '../../services/excel_service.dart';
 import '../../services/live_channel_service.dart';
 import '../../theme/app_colors.dart';
@@ -51,6 +52,9 @@ enum TillStatus {
 
   /// The live channel is trying to connect.
   connecting,
+
+  /// The live channel is connected and syncing.
+  online,
 }
 
 /// The strip. Renders nothing when there is nothing to say.
@@ -99,6 +103,10 @@ class _TillStatusBarState extends State<TillStatusBar> {
     // The live channel, which the service already publishes.
     final LiveConnectionState connection =
         context.watch<LiveChannelService>().state;
+    // Whether this shop is linked — an unlinked shop is intentionally offline,
+    // so showing "Online" for it would be misleading.
+    final bool linked = !context.watch<AppState>().identityLinkPending &&
+        context.watch<AppState>().owner != null;
 
     // THE MOST IMPORTANT THING THAT IS WRONG.
     //
@@ -113,7 +121,7 @@ class _TillStatusBarState extends State<TillStatusBar> {
                 LiveConnectionState.paused =>
                   TillStatus.offline,
                 LiveConnectionState.connecting => TillStatus.connecting,
-                LiveConnectionState.connected => null,
+                LiveConnectionState.connected => linked ? TillStatus.online : null,
               };
 
     // Nothing to say: the strip is not there, and the content does not move.
@@ -134,6 +142,11 @@ class _TillStatusBarState extends State<TillStatusBar> {
           l10n.statusOffline,
           Icons.cloud_off_outlined,
           colors.onSurfaceMuted,
+        ),
+      TillStatus.online => (
+          l10n.statusOnline,
+          Icons.cloud_done_outlined,
+          colors.success,
         ),
       TillStatus.connecting => (
           l10n.statusConnecting,

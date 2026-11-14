@@ -1649,6 +1649,9 @@ class AppLocalizationsEn extends AppLocalizations {
   String get statusConnecting => 'Reconnecting to the server.';
 
   @override
+  String get statusOnline => 'Online — syncing with the server.';
+
+  @override
   String get importRepairedTitle => 'Row repaired';
 
   @override

@@ -2824,6 +2824,12 @@ abstract class AppLocalizations {
   /// **'Reconnecting to the server.'**
   String get statusConnecting;
 
+  /// No description provided for @statusOnline.
+  ///
+  /// In en, this message translates to:
+  /// **'Online — syncing with the server.'**
+  String get statusOnline;
+
   /// No description provided for @importRepairedTitle.
   ///
   /// In en, this message translates to:

@@ -454,6 +454,7 @@
   "statusBackupOverdue": "This phone has not been backed up for a while.",
   "statusOffline": "This till is offline. Sales are still being recorded.",
   "statusConnecting": "Reconnecting to the server.",
+  "statusOnline": "Online — syncing with the server.",
   "importRepairedTitle": "Row repaired",
   "importRepairFailedTitle": "The row was not repaired",
   "profileEditSavedTitle": "Details saved",

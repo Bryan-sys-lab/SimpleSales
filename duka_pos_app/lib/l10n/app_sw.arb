@@ -710,4 +710,5 @@
   ,"inventoryCouldNotSavePack": "Haikuweza hifadhi kifungo: {error}"
   ,"syncCenterCouldNotResolveConflict": "Haikuweza kutatua mgogoro: {error}"
   ,"openDashboardNoJobs": "Hakuna kazi hivi. Unde moja ya msingi."
+  ,"statusOnline": "Mtandaoni — inasawazisha na seva."
 }
