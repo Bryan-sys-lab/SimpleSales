@@ -18,7 +18,7 @@ import cors from 'cors';
 import helmet from 'helmet';
 import dotenv from 'dotenv';
 import { WebSocketServer } from 'ws';
-import { asyncHandler, errorHandler } from './lib/http';
+import { errorHandler } from './lib/http';
 import {
   expireOldUnclaimed,
   mpesaRoutes,
@@ -47,6 +47,13 @@ import backupRoutes from './routes/backup';
 import creditRoutes from './routes/credit';
 import operationalSyncRoutes from './routes/operational_sync';
 import evidenceRoutes from './routes/evidence';
+import productVariantRoutes from './routes/product-variants';
+import jobRoutes from './routes/jobs';
+import costPoolRoutes from './routes/cost-pools';
+import jobCostRoutes from './routes/job-costs';
+import jobPaymentRoutes from './routes/job-payments';
+import ownerTransactionRoutes from './routes/owner-transactions';
+import appReleaseRouter from './routes/app-release';
 
 if (typeof module !== 'undefined') { dotenv.config(); }
 
@@ -120,126 +127,7 @@ app.use('/api/system', systemAdminMiddleware, systemRoutes);
 // ---------------------------------------------------------------------------
 
 app.use('/api/auth', authRoutes);
-
-type PublishedAppRelease = {
-  versionName: string;
-  versionCode: number;
-  downloadUrl: string;
-  notes: string;
-};
-
-type GitHubReleasePayload = {
-  tag_name?: unknown;
-  body?: unknown;
-  draft?: unknown;
-  prerelease?: unknown;
-  assets?: unknown;
-};
-
-let appReleaseCache: { expiresAt: number; value: PublishedAppRelease } | null = null;
-
-/**
- * Resolve the update channel from the release that CI published.
- *
- * The app must never need a second deployment just because a new APK was
- * published. GitHub's public latest-release endpoint is therefore the source
- * of truth; APP_* remains a deliberate fallback for local/offline deployments
- * and while GitHub is temporarily unavailable.
- */
-async function publishedAppRelease(): Promise<PublishedAppRelease> {
-  const fallback: PublishedAppRelease = {
-    versionName: process.env.APP_VERSION_NAME ?? '2.0.0',
-    versionCode: Number(process.env.APP_VERSION_CODE ?? '1'),
-    downloadUrl: process.env.APP_DOWNLOAD_URL ?? '',
-    notes: process.env.APP_RELEASE_NOTES ?? 'No release notes published.',
-  };
-
-  if (appReleaseCache && appReleaseCache.expiresAt > Date.now()) {
-    return appReleaseCache.value;
-  }
-
-  const repository = process.env.APP_RELEASE_REPOSITORY ?? 'Bryan-sys-lab/SimpleSales';
-  try {
-    const response = await fetch(`https://api.github.com/repos/${repository}/releases/latest`, {
-      headers: {
-        accept: 'application/vnd.github+json',
-        'user-agent': 'SimpleSales-backend-update-channel',
-      },
-      signal: AbortSignal.timeout(5000),
-    });
-    if (!response.ok) return fallback;
-
-    const payload = (await response.json()) as GitHubReleasePayload;
-    if (payload.draft === true || payload.prerelease === true || typeof payload.tag_name !== 'string') {
-      return fallback;
-    }
-
-    const match = /^v(\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?)\+(\d+)$/.exec(payload.tag_name);
-    const assets = Array.isArray(payload.assets) ? payload.assets : [];
-    const apk = assets.find((asset): asset is { name?: unknown; browser_download_url?: unknown } => {
-      if (!asset || typeof asset !== 'object') return false;
-      const candidate = asset as { name?: unknown; browser_download_url?: unknown };
-      return typeof candidate.name === 'string'
-          && candidate.name === `SimpleSales-${payload.tag_name}.apk`
-          && typeof candidate.browser_download_url === 'string';
-    });
-    if (!match || !apk || typeof apk.browser_download_url !== 'string') return fallback;
-
-    const resolved: PublishedAppRelease = {
-      versionName: match[1],
-      versionCode: Number(match[2]),
-      downloadUrl: apk.browser_download_url,
-      notes: typeof payload.body === 'string' ? payload.body : fallback.notes,
-    };
-    if (!Number.isSafeInteger(resolved.versionCode) || resolved.versionCode <= 0) return fallback;
-
-    appReleaseCache = { expiresAt: Date.now() + 60_000, value: resolved };
-    return resolved;
-  } catch {
-    return fallback;
-  }
-}
-
-app.get('/api/app/latest', asyncHandler(async (_req, res) => {
-  const release = await publishedAppRelease();
-  const versionName = release.versionName;
-  const versionCode = release.versionCode;
-  const downloadUrl = release.downloadUrl;
-  const required = process.env.APP_UPDATE_REQUIRED ?? 'false';
-  const releaseNotes = release.notes;
-  let announcement: { id: string; title: string; body: string } | null = null;
-  try {
-    const announcementRows = await prisma.systemSettings.findMany({
-      where: { key: { in: ['platform_announcement_id', 'platform_announcement_title', 'platform_announcement_body', 'platform_announcement_active'] } },
-    });
-    const announcementValues = Object.fromEntries(announcementRows.map((row) => [row.key, row.value]));
-    if (announcementValues.platform_announcement_active === 'true' && announcementValues.platform_announcement_id) {
-      announcement = {
-        id: announcementValues.platform_announcement_id,
-        title: announcementValues.platform_announcement_title ?? '',
-        body: announcementValues.platform_announcement_body ?? '',
-      };
-    }
-  } catch {
-    // The update manifest remains available during a database interruption;
-    // only the optional platform announcement is omitted.
-  }
-
-  return res.json({
-    // The mobile manifest uses camelCase; retain the legacy snake_case aliases
-    // for older clients that may still be in the field.
-    build: versionCode,
-    version: versionName,
-    downloadUrl,
-    notes: releaseNotes,
-    required: required === 'true',
-    version_name: versionName,
-    version_code: versionCode,
-    download_url: downloadUrl,
-    release_notes: releaseNotes,
-    announcement,
-  });
-}));
+app.use('/', appReleaseRouter);
 
 // ---------------------------------------------------------------------------
 // M-Pesa C2B callbacks (public, key-guarded in the route) and the receipt
@@ -273,6 +161,12 @@ app.use('/api/drawer-events', operationalSyncRoutes);
 app.use('/api/laybys', operationalSyncRoutes);
 app.use('/api/exchanges', operationalSyncRoutes);
 app.use('/api/reorder', operationalSyncRoutes);
+app.use('/api/product-variants', productVariantRoutes);
+app.use('/api/jobs', jobRoutes);
+app.use('/api/cost-pools', costPoolRoutes);
+app.use('/api/job-costs', jobCostRoutes);
+app.use('/api/job-payments', jobPaymentRoutes);
+app.use('/api/owner-transactions', ownerTransactionRoutes);
 
 // ---------------------------------------------------------------------------
 // eTIMS KRA tax compliance (OIDC guarded)
