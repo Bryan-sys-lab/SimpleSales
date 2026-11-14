@@ -38,7 +38,7 @@ abstract final class Routes {
   static const String laybys = '/dashboard/laybys';
   static const String shift = '/analytics/shift';
   static const String expenses = '/analytics/expenses';
-  static const String openBusiness = '/analytics/open-business';
+  static const String openBusiness = '/open-business';
   static const String reports = '/analytics/reports';
   static const String portfolio = '/analytics/portfolio';
   static const String activity = '/settings/activity';
@@ -58,11 +58,11 @@ abstract final class Routes {
   // Fashion profile routes (variant-centred rather than product-centred)
   static const String fashionProductForm = '/inventory/fashion-product/new';
   static const String exchangeScreen = '/fashion/exchange';
-  static const String openJobs = '/analytics/open-business/jobs';
-  static const String openJobNew = '/analytics/open-business/jobs/new';
-  static const String openCostGroups = '/analytics/open-business/cost-groups';
-  static const String openCostGroupNew = '/analytics/open-business/cost-groups/new';
-  static const String openReceivables = '/analytics/open-business/receivables';
+  static const String openJobs = '/open-business/jobs';
+  static const String openJobNew = '/open-business/jobs/new';
+  static const String openCostGroups = '/open-business/cost-groups';
+  static const String openCostGroupNew = '/open-business/cost-groups/new';
+  static const String openReceivables = '/open-business/receivables';
 
   // ------------------------------------------------------------- the doors
   // Outside the shell: no navigation affordance, because there is no session to
@@ -97,16 +97,16 @@ abstract final class Routes {
   static String fashionProductEdit(int id) => '/inventory/fashion-product/$id/edit';
 
   /// Open job detail by id.
-  static String openJobDetail(int id) => '/analytics/open-business/jobs/$id';
+  static String openJobDetail(int id) => '/open-business/jobs/$id';
 
   /// Open job edit form by id.
-  static String openJobEdit(int id) => '/analytics/open-business/jobs/$id/edit';
+  static String openJobEdit(int id) => '/open-business/jobs/$id/edit';
 
   /// Open job add cost by id.
-  static String openJobAddCost(int id) => '/analytics/open-business/jobs/$id/cost';
+  static String openJobAddCost(int id) => '/open-business/jobs/$id/cost';
 
   /// Open cost group detail by id.
-  static String openCostGroupDetail(int id) => '/analytics/open-business/cost-groups/$id';
+  static String openCostGroupDetail(int id) => '/open-business/cost-groups/$id';
 
   /// The root the app opens on. The splash is a real route so a cold deep link
   /// into `/login` still shows the boot gate before it is evaluated.
@@ -158,7 +158,7 @@ enum AppDestination {
         AppDestination.settings => Routes.settings,
         AppDestination.more => Routes.more,
         AppDestination.support => Routes.support,
-        AppDestination.openBusiness => Routes.openBusiness,
+        AppDestination.openBusiness => Routes.openBusiness, // '/open-business'
       };
 
   /// The indexed shell has no branch for More; it is an action that opens a

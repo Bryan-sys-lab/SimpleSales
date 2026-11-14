@@ -3,6 +3,7 @@ import 'package:flutter/foundation.dart' show visibleForTesting;
 import '../schema_version.dart';
 import 'migration.dart';
 import 'v081_outbox_table.dart';
+import 'v082_sales_shift_id.dart';
 
 /// Registry of schema migrations.
 ///
@@ -23,6 +24,7 @@ class MigrationRegistry {
   /// Registers all built-in migrations. Call once at app bootstrap.
   void initialize() {
     register(Migration081());
+    register(Migration082());
   }
 
   /// Registers [migration]. Throws if the version is already registered or if

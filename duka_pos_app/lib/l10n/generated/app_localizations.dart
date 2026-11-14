@@ -578,6 +578,12 @@ abstract class AppLocalizations {
   /// **'Count the till'**
   String get shiftCountAction;
 
+  /// No description provided for @shiftSellAction.
+  ///
+  /// In en, this message translates to:
+  /// **'New sale'**
+  String get shiftSellAction;
+
   /// No description provided for @shiftCloseAction.
   ///
   /// In en, this message translates to:
@@ -11079,6 +11085,12 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'Serving {n}'**
   String dukaServingLabel(Object n);
+
+  /// No description provided for @dukaServingAdd.
+  ///
+  /// In en, this message translates to:
+  /// **'Add serving'**
+  String get dukaServingAdd;
 
   /// No description provided for @dukaSaveProduct.
   ///

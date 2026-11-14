@@ -8,7 +8,7 @@ class SchemaVersion {
   SchemaVersion._();
 
   /// Current production schema version.
-  static const int current = 80;
+  static const int current = 82;
 
   /// First version managed by the new migration registry.
   ///

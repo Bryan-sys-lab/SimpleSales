@@ -526,7 +526,7 @@ class _LooseGoodsFormSheetState extends State<LooseGoodsFormSheet> {
               child: TextButton.icon(
                 onPressed: _addServing,
                 icon: const Icon(Icons.add),
-                label: Text(l10n.tankServingAdd),
+                label: Text(isDuka ? l10n.dukaServingAdd : l10n.tankServingAdd),
               ),
             ),
             if (_error != null) ...<Widget>[

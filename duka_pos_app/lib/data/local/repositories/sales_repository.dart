@@ -27,6 +27,7 @@ class SalesRepository {
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       staff_name TEXT NOT NULL,
       staff_id INTEGER,
+      shift_id INTEGER,
       total INTEGER NOT NULL,
       profit INTEGER NOT NULL,
       payment_method TEXT NOT NULL DEFAULT 'cash',
@@ -215,6 +216,7 @@ class SalesRepository {
     int? discountApprovedBy,
     int? orderDiscountReasonId,
     int? laybyId,
+    int? shiftId,
     String tillCode = '',
     int vatRatePercent = 0,
     String taxRuleId = '',
@@ -543,6 +545,7 @@ class SalesRepository {
       final saleId = await txn.insert('sales', {
         'staff_name': staffName,
         'staff_id': staffId,
+        'shift_id': shiftId,
         'customer_id': customerId,
         'buyer_name': customerRow?['name'],
         'buyer_tin': customerRow?['tin'],
@@ -843,6 +846,7 @@ class SalesRepository {
     int? discountApprovedBy,
     int? orderDiscountReasonId,
     int? laybyId,
+    int? shiftId,
   }) async {
     final db = await DatabaseHelper.instance.database;
     // Read settings BEFORE opening the transaction to avoid sqflite_ffi
@@ -875,6 +879,7 @@ class SalesRepository {
       discountApprovedBy: discountApprovedBy,
       orderDiscountReasonId: orderDiscountReasonId,
       laybyId: laybyId,
+      shiftId: shiftId,
       tillCode: tillCode,
       vatRatePercent: vatRatePercent,
       taxRuleId: taxRuleId ?? '',

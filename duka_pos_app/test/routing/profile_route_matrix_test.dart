@@ -38,7 +38,7 @@ String? expectedRedirect({
     return Routes.portfolio;
   }
   // Profile capability guards
-  if (location.startsWith('/analytics/open-business') &&
+  if (location.startsWith('/open-business') &&
       profile != ShopProfile.open) {
     return Routes.dashboard;
   }

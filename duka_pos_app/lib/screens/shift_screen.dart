@@ -141,9 +141,9 @@ class _ShiftScreenState extends State<ShiftScreen>
   /// Puts a business failure on screen instead of throwing it away.
   void _reportBusinessFailure(String message) {
     setState(() {
-      final _ShiftReady? ready = _state as _ShiftReady?;
-      if (ready == null) return;
-      _state = _ShiftReady(ledger: ready.ledger, message: message);
+      final current = _state;
+      if (current is! _ShiftReady) return;
+      _state = _ShiftReady(ledger: current.ledger, message: message);
     });
   }
 
@@ -222,7 +222,8 @@ class _ShiftScreenState extends State<ShiftScreen>
   }
 
   Future<void> _countTill() async {
-    final int? shiftId = (_state as _ShiftReady?)?.ledger.open?.id;
+    final current = _state;
+    final int? shiftId = current is _ShiftReady ? current.ledger.open?.id : null;
     if (shiftId == null) return;
 
     final Money? counted = await showTillCountSheet(context, shiftId: shiftId);
@@ -238,7 +239,8 @@ class _ShiftScreenState extends State<ShiftScreen>
   }
 
   Future<void> _closeShift() async {
-    final ShiftLedger? ledger = (_state as _ShiftReady?)?.ledger;
+    final current = _state;
+    final ShiftLedger? ledger = current is _ShiftReady ? current.ledger : null;
     final Shift? open = ledger?.open;
     if (open == null || !mounted) return;
 
@@ -305,7 +307,8 @@ class _ShiftScreenState extends State<ShiftScreen>
   }
 
   Future<void> _payOut() async {
-    final Shift? open = (_state as _ShiftReady?)?.ledger.open;
+    final current = _state;
+    final Shift? open = current is _ShiftReady ? current.ledger.open : null;
     final String? staffName = _appState.currentStaffName;
     if (open == null || staffName == null) return;
     final bool changed = await showExpenseSheet(
@@ -317,7 +320,8 @@ class _ShiftScreenState extends State<ShiftScreen>
   }
 
   Future<void> _recordTillMovement() async {
-    final Shift? open = (_state as _ShiftReady?)?.ledger.open;
+    final current = _state;
+    final Shift? open = current is _ShiftReady ? current.ledger.open : null;
     final String? staffName = _appState.currentStaffName;
     if (open == null || open.id == null || staffName == null) return;
     final bool changed = await showTillMovementSheet(
@@ -336,7 +340,8 @@ class _ShiftScreenState extends State<ShiftScreen>
             .getSetting(DatabaseHelper.settingCashDrawerEnabled) ==
         '1';
     if (!enabled || !mounted) return;
-    final open = (_state as _ShiftReady?)?.ledger.open;
+    final current = _state;
+    final open = current is _ShiftReady ? current.ledger.open : null;
     if (open?.id == null) {
       return;
     }
@@ -420,7 +425,8 @@ class _ShiftScreenState extends State<ShiftScreen>
   }
 
   Future<void> _showXReport() async {
-    final open = (_state as _ShiftReady?)?.ledger.open;
+    final current = _state;
+    final open = current is _ShiftReady ? current.ledger.open : null;
     if (open == null || !mounted) return;
     final report = await DatabaseHelper.instance.getXReport(open);
     if (!mounted) return;
@@ -442,7 +448,7 @@ class _ShiftScreenState extends State<ShiftScreen>
               _xRow('Profit',
                   formatMoney(Money.fromMinor(report['profit_minor'] as int))),
               _xRow('Expected till',
-                  formatMoney((_state as _ShiftReady).ledger.expected)),
+                  formatMoney((current as _ShiftReady).ledger.expected)),
               if (mix.isNotEmpty) ...[
                 const SizedBox(height: 12),
                 const Text('Payment mix',
@@ -483,17 +489,19 @@ class _ShiftScreenState extends State<ShiftScreen>
     // does not. The `Scaffold` is also what gives `showAppSnackBar` a
     // `ScaffoldMessenger` to reach: without one, every confirmation on this screen
     // silently goes nowhere.
+    final current = _state;
     return Scaffold(
       appBar: AppBar(
         title: Text(AppLocalizations.of(context).shiftScreenTitle),
         actions: <Widget>[
-          if ((_state as _ShiftReady?)?.ledger.open != null)
+          if (current is _ShiftReady && current.ledger.open != null)
             IconButton(
               tooltip: 'X report preview',
               onPressed: _showXReport,
               icon: const Icon(Icons.assessment_outlined),
             ),
-          if ((_state as _ShiftReady?)?.ledger.open != null &&
+          if (current is _ShiftReady &&
+              current.ledger.open != null &&
               _appState.hasPermission(PermissionKey.openDrawerNoSale))
             IconButton(
               tooltip: 'Open drawer (no sale)',
@@ -769,8 +777,6 @@ class OpenShiftCard extends StatelessWidget {
             ),
             SizedBox(height: spacing.md),
           ],
-          // Count first: it is the lower-stakes action and it FEEDS the
-          // close, so it is the one a cashier needs before either.
           OutlinedButton.icon(
             onPressed: onCount,
             icon: const Icon(Icons.pin_outlined),

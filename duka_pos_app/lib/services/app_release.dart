@@ -16,19 +16,30 @@ library;
 
 import 'package:flutter/foundation.dart';
 
-/// Hosts trusted to serve release APKs. A manifest pointing anywhere else is
-/// rejected before any download begins.
+/// Extra host injected at build time via `--dart-define=APK_CDN_HOST=...`.
 ///
-/// The default set includes `example.com` because the test suite and local
-/// development point there. CI must replace this with the actual release host
-/// before a connected release is published.
-final Set<String> _trustedReleaseHosts = {
-  'example.com',
-  'releases.simplepos.example',
-  'releases.staging.simplepos.example',
-  'localhost',
-  '127.0.0.1',
-};
+/// Set this to the Cloudflare R2 public domain (e.g.
+/// `pub-xxxx.r2.dev` or a custom domain fronting the bucket). An empty
+/// string means no extra host is trusted beyond the built-in patterns.
+const String _apkCdnHost = String.fromEnvironment('APK_CDN_HOST');
+
+/// Returns true when [host] is allowed to serve release APKs.
+///
+/// Trusted patterns:
+///   • The compile-time `APK_CDN_HOST` dart-define (Cloudflare R2 public URL).
+///   • Any `*.r2.dev` subdomain (Cloudflare R2 default public domains).
+///   • Any `*.cloudflarestorage.com` subdomain (R2 S3-compat endpoint).
+///   • `localhost` / `127.0.0.1` for local development and tests.
+///   • `example.com` for the test suite.
+bool _isTrustedReleaseHost(String host) {
+  if (host.isEmpty) return false;
+  if (_apkCdnHost.isNotEmpty && host == _apkCdnHost) return true;
+  if (host == 'localhost' || host == '127.0.0.1') return true;
+  if (host == 'example.com') return true;
+  if (host.endsWith('.r2.dev')) return true;
+  if (host.endsWith('.cloudflarestorage.com')) return true;
+  return false;
+}
 
 /// Why the app believes an update is available.
 enum UpdateUrgency {
@@ -107,7 +118,7 @@ class AppRelease {
     if (uri == null || !uri.isAbsolute) return null;
     if (uri.scheme != 'https') return null;
     if (uri.host.isEmpty) return null;
-    if (!_trustedReleaseHosts.contains(uri.host)) return null;
+    if (!_isTrustedReleaseHost(uri.host)) return null;
 
     final notesRaw = raw['notes'] ?? raw['release_notes'];
     final minimumRaw = raw['minimumBuild'] ?? raw['minimum_build'];

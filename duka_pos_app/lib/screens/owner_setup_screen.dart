@@ -15,7 +15,9 @@ import '../models/models.dart';
 import '../services/app_state.dart';
 import '../services/auth_service.dart';
 import '../services/backend_service.dart';
+import '../services/pin_reset_service.dart';
 import '../services/workspace_service.dart';
+import '../ui/dialogs/verify_identity_dialog.dart';
 import '../routing/app_stage_controller.dart';
 import '../theme/app_haptics.dart';
 import '../theme/app_spacing.dart';
@@ -252,6 +254,12 @@ class _OwnerSetupScreenState extends State<OwnerSetupScreen> {
       if (!mounted) return;
       setState(() => _saving = false);
       widget.onCreated?.call(owner.shopName);
+      // Trigger email verification immediately after account creation.
+      // The PIN is still in memory so we skip the re-entry step.
+      unawaited(_verifyAfterCreate(
+        owner: owner,
+        pin: _pin.text,
+      ));
     } catch (_) {
       if (!mounted) return;
       setState(() {
@@ -262,6 +270,87 @@ class _OwnerSetupScreenState extends State<OwnerSetupScreen> {
       HapticTheme.of(context).fire(HapticEvent.reject);
     }
   }
+
+  /// Runs the email verification flow immediately after account creation.
+  ///
+  /// The PIN is passed in directly — still in memory from the form — so the
+  /// owner is not asked to type it again. Best-effort: a network failure or
+  /// dismissed sheet does not block the app; Settings will offer it again.
+  Future<void> _verifyAfterCreate({
+    required Owner owner,
+    required String pin,
+  }) async {
+    if (!mounted) return;
+    try {
+      final challenge = await BackendService.requestVerificationCode(
+        email: owner.email,
+        pin: pin,
+        shopName: owner.shopName,
+        ownerName: owner.name,
+      );
+      if (!mounted) return;
+      final maskedEmail = challenge.maskedEmail.isNotEmpty
+          ? challenge.maskedEmail
+          : PinResetService.maskEmail(owner.email);
+      final verified = await showVerifyCodeSheet(
+        context,
+        maskedEmail: maskedEmail,
+        onSubmit: (String code) async {
+          try {
+            await BackendService.confirmVerificationCode(
+              email: owner.email,
+              pin: pin,
+              code: code,
+              shopName: owner.shopName,
+              ownerName: owner.name,
+            );
+            return null;
+          } on VerificationException catch (e) {
+            return _verificationError(e);
+          } catch (_) {
+            return 'Could not verify. Check your connection and try again.';
+          }
+        },
+        onResend: () async {
+          try {
+            await BackendService.requestVerificationCode(
+              email: owner.email,
+              pin: pin,
+              shopName: owner.shopName,
+              ownerName: owner.name,
+            );
+            return 'Code sent to $maskedEmail';
+          } on VerificationException catch (e) {
+            return _verificationError(e);
+          } catch (_) {
+            return 'Could not resend. Check your connection.';
+          }
+        },
+      );
+      if (verified && mounted) {
+        await context.read<AppState>().markIdentityVerified();
+      }
+    } catch (_) {
+      // Best-effort: Settings will offer verification again if this fails.
+    }
+  }
+
+  String _verificationError(VerificationException e) => switch (e.failure) {
+        VerificationFailure.expired =>
+          'The code expired. Tap Resend for a new one.',
+        VerificationFailure.invalidCode => e.attemptsRemaining != null
+            ? 'Wrong code — ${e.attemptsRemaining} attempt(s) left.'
+            : 'Wrong code. Try again.',
+        VerificationFailure.tooManyAttempts =>
+          'Too many attempts. Request a new code.',
+        VerificationFailure.tooManyCodes =>
+          'Too many codes requested. Wait a few minutes.',
+        VerificationFailure.network =>
+          'No connection. Check your internet and try again.',
+        VerificationFailure.notConfigured =>
+          'Verification is not set up on this server.',
+        _ => 'Verification failed. You can try again from Settings.',
+      };
 
   @override
   Widget build(BuildContext context) {

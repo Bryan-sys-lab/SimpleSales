@@ -315,7 +315,7 @@ class _OpenJobsScreenState extends State<OpenJobsScreen> {
                             dense: true,
                           ),
                           onTap: () => context.push(
-                            '/analytics/open-business/jobs/${job['id']}',
+                            Routes.openJobDetail((job['id'] as num).toInt()),
                           ),
                         ),
                       );

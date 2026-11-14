@@ -643,12 +643,12 @@ List<RouteBase> _shellRoutes(AppState appState) {
           navigatorKey: branchNavigatorKeys[AppDestination.openBusiness.index],
           routes: <RouteBase>[
             GoRoute(
-              path: Routes.openBusiness,
+              path: Routes.openBusiness, // '/open-business'
               pageBuilder: (BuildContext context, GoRouterState routerState) =>
                   _fadeThrough(
                 routerState,
                 appState.shopProfile == ShopProfile.open
-                    ? const OpenJobsScreen()
+                    ? const OpenDashboardScreen()
                     : NotFoundScreen(location: routerState.matchedLocation),
               ),
               routes: <RouteBase>[

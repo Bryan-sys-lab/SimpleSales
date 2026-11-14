@@ -285,6 +285,9 @@ class AppLocalizationsEn extends AppLocalizations {
   String get shiftCountAction => 'Count the till';
 
   @override
+  String get shiftSellAction => 'New sale';
+
+  @override
   String get shiftCloseAction => 'Close and reconcile';
 
   @override
@@ -6593,6 +6596,9 @@ class AppLocalizationsEn extends AppLocalizations {
   String dukaServingLabel(Object n) {
     return 'Serving $n';
   }
+
+  @override
+  String get dukaServingAdd => 'Add serving';
 
   @override
   String get dukaSaveProduct => 'Save product';

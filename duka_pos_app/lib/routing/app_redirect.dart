@@ -129,7 +129,7 @@ String? appRedirect({
 
   // Profile capability guards: a feature that the active profile does not
   // support is not reachable by a typed or pasted URL either.
-  if (location.startsWith('/analytics/open-business') &&
+  if (location.startsWith('/open-business') &&
       snapshot.shopProfile != ShopProfile.open) {
     return Routes.dashboard;
   }

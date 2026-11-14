@@ -7726,6 +7726,7 @@ SELECT name FROM staff GROUP BY name HAVING COUNT(*) = 1
     int? discountApprovedBy,
     int? orderDiscountReasonId,
     int? laybyId,
+    int? shiftId,
     DatabaseExecutor? existingTransaction,
   }) async {
     if (existingTransaction != null) {
@@ -7757,6 +7758,7 @@ SELECT name FROM staff GROUP BY name HAVING COUNT(*) = 1
         discountApprovedBy: discountApprovedBy,
         orderDiscountReasonId: orderDiscountReasonId,
         laybyId: laybyId,
+        shiftId: shiftId,
         tillCode: tillCode,
         vatRatePercent: vatRatePercent,
         taxRuleId: taxRuleId ?? '',
@@ -7780,6 +7782,7 @@ SELECT name FROM staff GROUP BY name HAVING COUNT(*) = 1
       discountApprovedBy: discountApprovedBy,
       orderDiscountReasonId: orderDiscountReasonId,
       laybyId: laybyId,
+      shiftId: shiftId,
     );
   }
 

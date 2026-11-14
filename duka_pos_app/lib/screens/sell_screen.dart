@@ -1933,6 +1933,7 @@ class _SellScreenState extends State<SellScreen>
 
     try {
       final items = _cart.map(_saleItemFor).toList();
+      final openShift = await DatabaseHelper.instance.getAnyOpenShift();
 
       final saleId = await DatabaseHelper.instance.recordSale(
         staffName: state.currentStaffName ?? 'Unknown',
@@ -1947,6 +1948,7 @@ class _SellScreenState extends State<SellScreen>
         discountApprovedBy: _discountApprovedBy,
         orderDiscountReasonId: _orderDiscountReasonId,
         tenders: tenders,
+        shiftId: openShift?.id,
       );
       if (paymentMethod == 'mpesa_till' &&
           paymentReference != null &&
@@ -2344,6 +2346,7 @@ class _SellScreenState extends State<SellScreen>
   Future<void> _recordUnverifiedMpesa({required String phoneNumber}) async {
     final state = context.read<AppState>();
     final items = _cart.map(_saleItemFor).toList();
+    final openShift = await DatabaseHelper.instance.getAnyOpenShift();
 
     try {
       final saleId = await DatabaseHelper.instance.recordSale(
@@ -2355,6 +2358,7 @@ class _SellScreenState extends State<SellScreen>
         amountTendered: _total,
         paymentVerified: false,
         staffId: state.currentStaffId,
+        shiftId: openShift?.id,
       );
       // An unconfirmed sale is the one most likely to be disputed later, so
       // its attribution matters more, not less.
@@ -2618,6 +2622,7 @@ class _SellScreenState extends State<SellScreen>
           // receipt.
           final etimsEnabled = await EtimsService().isEnabledForSales();
           final localItems = _cart.map(_saleItemFor).toList();
+          final openShift = await DatabaseHelper.instance.getAnyOpenShift();
           try {
             final saleId = await DatabaseHelper.instance.recordSale(
               staffName: state.currentStaffName ?? 'Unknown',
@@ -2631,6 +2636,7 @@ class _SellScreenState extends State<SellScreen>
               etimsPending: etimsEnabled,
               discountApprovedBy: _discountApprovedBy,
               orderDiscountReasonId: _orderDiscountReasonId,
+              shiftId: openShift?.id,
             );
             await recordActionAudit(
               state,
