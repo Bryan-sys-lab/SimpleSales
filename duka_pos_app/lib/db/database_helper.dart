@@ -202,7 +202,7 @@ class DatabaseHelper {
   /// shipped — always add a new one, even for a one-line fix — because a
   /// shop's phone may be several versions behind and needs every step run
   /// in order to land on the current schema without data loss.
-  static const _schemaVersion = 80;
+  static const _schemaVersion = 82;
 
   /// Slack allowed when deciding whether a container has enough left for a sale.
   ///
@@ -842,6 +842,38 @@ SELECT name FROM staff GROUP BY name HAVING COUNT(*) = 1
     if (oldVersion < 65) await _migrateNotifications(db);
     if (oldVersion < 74) await _migrateLaybys(db);
     if (oldVersion < 75) await _migrateExchanges(db);
+    if (oldVersion < 81) {
+      // v81: transactional outbox table for reliable sync.
+      await db.execute('''
+        CREATE TABLE IF NOT EXISTS outbox (
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          operation_uuid TEXT NOT NULL UNIQUE,
+          workspace_uuid TEXT NOT NULL,
+          aggregate_type TEXT NOT NULL,
+          aggregate_uuid TEXT NOT NULL,
+          operation_type TEXT NOT NULL,
+          payload TEXT NOT NULL,
+          created_at_utc TEXT NOT NULL,
+          attempt_count INTEGER NOT NULL DEFAULT 0,
+          last_attempt_at_utc TEXT,
+          acknowledged_at_utc TEXT,
+          last_error TEXT
+        )
+      ''');
+      await db.execute(
+          'CREATE INDEX IF NOT EXISTS idx_outbox_unack ON outbox (acknowledged_at_utc, created_at_utc)');
+    }
+    if (oldVersion < 82) {
+      // v82: attribute every sale to the shift that was open when recorded.
+      final salesExists = (await db.rawQuery(
+              "SELECT name FROM sqlite_master WHERE type='table' AND name='sales'"))
+          .isNotEmpty;
+      if (salesExists) {
+        await db.execute('ALTER TABLE sales ADD COLUMN shift_id INTEGER');
+        await db.execute(
+            'CREATE INDEX IF NOT EXISTS idx_sales_shift ON sales (shift_id)');
+      }
+    }
   }
 
   Future<void> _migrateNotifications(Database db) async {
@@ -3684,6 +3716,24 @@ SELECT name FROM staff GROUP BY name HAVING COUNT(*) = 1
     await _createReturnTables(db);
     await _createReceiptTables(db);
     await db.execute('''
+      CREATE TABLE IF NOT EXISTS outbox (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        operation_uuid TEXT NOT NULL UNIQUE,
+        workspace_uuid TEXT NOT NULL,
+        aggregate_type TEXT NOT NULL,
+        aggregate_uuid TEXT NOT NULL,
+        operation_type TEXT NOT NULL,
+        payload TEXT NOT NULL,
+        created_at_utc TEXT NOT NULL,
+        attempt_count INTEGER NOT NULL DEFAULT 0,
+        last_attempt_at_utc TEXT,
+        acknowledged_at_utc TEXT,
+        last_error TEXT
+      )
+    ''');
+    await db.execute(
+        'CREATE INDEX IF NOT EXISTS idx_outbox_unack ON outbox (acknowledged_at_utc, created_at_utc)');
+    await db.execute('''
       CREATE TABLE owner (
         id INTEGER PRIMARY KEY CHECK (id = 1),
         name TEXT NOT NULL,
@@ -3744,6 +3794,10 @@ SELECT name FROM staff GROUP BY name HAVING COUNT(*) = 1
         change_given INTEGER NOT NULL DEFAULT 0,
         created_at TEXT NOT NULL,
         vat_rate_percent INTEGER,
+        -- Which shift (if any) was open when the sale was recorded. NULL when
+        -- no shift was open; the v082 migration added this to existing tills,
+        -- and fresh installs get it here.
+        shift_id INTEGER,
         -- Whether the server has this sale. The till writes its ledger
         -- offline and pushes it when the phone can reach the server, and a
         -- phone that was offline pushes the same sale again — so the app has
@@ -3778,6 +3832,8 @@ SELECT name FROM staff GROUP BY name HAVING COUNT(*) = 1
       )
     ''');
     await db.execute('CREATE INDEX idx_sales_date ON sales (created_at)');
+    await db.execute(
+        'CREATE INDEX IF NOT EXISTS idx_sales_shift ON sales (shift_id)');
     await db.execute(
         'CREATE INDEX idx_sale_items_product ON sale_items (product_id)');
     await db
