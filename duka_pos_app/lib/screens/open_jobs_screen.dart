@@ -48,6 +48,13 @@ extension JobStatusLabel on JobStatus {
 
 JobStatus _statusOf(Map<String, dynamic> job) {
   final raw = (job['status'] as String?) ?? 'draft';
+  // `completeJob` only ever writes 'closed'. A closed job that is still owed
+  // money is the one the owner means by "awaiting payment".
+  if (raw == 'closed' || raw == 'completed') {
+    final price = (job['final_price_minor'] as num?)?.toInt() ?? 0;
+    final paid = (job['paid_minor'] as num?)?.toInt();
+    if (paid != null && price - paid > 0) return JobStatus.awaitingPayment;
+  }
   return switch (raw) {
     'draft' => JobStatus.draft,
     'open' => JobStatus.inProgress,
@@ -89,15 +96,10 @@ class _OpenJobsScreenState extends State<OpenJobsScreen> {
   Future<void> _load() async {
     setState(() => _loading = true);
     try {
-      final jobs = await _db.getOpenJobs();
-      for (final job in jobs) {
-        final jobId = (job['id'] as num).toInt();
-        final payments = await _db.getJobPayments(jobId);
-        job['_paid_minor'] = payments.fold<int>(
-          0,
-          (sum, p) => sum + ((p['amount_minor'] as num?)?.toInt() ?? 0),
-        );
-      }
+      // One query, and rows that are never edited: sqflite result rows are
+      // read-only, so assigning `job['_paid_minor']` on them threw, the catch
+      // below swallowed it, and the list stayed empty once a job existed.
+      final jobs = await _db.getJobsWithTotals();
       if (!mounted) return;
       setState(() {
         _jobs = jobs;
@@ -242,7 +244,7 @@ class _OpenJobsScreenState extends State<OpenJobsScreen> {
                       final job = jobs[i];
                       final status = _statusOf(job);
                       final quote = _jobQuote(job);
-                      final paid = (job['_paid_minor'] as num?)?.toInt() ?? 0;
+                      final paid = (job['paid_minor'] as num?)?.toInt() ?? 0;
                       final outstanding = quote - paid;
 
                       return Semantics(

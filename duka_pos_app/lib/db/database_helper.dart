@@ -3286,6 +3286,29 @@ SELECT name FROM staff GROUP BY name HAVING COUNT(*) = 1
     return rows.map(FinancialEvent.fromMap).toList();
   }
 
+  /// Whole-ledger sums, computed in SQL.
+  ///
+  /// [getFinancialEvents] defaults to `limit: 100` ordered oldest-first, so
+  /// adding its rows up silently freezes at the first hundred events. Anything
+  /// that wants a running total uses this instead.
+  Future<({int revenueMinor, int cashInMinor, int cashOutMinor})>
+      getFinancialSums({String? eventType}) async {
+    final rows = await (await database).rawQuery(
+      'SELECT COALESCE(SUM(revenue_minor), 0) AS revenue, '
+      'COALESCE(SUM(cash_in_minor), 0) AS cash_in, '
+      'COALESCE(SUM(cash_out_minor), 0) AS cash_out '
+      'FROM financial_events'
+      '${eventType == null ? '' : ' WHERE event_type = ?'}',
+      eventType == null ? null : <Object?>[eventType],
+    );
+    final row = rows.first;
+    return (
+      revenueMinor: (row['revenue'] as num?)?.toInt() ?? 0,
+      cashInMinor: (row['cash_in'] as num?)?.toInt() ?? 0,
+      cashOutMinor: (row['cash_out'] as num?)?.toInt() ?? 0,
+    );
+  }
+
   Future<List<FinancialEvent>> getUnsyncedFinancialEvents({
     int limit = 500,
   }) async {
@@ -11866,6 +11889,20 @@ $untilClause
 
   Future<List<Map<String, dynamic>>> getOpenJobs() async =>
       (await database).query('jobs', orderBy: 'created_at DESC, id DESC');
+
+  /// Jobs with what was collected and spent on each, in ONE query.
+  ///
+  /// Replaces a per-job loop of getJobCosts / getJobPayments calls. The rows
+  /// are read-only (sqflite result sets are), so callers copy before editing.
+  Future<List<Map<String, dynamic>>> getJobsWithTotals() async =>
+      (await database).rawQuery('''
+        SELECT j.*,
+          COALESCE((SELECT SUM(p.amount_minor) FROM job_payments p
+                    WHERE p.job_id = j.id), 0) AS paid_minor,
+          COALESCE((SELECT SUM(c.amount_minor) FROM job_costs c
+                    WHERE c.job_id = j.id), 0) AS cost_minor
+        FROM jobs j
+        ORDER BY j.created_at DESC, j.id DESC''');
 
   Future<void> updateCostPool({
     required int id,

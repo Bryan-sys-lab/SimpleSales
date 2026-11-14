@@ -93,23 +93,19 @@ class _OpenDashboardScreenState extends State<OpenDashboardScreen>
   Future<void> _load() async {
     try {
       final db = DatabaseHelper.instance;
-      final jobs = await db.getOpenJobs();
+      final jobs = await db.getJobsWithTotals();
       final pools = await db.getCostPools();
       final credit = await db.creditSummary();
 
-      // Revenue comes only from completed jobs (job_completion financial events),
-      // not from deposits collected on open jobs.
-      final events = await db.getFinancialEvents();
-      int revenue = 0;
-      int cashIn = 0;
-      int cashOut = 0;
-      for (final e in events) {
-        if (e.eventType == 'job_completion') {
-          revenue += e.revenueMinor;
-        }
-        cashIn += e.cashInMinor;
-        cashOut += e.cashOutMinor;
-      }
+      // Whole-ledger sums in SQL. Summing `getFinancialEvents()` rows capped at
+      // the first 100 events, so these froze once the ledger grew past that.
+      // Revenue comes only from completed jobs (job_completion events), not from
+      // deposits collected on open jobs.
+      final all = await db.getFinancialSums();
+      final completed = await db.getFinancialSums(eventType: 'job_completion');
+      final int revenue = completed.revenueMinor;
+      final int cashIn = all.cashInMinor;
+      final int cashOut = all.cashOutMinor;
 
       int costs = 0;
       int active = 0;
@@ -117,20 +113,23 @@ class _OpenDashboardScreenState extends State<OpenDashboardScreen>
       int overdue = 0;
       final now = DateTime.now();
       for (final job in jobs) {
-        final jobId = (job['id'] as num).toInt();
-        final jc = await db.getJobCosts(jobId);
-        costs += jc.fold<int>(0, (s, c) => s + ((c['amount_minor'] as num?)?.toInt() ?? 0));
         final status = (job['status'] as String?) ?? 'draft';
-        if (status != 'completed' && status != 'closed' && status != 'cancelled') {
-          active++;
+        final bool closed = status == 'completed' || status == 'closed';
+        final bool finished = closed || status == 'cancelled';
+        // Profit is realised on finished work: counting the spend on jobs that
+        // have not been paid for yet made profit look worse the busier you were.
+        if (closed) {
+          costs += (job['cost_minor'] as num?)?.toInt() ?? 0;
+          final price = (job['final_price_minor'] as num?)?.toInt() ?? 0;
+          final paid = (job['paid_minor'] as num?)?.toInt() ?? 0;
+          if (price - paid > 0) awaiting++;
         }
+        if (!finished) active++;
         if (status == 'awaiting_payment') awaiting++;
         final due = job['due_at'];
-        if (due is String) {
+        if (due is String && !finished) {
           final dt = DateTime.tryParse(due);
-          if (dt != null && dt.isBefore(now) && status != 'completed' && status != 'closed') {
-            overdue++;
-          }
+          if (dt != null && dt.isBefore(now)) overdue++;
         }
       }
       if (!mounted) return;
@@ -184,6 +183,11 @@ class _OpenDashboardScreenState extends State<OpenDashboardScreen>
     final l10n = AppLocalizations.of(context);
     final appState = context.watch<AppState>();
     final String addItemLabel = 'Add ${appState.shopProfile.terminologyLocalized(l10n).product}';
+    // The money figures are whole-shop and not filtered by who rang them up, so
+    // they are for the owner and managers. They used to be shown to everyone
+    // under an "own scope" label that the numbers did not honour.
+    final bool canSeeShopMoney =
+        appState.isOwnerSession || appState.role == ShopRole.manager;
 
     return RefreshIndicator(
       onRefresh: _load,
@@ -230,16 +234,16 @@ class _OpenDashboardScreenState extends State<OpenDashboardScreen>
                   ],
                 ),
               )
-            else
+            else if (canSeeShopMoney)
               _OpenFinancialHero(
                 revenue: Money.fromMinor(_revenueMinor),
                 netProfit: Money.fromMinor(_netProfitMinor),
                 cashPosition: Money.fromMinor(_cashPositionMinor),
                 receivables: Money.fromMinor(_receivablesMinor),
-                scopeLabel: appState.isOwnerSession
-                    ? l10n.openDashboardScopeShop
-                    : l10n.openDashboardScopeOwn,
-              ),
+                scopeLabel: l10n.openDashboardScopeShop,
+              )
+            else
+              const SizedBox.shrink(),
             SizedBox(height: spacing.xl),
             _OpenOperationalOverview(
               activeJobs: _activeJobs,
@@ -559,7 +563,7 @@ class _OpenFinancialHero extends StatelessWidget {
                 ],
               ),
               SizedBox(height: spacing.lg),
-              Row(
+              IntrinsicHeight(child: Row(
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: <Widget>[
                   Expanded(
@@ -598,9 +602,9 @@ class _OpenFinancialHero extends StatelessWidget {
                     ),
                   ),
                 ],
-              ),
+              )),
             ],
-          ),
+            ),
         ),
       ],
     );
@@ -739,7 +743,7 @@ class _OpenOperationalOverview extends StatelessWidget {
                 ),
               ];
               if (row) {
-                return Row(
+                return IntrinsicHeight(child: Row(
                   crossAxisAlignment: CrossAxisAlignment.stretch,
                   children: <Widget>[
                     for (int i = 0; i < tiles.length; i++) ...<Widget>[
@@ -747,7 +751,7 @@ class _OpenOperationalOverview extends StatelessWidget {
                       Expanded(child: tiles[i]),
                     ],
                   ],
-                );
+                ));
               }
               return Wrap(
                 spacing: spacing.lg,

@@ -172,13 +172,9 @@ class _OpenOpeningKpisState extends State<_OpenOpeningKpis>
       final pools = await db.getCostPools();
       final credit = await db.creditSummary();
       final jobs = await db.getOpenJobs();
-      final events = await db.getFinancialEvents();
-      int cashIn = 0;
-      int cashOut = 0;
-      for (final e in events) {
-        cashIn += e.cashInMinor;
-        cashOut += e.cashOutMinor;
-      }
+      final sums = await db.getFinancialSums();
+      final int cashIn = sums.cashInMinor;
+      final int cashOut = sums.cashOutMinor;
       if (!mounted) return;
       setState(() {
         _pooledCostsMinor = pools.fold<int>(
@@ -263,7 +259,7 @@ class _OpenOpeningKpisState extends State<_OpenOpeningKpis>
                 ),
               ];
               if (row) {
-                return Row(
+                return IntrinsicHeight(child: Row(
                   crossAxisAlignment: CrossAxisAlignment.stretch,
                   children: <Widget>[
                     for (int i = 0; i < tiles.length; i++) ...<Widget>[
@@ -271,7 +267,7 @@ class _OpenOpeningKpisState extends State<_OpenOpeningKpis>
                       Expanded(child: tiles[i]),
                     ],
                   ],
-                );
+                ));
               }
               return Wrap(
                 spacing: spacing.lg,

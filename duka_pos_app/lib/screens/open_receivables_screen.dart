@@ -137,7 +137,7 @@ class _OpenReceivablesScreenState extends State<OpenReceivablesScreen> {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: <Widget>[
-                  Row(
+                  IntrinsicHeight(child: Row(
                     crossAxisAlignment: CrossAxisAlignment.stretch,
                     children: <Widget>[
                       Expanded(
@@ -160,7 +160,7 @@ class _OpenReceivablesScreenState extends State<OpenReceivablesScreen> {
                         ),
                       ),
                     ],
-                  ),
+                  )),
                 ],
               ),
             ),

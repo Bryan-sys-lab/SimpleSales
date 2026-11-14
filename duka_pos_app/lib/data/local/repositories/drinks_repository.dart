@@ -43,16 +43,17 @@ class DrinksRepository {
     await db.execute(
         'CREATE INDEX IF NOT EXISTS idx_product_cups_template ON product_cups (template_id)');
 
+    // Same shape as the legacy schema: the only writer
+    // (`upsertCupSizeSuggestion` in database_helper.dart) stores size_ml, use_count and
+    // created_at and has no size_name to give.
     await db.execute('''CREATE TABLE IF NOT EXISTS cup_size_suggestions (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
-      product_id INTEGER NOT NULL,
-      size_name TEXT NOT NULL,
-      size_ml INTEGER NOT NULL DEFAULT 0,
-      price INTEGER NOT NULL DEFAULT 0,
-      active INTEGER NOT NULL DEFAULT 1,
-      FOREIGN KEY (product_id) REFERENCES products (id) ON DELETE CASCADE
+      product_id INTEGER,
+      size_ml INTEGER NOT NULL,
+      use_count INTEGER NOT NULL DEFAULT 1,
+      created_at TEXT NOT NULL
     )''');
-    await db.execute(
-        'CREATE INDEX IF NOT EXISTS idx_cup_size_suggestions_product ON cup_size_suggestions (product_id)');
+    await db.execute('CREATE INDEX IF NOT EXISTS idx_cup_sizes_product '
+        'ON cup_size_suggestions (product_id)');
   }
 }

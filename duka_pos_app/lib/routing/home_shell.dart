@@ -131,7 +131,13 @@ class HomeShellTabs extends ChangeNotifier {
       if (_disposed) return;
       final List<AppDestination> visible = visibleDestinations(_state);
       if (visible.isEmpty || visible.contains(current)) return;
-      _shell.goBranch(visible.first.index);
+      // branchIndex, not the enum index: they differ once `more` (no branch)
+      // sits between destinations, and `more.index` would open Support.
+      final AppDestination target = visible.firstWhere(
+        (AppDestination d) => d.branchIndex >= 0,
+        orElse: () => AppDestination.dashboard,
+      );
+      _shell.goBranch(target.branchIndex);
     });
     WidgetsBinding.instance.scheduleFrame();
   }

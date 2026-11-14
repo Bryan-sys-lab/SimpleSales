@@ -263,9 +263,7 @@ List<RouteBase> _shellRoutes(AppState appState) {
               pageBuilder: (BuildContext context, GoRouterState routerState) =>
                   _fadeThrough(
                 routerState,
-                appState.shopProfile == ShopProfile.open
-                    ? const OpenDashboardScreen()
-                    : const DashboardScreen(),
+                const _ProfileDashboard(),
               ),
               routes: <RouteBase>[
                 // Who sold what. The dashboard's transactions count is the
@@ -348,11 +346,7 @@ List<RouteBase> _shellRoutes(AppState appState) {
               pageBuilder: (BuildContext context, GoRouterState routerState) =>
                   _fadeThrough(
                 routerState,
-                appState.shopProfile == ShopProfile.open
-                    ? const PortfolioScreen()
-                    : appState.shopProfile == ShopProfile.fashion
-                        ? const FashionCatalogueScreen()
-                        : const InventoryScreen(),
+                const _ProfileInventory(),
               ),
               routes: <RouteBase>[
                 // Identity in the PATH, so a cold deep link fully reconstructs the
@@ -647,9 +641,7 @@ List<RouteBase> _shellRoutes(AppState appState) {
               pageBuilder: (BuildContext context, GoRouterState routerState) =>
                   _fadeThrough(
                 routerState,
-                appState.shopProfile == ShopProfile.open
-                    ? const OpenDashboardScreen()
-                    : NotFoundScreen(location: routerState.matchedLocation),
+                _ProfileBusiness(location: routerState.matchedLocation),
               ),
               routes: <RouteBase>[
                 // Jobs list — the heart of the Open profile.
@@ -907,4 +899,54 @@ CustomTransitionPage<void> _fadeThrough(
       );
     },
   );
+}
+
+/// Home tab body: picks the dashboard from the profile the app is in NOW.
+///
+/// A `pageBuilder` that reads `appState.shopProfile` decides once, when the
+/// page is built, and a later profile switch can leave the old dashboard on
+/// screen. Watching the profile here makes the swap part of the build.
+class _ProfileDashboard extends StatelessWidget {
+  const _ProfileDashboard();
+
+  @override
+  Widget build(BuildContext context) {
+    final ShopProfile profile =
+        context.select<AppState, ShopProfile>((AppState s) => s.shopProfile);
+    return profile == ShopProfile.open
+        ? const OpenDashboardScreen()
+        : const DashboardScreen();
+  }
+}
+
+/// Inventory tab body, reactive to the profile for the same reason.
+class _ProfileInventory extends StatelessWidget {
+  const _ProfileInventory();
+
+  @override
+  Widget build(BuildContext context) {
+    final ShopProfile profile =
+        context.select<AppState, ShopProfile>((AppState s) => s.shopProfile);
+    return switch (profile) {
+      ShopProfile.open => const PortfolioScreen(),
+      ShopProfile.fashion => const FashionCatalogueScreen(),
+      _ => const InventoryScreen(),
+    };
+  }
+}
+
+/// Biz tab body: the Open profile's jobs list; a 404 for every other profile.
+class _ProfileBusiness extends StatelessWidget {
+  const _ProfileBusiness({required this.location});
+
+  final String location;
+
+  @override
+  Widget build(BuildContext context) {
+    final ShopProfile profile =
+        context.select<AppState, ShopProfile>((AppState s) => s.shopProfile);
+    return profile == ShopProfile.open
+        ? const OpenJobsScreen()
+        : NotFoundScreen(location: location);
+  }
 }

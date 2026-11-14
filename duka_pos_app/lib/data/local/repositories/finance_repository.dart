@@ -257,7 +257,8 @@ class FinanceRepository {
 
     await db.execute('''CREATE TABLE IF NOT EXISTS discount_reasons (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
-      name TEXT NOT NULL UNIQUE
+      name TEXT NOT NULL UNIQUE,
+      active INTEGER NOT NULL DEFAULT 1
     )''');
     await db.execute(
         'CREATE INDEX IF NOT EXISTS idx_discount_reasons_name ON discount_reasons (name)');

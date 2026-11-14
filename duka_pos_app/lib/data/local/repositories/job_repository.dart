@@ -36,16 +36,20 @@ class JobRepository {
     )''');
     await db.execute('CREATE INDEX IF NOT EXISTS idx_jobs_status ON jobs (status)');
 
+    // Must match `_createOpenFinanceTables` in database_helper.dart column for
+    // column: `recordJobPayment` writes uuid, payment_method and shift_id, and
+    // the older shape (method / staff_id / staff_name) made every payment fail
+    // on a fresh install.
     await db.execute('''CREATE TABLE IF NOT EXISTS job_payments (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
+      uuid TEXT NOT NULL UNIQUE,
       job_id INTEGER NOT NULL,
-      amount_minor INTEGER NOT NULL,
-      method TEXT NOT NULL,
+      amount_minor INTEGER NOT NULL CHECK (amount_minor > 0),
+      payment_method TEXT NOT NULL,
       reference TEXT,
+      shift_id INTEGER,
       status TEXT NOT NULL DEFAULT 'pending',
       created_at TEXT NOT NULL,
-      staff_id INTEGER,
-      staff_name TEXT NOT NULL,
       FOREIGN KEY (job_id) REFERENCES jobs (id)
     )''');
     await db.execute(

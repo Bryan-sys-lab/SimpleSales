@@ -51,6 +51,8 @@ class CustomerRepository {
         shift_id INTEGER,
         staff_id INTEGER,
         staff_name TEXT NOT NULL,
+        approved_by INTEGER,
+        note TEXT,
         created_at TEXT NOT NULL,
         FOREIGN KEY (customer_id) REFERENCES customers (id)
       )
