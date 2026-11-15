@@ -204,13 +204,13 @@ class _FashionCatalogueScreenState extends State<FashionCatalogueScreen> {
   }
 
   StatusTone _stockTone(Product p, AppColors colors) {
-    if (p.stockQty <= 0) return StatusTone.danger;
+    if (p.isOutOfStock) return StatusTone.danger;
     if (p.isLow) return StatusTone.warning;
     return StatusTone.success;
   }
 
   String _stockStatus(Product p) {
-    if (p.stockQty <= 0) return 'Out';
+    if (p.isOutOfStock) return 'Out';
     if (p.isLow) return 'Low';
     return 'In stock';
   }

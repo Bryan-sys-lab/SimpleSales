@@ -704,14 +704,14 @@ class _SellScreenState extends State<SellScreen>
           ),
           actions: [
             TextButton(onPressed: () => Navigator.pop(ctx), child: Text(AppLocalizations.of(context).cancel)),
-            FilledButton(
-              onPressed: () {
-                final parsed = double.tryParse(controller.text.trim());
-                if (parsed == null || parsed <= 0) return;
-                Navigator.pop(ctx, parsed);
-              },
-              child: Text(AppLocalizations.of(context).add),
-            ),
+              FilledButton(
+                onPressed: () {
+                  final parsed = parseMoneyInput(controller.text.trim());
+                  if (parsed == null || parsed <= 0) return;
+                  Navigator.pop(ctx, parsed);
+                },
+                child: Text(AppLocalizations.of(context).add),
+              ),
           ],
         ),
       );
@@ -742,7 +742,7 @@ class _SellScreenState extends State<SellScreen>
               TextButton(onPressed: () => Navigator.pop(ctx), child: Text(AppLocalizations.of(context).cancel)),
               FilledButton(
                 onPressed: () {
-                  final parsed = double.tryParse(controller.text.trim());
+                  final parsed = parseMoneyInput(controller.text.trim());
                   if (parsed == null || parsed <= 0) return;
                   Navigator.pop(ctx, parsed);
                 },
@@ -1341,7 +1341,7 @@ class _SellScreenState extends State<SellScreen>
                 child: Text(AppLocalizations.of(context).cancel)),
             FilledButton(
               onPressed: () {
-                final parsed = double.tryParse(amount.text.trim());
+                final parsed = parseMoneyInput(amount.text.trim());
                 if (parsed == null || parsed < 0) return;
                 Navigator.pop(context, (Money.fromMajor(parsed), reasonId));
               },
@@ -1445,7 +1445,7 @@ class _SellScreenState extends State<SellScreen>
             ),
             FilledButton(
               onPressed: () {
-                final parsed = double.tryParse(amountController.text.trim());
+                final parsed = parseMoneyInput(amountController.text.trim());
                 if (parsed == null || parsed < 0) return;
                 Navigator.pop(
                     dialogContext, (Money.fromMajor(parsed), reasonId));
@@ -1555,7 +1555,7 @@ class _SellScreenState extends State<SellScreen>
       builder: (dialogContext) => StatefulBuilder(
         builder: (dialogContext, setDialogState) {
           int? minorAmount(String value) {
-            final parsed = double.tryParse(value.trim());
+            final parsed = parseMoneyInput(value.trim());
             return parsed == null ? null : Money.fromMajor(parsed).minorUnits;
           }
 
@@ -1748,9 +1748,9 @@ class _SellScreenState extends State<SellScreen>
                     return;
                   }
                   if (method == 'split') {
-                    final first = double.tryParse(amountController.text.trim());
+                    final first = parseMoneyInput(amountController.text.trim());
                     final second =
-                        double.tryParse(splitAmountController.text.trim());
+                        parseMoneyInput(splitAmountController.text.trim());
                     final firstMoney =
                         first == null ? null : Money.fromMajor(first);
                     final secondMoney =
@@ -3053,7 +3053,7 @@ class _SellScreenState extends State<SellScreen>
       },
     );
     if (values == null) return;
-    final amount = double.tryParse(values['amount'] ?? '');
+    final amount = parseMoneyInput(values['amount'] ?? '');
     if (amount == null || amount <= 0) return;
     if (!mounted) return;
     final name = (values['name'] ?? '').trim();

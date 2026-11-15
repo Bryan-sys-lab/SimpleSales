@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import '../l10n/generated/app_localizations.dart';
+import '../utils/money.dart';
 
 import 'shop_profile.dart';
 import '../models/models.dart';
@@ -142,12 +143,12 @@ class ProfileProductForms {
             ),
             FilledButton(
               onPressed: () {
-                final cost = double.tryParse(costController.text);
-                final price = double.tryParse(priceController.text);
+                final cost = parseMoneyInput(costController.text);
+                final price = parseMoneyInput(priceController.text);
                 final stock = double.tryParse(stockController.text);
                 final bottleMl = int.tryParse(bottleMlController.text);
-                final halfPrice = double.tryParse(halfPriceController.text);
-                final quarterPrice = double.tryParse(quarterPriceController.text);
+                final halfPrice = parseMoneyInput(halfPriceController.text);
+                final quarterPrice = parseMoneyInput(quarterPriceController.text);
 
                 if (nameController.text.isEmpty ||
                     cost == null ||
@@ -297,8 +298,8 @@ class ProfileProductForms {
               ),
               FilledButton(
                 onPressed: () {
-                  final cost = double.tryParse(costController.text);
-                  final price = double.tryParse(priceController.text);
+                  final cost = parseMoneyInput(costController.text);
+                  final price = parseMoneyInput(priceController.text);
                   final stock = double.tryParse(stockController.text);
 
                   if (nameController.text.isEmpty ||
@@ -526,8 +527,8 @@ class ProfileProductForms {
           ),
           FilledButton(
             onPressed: () {
-              final cost = double.tryParse(costController.text);
-              final price = double.tryParse(priceController.text);
+              final cost = parseMoneyInput(costController.text);
+              final price = parseMoneyInput(priceController.text);
               final stock = double.tryParse(stockController.text);
 
               if (nameController.text.isEmpty ||

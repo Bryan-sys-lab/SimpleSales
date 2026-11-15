@@ -177,10 +177,10 @@ class _FashionProductFormScreenState extends State<FashionProductFormScreen> {
             unit: ProductUnit.each,
             sizeMl: 0,
             sellPrice: Money.fromMajor(
-              double.tryParse(v.sellPriceCtrl.text) ?? 0,
+              parseMoneyInput(v.sellPriceCtrl.text) ?? 0,
             ),
             costPrice: Money.fromMajor(
-              double.tryParse(v.costPriceCtrl.text) ?? 0,
+              parseMoneyInput(v.costPriceCtrl.text) ?? 0,
             ),
             stockQty: double.tryParse(v.stockCtrl.text) ?? 0,
             reorderLevel: int.tryParse(v.reorderCtrl.text) ?? 0,
@@ -380,8 +380,8 @@ class _VariantEditor {
       'sku': skuCtrl.text.trim(),
       'barcode': barcodeCtrl.text.trim(),
       'stock': double.tryParse(stockCtrl.text) ?? 0,
-      'sell_price': double.tryParse(sellPriceCtrl.text) ?? 0,
-      'cost_price': double.tryParse(costPriceCtrl.text) ?? 0,
+      'sell_price': parseMoneyInput(sellPriceCtrl.text) ?? 0,
+      'cost_price': parseMoneyInput(costPriceCtrl.text) ?? 0,
       'reorder_level': int.tryParse(reorderCtrl.text) ?? 0,
     };
   }

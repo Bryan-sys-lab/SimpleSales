@@ -242,7 +242,7 @@ class _ProductDrilldownSheet extends StatelessWidget {
 
   static String _status(Product product) {
     if (!product.active) return 'Inactive';
-    if (product.stockQty <= 0) return 'Out of stock';
+    if (product.isOutOfStock) return 'Out of stock';
     if (product.isLow) return 'Low stock';
     return 'Selling';
   }
