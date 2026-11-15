@@ -11,6 +11,7 @@ import '../theme/app_colors.dart';
 import '../theme/app_spacing.dart';
 import '../theme/typography.dart';
 import '../ui/components/surface.dart';
+import '../ui/components/states.dart';
 import '../ui/layout/page.dart';
 import '../utils/money.dart';
 import '../widgets/backup_reminder_banner.dart';
@@ -522,8 +523,13 @@ class _LaybyScreenState extends State<LaybyScreen> {
             SizedBox(height: spacing.sm),
             if (_laybys.isEmpty)
               Padding(
-                padding: EdgeInsets.all(16),
-                child: Text(l10n.reserveNoReserves),
+                padding: EdgeInsets.all(spacing.lg),
+                child: EmptyStateView(
+                  title: l10n.reserveNoReserves,
+                  message:
+                      'Reserves you create will appear here. Fill in the form above to create your first reserve.',
+                  kind: EmptyKind.collection,
+                ),
               )
             else
               ..._laybys.map(_laybyCard),
