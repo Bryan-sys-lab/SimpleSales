@@ -3312,14 +3312,32 @@ SELECT name FROM staff GROUP BY name HAVING COUNT(*) = 1
   /// adding its rows up silently freezes at the first hundred events. Anything
   /// that wants a running total uses this instead.
   Future<({int revenueMinor, int cashInMinor, int cashOutMinor})>
-      getFinancialSums({String? eventType}) async {
+      getFinancialSums({
+    String? eventType,
+    DateTime? sinceUtc,
+    DateTime? untilUtc,
+  }) async {
+    final where = <String>[];
+    final args = <Object?>[];
+    if (eventType != null) {
+      where.add('event_type = ?');
+      args.add(eventType);
+    }
+    if (sinceUtc != null) {
+      where.add('occurred_at_utc >= ?');
+      args.add(sinceUtc.toUtc().toIso8601String());
+    }
+    if (untilUtc != null) {
+      where.add('occurred_at_utc < ?');
+      args.add(untilUtc.toUtc().toIso8601String());
+    }
     final rows = await (await database).rawQuery(
       'SELECT COALESCE(SUM(revenue_minor), 0) AS revenue, '
       'COALESCE(SUM(cash_in_minor), 0) AS cash_in, '
       'COALESCE(SUM(cash_out_minor), 0) AS cash_out '
       'FROM financial_events'
-      '${eventType == null ? '' : ' WHERE event_type = ?'}',
-      eventType == null ? null : <Object?>[eventType],
+      '${where.isEmpty ? '' : ' WHERE ${where.join(' AND ')}'}',
+      args.isEmpty ? null : args,
     );
     final row = rows.first;
     return (
@@ -10734,6 +10752,85 @@ $untilClause
               transactions: (row['transactions'] as num?)?.toInt() ?? 0,
             ))
         .toList();
+  }
+
+  Future<List<PaymentMixRow>> salesTenderMix({
+    required DateTime since,
+    DateTime? until,
+    int? staffId,
+  }) async {
+    final where = <String>[
+      's.created_at >= ?',
+      "sp.status = 'confirmed'",
+      's.payment_verified = 1',
+    ];
+    final args = <Object?>[since.toIso8601String()];
+    if (until != null) {
+      where.add('s.created_at < ?');
+      args.add(until.toIso8601String());
+    }
+    if (staffId != null) {
+      where.add('s.staff_id = ?');
+      args.add(staffId);
+    }
+    final rows = await (await database).rawQuery('''
+      SELECT sp.method AS method,
+             CAST(COALESCE(SUM(sp.amount_minor), 0) AS INTEGER) AS sales_minor,
+             COUNT(DISTINCT s.id) AS transactions
+        FROM sale_payments sp
+        JOIN sales s ON s.id = sp.sale_id
+       WHERE ${where.join(' AND ')}
+       GROUP BY sp.method
+       ORDER BY sales_minor DESC, sp.method ASC
+    ''', args);
+
+    final result = <String, PaymentMixRow>{};
+    for (final row in rows) {
+      final String method = (row['method'] as String?) ?? 'cash';
+      result[method] = PaymentMixRow(
+        method: method,
+        salesMinor: (row['sales_minor'] as num?)?.toInt() ?? 0,
+        transactions: (row['transactions'] as num?)?.toInt() ?? 0,
+      );
+    }
+
+    final fallbackWhere = <String>[
+      's.created_at >= ?',
+      's.payment_verified = 1',
+      "NOT EXISTS (SELECT 1 FROM sale_payments sp2 WHERE sp2.sale_id = s.id)",
+    ];
+    final fallbackArgs = <Object?>[since.toIso8601String()];
+    if (until != null) {
+      fallbackWhere.add('s.created_at < ?');
+      fallbackArgs.add(until.toIso8601String());
+    }
+    if (staffId != null) {
+      fallbackWhere.add('s.staff_id = ?');
+      fallbackArgs.add(staffId);
+    }
+    final fallbackRows = await (await database).rawQuery('''
+      SELECT s.payment_method AS method,
+             CAST(COALESCE(SUM(s.total), 0) AS INTEGER) AS sales_minor,
+             COUNT(*) AS transactions
+        FROM sales s
+       WHERE ${fallbackWhere.join(' AND ')}
+       GROUP BY s.payment_method
+       ORDER BY sales_minor DESC, method ASC
+    ''', fallbackArgs);
+    for (final row in fallbackRows) {
+      final String method = (row['method'] as String?) ?? 'cash';
+      final int salesMinor = (row['sales_minor'] as num?)?.toInt() ?? 0;
+      final int transactions = (row['transactions'] as num?)?.toInt() ?? 0;
+      final existing = result[method];
+      result[method] = PaymentMixRow(
+        method: method,
+        salesMinor: (existing?.salesMinor ?? 0) + salesMinor,
+        transactions: (existing?.transactions ?? 0) + transactions,
+      );
+    }
+
+    return result.values.toList()
+      ..sort((a, b) => b.salesMinor.compareTo(a.salesMinor));
   }
 
   /// How many active products are at or below their reorder level.

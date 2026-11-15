@@ -396,6 +396,7 @@ class _ShellScaffold extends StatelessWidget {
             sessionName: state.currentStaffName ?? _roleLabel(context, state),
             onSignOut: () => _signOut(context),
             onOpenProfile: () => context.push(Routes.profile),
+            showProfile: state.isAdmin,
             onOpenCredit: () => context.push(Routes.customers),
             showCredit: state.isOwnerSession || state.role == ShopRole.manager,
             showPayOut: state.hasPermission(PermissionKey.recordExpense),
@@ -506,6 +507,81 @@ enum _MoreAction {
   switchProfile
 }
 
+Future<void> showBusinessProfileSwitcher(BuildContext context) async {
+  final l10n = AppLocalizations.of(context);
+  final state = context.read<AppState>();
+  final currentProfile = state.shopProfile;
+  final profiles = ShopProfile.values;
+  final selected = await showDialog<ShopProfile>(
+    context: context,
+    builder: (dialogContext) => AlertDialog(
+      title: Text(l10n.settingsBusinessProfileChangeTitle),
+      content: SizedBox(
+        height: 260,
+        child: ListView.builder(
+          shrinkWrap: true,
+          itemCount: profiles.length,
+          itemBuilder: (dialogContext, index) {
+            final profile = profiles[index];
+            final isCurrent = profile == currentProfile;
+            final colors = AppColors.of(dialogContext);
+            return ListTile(
+              leading: Container(
+                width: 44,
+                height: 44,
+                decoration: BoxDecoration(
+                  color: isCurrent
+                      ? colors.accent
+                      : Theme.of(context).colorScheme.surfaceContainerHighest,
+                  shape: BoxShape.circle,
+                ),
+                child: isCurrent
+                    ? Icon(Icons.check, color: colors.onAccent, size: 24)
+                    : Text(
+                        profile.displayName[0],
+                        style: const TextStyle(
+                          fontSize: 20,
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
+              ),
+              title: Text(profile.displayName),
+              subtitle: Text(profile.description),
+              trailing: isCurrent
+                  ? Icon(Icons.check_circle, color: colors.accent)
+                  : null,
+              selected: isCurrent,
+              onTap: isCurrent
+                  ? null
+                  : () => Navigator.pop(dialogContext, profile),
+            );
+          },
+        ),
+      ),
+      actions: <Widget>[
+        TextButton(
+          onPressed: () => Navigator.pop(dialogContext),
+          child: Text(l10n.actionCancel),
+        ),
+      ],
+    ),
+  );
+  if (selected != null && selected != currentProfile && context.mounted) {
+    await DatabaseHelper.instance.setShopProfile(selected);
+    state.setShopProfile(selected);
+    try {
+      await BackendService.setBusinessProfile(selected);
+    } catch (_) {}
+    await recordActionAudit(
+      state,
+      action: AuditAction.profileChanged,
+      entity: AuditEntity.workspace,
+      entityId: 'profile',
+      detail: '${currentProfile.displayName} → ${selected.displayName}',
+    );
+  }
+}
+
 class _MoreSheet extends StatelessWidget {
   const _MoreSheet({
     required this.showLayby,
@@ -531,90 +607,11 @@ class _MoreSheet extends StatelessWidget {
           title: Text(AppLocalizations.of(context).moreSwitchBusinessProfile),
           subtitle: Text(currentProfile.displayName),
           trailing: const Icon(Icons.chevron_right),
-          onTap: () {
-            showDialog<ShopProfile>(
-              context: context,
-              builder: (dialogContext) => AlertDialog(
-                title: Text(l10n.settingsBusinessProfileChangeTitle),
-                content: SizedBox(
-                  height: 260,
-                  child: ListView.builder(
-                    shrinkWrap: true,
-                    itemCount: profiles.length,
-                    itemBuilder: (dialogContext, index) {
-                      final profile = profiles[index];
-                      final isCurrent = profile == currentProfile;
-                      final colors = AppColors.of(dialogContext);
-                      return ListTile(
-                        leading: Container(
-                          width: 44,
-                          height: 44,
-                          decoration: BoxDecoration(
-                            color: isCurrent
-                                ? colors.accent
-                                : Theme.of(context).colorScheme.surfaceContainerHighest,
-                            shape: BoxShape.circle,
-                          ),
-                          child: isCurrent
-                              ? Icon(
-                                  Icons.check,
-                                  color: colors.onAccent,
-                                  size: 24,
-                                )
-                              : Text(
-                                  profile.displayName[0],
-                                  style: const TextStyle(
-                                    fontSize: 20,
-                                    fontWeight: FontWeight.bold,
-                                  ),
-                                ),
-                        ),
-                        title: Text(profile.displayName),
-                        subtitle: Text(profile.description),
-                        trailing: isCurrent
-                            ? Icon(Icons.check_circle, color: colors.accent)
-                            : null,
-                        selected: isCurrent,
-                        onTap: isCurrent
-                            ? null
-                            : () {
-                                Navigator.pop(dialogContext, profile);
-                              },
-                      );
-                    },
-                  ),
-                ),
-                actions: <Widget>[
-                  TextButton(
-                    onPressed: () => Navigator.pop(dialogContext),
-                    child: Text(l10n.actionCancel),
-                  ),
-                ],
-              ),
-            ).then((selected) async {
-              if (selected != null && selected != currentProfile) {
-                await DatabaseHelper.instance.setShopProfile(selected);
-                state.setShopProfile(selected);
-                try {
-                  await BackendService.setBusinessProfile(selected);
-                } catch (_) {
-                  // Local shop records remain usable offline; the next
-                  // sync/retry can reconcile the linked tenant profile.
-                }
-                await recordActionAudit(
-                  state,
-                  action: AuditAction.profileChanged,
-                  entity: AuditEntity.workspace,
-                  entityId: 'profile',
-                  detail: '${currentProfile.displayName} → ${selected.displayName}',
-                );
-                // Advance the session so every screen reloads for the new
-                // profile, then pop the sheet.
-                if (context.mounted) {
-                  Navigator.pop(context, _MoreAction.switchProfile);
-                }
-              }
-            });
+          onTap: () async {
+            await showBusinessProfileSwitcher(context);
+            if (context.mounted) {
+              Navigator.pop(context, _MoreAction.switchProfile);
+            }
           },
         ),
         if (showLayby)
@@ -709,6 +706,7 @@ class _ShellAppBar extends StatelessWidget implements PreferredSizeWidget {
     required this.sessionName,
     required this.onSignOut,
     required this.onOpenProfile,
+    this.showProfile = true,
     required this.onOpenCredit,
     required this.showCredit,
     this.showPayOut = false,
@@ -734,6 +732,7 @@ class _ShellAppBar extends StatelessWidget implements PreferredSizeWidget {
   /// lives on the profile screen itself, where there is room to say what
   /// editing does.
   final VoidCallback onOpenProfile;
+  final bool showProfile;
 
   final VoidCallback onOpenCredit;
   final bool showCredit;
@@ -802,6 +801,7 @@ class _ShellAppBar extends StatelessWidget implements PreferredSizeWidget {
                   ?.copyWith(color: colors.onSurfaceMuted),
             ),
           ),
+        if (showProfile)
         // The account: a VIEWER of who is signed in.
         //
         // It used to open the sign-out sheet, which is a trap: the person

@@ -2081,39 +2081,58 @@
   "theseOfflineSalesCouldNotReserveStockAfterAnotherTillSoldTheLastUnitsTheyRemainQueuedAndAreNotSilentlyDiscarded": "These offline sales could not reserve stock after another till sold the last units. They remain queued and are not silently discarded.",
   "unclaimedMPesa": "Unclaimed M-Pesa",
   "unverifiedPayments": "Unverified payments",
-  "voidSale": "Void sale"
-  ,"settingsSwitch": "Switch"
-  ,"openDashboardSelectJob": "Select a job"
-  ,"openCostGroupCouldNotCreate": "Could not create cost group: {error}"
-  ,"openJobAddCostCouldNotAdd": "Could not add cost: {error}"
-  ,"inventoryCouldNotSavePack": "Could not save pack: {error}"
-  ,"syncCenterCouldNotResolveConflict": "Could not resolve conflict: {error}"
-  ,"openDashboardNoJobs": "No jobs yet. Create one first."
-  ,"setupIntroAddShopLabel": "ADD SHOP"
-  ,"setupIntroSetUpLabel": "SET UP"
-  ,"setupIntroAddShopTitle": "Add another shop"
-  ,"setupIntroSetUpTitle": "Set up your shop"
-  ,"setupIntroAddShopBody": "This shop gets its own admin PIN, so a PIN that opens one shop on this phone does not open another. Give the new shop its name and you will go straight into it."
-  ,"setupIntroSetUpBody": "Create the shop admin account. The admin can create managers and cashiers, manage stock, and connect optional services."
-  ,"productOnboardingPage1Label": "What is SimpleSales?"
-  ,"productOnboardingPage1Title": "The till your shop already knows"
-  ,"productOnboardingPage1Body": "SimpleSales is a point of sale built for Kenyan shops — record sales, track stock, and take payments on the counter or off it. Works on your phone, no extra hardware."
-  ,"productOnboardingPage2Label": "Choose your shop profile"
-  ,"productOnboardingPage2Title": "Four profiles, one app"
-  ,"productOnboardingPage2Body": "Pick the profile that matches your shop. Each one changes the words you see and the actions that matter most — but every profile uses the same simple POS."
-  ,"productOnboardingPage3Label": "Local first, always"
-  ,"productOnboardingPage3Title": "Your shop, on your phone"
-  ,"productOnboardingPage3Body": "Sales, stock and customer records live on this device. They sync when you are back online — nothing stops working when the network drops. M-Pesa and online reports need a connection; everything else does not."
-  ,"productOnboardingHeader": "SimpleSales product tour"
-  ,"productOnboardingPageProgress": "Page"
-  ,"actionCreateAccount": "Create account"
-  ,"productOnboardingDukaTitle": "Duka"
-  ,"productOnboardingDukaSubtitle": "General shop · products, stock, POS"
-  ,"productOnboardingDrinksTitle": "Drinks"
-  ,"productOnboardingDrinksSubtitle": "Bar and drinks · tanks, pours, stock"
-  ,"productOnboardingFashionTitle": "Fashion"
-  ,"productOnboardingFashionSubtitle": "Fashion boutique · styles, sizes, colours"
-  ,"productOnboardingOpenTitle": "Open"
-  ,"productOnboardingOpenSubtitle": "Jobs and trade · quotes, jobs, payments"
-  ,"actionSignIn": "Sign in"
+  "voidSale": "Void sale",
+  "settingsSwitch": "Switch",
+  "openDashboardSelectJob": "Select a job",
+  "openCostGroupCouldNotCreate": "Could not create cost group: {error}",
+  "openJobAddCostCouldNotAdd": "Could not add cost: {error}",
+  "inventoryCouldNotSavePack": "Could not save pack: {error}",
+  "syncCenterCouldNotResolveConflict": "Could not resolve conflict: {error}",
+  "openDashboardNoJobs": "No jobs yet. Create one first.",
+  "setupIntroAddShopLabel": "ADD SHOP",
+  "setupIntroSetUpLabel": "SET UP",
+  "setupIntroAddShopTitle": "Add another shop",
+  "setupIntroSetUpTitle": "Set up your shop",
+  "setupIntroAddShopBody": "This shop gets its own admin PIN, so a PIN that opens one shop on this phone does not open another. Give the new shop its name and you will go straight into it.",
+  "setupIntroSetUpBody": "Create the shop admin account. The admin can create managers and cashiers, manage stock, and connect optional services.",
+  "productOnboardingPage1Label": "What is SimpleSales?",
+  "productOnboardingPage1Title": "The till your shop already knows",
+  "productOnboardingPage1Body": "SimpleSales is a point of sale built for Kenyan shops — record sales, track stock, and take payments on the counter or off it. Works on your phone, no extra hardware.",
+  "productOnboardingPage2Label": "Choose your shop profile",
+  "productOnboardingPage2Title": "Four profiles, one app",
+  "productOnboardingPage2Body": "Pick the profile that matches your shop. Each one changes the words you see and the actions that matter most — but every profile uses the same simple POS.",
+  "productOnboardingPage3Label": "Local first, always",
+  "productOnboardingPage3Title": "Your shop, on your phone",
+  "productOnboardingPage3Body": "Sales, stock and customer records live on this device. They sync when you are back online — nothing stops working when the network drops. M-Pesa and online reports need a connection; everything else does not.",
+  "productOnboardingHeader": "SimpleSales product tour",
+  "productOnboardingPageProgress": "Page",
+  "actionCreateAccount": "Create account",
+  "productOnboardingDukaTitle": "Duka",
+  "productOnboardingDukaSubtitle": "General shop · products, stock, POS",
+  "productOnboardingDrinksTitle": "Drinks",
+  "productOnboardingDrinksSubtitle": "Bar and drinks · tanks, pours, stock",
+  "productOnboardingFashionTitle": "Fashion",
+  "productOnboardingFashionSubtitle": "Fashion boutique · styles, sizes, colours",
+  "productOnboardingOpenTitle": "Open",
+  "productOnboardingOpenSubtitle": "Jobs and trade · quotes, jobs, payments",
+  "actionSignIn": "Sign in",
+  "dashboardNewSale": "New sale",
+  "dashboardGrossProfit": "Gross profit",
+  "dashboardExpenses": "Expenses",
+  "dashboardCreditOwed": "Credit owed",
+  "dashboardLowStockVariants": "Low-stock variants",
+  "dashboardLaybyBalance": "Layby balance",
+  "dashboardHeldCarts": "Held carts",
+  "dashboardParkedSales": "Parked sales",
+  "dashboardMeasuredVolume": "Measured volume",
+  "dashboardWasteValue": "Waste value",
+  "dashboardNetCashMovement": "Net cash movement",
+  "dashboardRevenueToDate": "Revenue to date",
+  "dashboardCompletedJobRevenueToday": "Completed job revenue today",
+  "dashboardRecentJobs": "Recent jobs",
+  "dashboardPaymentsReceived": "Payments received",
+  "dashboardStockStatus": "Stock status",
+  "dashboardNewJob": "New job",
+  "dashboardLowStock": "Low stock",
+  "dashboardTransactions": "Transactions"
 }

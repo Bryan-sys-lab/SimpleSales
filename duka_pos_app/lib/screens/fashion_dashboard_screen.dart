@@ -12,15 +12,19 @@ import '../services/session_refresh_mixin.dart';
 import '../services/live_channel_service.dart';
 import '../models/layby.dart';
 import '../routing/routes.dart';
+import '../routing/home_shell.dart';
 import '../services/app_state.dart';
+import '../profile/shop_profile.dart';
 import '../services/roles.dart';
 import '../theme/app_colors.dart';
 import '../theme/app_shapes.dart';
 import '../theme/app_spacing.dart';
 import '../theme/typography.dart';
+import '../theme/dashboard_profile_palette.dart';
 import '../ui/components/surface.dart';
 import '../ui/components/status.dart';
 import '../ui/layout/page.dart';
+import '../utils/money.dart';
 import '../widgets/backup_reminder_banner.dart';
 import 'dashboard_attention.dart';
 import 'dashboard_sections.dart';
@@ -127,22 +131,53 @@ class FashionDashboardScreen extends StatelessWidget {
           )
         : null;
 
-    final Widget header = CompactBusinessHeader(
+    final AppLocalizations l10n = AppLocalizations.of(context);
+    final Widget header = DashboardBusinessHeader(
       shopName: appState.owner?.shopName ?? SimplePosBrand.appName,
-      eyebrow: timeOfDayWord(AppLocalizations.of(context)),
-      subtitle: data.greeting,
+      profile: ShopProfile.fashion,
       shift: data.openShift,
-      onSwitchBusiness: () => context.push(Routes.profile),
+      onSwitchBusiness: () => showBusinessProfileSwitcher(context),
     );
 
-    final Widget financialHero = FinancialHero(
-      totals: data.totals,
+    final Widget financialHero = DashboardMoneyHero(
+      label: l10n.dashboardNetSalesToday,
+      amount: data.totals.total,
+      primaryActionLabel: l10n.dashboardNewSale,
+      onPrimaryAction: onOpenSell,
       scopeLabel: data.scopeLabel,
-      hasSales: hasSales,
+      paymentMix: data.paymentMix,
       onTransactions: () => context.push(Routes.transactions),
     );
 
-    final Widget supportingMetrics = SupportingMetrics(totals: data.totals);
+    final List<DashboardKpiData> kpis = <DashboardKpiData>[
+      DashboardKpiData(
+        label: l10n.dashboardGrossProfit,
+        value: formatMoney(Money.fromMinor(data.totals.profitMinor)),
+        icon: Icons.trending_up_outlined,
+        tone: DashboardKpiTone.positive,
+      ),
+      DashboardKpiData(
+        label: l10n.dashboardExpenses,
+        value: formatMoney(Money.fromMinor(data.totals.expensesMinor)),
+        icon: Icons.payments_outlined,
+        tone: DashboardKpiTone.expense,
+      ),
+      DashboardKpiData(
+        label: l10n.dashboardTransactionsLabel,
+        value: '${data.totals.transactions}',
+        icon: Icons.receipt_long_outlined,
+        tone: DashboardKpiTone.neutral,
+        onTap: () => context.push(Routes.transactions),
+      ),
+      DashboardKpiData(
+        label: l10n.dashboardLowStockVariants,
+        value: '${data.lowStockVariants.length}',
+        icon: Icons.style_outlined,
+        tone: DashboardKpiTone.pending,
+        onTap: onOpenInventory,
+      ),
+    ];
+    final Widget kpiGrid = DashboardKpiGrid(items: kpis);
 
     final Widget reserves = _FashionReservesOverview(
       onOpenReserves: () => context.push(Routes.laybys),
@@ -164,8 +199,6 @@ class FashionDashboardScreen extends StatelessWidget {
         MediaQuery.sizeOf(context).width >= _fashionTwoColumnBreakpoint;
 
     final List<Widget> body = <Widget>[
-      BackupReminderBanner(onBackupNow: onBackupNow),
-      SizedBox(height: spacing.section),
       header,
       if (attention != null)
         Semantics(
@@ -187,7 +220,8 @@ class FashionDashboardScreen extends StatelessWidget {
                 children: spaced(
                   <Widget?>[
                     financialHero,
-                    supportingMetrics,
+                    kpiGrid,
+                    BackupReminderBanner(onBackupNow: onBackupNow),
                     quickActions,
                     sales,
                     topProducts,
@@ -220,7 +254,8 @@ class FashionDashboardScreen extends StatelessWidget {
       body.addAll(spaced(
         <Widget?>[
           financialHero,
-          supportingMetrics,
+          kpiGrid,
+          BackupReminderBanner(onBackupNow: onBackupNow),
           quickActions,
           sales,
           topProducts,
@@ -279,8 +314,10 @@ class _FashionLowStockVariants extends StatelessWidget {
   Widget build(BuildContext context) {
     final AppLocalizations l10n = AppLocalizations.of(context);
 
+    final palette = DashboardProfilePalette.forProfile(ShopProfile.fashion, brightness: Theme.of(context).brightness);
     return DashboardPanel(
       title: l10n.fashionDashboardLowStockVariants,
+      topAccent: palette.accent,
       trailing: TextButton(
         onPressed: onViewAll,
         child: Text(l10n.fashionDashboardViewAll),
@@ -417,6 +454,7 @@ class _FashionReservesOverviewState extends State<_FashionReservesOverview>
   int _openCount = 0;
   int _awaitingCount = 0;
   int _readyCount = 0;
+  int _laybyBalanceMinor = 0;
 
   @override
   Set<LiveReason> get liveReasons => const <LiveReason>{};
@@ -432,6 +470,7 @@ class _FashionReservesOverviewState extends State<_FashionReservesOverview>
     _openCount = 0;
     _awaitingCount = 0;
     _readyCount = 0;
+    _laybyBalanceMinor = 0;
   }
 
   @override
@@ -449,9 +488,11 @@ class _FashionReservesOverviewState extends State<_FashionReservesOverview>
       int open = 0;
       int awaiting = 0;
       int ready = 0;
+      int balance = 0;
       for (final layby in laybys) {
         if (layby.status == LaybyStatus.open) {
           open++;
+          balance += layby.balance.minorUnits;
           if (layby.balance.minorUnits > 0) {
             awaiting++;
           } else {
@@ -464,6 +505,7 @@ class _FashionReservesOverviewState extends State<_FashionReservesOverview>
         _openCount = open;
         _awaitingCount = awaiting;
         _readyCount = ready;
+        _laybyBalanceMinor = balance;
       });
     } catch (_) {
       // Leave counts at zero rather than showing dummy figures.
@@ -475,8 +517,10 @@ class _FashionReservesOverviewState extends State<_FashionReservesOverview>
     final AppSpacing spacing = AppSpacing.of(context);
     final AppLocalizations l10n = AppLocalizations.of(context);
 
+    final palette = DashboardProfilePalette.forProfile(ShopProfile.fashion, brightness: Theme.of(context).brightness);
     return DashboardPanel(
       title: l10n.fashionDashboardReserves,
+      topAccent: palette.accent,
       trailing: TextButton(
         onPressed: widget.onOpenReserves,
         child: Text(l10n.fashionDashboardViewAll),
@@ -505,6 +549,13 @@ class _FashionReservesOverviewState extends State<_FashionReservesOverview>
             value: '$_readyCount',
             tone: StatusTone.success,
             icon: Icons.check_circle_outlined,
+          ),
+          SizedBox(height: spacing.sm),
+          _ReservesMetric(
+            label: l10n.dashboardLaybyBalance,
+            value: formatMoney(Money.fromMinor(_laybyBalanceMinor)),
+            tone: StatusTone.warning,
+            icon: Icons.account_balance_wallet_outlined,
           ),
         ],
       ),
@@ -595,13 +646,6 @@ class _FashionDashboardQuickActions extends StatelessWidget {
     final AppSpacing spacing = AppSpacing.of(context);
 
     final List<Widget> tiles = <Widget>[
-      _FashionQuickTile(
-        icon: Icons.point_of_sale_outlined,
-        label: 'Sell',
-        subtitle: 'New sale',
-        onTap: onOpenSell,
-        primary: true,
-      ),
       if (canManageStock)
         _FashionQuickTile(
           icon: Icons.add_circle_outline,
@@ -667,14 +711,12 @@ class _FashionQuickTile extends StatelessWidget {
     required this.label,
     required this.subtitle,
     required this.onTap,
-    this.primary = false,
   });
 
   final IconData icon;
   final String label;
   final String subtitle;
   final VoidCallback onTap;
-  final bool primary;
 
   @override
   Widget build(BuildContext context) {
@@ -695,15 +737,13 @@ class _FashionQuickTile extends StatelessWidget {
             Container(
               padding: EdgeInsets.all(spacing.xs),
               decoration: BoxDecoration(
-                color: primary
-                    ? colors.accentContainer
-                    : colors.surfaceSunken,
+                color: colors.surfaceSunken,
                 borderRadius: AppShapes.of(context).controlRadius,
               ),
               child: Icon(
                 icon,
                 size: 20,
-                color: primary ? colors.accent : colors.onSurfaceVariant,
+                color: colors.onSurfaceVariant,
               ),
             ),
             SizedBox(height: spacing.md),
@@ -711,7 +751,7 @@ class _FashionQuickTile extends StatelessWidget {
               label,
               style: type.titleSmall?.copyWith(
                 fontWeight: FontWeight.w700,
-                color: primary ? colors.accent : colors.onSurface,
+                color: colors.onSurface,
               ),
             ),
             SizedBox(height: 2),

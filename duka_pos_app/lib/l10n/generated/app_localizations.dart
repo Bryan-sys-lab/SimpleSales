@@ -12803,6 +12803,120 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'Sign in'**
   String get actionSignIn;
+
+  /// No description provided for @dashboardNewSale.
+  ///
+  /// In en, this message translates to:
+  /// **'New sale'**
+  String get dashboardNewSale;
+
+  /// No description provided for @dashboardGrossProfit.
+  ///
+  /// In en, this message translates to:
+  /// **'Gross profit'**
+  String get dashboardGrossProfit;
+
+  /// No description provided for @dashboardExpenses.
+  ///
+  /// In en, this message translates to:
+  /// **'Expenses'**
+  String get dashboardExpenses;
+
+  /// No description provided for @dashboardCreditOwed.
+  ///
+  /// In en, this message translates to:
+  /// **'Credit owed'**
+  String get dashboardCreditOwed;
+
+  /// No description provided for @dashboardLowStockVariants.
+  ///
+  /// In en, this message translates to:
+  /// **'Low-stock variants'**
+  String get dashboardLowStockVariants;
+
+  /// No description provided for @dashboardLaybyBalance.
+  ///
+  /// In en, this message translates to:
+  /// **'Layby balance'**
+  String get dashboardLaybyBalance;
+
+  /// No description provided for @dashboardHeldCarts.
+  ///
+  /// In en, this message translates to:
+  /// **'Held carts'**
+  String get dashboardHeldCarts;
+
+  /// No description provided for @dashboardParkedSales.
+  ///
+  /// In en, this message translates to:
+  /// **'Parked sales'**
+  String get dashboardParkedSales;
+
+  /// No description provided for @dashboardMeasuredVolume.
+  ///
+  /// In en, this message translates to:
+  /// **'Measured volume'**
+  String get dashboardMeasuredVolume;
+
+  /// No description provided for @dashboardWasteValue.
+  ///
+  /// In en, this message translates to:
+  /// **'Waste value'**
+  String get dashboardWasteValue;
+
+  /// No description provided for @dashboardNetCashMovement.
+  ///
+  /// In en, this message translates to:
+  /// **'Net cash movement'**
+  String get dashboardNetCashMovement;
+
+  /// No description provided for @dashboardRevenueToDate.
+  ///
+  /// In en, this message translates to:
+  /// **'Revenue to date'**
+  String get dashboardRevenueToDate;
+
+  /// No description provided for @dashboardCompletedJobRevenueToday.
+  ///
+  /// In en, this message translates to:
+  /// **'Completed job revenue today'**
+  String get dashboardCompletedJobRevenueToday;
+
+  /// No description provided for @dashboardRecentJobs.
+  ///
+  /// In en, this message translates to:
+  /// **'Recent jobs'**
+  String get dashboardRecentJobs;
+
+  /// No description provided for @dashboardPaymentsReceived.
+  ///
+  /// In en, this message translates to:
+  /// **'Payments received'**
+  String get dashboardPaymentsReceived;
+
+  /// No description provided for @dashboardStockStatus.
+  ///
+  /// In en, this message translates to:
+  /// **'Stock status'**
+  String get dashboardStockStatus;
+
+  /// No description provided for @dashboardNewJob.
+  ///
+  /// In en, this message translates to:
+  /// **'New job'**
+  String get dashboardNewJob;
+
+  /// No description provided for @dashboardLowStock.
+  ///
+  /// In en, this message translates to:
+  /// **'Low stock'**
+  String get dashboardLowStock;
+
+  /// No description provided for @dashboardTransactions.
+  ///
+  /// In en, this message translates to:
+  /// **'Transactions'**
+  String get dashboardTransactions;
 }
 
 class _AppLocalizationsDelegate

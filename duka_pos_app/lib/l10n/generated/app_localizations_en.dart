@@ -7491,4 +7491,61 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get actionSignIn => 'Sign in';
+
+  @override
+  String get dashboardNewSale => 'New sale';
+
+  @override
+  String get dashboardGrossProfit => 'Gross profit';
+
+  @override
+  String get dashboardExpenses => 'Expenses';
+
+  @override
+  String get dashboardCreditOwed => 'Credit owed';
+
+  @override
+  String get dashboardLowStockVariants => 'Low-stock variants';
+
+  @override
+  String get dashboardLaybyBalance => 'Layby balance';
+
+  @override
+  String get dashboardHeldCarts => 'Held carts';
+
+  @override
+  String get dashboardParkedSales => 'Parked sales';
+
+  @override
+  String get dashboardMeasuredVolume => 'Measured volume';
+
+  @override
+  String get dashboardWasteValue => 'Waste value';
+
+  @override
+  String get dashboardNetCashMovement => 'Net cash movement';
+
+  @override
+  String get dashboardRevenueToDate => 'Revenue to date';
+
+  @override
+  String get dashboardCompletedJobRevenueToday => 'Completed job revenue today';
+
+  @override
+  String get dashboardRecentJobs => 'Recent jobs';
+
+  @override
+  String get dashboardPaymentsReceived => 'Payments received';
+
+  @override
+  String get dashboardStockStatus => 'Stock status';
+
+  @override
+  String get dashboardNewJob => 'New job';
+
+  @override
+  String get dashboardLowStock => 'Low stock';
+
+  @override
+  String get dashboardTransactions => 'Transactions';
 }

@@ -11,6 +11,8 @@ import 'loose_goods_form_sheet.dart';
 import '../profile/profile_terminology.dart';
 import '../profile/shop_profile.dart';
 import '../routing/routes.dart';
+import 'dashboard_shared.dart';
+import '../routing/home_shell.dart';
 import '../services/app_state.dart';
 import '../services/roles.dart';
 import '../theme/app_colors.dart';
@@ -48,6 +50,7 @@ class OpenDashboardScreen extends StatefulWidget {
 class _OpenDashboardScreenState extends State<OpenDashboardScreen>
     with LiveRefresh<OpenDashboardScreen>, SessionRefresh<OpenDashboardScreen> {
   int _revenueMinor = 0;
+  int _revenueTodayMinor = 0;
   int _netProfitMinor = 0;
   int _cashPositionMinor = 0;
   int _receivablesMinor = 0;
@@ -71,6 +74,7 @@ class _OpenDashboardScreenState extends State<OpenDashboardScreen>
   @override
   void clearForSession() {
     _revenueMinor = 0;
+    _revenueTodayMinor = 0;
     _netProfitMinor = 0;
     _cashPositionMinor = 0;
     _receivablesMinor = 0;
@@ -104,6 +108,14 @@ class _OpenDashboardScreenState extends State<OpenDashboardScreen>
       // deposits collected on open jobs.
       final all = await db.getFinancialSums();
       final completed = await db.getFinancialSums(eventType: 'job_completion');
+      final now = DateTime.now();
+      final dayStart = DateTime(now.year, now.month, now.day);
+      final tomorrow = dayStart.add(const Duration(days: 1));
+      final completedToday = await db.getFinancialSums(
+        eventType: 'job_completion',
+        sinceUtc: dayStart.toUtc(),
+        untilUtc: tomorrow.toUtc(),
+      );
       final int revenue = completed.revenueMinor;
       final int cashIn = all.cashInMinor;
       final int cashOut = all.cashOutMinor;
@@ -112,7 +124,6 @@ class _OpenDashboardScreenState extends State<OpenDashboardScreen>
       int active = 0;
       int awaiting = 0;
       int overdue = 0;
-      final now = DateTime.now();
       for (final job in jobs) {
         final status = (job['status'] as String?) ?? 'draft';
         final bool closed = status == 'completed' || status == 'closed';
@@ -136,6 +147,7 @@ class _OpenDashboardScreenState extends State<OpenDashboardScreen>
       if (!mounted) return;
       setState(() {
         _revenueMinor = revenue;
+        _revenueTodayMinor = completedToday.revenueMinor;
         _netProfitMinor = revenue - costs;
         _cashPositionMinor = cashIn - cashOut;
         _receivablesMinor = credit.totalOwedMinor;
@@ -201,10 +213,10 @@ class _OpenDashboardScreenState extends State<OpenDashboardScreen>
           children: <Widget>[
             BackupReminderBanner(onBackupNow: () => performBackup(context)),
             SizedBox(height: spacing.section),
-            _OpenBusinessHeader(
+            DashboardBusinessHeader(
               shopName: appState.owner?.shopName ?? SimplePosBrand.appName,
-              eyebrow: timeOfDayWord(l10n),
-              subtitle: l10n.openDashboardGreeting,
+              profile: ShopProfile.open,
+              onSwitchBusiness: () => showBusinessProfileSwitcher(context),
             ),
             SizedBox(height: spacing.xl),
             if (_error != null)
@@ -235,14 +247,43 @@ class _OpenDashboardScreenState extends State<OpenDashboardScreen>
                   ],
                 ),
               )
-            else if (canSeeShopMoney)
-              _OpenFinancialHero(
-                revenue: Money.fromMinor(_revenueMinor),
-                netProfit: Money.fromMinor(_netProfitMinor),
-                cashPosition: Money.fromMinor(_cashPositionMinor),
-                receivables: Money.fromMinor(_receivablesMinor),
+            else if (canSeeShopMoney) ...<Widget>[
+              DashboardMoneyHero(
+                label: l10n.dashboardCompletedJobRevenueToday,
+                amount: Money.fromMinor(_revenueTodayMinor),
+                primaryActionLabel: l10n.dashboardNewJob,
+                onPrimaryAction: () => context.push(Routes.openJobNew),
+                secondaryLine: l10n.dashboardPeriodToday,
                 scopeLabel: l10n.openDashboardScopeShop,
-              )
+              ),
+              SizedBox(height: spacing.lg),
+              DashboardKpiGrid(items: <DashboardKpiData>[
+                DashboardKpiData(
+                  label: l10n.dashboardRevenueToDate,
+                  value: formatMoney(Money.fromMinor(_revenueMinor)),
+                  icon: Icons.payments_outlined,
+                  tone: DashboardKpiTone.positive,
+                ),
+                DashboardKpiData(
+                  label: l10n.openDashboardNetProfit,
+                  value: formatMoney(Money.fromMinor(_netProfitMinor)),
+                  icon: Icons.trending_up_outlined,
+                  tone: DashboardKpiTone.positive,
+                ),
+                DashboardKpiData(
+                  label: l10n.dashboardNetCashMovement,
+                  value: formatMoney(Money.fromMinor(_cashPositionMinor)),
+                  icon: Icons.account_balance_wallet_outlined,
+                  tone: DashboardKpiTone.info,
+                ),
+                DashboardKpiData(
+                  label: l10n.openDashboardReceivables,
+                  value: formatMoney(Money.fromMinor(_receivablesMinor)),
+                  icon: Icons.request_quote_outlined,
+                  tone: DashboardKpiTone.pending,
+                ),
+              ]),
+            ]
             else
               const SizedBox.shrink(),
             SizedBox(height: spacing.xl),
@@ -271,6 +312,7 @@ class _OpenDashboardScreenState extends State<OpenDashboardScreen>
               canRecordSales:
                   appState.isOwnerSession ||
                       appState.role == ShopRole.manager,
+              canRecordOwnerFinance: appState.isOwnerSession,
             ),
             SizedBox(height: spacing.xl),
             _OpenRecentActivity(
@@ -420,257 +462,6 @@ class _OpenDashboardScreenState extends State<OpenDashboardScreen>
 }
 
 /// Shop header: name, time-of-day greeting, signed-in staff role.
-class _OpenBusinessHeader extends StatelessWidget {
-  const _OpenBusinessHeader({
-    required this.shopName,
-    required this.eyebrow,
-    required this.subtitle,
-  });
-
-  final String shopName;
-  final String eyebrow;
-  final String subtitle;
-
-  @override
-  Widget build(BuildContext context) {
-    final AppColors colors = AppColors.of(context);
-    final type = AppTypography.of(context);
-
-    return Semantics(
-      header: true,
-      child: Text(
-        '$eyebrow · $shopName — $subtitle',
-        style: type.headlineSmall?.copyWith(
-          fontWeight: FontWeight.w800,
-          color: colors.onSurface,
-        ),
-        softWrap: true,
-      ),
-    );
-  }
-}
-
-/// Top financial overview: Revenue, Net profit, Cash position, Receivables.
-class _OpenFinancialHero extends StatelessWidget {
-  const _OpenFinancialHero({
-    required this.revenue,
-    required this.netProfit,
-    required this.cashPosition,
-    required this.receivables,
-    required this.scopeLabel,
-  });
-
-  final Money revenue;
-  final Money netProfit;
-  final Money cashPosition;
-  final Money receivables;
-  final String scopeLabel;
-
-  (String label, String value, StatusTone tone) _signed(
-    Money value, {
-    required String goodLabel,
-    required String badLabel,
-    required String zeroLabel,
-    required StatusTone goodTone,
-    required StatusTone badTone,
-  }) {
-    if (value.minorUnits > 0) {
-      return (goodLabel, formatMoney(value.abs), goodTone);
-    }
-    if (value.minorUnits < 0) {
-      return (badLabel, formatMoney(value.abs), badTone);
-    }
-    return (zeroLabel, formatMoney(Money.zero), StatusTone.neutral);
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    final AppSpacing spacing = AppSpacing.of(context);
-    final AppColors colors = AppColors.of(context);
-    final type = AppTypography.of(context);
-    final l10n = AppLocalizations.of(context);
-
-    final net = _signed(
-      netProfit,
-      goodLabel: l10n.openDashboardProfit,
-      badLabel: l10n.openDashboardNotInProfitYet,
-      zeroLabel: l10n.openDashboardBreakEven,
-      goodTone: StatusTone.success,
-      badTone: StatusTone.danger,
-    );
-    final cash = _signed(
-      cashPosition,
-      goodLabel: l10n.openDashboardSurplus,
-      badLabel: l10n.openDashboardShortfall,
-      zeroLabel: l10n.openDashboardBreakEven,
-      goodTone: StatusTone.success,
-      badTone: StatusTone.danger,
-    );
-    final rec = _signed(
-      receivables,
-      goodLabel: l10n.openDashboardOwedToYou,
-      badLabel: l10n.openDashboardYouOwe,
-      zeroLabel: l10n.openDashboardBreakEven,
-      goodTone: StatusTone.warning,
-      badTone: StatusTone.danger,
-    );
-
-    return Stack(
-      children: <Widget>[
-        Positioned.fill(
-          child: Container(
-            color: AppColors.of(context).surfaceSunken,
-          ),
-        ),
-        Positioned.fill(
-          child: DecoratedBox(
-            decoration: BoxDecoration(
-              gradient: LinearGradient(
-                colors: <Color>[
-                  colors.canvas.withValues(alpha: 0.55),
-                  colors.canvas.withValues(alpha: 0.15),
-                ],
-                begin: Alignment.topLeft,
-                end: Alignment.bottomRight,
-              ),
-            ),
-          ),
-        ),
-        Padding(
-          padding: PageGutter.card(context),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            mainAxisSize: MainAxisSize.min,
-            children: <Widget>[
-              Row(
-                children: <Widget>[
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: <Widget>[
-                        Text(
-                          l10n.openDashboardFinancialOverview,
-                          style: type.labelMedium?.copyWith(
-                            color: colors.onSurface,
-                            fontWeight: FontWeight.w700,
-                          ),
-                        ),
-                        SizedBox(height: spacing.xs),
-                        Text(
-                          scopeLabel,
-                          style: type.labelSmall?.copyWith(
-                            color: colors.onSurfaceMuted,
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                ],
-              ),
-              SizedBox(height: spacing.lg),
-              IntrinsicHeight(child: Row(
-                crossAxisAlignment: CrossAxisAlignment.stretch,
-                children: <Widget>[
-                  Expanded(
-                    child: _OpenMoneyTile(
-                      label: l10n.openDashboardRevenue,
-                      value: formatMoney(revenue),
-                      tone: StatusTone.success,
-                      icon: Icons.trending_up_outlined,
-                    ),
-                  ),
-                  SizedBox(width: spacing.md),
-                  Expanded(
-                    child: _OpenMoneyTile(
-                      label: net.$1,
-                      value: net.$2,
-                      tone: net.$3,
-                      icon: Icons.attach_money_outlined,
-                    ),
-                  ),
-                  SizedBox(width: spacing.md),
-                  Expanded(
-                    child: _OpenMoneyTile(
-                      label: cash.$1,
-                      value: cash.$2,
-                      tone: cash.$3,
-                      icon: Icons.account_balance_wallet_outlined,
-                    ),
-                  ),
-                  SizedBox(width: spacing.md),
-                  Expanded(
-                    child: _OpenMoneyTile(
-                      label: rec.$1,
-                      value: rec.$2,
-                      tone: rec.$3,
-                      icon: Icons.schedule_outlined,
-                    ),
-                  ),
-                ],
-              )),
-            ],
-            ),
-        ),
-      ],
-    );
-  }
-}
-
-class _OpenMoneyTile extends StatelessWidget {
-  const _OpenMoneyTile({
-    required this.label,
-    required this.value,
-    required this.tone,
-    required this.icon,
-  });
-
-  final String label;
-  final String value;
-  final StatusTone tone;
-  final IconData icon;
-
-  @override
-  Widget build(BuildContext context) {
-    final AppSpacing spacing = AppSpacing.of(context);
-    final AppColors colors = AppColors.of(context);
-    final type = AppTypography.of(context);
-
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      mainAxisSize: MainAxisSize.min,
-      children: <Widget>[
-        Container(
-          padding: EdgeInsets.all(spacing.xs),
-          decoration: BoxDecoration(
-            color: tone.container(colors).withValues(alpha: 0.9),
-            borderRadius: AppShapes.of(context).controlRadius,
-          ),
-          child: Icon(
-            icon,
-            size: 18,
-            color: tone.onContainer(colors),
-          ),
-        ),
-        SizedBox(height: spacing.lg),
-        Text(
-          value,
-          style: AppTypography.money(
-            context,
-            size: 20,
-            weight: FontWeight.w800,
-          ).copyWith(color: colors.onSurface),
-        ),
-        SizedBox(height: spacing.xs),
-        Text(
-          label,
-          style: type.labelMedium?.copyWith(color: colors.onSurface),
-        ),
-      ],
-    );
-  }
-}
-
-/// Operational overview: active jobs, jobs awaiting payment, overdue jobs, cost groups.
 class _OpenOperationalOverview extends StatelessWidget {
   const _OpenOperationalOverview({
     required this.activeJobs,
@@ -856,6 +647,7 @@ class _OpenQuickActions extends StatelessWidget {
     required this.canManageJobs,
     required this.canReceivePayments,
     required this.canRecordSales,
+    required this.canRecordOwnerFinance,
   });
 
   final VoidCallback onNewJob;
@@ -869,6 +661,7 @@ class _OpenQuickActions extends StatelessWidget {
   final bool canManageJobs;
   final bool canReceivePayments;
   final bool canRecordSales;
+  final bool canRecordOwnerFinance;
 
   @override
   Widget build(BuildContext context) {
@@ -924,12 +717,13 @@ class _OpenQuickActions extends StatelessWidget {
           profile: ShopProfile.open,
         ),
       ),
-      _OpenQuickTile(
-        icon: Icons.attach_money,
-        label: 'Owner finance',
-        subtitle: 'Capital, drawing, loan',
-        onTap: onOwnerFinance,
-      ),
+      if (canRecordOwnerFinance)
+        _OpenQuickTile(
+          icon: Icons.attach_money,
+          label: 'Owner finance',
+          subtitle: 'Capital, drawing, loan',
+          onTap: onOwnerFinance,
+        ),
     ];
 
     return LayoutBuilder(

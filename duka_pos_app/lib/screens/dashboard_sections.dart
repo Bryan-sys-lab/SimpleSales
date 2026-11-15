@@ -61,6 +61,7 @@ class DashboardPanel extends StatelessWidget {
     this.trailing,
     this.padChild = true,
     this.sortKey,
+    this.topAccent,
     super.key,
   });
 
@@ -73,6 +74,8 @@ class DashboardPanel extends StatelessWidget {
   final bool padChild;
 
   final double? sortKey;
+
+  final Color? topAccent;
 
   @override
   Widget build(BuildContext context) {
@@ -905,9 +908,10 @@ class _PeakHourBadge extends StatelessWidget {
 }
 
 class DashboardTopProducts extends StatelessWidget {
-  const DashboardTopProducts({required this.rows, super.key});
+  const DashboardTopProducts({required this.rows, this.topAccent, super.key});
 
   final List<ProductSalesRow> rows;
+  final Color? topAccent;
 
   @override
   Widget build(BuildContext context) {
@@ -921,6 +925,7 @@ class DashboardTopProducts extends StatelessWidget {
     return DashboardPanel(
       sortKey: 2,
       title: 'Top products',
+      topAccent: topAccent,
       padChild: false,
       child: Column(
         children: <Widget>[
@@ -1087,6 +1092,7 @@ class DashboardLowStockList extends StatelessWidget {
     required this.canOpen,
     required this.onOpenProduct,
     required this.onViewAll,
+    this.topAccent,
     super.key,
   });
 
@@ -1095,6 +1101,7 @@ class DashboardLowStockList extends StatelessWidget {
   final bool canOpen;
   final ValueChanged<Product> onOpenProduct;
   final VoidCallback onViewAll;
+  final Color? topAccent;
 
   static const int _cap = 5;
 

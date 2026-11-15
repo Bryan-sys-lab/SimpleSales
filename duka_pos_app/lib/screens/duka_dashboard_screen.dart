@@ -11,13 +11,16 @@ import '../profile/profile_capabilities.dart';
 import '../profile/profile_navigation.dart';
 import '../profile/profile_terminology.dart';
 import '../routing/routes.dart';
+import '../routing/home_shell.dart';
 import '../services/app_state.dart';
+import '../profile/shop_profile.dart';
 import '../services/analytics.dart';
 import '../services/roles.dart';
 import '../theme/app_colors.dart';
 import '../theme/app_shapes.dart';
 import '../theme/app_spacing.dart';
 import '../theme/typography.dart';
+import '../theme/dashboard_profile_palette.dart';
 import '../ui/components/operation_result.dart';
 import '../ui/components/surface.dart';
 import '../ui/components/status.dart';
@@ -104,8 +107,9 @@ class DukaDashboardScreen extends StatelessWidget {
         ? DashboardHourlySales(buckets: data.hours)
         : DashboardNoSalesCard(hasEverSold: data.hasEverSold);
 
+    final paletteDuka = DashboardProfilePalette.forProfile(ShopProfile.duka, brightness: Theme.of(context).brightness);
     final Widget? topProducts =
-        hasSales ? DashboardTopProducts(rows: data.topProducts) : null;
+        hasSales ? DashboardTopProducts(rows: data.topProducts, topAccent: paletteDuka.accent) : null;
 
     final Widget reorder = DashboardLowStockList(
       products: data.lowStock,
@@ -113,6 +117,7 @@ class DukaDashboardScreen extends StatelessWidget {
       canOpen: canManageStock,
       onOpenProduct: onOpenProduct,
       onViewAll: onOpenInventory,
+      topAccent: paletteDuka.accent,
     );
 
     final Widget? credit = canManageCredit
@@ -123,21 +128,64 @@ class DukaDashboardScreen extends StatelessWidget {
           )
         : null;
 
-    final Widget header = CompactBusinessHeader(
+    final AppLocalizations l10n = AppLocalizations.of(context);
+    final Widget header = DashboardBusinessHeader(
       shopName: appState.owner?.shopName ?? SimplePosBrand.appName,
-      eyebrow: timeOfDayWord(AppLocalizations.of(context)),
+      profile: ShopProfile.duka,
       shift: data.openShift,
-      onSwitchBusiness: () => context.push(Routes.profile),
+      onSwitchBusiness: () => showBusinessProfileSwitcher(context),
     );
 
-    final Widget financialHero = FinancialHero(
-      totals: data.totals,
+    final Widget financialHero = DashboardMoneyHero(
+      label: l10n.dashboardNetSalesToday,
+      amount: data.totals.total,
+      primaryActionLabel: l10n.dashboardNewSale,
+      onPrimaryAction: onOpenSell,
+      secondaryLine: l10n.dashboardPeriodToday,
       scopeLabel: data.scopeLabel,
-      hasSales: hasSales,
+      paymentMix: data.paymentMix,
       onTransactions: () => context.push(Routes.transactions),
     );
 
-    final Widget supportingMetrics = SupportingMetrics(totals: data.totals);
+    final List<DashboardKpiData> kpis = <DashboardKpiData>[
+      DashboardKpiData(
+        label: l10n.dashboardGrossProfit,
+        value: formatMoney(Money.fromMinor(data.totals.profitMinor)),
+        icon: Icons.trending_up_outlined,
+        tone: DashboardKpiTone.positive,
+      ),
+      DashboardKpiData(
+        label: l10n.dashboardExpenses,
+        value: formatMoney(Money.fromMinor(data.totals.expensesMinor)),
+        icon: Icons.payments_outlined,
+        tone: DashboardKpiTone.expense,
+      ),
+      DashboardKpiData(
+        label: l10n.dashboardStockValue,
+        value: formatMoney(data.stockValue),
+        icon: Icons.inventory_2_outlined,
+        tone: DashboardKpiTone.info,
+        onTap: onOpenInventory,
+      ),
+      if (canManageCredit)
+        DashboardKpiData(
+          label: l10n.dashboardCreditOwed,
+          value: formatMoney(Money.fromMinor(data.creditOwedMinor)),
+          icon: Icons.credit_card_outlined,
+          tone: DashboardKpiTone.pending,
+          onTap: () => context.push(Routes.customers),
+        )
+      else
+        DashboardKpiData(
+          label: l10n.dashboardTransactionsLabel,
+          value: '${data.totals.transactions}',
+          icon: Icons.receipt_long_outlined,
+          tone: DashboardKpiTone.neutral,
+          onTap: () => context.push(Routes.transactions),
+        ),
+    ];
+
+    final Widget kpiGrid = DashboardKpiGrid(items: kpis);
 
     final Widget stockOverview = _DukaStockOverview(
       totalProducts: data.totalProducts,
@@ -165,8 +213,6 @@ class DukaDashboardScreen extends StatelessWidget {
         MediaQuery.sizeOf(context).width >= _dukaTwoColumnBreakpoint;
 
     final List<Widget> body = <Widget>[
-      BackupReminderBanner(onBackupNow: onBackupNow),
-      SizedBox(height: spacing.section),
       header,
       if (attention != null)
         Semantics(
@@ -188,7 +234,8 @@ class DukaDashboardScreen extends StatelessWidget {
                 children: spaced(
                   <Widget?>[
                     financialHero,
-                    supportingMetrics,
+                    kpiGrid,
+                    BackupReminderBanner(onBackupNow: onBackupNow),
                     quickActions,
                     stockOverview,
                     sales,
@@ -226,7 +273,8 @@ class DukaDashboardScreen extends StatelessWidget {
       body.addAll(spaced(
         <Widget?>[
           financialHero,
-          supportingMetrics,
+          kpiGrid,
+          BackupReminderBanner(onBackupNow: onBackupNow),
           quickActions,
           stockOverview,
           sales,
@@ -369,12 +417,6 @@ class _DukaStockOverview extends StatelessWidget {
               icon: Icons.cancel_outlined,
               tone: StatusTone.danger,
             ),
-            _OverviewTile(
-              label: l10n.dashboardStockValue,
-              value: formatMoney(stockValue),
-              icon: Icons.account_balance_wallet_outlined,
-              onTap: onOpenInventory,
-            ),
           ];
           if (row) {
             return IntrinsicHeight(
@@ -508,13 +550,6 @@ class _DukaDashboardQuickActions extends StatelessWidget {
     final AppSpacing spacing = AppSpacing.of(context);
 
     final List<Widget> tiles = <Widget>[
-      _DukaQuickTile(
-        icon: Icons.point_of_sale_outlined,
-        label: 'Sell',
-        subtitle: 'Start transaction',
-        onTap: onOpenSell,
-        primary: true,
-      ),
       if (canManageStock)
         _DukaQuickTile(
           icon: Icons.add_circle_outline,
@@ -576,14 +611,12 @@ class _DukaQuickTile extends StatelessWidget {
     required this.label,
     required this.subtitle,
     required this.onTap,
-    this.primary = false,
   });
 
   final IconData icon;
   final String label;
   final String subtitle;
   final VoidCallback onTap;
-  final bool primary;
 
   @override
   Widget build(BuildContext context) {
@@ -604,15 +637,13 @@ class _DukaQuickTile extends StatelessWidget {
             Container(
               padding: EdgeInsets.all(spacing.xs),
               decoration: BoxDecoration(
-                color: primary
-                    ? colors.accentContainer
-                    : colors.surfaceSunken,
+                color: colors.surfaceSunken,
                 borderRadius: AppShapes.of(context).controlRadius,
               ),
               child: Icon(
                 icon,
                 size: 20,
-                color: primary ? colors.accent : colors.onSurfaceVariant,
+                color: colors.onSurfaceVariant,
               ),
             ),
             SizedBox(height: spacing.md),
@@ -620,7 +651,7 @@ class _DukaQuickTile extends StatelessWidget {
               label,
               style: type.titleSmall?.copyWith(
                 fontWeight: FontWeight.w700,
-                color: primary ? colors.accent : colors.onSurface,
+                color: colors.onSurface,
               ),
             ),
             SizedBox(height: 2),

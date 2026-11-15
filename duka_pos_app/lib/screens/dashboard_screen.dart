@@ -260,10 +260,6 @@ class _DashboardScreenState extends State<DashboardScreen>
               unverifiedPayments: 0,
             ),
             scopeLabel: scopeLabel,
-            greeting: _greeting(
-              l10n,
-              staffName: appState.currentStaffName ?? '',
-            ),
             openShift: shift,
             expectedTill: Money.zero,
             creditOwedMinor: creditSummary.totalOwedMinor,
@@ -274,6 +270,8 @@ class _DashboardScreenState extends State<DashboardScreen>
             outOfStockCount: outOfStockCount,
             stockValue: stockValue,
             lowStockVariants: lowVariants,
+            drinksAnalytics: DrinksAnalyticsSnapshot.empty,
+            paymentMix: const <PaymentMixRow>[],
           );
         });
         if (shift == null) return;
@@ -290,7 +288,6 @@ class _DashboardScreenState extends State<DashboardScreen>
               lowStockCount: ready.lowStockCount,
               attention: ready.attention,
               scopeLabel: ready.scopeLabel,
-              greeting: ready.greeting,
               openShift: ready.openShift,
               expectedTill: expected,
               creditOwedMinor: ready.creditOwedMinor,
@@ -312,6 +309,10 @@ class _DashboardScreenState extends State<DashboardScreen>
             ? Future<Shift?>.value(null)
             : db.getOpenShift(appState.currentStaffId!),
         db.topProducts(since: DateTime(2000), staffId: staffId, limit: 1000),
+        db.salesTenderMix(since: dayStart, until: tomorrow, staffId: staffId),
+        appState.shopProfile == ShopProfile.drinks
+            ? db.drinksAnalytics(since: dayStart, until: tomorrow, staffId: staffId)
+            : Future.value(DrinksAnalyticsSnapshot.empty),
       ]);
 
       final List<Product> low = products
@@ -329,6 +330,10 @@ class _DashboardScreenState extends State<DashboardScreen>
       final Map<int, ProductSalesRow> tankSales = <int, ProductSalesRow>{
         for (final row in allTimeSales) row.productId: row,
       };
+      final List<PaymentMixRow> paymentMix =
+          results[6] as List<PaymentMixRow>;
+      final DrinksAnalyticsSnapshot drinksAnalytics =
+          results[7] as DrinksAnalyticsSnapshot;
 
       // Every session read from here on — the scope label and the greeting —
       // is behind the guard, so a sign-out that landed during the batch above
@@ -347,10 +352,6 @@ class _DashboardScreenState extends State<DashboardScreen>
           attention: results[3] as AttentionSummary,
           lowStock: low,
           scopeLabel: scopeLabel,
-          greeting: _greeting(
-            l10n,
-            staffName: appState.currentStaffName ?? '',
-          ),
           openShift: shift,
           expectedTill: Money.zero,
           creditOwedMinor: creditSummary.totalOwedMinor,
@@ -361,6 +362,8 @@ class _DashboardScreenState extends State<DashboardScreen>
           outOfStockCount: outOfStockCount,
           stockValue: stockValue,
           lowStockVariants: lowVariants,
+          drinksAnalytics: drinksAnalytics,
+          paymentMix: paymentMix,
         );
       });
 
@@ -378,7 +381,6 @@ class _DashboardScreenState extends State<DashboardScreen>
             lowStockCount: ready.lowStockCount,
             attention: ready.attention,
             scopeLabel: ready.scopeLabel,
-            greeting: ready.greeting,
             openShift: ready.openShift,
             expectedTill: expected,
             creditOwedMinor: ready.creditOwedMinor,
@@ -407,39 +409,6 @@ class _DashboardScreenState extends State<DashboardScreen>
 
   bool _current(int serial, int session, AppState appState) =>
       mounted && serial == _loadSerial && appState.sessionGeneration == session;
-
-  /// The welcome line.
-  ///
-  /// A SENTENCE, and only a sentence: "Good morning, Wanjiru."
-  ///
-  /// It used to be "Good morning, Wanjiru · Cashier · you" — the greeting, the
-  /// name, the role and the scope, run together with dots. That is a database
-  /// row printed as a welcome, and it read as robotic because it was one: a
-  /// comma-spliced list of four facts, two of which ("Cashier") were the same
-  /// information the shell's bar already carried, and one of which ("you") was
-  /// a pronoun with nothing to refer to.
-  ///
-  /// The three facts now live where each of them belongs. The NAME is here,
-  /// because a greeting that does not say who it is for is not a greeting. The
-  /// ROLE is in the shell's bar, beside the sign-out. The SCOPE is on the
-  /// figure it qualifies — "Sales today · the whole shop" — because it is a
-  /// statement about whose takings are on screen, not about the person
-  /// reading them.
-  static String _greeting(
-    AppLocalizations l10n, {
-    required String staffName,
-  }) {
-    final int hour = DateTime.now().hour;
-    final String greeting = hour < 12
-        ? l10n.dashboardGreetingMorning
-        : hour < 17
-            ? l10n.dashboardGreetingAfternoon
-            : l10n.dashboardGreetingEvening;
-    final String name = staffName.trim();
-    return name.isEmpty
-        ? l10n.dashboardGreetingAnonymous(greeting)
-        : l10n.dashboardGreetingNamed(greeting, name);
-  }
 
   /// Whose takings the screen is showing.
   ///

@@ -12,6 +12,7 @@ import '../profile/profile_product_forms.dart';
 import '../profile/profile_terminology.dart';
 import '../profile/shop_profile.dart';
 import '../routing/routes.dart';
+import '../routing/home_shell.dart';
 import '../services/analytics.dart';
 import '../services/app_state.dart';
 import '../services/roles.dart';
@@ -19,6 +20,7 @@ import '../theme/app_colors.dart';
 import '../theme/app_shapes.dart';
 import '../theme/app_spacing.dart';
 import '../theme/typography.dart';
+import '../theme/dashboard_profile_palette.dart';
 import '../ui/components/status.dart';
 import '../ui/components/surface.dart';
 import '../ui/layout/page.dart';
@@ -124,26 +126,50 @@ class DrinksDashboardScreen extends StatelessWidget {
           )
         : null;
 
-    final Widget header = CompactBusinessHeader(
+    final Widget header = DashboardBusinessHeader(
       shopName: appState.owner?.shopName ?? SimplePosBrand.appName,
-      eyebrow: timeOfDayWord(AppLocalizations.of(context)),
-      subtitle: data.greeting,
+      profile: ShopProfile.drinks,
       shift: data.openShift,
-      onSwitchBusiness: () => context.push(Routes.profile),
+      onSwitchBusiness: () => showBusinessProfileSwitcher(context),
     );
 
-    // Hero: green-gradient card with today's sales figure — the one number the
-    // drinks shop lands on the screen to see.
-    final Widget hero = _DrinksSalesHero(
-      totals: data.totals,
+    final Widget financialHero = DashboardMoneyHero(
+      label: l10n.dashboardNetSalesToday,
+      amount: data.totals.total,
+      primaryActionLabel: l10n.dashboardNewSale,
+      onPrimaryAction: onOpenSell,
+      scopeLabel: data.scopeLabel,
+      paymentMix: data.paymentMix,
       onTransactions: () => context.push(Routes.transactions),
     );
 
-    // Two-stat grid: gross profit and transactions.
-    final Widget stats = _DrinksStatsGrid(
-      profit: formatMoney(Money.fromMinor(data.totals.profitMinor)),
-      transactions: data.totals.transactions,
-    );
+    final List<DashboardKpiData> kpis = <DashboardKpiData>[
+      DashboardKpiData(
+        label: l10n.dashboardGrossProfit,
+        value: formatMoney(Money.fromMinor(data.totals.profitMinor)),
+        icon: Icons.trending_up_outlined,
+        tone: DashboardKpiTone.positive,
+      ),
+      DashboardKpiData(
+        label: l10n.dashboardExpenses,
+        value: formatMoney(Money.fromMinor(data.totals.expensesMinor)),
+        icon: Icons.payments_outlined,
+        tone: DashboardKpiTone.expense,
+      ),
+      DashboardKpiData(
+        label: l10n.dashboardMeasuredVolume,
+        value: '${data.drinksAnalytics.litresSold.toStringAsFixed(1)} L',
+        icon: Icons.local_bar_outlined,
+        tone: DashboardKpiTone.info,
+      ),
+      DashboardKpiData(
+        label: l10n.dashboardWasteValue,
+        value: formatMoney(Money.fromMinor(data.drinksAnalytics.wasteValueMinor)),
+        icon: Icons.delete_outline,
+        tone: DashboardKpiTone.pending,
+      ),
+    ];
+    final Widget kpiGrid = DashboardKpiGrid(items: kpis);
 
     // Shift overview section: shift state, tank operations, stock attention.
     final Widget shiftOverview = _DrinksShiftOverview(
@@ -187,13 +213,28 @@ class DrinksDashboardScreen extends StatelessWidget {
         MediaQuery.sizeOf(context).width >= _drinksTwoColumnBreakpoint;
 
     final List<Widget> body = <Widget>[
-      BackupReminderBanner(onBackupNow: onBackupNow),
-      SizedBox(height: spacing.section),
       header,
+      if (attention != null)
+        Semantics(
+          sortKey: const OrdinalSortKey(0),
+          child: attention,
+        ),
       SizedBox(height: spacing.lg),
-      hero,
+      financialHero,
       SizedBox(height: spacing.lg),
-      stats,
+      kpiGrid,
+      SizedBox(height: spacing.lg),
+      BackupReminderBanner(onBackupNow: onBackupNow),
+      SizedBox(height: spacing.lg),
+      DashboardPanel(
+        title: l10n.dashboardHeldCarts,
+        topAccent: DashboardProfilePalette.forProfile(ShopProfile.drinks, brightness: Theme.of(context).brightness).accent,
+        child: Padding(
+          padding: EdgeInsets.all(spacing.md),
+          child: Text('${data.drinksAnalytics.openTabs}',
+              style: AppTypography.money(context, size: 24, weight: FontWeight.w700)),
+        ),
+      ),
       SizedBox(height: spacing.lg),
       shiftOverview,
       SizedBox(height: spacing.lg),
@@ -229,11 +270,6 @@ class DrinksDashboardScreen extends StatelessWidget {
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: spaced(
                   <Widget?>[
-                    if (attention != null)
-                      Semantics(
-                        sortKey: const OrdinalSortKey(0),
-                        child: attention,
-                      ),
                     sales,
                     topProducts,
                     beverageStock,
@@ -350,266 +386,6 @@ class DrinksDashboardScreen extends StatelessWidget {
 
 /// Hero card for the drinks dashboard: the beverage hero image stretched
 /// end-to-end across the screen, with today's sales figure overlaid.
-class _DrinksSalesHero extends StatelessWidget {
-  const _DrinksSalesHero({
-    required this.totals,
-    required this.onTransactions,
-  });
-
-  final DailyTotals totals;
-  final VoidCallback onTransactions;
-
-  @override
-  Widget build(BuildContext context) {
-    final AppSpacing spacing = AppSpacing.of(context);
-    final AppColors colors = AppColors.of(context);
-    final AppLocalizations l10n = AppLocalizations.of(context);
-
-    return Stack(
-      children: <Widget>[
-        Positioned.fill(
-          child: Container(
-            color: AppColors.of(context).surfaceSunken,
-          ),
-        ),
-        Positioned.fill(
-          child: DecoratedBox(
-            decoration: BoxDecoration(
-              gradient: LinearGradient(
-                colors: <Color>[
-                  colors.canvas.withValues(alpha: 0.55),
-                  colors.canvas.withValues(alpha: 0.15),
-                ],
-                begin: Alignment.topLeft,
-                end: Alignment.bottomRight,
-              ),
-            ),
-          ),
-        ),
-        Padding(
-          padding: PageGutter.card(context),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            mainAxisSize: MainAxisSize.min,
-            children: <Widget>[
-              Text(
-                l10n.dashboardNetSalesToday,
-                style: AppTypography.of(context)
-                    .labelMedium
-                    ?.copyWith(
-                      color: colors.onSurface,
-                      fontWeight: FontWeight.w700,
-                      letterSpacing: 0.6,
-                    ),
-              ),
-              SizedBox(height: spacing.xs),
-              Semantics(
-                label:
-                    '${l10n.dashboardSalesLabel}: ${formatMoney(totals.total)}',
-                child: ExcludeSemantics(
-                  child: Text(
-                    formatMoney(totals.total),
-                    style: AppTypography.money(
-                      context,
-                      size: 32,
-                      weight: FontWeight.w800,
-                    ).copyWith(color: colors.onSurface),
-                  ),
-                ),
-              ),
-              if (totals.hasSales) ...<Widget>[
-                SizedBox(height: spacing.xs),
-                Row(
-                  children: <Widget>[
-                    Icon(
-                      Icons.trending_up_outlined,
-                      size: 14,
-                      color: colors.success,
-                    ),
-                    SizedBox(width: spacing.xs),
-                    Expanded(
-                      child: Text(
-                        l10n.dashboardVersusPreviousDay,
-                        style: AppTypography.of(context)
-                            .bodySmall
-                            ?.copyWith(color: colors.success),
-                      ),
-                    ),
-                  ],
-                ),
-              ],
-              SizedBox(height: spacing.lg),
-              Semantics(
-                button: true,
-                label:
-                    '${l10n.dashboardTransactionsLabel}: ${totals.transactions}',
-                child: ExcludeSemantics(
-                  child: InkWell(
-                    onTap: onTransactions,
-                    child: Padding(
-                      padding: PageGutter.card(context),
-                      child: Row(
-                        children: <Widget>[
-                          const Icon(
-                            Icons.receipt_long_outlined,
-                            size: 18,
-                          ),
-                          SizedBox(width: spacing.md),
-                          Expanded(
-                            child: Text(
-                              l10n.dashboardTransactionsLabel,
-                              style: AppTypography.of(context).bodyMedium,
-                            ),
-                          ),
-                          SizedBox(width: spacing.md),
-                          Text(
-                            '${totals.transactions}',
-                            style: AppTypography.money(
-                              context,
-                              size: 18,
-                              weight: FontWeight.w700,
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-                  ),
-                ),
-              ),
-            ],
-          ),
-        ),
-      ],
-    );
-  }
-}
-
-/// Two-stat grid: gross profit and transactions.
-class _DrinksStatsGrid extends StatelessWidget {
-  const _DrinksStatsGrid({
-    required this.profit,
-    required this.transactions,
-  });
-
-  final String profit;
-  final int transactions;
-
-  @override
-  Widget build(BuildContext context) {
-    final AppSpacing spacing = AppSpacing.of(context);
-    final AppLocalizations l10n = AppLocalizations.of(context);
-
-    return DashboardPanel(
-      sortKey: 1,
-      title: l10n.dashboardSupportingMetrics,
-      padChild: false,
-      child: LayoutBuilder(
-        builder: (BuildContext context, BoxConstraints constraints) {
-          final bool row = constraints.maxWidth >= 640;
-          final List<Widget> tiles = <Widget>[
-            _DrinksStatTile(
-              label: l10n.dashboardProfitLabel,
-              value: profit,
-              icon: Icons.trending_up_outlined,
-            ),
-            _DrinksStatTile(
-              label: l10n.dashboardTransactionsLabel,
-              value: '$transactions',
-              icon: Icons.receipt_long_outlined,
-            ),
-          ];
-          if (row) {
-            return IntrinsicHeight(
-              child: Row(
-                crossAxisAlignment: CrossAxisAlignment.stretch,
-                children: <Widget>[
-                  for (int i = 0; i < tiles.length; i++) ...<Widget>[
-                    if (i > 0) SizedBox(width: spacing.lg),
-                    Expanded(child: tiles[i]),
-                  ],
-                ],
-              ),
-            );
-          }
-          return Wrap(
-            spacing: spacing.lg,
-            runSpacing: spacing.lg,
-            children: tiles.map((t) => SizedBox(width: ((constraints.maxWidth - spacing.lg) / 2).clamp(120.0, double.infinity), child: t)).toList(),
-          );
-        },
-      ),
-    );
-  }
-}
-
-/// One stat tile: a muted label above a large tabular figure, with a tonal
-/// icon badge on the leading side.
-class _DrinksStatTile extends StatelessWidget {
-  const _DrinksStatTile({
-    required this.label,
-    required this.value,
-    required this.icon,
-  });
-
-  final String label;
-  final String value;
-  final IconData icon;
-
-  @override
-  Widget build(BuildContext context) {
-    final AppSpacing spacing = AppSpacing.of(context);
-    final AppColors colors = AppColors.of(context);
-    final TextTheme type = AppTypography.of(context);
-
-    return ConstrainedBox(
-      constraints: BoxConstraints(minHeight: spacing.minTapTarget),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        mainAxisSize: MainAxisSize.min,
-        children: <Widget>[
-          Row(
-            children: <Widget>[
-              Container(
-                padding: EdgeInsets.all(spacing.xs),
-                decoration: BoxDecoration(
-                  color: colors.surfaceSunken,
-                  borderRadius: AppShapes.of(context).controlRadius,
-                ),
-                child: Icon(
-                  icon,
-                  size: 18,
-                  color: colors.onSurfaceVariant,
-                ),
-              ),
-            ],
-          ),
-          SizedBox(height: spacing.lg),
-          Semantics(
-            label: '$label: $value',
-            child: ExcludeSemantics(
-              child: Text(
-                value,
-                style: AppTypography.money(
-                  context,
-                  size: 20,
-                  weight: FontWeight.w800,
-                ),
-              ),
-            ),
-          ),
-          SizedBox(height: spacing.xs),
-          Text(
-            label,
-            style: type.labelMedium?.copyWith(color: colors.onSurfaceMuted),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-/// Shift overview section: the current shift, tank operations, and stock
-/// attention as a mini-list of three rows.
 class _DrinksShiftOverview extends StatelessWidget {
   const _DrinksShiftOverview({
     required this.shift,

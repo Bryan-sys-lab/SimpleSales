@@ -42,10 +42,11 @@ String? expectedRedirect({
       profile != ShopProfile.open) {
     return Routes.dashboard;
   }
-  if ((location.startsWith('/inventory/fashion-product') ||
-          location == Routes.exchangeScreen) &&
-      profile != ShopProfile.fashion &&
-      profile != ShopProfile.drinks) {
+  if (location.startsWith('/inventory/fashion-product') &&
+      profile != ShopProfile.fashion) {
+    return Routes.dashboard;
+  }
+  if (location == Routes.exchangeScreen && profile != ShopProfile.fashion) {
     return Routes.dashboard;
   }
   if ((location.startsWith('/inventory/tank') ||
@@ -165,8 +166,6 @@ void main() {
             Routes.servings,
             Routes.tankRegister,
             Routes.tankDetail(1),
-            Routes.fashionProductForm,
-            Routes.exchangeScreen,
           ];
           for (final route in drinksRoutes) {
             testWidgets(
@@ -212,12 +211,6 @@ void main() {
           }
 
           for (final route in otherRoutes) {
-            // Drinks may now reach fashion variant routes (drinks variants is
-            // enabled), so they are not redirected under drinks.
-            if (profile == ShopProfile.drinks &&
-                otherProfile == ShopProfile.fashion) {
-              continue;
-            }
             testWidgets(
               '$route redirected under ${profile.displayName}',
               (WidgetTester tester) async {

@@ -10,6 +10,7 @@ import 'package:intl/intl.dart';
 
 import '../l10n/generated/app_localizations.dart';
 import '../models/models.dart';
+import '../profile/shop_profile.dart';
 import '../services/analytics.dart';
 import '../theme/app_colors.dart';
 import '../theme/app_spacing.dart';
@@ -18,6 +19,7 @@ import '../ui/components/status.dart';
 import '../ui/layout/page.dart';
 import '../utils/money.dart';
 import 'dashboard_sections.dart';
+import '../theme/dashboard_profile_palette.dart';
 
 sealed class DashboardState {
   const DashboardState();
@@ -41,7 +43,6 @@ final class DashboardReady extends DashboardState {
     required this.lowStockCount,
     required this.attention,
     required this.scopeLabel,
-    required this.greeting,
     required this.openShift,
     required this.expectedTill,
     this.creditOwedMinor = 0,
@@ -52,6 +53,8 @@ final class DashboardReady extends DashboardState {
     this.outOfStockCount = 0,
     this.stockValue = Money.zero,
     this.lowStockVariants = const <ProductVariant>[],
+    this.drinksAnalytics = DrinksAnalyticsSnapshot.empty,
+    this.paymentMix = const <PaymentMixRow>[],
   });
 
   final DailyTotals totals;
@@ -67,8 +70,6 @@ final class DashboardReady extends DashboardState {
 
   final String scopeLabel;
 
-  final String greeting;
-
   final Shift? openShift;
   final Money expectedTill;
   final int creditOwedMinor;
@@ -78,6 +79,8 @@ final class DashboardReady extends DashboardState {
   final int totalProducts;
   final int outOfStockCount;
   final Money stockValue;
+  final DrinksAnalyticsSnapshot drinksAnalytics;
+  final List<PaymentMixRow> paymentMix;
 }
 
 List<Widget> spaced(List<Widget?> children, double gap) {
@@ -89,108 +92,6 @@ List<Widget> spaced(List<Widget?> children, double gap) {
 /// Compact business header: identity, status, date, and the business switch.
 ///
 /// No large logo, no giant greeting, no oversized top padding.
-class CompactBusinessHeader extends StatelessWidget {
-  const CompactBusinessHeader({
-    required this.shopName,
-    required this.eyebrow,
-    this.subtitle = '',
-    this.shift,
-    this.onSwitchBusiness,
-    super.key,
-  });
-
-  final String shopName;
-  final String eyebrow;
-  final String subtitle;
-
-  /// Authoritative shift state. When null there is no open shift; when
-  /// [status] is 'closed' the shift has been reconciled. The header never
-  /// infers state from the time of day or from whether the dashboard loaded.
-  final Shift? shift;
-
-  final VoidCallback? onSwitchBusiness;
-
-  @override
-  Widget build(BuildContext context) {
-    final AppSpacing spacing = AppSpacing.of(context);
-    final AppLocalizations l10n = AppLocalizations.of(context);
-    final String formatted = _headerDate(l10n);
-
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.stretch,
-      children: <Widget>[
-        Padding(
-          padding: EdgeInsetsDirectional.only(
-            start: spacing.lg,
-            top: spacing.sm,
-            end: spacing.lg,
-            bottom: spacing.xs,
-          ),
-          child: Semantics(
-            header: true,
-            child: Text(
-              subtitle.isEmpty
-                  ? '$eyebrow · $shopName'
-                  : '$eyebrow · $shopName — $subtitle',
-              style: AppTypography.of(context).headlineSmall?.copyWith(
-                    color: AppColors.of(context).onSurface,
-                  ),
-              softWrap: true,
-            ),
-          ),
-        ),
-        SizedBox(height: spacing.xs),
-        Wrap(
-          crossAxisAlignment: WrapCrossAlignment.center,
-          spacing: spacing.sm,
-          runSpacing: spacing.xs,
-          children: <Widget>[
-            _ShiftStateChip(shift: shift),
-            Text(
-              formatted,
-              style: AppTypography.of(context)
-                  .bodySmall
-                  ?.copyWith(color: AppColors.of(context).onSurfaceMuted),
-            ),
-          ],
-        ),
-        SizedBox(height: spacing.sm),
-        Row(
-          children: <Widget>[
-            Expanded(
-              child: Semantics(
-                label: l10n.dashboardCurrentBusiness(shopName),
-                child: ExcludeSemantics(
-                  child: Text(
-                    l10n.dashboardCurrentBusinessLabel,
-                    style: AppTypography.of(context)
-                        .labelSmall
-                        ?.copyWith(color: AppColors.of(context).onSurfaceMuted),
-                  ),
-                ),
-              ),
-            ),
-            if (onSwitchBusiness != null)
-              OutlinedButton.icon(
-                onPressed: onSwitchBusiness,
-                icon: const Icon(Icons.refresh, size: 18),
-                label: Text(AppLocalizations.of(context).settingsSwitch),
-              ),
-          ],
-        ),
-        SizedBox(height: spacing.lg),
-      ],
-    );
-  }
-}
-
-String _headerDate(AppLocalizations l10n) {
-  final now = DateTime.now();
-  final dayOfWeek = DateFormat.EEEE(l10n.localeName).format(now);
-  final month = DateFormat.MMMM(l10n.localeName).format(now);
-  return '$dayOfWeek · ${now.day} $month';
-}
-
 /// Financial hero: the one display-size figure, with the comparison beneath it.
 class FinancialHero extends StatelessWidget {
   const FinancialHero({
@@ -502,3 +403,443 @@ class _ShiftStateChip extends StatelessWidget {
 
 /// Reads localisations without holding a [BuildContext] across an await.
 
+
+double dashboardTextScale(BuildContext context) =>
+    MediaQuery.textScalerOf(context).scale(1).clamp(1.0, 2.5).toDouble();
+
+int dashboardGridColumns({
+  required double availableWidth,
+  required double textScale,
+  required double minCellWidth,
+  int maxColumns = 4,
+  double gap = 12,
+}) {
+  final double requiredCellWidth = minCellWidth * textScale;
+  final int count = ((availableWidth + gap) / (requiredCellWidth + gap)).floor();
+  return count.clamp(1, maxColumns).toInt();
+}
+
+bool dashboardCanUseTwoColumns({
+  required double availableWidth,
+  required double textScale,
+}) => availableWidth >= 840 && textScale <= 1.25;
+
+// ---------------------------------------------------------------------------
+// New shared dashboard components (v79 redesign)
+// ---------------------------------------------------------------------------
+
+enum DashboardKpiTone { neutral, positive, expense, pending, info }
+
+class DashboardKpiData {
+  const DashboardKpiData({
+    required this.label,
+    required this.value,
+    required this.icon,
+    this.tone = DashboardKpiTone.neutral,
+    this.onTap,
+    this.semanticsLabel,
+  });
+
+  final String label;
+  final String value;
+  final IconData icon;
+  final DashboardKpiTone tone;
+  final VoidCallback? onTap;
+  final String? semanticsLabel;
+}
+
+class DashboardKpiCard extends StatelessWidget {
+  const DashboardKpiCard({required this.data, super.key});
+
+  final DashboardKpiData data;
+
+  @override
+  Widget build(BuildContext context) {
+    final AppSpacing spacing = AppSpacing.of(context);
+    final AppColors colors = AppColors.of(context);
+    final (Color fg, Color bg) = switch (data.tone) {
+      DashboardKpiTone.positive => (colors.success, colors.successContainer),
+      DashboardKpiTone.expense => (colors.danger, colors.dangerContainer),
+      DashboardKpiTone.pending => (colors.warning, colors.warningContainer),
+      DashboardKpiTone.info => (colors.info, colors.infoContainer),
+      DashboardKpiTone.neutral => (colors.onSurface, colors.surfaceSunken),
+    };
+
+    final Widget card = Container(
+      padding: EdgeInsets.all(spacing.md),
+      decoration: BoxDecoration(
+        color: colors.surface,
+        borderRadius: BorderRadius.circular(spacing.md + 4),
+        border: Border.all(color: colors.onSurfaceMuted.withValues(alpha: 0.15)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        mainAxisSize: MainAxisSize.min,
+        children: <Widget>[
+          Container(
+            width: 36,
+            height: 36,
+            decoration: BoxDecoration(
+              color: bg,
+              borderRadius: BorderRadius.circular(10),
+            ),
+            child: Icon(data.icon, size: 20, color: fg),
+          ),
+          SizedBox(height: spacing.sm),
+          Text(
+            data.label,
+            style: AppTypography.of(context)
+                .labelMedium
+                ?.copyWith(color: colors.onSurfaceMuted),
+            softWrap: true,
+          ),
+          SizedBox(height: spacing.xs),
+          Text(
+            data.value,
+            style: AppTypography.money(
+              context,
+              size: 18,
+              weight: FontWeight.w700,
+            ).copyWith(color: fg),
+            softWrap: true,
+          ),
+        ],
+      ),
+    );
+
+    if (data.onTap == null) {
+      return Semantics(
+        label: data.semanticsLabel ?? '${data.label}: ${data.value}',
+        child: card,
+      );
+    }
+    return Semantics(
+      button: true,
+      label: data.semanticsLabel ?? '${data.label}: ${data.value}',
+      child: InkWell(
+        onTap: data.onTap,
+        borderRadius: BorderRadius.circular(spacing.md + 4),
+        child: card,
+      ),
+    );
+  }
+}
+
+class DashboardKpiGrid extends StatelessWidget {
+  const DashboardKpiGrid({required this.items, super.key});
+
+  final List<DashboardKpiData> items;
+
+  @override
+  Widget build(BuildContext context) {
+    return LayoutBuilder(
+      builder: (BuildContext context, BoxConstraints constraints) {
+        final double ts = dashboardTextScale(context);
+        final int cols = dashboardGridColumns(
+          availableWidth: constraints.maxWidth,
+          textScale: ts,
+          minCellWidth: 150,
+          maxColumns: 4,
+        );
+        final double gap = 12;
+        final double cellWidth =
+            (constraints.maxWidth - (cols - 1) * gap) / cols;
+        return Wrap(
+          spacing: gap,
+          runSpacing: gap,
+          children: items
+              .map((DashboardKpiData d) => SizedBox(
+                    width: cellWidth,
+                    child: DashboardKpiCard(data: d),
+                  ))
+              .toList(),
+        );
+      },
+    );
+  }
+}
+
+class DashboardBusinessHeader extends StatelessWidget {
+  const DashboardBusinessHeader({
+    required this.shopName,
+    required this.profile,
+    this.shift,
+    this.onSwitchBusiness,
+    super.key,
+  });
+
+  final String shopName;
+  final ShopProfile profile;
+  final Shift? shift;
+  final VoidCallback? onSwitchBusiness;
+
+  @override
+  Widget build(BuildContext context) {
+    final AppSpacing spacing = AppSpacing.of(context);
+    final AppLocalizations l10n = AppLocalizations.of(context);
+    final DashboardProfilePalette palette =
+        DashboardProfilePalette.forProfile(profile, brightness: Theme.of(context).brightness);
+    final String formatted = _headerDate(l10n);
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: <Widget>[
+        Padding(
+          padding: EdgeInsetsDirectional.only(
+            start: spacing.lg,
+            top: spacing.sm,
+            end: spacing.lg,
+            bottom: spacing.xs,
+          ),
+          child: Semantics(
+            header: true,
+            child: Text(
+              shopName,
+              style: AppTypography.of(context).headlineSmall?.copyWith(
+                    color: AppColors.of(context).onSurface,
+                  ),
+              softWrap: true,
+            ),
+          ),
+        ),
+        SizedBox(height: spacing.xs),
+        Wrap(
+          crossAxisAlignment: WrapCrossAlignment.center,
+          spacing: spacing.sm,
+          runSpacing: spacing.xs,
+          children: <Widget>[
+            Container(
+              padding: EdgeInsets.symmetric(horizontal: spacing.sm, vertical: spacing.xs),
+              decoration: BoxDecoration(
+                color: palette.tint,
+                borderRadius: BorderRadius.circular(999),
+              ),
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: <Widget>[
+                  Icon(Icons.storefront_outlined, size: 14, color: palette.ink),
+                  SizedBox(width: spacing.xs),
+                  Text(
+                    profile.displayName.toUpperCase(),
+                    style: AppTypography.of(context)
+                        .labelSmall
+                        ?.copyWith(color: palette.ink, fontWeight: FontWeight.w700),
+                  ),
+                ],
+              ),
+            ),
+            _ShiftStateChip(shift: shift),
+            Text(
+              formatted,
+              style: AppTypography.of(context)
+                  .bodySmall
+                  ?.copyWith(color: AppColors.of(context).onSurfaceMuted),
+            ),
+          ],
+        ),
+        SizedBox(height: spacing.sm),
+        if (onSwitchBusiness != null)
+          Align(
+            alignment: AlignmentDirectional.centerEnd,
+            child: OutlinedButton.icon(
+              onPressed: onSwitchBusiness,
+              icon: const Icon(Icons.swap_horiz, size: 18),
+              label: Text(l10n.settingsSwitch),
+            ),
+          ),
+        SizedBox(height: spacing.lg),
+      ],
+    );
+  }
+}
+
+class DashboardMoneyHero extends StatelessWidget {
+  const DashboardMoneyHero({
+    required this.label,
+    required this.amount,
+    required this.primaryActionLabel,
+    required this.onPrimaryAction,
+    this.secondaryLine,
+    this.scopeLabel,
+    this.paymentMix = const <PaymentMixRow>[],
+    this.onTransactions,
+    super.key,
+  });
+
+  final String label;
+  final Money amount;
+  final String primaryActionLabel;
+  final VoidCallback onPrimaryAction;
+  final String? secondaryLine;
+  final String? scopeLabel;
+  final List<PaymentMixRow> paymentMix;
+  final VoidCallback? onTransactions;
+
+  @override
+  Widget build(BuildContext context) {
+    final AppSpacing spacing = AppSpacing.of(context);
+    final AppLocalizations l10n = AppLocalizations.of(context);
+    return LayoutBuilder(
+      builder: (BuildContext context, BoxConstraints constraints) {
+        final double ts = dashboardTextScale(context);
+        final bool stackAction = constraints.maxWidth < 420 || ts > 1.25;
+        return Container(
+          padding: PageGutter.card(context),
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(20),
+            gradient: const LinearGradient(
+              colors: <Color>[Color(0xFF0F3D2E), Color(0xFF16523E)],
+              begin: Alignment.topLeft,
+              end: Alignment.bottomRight,
+            ),
+          ),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            mainAxisSize: MainAxisSize.min,
+            children: <Widget>[
+              Row(
+                children: <Widget>[
+                  Expanded(
+                    child: Text(
+                      label,
+                      style: AppTypography.of(context)
+                          .labelMedium
+                          ?.copyWith(
+                            color: const Color(0xFFB7E4D4),
+                            fontWeight: FontWeight.w700,
+                            letterSpacing: 0.6,
+                          ),
+                    ),
+                  ),
+                  if (secondaryLine != null)
+                    Text(
+                      secondaryLine!,
+                      style: AppTypography.of(context)
+                          .labelSmall
+                          ?.copyWith(color: const Color(0xFFB7E4D4)),
+                    ),
+                ],
+              ),
+              SizedBox(height: spacing.xs),
+              if (stackAction)
+                Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  mainAxisSize: MainAxisSize.min,
+                  children: <Widget>[
+                    Semantics(
+                      label: '$label: ${formatMoney(amount)}',
+                      child: Text(
+                        formatMoney(amount),
+                        style: AppTypography.money(
+                          context,
+                          size: 40,
+                          weight: FontWeight.w800,
+                        ).copyWith(color: Colors.white),
+                        softWrap: true,
+                      ),
+                    ),
+                    SizedBox(height: spacing.sm),
+                    FilledButton(
+                      onPressed: onPrimaryAction,
+                      style: FilledButton.styleFrom(
+                        backgroundColor: Colors.white,
+                        foregroundColor: const Color(0xFF0F3D2E),
+                      ),
+                      child: Text(primaryActionLabel),
+                    ),
+                  ],
+                )
+              else
+                Row(
+                  crossAxisAlignment: CrossAxisAlignment.center,
+                  children: <Widget>[
+                    Expanded(
+                      child: Semantics(
+                        label: '$label: ${formatMoney(amount)}',
+                        child: Text(
+                          formatMoney(amount),
+                          style: AppTypography.money(
+                            context,
+                            size: 40,
+                            weight: FontWeight.w800,
+                          ).copyWith(color: Colors.white),
+                          softWrap: true,
+                        ),
+                      ),
+                    ),
+                    FilledButton(
+                      onPressed: onPrimaryAction,
+                      style: FilledButton.styleFrom(
+                        backgroundColor: Colors.white,
+                        foregroundColor: const Color(0xFF0F3D2E),
+                      ),
+                      child: Text(primaryActionLabel),
+                    ),
+                  ],
+                ),
+              if (scopeLabel != null) ...<Widget>[
+                SizedBox(height: spacing.xs),
+                Text(
+                  scopeLabel!,
+                  style: AppTypography.of(context)
+                      .bodySmall
+                      ?.copyWith(color: const Color(0xFFB7E4D4)),
+                ),
+              ],
+              if (paymentMix.isNotEmpty) ...<Widget>[
+                SizedBox(height: spacing.sm),
+                Wrap(
+                  spacing: spacing.xs,
+                  runSpacing: spacing.xs,
+                  children: paymentMix
+                      .map((PaymentMixRow row) => Container(
+                            padding: EdgeInsets.symmetric(
+                              horizontal: spacing.sm,
+                              vertical: spacing.xs,
+                            ),
+                            decoration: BoxDecoration(
+                              color: Colors.white.withValues(alpha: 0.15),
+                              borderRadius: BorderRadius.circular(999),
+                            ),
+                            child: Text(
+                              '${row.label(l10n: l10n)} ${formatMoney(row.sales)}',
+                              style: AppTypography.of(context)
+                                  .labelSmall
+                                  ?.copyWith(color: Colors.white),
+                            ),
+                          ))
+                      .toList(),
+                ),
+              ],
+              if (onTransactions != null) ...<Widget>[
+                SizedBox(height: spacing.sm),
+                InkWell(
+                  onTap: onTransactions,
+                  child: Row(
+                    children: <Widget>[
+                      const Icon(Icons.receipt_long_outlined, size: 18, color: Colors.white),
+                      SizedBox(width: spacing.xs),
+                      Text(
+                        l10n.dashboardTransactionsLabel,
+                        style: AppTypography.of(context)
+                            .bodySmall
+                            ?.copyWith(color: Colors.white),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+            ],
+          ),
+        );
+      },
+    );
+  }
+}
+
+String _headerDate(AppLocalizations l10n) {
+  final now = DateTime.now();
+  final dayOfWeek = DateFormat.EEEE(l10n.localeName).format(now);
+  final month = DateFormat.MMMM(l10n.localeName).format(now);
+  return '$dayOfWeek · ${now.day} $month';
+}

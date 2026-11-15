@@ -702,39 +702,58 @@
   "theseOfflineSalesCouldNotReserveStockAfterAnotherTillSoldTheLastUnitsTheyRemainQueuedAndAreNotSilentlyDiscarded": "These offline sales could not reserve stock after another till sold the last units. They remain queued and are not silently discarded.",
   "unclaimedMPesa": "Unclaimed M-Pesa",
   "unverifiedPayments": "Unverified payments",
-  "voidSale": "Void sale"
-  ,"settingsSwitch": "Aldisha"
-  ,"openDashboardSelectJob": "Chagua kazi"
-  ,"openCostGroupCouldNotCreate": "Haikuweza kuunda kundi la gharama: {error}"
-  ,"openJobAddCostCouldNotAdd": "Haikuweza kuongeza gharama: {error}"
-  ,"inventoryCouldNotSavePack": "Haikuweza hifadhi kifungo: {error}"
-  ,"syncCenterCouldNotResolveConflict": "Haikuweza kutatua mgogoro: {error}"
-  ,"openDashboardNoJobs": "Hakuna kazi hivi. Unde moja ya msingi."
-  ,"setupIntroAddShopLabel": "ONGEZA DUKA"
-  ,"setupIntroSetUpLabel": "WASILISHA DUKA"
-  ,"setupIntroAddShopTitle": "Ongeza duka nyingine"
-  ,"setupIntroSetUpTitle": "Wasilisha duka yako"
-  ,"setupIntroAddShopBody": "Duka hii ina PIN yake ya msimamizi, kwa hivyo PIN inayafungua duka moja kwenye simu hii haifungui nyingine. Peana jina la duka mpya na utaenda moja kwa moja kwenye yale."
-  ,"setupIntroSetUpBody": "Unda akaunti ya msimamizi wa duka. Msimamizi anaweza kuunda mabunifu na washara, usimamizie malipo, na kuunganika na huduma za kisheria."
-  ,"productOnboardingPage1Label": "Ni nini SimpleSales?"
-  ,"productOnboardingPage1Title": "Kifedha iliyojua na duka yako"
-  ,"productOnboardingPage1Body": "SimpleSales ni kifedha ilengwa kwa duka za Kenya — Rekodi mauzo, usimamizie malipo, na pokea malipo kwenye kauta au nje yake. Inafanya kazi kwenye simu yako, si na vifaa vyengine."
-  ,"productOnboardingPage2Label": "Chagua profa ya duka"
-  ,"productOnboardingPage2Title": "Profa nne, app moja"
-  ,"productOnboardingPage2Body": "Chagua profa inayofanana na duka yako. Kila profa inabadilisha neno linalotoka na matumizi yanayategemea zaidi — lakini kila profa hii hufanya kazi na POS rahisi pekee."
-  ,"productOnboardingPage3Label": "Eliye ya mwenyewe, daima"
-  ,"productOnboardingPage3Title": "Duka yako, kwenye simu yako"
-  ,"productOnboardingPage3Body": "Mauzo, malipo na rekodi za wateja husika kwenye simu hii. Huishirika uliopata mailingiliano — kitu haliishi kuwa jamii ikafikiwa. M-Pesa na ripoti za mtandaoni hutakiwa na mailingiliano; kila kitu kingine si."
-  ,"productOnboardingHeader": "Mafundisho ya utumiaji wa SimpleSales"
-  ,"productOnboardingPageProgress": "Ukurasa"
-  ,"actionCreateAccount": "Unda akaunti"
-  ,"productOnboardingDukaTitle": "Duka"
-  ,"productOnboardingDukaSubtitle": "Duka ya jumla · bidhaa, malipo, kifedha"
-  ,"productOnboardingDrinksTitle": "Dawa"
-  ,"productOnboardingDrinksSubtitle": "Bar na dawa · tiba, kuchemsha, malipo"
-  ,"productOnboardingFashionTitle": "Fashion"
-  ,"productOnboardingFashionSubtitle": "Duka ya nguo · mabinti, saizo, rangi"
-  ,"productOnboardingOpenTitle": "Open"
-  ,"productOnboardingOpenSubtitle": "Kazi na biashara · takwimu, kazi, malipo"
-  ,"actionSignIn": "Ingia"
+  "voidSale": "Void sale",
+  "settingsSwitch": "Aldisha",
+  "openDashboardSelectJob": "Chagua kazi",
+  "openCostGroupCouldNotCreate": "Haikuweza kuunda kundi la gharama: {error}",
+  "openJobAddCostCouldNotAdd": "Haikuweza kuongeza gharama: {error}",
+  "inventoryCouldNotSavePack": "Haikuweza hifadhi kifungo: {error}",
+  "syncCenterCouldNotResolveConflict": "Haikuweza kutatua mgogoro: {error}",
+  "openDashboardNoJobs": "Hakuna kazi hivi. Unde moja ya msingi.",
+  "setupIntroAddShopLabel": "ONGEZA DUKA",
+  "setupIntroSetUpLabel": "WASILISHA DUKA",
+  "setupIntroAddShopTitle": "Ongeza duka nyingine",
+  "setupIntroSetUpTitle": "Wasilisha duka yako",
+  "setupIntroAddShopBody": "Duka hii ina PIN yake ya msimamizi, kwa hivyo PIN inayafungua duka moja kwenye simu hii haifungui nyingine. Peana jina la duka mpya na utaenda moja kwa moja kwenye yale.",
+  "setupIntroSetUpBody": "Unda akaunti ya msimamizi wa duka. Msimamizi anaweza kuunda mabunifu na washara, usimamizie malipo, na kuunganika na huduma za kisheria.",
+  "productOnboardingPage1Label": "Ni nini SimpleSales?",
+  "productOnboardingPage1Title": "Kifedha iliyojua na duka yako",
+  "productOnboardingPage1Body": "SimpleSales ni kifedha ilengwa kwa duka za Kenya — Rekodi mauzo, usimamizie malipo, na pokea malipo kwenye kauta au nje yake. Inafanya kazi kwenye simu yako, si na vifaa vyengine.",
+  "productOnboardingPage2Label": "Chagua profa ya duka",
+  "productOnboardingPage2Title": "Profa nne, app moja",
+  "productOnboardingPage2Body": "Chagua profa inayofanana na duka yako. Kila profa inabadilisha neno linalotoka na matumizi yanayategemea zaidi — lakini kila profa hii hufanya kazi na POS rahisi pekee.",
+  "productOnboardingPage3Label": "Eliye ya mwenyewe, daima",
+  "productOnboardingPage3Title": "Duka yako, kwenye simu yako",
+  "productOnboardingPage3Body": "Mauzo, malipo na rekodi za wateja husika kwenye simu hii. Huishirika uliopata mailingiliano — kitu haliishi kuwa jamii ikafikiwa. M-Pesa na ripoti za mtandaoni hutakiwa na mailingiliano; kila kitu kingine si.",
+  "productOnboardingHeader": "Mafundisho ya utumiaji wa SimpleSales",
+  "productOnboardingPageProgress": "Ukurasa",
+  "actionCreateAccount": "Unda akaunti",
+  "productOnboardingDukaTitle": "Duka",
+  "productOnboardingDukaSubtitle": "Duka ya jumla · bidhaa, malipo, kifedha",
+  "productOnboardingDrinksTitle": "Dawa",
+  "productOnboardingDrinksSubtitle": "Bar na dawa · tiba, kuchemsha, malipo",
+  "productOnboardingFashionTitle": "Fashion",
+  "productOnboardingFashionSubtitle": "Duka ya nguo · mabinti, saizo, rangi",
+  "productOnboardingOpenTitle": "Open",
+  "productOnboardingOpenSubtitle": "Kazi na biashara · takwimu, kazi, malipo",
+  "actionSignIn": "Ingia",
+  "dashboardNewSale": "New sale",
+  "dashboardGrossProfit": "Gross profit",
+  "dashboardExpenses": "Expenses",
+  "dashboardCreditOwed": "Credit owed",
+  "dashboardLowStockVariants": "Low-stock variants",
+  "dashboardLaybyBalance": "Layby balance",
+  "dashboardHeldCarts": "Held carts",
+  "dashboardParkedSales": "Parked sales",
+  "dashboardMeasuredVolume": "Measured volume",
+  "dashboardWasteValue": "Waste value",
+  "dashboardNetCashMovement": "Net cash movement",
+  "dashboardRevenueToDate": "Revenue to date",
+  "dashboardCompletedJobRevenueToday": "Completed job revenue today",
+  "dashboardRecentJobs": "Recent jobs",
+  "dashboardPaymentsReceived": "Payments received",
+  "dashboardStockStatus": "Stock status",
+  "dashboardNewJob": "New job",
+  "dashboardLowStock": "Low stock",
+  "dashboardTransactions": "Transactions"
 }
