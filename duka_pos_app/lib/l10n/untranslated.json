@@ -403,6 +403,7 @@
     "statusBackupOverdue",
     "statusOffline",
     "statusConnecting",
+    "statusOnline",
     "importRepairedTitle",
     "importRepairFailedTitle",
     "profileEditSavedTitle",

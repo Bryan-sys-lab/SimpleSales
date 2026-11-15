@@ -7,7 +7,7 @@ import '../support/harness.dart';
 void main() {
   setUpAll(loadAppFonts);
 
-  testWidgets('explains all four profiles and reaches account creation',
+  testWidgets('shows exactly three product-tour pages',
       (WidgetTester tester) async {
     tester.useDevice(Device.small);
     bool created = false;
@@ -19,35 +19,73 @@ void main() {
       ),
     );
 
-    expect(find.text('Your business, simplified'), findsOneWidget);
-    await tester.tap(find.text('I have an account'));
-    expect(signedIn, isTrue);
+    // Page 1: value proposition.
+    expect(find.text('The till your shop already knows'), findsOneWidget);
+    expect(find.text('1 of 3'), findsOneWidget);
 
-    // Return to the tour for the page-by-page profile assertions.
-    signedIn = false;
-    await tester.pumpWidget(const SizedBox());
+    // Sign-in is visible in the header.
+    expect(find.text('Sign in'), findsOneWidget);
+
+    // Continue advances to page 2.
+    await tester.tap(find.text('Continue'));
+    await tester.pumpAndSettle();
+    expect(find.text('Four profiles, one app'), findsOneWidget);
+    expect(find.text('2 of 3'), findsOneWidget);
+
+    // Page 2: four profile cards are visible.
+    expect(find.text('Duka'), findsOneWidget);
+    expect(find.text('Drinks'), findsOneWidget);
+    expect(find.text('Fashion'), findsOneWidget);
+    expect(find.text('Open'), findsOneWidget);
+
+    // Continue advances to page 3.
+    await tester.tap(find.text('Continue'));
+    await tester.pumpAndSettle();
+    expect(find.text('Your shop, on your phone'), findsOneWidget);
+    expect(find.text('3 of 3'), findsOneWidget);
+
+    // Continue on the final page creates an account.
+    await tester.tap(find.text('Create account'));
+    expect(created, isTrue);
+    expect(signedIn, isFalse);
+  });
+
+  testWidgets('sign-in works from any page',
+      (WidgetTester tester) async {
+    tester.useDevice(Device.small);
+    bool signedIn = false;
     await tester.pumpApp(
       home: ProductOnboardingScreen(
-        onCreateAccount: () => created = true,
+        onCreateAccount: () {},
         onSignIn: () => signedIn = true,
       ),
     );
-    for (final String label in <String>[
-      'Continue',
-      'Continue',
-      'Continue',
-      'Continue',
-      'Continue',
-    ]) {
-      await tester.tap(find.text(label));
-      await tester.pumpAndSettle();
-    }
-    expect(find.text('Open profile'), findsOneWidget);
-    await tester.tap(find.text('Create your account'));
-    expect(created, isTrue);
+
+    expect(find.text('Sign in'), findsOneWidget);
+    await tester.tap(find.text('Sign in'));
+    expect(signedIn, isTrue);
   });
 
-  testWidgets('exposes the tour image and actions to accessibility services',
+  testWidgets('skip calls onSkip and does not create an account',
+      (WidgetTester tester) async {
+    tester.useDevice(Device.small);
+    bool skipped = false;
+    bool created = false;
+    await tester.pumpApp(
+      home: ProductOnboardingScreen(
+        onCreateAccount: () => created = true,
+        onSignIn: () {},
+        onSkip: () => skipped = true,
+      ),
+    );
+
+    expect(find.text('Skip'), findsOneWidget);
+    await tester.tap(find.text('Skip'));
+    expect(skipped, isTrue);
+    expect(created, isFalse);
+  });
+
+  testWidgets('exposes page progress and hero to accessibility services',
       (WidgetTester tester) async {
     tester.useDevice(Device.small);
     final SemanticsHandle handle = tester.ensureSemantics();
@@ -58,13 +96,12 @@ void main() {
       ),
     );
 
-    expect(find.bySemanticsLabel('Kenyan shop business'), findsOneWidget);
-    expect(find.bySemanticsLabel('I have an account'), findsOneWidget);
-    expect(find.bySemanticsLabel('Continue'), findsOneWidget);
+    expect(find.bySemanticsLabel('Page 1 of 3'), findsOneWidget);
+    expect(find.bySemanticsLabel('Sign in'), findsOneWidget);
     handle.dispose();
   });
 
-  testWidgets('keeps the first-page actions above the touch-target floor',
+  testWidgets('keeps first-page actions above the touch-target floor',
       (WidgetTester tester) async {
     tester.useDevice(Device.small);
     await tester.pumpApp(

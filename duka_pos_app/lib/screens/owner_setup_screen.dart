@@ -27,6 +27,8 @@ import '../ui/brand/simple_pos_mark.dart';
 import '../ui/components/controls.dart';
 import '../ui/components/status.dart';
 import '../ui/onboarding_style.dart';
+import '../ui/shop_profile_picker.dart';
+import '../theme/app_shapes.dart';
 import '../utils/pin_rules.dart';
 
 /// Creates the shop and its admin account, or adds a second shop to a device
@@ -356,7 +358,6 @@ class _OwnerSetupScreenState extends State<OwnerSetupScreen> {
   Widget build(BuildContext context) {
     final AppSpacing spacing = AppSpacing.of(context);
     final AppColors colors = AppColors.of(context);
-    final TextTheme type = AppTypography.of(context);
 
     return PopScope(
       canPop: false,
@@ -392,48 +393,18 @@ class _OwnerSetupScreenState extends State<OwnerSetupScreen> {
                           ),
                           SizedBox(height: spacing.sm),
                           // Media window style header
-                          OnboardStyle.window(
-                            context: context,
-                          image: DecoratedBox(
-                            decoration: BoxDecoration(
-                              gradient: LinearGradient(
-                                colors: <Color>[
-                                  colors.surface,
-                                  colors.surfaceSunken,
-                                ],
-                                begin: Alignment.topLeft,
-                                end: Alignment.bottomRight,
-                              ),
-                            ),
-                            child: Center(
-                              child: Icon(Icons.storefront_outlined,
-                                  size: 56, color: colors.accent),
-                            ),
+                          SetupIntroHeader(
+                            isAdditionalShop: widget.isAdditionalShop,
                           ),
-                            badgeIcon: Icons.storefront_outlined,
-                            label:
-                                widget.isAdditionalShop ? 'ADD SHOP' : 'SET UP',
-                            title: widget.isAdditionalShop
-                                ? 'Add another shop'
-                                : 'Set up your shop',
-                            body: widget.isAdditionalShop
-                                ? 'This shop gets its own admin PIN, so a PIN that opens one shop on this phone does not open another. Give the new shop its name and you will go straight into it.'
-                                : 'Create the shop admin account. The admin can create managers and cashiers, manage stock, and connect optional services.',
-                            type: type,
-                            colors: colors,
-                            spacing: spacing,
-                          ),
-                          SizedBox(height: spacing.sm),
+                          SizedBox(height: spacing.lg),
                           // Profile picker
-                          _ProfilePicker(
+                          ShopProfilePicker(
                             value: _shopProfile,
-                            onChanged: (value) {
-                              if (value != null) {
-                                setState(() => _shopProfile = value);
-                              }
+                            onChanged: (ShopProfile profile) {
+                              setState(() => _shopProfile = profile);
                             },
                           ),
-                          SizedBox(height: spacing.sm),
+                          SizedBox(height: spacing.lg),
                           // Form
                           _SetupFields(
                             formKey: _formKey,
@@ -530,28 +501,63 @@ class _OwnerSetupScreenState extends State<OwnerSetupScreen> {
   }
 }
 
-class _ProfilePicker extends StatelessWidget {
-  const _ProfilePicker({required this.value, required this.onChanged});
 
-  final ShopProfile value;
-  final ValueChanged<ShopProfile?> onChanged;
+/// The media/header panel at the top of the setup form.
+///
+/// Shows a brand mark, the action label ("ADD SHOP" or "SET UP"), a title
+/// and a body line.  Used on both first-time and additional-shop setup.
+class SetupIntroHeader extends StatelessWidget {
+  const SetupIntroHeader({super.key, required this.isAdditionalShop});
+
+  final bool isAdditionalShop;
 
   @override
   Widget build(BuildContext context) {
+    final AppColors colors = AppColors.of(context);
+    final AppSpacing spacing = AppSpacing.of(context);
+    final TextTheme type = AppTypography.of(context);
     final l10n = AppLocalizations.of(context);
-    return DropdownButtonFormField<ShopProfile>(
-      initialValue: value,
-      decoration: InputDecoration(
-        labelText: l10n.shopProfileLabel,
-        helperText: l10n.shopProfileHelp,
-      ),
-      items: ShopProfile.values
-          .map((profile) => DropdownMenuItem<ShopProfile>(
-                value: profile,
-                child: Text(profile.displayName),
-              ))
-          .toList(),
-      onChanged: onChanged,
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: <Widget>[
+        Row(
+          children: <Widget>[
+            const SimplePosMark(size: 36),
+          ],
+        ),
+        SizedBox(height: spacing.sm),
+        Container(
+          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+          decoration: BoxDecoration(
+            color: colors.accentContainer.withValues(alpha: 0.15),
+            borderRadius: AppShapes.of(context).cardRadius,
+          ),
+          child: Text(
+            isAdditionalShop ? l10n.setupIntroAddShopLabel : l10n.setupIntroSetUpLabel,
+            style: type.labelLarge?.copyWith(
+              color: colors.accent,
+              fontWeight: FontWeight.w600,
+            ),
+          ),
+        ),
+        SizedBox(height: spacing.sm),
+        Text(
+          isAdditionalShop ? l10n.setupIntroAddShopTitle : l10n.setupIntroSetUpTitle,
+          style: type.headlineSmall?.copyWith(
+            color: colors.onSurface,
+            fontWeight: FontWeight.w700,
+          ),
+        ),
+        SizedBox(height: spacing.sm),
+        Text(
+          isAdditionalShop ? l10n.setupIntroAddShopBody : l10n.setupIntroSetUpBody,
+          style: type.bodyLarge?.copyWith(
+            color: colors.onSurfaceVariant,
+            height: 1.5,
+          ),
+        ),
+      ],
     );
   }
 }

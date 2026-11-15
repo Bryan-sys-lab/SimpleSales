@@ -310,7 +310,7 @@ List<RouteBase> _shellRoutes(AppState appState) {
               pageBuilder: (BuildContext context, GoRouterState routerState) =>
                   _fadeThrough(
                 routerState,
-                SellScreen(jobId: routerState.extra is int ? routerState.extra as int : null),
+                SellScreen(jobId: routerState.extra is int ? routerState.extra as int : null, openQuickSale: routerState.extra is Map && (routerState.extra as Map)['quickSale'] == true),
               ),
               routes: <RouteBase>[
                 // Covers the shell: a scanner wants the whole screen, including

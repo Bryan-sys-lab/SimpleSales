@@ -1649,7 +1649,7 @@ class AppLocalizationsSw extends AppLocalizations {
   String get statusConnecting => 'Reconnecting to the server.';
 
   @override
-  String get statusOnline => 'Mtandaoni — inasawazisha na seva.';
+  String get statusOnline => 'Online — syncing with the server.';
 
   @override
   String get importRepairedTitle => 'Row repaired';
@@ -7407,4 +7407,94 @@ class AppLocalizationsSw extends AppLocalizations {
 
   @override
   String get openDashboardNoJobs => 'Hakuna kazi hivi. Unde moja ya msingi.';
+
+  @override
+  String get setupIntroAddShopLabel => 'ONGEZA DUKA';
+
+  @override
+  String get setupIntroSetUpLabel => 'WASILISHA DUKA';
+
+  @override
+  String get setupIntroAddShopTitle => 'Ongeza duka nyingine';
+
+  @override
+  String get setupIntroSetUpTitle => 'Wasilisha duka yako';
+
+  @override
+  String get setupIntroAddShopBody =>
+      'Duka hii ina PIN yake ya msimamizi, kwa hivyo PIN inayafungua duka moja kwenye simu hii haifungui nyingine. Peana jina la duka mpya na utaenda moja kwa moja kwenye yale.';
+
+  @override
+  String get setupIntroSetUpBody =>
+      'Unda akaunti ya msimamizi wa duka. Msimamizi anaweza kuunda mabunifu na washara, usimamizie malipo, na kuunganika na huduma za kisheria.';
+
+  @override
+  String get productOnboardingPage1Label => 'Ni nini SimpleSales?';
+
+  @override
+  String get productOnboardingPage1Title => 'Kifedha iliyojua na duka yako';
+
+  @override
+  String get productOnboardingPage1Body =>
+      'SimpleSales ni kifedha ilengwa kwa duka za Kenya — Rekodi mauzo, usimamizie malipo, na pokea malipo kwenye kauta au nje yake. Inafanya kazi kwenye simu yako, si na vifaa vyengine.';
+
+  @override
+  String get productOnboardingPage2Label => 'Chagua profa ya duka';
+
+  @override
+  String get productOnboardingPage2Title => 'Profa nne, app moja';
+
+  @override
+  String get productOnboardingPage2Body =>
+      'Chagua profa inayofanana na duka yako. Kila profa inabadilisha neno linalotoka na matumizi yanayategemea zaidi — lakini kila profa hii hufanya kazi na POS rahisi pekee.';
+
+  @override
+  String get productOnboardingPage3Label => 'Eliye ya mwenyewe, daima';
+
+  @override
+  String get productOnboardingPage3Title => 'Duka yako, kwenye simu yako';
+
+  @override
+  String get productOnboardingPage3Body =>
+      'Mauzo, malipo na rekodi za wateja husika kwenye simu hii. Huishirika uliopata mailingiliano — kitu haliishi kuwa jamii ikafikiwa. M-Pesa na ripoti za mtandaoni hutakiwa na mailingiliano; kila kitu kingine si.';
+
+  @override
+  String get productOnboardingHeader => 'Mafundisho ya utumiaji wa SimpleSales';
+
+  @override
+  String get productOnboardingPageProgress => 'Ukurasa';
+
+  @override
+  String get actionCreateAccount => 'Unda akaunti';
+
+  @override
+  String get productOnboardingDukaTitle => 'Duka';
+
+  @override
+  String get productOnboardingDukaSubtitle =>
+      'Duka ya jumla · bidhaa, malipo, kifedha';
+
+  @override
+  String get productOnboardingDrinksTitle => 'Dawa';
+
+  @override
+  String get productOnboardingDrinksSubtitle =>
+      'Bar na dawa · tiba, kuchemsha, malipo';
+
+  @override
+  String get productOnboardingFashionTitle => 'Fashion';
+
+  @override
+  String get productOnboardingFashionSubtitle =>
+      'Duka ya nguo · mabinti, saizo, rangi';
+
+  @override
+  String get productOnboardingOpenTitle => 'Open';
+
+  @override
+  String get productOnboardingOpenSubtitle =>
+      'Kazi na biashara · takwimu, kazi, malipo';
+
+  @override
+  String get actionSignIn => 'Ingia';
 }

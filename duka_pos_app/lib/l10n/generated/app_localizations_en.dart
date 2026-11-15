@@ -7401,4 +7401,94 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get openDashboardNoJobs => 'No jobs yet. Create one first.';
+
+  @override
+  String get setupIntroAddShopLabel => 'ADD SHOP';
+
+  @override
+  String get setupIntroSetUpLabel => 'SET UP';
+
+  @override
+  String get setupIntroAddShopTitle => 'Add another shop';
+
+  @override
+  String get setupIntroSetUpTitle => 'Set up your shop';
+
+  @override
+  String get setupIntroAddShopBody =>
+      'This shop gets its own admin PIN, so a PIN that opens one shop on this phone does not open another. Give the new shop its name and you will go straight into it.';
+
+  @override
+  String get setupIntroSetUpBody =>
+      'Create the shop admin account. The admin can create managers and cashiers, manage stock, and connect optional services.';
+
+  @override
+  String get productOnboardingPage1Label => 'What is SimpleSales?';
+
+  @override
+  String get productOnboardingPage1Title => 'The till your shop already knows';
+
+  @override
+  String get productOnboardingPage1Body =>
+      'SimpleSales is a point of sale built for Kenyan shops — record sales, track stock, and take payments on the counter or off it. Works on your phone, no extra hardware.';
+
+  @override
+  String get productOnboardingPage2Label => 'Choose your shop profile';
+
+  @override
+  String get productOnboardingPage2Title => 'Four profiles, one app';
+
+  @override
+  String get productOnboardingPage2Body =>
+      'Pick the profile that matches your shop. Each one changes the words you see and the actions that matter most — but every profile uses the same simple POS.';
+
+  @override
+  String get productOnboardingPage3Label => 'Local first, always';
+
+  @override
+  String get productOnboardingPage3Title => 'Your shop, on your phone';
+
+  @override
+  String get productOnboardingPage3Body =>
+      'Sales, stock and customer records live on this device. They sync when you are back online — nothing stops working when the network drops. M-Pesa and online reports need a connection; everything else does not.';
+
+  @override
+  String get productOnboardingHeader => 'SimpleSales product tour';
+
+  @override
+  String get productOnboardingPageProgress => 'Page';
+
+  @override
+  String get actionCreateAccount => 'Create account';
+
+  @override
+  String get productOnboardingDukaTitle => 'Duka';
+
+  @override
+  String get productOnboardingDukaSubtitle =>
+      'General shop · products, stock, POS';
+
+  @override
+  String get productOnboardingDrinksTitle => 'Drinks';
+
+  @override
+  String get productOnboardingDrinksSubtitle =>
+      'Bar and drinks · tanks, pours, stock';
+
+  @override
+  String get productOnboardingFashionTitle => 'Fashion';
+
+  @override
+  String get productOnboardingFashionSubtitle =>
+      'Fashion boutique · styles, sizes, colours';
+
+  @override
+  String get productOnboardingOpenTitle => 'Open';
+
+  @override
+  String get productOnboardingOpenSubtitle =>
+      'Jobs and trade · quotes, jobs, payments';
+
+  @override
+  String get actionSignIn => 'Sign in';
 }

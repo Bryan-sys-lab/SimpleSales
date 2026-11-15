@@ -12641,6 +12641,168 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'No jobs yet. Create one first.'**
   String get openDashboardNoJobs;
+
+  /// No description provided for @setupIntroAddShopLabel.
+  ///
+  /// In en, this message translates to:
+  /// **'ADD SHOP'**
+  String get setupIntroAddShopLabel;
+
+  /// No description provided for @setupIntroSetUpLabel.
+  ///
+  /// In en, this message translates to:
+  /// **'SET UP'**
+  String get setupIntroSetUpLabel;
+
+  /// No description provided for @setupIntroAddShopTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Add another shop'**
+  String get setupIntroAddShopTitle;
+
+  /// No description provided for @setupIntroSetUpTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Set up your shop'**
+  String get setupIntroSetUpTitle;
+
+  /// No description provided for @setupIntroAddShopBody.
+  ///
+  /// In en, this message translates to:
+  /// **'This shop gets its own admin PIN, so a PIN that opens one shop on this phone does not open another. Give the new shop its name and you will go straight into it.'**
+  String get setupIntroAddShopBody;
+
+  /// No description provided for @setupIntroSetUpBody.
+  ///
+  /// In en, this message translates to:
+  /// **'Create the shop admin account. The admin can create managers and cashiers, manage stock, and connect optional services.'**
+  String get setupIntroSetUpBody;
+
+  /// No description provided for @productOnboardingPage1Label.
+  ///
+  /// In en, this message translates to:
+  /// **'What is SimpleSales?'**
+  String get productOnboardingPage1Label;
+
+  /// No description provided for @productOnboardingPage1Title.
+  ///
+  /// In en, this message translates to:
+  /// **'The till your shop already knows'**
+  String get productOnboardingPage1Title;
+
+  /// No description provided for @productOnboardingPage1Body.
+  ///
+  /// In en, this message translates to:
+  /// **'SimpleSales is a point of sale built for Kenyan shops — record sales, track stock, and take payments on the counter or off it. Works on your phone, no extra hardware.'**
+  String get productOnboardingPage1Body;
+
+  /// No description provided for @productOnboardingPage2Label.
+  ///
+  /// In en, this message translates to:
+  /// **'Choose your shop profile'**
+  String get productOnboardingPage2Label;
+
+  /// No description provided for @productOnboardingPage2Title.
+  ///
+  /// In en, this message translates to:
+  /// **'Four profiles, one app'**
+  String get productOnboardingPage2Title;
+
+  /// No description provided for @productOnboardingPage2Body.
+  ///
+  /// In en, this message translates to:
+  /// **'Pick the profile that matches your shop. Each one changes the words you see and the actions that matter most — but every profile uses the same simple POS.'**
+  String get productOnboardingPage2Body;
+
+  /// No description provided for @productOnboardingPage3Label.
+  ///
+  /// In en, this message translates to:
+  /// **'Local first, always'**
+  String get productOnboardingPage3Label;
+
+  /// No description provided for @productOnboardingPage3Title.
+  ///
+  /// In en, this message translates to:
+  /// **'Your shop, on your phone'**
+  String get productOnboardingPage3Title;
+
+  /// No description provided for @productOnboardingPage3Body.
+  ///
+  /// In en, this message translates to:
+  /// **'Sales, stock and customer records live on this device. They sync when you are back online — nothing stops working when the network drops. M-Pesa and online reports need a connection; everything else does not.'**
+  String get productOnboardingPage3Body;
+
+  /// No description provided for @productOnboardingHeader.
+  ///
+  /// In en, this message translates to:
+  /// **'SimpleSales product tour'**
+  String get productOnboardingHeader;
+
+  /// No description provided for @productOnboardingPageProgress.
+  ///
+  /// In en, this message translates to:
+  /// **'Page'**
+  String get productOnboardingPageProgress;
+
+  /// No description provided for @actionCreateAccount.
+  ///
+  /// In en, this message translates to:
+  /// **'Create account'**
+  String get actionCreateAccount;
+
+  /// No description provided for @productOnboardingDukaTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Duka'**
+  String get productOnboardingDukaTitle;
+
+  /// No description provided for @productOnboardingDukaSubtitle.
+  ///
+  /// In en, this message translates to:
+  /// **'General shop · products, stock, POS'**
+  String get productOnboardingDukaSubtitle;
+
+  /// No description provided for @productOnboardingDrinksTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Drinks'**
+  String get productOnboardingDrinksTitle;
+
+  /// No description provided for @productOnboardingDrinksSubtitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Bar and drinks · tanks, pours, stock'**
+  String get productOnboardingDrinksSubtitle;
+
+  /// No description provided for @productOnboardingFashionTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Fashion'**
+  String get productOnboardingFashionTitle;
+
+  /// No description provided for @productOnboardingFashionSubtitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Fashion boutique · styles, sizes, colours'**
+  String get productOnboardingFashionSubtitle;
+
+  /// No description provided for @productOnboardingOpenTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Open'**
+  String get productOnboardingOpenTitle;
+
+  /// No description provided for @productOnboardingOpenSubtitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Jobs and trade · quotes, jobs, payments'**
+  String get productOnboardingOpenSubtitle;
+
+  /// No description provided for @actionSignIn.
+  ///
+  /// In en, this message translates to:
+  /// **'Sign in'**
+  String get actionSignIn;
 }
 
 class _AppLocalizationsDelegate

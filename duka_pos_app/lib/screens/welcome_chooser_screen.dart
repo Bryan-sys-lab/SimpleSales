@@ -125,6 +125,7 @@ class _WelcomeChooserScreenState extends State<WelcomeChooserScreen> {
             _finishIntro(() => _choose(context, _setupIntent)),
         onSignIn: () =>
             _finishIntro(() => _choose(context, AppChooserIntent.signIn)),
+        onSkip: () => _finishIntro(() {}),
       );
     }
 

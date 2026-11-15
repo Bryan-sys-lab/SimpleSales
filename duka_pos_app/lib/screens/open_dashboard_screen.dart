@@ -258,7 +258,7 @@ class _OpenDashboardScreenState extends State<OpenDashboardScreen>
             _OpenQuickActions(
               onNewJob: () => context.push(Routes.openJobNew),
               onRecordPayment: () => _pickJob((id) => context.push(Routes.openJobDetail(id))),
-              onRecordSale: () => context.push(Routes.sell),
+              onRecordSale: () => context.push(Routes.sell, extra: {'quickSale': true}),
               onAddJobCost: () => _pickJob((id) => context.push(Routes.openJobAddCost(id))),
               onNewCostGroup: () => context.push(Routes.openCostGroupNew),
               onAddItem: () => _openAddItem(context),

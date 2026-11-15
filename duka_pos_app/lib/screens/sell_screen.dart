@@ -56,9 +56,10 @@ import '../profile/shop_profile.dart';
 import '../models/incoming_payment.dart';
 
 class SellScreen extends StatefulWidget {
-  const SellScreen({super.key, this.jobId});
+  const SellScreen({super.key, this.jobId, this.openQuickSale = false});
 
   final int? jobId;
+  final bool openQuickSale;
 
   @override
   State<SellScreen> createState() => _SellScreenState();
@@ -136,6 +137,11 @@ class _SellScreenState extends State<SellScreen>
     });
     _loadProducts();
     context.read<AppState>().addListener(_reloadCatalogue);
+    if (widget.openQuickSale) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) _openQuickSale();
+      });
+    }
   }
 
   int _seenCatalogueGeneration = 0;
@@ -2828,6 +2834,7 @@ class _SellScreenState extends State<SellScreen>
     String method = 'cash';
 
     final amountController = TextEditingController();
+    final qtyController = TextEditingController(text: '1');
     final nameController = TextEditingController();
     final unitController = TextEditingController();
     final referenceController = TextEditingController();
@@ -2923,6 +2930,14 @@ class _SellScreenState extends State<SellScreen>
                   decoration: const InputDecoration(
                     labelText: 'Unit (optional)',
                   ),
+                ),
+                TextField(
+                  controller: qtyController,
+                  decoration: const InputDecoration(
+                    labelText: 'Quantity',
+                  ),
+                  keyboardType:
+                      const TextInputType.numberWithOptions(decimal: true),
                 ),
                 TextField(
                   controller: amountController,
@@ -3037,6 +3052,7 @@ class _SellScreenState extends State<SellScreen>
                   Navigator.pop(context, <String, dynamic>{
                     'name': nameController.text.trim(),
                     'amount': amountController.text.trim(),
+                    'qty': qtyController.text.trim(),
                     'unit': unitController.text.trim(),
                     'method': method,
                     'reference': referenceController.text.trim(),
@@ -3158,6 +3174,7 @@ class _SellScreenState extends State<SellScreen>
       // Create / refresh the product from the named item so the catalogue
       // grows as the seller names what they sell (money-first: tracking is
       // opt-in and does not block the sale).
+      final int? qty = int.tryParse((values['qty'] ?? '').trim());
       if (name.isNotEmpty) {
         final products = await DatabaseHelper.instance.getProducts();
         final match = products
@@ -3169,7 +3186,7 @@ class _SellScreenState extends State<SellScreen>
             category: 'Quick sale',
             costPrice: Money.zero,
             sellPrice: Money.fromMajor(amount),
-            stockQty: 0,
+            stockQty: (qty != null && qty > 0) ? qty.toDouble() : 0,
             trackStock: false,
             costPoolId: values['poolId'] != null
                 ? (values['poolId'] as int)
@@ -3183,6 +3200,32 @@ class _SellScreenState extends State<SellScreen>
             updatedAt: DateTime.now().toIso8601String(),
           );
           await DatabaseHelper.instance.upsertProduct(product);
+          // Ask whether to track this item in inventory now that the sale
+          // is recorded. Tracking is opt-in and never blocks the sale.
+          if (!mounted) return;
+          final bool? track = await showDialog<bool>(
+            context: context,
+            builder: (ctx) => AlertDialog(
+              title: const Text('Track in inventory?'),
+              content: Text(
+                'Add "$name" to your inventory and track stock levels?',
+              ),
+              actions: <Widget>[
+                TextButton(
+                  onPressed: () => Navigator.pop(ctx, false),
+                  child: const Text('No'),
+                ),
+                FilledButton(
+                  onPressed: () => Navigator.pop(ctx, true),
+                  child: const Text('Yes'),
+                ),
+              ],
+            ),
+          );
+          if (track == true) {
+            final updated = product.copyWith(trackStock: true);
+            await DatabaseHelper.instance.upsertProduct(updated);
+          }
         }
       }
       if (!mounted) return;
