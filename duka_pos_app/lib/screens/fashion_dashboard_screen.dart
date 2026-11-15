@@ -32,9 +32,9 @@ const double _fashionTwoColumnBreakpoint = 840;
 /// The fashion profile dashboard.
 ///
 /// Variant-first: low-stock variants and best-selling variants lead, then
-/// today's sales and laybys that need attention. A fashion shop turns on
+/// today's sales and reserves that need attention. A fashion shop turns on
 /// colour-size combinations, not shelf counts — the dashboard shows what
-/// variants are running out and what laybys are awaiting payment or ready
+/// variants are running out and what reserves are awaiting payment or ready
 /// for collection.
 class FashionDashboardScreen extends StatelessWidget {
   const FashionDashboardScreen({
@@ -144,8 +144,8 @@ class FashionDashboardScreen extends StatelessWidget {
 
     final Widget supportingMetrics = SupportingMetrics(totals: data.totals);
 
-    final Widget laybys = _FashionLaybyOverview(
-      onOpenLaybys: () => context.push(Routes.laybys),
+    final Widget reserves = _FashionReservesOverview(
+      onOpenReserves: () => context.push(Routes.laybys),
       canManageStock: canManageStock,
     );
 
@@ -153,7 +153,7 @@ class FashionDashboardScreen extends StatelessWidget {
       onOpenSell: onOpenSell,
       onOpenAddProduct: () => _openProductEditor(context),
       onOpenReceiveStock: () => _receiveStock(context),
-      onOpenLaybys: () => context.push(Routes.laybys),
+      onOpenReserves: () => context.push(Routes.laybys),
       onViewCatalogue: () => _viewCatalogue(context),
       canManageStock: canManageStock,
       canReceiveStock:
@@ -191,7 +191,7 @@ class FashionDashboardScreen extends StatelessWidget {
                     quickActions,
                     sales,
                     topProducts,
-                    laybys,
+                    reserves,
                   ],
                   gap,
                 ),
@@ -224,7 +224,7 @@ class FashionDashboardScreen extends StatelessWidget {
           quickActions,
           sales,
           topProducts,
-          laybys,
+          reserves,
           variantReorder,
           reorder,
           shift,
@@ -398,22 +398,22 @@ class _VariantRow extends StatelessWidget {
   }
 }
 
-/// Fashion layby overview: open laybys, awaiting payment, ready for collection.
-class _FashionLaybyOverview extends StatefulWidget {
-  const _FashionLaybyOverview({
-    required this.onOpenLaybys,
+/// Fashion reserves overview: open reserves, awaiting payment, ready for collection.
+class _FashionReservesOverview extends StatefulWidget {
+  const _FashionReservesOverview({
+    required this.onOpenReserves,
     required this.canManageStock,
   });
 
-  final VoidCallback onOpenLaybys;
+  final VoidCallback onOpenReserves;
   final bool canManageStock;
 
   @override
-  State<_FashionLaybyOverview> createState() => _FashionLaybyOverviewState();
+  State<_FashionReservesOverview> createState() => _FashionReservesOverviewState();
 }
 
-class _FashionLaybyOverviewState extends State<_FashionLaybyOverview>
-    with LiveRefresh<_FashionLaybyOverview>, SessionRefresh<_FashionLaybyOverview> {
+class _FashionReservesOverviewState extends State<_FashionReservesOverview>
+    with LiveRefresh<_FashionReservesOverview>, SessionRefresh<_FashionReservesOverview> {
   int _openCount = 0;
   int _awaitingCount = 0;
   int _readyCount = 0;
@@ -478,7 +478,7 @@ class _FashionLaybyOverviewState extends State<_FashionLaybyOverview>
     return DashboardPanel(
       title: l10n.fashionDashboardReserves,
       trailing: TextButton(
-        onPressed: widget.onOpenLaybys,
+        onPressed: widget.onOpenReserves,
         child: Text(l10n.fashionDashboardViewAll),
       ),
       padChild: false,
@@ -486,21 +486,21 @@ class _FashionLaybyOverviewState extends State<_FashionLaybyOverview>
         crossAxisAlignment: CrossAxisAlignment.stretch,
         mainAxisSize: MainAxisSize.min,
         children: <Widget>[
-          _LaybyMetric(
+          _ReservesMetric(
             label: l10n.fashionDashboardReservesOpen,
             value: '$_openCount',
             tone: StatusTone.warning,
             icon: Icons.schedule_outlined,
           ),
           SizedBox(height: spacing.sm),
-          _LaybyMetric(
+          _ReservesMetric(
             label: l10n.fashionDashboardReservesAwaitingPayment,
             value: '$_awaitingCount',
             tone: StatusTone.warning,
             icon: Icons.payment_outlined,
           ),
           SizedBox(height: spacing.sm),
-          _LaybyMetric(
+          _ReservesMetric(
             label: l10n.fashionDashboardReservesReady,
             value: '$_readyCount',
             tone: StatusTone.success,
@@ -512,8 +512,8 @@ class _FashionLaybyOverviewState extends State<_FashionLaybyOverview>
   }
 }
 
-class _LaybyMetric extends StatelessWidget {
-  const _LaybyMetric({
+class _ReservesMetric extends StatelessWidget {
+  const _ReservesMetric({
     required this.label,
     required this.value,
     required this.tone,
@@ -568,7 +568,7 @@ class _LaybyMetric extends StatelessWidget {
   }
 }
 
-/// The fashion quick actions: Sell, Add style, Receive stock, Create layby,
+/// The fashion quick actions: Sell, Add style, Receive stock, Create reserves,
 /// View catalogue — as a 2x2 grid of tiles with icon + label + subtitle,
 /// mirroring the mockup.
 class _FashionDashboardQuickActions extends StatelessWidget {
@@ -576,7 +576,7 @@ class _FashionDashboardQuickActions extends StatelessWidget {
     required this.onOpenSell,
     required this.onOpenAddProduct,
     required this.onOpenReceiveStock,
-    required this.onOpenLaybys,
+    required this.onOpenReserves,
     required this.onViewCatalogue,
     required this.canManageStock,
     required this.canReceiveStock,
@@ -585,7 +585,7 @@ class _FashionDashboardQuickActions extends StatelessWidget {
   final VoidCallback onOpenSell;
   final VoidCallback onOpenAddProduct;
   final VoidCallback onOpenReceiveStock;
-  final VoidCallback onOpenLaybys;
+  final VoidCallback onOpenReserves;
   final VoidCallback onViewCatalogue;
   final bool canManageStock;
   final bool canReceiveStock;
@@ -618,9 +618,9 @@ class _FashionDashboardQuickActions extends StatelessWidget {
         ),
       _FashionQuickTile(
         icon: Icons.bookmark_border,
-        label: 'New layby',
+        label: 'New reserves',
         subtitle: 'Reserve item',
-        onTap: onOpenLaybys,
+        onTap: onOpenReserves,
       ),
       _FashionQuickTile(
         icon: Icons.inventory_2_outlined,
