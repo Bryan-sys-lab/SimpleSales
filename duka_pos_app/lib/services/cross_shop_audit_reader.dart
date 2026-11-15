@@ -21,10 +21,9 @@
 /// an isolate boundary per shop — would be more machinery, not less work.
 library;
 
-import 'dart:io';
-
 import 'package:sqflite/sqflite.dart';
 
+import '../data/local/database/shop_file_reader.dart';
 import '../db/database_helper.dart';
 import '../models/audit_log.dart';
 import 'workspace_service.dart';
@@ -122,9 +121,7 @@ class CrossShopAuditReader {
           // not repoint this process-global `DatabaseHelper`, so the auto-backup
           // timer, eTIMS flush, live refresh or an in-flight sale can never run
           // against the wrong shop mid-tour.
-          final path = await DatabaseHelper.databasePathFor(shop.workspaceKey);
-          final file = File(path);
-          if (!(await file.exists())) {
+          if (!await ShopFileReader.exists(shop.workspaceKey)) {
             // A registered shop whose database was never created — the owner
             // tapped Verify and abandoned the flow. It contributes nothing,
             // and it is not broken.
@@ -135,8 +132,9 @@ class CrossShopAuditReader {
             ));
             continue;
           }
-          final db =
-              await openDatabase(path, readOnly: true, singleInstance: false);
+          // Through ShopFileReader: a shop file is SQLCipher-encrypted in
+          // production and cannot be opened without its key.
+          final db = await ShopFileReader.openReadOnly(shop.workspaceKey);
           try {
             final entries = await ownerRelevantAuditForDb(
               db,

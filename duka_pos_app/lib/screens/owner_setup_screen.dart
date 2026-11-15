@@ -1,5 +1,3 @@
-import 'dart:async';
-
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart' show rootBundle;
 import 'package:path_provider/path_provider.dart';
@@ -15,9 +13,9 @@ import '../models/models.dart';
 import '../services/app_state.dart';
 import '../services/auth_service.dart';
 import '../services/backend_service.dart';
-import '../services/pin_reset_service.dart';
 import '../services/workspace_service.dart';
-import '../ui/dialogs/verify_identity_dialog.dart';
+import '../ui/dialogs/verify_before_create.dart';
+import 'settings_screen.dart' show rollbackFailedShopCreation;
 import '../routing/app_stage_controller.dart';
 import '../theme/app_haptics.dart';
 import '../theme/app_spacing.dart';
@@ -221,6 +219,32 @@ class _OwnerSetupScreenState extends State<OwnerSetupScreen> {
       _error = null;
       _saving = true;
     });
+
+    // 1. PROVE THE ADDRESS FIRST. Nothing below runs until the emailed code has
+    //    been accepted: no owner row, no workspace, no registry entry. A person
+    //    who closes the app here has created nothing and has nothing to clean
+    //    up, and a typo in the address can never leave behind a shop that
+    //    nobody can verify.
+    final VerificationGateResult gate = await verifyEmailBeforeCreate(
+      context,
+      email: email,
+      pin: _pin.text,
+      shopName: _shop.text.trim(),
+      ownerName: _name.text.trim(),
+    );
+    if (!mounted) return;
+    if (!gate.isAccepted) {
+      setState(() {
+        _saving = false;
+        // Null when they only backed out: that is not an error to report.
+        _error = gate.message;
+      });
+      if (gate.isFailed) HapticTheme.of(context).fire(HapticEvent.reject);
+      return;
+    }
+    final PendingVerification pending = gate.pending!;
+
+    // 2. The code was accepted, so the shop is created now.
     try {
       final Owner owner = Owner(
         id: 1,
@@ -230,38 +254,68 @@ class _OwnerSetupScreenState extends State<OwnerSetupScreen> {
         shopName: _shop.text.trim(),
         createdAt: DateTime.now().toIso8601String(),
       );
-      await DatabaseHelper.instance.createOwner(owner);
-      await DatabaseHelper.instance.setShopProfile(_shopProfile);
-      await WorkspaceService.register(
-        workspaceKey: await WorkspaceService.activeWorkspaceKey(),
-        shopName: owner.shopName,
-      );
+      if (!mounted) return;
+      final AppState state = context.read<AppState>();
+      final AppStageController stage = context.read<AppStageController>();
       final SharedPreferences prefs = await SharedPreferences.getInstance();
-      await prefs.setBool(
-        'onboarding_completed_${await WorkspaceService.activeWorkspaceKey()}',
-        true,
-      );
-      unawaited(BackendService.linkShopToBackend(
-        shopName: owner.shopName,
-        ownerName: owner.name,
-        email: owner.email,
-        businessProfile: _shopProfile,
-      ).catchError((_) {}));
+
+      if (widget.isAdditionalShop) {
+        // A second shop gets its OWN workspace. It used to write its owner row
+        // into the shop already open, which already has one.
+        final String key = 'local-${DateTime.now().microsecondsSinceEpoch}';
+        final String previousWorkspace = state.workspaceKey;
+        await WorkspaceService.register(
+            workspaceKey: key, shopName: owner.shopName);
+        try {
+          await state.switchWorkspace(
+            key,
+            createOwnerFor: owner,
+            // The session in hand was issued for THIS shop.
+            endOnlineSession: false,
+          );
+          await DatabaseHelper.instance.setShopProfile(_shopProfile);
+          state.setShopProfile(_shopProfile);
+          await prefs.setBool('onboarding_completed_$key', true);
+          await BackendService.adoptPendingVerification(
+            pending,
+            workspaceKey: key,
+            shopName: owner.shopName,
+          );
+        } catch (_) {
+          await rollbackFailedShopCreation(
+            state: state,
+            workspaceKey: key,
+            previousWorkspaceKey: previousWorkspace,
+          );
+          rethrow;
+        }
+      } else {
+        final String key = await WorkspaceService.activeWorkspaceKey();
+        await DatabaseHelper.instance.createOwner(owner);
+        await DatabaseHelper.instance.setShopProfile(_shopProfile);
+        await WorkspaceService.register(
+          workspaceKey: key,
+          shopName: owner.shopName,
+        );
+        await prefs.setBool('onboarding_completed_$key', true);
+        await BackendService.adoptPendingVerification(
+          pending,
+          workspaceKey: key,
+          shopName: owner.shopName,
+        );
+        if (!mounted) return;
+        await state.loadOwner();
+      }
       if (!mounted) return;
-      await context.read<AppState>().loadOwner();
+      // The address is proven, and saying so is part of creating the shop.
+      await state.markIdentityVerified();
       if (!mounted) return;
-      await context.read<AppStageController>().completeOnboarding();
+      await stage.completeOnboarding();
       if (!mounted) return;
-      context.read<AppState>().signInAsOwner();
+      if (!widget.isAdditionalShop) state.signInAsOwner();
       if (!mounted) return;
       setState(() => _saving = false);
       widget.onCreated?.call(owner.shopName);
-      // Trigger email verification immediately after account creation.
-      // The PIN is still in memory so we skip the re-entry step.
-      unawaited(_verifyAfterCreate(
-        owner: owner,
-        pin: _pin.text,
-      ));
     } catch (_) {
       if (!mounted) return;
       setState(() {
@@ -272,87 +326,6 @@ class _OwnerSetupScreenState extends State<OwnerSetupScreen> {
       HapticTheme.of(context).fire(HapticEvent.reject);
     }
   }
-
-  /// Runs the email verification flow immediately after account creation.
-  ///
-  /// The PIN is passed in directly — still in memory from the form — so the
-  /// owner is not asked to type it again. Best-effort: a network failure or
-  /// dismissed sheet does not block the app; Settings will offer it again.
-  Future<void> _verifyAfterCreate({
-    required Owner owner,
-    required String pin,
-  }) async {
-    if (!mounted) return;
-    try {
-      final challenge = await BackendService.requestVerificationCode(
-        email: owner.email,
-        pin: pin,
-        shopName: owner.shopName,
-        ownerName: owner.name,
-      );
-      if (!mounted) return;
-      final maskedEmail = challenge.maskedEmail.isNotEmpty
-          ? challenge.maskedEmail
-          : PinResetService.maskEmail(owner.email);
-      final verified = await showVerifyCodeSheet(
-        context,
-        maskedEmail: maskedEmail,
-        onSubmit: (String code) async {
-          try {
-            await BackendService.confirmVerificationCode(
-              email: owner.email,
-              pin: pin,
-              code: code,
-              shopName: owner.shopName,
-              ownerName: owner.name,
-            );
-            return null;
-          } on VerificationException catch (e) {
-            return _verificationError(e);
-          } catch (_) {
-            return 'Could not verify. Check your connection and try again.';
-          }
-        },
-        onResend: () async {
-          try {
-            await BackendService.requestVerificationCode(
-              email: owner.email,
-              pin: pin,
-              shopName: owner.shopName,
-              ownerName: owner.name,
-            );
-            return 'Code sent to $maskedEmail';
-          } on VerificationException catch (e) {
-            return _verificationError(e);
-          } catch (_) {
-            return 'Could not resend. Check your connection.';
-          }
-        },
-      );
-      if (verified && mounted) {
-        await context.read<AppState>().markIdentityVerified();
-      }
-    } catch (_) {
-      // Best-effort: Settings will offer verification again if this fails.
-    }
-  }
-
-  String _verificationError(VerificationException e) => switch (e.failure) {
-        VerificationFailure.expired =>
-          'The code expired. Tap Resend for a new one.',
-        VerificationFailure.invalidCode => e.attemptsRemaining != null
-            ? 'Wrong code — ${e.attemptsRemaining} attempt(s) left.'
-            : 'Wrong code. Try again.',
-        VerificationFailure.tooManyAttempts =>
-          'Too many attempts. Request a new code.',
-        VerificationFailure.tooManyCodes =>
-          'Too many codes requested. Wait a few minutes.',
-        VerificationFailure.network =>
-          'No connection. Check your internet and try again.',
-        VerificationFailure.notConfigured =>
-          'Verification is not set up on this server.',
-        _ => 'Verification failed. You can try again from Settings.',
-      };
 
   @override
   Widget build(BuildContext context) {
@@ -481,14 +454,29 @@ class _OwnerSetupScreenState extends State<OwnerSetupScreen> {
                   ),
                   Padding(
                     padding: EdgeInsets.all(spacing.xl),
-                    child: OnboardStyle.primaryButton(
-                      context: context,
-                      onPressed: _saving ? null : _create,
-                      label: _saving
-                          ? 'Creating the shop'
-                          : 'Create shop admin account',
-                      colors: colors,
-                      spacing: spacing,
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      crossAxisAlignment: CrossAxisAlignment.stretch,
+                      children: <Widget>[
+                        Text(
+                          'We will email you a 6-digit code first. Your shop '
+                          'is created once the code is confirmed.',
+                          textAlign: TextAlign.center,
+                          style: AppTypography.of(context).bodySmall?.copyWith(
+                            color: colors.onSurfaceMuted,
+                          ),
+                        ),
+                        SizedBox(height: spacing.md),
+                        OnboardStyle.primaryButton(
+                          context: context,
+                          onPressed: _saving ? null : _create,
+                          label: _saving
+                              ? 'Verifying your email'
+                              : 'Create shop admin account',
+                          colors: colors,
+                          spacing: spacing,
+                        ),
+                      ],
                     ),
                   ),
                 ],

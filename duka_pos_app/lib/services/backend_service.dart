@@ -149,6 +149,22 @@ class VerifiedIdentity {
   final String shopName;
 }
 
+/// A code the server accepted, with the session it issued, held back until the
+/// shop that code belongs to exists on this device.
+///
+/// Setup proves the address BEFORE the shop is created. At that point there is
+/// no workspace to record the tenant against, and switching to a new workspace
+/// clears the online session, so nothing from the verification is written until
+/// [BackendService.adoptPendingVerification] runs for the finished shop.
+class PendingVerification {
+  const PendingVerification({required this.identity, required this.session});
+
+  final VerifiedIdentity identity;
+
+  /// The server's answer, tokens included, exactly as received.
+  final Map<String, dynamic> session;
+}
+
 /// The deployment mode this build was compiled with.
 ///
 /// `local_only` — no backend expected; connected features are disabled at the
@@ -432,6 +448,60 @@ class BackendService {
     } on DioException catch (error) {
       throw verificationFailure(error);
     }
+  }
+
+  /// Step two of Verify, for a shop that does not exist yet.
+  ///
+  /// Same call as [confirmVerificationCode], but it changes nothing on this
+  /// device: no tokens are stored and no workspace is registered. The caller
+  /// creates the shop first and then hands the result to
+  /// [adoptPendingVerification].
+  static Future<PendingVerification> confirmVerificationCodeDeferred({
+    required String email,
+    required String pin,
+    required String code,
+    required String shopName,
+    required String ownerName,
+  }) async {
+    await ensureInitialized();
+    try {
+      final response = await _dio.post('$backendUrl/auth/verify', data: {
+        'email': email,
+        'password': pin,
+        'code': code,
+        if (shopName.isNotEmpty) 'shopName': shopName,
+        if (ownerName.isNotEmpty) 'ownerName': ownerName,
+      });
+      final data = response.data as Map<String, dynamic>? ?? const {};
+      return PendingVerification(
+        identity: VerifiedIdentity.fromJson(data),
+        session: Map<String, dynamic>.from(data),
+      );
+    } on DioException catch (error) {
+      throw verificationFailure(error);
+    }
+  }
+
+  /// Applies an accepted code to the shop that has now been created: stores the
+  /// session the server issued and records which tenant [workspaceKey] is.
+  ///
+  /// Written against the workspace NAMED here, never the active one, so a shop
+  /// created in the background of another cannot overwrite that other shop's
+  /// registry entry.
+  static Future<void> adoptPendingVerification(
+    PendingVerification pending, {
+    required String workspaceKey,
+    required String shopName,
+  }) async {
+    await IdentityService.storeVerificationTokens(pending.session);
+    final VerifiedIdentity identity = pending.identity;
+    if (identity.tenantId.isEmpty) return;
+    await (await _prefsInstance).remove(_legacyTenantKey);
+    await WorkspaceService.register(
+      workspaceKey: workspaceKey,
+      tenantId: identity.tenantId,
+      shopName: identity.shopName.isNotEmpty ? identity.shopName : shopName,
+    );
   }
 
   /// Maps a backend answer onto the one enum the UI translates from.
@@ -756,8 +826,8 @@ class BackendService {
     final response = await _dio.get<Map<String, dynamic>>(
       '$backendUrl/tenant/portfolio',
       queryParameters: <String, String>{
-        'from': from.toIso8601String(),
-        'to': to.toIso8601String(),
+        'from': from.toUtc().toIso8601String(),
+        'to': to.toUtc().toIso8601String(),
       },
     );
     return PortfolioKpis.fromJson(response.data ?? const <String, dynamic>{});
@@ -778,8 +848,8 @@ class BackendService {
     final response = await _dio.get<Map<String, dynamic>>(
       '$backendUrl/tenant/activity',
       queryParameters: <String, String>{
-        'from': from.toIso8601String(),
-        'to': to.toIso8601String(),
+        'from': from.toUtc().toIso8601String(),
+        'to': to.toUtc().toIso8601String(),
         'limit': '$limit',
         if (tenantId != null) 'tenantId': tenantId,
         if (profile != null) 'profile': profile,
@@ -803,8 +873,8 @@ class BackendService {
     final response = await _dio.get<Map<String, dynamic>>(
       '$backendUrl/reports/sales',
       queryParameters: <String, String>{
-        'from': from.toIso8601String(),
-        'to': to.toIso8601String(),
+        'from': from.toUtc().toIso8601String(),
+        'to': to.toUtc().toIso8601String(),
         'limit': '1',
       },
     );
@@ -821,8 +891,8 @@ class BackendService {
     final response = await _dio.get<Map<String, dynamic>>(
       '$backendUrl/reports/products',
       queryParameters: <String, String>{
-        'from': from.toIso8601String(),
-        'to': to.toIso8601String(),
+        'from': from.toUtc().toIso8601String(),
+        'to': to.toUtc().toIso8601String(),
         if (productId != null) 'productId': productId,
       },
     );
@@ -830,10 +900,21 @@ class BackendService {
         response.data ?? const <String, dynamic>{});
   }
 
-  static Future<Map<String, dynamic>> remoteSaleDetails(String saleId) async {
+  /// One sale from the backend.
+  ///
+  /// [tenantId] names the shop the sale belongs to. Without it the request goes
+  /// out under the OPEN shop's tenant, and a sale from any other shop of the
+  /// same account is not found there.
+  static Future<Map<String, dynamic>> remoteSaleDetails(
+    String saleId, {
+    String? tenantId,
+  }) async {
     await ensureInitialized();
     final response = await _dio.get<Map<String, dynamic>>(
       '$backendUrl/reports/sales/${Uri.encodeComponent(saleId)}',
+      options: tenantId == null || tenantId.isEmpty
+          ? null
+          : Options(extra: <String, Object>{'staffTenantOverride': tenantId}),
     );
     return response.data ?? const <String, dynamic>{};
   }

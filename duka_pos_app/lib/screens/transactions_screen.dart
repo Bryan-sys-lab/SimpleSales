@@ -173,9 +173,13 @@ class _TransactionsScreenState extends State<TransactionsScreen> {
           : const <Map<String, dynamic>>[];
       final List<_LedgerItem> items;
       if (state.canManageStock) {
+        // NEWEST first: with the default oldest-first order and a limit of 200,
+        // a shop with more than 200 events in the window saw the start of the
+        // window and none of what had just happened.
         final events = await db.getFinancialEvents(
           sinceUtc: since,
           limit: 200,
+          newestFirst: true,
         );
         final eventSaleIds = events
             .where((event) => event.sourceType == 'sale')

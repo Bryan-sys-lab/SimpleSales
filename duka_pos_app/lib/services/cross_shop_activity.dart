@@ -42,6 +42,31 @@ class CrossShopActivity {
   final bool isRemote;
   final bool isStale;
 
+  /// The same event, marked as having come from the backend.
+  ///
+  /// The server is not relied on to say so: whatever the backend returns IS
+  /// remote, and the screen decides how to open it, and what counts as a
+  /// duplicate of a local row, from this flag.
+  CrossShopActivity asRemote() => CrossShopActivity(
+        eventId: eventId,
+        sourceId: sourceId,
+        sourceType: sourceType,
+        tenantId: tenantId,
+        shopName: shopName,
+        businessProfile: businessProfile,
+        createdAt: createdAt,
+        type: type,
+        status: status,
+        amount: amount,
+        workspaceKey: workspaceKey,
+        detail: detail,
+        profit: profit,
+        paymentMethod: paymentMethod,
+        actor: actor,
+        isRemote: true,
+        isStale: isStale,
+      );
+
   factory CrossShopActivity.fromJson(Map<String, dynamic> json) {
     int minor(Object? value) => switch (value) {
           final int v => v,
@@ -74,10 +99,17 @@ class CrossShopActivity {
 }
 
 class CrossShopActivityPage {
-  const CrossShopActivityPage({required this.events, this.nextCursor});
+  const CrossShopActivityPage({
+    required this.events,
+    this.nextCursor,
+    this.unreadableShops = const <String>[],
+  });
 
   final List<CrossShopActivity> events;
   final String? nextCursor;
+
+  /// Shops on this device whose file could not be read.
+  final List<String> unreadableShops;
 
   factory CrossShopActivityPage.fromJson(Map<String, dynamic> json) {
     final rows = (json['events'] as List? ?? const <dynamic>[])

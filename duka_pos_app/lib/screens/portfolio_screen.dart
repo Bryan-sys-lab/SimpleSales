@@ -22,6 +22,7 @@ import 'package:provider/provider.dart';
 import '../l10n/generated/app_localizations.dart';
 import '../services/app_state.dart';
 import '../services/backend_service.dart';
+import '../services/workspace_service.dart';
 import '../services/local_portfolio_service.dart';
 import '../services/portfolio_kpis.dart';
 import '../services/live_refresh_mixin.dart';
@@ -149,13 +150,28 @@ class _PortfolioScreenState extends State<PortfolioScreen>
 
     // The shops the device holds are the shops the backend also knows about,
     // in every normal case — the same shop, counted twice.
-    final Set<String> held = local.shops
-        .map((ShopKpi kpi) => kpi.shopName.trim().toLowerCase())
-        .toSet();
+    //
+    // Matched on the TENANT the shop is linked to, which is what identifies it.
+    // Matching on the name alone hid a second shop that happens to share a
+    // name (two branches of "Mama Njeri Duka"), and showed a renamed shop
+    // twice. The name is used only for a local shop that is not linked to any
+    // tenant, because that is the only one whose backend copy cannot be
+    // recognised any other way.
+    final List<LocalShop> shops = await WorkspaceServiceShops.localShops();
+    final Set<String> heldTenants = <String>{
+      for (final LocalShop shop in shops)
+        if (shop.isBackendLinked) shop.tenantId!,
+    };
+    final Set<String> unlinkedNames = <String>{
+      for (final LocalShop shop in shops)
+        if (!shop.isBackendLinked) shop.shopName.trim().toLowerCase(),
+    };
     final List<ShopKpi> merged = <ShopKpi>[
       ...local.shops,
       ...remote.shops.where(
-        (ShopKpi kpi) => !held.contains(kpi.shopName.trim().toLowerCase()),
+        (ShopKpi kpi) =>
+            !heldTenants.contains(kpi.tenantId) &&
+            !unlinkedNames.contains(kpi.shopName.trim().toLowerCase()),
       ),
     ];
     return PortfolioKpis(

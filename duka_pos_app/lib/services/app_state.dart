@@ -356,10 +356,19 @@ class AppState extends ChangeNotifier {
   /// shop chooser on the sign-in screen moves the app to another shop so the
   /// person can type that shop's PIN, and signing them in as its owner there
   /// would skip the very thing they came to do.
+  ///
+  /// ## [endOnlineSession]
+  ///
+  /// True for an ordinary switch: the shop being left takes its online session
+  /// with it. False when the session in hand was issued for the shop being
+  /// created, which is the case when the emailed code is checked before the
+  /// shop exists: ending it would throw away the credential the code just paid
+  /// for.
   Future<void> switchWorkspace(
     String key, {
     Owner? createOwnerFor,
     bool signIn = true,
+    bool endOnlineSession = true,
   }) async {
     await WorkspaceService.setActiveWorkspace(key);
 
@@ -405,7 +414,7 @@ class AppState extends ChangeNotifier {
     // The previous shop's online identity goes too, in the background: the
     // tokens are cleared without blocking the switch, and the local session
     // for the new shop is already in place.
-    unawaited(tearDownOnlineSession());
+    if (endOnlineSession) unawaited(tearDownOnlineSession());
 
     if (_disposed) return;
     notifyListeners();

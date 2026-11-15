@@ -3275,10 +3275,16 @@ SELECT name FROM staff GROUP BY name HAVING COUNT(*) = 1
     return true;
   }
 
+  ///
+  /// Oldest first by default, because the sync and the ledger checks walk it in
+  /// order. A screen that shows the LATEST activity under a [limit] must pass
+  /// [newestFirst]: oldest-first with a limit returns the first rows of the
+  /// window and silently drops everything recent once the window holds more.
   Future<List<FinancialEvent>> getFinancialEvents({
     int limit = 100,
     DateTime? sinceUtc,
     DateTime? untilUtc,
+    bool newestFirst = false,
   }) async {
     final where = <String>[];
     final args = <Object?>[];
@@ -3294,7 +3300,7 @@ SELECT name FROM staff GROUP BY name HAVING COUNT(*) = 1
       'financial_events',
       where: where.isEmpty ? null : where.join(' AND '),
       whereArgs: args.isEmpty ? null : args,
-      orderBy: 'id ASC',
+      orderBy: newestFirst ? 'id DESC' : 'id ASC',
       limit: limit,
     );
     return rows.map(FinancialEvent.fromMap).toList();

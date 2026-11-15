@@ -52,16 +52,23 @@ Future<String?> showVerifyPinSheet(
 
 /// Step two: the 6-digit code from the email, plus the way to ask for another.
 /// Returns true when the code was accepted, false if they backed out.
+///
+/// [dismissible] false stops a tap outside or a swipe from closing it by
+/// accident: when the shop is created only AFTER the code is accepted, an
+/// accidental dismissal throws the typing away. The Cancel button still ends it.
 Future<bool> showVerifyCodeSheet(
   BuildContext context, {
   required String maskedEmail,
   required Future<String?> Function(String code) onSubmit,
   required Future<String?> Function() onResend,
+  bool dismissible = true,
 }) async {
   final bool? accepted = await showModalBottomSheet<bool>(
     context: context,
     isScrollControlled: true,
     useSafeArea: true,
+    isDismissible: dismissible,
+    enableDrag: dismissible,
     builder: (BuildContext sheetContext) => VerifyIdentityCodeSheet(
       maskedEmail: maskedEmail,
       onSubmit: onSubmit,

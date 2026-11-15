@@ -32,7 +32,8 @@
 
 import 'package:sqflite/sqflite.dart';
 
-import '../db/database_helper.dart';
+import '../data/local/database/shop_file_reader.dart';
+
 import '../services/portfolio_kpis.dart';
 import '../services/workspace_service.dart';
 import '../utils/money.dart';
@@ -68,25 +69,9 @@ class LocalPortfolioService {
   ) async {
     Database? db;
     try {
-      final String path =
-          await DatabaseHelper.databasePathFor(shop.workspaceKey);
-      db = await openDatabase(
-        path,
-        options: OpenDatabaseOptions(
-          readOnly: true,
-          // Its OWN handle, not the cached one.
-          //
-          // `sqflite` hands back the SAME database object for a path it has
-          // already opened, and the app's own connection to that shop's file
-          // is in that cache. Closing what we opened would therefore close the
-          // app's connection — and the till would find its shop gone the
-          // moment the owner opened this screen.
-          //
-          // `singleInstance: false` says: give me a separate connection to
-          // that file, and closing mine touches nothing else.
-          singleInstance: false,
-        ),
-      );
+      // Its OWN handle, and opened with the shop's key: a shop file is
+      // SQLCipher-encrypted in production, which plain `openDatabase` cannot read.
+      db = await ShopFileReader.openReadOnly(shop.workspaceKey);
       final List<Map<String, Object?>> rows = await db.rawQuery(
         '''
         SELECT
@@ -96,7 +81,7 @@ class LocalPortfolioService {
         FROM sales
         WHERE created_at >= ? AND created_at <= ?
         ''',
-        <Object?>[from.toIso8601String(), to.toIso8601String()],
+        <Object?>[from.toLocal().toIso8601String(), to.toLocal().toIso8601String()],
       );
       if (rows.isEmpty) return null;
       Map<String, Object?> row = rows.first;
@@ -117,7 +102,7 @@ class LocalPortfolioService {
           FROM sale_returns r
           WHERE r.created_at >= ? AND r.created_at <= ?
           ''',
-          <Object?>[from.toIso8601String(), to.toIso8601String()],
+          <Object?>[from.toLocal().toIso8601String(), to.toLocal().toIso8601String()],
         );
         if (refunds.isNotEmpty) {
           row = <String, Object?>{
@@ -200,7 +185,7 @@ class LocalPortfolioService {
         ORDER BY count DESC
         LIMIT 1
         ''',
-        <Object?>[from.toIso8601String(), to.toIso8601String()],
+        <Object?>[from.toLocal().toIso8601String(), to.toLocal().toIso8601String()],
       );
       String? topPaymentMethod;
       if (tenders.isNotEmpty) {
@@ -240,7 +225,7 @@ class LocalPortfolioService {
         FROM shifts
         WHERE status = 'closed' AND start_time >= ? AND start_time <= ?
         ''',
-        <Object?>[from.toIso8601String(), to.toIso8601String()],
+        <Object?>[from.toLocal().toIso8601String(), to.toLocal().toIso8601String()],
       );
       // Open shifts are counted NOW, not in the window: a drawer that is open
       // is open whether it was opened this morning or last week, and hiding it
@@ -254,7 +239,10 @@ class LocalPortfolioService {
         // The local shop's own identifier. It is not the backend's tenant id,
         // and it never is: a shop that has never been online has no tenant.
         // The screen shows names and figures, and the id is only ever a key.
-        tenantId: shop.workspaceKey,
+        // The tenant the shop is linked to, so the backend's copy of the same
+        // shop can be recognised. A shop that is not linked has none, and its
+        // workspace key stands in.
+        tenantId: shop.tenantId ?? shop.workspaceKey,
         shopName: shop.shopName,
         businessProfile: businessProfile,
         revenue: Money.fromMinor((row['total_minor'] as num?)?.toInt() ?? 0),

@@ -52,6 +52,7 @@ import '../ui/components/controls.dart';
 import '../ui/components/screen_title.dart';
 import '../ui/components/status.dart';
 import '../ui/components/surface.dart';
+import '../ui/dialogs/verify_before_create.dart';
 import '../ui/dialogs/verify_identity_dialog.dart';
 import '../ui/layout/page.dart';
 import '../services/app_update_service.dart';
@@ -2118,11 +2119,30 @@ class _SettingsScreenState extends State<SettingsScreen>
       return;
     }
     final String shop = details.name;
+    if (!mounted) return;
+
+    // The emailed code comes FIRST. Until it is accepted there is no workspace,
+    // no registry entry and no owner row for this shop: backing out, a wrong
+    // address or no signal leaves the device exactly as it was, with nothing to
+    // roll back.
+    final VerificationGateResult gate = await verifyEmailBeforeCreate(
+      context,
+      email: previous.email,
+      pin: details.pin,
+      shopName: shop,
+      ownerName: previous.name,
+    );
+    if (!mounted) return;
+    if (!gate.isAccepted) {
+      if (gate.isFailed) _err(gate.message!);
+      return;
+    }
+    final PendingVerification pending = gate.pending!;
 
     final key = 'local-${DateTime.now().microsecondsSinceEpoch}';
-    // A brand-new shop registers with NO tenant. That is the point: the new
-    // shop is unlinked until its owner verifies it, and clearing the legacy
-    // global key stops it inheriting the shop it was created from.
+    // The new shop is registered only now, with the tenant the verified account
+    // runs. Clearing the legacy global key (done when the session is adopted)
+    // stops it inheriting the shop it was created from.
     await WorkspaceService.register(workspaceKey: key, shopName: shop);
     if (!mounted) return;
 
@@ -2146,9 +2166,18 @@ class _SettingsScreenState extends State<SettingsScreen>
           shopName: shop,
           createdAt: DateTime.now().toIso8601String(),
         ),
+        // The session in hand was issued for THIS shop: ending it as the old
+        // shop is left would discard the credential the code just earned.
+        endOnlineSession: false,
       );
       await DatabaseHelper.instance.setShopProfile(details.profile);
       state.setShopProfile(details.profile);
+      await BackendService.adoptPendingVerification(
+        pending,
+        workspaceKey: key,
+        shopName: shop,
+      );
+      await state.markIdentityVerified();
     } catch (e) {
       await rollbackFailedShopCreation(
         state: state,
@@ -2158,18 +2187,6 @@ class _SettingsScreenState extends State<SettingsScreen>
       if (!mounted) return;
       _err(l10n.settingsCreateShopFailed);
       return;
-    }
-
-    // Online identity provisioning is opportunistic, exactly as on first-run
-    // setup: the shop is fully usable offline and a later attempt can link it.
-    try {
-      await BackendService.linkShopToBackend(
-          shopName: shop,
-          ownerName: previous.name,
-          email: previous.email,
-          businessProfile: details.profile);
-    } catch (_) {
-      // Deliberately swallowed. Losing the signal must not lose the shop.
     }
 
     // The person lands on the DASHBOARD of the shop they just made.

@@ -1,7 +1,6 @@
-import 'dart:io';
-
 import 'package:sqflite/sqflite.dart';
 
+import '../data/local/database/shop_file_reader.dart';
 import '../db/database_helper.dart';
 import '../models/audit_log.dart';
 import '../profile/shop_profile.dart';
@@ -40,10 +39,11 @@ class CrossShopActivityReader {
     CrossShopActivityFilters filters, {
     int limitPerShop = 200,
   }) async {
+    final unreadable = <String>[];
     final events = await DatabaseHelper.instance.withWorkspaceGate(
-      () => _readLocalHoldingGate(filters, limitPerShop),
+      () => _readLocalHoldingGate(filters, limitPerShop, unreadable),
     );
-    events.sort((a, b) => b.createdAt.compareTo(a.createdAt));
+    events.sort(compareNewestFirst);
     final cursor = _parseCursor(filters.cursor);
     final page = events
         .where((event) => _afterCursor(event, cursor))
@@ -54,14 +54,36 @@ class CrossShopActivityReader {
       nextCursor: page.length == limitPerShop && page.isNotEmpty
           ? CrossShopActivityPage.cursorFor(page.last)
           : null,
+      unreadableShops: unreadable,
     );
+  }
+
+  /// Newest first, and for rows with the same timestamp by event id, descending.
+  ///
+  /// The page cursor is `(time, eventId)`, and "after the cursor" means older or
+  /// same-time with a smaller id. A sort on time alone left same-second rows in
+  /// an arbitrary order, so a page boundary inside them skipped or repeated
+  /// events. Everything that orders this feed uses this one comparison.
+  static int compareNewestFirst(CrossShopActivity a, CrossShopActivity b) {
+    final byTime = b.createdAt.compareTo(a.createdAt);
+    return byTime != 0 ? byTime : b.eventId.compareTo(a.eventId);
   }
 
   static Future<List<CrossShopActivity>> _readLocalHoldingGate(
     CrossShopActivityFilters filters,
     int limitPerShop,
+    List<String> unreadable,
   ) async {
     final shops = await WorkspaceServiceShops.localShops();
+    final cursor = _parseCursor(filters.cursor);
+    // Stored timestamps are local-time ISO strings with no offset. Compared as
+    // text, so every bound is rendered the same way.
+    final String from = filters.from.toLocal().toIso8601String();
+    final String to = filters.to.toLocal().toIso8601String();
+    // The cursor goes INTO the query. Applied only afterwards it filtered the
+    // same newest rows again on every page, so nothing older than the first
+    // page of each shop could ever be reached.
+    final String? upTo = cursor?.at.toLocal().toIso8601String();
     final events = <CrossShopActivity>[];
     for (final shop in shops) {
       if (filters.workspaceKey != null &&
@@ -70,11 +92,10 @@ class CrossShopActivityReader {
       }
       Database? db;
       try {
-        final path = await DatabaseHelper.databasePathFor(shop.workspaceKey);
-        if (!await File(path).exists()) {
+        if (!await ShopFileReader.exists(shop.workspaceKey)) {
           continue;
         }
-        db = await openDatabase(path, readOnly: true, singleInstance: false);
+        db = await ShopFileReader.openReadOnly(shop.workspaceKey);
         var profile = ShopProfile.duka;
         try {
           final rows =
@@ -92,10 +113,11 @@ class CrossShopActivityReader {
             : await db.query(
                 'sales',
                 where:
-                    'created_at >= ? AND created_at < ?${filters.paymentMethod == null ? '' : ' AND payment_method = ?'}',
+                    'created_at >= ? AND created_at < ?${upTo == null ? '' : ' AND created_at <= ?'}${filters.paymentMethod == null ? '' : ' AND payment_method = ?'}',
                 whereArgs: <Object?>[
-                  filters.from.toIso8601String(),
-                  filters.to.toIso8601String(),
+                  from,
+                  to,
+                  if (upTo != null) upTo,
                   if (filters.paymentMethod != null) filters.paymentMethod,
                 ],
                 orderBy: 'created_at DESC, id DESC',
@@ -127,11 +149,9 @@ class CrossShopActivityReader {
         if (filters.type == null || filters.type == 'activity') {
           final rows = await db.query(
             'audit_log',
-            where: 'created_at >= ? AND created_at < ?',
-            whereArgs: [
-              filters.from.toIso8601String(),
-              filters.to.toIso8601String()
-            ],
+            where:
+                'created_at >= ? AND created_at < ?${upTo == null ? '' : ' AND created_at <= ?'}',
+            whereArgs: <Object?>[from, to, if (upTo != null) upTo],
             orderBy: 'created_at DESC, id DESC',
             limit: limitPerShop + 1,
           );
@@ -158,12 +178,40 @@ class CrossShopActivityReader {
           }
         }
       } catch (_) {
-        // An unreadable local file is not permission to fabricate an empty feed.
+        // An unreadable local file is not permission to fabricate an empty feed:
+        // the shop is reported, so the screen can say it could not be read
+        // instead of presenting it as a shop with nothing to show.
+        unreadable.add(shop.shopName);
       } finally {
         await db?.close();
       }
     }
     return events;
+  }
+
+  /// Drops a backend row that is the SAME event as one read from this device.
+  ///
+  /// A shop that is both on this phone and synced to the backend appears in
+  /// both, under different ids (a local row id, a server id), so matching on id
+  /// kept both and every sale showed twice. The local row is the one kept: it
+  /// is what this device holds, and it opens without a network. Two rows are
+  /// the same event when they are for the same shop, kind, second and amount.
+  static List<CrossShopActivity> withoutDuplicates(
+      List<CrossShopActivity> events) {
+    String fingerprint(CrossShopActivity e) =>
+        '${e.tenantId}|${e.type}|${e.createdAt.toUtc().millisecondsSinceEpoch ~/ 1000}|${e.amount.minorUnits}';
+    final seenIds = <String>{};
+    final localPrints = <String>{
+      for (final e in events)
+        if (!e.isRemote) fingerprint(e),
+    };
+    final out = <CrossShopActivity>[];
+    for (final e in events) {
+      if (!seenIds.add(e.eventId)) continue;
+      if (e.isRemote && localPrints.contains(fingerprint(e))) continue;
+      out.add(e);
+    }
+    return out;
   }
 
   static bool _matches(

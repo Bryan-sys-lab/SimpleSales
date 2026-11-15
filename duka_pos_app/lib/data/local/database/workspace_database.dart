@@ -164,6 +164,11 @@ class WorkspaceDatabase {
     return _secureStorage.read(key: storageKey);
   }
 
+  /// Public wrapper around [_ensureWorkspaceKey] so readers that open another
+  /// shop's encrypted database file can obtain (or create) its key.
+  static Future<String> ensureWorkspaceKey(String workspaceKey) =>
+      _ensureWorkspaceKey(workspaceKey);
+
   /// Rotates the workspace database key: generates a new one and stores it.
   static Future<void> rotateWorkspaceKey(String workspaceKey) async {
     final storageKey = '$_dbKeyPrefix$workspaceKey';

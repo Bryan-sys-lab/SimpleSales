@@ -2,7 +2,9 @@ import 'package:flutter/material.dart';
 import '../l10n/generated/app_localizations.dart';
 import 'package:provider/provider.dart';
 
+import '../data/local/database/shop_file_reader.dart';
 import '../db/database_helper.dart';
+import '../models/models.dart';
 import '../profile/shop_profile.dart';
 import '../services/backend_service.dart';
 import '../services/app_state.dart';
@@ -39,13 +41,24 @@ class _CrossShopActivityScreenState extends State<CrossShopActivityScreen>
   bool _failed = false;
   bool _remoteUnavailable = false;
   int _generation = 0;
+
+  /// Paging state for the two sources. They are separate because their cursors
+  /// are different formats: handing the backend's cursor to the local reader
+  /// (or the reverse) restarted it from the newest row, so "Load more" repeated
+  /// the first page.
   String? _nextCursor;
+  String? _remoteCursor;
+
+  /// Shops on this device whose file could not be read on the last load.
+  List<String> _unreadable = const <String>[];
 
   @override
   void clearForSession() {
     _shops = const <LocalShop>[];
     _events = const <CrossShopActivity>[];
     _nextCursor = null;
+    _remoteCursor = null;
+    _unreadable = const <String>[];
     _failed = false;
     _remoteUnavailable = false;
     _loading = true;
@@ -72,6 +85,7 @@ class _CrossShopActivityScreenState extends State<CrossShopActivityScreen>
         _failed = false;
         _remoteUnavailable = false;
         _nextCursor = null;
+        _remoteCursor = null;
       }
     });
     final filters = CrossShopActivityFilters(
@@ -92,8 +106,11 @@ class _CrossShopActivityScreenState extends State<CrossShopActivityScreen>
         ...local.events,
       ];
       var nextCursor = local.nextCursor;
+      var remoteCursor = append ? _remoteCursor : null;
       var remoteUnavailable = _remoteUnavailable;
-      if (!append) {
+      // The backend is asked on the first page, and again on later pages only
+      // while it still has a cursor to continue from.
+      if (!append || remoteCursor != null) {
         try {
           final remote = await BackendService.crossShopActivity(
             from: _from,
@@ -102,23 +119,24 @@ class _CrossShopActivityScreenState extends State<CrossShopActivityScreen>
             payment: _payment,
             type: _type,
             status: _status,
-            cursor: append ? _nextCursor : null,
+            cursor: remoteCursor,
           );
-          nextCursor ??= remote.nextCursor;
-          final known = events.map((event) => event.eventId).toSet();
-          events.addAll(
-              remote.events.where((event) => !known.contains(event.eventId)));
+          remoteCursor = remote.nextCursor;
+          events.addAll(remote.events.map((event) => event.asRemote()));
         } catch (_) {
-          // Offline is valid, but must be visible as incomplete/stale data.
           remoteUnavailable = true;
+          remoteCursor = null;
         }
       }
-      events.sort((a, b) => b.createdAt.compareTo(a.createdAt));
+      events = CrossShopActivityReader.withoutDuplicates(events);
+      events.sort(CrossShopActivityReader.compareNewestFirst);
       if (!mounted || generation != _generation) return;
       setState(() {
         _shops = shops;
         _events = events;
         _nextCursor = nextCursor;
+        _remoteCursor = remoteCursor;
+        _unreadable = append ? _unreadable : local.unreadableShops;
         _remoteUnavailable = remoteUnavailable;
         _loading = false;
       });
@@ -136,6 +154,17 @@ class _CrossShopActivityScreenState extends State<CrossShopActivityScreen>
     _load();
   }
 
+  /// The last DAY the range covers. A range chosen on the picker ends at the
+  /// start of the next day (exclusive), so the day shown is the one before; the
+  /// default range ends at "now", which is already on its last day. Subtracting
+  /// a day from that one labelled the range as ending yesterday.
+  DateTime get _lastDayShown {
+    final DateTime to = _to.toLocal();
+    final bool endsAtMidnight =
+        to.hour == 0 && to.minute == 0 && to.second == 0 && to.millisecond == 0;
+    return endsAtMidnight ? to.subtract(const Duration(days: 1)) : to;
+  }
+
   Future<void> _chooseDateRange() async {
     final range = await showDateRangePicker(
       context: context,
@@ -151,23 +180,44 @@ class _CrossShopActivityScreenState extends State<CrossShopActivityScreen>
     });
   }
 
+  /// Opens the record an activity row is about, WITHOUT moving the till.
+  ///
+  /// It used to switch the open workspace to the row's shop and never switch
+  /// back: tapping a row left the whole app on a different shop from the one the
+  /// session, the shop name and the permissions belong to. A row from another
+  /// shop is read from that shop's own file instead, and anything that would
+  /// WRITE (a return) is offered only for the shop that is actually open.
   Future<void> _openSource(CrossShopActivity event) async {
-    final workspace = event.workspaceKey.isNotEmpty
-        ? event.workspaceKey
-        : await WorkspaceService.workspaceForTenant(event.tenantId);
-    if (workspace != null && workspace.isNotEmpty) {
-      await DatabaseHelper.instance.switchWorkspace(workspace);
-    }
+    final AppLocalizations l10n = AppLocalizations.of(context);
+    // Which shop on THIS device holds the record, if any. A backend row names a
+    // tenant, not a workspace; its `workspaceKey` is only a copy of the tenant
+    // id, and used as a workspace key it pointed at a shop that does not exist.
+    final String? localShop = event.isRemote
+        ? await WorkspaceService.workspaceForTenant(event.tenantId)
+        : (event.workspaceKey.isEmpty ? null : event.workspaceKey);
     if (!mounted) return;
+    final String openShop = DatabaseHelper.instance.currentWorkspaceKey;
+
     if (event.sourceType == 'sale') {
-      final localId = int.tryParse(event.sourceId);
-      if (localId != null && !event.isRemote) {
-        final sale = await DatabaseHelper.instance.getSaleById(localId);
+      final int? localId = int.tryParse(event.sourceId);
+      if (!event.isRemote && localId != null && localShop != null) {
+        final bool isOpenShop = localShop == openShop;
+        Sale? sale;
+        try {
+          sale = isOpenShop
+              ? await DatabaseHelper.instance.getSaleById(localId)
+              : await ShopFileReader.saleById(localShop, localId);
+        } catch (_) {
+          if (!mounted) return;
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text(l10n.crossShopCouldNotLoadSale)),
+          );
+          return;
+        }
         if (!mounted) return;
         if (sale == null) {
           ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(
-                content: Text(AppLocalizations.of(context).crossShopSaleNoLongerOnTill)),
+            SnackBar(content: Text(l10n.crossShopSaleNoLongerOnTill)),
           );
           return;
         }
@@ -176,23 +226,31 @@ class _CrossShopActivityScreenState extends State<CrossShopActivityScreen>
           context,
           sale: sale,
           canSeeSellers: appState.canManageStock,
-          canProcessReturn: appState.hasPermission(PermissionKey.processReturn),
+          // A return is written to the OPEN shop's database, so it is offered
+          // only there.
+          canProcessReturn:
+              isOpenShop && appState.hasPermission(PermissionKey.processReturn),
           shopName: event.shopName,
         );
         return;
       }
       try {
-        final remote = await BackendService.remoteSaleDetails(event.sourceId);
+        final remote = await BackendService.remoteSaleDetails(
+          event.sourceId,
+          tenantId: event.tenantId,
+        );
         if (!mounted) return;
         await showDialog<void>(
           context: context,
           builder: (dialogContext) => AlertDialog(
             title: Text('${event.shopName} sale'),
-            content: SingleChildScrollView(child: Text(remote.toString())),
+            content: SingleChildScrollView(
+              child: Text(_describeRemoteSale(remote)),
+            ),
             actions: <Widget>[
               TextButton(
                 onPressed: () => Navigator.of(dialogContext).pop(),
-                child: Text(AppLocalizations.of(context).crossShopClose),
+                child: Text(l10n.crossShopClose),
               ),
             ],
           ),
@@ -200,7 +258,7 @@ class _CrossShopActivityScreenState extends State<CrossShopActivityScreen>
       } catch (_) {
         if (!mounted) return;
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text(AppLocalizations.of(context).crossShopCouldNotLoadSale)),
+          SnackBar(content: Text(l10n.crossShopCouldNotLoadSale)),
         );
       }
       return;
@@ -216,11 +274,48 @@ class _CrossShopActivityScreenState extends State<CrossShopActivityScreen>
         actions: <Widget>[
           TextButton(
             onPressed: () => Navigator.of(dialogContext).pop(),
-            child: Text(AppLocalizations.of(context).crossShopClose),
+            child: Text(l10n.crossShopClose),
           ),
         ],
       ),
     );
+  }
+
+  /// A backend sale as readable lines. It used to show `Map.toString()`.
+  static String _describeRemoteSale(Map<String, dynamic> sale) {
+    String label(String key) {
+      final spaced = key.replaceAllMapped(
+          RegExp(r'([a-z])([A-Z])'), (m) => '${m[1]} ${m[2]}');
+      final words = spaced.replaceAll('_', ' ').trim();
+      return words.isEmpty ? key : words[0].toUpperCase() + words.substring(1);
+    }
+
+    final lines = <String>[];
+    sale.forEach((key, value) {
+      if (value == null) return;
+      if (value is List) {
+        lines.add('${label(key)}:');
+        for (final item in value) {
+          if (item is Map) {
+            final name = item['productName'] ?? item['product_name'] ?? item['name'];
+            final qty = item['qty'] ?? item['quantity'];
+            final total = item['total'] ?? item['lineTotal'];
+            lines.add('  • ${[
+              if (name != null) '$name',
+              if (qty != null) '× $qty',
+              if (total != null) '— $total',
+            ].join(' ')}');
+          } else {
+            lines.add('  • $item');
+          }
+        }
+      } else if (value is Map) {
+        return;
+      } else {
+        lines.add('${label(key)}: $value');
+      }
+    });
+    return lines.isEmpty ? 'No details were returned.' : lines.join('\n');
   }
 
   @override
@@ -242,7 +337,7 @@ class _CrossShopActivityScreenState extends State<CrossShopActivityScreen>
               onPressed: _chooseDateRange,
               icon: const Icon(Icons.date_range),
               label: Text(
-                  '${_from.toLocal().toString().substring(0, 10)} – ${_to.subtract(const Duration(days: 1)).toLocal().toString().substring(0, 10)}'),
+                  '${_from.toLocal().toString().substring(0, 10)} – ${_lastDayShown.toString().substring(0, 10)}'),
             ),
             const SizedBox(height: 12),
             Wrap(
@@ -304,6 +399,14 @@ class _CrossShopActivityScreenState extends State<CrossShopActivityScreen>
               const Padding(
                   padding: EdgeInsets.only(top: 16),
                   child: LinearProgressIndicator()),
+            if (_unreadable.isNotEmpty)
+              Padding(
+                padding: const EdgeInsets.only(top: 12),
+                child: Text(
+                  'Could not read: ${_unreadable.join(', ')}. '
+                  'Their activity is not shown.',
+                ),
+              ),
             if (_remoteUnavailable)
               const Padding(
                 padding: EdgeInsets.only(top: 12),
@@ -332,7 +435,7 @@ class _CrossShopActivityScreenState extends State<CrossShopActivityScreen>
                         : Text(formatMoney(event.amount)),
                   ),
                 )),
-            if (!_loading && _nextCursor != null)
+            if (!_loading && (_nextCursor != null || _remoteCursor != null))
               Padding(
                 padding: const EdgeInsets.only(top: 12),
                 child: OutlinedButton(
