@@ -1777,7 +1777,7 @@ class _SellScreenState extends State<SellScreen>
                   }
                   final typed = method == 'mpesa_till'
                       ? incomingTillPayment!.amount.asMajor
-                      : double.tryParse(amountController.text.trim());
+                      : parseMoneyInput(amountController.text.trim());
                   final amount = typed == null ? null : Money.fromMajor(typed);
                   if (amount == null ||
                       amount < _total ||

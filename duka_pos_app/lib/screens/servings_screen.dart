@@ -783,7 +783,7 @@ class _ServingEditorState extends State<_ServingEditor> {
     // An EMPTY size is allowed, and means "not known". It is stored as zero,
     // and zero is what the till reads as "no size".
     final double? capacity = double.tryParse(_capacity.text.trim());
-    final double? price = double.tryParse(_price.text.trim());
+    final double? price = parseMoneyInput(_price.text.trim());
     final String label = _label.text.trim();
     final AppLocalizations l10n = AppLocalizations.of(context);
     // The same rules, in the same order as the fields, so what the sheet refuses

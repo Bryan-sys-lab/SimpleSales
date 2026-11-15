@@ -3673,7 +3673,7 @@ class _RepackNewDialogState extends State<_RepackNewDialog> {
   void _save() {
     final sourceQty = double.tryParse(_sourceQty.text.trim());
     final outputQty = double.tryParse(_outputQty.text.trim());
-    final price = double.tryParse(_price.text.trim());
+    final price = parseMoneyInput(_price.text.trim());
     if (_sourceId == null ||
         sourceQty == null ||
         outputQty == null ||

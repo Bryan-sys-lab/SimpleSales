@@ -437,8 +437,8 @@ class ProfileProductForms {
               ),
               FilledButton(
                 onPressed: () {
-                  final price = double.tryParse(priceController.text);
-                  final cost = optionalStock ? double.tryParse(costController.text) : 0;
+                  final price = parseMoneyInput(priceController.text);
+                  final cost = optionalStock ? parseMoneyInput(costController.text) : 0;
                   final stock = optionalStock ? double.tryParse(stockController.text) : 0;
                   final reorder = optionalStock ? double.tryParse(reorderController.text) : 0;
 

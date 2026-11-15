@@ -118,7 +118,7 @@ class _LaybyScreenState extends State<LaybyScreen> {
     final product = _product;
     final variant = _variant;
     final qty = double.tryParse(_qtyCtrl.text.trim());
-    final depositMajor = double.tryParse(_depositCtrl.text.trim());
+    final depositMajor = parseMoneyInput(_depositCtrl.text.trim());
     final reference = _referenceCtrl.text.trim();
     final days = int.tryParse(_dueDaysCtrl.text.trim());
 
@@ -276,7 +276,7 @@ class _LaybyScreenState extends State<LaybyScreen> {
               child: Text(AppLocalizations.of(context).cancel)),
           FilledButton(
               onPressed: () {
-                final major = double.tryParse(controller.text.trim());
+                final major = parseMoneyInput(controller.text.trim());
                 if (major == null || major <= 0) return;
                 Navigator.pop(context, Money.fromMajor(major));
               },

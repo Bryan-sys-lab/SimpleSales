@@ -477,7 +477,7 @@ class _CustomerEditSheetState extends State<_CustomerEditSheet> {
       // Canonical (+254…) or nothing — the display form is for eyes, never
       // for storage: two spellings of one customer would be two customers.
       final String? phone = typed.isEmpty ? null : normaliseKenyanPhone(typed);
-      final double? limitMajor = double.tryParse(_limit.text.trim());
+      final double? limitMajor = parseMoneyInput(_limit.text.trim());
       final Customer customer = Customer(
         id: widget.customer?.id,
         uuid: widget.customer?.uuid ?? '',
@@ -606,7 +606,7 @@ class _CustomerEditSheetState extends State<_CustomerEditSheet> {
                 validator: (String? value) {
                   final String typed = value?.trim() ?? '';
                   if (typed.isEmpty) return null;
-                  final double? parsed = double.tryParse(typed);
+                  final double? parsed = parseMoneyInput(typed);
                   if (parsed == null || parsed < 0) {
                     return l10n.customerLimitInvalid;
                   }
@@ -704,7 +704,7 @@ class _CreditPaymentSheetState extends State<_CreditPaymentSheet> {
       _error = null;
     });
     try {
-      final double? major = double.tryParse(_amount.text.trim());
+      final double? major = parseMoneyInput(_amount.text.trim());
       if (major == null || major <= 0) {
         setState(() {
           _saving = false;
@@ -802,7 +802,7 @@ class _CreditPaymentSheetState extends State<_CreditPaymentSheet> {
                   helperText: l10n.creditPaymentAmountHelper,
                 ),
                 validator: (String? value) {
-                  final double? parsed = double.tryParse(value?.trim() ?? '');
+                  final double? parsed = parseMoneyInput(value?.trim() ?? '');
                   if (parsed == null || parsed <= 0) {
                     return l10n.creditPaymentAmountInvalid;
                   }

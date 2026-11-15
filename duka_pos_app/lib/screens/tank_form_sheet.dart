@@ -333,7 +333,7 @@ class _TankFormSheetState extends State<TankFormSheet> {
   }
 
   double? get _cost {
-    final value = _finite(double.tryParse(_costCtrl.text.trim()));
+    final value = _finite(parseMoneyInput(_costCtrl.text.trim()));
     if (value == null || value < 0) return null;
     return value;
   }
@@ -387,7 +387,7 @@ class _TankFormSheetState extends State<TankFormSheet> {
         return;
       }
       final priceText = serving.price.text.trim();
-      final price = _finite(double.tryParse(priceText));
+      final price = _finite(parseMoneyInput(priceText));
       if (price == null || price < 0) {
         setState(() => _error = l10n.tankServingPriceInvalid);
         return;
