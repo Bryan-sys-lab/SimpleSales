@@ -40,6 +40,10 @@ Future<void> main() async {
   // frame is already the user's chosen brightness — no flash.
   final appearance = await AppearanceController.load();
 
+  // Capture device facts once so every crash entry carries them for
+  // reconstruction. Best-effort: a failure here must not stop the app.
+  await failureRecorder.captureEnvironment();
+
   // The build's own configuration, checked before anything else runs.
   //
   // A release build that was never given a real backend URL points every

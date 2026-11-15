@@ -134,6 +134,7 @@ class FailureRecorder {
   /// A stack trace from an unknown build is a stack trace nobody can map onto
   /// a line of code, so it is captured once here rather than per entry.
   Map<String, String>? _environment;
+  bool _environmentCaptured = false;
 
   /// Debounce timer for automatic diagnostic uploads.
   Timer? _uploadTimer;
@@ -219,12 +220,89 @@ class FailureRecorder {
       actorName: actorName ?? context.actorName,
       action: operation ?? context.operation,
       breadcrumbs: breadcrumbs ?? trail.crumbs,
+      environment: environment(),
       at: DateTime.now().toIso8601String(),
     );
   }
 
   /// Notes something the shop did, for the trail.
   void jot(String note) => trail.jot(note);
+
+  /// Reads /system/build.prop on Android and returns a map of key=value
+  /// pairs. Returns an empty map on any failure.
+  Future<Map<String, String>> _readBuildProp() async {
+    final result = <String, String>{};
+    try {
+      final file = File('/system/build.prop');
+      if (!await file.exists()) return result;
+      final lines = await file.readAsLines();
+      for (final line in lines) {
+        final trimmed = line.trim();
+        if (trimmed.isEmpty || trimmed.startsWith('#')) continue;
+        final idx = trimmed.indexOf('=');
+        if (idx > 0) {
+          result[trimmed.substring(0, idx).trim()] =
+              trimmed.substring(idx + 1).trim();
+        }
+      }
+    } catch (_) {
+      // Best-effort.
+    }
+    return result;
+  }
+
+  /// Captures device and platform facts once, so every failure entry carries
+  /// them for reconstruction. Safe to call repeatedly; only the first call
+  /// does work.
+  Future<void> captureEnvironment() async {
+    if (_environmentCaptured) return;
+    _environmentCaptured = true;
+    final env = <String, String>{
+      'platform': Platform.operatingSystem,
+      'version': Platform.operatingSystemVersion,
+      'locale': PlatformDispatcher.instance.locale.toString(),
+    };
+    try {
+      if (Platform.isAndroid) {
+        // Read device facts from /system/build.prop, which carries the
+        // consumer-visible brand, model and manufacturer without needing
+        // a native plugin.
+        final buildProp = await _readBuildProp();
+        if (buildProp['ro.product.brand'] != null) {
+          env['brand'] = buildProp['ro.product.brand']!;
+        }
+        if (buildProp['ro.product.model'] != null) {
+          env['model'] = buildProp['ro.product.model']!;
+        }
+        if (buildProp['ro.product.manufacturer'] != null) {
+          env['manufacturer'] = buildProp['ro.product.manufacturer']!;
+        }
+        if (buildProp['ro.product.device'] != null) {
+          env['device'] = buildProp['ro.product.device']!;
+        }
+        if (buildProp['ro.product.name'] != null) {
+          env['product'] = buildProp['ro.product.name']!;
+        }
+        if (buildProp['ro.hardware'] != null) {
+          env['hardware'] = buildProp['ro.hardware']!;
+        }
+        if (buildProp['ro.build.display.id'] != null) {
+          env['display'] = buildProp['ro.build.display.id']!;
+        }
+        if (buildProp['ro.build.fingerprint'] != null) {
+          env['fingerprint'] = buildProp['ro.build.fingerprint']!;
+        }
+      } else if (Platform.isIOS || Platform.isMacOS) {
+        env['model'] = Platform.localHostname;
+      } else if (Platform.isWindows || Platform.isLinux) {
+        env['hostName'] = Platform.localHostname;
+      }
+    } catch (_) {
+      // Device info is best-effort: a failure here must not prevent the
+      // app from recording crashes.
+    }
+    _environment = env;
+  }
 
   /// The build and platform, written into every entry.
   Map<String, String> environment() {

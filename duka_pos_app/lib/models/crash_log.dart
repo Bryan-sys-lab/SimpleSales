@@ -59,6 +59,7 @@ class CrashLogEntry {
     this.actorName,
     this.action,
     this.breadcrumbs = const <String>[],
+    this.environment = const <String, String>{},
     this.id,
   });
 
@@ -77,6 +78,7 @@ class CrashLogEntry {
             .split('\n')
             .where((String crumb) => crumb.isNotEmpty)
             .toList(growable: false),
+        environment: _parseEnvironment(row['environment'] as String?),
         at: row['created_at'] as String? ?? '',
       );
 
@@ -111,6 +113,10 @@ class CrashLogEntry {
 
   final List<String> breadcrumbs;
 
+  /// Device and build facts captured when the failure was recorded, so a
+  /// stack trace from an unknown phone can be mapped to a real device.
+  final Map<String, String> environment;
+
   Map<String, Object?> toMap() => <String, Object?>{
         if (id != null) 'id': id,
         'kind': kind.wire,
@@ -120,6 +126,7 @@ class CrashLogEntry {
         'actor_name': actorName,
         'action': action,
         'breadcrumbs': breadcrumbs.join('\n'),
+        'environment': _encodeEnvironment(environment),
         'created_at': at,
       };
 
@@ -139,6 +146,23 @@ class CrashLogEntry {
   /// The top frames worth keeping. Three screens of a phone, no scrolling
   /// needed to reach the line that matters.
   static const int maxStackLines = 12;
+
+  static String? _encodeEnvironment(Map<String, String> env) {
+    if (env.isEmpty) return null;
+    return env.entries.map((e) => '\${e.key}=\${e.value}').join('\n');
+  }
+
+  static Map<String, String> _parseEnvironment(String? raw) {
+    if (raw == null || raw.isEmpty) return const <String, String>{};
+    final result = <String, String>{};
+    for (final line in raw.split('\n')) {
+      final idx = line.indexOf('=');
+      if (idx > 0) {
+        result[line.substring(0, idx)] = line.substring(idx + 1);
+      }
+    }
+    return result;
+  }
 
   /// The largest entry a recorder may write.
   ///

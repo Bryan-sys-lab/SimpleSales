@@ -25,6 +25,7 @@ class CrashEntryPayload {
     this.action,
     this.breadcrumbs = const <String>[],
     this.createdAt,
+    this.environment = const <String, String>{},
   });
 
   final String kind;
@@ -35,6 +36,7 @@ class CrashEntryPayload {
   final String? action;
   final List<String> breadcrumbs;
   final DateTime? createdAt;
+  final Map<String, String> environment;
 
   Map<String, dynamic> toJson() => <String, dynamic>{
         'kind': kind,
@@ -44,6 +46,7 @@ class CrashEntryPayload {
         if (actorName != null) 'actorName': actorName,
         if (action != null) 'action': action,
         if (breadcrumbs.isNotEmpty) 'breadcrumbs': breadcrumbs,
+        if (environment.isNotEmpty) 'environment': environment,
         if (createdAt != null) 'createdAt': createdAt!.toUtc().toIso8601String(),
       };
 }
@@ -147,6 +150,28 @@ class DiagnosticsUploadService {
     return null;
   }
 
+  /// Reads /system/build.prop on Android.
+  Future<Map<String, String>> _readBuildProp() async {
+    final result = <String, String>{};
+    try {
+      final file = File('/system/build.prop');
+      if (!await file.exists()) return result;
+      final lines = await file.readAsLines();
+      for (final line in lines) {
+        final trimmed = line.trim();
+        if (trimmed.isEmpty || trimmed.startsWith('#')) continue;
+        final idx = trimmed.indexOf('=');
+        if (idx > 0) {
+          result[trimmed.substring(0, idx).trim()] =
+              trimmed.substring(idx + 1).trim();
+        }
+      }
+    } catch (_) {
+      // Best-effort.
+    }
+    return result;
+  }
+
   /// Gather everything the backend needs: device identity, build facts, and
   /// the local failure log.
   Future<DeviceDiagnosticPayload> buildReport() async {
@@ -155,6 +180,27 @@ class DiagnosticsUploadService {
 
     final info = await PackageInfo.fromPlatform();
 
+    String? manufacturer;
+    String? model;
+    try {
+      if (Platform.isAndroid) {
+        final buildProp = await _readBuildProp();
+        manufacturer = buildProp['ro.product.manufacturer'];
+        model = buildProp['ro.product.model'];
+      } else if (Platform.isIOS || Platform.isMacOS) {
+        manufacturer = 'Apple';
+        model = Platform.localHostname;
+      } else if (Platform.isWindows) {
+        manufacturer = 'Microsoft';
+        model = Platform.localHostname;
+      } else if (Platform.isLinux) {
+        manufacturer = 'Linux';
+        model = Platform.localHostname;
+      }
+    } catch (_) {
+      // Device info is best-effort.
+    }
+
     return DeviceDiagnosticPayload(
       deviceId: deviceId,
       platform: Platform.operatingSystem,
@@ -162,8 +208,8 @@ class DiagnosticsUploadService {
       appVersion: info.version,
       buildNumber: info.buildNumber,
       locale: Platform.localeName,
-      manufacturer: null,
-      model: Platform.localHostname,
+      manufacturer: manufacturer,
+      model: model,
       tenantId: tenantId,
       crashes: await _crashEntries(),
     );
@@ -182,6 +228,7 @@ class DiagnosticsUploadService {
       action: e.action,
       breadcrumbs: e.breadcrumbs,
       createdAt: e.at.isNotEmpty ? DateTime.tryParse(e.at) : null,
+      environment: e.environment,
     )).toList();
   }
 

@@ -874,6 +874,18 @@ SELECT name FROM staff GROUP BY name HAVING COUNT(*) = 1
             'CREATE INDEX IF NOT EXISTS idx_sales_shift ON sales (shift_id)');
       }
     }
+    if (oldVersion < 83) {
+      // v83: device facts on every crash log entry, so a failure from an
+      // unknown phone carries the model, brand, manufacturer and OS version
+      // needed to reconstruct it. ALTER TABLE is idempotent-safe via
+      // _addColumnIfMissing.
+      final crashExists = (await db.rawQuery(
+              "SELECT name FROM sqlite_master WHERE type='table' AND name='crash_log'"))
+          .isNotEmpty;
+      if (crashExists) {
+        await _addColumnIfMissing(db, 'crash_log', 'environment', 'TEXT');
+      }
+    }
   }
 
   Future<void> _migrateNotifications(Database db) async {
@@ -2670,6 +2682,7 @@ SELECT name FROM staff GROUP BY name HAVING COUNT(*) = 1
         actor_name TEXT,
         action TEXT,
         breadcrumbs TEXT,
+        environment TEXT,
         created_at TEXT NOT NULL
       )''');
     // The two ways it is read: newest first (the diagnostics screen), and by

@@ -15,6 +15,7 @@ class CrashLogRepository {
         actor_name TEXT,
         action TEXT,
         breadcrumbs TEXT,
+        environment TEXT,
         created_at TEXT NOT NULL
       )''');
     await db.execute(
