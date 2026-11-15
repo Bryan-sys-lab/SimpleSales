@@ -491,10 +491,6 @@ class AppState extends ChangeNotifier {
     // Its own doc has always claimed "cleared on sign-out"; nothing did it, and
     // the account-deletion erasure had to learn the cache existed the hard way.
     unawaited(StaffCredentialCache.clearAll());
-    // Clear the backend tenant link so the live channel does not keep trying to
-    // reconnect with no credentials after logout and app restart.
-    unawaited(BackendService.clearBackendLink());
-    unawaited(tearDownOnlineSession());
   }
 
   /// Ends the online session and forgets the tokens.

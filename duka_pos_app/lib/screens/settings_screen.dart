@@ -854,7 +854,7 @@ class _SettingsScreenState extends State<SettingsScreen>
         entityId: name,
         detail: result['role'] ?? 'cashier',
       );
-      if (_backendLinked) {
+      if (await BackendService.isBackendLinked) {
         try {
           await BackendService.syncStaffToBackend();
         } catch (_) {
@@ -965,7 +965,7 @@ class _SettingsScreenState extends State<SettingsScreen>
         entityId: s.name,
         detail: s.role,
       );
-      if (_backendLinked) {
+      if (await BackendService.isBackendLinked) {
         try {
           await BackendService.syncStaffToBackend();
         } catch (_) {
@@ -1327,6 +1327,8 @@ class _SettingsScreenState extends State<SettingsScreen>
 
       await state.loadOwner();
       await state.markIdentityVerified();
+      _backendLinked = await BackendService.isBackendLinked;
+      if (mounted) setState(() {});
       await recordActionAudit(
         state,
         action: AuditAction.identityLinked,

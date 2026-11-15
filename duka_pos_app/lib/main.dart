@@ -298,6 +298,7 @@ class _LiveChannelGateState extends State<_LiveChannelGate>
   late LiveChannelService _channel;
   late AppState _appState;
   int _lastSeenGeneration = -1;
+  bool _lastIdentityVerified = false;
   /// Generation counter for snapshot requests. Incremented on every explicit
   /// transition that warrants a fresh snapshot (init, foreground resume, link
   /// change). `_sync()` only requests a snapshot when the generation has
@@ -311,6 +312,8 @@ class _LiveChannelGateState extends State<_LiveChannelGate>
     _channel = context.read<LiveChannelService>();
     _channel.addListener(_onLiveMessage);
     _appState = context.read<AppState>();
+    _lastSeenGeneration = _appState.sessionGeneration;
+    _lastIdentityVerified = _appState.identityVerified;
     _appState.addListener(_onSessionChanged);
     WidgetsBinding.instance.addObserver(this);
     // Read in the first frame, not in initState: the session completes its own
@@ -332,9 +335,18 @@ class _LiveChannelGateState extends State<_LiveChannelGate>
   /// until the next foreground resume.
   void _onSessionChanged() {
     final gen = _appState.sessionGeneration;
-    if (gen == _lastSeenGeneration) return;
-    _lastSeenGeneration = gen;
-    _snapshotGeneration++;
+    final verified = _appState.identityVerified;
+    final sessionChanged = gen != _lastSeenGeneration;
+    final identityChanged = verified != _lastIdentityVerified;
+    if (!sessionChanged && !identityChanged) return;
+    if (sessionChanged) {
+      _lastSeenGeneration = gen;
+      _snapshotGeneration++;
+    }
+    if (identityChanged) {
+      _lastIdentityVerified = verified;
+      _snapshotGeneration++;
+    }
     unawaited(_sync());
   }
 
