@@ -10025,6 +10025,29 @@ SELECT name FROM staff GROUP BY name HAVING COUNT(*) = 1
     );
   }
 
+  /// Refunds as the sales reports need them: one row per return, with the
+  /// profit it takes back worked out from its lines.
+  ///
+  /// Profit is on the same basis as `sales.profit` (net of VAT, less cost): the
+  /// net revenue refunded, less the cost of goods that went back on the shelf.
+  /// It is computed from the lines rather than read from `sale_returns.profit`
+  /// so that returns recorded before that column was corrected report the same
+  /// way as new ones. The column names match `sales`, so
+  /// [_salesRangeWhere] filters this the same way.
+  static const String _returnsReportSql = '''
+    SELECT r.id AS id,
+           r.created_at AS created_at,
+           r.staff_id AS staff_id,
+           r.total AS total,
+           r.vat_total AS vat_minor,
+           COALESCE((SELECT SUM(i.refund_minor - i.vat_minor -
+                      CASE WHEN i.restock = 1
+                           THEN CAST(ROUND(i.unit_cost * i.qty) AS INTEGER)
+                           ELSE 0 END)
+                     FROM sale_return_items i
+                     WHERE i.return_id = r.id), 0) AS profit_minor
+    FROM sale_returns r''';
+
   /// The whole range reduced to one row: takings, profit, receipts, basket.
   ///
   /// One query, one row, whatever the range. A dashboard that previously summed
@@ -10055,6 +10078,20 @@ SELECT name FROM staff GROUP BY name HAVING COUNT(*) = 1
       ${where.clause}
     ''', where.args);
     final row = rows.first;
+    // Refunds in the same range come off sales, VAT and profit. The takings a
+    // report shows are what was kept, not what was rung up before the returns.
+    final refunds = (await (await database).rawQuery('''
+      SELECT
+        CAST(COALESCE(SUM(total), 0) AS INTEGER) AS total_minor,
+        CAST(COALESCE(SUM(vat_minor), 0) AS INTEGER) AS vat_minor,
+        CAST(COALESCE(SUM(profit_minor), 0) AS INTEGER) AS profit_minor
+      FROM ($_returnsReportSql)
+      ${where.clause}
+    ''', where.args)).first;
+    final int refundedMinor = (refunds['total_minor'] as num?)?.toInt() ?? 0;
+    final int refundedVatMinor = (refunds['vat_minor'] as num?)?.toInt() ?? 0;
+    final int refundedProfitMinor =
+        (refunds['profit_minor'] as num?)?.toInt() ?? 0;
     final expenseWhere = <String>['status = ?'];
     final expenseArgs = <Object?>['posted'];
     if (since != null) {
@@ -10075,16 +10112,18 @@ SELECT name FROM staff GROUP BY name HAVING COUNT(*) = 1
       expenseArgs,
     );
     return DailyTotals(
-      totalMinor: (row['total_minor'] as num?)?.toInt() ?? 0,
-      profitMinor: (row['profit_minor'] as num?)?.toInt() ?? 0,
+      totalMinor: ((row['total_minor'] as num?)?.toInt() ?? 0) - refundedMinor,
+      profitMinor:
+          ((row['profit_minor'] as num?)?.toInt() ?? 0) - refundedProfitMinor,
       transactions: (row['transactions'] as num?)?.toInt() ?? 0,
       // AVG is necessarily a REAL, so it is the one aggregate that cannot be
       // exact; rounded once, here, and handed on as an int like every other
       // figure in this section.
       averageMinor: (row['average_minor'] as num?)?.toInt() ?? 0,
       expensesMinor: (expenseRows.first['total_minor'] as num?)?.toInt() ?? 0,
-      vatMinor: (row['vat_minor'] as num?)?.toInt() ?? 0,
-      taxableMinor: (row['taxable_minor'] as num?)?.toInt() ?? 0,
+      vatMinor: ((row['vat_minor'] as num?)?.toInt() ?? 0) - refundedVatMinor,
+      taxableMinor: ((row['taxable_minor'] as num?)?.toInt() ?? 0) -
+          (refundedMinor - refundedVatMinor),
     );
   }
 
@@ -10125,17 +10164,51 @@ SELECT name FROM staff GROUP BY name HAVING COUNT(*) = 1
       ORDER BY revenue_minor DESC, units DESC, product_name ASC
       LIMIT ?
     ''', [...where.args, limit]);
-    return rows
-        .map((row) => ProductSalesRow(
-              productId: (row['product_id'] as num?)?.toInt() ?? 0,
-              productName: (row['product_name'] as String?) ?? '',
-              // A quantity, not money: `qty` is REAL so a half bottle can be
-              // recorded, so this stays a double.
-              units: (row['units'] as num?)?.toDouble() ?? 0,
-              revenueMinor: (row['revenue_minor'] as num?)?.toInt() ?? 0,
-              profitMinor: (row['profit_minor'] as num?)?.toInt() ?? 0,
-            ))
-        .toList();
+    // What came back in the same range comes off each product, on the same
+    // basis as the sales above, so a refunded line stops counting as a seller.
+    final returned = await (await database).rawQuery('''
+      SELECT
+        i.product_id AS product_id,
+        SUM(i.qty) AS units,
+        CAST(ROUND(SUM(i.unit_price * i.qty)) AS INTEGER) AS revenue_minor,
+        CAST(ROUND(SUM(i.refund_minor - i.vat_minor -
+          CASE WHEN i.restock = 1 THEN i.unit_cost * i.qty ELSE 0 END))
+          AS INTEGER) AS profit_minor
+      FROM sale_return_items i
+      JOIN sale_returns r ON r.id = i.return_id
+      ${where.clause}
+      GROUP BY i.product_id
+    ''', where.args);
+    final backByProduct = <int, Map<String, Object?>>{
+      for (final row in returned) (row['product_id'] as num).toInt(): row,
+    };
+    final products = <ProductSalesRow>[];
+    for (final row in rows) {
+      final int productId = (row['product_id'] as num?)?.toInt() ?? 0;
+      final back = backByProduct[productId];
+      // A quantity, not money: `qty` is REAL so a half bottle can be
+      // recorded, so this stays a double.
+      final double units = ((row['units'] as num?)?.toDouble() ?? 0) -
+          ((back?['units'] as num?)?.toDouble() ?? 0);
+      if (units <= qtyEpsilon) continue;
+      products.add(ProductSalesRow(
+        productId: productId,
+        productName: (row['product_name'] as String?) ?? '',
+        units: units,
+        revenueMinor: ((row['revenue_minor'] as num?)?.toInt() ?? 0) -
+            ((back?['revenue_minor'] as num?)?.toInt() ?? 0),
+        profitMinor: ((row['profit_minor'] as num?)?.toInt() ?? 0) -
+            ((back?['profit_minor'] as num?)?.toInt() ?? 0),
+      ));
+    }
+    products.sort((a, b) {
+      final byRevenue = b.revenueMinor.compareTo(a.revenueMinor);
+      if (byRevenue != 0) return byRevenue;
+      final byUnits = b.units.compareTo(a.units);
+      if (byUnits != 0) return byUnits;
+      return a.productName.compareTo(b.productName);
+    });
+    return products.take(limit).toList();
   }
 
   /// The smallest useful explanation of one product's period total.  All
@@ -10382,15 +10455,30 @@ SELECT name FROM staff GROUP BY name HAVING COUNT(*) = 1
       GROUP BY hour
       ORDER BY hour
     ''', where.args);
+    final refundRows = await (await database).rawQuery('''
+      SELECT
+        CAST(strftime('%H', created_at) AS INTEGER) AS hour,
+        CAST(COALESCE(SUM(total), 0) AS INTEGER) AS refund_minor,
+        CAST(COALESCE(SUM(profit_minor), 0) AS INTEGER) AS profit_minor
+      FROM ($_returnsReportSql)
+      ${where.clause}
+      GROUP BY hour
+    ''', where.args);
+    final refundByHour = <int, Map<String, Object?>>{
+      for (final row in refundRows) (row['hour'] as num?)?.toInt() ?? -1: row,
+    };
     final byHour = <int, Map<String, Object?>>{
       for (final row in rows) (row['hour'] as num?)?.toInt() ?? -1: row,
     };
     return List<TimeBucket>.generate(24, (hour) {
       final row = byHour[hour];
+      final refund = refundByHour[hour];
       return TimeBucket(
         hour: hour,
-        salesMinor: (row?['sales_minor'] as num?)?.toInt() ?? 0,
-        profitMinor: (row?['profit_minor'] as num?)?.toInt() ?? 0,
+        salesMinor: ((row?['sales_minor'] as num?)?.toInt() ?? 0) -
+            ((refund?['refund_minor'] as num?)?.toInt() ?? 0),
+        profitMinor: ((row?['profit_minor'] as num?)?.toInt() ?? 0) -
+            ((refund?['profit_minor'] as num?)?.toInt() ?? 0),
         transactions: (row?['transactions'] as num?)?.toInt() ?? 0,
       );
     });
@@ -10565,6 +10653,18 @@ $untilClause
       GROUP BY day
       ORDER BY day
     ''', where.args);
+    final refundRows = await (await database).rawQuery('''
+      SELECT
+        strftime('%Y-%m-%d', created_at) AS day,
+        CAST(COALESCE(SUM(total), 0) AS INTEGER) AS refund_minor,
+        CAST(COALESCE(SUM(profit_minor), 0) AS INTEGER) AS profit_minor
+      FROM ($_returnsReportSql)
+      ${where.clause}
+      GROUP BY day
+    ''', where.args);
+    final refundByDay = <String, Map<String, Object?>>{
+      for (final row in refundRows) (row['day'] as String?) ?? '': row,
+    };
     final byDay = <String, Map<String, Object?>>{
       for (final row in rows) (row['day'] as String?) ?? '': row,
     };
@@ -10576,11 +10676,14 @@ $untilClause
           '${cursor.month.toString().padLeft(2, '0')}-'
           '${cursor.day.toString().padLeft(2, '0')}';
       final row = byDay[key];
+      final refund = refundByDay[key];
       buckets.add(DateBucket(
         day: key,
         label: DateFormat('d MMM').format(cursor),
-        salesMinor: (row?['sales_minor'] as num?)?.toInt() ?? 0,
-        profitMinor: (row?['profit_minor'] as num?)?.toInt() ?? 0,
+        salesMinor: ((row?['sales_minor'] as num?)?.toInt() ?? 0) -
+            ((refund?['refund_minor'] as num?)?.toInt() ?? 0),
+        profitMinor: ((row?['profit_minor'] as num?)?.toInt() ?? 0) -
+            ((refund?['profit_minor'] as num?)?.toInt() ?? 0),
         transactions: (row?['transactions'] as num?)?.toInt() ?? 0,
       ));
     }

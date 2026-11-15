@@ -114,7 +114,14 @@ class _ReturnSaleSheetState extends State<ReturnSaleSheet> {
   @override
   void initState() {
     super.initState();
-    _refundMethod = widget.sale.paymentMethod == 'mpesa' ? 'mpesa' : 'cash';
+    // A sale taken on account is refunded to the account: the customer's debt
+    // falls and the drawer stays shut. It used to default to cash, which paid
+    // money out for goods that had never been paid for.
+    _refundMethod = widget.sale.paymentMethod == 'credit'
+        ? 'credit_to_account'
+        : widget.sale.paymentMethod == 'mpesa'
+            ? 'mpesa'
+            : 'cash';
   }
 
   @override
@@ -294,16 +301,23 @@ class _ReturnSaleSheetState extends State<ReturnSaleSheet> {
                     Text(l10n.returnMethodLabel, style: type.labelLarge),
                     SizedBox(height: spacing.xs),
                     SegmentedButton<String>(
-                      segments: <ButtonSegment<String>>[
-                        ButtonSegment<String>(
-                          value: 'cash',
-                          label: Text(l10n.returnMethodCash),
-                        ),
-                        ButtonSegment<String>(
-                          value: 'mpesa',
-                          label: Text(l10n.returnMethodMpesa),
-                        ),
-                      ],
+                      segments: widget.sale.paymentMethod == 'credit'
+                          ? const <ButtonSegment<String>>[
+                              ButtonSegment<String>(
+                                value: 'credit_to_account',
+                                label: Text("To the customer's account"),
+                              ),
+                            ]
+                          : <ButtonSegment<String>>[
+                              ButtonSegment<String>(
+                                value: 'cash',
+                                label: Text(l10n.returnMethodCash),
+                              ),
+                              ButtonSegment<String>(
+                                value: 'mpesa',
+                                label: Text(l10n.returnMethodMpesa),
+                              ),
+                            ],
                       selected: <String>{_refundMethod},
                       onSelectionChanged: (Set<String> selection) =>
                           setState(() => _refundMethod = selection.first),

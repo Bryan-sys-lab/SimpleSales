@@ -99,7 +99,38 @@ class LocalPortfolioService {
         <Object?>[from.toIso8601String(), to.toIso8601String()],
       );
       if (rows.isEmpty) return null;
-      final Map<String, Object?> row = rows.first;
+      Map<String, Object?> row = rows.first;
+      try {
+        // Net of refunds, like the till's own reports. A shop file from before
+        // returns existed has no such tables, which is the same as no refunds.
+        final List<Map<String, Object?>> refunds = await db.rawQuery(
+          '''
+          SELECT
+            CAST(COALESCE(SUM(r.total), 0) AS INTEGER) AS total_minor,
+            CAST(COALESCE(SUM(
+              (SELECT SUM(i.refund_minor - i.vat_minor -
+                 CASE WHEN i.restock = 1
+                      THEN CAST(ROUND(i.unit_cost * i.qty) AS INTEGER)
+                      ELSE 0 END)
+               FROM sale_return_items i WHERE i.return_id = r.id)
+            ), 0) AS INTEGER) AS profit_minor
+          FROM sale_returns r
+          WHERE r.created_at >= ? AND r.created_at <= ?
+          ''',
+          <Object?>[from.toIso8601String(), to.toIso8601String()],
+        );
+        if (refunds.isNotEmpty) {
+          row = <String, Object?>{
+            ...row,
+            'total_minor': ((row['total_minor'] as num?)?.toInt() ?? 0) -
+                ((refunds.first['total_minor'] as num?)?.toInt() ?? 0),
+            'profit_minor': ((row['profit_minor'] as num?)?.toInt() ?? 0) -
+                ((refunds.first['profit_minor'] as num?)?.toInt() ?? 0),
+          };
+        }
+      } catch (_) {
+        // No returns tables: nothing to take off.
+      }
       ShopProfile businessProfile = ShopProfile.duka;
       try {
         final List<Map<String, Object?>> profileRows = await db.query(

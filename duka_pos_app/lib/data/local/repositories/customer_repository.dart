@@ -337,9 +337,37 @@ class CustomerRepository {
         if (item.id != null) item.id!: item,
     };
 
+    // A sale taken on account was never paid in money, so it cannot be
+    // refunded in money: it goes back to the account (or becomes exchange
+    // credit). Enforced here and not only in the return sheet, so no other
+    // caller can pay cash out for a debt.
+    if (sale.paymentMethod == 'credit' &&
+        refundMethod != 'credit_to_account' &&
+        refundMethod != 'exchange_credit') {
+      throw StateError(
+        'A sale taken on account is refunded to the account, not paid out',
+      );
+    }
+    if (refundMethod == 'credit_to_account' && sale.paymentMethod != 'credit') {
+      // A split sale can still carry a credit tender.
+      final creditLeg = await txn.query(
+        'sale_payments',
+        where: "sale_id = ? AND method = 'credit'",
+        whereArgs: [sale.id],
+        limit: 1,
+      );
+      if (creditLeg.isEmpty) {
+        throw StateError(
+          'That sale was not taken on account, so there is no account to refund',
+        );
+      }
+    }
+
     // A mobile-money sale whose payment was never confirmed cannot be
-    // returned: the money may never have arrived.
-    if (sale.paymentMethod == 'mpesa' &&
+    // returned: the money may never have arrived. Every mobile-money method
+    // counts, not just 'mpesa'.
+    if (const <String>{'mpesa', 'mpesa_till', 'mobile_money_manual'}
+            .contains(sale.paymentMethod) &&
         !await paymentIsVerified(txn, sale.id!)) {
       throw StateError(
         'That sale was never confirmed as paid, so it cannot be returned',
@@ -390,6 +418,9 @@ class CustomerRepository {
           'More was returned than was sold on that line',
         );
       }
+      // Count this line too, so the same sale line listed twice in one return
+      // is checked against both copies and not each on its own.
+      returnedByItem[draft.saleItemId] = already + draft.qty;
 
       // The refund for the line: the line total scaled by the returned
       // fraction, rounded half-up.
@@ -399,9 +430,16 @@ class CustomerRepository {
       final int lineVat = DatabaseHelper.roundHalfUp(soldVat * (draft.qty / soldQty));
       totalMinor += refund;
       vatMinor += lineVat;
-      profitMinor += DatabaseHelper.roundHalfUp(
-        sold.unitCost.minorUnits * soldQty * (draft.qty / soldQty),
-      );
+      // The profit this return takes back, on the same basis as `sales.profit`
+      // (net of VAT, less cost): the net revenue refunded, less the cost of
+      // goods that go back on the shelf. This used to store the cost alone,
+      // under the name "profit".
+      profitMinor += (refund - lineVat) -
+          (draft.restock
+              ? DatabaseHelper.roundHalfUp(
+                  sold.unitCost.minorUnits * draft.qty,
+                )
+              : 0);
 
       containerMlByProduct[sold.productId] ??= ((await txn.query(
             'products',
@@ -437,7 +475,7 @@ class CustomerRepository {
           staffId: staffId,
           staffName: staffName,
           note: 'Returned',
-          balanceAfter: balance,
+          balanceAfter: balance + units,
           createdAt: now,
         );
         // The COUNT, in the same transaction as the movement.
