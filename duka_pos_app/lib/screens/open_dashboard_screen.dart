@@ -7,6 +7,7 @@ import '../db/database_helper.dart';
 import '../l10n/generated/app_localizations.dart';
 import '../models/models.dart';
 import '../profile/profile_product_forms.dart';
+import 'loose_goods_form_sheet.dart';
 import '../profile/profile_terminology.dart';
 import '../profile/shop_profile.dart';
 import '../routing/routes.dart';
@@ -913,6 +914,15 @@ class _OpenQuickActions extends StatelessWidget {
         label: 'New cost group',
         subtitle: 'Pooled costs',
         onTap: onNewCostGroup,
+      ),
+      _OpenQuickTile(
+        icon: Icons.inventory_2_outlined,
+        label: 'Loose goods',
+        subtitle: 'Tanks and loose stock',
+        onTap: () => showLooseGoodsFormSheet(
+          context,
+          profile: ShopProfile.open,
+        ),
       ),
       _OpenQuickTile(
         icon: Icons.attach_money,

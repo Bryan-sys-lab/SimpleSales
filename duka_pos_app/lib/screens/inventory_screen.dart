@@ -975,7 +975,8 @@ class _InventoryScreenState extends State<InventoryScreen>
                     label: Text(AppLocalizations.of(context).tankRegister),
                   ),
                   if ((appState.shopProfile == ShopProfile.duka ||
-                      appState.shopProfile == ShopProfile.drinks) &&
+                      appState.shopProfile == ShopProfile.drinks ||
+                      appState.shopProfile == ShopProfile.open) &&
                       appState.hasPermission(PermissionKey.adjustStock))
                     TextButton.icon(
                       onPressed: () => showLooseGoodsFormSheet(
