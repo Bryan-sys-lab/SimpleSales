@@ -230,3 +230,30 @@ String formatMoney(Money amount) {
   ).format(amount.asMajor);
 }
 
+/// Reads an amount a person typed into a money field, as shillings.
+///
+/// `double.tryParse` alone rejects what people really type: "1,500", "1 500",
+/// "KES 1500". Callers then either saved 0 (`?? 0`) or did nothing without a
+/// word. This accepts thousands separators (comma, space, apostrophe) and a
+/// KES / KSh prefix, and reads a lone trailing comma-and-one-or-two-digits as a
+/// decimal comma ("12,5"), which some keyboards produce.
+///
+/// Returns null for anything that is not a plain non-negative number, so a
+/// caller can show an error instead of guessing.
+double? parseMoneyInput(String? raw) {
+  if (raw == null) return null;
+  var t = raw.trim().replaceAll('\u00A0', ' ');
+  t = t.replaceFirst(RegExp(r'^(kes|kshs?\.?|sh\.?)\s*', caseSensitive: false), '');
+  t = t.replaceAll(RegExp(r"[\s']"), '');
+  if (t.isEmpty) return null;
+  if (!t.contains('.') && RegExp(r'^\d+,\d{1,2}$').hasMatch(t)) {
+    t = t.replaceFirst(',', '.');
+  } else {
+    t = t.replaceAll(',', '');
+  }
+  if (!RegExp(r'^(\d+(\.\d+)?|\.\d+)$').hasMatch(t)) return null;
+  final value = double.tryParse(t);
+  if (value == null || !value.isFinite) return null;
+  return value;
+}
+

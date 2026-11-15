@@ -38,7 +38,7 @@ class _OpenJobAddCostScreenState extends State<OpenJobAddCostScreen> {
 
   Future<void> _save() async {
     if (!_formKey.currentState!.validate()) return;
-    final parsed = double.tryParse(_amountController.text.trim());
+    final parsed = parseMoneyInput(_amountController.text.trim());
     if (parsed == null || parsed <= 0) return;
     setState(() => _saving = true);
     try {
@@ -97,7 +97,7 @@ class _OpenJobAddCostScreenState extends State<OpenJobAddCostScreen> {
               keyboardType: const TextInputType.numberWithOptions(decimal: true),
               decoration: const InputDecoration(labelText: 'Amount'),
               validator: (v) {
-                final p = double.tryParse(v?.trim() ?? '');
+                final p = parseMoneyInput(v?.trim() ?? '');
                 if (p == null || p <= 0) return 'Enter a positive amount';
                 return null;
               },

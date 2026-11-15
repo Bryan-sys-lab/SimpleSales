@@ -91,7 +91,7 @@ class _OpenJobFormScreenState extends State<OpenJobFormScreen> {
       final quoteText = _quoteController.text.trim();
       final quote = quoteText.isEmpty
           ? null
-          : Money.fromMajor(double.tryParse(quoteText) ?? 0);
+          : Money.fromMajor(parseMoneyInput(quoteText) ?? 0);
       if (_isEdit && widget.jobId != null) {
         await _db.updateJob(
           id: widget.jobId!,
@@ -163,6 +163,11 @@ class _OpenJobFormScreenState extends State<OpenJobFormScreen> {
               controller: _quoteController,
               keyboardType: const TextInputType.numberWithOptions(decimal: true),
               decoration: InputDecoration(labelText: l10n.openJobFormQuoteLabel),
+              validator: (v) {
+                final String t = v?.trim() ?? '';
+                if (t.isEmpty) return null;
+                return parseMoneyInput(t) == null ? 'Enter a valid amount' : null;
+              },
             ),
             SizedBox(height: spacing.md),
             DropdownButtonFormField<int?>(

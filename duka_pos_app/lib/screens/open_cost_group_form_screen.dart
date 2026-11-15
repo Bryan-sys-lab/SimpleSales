@@ -45,7 +45,7 @@ class _OpenCostGroupFormScreenState extends State<OpenCostGroupFormScreen> {
       final costText = _costController.text.trim();
       final cost = costText.isEmpty
           ? null
-          : Money.fromMajor(double.tryParse(costText) ?? 0);
+          : Money.fromMajor(parseMoneyInput(costText) ?? 0);
       await _db.createCostPool(
         uuid: generateUuid(),
         name: _nameController.text.trim(),
@@ -123,6 +123,11 @@ class _OpenCostGroupFormScreenState extends State<OpenCostGroupFormScreen> {
               keyboardType: const TextInputType.numberWithOptions(decimal: true),
               decoration: const InputDecoration(
                   labelText: 'Initial cost (optional)'),
+              validator: (v) {
+                final String t = v?.trim() ?? '';
+                if (t.isEmpty) return null;
+                return parseMoneyInput(t) == null ? 'Enter a valid amount' : null;
+              },
             ),
             SizedBox(height: spacing.md),
             DropdownButtonFormField<String>(

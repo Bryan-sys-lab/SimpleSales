@@ -343,7 +343,7 @@ class _OpenDashboardScreenState extends State<OpenDashboardScreen>
           TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Cancel')),
           FilledButton(
             onPressed: () {
-              final amount = double.tryParse(amountCtrl.text.trim());
+              final amount = parseMoneyInput(amountCtrl.text.trim());
               if (amount == null || amount <= 0) return;
               Navigator.pop(ctx, <String, String>{
                 'type': typeCtrl.toString(),
@@ -361,7 +361,7 @@ class _OpenDashboardScreenState extends State<OpenDashboardScreen>
     referenceCtrl.dispose();
     noteCtrl.dispose();
     if (result == null || !mounted) return;
-    final amount = double.tryParse(result['amount'] ?? '');
+    final amount = parseMoneyInput(result['amount'] ?? '');
     if (amount == null || amount <= 0) return;
     try {
       await DatabaseHelper.instance.recordOwnerTransaction(

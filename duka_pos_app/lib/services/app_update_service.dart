@@ -306,7 +306,15 @@ class AppUpdateService extends ChangeNotifier {
     try {
       target = await _apkTarget();
       final part = File('${target.path}.part');
-      final request = http.Request('GET', Uri.parse(release.downloadUrl));
+      final downloadUri = Uri.parse(release.downloadUrl);
+      // A release build only ever downloads an APK over TLS. Android's signing
+      // check is the real guard, but there is no reason to hand a plain-HTTP
+      // stream to anyone on the path.
+      if (kReleaseMode && downloadUri.scheme != 'https') {
+        throw const UpdateException(
+            UpdateFailure.downloadFailed, 'download must use https');
+      }
+      final request = http.Request('GET', downloadUri);
       final response = await _client.send(request).timeout(
         _downloadDeadline,
         onTimeout: () {
@@ -335,11 +343,13 @@ class AppUpdateService extends ChangeNotifier {
 
       final sink = part.openWrite();
       var received = 0;
-      var lastActivity = DateTime.now();
       try {
-        await for (final chunk in response.stream) {
+        // `timeout` on the stream is what makes the inactivity limit real: it
+        // fires when no chunk arrives for that long, mid-download. The old
+        // check ran once the stream had already finished.
+        await for (final chunk
+            in response.stream.timeout(_downloadInactivityTimeout)) {
           received += chunk.length;
-          lastActivity = DateTime.now();
           if (received > _maxDownloadSize) {
             throw const UpdateException(UpdateFailure.downloadFailed);
           }
@@ -355,13 +365,6 @@ class AppUpdateService extends ChangeNotifier {
         await sink.close();
       }
 
-      // Inactivity guard: if no data arrived for too long, treat as incomplete.
-      if (DateTime.now().difference(lastActivity) > _downloadInactivityTimeout &&
-          received == 0) {
-        await part.delete();
-        throw const UpdateException(UpdateFailure.downloadIncomplete);
-      }
-
       // A truncated download is the failure that would install a broken APK, so
       // it is checked rather than assumed: a proxy that cut the stream early
       // still returns 200.
@@ -372,11 +375,13 @@ class AppUpdateService extends ChangeNotifier {
 
       // Verify SHA-256 digest when the manifest advertises one.
       if (release.sha256 != null && release.sha256!.isNotEmpty) {
-        final bytes = await part.readAsBytes();
-        final digest = sha256.convert(bytes).toString();
+        // Hashed from the stream: reading a 150 MB APK into memory could run a
+        // budget handset out of RAM.
+        final digest = (await sha256.bind(part.openRead()).first).toString();
         if (digest != release.sha256!.toLowerCase()) {
           await part.delete();
-          throw const UpdateException(UpdateFailure.downloadIncomplete);
+          throw const UpdateException(
+              UpdateFailure.downloadIncomplete, 'sha256 mismatch');
         }
       }
 
@@ -385,6 +390,8 @@ class AppUpdateService extends ChangeNotifier {
       _progress = null;
       return target;
     } on UpdateException {
+      // Do not leave a half-written APK behind (an over-size stream, say).
+      if (target != null) await _deletePart(target);
       rethrow;
     } on TimeoutException {
       if (target != null) await _deletePart(target);
@@ -432,17 +439,21 @@ class AppUpdateService extends ChangeNotifier {
       // Verify the release's expected package ID matches this build before
       // handing anything to the installer. An APK built for a different app ID
       // can never update in place and must not be offered.
-      if (pendingRelease?.appId != null) {
+      final String? expectedAppId = pendingRelease?.appId;
+      if (expectedAppId != null) {
+        final String installedId;
         try {
-          final info = await PackageInfo.fromPlatform();
-          if (info.packageName != pendingRelease!.appId) {
-            throw const UpdateException(
-                UpdateFailure.installRefused, 'package ID mismatch');
-          }
+          installedId = (await PackageInfo.fromPlatform()).packageName;
         } on Object {
           // If we cannot read the platform package name, fail closed.
           throw const UpdateException(
               UpdateFailure.installRefused, 'cannot verify package ID');
+        }
+        // Compared outside the try above, so a real mismatch is reported as
+        // one instead of being caught and relabelled.
+        if (installedId != expectedAppId) {
+          throw const UpdateException(
+              UpdateFailure.installRefused, 'package ID mismatch');
         }
       }
 

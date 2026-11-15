@@ -174,8 +174,13 @@ class _OpenJobDetailScreenState extends State<OpenJobDetailScreen> {
     amountController.dispose();
     referenceController.dispose();
     if (result == null || !mounted) return;
-    final amount = double.tryParse(result['amount'] ?? '');
-    if (amount == null || amount <= 0) return;
+    final amount = parseMoneyInput(result['amount']);
+    if (amount == null || amount <= 0) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Enter a valid amount, for example 1500')),
+      );
+      return;
+    }
     try {
       await _db.recordJobPayment(
         uuid: 'jobpay-${DateTime.now().microsecondsSinceEpoch}',
@@ -183,6 +188,11 @@ class _OpenJobDetailScreenState extends State<OpenJobDetailScreen> {
         amount: Money.fromMajor(amount),
         paymentMethod: result['method'] ?? 'cash',
         reference: (result['reference'] ?? '').isEmpty ? null : result['reference'],
+        // The dialog only lets a non-cash payment through once the person has
+        // ticked "I have verified this payment was received", and cash is in
+        // their hand, so by here every payment is confirmed. It used to be
+        // saved as 'pending' forever: nothing ever calls verifyJobPayment.
+        status: 'verified',
       );
       if (mounted) await _load();
     } catch (e) {
@@ -446,7 +456,7 @@ class _OpenJobDetailScreenState extends State<OpenJobDetailScreen> {
         final dType = AppTypography.of(dialogContext);
         return StatefulBuilder(
           builder: (dialogContext, setState) {
-            final parsed = double.tryParse(controller.text.trim());
+            final parsed = parseMoneyInput(controller.text.trim());
             final finalPrice = parsed != null && parsed > 0
                 ? Money.fromMajor(parsed)
                 : null;

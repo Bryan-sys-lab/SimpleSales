@@ -113,7 +113,11 @@ class AuthService {
       final parts = storedHash.split('\$');
       if (parts.length != 4) return false;
       final iterations = int.tryParse(parts[1]);
-      if (iterations == null || iterations < 1) return false;
+      // Bounded: the count is read from the stored hash, and a tampered row
+      // with a huge one would otherwise freeze the sign-in screen.
+      if (iterations == null || iterations < 1 || iterations > maxStoredIterations) {
+        return false;
+      }
       final List<int> salt;
       final List<int> expected;
       try {
@@ -211,8 +215,21 @@ class AuthService {
   static const Duration lockoutDuration = Duration(seconds: 30);
   static const Duration maxLockoutDuration = Duration(minutes: 30);
 
+  /// The most PBKDF2 iterations a stored hash may ask for. Well above the
+  /// 120,000 used for PINs and the 600,000 used for portable backups.
+  static const int maxStoredIterations = 2000000;
+
+  /// A clock that only moves forward while this process runs.
+  ///
+  /// The lockout is stored against the wall clock so it survives a restart, but
+  /// the wall clock can be set forward to skip the wait. Within one run this
+  /// stopwatch is checked as well, so changing the date no longer ends a
+  /// lockout early. (Across a restart only the wall clock is available.)
+  static final Stopwatch _clock = Stopwatch()..start();
+  static final Map<String, Duration> _lastFailureAt = <String, Duration>{};
+
   static Future<bool> isLockedOut(String userKey) async =>
-      _isLockedOut(await _readLockout(userKey));
+      (await lockoutRemaining(userKey)) != null;
 
   /// The storage key for one person's failed attempts IN ONE SHOP.
   ///
@@ -255,32 +272,41 @@ class AuthService {
   /// This counts every failure no matter which user was chosen, so the whole
   /// till throttles together.
   static Future<bool> isTillLockedOut() async =>
-      _isLockedOut(await _readRecord(_tillThrottleKey));
+      (await tillLockoutRemaining()) != null;
 
   static Future<Duration?> tillLockoutRemaining() async =>
-      _remaining(await _readRecord(_tillThrottleKey));
+      _remainingFor(await _readRecord(_tillThrottleKey), _tillThrottleKey);
 
-  static bool _isLockedOut(Map<String, dynamic>? record) {
-    if (record == null) return false;
+  /// How much longer sign-in stays refused for [record], or null when it is not.
+  ///
+  /// The longer of the wall-clock and in-process answers wins, so moving the
+  /// device date forward cannot end a lockout this run has already seen.
+  static Duration? _remainingFor(
+      Map<String, dynamic>? record, String storageKey) {
+    if (record == null) return null;
     final count = record['count'] as int? ?? 0;
-    if (count < maxAttempts) return false;
-    final last = DateTime.tryParse(record['last'] as String? ?? '');
-    if (last == null) return false;
+    if (count < maxAttempts) return null;
     final window = Duration(seconds: record['window'] as int? ?? 30);
-    return DateTime.now().difference(last) < window;
+    Duration? remaining;
+    final last = DateTime.tryParse(record['last'] as String? ?? '');
+    if (last != null) {
+      final wall = window - DateTime.now().difference(last);
+      if (wall > Duration.zero) remaining = wall;
+    }
+    final seen = _lastFailureAt[storageKey];
+    if (seen != null) {
+      final mono = window - (_clock.elapsed - seen);
+      if (mono > Duration.zero && (remaining == null || mono > remaining)) {
+        remaining = mono;
+      }
+    }
+    return remaining;
   }
 
-  static Duration? _remaining(Map<String, dynamic>? record) {
-    if (!_isLockedOut(record)) return null;
-    final last = DateTime.tryParse(record!['last'] as String? ?? '');
-    if (last == null) return null;
-    final remaining = Duration(seconds: record['window'] as int? ?? 30) -
-        DateTime.now().difference(last);
-    return remaining.isNegative ? null : remaining;
+  static Future<Duration?> lockoutRemaining(String userKey) async {
+    final key = await _lockoutKeyFor(userKey);
+    return _remainingFor(await _readRecord(key), key);
   }
-
-  static Future<Duration?> lockoutRemaining(String userKey) async =>
-      _remaining(await _readLockout(userKey));
 
   /// Records one failed attempt against both [userKey] and the till as a whole.
   /// Call sites only ever need this one method: forgetting the till-wide half
@@ -306,6 +332,7 @@ class AuthService {
       'window': windowSeconds,
       'last': DateTime.now().toIso8601String(),
     });
+    _lastFailureAt[storageKey] = _clock.elapsed;
   }
 
   /// Clears both the user and the till counters.
@@ -318,9 +345,6 @@ class AuthService {
     await _clearRecord(await _lockoutKeyFor(userKey));
     await _clearRecord(_tillThrottleKey);
   }
-
-  static Future<Map<String, dynamic>?> _readLockout(String userKey) async =>
-      _readRecord(await _lockoutKeyFor(userKey));
 
   static Future<Map<String, dynamic>?> _readRecord(String storageKey) async {
     final raw = await _storage.read(key: storageKey);
@@ -337,6 +361,15 @@ class AuthService {
           String storageKey, Map<String, dynamic> value) =>
       _storage.write(key: storageKey, value: jsonEncode(value));
 
-  static Future<void> _clearRecord(String storageKey) =>
-      _storage.delete(key: storageKey);
+  static Future<void> _clearRecord(String storageKey) {
+    _lastFailureAt.remove(storageKey);
+    return _storage.delete(key: storageKey);
+  }
+
+  /// Clears one person's failed attempts and leaves the till-wide throttle
+  /// alone. For checks that prove a PIN without signing anybody in (a manager
+  /// approval): clearing the till throttle there would let anyone who knows one
+  /// working PIN reset the counter between bursts of guesses at another.
+  static Future<void> clearUserFailures(String userKey) async =>
+      _clearRecord(await _lockoutKeyFor(userKey));
 }

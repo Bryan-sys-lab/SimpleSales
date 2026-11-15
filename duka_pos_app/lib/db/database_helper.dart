@@ -11477,6 +11477,19 @@ $untilClause
     );
     final repaid = (repayments.first['total_minor'] as num?)?.toInt() ?? 0;
 
+    // PLUS the cash taken on jobs in this shift. `recordJobPayment` refuses a
+    // cash payment unless a shift is open and stamps the payment with it, so
+    // the money is in this drawer; leaving it out made every cash deposit show
+    // up as an overage when the shift was counted.
+    final jobCash = await (await database).rawQuery(
+      '''SELECT COALESCE(SUM(amount_minor), 0) AS total_minor
+         FROM job_payments
+         WHERE shift_id = ?
+           AND payment_method = 'cash' ''',
+      [shift.id],
+    );
+    final jobCashMinor = (jobCash.first['total_minor'] as num?)?.toInt() ?? 0;
+
     final expenses = await (await database).rawQuery(
       '''SELECT COALESCE(SUM(amount_minor), 0) AS total_minor
          FROM expenses
@@ -11497,7 +11510,7 @@ $untilClause
     final moved = (movements.first['total_minor'] as num?)?.toInt() ?? 0;
 
     return Money.fromMinor(
-        totalCashMinor - refunded + repaid - paidOut + moved);
+        totalCashMinor - refunded + repaid + jobCashMinor - paidOut + moved);
   }
 
   /// Active expense categories, in the order shown to the person paying out.
