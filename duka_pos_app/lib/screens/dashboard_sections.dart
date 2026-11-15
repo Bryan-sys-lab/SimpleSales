@@ -1197,7 +1197,7 @@ class _LowStockRow extends StatelessWidget {
     final type = AppTypography.of(context);
     final l10n = AppLocalizations.of(context);
 
-    final bool isOut = product.stockQty <= 0;
+    final bool isOut = product.isOutOfStock;
     final StatusTone tone = isOut ? StatusTone.danger : StatusTone.warning;
 
     return Semantics(

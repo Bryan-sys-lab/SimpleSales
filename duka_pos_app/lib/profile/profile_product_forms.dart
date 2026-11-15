@@ -3,6 +3,7 @@ import '../l10n/generated/app_localizations.dart';
 
 import 'shop_profile.dart';
 import '../models/models.dart';
+import '../db/database_helper.dart';
 
 /// Profile-specific product creation flows.
 /// 
@@ -341,91 +342,126 @@ class ProfileProductForms {
     final unitController = TextEditingController(
         text: existing?.unit.wire ?? 'each');
 
-    bool optionalStock = existing != null;
+    var optionalStock = existing != null;
+    var selectedPoolId = existing?.costPoolId;
+    var pools = <Map<String, dynamic>>[];
+    var poolsLoaded = false;
+
+    Future<void> loadPools() async {
+      try {
+        final rows = await DatabaseHelper.instance.getCostPools();
+        poolsLoaded = true;
+        pools = rows;
+      } catch (_) {}
+    }
 
     return await showDialog<Map<String, dynamic>>(
       context: context,
       builder: (context) => StatefulBuilder(
-        builder: (context, setState) => AlertDialog(
-          title: Text(AppLocalizations.of(context).profileFormAddItemOrService),
-          content: SingleChildScrollView(
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                TextField(
-                  controller: nameController,
-                  decoration: const InputDecoration(labelText: 'Item or service name'),
-                  autofocus: true,
-                ),
-                TextField(
-                  controller: priceController,
-                  decoration: const InputDecoration(labelText: 'Price (KES)'),
-                  keyboardType: TextInputType.numberWithOptions(decimal: true),
-                ),
-                CheckboxListTile(
-                  title: Text(AppLocalizations.of(context).profileFormTrackStock),
-                  value: optionalStock,
-                  onChanged: (value) => setState(() => optionalStock = value ?? false),
-                  controlAffinity: ListTileControlAffinity.leading,
-                ),
-                if (optionalStock) ...[
+        builder: (context, setState) {
+          if (!poolsLoaded) {
+            poolsLoaded = true;
+            loadPools();
+          }
+          return AlertDialog(
+            title: Text(AppLocalizations.of(context).profileFormAddItemOrService),
+            content: SingleChildScrollView(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
                   TextField(
-                    controller: unitController,
-                    decoration: const InputDecoration(labelText: 'Unit (e.g. each, kg, litre, bale, piece)'),
+                    controller: nameController,
+                    decoration: const InputDecoration(labelText: 'Item or service name'),
+                    autofocus: true,
                   ),
                   TextField(
-                    controller: costController,
-                    decoration: const InputDecoration(labelText: 'Cost (KES, optional)'),
+                    controller: priceController,
+                    decoration: const InputDecoration(labelText: 'Price (KES)'),
                     keyboardType: TextInputType.numberWithOptions(decimal: true),
                   ),
-                  TextField(
-                    controller: stockController,
-                    decoration: const InputDecoration(labelText: 'Starting stock (optional)'),
-                    keyboardType: TextInputType.numberWithOptions(decimal: true),
+                  CheckboxListTile(
+                    title: Text(AppLocalizations.of(context).profileFormTrackStock),
+                    value: optionalStock,
+                    onChanged: (value) => setState(() => optionalStock = value ?? false),
+                    controlAffinity: ListTileControlAffinity.leading,
                   ),
-                  TextField(
-                    controller: reorderController,
-                    decoration: const InputDecoration(
-                      labelText: 'Reorder level (optional)',
-                      helperText: 'Alert when stock drops to this level',
+                  if (optionalStock) ...[
+                    TextField(
+                      controller: unitController,
+                      decoration: const InputDecoration(labelText: 'Unit (e.g. each, kg, litre, bale, piece)'),
                     ),
-                    keyboardType: TextInputType.numberWithOptions(decimal: true),
-                  ),
+                    TextField(
+                      controller: costController,
+                      decoration: const InputDecoration(labelText: 'Cost (KES, optional)'),
+                      keyboardType: TextInputType.numberWithOptions(decimal: true),
+                    ),
+                    TextField(
+                      controller: stockController,
+                      decoration: const InputDecoration(labelText: 'Starting stock (optional)'),
+                      keyboardType: TextInputType.numberWithOptions(decimal: true),
+                    ),
+                    TextField(
+                      controller: reorderController,
+                      decoration: const InputDecoration(
+                        labelText: 'Reorder level (optional)',
+                        helperText: 'Alert when stock drops to this level',
+                      ),
+                      keyboardType: TextInputType.numberWithOptions(decimal: true),
+                    ),
+                    SizedBox(height: 12),
+                    DropdownButtonFormField<int?>(
+                      initialValue: selectedPoolId,
+                      decoration: const InputDecoration(
+                        labelText: 'Link to cost group (optional)',
+                        helperText: 'Leave unlinked for items with no cost group',
+                      ),
+                      items: <DropdownMenuItem<int?>>[
+                        const DropdownMenuItem<int?>(value: null, child: Text('None')),
+                        for (final pool in pools)
+                          DropdownMenuItem<int?>(
+                            value: (pool['id'] as num).toInt(),
+                            child: Text(pool['name'] as String? ?? 'Untitled group'),
+                          ),
+                      ],
+                      onChanged: (v) => setState(() => selectedPoolId = v),
+                    ),
+                  ],
                 ],
-              ],
+              ),
             ),
-          ),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.pop(context),
-              child: Text(AppLocalizations.of(context).profileFormCancel),
-            ),
-            FilledButton(
-              onPressed: () {
-                final price = double.tryParse(priceController.text);
-                final cost = optionalStock ? double.tryParse(costController.text) : 0;
-                final stock = optionalStock ? double.tryParse(stockController.text) : 0;
-                final reorder = optionalStock ? double.tryParse(reorderController.text) : 0;
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(context),
+                child: Text(AppLocalizations.of(context).profileFormCancel),
+              ),
+              FilledButton(
+                onPressed: () {
+                  final price = double.tryParse(priceController.text);
+                  final cost = optionalStock ? double.tryParse(costController.text) : 0;
+                  final stock = optionalStock ? double.tryParse(stockController.text) : 0;
+                  final reorder = optionalStock ? double.tryParse(reorderController.text) : 0;
 
-                if (nameController.text.isEmpty || price == null) {
-                  return;
-                }
+                  if (nameController.text.isEmpty || price == null) {
+                    return;
+                  }
 
-                Navigator.pop(context, {
-                  'name': nameController.text,
-                  'category': 'Optional stock',
-                  'price': price,
-                  'cost': cost ?? 0,
-                  'stock': stock ?? 0,
-                  'reorder_level': reorder ?? 0,
-                  'unit': optionalStock ? (unitController.text.trim().isEmpty ? 'each' : unitController.text.trim()) : 'each',
-                  'optional_stock': optionalStock,
-                });
-              },
-              child: Text(AppLocalizations.of(context).profileFormSave),
-            ),
-          ],
-        ),
+                  Navigator.pop(context, {
+                    'name': nameController.text,
+                    'category': 'Optional stock',
+                    'price': price,
+                    'cost': cost ?? 0,
+                    'stock': stock ?? 0,
+                    'reorder_level': reorder ?? 0,
+                    'unit': optionalStock ? (unitController.text.trim().isEmpty ? 'each' : unitController.text.trim()) : 'each',
+                    'track_stock': optionalStock,
+                    'cost_pool_id': selectedPoolId,
+                  });
+                },
+                child: Text(AppLocalizations.of(context).profileFormSave),
+              ),
+            ],
+          );
+        },
       ),
     );
   }

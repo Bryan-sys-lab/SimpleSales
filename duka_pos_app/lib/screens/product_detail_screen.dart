@@ -96,7 +96,7 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
       (product.stockQty * product.costPrice.minorUnits).round(),
     );
 
-    final bool isOut = product.stockQty <= 0;
+    final bool isOut = product.isOutOfStock;
     final bool isLow = !isOut && product.isLow;
 
     final StatusTone tone = isOut

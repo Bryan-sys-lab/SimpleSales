@@ -2974,11 +2974,12 @@ SELECT name FROM staff GROUP BY name HAVING COUNT(*) = 1
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       uuid TEXT NOT NULL UNIQUE,
       name TEXT NOT NULL,
-      pool_type TEXT NOT NULL CHECK (pool_type IN ('lot', 'rolling_stock')),
+      pool_type TEXT NOT NULL CHECK (pool_type IN ('lot', 'rolling_stock', 'bale')),
       invested_minor INTEGER NOT NULL DEFAULT 0,
       recovered_minor INTEGER NOT NULL DEFAULT 0,
       status TEXT NOT NULL DEFAULT 'open',
       note TEXT,
+      units TEXT,
       created_at TEXT NOT NULL,
       closed_at TEXT
     )''');
@@ -3515,6 +3516,16 @@ SELECT name FROM staff GROUP BY name HAVING COUNT(*) = 1
     // the product, not an absence to infer from.
     await db.execute(
         'ALTER TABLE products ADD COLUMN track_variants INTEGER NOT NULL DEFAULT 0');
+
+    // Whether this product's stock level is tracked. Untracked items and
+    // services never show as out of stock no matter what stock_qty says.
+    await db.execute(
+        'ALTER TABLE products ADD COLUMN track_stock INTEGER NOT NULL DEFAULT 1');
+
+    // Optional link to a cost group / bale. When set, selling this product
+    // allocates the sale amount to that pool's recovery.
+    await db.execute(
+        'ALTER TABLE products ADD COLUMN cost_pool_id INTEGER');
 
     // --- Weight-stocked tanks -----------------------------------------------
     //
@@ -11866,6 +11877,7 @@ $untilClause
     required String name,
     required String poolType,
     String? note,
+    String? units,
     Money? initialCost,
     Money? totalCost,
     Money? cost,
@@ -11879,6 +11891,7 @@ $untilClause
       name: name,
       poolType: poolType,
       note: note,
+      units: units,
       initialCost: initialCost,
       totalCost: totalCost,
       cost: cost,

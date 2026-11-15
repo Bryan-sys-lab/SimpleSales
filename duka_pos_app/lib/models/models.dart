@@ -143,6 +143,8 @@ class Product {
   final Money costPrice;
   final Money sellPrice;
   final double stockQty;
+  final bool trackStock;
+  final int? costPoolId;
 
   /// Quantity currently reserved by open Fashion lay-bys. It is not on-hand
   /// stock: it reduces what a normal sale may promise, while the goods remain
@@ -214,6 +216,8 @@ class Product {
     required this.costPrice,
     required this.sellPrice,
     required this.stockQty,
+    this.trackStock = true,
+    this.costPoolId,
     this.reservedQty = 0,
     required this.reorderLevel,
     this.bottleMl = 750,
@@ -240,6 +244,13 @@ class Product {
           100;
   double get availableStockQty => math.max(0.0, stockQty - reservedQty);
   bool get isLow => availableStockQty <= reorderLevel;
+
+  /// Whether this product should ever be treated as out of stock.
+  ///
+  /// Items and services added without stock tracking (trackStock = false) are
+  /// never out of stock no matter what stock_qty says. Only tracked products
+  /// can be out of stock.
+  bool get isOutOfStock => trackStock && stockQty <= 0;
 
   /// The price charged for one portion of a bottle.
   ///
@@ -289,6 +300,8 @@ class Product {
     Money? costPrice,
     Money? sellPrice,
     double? stockQty,
+    bool? trackStock,
+    int? costPoolId,
     double? reservedQty,
     int? reorderLevel,
     int? bottleMl,
@@ -311,6 +324,8 @@ class Product {
         costPrice: costPrice ?? this.costPrice,
         sellPrice: sellPrice ?? this.sellPrice,
         stockQty: stockQty ?? this.stockQty,
+        trackStock: trackStock ?? this.trackStock,
+        costPoolId: costPoolId ?? this.costPoolId,
         reservedQty: reservedQty ?? this.reservedQty,
         reorderLevel: reorderLevel ?? this.reorderLevel,
         bottleMl: bottleMl ?? this.bottleMl,
@@ -337,6 +352,8 @@ class Product {
         'cost_price': costPrice.minorUnits,
         'sell_price': sellPrice.minorUnits,
         'stock_qty': stockQty,
+        'track_stock': trackStock ? 1 : 0,
+        'cost_pool_id': costPoolId,
         'reserved_qty': reservedQty,
         'reorder_level': reorderLevel,
         'bottle_ml': bottleMl,
@@ -361,6 +378,8 @@ class Product {
         costPrice: Money.fromMinor((m['cost_price'] as num?)?.toInt() ?? 0),
         sellPrice: Money.fromMinor((m['sell_price'] as num?)?.toInt() ?? 0),
         stockQty: (m['stock_qty'] as num).toDouble(),
+        trackStock: ((m['track_stock'] as num?)?.toInt() ?? 1) == 1,
+        costPoolId: (m['cost_pool_id'] as num?)?.toInt(),
         reservedQty: (m['reserved_qty'] as num?)?.toDouble() ?? 0,
         reorderLevel: m['reorder_level'],
         bottleMl: (m['bottle_ml'] as num?)?.toInt() ?? 750,

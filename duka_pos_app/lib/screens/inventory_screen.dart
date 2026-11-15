@@ -891,7 +891,7 @@ class _InventoryScreenState extends State<InventoryScreen>
             p.unit == ProductUnit.kilogram || p.unit == ProductUnit.litre,
         InventoryFilter.low =>
             p.stockQty > 0 && p.stockQty <= p.reorderLevel,
-        InventoryFilter.out => p.stockQty <= 0,
+        InventoryFilter.out => p.isOutOfStock,
       };
       return matchesQuery && matchesFilter;
     }).toList();
@@ -1486,7 +1486,7 @@ class _ProductListTile extends StatelessWidget {
     final AppColors colors = AppColors.of(context);
     final TextTheme type = AppTypography.of(context);
 
-    final bool isOut = product.stockQty <= 0;
+    final bool isOut = product.isOutOfStock;
     final bool isLow = !isOut && product.isLow;
 
     // The state, resolved ONCE from the value.

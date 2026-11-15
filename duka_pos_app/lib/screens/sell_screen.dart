@@ -684,7 +684,7 @@ class _SellScreenState extends State<SellScreen>
       sellsAsVariants: sellsAsVariants,
       variantCount: variants.length,
       cheapestPrice: fromPrice,
-      canTap: product.stockQty > 0 || sellsAsVariants,
+      canTap: !product.trackStock || product.stockQty > 0 || sellsAsVariants,
     );
   }
 
@@ -3170,6 +3170,10 @@ class _SellScreenState extends State<SellScreen>
             costPrice: Money.zero,
             sellPrice: Money.fromMajor(amount),
             stockQty: 0,
+            trackStock: false,
+            costPoolId: values['poolId'] != null
+                ? (values['poolId'] as int)
+                : null,
             reorderLevel: 0,
             unit: ProductUnit.parse(
               (values['unit'] ?? '').isEmpty

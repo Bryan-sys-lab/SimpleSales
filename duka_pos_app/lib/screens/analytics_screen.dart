@@ -399,7 +399,7 @@ class _AnalyticsScreenState extends State<AnalyticsScreen>
             // Two lists, not one: "out of stock" and "running low" are different
             // urgencies, and one list that quietly contains both is read as the
             // milder of the two.
-            outOfStock: products.where((Product p) => p.stockQty <= 0).toList()
+            outOfStock: products.where((Product p) => p.isOutOfStock).toList()
               ..sort((Product a, Product b) => a.name.compareTo(b.name)),
             lowStock: products
                 .where((Product p) => p.stockQty > 0 && p.isLow)

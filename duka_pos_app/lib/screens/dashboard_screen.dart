@@ -212,7 +212,7 @@ class _DashboardScreenState extends State<DashboardScreen>
           products.where((p) => p.category == 'Tanks' && p.active).toList();
       final int totalProducts = products.where((p) => p.active).length;
       final int outOfStockCount = products
-          .where((p) => p.active && p.stockQty <= 0)
+          .where((p) => p.active && p.isOutOfStock)
           .length;
       final Money stockValue = Money.fromMinor(
         products.where((p) => p.active).fold<int>(
@@ -319,7 +319,7 @@ class _DashboardScreenState extends State<DashboardScreen>
           .toList()
         ..sort((Product a, Product b) {
           final int byEmpty =
-              (a.stockQty <= 0 ? 0 : 1).compareTo(b.stockQty <= 0 ? 0 : 1);
+              (a.isOutOfStock ? 0 : 1).compareTo(b.isOutOfStock ? 0 : 1);
           return byEmpty != 0 ? byEmpty : a.stockQty.compareTo(b.stockQty);
         });
 

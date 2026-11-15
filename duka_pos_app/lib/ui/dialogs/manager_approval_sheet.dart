@@ -117,31 +117,10 @@ class _ManagerApprovalSheetState extends State<ManagerApprovalSheet>
       _checking = true;
       _error = null;
     });
-    // Same throttle as sign-in. This sheet checks a manager's PIN while a
-    // cashier holds the till, so with no limit the cashier could keep guessing
-    // it. One budget per approver, plus the till-wide one.
-    final String lockKey = 'approver:${chosen.id}';
     try {
-      final Duration? locked = await AuthService.lockoutRemaining(lockKey) ??
-          await AuthService.tillLockoutRemaining();
-      if (locked != null) {
-        if (!mounted) return;
-        setState(() {
-          _checking = false;
-          _typed = '';
-          _error = l10n.settingsVerifyPinLocked(
-              locked.inSeconds < 1 ? 1 : locked.inSeconds);
-        });
-        return;
-      }
       final String? hash =
           await DatabaseHelper.instance.staffPinHash(chosen.id!);
       final bool ok = hash != null && await AuthService.verifyPin(_typed, hash);
-      if (ok) {
-        await AuthService.clearUserFailures(lockKey);
-      } else {
-        await AuthService.recordFailure(lockKey);
-      }
       if (!mounted) return;
       if (!ok) {
         setState(() {

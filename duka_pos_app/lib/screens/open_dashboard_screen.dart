@@ -396,12 +396,16 @@ class _OpenDashboardScreenState extends State<OpenDashboardScreen>
     final price = (result['price'] as num?)?.toDouble() ?? 0;
     final stock = (result['stock'] as num?)?.toDouble() ?? 0;
     final reorderLevel = (result['reorder_level'] as num?)?.toInt() ?? 0;
+    final trackStock = (result['track_stock'] as bool?) ?? true;
+    final costPoolId = (result['cost_pool_id'] as num?)?.toInt();
     final product = Product(
       name: result['name'] as String,
       category: (result['category'] as String? ?? 'Item or service'),
       costPrice: Money.fromMajor(cost),
       sellPrice: Money.fromMajor(price),
-      stockQty: stock,
+      stockQty: trackStock ? stock : 0,
+      trackStock: trackStock,
+      costPoolId: costPoolId,
       reorderLevel: reorderLevel,
       unit: unit,
       updatedAt: DateTime.now().toIso8601String(),

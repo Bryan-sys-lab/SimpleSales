@@ -25,6 +25,8 @@ class InventoryRepository {
       cost_price INTEGER NOT NULL,
       sell_price INTEGER NOT NULL,
       stock_qty REAL NOT NULL DEFAULT 0,
+      track_stock INTEGER NOT NULL DEFAULT 1,
+      cost_pool_id INTEGER,
       reserved_qty REAL NOT NULL DEFAULT 0,
       reorder_level INTEGER NOT NULL DEFAULT 5,
       bottle_ml INTEGER NOT NULL DEFAULT 750,

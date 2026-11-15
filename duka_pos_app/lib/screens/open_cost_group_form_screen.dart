@@ -26,6 +26,7 @@ class _OpenCostGroupFormScreenState extends State<OpenCostGroupFormScreen> {
   String _poolType = 'lot';
   String _entryType = 'purchase';
   String _paidFrom = 'other';
+  String? _units;
   bool _saving = false;
 
   DatabaseHelper get _db => DatabaseHelper.instance;
@@ -56,6 +57,7 @@ class _OpenCostGroupFormScreenState extends State<OpenCostGroupFormScreen> {
         initialCost: cost,
         entryType: _entryType,
         paidFrom: _paidFrom,
+        units: _units,
         description: _noteController.text.trim().isEmpty
             ? null
             : _noteController.text.trim(),
@@ -111,6 +113,28 @@ class _OpenCostGroupFormScreenState extends State<OpenCostGroupFormScreen> {
                       ))
                   .toList(),
               onChanged: (v) => setState(() => _poolType = v ?? 'lot'),
+            ),
+            SizedBox(height: spacing.md),
+            DropdownButtonFormField<String?>(
+              initialValue: _units,
+              decoration: const InputDecoration(
+                labelText: 'Units (optional)',
+                helperText: 'e.g. kg, litre, bale, piece, each',
+              ),
+              items: const <String?>[
+                null,
+                'kg',
+                'litre',
+                'bale',
+                'piece',
+                'each',
+              ]
+                  .map((t) => DropdownMenuItem<String?>(
+                        value: t,
+                        child: Text(t ?? 'None'),
+                      ))
+                  .toList(),
+              onChanged: (v) => setState(() => _units = v),
             ),
             SizedBox(height: spacing.md),
             TextFormField(

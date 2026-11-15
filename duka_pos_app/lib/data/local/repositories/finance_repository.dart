@@ -163,6 +163,7 @@ class FinanceRepository {
       recovered_minor INTEGER NOT NULL DEFAULT 0,
       status TEXT NOT NULL DEFAULT 'open',
       note TEXT,
+      units TEXT,
       created_at TEXT NOT NULL,
       closed_at TEXT
     )''');
@@ -290,8 +291,9 @@ class FinanceRepository {
         status TEXT NOT NULL DEFAULT 'draft',
         ordered_at TEXT,
         expected_at TEXT,
-        note TEXT,
-        created_at TEXT NOT NULL,
+      note TEXT,
+      units TEXT,
+      created_at TEXT NOT NULL,
         staff_id INTEGER,
         staff_name TEXT NOT NULL,
         synced_to_backend INTEGER NOT NULL DEFAULT 0
@@ -726,6 +728,7 @@ class FinanceRepository {
     required String name,
     required String poolType,
     String? note,
+    String? units,
     Money? initialCost,
     Money? totalCost,
     Money? cost,
@@ -746,6 +749,7 @@ class FinanceRepository {
       'name': name.trim(),
       'pool_type': poolType,
       'note': note,
+      'units': units,
       'created_at': DateTime.now().toIso8601String(),
     });
     if (resolvedCost != null && resolvedCost.minorUnits > 0) {
@@ -768,6 +772,7 @@ class FinanceRepository {
     required String name,
     required String poolType,
     String? note,
+    String? units,
     Money? initialCost,
     Money? totalCost,
     Money? cost,
@@ -783,6 +788,7 @@ class FinanceRepository {
       name: name,
       poolType: poolType,
       note: note,
+      units: units,
       initialCost: initialCost,
       totalCost: totalCost,
       cost: cost,
