@@ -1,54 +1,55 @@
 /**
- * Open-profile owner finance sync — capital, drawings, loans.
- *
- * Idempotent by (tenantId, kind='owner-transactions', deviceId, localId).
+ * Open profile owner transaction sync (capital / drawing / loan).
+ * Bulk upsert with idempotency by syncKey; returns localId -> remoteId mapping.
  */
 import { Router } from 'express';
-import { Prisma } from '@prisma/client';
-import { asyncHandler, requireUser } from '../lib/http';
-import { parseBody } from '../lib/validation';
-import { ownerTransactionsSyncSchema } from '../lib/validation';
+import { asyncHandler, HttpError, requireUser } from '../lib/http';
+import { parseBody, ownerTransactionSyncSchema } from '../lib/validation';
 import { prisma } from '../lib/prisma';
-import { requireRole } from '../middleware/auth';
 
 const router = Router();
 
-router.post('/sync', requireRole('admin', 'manager', 'cashier'), asyncHandler(async (req, res) => {
-  const user = requireUser(req);
-  const { transactions } = parseBody(ownerTransactionsSyncSchema, req.body);
-  const synced: Array<{ localId: number; remoteId: string }> = [];
-
-  await prisma.$transaction(async (tx) => {
-    for (const txn of transactions) {
-      const deviceId = txn.deviceId ?? 'legacy';
-      const saved = await tx.syncRecord.upsert({
-        where: {
-          tenantId_kind_deviceId_localId: {
-            tenantId: user.tenantId,
-            kind: 'owner-transactions',
-            deviceId,
-            localId: txn.localId,
+router.post(
+  '/sync',
+  asyncHandler(async (req, res) => {
+    const { ownerTransactions } = parseBody(ownerTransactionSyncSchema, req.body);
+    const tenantId = requireUser(req).tenantId;
+    const synced = await prisma.$transaction(async (tx) => {
+      const result: Array<{ localId: number; remoteId: string }> = [];
+      for (const txn of ownerTransactions) {
+        if (!txn.syncKey) {
+          throw new HttpError(400, 'Owner transaction missing syncKey');
+        }
+        const saved = await tx.ownerTransaction.upsert({
+          where: {
+            tenantId_syncKey: { tenantId, syncKey: txn.syncKey },
           },
-        },
-        create: {
-          tenantId: user.tenantId,
-          kind: 'owner-transactions',
-          deviceId,
-          localId: txn.localId,
-          payload: txn as Prisma.InputJsonValue,
-          createdAt: new Date(txn.occurredAt),
-        },
-        update: {
-          payload: txn as Prisma.InputJsonValue,
-          updatedAt: new Date(),
-        },
-        select: { id: true },
-      });
-      synced.push({ localId: txn.localId, remoteId: saved.id });
-    }
-  });
-
-  return res.json({ synced });
-}));
+          create: {
+            tenantId,
+            syncKey: txn.syncKey,
+            uuid: txn.uuid,
+            transactionType: txn.transactionType,
+            amountMinor: txn.amountMinor,
+            shiftId: txn.shiftId,
+            staffName: txn.staffName,
+            staffId: txn.staffId,
+            note: txn.note,
+          },
+          update: {
+            transactionType: txn.transactionType,
+            amountMinor: txn.amountMinor,
+            shiftId: txn.shiftId,
+            staffName: txn.staffName,
+            staffId: txn.staffId,
+            note: txn.note,
+          },
+        });
+        result.push({ localId: txn.id, remoteId: saved.id });
+      }
+      return result;
+    });
+    return res.json({ synced });
+  })
+);
 
 export default router;

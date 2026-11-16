@@ -46,7 +46,6 @@ export const authMiddleware = async (req: express.Request, res: express.Response
   if (req.method === 'GET' && req.path.startsWith('/etims/verify/')) return next();
   if (req.method === 'GET' && req.path.startsWith('/receipt-links/')) return next();
   if (req.method === 'GET' && req.path.startsWith('/health')) return next();
-  if (req.method === 'POST' && req.path === '/tenant/staff/authenticate') return next();
   if (req.method === 'GET' && req.path.startsWith('/ready')) return next();
 
   const authorization = req.header('authorization');

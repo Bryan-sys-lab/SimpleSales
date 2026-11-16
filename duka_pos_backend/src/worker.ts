@@ -76,7 +76,7 @@ export default {
       req.push(null);
     });
   },
-  async scheduled(event: any, env: any, _ctx: any) {
+  async scheduled(event: any, env: any, ctx: any) {
     for (const [k, v] of Object.entries(env || {})) {
       if (typeof v === 'string') process.env[k] = v;
     }

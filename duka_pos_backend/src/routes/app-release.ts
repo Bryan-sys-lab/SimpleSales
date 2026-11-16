@@ -23,7 +23,6 @@ import { existsSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 
 import express, { type Request, type Response } from 'express';
-import { prisma } from '../lib/prisma.js';
 
 const router = express.Router();
 
@@ -115,21 +114,7 @@ router.get('/api/app/latest', async (_request: Request, response: Response) => {
   // and a handset that caches it for an hour is a handset that asks less often.
   // `stale-while-revalidate` keeps a shop on a flaky connection working.
   response.setHeader('Cache-Control', 'public, max-age=300, stale-while-revalidate=600');
-
-  let announcement: { id: string; title: string; body: string } | null = null;
-  try {
-    const rows = await prisma.systemSettings.findMany({
-      where: { key: { in: ['platform_announcement_id', 'platform_announcement_title', 'platform_announcement_body', 'platform_announcement_active'] } },
-    });
-    const v = Object.fromEntries(rows.map((r) => [r.key, r.value]));
-    if (v.platform_announcement_active === 'true' && v.platform_announcement_id) {
-      announcement = { id: v.platform_announcement_id, title: v.platform_announcement_title ?? '', body: v.platform_announcement_body ?? '' };
-    }
-  } catch {
-    // Announcement is optional; manifest still served if DB is unavailable.
-  }
-
-  response.json({ ...manifest, announcement });
+  response.json(manifest);
 });
 
 

@@ -1,56 +1,63 @@
 /**
- * Open-profile job sync — jobs, job costs, and job payments.
- *
- * Idempotent by (tenantId, kind='jobs', deviceId, localId). The payload is
- * the full offline job snapshot (including nested costs and payments) so a
- * second till can rebuild the job without cross-device foreign-key ambiguity.
+ * Open profile job sync. Bulk upsert with idempotency by syncKey;
+ * returns localId -> remoteId mapping.
  */
 import { Router } from 'express';
-import { Prisma } from '@prisma/client';
-import { asyncHandler, requireUser } from '../lib/http';
-import { parseBody } from '../lib/validation';
-import { jobsSyncSchema } from '../lib/validation';
+import { asyncHandler, HttpError, requireUser } from '../lib/http';
+import { parseBody, jobSyncSchema } from '../lib/validation';
 import { prisma } from '../lib/prisma';
-import { requireRole } from '../middleware/auth';
 
 const router = Router();
 
-router.post('/sync', requireRole('admin', 'manager', 'cashier'), asyncHandler(async (req, res) => {
-  const user = requireUser(req);
-  const { jobs } = parseBody(jobsSyncSchema, req.body);
-  const synced: Array<{ localId: number; remoteId: string }> = [];
-
-  await prisma.$transaction(async (tx) => {
-    for (const job of jobs) {
-      const deviceId = job.deviceId ?? 'legacy';
-      const saved = await tx.syncRecord.upsert({
-        where: {
-          tenantId_kind_deviceId_localId: {
-            tenantId: user.tenantId,
-            kind: 'jobs',
-            deviceId,
-            localId: job.localId,
+router.post(
+  '/sync',
+  asyncHandler(async (req, res) => {
+    const { jobs } = parseBody(jobSyncSchema, req.body);
+    const tenantId = requireUser(req).tenantId;
+    const synced = await prisma.$transaction(async (tx) => {
+      const result: Array<{ localId: number; remoteId: string }> = [];
+      for (const job of jobs) {
+        if (!job.syncKey) {
+          throw new HttpError(400, 'Job missing syncKey');
+        }
+        const saved = await tx.job.upsert({
+          where: {
+            tenantId_syncKey: { tenantId, syncKey: job.syncKey },
           },
-        },
-        create: {
-          tenantId: user.tenantId,
-          kind: 'jobs',
-          deviceId,
-          localId: job.localId,
-          payload: job as Prisma.InputJsonValue,
-          createdAt: new Date(job.createdAt ?? new Date().toISOString()),
-        },
-        update: {
-          payload: job as Prisma.InputJsonValue,
-          updatedAt: new Date(),
-        },
-        select: { id: true },
-      });
-      synced.push({ localId: job.localId, remoteId: saved.id });
-    }
-  });
-
-  return res.json({ synced });
-}));
+          create: {
+            tenantId,
+            syncKey: job.syncKey,
+            uuid: job.uuid,
+            title: job.title,
+            customerName: job.customerName,
+            customerPhone: job.customerPhone ?? null,
+            quoteMinor: job.quoteMinor,
+            finalPriceMinor: job.finalPriceMinor ?? null,
+            status: job.status,
+            dueAt: job.dueAt ? new Date(job.dueAt) : null,
+            costPoolId: job.costPoolId ?? null,
+            staffName: job.staffName,
+            staffId: job.staffId,
+          },
+          update: {
+            title: job.title,
+            customerName: job.customerName,
+            customerPhone: job.customerPhone ?? null,
+            quoteMinor: job.quoteMinor,
+            finalPriceMinor: job.finalPriceMinor ?? null,
+            status: job.status,
+            dueAt: job.dueAt ? new Date(job.dueAt) : null,
+            costPoolId: job.costPoolId ?? null,
+            staffName: job.staffName,
+            staffId: job.staffId,
+          },
+        });
+        result.push({ localId: job.id, remoteId: saved.id });
+      }
+      return result;
+    });
+    return res.json({ synced });
+  })
+);
 
 export default router;
