@@ -148,17 +148,31 @@ class ReceiptInput {
     required this.total,
     required this.amountTendered,
     required this.changeGiven,
+    this.ownerName,
+    this.businessAddress,
+    this.businessPhone,
+    this.customerName,
+    this.customerPin,
+    this.paymentReference,
     this.paymentMethodLabel = 'Cash',
     this.vatRatePercent = kDefaultVatRatePercent,
     this.pricesIncludeVat = true,
     this.etimsReceiptNumber,
     this.etimsVerificationPayload,
+    this.etimsCuSerial,
+    this.etimsCuInvoiceNumber,
     this.etimsPending = false,
     this.receiptLanguage = ReceiptLanguage.english,
   });
 
   final String shopName;
+  final String? ownerName;
+  final String? businessAddress;
+  final String? businessPhone;
   final String receiptNumber;
+  final String? customerName;
+  final String? customerPin;
+  final String? paymentReference;
   final DateTime issuedAt;
   final String cashierName;
   final String cashierRole;
@@ -181,6 +195,8 @@ class ReceiptInput {
 
   final String? etimsReceiptNumber;
   final String? etimsVerificationPayload;
+  final String? etimsCuSerial;
+  final String? etimsCuInvoiceNumber;
 
   /// When the inline eTIMS attempt timed out, the receipt prints a pending
   /// line instead of a QR so the customer knows the invoice is still coming.
@@ -218,6 +234,18 @@ class ReceiptBuilder {
         alignment: ReceiptAlignment.center,
         bold: true,
         scale: input.shopName.trim().length <= columnBudget ~/ 2 ? 2 : 1));
+    if (input.ownerName != null && input.ownerName!.trim().isNotEmpty) {
+      lines.add(ReceiptText(_oneLine(input.ownerName!),
+          alignment: ReceiptAlignment.center));
+    }
+    if (input.businessAddress != null && input.businessAddress!.trim().isNotEmpty) {
+      lines.add(ReceiptText(_oneLine(input.businessAddress!),
+          alignment: ReceiptAlignment.center));
+    }
+    if (input.businessPhone != null && input.businessPhone!.trim().isNotEmpty) {
+      lines.add(ReceiptText(_oneLine(input.businessPhone!),
+          alignment: ReceiptAlignment.center));
+    }
     lines.add(
         ReceiptText(copy.salesReceipt, alignment: ReceiptAlignment.center));
 
@@ -227,6 +255,12 @@ class ReceiptBuilder {
     if (input.cashierName.trim().isNotEmpty) {
       lines.add(ReceiptColumns(copy.servedBy,
           '${_oneLine(input.cashierName)} (${input.cashierRole})'));
+    }
+    if (input.customerName != null && input.customerName!.trim().isNotEmpty) {
+      lines.add(ReceiptColumns('Customer', _oneLine(input.customerName!)));
+    }
+    if (input.customerPin != null && input.customerPin!.trim().isNotEmpty) {
+      lines.add(ReceiptColumns('Customer PIN', _oneLine(input.customerPin!)));
     }
     lines.add(const ReceiptRule());
 
@@ -282,6 +316,9 @@ class ReceiptBuilder {
     lines.add(ReceiptColumns('TOTAL', _money(input.total), bold: true));
     lines.add(
         ReceiptColumns(input.paymentMethodLabel, _money(input.amountTendered)));
+    if (input.paymentReference != null && input.paymentReference!.trim().isNotEmpty) {
+      lines.add(ReceiptColumns('Ref', _oneLine(input.paymentReference!)));
+    }
     if (!input.changeGiven.isZero) {
       lines.add(ReceiptColumns(copy.change, _money(input.changeGiven)));
     }
@@ -290,6 +327,12 @@ class ReceiptBuilder {
         input.etimsReceiptNumber!.trim().isNotEmpty) {
       lines.add(const ReceiptRule());
       lines.add(ReceiptColumns(copy.etimsNumber, input.etimsReceiptNumber!));
+      if (input.etimsCuSerial != null && input.etimsCuSerial!.trim().isNotEmpty) {
+        lines.add(ReceiptColumns('CU Serial', _oneLine(input.etimsCuSerial!)));
+      }
+      if (input.etimsCuInvoiceNumber != null && input.etimsCuInvoiceNumber!.trim().isNotEmpty) {
+        lines.add(ReceiptColumns('CU Invoice', _oneLine(input.etimsCuInvoiceNumber!)));
+      }
       if (input.etimsVerificationPayload != null &&
           input.etimsVerificationPayload!.trim().isNotEmpty) {
         lines.add(
@@ -308,6 +351,8 @@ class ReceiptBuilder {
     lines.add(const ReceiptFeed());
     lines.add(ReceiptText(copy.thankYou, alignment: ReceiptAlignment.center));
     lines.add(ReceiptText(copy.noReturns, alignment: ReceiptAlignment.center));
+    lines.add(ReceiptText('Powered by SimpleSales',
+        alignment: ReceiptAlignment.center));
 
     return lines;
   }

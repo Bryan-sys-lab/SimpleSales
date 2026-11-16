@@ -131,6 +131,9 @@ class ReceiptPrinter {
   Future<PrintResult> printSale({
     required int saleId,
     required String shopName,
+    String? ownerName,
+    String? businessAddress,
+    String? businessPhone,
     required String staffRole,
     required PrinterConfig config,
     required int vatRatePercent,
@@ -156,6 +159,9 @@ class ReceiptPrinter {
 
     final input = ReceiptInput(
       shopName: shopName,
+      ownerName: ownerName,
+      businessAddress: businessAddress,
+      businessPhone: businessPhone,
       receiptNumber: receiptNumber,
       // The recorded timestamp is authoritative. The till's clock at print time
       // can differ from the one at sale time, and a receipt that shows a
