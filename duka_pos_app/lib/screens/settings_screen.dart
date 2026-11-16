@@ -841,7 +841,7 @@ class _SettingsScreenState extends State<SettingsScreen>
       return;
     }
     try {
-      await DatabaseHelper.instance.addStaff(Staff(
+      final int staffId = await DatabaseHelper.instance.addStaff(Staff(
           name: name,
           username: username,
           role: result['role'] ?? 'cashier',
@@ -859,16 +859,18 @@ class _SettingsScreenState extends State<SettingsScreen>
         try {
           await BackendService.syncStaffToBackend();
         } catch (_) {
+          // Roll back the local row so a failed sync does not leave a staff
+          // member that exists only on this till.
+          final db = await DatabaseHelper.instance.database;
+          await db.delete('staff', where: 'id = ?', whereArgs: [staffId]);
           if (!mounted) return;
-          // Saved here, not on the server yet. Said plainly, because a till
-          // that shows the same message for a success and a partial success
-          // cannot be trusted with either.
-          showOperationSuccess(
+          showOperationFailure(
             context,
             title: l10n.settingsStaffSavedTitle,
             message: l10n.settingsStaffSavedOffline,
-            detailIcon: Icons.cloud_off_outlined,
+            icon: Icons.cloud_off_outlined,
           );
+          return;
         }
       }
       await _load();
