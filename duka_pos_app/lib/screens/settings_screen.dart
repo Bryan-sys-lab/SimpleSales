@@ -866,8 +866,8 @@ class _SettingsScreenState extends State<SettingsScreen>
           if (!mounted) return;
           showOperationFailure(
             context,
-            title: l10n.settingsStaffSavedTitle,
-            message: l10n.settingsStaffSavedOffline,
+            title: l10n.settingsStaffSaveFailedTitle,
+            message: l10n.settingsStaffSyncFailed,
             icon: Icons.cloud_off_outlined,
           );
           return;

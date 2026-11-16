@@ -2134,5 +2134,6 @@
   "dashboardStockStatus": "Stock status",
   "dashboardNewJob": "New job",
   "dashboardLowStock": "Low stock",
-  "dashboardTransactions": "Transactions"
+  "dashboardTransactions": "Transactions",
+  "settingsStaffSyncFailed": "Could not sync to the server. The staff member was not saved."
 }

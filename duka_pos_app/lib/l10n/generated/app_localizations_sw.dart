@@ -7554,4 +7554,8 @@ class AppLocalizationsSw extends AppLocalizations {
 
   @override
   String get dashboardTransactions => 'Transactions';
+
+  @override
+  String get settingsStaffSyncFailed =>
+      'Could not sync to the server. The staff member was not saved.';
 }

@@ -12917,6 +12917,12 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'Transactions'**
   String get dashboardTransactions;
+
+  /// No description provided for @settingsStaffSyncFailed.
+  ///
+  /// In en, this message translates to:
+  /// **'Could not sync to the server. The staff member was not saved.'**
+  String get settingsStaffSyncFailed;
 }
 
 class _AppLocalizationsDelegate
