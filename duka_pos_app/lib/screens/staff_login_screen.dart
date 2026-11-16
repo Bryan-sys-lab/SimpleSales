@@ -226,16 +226,25 @@ class _StaffLoginScreenState extends State<StaffLoginScreen> {
         await AuthService.recordFailure(userKey);
         staff = null;
       } else if (staff != null) {
+        // Offline-first: a locally verified PIN is enough to sign in. The
+        // backend is consulted opportunistically for deactivation/updates,
+        // but a missing or stale server-side PIN must not lock a staff member
+        // out of their own till.
         await AuthService.recordSuccess(userKey);
-        final backendResponse = await BackendService.authenticateStaff(
-          username: username,
-          pin: password,
-          tenantId: requestedTenant,
-        );
-        staff = await _mergeOnlineStaff(backendResponse, staff,
+        try {
+          final backendResponse = await BackendService.authenticateStaff(
             username: username,
             pin: password,
-            requestedTenant: requestedTenant);
+            tenantId: requestedTenant,
+          );
+          final merged = await _mergeOnlineStaff(backendResponse, staff,
+              username: username,
+              pin: password,
+              requestedTenant: requestedTenant);
+          if (merged != null) staff = merged;
+        } catch (_) {
+          // Keep the locally verified staff session.
+        }
       } else {
         final backendResponse = await BackendService.authenticateStaff(
           username: username,
