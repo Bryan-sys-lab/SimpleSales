@@ -204,3 +204,39 @@ jobs:
       - name: Tear the stack down
         if: always()
         run: docker compose down -v
+
+
+  deploy:
+    name: Deploy worker to Cloudflare
+    needs: backend
+    if: github.ref == 'refs/heads/cloudflare' && github.event_name == 'push'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    defaults:
+      run:
+        working-directory: duka_pos_backend
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 26
+          cache: npm
+          cache-dependency-path: duka_pos_backend/package-lock.json
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Generate Prisma client
+        env:
+          DATABASE_URL: postgresql://user:password@localhost:5432/duka_pos
+        run: npx prisma generate
+
+      - name: Deploy to Cloudflare Workers
+        uses: cloudflare/wrangler-action@v3
+        with:
+          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          command: deploy
+          workingDirectory: duka_pos_backend
