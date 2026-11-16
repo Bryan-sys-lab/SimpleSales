@@ -12,7 +12,6 @@ import '../profile/profile_terminology.dart';
 import '../profile/shop_profile.dart';
 import '../routing/routes.dart';
 import 'dashboard_shared.dart';
-import '../routing/home_shell.dart';
 import '../services/app_state.dart';
 import '../services/roles.dart';
 import '../theme/app_colors.dart';
@@ -216,8 +215,8 @@ class _OpenDashboardScreenState extends State<OpenDashboardScreen>
             DashboardBusinessHeader(
               shopName: appState.owner?.shopName ?? SimplePosBrand.appName,
               profile: ShopProfile.open,
-              onSwitchBusiness: () => showBusinessProfileSwitcher(context),
-            ),
+      staffName: appState.currentStaffName ?? appState.owner?.name,
+                    ),
             SizedBox(height: spacing.xl),
             if (_error != null)
               SurfaceCard(

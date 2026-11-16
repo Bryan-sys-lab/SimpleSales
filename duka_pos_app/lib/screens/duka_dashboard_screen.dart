@@ -11,7 +11,6 @@ import '../profile/profile_capabilities.dart';
 import '../profile/profile_navigation.dart';
 import '../profile/profile_terminology.dart';
 import '../routing/routes.dart';
-import '../routing/home_shell.dart';
 import '../services/app_state.dart';
 import '../profile/shop_profile.dart';
 import '../services/analytics.dart';
@@ -132,8 +131,8 @@ class DukaDashboardScreen extends StatelessWidget {
     final Widget header = DashboardBusinessHeader(
       shopName: appState.owner?.shopName ?? SimplePosBrand.appName,
       profile: ShopProfile.duka,
+      staffName: appState.currentStaffName ?? appState.owner?.name,
       shift: data.openShift,
-      onSwitchBusiness: () => showBusinessProfileSwitcher(context),
     );
 
     final Widget financialHero = DashboardMoneyHero(

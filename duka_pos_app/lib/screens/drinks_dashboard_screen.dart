@@ -12,7 +12,6 @@ import '../profile/profile_product_forms.dart';
 import '../profile/profile_terminology.dart';
 import '../profile/shop_profile.dart';
 import '../routing/routes.dart';
-import '../routing/home_shell.dart';
 import '../services/analytics.dart';
 import '../services/app_state.dart';
 import '../services/roles.dart';
@@ -129,8 +128,8 @@ class DrinksDashboardScreen extends StatelessWidget {
     final Widget header = DashboardBusinessHeader(
       shopName: appState.owner?.shopName ?? SimplePosBrand.appName,
       profile: ShopProfile.drinks,
+      staffName: appState.currentStaffName ?? appState.owner?.name,
       shift: data.openShift,
-      onSwitchBusiness: () => showBusinessProfileSwitcher(context),
     );
 
     final Widget financialHero = DashboardMoneyHero(

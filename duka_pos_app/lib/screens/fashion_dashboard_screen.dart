@@ -12,7 +12,6 @@ import '../services/session_refresh_mixin.dart';
 import '../services/live_channel_service.dart';
 import '../models/layby.dart';
 import '../routing/routes.dart';
-import '../routing/home_shell.dart';
 import '../services/app_state.dart';
 import '../profile/shop_profile.dart';
 import '../services/roles.dart';
@@ -135,8 +134,8 @@ class FashionDashboardScreen extends StatelessWidget {
     final Widget header = DashboardBusinessHeader(
       shopName: appState.owner?.shopName ?? SimplePosBrand.appName,
       profile: ShopProfile.fashion,
+      staffName: appState.currentStaffName ?? appState.owner?.name,
       shift: data.openShift,
-      onSwitchBusiness: () => showBusinessProfileSwitcher(context),
     );
 
     final Widget financialHero = DashboardMoneyHero(

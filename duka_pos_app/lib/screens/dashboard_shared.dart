@@ -563,15 +563,15 @@ class DashboardBusinessHeader extends StatelessWidget {
   const DashboardBusinessHeader({
     required this.shopName,
     required this.profile,
+    this.staffName,
     this.shift,
-    this.onSwitchBusiness,
     super.key,
   });
 
   final String shopName;
   final ShopProfile profile;
+  final String? staffName;
   final Shift? shift;
-  final VoidCallback? onSwitchBusiness;
 
   @override
   Widget build(BuildContext context) {
@@ -594,7 +594,9 @@ class DashboardBusinessHeader extends StatelessWidget {
           child: Semantics(
             header: true,
             child: Text(
-              shopName,
+              (staffName != null && staffName!.trim().isNotEmpty)
+                  ? '${staffName!.trim()} welcome to $shopName'
+                  : 'Welcome to $shopName',
               style: AppTypography.of(context).headlineSmall?.copyWith(
                     color: AppColors.of(context).onSurface,
                   ),
@@ -637,16 +639,6 @@ class DashboardBusinessHeader extends StatelessWidget {
             ),
           ],
         ),
-        SizedBox(height: spacing.sm),
-        if (onSwitchBusiness != null)
-          Align(
-            alignment: AlignmentDirectional.centerEnd,
-            child: OutlinedButton.icon(
-              onPressed: onSwitchBusiness,
-              icon: const Icon(Icons.swap_horiz, size: 18),
-              label: Text(l10n.settingsSwitch),
-            ),
-          ),
         SizedBox(height: spacing.lg),
       ],
     );

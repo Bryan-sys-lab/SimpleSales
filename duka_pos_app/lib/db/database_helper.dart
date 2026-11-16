@@ -10794,41 +10794,6 @@ $untilClause
       );
     }
 
-    final fallbackWhere = <String>[
-      's.created_at >= ?',
-      's.payment_verified = 1',
-      "NOT EXISTS (SELECT 1 FROM sale_payments sp2 WHERE sp2.sale_id = s.id)",
-    ];
-    final fallbackArgs = <Object?>[since.toIso8601String()];
-    if (until != null) {
-      fallbackWhere.add('s.created_at < ?');
-      fallbackArgs.add(until.toIso8601String());
-    }
-    if (staffId != null) {
-      fallbackWhere.add('s.staff_id = ?');
-      fallbackArgs.add(staffId);
-    }
-    final fallbackRows = await (await database).rawQuery('''
-      SELECT s.payment_method AS method,
-             CAST(COALESCE(SUM(s.total), 0) AS INTEGER) AS sales_minor,
-             COUNT(*) AS transactions
-        FROM sales s
-       WHERE ${fallbackWhere.join(' AND ')}
-       GROUP BY s.payment_method
-       ORDER BY sales_minor DESC, method ASC
-    ''', fallbackArgs);
-    for (final row in fallbackRows) {
-      final String method = (row['method'] as String?) ?? 'cash';
-      final int salesMinor = (row['sales_minor'] as num?)?.toInt() ?? 0;
-      final int transactions = (row['transactions'] as num?)?.toInt() ?? 0;
-      final existing = result[method];
-      result[method] = PaymentMixRow(
-        method: method,
-        salesMinor: (existing?.salesMinor ?? 0) + salesMinor,
-        transactions: (existing?.transactions ?? 0) + transactions,
-      );
-    }
-
     return result.values.toList()
       ..sort((a, b) => b.salesMinor.compareTo(a.salesMinor));
   }
