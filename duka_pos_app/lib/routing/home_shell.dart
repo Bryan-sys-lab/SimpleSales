@@ -802,6 +802,25 @@ class _ShellAppBar extends StatelessWidget implements PreferredSizeWidget {
             ),
           ),
         if (showProfile)
+        // Connection indicator: green when the shop is linked to the backend,
+        // yellow when it is not.
+        FutureBuilder<bool>(
+          future: BackendService.isBackendLinked,
+          builder: (BuildContext context, AsyncSnapshot<bool> snapshot) {
+            final bool linked = snapshot.data ?? false;
+            return Padding(
+              padding: const EdgeInsetsDirectional.only(end: 6),
+              child: Container(
+                width: 10,
+                height: 10,
+                decoration: BoxDecoration(
+                  shape: BoxShape.circle,
+                  color: linked ? Colors.green : Colors.amber,
+                ),
+              ),
+            );
+          },
+        ),
         // The account: a VIEWER of who is signed in.
         //
         // It used to open the sign-out sheet, which is a trap: the person
