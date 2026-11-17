@@ -69,6 +69,13 @@ class _PaywallScreenState extends State<PaywallScreen> {
   Future<void> _load() async {
     try {
       final result = await BackendService.fetchSubscriptionEntitlement();
+      if (result?.allowed == true) {
+        // The route may have been opened before the just-verified voucher
+        // finished refreshing. Do not present a payment wall to a shop that
+        // is already entitled to use the app.
+        await _unlockAndReturn();
+        return;
+      }
       if (mounted) {
         setState(() {
           _entitlement = result;

@@ -200,7 +200,11 @@ List<RouteBase> _doorRoutes(AppStageController stage, AppState appState) {
             stage.abandonChoice();
             context.go(Routes.welcome);
           },
-          onCreated: (_) => context.go(Routes.paywall),
+          // A first registration receives and redeems a one-month voucher
+          // during email verification.  The stage refresh in OwnerSetupScreen
+          // makes the route guard authoritative here: active access opens the
+          // dashboard; expired or unpaid access is sent to the paywall.
+          onCreated: (_) => context.go(Routes.dashboard),
         ),
       ),
     ),
