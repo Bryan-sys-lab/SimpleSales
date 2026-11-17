@@ -12409,10 +12409,14 @@ $untilClause
       'invested_minor': (remote['investedMinor'] as num?)?.toInt() ?? 0,
       'recovered_minor': (remote['recoveredMinor'] as num?)?.toInt() ?? 0,
       'status': remote['status'] as String? ?? 'open',
-      'created_at': remote['createdAt'] as String? ?? DateTime.now().toIso8601String(),
+      'created_at':
+          remote['createdAt'] as String? ?? DateTime.now().toIso8601String(),
     };
     final existing = await db.query('cost_pools',
-        columns: <String>['id'], where: 'uuid = ?', whereArgs: <Object?>[uuid], limit: 1);
+        columns: <String>['id'],
+        where: 'uuid = ?',
+        whereArgs: <Object?>[uuid],
+        limit: 1);
     if (existing.isEmpty) {
       await db.insert('cost_pools', values);
     } else {
@@ -12501,6 +12505,7 @@ $untilClause
     required Money amount,
     required String paymentMethod,
     required String staffName,
+    ShopProfile profile = ShopProfile.open,
     int? staffId,
     String? paymentReference,
     Money? costAmount,
@@ -12510,6 +12515,7 @@ $untilClause
       amount: amount,
       paymentMethod: paymentMethod,
       staffName: staffName,
+      profile: profile,
       staffId: staffId,
       paymentReference: paymentReference,
       costAmount: costAmount,

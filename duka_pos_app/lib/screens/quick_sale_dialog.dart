@@ -16,6 +16,97 @@ import '../ui/components/success_view.dart';
 import '../theme/app_spacing.dart';
 import 'customer_credit_sheets.dart';
 
+/// Money-first sale for the Open profile. It remains a normal sale ledger row
+/// so transactions, analytics, backup, and sync all see it.
+Future<int?> showOpenQuickSaleDialog({required BuildContext context}) async {
+  final appState = context.read<AppState>();
+  final amountController = TextEditingController();
+  final referenceController = TextEditingController();
+  String method = 'cash';
+  final result = await showDialog<Map<String, String>>(
+    context: context,
+    builder: (ctx) => StatefulBuilder(
+      builder: (ctx, setState) => AlertDialog(
+        title: const Text('QuickSale'),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: <Widget>[
+            TextField(
+              controller: amountController,
+              autofocus: true,
+              keyboardType:
+                  const TextInputType.numberWithOptions(decimal: true),
+              decoration: const InputDecoration(labelText: 'Amount (KES)'),
+            ),
+            const SizedBox(height: 12),
+            DropdownButtonFormField<String>(
+              initialValue: method,
+              decoration: const InputDecoration(labelText: 'Payment method'),
+              items: const <DropdownMenuItem<String>>[
+                DropdownMenuItem(value: 'cash', child: Text('Cash')),
+                DropdownMenuItem(value: 'mpesa', child: Text('M-Pesa')),
+                DropdownMenuItem(
+                    value: 'bank_transfer', child: Text('Bank transfer')),
+              ],
+              onChanged: (value) {
+                if (value != null) setState(() => method = value);
+              },
+            ),
+            const SizedBox(height: 12),
+            TextField(
+              controller: referenceController,
+              decoration:
+                  const InputDecoration(labelText: 'Reference (optional)'),
+            ),
+          ],
+        ),
+        actions: <Widget>[
+          TextButton(
+              onPressed: () => Navigator.pop(ctx), child: const Text('Cancel')),
+          FilledButton(
+            onPressed: () => Navigator.pop(ctx, <String, String>{
+              'amount': amountController.text.trim(),
+              'method': method,
+              'reference': referenceController.text.trim(),
+            }),
+            child: const Text('Record sale'),
+          ),
+        ],
+      ),
+    ),
+  );
+  amountController.dispose();
+  referenceController.dispose();
+  if (result == null || !context.mounted) return null;
+  final amount = parseMoneyInput(result['amount'] ?? '');
+  if (amount == null || amount <= 0) {
+    ScaffoldMessenger.of(context)
+        .showSnackBar(const SnackBar(content: Text('Enter a valid amount')));
+    return null;
+  }
+  try {
+    final saleId = await DatabaseHelper.instance.recordOpenQuickSale(
+      amount: Money.fromMajor(amount),
+      paymentMethod: result['method'] ?? 'cash',
+      paymentReference:
+          (result['reference'] ?? '').isEmpty ? null : result['reference'],
+      staffId: appState.currentStaffId,
+      staffName: appState.currentStaffName ?? 'Owner',
+    );
+    if (context.mounted) {
+      ScaffoldMessenger.of(context)
+          .showSnackBar(const SnackBar(content: Text('Quick sale recorded')));
+    }
+    return saleId;
+  } catch (error) {
+    if (context.mounted) {
+      ScaffoldMessenger.of(context)
+          .showSnackBar(SnackBar(content: Text('$error')));
+    }
+    return null;
+  }
+}
+
 /// Shared QuickSale entry point. Opens a modal dialog in place; never pushes a
 /// route. Returns the committed sale id, or null when cancelled/failed.
 Future<int?> showQuickSaleDialog({
@@ -33,6 +124,7 @@ Future<int?> showQuickSaleDialog({
   if (!context.mounted) return null;
 
   final qtyController = TextEditingController(text: '1');
+  final amountController = TextEditingController();
   final customers = await db.getCustomers(activeOnly: true);
   if (!context.mounted) return null;
   final referenceController = TextEditingController();
@@ -69,7 +161,8 @@ Future<int?> showQuickSaleDialog({
               SizedBox(height: AppSpacing.of(ctx).md),
               DropdownButtonFormField<Product>(
                 initialValue: selectedProduct,
-                decoration: const InputDecoration(labelText: 'Product'),
+                decoration:
+                    const InputDecoration(labelText: 'Product (optional)'),
                 items: <DropdownMenuItem<Product>>[
                   for (final p in products)
                     DropdownMenuItem<Product>(value: p, child: Text(p.name)),
@@ -97,6 +190,16 @@ Future<int?> showQuickSaleDialog({
                 ),
               if (selectedProduct != null)
                 SizedBox(height: AppSpacing.of(ctx).md),
+              TextField(
+                controller: amountController,
+                decoration: const InputDecoration(
+                  labelText: 'Amount (KES)',
+                  helperText:
+                      'Leave blank to use the selected product price × quantity',
+                ),
+                keyboardType:
+                    const TextInputType.numberWithOptions(decimal: true),
+              ),
               DropdownButtonFormField<String>(
                 initialValue: method,
                 decoration: InputDecoration(
@@ -181,6 +284,7 @@ Future<int?> showQuickSaleDialog({
                 avatar: const Icon(Icons.point_of_sale, size: 18),
                 onPressed: () => Navigator.pop(ctx, <String, dynamic>{
                   'qty': qtyController.text.trim(),
+                  'amount': amountController.text.trim(),
                   'method': method,
                   'reference': referenceController.text.trim(),
                   'productId': selectedProduct?.id,
@@ -200,19 +304,23 @@ Future<int?> showQuickSaleDialog({
   if (result == null) return null;
   final qty = double.tryParse((result['qty'] ?? '').toString());
   final productId = result['productId'] as int?;
-  if (qty == null || qty <= 0 || productId == null) {
+  final enteredAmount = parseMoneyInput((result['amount'] ?? '').toString());
+  if (qty == null ||
+      qty <= 0 ||
+      (productId == null && (enteredAmount == null || enteredAmount <= 0))) {
     if (context.mounted) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
             content:
-                Text('Choose a product and enter a valid price and quantity')),
+                Text('Choose a product or enter a valid amount and quantity')),
       );
     }
     return null;
   }
-  final product = products.firstWhere((p) => p.id == productId);
-  final unitPrice = product.priceFor(SalePortion.full);
-  if (unitPrice.minorUnits <= 0) {
+  final product =
+      productId == null ? null : products.firstWhere((p) => p.id == productId);
+  final unitPrice = product?.priceFor(SalePortion.full);
+  if (product != null && unitPrice!.minorUnits <= 0 && enteredAmount == null) {
     if (context.mounted) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('The product has no configured price')),
@@ -226,6 +334,26 @@ Future<int?> showQuickSaleDialog({
     final customerId = result['customerId'] as int?;
     final customerDraft = result['customer'] as Customer?;
     final costPoolId = result['poolId'] as int?;
+    if (product == null && method == 'credit') {
+      throw StateError('Choose a product before recording a credit sale');
+    }
+    if (product == null) {
+      final saleId = await db.recordOpenQuickSale(
+        amount: Money.fromMajor(enteredAmount!),
+        paymentMethod: method,
+        paymentReference: (result['reference'] ?? '').toString().isEmpty
+            ? null
+            : (result['reference'] ?? '').toString(),
+        staffId: appState.currentStaffId,
+        staffName: appState.currentStaffName ?? 'Owner',
+        profile: profile,
+      );
+      if (context.mounted) {
+        ScaffoldMessenger.of(context)
+            .showSnackBar(const SnackBar(content: Text('Quick sale recorded')));
+      }
+      return saleId;
+    }
     if (method == 'credit' && customerId == null && customerDraft == null) {
       throw StateError('Select a customer before recording on credit');
     }
@@ -246,8 +374,8 @@ Future<int?> showQuickSaleDialog({
         throw StateError('That customer is not active');
       }
       final limit = customer.effectiveLimit(await db.getCreditDefaultLimit());
-      final wouldOwe =
-          customer.balanceMinor + (unitPrice.minorUnits * qty).round();
+      final wouldOwe = customer.balanceMinor +
+          ((enteredAmount ?? unitPrice!.times(qty).asMajor) * 100).round();
       if (wouldOwe > limit && await db.getCreditLimitMode() != 'warn') {
         if (!context.mounted) return null;
         final approver = await showManagerApprovalSheet(
@@ -266,7 +394,9 @@ Future<int?> showQuickSaleDialog({
           productId: product.id!,
           productName: product.name,
           qty: qty,
-          unitPrice: unitPrice,
+          unitPrice: enteredAmount == null
+              ? unitPrice!
+              : Money.fromMajor(enteredAmount / qty),
           unitCost: product.costPrice,
           portion: 'full',
         ),

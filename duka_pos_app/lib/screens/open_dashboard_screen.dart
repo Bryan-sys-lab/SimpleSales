@@ -3,20 +3,22 @@ import 'package:go_router/go_router.dart';
 import 'package:provider/provider.dart';
 
 import '../app_brand.dart';
+import '../db/database_helper.dart';
 import '../l10n/generated/app_localizations.dart';
 import '../models/models.dart';
 import '../profile/shop_profile.dart';
-import '../profile/profile_navigation.dart';
 import '../routing/routes.dart';
 import '../services/app_state.dart';
 import '../services/roles.dart';
 import '../theme/app_spacing.dart';
 import '../utils/money.dart';
+import '../utils/units.dart';
 import '../ui/components/surface.dart';
 import '../ui/layout/page.dart';
 import 'dashboard_sections.dart';
 import 'dashboard_shared.dart';
-import 'inventory_screen.dart' show ProductEditor;
+import '../profile/profile_product_forms.dart';
+import 'loose_goods_form_sheet.dart';
 import 'quick_sale_dialog.dart';
 
 const double _openDashboardMaxWidth = 1200;
@@ -144,11 +146,11 @@ class OpenDashboardScreen extends StatelessWidget {
 
     final Widget quickActions = _OpenQuickActions(
       onOpenSell: onOpenSell,
-      onOpenQuickSale: () => showQuickSaleDialog(
+      onOpenQuickSale: () => showOpenQuickSaleDialog(
         context: context,
-        profile: ShopProfile.open,
       ),
       onOpenAddProduct: () => _openAddProduct(context),
+      onOpenLooseGoods: () => _openLooseGoods(context),
       onOpenReceiveStock: () => _receiveStock(context),
       onOpenStocktake: () => _openStocktake(context),
       onOpenCostOfGoods: () => context.push(Routes.openCostGroups),
@@ -213,22 +215,40 @@ class OpenDashboardScreen extends StatelessWidget {
   }
 
   Future<void> _openAddProduct(BuildContext context) async {
-    final appState = context.read<AppState>();
-    await showModalBottomSheet<void>(
+    final result = await ProfileProductForms.showForm(
       context: context,
-      isScrollControlled: true,
-      builder: (_) => ProductEditor(
-        existing: null,
-        allowVariants: appState.shopProfile.navigation.showVariants,
-        shopProfile: appState.shopProfile,
-        onSaved: onRefresh,
-      ),
+      profile: ShopProfile.open,
     );
+    if (!context.mounted || result == null) return;
+    final trackStock = (result['track_stock'] as bool?) ?? true;
+    final product = Product(
+      name: result['name'] as String,
+      category: (result['category'] as String? ?? 'Item or service'),
+      costPrice: Money.fromMajor((result['cost'] as num?)?.toDouble() ?? 0),
+      sellPrice: Money.fromMajor((result['price'] as num?)?.toDouble() ?? 0),
+      stockQty: trackStock ? (result['stock'] as num?)?.toDouble() ?? 0 : 0,
+      trackStock: trackStock,
+      costPoolId: (result['cost_pool_id'] as num?)?.toInt(),
+      reorderLevel: (result['reorder_level'] as num?)?.toInt() ?? 0,
+      unit: ProductUnit.parse(result['unit'] as String?),
+      updatedAt: DateTime.now().toIso8601String(),
+    );
+    await DatabaseHelper.instance.upsertProduct(product);
+    if (!context.mounted) return;
+    await onRefresh();
+    if (!context.mounted) return;
+    ScaffoldMessenger.of(context)
+        .showSnackBar(SnackBar(content: Text('${product.name} saved')));
   }
 
   void _receiveStock(BuildContext context) {
     // reuse existing receive stock sheet via inventory screen navigation
     context.push(Routes.inventory);
+  }
+
+  Future<void> _openLooseGoods(BuildContext context) async {
+    await showLooseGoodsFormSheet(context, profile: ShopProfile.open);
+    if (context.mounted) await onRefresh();
   }
 
   void _openStocktake(BuildContext context) {
@@ -353,6 +373,7 @@ class _OpenQuickActions extends StatelessWidget {
     required this.onOpenSell,
     required this.onOpenQuickSale,
     required this.onOpenAddProduct,
+    required this.onOpenLooseGoods,
     required this.onOpenReceiveStock,
     required this.onOpenStocktake,
     required this.onOpenCostOfGoods,
@@ -364,6 +385,7 @@ class _OpenQuickActions extends StatelessWidget {
   final VoidCallback onOpenSell;
   final VoidCallback onOpenQuickSale;
   final VoidCallback onOpenAddProduct;
+  final VoidCallback onOpenLooseGoods;
   final VoidCallback onOpenReceiveStock;
   final VoidCallback onOpenStocktake;
   final VoidCallback onOpenCostOfGoods;
@@ -414,6 +436,13 @@ class _OpenQuickActions extends StatelessWidget {
         subtitle: 'Pools and reload',
         onTap: onOpenCostOfGoods,
       ),
+      if (canManageStock)
+        _OpenQuickTile(
+          icon: Icons.local_bar_outlined,
+          label: 'Loose goods',
+          subtitle: 'Tanks and servings',
+          onTap: onOpenLooseGoods,
+        ),
     ];
 
     return Wrap(
