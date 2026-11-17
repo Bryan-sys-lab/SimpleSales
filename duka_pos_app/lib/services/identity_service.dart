@@ -16,7 +16,7 @@ class IdentityService {
 
   static const backendUrl = String.fromEnvironment(
     'BACKEND_URL',
-    defaultValue: 'https://your-backend/api',
+    defaultValue: 'https://duka-pos-backend.brianbmk332.workers.dev/api',
   );
 
   /// Shared HTTP client owned by this service. All identity requests go through
@@ -115,8 +115,7 @@ class IdentityService {
     try {
       final resp = await _client.get(Uri.parse('$backendUrl/health')).timeout(
           _responseTimeout,
-          onTimeout: () =>
-              throw TimeoutException('health check timed out'));
+          onTimeout: () => throw TimeoutException('health check timed out'));
       return resp.statusCode == 200;
     } catch (_) {
       return false;
@@ -173,8 +172,8 @@ class IdentityService {
             }),
           )
           .timeout(_responseTimeout,
-              onTimeout: () => throw TimeoutException(
-                  'verification request timed out'));
+              onTimeout: () =>
+                  throw TimeoutException('verification request timed out'));
       return jsonDecode(resp.body) as Map<String, dynamic>;
     } on SocketException {
       rethrow;
@@ -204,8 +203,8 @@ class IdentityService {
             }),
           )
           .timeout(_responseTimeout,
-              onTimeout: () => throw TimeoutException(
-                  'verification confirm timed out'));
+              onTimeout: () =>
+                  throw TimeoutException('verification confirm timed out'));
       final data = jsonDecode(resp.body) as Map<String, dynamic>;
       if (resp.statusCode == 200) {
         final access = data['access_token'] as String?;
@@ -315,8 +314,7 @@ class IdentityService {
             body: jsonEncode({'refreshToken': refresh, 'all': all}),
           )
           .timeout(_responseTimeout,
-              onTimeout: () =>
-                  throw TimeoutException('logout timed out'));
+              onTimeout: () => throw TimeoutException('logout timed out'));
     } on SocketException {
       // Offline logout still clears local tokens.
     } on TimeoutException {
@@ -332,8 +330,7 @@ class IdentityService {
         Uri.parse('$backendUrl/auth/me'),
         headers: {'Authorization': 'Bearer $token'},
       ).timeout(_responseTimeout,
-          onTimeout: () =>
-              throw TimeoutException('profile fetch timed out'));
+          onTimeout: () => throw TimeoutException('profile fetch timed out'));
       if (resp.statusCode == 200) {
         return jsonDecode(resp.body) as Map<String, dynamic>;
       }

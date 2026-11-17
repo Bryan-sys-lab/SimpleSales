@@ -286,7 +286,7 @@ class BackendService {
 
   static const backendUrl = String.fromEnvironment(
     'BACKEND_URL',
-    defaultValue: 'https://your-backend/api',
+    defaultValue: 'https://duka-pos-backend.brianbmk332.workers.dev/api',
   );
 
   /// Why this build may not reach a server, or null when it may.
