@@ -5,33 +5,42 @@ import { fetchJson } from '@/lib/api';
 import { SupportTicket } from '@/lib/types';
 import { ShellLayout } from '@/components/layout';
 import { DataTable } from '@/components/data-table';
+import { useWebSocket } from '@/components/websocket-provider';
 
 export default function SupportPage() {
   const [data, setData] = useState<SupportTicket[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [statusFilter, setStatusFilter] = useState<string>('');
+  const { lastMessage } = useWebSocket();
+
+  const load = useCallback(async () => {
+    setLoading(true);
+    try {
+      const params = new URLSearchParams({ limit: '100' });
+      if (statusFilter) params.set('status', statusFilter);
+      const res = await fetchJson<{ tickets: SupportTicket[] }>(
+        `/api/admin/support-tickets?${params.toString()}`,
+      );
+      setData(res.tickets);
+      setError(null);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to load support tickets');
+    } finally {
+      setLoading(false);
+    }
+  }, [statusFilter]);
 
   useEffect(() => {
-    let cancelled = false;
-    (async () => {
-      try {
-        const params = new URLSearchParams({ limit: '100' });
-        if (statusFilter) params.set('status', statusFilter);
-        const res = await fetchJson<{ tickets: SupportTicket[] }>(
-          `/api/admin/support-tickets?${params.toString()}`,
-        );
-        if (!cancelled) setData(res.tickets);
-      } catch (err) {
-        if (!cancelled) setError(err instanceof Error ? err.message : 'Failed to load support tickets');
-      } finally {
-        if (!cancelled) setLoading(false);
-      }
-    })();
-    return () => {
-      cancelled = true;
-    };
-  }, [statusFilter]);
+    void load();
+  }, [load]);
+
+  useEffect(() => {
+    if (lastMessage && typeof lastMessage === 'object' &&
+        (lastMessage as { type?: unknown }).type === 'subscription_quote_requested') {
+      void load();
+    }
+  }, [lastMessage, load]);
 
   const filtered = useMemo(
     () => data.filter((t) => !statusFilter || t.status === statusFilter),

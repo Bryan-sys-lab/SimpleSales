@@ -1,5 +1,6 @@
 import type { Metadata } from 'next';
 import './globals.css';
+import { AppProviders } from '@/components/app-providers';
 
 export const metadata: Metadata = {
   title: 'Duka POS — Systems Admin',
@@ -13,7 +14,7 @@ export default function RootLayout({
 }) {
   return (
     <html lang="en" className="font-sans">
-      <body className="antialiased">{children}</body>
+      <body className="antialiased"><AppProviders>{children}</AppProviders></body>
     </html>
   );
 }
