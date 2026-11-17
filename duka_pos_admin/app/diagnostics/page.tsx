@@ -136,25 +136,26 @@ export default function DiagnosticsPage() {
               ]}
               data={items}
               rowKey={(r) => r.id}
-              renderCell={(row) => {
-                if (row.key === 'lastSeen') {
+              renderCell={(row, key) => {
+                const value = row[key as keyof DiagnosticsListItem];
+                if (key === 'lastSeen') {
                   return (
                     <span className="text-base-500 font-mono text-xs">
-                      {new Date(row.value as string).toLocaleString()}
+                      {new Date(value as string).toLocaleString()}
                     </span>
                   );
                 }
-                if (row.key === 'platform') {
+                if (key === 'platform') {
                   return (
                     <span
-                      className={`inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium ${kindColors[row.value as string] ?? 'bg-base-200 text-base-600'}`}
+                      className={`inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium ${kindColors[String(value)] ?? 'bg-base-200 text-base-600'}`}
                     >
-                      {row.value}
+                        {String(value)}
                     </span>
                   );
                 }
                 return (
-                  <span className="text-base-600">{String(row.value)}</span>
+                  <span className="text-base-600">{String(value)}</span>
                 );
               }}
               onRowClick={(row) => openDiagnostic(row.id as string)}

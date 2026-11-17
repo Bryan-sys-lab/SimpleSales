@@ -13,6 +13,7 @@ const NAV_ITEMS: import('./nav').NavItem[] = [
   { href: '/exchanges', label: 'Exchanges', icon: 'exchanges' },
   { href: '/sessions', label: 'Sessions', icon: 'sessions' },
   { href: '/tenants', label: 'Tenants', icon: 'tenants' },
+  { href: '/billing', label: 'Billing & access', icon: 'billing' },
   { href: '/tax-rules', label: 'Tax rules', icon: 'tax-rules' },
   { href: '/tax-compliance', label: 'Tax compliance', icon: 'tax-compliance' },
   { href: '/commercial-policy', label: 'Commercial policy', icon: 'commercial-policy' },
