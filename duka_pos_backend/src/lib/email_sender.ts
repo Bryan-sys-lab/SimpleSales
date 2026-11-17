@@ -8,8 +8,7 @@ import {
   NERVA_LOGO_CONTENT_ID,
   NERVA_LOGO_FILENAME,
   NERVA_LOGO_MIME_TYPE,
-} from './nerva_logo';
-
+} from "./nerva_logo";
 
 export type VerificationEmail = {
   to: string;
@@ -21,13 +20,36 @@ export type VerificationEmail = {
 
 export type EmailTransport = (message: VerificationEmail) => Promise<void>;
 
+/** Native Cloudflare Email Sending binding exposed by a Worker. */
+export type CloudflareEmailBinding = {
+  send: (message: Record<string, unknown>) => Promise<unknown>;
+};
+
+let nativeEmailBinding: CloudflareEmailBinding | null = null;
+
+/**
+ * Installs the Worker Email Sending binding for the current isolate.
+ *
+ * The REST API token is intentionally only a fallback. Deployment tokens often
+ * have Workers permissions but not Email Sending permissions, which previously
+ * made account verification fail even though the Worker itself was healthy.
+ */
+export function setCloudflareEmailBinding(
+  binding: CloudflareEmailBinding | null,
+): void {
+  nativeEmailBinding = binding;
+}
+
 export type CloudflareEmailOptions = {
   accountId: string;
   apiToken: string;
   from?: string;
   appName?: string;
   /** Injectable for tests; the default is global fetch. */
-  post?: (url: string, init: { method: string; headers: Record<string, string>; body: string }) => Promise<{ status: number; text: () => Promise<string> }>;
+  post?: (
+    url: string,
+    init: { method: string; headers: Record<string, string>; body: string },
+  ) => Promise<{ status: number; text: () => Promise<string> }>;
 };
 
 export const CLOUDFLARE_EMAIL_ENDPOINT = (accountId: string) =>
@@ -37,14 +59,16 @@ export class EmailSendError extends Error {
   readonly status: number;
   constructor(status: number) {
     super(`Email provider refused the message (${status})`);
-    this.name = 'EmailSendError';
+    this.name = "EmailSendError";
     this.status = status;
   }
 }
 
-const DEFAULT_FROM = 'security@nerva.co.ke';
+const DEFAULT_FROM = "security@nerva.co.ke";
 
-export function createCloudflareEmailTransport(options: CloudflareEmailOptions): { configured: boolean; send: EmailTransport } {
+export function createCloudflareEmailTransport(
+  options: CloudflareEmailOptions,
+): { configured: boolean; send: EmailTransport } {
   const from = options.from || DEFAULT_FROM;
   const post =
     options.post ??
@@ -53,47 +77,54 @@ export function createCloudflareEmailTransport(options: CloudflareEmailOptions):
       return { status: response.status, text: () => response.text() };
     });
 
-  const configured = Boolean(options.accountId && options.apiToken && from);
+  const configured = Boolean(
+    nativeEmailBinding || (options.accountId && options.apiToken && from),
+  );
 
   const buildBody = (message: VerificationEmail) => {
-    const appName = options.appName ?? 'SimpleSales';
+    const appName = options.appName ?? "SimpleSales";
     const subject = `${appName} — your verification code`;
     const logoHtml = `<img src="cid:${NERVA_LOGO_CONTENT_ID}" alt="Nerva" width="180" style="display:block;width:180px;height:auto;margin:0 auto 28px;border:0;" />`;
-    const escapeHtml = (value: string) => value
-      .replaceAll('&', '&amp;')
-      .replaceAll('<', '&lt;')
-      .replaceAll('>', '&gt;')
-      .replaceAll('"', '&quot;')
-      .replaceAll("'", '&#39;');
+    const escapeHtml = (value: string) =>
+      value
+        .replaceAll("&", "&amp;")
+        .replaceAll("<", "&lt;")
+        .replaceAll(">", "&gt;")
+        .replaceAll('"', "&quot;")
+        .replaceAll("'", "&#39;");
     const safeAppName = escapeHtml(appName);
     const safeCode = escapeHtml(message.code);
-    const safeVoucher = message.firstVoucherCode ? escapeHtml(message.firstVoucherCode) : '';
+    const safeVoucher = message.firstVoucherCode
+      ? escapeHtml(message.firstVoucherCode)
+      : "";
     const voucherText = message.firstVoucherCode
       ? `Your first-month access voucher is ${message.firstVoucherCode}. It is valid for one month from account verification and is automatically activated after verification. Keep it for support or reactivation.`
-      : '';
+      : "";
 
     const text = [
       `${appName}`,
-      '',
-      'Confirm your account',
-      '',
-      'Hi,',
-      '',
+      "",
+      "Confirm your account",
+      "",
+      "Hi,",
+      "",
       "You're almost there. Enter the verification code below to confirm your email address.",
-      '',
+      "",
       message.code,
-      '',
+      "",
       `Expires in ${message.ttlMinutes} minutes`,
-      ...(message.firstVoucherCode ? ['', 'FIRST-MONTH ACCESS', voucherText] : []),
-      '',
+      ...(message.firstVoucherCode
+        ? ["", "FIRST-MONTH ACCESS", voucherText]
+        : []),
+      "",
       "If you didn't request this code, no action is required. For your security, never share your verification code with anyone.",
-      '',
+      "",
       `Thank you for choosing ${appName}.`,
-      '',
+      "",
       `${appName} Security`,
-      '',
-      'This is an automated security email. Please do not reply.',
-    ].join('\n');
+      "",
+      "This is an automated security email. Please do not reply.",
+    ].join("\n");
 
     const html = `<!DOCTYPE html>
 <html lang="en">
@@ -111,7 +142,7 @@ export function createCloudflareEmailTransport(options: CloudflareEmailOptions):
           <div style="display:inline-block;background:#f1f5f9;border:1px solid #e2e8f0;border-radius:12px;padding:18px 30px;font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:30px;line-height:1;font-weight:800;letter-spacing:8px;color:#111;">${safeCode}</div>
         </td></tr>
         <tr><td style="font-size:13px;line-height:1.5;color:#6b7280;padding-bottom:24px;">Expires in ${message.ttlMinutes} minutes.</td></tr>
-        ${message.firstVoucherCode ? `<tr><td style="padding:18px 20px;background:#ecfdf5;border:1px solid #a7f3d0;border-radius:12px;color:#065f46;font-size:13px;line-height:1.6;padding-bottom:18px;"><strong>First-month access</strong><br>Your one-month voucher is <span style="font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-weight:800;letter-spacing:1px;">${safeVoucher}</span>.<br>It is automatically activated after verification. Keep this code for support or reactivation.</td></tr>` : ''}
+        ${message.firstVoucherCode ? `<tr><td style="padding:18px 20px;background:#ecfdf5;border:1px solid #a7f3d0;border-radius:12px;color:#065f46;font-size:13px;line-height:1.6;padding-bottom:18px;"><strong>First-month access</strong><br>Your one-month voucher is <span style="font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-weight:800;letter-spacing:1px;">${safeVoucher}</span>.<br>It is automatically activated after verification. Keep this code for support or reactivation.</td></tr>` : ""}
         <tr><td style="font-size:13px;line-height:1.5;color:#6b7280;padding-bottom:24px;">If you didn't request this code, no action is required. For your security, never share your verification code with anyone.</td></tr>
         <tr><td style="font-size:13px;line-height:1.5;color:#374151;padding-bottom:8px;">Thank you for choosing <strong>${safeAppName}</strong>.</td></tr>
         <tr><td style="font-size:12px;line-height:1.5;color:#9ca3af;"><em>This is an automated security email. Please do not reply.</em></td></tr>
@@ -135,7 +166,7 @@ export function createCloudflareEmailTransport(options: CloudflareEmailOptions):
           content: NERVA_LOGO_BASE64,
           filename: NERVA_LOGO_FILENAME,
           type: NERVA_LOGO_MIME_TYPE,
-          disposition: 'inline',
+          disposition: "inline",
           contentId: NERVA_LOGO_CONTENT_ID,
         },
       ],
@@ -145,14 +176,21 @@ export function createCloudflareEmailTransport(options: CloudflareEmailOptions):
   return {
     configured,
     send: async (message: VerificationEmail) => {
+      const body = buildBody(message);
+      if (nativeEmailBinding) {
+        // The Worker binding accepts a single address directly; the REST
+        // structured API uses the recipient array below.
+        await nativeEmailBinding.send({ ...body, to: message.to });
+        return;
+      }
       const url = CLOUDFLARE_EMAIL_ENDPOINT(options.accountId);
       const response = await post(url, {
-        method: 'POST',
+        method: "POST",
         headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${options.apiToken}`,
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${options.apiToken}`,
         },
-        body: JSON.stringify(buildBody(message)),
+        body: JSON.stringify(body),
       });
       if (response.status < 200 || response.status >= 300) {
         throw new EmailSendError(response.status);

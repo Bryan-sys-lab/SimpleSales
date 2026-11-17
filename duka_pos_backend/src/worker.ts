@@ -1,33 +1,46 @@
-import { IncomingMessage, ServerResponse } from 'node:http';
-import { Duplex } from 'node:stream';
-import app from './index.js';
-import { verifyAccessToken } from './lib/jwt.js';
+import { IncomingMessage, ServerResponse } from "node:http";
+import { Duplex } from "node:stream";
+import app from "./index.js";
+import { verifyAccessToken } from "./lib/jwt.js";
+import { setCloudflareEmailBinding } from "./lib/email_sender.js";
 
 function makeSocket(): Duplex {
   const socket = new Duplex({
     read() {},
-    write(chunk, enc, cb) { cb(); },
+    write(chunk, enc, cb) {
+      cb();
+    },
   });
-  (socket as any).remoteAddress = '127.0.0.1';
+  (socket as any).remoteAddress = "127.0.0.1";
   return socket;
 }
 
 export default {
   async fetch(request: Request, env: any, _ctx: any): Promise<Response> {
+    setCloudflareEmailBinding(
+      env?.EMAIL && typeof env.EMAIL.send === "function" ? env.EMAIL : null,
+    );
     for (const [k, v] of Object.entries(env || {})) {
-      if (typeof v === 'string') process.env[k] = v;
+      if (typeof v === "string") process.env[k] = v;
     }
     if (env?.HYPERDRIVE?.connectionString) {
       process.env.DATABASE_URL = env.HYPERDRIVE.connectionString;
     }
 
     const url = new URL(request.url);
-    if (url.pathname === '/live' || url.pathname === '/api/live') {
-      const token = request.headers.get('authorization')?.match(/^Bearer\s+(.+)$/i)?.[1]?.trim();
-      const tenantId = request.headers.get('x-tenant-id')?.trim();
-      if (request.headers.get('Upgrade')?.toLowerCase() !== 'websocket' ||
-          !token || !tenantId || !verifyAccessToken(token)) {
-        return new Response('Authentication required', { status: 401 });
+    if (url.pathname === "/live" || url.pathname === "/api/live") {
+      const token = request.headers
+        .get("authorization")
+        ?.match(/^Bearer\s+(.+)$/i)?.[1]
+        ?.trim();
+      const tenantId = request.headers.get("x-tenant-id")?.trim();
+      if (
+        request.headers.get("Upgrade")?.toLowerCase() !== "websocket" ||
+        !token ||
+        !tenantId ||
+        !verifyAccessToken(token)
+      ) {
+        return new Response("Authentication required", { status: 401 });
       }
       // One room per tenant prevents a till in shop A from receiving shop B's
       // change signals. The HTTP API remains the source of truth and the
@@ -38,19 +51,22 @@ export default {
     }
 
     // Read body up front (Workers-friendly) to avoid stream timing issues.
-    let bodyText = '';
-    if (request.method !== 'GET' && request.method !== 'HEAD') {
+    let bodyText = "";
+    if (request.method !== "GET" && request.method !== "HEAD") {
       try {
         bodyText = await request.text();
       } catch (e) {
-        console.error('body read error', e);
+        console.error("body read error", e);
       }
     }
 
     const socket = makeSocket();
 
     const response = await new Promise<Response>((resolve) => {
-      const timer = setTimeout(() => resolve(new Response('gateway timeout', { status: 504 })), 28000);
+      const timer = setTimeout(
+        () => resolve(new Response("gateway timeout", { status: 504 })),
+        28000,
+      );
 
       const req = new IncomingMessage(socket as any);
       req.method = request.method;
@@ -58,18 +74,23 @@ export default {
       req.headers = Object.fromEntries(request.headers.entries());
 
       const res = new ServerResponse(req);
-      Object.defineProperty(req, 'socket', { value: socket, writable: true });
-      Object.defineProperty(req, 'connection', { value: socket, writable: true });
+      Object.defineProperty(req, "socket", { value: socket, writable: true });
+      Object.defineProperty(req, "connection", {
+        value: socket,
+        writable: true,
+      });
 
       const chunks: Buffer[] = [];
       const origWrite = res.write.bind(res);
       const origEnd = res.end.bind(res);
       res.write = (chunk: any, ...args: any[]) => {
-        if (chunk) chunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk));
+        if (chunk)
+          chunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk));
         return origWrite(chunk, ...args);
       };
       res.end = (chunk: any, ...args: any[]) => {
-        if (chunk) chunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk));
+        if (chunk)
+          chunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk));
         const body = Buffer.concat(chunks);
         const headers = new Headers();
         for (const [k, v] of Object.entries(res.getHeaders())) {
@@ -85,38 +106,47 @@ export default {
       if (bodyText) req.push(Buffer.from(bodyText));
       req.push(null);
     });
-    if (request.method !== 'GET' && request.method !== 'HEAD' &&
-        response.status >= 200 && response.status < 300) {
-      const tenantId = request.headers.get('x-tenant-id')?.trim();
-      if (tenantId && url.pathname.startsWith('/api/')) {
+    if (
+      request.method !== "GET" &&
+      request.method !== "HEAD" &&
+      response.status >= 200 &&
+      response.status < 300
+    ) {
+      const tenantId = request.headers.get("x-tenant-id")?.trim();
+      if (tenantId && url.pathname.startsWith("/api/")) {
         const id = env.LIVE_ROOM.idFromName(`tenant:${tenantId}`);
         const stub = env.LIVE_ROOM.get(id);
-        await stub.fetch(new Request('https://live.internal/broadcast', {
-          method: 'POST',
-          headers: { 'x-live-internal': '1' },
-          body: JSON.stringify({ type: 'snapshot', reasons: [], at: new Date().toISOString() }),
-        }));
+        await stub.fetch(
+          new Request("https://live.internal/broadcast", {
+            method: "POST",
+            headers: { "x-live-internal": "1" },
+            body: JSON.stringify({
+              type: "snapshot",
+              reasons: [],
+              at: new Date().toISOString(),
+            }),
+          }),
+        );
       }
     }
     return response;
   },
   async scheduled(event: any, env: any, _ctx: any) {
     for (const [k, v] of Object.entries(env || {})) {
-      if (typeof v === 'string') process.env[k] = v;
+      if (typeof v === "string") process.env[k] = v;
     }
     if (env?.HYPERDRIVE?.connectionString) {
       process.env.DATABASE_URL = env.HYPERDRIVE.connectionString;
     }
     try {
-      const { prisma } = await import('./lib/prisma.js');
+      const { prisma } = await import("./lib/prisma.js");
       await (prisma as any).user.count();
-      console.log('db warm ping ok');
+      console.log("db warm ping ok");
     } catch (e) {
-      console.error('db warm ping failed', e);
+      console.error("db warm ping failed", e);
     }
   },
 };
-
 
 // Durable Object backing the /live WebSocket channel.
 export class LiveRoom {
@@ -125,32 +155,39 @@ export class LiveRoom {
   constructor(_state: any, _env: any) {}
 
   async fetch(request: any): Promise<Response> {
-    if (request.headers.get('x-live-internal') === '1' && request.method === 'POST') {
+    if (
+      request.headers.get("x-live-internal") === "1" &&
+      request.method === "POST"
+    ) {
       const message = await request.text();
       for (const s of this.sessions) {
         if (s.readyState === 1) s.send(message);
       }
       return new Response(null, { status: 204 });
     }
-    if (request.headers.get('Upgrade') !== 'websocket') {
-      return new Response('Expected websocket', { status: 426 });
+    if (request.headers.get("Upgrade") !== "websocket") {
+      return new Response("Expected websocket", { status: 426 });
     }
     const pair: any = new (globalThis as any).WebSocketPair();
     const client = pair[0];
     const server = pair[1];
     server.accept();
     this.sessions.add(server);
-    server.send(JSON.stringify({ type: 'connected', at: new Date().toISOString() }));
-    server.addEventListener('close', () => this.sessions.delete(server));
-    server.addEventListener('message', (ev: any) => {
+    server.send(
+      JSON.stringify({ type: "connected", at: new Date().toISOString() }),
+    );
+    server.addEventListener("close", () => this.sessions.delete(server));
+    server.addEventListener("message", (ev: any) => {
       try {
         const message = JSON.parse(String(ev.data));
-        if (message?.type === 'read' && server.readyState === 1) {
-          server.send(JSON.stringify({
-            type: 'snapshot',
-            reasons: [],
-            at: new Date().toISOString(),
-          }));
+        if (message?.type === "read" && server.readyState === 1) {
+          server.send(
+            JSON.stringify({
+              type: "snapshot",
+              reasons: [],
+              at: new Date().toISOString(),
+            }),
+          );
         }
       } catch {
         // Ignore malformed optional signal frames.
