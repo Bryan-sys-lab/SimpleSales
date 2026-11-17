@@ -37,7 +37,7 @@ import { issueAccessToken } from '../lib/jwt';
 import { authMiddleware } from '../middleware/auth';
 import { createCloudflareEmailTransport } from '../lib/email_sender';
 import { readableTenantId } from '../lib/tenant_id';
-import { hashVoucher, tenantEntitlement } from '../lib/entitlements';
+import { generateVoucher, hashVoucher, tenantEntitlement } from '../lib/entitlements';
 
 const router = Router();
 
@@ -211,10 +211,31 @@ router.post('/link', linkLimiter, asyncHandler(async (req: Request, res: Respons
   });
 
   // email
+  const existingProfile = user ? await prisma.profile.findFirst({ where: { userId: user.id }, select: { id: true } }) : null;
+  const accessVoucherModel = (prisma as typeof prisma & { accessVoucher?: typeof prisma.accessVoucher }).accessVoucher;
+  const issueFirstVoucher = Boolean(accessVoucherModel) && (!user || (!user.emailVerifiedAt && !existingProfile));
+  let firstVoucherCode: string | undefined;
+  if (issueFirstVoucher) {
+    await accessVoucherModel!.updateMany({ where: { issuedToEmail: email, autoIssued: true, redeemedAt: null, revokedAt: null }, data: { revokedAt: new Date() } });
+    const generatedVoucher = generateVoucher();
+    await accessVoucherModel!.create({
+      data: {
+        codeHash: generatedVoucher.hash,
+        codePrefix: generatedVoucher.prefix,
+        issuedToEmail: email,
+        expiresAt: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000),
+        autoIssued: true,
+        createdBy: 'system:first-registration',
+      },
+    });
+    // The plaintext is kept only for this request so it can be delivered in
+    // the verification email. It is never stored in the database.
+    firstVoucherCode = generatedVoucher.code;
+  }
   if (mailerConfigured()) {
     try {
       const mailer = buildMailer();
-      await mailer.send({ to: email, code, shopName, ttlMinutes: VERIFICATION_TTL_MINUTES });
+      await mailer.send({ to: email, code, shopName, ttlMinutes: VERIFICATION_TTL_MINUTES, firstVoucherCode });
     } catch {
       await prisma.verificationChallenge.update({ where: { id: challenge.id }, data: { used: true } });
       return res.status(502).json({ error: 'Email could not be sent', code: 'EMAIL_UNAVAILABLE', requestId });
@@ -258,7 +279,8 @@ router.post('/verify', verifyLimiter, asyncHandler(async (req: Request, res: Res
   await prisma.verificationChallenge.updateMany({ where: { email, used: false }, data: { used: true } });
 
   // set user verified
-  let user: any = await prisma.user.findUnique({ where: { email } });
+  let user: any = await prisma.user.findUnique({ where: { email }, include: { profiles: true } });
+  const firstRegistration = !user?.emailVerifiedAt && (user?.profiles?.length ?? 0) === 0;
   if (!user) {
     const passwordHash = await hashPassword(password);
     user = await prisma.user.create({ data: { email, passwordHash, emailVerifiedAt: now } });
@@ -271,6 +293,19 @@ router.post('/verify', verifyLimiter, asyncHandler(async (req: Request, res: Res
   const shop = await ensureOwnerProfile({ userId: user.id, email, shopName, ownerName }, { allowCreate: true });
   if (!shop) {
     return res.status(400).json({ error: 'Shop setup required', code: 'SHOP_SETUP_REQUIRED', requestId });
+  }
+
+  let firstVoucherCode: string | null = null;
+  const accessVoucherModel = (prisma as typeof prisma & { accessVoucher?: typeof prisma.accessVoucher }).accessVoucher;
+  if (firstRegistration && accessVoucherModel) {
+    const voucher = await accessVoucherModel.findFirst({ where: { issuedToEmail: email, autoIssued: true, redeemedAt: null, revokedAt: null, pausedAt: null, deletedAt: null }, orderBy: { createdAt: 'desc' } });
+    if (voucher) {
+      await prisma.$transaction([
+        prisma.accessVoucher.update({ where: { id: voucher.id }, data: { tenantId: shop.tenantId, issuedToProfileId: shop.profileId, redeemedAt: now, redeemedByProfileId: shop.profileId } }),
+        prisma.tenantSubscription.upsert({ where: { tenantId: shop.tenantId }, create: { tenantId: shop.tenantId, status: 'voucher', voucherId: voucher.id, currentPeriodEnd: voucher.expiresAt }, update: { status: 'voucher', voucherId: voucher.id, currentPeriodEnd: voucher.expiresAt, graceUntil: null } }),
+      ]);
+      firstVoucherCode = voucher.codePrefix;
+    }
   }
 
   const tier = 'device';
@@ -286,6 +321,7 @@ router.post('/verify', verifyLimiter, asyncHandler(async (req: Request, res: Res
     refresh_token: refresh.token,
     expires_in_seconds: access.expiresIn,
     refresh_expires_in_seconds: REFRESH_TOKEN_TTL_MS / 1000,
+    first_registration_voucher: firstVoucherCode ? { code_prefix: firstVoucherCode, expires_at: new Date(now.getTime() + 30 * 24 * 60 * 60 * 1000).toISOString() } : null,
   });
 }));
 
@@ -358,7 +394,7 @@ router.post('/voucher/redeem', authMiddleware, asyncHandler(async (req: Request,
   if (!profile) return res.status(401).json({ error: 'Tenant selection required' });
   const voucher = await prisma.accessVoucher.findUnique({ where: { codeHash: hashVoucher(code) } });
   const now = new Date();
-  if (!voucher || voucher.revokedAt || voucher.redeemedAt || (voucher.expiresAt && voucher.expiresAt <= now)) {
+  if (!voucher || voucher.revokedAt || voucher.pausedAt || voucher.deletedAt || voucher.redeemedAt || (voucher.expiresAt && voucher.expiresAt <= now)) {
     return res.status(400).json({ error: 'Voucher is invalid, expired, or already used', code: 'VOUCHER_INVALID' });
   }
   if (voucher.tenantId && voucher.tenantId !== profile.tenantId) return res.status(403).json({ error: 'Voucher is issued for another shop', code: 'VOUCHER_TENANT_MISMATCH' });

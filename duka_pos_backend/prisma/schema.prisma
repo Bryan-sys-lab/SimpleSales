@@ -483,6 +483,9 @@ model AccessVoucher {
   redeemedAt        DateTime? @map("redeemed_at")
   redeemedByProfileId String? @map("redeemed_by_profile_id")
   revokedAt         DateTime? @map("revoked_at")
+  pausedAt          DateTime? @map("paused_at")
+  deletedAt         DateTime? @map("deleted_at")
+  autoIssued        Boolean  @default(false) @map("auto_issued")
   createdBy         String   @map("created_by")
   createdAt         DateTime @default(now()) @map("created_at")
 
