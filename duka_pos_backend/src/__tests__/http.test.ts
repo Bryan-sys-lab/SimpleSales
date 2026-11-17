@@ -81,12 +81,18 @@ describe('HTTP safety boundaries', () => {
     const reorder = await supertest.default(app).post('/api/reorder').send({ localId: 1 });
     const laybys = await supertest.default(app).post('/api/laybys/sync').send({ laybys: [] });
     const exchanges = await supertest.default(app).post('/api/exchanges/sync').send({ exchanges: [] });
+    const variants = await supertest.default(app).get('/api/product-variants');
+    const costPools = await supertest.default(app).get('/api/cost-pools');
+    const ownerTransactions = await supertest.default(app).get('/api/owner-transactions');
     expect(response.status).toBe(401);
     expect(cups.status).toBe(401);
     expect(stock.status).toBe(401);
     expect(reorder.status).toBe(401);
     expect(laybys.status).toBe(401);
     expect(exchanges.status).toBe(401);
+    expect(variants.status).toBe(401);
+    expect(costPools.status).toBe(401);
+    expect(ownerTransactions.status).toBe(401);
   });
 
   it('allows only explicitly selected-tenant staff bootstrap without a session', async () => {

@@ -9,6 +9,37 @@ import { prisma } from '../lib/prisma';
 
 const router = Router();
 
+router.get('/', asyncHandler(async (req, res) => {
+  const pools = await prisma.costPool.findMany({
+    where: { tenantId: requireUser(req).tenantId },
+    orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
+    select: {
+      id: true,
+      uuid: true,
+      name: true,
+      poolType: true,
+      investedMinor: true,
+      recoveredMinor: true,
+      status: true,
+      createdAt: true,
+      updatedAt: true,
+    },
+  });
+  return res.json({
+    costPools: pools.map((pool) => ({
+      remoteId: pool.id,
+      uuid: pool.uuid,
+      name: pool.name,
+      poolType: pool.poolType,
+      investedMinor: pool.investedMinor,
+      recoveredMinor: pool.recoveredMinor,
+      status: pool.status,
+      createdAt: pool.createdAt.toISOString(),
+      updatedAt: pool.updatedAt.toISOString(),
+    })),
+  });
+}));
+
 router.post(
   '/sync',
   asyncHandler(async (req, res) => {

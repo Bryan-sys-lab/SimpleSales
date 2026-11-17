@@ -3,6 +3,13 @@
  *
  * Keys live only in this process; the app asks the server to send the mail.
  */
+import {
+  NERVA_LOGO_BASE64,
+  NERVA_LOGO_CONTENT_ID,
+  NERVA_LOGO_FILENAME,
+  NERVA_LOGO_MIME_TYPE,
+} from './nerva_logo';
+
 
 export type VerificationEmail = {
   to: string;
@@ -50,10 +57,15 @@ export function createCloudflareEmailTransport(options: CloudflareEmailOptions):
   const buildBody = (message: VerificationEmail) => {
     const appName = options.appName ?? 'SimpleSales';
     const subject = `${appName} — your verification code`;
-    const logoUrl = process.env.NERVA_LOGO_URL ?? '';
-    const logoHtml = logoUrl
-      ? `<img src="${logoUrl}" alt="Nerva" width="120" style="display:block;margin-bottom:24px;" />`
-      : `<p style="font-size:20px;font-weight:700;margin-bottom:24px;">Nerva</p>`;
+    const logoHtml = `<img src="cid:${NERVA_LOGO_CONTENT_ID}" alt="Nerva" width="180" style="display:block;width:180px;height:auto;margin:0 auto 28px;border:0;" />`;
+    const escapeHtml = (value: string) => value
+      .replaceAll('&', '&amp;')
+      .replaceAll('<', '&lt;')
+      .replaceAll('>', '&gt;')
+      .replaceAll('"', '&quot;')
+      .replaceAll("'", '&#39;');
+    const safeAppName = escapeHtml(appName);
+    const safeCode = escapeHtml(message.code);
 
     const text = [
       `${appName}`,
@@ -80,22 +92,22 @@ export function createCloudflareEmailTransport(options: CloudflareEmailOptions):
     const html = `<!DOCTYPE html>
 <html lang="en">
 <head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"></head>
-<body style="margin:0;padding:0;background:#f5f5f5;font-family:sans-serif;">
-  <table width="100%" cellpadding="0" cellspacing="0" style="background:#f5f5f5;padding:40px 0;">
+<body style="margin:0;padding:0;background:#f3f5f7;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Arial,sans-serif;color:#1b1d21;">
+  <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:#f3f5f7;padding:32px 12px;">
     <tr><td align="center">
-      <table width="480" cellpadding="0" cellspacing="0" style="background:#ffffff;border-radius:8px;padding:40px;">
-        <tr><td align="center" style="padding-bottom:8px;">
+      <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="max-width:520px;background:#ffffff;border:1px solid #e5e7eb;border-radius:18px;padding:40px 36px;">
+        <tr><td align="center" style="padding-bottom:4px;">
           ${logoHtml}
         </td></tr>
-        <tr><td style="font-size:22px;font-weight:700;color:#111;padding-bottom:16px;">Confirm your account</td></tr>
-        <tr><td style="font-size:15px;color:#444;padding-bottom:24px;">Hi,<br><br>You're almost there. Enter the verification code below to confirm your email address.</td></tr>
-        <tr><td align="center" style="padding-bottom:24px;">
-          <div style="display:inline-block;background:#f0f0f0;border-radius:8px;padding:20px 40px;font-size:32px;font-weight:800;letter-spacing:8px;color:#111;">${message.code}</div>
+        <tr><td style="font-size:24px;line-height:1.25;font-weight:750;color:#111;padding-bottom:16px;">Confirm your account</td></tr>
+        <tr><td style="font-size:15px;line-height:1.6;color:#4b5563;padding-bottom:24px;">Hi,<br><br>You're almost there. Enter the verification code below to confirm your email address.</td></tr>
+        <tr><td align="center" style="padding:4px 0 24px;">
+          <div style="display:inline-block;background:#f1f5f9;border:1px solid #e2e8f0;border-radius:12px;padding:18px 30px;font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:30px;line-height:1;font-weight:800;letter-spacing:8px;color:#111;">${safeCode}</div>
         </td></tr>
-        <tr><td style="font-size:13px;color:#888;padding-bottom:24px;">Expires in ${message.ttlMinutes} minutes</td></tr>
-        <tr><td style="font-size:13px;color:#888;padding-bottom:24px;">If you didn't request this code, no action is required. For your security, never share your verification code with anyone.</td></tr>
-        <tr><td style="font-size:13px;color:#444;padding-bottom:8px;">Thank you for choosing <strong>${appName}</strong>.</td></tr>
-        <tr><td style="font-size:12px;color:#aaa;"><em>This is an automated security email. Please do not reply.</em></td></tr>
+        <tr><td style="font-size:13px;line-height:1.5;color:#6b7280;padding-bottom:24px;">Expires in ${message.ttlMinutes} minutes.</td></tr>
+        <tr><td style="font-size:13px;line-height:1.5;color:#6b7280;padding-bottom:24px;">If you didn't request this code, no action is required. For your security, never share your verification code with anyone.</td></tr>
+        <tr><td style="font-size:13px;line-height:1.5;color:#374151;padding-bottom:8px;">Thank you for choosing <strong>${safeAppName}</strong>.</td></tr>
+        <tr><td style="font-size:12px;line-height:1.5;color:#9ca3af;"><em>This is an automated security email. Please do not reply.</em></td></tr>
       </table>
     </td></tr>
   </table>
@@ -108,6 +120,15 @@ export function createCloudflareEmailTransport(options: CloudflareEmailOptions):
       subject,
       text,
       html,
+      attachments: [
+        {
+          content: NERVA_LOGO_BASE64,
+          filename: NERVA_LOGO_FILENAME,
+          type: NERVA_LOGO_MIME_TYPE,
+          disposition: 'inline',
+          contentId: NERVA_LOGO_CONTENT_ID,
+        },
+      ],
     };
   };
 

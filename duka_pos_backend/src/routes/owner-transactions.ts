@@ -9,6 +9,37 @@ import { prisma } from '../lib/prisma';
 
 const router = Router();
 
+router.get('/', asyncHandler(async (req, res) => {
+  const transactions = await prisma.ownerTransaction.findMany({
+    where: { tenantId: requireUser(req).tenantId },
+    orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
+    select: {
+      id: true,
+      uuid: true,
+      transactionType: true,
+      amountMinor: true,
+      shiftId: true,
+      staffId: true,
+      staffName: true,
+      note: true,
+      createdAt: true,
+    },
+  });
+  return res.json({
+    ownerTransactions: transactions.map((transaction) => ({
+      remoteId: transaction.id,
+      uuid: transaction.uuid,
+      transactionType: transaction.transactionType,
+      amountMinor: transaction.amountMinor,
+      shiftId: transaction.shiftId,
+      staffId: transaction.staffId,
+      staffName: transaction.staffName,
+      note: transaction.note,
+      createdAt: transaction.createdAt.toISOString(),
+    })),
+  });
+}));
+
 router.post(
   '/sync',
   asyncHandler(async (req, res) => {

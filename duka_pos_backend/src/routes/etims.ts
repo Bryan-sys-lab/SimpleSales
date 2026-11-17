@@ -179,9 +179,23 @@ router.post(
           kra_activated: false,
         });
       }
+      if (error instanceof RisitiError && error.kind === 'network') {
+        if (error.retryAfterSeconds !== undefined) {
+          res.setHeader('Retry-After', String(error.retryAfterSeconds));
+        }
+        return res.status(error.statusCode === 429 ? 429 : 503).json({
+          error: 'Risiti could not accept the invoice yet; retry with the same receipt number',
+          provider: taxProvider,
+          request_id: error.requestId,
+          retry_after_seconds: error.retryAfterSeconds,
+        });
+      }
       throw error;
     }
-    const outcome = submissionOutcome(risiti.data.submission);
+    // Sandbox/simulated acceptance is useful for integration testing, but it
+    // is not a KRA fiscal receipt and must not be surfaced as one.
+    const simulated = risiti.data.simulated === true || risiti.data.submission_transport === 'simulated';
+    const outcome = simulated ? 'pending' : submissionOutcome(risiti.data.submission);
     const status = outcome === 'issued' ? 'issued' : outcome === 'pending' ? 'pending' : 'rejected';
     const receipt = await prisma.etimsReceipt.upsert({
       where: { tenantId_receiptNumber: { tenantId, receiptNumber: input.receipt_number } },
@@ -222,6 +236,8 @@ router.post(
       risiti_invoice_id: risiti.data.invoice_id,
       request_id: risiti.requestId,
       submission: risiti.data.submission,
+      simulated,
+      submission_transport: risiti.data.submission_transport,
     });
   })
 );

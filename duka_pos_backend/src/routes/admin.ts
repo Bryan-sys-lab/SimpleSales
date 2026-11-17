@@ -8,8 +8,7 @@ import { Request, Response, Router } from 'express';
 import crypto from 'node:crypto';
 import { z } from 'zod';
 import { asyncHandler } from '../lib/http';
-import { parseBody } from '../lib/validation';
-import { adminAuditSchema, adminListQuerySchema, commercialLedgerQuerySchema, platformAnnouncementSchema, taxRuleSchema } from '../lib/validation';
+import { adminAuditSchema, adminListQuerySchema, commercialLedgerQuerySchema, platformAnnouncementSchema, taxRuleSchema, parseBody, subscriptionUpdateSchema, voucherCreateSchema, billingProviderSchema } from '../lib/validation';
 import { prisma } from '../lib/prisma';
 import { runRetention } from '../lib/retention';
 import { log } from '../lib/observability';
@@ -18,8 +17,17 @@ import { COMMERCIAL_POLICY } from '../lib/commercial_policy';
 import { commercialContributionSelect, projectCommercialContribution } from '../lib/commercial_ledger';
 import { aggregateCommercialRows, COMMERCIAL_DISCLOSURE_THRESHOLDS, commercialRetentionCutoff, isEligibleForCommercialOutput, prepareCommercialAggregateOutput } from '../lib/commercial_controls';
 import { buildCommercialQualityReport, dedupeCommercialRows } from '../lib/commercial_quality';
+import { generateVoucher } from '../lib/entitlements';
+import { registerPaymentChannel } from '../services/payhero';
 
 const router = Router();
+
+// New tenant IDs are readable owner-shop-number identifiers; older tenants
+// may still be UUIDs. Support and diagnostics filters treat IDs as opaque and
+// must accept both forms.
+const tenantIdentifier = z.string().trim().min(1).max(120).regex(
+  /^[A-Za-z0-9_-]+$/,
+);
 
 let platformAnnouncementNotifier: ((announcement: {
   id: string;
@@ -35,6 +43,69 @@ export function setPlatformAnnouncementNotifier(
 
 // All admin routes require a system-admin OIDC subject.
 router.use(systemAdminMiddleware);
+
+router.get('/billing/provider', asyncHandler(async (_req: Request, res: Response) => {
+  const rows = await prisma.systemSettings.findMany({ where: { key: { in: ['billing_channel_type', 'billing_channel_id', 'billing_short_code', 'billing_account_number'] } } });
+  const values = Object.fromEntries(rows.map((row) => [row.key, row.value]));
+  return res.json({ provider: { channelType: values.billing_channel_type ?? null, channelId: values.billing_channel_id ? Number(values.billing_channel_id) : null, shortCode: values.billing_short_code ?? null, accountNumber: values.billing_account_number ?? null } });
+}));
+
+router.patch('/billing/provider', asyncHandler(async (req: Request, res: Response) => {
+  const input = parseBody(billingProviderSchema, req.body);
+  const channel = await registerPaymentChannel(input);
+  const values = { billing_channel_type: input.channelType, billing_channel_id: String(channel.id), billing_short_code: input.shortCode, billing_account_number: input.accountNumber ?? '' };
+  await prisma.$transaction(Object.entries(values).map(([key, value]) => prisma.systemSettings.upsert({ where: { key }, update: { value }, create: { key, value } })));
+  await prisma.adminAuditLog.create({ data: { adminId: req.auth?.sub ?? 'unknown', action: 'update_billing_provider', targetType: 'system_settings', tenantId: null } });
+  return res.json({ provider: { ...input, channelId: channel.id } });
+}));
+
+// Subscription terms are negotiated per shop. Only system administrators can
+// set the amount or activate/suspend access; the app never decides entitlement.
+router.get('/billing/subscriptions', asyncHandler(async (_req: Request, res: Response) => {
+  const rows = await prisma.tenantSubscription.findMany({ include: { tenant: { select: { shopName: true } } }, orderBy: { updatedAt: 'desc' } });
+  return res.json({ subscriptions: rows });
+}));
+
+router.patch('/billing/subscriptions/:tenantId', asyncHandler(async (req: Request, res: Response) => {
+  const input = parseBody(subscriptionUpdateSchema, req.body);
+  const tenantId = String(req.params.tenantId);
+  const currentPeriodEnd = input.currentPeriodEnd ? new Date(input.currentPeriodEnd) : input.status === 'active' ? new Date(Date.now() + 30 * 24 * 60 * 60 * 1000) : null;
+  const subscription = await prisma.tenantSubscription.upsert({
+    where: { tenantId },
+    create: { tenantId, ...input, currentPeriodEnd, graceUntil: input.graceUntil ? new Date(input.graceUntil) : null, updatedBy: req.auth?.sub },
+    update: { ...input, currentPeriodEnd: input.currentPeriodEnd === undefined ? undefined : input.currentPeriodEnd ? new Date(input.currentPeriodEnd) : null, graceUntil: input.graceUntil === undefined ? undefined : input.graceUntil ? new Date(input.graceUntil) : null, updatedBy: req.auth?.sub },
+  });
+  await prisma.adminAuditLog.create({ data: { adminId: req.auth?.sub ?? 'unknown', action: 'update_subscription', targetType: 'tenant_subscription', targetId: subscription.id, tenantId } });
+  return res.json({ subscription });
+}));
+
+router.post('/billing/vouchers', asyncHandler(async (req: Request, res: Response) => {
+  const input = parseBody(voucherCreateSchema, req.body);
+  const generated = generateVoucher();
+  const expiresAt = input.expiresAt
+    ? new Date(input.expiresAt)
+    : input.durationMonths
+      ? new Date(Date.now() + input.durationMonths * 30 * 24 * 60 * 60 * 1000)
+      : null;
+  const voucher = await prisma.accessVoucher.create({
+    data: { codeHash: generated.hash, codePrefix: generated.prefix, tenantId: input.tenantId, issuedToProfileId: input.profileId, issuedToEmail: input.email, expiresAt, createdBy: req.auth?.sub ?? 'unknown' },
+  });
+  await prisma.adminAuditLog.create({ data: { adminId: req.auth?.sub ?? 'unknown', action: 'create_access_voucher', targetType: 'access_voucher', targetId: voucher.id, tenantId: input.tenantId ?? null } });
+  // The plaintext is returned exactly once. It is never persisted or exposed
+  // in list/audit responses.
+  return res.status(201).json({ voucher: { id: voucher.id, code: generated.code, codePrefix: voucher.codePrefix, tenantId: voucher.tenantId, expiresAt: voucher.expiresAt } });
+}));
+
+router.get('/billing/vouchers', asyncHandler(async (_req: Request, res: Response) => {
+  const vouchers = await prisma.accessVoucher.findMany({ select: { id: true, codePrefix: true, tenantId: true, issuedToProfileId: true, issuedToEmail: true, expiresAt: true, redeemedAt: true, revokedAt: true, createdAt: true }, orderBy: { createdAt: 'desc' } });
+  return res.json({ vouchers });
+}));
+
+router.post('/billing/vouchers/:id/revoke', asyncHandler(async (req: Request, res: Response) => {
+  const voucher = await prisma.accessVoucher.update({ where: { id: String(req.params.id) }, data: { revokedAt: new Date() } });
+  await prisma.adminAuditLog.create({ data: { adminId: req.auth?.sub ?? 'unknown', action: 'revoke_access_voucher', targetType: 'access_voucher', targetId: voucher.id, tenantId: voucher.tenantId } });
+  return res.json({ status: 'revoked' });
+}));
 
 // Policy disclosure is visible only in the existing system-admin console.
 // This endpoint exposes no contribution rows and cannot enable collection.
@@ -665,7 +736,7 @@ router.post(
 
 const supportTicketListQuerySchema = z.object({
   status: z.enum(['open', 'in_progress', 'resolved']).optional().nullable(),
-  tenantId: z.string().uuid().optional().nullable(),
+  tenantId: tenantIdentifier.optional().nullable(),
   limit: z.coerce.number().int().positive().max(1000).default(100),
 });
 
@@ -773,7 +844,7 @@ const diagnosticReportSchema = z.object({
   locale: z.string().trim().min(1).max(16),
   manufacturer: z.string().trim().max(128).optional().nullable(),
   model: z.string().trim().max(128).optional().nullable(),
-  tenantId: z.string().uuid().optional().nullable(),
+  tenantId: tenantIdentifier.optional().nullable(),
   crashes: z.array(diagnosticEntrySchema).default([]),
 }).strict();
 
@@ -854,7 +925,7 @@ router.post(
 );
 
 const diagnosticListQuerySchema = z.object({
-  tenantId: z.string().uuid().optional().nullable(),
+  tenantId: tenantIdentifier.optional().nullable(),
   platform: z.string().optional().nullable(),
   kind: z.enum(['crash', 'error', 'warning']).optional().nullable(),
   from: z.string().datetime().optional().nullable(),

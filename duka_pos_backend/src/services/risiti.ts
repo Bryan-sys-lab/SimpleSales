@@ -49,6 +49,8 @@ export type RisitiAcceptedInvoice = {
   kra_invoice_number?: number;
   qr_code_data?: string;
   risiti_url?: string;
+  submission_transport?: string;
+  simulated?: boolean;
   [key: string]: unknown;
 };
 
@@ -58,6 +60,7 @@ export class RisitiError extends Error {
     readonly kind: 'misconfigured' | 'network' | 'rejected' | 'action_required',
     readonly requestId?: string,
     readonly statusCode?: number,
+    readonly retryAfterSeconds?: number,
   ) {
     super(message);
     this.name = 'RisitiError';
@@ -132,14 +135,22 @@ async function request<T>(path: string, init: RequestInit, timeoutMs = 15_000): 
       },
     });
     const body = await response.json().catch(() => ({})) as Record<string, unknown>;
-    const requestId = typeof body.request_id === 'string' ? body.request_id : undefined;
+    const requestId = typeof body.request_id === 'string'
+      ? body.request_id
+      : response.headers.get('x-request-id') ?? undefined;
     if (!response.ok) {
       const error = body.error as Record<string, unknown> | undefined;
+      const retryAfterValue = response.headers.get('retry-after');
+      const retryAfterSeconds = retryAfterValue && /^\d+$/.test(retryAfterValue)
+        ? Number(retryAfterValue)
+        : undefined;
+      const retryable = response.status === 408 || response.status === 425 || response.status === 429 || response.status >= 500;
       throw new RisitiError(
         typeof error?.message === 'string' ? error.message : `Risiti request failed (${response.status})`,
-        response.status >= 500 ? 'network' : 'rejected',
+        retryable ? 'network' : 'rejected',
         requestId,
         response.status,
+        retryAfterSeconds,
       );
     }
     return body as T;

@@ -6,7 +6,7 @@
  *   /api/auth           — app verification flow (no OIDC, app's own challenge flow)
  *   /api/etims          — KRA tax compliance (OIDC guarded)
  *   /api/tenant         — shop provisioning, settings, staff, portfolio (OIDC guarded)
- *   /api/payments       — M-Pesa via PayHero (OIDC guarded)
+ *   /api/payments       — M-Pesa via PayHero and optional Safaricom QR (OIDC guarded)
  *   /api/products       — catalogue sync + stock adjustment (OIDC guarded)
  *   /api/reports        — sales reports (OIDC guarded)
  *   /api/app/latest     — update manifest for the till app
@@ -48,11 +48,11 @@ import creditRoutes from './routes/credit';
 import operationalSyncRoutes from './routes/operational_sync';
 import evidenceRoutes from './routes/evidence';
 import productVariantRoutes from './routes/product-variants';
-import jobRoutes from './routes/jobs';
 import costPoolRoutes from './routes/cost-pools';
-import jobCostRoutes from './routes/job-costs';
-import jobPaymentRoutes from './routes/job-payments';
 import ownerTransactionRoutes from './routes/owner-transactions';
+import saleEvidenceRoutes from './routes/sale_evidence';
+import { verifyAccessToken } from './lib/jwt';
+import { addLiveClient, broadcastAll, broadcastTenantChange, removeLiveClient } from './services/live_broker';
 
 if (typeof module !== 'undefined') { dotenv.config(); }
 
@@ -259,6 +259,19 @@ app.use('/callback/mpesa', mpesaWebhookRoutes);
 // ---------------------------------------------------------------------------
 
 app.use('/api', authMiddleware);
+// Every successful authenticated mutation is a change signal for the active
+// tenant. This covers catalogue, stock, sales, finance, staff and settings
+// routes without requiring every route implementation to remember a second
+// notifier call. Reads stay silent, and the client re-reads the authoritative
+// endpoint after receiving the signal.
+app.use('/api', (req, res, next) => {
+  res.once('finish', () => {
+    if (req.method === 'GET' || res.statusCode < 200 || res.statusCode >= 300) return;
+    const tenantId = req.user?.tenantId;
+    if (tenantId) broadcastTenantChange(tenantId);
+  });
+  next();
+});
 app.use('/api/mpesa', mpesaRoutes);
 app.use('/api/tenant', tenantRoutes);
 app.use('/api/payments', paymentRoutes);
@@ -267,6 +280,7 @@ app.use('/api/reports', reportRoutes);
 app.use('/api/sales', salesRoutes);
 app.use('/api/backups/full', backupRoutes);
 app.use('/api/evidence', evidenceRoutes);
+app.use('/api/sale-evidence', authMiddleware, saleEvidenceRoutes);
 app.use('/api/credit', creditRoutes);
 app.use('/api/shifts', operationalSyncRoutes);
 app.use('/api/shot-cups', operationalSyncRoutes);
@@ -280,10 +294,7 @@ app.use('/api/laybys', operationalSyncRoutes);
 app.use('/api/exchanges', operationalSyncRoutes);
 app.use('/api/reorder', operationalSyncRoutes);
 app.use('/api/product-variants', productVariantRoutes);
-app.use('/api/jobs', jobRoutes);
 app.use('/api/cost-pools', costPoolRoutes);
-app.use('/api/job-costs', jobCostRoutes);
-app.use('/api/job-payments', jobPaymentRoutes);
 app.use('/api/owner-transactions', ownerTransactionRoutes);
 
 // ---------------------------------------------------------------------------
@@ -314,26 +325,50 @@ if (isNode && require.main === module) {
     log('info', 'server.started', { port: PORT, environment: process.env.NODE_ENV ?? 'development' }),
   );
   const wss = new WebSocketServer({ server, path: '/api/live' });
-  const liveClients = new Set<import('ws').WebSocket>();
-  wss.on('connection', (ws) => {
-    liveClients.add(ws);
-    ws.once('close', () => liveClients.delete(ws));
+  wss.on('connection', async (ws, request) => {
+    const token = request.headers.authorization?.match(/^Bearer\s+(.+)$/i)?.[1]?.trim();
+    const tenantId = request.headers['x-tenant-id'];
+    const claims = token ? verifyAccessToken(token) : null;
+    if (!claims || typeof tenantId !== 'string' || tenantId.trim() === '') {
+      ws.close(1008, 'Authentication required');
+      return;
+    }
+    const profile = await prisma.profile.findFirst({
+      where: { userId: claims.sub, tenantId, active: true, deletedAt: null },
+      select: { id: true },
+    }).catch(() => null);
+    if (!profile) {
+      ws.close(1008, 'Tenant access denied');
+      return;
+    }
+    const client = { socket: ws, tenantId };
+    addLiveClient(client);
+    ws.once('close', () => removeLiveClient(client));
+    ws.on('message', (raw) => {
+      try {
+        const message = JSON.parse(raw.toString()) as { type?: unknown };
+        if (message.type === 'read' && ws.readyState === ws.OPEN) {
+          ws.send(JSON.stringify({
+            type: 'snapshot',
+            reasons: [],
+            at: new Date().toISOString(),
+          }));
+        }
+      } catch {
+        // Unknown/malformed frames are ignored; the HTTP API remains the
+        // source of truth and a bad optional signal must not kill the socket.
+      }
+    });
     ws.send(JSON.stringify({ type: 'connected', at: new Date().toISOString() }));
   });
   setMpesaPaymentNotifier(() => {
-    const message = JSON.stringify({ type: 'mpesa_incoming' });
-    for (const client of liveClients) {
-      if (client.readyState === client.OPEN) client.send(message);
-    }
+    broadcastAll({ type: 'mpesa_incoming' });
   });
   setPlatformAnnouncementNotifier((announcement) => {
-    const message = JSON.stringify({
+    broadcastAll({
       type: announcement.id ? 'platform_announcement' : 'platform_announcement_cleared',
       ...(announcement.id ? { announcement } : {}),
     });
-    for (const client of liveClients) {
-      if (client.readyState === client.OPEN) client.send(message);
-    }
   });
   // Reap rows that crossed the 24-hour boundary while this container was
   // asleep or scaled to zero before starting the recurring sweep.

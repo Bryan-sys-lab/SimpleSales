@@ -25,6 +25,7 @@ import type { Prisma } from '@prisma/client';
 import { prisma } from '../lib/prisma';
 import { asyncHandler, HttpError, requireUser } from '../lib/http';
 import { log } from '../lib/observability';
+import { finalizeSale } from './payhero-callback';
 
 let mpesaPaymentNotifier: (() => void) | null = null;
 
@@ -41,6 +42,8 @@ export const mpesaIncomingListSelect = {
   billRef: true,
   receivedAt: true,
   status: true,
+  claimedByDevice: true,
+  claimedAt: true,
 } as const;
 
 /** What a claimed row names, so a losing device can read the conflict. */
@@ -132,13 +135,22 @@ mpesaWebhookRoutes.post(
     const body = (req.body ?? {}) as Record<string, unknown>;
     const transId = typeof body.TransID === 'string' ? body.TransID.trim() : '';
     const amount = Number(body.TransAmount);
+    const referenceCandidate = [body.BillRefNumber, body.RefNo, body.Reference, body.AccountReference]
+      .find((value): value is string => typeof value === 'string' && value.trim() !== '');
+    const billRef = referenceCandidate?.trim() ?? '';
+    // Dynamic QR RefNo is returned as the bill reference by Safaricom for
+    // paybill-style callbacks. Resolve it before the normal shortcode map so
+    // a QR payment can be settled even when the shop has no global mapping.
+    const qrPayment = /^DUKA-[0-9a-f-]{36}$/.test(billRef)
+      ? await prisma.payment.findUnique({ where: { reference: billRef } })
+      : null;
     const tenantId =
       // The tenant is decided by the ACCOUNT the money paid into: the Till
       // number maps to one shop. A deployment names the map here; the stub
       // below keys on the bill reference when the deployment has told us its
       // shortcode-to-tenant binding through the environment, and refuses
       // everything else rather than guess.
-      resolveTenantForCallback(body);
+      qrPayment?.tenantId ?? resolveTenantForCallback(body);
 
     if (transId === '') {
       res.status(400).json({ error: 'TransID required' });
@@ -165,16 +177,29 @@ mpesaWebhookRoutes.post(
         amount,
         payerLabel:
           maskPayerLabel(body.FirstName ?? body.payer, body.MSISDN ?? body.payer ?? body.PhoneNumber),
-        billRef:
-          typeof body.BillRefNumber === 'string' && body.BillRefNumber.trim() !== ''
-            ? body.BillRefNumber.trim()
-            : null,
+        billRef: billRef !== '' ? billRef : null,
         receivedAt,
       },
       // A duplicate delivery changes NOTHING: the first sighting is the
       // fact, and a second one saying it again is the same fact.
       update: {},
     });
+
+    if (qrPayment && qrPayment.tenantId === tenantId && qrPayment.paymentMode === 'qr' &&
+        qrPayment.status !== 'SUCCESS' && Math.abs(Number(qrPayment.amount) - amount) < 0.01) {
+      try {
+        await finalizeSale(qrPayment.id);
+      } catch (error) {
+        // The money callback is acknowledged, but the durable payment remains
+        // recoverable for reconciliation if local stock or a transient DB
+        // failure prevents immediate sale finalization.
+        log('error', 'mpesa.qr_finalize_failed', {
+          transId,
+          paymentId: qrPayment.id,
+          message: error instanceof Error ? error.message : 'unknown',
+        });
+      }
+    }
 
     log('info', 'mpesa.c2b.recorded', { transId, tenantId });
     if (!prior) mpesaPaymentNotifier?.();
@@ -260,31 +285,29 @@ mpesaRoutes.get(
     const since = typeof req.query.since === 'string' ? req.query.since : null;
     const limit = Math.min(Number(req.query.limit ?? 200) || 200, 500);
 
-    // Cursor by creation order: rows beyond the cursor, in the direction the
+    // Cursor by receipt order: rows beyond the cursor, in the direction the
     // pull walks (newest for the live list; oldest-to-newest for the catch-up
     // is the same SQL — the caller orders its rendering).
     const where: Prisma.MpesaIncomingWhereInput = {
       tenantId: user.tenantId,
       status,
-      createdAt: since
+      receivedAt: since
         ? { gt: (await prisma.mpesaIncoming.findUnique({ where: { remoteId: since } }))
-              ?.createdAt ?? new Date(0) }
+              ?.receivedAt ?? new Date(0) }
         : undefined,
     };
     const rows = await prisma.mpesaIncoming.findMany({
       where,
       select: mpesaIncomingListSelect,
-      orderBy: { receivedAt: 'desc' },
+      // Ascending order makes the last row the forward cursor. A client can
+      // reverse the page for display while still draining older pages without
+      // skipping records.
+      orderBy: { receivedAt: 'asc' },
       take: limit,
     });
     res.json({
       status: 'ok',
-      cursor:
-        rows.length > 0
-          ? [...rows].sort((a, b) =>
-              a.receivedAt.getTime() < b.receivedAt.getTime() ? 1 : -1,
-            )[0].remoteId
-          : since,
+      cursor: rows.length > 0 ? rows[rows.length - 1].remoteId : since,
       payments: rows,
     });
   }),
