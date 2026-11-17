@@ -85,8 +85,7 @@
          Do not bundle this permission into a universal artifact unless the
          selected channel is documented and approved. -->
 
-    <uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES"
-        android:minSdkVersion="26"/>
+    <uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES"/>
 
     <application
         android:label="SimpleSales"

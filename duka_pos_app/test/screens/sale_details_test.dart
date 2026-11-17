@@ -114,6 +114,7 @@ void main() {
     // And the lines, so the total can be checked against the shelf.
     expect(find.text(l10n.saleDetailsWhat), findsOneWidget);
     expect(find.text('Item 0'), findsOneWidget);
+    expect(find.byType(FilledButton), findsOneWidget);
   });
 
   testWidgets('a cash sale says what moved, not just "cash"', (tester) async {

@@ -95,27 +95,16 @@ Future<ShiftAnalytics> loadShiftAnalytics({
   int? staffId,
 }) async {
   final DatabaseHelper db = DatabaseHelper.instance;
-  final List<Shift> all = await db.getShifts(staffId: staffId);
-
   final DateTime start = from;
   final DateTime end = to;
-  bool startedIn(Shift shift) {
-    final DateTime? started = DateTime.tryParse(shift.startTime);
-    return started != null && !started.isBefore(start) && !started.isAfter(end);
-  }
-
-  bool closedIn(Shift shift) {
-    if (shift.status == 'open') return false;
-    final DateTime? ended = DateTime.tryParse(shift.endTime ?? '');
-    if (ended == null) return false;
-    return !ended.isBefore(start) && !ended.isAfter(end);
-  }
-
   // A shift that ran across the window belongs to it — counted by when it
-  // closed, because the count is what happened at the close.
-  final List<Shift> inWindow = all
-      .where((Shift shift) => startedIn(shift) || closedIn(shift))
-      .toList(growable: false);
+  // closed, because the count is what happened at the close. The database
+  // applies this half-open range before rows reach Dart.
+  final List<Shift> inWindow = await db.getShifts(
+    staffId: staffId,
+    from: start,
+    until: end,
+  );
 
   final reconciliationsByShift = await db.getReconciliationsForShifts(
     inWindow.where((s) => s.id != null).map((s) => s.id!).toList(),

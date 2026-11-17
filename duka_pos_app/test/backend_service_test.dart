@@ -1,5 +1,7 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:duka_pos/services/backend_service.dart';
+import 'package:duka_pos/models/models.dart';
+import 'package:duka_pos/utils/money.dart';
 
 void main() {
   setUpAll(() {
@@ -9,6 +11,39 @@ void main() {
   group('Backend Service Tests', () {
     test('Backend URL is configured', () {
       expect(BackendService.backendUrl, isNotEmpty);
+    });
+
+    test('external presigned storage origins are not treated as API calls', () {
+      final backend = Uri.parse(BackendService.backendUrl);
+      expect(
+        BackendService.isBackendOriginForTesting(backend),
+        isTrue,
+      );
+      expect(
+        BackendService.isBackendOriginForTesting(
+          Uri.parse('https://r2.example.test/signed-upload'),
+        ),
+        isFalse,
+      );
+    });
+
+    test('staff auth rejection is authoritative while missing response is offline fallback', () {
+      expect(
+        BackendService.isAuthoritativeStaffAuthenticationRejection(
+          <String, dynamic>{'_rejected': true},
+        ),
+        isTrue,
+      );
+      expect(
+        BackendService.isAuthoritativeStaffAuthenticationRejection(null),
+        isFalse,
+      );
+      expect(
+        BackendService.isAuthoritativeStaffAuthenticationRejection(
+          <String, dynamic>{'session_token': 'token'},
+        ),
+        isFalse,
+      );
     });
   });
 
@@ -51,6 +86,133 @@ void main() {
       expect(items.length, equals(2));
       expect(items[0]['qty'], greaterThan(0));
       expect(items[0]['unitPrice'], greaterThan(0));
+    });
+  });
+
+  group('Serving sync contract', () {
+    test('does not send servings until their product has a remote id', () {
+      final now = DateTime.now().toIso8601String();
+      final cups = <ShotCup>[
+        ShotCup(
+          id: 1,
+          productId: 10,
+          productName: 'Unpublished drink',
+          capacity: 30,
+          unit: 'ml',
+          price: Money.fromMajor(50),
+          updatedAt: now,
+        ),
+        ShotCup(
+          id: 2,
+          productId: 11,
+          productName: 'Published drink',
+          capacity: 30,
+          unit: 'ml',
+          price: Money.fromMajor(60),
+          updatedAt: now,
+        ),
+      ];
+
+      final ready = BackendService.shotCupsReadyForSync(
+        cups,
+        <int, String>{11: 'product_cuid'},
+      );
+
+      expect(ready.map((cup) => cup.id), <int?>[2]);
+    });
+
+    test('does not send variants until their parent product has a remote id', () {
+      final variants = <ProductVariant>[
+        ProductVariant(
+          id: 1,
+          productId: 10,
+          name: 'Small',
+          sellPrice: Money.fromMajor(50),
+        ),
+        ProductVariant(
+          id: 2,
+          productId: 11,
+          name: 'Large',
+          sellPrice: Money.fromMajor(80),
+        ),
+      ];
+
+      final ready = BackendService.variantsReadyForSync(
+        variants,
+        <int, String>{11: 'product_cuid'},
+      );
+
+      expect(ready.map((variant) => variant.id), <int?>[2]);
+    });
+
+    test('does not send purchase or return rows with unresolved products', () {
+      expect(
+        BackendService.productReferencesReadyForSync(
+          <int>[10, 11],
+          <int, String>{10: 'product_a'},
+        ),
+        isFalse,
+      );
+      expect(
+        BackendService.productReferencesReadyForSync(
+          <int>[10, 11],
+          <int, String>{10: 'product_a', 11: 'product_b'},
+        ),
+        isTrue,
+      );
+    });
+
+    test('does not send reorder records with unresolved products', () {
+      expect(
+        BackendService.reorderRecordReadyForSync(
+          <String, dynamic>{
+            'kind': 'product_supplier',
+            'payload': <String, dynamic>{'product_id': 10},
+          },
+          <int, String>{},
+        ),
+        isFalse,
+      );
+      expect(
+        BackendService.reorderRecordReadyForSync(
+          <String, dynamic>{
+            'kind': 'purchase_order',
+            'payload': <String, dynamic>{
+              'lines': <Map<String, dynamic>>[
+                <String, dynamic>{'product_id': 10},
+              ],
+            },
+          },
+          <int, String>{10: 'product_a'},
+        ),
+        isTrue,
+      );
+    });
+
+    test('keeps Open cost-pool types aligned with the backend contract', () {
+      expect(BackendService.costPoolTypeForSync('lot'), 'lot');
+      expect(BackendService.costPoolTypeForSync('bale'), 'bale');
+      expect(BackendService.costPoolTypeForSync('rolling_stock'), 'rolling_stock');
+      expect(BackendService.costPoolTypeForSync('unknown'), 'lot');
+    });
+
+    test('does not send lay-bys with unresolved customer or product ids', () {
+      final row = <String, dynamic>{
+        'customer_id': 1,
+        'items': <Map<String, dynamic>>[
+          <String, dynamic>{'product_id': 2},
+        ],
+      };
+      expect(
+        BackendService.laybyReadyForSync(row, <int, String>{1: 'customer'},
+            <int, String>{}),
+        isFalse,
+      );
+      expect(
+        BackendService.laybyReadyForSync(row, <int, String>{1: 'customer'},
+            <int, String>{2: 'product'}),
+        isTrue,
+      );
     });
   });
 

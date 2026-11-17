@@ -24,6 +24,7 @@ class NotFoundScreen extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final AppLocalizations l10n = AppLocalizations.of(context);
     final AppColors colors = AppColors.of(context);
     final AppSpacing spacing = AppSpacing.of(context);
     final TextTheme type = AppTypography.of(context);
@@ -92,6 +93,32 @@ class NotFoundScreen extends StatelessWidget {
                   FilledButton(
                     onPressed: () => context.go(Routes.dashboard),
                     child: Text(AppLocalizations.of(context).notFoundAction),
+                  ),
+                  SizedBox(height: spacing.sm),
+                  // A stale deep link must never strand the user at a dead end.
+                  // Keep the recovery actions in the shell vocabulary so an
+                  // older bookmark can still lead directly to useful work.
+                  Wrap(
+                    alignment: WrapAlignment.center,
+                    spacing: spacing.sm,
+                    runSpacing: spacing.sm,
+                    children: <Widget>[
+                      OutlinedButton.icon(
+                        onPressed: () => context.go(Routes.inventory),
+                        icon: const Icon(Icons.inventory_2_outlined),
+                        label: Text(AppDestination.inventory.label(l10n)),
+                      ),
+                      OutlinedButton.icon(
+                        onPressed: () => context.go(Routes.sell),
+                        icon: const Icon(Icons.point_of_sale_outlined),
+                        label: Text(AppDestination.sell.label(l10n)),
+                      ),
+                      OutlinedButton.icon(
+                        onPressed: () => context.go(Routes.analytics),
+                        icon: const Icon(Icons.insights_outlined),
+                        label: Text(AppDestination.analytics.label(l10n)),
+                      ),
+                    ],
                   ),
                 ],
               ),

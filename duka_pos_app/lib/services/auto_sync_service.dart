@@ -29,45 +29,48 @@ import 'auto_backup_worker.dart';
 class AutoSyncService {
   static const _enabledKey = 'automatic_backup_sync_enabled';
   static const _jitterSeedKey = 'automatic_backup_sync_jitter_seed';
+
   /// Timestamp of the last successful automatic backup, UTC ISO-8601.
   static const _lastSuccessKey = 'automatic_backup_last_success';
+
   /// Timestamp of the last backup attempt (success or failure), UTC ISO-8601.
   static const _lastAttemptKey = 'automatic_backup_last_attempt';
+
   /// UTC ISO-8601 time at which the next backup is due. Persisted so a process
   /// restart can recompute the schedule rather than restarting the interval.
   static const _nextDueKey = 'automatic_backup_next_due';
-static Timer? _timer;
-static bool _running = false;
+  static Timer? _timer;
+  static bool _running = false;
 
-/// WorkManager task name for the six-hour automatic backup cycle.
-static const _workManagerTask = 'autoBackup';
+  /// WorkManager task name for the six-hour automatic backup cycle.
+  static const _workManagerTask = 'autoBackup';
 
-/// Registers a six-hourly periodic WorkManager request so backups fire even
-/// after Android kills or suspends the app process. Safe to call repeatedly;
-/// re-registering replaces the previous request.
-static Future<void> registerWorkManager() async {
-  // Idempotent headless-isolate initializer. Safe to call more than once.
-  await Workmanager().initialize(autoBackupDispatcher);
-  await Workmanager().registerPeriodicTask(
-    'auto_backup',
-    _workManagerTask,
-    frequency: const Duration(hours: 6),
-    existingWorkPolicy: ExistingPeriodicWorkPolicy.update,
-    constraints: Constraints(
-      networkType: NetworkType.connected,
-    ),
-  );
-}
-
-/// Cancels the WorkManager periodic backup task. Called when automatic
-/// backups are disabled so a dead task does not sit in the queue.
-static Future<void> cancelWorkManager() async {
-  try {
-    await Workmanager().cancelByUniqueName('auto_backup');
-  } on Object {
-    // Ignore: nothing scheduled is not a failure.
+  /// Registers a six-hourly periodic WorkManager request so backups fire even
+  /// after Android kills or suspends the app process. Safe to call repeatedly;
+  /// re-registering replaces the previous request.
+  static Future<void> registerWorkManager() async {
+    // Idempotent headless-isolate initializer. Safe to call more than once.
+    await Workmanager().initialize(autoBackupDispatcher);
+    await Workmanager().registerPeriodicTask(
+      'auto_backup',
+      _workManagerTask,
+      frequency: const Duration(hours: 6),
+      existingWorkPolicy: ExistingPeriodicWorkPolicy.update,
+      constraints: Constraints(
+        networkType: NetworkType.connected,
+      ),
+    );
   }
-}
+
+  /// Cancels the WorkManager periodic backup task. Called when automatic
+  /// backups are disabled so a dead task does not sit in the queue.
+  static Future<void> cancelWorkManager() async {
+    try {
+      await Workmanager().cancelByUniqueName('auto_backup');
+    } on Object {
+      // Ignore: nothing scheduled is not a failure.
+    }
+  }
 
   static Future<String> _enabledKeyForActiveWorkspace() async =>
       '$_enabledKey@${await WorkspaceService.activeWorkspaceKey()}';
@@ -90,7 +93,10 @@ static Future<void> cancelWorkManager() async {
       await prefs.remove(_enabledKey);
       return legacy;
     }
-    return false;
+    // New shops should be protected by default. Owners can still switch this
+    // off explicitly, in which case a manual backup also offers the existing
+    // export/share path.
+    return true;
   }
 
   /// Each shop on an installation keeps one recovery slot.  Re-rolling this
@@ -227,7 +233,8 @@ static Future<void> cancelWorkManager() async {
     try {
       if (!force && !await enabled) return;
       final prefs = await SharedPreferences.getInstance();
-      await prefs.setString(_lastAttemptKey, DateTime.now().toUtc().toIso8601String());
+      await prefs.setString(
+          _lastAttemptKey, DateTime.now().toUtc().toIso8601String());
       // The local copy is the safety boundary. Write it before any network
       // request so an unreachable server cannot delay the only fresh backup
       // on the device.

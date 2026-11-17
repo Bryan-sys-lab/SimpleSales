@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/physics.dart';
 
 import '../../theme/app_colors.dart';
 import '../../theme/app_shapes.dart';
@@ -86,16 +87,11 @@ class SurfaceCard extends StatelessWidget {
           color: color ?? colors.surface,
           borderRadius: shapes.cardRadius,
           clipBehavior: Clip.antiAlias,
-          child: InkWell(
+          child: _SurfaceCardPressable(
             onTap: onTap,
-            // The whole card is the target, so a tap in a corner counts. Without
-            // this the ink response covers only the child's bounds and a 12px
-            // dead zone appears at every corner.
-            //
-            // The 44px floor is the COMPONENT's job, not the caller's. A card
-            // holding one short line of text lays out at ~36px, and a screen that
-            // forgets to pad it out ships a target below the accessibility floor
-            // while looking perfectly fine in review.
+            borderRadius: shapes.cardRadius,
+            // The whole card is the target, so a tap in a corner counts.
+            // The 48px floor is the component's job, not the caller's.
             child: ConstrainedBox(
               constraints: BoxConstraints(
                 minHeight: spacing.minTapTarget,
@@ -109,6 +105,76 @@ class SurfaceCard extends StatelessWidget {
               ),
             ),
           ),
+        ),
+      ),
+    );
+  }
+}
+
+/// Shared physical feedback for tappable surfaces across the app.
+///
+/// The response is intentionally small and critically damped. It acknowledges
+/// touch immediately, follows a release from the current presentation value,
+/// and becomes static when reduced motion is enabled.
+class _SurfaceCardPressable extends StatefulWidget {
+  const _SurfaceCardPressable({
+    required this.child,
+    required this.onTap,
+    required this.borderRadius,
+  });
+
+  final Widget child;
+  final VoidCallback? onTap;
+  final BorderRadius borderRadius;
+
+  @override
+  State<_SurfaceCardPressable> createState() => _SurfaceCardPressableState();
+}
+
+class _SurfaceCardPressableState extends State<_SurfaceCardPressable>
+    with SingleTickerProviderStateMixin {
+  late final AnimationController _controller = AnimationController(
+    vsync: this,
+    lowerBound: 0,
+    upperBound: 1,
+  );
+
+  void _settle(double target) {
+    if (!mounted) return;
+    if (MediaQuery.disableAnimationsOf(context)) {
+      _controller.value = target;
+      return;
+    }
+    _controller.animateWith(
+      SpringSimulation(
+        const SpringDescription(mass: 1, stiffness: 520, damping: 38),
+        _controller.value,
+        target,
+        _controller.velocity,
+      ),
+    );
+  }
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return InkWell(
+      onTap: widget.onTap,
+      borderRadius: widget.borderRadius,
+      onTapDown: (_) => _settle(1),
+      onTapUp: (_) => _settle(0),
+      onTapCancel: () => _settle(0),
+      child: AnimatedBuilder(
+        animation: _controller,
+        child: widget.child,
+        builder: (BuildContext context, Widget? child) => Transform.scale(
+          scale: 1 - (_controller.value * 0.025),
+          child: child,
         ),
       ),
     );

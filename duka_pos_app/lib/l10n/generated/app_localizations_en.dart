@@ -868,6 +868,12 @@ class AppLocalizationsEn extends AppLocalizations {
   }
 
   @override
+  String get sellShowQrAction => 'Show QR';
+
+  @override
+  String get sellScanWithMpesaApp => 'Scan with the M-Pesa app to pay';
+
+  @override
   String sellChooseServingTitle(Object product) {
     return 'Choose serving · $product';
   }
@@ -5721,28 +5727,13 @@ class AppLocalizationsEn extends AppLocalizations {
   String get openDashboardOperationalOverview => 'Operational overview';
 
   @override
-  String get openDashboardActiveJobs => 'Active jobs';
-
-  @override
-  String get openDashboardJobsAwaitingPayment => 'Jobs awaiting payment';
-
-  @override
-  String get openDashboardOverdueJobs => 'Overdue jobs';
-
-  @override
   String get openDashboardCostGroups => 'Cost groups';
-
-  @override
-  String get openDashboardNewJob => 'New job';
 
   @override
   String get openDashboardRecordSale => 'Record sale';
 
   @override
   String get openDashboardRecordPayment => 'Record payment';
-
-  @override
-  String get openDashboardAddJobCost => 'Add job cost';
 
   @override
   String get openDashboardNewCostGroup => 'New cost group';
@@ -5763,73 +5754,6 @@ class AppLocalizationsEn extends AppLocalizations {
   String get openDashboardGoodEvening => 'Good evening';
 
   @override
-  String get openJobsTitle => 'Jobs';
-
-  @override
-  String get openJobsSubtitle => 'Track work from quote to payment';
-
-  @override
-  String get openJobsNewJob => 'New job';
-
-  @override
-  String get openJobsSearch => 'Search jobs';
-
-  @override
-  String get openJobsSearchHint => 'Title or customer';
-
-  @override
-  String get openJobsFilterAll => 'All';
-
-  @override
-  String get openJobsFilterActive => 'Active';
-
-  @override
-  String get openJobsFilterAwaitingPayment => 'Awaiting payment';
-
-  @override
-  String get openJobsFilterCompleted => 'Completed';
-
-  @override
-  String get openJobsNoJobs => 'No jobs yet';
-
-  @override
-  String get openJobsNoJobsSubtitle =>
-      'Create a job to track quote, payments and costs.';
-
-  @override
-  String get openJobsLoading => 'Loading jobs';
-
-  @override
-  String get openJobsLoadingSubtitle => 'Please wait while your jobs load.';
-
-  @override
-  String get openJobsNoCustomer => 'No customer';
-
-  @override
-  String get openJobStatusDraft => 'Draft';
-
-  @override
-  String get openJobStatusInProgress => 'In progress';
-
-  @override
-  String get openJobStatusAwaitingPayment => 'Awaiting payment';
-
-  @override
-  String get openJobStatusCompleted => 'Completed';
-
-  @override
-  String get openJobStatusCancelled => 'Cancelled';
-
-  @override
-  String get openJobFormTitle => 'New job';
-
-  @override
-  String get openJobDetailTitle => 'Job detail';
-
-  @override
-  String get openJobAddCostTitle => 'Add job cost';
-
-  @override
   String get openCostGroupsTitle => 'Cost groups';
 
   @override
@@ -5842,86 +5766,7 @@ class AppLocalizationsEn extends AppLocalizations {
   String get openReceivablesTitle => 'Receivables';
 
   @override
-  String get openJobDetailNotFound => 'Job not found';
-
-  @override
-  String get openJobDetailNoCustomer => 'No customer';
-
-  @override
-  String get openJobDetailOverview => 'Job overview';
-
-  @override
-  String get openJobDetailQuote => 'Quoted amount';
-
-  @override
-  String get openJobDetailFinalPrice => 'Final price';
-
-  @override
-  String get openJobDetailStatus => 'Status';
-
-  @override
-  String get openJobDetailCreated => 'Created';
-
-  @override
-  String get openJobDetailFinancials => 'Financial breakdown';
-
-  @override
-  String get openJobDetailQuotedAmount => 'Quoted amount';
-
-  @override
-  String get openJobDetailDirectCosts => 'Direct costs';
-
-  @override
-  String get openJobDetailPaymentsReceived => 'Payments received';
-
-  @override
-  String get openJobDetailOutstanding => 'Outstanding';
-
-  @override
-  String get openJobDetailEstimatedProfit => 'Estimated profit';
-
-  @override
-  String get openJobDetailActivity => 'Job activity';
-
-  @override
-  String get openJobDetailCostAdded => 'Cost added';
-
-  @override
-  String get openJobDetailPaymentReceived => 'Payment received';
-
-  @override
-  String get openJobDetailNoActivity => 'No activity yet';
-
-  @override
-  String get openJobDetailActions => 'Actions';
-
-  @override
-  String get openJobDetailEditJob => 'Edit job';
-
-  @override
-  String get openJobDetailAddCost => 'Add direct cost';
-
-  @override
-  String get openJobDetailReceivePayment => 'Receive payment';
-
-  @override
-  String get openJobDetailRecordSale => 'Record sale';
-
-  @override
-  String get openJobDetailCompleteJob => 'Complete job';
-
-  @override
-  String get openJobDetailCompleteJobConfirm =>
-      'Marking a job complete is separate from settlement. The job can be completed without being fully paid.';
-
-  @override
-  String get openJobDetailCancel => 'Cancel';
-
-  @override
-  String get openJobDetailCompleteAndSettle => 'Complete and settle';
-
-  @override
-  String get openCostGroupsSubtitle => 'Pooled costs shared across jobs';
+  String get openCostGroupsSubtitle => 'Pooled costs recovered through sales';
 
   @override
   String get openCostGroupsNewGroup => 'New cost group';
@@ -5946,7 +5791,7 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get openCostGroupsNoGroupsSubtitle =>
-      'Create a cost group to track pooled costs shared across jobs.';
+      'Create a cost group to track pooled costs recovered through sales.';
 
   @override
   String get openCostGroupsLoading => 'Loading cost groups';
@@ -6031,9 +5876,6 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get openAnalyticsPooledCosts => 'Pooled costs';
-
-  @override
-  String get openAnalyticsJobsCompleted => 'Jobs completed';
 
   @override
   String get openAnalyticsReceivables => 'Receivables';
@@ -6353,32 +6195,6 @@ class AppLocalizationsEn extends AppLocalizations {
   String get exchangeNoLines => 'This sale has no returnable lines';
 
   @override
-  String get openJobFormJobTitleLabel => 'Job title';
-
-  @override
-  String get openJobFormTitleRequired => 'Title required';
-
-  @override
-  String get openJobFormCustomerLabel => 'Customer (optional)';
-
-  @override
-  String get openJobFormQuoteLabel => 'Quoted amount (optional)';
-
-  @override
-  String get openJobFormCreateAction => 'Create job';
-
-  @override
-  String get openJobFormSaveAction => 'Save changes';
-
-  @override
-  String get openJobFormEditTitle => 'Edit job';
-
-  @override
-  String openJobFormCouldNotCreate(Object error) {
-    return 'Could not create job: $error';
-  }
-
-  @override
   String get moreSwitchBusinessProfile => 'Switch business profile';
 
   @override
@@ -6391,7 +6207,8 @@ class AppLocalizationsEn extends AppLocalizations {
   String get moreOpenBusinessRecord => 'Open business record';
 
   @override
-  String get moreOpenBusinessRecordSubtitle => 'Pots, jobs and owner money';
+  String get moreOpenBusinessRecordSubtitle =>
+      'Inventory, sales and owner money';
 
   @override
   String get moreReportsExports => 'Reports & exports';
@@ -6416,26 +6233,6 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get tankDetailMeasuredSales => 'Measured sales';
-
-  @override
-  String get openJobDetailPaymentCash => 'Cash';
-
-  @override
-  String get openJobDetailPaymentMpesa => 'M-Pesa';
-
-  @override
-  String get openJobDetailPaymentBank => 'Bank transfer';
-
-  @override
-  String openJobDetailCouldNotRecordPayment(Object error) {
-    return 'Could not record payment: $error';
-  }
-
-  @override
-  String get openJobDetailCouldNotCompleteJob => 'Could not complete job';
-
-  @override
-  String get openJobDetailPaymentMethod => 'Method';
 
   @override
   String get crossShopSaleNoLongerOnTill =>
@@ -6994,9 +6791,6 @@ class AppLocalizationsEn extends AppLocalizations {
   String get quickSaleCreditCustomerHint => 'Select customer';
 
   @override
-  String get quickSaleLinkJob => 'Link to job (optional)';
-
-  @override
   String get quickSaleLinkPool => 'Link to cost group / bale (optional)';
 
   @override
@@ -7377,16 +7171,8 @@ class AppLocalizationsEn extends AppLocalizations {
   String get settingsSwitch => 'Switch';
 
   @override
-  String get openDashboardSelectJob => 'Select a job';
-
-  @override
   String openCostGroupCouldNotCreate(Object error) {
     return 'Could not create cost group: $error';
-  }
-
-  @override
-  String openJobAddCostCouldNotAdd(Object error) {
-    return 'Could not add cost: $error';
   }
 
   @override
@@ -7398,9 +7184,6 @@ class AppLocalizationsEn extends AppLocalizations {
   String syncCenterCouldNotResolveConflict(Object error) {
     return 'Could not resolve conflict: $error';
   }
-
-  @override
-  String get openDashboardNoJobs => 'No jobs yet. Create one first.';
 
   @override
   String get setupIntroAddShopLabel => 'ADD SHOP';
@@ -7487,7 +7270,7 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get productOnboardingOpenSubtitle =>
-      'Jobs and trade · quotes, jobs, payments';
+      'Open commerce · inventory, sales, payments';
 
   @override
   String get actionSignIn => 'Sign in';
@@ -7529,19 +7312,10 @@ class AppLocalizationsEn extends AppLocalizations {
   String get dashboardRevenueToDate => 'Revenue to date';
 
   @override
-  String get dashboardCompletedJobRevenueToday => 'Completed job revenue today';
-
-  @override
-  String get dashboardRecentJobs => 'Recent jobs';
-
-  @override
   String get dashboardPaymentsReceived => 'Payments received';
 
   @override
   String get dashboardStockStatus => 'Stock status';
-
-  @override
-  String get dashboardNewJob => 'New job';
 
   @override
   String get dashboardLowStock => 'Low stock';

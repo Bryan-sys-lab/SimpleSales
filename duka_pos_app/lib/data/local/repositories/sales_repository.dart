@@ -2,6 +2,7 @@ import 'package:sqflite/sqflite.dart';
 
 import '../../../db/database_helper.dart';
 import '../../../models/layby.dart';
+import '../../../models/credit.dart';
 import '../../../models/models.dart';
 import '../../../models/stock_movement.dart';
 import '../../../profile/shop_profile.dart';
@@ -55,7 +56,8 @@ class SalesRepository {
         'CREATE INDEX IF NOT EXISTS idx_sales_staff ON sales (staff_id)');
     await db.execute(
         'CREATE INDEX IF NOT EXISTS idx_sales_payment_verified ON sales (payment_verified, created_at DESC)');
-    await db.execute('CREATE INDEX IF NOT EXISTS idx_sales_etims_status ON sales (etims_status)');
+    await db.execute(
+        'CREATE INDEX IF NOT EXISTS idx_sales_etims_status ON sales (etims_status)');
 
     await db.execute('''CREATE TABLE IF NOT EXISTS sale_items (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -99,8 +101,7 @@ class SalesRepository {
       status TEXT NOT NULL DEFAULT 'active',
       FOREIGN KEY (sale_id) REFERENCES sales (id) ON DELETE CASCADE
     )''');
-    await db.execute(
-        'CREATE INDEX IF NOT EXISTS idx_receipt_shares_sale '
+    await db.execute('CREATE INDEX IF NOT EXISTS idx_receipt_shares_sale '
         'ON receipt_shares (sale_id, created_at)');
 
     await db.execute('''CREATE TABLE IF NOT EXISTS held_carts (
@@ -136,8 +137,7 @@ class SalesRepository {
       pack_qty REAL,
       FOREIGN KEY (held_cart_id) REFERENCES held_carts (id) ON DELETE CASCADE
     )''');
-    await db.execute(
-        'CREATE INDEX IF NOT EXISTS idx_held_cart_lines_cart '
+    await db.execute('CREATE INDEX IF NOT EXISTS idx_held_cart_lines_cart '
         'ON held_cart_lines (held_cart_id)');
 
     await db.execute('''CREATE TABLE IF NOT EXISTS pending_etims (
@@ -200,7 +200,8 @@ class SalesRepository {
   /// [DatabaseHelper] executor helpers so reads never happen inside a write
   /// transaction, avoiding sqflite_ffi deadlocks. Pass them in explicitly;
   /// they are read once before the transaction opens.
-  Future<int> recordSaleInTransaction(Transaction txn, {
+  Future<int> recordSaleInTransaction(
+    Transaction txn, {
     required String staffName,
     required List<SaleItem> items,
     List<SaleTender>? tenders,
@@ -212,11 +213,13 @@ class SalesRepository {
     bool etimsPending = false,
     bool paymentVerified = true,
     int? customerId,
+    Customer? customerDraft,
     int? creditApprovedBy,
     int? discountApprovedBy,
     int? orderDiscountReasonId,
     int? laybyId,
     int? shiftId,
+    int? costPoolId,
     String tillCode = '',
     int vatRatePercent = 0,
     String taxRuleId = '',
@@ -241,8 +244,13 @@ class SalesRepository {
     if (!allowedPaymentMethods.contains(paymentMethod)) {
       throw StateError('Unsupported payment method');
     }
-    if (paymentMethod == 'credit' && customerId == null) {
+    if (paymentMethod == 'credit' &&
+        customerId == null &&
+        customerDraft == null) {
       throw StateError('A credit sale must name the customer taking it');
+    }
+    if (paymentMethod != 'credit' && customerDraft != null) {
+      throw StateError('A customer draft is only valid for a credit sale');
     }
     if (paymentMethod == 'layby' && laybyId == null) {
       throw StateError('A lay-by sale must name the lay-by');
@@ -277,6 +285,22 @@ class SalesRepository {
     final tenderTotal = sumMoney(tenderRows.map((tender) => tender.amount));
     if (tenderTotal != total) {
       throw StateError('Payment tenders must add up to the sale total');
+    }
+    // Credit split-tender rejection.
+    if (paymentMethod == 'split' &&
+        tenderRows.any((t) => t.method == 'credit')) {
+      throw StateError('Credit cannot be used as a split tender');
+    }
+    if (paymentMethod == 'credit') {
+      if (tenderRows.length > 1) {
+        throw StateError('Credit must be a standalone payment method');
+      }
+      if (tenderRows.isNotEmpty && tenderRows.first.method != 'credit') {
+        throw StateError('Credit sale tender must be credit');
+      }
+      if (tenderRows.isNotEmpty && tenderRows.first.amount != total) {
+        throw StateError('Credit sale must cover the entire total');
+      }
     }
     if (tenders != null) {
       for (final tender in tenderRows) {
@@ -356,6 +380,7 @@ class SalesRepository {
       final containerMlByProduct = <int, double>{};
       final taxClassByProduct = <int, String>{};
       final trackExpiryByProduct = <int, bool>{};
+      final costPoolByProduct = <int, int?>{};
       for (final productId in items.map((it) => it.productId).toSet()) {
         final current = await txn.query('products',
             where: 'id = ?', whereArgs: [productId], limit: 1);
@@ -371,6 +396,8 @@ class SalesRepository {
             (current.first['bottle_ml'] as num?)?.toDouble() ?? 0;
         taxClassByProduct[productId] =
             current.first['tax_class'] as String? ?? 'standard';
+        costPoolByProduct[productId] =
+            (current.first['cost_pool_id'] as num?)?.toInt();
         trackExpiryByProduct[productId] =
             (current.first['track_expiry'] as num?)?.toInt() == 1;
       }
@@ -431,7 +458,8 @@ class SalesRepository {
                   ?.toDouble() ??
               0;
           final own = ownReservedByVariant[entry.key] ?? 0;
-          if (available - reserved + own + DatabaseHelper.volumeTolerance < entry.value) {
+          if (available - reserved + own + DatabaseHelper.volumeTolerance <
+              entry.value) {
             final offending =
                 items.firstWhere((it) => it.variantId == entry.key);
             throw StateError('Not enough stock for ${offending.productName}');
@@ -501,6 +529,25 @@ class SalesRepository {
 
       Map<String, dynamic>? customerRow;
       if (paymentMethod == 'credit') {
+        if (customerId == null) {
+          final draft = customerDraft!;
+          if (draft.name.trim().isEmpty || draft.phone == null) {
+            throw StateError('A credit customer needs a name and Kenyan phone');
+          }
+          final createdCustomerId =
+              await txn.insert('customers', <String, Object?>{
+            'uuid': draft.uuid.isEmpty ? DatabaseHelper.newUuid() : draft.uuid,
+            'name': draft.name.trim(),
+            'phone': draft.phone,
+            'tin': draft.tin,
+            'notes': draft.notes,
+            'credit_limit_minor': draft.creditLimitMinor,
+            'balance_minor': 0,
+            'active': 1,
+            'created_at': draft.createdAt.isEmpty ? now : draft.createdAt,
+          });
+          customerId = createdCustomerId;
+        }
         final rows = await txn.query('customers',
             where: 'id = ?', whereArgs: [customerId], limit: 1);
         if (rows.isEmpty) {
@@ -523,8 +570,8 @@ class SalesRepository {
         }
       }
 
-      final receiptNumber =
-          await DatabaseHelper.instance.allocateReceiptNumber(txn, tillCode: tillCode);
+      final receiptNumber = await DatabaseHelper.instance
+          .allocateReceiptNumber(txn, tillCode: tillCode);
 
       final int saleVatMinor = items.fold<int>(
         0,
@@ -539,7 +586,12 @@ class SalesRepository {
       final int saleTaxableMinor = total.minorUnits - saleVatMinor;
       final int saleCostMinor = items.fold<int>(
         0,
-        (sum, item) => sum + item.unitCost.times(item.qty).minorUnits,
+        (sum, item) =>
+            sum +
+            item.unitCost
+                .times(item.qty *
+                    portionFactor(item, containerMlByProduct[item.productId]!))
+                .minorUnits,
       );
 
       final saleId = await txn.insert('sales', {
@@ -706,8 +758,8 @@ class SalesRepository {
             createdAt: now,
           );
         }
-        final double productBalance =
-            await DatabaseHelper.instance.productBalanceAfter(txn, it.productId);
+        final double productBalance = await DatabaseHelper.instance
+            .productBalanceAfter(txn, it.productId);
         await DatabaseHelper.instance.writeStockMovement(
           txn: txn,
           productId: it.productId,
@@ -777,9 +829,9 @@ class SalesRepository {
                             item,
                             containerMlByProduct[item.productId]!,
                           ) *
-                      1000)
-                  .round() *
-              -1,
+                          1000)
+                      .round() *
+                  -1,
         ),
         metadata: <String, Object?>{
           'payment_method': paymentMethod,
@@ -822,6 +874,28 @@ class SalesRepository {
           metadata: {'sale_id': saleId},
         );
       }
+      final costsByPool = <int, int>{};
+      for (final item in items) {
+        final poolId = costPoolId ?? costPoolByProduct[item.productId];
+        if (poolId == null) continue;
+        final cost = item.unitCost
+            .times(item.qty *
+                portionFactor(item, containerMlByProduct[item.productId]!))
+            .minorUnits;
+        costsByPool[poolId] = (costsByPool[poolId] ?? 0) + cost;
+      }
+      for (final entry in costsByPool.entries) {
+        if (entry.value <= 0) {
+          throw StateError('A cost-pool sale needs a recorded product cost');
+        }
+        await FinanceRepository.instance.allocateCostPoolToSaleInTransaction(
+          txn: txn,
+          poolId: entry.key,
+          saleId: saleId,
+          amount: Money.fromMinor(entry.value),
+          appendFinancialEvent: false,
+        );
+      }
       return saleId;
     }
 
@@ -842,11 +916,13 @@ class SalesRepository {
     bool etimsPending = false,
     bool paymentVerified = true,
     int? customerId,
+    Customer? customerDraft,
     int? creditApprovedBy,
     int? discountApprovedBy,
     int? orderDiscountReasonId,
     int? laybyId,
     int? shiftId,
+    int? costPoolId,
   }) async {
     final db = await DatabaseHelper.instance.database;
     // Read settings BEFORE opening the transaction to avoid sqflite_ffi
@@ -856,41 +932,43 @@ class SalesRepository {
         await DatabaseHelper.instance.vatRateFromExecutor(db);
     final taxRuleId = await DatabaseHelper.instance
         .settingFromExecutor(db, DatabaseHelper.settingTaxRuleId);
-    final taxRuleVersion = int.tryParse(
-        await DatabaseHelper.instance
-                .settingFromExecutor(db, DatabaseHelper.settingTaxRuleVersion) ??
-            '');
+    final taxRuleVersion = int.tryParse(await DatabaseHelper.instance
+            .settingFromExecutor(db, DatabaseHelper.settingTaxRuleVersion) ??
+        '');
     final defaultLimitMinor =
         await DatabaseHelper.instance.creditDefaultLimitFromExecutor(db);
     return db.transaction<int>((txn) => recordSaleInTransaction(
-      txn,
-      staffName: staffName,
-      items: items,
-      tenders: tenders,
-      enforceStock: enforceStock,
-      paymentMethod: paymentMethod,
-      paymentReference: paymentReference,
-      amountTendered: amountTendered,
-      staffId: staffId,
-      etimsPending: etimsPending,
-      paymentVerified: paymentVerified,
-      customerId: customerId,
-      creditApprovedBy: creditApprovedBy,
-      discountApprovedBy: discountApprovedBy,
-      orderDiscountReasonId: orderDiscountReasonId,
-      laybyId: laybyId,
-      shiftId: shiftId,
-      tillCode: tillCode,
-      vatRatePercent: vatRatePercent,
-      taxRuleId: taxRuleId ?? '',
-      taxRuleVersion: taxRuleVersion ?? 0,
-      defaultLimitMinor: defaultLimitMinor,
-    ));
+          txn,
+          staffName: staffName,
+          items: items,
+          tenders: tenders,
+          enforceStock: enforceStock,
+          paymentMethod: paymentMethod,
+          paymentReference: paymentReference,
+          amountTendered: amountTendered,
+          staffId: staffId,
+          etimsPending: etimsPending,
+          paymentVerified: paymentVerified,
+          customerId: customerId,
+          customerDraft: customerDraft,
+          creditApprovedBy: creditApprovedBy,
+          discountApprovedBy: discountApprovedBy,
+          orderDiscountReasonId: orderDiscountReasonId,
+          laybyId: laybyId,
+          shiftId: shiftId,
+          costPoolId: costPoolId,
+          tillCode: tillCode,
+          vatRatePercent: vatRatePercent,
+          taxRuleId: taxRuleId ?? '',
+          taxRuleVersion: taxRuleVersion ?? 0,
+          defaultLimitMinor: defaultLimitMinor,
+        ));
   }
 
   /// Records an Open-profile quick sale within [txn]. Never opens its own
   /// transaction.
-  Future<int> recordOpenQuickSaleInTransaction(Transaction txn, {
+  Future<int> recordOpenQuickSaleInTransaction(
+    Transaction txn, {
     required Money amount,
     required String paymentMethod,
     required String staffName,
@@ -965,15 +1043,15 @@ class SalesRepository {
   }) async {
     final db = await DatabaseHelper.instance.database;
     return db.transaction<int>((txn) => recordOpenQuickSaleInTransaction(
-      txn,
-      amount: amount,
-      paymentMethod: paymentMethod,
-      staffName: staffName,
-      staffId: staffId,
-      paymentReference: paymentReference,
-      costAmount: costAmount,
-      trackCost: trackCost,
-    ));
+          txn,
+          amount: amount,
+          paymentMethod: paymentMethod,
+          staffName: staffName,
+          staffId: staffId,
+          paymentReference: paymentReference,
+          costAmount: costAmount,
+          trackCost: trackCost,
+        ));
   }
 
   Future<List<Map<String, dynamic>>> getSales({

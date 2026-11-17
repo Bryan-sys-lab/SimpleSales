@@ -11,6 +11,8 @@ import '../models/audit_log.dart';
 import '../models/financial_event.dart';
 import '../models/models.dart';
 import '../services/app_state.dart';
+import '../services/live_channel_service.dart';
+import '../services/live_refresh_mixin.dart';
 import '../services/roles.dart';
 import '../theme/app_colors.dart';
 import '../theme/app_spacing.dart';
@@ -134,7 +136,8 @@ enum _LedgerRange { today, week, month, custom }
 
 enum _LedgerDirection { all, moneyIn, moneyOut }
 
-class _TransactionsScreenState extends State<TransactionsScreen> {
+class _TransactionsScreenState extends State<TransactionsScreen>
+    with LiveRefresh<TransactionsScreen> {
   _LedgerState _state = _LedgerLoading();
 
   // Keep a bounded local history so the custom-period filter does not turn the
@@ -147,6 +150,12 @@ class _TransactionsScreenState extends State<TransactionsScreen> {
     super.initState();
     _load();
   }
+
+  @override
+  Set<LiveReason> get liveReasons => const <LiveReason>{};
+
+  @override
+  Future<void> reloadFromLive() => _load();
 
   Future<void> _load() async {
     if (!mounted) return;
@@ -529,7 +538,8 @@ class _LedgerFilters extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: <Widget>[
-          Text(AppLocalizations.of(context).reportsPeriod, style: AppTypography.of(context).labelLarge),
+          Text(AppLocalizations.of(context).reportsPeriod,
+              style: AppTypography.of(context).labelLarge),
           SizedBox(height: spacing.xs),
           Wrap(
             spacing: spacing.xs,
@@ -613,7 +623,10 @@ class _LedgerDropdown extends StatelessWidget {
       value: value,
       hint: Text(label),
       items: <DropdownMenuItem<String?>>[
-        DropdownMenuItem<String?>(value: null, child: Text('${AppLocalizations.of(context).transactionsAll} $label')),
+        DropdownMenuItem<String?>(
+            value: null,
+            child:
+                Text('${AppLocalizations.of(context).transactionsAll} $label')),
         for (final String option in options)
           DropdownMenuItem<String?>(value: option, child: Text(option)),
       ],
@@ -637,7 +650,10 @@ class FinancialEventTimelineRow extends StatelessWidget {
     final int amount = primaryAmountMinor(event);
     final String sign = amount < 0 ? '-' : '+';
     return SurfaceCard(
-      padding: EdgeInsets.all(spacing.md),
+      padding: EdgeInsets.symmetric(
+        horizontal: spacing.md,
+        vertical: spacing.lg,
+      ),
       child: Row(
         children: <Widget>[
           Icon(Icons.account_balance_wallet_outlined,
@@ -689,9 +705,6 @@ class FinancialEventTimelineRow extends StatelessWidget {
         'stock_count' => 'Stock count correction',
         'cost_pool_entry' => 'Pool cost',
         'cost_pool_allocation' => 'Pool allocation',
-        'job_cost' => 'Job cost',
-        'job_completion' => 'Job completed',
-        'job_payment' => 'Job payment',
         'owner_transaction' => 'Owner money movement',
         'till_movement' => 'Till movement',
         'expense_payment' => 'Expense payment',
@@ -722,7 +735,10 @@ class ExpenseTimelineRow extends StatelessWidget {
       expense['created_at'] as String? ?? '',
     )?.toLocal();
     return SurfaceCard(
-      padding: EdgeInsets.all(spacing.md),
+      padding: EdgeInsets.symmetric(
+        horizontal: spacing.md,
+        vertical: spacing.lg,
+      ),
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: <Widget>[
@@ -796,7 +812,11 @@ class TransactionsRow extends StatelessWidget {
     final TextTheme type = AppTypography.of(context);
 
     return SurfaceCard(
-      padding: EdgeInsets.all(spacing.md),
+      padding: EdgeInsets.symmetric(
+        horizontal: spacing.md,
+        vertical: spacing.lg,
+      ),
+      semanticLabel: '${l10n.transactionsTitle}: ${formatMoney(sale.total)}',
       // The row OPENS.
       //
       // A ledger row is a summary — an amount, a relative time, a method — and
@@ -878,9 +898,9 @@ class TransactionsRow extends StatelessWidget {
               ),
             ],
           ),
-          SizedBox(height: spacing.sm),
+          SizedBox(height: spacing.lg),
           Divider(height: 1, color: colors.outline),
-          SizedBox(height: spacing.sm),
+          SizedBox(height: spacing.lg),
           Row(
             children: <Widget>[
               Icon(Icons.receipt_long_outlined,
@@ -919,6 +939,12 @@ class TransactionsRow extends StatelessWidget {
                   ),
                 ),
               ],
+              const SizedBox(width: 4),
+              Icon(
+                Icons.chevron_right_rounded,
+                size: 20,
+                color: colors.onSurfaceMuted,
+              ),
             ],
           ),
         ],

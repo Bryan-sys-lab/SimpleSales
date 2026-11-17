@@ -38,7 +38,6 @@ abstract final class Routes {
   static const String laybys = '/dashboard/laybys';
   static const String shift = '/analytics/shift';
   static const String expenses = '/analytics/expenses';
-  static const String openBusiness = '/open-business';
   static const String reports = '/analytics/reports';
   static const String portfolio = '/analytics/portfolio';
   static const String activity = '/settings/activity';
@@ -47,6 +46,7 @@ abstract final class Routes {
   static const String syncCenter = '/settings/sync-center';
   static const String permissionsMatrix = '/settings/permissions';
   static const String profile = '/settings/profile';
+  static const String paywall = '/settings/subscription';
   static const String imports = '/settings/imports';
   static const String taxSettings = '/settings/tax';
   static const String cameraScan = '/sell/scan';
@@ -58,11 +58,14 @@ abstract final class Routes {
   // Fashion profile routes (variant-centred rather than product-centred)
   static const String fashionProductForm = '/inventory/fashion-product/new';
   static const String exchangeScreen = '/fashion/exchange';
-  static const String openJobs = '/open-business/jobs';
-  static const String openJobNew = '/open-business/jobs/new';
-  static const String openCostGroups = '/open-business/cost-groups';
-  static const String openCostGroupNew = '/open-business/cost-groups/new';
-  static const String openReceivables = '/open-business/receivables';
+  static const String openCostGroups = '/inventory/cost-of-goods';
+  static const String openCostGroupNew = '/inventory/cost-of-goods/new';
+  static const String openCostGroupDetailPattern =
+      '/inventory/cost-of-goods/:poolId';
+
+  /// Open cost-group detail is a path-parameter route so it survives a cold
+  /// start and remains reachable from notifications and deep links.
+  static String openCostGroup(int id) => '/inventory/cost-of-goods/$id';
 
   // ------------------------------------------------------------- the doors
   // Outside the shell: no navigation affordance, because there is no session to
@@ -96,17 +99,8 @@ abstract final class Routes {
   /// Fashion product (style) edit form.
   static String fashionProductEdit(int id) => '/inventory/fashion-product/$id/edit';
 
-  /// Open job detail by id.
-  static String openJobDetail(int id) => '/open-business/jobs/$id';
-
-  /// Open job edit form by id.
-  static String openJobEdit(int id) => '/open-business/jobs/$id/edit';
-
-  /// Open job add cost by id.
-  static String openJobAddCost(int id) => '/open-business/jobs/$id/cost';
-
   /// Open cost group detail by id.
-  static String openCostGroupDetail(int id) => '/open-business/cost-groups/$id';
+  static String openCostGroupDetail(int id) => '/inventory/cost-of-goods/$id';
 
   /// The root the app opens on. The splash is a real route so a cold deep link
   /// into `/login` still shows the boot gate before it is evaluated.
@@ -126,8 +120,7 @@ enum AppDestination {
   analytics('navAnalytics', 'navAnalyticsShort'),
   settings('navSettings', 'navSettingsShort'),
   more('navMore', 'navMore'),
-  support('navSupport', 'navSupportShort'),
-  openBusiness('navOpenBusiness', 'navOpenBusinessShort');
+  support('navSupport', 'navSupportShort');
 
   const AppDestination(this.labelKey, this.shortLabelKey);
 
@@ -158,7 +151,6 @@ enum AppDestination {
         AppDestination.settings => Routes.settings,
         AppDestination.more => Routes.more,
         AppDestination.support => Routes.support,
-        AppDestination.openBusiness => Routes.openBusiness, // '/open-business'
       };
 
   /// The indexed shell has no branch for More; it is an action that opens a
@@ -171,7 +163,6 @@ enum AppDestination {
         AppDestination.analytics => 3,
         AppDestination.settings => 4,
         AppDestination.support => 5,
-        AppDestination.openBusiness => 6,
         AppDestination.more => -1,
       };
 
@@ -182,7 +173,6 @@ enum AppDestination {
         AppDestination.analytics,
         AppDestination.settings,
         AppDestination.support,
-        AppDestination.openBusiness,
       ][index];
 
   /// The glyph.
@@ -200,7 +190,6 @@ enum AppDestination {
         AppDestination.settings => Icons.tune_outlined,
         AppDestination.more => Icons.more_horiz,
         AppDestination.support => Icons.help_outline,
-        AppDestination.openBusiness => Icons.work_outline,
       };
 
   static AppDestination? fromPath(String path) {

@@ -2,7 +2,8 @@ import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 import 'package:crypto/crypto.dart' show sha256;
-import 'package:flutter/foundation.dart' show debugPrint, kReleaseMode;
+import 'package:flutter/foundation.dart'
+    show debugPrint, kReleaseMode, visibleForTesting;
 import 'package:dio/dio.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../db/database_helper.dart';
@@ -14,6 +15,9 @@ import 'encrypted_backup_service.dart';
 import 'identity_service.dart';
 import 'row_scope.dart';
 import 'workspace_service.dart';
+import 'staff_credential_cache.dart';
+import 'auth_service.dart';
+import 'product_image_store.dart';
 import 'portfolio_kpis.dart';
 import 'cross_shop_activity.dart';
 import 'analytics.dart';
@@ -149,6 +153,26 @@ class VerifiedIdentity {
   final String shopName;
 }
 
+class SubscriptionEntitlement {
+  const SubscriptionEntitlement({required this.allowed, required this.status, this.reason, this.priceMinor, this.currency = 'KES', this.billingInterval = 'monthly', this.currentPeriodEnd});
+  factory SubscriptionEntitlement.fromJson(Map<String, dynamic> json) => SubscriptionEntitlement(
+    allowed: json['allowed'] == true,
+    status: json['status'] as String? ?? 'pending',
+    reason: json['reason'] as String?,
+    priceMinor: (json['priceMinor'] as num?)?.toInt(),
+    currency: json['currency'] as String? ?? 'KES',
+    billingInterval: json['billingInterval'] as String? ?? 'monthly',
+    currentPeriodEnd: json['currentPeriodEnd'] as String?,
+  );
+  final bool allowed;
+  final String status;
+  final String? reason;
+  final int? priceMinor;
+  final String currency;
+  final String billingInterval;
+  final String? currentPeriodEnd;
+}
+
 /// A code the server accepted, with the session it issued, held back until the
 /// shop that code belongs to exists on this device.
 ///
@@ -179,6 +203,47 @@ enum DeploymentMode {
 /// Keeps the same interface as the old backend_service.dart so the
 /// rest of the app doesn't need changes.
 class BackendService {
+  static Future<void>? _livePullInFlight;
+
+  /// Pull the remote business snapshot after a live-channel signal.
+  ///
+  /// WebSocket frames are invalidation signals only. This coalesced pull keeps
+  /// the HTTP endpoints as the source of truth while preventing every visible
+  /// screen from starting its own pull when one till records a sale.
+  static Future<void> pullLiveSnapshot() {
+    final existing = _livePullInFlight;
+    if (existing != null) return existing;
+
+    final run = () async {
+      if (!await isIdentityVerified) return;
+      final pulls = <Future<void> Function()>[
+        pullProductsFromBackend,
+        pullVariantsFromBackend,
+        pullStaffFromBackend,
+        pullCustomersAndCreditFromBackend,
+        pullShotCupsFromBackend,
+        pullOperationalRecordsFromBackend,
+        pullCostPoolsFromBackend,
+        pullOwnerTransactionsFromBackend,
+        pullIncomingMpesaToLocal,
+      ];
+      for (final pull in pulls) {
+        try {
+          await pull();
+        } catch (error) {
+          // Live refresh is an acceleration path. Normal sync/retry mechanisms
+          // retain pending work when one optional domain is unavailable.
+          debugPrint('Live refresh pull failed: $error');
+        }
+      }
+    }();
+    _livePullInFlight = run;
+    run.whenComplete(() {
+      if (identical(_livePullInFlight, run)) _livePullInFlight = null;
+    });
+    return run;
+  }
+
   static bool _initialized = false;
   static final Dio _dio = Dio(BaseOptions(
     connectTimeout: const Duration(seconds: 10),
@@ -190,6 +255,17 @@ class BackendService {
 
   /// Marks a request that has already had one chance to renew its session.
   static const String _authRetriedKey = 'auth_retried';
+
+  static bool _isBackendRequest(Uri uri) {
+    final backend = Uri.tryParse(backendUrl);
+    if (backend == null) return false;
+    return uri.scheme == backend.scheme &&
+        uri.host == backend.host &&
+        uri.port == backend.port;
+  }
+
+  @visibleForTesting
+  static bool isBackendOriginForTesting(Uri uri) => _isBackendRequest(uri);
 
   /// The URL a build falls back to when `--dart-define=BACKEND_URL=...` is
   /// missing.
@@ -276,10 +352,22 @@ class BackendService {
 
     _dio.interceptors.add(InterceptorsWrapper(
       onRequest: (options, handler) async {
+        // Presigned R2 uploads are external to the API origin. They must not
+        // receive the app bearer token or active-shop header: those headers
+        // are unrelated to the signed object request and can invalidate a
+        // signature or disclose tenant context to another host.
+        if (!_isBackendRequest(options.uri)) {
+          options.headers.remove('Authorization');
+          options.headers.remove('x-tenant-id');
+          return handler.next(options);
+        }
         // The normal mobile credential is the Keycloak access token. The
         // backend also accepts its short-lived email-code session for API
         // clients that complete verification without Keycloak.
-        final token = await IdentityService.accessToken;
+        final staffToken = options.extra['staffSessionToken'];
+        final token = staffToken is String && staffToken.isNotEmpty
+            ? staffToken
+            : await IdentityService.accessToken;
         if (token != null) options.headers['Authorization'] = 'Bearer $token';
         // The tenant this shop on this device maps to, NOT a global preference.
         //
@@ -302,7 +390,13 @@ class BackendService {
         return handler.next(options);
       },
       onError: (error, handler) async {
+        // A presigned storage failure is not an expired app session. Do not
+        // rotate credentials or retry an external upload through API auth.
+        if (!_isBackendRequest(error.requestOptions.uri)) {
+          return handler.next(error);
+        }
         if (error.response?.statusCode == 401 &&
+            error.requestOptions.extra['staffSessionToken'] == null &&
             error.requestOptions.extra[_authRetriedKey] != true) {
           final requestOptions = error.requestOptions;
           // Marked BEFORE the retry, because the retry goes back through this
@@ -312,8 +406,7 @@ class BackendService {
           requestOptions.extra[_authRetriedKey] = true;
 
           // The Keycloak session, if there is one.
-          final SessionRenewal browser =
-              await IdentityService.renew();
+          final SessionRenewal browser = await IdentityService.renew();
           if (browser is SessionRenewed) {
             final renewed = await IdentityService.accessToken;
             if (renewed != null) {
@@ -564,6 +657,38 @@ class BackendService {
   static Future<String?> get tenantId async =>
       WorkspaceService.activeTenantId();
 
+  static Future<SubscriptionEntitlement?> redeemAccessVoucher(String code) async {
+    final tid = await tenantId;
+    if (tid == null || tid.isEmpty) return null;
+    final response = await _dio.post(
+      '$backendUrl/auth/voucher/redeem',
+      data: <String, dynamic>{'code': code.trim()},
+      options: Options(extra: <String, Object>{'staffTenantOverride': tid}),
+    );
+    final raw = response.data is Map ? response.data['entitlement'] : null;
+    return raw is Map ? SubscriptionEntitlement.fromJson(Map<String, dynamic>.from(raw)) : null;
+  }
+
+  static Future<SubscriptionEntitlement?> fetchSubscriptionEntitlement() async {
+    final response = await _dio.get('$backendUrl/tenant/subscription');
+    final raw = response.data is Map ? response.data['entitlement'] : null;
+    return raw is Map ? SubscriptionEntitlement.fromJson(Map<String, dynamic>.from(raw)) : null;
+  }
+
+  static Future<String> startSubscriptionPayment({required String phoneNumber, int durationMonths = 1}) async {
+    final response = await _dio.post('$backendUrl/tenant/subscription/payment', data: <String, dynamic>{'phoneNumber': phoneNumber, 'durationMonths': durationMonths});
+    return response.data['reference'] as String;
+  }
+
+  static Future<String> subscriptionPaymentStatus(String reference) async {
+    final response = await _dio.get('$backendUrl/tenant/subscription/payment/${Uri.encodeComponent(reference)}');
+    return response.data['status'] as String? ?? 'PENDING';
+  }
+
+  static Future<void> confirmSubscriptionPaymentCode({required String reference, required String mpesaCode}) async {
+    await _dio.post('$backendUrl/tenant/subscription/payment/${Uri.encodeComponent(reference)}/confirm-code', data: <String, dynamic>{'mpesaCode': mpesaCode.trim()});
+  }
+
   static const _syncDeviceIdKey = 'sync_device_id';
 
   /// Stable per-install identity used to namespace local integer ids on the
@@ -787,6 +912,99 @@ class BackendService {
     return photoUrl;
   }
 
+  static Future<Map<String, dynamic>> uploadSaleEvidence({
+    required int localSaleId,
+    required File file,
+  }) async {
+    await ensureInitialized();
+    final deviceId = await _syncDeviceId();
+    final fileName = file.path.split(Platform.pathSeparator).last;
+    final prepared = await _dio.post<Map<String, dynamic>>(
+      '$backendUrl/sale-evidence/upload-url',
+      data: <String, dynamic>{
+        'deviceId': deviceId,
+        'localId': localSaleId,
+        'fileName': fileName,
+        'contentType': 'image/jpeg',
+      },
+    );
+    final data = prepared.data ?? const <String, dynamic>{};
+    final uploadUrl = data['uploadUrl'] as String?;
+    final key = data['key'] as String?;
+    if (uploadUrl == null || key == null || uploadUrl.isEmpty || key.isEmpty) {
+      throw StateError('Sale evidence upload was not prepared');
+    }
+    final bytes = await file.readAsBytes();
+    await _dio.put<void>(
+      uploadUrl,
+      data: bytes,
+      options: Options(
+        contentType: 'image/jpeg',
+        extra: <String, dynamic>{'binaryUpload': true},
+      ),
+    );
+    final confirmed = await _dio.post<Map<String, dynamic>>(
+      '$backendUrl/sale-evidence/confirm',
+      data: <String, dynamic>{
+        'deviceId': deviceId,
+        'localId': localSaleId,
+        'key': key,
+        'mimeType': 'image/jpeg',
+        'byteSize': bytes.length,
+      },
+    );
+    return confirmed.data ?? const <String, dynamic>{};
+  }
+
+  static Future<List<Map<String, dynamic>>> saleEvidence(
+      int localSaleId) async {
+    await ensureInitialized();
+    final deviceId = await _syncDeviceId();
+    final response = await _dio.post<Map<String, dynamic>>(
+      '$backendUrl/sale-evidence/list',
+      data: <String, dynamic>{'deviceId': deviceId, 'localId': localSaleId},
+    );
+    return (response.data?['evidence'] as List? ?? const [])
+        .whereType<Map>()
+        .map((row) => Map<String, dynamic>.from(row))
+        .toList();
+  }
+
+  /// Uploads staged sale evidence during the normal owner sync cycle.
+  ///
+  /// The local row is the retry ledger: a failed object upload leaves both the
+  /// row and the staged file untouched, so a later connection can resume it.
+  static Future<void> syncSaleEvidenceToBackend() async {
+    await ensureInitialized();
+    if (await tenantId == null) return;
+    final rows = await DatabaseHelper.instance.getPendingSaleEvidence();
+    for (final row in rows) {
+      final id = (row['id'] as num?)?.toInt();
+      final saleId = (row['sale_id'] as num?)?.toInt();
+      final localPath = row['local_path'] as String?;
+      if (id == null || saleId == null || localPath == null) continue;
+      final absolute = await ProductImageStore.resolve(localPath);
+      if (absolute == null) continue;
+      try {
+        final uploaded = await uploadSaleEvidence(
+          localSaleId: saleId,
+          file: File(absolute),
+        );
+        final key = uploaded['key'] as String?;
+        if (key == null || key.isEmpty) continue;
+        await DatabaseHelper.instance.markSaleEvidenceUploaded(
+          id: id,
+          remoteKey: key,
+          remoteUrl: uploaded['publicUrl'] as String?,
+        );
+        await ProductImageStore.deletePendingEvidence(id);
+      } catch (_) {
+        // Keep this row pending; one failed photograph must not stop other
+        // business domains from syncing.
+      }
+    }
+  }
+
   /// Cloud features are enabled only after this workspace completed the
   /// email-verification handshake. A stale tenant link must not silently turn
   /// cloud backup back on for a shop that was relinked or restored offline.
@@ -951,6 +1169,11 @@ class BackendService {
                   headers: <String, String>{'x-tenant-id': tenantId},
                 ));
       final data = response.data as Map<String, dynamic>? ?? const {};
+      final localId = data['local_id'];
+      final sessionToken = data['session_token'];
+      if (localId is int && sessionToken is String && sessionToken.isNotEmpty) {
+        await StaffCredentialCache.storeSessionToken(localId, sessionToken);
+      }
       return data.isNotEmpty ? data : null;
     } on DioException catch (error) {
       // A reachable backend that rejected the credentials is authoritative:
@@ -963,6 +1186,83 @@ class BackendService {
       }
       return null;
     }
+  }
+
+  /// A non-null `_rejected` response is authoritative: the backend was
+  /// reachable and rejected the profile or credentials. A null response is
+  /// reserved for transport/5xx failures, where offline login may continue.
+  static bool isAuthoritativeStaffAuthenticationRejection(
+    Map<String, dynamic>? response,
+  ) => response?['_rejected'] == true;
+
+  static Future<void> changeStaffPin({
+    required int staffId,
+    required String currentPin,
+    required String newPin,
+  }) async {
+    await ensureInitialized();
+    final token = await StaffCredentialCache.readSessionToken(staffId);
+    final tenantId = await WorkspaceService.activeTenantId();
+    if (token == null || token.isEmpty || tenantId == null || tenantId.isEmpty) {
+      throw StateError('Sign in online as this staff member before changing the PIN');
+    }
+    await _dio.post(
+      '$backendUrl/tenant/staff/self-pin',
+      data: <String, String>{'currentPin': currentPin, 'newPin': newPin},
+      options: Options(
+        extra: <String, Object>{'staffSessionToken': token, 'staffTenantOverride': tenantId},
+        headers: <String, String>{'x-tenant-id': tenantId},
+      ),
+    );
+    await DatabaseHelper.instance.updateStaffPin(staffId, await AuthService.hashPin(newPin));
+    Staff? staff;
+    for (final candidate in await DatabaseHelper.instance.getStaff(activeOnly: false)) {
+      if (candidate.id == staffId) {
+        staff = candidate;
+        break;
+      }
+    }
+    if (staff != null && staff.username != null) {
+      await StaffCredentialCache.cacheStaffCredentials(staffId, staff.username!, newPin);
+    }
+  }
+
+  /// Sends a forgotten-PIN request without revealing whether the username is
+  /// registered. The backend delivers it to the selected shop owner.
+  static Future<void> requestStaffPinReset({
+    required String username,
+    required String tenantId,
+  }) async {
+    await ensureInitialized();
+    await _dio.post(
+      '$backendUrl/tenant/staff/pin-reset-request',
+      data: <String, String>{'username': username},
+      options: Options(
+        extra: <String, Object>{'staffTenantOverride': tenantId},
+        headers: <String, String>{'x-tenant-id': tenantId},
+      ),
+    );
+  }
+
+  static Future<List<Map<String, dynamic>>> getStaffPinResetRequests() async {
+    await ensureInitialized();
+    final response = await _dio.get('$backendUrl/tenant/staff/pin-reset-requests');
+    final raw = response.data is Map<String, dynamic>
+        ? (response.data as Map<String, dynamic>)['requests']
+        : null;
+    if (raw is! List) return const <Map<String, dynamic>>[];
+    return raw.whereType<Map>().map((row) => Map<String, dynamic>.from(row)).toList();
+  }
+
+  static Future<void> resetStaffPinFromRequest({
+    required String requestId,
+    required String temporaryPin,
+  }) async {
+    await ensureInitialized();
+    await _dio.post(
+      '$backendUrl/tenant/staff/pin-reset-requests/$requestId/reset',
+      data: <String, String>{'temporaryPin': temporaryPin},
+    );
   }
 
   /// Platform backend configuration is restricted to the explicit system
@@ -1153,6 +1453,7 @@ class BackendService {
   static Future<int> registerMpesaChannel({
     required String channelType,
     required String shortCode,
+    String? accountNumber,
   }) async {
     await ensureInitialized();
     if (await tenantId == null) {
@@ -1162,6 +1463,8 @@ class BackendService {
         .post('$backendUrl/tenant/mpesa/channel', data: <String, dynamic>{
       'channelType': channelType.toLowerCase(),
       'shortCode': shortCode,
+      if (accountNumber != null && accountNumber.trim().isNotEmpty)
+        'accountNumber': accountNumber.trim(),
     });
     final id = response.data is Map ? response.data['channelId'] : null;
     if (id is! int || id <= 0) {
@@ -1490,10 +1793,11 @@ class BackendService {
         'active': product.active,
       };
 
-  static Map<String, dynamic> _variantPayload(ProductVariant variant) =>
+  static Map<String, dynamic> _variantPayload(ProductVariant variant,
+          {required String remoteProductId}) =>
       {
         'id': variant.id,
-        'productId': variant.productId,
+        'productId': remoteProductId,
         'name': variant.name,
         'sku': variant.sku,
         'unit': variant.unit.wire,
@@ -1506,6 +1810,81 @@ class BackendService {
         'position': variant.position,
         'active': variant.active,
       };
+
+  @visibleForTesting
+  static List<ProductVariant> variantsReadyForSync(
+    List<ProductVariant> variants,
+    Map<int, String> remoteProductIds,
+  ) =>
+      variants
+          .where((variant) =>
+              remoteProductIds[variant.productId]?.isNotEmpty == true)
+          .toList(growable: false);
+
+  @visibleForTesting
+  static bool productReferencesReadyForSync(
+    Iterable<int> productIds,
+    Map<int, String> remoteProductIds,
+  ) =>
+      productIds.every(
+          (productId) => remoteProductIds[productId]?.isNotEmpty == true);
+
+  @visibleForTesting
+  static bool reorderRecordReadyForSync(
+    Map<String, dynamic> record,
+    Map<int, String> remoteProductIds,
+  ) {
+    final payload = record['payload'];
+    if (payload is! Map) return false;
+    final kind = record['kind'];
+    if (kind == 'product_supplier') {
+      final productId = (payload['product_id'] as num?)?.toInt();
+      return productId != null &&
+          remoteProductIds[productId]?.isNotEmpty == true;
+    }
+    if (kind == 'purchase_order') {
+      final lines = payload['lines'];
+      if (lines is! List) return false;
+      if (lines.any((line) => line is! Map)) return false;
+      return lines.whereType<Map>().every((line) {
+        final productId = (line['product_id'] as num?)?.toInt();
+        return productId != null &&
+            remoteProductIds[productId]?.isNotEmpty == true;
+      });
+    }
+    return true;
+  }
+
+  @visibleForTesting
+  static String costPoolTypeForSync(String value) => switch (value) {
+        'lot' => 'lot',
+        'bale' => 'bale',
+        'rolling_stock' => 'rolling_stock',
+        _ => 'lot',
+      };
+
+  @visibleForTesting
+  static bool laybyReadyForSync(
+    Map<String, dynamic> row,
+    Map<int, String> customerUuids,
+    Map<int, String> productRemoteIds,
+  ) {
+    final customerId = (row['customer_id'] as num?)?.toInt();
+    final customerUuid = row['customer_uuid'];
+    if (customerUuid is! String || customerUuid.trim().isEmpty) {
+      if (customerId == null || customerUuids[customerId]?.isNotEmpty != true) {
+        return false;
+      }
+    }
+    final items = row['items'];
+    if (items is! List || items.isEmpty) return false;
+    return items.whereType<Map>().length == items.length &&
+        items.whereType<Map>().every((item) {
+          final productId = (item['product_id'] as num?)?.toInt();
+          return productId != null &&
+              productRemoteIds[productId]?.isNotEmpty == true;
+        });
+  }
 
   /// Syncs one product to the backend immediately after it is edited.
   ///
@@ -1584,10 +1963,9 @@ class BackendService {
       );
       final payloads = <Map<String, dynamic>>[];
       for (final product in batch) {
-        final openingStockQty =
-            product.remoteId == null && product.id != null
-                ? openingStockByProduct[product.id]
-                : null;
+        final openingStockQty = product.remoteId == null && product.id != null
+            ? openingStockByProduct[product.id]
+            : null;
         payloads.add(_productPayload(
           product,
           openingStockQty: openingStockQty,
@@ -1636,14 +2014,22 @@ class BackendService {
     if (variants.isEmpty) return;
 
     final deviceId = await _syncDeviceId();
+    final productRemoteIds = await _productRemoteIds();
+    final uploadable = variantsReadyForSync(variants, productRemoteIds);
+    // Product sync establishes the parent IDs first. Keep variants pending
+    // when that catalogue write has not completed instead of posting a local
+    // integer ID that the backend cannot use as a Product foreign key.
+    if (uploadable.isEmpty) return;
     const batchSize = 200;
-    for (var start = 0; start < variants.length; start += batchSize) {
-      final batch = variants.skip(start).take(batchSize).toList();
+    for (var start = 0; start < uploadable.length; start += batchSize) {
+      final batch = uploadable.skip(start).take(batchSize).toList();
       final payloads = batch
-          .map((v) => _variantPayload(v)
+          .map((v) => _variantPayload(v,
+              remoteProductId: productRemoteIds[v.productId]!)
             ..addAll({'syncKey': '$deviceId:${v.id ?? v.productId}'}))
           .toList();
-      final response = await _dio.post('$backendUrl/product-variants/sync', data: {
+      final response =
+          await _dio.post('$backendUrl/product-variants/sync', data: {
         'variants': payloads,
       });
 
@@ -1663,37 +2049,49 @@ class BackendService {
     }
   }
 
-  /// Sync Open profile jobs to the backend (bulk upsert).
-  static Future<void> syncJobsToBackend() async {
+  /// Pulls variants created or edited on another till. Parent products are
+  /// resolved by their tenant-scoped remote ids before the local merge.
+  static Future<void> pullVariantsFromBackend() async {
     await ensureInitialized();
-    final tid = await tenantId;
-    if (tid == null) return;
+    if (await tenantId == null) return;
     await _assertRowsInScope();
-
-    final jobs = await DatabaseHelper.instance.getOpenJobs();
-    if (jobs.isEmpty) return;
-
-    final deviceId = await _syncDeviceId();
-    const batchSize = 200;
-    for (var start = 0; start < jobs.length; start += batchSize) {
-      final batch = jobs.skip(start).take(batchSize).toList();
-      final payloads = batch.map((j) {
-        return {
-          'uuid': j['uuid'],
-          'title': j['title'],
-          'customerName': j['customer_name'],
-          'finalPriceMinor': j['final_price_minor'],
-          'status': j['status'],
-          'dueAt': j['due_at'],
-          'costPoolId': j['cost_pool_id'],
-          'staffId': j['staff_id'],
-          'staffName': j['staff_name'],
-          'createdAt': j['created_at'],
-          'updatedAt': j['updated_at'],
-          'syncKey': '$deviceId:job:${j['id']}',
-        };
-      }).toList();
-      await _dio.post('$backendUrl/jobs/sync', data: {'jobs': payloads});
+    final products =
+        await DatabaseHelper.instance.getProducts(activeOnly: false);
+    final localProductsByRemoteId = <String, int>{
+      for (final product in products)
+        if (product.id != null && product.remoteId != null)
+          product.remoteId!: product.id!,
+    };
+    final response = await _dio.get('$backendUrl/product-variants');
+    final rows = response.data is Map ? response.data['productVariants'] : null;
+    if (rows is! List) return;
+    for (final raw in rows.whereType<Map>()) {
+      final row = Map<String, dynamic>.from(raw);
+      final remoteId = row['remoteId'] ?? row['id'];
+      final remoteProductId = row['productId'];
+      final productId = remoteProductId is String
+          ? localProductsByRemoteId[remoteProductId]
+          : null;
+      if (remoteId is! String || remoteId.isEmpty || productId == null) {
+        // A product may arrive later in the same offline window. Keep the
+        // variant on the server and let the next catalogue pull resolve it.
+        continue;
+      }
+      await DatabaseHelper.instance.mergeRemoteVariant(
+        remoteId: remoteId,
+        productId: productId,
+        name: row['name'] as String? ?? 'Variant',
+        sku: row['sku'] as String? ?? '',
+        unit: row['unit'] as String? ?? 'each',
+        sizeMl: (row['sizeMl'] as num?)?.toInt() ?? 0,
+        sellPrice: (row['sellPrice'] as num?)?.toDouble() ?? 0,
+        costPrice: (row['costPrice'] as num?)?.toDouble() ?? 0,
+        stockQty: (row['stockQty'] as num?)?.toDouble() ?? 0,
+        reservedQty: (row['reservedQty'] as num?)?.toDouble() ?? 0,
+        reorderLevel: (row['reorderLevel'] as num?)?.toInt() ?? 0,
+        position: (row['position'] as num?)?.toInt() ?? 0,
+        active: row['active'] == true,
+      );
     }
   }
 
@@ -1714,81 +2112,31 @@ class BackendService {
       final payloads = batch.map((p) {
         return {
           'uuid': p['uuid'],
+          'id': p['id'],
           'name': p['name'],
+          'poolType': costPoolTypeForSync(p['pool_type'] as String? ?? 'lot'),
           'investedMinor': p['invested_minor'],
           'recoveredMinor': p['recovered_minor'],
           'status': p['status'],
           'createdAt': p['created_at'],
-          'updatedAt': p['updated_at'],
           'syncKey': '$deviceId:pool:${p['id']}',
         };
       }).toList();
-      await _dio.post('$backendUrl/cost-pools/sync', data: {'costPools': payloads});
+      await _dio
+          .post('$backendUrl/cost-pools/sync', data: {'costPools': payloads});
     }
   }
 
-  /// Sync Open profile job costs to the backend (bulk upsert).
-  static Future<void> syncJobCostsToBackend() async {
+  static Future<void> pullCostPoolsFromBackend() async {
     await ensureInitialized();
-    final tid = await tenantId;
-    if (tid == null) return;
+    if (await tenantId == null) return;
     await _assertRowsInScope();
-
-    final jobs = await DatabaseHelper.instance.getOpenJobs();
-    final deviceId = await _syncDeviceId();
-    for (final job in jobs) {
-      final jobId = (job['id'] as num).toInt();
-      final costs = await DatabaseHelper.instance.getJobCosts(jobId);
-      if (costs.isEmpty) continue;
-      const batchSize = 200;
-      for (var start = 0; start < costs.length; start += batchSize) {
-        final batch = costs.skip(start).take(batchSize).toList();
-        final payloads = batch.map((c) {
-          return {
-            'uuid': c['uuid'],
-            'jobId': c['job_id'],
-            'type': c['type'],
-            'amountMinor': c['amount_minor'],
-            'paymentMethod': c['payment_method'],
-            'reference': c['reference'],
-            'createdAt': c['created_at'],
-            'syncKey': '$deviceId:jobcost:${c['id']}',
-          };
-        }).toList();
-        await _dio.post('$backendUrl/job-costs/sync', data: {'jobCosts': payloads});
-      }
-    }
-  }
-
-  /// Sync Open profile job payments to the backend (bulk upsert).
-  static Future<void> syncJobPaymentsToBackend() async {
-    await ensureInitialized();
-    final tid = await tenantId;
-    if (tid == null) return;
-    await _assertRowsInScope();
-
-    final jobs = await DatabaseHelper.instance.getOpenJobs();
-    final deviceId = await _syncDeviceId();
-    for (final job in jobs) {
-      final jobId = (job['id'] as num).toInt();
-      final payments = await DatabaseHelper.instance.getJobPayments(jobId);
-      if (payments.isEmpty) continue;
-      const batchSize = 200;
-      for (var start = 0; start < payments.length; start += batchSize) {
-        final batch = payments.skip(start).take(batchSize).toList();
-        final payloads = batch.map((p) {
-          return {
-            'uuid': p['uuid'],
-            'jobId': p['job_id'],
-            'amountMinor': p['amount_minor'],
-            'paymentMethod': p['payment_method'],
-            'reference': p['reference'],
-            'createdAt': p['created_at'],
-            'syncKey': '$deviceId:jobpay:${p['id']}',
-          };
-        }).toList();
-        await _dio.post('$backendUrl/job-payments/sync', data: {'jobPayments': payloads});
-      }
+    final response = await _dio.get('$backendUrl/cost-pools');
+    final rows = response.data is Map ? response.data['costPools'] : null;
+    if (rows is! List) return;
+    for (final row in rows.whereType<Map>()) {
+      await DatabaseHelper.instance
+          .mergeRemoteCostPool(Map<String, dynamic>.from(row));
     }
   }
 
@@ -1803,23 +2151,48 @@ class BackendService {
     if (transactions.isEmpty) return;
 
     final deviceId = await _syncDeviceId();
+    final staff = await DatabaseHelper.instance.getStaff(activeOnly: false);
+    final staffRemoteIds = <int, String>{
+      for (final profile in staff)
+        if (profile.id != null && profile.remoteId?.isNotEmpty == true)
+          profile.id!: profile.remoteId!,
+    };
     const batchSize = 200;
     for (var start = 0; start < transactions.length; start += batchSize) {
       final batch = transactions.skip(start).take(batchSize).toList();
       final payloads = batch.map((t) {
         return {
           'uuid': t['uuid'],
+          'id': t['id'],
           'transactionType': t['transaction_type'],
           'amountMinor': t['amount_minor'],
           'shiftId': t['shift_id'],
-          'staffId': t['staff_id'],
+          // Staff ids are tenant-scoped opaque backend identities. A local
+          // SQLite integer is not portable across tills, so omit it until the
+          // staff sync has established the remote profile id.
+          'staffId': staffRemoteIds[(t['staff_id'] as num?)?.toInt()],
           'staffName': t['staff_name'],
           'note': t['note'],
           'createdAt': t['created_at'],
           'syncKey': '$deviceId:owner:${t['id']}',
         };
       }).toList();
-      await _dio.post('$backendUrl/owner-transactions/sync', data: {'ownerTransactions': payloads});
+      await _dio.post('$backendUrl/owner-transactions/sync',
+          data: {'ownerTransactions': payloads});
+    }
+  }
+
+  static Future<void> pullOwnerTransactionsFromBackend() async {
+    await ensureInitialized();
+    if (await tenantId == null) return;
+    await _assertRowsInScope();
+    final response = await _dio.get('$backendUrl/owner-transactions');
+    final rows =
+        response.data is Map ? response.data['ownerTransactions'] : null;
+    if (rows is! List) return;
+    for (final row in rows.whereType<Map>()) {
+      await DatabaseHelper.instance
+          .mergeRemoteOwnerTransaction(Map<String, dynamic>.from(row));
     }
   }
 
@@ -1928,8 +2301,8 @@ class BackendService {
     while (true) {
       final List<Sale> sales = await DatabaseHelper.instance.getUnsyncedSales();
       if (sales.isEmpty) return;
-      final paymentsBySale = await DatabaseHelper.instance
-          .getSalePaymentsForSales(
+      final paymentsBySale =
+          await DatabaseHelper.instance.getSalePaymentsForSales(
         sales.where((s) => s.id != null).map((s) => s.id!).toList(),
       );
       final payloads = <Map<String, dynamic>>[];
@@ -2126,15 +2499,22 @@ class BackendService {
         if (product.id != null && product.remoteId != null)
           product.id!: product.remoteId!,
     };
+    final uploadableRows = rows
+        .where((row) => laybyReadyForSync(
+              row,
+              customerUuidById,
+              productRemoteIdById,
+            ))
+        .toList(growable: false);
+    if (uploadableRows.isEmpty) return;
     final deviceId = await _syncDeviceId();
-    final payload = rows
+    final payload = uploadableRows
         .map((row) => <String, dynamic>{
               'localId': row['id'],
               'deviceId': deviceId,
               'uuid': row['uuid'],
               'customerUuid': row['customer_uuid'] ??
-                  customerUuidById[(row['customer_id'] as num?)?.toInt()] ??
-                  'local:${row['customer_id']}',
+                  customerUuidById[(row['customer_id'] as num?)!.toInt()],
               'status': row['status'],
               'totalMinor': row['total_minor'],
               'paidMinor': row['paid_minor'],
@@ -2149,8 +2529,7 @@ class BackendService {
                   .whereType<Map>()
                   .map((item) => <String, dynamic>{
                         'productId': productRemoteIdById[
-                                (item['product_id'] as num?)?.toInt()] ??
-                            'local:${item['product_id']}',
+                            (item['product_id'] as num?)!.toInt()],
                         'productName': item['product_name'],
                         'variantId': item['variant_id'],
                         'variantName': item['variant_name'],
@@ -2406,6 +2785,17 @@ class BackendService {
   /// A shot cup is set up ONCE, on one phone, and it is the whole shop's
   /// shelf after that: a cup the owner set up in the office has to be the cup
   /// the counter sells from.
+  @visibleForTesting
+  static List<ShotCup> shotCupsReadyForSync(
+    List<ShotCup> cups,
+    Map<int, String> remoteProductIds,
+  ) =>
+      cups
+          .where((cup) =>
+              cup.id != null &&
+              remoteProductIds[cup.productId]?.isNotEmpty == true)
+          .toList(growable: false);
+
   static Future<void> syncShotCupsToBackend() async {
     await ensureInitialized();
     if (await tenantId == null) return;
@@ -2413,21 +2803,30 @@ class BackendService {
 
     final deviceId = await _syncDeviceId();
 
-    // A cup belongs to a DRINK, and the server names drinks by UUID. See
-    // `_productRemoteIds`.
+    // A cup belongs to a DRINK, and the server names drinks by an opaque
+    // product id. See `_productRemoteIds`.
     final Map<int, String> remotes = await _productRemoteIds();
 
     while (true) {
       final cups = await DatabaseHelper.instance.getUnsyncedShotCups();
       if (cups.isEmpty) return;
+      // Catalogue sync can fail independently (offline, or a temporary
+      // conflict). Never send a serving with a null product reference: the
+      // operational endpoint intentionally accepts opaque payloads, so such a
+      // row would be stored successfully but could never be resolved on a
+      // second device. Leave it pending until its product has a remote id.
+      final ready = shotCupsReadyForSync(cups, remotes);
+      if (ready.isEmpty) return;
       final response = await _dio.post('$backendUrl/shot-cups/sync', data: {
-        'shotCups': cups
+        'shotCups': ready
             .map((ShotCup cup) => <String, dynamic>{
                   'localId': cup.id,
                   'deviceId': deviceId,
+                  'createdAt': cup.updatedAt,
                   'productId': remotes[cup.productId],
                   'productName': cup.productName,
                   'label': cup.label,
+                  'unit': cup.unit,
                   // Zero means the size is not known, and that is a legal
                   // answer: a cup with a size earns its cost exactly, and a cup
                   // without one is counted at its full price.
@@ -2444,7 +2843,7 @@ class BackendService {
           if (item is Map && item['localId'] is int) item['localId'] as int,
       ];
       await DatabaseHelper.instance.markShotCupsSynced(confirmed);
-      if (confirmed.isEmpty || cups.length < 500) return;
+      if (confirmed.isEmpty || ready.length < 500) return;
     }
   }
 
@@ -2633,6 +3032,16 @@ class BackendService {
       if (returns.isEmpty) return;
       final confirmed = <int>[];
       for (final SaleReturn entry in returns) {
+        if (!productReferencesReadyForSync(
+          entry.items.map((item) => item.productId),
+          productRemoteIds,
+        )) {
+          // The operational endpoint stores historical payloads verbatim. A
+          // null product reference would therefore be accepted but could not
+          // be reconciled on another till. Leave the return pending until the
+          // catalogue write has established every referenced product.
+          continue;
+        }
         try {
           final response = await _dio.post('$backendUrl/returns', data: {
             'localId': entry.id,
@@ -2706,6 +3115,12 @@ class BackendService {
       if (receipts.isEmpty) return;
       final confirmed = <int>[];
       for (final StockReceipt receipt in receipts) {
+        if (!productReferencesReadyForSync(
+          receipt.items.map((item) => item.productId),
+          productRemoteIds,
+        )) {
+          continue;
+        }
         try {
           final response = await _dio.post('$backendUrl/purchases', data: {
             'localId': receipt.id,
@@ -2717,6 +3132,7 @@ class BackendService {
             'inputVatMinor': receipt.inputVat?.minorUnits,
             'taxEvidenceStatus': receipt.taxEvidenceStatus,
             'total': receipt.totalCost.minorUnits,
+            'paidFrom': receipt.paidFrom,
             'staffName': receipt.staffName,
             'createdAt': receipt.receivedAt,
             'items': receipt.items
@@ -2762,6 +3178,12 @@ class BackendService {
       if (records.isEmpty) return;
       final confirmed = <Map<String, dynamic>>[];
       for (final record in records) {
+        if (!reorderRecordReadyForSync(record, productRemoteIds)) {
+          // Reorder is an operational stream with permissive storage. Do not
+          // acknowledge a supplier link/order whose product references cannot
+          // yet be reconciled on another till.
+          continue;
+        }
         try {
           final payload = Map<String, dynamic>.from(record['payload'] as Map);
           payload['supplier_name'] ??= payload['name'];
@@ -3142,7 +3564,12 @@ class BackendService {
           'kind': 'device_bound'
         });
     final data = response.data;
-    if (data is! Map || data['payload'] is! String) return false;
+    if (data is! Map ||
+        data['payload'] is! String ||
+        data['workspaceKey'] != workspaceKey ||
+        data['kind'] != 'device_bound') {
+      return false;
+    }
     final clear = await EncryptedBackupService.decryptBytes(
         utf8.encode(data['payload'] as String));
     final decoded = jsonDecode(utf8.decode(clear));
@@ -3162,7 +3589,12 @@ class BackendService {
     final response = await _dio.get('$backendUrl/backups/full',
         queryParameters: {'workspaceKey': workspaceKey, 'kind': 'portable'});
     final data = response.data;
-    if (data is! Map || data['payload'] is! String) return false;
+    if (data is! Map ||
+        data['payload'] is! String ||
+        data['workspaceKey'] != workspaceKey ||
+        data['kind'] != 'portable') {
+      return false;
+    }
     final clear = await EncryptedBackupService.decryptPortableBytes(
       encodedBytes: utf8.encode(data['payload'] as String),
       passphrase: passphrase,
@@ -3202,6 +3634,33 @@ class BackendService {
     return reference as String;
   }
 
+  /// Starts a Safaricom Dynamic QR payment. The returned image is only a
+  /// payment request; callers must still await the authenticated backend
+  /// status before recording the sale.
+  static Future<QrPaymentSession> initiateQrPayment({
+    required List<Map<String, dynamic>> items,
+    required String staffName,
+    String? customerName,
+    String? staffProfileId,
+  }) async {
+    await ensureInitialized();
+    final response = await _dio.post('$backendUrl/payments/qr', data: {
+      'items': items,
+      'staff_name': staffName,
+      if (staffProfileId != null) 'staff_profile_id': staffProfileId,
+      if (customerName != null) 'customer_name': customerName,
+    });
+    final data = response.data;
+    if (data is! Map || data['reference'] is! String || data['qr_code'] is! String) {
+      throw StateError('No Dynamic QR payment was returned');
+    }
+    return QrPaymentSession(
+      reference: data['reference'] as String,
+      amount: (data['amount'] as num?)?.toDouble() ?? 0,
+      qrCode: data['qr_code'] as String,
+    );
+  }
+
   /// Poll payment status until resolved or timeout
   static Future<PaymentOutcome> pollPaymentStatus(
     String reference, {
@@ -3235,6 +3694,15 @@ class BackendService {
     String? since,
     String status = 'unclaimed',
   }) async {
+    final page = await _fetchIncomingMpesaPage(since: since, status: status);
+    return page.payments.reversed.toList(growable: false);
+  }
+
+  static Future<({List<IncomingPayment> payments, String? cursor})>
+      _fetchIncomingMpesaPage({
+    String? since,
+    required String status,
+  }) async {
     await ensureInitialized();
     final response = await _dio.get<Map<String, dynamic>>(
       '$backendUrl/mpesa/incoming',
@@ -3244,7 +3712,7 @@ class BackendService {
       },
     );
     final rows = response.data?['payments'] as List? ?? const [];
-    return rows.whereType<Map>().map((raw) {
+    final payments = rows.whereType<Map>().map((raw) {
       final row = Map<String, dynamic>.from(raw);
       return IncomingPayment(
         remoteId: row['remoteId'] as String,
@@ -3258,6 +3726,11 @@ class BackendService {
         claimedBy: row['claimedByDevice'] as String?,
       );
     }).toList();
+    final rawCursor = response.data?['cursor'];
+    return (
+      payments: payments,
+      cursor: rawCursor is String && rawCursor.isNotEmpty ? rawCursor : null,
+    );
   }
 
   /// Caches incoming till payments for offline matching and for the manager's
@@ -3268,9 +3741,22 @@ class BackendService {
     if (await tenantId == null || !await isIdentityVerified) return;
     final db = DatabaseHelper.instance;
     for (final status in const ['unclaimed', 'claimed', 'ignored']) {
-      final payments = await fetchIncomingMpesa(status: status);
-      for (final payment in payments) {
-        await db.upsertIncomingPayment(payment);
+      String? cursor;
+      for (var page = 0; page < 100; page++) {
+        final result = await _fetchIncomingMpesaPage(
+          since: cursor,
+          status: status,
+        );
+        for (final payment in result.payments) {
+          await db.upsertIncomingPayment(payment);
+        }
+        if (result.payments.isEmpty ||
+            result.cursor == null ||
+            result.cursor == cursor ||
+            result.payments.length < 200) {
+          break;
+        }
+        cursor = result.cursor;
       }
     }
   }
@@ -3338,6 +3824,18 @@ class BackendService {
       'reason': reason,
     });
   }
+}
+
+class QrPaymentSession {
+  const QrPaymentSession({
+    required this.reference,
+    required this.amount,
+    required this.qrCode,
+  });
+
+  final String reference;
+  final double amount;
+  final String qrCode;
 }
 
 enum PaymentOutcome { success, failed, timedOut }

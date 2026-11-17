@@ -139,6 +139,7 @@ class FashionDashboardScreen extends StatelessWidget {
     );
 
     final Widget financialHero = DashboardMoneyHero(
+      profile: ShopProfile.fashion,
       label: l10n.dashboardNetSalesToday,
       amount: data.totals.total,
       primaryActionLabel: l10n.dashboardNewSale,
@@ -160,6 +161,19 @@ class FashionDashboardScreen extends StatelessWidget {
         value: formatMoney(Money.fromMinor(data.totals.expensesMinor)),
         icon: Icons.payments_outlined,
         tone: DashboardKpiTone.expense,
+      ),
+      DashboardKpiData(
+        label: 'Average sale',
+        value: formatMoney(data.totals.averageBasket),
+        icon: Icons.shopping_basket_outlined,
+        tone: DashboardKpiTone.neutral,
+      ),
+      DashboardKpiData(
+        label: l10n.dashboardStockValue,
+        value: formatMoney(data.stockValue),
+        icon: Icons.inventory_2_outlined,
+        tone: DashboardKpiTone.info,
+        onTap: onOpenInventory,
       ),
       DashboardKpiData(
         label: l10n.dashboardTransactionsLabel,
@@ -190,8 +204,7 @@ class FashionDashboardScreen extends StatelessWidget {
       onOpenReserves: () => context.push(Routes.laybys),
       onViewCatalogue: () => _viewCatalogue(context),
       canManageStock: canManageStock,
-      canReceiveStock:
-          appState.hasPermission(PermissionKey.receiveStock),
+      canReceiveStock: appState.hasPermission(PermissionKey.receiveStock),
     );
 
     final bool twoColumns =
@@ -199,6 +212,8 @@ class FashionDashboardScreen extends StatelessWidget {
 
     final List<Widget> body = <Widget>[
       header,
+      if (appState.isOwnerSession)
+        DashboardPortfolioCard(onOpen: () => context.push(Routes.portfolio)),
       if (attention != null)
         Semantics(
           sortKey: const OrdinalSortKey(0),
@@ -313,13 +328,15 @@ class _FashionLowStockVariants extends StatelessWidget {
   Widget build(BuildContext context) {
     final AppLocalizations l10n = AppLocalizations.of(context);
 
-    final palette = DashboardProfilePalette.forProfile(ShopProfile.fashion, brightness: Theme.of(context).brightness);
+    final palette = DashboardProfilePalette.forProfile(ShopProfile.fashion,
+        brightness: Theme.of(context).brightness);
     return DashboardPanel(
       title: l10n.fashionDashboardLowStockVariants,
       topAccent: palette.accent,
-      trailing: TextButton(
+      trailing: ActionChip(
+        avatar: const Icon(Icons.arrow_outward, size: 16),
         onPressed: onViewAll,
-        child: Text(l10n.fashionDashboardViewAll),
+        label: Text(l10n.fashionDashboardViewAll),
       ),
       padChild: false,
       child: LayoutBuilder(
@@ -445,11 +462,14 @@ class _FashionReservesOverview extends StatefulWidget {
   final bool canManageStock;
 
   @override
-  State<_FashionReservesOverview> createState() => _FashionReservesOverviewState();
+  State<_FashionReservesOverview> createState() =>
+      _FashionReservesOverviewState();
 }
 
 class _FashionReservesOverviewState extends State<_FashionReservesOverview>
-    with LiveRefresh<_FashionReservesOverview>, SessionRefresh<_FashionReservesOverview> {
+    with
+        LiveRefresh<_FashionReservesOverview>,
+        SessionRefresh<_FashionReservesOverview> {
   int _openCount = 0;
   int _awaitingCount = 0;
   int _readyCount = 0;
@@ -516,13 +536,15 @@ class _FashionReservesOverviewState extends State<_FashionReservesOverview>
     final AppSpacing spacing = AppSpacing.of(context);
     final AppLocalizations l10n = AppLocalizations.of(context);
 
-    final palette = DashboardProfilePalette.forProfile(ShopProfile.fashion, brightness: Theme.of(context).brightness);
+    final palette = DashboardProfilePalette.forProfile(ShopProfile.fashion,
+        brightness: Theme.of(context).brightness);
     return DashboardPanel(
       title: l10n.fashionDashboardReserves,
       topAccent: palette.accent,
-      trailing: TextButton(
+      trailing: ActionChip(
+        avatar: const Icon(Icons.arrow_outward, size: 16),
         onPressed: widget.onOpenReserves,
-        child: Text(l10n.fashionDashboardViewAll),
+        label: Text(l10n.fashionDashboardViewAll),
       ),
       padChild: false,
       child: Column(

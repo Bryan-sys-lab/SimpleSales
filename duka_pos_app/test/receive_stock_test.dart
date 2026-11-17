@@ -410,6 +410,33 @@ void main() {
       expect(receipt.totalCost, Money.fromMajor(3480));
     });
 
+    test('the receipt keeps its payment source for sync and reporting',
+        () async {
+      final productId = await seedProduct();
+      await DatabaseHelper.instance.postStockReceipt(
+        lines: <StockReceiptLine>[
+          StockReceiptLine(
+            productId: productId,
+            productName: 'Tusker',
+            qty: 2,
+            unitCost: Money.fromMajor(90),
+          ),
+        ],
+        staffName: 'Amina',
+        paidFrom: 'credit',
+      );
+
+      final receipt = (await DatabaseHelper.instance.getStockReceipts()).single;
+      final raw = (await (await DatabaseHelper.instance.database).query(
+        'stock_receipts',
+      )).single;
+      expect(raw['paid_from'], 'credit');
+      expect(receipt.paidFrom, 'credit');
+      final pending =
+          (await DatabaseHelper.instance.getUnsyncedReceipts()).single;
+      expect(pending.paidFrom, 'credit');
+    });
+
     test('a delivery of nothing is refused', () async {
       await expectLater(
         DatabaseHelper.instance.postStockReceipt(

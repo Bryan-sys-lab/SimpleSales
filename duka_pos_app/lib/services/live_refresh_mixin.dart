@@ -28,6 +28,7 @@ import 'package:flutter/widgets.dart';
 import 'package:provider/provider.dart';
 
 import 'live_channel_service.dart';
+import 'backend_service.dart';
 
 /// Adds live re-reading to a `State`.
 ///
@@ -67,10 +68,9 @@ mixin LiveRefresh<T extends StatefulWidget> on State<T> {
 
   /// Whether this tab is currently the visible one.
   ///
-  /// Overridden by a screen hosted in the indexed-stack shell, where
-  /// `TickerMode` is the honest "am I showing" signal. Defaults to true so the
-  /// mixin works for a screen pushed outside a shell.
-  bool get liveIsVisible => true;
+  /// TickerMode is the visibility signal for indexed-stack shell branches.
+  /// A pushed screen remains active because it has no disabled ticker ancestor.
+  bool get liveIsVisible => TickerMode.valuesOf(context).enabled;
 
   @override
   void didChangeDependencies() {
@@ -112,6 +112,7 @@ mixin LiveRefresh<T extends StatefulWidget> on State<T> {
     if (_liveReloading) return;
     _liveReloading = true;
     try {
+      await BackendService.pullLiveSnapshot();
       await reloadFromLive();
     } finally {
       _liveReloading = false;

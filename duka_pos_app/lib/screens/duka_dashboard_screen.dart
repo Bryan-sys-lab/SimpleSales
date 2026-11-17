@@ -31,8 +31,8 @@ import 'dashboard_attention.dart';
 import 'dashboard_sections.dart';
 import 'dashboard_shared.dart';
 import 'receive_stock_sheet.dart';
-import 'stocktake_screen.dart';
 import 'inventory_screen.dart';
+import 'quick_sale_dialog.dart';
 
 const double _dukaDashboardMaxWidth = 1200;
 const double _dukaTwoColumnBreakpoint = 840;
@@ -106,9 +106,12 @@ class DukaDashboardScreen extends StatelessWidget {
         ? DashboardHourlySales(buckets: data.hours)
         : DashboardNoSalesCard(hasEverSold: data.hasEverSold);
 
-    final paletteDuka = DashboardProfilePalette.forProfile(ShopProfile.duka, brightness: Theme.of(context).brightness);
-    final Widget? topProducts =
-        hasSales ? DashboardTopProducts(rows: data.topProducts, topAccent: paletteDuka.accent) : null;
+    final paletteDuka = DashboardProfilePalette.forProfile(ShopProfile.duka,
+        brightness: Theme.of(context).brightness);
+    final Widget? topProducts = hasSales
+        ? DashboardTopProducts(
+            rows: data.topProducts, topAccent: paletteDuka.accent)
+        : null;
 
     final Widget reorder = DashboardLowStockList(
       products: data.lowStock,
@@ -136,6 +139,7 @@ class DukaDashboardScreen extends StatelessWidget {
     );
 
     final Widget financialHero = DashboardMoneyHero(
+      profile: ShopProfile.duka,
       label: l10n.dashboardNetSalesToday,
       amount: data.totals.total,
       primaryActionLabel: l10n.dashboardNewSale,
@@ -159,6 +163,19 @@ class DukaDashboardScreen extends StatelessWidget {
         icon: Icons.payments_outlined,
         tone: DashboardKpiTone.expense,
       ),
+      DashboardKpiData(
+        label: 'Average sale',
+        value: formatMoney(data.totals.averageBasket),
+        icon: Icons.shopping_basket_outlined,
+        tone: DashboardKpiTone.neutral,
+      ),
+      if (data.openShift != null)
+        DashboardKpiData(
+          label: 'Expected till',
+          value: formatMoney(data.expectedTill),
+          icon: Icons.point_of_sale_outlined,
+          tone: DashboardKpiTone.info,
+        ),
       DashboardKpiData(
         label: l10n.dashboardStockValue,
         value: formatMoney(data.stockValue),
@@ -194,7 +211,8 @@ class DukaDashboardScreen extends StatelessWidget {
       onOpenInventory: onOpenInventory,
     );
 
-    final String addProductLabel = 'Add ${appState.shopProfile.terminologyLocalized(AppLocalizations.of(context)).product}';
+    final String addProductLabel =
+        'Add ${appState.shopProfile.terminologyLocalized(AppLocalizations.of(context)).product}';
 
     final Widget quickActions = _DukaDashboardQuickActions(
       onOpenSell: onOpenSell,
@@ -202,8 +220,8 @@ class DukaDashboardScreen extends StatelessWidget {
       onOpenReceiveStock: () => _receiveStock(context),
       onOpenStocktake: () => _openStocktake(context),
       addProductLabel: addProductLabel,
-      canManageStock: canManageStock &&
-          appState.shopProfile.capabilities.trackStock,
+      canManageStock:
+          canManageStock && appState.shopProfile.capabilities.trackStock,
       canReceiveStock: appState.hasPermission(PermissionKey.receiveStock),
       canStocktake: appState.hasPermission(PermissionKey.stocktake),
     );
@@ -213,6 +231,8 @@ class DukaDashboardScreen extends StatelessWidget {
 
     final List<Widget> body = <Widget>[
       header,
+      if (appState.isOwnerSession)
+        DashboardPortfolioCard(onOpen: () => context.push(Routes.portfolio)),
       if (attention != null)
         Semantics(
           sortKey: const OrdinalSortKey(0),
@@ -364,9 +384,7 @@ class DukaDashboardScreen extends StatelessWidget {
   }
 
   void _openStocktake(BuildContext context) {
-    Navigator.of(context).push(
-      MaterialPageRoute<void>(builder: (_) => const StocktakeScreen()),
-    );
+    context.push(Routes.stocktake);
   }
 }
 
@@ -433,7 +451,12 @@ class _DukaStockOverview extends StatelessWidget {
           return Wrap(
             spacing: spacing.lg,
             runSpacing: spacing.lg,
-            children: tiles.map((t) => SizedBox(width: ((constraints.maxWidth - spacing.lg) / 2).clamp(120.0, double.infinity), child: t)).toList(),
+            children: tiles
+                .map((t) => SizedBox(
+                    width: ((constraints.maxWidth - spacing.lg) / 2)
+                        .clamp(120.0, double.infinity),
+                    child: t))
+                .toList(),
           );
         },
       ),
@@ -556,6 +579,19 @@ class _DukaDashboardQuickActions extends StatelessWidget {
           subtitle: 'New catalogue item',
           onTap: onOpenAddProduct,
         ),
+      _DukaQuickTile(
+        icon: Icons.flash_on_outlined,
+        label: 'QuickSale',
+        subtitle: 'Fast sale dialog',
+        onTap: () =>
+            showQuickSaleDialog(context: context, profile: ShopProfile.duka),
+      ),
+      _DukaQuickTile(
+        icon: Icons.account_balance_wallet_outlined,
+        label: 'Cost of Goods',
+        subtitle: 'Pools and reload',
+        onTap: () => context.push(Routes.openCostGroups),
+      ),
       if (canReceiveStock)
         _DukaQuickTile(
           icon: Icons.local_shipping_outlined,
@@ -713,8 +749,7 @@ class _LooseGoodsCards extends StatelessWidget {
           final breakEven = _breakEven(tank);
           return Semantics(
             button: true,
-            label:
-                '${tank.name}: ${breakEven.$1} ${breakEven.$2}',
+            label: '${tank.name}: ${breakEven.$1} ${breakEven.$2}',
             child: InkWell(
               onTap: () => onOpenProduct(tank),
               child: SurfaceCard(
@@ -774,8 +809,7 @@ class _LooseGoodsCards extends StatelessWidget {
                                 formatMoney(
                                   tankSales[tank.id] != null
                                       ? Money.fromMinor(
-                                          tankSales[tank.id]!
-                                              .revenueMinor,
+                                          tankSales[tank.id]!.revenueMinor,
                                         )
                                       : Money.zero,
                                 ),
@@ -805,9 +839,9 @@ class _LooseGoodsCards extends StatelessWidget {
                     ),
                     Align(
                       alignment: AlignmentDirectional.centerEnd,
-                      child: TextButton.icon(
+                      child: ActionChip(
+                        avatar: const Icon(Icons.arrow_outward, size: 16),
                         onPressed: () => onOpenProduct(tank),
-                        icon: const Icon(Icons.chevron_right, size: 18),
                         label: Text(l10n.dashboardLooseGoodsViewDetails),
                       ),
                     ),

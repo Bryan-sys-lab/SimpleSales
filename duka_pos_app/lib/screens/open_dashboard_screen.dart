@@ -3,206 +3,170 @@ import 'package:go_router/go_router.dart';
 import 'package:provider/provider.dart';
 
 import '../app_brand.dart';
-import '../db/database_helper.dart';
 import '../l10n/generated/app_localizations.dart';
 import '../models/models.dart';
-import '../profile/profile_product_forms.dart';
-import 'loose_goods_form_sheet.dart';
-import '../profile/profile_terminology.dart';
 import '../profile/shop_profile.dart';
+import '../profile/profile_navigation.dart';
 import '../routing/routes.dart';
-import 'dashboard_shared.dart';
 import '../services/app_state.dart';
 import '../services/roles.dart';
-import '../theme/app_colors.dart';
-import '../theme/app_shapes.dart';
 import '../theme/app_spacing.dart';
-import '../services/live_refresh_mixin.dart';
-import '../services/live_channel_service.dart';
-import '../services/session_refresh_mixin.dart';
-import '../theme/typography.dart';
-import '../ui/components/surface.dart';
-import '../ui/components/status.dart';
-import '../ui/layout/page.dart';
 import '../utils/money.dart';
-import '../utils/units.dart';
-import '../widgets/backup_reminder_banner.dart';
+import '../ui/components/surface.dart';
+import '../ui/layout/page.dart';
+import 'dashboard_sections.dart';
+import 'dashboard_shared.dart';
+import 'inventory_screen.dart' show ProductEditor;
+import 'quick_sale_dialog.dart';
 
 const double _openDashboardMaxWidth = 1200;
 
-/// The Open profile dashboard.
-///
-/// Job-centred rather than product-centred: revenue, net profit, cash position
-/// and receivables lead — then active jobs, jobs awaiting payment, overdue
-/// jobs, cost groups and recent activity. Quick actions sit beside the figures
-/// so the four questions an Open owner asks are answered on one screen:
-///
-///   What money came in?  What profit did we make?
-///   What is tied up in work?  What is still owed?
-class OpenDashboardScreen extends StatefulWidget {
-  const OpenDashboardScreen({super.key});
+class OpenDashboardScreen extends StatelessWidget {
+  const OpenDashboardScreen({
+    required this.data,
+    required this.onRefresh,
+    required this.onBackupNow,
+    required this.onOpenShift,
+    required this.onOpenSell,
+    required this.onOpenInventory,
+    required this.onOpenEtimsSettings,
+    required this.onOpenProduct,
+    required this.onRetryEtims,
+    required this.onRetryRejectedEtims,
+    required this.dismissed,
+    required this.onDismiss,
+    super.key,
+  });
 
-  @override
-  State<OpenDashboardScreen> createState() => _OpenDashboardScreenState();
-}
-
-class _OpenDashboardScreenState extends State<OpenDashboardScreen>
-    with LiveRefresh<OpenDashboardScreen>, SessionRefresh<OpenDashboardScreen> {
-  int _revenueMinor = 0;
-  int _revenueTodayMinor = 0;
-  int _netProfitMinor = 0;
-  int _cashPositionMinor = 0;
-  int _receivablesMinor = 0;
-  int _activeJobs = 0;
-  int _jobsAwaitingPayment = 0;
-  int _overdueJobs = 0;
-  int _costGroups = 0;
-  List<({int id, String title})> _recentJobs = const [];
-  List<Map<String, dynamic>> _jobs = const [];
-  String? _error;
-
-  @override
-  Set<LiveReason> get liveReasons => const <LiveReason>{};
-
-  @override
-  bool get liveIsVisible => TickerMode.valuesOf(context).enabled;
-
-  @override
-  Future<void> reloadFromLive() => _load();
-
-  @override
-  void clearForSession() {
-    _revenueMinor = 0;
-    _revenueTodayMinor = 0;
-    _netProfitMinor = 0;
-    _cashPositionMinor = 0;
-    _receivablesMinor = 0;
-    _activeJobs = 0;
-    _jobsAwaitingPayment = 0;
-    _overdueJobs = 0;
-    _costGroups = 0;
-    _recentJobs = const [];
-    _error = null;
-  }
-
-  @override
-  Future<void> reloadFromSession() => _load();
-
-  @override
-  void initState() {
-    super.initState();
-    _load();
-  }
-
-  Future<void> _load() async {
-    try {
-      final db = DatabaseHelper.instance;
-      final jobs = await db.getJobsWithTotals();
-      final pools = await db.getCostPools();
-      final credit = await db.creditSummary();
-
-      // Whole-ledger sums in SQL. Summing `getFinancialEvents()` rows capped at
-      // the first 100 events, so these froze once the ledger grew past that.
-      // Revenue comes only from completed jobs (job_completion events), not from
-      // deposits collected on open jobs.
-      final all = await db.getFinancialSums();
-      final completed = await db.getFinancialSums(eventType: 'job_completion');
-      final now = DateTime.now();
-      final dayStart = DateTime(now.year, now.month, now.day);
-      final tomorrow = dayStart.add(const Duration(days: 1));
-      final completedToday = await db.getFinancialSums(
-        eventType: 'job_completion',
-        sinceUtc: dayStart.toUtc(),
-        untilUtc: tomorrow.toUtc(),
-      );
-      final int revenue = completed.revenueMinor;
-      final int cashIn = all.cashInMinor;
-      final int cashOut = all.cashOutMinor;
-
-      int costs = 0;
-      int active = 0;
-      int awaiting = 0;
-      int overdue = 0;
-      for (final job in jobs) {
-        final status = (job['status'] as String?) ?? 'draft';
-        final bool closed = status == 'completed' || status == 'closed';
-        final bool finished = closed || status == 'cancelled';
-        // Profit is realised on finished work: counting the spend on jobs that
-        // have not been paid for yet made profit look worse the busier you were.
-        if (closed) {
-          costs += (job['cost_minor'] as num?)?.toInt() ?? 0;
-          final price = (job['final_price_minor'] as num?)?.toInt() ?? 0;
-          final paid = (job['paid_minor'] as num?)?.toInt() ?? 0;
-          if (price - paid > 0) awaiting++;
-        }
-        if (!finished) active++;
-        if (status == 'awaiting_payment') awaiting++;
-        final due = job['due_at'];
-        if (due is String && !finished) {
-          final dt = DateTime.tryParse(due);
-          if (dt != null && dt.isBefore(now)) overdue++;
-        }
-      }
-      if (!mounted) return;
-      setState(() {
-        _revenueMinor = revenue;
-        _revenueTodayMinor = completedToday.revenueMinor;
-        _netProfitMinor = revenue - costs;
-        _cashPositionMinor = cashIn - cashOut;
-        _receivablesMinor = credit.totalOwedMinor;
-        _activeJobs = active;
-        _jobsAwaitingPayment = awaiting;
-        _overdueJobs = overdue;
-        _costGroups = pools.length;
-        _recentJobs = jobs.take(3).map((j) => (id: (j['id'] as num).toInt(), title: (j['title'] as String?) ?? '')).toList();
-        _jobs = jobs;
-      });
-    } catch (e) {
-      if (!mounted) return;
-      setState(() => _error = e.toString());
-    }
-  }
-
-
-  Future<void> _pickJob(void Function(int jobId) onPicked) async {
-    if (_jobs.isEmpty) {
-      if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(AppLocalizations.of(context).openDashboardNoJobs)),
-      );
-      return;
-    }
-    final picked = await showDialog<int>(
-      context: context,
-      builder: (ctx) => SimpleDialog(
-        title: Text(AppLocalizations.of(context).openDashboardSelectJob),
-        children: _jobs.map((j) {
-          final id = (j['id'] as num).toInt();
-          final title = (j['title'] as String?) ?? 'Untitled';
-          return SimpleDialogOption(
-            onPressed: () => Navigator.of(ctx).pop(id),
-            child: Text(title),
-          );
-        }).toList(),
-      ),
-    );
-    if (picked != null) onPicked(picked);
-  }
+  final DashboardReady data;
+  final Future<void> Function() onRefresh;
+  final Future<void> Function() onBackupNow;
+  final Future<void> Function() onOpenShift;
+  final VoidCallback onOpenSell;
+  final VoidCallback onOpenInventory;
+  final VoidCallback onOpenEtimsSettings;
+  final ValueChanged<Product> onOpenProduct;
+  final Future<void> Function() onRetryEtims;
+  final Future<void> Function() onRetryRejectedEtims;
+  final Set<String> dismissed;
+  final ValueChanged<String>? onDismiss;
 
   @override
   Widget build(BuildContext context) {
     final AppSpacing spacing = AppSpacing.of(context);
-    final l10n = AppLocalizations.of(context);
-    final appState = context.watch<AppState>();
-    final String addItemLabel = 'Add ${appState.shopProfile.terminologyLocalized(l10n).product}';
-    // The money figures are whole-shop and not filtered by who rang them up, so
-    // they are for the owner and managers. They used to be shown to everyone
-    // under an "own scope" label that the numbers did not honour.
-    final bool canSeeShopMoney =
+    final AppState appState = context.watch<AppState>();
+    final AppLocalizations l10n = AppLocalizations.of(context);
+    final bool canManageStock = appState.canManageStock;
+    final bool canManageCredit =
         appState.isOwnerSession || appState.role == ShopRole.manager;
+    final bool canViewCost = appState.isOwnerSession ||
+        appState.hasPermission(PermissionKey.viewCost);
+
+    final Widget header = DashboardBusinessHeader(
+      shopName: appState.owner?.shopName ?? SimplePosBrand.appName,
+      profile: ShopProfile.open,
+      staffName: appState.currentStaffName ?? appState.owner?.name,
+      shift: data.openShift,
+    );
+
+    final Widget financialHero = DashboardMoneyHero(
+      profile: ShopProfile.open,
+      label: l10n.dashboardNetSalesToday,
+      amount: data.totals.total,
+      primaryActionLabel: l10n.dashboardNewSale,
+      onPrimaryAction: onOpenSell,
+      secondaryLine: l10n.dashboardPeriodToday,
+      scopeLabel: data.scopeLabel,
+      paymentMix: data.paymentMix,
+      onTransactions: () => context.push(Routes.transactions),
+    );
+
+    final List<DashboardKpiData> kpis = <DashboardKpiData>[
+      DashboardKpiData(
+        label: 'Gross profit (costed)',
+        value: formatMoney(Money.fromMinor(data.totals.profitMinor)),
+        icon: Icons.trending_up_outlined,
+        tone: DashboardKpiTone.positive,
+      ),
+      DashboardKpiData(
+        label: l10n.dashboardExpenses,
+        value: formatMoney(Money.fromMinor(data.totals.expensesMinor)),
+        icon: Icons.payments_outlined,
+        tone: DashboardKpiTone.expense,
+      ),
+      DashboardKpiData(
+        label: 'Average sale',
+        value: formatMoney(data.totals.averageBasket),
+        icon: Icons.shopping_basket_outlined,
+        tone: DashboardKpiTone.neutral,
+      ),
+      if (data.openShift != null)
+        DashboardKpiData(
+          label: 'Expected till',
+          value: formatMoney(data.expectedTill),
+          icon: Icons.point_of_sale_outlined,
+          tone: DashboardKpiTone.info,
+        ),
+      DashboardKpiData(
+        label: l10n.dashboardStockValue,
+        value: formatMoney(data.stockValue),
+        icon: Icons.inventory_2_outlined,
+        tone: DashboardKpiTone.info,
+        onTap: onOpenInventory,
+      ),
+      if (canManageCredit)
+        DashboardKpiData(
+          label: 'Customer tabs',
+          value: formatMoney(Money.fromMinor(data.creditOwedMinor)),
+          icon: Icons.credit_card_outlined,
+          tone: DashboardKpiTone.pending,
+          onTap: () => context.push(Routes.customers),
+        )
+      else
+        DashboardKpiData(
+          label: l10n.dashboardTransactionsLabel,
+          value: '${data.totals.transactions}',
+          icon: Icons.receipt_long_outlined,
+          tone: DashboardKpiTone.neutral,
+          onTap: () => context.push(Routes.transactions),
+        ),
+    ];
+
+    final Widget kpiGrid = DashboardKpiGrid(items: kpis);
+
+    final Widget stockOverview = _OpenStockOverview(
+      totalProducts: data.totalProducts,
+      lowStockCount: data.lowStockCount,
+      outOfStockCount: data.outOfStockCount,
+      stockValue: data.stockValue,
+      onOpenInventory: onOpenInventory,
+    );
+
+    final Widget quickActions = _OpenQuickActions(
+      onOpenSell: onOpenSell,
+      onOpenQuickSale: () => showQuickSaleDialog(
+        context: context,
+        profile: ShopProfile.open,
+      ),
+      onOpenAddProduct: () => _openAddProduct(context),
+      onOpenReceiveStock: () => _receiveStock(context),
+      onOpenStocktake: () => _openStocktake(context),
+      onOpenCostOfGoods: () => context.push(Routes.openCostGroups),
+      canManageStock: canManageStock,
+      canReceiveStock: appState.hasPermission(PermissionKey.receiveStock),
+      canStocktake: appState.hasPermission(PermissionKey.stocktake),
+    );
+
+    final Widget? credit = canManageCredit
+        ? DashboardCreditCard(
+            owedMinor: data.creditOwedMinor,
+            customerCount: data.creditCustomerCount,
+            onOpen: () => context.push(Routes.customers),
+          )
+        : null;
 
     return RefreshIndicator(
-      onRefresh: _load,
+      onRefresh: onRefresh,
       child: AdaptivePage(
         scrollable: true,
         maxContentWidth: _openDashboardMaxWidth,
@@ -210,714 +174,295 @@ class _OpenDashboardScreenState extends State<OpenDashboardScreen>
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: <Widget>[
-            BackupReminderBanner(onBackupNow: () => performBackup(context)),
-            SizedBox(height: spacing.section),
-            DashboardBusinessHeader(
-              shopName: appState.owner?.shopName ?? SimplePosBrand.appName,
-              profile: ShopProfile.open,
-      staffName: appState.currentStaffName ?? appState.owner?.name,
-                    ),
-            SizedBox(height: spacing.xl),
-            if (_error != null)
-              SurfaceCard(
-                padding: EdgeInsets.all(spacing.lg),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.stretch,
-                  children: <Widget>[
-                    Text(
-                      'Unable to load dashboard data',
-                      style: AppTypography.of(context).bodyMedium?.copyWith(
-                        color: AppColors.of(context).danger,
-                        fontWeight: FontWeight.w600,
-                      ),
-                    ),
-                    SizedBox(height: spacing.sm),
-                    Text(
-                      _error!,
-                      style: AppTypography.of(context).bodySmall?.copyWith(
-                        color: AppColors.of(context).onSurfaceMuted,
-                      ),
-                    ),
-                    SizedBox(height: spacing.lg),
-                    FilledButton(
-                      onPressed: _load,
-                      child: const Text('Retry'),
-                    ),
-                  ],
-                ),
-              )
-            else if (canSeeShopMoney) ...<Widget>[
-              DashboardMoneyHero(
-                label: l10n.dashboardCompletedJobRevenueToday,
-                amount: Money.fromMinor(_revenueTodayMinor),
-                primaryActionLabel: l10n.dashboardNewJob,
-                onPrimaryAction: () => context.push(Routes.openJobNew),
-                secondaryLine: l10n.dashboardPeriodToday,
-                scopeLabel: l10n.openDashboardScopeShop,
-              ),
+            header,
+            SizedBox(height: spacing.lg),
+            financialHero,
+            SizedBox(height: spacing.lg),
+            kpiGrid,
+            SizedBox(height: spacing.lg),
+            stockOverview,
+            if (canViewCost && data.openCostPoolCount > 0) ...<Widget>[
               SizedBox(height: spacing.lg),
-              DashboardKpiGrid(items: <DashboardKpiData>[
-                DashboardKpiData(
-                  label: l10n.dashboardRevenueToDate,
-                  value: formatMoney(Money.fromMinor(_revenueMinor)),
-                  icon: Icons.payments_outlined,
-                  tone: DashboardKpiTone.positive,
-                ),
-                DashboardKpiData(
-                  label: l10n.openDashboardNetProfit,
-                  value: formatMoney(Money.fromMinor(_netProfitMinor)),
-                  icon: Icons.trending_up_outlined,
-                  tone: DashboardKpiTone.positive,
-                ),
-                DashboardKpiData(
-                  label: l10n.dashboardNetCashMovement,
-                  value: formatMoney(Money.fromMinor(_cashPositionMinor)),
-                  icon: Icons.account_balance_wallet_outlined,
-                  tone: DashboardKpiTone.info,
-                ),
-                DashboardKpiData(
-                  label: l10n.openDashboardReceivables,
-                  value: formatMoney(Money.fromMinor(_receivablesMinor)),
-                  icon: Icons.request_quote_outlined,
-                  tone: DashboardKpiTone.pending,
-                ),
-              ]),
-            ]
-            else
-              const SizedBox.shrink(),
-            SizedBox(height: spacing.xl),
-            _OpenOperationalOverview(
-              activeJobs: _activeJobs,
-              jobsAwaitingPayment: _jobsAwaitingPayment,
-              overdueJobs: _overdueJobs,
-              costGroups: _costGroups,
-              onOpenJobs: () => context.push(Routes.openJobs),
-              onOpenReceivables: () => context.push(Routes.openReceivables),
-              onOpenCostGroups: () => context.push(Routes.openCostGroups),
-            ),
-            SizedBox(height: spacing.xl),
-            _OpenQuickActions(
-              onNewJob: () => context.push(Routes.openJobNew),
-              onRecordPayment: () => _pickJob((id) => context.push(Routes.openJobDetail(id))),
-              onRecordSale: () => context.push(Routes.sell, extra: {'quickSale': true}),
-              onAddJobCost: () => _pickJob((id) => context.push(Routes.openJobAddCost(id))),
-              onNewCostGroup: () => context.push(Routes.openCostGroupNew),
-              onAddItem: () => _openAddItem(context),
-              onOwnerFinance: () => _recordOwnerTransaction(),
-              addItemLabel: addItemLabel,
-              canManageJobs: appState.hasPermission(PermissionKey.manageJobs),
-              canReceivePayments:
-                  appState.hasPermission(PermissionKey.receiveJobPayment),
-              canRecordSales:
-                  appState.isOwnerSession ||
-                      appState.role == ShopRole.manager,
-              canRecordOwnerFinance: appState.isOwnerSession,
-            ),
-            SizedBox(height: spacing.xl),
-            _OpenRecentActivity(
-              title: l10n.openDashboardRecentActivity,
-              recent: _recentJobs,
-              onOpenJob: () => context.push(Routes.openJobs),
-            ),
-            SizedBox(height: spacing.section),
-          ],
-        ),
-      ),
-    );
-  }
-
-  /// Records an owner transaction (capital/drawing/loan). Gated to owner session.
-  Future<void> _recordOwnerTransaction() async {
-    final appState = context.read<AppState>();
-    if (!appState.isOwnerSession) {
-      if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Owner-only operation')),
-      );
-      return;
-    }
-    final typeCtrl = StringBuffer('capital_in');
-    final amountCtrl = TextEditingController();
-    final referenceCtrl = TextEditingController();
-    final noteCtrl = TextEditingController();
-    final result = await showDialog<Map<String, String>>(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        title: const Text('Owner Finance'),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: <Widget>[
-            DropdownButtonFormField<String>(
-              initialValue: typeCtrl.toString(),
-              decoration: const InputDecoration(labelText: 'Transaction type'),
-              items: <String>['capital_in', 'drawing', 'loan_received', 'loan_repayment']
-                  .map((t) => DropdownMenuItem<String>(
-                        value: t,
-                        child: Text(t.replaceAll('_', ' ').toUpperCase()),
-                      ))
-                  .toList(),
-              onChanged: (v) {
-                if (v == null) return;
-                typeCtrl.clear();
-                typeCtrl.write(v);
-              },
-            ),
-            const SizedBox(height: 12),
-            TextField(
-              controller: amountCtrl,
-              keyboardType: const TextInputType.numberWithOptions(decimal: true),
-              decoration: const InputDecoration(labelText: 'Amount (KES)'),
-              autofocus: true,
-            ),
-            const SizedBox(height: 12),
-            TextField(
-              controller: referenceCtrl,
-              decoration: const InputDecoration(labelText: 'Reference (optional)'),
-            ),
-            const SizedBox(height: 12),
-            TextField(
-              controller: noteCtrl,
-              decoration: const InputDecoration(labelText: 'Note (optional)'),
-            ),
-          ],
-        ),
-        actions: <Widget>[
-          TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Cancel')),
-          FilledButton(
-            onPressed: () {
-              final amount = parseMoneyInput(amountCtrl.text.trim());
-              if (amount == null || amount <= 0) return;
-              Navigator.pop(ctx, <String, String>{
-                'type': typeCtrl.toString(),
-                'amount': amountCtrl.text.trim(),
-                'reference': referenceCtrl.text.trim(),
-                'note': noteCtrl.text.trim(),
-              });
-            },
-            child: const Text('Record'),
-          ),
-        ],
-      ),
-    );
-    amountCtrl.dispose();
-    referenceCtrl.dispose();
-    noteCtrl.dispose();
-    if (result == null || !mounted) return;
-    final amount = parseMoneyInput(result['amount'] ?? '');
-    if (amount == null || amount <= 0) return;
-    try {
-      await DatabaseHelper.instance.recordOwnerTransaction(
-        uuid: 'own-${DateTime.now().microsecondsSinceEpoch}',
-        transactionType: result['type']!,
-        amount: Money.fromMajor(amount),
-        staffName: appState.currentStaffName ?? 'Owner',
-        staffId: appState.currentStaffId,
-        note: (result['note'] ?? '').isEmpty ? null : result['note'],
-      );
-      if (mounted) await _load();
-    } catch (e) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Owner transaction failed: $e')),
-        );
-      }
-    }
-  }
-
-  /// Opens the Open-profile add-item dialog. This is the visible entry point
-  /// for the profile-defined product creation capability, gated on the profile
-  /// tracking stock (now enabled for Open). Persists via upsertProduct.
-  Future<void> _openAddItem(BuildContext context) async {
-    final result = await ProfileProductForms.showForm(
-      context: context,
-      profile: ShopProfile.open,
-    );
-    if (!context.mounted || result == null) return;
-    final unit = ProductUnit.parse(result['unit'] as String?);
-    final cost = (result['cost'] as num?)?.toDouble() ?? 0;
-    final price = (result['price'] as num?)?.toDouble() ?? 0;
-    final stock = (result['stock'] as num?)?.toDouble() ?? 0;
-    final reorderLevel = (result['reorder_level'] as num?)?.toInt() ?? 0;
-    final trackStock = (result['track_stock'] as bool?) ?? true;
-    final costPoolId = (result['cost_pool_id'] as num?)?.toInt();
-    final product = Product(
-      name: result['name'] as String,
-      category: (result['category'] as String? ?? 'Item or service'),
-      costPrice: Money.fromMajor(cost),
-      sellPrice: Money.fromMajor(price),
-      stockQty: trackStock ? stock : 0,
-      trackStock: trackStock,
-      costPoolId: costPoolId,
-      reorderLevel: reorderLevel,
-      unit: unit,
-      updatedAt: DateTime.now().toIso8601String(),
-    );
-    await DatabaseHelper.instance.upsertProduct(product);
-    if (!context.mounted) return;
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text('${product.name} saved')),
-    );
-  }
-}
-
-/// Shop header: name, time-of-day greeting, signed-in staff role.
-class _OpenOperationalOverview extends StatelessWidget {
-  const _OpenOperationalOverview({
-    required this.activeJobs,
-    required this.jobsAwaitingPayment,
-    required this.overdueJobs,
-    required this.costGroups,
-    required this.onOpenJobs,
-    required this.onOpenReceivables,
-    required this.onOpenCostGroups,
-  });
-
-  final int activeJobs;
-  final int jobsAwaitingPayment;
-  final int overdueJobs;
-  final int costGroups;
-  final VoidCallback onOpenJobs;
-  final VoidCallback onOpenReceivables;
-  final VoidCallback onOpenCostGroups;
-
-  @override
-  Widget build(BuildContext context) {
-    final AppSpacing spacing = AppSpacing.of(context);
-    final AppColors colors = AppColors.of(context);
-    final l10n = AppLocalizations.of(context);
-    final type = AppTypography.of(context);
-
-    return SurfaceCard(
-      padding: EdgeInsets.all(spacing.lg),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: <Widget>[
-          Text(
-            l10n.openDashboardOperationalOverview,
-            style: type.labelMedium?.copyWith(
-              color: colors.onSurfaceMuted,
-              fontWeight: FontWeight.w600,
-            ),
-          ),
-          SizedBox(height: spacing.lg),
-          LayoutBuilder(
-            builder: (BuildContext context, BoxConstraints constraints) {
-              final bool row = constraints.maxWidth >= 760;
-              final List<Widget> tiles = <Widget>[
-                _CountTile(
-                  label: l10n.openDashboardActiveJobs,
-                  count: activeJobs,
-                  tone: activeJobs > 0 ? StatusTone.warning : StatusTone.success,
-                  icon: Icons.work_outline,
-                  onTap: onOpenJobs,
-                ),
-                _CountTile(
-                  label: l10n.openDashboardJobsAwaitingPayment,
-                  count: jobsAwaitingPayment,
-                  tone: jobsAwaitingPayment > 0
-                      ? StatusTone.warning
-                      : StatusTone.success,
-                  icon: Icons.schedule_outlined,
-                  onTap: onOpenReceivables,
-                ),
-                _CountTile(
-                  label: l10n.openDashboardOverdueJobs,
-                  count: overdueJobs,
-                  tone: overdueJobs > 0
-                      ? StatusTone.danger
-                      : StatusTone.success,
-                  icon: Icons.error_outline,
-                  onTap: onOpenReceivables,
-                ),
-                _CountTile(
-                  label: l10n.openDashboardCostGroups,
-                  count: costGroups,
-                  tone: StatusTone.neutral,
-                  icon: Icons.account_balance_wallet_outlined,
-                  onTap: onOpenCostGroups,
-                ),
-              ];
-              if (row) {
-                return IntrinsicHeight(child: Row(
-                  crossAxisAlignment: CrossAxisAlignment.stretch,
-                  children: <Widget>[
-                    for (int i = 0; i < tiles.length; i++) ...<Widget>[
-                      if (i > 0) SizedBox(width: spacing.lg),
-                      Expanded(child: tiles[i]),
-                    ],
-                  ],
-                ));
-              }
-              return Wrap(
-                spacing: spacing.lg,
-                runSpacing: spacing.lg,
-                children: tiles.map((t) => SizedBox(width: ((constraints.maxWidth - spacing.lg) / 2).clamp(120.0, double.infinity), child: t)).toList(),
-              );
-            },
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-class _CountTile extends StatelessWidget {
-  const _CountTile({
-    required this.label,
-    required this.count,
-    required this.tone,
-    required this.icon,
-    required this.onTap,
-  });
-
-  final String label;
-  final int count;
-  final StatusTone tone;
-  final IconData icon;
-  final VoidCallback onTap;
-
-  @override
-  Widget build(BuildContext context) {
-    final AppSpacing spacing = AppSpacing.of(context);
-    final AppColors colors = AppColors.of(context);
-    final type = AppTypography.of(context);
-
-    return SurfaceCard(
-      padding: EdgeInsets.all(spacing.md),
-      onTap: onTap,
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        mainAxisSize: MainAxisSize.min,
-        children: <Widget>[
-          Wrap(
-            alignment: WrapAlignment.spaceBetween,
-            crossAxisAlignment: WrapCrossAlignment.center,
-            spacing: spacing.sm,
-            runSpacing: spacing.xs,
-            children: <Widget>[
-              Container(
-                padding: EdgeInsets.all(spacing.xs),
-                decoration: BoxDecoration(
-                  color: tone.container(colors),
-                  borderRadius: AppShapes.of(context).controlRadius,
-                ),
-                child: Icon(
-                  icon,
-                  size: 18,
-                  color: tone.onContainer(colors),
-                ),
-              ),
-              StatusChip(tone: tone, text: tone.label, dense: true),
+              _OpenCostSummary(
+                  data: data,
+                  onOpen: () => context.push(Routes.openCostGroups)),
             ],
-          ),
-          SizedBox(height: spacing.lg),
-          Text(
-            '$count',
-            style: AppTypography.money(
-              context,
-              size: 20,
-              weight: FontWeight.w800,
-            ),
-          ),
-          SizedBox(height: spacing.xs),
-          Text(
-            label,
-            style: type.labelMedium?.copyWith(color: colors.onSurfaceMuted),
-          ),
+            if (appState.isOwnerSession) ...<Widget>[
+              SizedBox(height: spacing.lg),
+              DashboardPortfolioCard(
+                  onOpen: () => context.push(Routes.portfolio)),
+            ],
+            if (data.paymentMix.isNotEmpty) ...<Widget>[
+              SizedBox(height: spacing.lg),
+              _OpenPaymentMix(data: data),
+            ],
+            if (data.topProducts.isNotEmpty) ...<Widget>[
+              SizedBox(height: spacing.lg),
+              _OpenTopProducts(data: data),
+            ],
+            SizedBox(height: spacing.lg),
+            quickActions,
+            if (credit != null) ...<Widget>[
+              SizedBox(height: spacing.lg),
+              credit,
+            ],
+          ],
+        ),
+      ),
+    );
+  }
+
+  Future<void> _openAddProduct(BuildContext context) async {
+    final appState = context.read<AppState>();
+    await showModalBottomSheet<void>(
+      context: context,
+      isScrollControlled: true,
+      builder: (_) => ProductEditor(
+        existing: null,
+        allowVariants: appState.shopProfile.navigation.showVariants,
+        shopProfile: appState.shopProfile,
+        onSaved: onRefresh,
+      ),
+    );
+  }
+
+  void _receiveStock(BuildContext context) {
+    // reuse existing receive stock sheet via inventory screen navigation
+    context.push(Routes.inventory);
+  }
+
+  void _openStocktake(BuildContext context) {
+    context.push(Routes.stocktake);
+  }
+}
+
+class _OpenCostSummary extends StatelessWidget {
+  const _OpenCostSummary({required this.data, required this.onOpen});
+
+  final DashboardReady data;
+  final VoidCallback onOpen;
+
+  @override
+  Widget build(BuildContext context) {
+    final invested = Money.fromMinor(data.openCostInvestedMinor);
+    final recovered = Money.fromMinor(data.openCostRecoveredMinor);
+    return DashboardPanel(
+      title: 'Cost of Goods',
+      trailing: ActionChip(
+        avatar: const Icon(Icons.arrow_outward, size: 16),
+        label: const Text('Open'),
+        onPressed: onOpen,
+      ),
+      child: Wrap(
+        spacing: 24,
+        runSpacing: 12,
+        children: <Widget>[
+          Text('${data.openCostPoolCount} open pools'),
+          Text('Invested ${formatMoney(invested)}'),
+          Text('Recovered ${formatMoney(recovered)}'),
+          Text('Remaining ${formatMoney(invested - recovered)}'),
         ],
       ),
     );
   }
 }
 
-/// Quick actions: New job, Record sale, Record payment, Add job cost, New cost
-/// group — as a 2x2 grid of tiles with icon + label + subtitle, mirroring
-/// the mockup.
+class _OpenPaymentMix extends StatelessWidget {
+  const _OpenPaymentMix({required this.data});
+
+  final DashboardReady data;
+
+  @override
+  Widget build(BuildContext context) {
+    final l10n = AppLocalizations.of(context);
+    return DashboardPanel(
+      title: 'Payment mix today',
+      child: Column(
+        children: <Widget>[
+          for (final row in data.paymentMix)
+            ListTile(
+              dense: true,
+              contentPadding: EdgeInsets.zero,
+              title: Text(row.label(l10n: l10n)),
+              trailing: Text(formatMoney(row.sales)),
+              subtitle: Text('${row.transactions} transactions'),
+            ),
+        ],
+      ),
+    );
+  }
+}
+
+class _OpenTopProducts extends StatelessWidget {
+  const _OpenTopProducts({required this.data});
+
+  final DashboardReady data;
+
+  @override
+  Widget build(BuildContext context) {
+    return DashboardPanel(
+      title: 'Top-selling items today',
+      child: Column(
+        children: <Widget>[
+          for (final row in data.topProducts)
+            ListTile(
+              dense: true,
+              contentPadding: EdgeInsets.zero,
+              title: Text(row.productName),
+              subtitle: Text('${row.units} units'),
+              trailing: Text(formatMoney(row.revenue)),
+            ),
+        ],
+      ),
+    );
+  }
+}
+
+class _OpenStockOverview extends StatelessWidget {
+  const _OpenStockOverview({
+    required this.totalProducts,
+    required this.lowStockCount,
+    required this.outOfStockCount,
+    required this.stockValue,
+    required this.onOpenInventory,
+  });
+
+  final int totalProducts;
+  final int lowStockCount;
+  final int outOfStockCount;
+  final Money stockValue;
+  final VoidCallback onOpenInventory;
+
+  @override
+  Widget build(BuildContext context) {
+    return Card(
+      child: ListTile(
+        title: Text('Inventory health'),
+        subtitle: Text(
+          '$totalProducts SKUs · Low: $lowStockCount · Out: $outOfStockCount · ${formatMoney(stockValue)}',
+        ),
+        trailing: const Icon(Icons.chevron_right),
+        onTap: onOpenInventory,
+      ),
+    );
+  }
+}
+
 class _OpenQuickActions extends StatelessWidget {
   const _OpenQuickActions({
-    required this.onNewJob,
-    required this.onRecordPayment,
-    required this.onRecordSale,
-    required this.onAddJobCost,
-    required this.onNewCostGroup,
-    required this.onAddItem,
-    required this.onOwnerFinance,
-    required this.addItemLabel,
-    required this.canManageJobs,
-    required this.canReceivePayments,
-    required this.canRecordSales,
-    required this.canRecordOwnerFinance,
+    required this.onOpenSell,
+    required this.onOpenQuickSale,
+    required this.onOpenAddProduct,
+    required this.onOpenReceiveStock,
+    required this.onOpenStocktake,
+    required this.onOpenCostOfGoods,
+    required this.canManageStock,
+    required this.canReceiveStock,
+    required this.canStocktake,
   });
 
-  final VoidCallback onNewJob;
-  final VoidCallback onRecordPayment;
-  final VoidCallback onRecordSale;
-  final VoidCallback onAddJobCost;
-  final VoidCallback onNewCostGroup;
-  final VoidCallback onAddItem;
-  final VoidCallback onOwnerFinance;
-  final String addItemLabel;
-  final bool canManageJobs;
-  final bool canReceivePayments;
-  final bool canRecordSales;
-  final bool canRecordOwnerFinance;
+  final VoidCallback onOpenSell;
+  final VoidCallback onOpenQuickSale;
+  final VoidCallback onOpenAddProduct;
+  final VoidCallback onOpenReceiveStock;
+  final VoidCallback onOpenStocktake;
+  final VoidCallback onOpenCostOfGoods;
+  final bool canManageStock;
+  final bool canReceiveStock;
+  final bool canStocktake;
 
   @override
   Widget build(BuildContext context) {
     final AppSpacing spacing = AppSpacing.of(context);
-
     final List<Widget> tiles = <Widget>[
       _OpenQuickTile(
-        icon: Icons.add_task,
-        label: 'New job',
-        subtitle: 'Create a job',
-        onTap: onNewJob,
-        primary: true,
+        icon: Icons.point_of_sale_outlined,
+        label: 'New Sale',
+        subtitle: 'Open Till',
+        onTap: onOpenSell,
       ),
-      if (canRecordSales)
-        _OpenQuickTile(
-          icon: Icons.point_of_sale_outlined,
-          label: 'Record sale',
-          subtitle: 'Quick sale',
-          onTap: onRecordSale,
-        ),
       _OpenQuickTile(
-        icon: Icons.add_circle_outline,
-        label: addItemLabel,
-        subtitle: 'New catalogue item',
-        onTap: onAddItem,
+        icon: Icons.flash_on_outlined,
+        label: 'QuickSale',
+        subtitle: 'Fast sale dialog',
+        onTap: onOpenQuickSale,
       ),
-      if (canReceivePayments)
-        _OpenQuickTile(
-          icon: Icons.payment_outlined,
-          label: 'Record payment',
-          subtitle: 'Receive payment',
-          onTap: onRecordPayment,
-        ),
-      if (canManageJobs)
+      if (canManageStock)
         _OpenQuickTile(
           icon: Icons.add_circle_outline,
-          label: 'Add job cost',
-          subtitle: 'Log a cost',
-          onTap: onAddJobCost,
+          label: 'Add Item',
+          subtitle: 'New catalogue item',
+          onTap: onOpenAddProduct,
+        ),
+      if (canReceiveStock)
+        _OpenQuickTile(
+          icon: Icons.local_shipping_outlined,
+          label: 'Receive Stock',
+          subtitle: 'Record delivery',
+          onTap: onOpenReceiveStock,
+        ),
+      if (canStocktake)
+        _OpenQuickTile(
+          icon: Icons.fact_check_outlined,
+          label: 'Stocktake',
+          subtitle: 'Count inventory',
+          onTap: onOpenStocktake,
         ),
       _OpenQuickTile(
         icon: Icons.account_balance_wallet_outlined,
-        label: 'New cost group',
-        subtitle: 'Pooled costs',
-        onTap: onNewCostGroup,
+        label: 'Cost of Goods',
+        subtitle: 'Pools and reload',
+        onTap: onOpenCostOfGoods,
       ),
-      _OpenQuickTile(
-        icon: Icons.inventory_2_outlined,
-        label: 'Loose goods',
-        subtitle: 'Tanks and loose stock',
-        onTap: () => showLooseGoodsFormSheet(
-          context,
-          profile: ShopProfile.open,
-        ),
-      ),
-      if (canRecordOwnerFinance)
-        _OpenQuickTile(
-          icon: Icons.attach_money,
-          label: 'Owner finance',
-          subtitle: 'Capital, drawing, loan',
-          onTap: onOwnerFinance,
-        ),
     ];
 
-    return LayoutBuilder(
-      builder: (BuildContext context, BoxConstraints constraints) {
-        final bool twoColumns = constraints.maxWidth >= 320;
-        if (twoColumns) {
-          return Wrap(
-            spacing: spacing.md,
-            runSpacing: spacing.md,
-            children: <Widget>[
-              for (final tile in tiles)
-                SizedBox(
-                  width: (constraints.maxWidth - spacing.md) / 2,
-                  child: tile,
-                ),
-            ],
-          );
-        }
-        return Column(
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: <Widget>[
-            for (int i = 0; i < tiles.length; i++) ...<Widget>[
-              if (i > 0) SizedBox(height: spacing.md),
-              tiles[i],
-            ],
-          ],
-        );
-      },
+    return Wrap(
+      spacing: spacing.md,
+      runSpacing: spacing.md,
+      children: tiles,
     );
   }
 }
 
-/// One quick-action tile for the open dashboard.
 class _OpenQuickTile extends StatelessWidget {
   const _OpenQuickTile({
     required this.icon,
     required this.label,
     required this.subtitle,
     required this.onTap,
-    this.primary = false,
   });
 
   final IconData icon;
   final String label;
   final String subtitle;
   final VoidCallback onTap;
-  final bool primary;
 
   @override
   Widget build(BuildContext context) {
-    final AppSpacing spacing = AppSpacing.of(context);
-    final AppColors colors = AppColors.of(context);
-    final TextTheme type = AppTypography.of(context);
-
-    return Semantics(
-      button: true,
-      label: '$label, $subtitle',
+    return SizedBox(
+      width: 160,
       child: SurfaceCard(
-        padding: EdgeInsets.all(spacing.md),
         onTap: onTap,
+        semanticLabel: label,
+        padding: const EdgeInsets.all(12),
         child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
           mainAxisSize: MainAxisSize.min,
           children: <Widget>[
-            Container(
-              padding: EdgeInsets.all(spacing.xs),
-              decoration: BoxDecoration(
-                color: primary
-                    ? colors.accentContainer
-                    : colors.surfaceSunken,
-                borderRadius: AppShapes.of(context).controlRadius,
-              ),
-              child: Icon(
-                icon,
-                size: 20,
-                color: primary ? colors.accent : colors.onSurfaceVariant,
-              ),
-            ),
-            SizedBox(height: spacing.md),
+            Icon(icon),
+            const SizedBox(height: 8),
             Text(
               label,
-              style: type.titleSmall?.copyWith(
-                fontWeight: FontWeight.w700,
-                color: primary ? colors.accent : colors.onSurface,
-              ),
+              style: Theme.of(context).textTheme.titleSmall,
+              textAlign: TextAlign.center,
             ),
-            SizedBox(height: 2),
             Text(
               subtitle,
-              style: type.bodySmall?.copyWith(
-                color: colors.onSurfaceMuted,
-              ),
+              style: Theme.of(context).textTheme.bodySmall,
+              textAlign: TextAlign.center,
             ),
           ],
         ),
       ),
     );
-  }
-}
-
-/// Recent activity: a compact list of recent payments, job updates, costs and quick sales.
-class _OpenRecentActivity extends StatelessWidget {
-  const _OpenRecentActivity({
-    required this.title,
-    required this.recent,
-    required this.onOpenJob,
-  });
-
-  final String title;
-  final List<({int id, String title})> recent;
-  final VoidCallback onOpenJob;
-
-  @override
-  Widget build(BuildContext context) {
-    final AppSpacing spacing = AppSpacing.of(context);
-    final AppColors colors = AppColors.of(context);
-    final type = AppTypography.of(context);
-    final l10n = AppLocalizations.of(context);
-
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: <Widget>[
-        Row(
-          children: <Widget>[
-            Expanded(
-              child: Text(
-                title,
-                style: type.titleMedium?.copyWith(fontWeight: FontWeight.w700),
-              ),
-            ),
-            TextButton(
-              onPressed: onOpenJob,
-              child: Text(l10n.openDashboardViewAll),
-            ),
-          ],
-        ),
-        SizedBox(height: spacing.sm),
-        if (recent.isEmpty)
-          Text(
-            'No recent activity yet.',
-            style: type.labelSmall?.copyWith(color: colors.onSurfaceMuted),
-          )
-        else
-          ListView.builder(
-            shrinkWrap: true,
-            physics: const NeverScrollableScrollPhysics(),
-            itemCount: recent.length,
-            itemBuilder: (_, i) {
-              final entry = recent[i];
-              return Padding(
-                padding: EdgeInsets.only(bottom: spacing.sm),
-                child: InkWell(
-                  onTap: () => context.push(Routes.openJobDetail(entry.id)),
-                  child: Row(
-                    children: <Widget>[
-                    Container(
-                      padding: EdgeInsets.all(spacing.xs),
-                      decoration: BoxDecoration(
-                        color: colors.surfaceSunken,
-                        borderRadius: AppShapes.of(context).controlRadius,
-                      ),
-                      child: Icon(
-                        Icons.access_time_outlined,
-                        size: 16,
-                        color: colors.onSurfaceMuted,
-                      ),
-                    ),
-                    SizedBox(width: spacing.md),
-                    Expanded(
-                      child: Text(
-                        entry.title,
-                        style: type.bodyMedium,
-                      ),
-                    ),
-                  ],
-                ),
-                ),
-              );
-            },
-          ),
-      ],
-    );
-  }
-}
-
-String timeOfDayWord(AppLocalizations l10n) {
-  final hour = DateTime.now().hour;
-  if (hour < 12) return l10n.openDashboardGoodMorning;
-  if (hour < 17) return l10n.openDashboardGoodAfternoon;
-  return l10n.openDashboardGoodEvening;
-}
-
-/// A minimal model so RefreshIndicator has an onRefresh target.
-class OpenDashboardModel extends ChangeNotifier {
-  Future<void> load() async {
-    notifyListeners();
   }
 }

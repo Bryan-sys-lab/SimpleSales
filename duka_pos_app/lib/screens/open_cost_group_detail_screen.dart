@@ -1,13 +1,18 @@
 import 'package:flutter/material.dart';
+import 'package:provider/provider.dart';
 
 import '../db/database_helper.dart';
 import '../l10n/generated/app_localizations.dart';
 import '../theme/app_colors.dart';
 import '../theme/app_spacing.dart';
 import '../theme/typography.dart';
+import '../ui/components/controls.dart';
 import '../ui/components/status.dart';
 import '../ui/layout/page.dart';
 import '../utils/money.dart';
+import '../models/models.dart';
+import '../services/app_state.dart';
+import '../services/roles.dart';
 import '../widgets/backup_reminder_banner.dart';
 
 const double _openCostGroupDetailMaxWidth = 900;
@@ -24,8 +29,7 @@ class OpenCostGroupDetailScreen extends StatefulWidget {
       _OpenCostGroupDetailScreenState();
 }
 
-class _OpenCostGroupDetailScreenState
-    extends State<OpenCostGroupDetailScreen> {
+class _OpenCostGroupDetailScreenState extends State<OpenCostGroupDetailScreen> {
   Map<String, dynamic>? _pool;
   List<Map<String, dynamic>> _entries = const [];
   bool _loading = true;
@@ -56,6 +60,140 @@ class _OpenCostGroupDetailScreenState
     } catch (_) {
       if (!mounted) return;
       setState(() => _loading = false);
+    }
+  }
+
+  Future<void> _reloadStock() async {
+    final session = context.read<AppState>();
+    final canManage = session.isOwnerSession ||
+        (session.hasPermission(PermissionKey.receiveStock) &&
+            session.hasPermission(PermissionKey.viewCost));
+    if (!canManage) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+            content: Text('You do not have permission to reload stock')),
+      );
+      return;
+    }
+    final products = await _db.getProducts();
+    if (!mounted) return;
+    final quantity = TextEditingController();
+    final unitCost = TextEditingController();
+    final supplierRef = TextEditingController();
+    Product? product =
+        products.where((item) => item.costPoolId == widget.poolId).firstOrNull;
+    var paidFrom = 'other';
+    final result = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) => StatefulBuilder(
+        builder: (dialogContext, setDialogState) => AlertDialog(
+          title: const Text('Reload stock'),
+          content: SingleChildScrollView(
+            child: FormFieldGroup(
+              children: <Widget>[
+                DropdownButtonFormField<Product>(
+                  initialValue: product,
+                  decoration: const InputDecoration(labelText: 'Stock item'),
+                  items: <DropdownMenuItem<Product>>[
+                    for (final item in products)
+                      DropdownMenuItem<Product>(
+                        value: item,
+                        child: Text(item.name),
+                      ),
+                  ],
+                  onChanged: (value) => setDialogState(() => product = value),
+                ),
+                TextField(
+                  controller: quantity,
+                  decoration: const InputDecoration(labelText: 'Quantity'),
+                  keyboardType:
+                      const TextInputType.numberWithOptions(decimal: true),
+                ),
+                TextField(
+                  controller: unitCost,
+                  decoration:
+                      const InputDecoration(labelText: 'Unit cost (KES)'),
+                  keyboardType:
+                      const TextInputType.numberWithOptions(decimal: true),
+                ),
+                DropdownButtonFormField<String>(
+                  initialValue: paidFrom,
+                  decoration:
+                      const InputDecoration(labelText: 'Payment source'),
+                  items: const <DropdownMenuItem<String>>[
+                    DropdownMenuItem(
+                        value: 'till_cash', child: Text('Till cash')),
+                    DropdownMenuItem(
+                        value: 'credit', child: Text('Supplier credit')),
+                    DropdownMenuItem(value: 'other', child: Text('Other')),
+                  ],
+                  onChanged: (value) =>
+                      setDialogState(() => paidFrom = value ?? 'other'),
+                ),
+                TextField(
+                  controller: supplierRef,
+                  decoration:
+                      const InputDecoration(labelText: 'Supplier reference'),
+                ),
+              ],
+            ),
+          ),
+          actions: <Widget>[
+            TextButton(
+              onPressed: () => Navigator.pop(dialogContext, false),
+              child: Text(AppLocalizations.of(context).cancel),
+            ),
+            FilledButton(
+              onPressed: () => Navigator.pop(dialogContext, true),
+              child: Text(AppLocalizations.of(context).save),
+            ),
+          ],
+        ),
+      ),
+    );
+    final selected = product;
+    final qty = double.tryParse(quantity.text.trim());
+    final cost = parseMoneyInput(unitCost.text.trim());
+    final reference = supplierRef.text.trim();
+    if (!mounted) return;
+    final staff = context.read<AppState>();
+    final messenger = ScaffoldMessenger.of(context);
+    quantity.dispose();
+    unitCost.dispose();
+    supplierRef.dispose();
+    if (result != true ||
+        selected?.id == null ||
+        qty == null ||
+        qty <= 0 ||
+        cost == null ||
+        cost < 0 ||
+        !mounted) {
+      return;
+    }
+    try {
+      await _db.reloadCostPoolStock(
+        poolId: widget.poolId,
+        productId: selected!.id!,
+        qty: qty,
+        unitCost: Money.fromMajor(cost),
+        paidFrom: paidFrom,
+        supplierRef: reference.isEmpty ? null : reference,
+        staffName: staff.currentStaffName ?? staff.owner?.name ?? 'Owner',
+        staffId: staff.currentStaffId,
+      );
+      if (mounted) {
+        await _load();
+        if (!mounted) return;
+        messenger.showSnackBar(
+          const SnackBar(content: Text('Stock reloaded')),
+        );
+      }
+    } catch (error) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('$error')),
+        );
+      }
     }
   }
 
@@ -124,7 +262,8 @@ class _OpenCostGroupDetailScreenState
                       ),
                       SizedBox(height: spacing.xs),
                       Text(
-                        _pool!['note'] as String? ?? l10n.openCostGroupDetailNoNote,
+                        _pool!['note'] as String? ??
+                            l10n.openCostGroupDetailNoNote,
                         style: AppTypography.of(context)
                             .bodyMedium
                             ?.copyWith(color: colors.onSurfaceMuted),
@@ -143,6 +282,12 @@ class _OpenCostGroupDetailScreenState
               ],
             ),
             SizedBox(height: spacing.xl),
+            FilledButton.icon(
+              onPressed: _reloadStock,
+              icon: const Icon(Icons.add_box_outlined),
+              label: const Text('Reload stock'),
+            ),
+            SizedBox(height: spacing.lg),
             _DetailSection(
               title: l10n.openCostGroupDetailInvestment,
               children: <Widget>[
@@ -177,8 +322,8 @@ class _OpenCostGroupDetailScreenState
                 else
                   for (final entry in _entries)
                     _MovementRow(
-                      label:
-                          entry['description'] as String? ?? l10n.openCostGroupDetailEntry,
+                      label: entry['description'] as String? ??
+                          l10n.openCostGroupDetailEntry,
                       amount: Money.fromMinor(
                         (entry['amount_minor'] as num?)?.toInt() ?? 0,
                       ),
@@ -312,7 +457,8 @@ class _MovementRow extends StatelessWidget {
                 SizedBox(height: spacing.xs),
                 Text(
                   when,
-                  style: type.labelSmall?.copyWith(color: colors.onSurfaceMuted),
+                  style:
+                      type.labelSmall?.copyWith(color: colors.onSurfaceMuted),
                 ),
               ],
             ),

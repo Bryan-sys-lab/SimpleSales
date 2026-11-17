@@ -8,6 +8,7 @@ enum ShopNotificationType {
   stockExpiring,
   shiftOpen,
   incomingMpesa,
+  staffPinResetRequest,
 }
 
 extension ShopNotificationTypeWire on ShopNotificationType {
@@ -20,6 +21,7 @@ extension ShopNotificationTypeWire on ShopNotificationType {
         ShopNotificationType.stockExpiring => 'stock_expiring',
         ShopNotificationType.shiftOpen => 'shift_open',
         ShopNotificationType.incomingMpesa => 'incoming_mpesa',
+        ShopNotificationType.staffPinResetRequest => 'staff_pin_reset_request',
       };
 
   static ShopNotificationType? parse(String? value) {

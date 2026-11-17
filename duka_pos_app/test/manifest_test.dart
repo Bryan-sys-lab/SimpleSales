@@ -164,6 +164,29 @@ void main() {
       // splash screen's wordmark.
       expect(xml, contains('android:label="SimpleSales"'));
     });
+
+    test('the package identity is consistent across Android sources', () {
+      const packageId = 'com.dukapos.simplepos';
+      final gradle = File('android/app/build.gradle.kts').readAsStringSync();
+      final activity = File(
+        'android/app/src/main/kotlin/com/dukapos/simplepos/MainActivity.kt',
+      );
+
+      expect(xml, contains('package="$packageId"'));
+      expect(gradle, contains('namespace = "$packageId"'));
+      expect(gradle, contains('applicationId = "$packageId"'));
+      expect(activity.existsSync(), isTrue,
+          reason: 'MainActivity must live under the locked package path');
+      expect(
+        File('android/app/src/main/kotlin/com/dukapos/duka_pos').existsSync(),
+        isFalse,
+        reason: 'the old package path must not be used by a release artifact',
+      );
+      expect(
+        gradle,
+        isNot(contains('applicationId = "com.dukapos.duka_pos"')),
+      );
+    });
   });
   group('in-app update plumbing', () {
     test('the install permission is declared', () {
@@ -208,6 +231,14 @@ void main() {
       // And it shares nothing else.
       expect(paths, isNot(contains('<root')));
       expect(paths, isNot(contains('<files-path')));
+    });
+
+    test('release metadata keeps OEM-friendly JNI packaging and build code', () {
+      final gradle = File('android/app/build.gradle.kts').readAsStringSync();
+      final pubspec = File('pubspec.yaml').readAsStringSync();
+      expect(gradle, contains('useLegacyPackaging = true'));
+      expect(pubspec,
+          contains(RegExp(r'^version:\s+[^\n]+\+87\s*$', multiLine: true)));
     });
   });
 }

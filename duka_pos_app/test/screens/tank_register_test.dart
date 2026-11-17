@@ -1,5 +1,6 @@
 // Tests for the Drinks tank data model and its register screen.
 import 'package:duka_pos/screens/tank_register_screen.dart';
+import 'package:duka_pos/screens/tank_detail_screen.dart';
 import 'package:duka_pos/services/analytics.dart';
 import '../support/harness.dart';
 import 'package:flutter/material.dart';
@@ -41,6 +42,14 @@ void main() {
         costInvestedMinor: 1200000,
       );
       expect(tank.costInvested.minorUnits, 1200000);
+    });
+  });
+
+  group('tank detail volume labels', () {
+    test('uses litres and preserves useful fractional precision', () {
+      expect(formatTankLitres(50), '50 L');
+      expect(formatTankLitres(0.5), '0.5 L');
+      expect(formatTankLitres(double.nan), '0 L');
     });
   });
 

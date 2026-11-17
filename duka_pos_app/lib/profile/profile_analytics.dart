@@ -18,7 +18,6 @@ enum ProfileKpi {
   variantSales,
   laybyBalance,
   pooledCost,
-  jobsCompleted,
   receivables,
 }
 
@@ -61,7 +60,7 @@ class ProfileAnalytics {
               ProfileKpi.netProfit,
               ProfileKpi.cashPosition,
               ProfileKpi.pooledCost,
-              ProfileKpi.jobsCompleted,
+              ProfileKpi.stockValue,
               ProfileKpi.receivables,
             ],
           ),

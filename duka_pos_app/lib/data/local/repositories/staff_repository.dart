@@ -107,7 +107,7 @@ class StaffRepository {
   }
 
   /// Resets a staff PIN hash within an existing transaction.
-  Future<void> resetStaffPinInTransaction(Transaction txn, int id,
+  Future<void> updateStaffPinInTransaction(Transaction txn, int id,
       String pinHash) async {
     await txn.update('staff', {'pin_hash': pinHash},
         where: 'id = ?', whereArgs: [id]);
@@ -155,13 +155,6 @@ class StaffRepository {
     final db = await DatabaseHelper.instance.database;
     await db.transaction((txn) async {
       await deactivateStaffInTransaction(txn, id);
-    });
-  }
-
-  Future<void> resetStaffPin(int id, String pinHash) async {
-    final db = await DatabaseHelper.instance.database;
-    await db.transaction((txn) async {
-      await resetStaffPinInTransaction(txn, id, pinHash);
     });
   }
 

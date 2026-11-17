@@ -15,6 +15,7 @@ import '../models/models.dart';
 import '../services/barcode/barcode_service.dart';
 import '../theme/app_colors.dart';
 import '../theme/app_spacing.dart';
+import '../ui/components/controls.dart';
 import '../ui/components/screen_title.dart';
 import '../utils/money.dart';
 import '../utils/units.dart';
@@ -512,100 +513,99 @@ class _VariantFormSheetState extends State<VariantFormSheet> {
               padding: EdgeInsets.zero,
             ),
             SizedBox(height: spacing.lg),
-            TextField(
-              controller: _name,
-              autofocus: widget.seed.isNew,
-              textCapitalization: TextCapitalization.words,
-              textInputAction: TextInputAction.next,
-              decoration: InputDecoration(
-                labelText: l10n.variantNameLabel,
-                hintText: l10n.variantNameHint,
-              ),
-            ),
-            SizedBox(height: spacing.md),
-            // The serving-size field is always shown: blank means countable,
-            // any value means volumetric (millilitres). A unit dropdown is no
-            // longer offered — the unit is derived from whether a size exists.
-            _sizeField(l10n),
-            if (_visibleSuggestions.isNotEmpty) _suggestionChips(l10n),
-            Row(children: [
-              Expanded(
-                child: TextField(
-                  controller: _price,
-                  keyboardType:
-                      const TextInputType.numberWithOptions(decimal: true),
-                  decoration:
-                      InputDecoration(labelText: l10n.variantSellPriceLabel),
-                ),
-              ),
-              SizedBox(width: spacing.md),
-              Expanded(
-                child: TextField(
-                  controller: _cost,
-                  keyboardType:
-                      const TextInputType.numberWithOptions(decimal: true),
+            FormFieldGroup(
+              children: <Widget>[
+                TextField(
+                  controller: _name,
+                  autofocus: widget.seed.isNew,
+                  textCapitalization: TextCapitalization.words,
+                  textInputAction: TextInputAction.next,
                   decoration: InputDecoration(
-                    labelText: l10n.variantCostPriceLabel,
-                    hintText: formatMoney(widget.seed.costPrice),
-                    helperText: l10n.variantCostPriceHelper(
-                      formatMoney(widget.seed.costPrice),
+                    labelText: l10n.variantNameLabel,
+                    hintText: l10n.variantNameHint,
+                  ),
+                ),
+                // The serving-size field is always shown: blank means
+                // countable, any value means volumetric (millilitres).
+                _sizeField(l10n),
+                if (_visibleSuggestions.isNotEmpty) _suggestionChips(l10n),
+                Row(children: [
+                  Expanded(
+                    child: TextField(
+                      controller: _price,
+                      keyboardType:
+                          const TextInputType.numberWithOptions(decimal: true),
+                      decoration: InputDecoration(
+                          labelText: l10n.variantSellPriceLabel),
                     ),
                   ),
-                ),
-              ),
-            ]),
-            Row(children: [
-              Expanded(
-                child: TextField(
-                  controller: _stock,
-                  keyboardType:
-                      const TextInputType.numberWithOptions(decimal: true),
+                  SizedBox(width: spacing.md),
+                  Expanded(
+                    child: TextField(
+                      controller: _cost,
+                      keyboardType:
+                          const TextInputType.numberWithOptions(decimal: true),
+                      decoration: InputDecoration(
+                        labelText: l10n.variantCostPriceLabel,
+                        hintText: formatMoney(widget.seed.costPrice),
+                        helperText: l10n.variantCostPriceHelper(
+                          formatMoney(widget.seed.costPrice),
+                        ),
+                      ),
+                    ),
+                  ),
+                ]),
+                Row(children: [
+                  Expanded(
+                    child: TextField(
+                      controller: _stock,
+                      keyboardType:
+                          const TextInputType.numberWithOptions(decimal: true),
+                      decoration: InputDecoration(
+                        labelText: l10n.variantStartingStockLabel,
+                        helperText: l10n.variantStartingStockHelper,
+                      ),
+                    ),
+                  ),
+                  SizedBox(width: spacing.md),
+                  Expanded(
+                    child: TextField(
+                      controller: _reorder,
+                      keyboardType: TextInputType.number,
+                      decoration: InputDecoration(
+                        labelText: l10n.variantReorderLevelLabel,
+                        helperText: l10n.variantReorderLevelHelper,
+                      ),
+                    ),
+                  ),
+                ]),
+                TextField(
+                  controller: _sku,
+                  textCapitalization: TextCapitalization.characters,
                   decoration: InputDecoration(
-                    labelText: l10n.variantStartingStockLabel,
-                    helperText: l10n.variantStartingStockHelper,
+                    labelText: l10n.variantSkuLabel,
+                    helperText: l10n.variantSkuHelper,
                   ),
                 ),
-              ),
-              SizedBox(width: spacing.md),
-              Expanded(
-                child: TextField(
-                  controller: _reorder,
-                  keyboardType: TextInputType.number,
+                TextField(
+                  controller: _barcode,
+                  inputFormatters: [
+                    FilteringTextInputFormatter.allow(RegExp(r'[A-Za-z0-9\-]')),
+                  ],
+                  textCapitalization: TextCapitalization.characters,
                   decoration: InputDecoration(
-                    labelText: l10n.variantReorderLevelLabel,
-                    helperText: l10n.variantReorderLevelHelper,
+                    labelText: l10n.variantBarcodeLabel,
+                    hintText: l10n.variantBarcodeHint,
+                    helperText: l10n.variantBarcodeHelper,
                   ),
                 ),
-              ),
-            ]),
-            TextField(
-              controller: _sku,
-              textCapitalization: TextCapitalization.characters,
-              decoration: InputDecoration(
-                labelText: l10n.variantSkuLabel,
-                helperText: l10n.variantSkuHelper,
-              ),
-            ),
-            TextField(
-              controller: _barcode,
-              inputFormatters: [
-                FilteringTextInputFormatter.allow(RegExp(r'[A-Za-z0-9\-]')),
+                if (_error != null)
+                  Text(
+                    _error!,
+                    style: TextStyle(color: AppColors.of(context).danger),
+                  ),
               ],
-              textCapitalization: TextCapitalization.characters,
-              decoration: InputDecoration(
-                labelText: l10n.variantBarcodeLabel,
-                hintText: l10n.variantBarcodeHint,
-                helperText: l10n.variantBarcodeHelper,
-              ),
             ),
-            if (_error != null)
-              Padding(
-                padding: EdgeInsetsDirectional.only(top: spacing.md),
-                child: Text(
-                  _error!,
-                  style: TextStyle(color: AppColors.of(context).danger),
-                ),
-              ),
             SizedBox(height: spacing.xl),
             FilledButton(
               onPressed: _submit,

@@ -13,7 +13,6 @@ class ProfileNavigation {
     required this.showVariants,
     required this.showDrinkService,
     required this.showLayby,
-    required this.showJobs,
   });
 
   final bool showInventory;
@@ -21,7 +20,6 @@ class ProfileNavigation {
   final bool showVariants;
   final bool showDrinkService;
   final bool showLayby;
-  final bool showJobs;
 
   static ProfileNavigation forProfile(ShopProfile profile) {
     final d = ProfileDefinition.forProfile(profile);
@@ -31,7 +29,6 @@ class ProfileNavigation {
       showVariants: d.variants,
       showDrinkService: d.drinkService,
       showLayby: d.layby,
-      showJobs: d.jobs,
     );
   }
 }

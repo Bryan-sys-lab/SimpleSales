@@ -45,7 +45,10 @@ class _FashionCatalogueScreenState extends State<FashionCatalogueScreen> {
       final products = await _db.getProducts(activeOnly: true);
       if (!mounted) return;
       setState(() {
-        _products = products.where((p) => p.trackVariants).toList();
+        // The fashion catalogue keeps variant-aware presentation for styles,
+        // but the Inventory destination must not hide ordinary, loose, or
+        // legacy tank products added while this profile was active.
+        _products = products;
         _loading = false;
       });
     } catch (_) {
@@ -121,8 +124,7 @@ class _FashionCatalogueScreenState extends State<FashionCatalogueScreen> {
                     minHeight: AppSpacing.of(context).textFieldHeight,
                   ),
                 ),
-                onChanged: (value) =>
-                    setState(() => _searchQuery = value),
+                onChanged: (value) => setState(() => _searchQuery = value),
               ),
             ),
             Expanded(
@@ -148,8 +150,8 @@ class _FashionCatalogueScreenState extends State<FashionCatalogueScreen> {
                               padding: const EdgeInsets.all(8),
                               decoration: BoxDecoration(
                                 color: colors.surfaceSunken,
-                                borderRadius: AppShapes.of(context)
-                                    .controlRadius,
+                                borderRadius:
+                                    AppShapes.of(context).controlRadius,
                               ),
                               child: Icon(
                                 Icons.checkroom_outlined,
@@ -177,8 +179,8 @@ class _FashionCatalogueScreenState extends State<FashionCatalogueScreen> {
                                   style: AppTypography.of(context)
                                       .labelSmall
                                       ?.copyWith(
-                                        color: _stockTone(
-                                            p, colors).onContainer(colors),
+                                        color: _stockTone(p, colors)
+                                            .onContainer(colors),
                                         fontWeight: FontWeight.w600,
                                       ),
                                 ),
@@ -190,7 +192,10 @@ class _FashionCatalogueScreenState extends State<FashionCatalogueScreen> {
                               dense: true,
                             ),
                             onTap: () => context.push(
-                              Routes.fashionProduct(p.id ?? 0),
+                              p.trackVariants
+                                  ? Routes.fashionProduct(p.id ?? 0)
+                                  : Routes.product(AppLocalizations.of(context)
+                                      .dashboardId(p.id ?? 0)),
                             ),
                           ),
                         );
@@ -225,7 +230,8 @@ class _FashionCatalogueScreenState extends State<FashionCatalogueScreen> {
 }
 
 class _FashionCatalogueEmpty extends StatelessWidget {
-  const _FashionCatalogueEmpty({required this.isEmpty, required this.onAddStyle});
+  const _FashionCatalogueEmpty(
+      {required this.isEmpty, required this.onAddStyle});
 
   final bool isEmpty;
   final VoidCallback onAddStyle;
@@ -251,7 +257,9 @@ class _FashionCatalogueEmpty extends StatelessWidget {
             crossAxisAlignment: CrossAxisAlignment.start,
             children: <Widget>[
               Text(
-                isEmpty ? l10n.fashionCatalogueNoStyles : l10n.fashionCatalogueLoading,
+                isEmpty
+                    ? l10n.fashionCatalogueNoStyles
+                    : l10n.fashionCatalogueLoading,
                 style: type.bodyMedium,
               ),
               SizedBox(height: spacing.xs),

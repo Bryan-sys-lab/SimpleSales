@@ -297,7 +297,7 @@ class PinResetDialogState extends State<PinResetDialog> {
                   decoration:
                       InputDecoration(labelText: l10n.pinResetNewPinLabel),
                 ),
-                SizedBox(height: spacing.sm),
+                SizedBox(height: spacing.md),
                 TextField(
                   controller: _pinAgain,
                   obscureText: true,

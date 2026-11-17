@@ -27,12 +27,8 @@ class HelpScreen extends StatelessWidget {
           'Lay-bys', 'Take a deposit and collect the balance later.',
           Icons.bookmark_border));
     }
-    if (nav.showJobs) {
-      features.add(_Feature('Jobs', 'Create a job, take payments, mark complete.',
-          Icons.work_outline));
-      features.add(_Feature('Cost groups', 'Record what you paid and recover it on sales.',
-          Icons.account_balance_wallet_outlined));
-    }
+    features.add(_Feature('Cost groups', 'Record what you paid and recover it on sales.',
+        Icons.account_balance_wallet_outlined));
     return Scaffold(
       appBar: AppBar(title: Text(AppLocalizations.of(context).helpTitle)),
       body: ListView.separated(

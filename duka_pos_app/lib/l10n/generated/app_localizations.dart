@@ -1546,6 +1546,18 @@ abstract class AppLocalizations {
   /// **'Check phone {phone} for STK push'**
   String sellCheckPhoneForStk(Object phone);
 
+  /// No description provided for @sellShowQrAction.
+  ///
+  /// In en, this message translates to:
+  /// **'Show QR'**
+  String get sellShowQrAction;
+
+  /// No description provided for @sellScanWithMpesaApp.
+  ///
+  /// In en, this message translates to:
+  /// **'Scan with the M-Pesa app to pay'**
+  String get sellScanWithMpesaApp;
+
   /// No description provided for @sellChooseServingTitle.
   ///
   /// In en, this message translates to:
@@ -9388,35 +9400,11 @@ abstract class AppLocalizations {
   /// **'Operational overview'**
   String get openDashboardOperationalOverview;
 
-  /// No description provided for @openDashboardActiveJobs.
-  ///
-  /// In en, this message translates to:
-  /// **'Active jobs'**
-  String get openDashboardActiveJobs;
-
-  /// No description provided for @openDashboardJobsAwaitingPayment.
-  ///
-  /// In en, this message translates to:
-  /// **'Jobs awaiting payment'**
-  String get openDashboardJobsAwaitingPayment;
-
-  /// No description provided for @openDashboardOverdueJobs.
-  ///
-  /// In en, this message translates to:
-  /// **'Overdue jobs'**
-  String get openDashboardOverdueJobs;
-
   /// No description provided for @openDashboardCostGroups.
   ///
   /// In en, this message translates to:
   /// **'Cost groups'**
   String get openDashboardCostGroups;
-
-  /// No description provided for @openDashboardNewJob.
-  ///
-  /// In en, this message translates to:
-  /// **'New job'**
-  String get openDashboardNewJob;
 
   /// No description provided for @openDashboardRecordSale.
   ///
@@ -9429,12 +9417,6 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'Record payment'**
   String get openDashboardRecordPayment;
-
-  /// No description provided for @openDashboardAddJobCost.
-  ///
-  /// In en, this message translates to:
-  /// **'Add job cost'**
-  String get openDashboardAddJobCost;
 
   /// No description provided for @openDashboardNewCostGroup.
   ///
@@ -9472,138 +9454,6 @@ abstract class AppLocalizations {
   /// **'Good evening'**
   String get openDashboardGoodEvening;
 
-  /// No description provided for @openJobsTitle.
-  ///
-  /// In en, this message translates to:
-  /// **'Jobs'**
-  String get openJobsTitle;
-
-  /// No description provided for @openJobsSubtitle.
-  ///
-  /// In en, this message translates to:
-  /// **'Track work from quote to payment'**
-  String get openJobsSubtitle;
-
-  /// No description provided for @openJobsNewJob.
-  ///
-  /// In en, this message translates to:
-  /// **'New job'**
-  String get openJobsNewJob;
-
-  /// No description provided for @openJobsSearch.
-  ///
-  /// In en, this message translates to:
-  /// **'Search jobs'**
-  String get openJobsSearch;
-
-  /// No description provided for @openJobsSearchHint.
-  ///
-  /// In en, this message translates to:
-  /// **'Title or customer'**
-  String get openJobsSearchHint;
-
-  /// No description provided for @openJobsFilterAll.
-  ///
-  /// In en, this message translates to:
-  /// **'All'**
-  String get openJobsFilterAll;
-
-  /// No description provided for @openJobsFilterActive.
-  ///
-  /// In en, this message translates to:
-  /// **'Active'**
-  String get openJobsFilterActive;
-
-  /// No description provided for @openJobsFilterAwaitingPayment.
-  ///
-  /// In en, this message translates to:
-  /// **'Awaiting payment'**
-  String get openJobsFilterAwaitingPayment;
-
-  /// No description provided for @openJobsFilterCompleted.
-  ///
-  /// In en, this message translates to:
-  /// **'Completed'**
-  String get openJobsFilterCompleted;
-
-  /// No description provided for @openJobsNoJobs.
-  ///
-  /// In en, this message translates to:
-  /// **'No jobs yet'**
-  String get openJobsNoJobs;
-
-  /// No description provided for @openJobsNoJobsSubtitle.
-  ///
-  /// In en, this message translates to:
-  /// **'Create a job to track quote, payments and costs.'**
-  String get openJobsNoJobsSubtitle;
-
-  /// No description provided for @openJobsLoading.
-  ///
-  /// In en, this message translates to:
-  /// **'Loading jobs'**
-  String get openJobsLoading;
-
-  /// No description provided for @openJobsLoadingSubtitle.
-  ///
-  /// In en, this message translates to:
-  /// **'Please wait while your jobs load.'**
-  String get openJobsLoadingSubtitle;
-
-  /// No description provided for @openJobsNoCustomer.
-  ///
-  /// In en, this message translates to:
-  /// **'No customer'**
-  String get openJobsNoCustomer;
-
-  /// No description provided for @openJobStatusDraft.
-  ///
-  /// In en, this message translates to:
-  /// **'Draft'**
-  String get openJobStatusDraft;
-
-  /// No description provided for @openJobStatusInProgress.
-  ///
-  /// In en, this message translates to:
-  /// **'In progress'**
-  String get openJobStatusInProgress;
-
-  /// No description provided for @openJobStatusAwaitingPayment.
-  ///
-  /// In en, this message translates to:
-  /// **'Awaiting payment'**
-  String get openJobStatusAwaitingPayment;
-
-  /// No description provided for @openJobStatusCompleted.
-  ///
-  /// In en, this message translates to:
-  /// **'Completed'**
-  String get openJobStatusCompleted;
-
-  /// No description provided for @openJobStatusCancelled.
-  ///
-  /// In en, this message translates to:
-  /// **'Cancelled'**
-  String get openJobStatusCancelled;
-
-  /// No description provided for @openJobFormTitle.
-  ///
-  /// In en, this message translates to:
-  /// **'New job'**
-  String get openJobFormTitle;
-
-  /// No description provided for @openJobDetailTitle.
-  ///
-  /// In en, this message translates to:
-  /// **'Job detail'**
-  String get openJobDetailTitle;
-
-  /// No description provided for @openJobAddCostTitle.
-  ///
-  /// In en, this message translates to:
-  /// **'Add job cost'**
-  String get openJobAddCostTitle;
-
   /// No description provided for @openCostGroupsTitle.
   ///
   /// In en, this message translates to:
@@ -9628,166 +9478,10 @@ abstract class AppLocalizations {
   /// **'Receivables'**
   String get openReceivablesTitle;
 
-  /// No description provided for @openJobDetailNotFound.
-  ///
-  /// In en, this message translates to:
-  /// **'Job not found'**
-  String get openJobDetailNotFound;
-
-  /// No description provided for @openJobDetailNoCustomer.
-  ///
-  /// In en, this message translates to:
-  /// **'No customer'**
-  String get openJobDetailNoCustomer;
-
-  /// No description provided for @openJobDetailOverview.
-  ///
-  /// In en, this message translates to:
-  /// **'Job overview'**
-  String get openJobDetailOverview;
-
-  /// No description provided for @openJobDetailQuote.
-  ///
-  /// In en, this message translates to:
-  /// **'Quoted amount'**
-  String get openJobDetailQuote;
-
-  /// No description provided for @openJobDetailFinalPrice.
-  ///
-  /// In en, this message translates to:
-  /// **'Final price'**
-  String get openJobDetailFinalPrice;
-
-  /// No description provided for @openJobDetailStatus.
-  ///
-  /// In en, this message translates to:
-  /// **'Status'**
-  String get openJobDetailStatus;
-
-  /// No description provided for @openJobDetailCreated.
-  ///
-  /// In en, this message translates to:
-  /// **'Created'**
-  String get openJobDetailCreated;
-
-  /// No description provided for @openJobDetailFinancials.
-  ///
-  /// In en, this message translates to:
-  /// **'Financial breakdown'**
-  String get openJobDetailFinancials;
-
-  /// No description provided for @openJobDetailQuotedAmount.
-  ///
-  /// In en, this message translates to:
-  /// **'Quoted amount'**
-  String get openJobDetailQuotedAmount;
-
-  /// No description provided for @openJobDetailDirectCosts.
-  ///
-  /// In en, this message translates to:
-  /// **'Direct costs'**
-  String get openJobDetailDirectCosts;
-
-  /// No description provided for @openJobDetailPaymentsReceived.
-  ///
-  /// In en, this message translates to:
-  /// **'Payments received'**
-  String get openJobDetailPaymentsReceived;
-
-  /// No description provided for @openJobDetailOutstanding.
-  ///
-  /// In en, this message translates to:
-  /// **'Outstanding'**
-  String get openJobDetailOutstanding;
-
-  /// No description provided for @openJobDetailEstimatedProfit.
-  ///
-  /// In en, this message translates to:
-  /// **'Estimated profit'**
-  String get openJobDetailEstimatedProfit;
-
-  /// No description provided for @openJobDetailActivity.
-  ///
-  /// In en, this message translates to:
-  /// **'Job activity'**
-  String get openJobDetailActivity;
-
-  /// No description provided for @openJobDetailCostAdded.
-  ///
-  /// In en, this message translates to:
-  /// **'Cost added'**
-  String get openJobDetailCostAdded;
-
-  /// No description provided for @openJobDetailPaymentReceived.
-  ///
-  /// In en, this message translates to:
-  /// **'Payment received'**
-  String get openJobDetailPaymentReceived;
-
-  /// No description provided for @openJobDetailNoActivity.
-  ///
-  /// In en, this message translates to:
-  /// **'No activity yet'**
-  String get openJobDetailNoActivity;
-
-  /// No description provided for @openJobDetailActions.
-  ///
-  /// In en, this message translates to:
-  /// **'Actions'**
-  String get openJobDetailActions;
-
-  /// No description provided for @openJobDetailEditJob.
-  ///
-  /// In en, this message translates to:
-  /// **'Edit job'**
-  String get openJobDetailEditJob;
-
-  /// No description provided for @openJobDetailAddCost.
-  ///
-  /// In en, this message translates to:
-  /// **'Add direct cost'**
-  String get openJobDetailAddCost;
-
-  /// No description provided for @openJobDetailReceivePayment.
-  ///
-  /// In en, this message translates to:
-  /// **'Receive payment'**
-  String get openJobDetailReceivePayment;
-
-  /// No description provided for @openJobDetailRecordSale.
-  ///
-  /// In en, this message translates to:
-  /// **'Record sale'**
-  String get openJobDetailRecordSale;
-
-  /// No description provided for @openJobDetailCompleteJob.
-  ///
-  /// In en, this message translates to:
-  /// **'Complete job'**
-  String get openJobDetailCompleteJob;
-
-  /// No description provided for @openJobDetailCompleteJobConfirm.
-  ///
-  /// In en, this message translates to:
-  /// **'Marking a job complete is separate from settlement. The job can be completed without being fully paid.'**
-  String get openJobDetailCompleteJobConfirm;
-
-  /// No description provided for @openJobDetailCancel.
-  ///
-  /// In en, this message translates to:
-  /// **'Cancel'**
-  String get openJobDetailCancel;
-
-  /// No description provided for @openJobDetailCompleteAndSettle.
-  ///
-  /// In en, this message translates to:
-  /// **'Complete and settle'**
-  String get openJobDetailCompleteAndSettle;
-
   /// No description provided for @openCostGroupsSubtitle.
   ///
   /// In en, this message translates to:
-  /// **'Pooled costs shared across jobs'**
+  /// **'Pooled costs recovered through sales'**
   String get openCostGroupsSubtitle;
 
   /// No description provided for @openCostGroupsNewGroup.
@@ -9835,7 +9529,7 @@ abstract class AppLocalizations {
   /// No description provided for @openCostGroupsNoGroupsSubtitle.
   ///
   /// In en, this message translates to:
-  /// **'Create a cost group to track pooled costs shared across jobs.'**
+  /// **'Create a cost group to track pooled costs recovered through sales.'**
   String get openCostGroupsNoGroupsSubtitle;
 
   /// No description provided for @openCostGroupsLoading.
@@ -9999,12 +9693,6 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'Pooled costs'**
   String get openAnalyticsPooledCosts;
-
-  /// No description provided for @openAnalyticsJobsCompleted.
-  ///
-  /// In en, this message translates to:
-  /// **'Jobs completed'**
-  String get openAnalyticsJobsCompleted;
 
   /// No description provided for @openAnalyticsReceivables.
   ///
@@ -10624,54 +10312,6 @@ abstract class AppLocalizations {
   /// **'This sale has no returnable lines'**
   String get exchangeNoLines;
 
-  /// No description provided for @openJobFormJobTitleLabel.
-  ///
-  /// In en, this message translates to:
-  /// **'Job title'**
-  String get openJobFormJobTitleLabel;
-
-  /// No description provided for @openJobFormTitleRequired.
-  ///
-  /// In en, this message translates to:
-  /// **'Title required'**
-  String get openJobFormTitleRequired;
-
-  /// No description provided for @openJobFormCustomerLabel.
-  ///
-  /// In en, this message translates to:
-  /// **'Customer (optional)'**
-  String get openJobFormCustomerLabel;
-
-  /// No description provided for @openJobFormQuoteLabel.
-  ///
-  /// In en, this message translates to:
-  /// **'Quoted amount (optional)'**
-  String get openJobFormQuoteLabel;
-
-  /// No description provided for @openJobFormCreateAction.
-  ///
-  /// In en, this message translates to:
-  /// **'Create job'**
-  String get openJobFormCreateAction;
-
-  /// No description provided for @openJobFormSaveAction.
-  ///
-  /// In en, this message translates to:
-  /// **'Save changes'**
-  String get openJobFormSaveAction;
-
-  /// No description provided for @openJobFormEditTitle.
-  ///
-  /// In en, this message translates to:
-  /// **'Edit job'**
-  String get openJobFormEditTitle;
-
-  /// No description provided for @openJobFormCouldNotCreate.
-  ///
-  /// In en, this message translates to:
-  /// **'Could not create job: {error}'**
-  String openJobFormCouldNotCreate(Object error);
-
   /// No description provided for @moreSwitchBusinessProfile.
   ///
   /// In en, this message translates to:
@@ -10699,7 +10339,7 @@ abstract class AppLocalizations {
   /// No description provided for @moreOpenBusinessRecordSubtitle.
   ///
   /// In en, this message translates to:
-  /// **'Pots, jobs and owner money'**
+  /// **'Inventory, sales and owner money'**
   String get moreOpenBusinessRecordSubtitle;
 
   /// No description provided for @moreReportsExports.
@@ -10749,42 +10389,6 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'Measured sales'**
   String get tankDetailMeasuredSales;
-
-  /// No description provided for @openJobDetailPaymentCash.
-  ///
-  /// In en, this message translates to:
-  /// **'Cash'**
-  String get openJobDetailPaymentCash;
-
-  /// No description provided for @openJobDetailPaymentMpesa.
-  ///
-  /// In en, this message translates to:
-  /// **'M-Pesa'**
-  String get openJobDetailPaymentMpesa;
-
-  /// No description provided for @openJobDetailPaymentBank.
-  ///
-  /// In en, this message translates to:
-  /// **'Bank transfer'**
-  String get openJobDetailPaymentBank;
-
-  /// No description provided for @openJobDetailCouldNotRecordPayment.
-  ///
-  /// In en, this message translates to:
-  /// **'Could not record payment: {error}'**
-  String openJobDetailCouldNotRecordPayment(Object error);
-
-  /// No description provided for @openJobDetailCouldNotCompleteJob.
-  ///
-  /// In en, this message translates to:
-  /// **'Could not complete job'**
-  String get openJobDetailCouldNotCompleteJob;
-
-  /// No description provided for @openJobDetailPaymentMethod.
-  ///
-  /// In en, this message translates to:
-  /// **'Method'**
-  String get openJobDetailPaymentMethod;
 
   /// No description provided for @crossShopSaleNoLongerOnTill.
   ///
@@ -11855,12 +11459,6 @@ abstract class AppLocalizations {
   /// **'Select customer'**
   String get quickSaleCreditCustomerHint;
 
-  /// No description provided for @quickSaleLinkJob.
-  ///
-  /// In en, this message translates to:
-  /// **'Link to job (optional)'**
-  String get quickSaleLinkJob;
-
   /// No description provided for @quickSaleLinkPool.
   ///
   /// In en, this message translates to:
@@ -12606,23 +12204,11 @@ abstract class AppLocalizations {
   /// **'Switch'**
   String get settingsSwitch;
 
-  /// No description provided for @openDashboardSelectJob.
-  ///
-  /// In en, this message translates to:
-  /// **'Select a job'**
-  String get openDashboardSelectJob;
-
   /// No description provided for @openCostGroupCouldNotCreate.
   ///
   /// In en, this message translates to:
   /// **'Could not create cost group: {error}'**
   String openCostGroupCouldNotCreate(Object error);
-
-  /// No description provided for @openJobAddCostCouldNotAdd.
-  ///
-  /// In en, this message translates to:
-  /// **'Could not add cost: {error}'**
-  String openJobAddCostCouldNotAdd(Object error);
 
   /// No description provided for @inventoryCouldNotSavePack.
   ///
@@ -12635,12 +12221,6 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'Could not resolve conflict: {error}'**
   String syncCenterCouldNotResolveConflict(Object error);
-
-  /// No description provided for @openDashboardNoJobs.
-  ///
-  /// In en, this message translates to:
-  /// **'No jobs yet. Create one first.'**
-  String get openDashboardNoJobs;
 
   /// No description provided for @setupIntroAddShopLabel.
   ///
@@ -12795,7 +12375,7 @@ abstract class AppLocalizations {
   /// No description provided for @productOnboardingOpenSubtitle.
   ///
   /// In en, this message translates to:
-  /// **'Jobs and trade · quotes, jobs, payments'**
+  /// **'Open commerce · inventory, sales, payments'**
   String get productOnboardingOpenSubtitle;
 
   /// No description provided for @actionSignIn.
@@ -12876,18 +12456,6 @@ abstract class AppLocalizations {
   /// **'Revenue to date'**
   String get dashboardRevenueToDate;
 
-  /// No description provided for @dashboardCompletedJobRevenueToday.
-  ///
-  /// In en, this message translates to:
-  /// **'Completed job revenue today'**
-  String get dashboardCompletedJobRevenueToday;
-
-  /// No description provided for @dashboardRecentJobs.
-  ///
-  /// In en, this message translates to:
-  /// **'Recent jobs'**
-  String get dashboardRecentJobs;
-
   /// No description provided for @dashboardPaymentsReceived.
   ///
   /// In en, this message translates to:
@@ -12899,12 +12467,6 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'Stock status'**
   String get dashboardStockStatus;
-
-  /// No description provided for @dashboardNewJob.
-  ///
-  /// In en, this message translates to:
-  /// **'New job'**
-  String get dashboardNewJob;
 
   /// No description provided for @dashboardLowStock.
   ///

@@ -11,15 +11,20 @@
 // just used, and they belong to the shop rather than to the product, which is
 // why they are not another column on `products`.
 
+import 'dart:io';
+
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:image_picker/image_picker.dart';
 import 'package:provider/provider.dart';
 
 import '../db/database_helper.dart';
 import '../l10n/generated/app_localizations.dart';
 import '../models/models.dart';
 import '../services/app_state.dart';
+import '../services/product_image_store.dart';
 import '../services/session_refresh_mixin.dart';
+import '../services/workspace_service.dart';
 import '../theme/app_colors.dart';
 import '../theme/app_haptics.dart';
 import '../theme/app_shapes.dart';
@@ -29,6 +34,7 @@ import '../ui/components/controls.dart';
 import '../ui/components/states.dart';
 import '../ui/components/status.dart';
 import '../ui/components/surface.dart';
+import '../ui/components/product_photo.dart';
 import '../ui/layout/page.dart';
 import '../utils/money.dart';
 import '../utils/units.dart';
@@ -59,12 +65,17 @@ final TextInputFormatter _amountDigitsOnly =
 ///
 /// An empty field is not a mistake; a NEGATIVE one is; and a size bigger than
 /// any bottle in the shop is a typo.
-String? _capacityErrorOf(AppLocalizations l10n, double? capacity) {
+String? _capacityErrorOf(
+  AppLocalizations l10n,
+  double? capacity,
+  String unit,
+) {
   if (capacity == null) {
     return null;
   }
-  if (capacity < 0)     return l10n.servingsCapacityPositive;
-  if (capacity > Product.maxBottleMl.toDouble()) {
+  if (capacity < 0) return l10n.servingsCapacityPositive;
+  final millilitres = measuredServingMillilitres(capacity, unit);
+  if (millilitres != null && millilitres > Product.maxBottleMl) {
     return l10n.servingsCapacityMax(Product.maxBottleMl);
   }
   return null;
@@ -82,6 +93,50 @@ String? _labelErrorOf(AppLocalizations l10n, String? label) {
     return l10n.servingsNameRequired;
   }
   return null;
+}
+
+/// Keeps a legacy or remotely-synced serving's declared unit intact when its
+/// editor is reopened. New servings use millilitres as the unambiguous default.
+String servingEditorUnit(Serving? serving) =>
+    serving?.unit.trim().isNotEmpty == true
+        ? serving!.unit
+        : ProductUnit.millilitre.wire;
+
+String formatServingCapacity(double capacity, String unit) {
+  final value = capacity == capacity.roundToDouble()
+      ? capacity.toStringAsFixed(0)
+      : capacity.toStringAsFixed(2).replaceFirst(RegExp(r'0+$'), '');
+  final suffix = switch (unit.trim().toLowerCase()) {
+    'litre' || 'l' || 'litres' => 'L',
+    'kilogram' || 'kg' || 'kilograms' => 'kg',
+    _ => 'ml',
+  };
+  return '$value $suffix';
+}
+
+/// Applies the servings screen's filters in one testable place.
+List<Serving> filterServings(
+  Iterable<Serving> source, {
+  String? unit,
+  int? productId,
+  String query = '',
+}) {
+  var result = source.where((Serving serving) => serving.active);
+  if (unit != null) {
+    result = result.where((Serving serving) => serving.unit == unit);
+  }
+  if (productId != null) {
+    result = result.where((Serving serving) => serving.productId == productId);
+  }
+  final normalizedQuery = query.trim().toLowerCase();
+  if (normalizedQuery.isNotEmpty) {
+    result = result.where((Serving serving) =>
+        serving.label.toLowerCase().contains(normalizedQuery) ||
+        serving.productName.toLowerCase().contains(normalizedQuery) ||
+        serving.unit.toLowerCase().contains(normalizedQuery));
+  }
+  return result.toList()
+    ..sort((Serving a, Serving b) => a.label.compareTo(b.label));
 }
 
 class ServingsScreen extends StatefulWidget {
@@ -111,18 +166,22 @@ final class _ServingsLoaded extends _ServingsLoadState {
 
 class _ServingsScreenState extends State<ServingsScreen>
     with SessionRefresh<ServingsScreen> {
+  late final TextEditingController _searchController;
   List<Serving> _cups = const [];
   List<Product> _products = const [];
   String? _unitFilter; // null = all units
   int? _productFilter; // null = all products
+  String _query = '';
   _ServingsLoadState _loadState = const _ServingsLoading();
 
   @override
   void clearForSession() {
+    _searchController.clear();
     _cups = const [];
     _products = const [];
     _unitFilter = null;
     _productFilter = null;
+    _query = '';
     _loadState = const _ServingsLoading();
   }
 
@@ -130,16 +189,12 @@ class _ServingsScreenState extends State<ServingsScreen>
   Future<void> reloadFromSession() => _load();
 
   /// Servings that pass both active filters (unit and master product).
-  List<Serving> get _filteredServings {
-    var result = _cups.where((s) => s.active);
-    if (_unitFilter != null) {
-      result = result.where((s) => s.unit == _unitFilter);
-    }
-    if (_productFilter != null) {
-      result = result.where((s) => s.productId == _productFilter);
-    }
-    return result.toList()..sort((a, b) => a.label.compareTo(b.label));
-  }
+  List<Serving> get _filteredServings => filterServings(
+        _cups,
+        unit: _unitFilter,
+        productId: _productFilter,
+        query: _query,
+      );
 
   /// Distinct units in use across all servings, for the unit filter chip row.
   List<String> get _unitsInUse {
@@ -160,7 +215,14 @@ class _ServingsScreenState extends State<ServingsScreen>
   @override
   void initState() {
     super.initState();
+    _searchController = TextEditingController();
     _load();
+  }
+
+  @override
+  void dispose() {
+    _searchController.dispose();
+    super.dispose();
   }
 
   Future<void> _load() async {
@@ -235,13 +297,21 @@ class _ServingsScreenState extends State<ServingsScreen>
   }
 
   Future<void> _copyServing(Serving serving) async {
-    if (_products.isEmpty) return;
+    final existingLinks = _cups
+        .where((cup) => cup.active && cup.label == serving.label)
+        .map((cup) => cup.productId)
+        .toSet();
+    final available = _products
+        .where((product) =>
+            product.id != null && !existingLinks.contains(product.id))
+        .toList();
+    if (available.isEmpty) return;
     final Product? selected = await showDialog<Product>(
       context: context,
       builder: (context) => SimpleDialog(
         title: Text(AppLocalizations.of(context).copyCupToProduct),
         children: <Widget>[
-          for (final Product p in _products)
+          for (final Product p in available)
             SimpleDialogOption(
               onPressed: () => Navigator.pop(context, p),
               child: Text(p.name),
@@ -250,7 +320,10 @@ class _ServingsScreenState extends State<ServingsScreen>
       ),
     );
     if (selected == null || !mounted) return;
-    final DatabaseHelper db = DatabaseHelper.instance;
+    // Open the normal editor instead of silently cloning the old price. The
+    // serving template is shared by shape, while this product link owns its
+    // price; the owner must be able to set whiskey's price independently from
+    // rum's before committing the new link.
     final Serving copy = Serving(
       productId: selected.id!,
       productName: selected.name,
@@ -261,9 +334,7 @@ class _ServingsScreenState extends State<ServingsScreen>
       active: serving.active,
       updatedAt: DateTime.now().toIso8601String(),
     );
-    await db.upsertServing(copy);
-    markCatalogueChanged();
-    await _load();
+    await _edit(copy);
   }
 
   static int? servingsPerBottle(Product product, Serving serving) {
@@ -345,11 +416,11 @@ class _ServingsScreenState extends State<ServingsScreen>
                         value: null,
                         child: Text(AppLocalizations.of(context).allProducts),
                       ),
-                      ..._productsWithServings.map((Product p) =>
-                          DropdownMenuItem<int>(
-                            value: p.id,
-                            child: Text(p.name),
-                          )),
+                      ..._productsWithServings
+                          .map((Product p) => DropdownMenuItem<int>(
+                                value: p.id,
+                                child: Text(p.name),
+                              )),
                     ],
                     onChanged: (int? id) {
                       setState(() {
@@ -369,6 +440,10 @@ class _ServingsScreenState extends State<ServingsScreen>
                 onEdit: _edit,
                 onStopSelling: _remove,
                 onCopy: _copyServing,
+                searchController: _searchController,
+                onQueryChanged: (String value) {
+                  setState(() => _query = value);
+                },
               ),
             ],
           ),
@@ -415,6 +490,8 @@ class _ServingsList extends StatelessWidget {
     required this.onEdit,
     required this.onStopSelling,
     required this.onCopy,
+    required this.searchController,
+    required this.onQueryChanged,
   });
 
   final List<Serving> servings;
@@ -426,6 +503,8 @@ class _ServingsList extends StatelessWidget {
   final void Function(Serving serving) onEdit;
   final void Function(Serving serving) onStopSelling;
   final void Function(Serving serving) onCopy;
+  final TextEditingController searchController;
+  final ValueChanged<String> onQueryChanged;
 
   @override
   Widget build(BuildContext context) {
@@ -452,6 +531,8 @@ class _ServingsList extends StatelessWidget {
             Padding(
               padding: EdgeInsets.all(spacing.md),
               child: TextField(
+                controller: searchController,
+                onChanged: onQueryChanged,
                 decoration: InputDecoration(
                   hintText: 'Search serving definitions',
                   prefixIcon: const Icon(Icons.search),
@@ -473,8 +554,9 @@ class _ServingsList extends StatelessWidget {
                   final Product? product = productOf(serving);
                   return _ServingCard(
                     serving: serving,
-                    servingsPerBottle:
-                        product == null ? null : servingsPerBottle(product, serving),
+                    servingsPerBottle: product == null
+                        ? null
+                        : servingsPerBottle(product, serving),
                     canEdit: canEdit,
                     onEdit: () => onEdit(serving),
                     onStopSelling: () => onStopSelling(serving),
@@ -513,7 +595,7 @@ class _ServingCard extends StatelessWidget {
     final int? perBottle = servingsPerBottle;
     return <String>[
       serving.productName,
-      l10n.servingsCapacityValue(serving.capacity),
+      formatServingCapacity(serving.capacity, serving.unit),
       if (perBottle != null) l10n.servingsPerBottle(perBottle),
     ].join(' · ');
   }
@@ -527,7 +609,6 @@ class _ServingCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final AppSpacing spacing = AppSpacing.of(context);
-    final AppColors colors = AppColors.of(context);
     final TextTheme type = AppTypography.of(context);
     final String price = formatMoney(serving.price);
     final AppLocalizations l10n = AppLocalizations.of(context);
@@ -556,20 +637,10 @@ class _ServingCard extends StatelessWidget {
         children: <Widget>[
           // Circular icon badge like the mockup.
           ExcludeSemantics(
-            child: Container(
-              padding: const EdgeInsets.all(8),
-              decoration: BoxDecoration(
-                color: colors.surfaceSunken,
-                shape: BoxShape.circle,
-              ),
-              child: Icon(
-                serving.active
-                    ? Icons.local_drink_outlined
-                    : Icons.remove_circle_outline,
-                size: 20,
-                color:
-                    serving.active ? colors.onSurfaceMuted : colors.onSurfaceVariant,
-              ),
+            child: ProductPhoto(
+              imagePath: serving.imagePath,
+              size: 44,
+              revision: serving.updatedAt,
             ),
           ),
           SizedBox(width: spacing.md),
@@ -606,7 +677,8 @@ class _ServingCard extends StatelessWidget {
             ),
           ),
           if (canEdit)
-            _ServingMenu(onEdit: onEdit, onStopSelling: onStopSelling, onCopy: onCopy),
+            _ServingMenu(
+                onEdit: onEdit, onStopSelling: onStopSelling, onCopy: onCopy),
         ],
       ),
     );
@@ -708,9 +780,12 @@ class _ServingEditorState extends State<_ServingEditor> {
   late final TextEditingController _capacity;
   late final TextEditingController _price;
   late final TextEditingController _label;
+  late String _unit;
   int? _productId;
   String? _error;
   bool _saving = false;
+  File? _pickedPhoto;
+  bool _photoRemoved = false;
 
   bool get _isNew => widget.serving?.id == null;
 
@@ -744,15 +819,17 @@ class _ServingEditorState extends State<_ServingEditor> {
     super.initState();
     final serving = widget.serving;
     _productId = serving?.productId;
+    _unit = servingEditorUnit(serving);
     _capacity = TextEditingController(
         text: serving == null ? '' : serving.capacity.toString());
     // Prices are stored as `Money`, never `double`. `Money.toString()` is the
     // debug representation in minor units, and seeding a field with it produced
     // an unreadable, unparseable price, the same trap the product editor hit.
-    _price =
-        TextEditingController(text: serving == null ? '' : _majorText(serving.price));
+    _price = TextEditingController(
+        text: serving == null ? '' : _majorText(serving.price));
     _label = TextEditingController(
-        text: serving?.label ?? AppLocalizations.of(context).servingsDefaultName);
+        text:
+            serving?.label ?? AppLocalizations.of(context).servingsDefaultName);
   }
 
   @override
@@ -790,7 +867,7 @@ class _ServingEditorState extends State<_ServingEditor> {
     // is exactly what the guard refuses.
     final String? problem = productId == null
         ? l10n.servingsChooseDrink
-        : _capacityErrorOf(l10n, capacity) ??
+        : _capacityErrorOf(l10n, capacity, _unit) ??
             _priceErrorOf(l10n, price) ??
             _labelErrorOf(l10n, label);
     if (problem != null) {
@@ -812,16 +889,35 @@ class _ServingEditorState extends State<_ServingEditor> {
       // renamed or removed and the till can still explain what it poured.
       productName: product?.name ?? widget.serving?.productName ?? '',
       capacity: capacity?.toDouble() ?? 0,
-      unit: 'ml',
+      unit: _unit,
       price: Money.fromMajor(price!),
       label: label,
       // Editing a cup that was stopped selling brings it back, rather than
       // silently leaving it off the till after the owner re-priced it.
       active: true,
       updatedAt: DateTime.now().toIso8601String(),
+      imagePath: widget.serving?.imagePath,
     );
     try {
-      await DatabaseHelper.instance.upsertServing(cup);
+      final db = DatabaseHelper.instance;
+      final servingId = await db.upsertServing(cup);
+      if (_pickedPhoto != null || _photoRemoved) {
+        final workspaceKey = await WorkspaceService.activeWorkspaceKey();
+        if (_photoRemoved) {
+          await ProductImageStore.deleteServing(
+            servingId,
+            workspaceKey: workspaceKey,
+          );
+          await db.setServingImage(null, servingId);
+        } else {
+          final relative = await ProductImageStore.saveServing(
+            _pickedPhoto!,
+            servingId: servingId,
+            workspaceKey: workspaceKey,
+          );
+          await db.setServingImage(relative, servingId);
+        }
+      }
       if (!mounted) return;
       HapticTheme.of(context).fire(HapticEvent.commit);
       Navigator.pop(context, cup);
@@ -842,11 +938,47 @@ class _ServingEditorState extends State<_ServingEditor> {
     }
   }
 
+  Future<void> _pickPhoto() async {
+    final source = await showModalBottomSheet<ImageSource>(
+      context: context,
+      builder: (sheetContext) => SafeArea(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: <Widget>[
+            ListTile(
+              leading: const Icon(Icons.photo_library_outlined),
+              title: const Text('Choose from gallery'),
+              onTap: () => Navigator.pop(sheetContext, ImageSource.gallery),
+            ),
+            ListTile(
+              leading: const Icon(Icons.photo_camera_outlined),
+              title: const Text('Take a photo'),
+              onTap: () => Navigator.pop(sheetContext, ImageSource.camera),
+            ),
+          ],
+        ),
+      ),
+    );
+    if (source == null) return;
+    final file = await ImagePicker().pickImage(
+      source: source,
+      maxWidth: 1024,
+      imageQuality: 90,
+    );
+    if (!mounted || file == null) return;
+    setState(() {
+      _pickedPhoto = File(file.path);
+      _photoRemoved = false;
+    });
+  }
+
   @override
   Widget build(BuildContext context) {
     final AppSpacing spacing = AppSpacing.of(context);
     final AppLocalizations l10n = AppLocalizations.of(context);
     final List<Product> options = _options;
+    final unitOptions = <String>['ml', 'litre', 'kilogram'];
+    if (!unitOptions.contains(_unit)) unitOptions.add(_unit);
 
     return Padding(
       padding: EdgeInsetsDirectional.only(
@@ -880,54 +1012,111 @@ class _ServingEditorState extends State<_ServingEditor> {
                   onChanged: (int? id) => setState(() => _productId = id),
                 ),
               SizedBox(height: spacing.md),
-              Row(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: <Widget>[
-                  Expanded(
-                    child: TextFormField(
-                      controller: _capacity,
-                      autofocus: _isNew,
-                      keyboardType: TextInputType.number,
-                      textInputAction: TextInputAction.next,
-                      inputFormatters: <TextInputFormatter>[_wholeDigitsOnly],
-                      validator: (String? raw) => _capacityErrorOf(
-                        l10n,
-                        double.tryParse(raw?.trim() ?? ''),
-                      ),
-                      decoration: InputDecoration(
-                        labelText:
-                            AppLocalizations.of(context).servingsCapacityLabel,
-                        hintText:
-                            AppLocalizations.of(context).servingsCapacityHint,
-                        helperText:
-                            AppLocalizations.of(context).servingsCapacityHelper,
-                        floatingLabelBehavior: FloatingLabelBehavior.always,
-                      ),
+              SurfaceCard(
+                padding: EdgeInsets.all(spacing.md),
+                child: Row(
+                  children: <Widget>[
+                    _pickedPhoto == null
+                        ? ProductPhoto(
+                            imagePath: _photoRemoved
+                                ? null
+                                : widget.serving?.imagePath,
+                            size: 64,
+                            revision: widget.serving?.updatedAt,
+                          )
+                        : ClipRRect(
+                            borderRadius: BorderRadius.circular(12),
+                            child: Image.file(
+                              _pickedPhoto!,
+                              width: 64,
+                              height: 64,
+                              fit: BoxFit.cover,
+                            ),
+                          ),
+                    SizedBox(width: spacing.md),
+                    const Expanded(child: Text('Serving photo')),
+                    OutlinedButton.icon(
+                      onPressed: _pickPhoto,
+                      icon: const Icon(Icons.add_a_photo_outlined),
+                      label: Text(_pickedPhoto == null ? 'Add' : 'Replace'),
                     ),
-                  ),
-                  SizedBox(width: spacing.md),
-                  Expanded(
-                    child: TextFormField(
-                      controller: _price,
-                      keyboardType:
-                          const TextInputType.numberWithOptions(decimal: true),
-                      textInputAction: TextInputAction.next,
-                      inputFormatters: <TextInputFormatter>[_amountDigitsOnly],
-                      validator: (String? raw) => _priceErrorOf(
-                        l10n,
-                        double.tryParse(raw?.trim() ?? ''),
+                    if (widget.serving?.imagePath != null ||
+                        _pickedPhoto != null)
+                      IconButton(
+                        tooltip: 'Remove photo',
+                        onPressed: () => setState(() {
+                          _pickedPhoto = null;
+                          _photoRemoved = true;
+                        }),
+                        icon: const Icon(Icons.delete_outline),
                       ),
-                      style: AppTypography.money(context, size: 15),
-                      decoration: InputDecoration(
-                        labelText:
-                            AppLocalizations.of(context).servingsPriceLabel,
-                        helperText:
-                            AppLocalizations.of(context).servingsPriceHelper,
-                        floatingLabelBehavior: FloatingLabelBehavior.always,
+                  ],
+                ),
+              ),
+              SizedBox(height: spacing.md),
+              TextFormField(
+                controller: _capacity,
+                autofocus: _isNew,
+                keyboardType: const TextInputType.numberWithOptions(
+                  decimal: true,
+                ),
+                textInputAction: TextInputAction.next,
+                inputFormatters: <TextInputFormatter>[_wholeDigitsOnly],
+                validator: (String? raw) => _capacityErrorOf(
+                  l10n,
+                  double.tryParse(raw?.trim() ?? ''),
+                  _unit,
+                ),
+                decoration: InputDecoration(
+                  labelText: l10n.servingsCapacityLabel,
+                  hintText: l10n.servingsCapacityHint,
+                  helperText: l10n.servingsCapacityHelper,
+                  floatingLabelBehavior: FloatingLabelBehavior.always,
+                ),
+              ),
+              SizedBox(height: spacing.md),
+              DropdownButtonFormField<String>(
+                initialValue: _unit,
+                decoration: const InputDecoration(
+                  labelText: 'Capacity unit',
+                  helperText: 'Use the unit used by the drink stock',
+                  floatingLabelBehavior: FloatingLabelBehavior.always,
+                ),
+                items: unitOptions
+                    .map(
+                      (String value) => DropdownMenuItem<String>(
+                        value: value,
+                        child: Text(
+                          value == 'litre'
+                              ? 'L (litres)'
+                              : value == 'kilogram'
+                                  ? 'kg (kilograms)'
+                                  : value,
+                        ),
                       ),
-                    ),
-                  ),
-                ],
+                    )
+                    .toList(),
+                onChanged: (String? value) {
+                  if (value != null) setState(() => _unit = value);
+                },
+              ),
+              SizedBox(height: spacing.md),
+              TextFormField(
+                controller: _price,
+                keyboardType:
+                    const TextInputType.numberWithOptions(decimal: true),
+                textInputAction: TextInputAction.next,
+                inputFormatters: <TextInputFormatter>[_amountDigitsOnly],
+                validator: (String? raw) => _priceErrorOf(
+                  l10n,
+                  double.tryParse(raw?.trim() ?? ''),
+                ),
+                style: AppTypography.money(context, size: 15),
+                decoration: InputDecoration(
+                  labelText: l10n.servingsPriceLabel,
+                  helperText: l10n.servingsPriceHelper,
+                  floatingLabelBehavior: FloatingLabelBehavior.always,
+                ),
               ),
               SizedBox(height: spacing.md),
               TextFormField(

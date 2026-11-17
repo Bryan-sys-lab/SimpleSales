@@ -115,6 +115,9 @@ class AnalyticsSnapshot {
     required this.stockValue,
     this.shifts = const ShiftAnalytics.empty(),
     this.drinks = DrinksAnalyticsSnapshot.empty,
+    this.pooledCosts = Money.zero,
+    this.receivables = Money.zero,
+    this.cashPosition = Money.zero,
     this.statement,
   });
 
@@ -135,6 +138,9 @@ class AnalyticsSnapshot {
     stockValue: Money.zero,
     shifts: ShiftAnalytics.empty(),
     drinks: DrinksAnalyticsSnapshot.empty,
+    pooledCosts: Money.zero,
+    receivables: Money.zero,
+    cashPosition: Money.zero,
     statement: null,
   );
 
@@ -156,6 +162,12 @@ class AnalyticsSnapshot {
 
   /// Drinks-only operational metrics projected from the shared ledger.
   final DrinksAnalyticsSnapshot drinks;
+
+  /// Open-profile management KPIs loaded with the same snapshot as the rest
+  /// of analytics, rather than by a second widget after the page appears.
+  final Money pooledCosts;
+  final Money receivables;
+  final Money cashPosition;
 
   /// The canonical statement is management-scoped. Cashiers see their own
   /// sales KPIs, but must not receive a whole-shop liability or cash balance.
@@ -223,6 +235,7 @@ class _AnalyticsScreenState extends State<AnalyticsScreen>
   bool _canShowPortfolio = false;
 
   AnalyticsRange _range = AnalyticsRange.week;
+  int _loadGeneration = 0;
   ProductSort _sort = ProductSort.revenue;
   bool _ascending = false;
 
@@ -275,8 +288,17 @@ class _AnalyticsScreenState extends State<AnalyticsScreen>
   }
 
   Future<void> _load() async {
+    final int generation = ++_loadGeneration;
     final DatabaseHelper db = DatabaseHelper.instance;
     final AppState appState = context.read<AppState>();
+    // A request can outlive more than its range selection.  It can also cross
+    // a sign-in, a shop switch, or a profile change while remote aggregates
+    // are in flight.  Keep the complete identity that was used to read the
+    // batch so a late response can never paint another session's figures.
+    final String requestWorkspace = appState.workspaceKey;
+    final ShopProfile requestProfile = appState.shopProfile;
+    final int? requestStaffId = appState.currentStaffId;
+    final String requestRole = appState.currentRole;
     // The previous window rides along in the same batch: it is one more
     // aggregate query, and fetching it with the current one means the comparison
     // is answered by a single consistent read of the ledger rather than two
@@ -293,7 +315,14 @@ class _AnalyticsScreenState extends State<AnalyticsScreen>
     // It used to be a whole-shop screen that cashiers could not open at all,
     // which answered the question "how am I doing?" with "you may not look".
     // Their own numbers are theirs to read.
-    final int? staffId = context.read<AppState>().analyticsStaffId;
+    final int? staffId = appState.analyticsStaffId;
+    bool requestIsCurrent() =>
+        mounted &&
+        generation == _loadGeneration &&
+        appState.workspaceKey == requestWorkspace &&
+        appState.shopProfile == requestProfile &&
+        appState.currentStaffId == requestStaffId &&
+        appState.currentRole == requestRole;
     try {
       final List<Object> results = await Future.wait(<Future<Object>>[
         db.salesTotalsFor(since: since, staffId: staffId),
@@ -314,6 +343,9 @@ class _AnalyticsScreenState extends State<AnalyticsScreen>
             ? db.drinksAnalytics(since: since, staffId: staffId)
             : Future<DrinksAnalyticsSnapshot>.value(
                 DrinksAnalyticsSnapshot.empty),
+        db.getCostPools(),
+        db.creditSummary(),
+        db.getFinancialSums(),
       ]);
       final FinancialStatement? statement = staffId == null
           ? await db.getFinancialStatement(
@@ -321,17 +353,30 @@ class _AnalyticsScreenState extends State<AnalyticsScreen>
               untilUtc: DateTime.now().toUtc(),
             )
           : null;
-      if (!mounted) return;
+      if (!requestIsCurrent()) return;
       final List<Product> products = results[4] as List<Product>;
       final Money stockValue = Money.fromMinor(
         products.where((p) => p.active).fold<int>(
-          0,
-          (sum, p) => sum + (p.stockQty * p.costPrice.minorUnits).round(),
-        ),
+              0,
+              (sum, p) => sum + (p.stockQty * p.costPrice.minorUnits).round(),
+            ),
       );
       final List<Product> expiring = results[5] as List<Product>;
       final List<Product> expired = results[6] as List<Product>;
       final List<SlowMoverRow> slowMovers = results[7] as List<SlowMoverRow>;
+      final List<Map<String, dynamic>> pools =
+          results[11] as List<Map<String, dynamic>>;
+      final ({int totalOwedMinor, int customerCount}) creditSummary =
+          results[12] as ({int totalOwedMinor, int customerCount});
+      final ({
+        int revenueMinor,
+        int cashInMinor,
+        int cashOutMinor
+      }) financialSums = results[13] as ({
+        int revenueMinor,
+        int cashInMinor,
+        int cashOutMinor
+      });
       List<ProductSalesRow> productRows = results[2] as List<ProductSalesRow>;
       CostCoverage costCoverage = costCoverageFor(productRows, products);
       DailyTotals totals = results[0] as DailyTotals;
@@ -350,22 +395,27 @@ class _AnalyticsScreenState extends State<AnalyticsScreen>
       );
       if (canUseRemote) {
         try {
-          final remote = await BackendService.remoteSalesSummary(
-            from: since,
-            to: DateTime.now(),
-          );
+          final remoteResults = await Future.wait<RemoteSalesSummary>([
+            BackendService.remoteSalesSummary(
+              from: since,
+              to: DateTime.now(),
+            ),
+            BackendService.remoteSalesSummary(
+              from: range.previousSince,
+              to: since,
+            ),
+          ]);
+          final remote = remoteResults[0];
           totals = remote.totals;
           payments = remote.payments;
           if (remote.days.isNotEmpty) chartDays = remote.days;
-          final previous = await BackendService.remoteSalesSummary(
-            from: range.previousSince,
-            to: since,
-          );
+          final previous = remoteResults[1];
           previousTotals = previous.totals;
         } catch (_) {
           // Local zeroes are still honest while offline or unverified.
         }
       }
+      if (!requestIsCurrent()) return;
       if (canUseRemote) {
         try {
           final remoteProducts = await BackendService.remoteProductReport(
@@ -382,6 +432,7 @@ class _AnalyticsScreenState extends State<AnalyticsScreen>
           // Product rows remain empty while offline.
         }
       }
+      if (!requestIsCurrent()) return;
       setState(() {
         _sortedProducts = _order(
           productRows,
@@ -413,12 +464,23 @@ class _AnalyticsScreenState extends State<AnalyticsScreen>
             slowMovers: slowMovers,
             shifts: results[9] as ShiftAnalytics,
             drinks: results[10] as DrinksAnalyticsSnapshot,
+            pooledCosts: Money.fromMinor(
+              pools.fold<int>(
+                0,
+                (sum, pool) =>
+                    sum + ((pool['invested_minor'] as num?)?.toInt() ?? 0),
+              ),
+            ),
+            receivables: Money.fromMinor(creditSummary.totalOwedMinor),
+            cashPosition: Money.fromMinor(
+              financialSums.cashInMinor - financialSums.cashOutMinor,
+            ),
             statement: statement,
           ),
         );
       });
     } catch (_) {
-      if (!mounted) return;
+      if (!requestIsCurrent()) return;
       setState(() {
         _view = AnalyticsFailure('Couldn’t load analytics.');
       });
@@ -502,144 +564,148 @@ class _AnalyticsScreenState extends State<AnalyticsScreen>
 
     return switch (_view) {
       AnalyticsLoading(previous: final AnalyticsSnapshot previous) =>
-          AnalyticsScaffold(
-        range: _range,
-        onRangeChanged: _setRange,
-        snapshot: previous,
-        onRetry: _load,
-        loading: true,
-        drinks: null,
-      ),
+        AnalyticsScaffold(
+          range: _range,
+          onRangeChanged: _setRange,
+          snapshot: previous,
+          onRetry: _load,
+          loading: true,
+          drinks: null,
+        ),
       AnalyticsFailure(message: final String message) => AnalyticsScaffold(
-        range: _range,
-        onRangeChanged: _setRange,
-        snapshot: AnalyticsSnapshot.empty,
-        onRetry: _load,
-        errorMessage: message,
-        drinks: null,
-      ),
-      AnalyticsContent(snapshot: final AnalyticsSnapshot snapshot) =>
-          switch (state.shopProfile) {
-        ShopProfile.drinks => DrinksAnalyticsScreen(
           range: _range,
           onRangeChanged: _setRange,
-          snapshot: snapshot,
+          snapshot: AnalyticsSnapshot.empty,
           onRetry: _load,
-          onSortBy: _sortBy,
-          sort: _sort,
-          ascending: _ascending,
-          sortedProducts: _sortedProducts,
-          salesPoints: _salesPoints,
-          chartSemantics: describeDailyBuckets(
-            l10n.analyticsChartTitleSalesByDay,
-            snapshot.days,
-          ),
-          chartEmphasis: snapshot.totals.hasSales
-              ? '${formatMoney(snapshot.totals.total)} over ${_range.label.toLowerCase()}'
-              : null,
-          statement: snapshot.statement,
-          bottomInset: spacing.xl,
-          onOpenPortfolio: () => context.push(Routes.portfolio),
-          showPortfolioLink: _canShowPortfolio && state.isAdmin,
-          onProductTap: state.isOwnerSession || state.role == ShopRole.manager
-              ? (row) => showProductDrilldownSheet(
-                    context,
-                    row: row,
-                    since: _range.since,
-                  )
-              : null,
-          drinks: state.shopProfile.navigation.showDrinkService
-              ? snapshot.drinks
-              : null,
+          errorMessage: message,
+          drinks: null,
         ),
-        ShopProfile.duka => DukaAnalyticsScreen(
-          range: _range,
-          onRangeChanged: _setRange,
-          snapshot: snapshot,
-          onRetry: _load,
-          onSortBy: _sortBy,
-          sort: _sort,
-          ascending: _ascending,
-          sortedProducts: _sortedProducts,
-          salesPoints: _salesPoints,
-          chartSemantics: describeDailyBuckets(
-            l10n.analyticsChartTitleSalesByDay,
-            snapshot.days,
-          ),
-          chartEmphasis: snapshot.totals.hasSales
-              ? '${formatMoney(snapshot.totals.total)} over ${_range.label.toLowerCase()}'
-              : null,
-          statement: snapshot.statement,
-          bottomInset: spacing.xl,
-          onOpenPortfolio: () => context.push(Routes.portfolio),
-          showPortfolioLink: _canShowPortfolio && state.isAdmin,
-          onProductTap: state.isOwnerSession || state.role == ShopRole.manager
-              ? (row) => showProductDrilldownSheet(
-                    context,
-                    row: row,
-                    since: _range.since,
-                  )
-              : null,
-        ),
-        ShopProfile.fashion => FashionAnalyticsScreen(
-          range: _range,
-          onRangeChanged: _setRange,
-          snapshot: snapshot,
-          onRetry: _load,
-          onSortBy: _sortBy,
-          sort: _sort,
-          ascending: _ascending,
-          sortedProducts: _sortedProducts,
-          salesPoints: _salesPoints,
-          chartSemantics: describeDailyBuckets(
-            l10n.analyticsChartTitleSalesByDay,
-            snapshot.days,
-          ),
-          chartEmphasis: snapshot.totals.hasSales
-              ? '${formatMoney(snapshot.totals.total)} over ${_range.label.toLowerCase()}'
-              : null,
-          statement: snapshot.statement,
-          bottomInset: spacing.xl,
-          onOpenPortfolio: () => context.push(Routes.portfolio),
-          showPortfolioLink: _canShowPortfolio && state.isAdmin,
-          onProductTap: state.isOwnerSession || state.role == ShopRole.manager
-              ? (row) => showProductDrilldownSheet(
-                    context,
-                    row: row,
-                    since: _range.since,
-                  )
-              : null,
-        ),
-        ShopProfile.open => OpenAnalyticsScreen(
-          range: _range,
-          onRangeChanged: _setRange,
-          snapshot: snapshot,
-          onRetry: _load,
-          onSortBy: _sortBy,
-          sort: _sort,
-          ascending: _ascending,
-          sortedProducts: _sortedProducts,
-          salesPoints: _salesPoints,
-          chartSemantics: describeDailyBuckets(
-            l10n.analyticsChartTitleSalesByDay,
-            snapshot.days,
-          ),
-          chartEmphasis: snapshot.totals.hasSales
-              ? '${formatMoney(snapshot.totals.total)} over ${_range.label.toLowerCase()}'
-              : null,
-          statement: snapshot.statement,
-          bottomInset: spacing.xl,
-          onOpenPortfolio: () => context.push(Routes.portfolio),
-          showPortfolioLink: _canShowPortfolio && state.isAdmin,
-          onProductTap: state.isOwnerSession || state.role == ShopRole.manager
-              ? (row) => showProductDrilldownSheet(
-                    context,
-                    row: row,
-                    since: _range.since,
-                  )
-              : null,
-        ),
-      },
+      AnalyticsContent(snapshot: final AnalyticsSnapshot snapshot) => switch (
+            state.shopProfile) {
+          ShopProfile.drinks => DrinksAnalyticsScreen(
+              range: _range,
+              onRangeChanged: _setRange,
+              snapshot: snapshot,
+              onRetry: _load,
+              onSortBy: _sortBy,
+              sort: _sort,
+              ascending: _ascending,
+              sortedProducts: _sortedProducts,
+              salesPoints: _salesPoints,
+              chartSemantics: describeDailyBuckets(
+                l10n.analyticsChartTitleSalesByDay,
+                snapshot.days,
+              ),
+              chartEmphasis: snapshot.totals.hasSales
+                  ? '${formatMoney(snapshot.totals.total)} over ${_range.label.toLowerCase()}'
+                  : null,
+              statement: snapshot.statement,
+              bottomInset: spacing.xl,
+              onOpenPortfolio: () => context.push(Routes.portfolio),
+              showPortfolioLink: _canShowPortfolio && state.isAdmin,
+              onProductTap:
+                  state.isOwnerSession || state.role == ShopRole.manager
+                      ? (row) => showProductDrilldownSheet(
+                            context,
+                            row: row,
+                            since: _range.since,
+                          )
+                      : null,
+              drinks: state.shopProfile.navigation.showDrinkService
+                  ? snapshot.drinks
+                  : null,
+            ),
+          ShopProfile.duka => DukaAnalyticsScreen(
+              range: _range,
+              onRangeChanged: _setRange,
+              snapshot: snapshot,
+              onRetry: _load,
+              onSortBy: _sortBy,
+              sort: _sort,
+              ascending: _ascending,
+              sortedProducts: _sortedProducts,
+              salesPoints: _salesPoints,
+              chartSemantics: describeDailyBuckets(
+                l10n.analyticsChartTitleSalesByDay,
+                snapshot.days,
+              ),
+              chartEmphasis: snapshot.totals.hasSales
+                  ? '${formatMoney(snapshot.totals.total)} over ${_range.label.toLowerCase()}'
+                  : null,
+              statement: snapshot.statement,
+              bottomInset: spacing.xl,
+              onOpenPortfolio: () => context.push(Routes.portfolio),
+              showPortfolioLink: _canShowPortfolio && state.isAdmin,
+              onProductTap:
+                  state.isOwnerSession || state.role == ShopRole.manager
+                      ? (row) => showProductDrilldownSheet(
+                            context,
+                            row: row,
+                            since: _range.since,
+                          )
+                      : null,
+            ),
+          ShopProfile.fashion => FashionAnalyticsScreen(
+              range: _range,
+              onRangeChanged: _setRange,
+              snapshot: snapshot,
+              onRetry: _load,
+              onSortBy: _sortBy,
+              sort: _sort,
+              ascending: _ascending,
+              sortedProducts: _sortedProducts,
+              salesPoints: _salesPoints,
+              chartSemantics: describeDailyBuckets(
+                l10n.analyticsChartTitleSalesByDay,
+                snapshot.days,
+              ),
+              chartEmphasis: snapshot.totals.hasSales
+                  ? '${formatMoney(snapshot.totals.total)} over ${_range.label.toLowerCase()}'
+                  : null,
+              statement: snapshot.statement,
+              bottomInset: spacing.xl,
+              onOpenPortfolio: () => context.push(Routes.portfolio),
+              showPortfolioLink: _canShowPortfolio && state.isAdmin,
+              onProductTap:
+                  state.isOwnerSession || state.role == ShopRole.manager
+                      ? (row) => showProductDrilldownSheet(
+                            context,
+                            row: row,
+                            since: _range.since,
+                          )
+                      : null,
+            ),
+          ShopProfile.open => OpenAnalyticsScreen(
+              range: _range,
+              onRangeChanged: _setRange,
+              snapshot: snapshot,
+              onRetry: _load,
+              onSortBy: _sortBy,
+              sort: _sort,
+              ascending: _ascending,
+              sortedProducts: _sortedProducts,
+              salesPoints: _salesPoints,
+              chartSemantics: describeDailyBuckets(
+                l10n.analyticsChartTitleSalesByDay,
+                snapshot.days,
+              ),
+              chartEmphasis: snapshot.totals.hasSales
+                  ? '${formatMoney(snapshot.totals.total)} over ${_range.label.toLowerCase()}'
+                  : null,
+              statement: snapshot.statement,
+              bottomInset: spacing.xl,
+              onOpenPortfolio: () => context.push(Routes.portfolio),
+              showPortfolioLink: _canShowPortfolio && state.isAdmin,
+              onProductTap:
+                  state.isOwnerSession || state.role == ShopRole.manager
+                      ? (row) => showProductDrilldownSheet(
+                            context,
+                            row: row,
+                            since: _range.since,
+                          )
+                      : null,
+            ),
+        },
     };
   }
 }
@@ -746,7 +812,8 @@ class DrinksAnalyticsScreen extends StatelessWidget {
           days: range.days,
         )),
         SizedBox(height: spacing.lg),
-        reveal(PaymentMixCard(rows: snapshot.payments, totals: snapshot.totals)),
+        reveal(
+            PaymentMixCard(rows: snapshot.payments, totals: snapshot.totals)),
         SizedBox(height: spacing.lg),
         reveal(StockSection(
             outOfStock: snapshot.outOfStock, lowStock: snapshot.lowStock)),
@@ -809,7 +876,8 @@ class DrinksAnalyticsScreen extends StatelessWidget {
 /// [AdaptivePage] supplies the canvas and the safe-area inset; this adds the
 /// pull-to-refresh and the vertical rhythm between sections.
 class AnalyticsScaffold extends StatelessWidget {
-  const AnalyticsScaffold({super.key,
+  const AnalyticsScaffold({
+    super.key,
     required this.range,
     required this.onRangeChanged,
     required this.snapshot,
@@ -917,23 +985,24 @@ class AnalyticsScaffold extends StatelessWidget {
             else if (errorMessage != null)
               AnalyticsError(message: errorMessage!, onRetry: onRetry)
             else
-              ...(children ?? standardAnalyticsSections(
-                context: context,
-                shown: shown,
-                range: range,
-                chartSemantics: chartSemantics,
-                chartEmphasis: chartEmphasis,
-                statement: statement,
-                salesPoints: salesPoints,
-                sortedProducts: sortedProducts,
-                sort: sort,
-                ascending: ascending,
-                onSortBy: onSortBy,
-                onProductTap: onProductTap,
-                spacing: spacing,
-                l10n: AppLocalizations.of(context),
-                colors: AppColors.of(context),
-              )),
+              ...(children ??
+                  standardAnalyticsSections(
+                    context: context,
+                    shown: shown,
+                    range: range,
+                    chartSemantics: chartSemantics,
+                    chartEmphasis: chartEmphasis,
+                    statement: statement,
+                    salesPoints: salesPoints,
+                    sortedProducts: sortedProducts,
+                    sort: sort,
+                    ascending: ascending,
+                    onSortBy: onSortBy,
+                    onProductTap: onProductTap,
+                    spacing: spacing,
+                    l10n: AppLocalizations.of(context),
+                    colors: AppColors.of(context),
+                  )),
           ],
         ),
       ),
@@ -1146,7 +1215,8 @@ class FinancialStatementCard extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: <Widget>[
-          Text(AppLocalizations.of(context).reportsReconciledFinancialStatement, style: type.titleLarge),
+          Text(AppLocalizations.of(context).reportsReconciledFinancialStatement,
+              style: type.titleLarge),
           SizedBox(height: spacing.xs),
           Text(
             statement.openingCashIsKnown

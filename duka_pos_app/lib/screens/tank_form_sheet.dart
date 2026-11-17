@@ -95,7 +95,7 @@ class TankServingValues {
   /// How much is in one, in millilitres. ZERO means the owner did not say,
   /// which is allowed: the cup is still sold, only what it takes out of the
   /// tank is not counted.
-  final int sizeMl;
+  final double sizeMl;
 
   /// What one sells for, in shillings.
   final double price;
@@ -147,19 +147,23 @@ Future<void> saveTank(Database database, TankValues values,
     int productId;
     if (existingProductId != null) {
       productId = existingProductId;
-      await txn.update('products', <String, Object?>{
-        'name': values.name,
-        'category': kTankCategory,
-        'cost_price': Money.fromMajor(values.cost).minorUnits,
-        'sell_price': 0,
-        'stock_qty': values.tankCount.toDouble(),
-        'reorder_level': 0,
-        'bottle_ml': values.capacityMl,
-        'unit': ProductUnit.cup.wire,
-        'track_variants': 0,
-        'active': 1,
-        'updated_at': DateTime.now().toIso8601String(),
-      }, where: 'id = ?', whereArgs: <Object?>[productId]);
+      await txn.update(
+          'products',
+          <String, Object?>{
+            'name': values.name,
+            'category': kTankCategory,
+            'cost_price': Money.fromMajor(values.cost).minorUnits,
+            'sell_price': 0,
+            'stock_qty': values.tankCount.toDouble(),
+            'reorder_level': 0,
+            'bottle_ml': values.capacityMl,
+            'unit': ProductUnit.cup.wire,
+            'track_variants': 0,
+            'active': 1,
+            'updated_at': DateTime.now().toIso8601String(),
+          },
+          where: 'id = ?',
+          whereArgs: <Object?>[productId]);
       await txn.delete('shot_cups',
           where: 'product_id = ?', whereArgs: <Object?>[productId]);
     } else {
@@ -275,8 +279,8 @@ class _TankFormSheetState extends State<TankFormSheet> {
     if (productId == null) return;
     try {
       final db = await DatabaseHelper.instance.database;
-      final rows = await db.query('shot_cups',
-          where: 'product_id = ?', whereArgs: [productId]);
+      final rows = await db
+          .query('shot_cups', where: 'product_id = ?', whereArgs: [productId]);
       if (!mounted) return;
       if (rows.isNotEmpty) {
         for (final s in _servings) {
@@ -286,14 +290,13 @@ class _TankFormSheetState extends State<TankFormSheet> {
         for (final row in rows) {
           final serving = _ServingState();
           serving.name.text = (row['label'] as String?) ?? '';
-          serving.sizeMl.text = (row['capacity_ml'] as num?)?.toString() ?? '';
+          serving.sizeMl.text = (row['capacity'] as num?)?.toString() ?? '';
           final priceMinor = (row['price'] as num?)?.toInt() ?? 0;
           serving.price.text = _editAmount(Money.fromMinor(priceMinor));
           _servings.add(serving);
         }
       }
-    } finally {
-    }
+    } finally {}
   }
 
   static String _editAmount(Money? value) {
@@ -395,9 +398,9 @@ class _TankFormSheetState extends State<TankFormSheet> {
       // The size may be left out. An empty box is "I do not measure it", not
       // a mistake; anything that is not a whole positive number is.
       final sizeText = serving.sizeMl.text.trim();
-      int sizeMl = 0;
+      double sizeMl = 0;
       if (sizeText.isNotEmpty) {
-        final parsed = int.tryParse(sizeText);
+        final parsed = double.tryParse(sizeText);
         if (parsed == null || parsed < 0) {
           setState(() => _error = l10n.tankServingSizeInvalid);
           return;
@@ -565,10 +568,10 @@ class _TankFormSheetState extends State<TankFormSheet> {
               ),
           ],
         ),
-        SizedBox(height: spacing.xs),
+        SizedBox(height: spacing.md),
         _field(serving.name, l10n.tankFieldServingName,
             l10n.tankFieldServingNameHint),
-        SizedBox(height: spacing.xs),
+        SizedBox(height: spacing.md),
         Row(
           children: <Widget>[
             Expanded(

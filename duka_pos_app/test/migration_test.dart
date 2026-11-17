@@ -2051,15 +2051,138 @@ void main() {
       await old.close();
 
       final upgraded = await DatabaseHelper.openExistingForUpgradeTests(path);
-      final columns = (await upgraded.rawQuery('PRAGMA table_info(drawer_events)'))
-          .map((row) => row['name'] as String)
-          .toSet();
+      final columns =
+          (await upgraded.rawQuery('PRAGMA table_info(drawer_events)'))
+              .map((row) => row['name'] as String)
+              .toSet();
       expect(columns, contains('synced_to_backend'));
       final pending = await upgraded.query(
         'drawer_events',
         where: 'synced_to_backend = 0',
       );
       expect(pending, hasLength(1));
+      await upgraded.close();
+    });
+
+    test('v83 -> v84 adds stock receipt payment source without losing rows',
+        () async {
+      final old = await databaseFactoryFfi.openDatabase(
+        path,
+        options: OpenDatabaseOptions(
+          version: 83,
+          onCreate: (db, _) async {
+            await db.execute('''
+              CREATE TABLE stock_receipts (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                total_cost_minor INTEGER NOT NULL DEFAULT 0,
+                status TEXT NOT NULL DEFAULT 'posted'
+              )
+            ''');
+            await db.insert('stock_receipts', <String, Object?>{
+              'total_cost_minor': 12500,
+              'status': 'posted',
+            });
+          },
+        ),
+      );
+      await old.close();
+
+      final upgraded = await DatabaseHelper.openExistingForUpgradeTests(path);
+      final columns = (await upgraded.rawQuery(
+        'PRAGMA table_info(stock_receipts)',
+      ))
+          .map((row) => row['name'] as String)
+          .toSet();
+      expect(columns, contains('paid_from'));
+
+      final rows = await upgraded.query('stock_receipts');
+      expect(rows, hasLength(1));
+      expect(rows.single['total_cost_minor'], 12500);
+      expect(rows.single['paid_from'], 'till_cash');
+      await upgraded.close();
+    });
+
+    test('v84 -> v85 removes unused job tables but preserves Open cost pools',
+        () async {
+      final old = await databaseFactoryFfi.openDatabase(
+        path,
+        options: OpenDatabaseOptions(
+          version: 84,
+          onCreate: (db, _) async {
+            await db.execute('CREATE TABLE jobs (id INTEGER PRIMARY KEY)');
+            await db.execute(
+                'CREATE TABLE job_costs (id INTEGER PRIMARY KEY, job_id INTEGER)');
+            await db.execute(
+                'CREATE TABLE job_payments (id INTEGER PRIMARY KEY, job_id INTEGER)');
+            await db.execute('''CREATE TABLE cost_pools (
+              id INTEGER PRIMARY KEY,
+              name TEXT NOT NULL
+            )''');
+            await db.insert('cost_pools', {'id': 1, 'name': 'Opening pool'});
+          },
+        ),
+      );
+      await old.close();
+
+      final upgraded = await DatabaseHelper.openExistingForUpgradeTests(path);
+      final tables = await upgraded.rawQuery(
+          "SELECT name FROM sqlite_master WHERE type = 'table' AND name IN "
+          "('jobs', 'job_costs', 'job_payments', 'cost_pools')");
+      final names = tables.map((row) => row['name']).toSet();
+      expect(names, isNot(contains('jobs')));
+      expect(names, isNot(contains('job_costs')));
+      expect(names, isNot(contains('job_payments')));
+      expect(names, contains('cost_pools'));
+      expect(
+          (await upgraded.query('cost_pools')).single['name'], 'Opening pool');
+      await upgraded.close();
+    });
+
+    test('v85 -> v87 adds pool recovery reversals and analytics indexes',
+        () async {
+      final old = await databaseFactoryFfi.openDatabase(
+        path,
+        options: OpenDatabaseOptions(
+          version: 85,
+          onCreate: (db, _) async {
+            await db.execute('''CREATE TABLE cost_pools (
+              id INTEGER PRIMARY KEY,
+              name TEXT NOT NULL
+            )''');
+            await db.execute('''CREATE TABLE shifts (
+              id INTEGER PRIMARY KEY,
+              staff_id INTEGER NOT NULL,
+              start_time TEXT NOT NULL,
+              end_time TEXT,
+              status TEXT NOT NULL
+            )''');
+            await db.execute('''CREATE TABLE reconciliations (
+              id INTEGER PRIMARY KEY,
+              shift_id INTEGER NOT NULL
+            )''');
+          },
+        ),
+      );
+      await old.close();
+
+      final upgraded = await DatabaseHelper.openExistingForUpgradeTests(path);
+      final tables = await upgraded.rawQuery(
+        "SELECT name FROM sqlite_master WHERE type = 'table' AND "
+        "name = 'sale_pool_allocation_reversals'",
+      );
+      expect(tables, hasLength(1));
+      final indexes = await upgraded.rawQuery(
+        "SELECT name FROM sqlite_master WHERE type = 'index' AND "
+        "name IN ('idx_shifts_start_staff', 'idx_shifts_end_staff', "
+        "'idx_reconciliations_shift_id')",
+      );
+      expect(
+          indexes.map((row) => row['name']),
+          containsAll(<String>[
+            'idx_shifts_start_staff',
+            'idx_shifts_end_staff',
+            'idx_reconciliations_shift_id',
+          ]));
       await upgraded.close();
     });
   });

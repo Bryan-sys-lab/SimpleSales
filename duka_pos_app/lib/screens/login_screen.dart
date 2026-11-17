@@ -88,14 +88,14 @@ class _LoginScreenState extends State<LoginScreen> {
       final int? id = int.tryParse(tag.substring(6));
       if (id == null) return null;
       for (final Staff member in _staff) {
-        if (member.id == id) return null;
+        if (member.id == id) return member;
       }
       return null;
     }
     if (tag.startsWith('name:')) {
       final String name = tag.substring(5);
       for (final Staff member in _staff) {
-        if (member.name == name) return null;
+        if (member.name == name) return member;
       }
     }
     return null;

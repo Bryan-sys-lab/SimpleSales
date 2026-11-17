@@ -30,6 +30,7 @@ import 'workspace_service.dart';
 class StaffCredentialCache {
   static const _storage = FlutterSecureStorage();
   static const _prefix = 'duka_staff_cred_';
+  static const _sessionPrefix = 'duka_staff_session_';
 
   /// The keys this cache has written, so it can be emptied without enumerating
   /// the keystore.
@@ -39,6 +40,8 @@ class StaffCredentialCache {
   /// an index means `clearAll` deletes exactly what this cache wrote, works
   /// everywhere, and never has to guess at other apps' storage.
   static const _indexKey = '${_prefix}index';
+  static const _sessionIndexKey = '${_sessionPrefix}index';
+  static const _promptPrefix = 'duka_staff_pin_prompt_';
 
   /// The key for one staff member in one shop.
   ///
@@ -60,6 +63,26 @@ class StaffCredentialCache {
     final String safe = workspace.replaceAll(RegExp(r'[^A-Za-z0-9_-]'), '_');
     return '$_prefix$safe#$staffId';
   }
+
+  static Future<String> _sessionKeyFor(int staffId) async {
+    final key = await _keyFor(staffId);
+    return key.replaceFirst(_prefix, _sessionPrefix);
+  }
+
+  static Future<void> storeSessionToken(int staffId, String token) async {
+    final key = await _sessionKeyFor(staffId);
+    await _storage.write(key: key, value: token);
+    await _indexSession(key);
+  }
+
+  static Future<String?> readSessionToken(int staffId) async =>
+      _storage.read(key: await _sessionKeyFor(staffId));
+
+  static Future<bool> pinPromptSeen(int staffId) async =>
+      (await _storage.read(key: '$_promptPrefix${await _keyFor(staffId)}')) == '1';
+
+  static Future<void> markPinPromptSeen(int staffId) async =>
+      _storage.write(key: '$_promptPrefix${await _keyFor(staffId)}', value: '1');
 
   static Future<void> cacheStaffCredentials(
       int staffId, String username, String pin) async {
@@ -107,8 +130,17 @@ class StaffCredentialCache {
     }
   }
 
+  static Future<void> _indexSession(String key) async {
+    try {
+      final raw = await _storage.read(key: _sessionIndexKey);
+      final keys = raw == null || raw.isEmpty ? <String>{} : raw.split('\n').where((s) => s.isNotEmpty).toSet();
+      if (keys.add(key)) await _storage.write(key: _sessionIndexKey, value: keys.join('\n'));
+    } catch (_) {}
+  }
+
   static Future<void> clearStaffCredentials(int staffId) async {
     await _storage.delete(key: await _keyFor(staffId));
+    await _storage.delete(key: await _sessionKeyFor(staffId));
   }
 
   static Future<void> clearAll() async {
@@ -121,6 +153,12 @@ class StaffCredentialCache {
         await _storage.delete(key: key);
       }
       await _storage.delete(key: _indexKey);
+      final sessionRaw = await _storage.read(key: _sessionIndexKey);
+      final sessionKeys = sessionRaw == null || sessionRaw.isEmpty ? const <String>[] : sessionRaw.split('\n').where((s) => s.isNotEmpty);
+      for (final key in sessionKeys) {
+        await _storage.delete(key: key);
+      }
+      await _storage.delete(key: _sessionIndexKey);
     } catch (_) {
       // Swallowed, because this is called from `signOut`, and a sign-out that
       // threw would leave a caller holding a half-ended session — or, under

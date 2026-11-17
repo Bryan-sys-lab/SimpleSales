@@ -275,9 +275,9 @@ class _ProfileBodyState extends State<_ProfileBody> {
                 icon: Icons.photo_camera_outlined,
                 label: l10n.profilePhotoLabel,
                 value: l10n.profilePhotoHelp,
-                trailing: TextButton.icon(
+                trailing: ActionChip(
+                  avatar: const Icon(Icons.add_a_photo_outlined, size: 16),
                   onPressed: _pickPhoto,
-                  icon: const Icon(Icons.add_a_photo_outlined),
                   label: Text(l10n.profilePhotoChange),
                 ),
               ),

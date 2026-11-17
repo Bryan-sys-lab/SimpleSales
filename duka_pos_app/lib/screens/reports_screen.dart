@@ -2,7 +2,6 @@ import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import 'package:intl/intl.dart';
 import 'package:provider/provider.dart';
-import 'package:shared_preferences/shared_preferences.dart';
 
 import '../app_brand.dart';
 import '../db/database_helper.dart';
@@ -16,7 +15,7 @@ import '../services/excel_service.dart';
 import '../services/business_report_pdf_service.dart';
 import '../services/printer/printer_config.dart';
 import '../services/printer/receipt_printer.dart';
-import '../services/printer/receipt_builder.dart';
+import '../services/receipt_actions_service.dart';
 import '../services/printer/shift_report_builder.dart';
 import '../services/shift_report_pdf_service.dart';
 import '../services/session_refresh_mixin.dart';
@@ -333,21 +332,9 @@ class _ReportsScreenState extends State<ReportsScreen>
     await _excel.shareFile(file);
   }
 
-  Future<int> _vatRateForSale(int saleId) async {
-    final row = await DatabaseHelper.instance.getSaleRowById(saleId);
-    if (row == null) return await DatabaseHelper.instance.getVatRatePercent();
-    return await DatabaseHelper.instance.vatRateForSale(row);
-  }
-
   Future<void> _reprint(Sale sale) async {
     final int? id = sale.id;
     if (id == null) return;
-    // Read identity before the first await: everything past this point is a
-    // printer round-trip, and the screen can be popped in between.
-    final AppState state = context.read<AppState>();
-    final receiptLanguage = Localizations.localeOf(context).languageCode == 'sw'
-        ? ReceiptLanguage.swahili
-        : ReceiptLanguage.english;
     final PrinterConfig config = await PrinterConfig.load();
     if (!mounted) return;
     if (!config.isConfigured) {
@@ -361,17 +348,8 @@ class _ReportsScreenState extends State<ReportsScreen>
       context,
       message: AppLocalizations.of(context).reportsSendingToPrinter,
     );
-    final PrintResult result = await ReceiptPrinter().printSale(
-      saleId: id,
-      shopName: state.owner?.shopName ?? SimplePosBrand.appName,
-      staffRole: state.isOwnerSession ? 'Owner' : state.currentRole,
-      config: config,
-      vatRatePercent: await _vatRateForSale(id),
-      pricesIncludeVat: (await SharedPreferences.getInstance())
-              .getBool('prices_include_vat') ??
-          true,
-      receiptLanguage: receiptLanguage,
-    );
+    final PrintResult result =
+        await ReceiptActionsService.instance.printReceipt(context, id);
     if (!mounted) return;
     if (result.printed) {
       showAppSnackBar(
@@ -425,7 +403,8 @@ class _ReportsScreenState extends State<ReportsScreen>
     await showDialog<void>(
       context: context,
       builder: (BuildContext context) => AlertDialog(
-        title: Text('${AppLocalizations.of(context).reportsZReport} #${report.reportNumber}'),
+        title: Text(
+            '${AppLocalizations.of(context).reportsZReport} #${report.reportNumber}'),
         content: SingleChildScrollView(
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,

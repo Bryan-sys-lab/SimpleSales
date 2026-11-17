@@ -11,26 +11,45 @@ import 'package:provider/provider.dart';
 
 import '../db/database_helper.dart';
 import '../l10n/generated/app_localizations.dart';
+import '../models/models.dart';
 import '../routing/routes.dart';
 import '../services/app_state.dart';
 import '../services/analytics.dart';
+import 'tank_form_sheet.dart';
 import '../theme/app_colors.dart';
 import '../theme/app_shapes.dart';
 import '../theme/app_spacing.dart';
 import '../theme/typography.dart';
 import '../ui/components/surface.dart';
+import '../ui/components/product_photo.dart';
 import '../ui/components/states.dart';
 import '../ui/layout/page.dart';
 import '../utils/money.dart';
-import 'tank_form_sheet.dart';
+import '../models/stock_movement.dart';
 
 const double _tankDetailMaxWidth = 1200;
+
+/// Tank detail figures are stored as litres even though the product's stock
+/// ledger stores millilitres. Keep that conversion visible in the label so a
+/// 50-litre drum is never presented as "50 ml".
+String formatTankLitres(double litres) {
+  if (!litres.isFinite) return '0 L';
+  final value = litres < 0 ? 0 : litres;
+  final text = value == value.roundToDouble()
+      ? value.toStringAsFixed(0)
+      : value.toStringAsFixed(1);
+  return '$text L';
+}
 
 /// An individual tank's detail page.
 ///
 /// Loads its own tank data from the database using the tank id from the route.
 class TankDetailScreen extends StatefulWidget {
-  const TankDetailScreen({super.key});
+  const TankDetailScreen({this.productId, super.key});
+
+  /// The product id from the route. Keeping it in the widget makes the detail
+  /// screen reconstructable from a cold deep link and from a restored route.
+  final int? productId;
 
   @override
   State<TankDetailScreen> createState() => _TankDetailScreenState();
@@ -38,6 +57,8 @@ class TankDetailScreen extends StatefulWidget {
 
 class _TankDetailScreenState extends State<TankDetailScreen> {
   DrinkTankLevel? _tank;
+  String? _tankImagePath;
+  String? _tankImageRevision;
   int _tankSalesMinor = 0;
   List<TankActivityEntry> _activity = const <TankActivityEntry>[];
   bool _loading = true;
@@ -57,23 +78,12 @@ class _TankDetailScreenState extends State<TankDetailScreen> {
     });
 
     try {
-      final GoRouterState state = GoRouterState.of(context);
-      final tankId = state.pathParameters['tankId'];
-      if (tankId == null) {
-        if (!mounted) return;
-        setState(() {
-          _loading = false;
-          _error = 'No tank specified';
-        });
-        return;
-      }
-
-      final productId = int.tryParse(tankId);
+      final productId = widget.productId;
       if (productId == null) {
         if (!mounted) return;
         setState(() {
           _loading = false;
-          _error = 'Invalid tank id';
+          _error = 'No tank specified';
         });
         return;
       }
@@ -105,6 +115,8 @@ class _TankDetailScreenState extends State<TankDetailScreen> {
         capacityLitres: capacityLitres,
         costInvestedMinor: costInvestedMinor,
       );
+      _tankImagePath = product.imagePath;
+      _tankImageRevision = product.updatedAt;
 
       // Get sales for this tank from the analytics snapshot.
       final since = DateTime.now().subtract(const Duration(days: 30));
@@ -161,9 +173,99 @@ class _TankDetailScreenState extends State<TankDetailScreen> {
   }
 
   Future<void> _receive() async {
-    await showTankFormSheet(context, existing: null);
-    if (!mounted) return;
-    await _load();
+    final productId = _tank?.productId;
+    if (productId == null) return;
+    final state = context.read<AppState>();
+    final product = await DatabaseHelper.instance.getProductById(productId);
+    if (!mounted || product == null) return;
+    final result = await showDialog<Map<String, String>>(
+      context: context,
+      builder: (dialogContext) {
+        final quantity = TextEditingController();
+        final unitCost = TextEditingController(
+          text: product.costPrice.asMajor.toStringAsFixed(2),
+        );
+        return AlertDialog(
+          title: Text('Receive ${product.name}'),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: <Widget>[
+              TextField(
+                controller: quantity,
+                autofocus: true,
+                keyboardType: const TextInputType.numberWithOptions(
+                  decimal: true,
+                ),
+                decoration: InputDecoration(
+                  labelText: 'Quantity (${product.unit.suffix})',
+                ),
+              ),
+              TextField(
+                controller: unitCost,
+                keyboardType: const TextInputType.numberWithOptions(
+                  decimal: true,
+                ),
+                decoration: const InputDecoration(
+                  labelText: 'Unit cost (KES)',
+                ),
+              ),
+            ],
+          ),
+          actions: <Widget>[
+            TextButton(
+              onPressed: () => Navigator.pop(dialogContext),
+              child: Text(AppLocalizations.of(dialogContext).cancel),
+            ),
+            FilledButton(
+              onPressed: () => Navigator.pop(dialogContext, <String, String>{
+                'quantity': quantity.text.trim(),
+                'unitCost': unitCost.text.trim(),
+              }),
+              child: const Text('Receive stock'),
+            ),
+          ],
+        );
+      },
+    );
+    if (!mounted || result == null) return;
+    final quantity = double.tryParse(result['quantity'] ?? '');
+    final cost = parseMoneyInput(result['unitCost']);
+    if (quantity == null ||
+        !quantity.isFinite ||
+        quantity <= 0 ||
+        cost == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Enter a valid quantity and unit cost')),
+      );
+      return;
+    }
+    try {
+      await DatabaseHelper.instance.postStockReceipt(
+        lines: <StockReceiptLine>[
+          StockReceiptLine(
+            productId: product.id!,
+            productName: product.name,
+            qty: quantity,
+            unitCost: Money.fromMajor(cost),
+          ),
+        ],
+        note: 'Tank stock received',
+        staffName: state.currentStaffName ?? state.owner?.name ?? 'Owner',
+        staffId: state.currentStaffId,
+        costingMode: await DatabaseHelper.instance.getCostingMode(),
+      );
+      if (!mounted) return;
+      await _load();
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Tank stock received')),
+      );
+    } on Object catch (error) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Could not receive tank stock: $error')),
+      );
+    }
   }
 
   Future<void> _recordMeasurement() async {
@@ -174,9 +276,73 @@ class _TankDetailScreenState extends State<TankDetailScreen> {
     await _load();
   }
 
+  Future<void> _editTank() async {
+    final productId = _tank?.productId;
+    if (productId == null || !mounted) return;
+    final product = await DatabaseHelper.instance.getProductById(productId);
+    if (!mounted || product == null) return;
+    await showTankFormSheet(context, existing: product);
+    if (mounted) await _load();
+  }
+
   Future<void> _viewHistory() async {
-    // Tank-specific history is not a separate route yet; keep this a
-    // non-interactive label rather than a self-referential push.
+    final productId = _tank?.productId;
+    if (productId == null || !mounted) return;
+    try {
+      final movements =
+          await DatabaseHelper.instance.getStockMovements(productId);
+      if (!mounted) return;
+      await showModalBottomSheet<void>(
+        context: context,
+        isScrollControlled: true,
+        builder: (sheetContext) => SafeArea(
+          child: SizedBox(
+            height: MediaQuery.sizeOf(sheetContext).height * 0.75,
+            child: Column(
+              children: <Widget>[
+                Padding(
+                  padding: const EdgeInsets.all(16),
+                  child: Text(
+                    'Tank stock history',
+                    style: Theme.of(sheetContext).textTheme.titleLarge,
+                  ),
+                ),
+                Expanded(
+                  child: movements.isEmpty
+                      ? const Center(child: Text('No stock movements recorded'))
+                      : ListView.builder(
+                          itemCount: movements.length,
+                          itemBuilder: (context, index) {
+                            final StockMovement movement = movements[index];
+                            final sign = movement.qtyDelta >= 0 ? '+' : '';
+                            return ListTile(
+                              leading: Icon(movement.isPositive
+                                  ? Icons.add_circle_outline
+                                  : Icons.remove_circle_outline),
+                              title: Text(movement.type.wire),
+                              subtitle: Text(
+                                '${movement.createdAt.toLocal()}${movement.note == null ? '' : ' · ${movement.note}'}',
+                              ),
+                              trailing: Text(
+                                '$sign${movement.qtyDelta.toStringAsFixed(2)}\n'
+                                'balance ${movement.balanceAfter.toStringAsFixed(2)}',
+                                textAlign: TextAlign.end,
+                              ),
+                            );
+                          },
+                        ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      );
+    } on Object catch (error) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Could not load tank history: $error')),
+      );
+    }
   }
 
   @override
@@ -218,6 +384,12 @@ class _TankDetailScreenState extends State<TankDetailScreen> {
         ),
         actions: <Widget>[
           if (context.read<AppState>().canManageStock)
+            IconButton(
+              tooltip: 'Edit tank',
+              onPressed: _editTank,
+              icon: const Icon(Icons.edit_outlined),
+            ),
+          if (context.read<AppState>().canManageStock)
             OutlinedButton.icon(
               onPressed: _receive,
               icon: const Icon(Icons.inventory),
@@ -242,11 +414,15 @@ class _TankDetailScreenState extends State<TankDetailScreen> {
             // Centered tank identity card: circular art badge, name, status.
             _TankIdentityCard(
               name: tank.name,
+              imagePath: _tankImagePath,
+              imageRevision: _tankImageRevision,
+              productId: tank.productId,
               percent: percent,
               status: percent > 0.3
                   ? l10n.tankStatusHealthy
-                  : (percent > 0.1 ? l10n.tankStatusLow : l10n.tankStatusCritical),
-              onImageTap: null,
+                  : (percent > 0.1
+                      ? l10n.tankStatusLow
+                      : l10n.tankStatusCritical),
             ),
             SizedBox(height: spacing.lg),
 
@@ -264,7 +440,7 @@ class _TankDetailScreenState extends State<TankDetailScreen> {
                 Expanded(
                   child: _TankStatCard(
                     label: l10n.tankDetailMeasuredRemaining,
-                    value: '${tank.litresRemaining.toStringAsFixed(0)} ml',
+                    value: formatTankLitres(tank.litresRemaining),
                     detail: l10n.tankDetailSalesDetail,
                     icon: Icons.local_drink_outlined,
                   ),
@@ -273,7 +449,7 @@ class _TankDetailScreenState extends State<TankDetailScreen> {
                 Expanded(
                   child: _TankStatCard(
                     label: l10n.tankDetailCapacity,
-                    value: '${tank.capacityLitres.toStringAsFixed(0)} ml',
+                    value: formatTankLitres(tank.capacityLitres),
                     detail: l10n.tankDetailCapacityDetail,
                     icon: Icons.warehouse,
                   ),
@@ -293,33 +469,50 @@ class _TankDetailScreenState extends State<TankDetailScreen> {
 
             // Three full-width action buttons: Receive, Measure, History.
             if (context.read<AppState>().canManageStock) ...<Widget>[
-              Row(
-                crossAxisAlignment: CrossAxisAlignment.stretch,
-                children: <Widget>[
-                  Expanded(
-                    child: OutlinedButton.icon(
+              LayoutBuilder(
+                builder: (BuildContext context, BoxConstraints constraints) {
+                  final actions = <Widget>[
+                    OutlinedButton.icon(
                       onPressed: _receive,
                       icon: const Icon(Icons.inventory),
                       label: Text(l10n.tankActionReceive),
                     ),
-                  ),
-                  SizedBox(width: spacing.md),
-                  Expanded(
-                    child: FilledButton.icon(
+                    FilledButton.icon(
                       onPressed: _recordMeasurement,
                       icon: const Icon(Icons.query_stats),
                       label: Text(l10n.tankActionMeasure),
                     ),
-                  ),
-                  SizedBox(width: spacing.md),
-                  Expanded(
-                    child: OutlinedButton.icon(
+                    OutlinedButton.icon(
                       onPressed: _viewHistory,
                       icon: const Icon(Icons.history),
                       label: Text(l10n.tankActionHistory),
                     ),
-                  ),
-                ],
+                  ];
+                  if (constraints.maxWidth < 620) {
+                    return Column(
+                      crossAxisAlignment: CrossAxisAlignment.stretch,
+                      children: <Widget>[
+                        for (final action in actions) ...<Widget>[
+                          action,
+                          if (action != actions.last)
+                            SizedBox(height: spacing.sm),
+                        ],
+                      ],
+                    );
+                  }
+                  return Row(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: <Widget>[
+                      for (int index = 0;
+                          index < actions.length;
+                          index++) ...<Widget>[
+                        Expanded(child: actions[index]),
+                        if (index < actions.length - 1)
+                          SizedBox(width: spacing.md),
+                      ],
+                    ],
+                  );
+                },
               ),
               SizedBox(height: spacing.lg),
             ],
@@ -337,11 +530,11 @@ class _TankDetailScreenState extends State<TankDetailScreen> {
               ),
               SizedBox(height: spacing.sm),
               ..._activity.take(10).map(
-                (entry) => _TankActivityRow(
-                  entry: entry,
-                  onTap: entry.onTap,
-                ),
-              ),
+                    (entry) => _TankActivityRow(
+                      entry: entry,
+                      onTap: entry.onTap,
+                    ),
+                  ),
             ],
           ],
         ),
@@ -355,15 +548,19 @@ class _TankDetailScreenState extends State<TankDetailScreen> {
 class _TankIdentityCard extends StatelessWidget {
   const _TankIdentityCard({
     required this.name,
+    required this.imagePath,
+    required this.imageRevision,
+    required this.productId,
     required this.percent,
     required this.status,
-    this.onImageTap,
   });
 
   final String name;
+  final String? imagePath;
+  final String? imageRevision;
+  final int productId;
   final double percent;
   final String status;
-  final VoidCallback? onImageTap;
 
   @override
   Widget build(BuildContext context) {
@@ -377,17 +574,16 @@ class _TankIdentityCard extends StatelessWidget {
         crossAxisAlignment: CrossAxisAlignment.center,
         mainAxisSize: MainAxisSize.min,
         children: <Widget>[
-          Container(
-            width: 64,
-            height: 64,
-            decoration: BoxDecoration(
-              color: colors.surfaceSunken,
-              shape: BoxShape.circle,
-            ),
-            child: Icon(
-              Icons.local_bar,
-              size: 32,
-              color: colors.onSurfaceVariant,
+          Hero(
+            tag: 'product-photo-$productId',
+            child: Semantics(
+              image: true,
+              label: name,
+              child: ProductPhoto(
+                imagePath: imagePath,
+                size: 128,
+                revision: imageRevision,
+              ),
             ),
           ),
           SizedBox(height: spacing.md),
@@ -445,16 +641,16 @@ class _TankFillBar extends StatelessWidget {
               Text(
                 label,
                 style: AppTypography.of(context).labelMedium?.copyWith(
-                  color: colors.onSurfaceMuted,
-                ),
+                      color: colors.onSurfaceMuted,
+                    ),
               ),
               const Spacer(),
               Text(
                 '${(percent * 100).round()}%',
                 style: AppTypography.of(context).bodyMedium?.copyWith(
-                  fontWeight: FontWeight.w700,
-                  color: colors.onSurface,
-                ),
+                      fontWeight: FontWeight.w700,
+                      color: colors.onSurface,
+                    ),
               ),
             ],
           ),

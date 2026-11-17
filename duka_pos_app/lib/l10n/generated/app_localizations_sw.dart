@@ -868,6 +868,12 @@ class AppLocalizationsSw extends AppLocalizations {
   }
 
   @override
+  String get sellShowQrAction => 'Onyesha QR';
+
+  @override
+  String get sellScanWithMpesaApp => 'Changanua kwa programu ya M-Pesa kulipa';
+
+  @override
   String sellChooseServingTitle(Object product) {
     return 'Choose serving · $product';
   }
@@ -5723,28 +5729,13 @@ class AppLocalizationsSw extends AppLocalizations {
   String get openDashboardOperationalOverview => 'Muhtasari wa kazi';
 
   @override
-  String get openDashboardActiveJobs => 'Kazi za sasa';
-
-  @override
-  String get openDashboardJobsAwaitingPayment => 'Kazi zinalipwa';
-
-  @override
-  String get openDashboardOverdueJobs => 'Kazi zimeumiza';
-
-  @override
   String get openDashboardCostGroups => 'Kundi la gharama';
-
-  @override
-  String get openDashboardNewJob => 'Kazi mpya';
 
   @override
   String get openDashboardRecordSale => 'Rekodi uuzaji';
 
   @override
   String get openDashboardRecordPayment => 'Rekodi malipo';
-
-  @override
-  String get openDashboardAddJobCost => 'Ongeza gharama ya kazi';
 
   @override
   String get openDashboardNewCostGroup => 'Kundi la gharama mpya';
@@ -5765,73 +5756,6 @@ class AppLocalizationsSw extends AppLocalizations {
   String get openDashboardGoodEvening => 'Bwakia jioni';
 
   @override
-  String get openJobsTitle => 'Kazi';
-
-  @override
-  String get openJobsSubtitle => 'Fuatilia kazi kutoka kwa uwakala hadi malipo';
-
-  @override
-  String get openJobsNewJob => 'Kazi mpya';
-
-  @override
-  String get openJobsSearch => 'Bafadhili kazi';
-
-  @override
-  String get openJobsSearchHint => 'Anwa au mteja';
-
-  @override
-  String get openJobsFilterAll => 'Zote';
-
-  @override
-  String get openJobsFilterActive => 'Inayendeleza';
-
-  @override
-  String get openJobsFilterAwaitingPayment => 'Lipwa baadaye';
-
-  @override
-  String get openJobsFilterCompleted => 'Imesimama';
-
-  @override
-  String get openJobsNoJobs => 'Hakuna kazi hivi';
-
-  @override
-  String get openJobsNoJobsSubtitle =>
-      'Unda kazi ili kufuatili uwakala, malipo na gharama.';
-
-  @override
-  String get openJobsLoading => 'Inapakia kazi';
-
-  @override
-  String get openJobsLoadingSubtitle => 'Subiri kidogo kazi zinakuatwa.';
-
-  @override
-  String get openJobsNoCustomer => 'Hakuna mteja';
-
-  @override
-  String get openJobStatusDraft => 'Mwendelezi';
-
-  @override
-  String get openJobStatusInProgress => 'Inayendelezwa';
-
-  @override
-  String get openJobStatusAwaitingPayment => 'Lipwa baadaye';
-
-  @override
-  String get openJobStatusCompleted => 'Imesimamisha';
-
-  @override
-  String get openJobStatusCancelled => 'Ingawanywe';
-
-  @override
-  String get openJobFormTitle => 'Kazi mpya';
-
-  @override
-  String get openJobDetailTitle => 'Muhtasari wa kazi';
-
-  @override
-  String get openJobAddCostTitle => 'Ongeza gharama ya kazi';
-
-  @override
   String get openCostGroupsTitle => 'Kundi za gharama';
 
   @override
@@ -5844,86 +5768,8 @@ class AppLocalizationsSw extends AppLocalizations {
   String get openReceivablesTitle => 'Watu wanaolipia';
 
   @override
-  String get openJobDetailNotFound => 'Kazi haijapatikana';
-
-  @override
-  String get openJobDetailNoCustomer => 'Hakuna mteja';
-
-  @override
-  String get openJobDetailOverview => 'Muhtasari wa kazi';
-
-  @override
-  String get openJobDetailQuote => 'Thamani ya uwakala';
-
-  @override
-  String get openJobDetailFinalPrice => 'Gharama ya mwisho';
-
-  @override
-  String get openJobDetailStatus => 'Hali';
-
-  @override
-  String get openJobDetailCreated => 'Ilianza';
-
-  @override
-  String get openJobDetailFinancials => 'Muhtasari wa fedha';
-
-  @override
-  String get openJobDetailQuotedAmount => 'Thamani ya uwakala';
-
-  @override
-  String get openJobDetailDirectCosts => 'Gharama za moja kwa moja';
-
-  @override
-  String get openJobDetailPaymentsReceived => 'Malipo yaliyopokea';
-
-  @override
-  String get openJobDetailOutstanding => 'Kiasi kilipatika';
-
-  @override
-  String get openJobDetailEstimatedProfit => 'Faida inayopatikana';
-
-  @override
-  String get openJobDetailActivity => 'Shughuli za kazi';
-
-  @override
-  String get openJobDetailCostAdded => 'Gharama iliyongezwa';
-
-  @override
-  String get openJobDetailPaymentReceived => 'Malipo yaliyopokea';
-
-  @override
-  String get openJobDetailNoActivity => 'Hakuna shughuli hivi';
-
-  @override
-  String get openJobDetailActions => 'Mazoezi';
-
-  @override
-  String get openJobDetailEditJob => 'Hariri kazi';
-
-  @override
-  String get openJobDetailAddCost => 'Ongeza gharama ya moja kwa moja';
-
-  @override
-  String get openJobDetailReceivePayment => 'Pokea malipo';
-
-  @override
-  String get openJobDetailRecordSale => 'Rekodi uuzaji';
-
-  @override
-  String get openJobDetailCompleteJob => 'Kamilisha kazi';
-
-  @override
-  String get openJobDetailCompleteJobConfirm =>
-      'Kufuta kazi ni tofauti na malipo. Kazi inaweza kuingiliwa isipokuwa lipilipwe kabisa.';
-
-  @override
-  String get openJobDetailCancel => 'Ghairi';
-
-  @override
-  String get openJobDetailCompleteAndSettle => 'Kamilisha na malipo';
-
-  @override
-  String get openCostGroupsSubtitle => 'Gharama zilipangwa kwa kazi nyingi';
+  String get openCostGroupsSubtitle =>
+      'Gharama zilizokusanywa zinazorejeshwa kupitia mauzo';
 
   @override
   String get openCostGroupsNewGroup => 'Kundi la gharama mpya';
@@ -5948,7 +5794,7 @@ class AppLocalizationsSw extends AppLocalizations {
 
   @override
   String get openCostGroupsNoGroupsSubtitle =>
-      'Unda kundi la gharama ili kufuatili gharama iliyopangwa kwa kazi nyingi.';
+      'Unda kundi la gharama ili kufuatilia gharama zinazorejeshwa kupitia mauzo.';
 
   @override
   String get openCostGroupsLoading => 'Inapakia kundi la gharama';
@@ -6032,9 +5878,6 @@ class AppLocalizationsSw extends AppLocalizations {
 
   @override
   String get openAnalyticsPooledCosts => 'Gharama zilipangwa';
-
-  @override
-  String get openAnalyticsJobsCompleted => 'Kazi zimesimamishwa';
 
   @override
   String get openAnalyticsReceivables => 'Watu wanaolipia';
@@ -6355,32 +6198,6 @@ class AppLocalizationsSw extends AppLocalizations {
   String get exchangeNoLines => 'Kiuzaji hiki haina mstari inayorudishiwa';
 
   @override
-  String get openJobFormJobTitleLabel => 'Kichwa cha kazi';
-
-  @override
-  String get openJobFormTitleRequired => 'Kichwa kinahitajika';
-
-  @override
-  String get openJobFormCustomerLabel => 'Mteja (si lazima)';
-
-  @override
-  String get openJobFormQuoteLabel => 'Kiasi kilichokadiriwa (si lazima)';
-
-  @override
-  String get openJobFormCreateAction => 'Unda kazi';
-
-  @override
-  String get openJobFormSaveAction => 'Hifadhi mabadiliko';
-
-  @override
-  String get openJobFormEditTitle => 'Hariri kazi';
-
-  @override
-  String openJobFormCouldNotCreate(Object error) {
-    return 'Haikuweza kuunda kazi: $error';
-  }
-
-  @override
   String get moreSwitchBusinessProfile => 'Badilisha wasifu wa biashara';
 
   @override
@@ -6393,7 +6210,8 @@ class AppLocalizationsSw extends AppLocalizations {
   String get moreOpenBusinessRecord => 'Rekodi ya biashara wazi';
 
   @override
-  String get moreOpenBusinessRecordSubtitle => 'Pots, kazi na pesa ya mmiliki';
+  String get moreOpenBusinessRecordSubtitle =>
+      'Hifadhi, mauzo na pesa ya mmiliki';
 
   @override
   String get moreReportsExports => 'Ripoti na usafirishaji';
@@ -6418,26 +6236,6 @@ class AppLocalizationsSw extends AppLocalizations {
 
   @override
   String get tankDetailMeasuredSales => 'Mauzo yaliyopimwa';
-
-  @override
-  String get openJobDetailPaymentCash => 'Pesa taslimu';
-
-  @override
-  String get openJobDetailPaymentMpesa => 'M-Pesa';
-
-  @override
-  String get openJobDetailPaymentBank => 'Uhamisho wa benki';
-
-  @override
-  String openJobDetailCouldNotRecordPayment(Object error) {
-    return 'Haikuweza kurekodi malipo: $error';
-  }
-
-  @override
-  String get openJobDetailCouldNotCompleteJob => 'Haikuweza kukamilisha kazi';
-
-  @override
-  String get openJobDetailPaymentMethod => 'Njia';
 
   @override
   String get crossShopSaleNoLongerOnTill =>
@@ -7000,9 +6798,6 @@ class AppLocalizationsSw extends AppLocalizations {
   String get quickSaleCreditCustomerHint => 'Select customer';
 
   @override
-  String get quickSaleLinkJob => 'Link to job (optional)';
-
-  @override
   String get quickSaleLinkPool => 'Link to cost group / bale (optional)';
 
   @override
@@ -7383,16 +7178,8 @@ class AppLocalizationsSw extends AppLocalizations {
   String get settingsSwitch => 'Aldisha';
 
   @override
-  String get openDashboardSelectJob => 'Chagua kazi';
-
-  @override
   String openCostGroupCouldNotCreate(Object error) {
     return 'Haikuweza kuunda kundi la gharama: $error';
-  }
-
-  @override
-  String openJobAddCostCouldNotAdd(Object error) {
-    return 'Haikuweza kuongeza gharama: $error';
   }
 
   @override
@@ -7404,9 +7191,6 @@ class AppLocalizationsSw extends AppLocalizations {
   String syncCenterCouldNotResolveConflict(Object error) {
     return 'Haikuweza kutatua mgogoro: $error';
   }
-
-  @override
-  String get openDashboardNoJobs => 'Hakuna kazi hivi. Unde moja ya msingi.';
 
   @override
   String get setupIntroAddShopLabel => 'ONGEZA DUKA';
@@ -7493,7 +7277,7 @@ class AppLocalizationsSw extends AppLocalizations {
 
   @override
   String get productOnboardingOpenSubtitle =>
-      'Kazi na biashara · takwimu, kazi, malipo';
+      'Biashara wazi · hifadhi, mauzo, malipo';
 
   @override
   String get actionSignIn => 'Ingia';
@@ -7535,19 +7319,10 @@ class AppLocalizationsSw extends AppLocalizations {
   String get dashboardRevenueToDate => 'Revenue to date';
 
   @override
-  String get dashboardCompletedJobRevenueToday => 'Completed job revenue today';
-
-  @override
-  String get dashboardRecentJobs => 'Recent jobs';
-
-  @override
   String get dashboardPaymentsReceived => 'Payments received';
 
   @override
   String get dashboardStockStatus => 'Stock status';
-
-  @override
-  String get dashboardNewJob => 'New job';
 
   @override
   String get dashboardLowStock => 'Low stock';

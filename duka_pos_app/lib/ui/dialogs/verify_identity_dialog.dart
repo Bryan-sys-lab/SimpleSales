@@ -238,7 +238,32 @@ class _VerifyIdentityCodeSheetState extends State<VerifyIdentityCodeSheet> {
   bool _resending = false;
 
   @override
+  void initState() {
+    super.initState();
+    _code.addListener(_codeChanged);
+  }
+
+  void _codeChanged() {
+    if (mounted) setState(() {});
+  }
+
+  Future<void> _pasteCode() async {
+    final ClipboardData? data = await Clipboard.getData('text/plain');
+    final value = data?.text?.replaceAll(RegExp(r'\D'), '') ?? '';
+    if (!mounted || value.isEmpty) return;
+    _code.text = value.substring(0, value.length.clamp(0, 6));
+    _code.selection = TextSelection.collapsed(offset: _code.text.length);
+  }
+
+  Future<void> _copyCode() async {
+    final value = _code.text.trim();
+    if (value.isEmpty) return;
+    await Clipboard.setData(ClipboardData(text: value));
+  }
+
+  @override
   void dispose() {
+    _code.removeListener(_codeChanged);
     _code.dispose();
     super.dispose();
   }
@@ -331,19 +356,36 @@ class _VerifyIdentityCodeSheetState extends State<VerifyIdentityCodeSheet> {
             FilteringTextInputFormatter.digitsOnly,
             LengthLimitingTextInputFormatter(6),
           ],
-          decoration: InputDecoration(labelText: l10n.settingsVerifyCodeLabel),
+          decoration: InputDecoration(
+            labelText: l10n.settingsVerifyCodeLabel,
+            suffixIcon: IconButton(
+              tooltip: 'Copy code',
+              onPressed: _code.text.isEmpty ? null : _copyCode,
+              icon: const Icon(Icons.copy_outlined),
+            ),
+          ),
           textInputAction: TextInputAction.done,
           onSubmitted: (_) => _submit(),
         ),
         SizedBox(height: AppSpacing.of(context).sm),
-        // Always available, never the primary action: the owner who did not
-        // get the email should not have to cancel and start again.
-        Align(
-          alignment: AlignmentDirectional.centerStart,
-          child: TextButton(
-            onPressed: _resending || _submitting ? null : _resend,
-            child: Text(l10n.settingsVerifyResendAction),
-          ),
+        Wrap(
+          alignment: WrapAlignment.spaceBetween,
+          crossAxisAlignment: WrapCrossAlignment.center,
+          spacing: AppSpacing.of(context).sm,
+          runSpacing: AppSpacing.of(context).xs,
+          children: <Widget>[
+            TextButton.icon(
+              onPressed: _submitting ? null : _pasteCode,
+              icon: const Icon(Icons.content_paste_outlined),
+              label: const Text('Paste code'),
+            ),
+            // Always available, never the primary action: the owner who did not
+            // get the email should not have to cancel and start again.
+            TextButton(
+              onPressed: _resending || _submitting ? null : _resend,
+              child: Text(l10n.settingsVerifyResendAction),
+            ),
+          ],
         ),
       ],
     );

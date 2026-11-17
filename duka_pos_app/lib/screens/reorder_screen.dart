@@ -316,9 +316,10 @@ class _ReorderScreenState extends State<ReorderScreen> {
                             child: ListTile(
                               title: Text(order['order_number'] as String),
                               subtitle: Text('Status: ${order['status']}'),
-                              trailing: TextButton(
+                              trailing: ActionChip(
+                                avatar: const Icon(Icons.inventory_2_outlined, size: 16),
                                 onPressed: _saving ? null : () => _receiveOrder(order),
-                                child: Text(AppLocalizations.of(context).receive),
+                                label: Text(AppLocalizations.of(context).receive),
                               ),
                             ),
                           )),

@@ -237,9 +237,17 @@ class LiveChannelService extends ChangeNotifier {
       //
       // `pingInterval` is left to the server: it pings more often than our own
       // silence timer, and two pingers on one socket is noise for no gain.
+      final tenantId = await BackendService.tenantId;
+      if (tenantId == null || tenantId.trim().isEmpty) {
+        _setState(LiveConnectionState.off);
+        return;
+      }
       final channel = IOWebSocketChannel.connect(
         Uri.parse(url),
-        headers: <String, dynamic>{'Authorization': 'Bearer $token'},
+        headers: <String, dynamic>{
+          'Authorization': 'Bearer $token',
+          'x-tenant-id': tenantId,
+        },
       );
       _attach(channel);
     } on Object catch (error) {

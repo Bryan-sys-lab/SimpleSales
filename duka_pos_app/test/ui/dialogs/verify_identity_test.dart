@@ -13,6 +13,7 @@
 import 'package:duka_pos/l10n/generated/app_localizations.dart';
 import 'package:duka_pos/ui/dialogs/verify_identity_dialog.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 import '../../support/harness.dart';
@@ -261,6 +262,37 @@ void main() {
 
       expect(find.text(l10n.settingsVerifyEmailFailed), findsOneWidget);
       expect(find.byType(VerifyIdentityCodeSheet), findsOneWidget);
+    });
+
+    testWidgets('copies an entered code and can paste from the clipboard',
+        (tester) async {
+      final messenger = TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger;
+      String clipboard = '';
+      messenger.setMockMethodCallHandler(SystemChannels.platform, (call) async {
+        if (call.method == 'Clipboard.setData') {
+          clipboard = (call.arguments as Map<dynamic, dynamic>)['text'] as String;
+          return null;
+        }
+        if (call.method == 'Clipboard.getData') return <String, String>{'text': clipboard};
+        return null;
+      });
+      addTearDown(() => messenger.setMockMethodCallHandler(SystemChannels.platform, null));
+      await tester.pumpApp(
+        home: VerifyIdentityCodeSheet(
+          maskedEmail: 'ow***@example.com',
+          onSubmit: (code) async => null,
+          onResend: () async => null,
+        ),
+      );
+      await tester.enterText(find.byType(TextField), '481503');
+      await tester.pump();
+      await tester.tap(find.byIcon(Icons.copy_outlined));
+      expect((await Clipboard.getData('text/plain'))?.text, '481503');
+
+      await Clipboard.setData(const ClipboardData(text: '902104'));
+      await tester.tap(find.text('Paste code'));
+      await tester.pump();
+      expect(find.text('902104'), findsOneWidget);
     });
   });
 

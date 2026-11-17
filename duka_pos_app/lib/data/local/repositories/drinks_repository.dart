@@ -27,6 +27,7 @@ class DrinksRepository {
       label TEXT NOT NULL DEFAULT 'Shot',
       active INTEGER NOT NULL DEFAULT 1,
       updated_at TEXT NOT NULL,
+      image_path TEXT,
       synced_to_backend INTEGER NOT NULL DEFAULT 0,
       FOREIGN KEY (product_id) REFERENCES products (id) ON DELETE CASCADE
     )''');

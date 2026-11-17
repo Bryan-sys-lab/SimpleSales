@@ -16,7 +16,6 @@ void main() {
     expect(ShopProfile.drinks.capabilities.drinkService, isTrue);
     expect(ShopProfile.fashion.capabilities.variants, isTrue);
     expect(ShopProfile.duka.capabilities.variants, isFalse);
-    expect(ShopProfile.open.capabilities.jobs, isTrue);
     expect(ShopProfile.open.capabilities.pooledCosts, isTrue);
     expect(ShopProfile.duka.capabilities.trackStock, isTrue);
   });
@@ -30,8 +29,7 @@ void main() {
   test('navigation is profile-driven while permissions remain separate', () {
     expect(ShopProfile.drinks.navigation.showInventory, isTrue);
     expect(ShopProfile.fashion.navigation.showVariants, isTrue);
-    expect(ShopProfile.open.navigation.showInventory, isFalse);
-    expect(ShopProfile.open.navigation.showJobs, isTrue);
+    expect(ShopProfile.open.navigation.showInventory, isTrue);
   });
 
   test('analytics emphasis uses the shared KPI vocabulary', () {
@@ -42,7 +40,7 @@ void main() {
     expect(
       ShopProfile.open.analytics.emphasis,
       containsAll(
-          <ProfileKpi>[ProfileKpi.pooledCost, ProfileKpi.jobsCompleted]),
+          <ProfileKpi>[ProfileKpi.pooledCost, ProfileKpi.stockValue]),
     );
   });
 }

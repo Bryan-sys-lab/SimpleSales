@@ -30,10 +30,7 @@ class OwnerBusinessSyncService {
     'operational_records',
     'incoming_payments',
     'encrypted_full_backup',
-    'jobs',
     'cost_pools',
-    'job_costs',
-    'job_payments',
     'owner_transactions',
   ];
 
@@ -53,6 +50,7 @@ class OwnerBusinessSyncService {
     await attempt('catalogue', () async {
       await BackendService.syncProductsToBackend();
       await BackendService.pullProductsFromBackend();
+      await BackendService.pullVariantsFromBackend();
     });
     await attempt('staff', () async {
       await BackendService.syncStaffToBackend();
@@ -61,6 +59,7 @@ class OwnerBusinessSyncService {
     await attempt('sales', () async {
       await BackendService.syncSalesToBackend();
     });
+    await attempt('sale_evidence', BackendService.syncSaleEvidenceToBackend);
     await attempt(
         'financial_evidence', BackendService.syncFinancialEvidenceToBackend);
     await attempt('customer_credit', () async {
@@ -90,11 +89,14 @@ class OwnerBusinessSyncService {
     });
     await attempt(
         'encrypted_full_backup', BackendService.syncFullBackupToBackend);
-    await attempt('jobs', BackendService.syncJobsToBackend);
-    await attempt('cost_pools', BackendService.syncCostPoolsToBackend);
-    await attempt('job_costs', BackendService.syncJobCostsToBackend);
-    await attempt('job_payments', BackendService.syncJobPaymentsToBackend);
-    await attempt('owner_transactions', BackendService.syncOwnerTransactionsToBackend);
+    await attempt('cost_pools', () async {
+      await BackendService.syncCostPoolsToBackend();
+      await BackendService.pullCostPoolsFromBackend();
+    });
+    await attempt('owner_transactions', () async {
+      await BackendService.syncOwnerTransactionsToBackend();
+      await BackendService.pullOwnerTransactionsFromBackend();
+    });
 
     return OwnerBusinessSyncReport(
       completed: List<String>.unmodifiable(completed),

@@ -318,6 +318,114 @@ void main() {
         throwsStateError,
       );
     });
+
+    test('credit is rejected as a split tender', () async {
+      final int productId = await seedProduct();
+      final Customer mary = await seedCustomer(limit: 50000);
+      await expectLater(
+        DatabaseHelper.instance.recordSale(
+          staffName: 'Amina',
+          items: [
+            SaleItem(
+              saleId: 0,
+              productId: productId,
+              productName: 'Soda 350ml',
+              qty: 1,
+              unitPrice: Money.fromMajor(100),
+              unitCost: Money.fromMajor(60),
+              portion: 'full',
+              portionMl: 350,
+            ),
+          ],
+          paymentMethod: 'split',
+          tenders: [
+            SaleTender(method: 'cash', amount: Money.fromMajor(50)),
+            SaleTender(method: 'credit', amount: Money.fromMajor(50)),
+          ],
+          customerId: mary.id,
+        ),
+        throwsStateError,
+      );
+    });
+
+    test('a new credit customer and charge commit atomically', () async {
+      final int productId = await seedProduct();
+      final Customer draft = Customer(
+        uuid: 'draft-credit-customer',
+        name: 'New Customer',
+        phone: '+254712345678',
+        creditLimitMinor: 50000,
+        createdAt: DateTime.now().toIso8601String(),
+      );
+      final int saleId = await DatabaseHelper.instance.recordSale(
+        staffName: 'Amina',
+        items: [
+          SaleItem(
+            saleId: 0,
+            productId: productId,
+            productName: 'Soda 350ml',
+            qty: 1,
+            unitPrice: Money.fromMajor(100),
+            unitCost: Money.fromMajor(60),
+            portion: 'full',
+            portionMl: 350,
+          ),
+        ],
+        paymentMethod: 'credit',
+        customerDraft: draft,
+        staffId: 7,
+      );
+      final customers = await DatabaseHelper.instance.getCustomers();
+      expect(customers.single.name, 'New Customer');
+      expect(customers.single.phone, '+254712345678');
+      expect(customers.single.balanceMinor, 10000);
+      expect(
+          (await DatabaseHelper.instance.getCreditEntries(customers.single.id!))
+              .single
+              .saleId,
+          saleId);
+
+      final int emptyProductId = await seedProduct();
+      await DatabaseHelper.instance.adjustStock(
+        StockAdjustment(
+          productId: emptyProductId,
+          productName: 'Soda 350ml',
+          delta: -100,
+          reason: 'test',
+          staffName: 'Amina',
+          createdAt: DateTime.now().toIso8601String(),
+        ),
+      );
+      await expectLater(
+        DatabaseHelper.instance.recordSale(
+          staffName: 'Amina',
+          items: [
+            SaleItem(
+              saleId: 0,
+              productId: emptyProductId,
+              productName: 'Soda 350ml',
+              qty: 2,
+              unitPrice: Money.fromMajor(100),
+              unitCost: Money.fromMajor(60),
+              portion: 'full',
+              portionMl: 350,
+            ),
+          ],
+          paymentMethod: 'credit',
+          customerDraft: Customer(
+            uuid: 'should-not-survive',
+            name: 'Failed Customer',
+            phone: '+254712345679',
+            createdAt: DateTime.now().toIso8601String(),
+          ),
+        ),
+        throwsStateError,
+      );
+      expect(
+          (await DatabaseHelper.instance.getCustomers())
+              .where((customer) => customer.name == 'Failed Customer'),
+          isEmpty);
+    });
   });
 
   group('a repayment', () {

@@ -130,11 +130,9 @@ class FinanceRepository {
       integrity_hash TEXT NOT NULL,
       synced_to_backend INTEGER NOT NULL DEFAULT 0
     )''');
-    await db.execute(
-        'CREATE INDEX IF NOT EXISTS idx_financial_events_occurred '
+    await db.execute('CREATE INDEX IF NOT EXISTS idx_financial_events_occurred '
         'ON financial_events (occurred_at_utc, id)');
-    await db.execute(
-        'CREATE INDEX IF NOT EXISTS idx_financial_events_source '
+    await db.execute('CREATE INDEX IF NOT EXISTS idx_financial_events_source '
         'ON financial_events (source_type, source_id)');
 
     await db.execute('''CREATE TABLE IF NOT EXISTS owner_transactions (
@@ -150,8 +148,7 @@ class FinanceRepository {
       status TEXT NOT NULL DEFAULT 'posted',
       synced_to_backend INTEGER NOT NULL DEFAULT 0
     )''');
-    await db.execute(
-        'CREATE INDEX IF NOT EXISTS idx_owner_transactions_date '
+    await db.execute('CREATE INDEX IF NOT EXISTS idx_owner_transactions_date '
         'ON owner_transactions (created_at, id)');
 
     await db.execute('''CREATE TABLE IF NOT EXISTS cost_pools (
@@ -189,6 +186,17 @@ class FinanceRepository {
       UNIQUE (pool_id, sale_id),
       FOREIGN KEY (pool_id) REFERENCES cost_pools (id)
     )''');
+    await db
+        .execute('''CREATE TABLE IF NOT EXISTS sale_pool_allocation_reversals (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      pool_id INTEGER NOT NULL,
+      sale_id INTEGER NOT NULL,
+      return_id INTEGER NOT NULL,
+      amount_minor INTEGER NOT NULL CHECK (amount_minor > 0),
+      created_at TEXT NOT NULL,
+      UNIQUE (pool_id, return_id),
+      FOREIGN KEY (pool_id) REFERENCES cost_pools (id)
+    )''');
 
     await db.execute('''CREATE TABLE IF NOT EXISTS drawer_events (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -206,11 +214,9 @@ class FinanceRepository {
       synced_to_backend INTEGER NOT NULL DEFAULT 0,
       FOREIGN KEY (shift_id) REFERENCES shifts (id) ON DELETE SET NULL
     )''');
-    await db.execute(
-        'CREATE INDEX IF NOT EXISTS idx_drawer_events_created '
+    await db.execute('CREATE INDEX IF NOT EXISTS idx_drawer_events_created '
         'ON drawer_events (created_at DESC)');
-    await db.execute(
-        'CREATE INDEX IF NOT EXISTS idx_drawer_events_shift '
+    await db.execute('CREATE INDEX IF NOT EXISTS idx_drawer_events_shift '
         'ON drawer_events (shift_id, created_at DESC)');
 
     await db.execute('''CREATE TABLE IF NOT EXISTS backup_log (
@@ -223,8 +229,7 @@ class FinanceRepository {
       manifest_json TEXT,
       status TEXT NOT NULL DEFAULT 'written'
     )''');
-    await db.execute(
-        'CREATE INDEX IF NOT EXISTS idx_backup_log_created '
+    await db.execute('CREATE INDEX IF NOT EXISTS idx_backup_log_created '
         'ON backup_log (created_at DESC)');
 
     await db.execute('''CREATE TABLE IF NOT EXISTS incoming_payments (
@@ -239,8 +244,7 @@ class FinanceRepository {
       claimed_by TEXT,
       updated_at TEXT NOT NULL
     )''');
-    await db.execute(
-        'CREATE INDEX IF NOT EXISTS idx_incoming_payments_status '
+    await db.execute('CREATE INDEX IF NOT EXISTS idx_incoming_payments_status '
         'ON incoming_payments (status, received_at DESC)');
 
     await db.execute('''CREATE TABLE IF NOT EXISTS incoming_payment_claims (
@@ -416,6 +420,7 @@ class FinanceRepository {
     required int poolId,
     required int saleId,
     required Money amount,
+    bool appendFinancialEvent = true,
   }) async {
     if (amount.minorUnits <= 0) {
       throw StateError('A pool allocation must be more than zero');
@@ -446,19 +451,129 @@ class FinanceRepository {
       'UPDATE cost_pools SET recovered_minor = recovered_minor + ? WHERE id = ?',
       [amount.minorUnits, poolId],
     );
-    await appendFinancialEventInTransaction(
-      txn: txn,
-      eventType: 'cost_pool_allocation',
-      sourceType: 'sale_pool_allocation',
-      sourceId: allocationId,
-      occurredAtUtc: DateTime.now().toUtc().toIso8601String(),
-      cogsMinor: amount.minorUnits,
-      metadata: <String, Object?>{
-        'pool_id': poolId,
-        'sale_id': saleId,
-      },
-    );
+    if (appendFinancialEvent) {
+      await appendFinancialEventInTransaction(
+        txn: txn,
+        eventType: 'cost_pool_allocation',
+        sourceType: 'sale_pool_allocation',
+        sourceId: allocationId,
+        occurredAtUtc: DateTime.now().toUtc().toIso8601String(),
+        cogsMinor: amount.minorUnits,
+        metadata: <String, Object?>{
+          'pool_id': poolId,
+          'sale_id': saleId,
+        },
+      );
+    }
     return allocationId;
+  }
+
+  Future<int> reverseCostPoolRecoveryInTransaction({
+    required Transaction txn,
+    required int poolId,
+    required int saleId,
+    required int returnId,
+    required Money amount,
+  }) async {
+    if (amount.minorUnits <= 0) return 0;
+    final allocation = await txn.query(
+      'sale_pool_allocations',
+      where: 'pool_id = ? AND sale_id = ?',
+      whereArgs: [poolId, saleId],
+      limit: 1,
+    );
+    if (allocation.isEmpty) throw StateError('Pool sale allocation not found');
+    final already = await txn.query(
+      'sale_pool_allocation_reversals',
+      columns: ['COALESCE(SUM(amount_minor), 0) AS total'],
+      where: 'pool_id = ? AND sale_id = ?',
+      whereArgs: [poolId, saleId],
+    );
+    final allocated = (allocation.first['amount_minor'] as num).toInt();
+    final reversed = (already.first['total'] as num?)?.toInt() ?? 0;
+    if (reversed + amount.minorUnits > allocated) {
+      throw StateError('Pool recovery reversal exceeds the sale allocation');
+    }
+    final now = DateTime.now().toIso8601String();
+    final id = await txn.insert('sale_pool_allocation_reversals', {
+      'pool_id': poolId,
+      'sale_id': saleId,
+      'return_id': returnId,
+      'amount_minor': amount.minorUnits,
+      'created_at': now,
+    });
+    await txn.rawUpdate(
+      'UPDATE cost_pools SET recovered_minor = MAX(0, recovered_minor - ?) WHERE id = ?',
+      [amount.minorUnits, poolId],
+    );
+    return id;
+  }
+
+  Future<int> reloadCostPoolStockInTransaction({
+    required Transaction txn,
+    required int poolId,
+    required int productId,
+    required double qty,
+    required Money unitCost,
+    String paidFrom = 'till_cash',
+    String? supplierRef,
+    String? note,
+    required String staffName,
+    int? staffId,
+  }) async {
+    if (qty <= 0) throw StateError('Quantity must be more than zero');
+    final pools = await txn.query('cost_pools',
+        where: 'id = ?', whereArgs: [poolId], limit: 1);
+    if (pools.isEmpty) throw StateError('Cost pool not found');
+    final pool = pools.first;
+    final status = (pool['status'] as String?) ?? 'open';
+    if (status != 'open' && status != 'active') {
+      throw StateError('Cost pool is not active');
+    }
+    final productRows = await txn.query('products',
+        where: 'id = ?', whereArgs: [productId], limit: 1);
+    if (productRows.isEmpty) throw StateError('Product not found');
+    final linkedPoolId = (productRows.first['cost_pool_id'] as num?)?.toInt();
+    if (linkedPoolId != null && linkedPoolId != poolId) {
+      throw StateError('Product is already linked to another cost pool');
+    }
+    final receiptId = await postStockReceiptInTransaction(
+      txn,
+      lines: <StockReceiptLine>[
+        StockReceiptLine(
+          productId: productId,
+          productName: productRows.first['name'] as String? ?? '',
+          qty: qty,
+          unitCost: unitCost,
+        ),
+      ],
+      supplierRef: supplierRef,
+      note: note,
+      staffName: staffName,
+      staffId: staffId,
+      paidFrom: paidFrom,
+    );
+    final totalCost = (unitCost.minorUnits * qty).round();
+    final now = DateTime.now().toIso8601String();
+    await txn.insert('cost_pool_entries', {
+      'uuid': DatabaseHelper.newUuid(),
+      'pool_id': poolId,
+      'entry_type': 'purchase',
+      'amount_minor': totalCost,
+      'paid_from': paidFrom,
+      'description': 'Stock reload receipt #$receiptId',
+      'created_at': now,
+    });
+    await txn.rawUpdate(
+      'UPDATE cost_pools SET invested_minor = invested_minor + ? WHERE id = ?',
+      [totalCost, poolId],
+    );
+    // link product to pool if not already
+    await txn.rawUpdate(
+      'UPDATE products SET cost_pool_id = COALESCE(cost_pool_id, ?) WHERE id = ?',
+      [poolId, productId],
+    );
+    return receiptId;
   }
 
   // ── Public methods ─────────────────────────────────────────────────
@@ -476,21 +591,22 @@ class FinanceRepository {
   }) async {
     final db = await DatabaseHelper.instance.database;
     return db.transaction<int>((txn) => recordExpenseInTransaction(
-      txn,
-      uuid: uuid,
-      categoryId: categoryId,
-      amount: amount,
-      paidFrom: paidFrom,
-      staffName: staffName,
-      staffId: staffId,
-      note: note,
-      photoPath: photoPath,
-      approvedBy: approvedBy,
-    ));
+          txn,
+          uuid: uuid,
+          categoryId: categoryId,
+          amount: amount,
+          paidFrom: paidFrom,
+          staffName: staffName,
+          staffId: staffId,
+          note: note,
+          photoPath: photoPath,
+          approvedBy: approvedBy,
+        ));
   }
 
   /// Records an expense within [txn]. Never opens its own transaction.
-  Future<int> recordExpenseInTransaction(Transaction txn, {
+  Future<int> recordExpenseInTransaction(
+    Transaction txn, {
     required String uuid,
     required int categoryId,
     required Money amount,
@@ -568,18 +684,19 @@ class FinanceRepository {
   }) async {
     final db = await DatabaseHelper.instance.database;
     return db.transaction<int>((txn) => recordExpensePaymentInTransaction(
-      txn,
-      uuid: uuid,
-      expenseId: expenseId,
-      amount: amount,
-      paymentMethod: paymentMethod,
-      reference: reference,
-      shiftId: shiftId,
-    ));
+          txn,
+          uuid: uuid,
+          expenseId: expenseId,
+          amount: amount,
+          paymentMethod: paymentMethod,
+          reference: reference,
+          shiftId: shiftId,
+        ));
   }
 
   /// Pays an expense within [txn]. Never opens its own transaction.
-  Future<int> recordExpensePaymentInTransaction(Transaction txn, {
+  Future<int> recordExpensePaymentInTransaction(
+    Transaction txn, {
     required String uuid,
     required int expenseId,
     required Money amount,
@@ -697,10 +814,7 @@ class FinanceRepository {
     final shiftId = rows.first['shift_id'] as int?;
     if (shiftId != null) {
       final shifts = await txn.query('shifts',
-          columns: ['status'],
-          where: 'id = ?',
-          whereArgs: [shiftId],
-          limit: 1);
+          columns: ['status'], where: 'id = ?', whereArgs: [shiftId], limit: 1);
       if (shifts.isNotEmpty && shifts.first['status'] != 'open') {
         throw StateError('A closed shift cannot be changed');
       }
@@ -723,7 +837,8 @@ class FinanceRepository {
   }
 
   /// Creates a cost pool within [txn]. Never opens its own transaction.
-  Future<int> createCostPoolInTransaction(Transaction txn, {
+  Future<int> createCostPoolInTransaction(
+    Transaction txn, {
     required String uuid,
     required String name,
     required String poolType,
@@ -740,7 +855,9 @@ class FinanceRepository {
     if (uuid.trim().isEmpty || name.trim().isEmpty) {
       throw StateError('A cost pool needs an id and a name');
     }
-    if (poolType != 'lot' && poolType != 'rolling_stock' && poolType != 'bale') {
+    if (poolType != 'lot' &&
+        poolType != 'rolling_stock' &&
+        poolType != 'bale') {
       throw StateError('A cost pool is a lot, rolling stock or bale');
     }
     final resolvedCost = initialCost ?? totalCost ?? cost ?? costAmount;
@@ -783,24 +900,25 @@ class FinanceRepository {
   }) async {
     final db = await DatabaseHelper.instance.database;
     return db.transaction<int>((txn) => createCostPoolInTransaction(
-      txn,
-      uuid: uuid,
-      name: name,
-      poolType: poolType,
-      note: note,
-      units: units,
-      initialCost: initialCost,
-      totalCost: totalCost,
-      cost: cost,
-      costAmount: costAmount,
-      paidFrom: paidFrom,
-      entryType: entryType,
-      description: description,
-    ));
+          txn,
+          uuid: uuid,
+          name: name,
+          poolType: poolType,
+          note: note,
+          units: units,
+          initialCost: initialCost,
+          totalCost: totalCost,
+          cost: cost,
+          costAmount: costAmount,
+          paidFrom: paidFrom,
+          entryType: entryType,
+          description: description,
+        ));
   }
 
   /// Adds a cost pool entry within [txn]. Never opens its own transaction.
-  Future<int> addCostPoolEntryInTransaction(Transaction txn, {
+  Future<int> addCostPoolEntryInTransaction(
+    Transaction txn, {
     required String uuid,
     required int poolId,
     required String entryType,
@@ -871,14 +989,14 @@ class FinanceRepository {
   }) async {
     final db = await DatabaseHelper.instance.database;
     return db.transaction<int>((txn) => addCostPoolEntryInTransaction(
-      txn,
-      uuid: uuid,
-      poolId: poolId,
-      entryType: entryType,
-      amount: amount,
-      paidFrom: paidFrom,
-      description: description,
-    ));
+          txn,
+          uuid: uuid,
+          poolId: poolId,
+          entryType: entryType,
+          amount: amount,
+          paidFrom: paidFrom,
+          description: description,
+        ));
   }
 
   Future<List<Map<String, dynamic>>> getCostPools() async =>
@@ -895,14 +1013,16 @@ class FinanceRepository {
     final db = await DatabaseHelper.instance.database;
     if (shiftId != null) {
       return db.query('expenses',
-          where: 'shift_id = ?', whereArgs: [shiftId],
+          where: 'shift_id = ?',
+          whereArgs: [shiftId],
           orderBy: 'created_at DESC');
     }
     return db.query('expenses', orderBy: 'created_at DESC');
   }
 
   /// Records a till movement within [txn]. Never opens its own transaction.
-  Future<int> recordTillMovementInTransaction(Transaction txn, {
+  Future<int> recordTillMovementInTransaction(
+    Transaction txn, {
     required String uuid,
     required int shiftId,
     required String movementType,
@@ -958,19 +1078,20 @@ class FinanceRepository {
   }) async {
     final db = await DatabaseHelper.instance.database;
     return db.transaction<int>((txn) => recordTillMovementInTransaction(
-      txn,
-      uuid: uuid,
-      shiftId: shiftId,
-      movementType: movementType,
-      amount: amount,
-      staffName: staffName,
-      staffId: staffId,
-      note: note,
-    ));
+          txn,
+          uuid: uuid,
+          shiftId: shiftId,
+          movementType: movementType,
+          amount: amount,
+          staffName: staffName,
+          staffId: staffId,
+          note: note,
+        ));
   }
 
   /// Posts a stock receipt within [txn]. Never opens its own transaction.
-  Future<int> postStockReceiptInTransaction(Transaction txn, {
+  Future<int> postStockReceiptInTransaction(
+    Transaction txn, {
     required List<StockReceiptLine> lines,
     int? supplierId,
     String? supplierRef,
@@ -984,6 +1105,7 @@ class FinanceRepository {
     DateTime? receivedAt,
     String costingMode = 'weighted_average',
     int? purchaseOrderId,
+    String paidFrom = 'till_cash',
   }) async {
     if (costingMode != 'weighted_average' && costingMode != 'last_cost') {
       throw ArgumentError.value(
@@ -992,10 +1114,31 @@ class FinanceRepository {
     if (lines.isEmpty) {
       throw StateError('A delivery must contain at least one line');
     }
+    if (paidFrom != 'till_cash' &&
+        paidFrom != 'credit' &&
+        paidFrom != 'other') {
+      throw StateError('Invalid paid_from value');
+    }
     final String now = (receivedAt ?? DateTime.now()).toIso8601String();
     int totalCost = 0;
     final List<({StockReceiptLine line, int oldCost, int newCost})> costs =
         <({StockReceiptLine line, int oldCost, int newCost})>[];
+    final int receiptId = await txn.insert('stock_receipts', {
+      'supplier_id': supplierId,
+      'supplier_ref': supplierRef,
+      'supplier_pin': supplierPin,
+      'etims_invoice_ref': etimsInvoiceRef,
+      'input_vat_minor': inputVatMinor,
+      'tax_evidence_status': taxEvidenceStatus,
+      'received_at': now,
+      'staff_id': staffId,
+      'staff_name': staffName,
+      'total_cost_minor': 0,
+      'paid_from': paidFrom,
+      'status': 'posted',
+      'note': note,
+      'synced_to_backend': 0,
+    });
 
     final poLines = purchaseOrderId == null
         ? const <Map<String, Object?>>[]
@@ -1028,8 +1171,7 @@ class FinanceRepository {
       final tracksExpiry =
           (product.first['track_expiry'] as num?)?.toInt() == 1;
       if (tracksExpiry && line.expiryDate == null) {
-        throw StateError(
-            'An expiry date is required for ${line.productName}');
+        throw StateError('An expiry date is required for ${line.productName}');
       }
       if (tracksExpiry &&
           !line.expiryDate!.isAfter(receivedAt ?? DateTime.now())) {
@@ -1064,8 +1206,8 @@ class FinanceRepository {
       totalCost += lineCost;
       costs.add((line: line, oldCost: oldCost, newCost: newCost));
 
-      final double balance =
-          await DatabaseHelper.instance.productBalanceAfter(txn, line.productId);
+      final double balance = await DatabaseHelper.instance
+          .productBalanceAfter(txn, line.productId);
       await DatabaseHelper.instance.writeStockMovement(
         txn: txn,
         productId: line.productId,
@@ -1074,7 +1216,7 @@ class FinanceRepository {
         qtyDelta: line.qty,
         unitCostMinor: newCost,
         referenceType: 'stock_receipt',
-        referenceId: null,
+        referenceId: receiptId,
         staffId: staffId,
         staffName: staffName,
         note: 'Received',
@@ -1089,21 +1231,8 @@ class FinanceRepository {
       );
     }
 
-    final int receiptId = await txn.insert('stock_receipts', {
-      'supplier_id': supplierId,
-      'supplier_ref': supplierRef,
-      'supplier_pin': supplierPin,
-      'etims_invoice_ref': etimsInvoiceRef,
-      'input_vat_minor': inputVatMinor,
-      'tax_evidence_status': taxEvidenceStatus,
-      'received_at': now,
-      'staff_id': staffId,
-      'staff_name': staffName,
-      'total_cost_minor': totalCost,
-      'status': 'posted',
-      'note': note,
-      'synced_to_backend': 0,
-    });
+    await txn.update('stock_receipts', {'total_cost_minor': totalCost},
+        where: 'id = ?', whereArgs: [receiptId]);
 
     for (final ({StockReceiptLine line, int oldCost, int newCost}) cost
         in costs) {
@@ -1185,7 +1314,8 @@ class FinanceRepository {
       sourceType: 'stock_receipt',
       sourceId: receiptId,
       occurredAtUtc: DateTime.parse(now).toUtc().toIso8601String(),
-      payableDeltaMinor: totalCost,
+      cashOutMinor: paidFrom == 'till_cash' ? totalCost : 0,
+      payableDeltaMinor: paidFrom == 'credit' ? totalCost : 0,
       inventoryDeltaMilliunits: lines.fold<int>(
         0,
         (sum, line) => sum + (line.qty * 1000).round(),
@@ -1216,23 +1346,25 @@ class FinanceRepository {
     DateTime? receivedAt,
     String costingMode = 'weighted_average',
     int? purchaseOrderId,
+    String paidFrom = 'till_cash',
   }) async {
     final db = await DatabaseHelper.instance.database;
     return db.transaction<int>((txn) => postStockReceiptInTransaction(
-      txn,
-      lines: lines,
-      supplierId: supplierId,
-      supplierRef: supplierRef,
-      supplierPin: supplierPin,
-      etimsInvoiceRef: etimsInvoiceRef,
-      inputVatMinor: inputVatMinor,
-      taxEvidenceStatus: taxEvidenceStatus,
-      note: note,
-      staffName: staffName,
-      staffId: staffId,
-      receivedAt: receivedAt,
-      costingMode: costingMode,
-      purchaseOrderId: purchaseOrderId,
-    ));
+          txn,
+          lines: lines,
+          supplierId: supplierId,
+          supplierRef: supplierRef,
+          supplierPin: supplierPin,
+          etimsInvoiceRef: etimsInvoiceRef,
+          inputVatMinor: inputVatMinor,
+          taxEvidenceStatus: taxEvidenceStatus,
+          note: note,
+          staffName: staffName,
+          staffId: staffId,
+          receivedAt: receivedAt,
+          costingMode: costingMode,
+          purchaseOrderId: purchaseOrderId,
+          paidFrom: paidFrom,
+        ));
   }
 }

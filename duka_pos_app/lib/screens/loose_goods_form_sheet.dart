@@ -93,7 +93,7 @@ class TankServingValues {
   /// How much is in one, in millilitres. ZERO means the owner did not say,
   /// which is allowed: the cup is still sold, only what it takes out of the
   /// tank is not counted.
-  final int sizeMl;
+  final double sizeMl;
 
   /// What one sells for, in shillings.
   final double price;
@@ -147,19 +147,25 @@ Future<void> saveTank(Database database, TankValues values,
     int productId;
     if (existingProductId != null) {
       productId = existingProductId;
-      await txn.update('products', <String, Object?>{
-        'name': values.name,
-        'category': 'Loose goods',
-        'cost_price': Money.fromMajor(values.cost).minorUnits,
-        'sell_price': 0,
-        'stock_qty': values.tankCount.toDouble(),
-        'reorder_level': 0,
-        'bottle_ml': values.capacityMl,
-        'unit': values.unit == 'kg' ? ProductUnit.kilogram.wire : ProductUnit.litre.wire,
-        'track_variants': 0,
-        'active': 1,
-        'updated_at': DateTime.now().toIso8601String(),
-      }, where: 'id = ?', whereArgs: <Object?>[productId]);
+      await txn.update(
+          'products',
+          <String, Object?>{
+            'name': values.name,
+            'category': 'Loose goods',
+            'cost_price': Money.fromMajor(values.cost).minorUnits,
+            'sell_price': 0,
+            'stock_qty': values.tankCount.toDouble(),
+            'reorder_level': 0,
+            'bottle_ml': values.capacityMl,
+            'unit': values.unit == 'kg'
+                ? ProductUnit.kilogram.wire
+                : ProductUnit.litre.wire,
+            'track_variants': 0,
+            'active': 1,
+            'updated_at': DateTime.now().toIso8601String(),
+          },
+          where: 'id = ?',
+          whereArgs: <Object?>[productId]);
       await txn.delete('shot_cups',
           where: 'product_id = ?', whereArgs: <Object?>[productId]);
     } else {
@@ -175,7 +181,9 @@ Future<void> saveTank(Database database, TankValues values,
         // The tank is a pourable product. It is never sold whole; its cups are
         // the configured servings, and the unit keeps it volumetric on every
         // other till after catalogue sync.
-        'unit': values.unit == 'kg' ? ProductUnit.kilogram.wire : ProductUnit.litre.wire,
+        'unit': values.unit == 'kg'
+            ? ProductUnit.kilogram.wire
+            : ProductUnit.litre.wire,
         // 0, not false: sqflite carries no boolean, and a bool handed to it is a
         // type error at the moment of the write.
         'track_variants': 0,
@@ -209,7 +217,8 @@ Future<void> saveTank(Database database, TankValues values,
       await txn.insert('shot_cups', <String, Object?>{
         'product_id': productId,
         'product_name': values.name,
-        'capacity_ml': serving.sizeMl,
+        'capacity': serving.sizeMl,
+        'unit': 'ml',
         'price': Money.fromMajor(serving.price).minorUnits,
         'label': serving.label,
         'active': 1,
@@ -247,6 +256,8 @@ class _ServingState {
 }
 
 class _LooseGoodsFormSheetState extends State<LooseGoodsFormSheet> {
+  bool get _usesLooseGoodsLanguage =>
+      widget.profile == ShopProfile.duka || widget.profile == ShopProfile.open;
   final TextEditingController _nameCtrl = TextEditingController();
   final TextEditingController _capacityCtrl = TextEditingController();
   final TextEditingController _countCtrl = TextEditingController();
@@ -280,8 +291,8 @@ class _LooseGoodsFormSheetState extends State<LooseGoodsFormSheet> {
     if (productId == null) return;
     try {
       final db = await DatabaseHelper.instance.database;
-      final rows = await db.query('shot_cups',
-          where: 'product_id = ?', whereArgs: [productId]);
+      final rows = await db
+          .query('shot_cups', where: 'product_id = ?', whereArgs: [productId]);
       if (!mounted) return;
       if (rows.isNotEmpty) {
         for (final s in _servings) {
@@ -291,14 +302,13 @@ class _LooseGoodsFormSheetState extends State<LooseGoodsFormSheet> {
         for (final row in rows) {
           final serving = _ServingState();
           serving.name.text = (row['label'] as String?) ?? '';
-          serving.sizeMl.text = (row['capacity_ml'] as num?)?.toString() ?? '';
+          serving.sizeMl.text = (row['capacity'] as num?)?.toString() ?? '';
           final priceMinor = (row['price'] as num?)?.toInt() ?? 0;
           serving.price.text = _editAmount(Money.fromMinor(priceMinor));
           _servings.add(serving);
         }
       }
-    } finally {
-    }
+    } finally {}
   }
 
   static String _editAmount(Money? value) {
@@ -400,9 +410,9 @@ class _LooseGoodsFormSheetState extends State<LooseGoodsFormSheet> {
       // The size may be left out. An empty box is "I do not measure it", not
       // a mistake; anything that is not a whole positive number is.
       final sizeText = serving.sizeMl.text.trim();
-      int sizeMl = 0;
+      double sizeMl = 0;
       if (sizeText.isNotEmpty) {
-        final parsed = int.tryParse(sizeText);
+        final parsed = double.tryParse(sizeText);
         if (parsed == null || parsed < 0) {
           setState(() => _error = l10n.tankServingSizeInvalid);
           return;
@@ -445,10 +455,14 @@ class _LooseGoodsFormSheetState extends State<LooseGoodsFormSheet> {
       if (!mounted) return;
       Navigator.of(context).pop();
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(l10n.tankCreated(name))),
+        SnackBar(
+          content: Text(l10n.tankCreated(name)),
+        ),
       );
     } catch (_) {
-      if (mounted) setState(() => _error = l10n.tankSaveFailed);
+      if (mounted) {
+        setState(() => _error = l10n.tankSaveFailed);
+      }
     } finally {
       if (mounted) setState(() => _saving = false);
     }
@@ -460,7 +474,7 @@ class _LooseGoodsFormSheetState extends State<LooseGoodsFormSheet> {
     final spacing = AppSpacing.of(context);
     final shapes = AppShapes.of(context);
     final type = AppTypography.of(context);
-    final bool isDuka = widget.profile == ShopProfile.duka;
+    final bool isDuka = _usesLooseGoodsLanguage;
 
     return Padding(
       padding: EdgeInsetsDirectional.only(
@@ -477,9 +491,7 @@ class _LooseGoodsFormSheetState extends State<LooseGoodsFormSheet> {
             // every other screen opens with.
             ScreenTitle(
               title: isDuka ? l10n.dukaFieldProductName : 'Add loose goods',
-              subtitle: isDuka
-                  ? l10n.dukaServingsTitle
-                  : l10n.tankFormSubtitle,
+              subtitle: isDuka ? l10n.dukaServingsTitle : l10n.tankFormSubtitle,
               padding: EdgeInsets.zero,
             ),
             SizedBox(height: spacing.lg),
@@ -578,7 +590,7 @@ class _LooseGoodsFormSheetState extends State<LooseGoodsFormSheet> {
           children: <Widget>[
             Expanded(
               child: Text(
-                widget.profile == ShopProfile.duka
+                _usesLooseGoodsLanguage
                     ? l10n.dukaServingLabel(index + 1)
                     : l10n.tankServingLabel(index + 1),
               ),
@@ -593,10 +605,10 @@ class _LooseGoodsFormSheetState extends State<LooseGoodsFormSheet> {
               ),
           ],
         ),
-        SizedBox(height: spacing.xs),
+        SizedBox(height: spacing.md),
         _field(serving.name, l10n.tankFieldServingName,
             l10n.tankFieldServingNameHint),
-        SizedBox(height: spacing.xs),
+        SizedBox(height: spacing.md),
         Row(
           children: <Widget>[
             Expanded(

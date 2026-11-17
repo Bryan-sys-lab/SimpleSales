@@ -130,7 +130,7 @@ class _ProfileCard extends StatelessWidget {
       case ShopProfile.fashion:
         return 'Fashion boutique · styles, sizes, colours';
       case ShopProfile.open:
-        return 'Jobs and trade · quotes, jobs, payments';
+        return 'Open business · inventory, costs, sales';
     }
   }
 

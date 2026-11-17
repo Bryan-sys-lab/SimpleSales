@@ -29,8 +29,10 @@
 // dismissed by putting it away. The app's own routing is go_router, and this
 // deliberately does not push a route for a thing that is a panel over a list.
 
+import 'dart:io';
+
 import 'package:flutter/material.dart';
-import 'package:share_plus/share_plus.dart';
+import 'package:image_picker/image_picker.dart';
 import 'package:provider/provider.dart';
 
 import '../db/database_helper.dart';
@@ -38,8 +40,8 @@ import '../l10n/generated/app_localizations.dart';
 import '../models/audit_log.dart';
 import '../services/app_state.dart';
 import '../services/backend_service.dart';
-import '../services/receipt_pdf_service.dart';
-import '../services/receipt_share_service.dart';
+import '../services/product_image_store.dart';
+import '../services/receipt_actions_service.dart';
 import '../models/models.dart';
 import '../theme/app_colors.dart';
 import '../theme/app_shapes.dart';
@@ -47,9 +49,11 @@ import '../theme/app_spacing.dart';
 import '../theme/typography.dart';
 import '../ui/components/controls.dart';
 import '../ui/components/operation_result.dart';
+import '../ui/components/surface.dart';
 import '../utils/datetime_format.dart';
 import '../screens/return_sale_sheet.dart';
 import '../utils/money.dart';
+import '../profile/shop_profile.dart';
 
 /// Shows the details of [sale].
 ///
@@ -68,6 +72,12 @@ Future<void> showSaleDetails(
     // The sheet is scrollable: a sale with twenty lines does not fit on a
     // phone, and a detail that cannot be read is worse than no detail.
     isScrollControlled: true,
+    showDragHandle: true,
+    useSafeArea: true,
+    backgroundColor: AppColors.of(context).surface,
+    shape: RoundedRectangleBorder(
+      borderRadius: AppShapes.of(context).sheetRadius,
+    ),
     builder: (BuildContext sheetContext) => _SaleDetailsSheet(
       sale: sale,
       audit: audit,
@@ -149,19 +159,37 @@ class _SaleDetailsSheet extends StatelessWidget {
                   ),
                 ),
                 SizedBox(height: spacing.lg),
-                OutlinedButton.icon(
-                  onPressed: () => _shareReceipt(context),
-                  icon: const Icon(Icons.share_outlined),
-                  label: Text(AppLocalizations.of(context).shareReceipt),
-                ),
-                OutlinedButton.icon(
-                  onPressed: () => _shareReceiptPdf(),
-                  icon: const Icon(Icons.picture_as_pdf_outlined),
-                  label: Text(AppLocalizations.of(context).sharePdf),
+                // One primary action, then lower-stakes alternatives. Wrap
+                // keeps the actions reachable at large text sizes without
+                // making three vertically stacked buttons feel equally urgent.
+                Wrap(
+                  spacing: spacing.sm,
+                  runSpacing: spacing.sm,
+                  children: <Widget>[
+                    FilledButton.icon(
+                      onPressed: () => _shareReceipt(context),
+                      icon: const Icon(Icons.share_outlined),
+                      label: Text(AppLocalizations.of(context).shareReceipt),
+                    ),
+                    OutlinedButton.icon(
+                      onPressed: () => _shareReceiptPdf(context),
+                      icon: const Icon(Icons.picture_as_pdf_outlined),
+                      label: Text(AppLocalizations.of(context).sharePdf),
+                    ),
+                    if (sale.id != null)
+                      OutlinedButton.icon(
+                        onPressed: () => _printReceipt(context),
+                        icon: const Icon(Icons.print_outlined),
+                        label: Text(AppLocalizations.of(context).printReceipt),
+                      ),
+                  ],
                 ),
                 if (sale.id != null) ...<Widget>[
                   SizedBox(height: spacing.sm),
                   _ReceiptShareHistory(saleId: sale.id!),
+                  if ({ShopProfile.open, ShopProfile.fashion}
+                      .contains(context.read<AppState>().shopProfile))
+                    _SaleEvidenceSection(saleId: sale.id!),
                 ],
                 SizedBox(height: spacing.md),
 
@@ -247,85 +275,31 @@ class _SaleDetailsSheet extends StatelessWidget {
 
   /// What moved, under the method.
   Future<void> _shareReceipt(BuildContext context) async {
-    final recipientMasked = await askReceiptRecipient(context);
-    final snapshot = <String, dynamic>{
-      'shop_name': shopName,
-      'receipt_id': sale.id,
-      'staff_name': sale.staffName,
-      'created_at': sale.createdAt,
-      'payment_method': sale.paymentMethod,
-      'total_minor': sale.total.minorUnits,
-      'items': [
-        for (final item in sale.items)
-          {
-            'name': item.productName,
-            'qty': item.qty,
-            'total_minor': item.total.minorUnits,
-          },
-      ],
-    };
-    String? link;
-    try {
-      final response = await BackendService.createReceiptLink(snapshot);
-      final relative = response?['url'] as String?;
-      if (relative != null) {
-        link = BackendService.backendUrl.replaceFirst(RegExp(r'/api$'), '') +
-            relative;
-        if (sale.id != null) {
-          await DatabaseHelper.instance.recordReceiptShare(
-            uuid: 'receipt-share-${DateTime.now().microsecondsSinceEpoch}',
-            saleId: sale.id!,
-            token: response?['token'] as String?,
-            url: link,
-            recipientMasked: recipientMasked,
-            expiresAt: response?['expires_at']?.toString(),
-          );
-        }
-      } else if (sale.id != null) {
-        await DatabaseHelper.instance.recordReceiptShare(
-          uuid: 'receipt-share-${DateTime.now().microsecondsSinceEpoch}',
-          saleId: sale.id!,
-          recipientMasked: recipientMasked,
-        );
-      }
-    } on Object catch (_) {
-      // Offline sharing remains useful even when the public link cannot be
-      // minted. The receipt itself is never lost or blocked by the network.
-      if (sale.id != null) {
-        await DatabaseHelper.instance.recordReceiptShare(
-          uuid: 'receipt-share-${DateTime.now().microsecondsSinceEpoch}',
-          saleId: sale.id!,
-          recipientMasked: recipientMasked,
-        );
-      }
-    }
-    final lines = <String>[
-      if (shopName.isNotEmpty) shopName,
-      'Receipt ${sale.id ?? ''}'.trim(),
-      for (final item in sale.items)
-        '${item.productName} × ${item.qty}  ${formatMoney(item.total)}',
-      'Total: ${formatMoney(sale.total)}',
-      if (link != null) link,
-    ];
-    await SharePlus.instance.share(ShareParams(
-      text: lines.join('\n'),
-      subject: shopName.isEmpty ? 'Receipt' : 'Receipt from $shopName',
-    ));
+    await ReceiptActionsService.instance.shareSaleText(
+      context,
+      sale: sale,
+      shopName: shopName,
+    );
   }
 
-  Future<void> _shareReceiptPdf() async {
+  Future<void> _shareReceiptPdf(BuildContext context) async {
+    await ReceiptActionsService.instance.shareSalePdf(
+      context,
+      sale: sale,
+      shopName: shopName,
+    );
+  }
+
+  Future<void> _printReceipt(BuildContext context) async {
+    final int? saleId = sale.id;
+    if (saleId == null) return;
     try {
-      final file = await const ReceiptPdfService().write(
-        sale: sale,
-        shopName: shopName,
+      await ReceiptActionsService.instance.printReceipt(context, saleId);
+    } on Object catch (error) {
+      if (!context.mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Could not print receipt: $error')),
       );
-      await SharePlus.instance.share(ShareParams(
-        files: <XFile>[XFile(file.path, mimeType: 'application/pdf')],
-        subject: 'Receipt ${sale.id ?? ''}'.trim(),
-      ));
-    } on Object catch (_) {
-      // The text action remains available if local storage or the share sheet
-      // is unavailable; a receipt must never be blocked by an export failure.
     }
   }
 
@@ -342,6 +316,181 @@ class _SaleDetailsSheet extends StatelessWidget {
     return l10n.saleDetailsTendered(
       formatMoney(sale.amountTendered),
       formatMoney(sale.changeGiven),
+    );
+  }
+}
+
+class _SaleEvidenceSection extends StatefulWidget {
+  const _SaleEvidenceSection({required this.saleId});
+  final int saleId;
+
+  @override
+  State<_SaleEvidenceSection> createState() => _SaleEvidenceSectionState();
+}
+
+class _SaleEvidenceSectionState extends State<_SaleEvidenceSection> {
+  List<Map<String, dynamic>> _evidence = const [];
+  bool _loading = true;
+  bool _uploading = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _load();
+  }
+
+  Future<void> _load() async {
+    try {
+      final localRows =
+          await DatabaseHelper.instance.getSaleEvidence(widget.saleId);
+      await _retryPending(localRows);
+      final rows = localRows.isNotEmpty
+          ? localRows
+          : await BackendService.saleEvidence(widget.saleId);
+      if (mounted) {
+        setState(() {
+          _evidence = rows;
+          _loading = false;
+        });
+      }
+    } catch (_) {
+      if (mounted) setState(() => _loading = false);
+    }
+  }
+
+  Future<void> _retryPending(List<Map<String, dynamic>> rows) async {
+    for (final row in rows.where((r) => r['status'] == 'pending')) {
+      final id = (row['id'] as num?)?.toInt();
+      final path = row['local_path'] as String?;
+      if (id == null || path == null || path.isEmpty) continue;
+      final resolved = await ProductImageStore.resolve(path);
+      if (resolved == null) continue;
+      try {
+        final uploaded = await BackendService.uploadSaleEvidence(
+          localSaleId: widget.saleId,
+          file: File(resolved),
+        );
+        final key = uploaded['key'] as String?;
+        if (key == null || key.isEmpty) continue;
+        await DatabaseHelper.instance.markSaleEvidenceUploaded(
+          id: id,
+          remoteKey: key,
+          remoteUrl: uploaded['publicUrl'] as String?,
+        );
+        await ProductImageStore.deletePendingEvidence(id);
+      } catch (_) {
+        // Keep the row and local photo for the next detail-screen retry.
+      }
+    }
+  }
+
+  Future<void> _add() async {
+    final picked = await ImagePicker().pickImage(
+      source: ImageSource.camera,
+      maxWidth: 1600,
+      imageQuality: 85,
+    );
+    if (picked == null || !mounted) return;
+    setState(() => _uploading = true);
+    try {
+      final db = DatabaseHelper.instance;
+      final evidenceId = await db.createSaleEvidence(
+        saleId: widget.saleId,
+        localPath: null,
+      );
+      final relative = await ProductImageStore.savePendingEvidence(
+        File(picked.path),
+        evidenceId,
+      );
+      await db.setSaleEvidenceLocalPath(evidenceId, relative);
+      final uploaded = await BackendService.uploadSaleEvidence(
+        localSaleId: widget.saleId,
+        file: File(picked.path),
+      );
+      final remoteKey = uploaded['key'] as String?;
+      if (remoteKey != null && remoteKey.isNotEmpty) {
+        await db.markSaleEvidenceUploaded(
+          id: evidenceId,
+          remoteKey: remoteKey,
+          remoteUrl: uploaded['publicUrl'] as String?,
+        );
+        await ProductImageStore.deletePendingEvidence(evidenceId);
+      }
+      await _load();
+    } catch (_) {
+      await _load();
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Evidence could not be uploaded.')),
+        );
+      }
+    } finally {
+      if (mounted) setState(() => _uploading = false);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final spacing = AppSpacing.of(context);
+    return SurfaceCard(
+      margin: EdgeInsets.only(top: spacing.md),
+      padding: EdgeInsets.all(spacing.md),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: <Widget>[
+          Row(children: <Widget>[
+            const Expanded(child: Text('Sale evidence')),
+            OutlinedButton.icon(
+              onPressed: _uploading ? null : _add,
+              icon: _uploading
+                  ? const SizedBox(
+                      width: 16,
+                      height: 16,
+                      child: CircularProgressIndicator(strokeWidth: 2))
+                  : const Icon(Icons.camera_alt_outlined),
+              label: const Text('Add photo'),
+            ),
+          ]),
+          if (_loading) const LinearProgressIndicator(),
+          if (!_loading && _evidence.isEmpty)
+            const Text('No evidence photo recorded.'),
+          if (_evidence.isNotEmpty)
+            SizedBox(
+              height: 96,
+              child: ListView.separated(
+                scrollDirection: Axis.horizontal,
+                itemCount: _evidence.length,
+                separatorBuilder: (_, __) => SizedBox(width: spacing.sm),
+                itemBuilder: (_, index) {
+                  final row = _evidence[index];
+                  final localPath = row['local_path'] as String?;
+                  final downloadUrl = row['downloadUrl'] as String?;
+                  if (localPath != null && localPath.isNotEmpty) {
+                    return FutureBuilder<String?>(
+                      future: ProductImageStore.resolve(localPath),
+                      builder: (_, snapshot) => snapshot.data == null
+                          ? const Icon(Icons.photo_outlined)
+                          : Image.file(
+                              File(snapshot.data!),
+                              width: 96,
+                              height: 96,
+                              fit: BoxFit.cover,
+                            ),
+                    );
+                  }
+                  return Image.network(
+                    downloadUrl ?? '',
+                    width: 96,
+                    height: 96,
+                    fit: BoxFit.cover,
+                    errorBuilder: (_, __, ___) =>
+                        const Icon(Icons.broken_image_outlined),
+                  );
+                },
+              ),
+            ),
+        ],
+      ),
     );
   }
 }
@@ -386,9 +535,10 @@ class _ReceiptShareHistoryState extends State<_ReceiptShareHistory> {
                   share['recipient_masked'] as String? ?? 'Receipt link',
                 ),
                 subtitle: Text(share['expires_at'] as String? ?? 'No expiry'),
-                trailing: TextButton(
+                trailing: ActionChip(
+                  avatar: const Icon(Icons.link_off_outlined, size: 16),
                   onPressed: () => _revoke(share),
-                  child: Text(AppLocalizations.of(context).revoke),
+                  label: Text(AppLocalizations.of(context).revoke),
                 ),
               ),
           ],

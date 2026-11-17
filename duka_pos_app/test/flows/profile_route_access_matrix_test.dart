@@ -32,7 +32,6 @@ void main() {
         expect(nav.showVariants, def.variants);
         expect(nav.showDrinkService, def.drinkService);
         expect(nav.showLayby, def.layby);
-        expect(nav.showJobs, def.jobs);
       }
     });
 
@@ -54,11 +53,11 @@ void main() {
       expect(ShopProfile.drinks.navigation.showDrinkService, isTrue);
     });
 
-    test('Open has jobs and pooledCosts enabled', () async {
+    test('Open has commerce inventory and pooled costs', () async {
       await db.setShopProfile(ShopProfile.open);
-      expect(ShopProfile.open.capabilities.jobs, isTrue);
+      expect(ShopProfile.open.capabilities.showInventory, isTrue);
+      expect(ShopProfile.open.capabilities.measuredGoods, isTrue);
       expect(ShopProfile.open.capabilities.pooledCosts, isTrue);
-      expect(ShopProfile.open.navigation.showJobs, isTrue);
     });
 
     test('Duka does not have drinkService', () async {

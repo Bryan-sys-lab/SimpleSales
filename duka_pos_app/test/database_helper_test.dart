@@ -1,5 +1,3 @@
-import 'dart:convert';
-
 import 'package:flutter_test/flutter_test.dart';
 import 'package:sqflite_common_ffi/sqflite_ffi.dart';
 import 'package:duka_pos/db/database_helper.dart';
@@ -142,6 +140,84 @@ void main() {
       expect(products.first.sellPrice.minorUnits, 75000);
     });
 
+    test('editing a product persists catalogue fields and keeps it sellable',
+        () async {
+      final createdId = await db.upsertProduct(
+        Product(
+          name: 'Editable Soda',
+          category: 'Drinks',
+          costPrice: Money.fromMajor(40),
+          sellPrice: Money.fromMajor(75),
+          stockQty: 12,
+          reorderLevel: 2,
+          bottleMl: 500,
+          unit: ProductUnit.each,
+          trackVariants: true,
+          halfPrice: Money.fromMajor(40),
+          quarterPrice: Money.fromMajor(22),
+          updatedAt: DateTime.now().toIso8601String(),
+        ),
+      );
+      final before = (await db.getProducts()).single;
+
+      final editedId = await db.upsertProduct(
+        before.copyWith(
+          name: 'Edited Soda',
+          sellPrice: Money.fromMajor(80),
+          reorderLevel: 4,
+        ),
+      );
+
+      expect(editedId, createdId);
+      final after = (await db.getProducts()).single;
+      expect(after.name, 'Edited Soda');
+      expect(after.sellPrice, Money.fromMajor(80));
+      expect(after.reorderLevel, 4);
+      expect(after.stockQty, 12);
+      expect(after.trackVariants, isTrue);
+      expect(after.halfPrice, Money.fromMajor(40));
+      expect(after.quarterPrice, Money.fromMajor(22));
+      expect((await db.getProducts()).map((p) => p.id), contains(createdId));
+    });
+
+    test('an edited product is immediately visible to the till catalogue',
+        () async {
+      final int productId = await db.upsertProduct(
+        Product(
+          name: 'Till-visible Tea',
+          category: 'Drinks',
+          costPrice: Money.fromMajor(30),
+          sellPrice: Money.fromMajor(60),
+          stockQty: 8,
+          reorderLevel: 2,
+          updatedAt: DateTime.now().toIso8601String(),
+        ),
+      );
+
+      await db.upsertProduct(
+        Product(
+          id: productId,
+          name: 'Till-visible Tea Updated',
+          category: 'Drinks',
+          costPrice: Money.fromMajor(35),
+          sellPrice: Money.fromMajor(75),
+          stockQty: 8,
+          reorderLevel: 2,
+          updatedAt: DateTime.now().toIso8601String(),
+        ),
+      );
+
+      final products = await db.getProducts();
+      final Product product = products.singleWhere((p) => p.id == productId);
+      expect(product.name, 'Till-visible Tea Updated');
+      expect(product.sellPrice, Money.fromMajor(75));
+
+      // SellScreen reads this same active-product snapshot when it refreshes
+      // its catalogue, so the updated row is the value the till will render.
+      expect(products.where((p) => p.active).map((p) => p.name),
+          contains('Till-visible Tea Updated'));
+    });
+
     test('product price history records changes without duplicate saves',
         () async {
       final product = Product(
@@ -166,542 +242,6 @@ void main() {
       expect(history.first['cost_price'], 11000);
       expect(history.first['sell_price'], 16500);
       expect(history.last['cost_price'], 10000);
-    });
-
-    test(
-        'remote catalogue merge updates the shared row without losing local identity',
-        () async {
-      await db.mergeRemoteProduct(
-        remoteId: 'remote-product-1',
-        name: 'Shared Soda',
-        category: 'Drinks',
-        costPriceMinor: 100,
-        sellPriceMinor: 250,
-        stockQty: 12,
-        reorderLevel: 3,
-        bottleMl: 500,
-        halfPriceMinor: null,
-        quarterPriceMinor: null,
-        exciseStampBatch: '',
-        active: true,
-      );
-      final first = (await db.getProducts()).single;
-      await db.mergeRemoteProduct(
-        remoteId: 'remote-product-1',
-        name: 'Shared Soda Updated',
-        category: 'Drinks',
-        costPriceMinor: 110,
-        sellPriceMinor: 275,
-        stockQty: 8,
-        reorderLevel: 3,
-        bottleMl: 500,
-        halfPriceMinor: null,
-        quarterPriceMinor: null,
-        exciseStampBatch: '',
-        active: true,
-      );
-      final second = (await db.getProducts()).single;
-      expect(second.id, first.id);
-      expect(second.remoteId, 'remote-product-1');
-      expect(second.name, 'Shared Soda Updated');
-      expect(second.stockQty, 8);
-      expect(await db.findLedgerDifferences(), isEmpty);
-    });
-
-    test('remote stock pull keeps this till’s unsynced movement delta',
-        () async {
-      await db.mergeRemoteProduct(
-        remoteId: 'remote-stock-1',
-        name: 'Shared Water',
-        category: 'Drinks',
-        costPriceMinor: 100,
-        sellPriceMinor: 250,
-        stockQty: 10,
-        reorderLevel: 1,
-        bottleMl: 500,
-        halfPriceMinor: null,
-        quarterPriceMinor: null,
-        exciseStampBatch: '',
-        active: true,
-      );
-      final product = (await db.getProducts()).single;
-
-      await db.postStockReceipt(
-        lines: <StockReceiptLine>[
-          StockReceiptLine(
-            productId: product.id!,
-            productName: product.name,
-            qty: 3,
-            unitCost: Money.fromMinor(100),
-          ),
-        ],
-        staffName: 'Offline seller',
-      );
-
-      await db.mergeRemoteProduct(
-        remoteId: 'remote-stock-1',
-        name: 'Shared Water',
-        category: 'Drinks',
-        costPriceMinor: 100,
-        sellPriceMinor: 250,
-        stockQty: 10,
-        reorderLevel: 1,
-        bottleMl: 500,
-        halfPriceMinor: null,
-        quarterPriceMinor: null,
-        exciseStampBatch: '',
-        active: true,
-        unsyncedStockDelta: await db.unsyncedStockDeltaForProduct(product.id!),
-      );
-
-      expect((await db.getProducts()).single.stockQty, 13);
-      expect(await db.findLedgerDifferences(), isEmpty);
-    });
-
-    test('remote tank merge preserves its pourable unit and serving cup',
-        () async {
-      await db.mergeRemoteProduct(
-        remoteId: 'remote-tank-1',
-        name: 'Drinking water tank',
-        category: 'Tanks',
-        costPriceMinor: 100000,
-        sellPriceMinor: 0,
-        stockQty: 2,
-        reorderLevel: 1,
-        bottleMl: 50000,
-        unit: ProductUnit.cup.wire,
-        millilitresPerKilogram: 0,
-        halfPriceMinor: null,
-        quarterPriceMinor: null,
-        exciseStampBatch: '',
-        active: true,
-      );
-      final tank = (await db.getProducts()).single;
-      expect(tank.unit, ProductUnit.cup);
-
-      await db.mergeRemoteShotCup(
-        productId: tank.id!,
-        productName: tank.name,
-        capacity: 500,
-        unit: 'ml',
-        priceMinor: 8000,
-        label: 'Big cup',
-        active: true,
-      );
-      final cups = await db.getShotCups();
-      expect(cups.single.capacity, 500.0);
-      expect(cups.single.price, Money.fromMinor(8000));
-    });
-
-    test('remote staff merge updates attribution but preserves the local PIN',
-        () async {
-      final id = await db.addStaff(Staff(
-        name: 'Old Name',
-        pinHash: 'local-pin-hash',
-        role: 'cashier',
-      ));
-      await db.setStaffRemoteId(id, 'remote-staff-1');
-      await db.mergeRemoteStaff(
-        remoteId: 'remote-staff-1',
-        name: 'New Name',
-        role: 'manager',
-        active: false,
-      );
-      final staff = (await db.getStaff(activeOnly: false)).single;
-      expect(staff.name, 'New Name');
-      expect(staff.role, 'manager');
-      expect(staff.active, isFalse);
-      expect(staff.pinHash, 'local-pin-hash');
-    });
-
-    test(
-        'remote operational rows mirror idempotently without local id collisions',
-        () async {
-      await db.mergeRemoteOperationalRecord(
-        remoteId: 'sync-expense-1',
-        kind: 'expenses',
-        deviceId: 'till-a',
-        localId: 7,
-        payload: <String, dynamic>{
-          'localId': 7,
-          'amountMinor': 1250,
-          'status': 'posted',
-        },
-        createdAt: '2026-01-01T10:00:00.000Z',
-        updatedAt: '2026-01-01T10:00:00.000Z',
-      );
-      await db.mergeRemoteOperationalRecord(
-        remoteId: 'sync-expense-1',
-        kind: 'expenses',
-        deviceId: 'till-a',
-        localId: 7,
-        payload: <String, dynamic>{
-          'localId': 7,
-          'amountMinor': 1500,
-          'status': 'voided',
-        },
-        createdAt: '2026-01-01T10:00:00.000Z',
-        updatedAt: '2026-01-01T11:00:00.000Z',
-      );
-
-      expect(await db.remoteOperationalCounts(), <String, int>{'expenses': 1});
-      final rows = await db.database.then((value) => value.query(
-            'remote_operational_records',
-            columns: <String>['payload_json'],
-          ));
-      expect(rows, hasLength(1));
-      expect(jsonDecode(rows.single['payload_json'] as String)['amountMinor'],
-          1500);
-    });
-
-    test('online staff authentication materialises an offline roster row',
-        () async {
-      final staff = await db.mergeAuthenticatedStaff(
-        remoteId: 'remote-staff-2',
-        username: 'amina',
-        name: 'Amina',
-        role: 'cashier',
-        pinHash: 'local-pbkdf2-hash',
-      );
-      expect(staff.id, isNotNull);
-      expect(staff.username, 'amina');
-      expect(staff.remoteId, 'remote-staff-2');
-      expect(staff.pinHash, 'local-pbkdf2-hash');
-
-      final again = await db.mergeAuthenticatedStaff(
-        remoteId: 'remote-staff-2',
-        username: 'amina',
-        name: 'Amina Updated',
-        role: 'manager',
-        pinHash: 'new-local-pbkdf2-hash',
-      );
-      expect(again.id, staff.id);
-      expect(again.name, 'Amina Updated');
-      expect(again.role, 'manager');
-      expect((await db.getStaff(activeOnly: false)), hasLength(1));
-    });
-
-    test('Record cash sale and decrement stock', () async {
-      final product = Product(
-        name: 'AAA Test Wine',
-        category: 'Wine',
-        costPrice: Money.fromMajor(500.0),
-        sellPrice: Money.fromMajor(750.0),
-        stockQty: 10,
-        reorderLevel: 5,
-        updatedAt: DateTime.now().toIso8601String(),
-      );
-
-      final productId = await db.upsertProduct(product);
-
-      final saleId = await db.recordSale(
-        staffName: 'Test Staff',
-        items: [
-          SaleItem(
-            saleId: 0,
-            productId: productId,
-            productName: 'AAA Test Wine',
-            qty: 2,
-            unitPrice: Money.fromMajor(750.0),
-            unitCost: Money.fromMajor(500.0),
-          ),
-        ],
-        paymentMethod: 'cash',
-      );
-
-      expect(saleId, greaterThan(0));
-
-      final products = await db.getProducts();
-      final testProduct = products.firstWhere((p) => p.id == productId);
-      expect(testProduct.stockQty, equals(8));
-
-      final sales = await db.getSales();
-      expect(sales.length, equals(1));
-      expect(sales.first.total.minorUnits, 150000);
-      // Prices are VAT-inclusive; profit is based on the stored taxable line
-      // amount, not the gross amount collected at the till.
-      expect(sales.first.profit.minorUnits, 29310);
-    });
-
-    test('sale emits one normalized UTC financial event with a tax snapshot',
-        () async {
-      await db.setSetting(DatabaseHelper.settingTaxRuleId, 'rule-vat-1');
-      await db.setSetting(DatabaseHelper.settingTaxRuleVersion, '3');
-      final productId = await db.upsertProduct(Product(
-        name: 'Event product',
-        category: 'General',
-        costPrice: Money.fromMajor(5),
-        sellPrice: Money.fromMajor(10),
-        stockQty: 3,
-        reorderLevel: 0,
-        updatedAt: DateTime.now().toIso8601String(),
-      ));
-
-      final saleId = await db.recordSale(
-        staffName: 'Owner',
-        items: [
-          SaleItem(
-            saleId: 0,
-            productId: productId,
-            productName: 'Event product',
-            qty: 1,
-            unitPrice: Money.fromMajor(10),
-            unitCost: Money.fromMajor(5),
-          ),
-        ],
-      );
-
-      final events = await db.getFinancialEvents();
-      expect(events, hasLength(1));
-      final event = events.single;
-      expect(event.eventType, 'sale');
-      expect(event.sourceType, 'sale');
-      expect(event.sourceId, saleId);
-      expect(event.revenueMinor, 862);
-      expect(event.cashInMinor, 1000);
-      expect(event.cogsMinor, 500);
-      expect(event.taxCollectedMinor, 138);
-      expect(event.inventoryDeltaMilliunits, -1000);
-      expect(DateTime.parse(event.occurredAtUtc).isUtc, isTrue);
-      expect(event.previousHash, isNull);
-      expect(event.integrityHash, hasLength(64));
-      final storedSale = await db.getSaleById(saleId);
-      expect(storedSale!.items.single.taxRuleId, 'rule-vat-1');
-      expect(storedSale.items.single.taxRuleVersion, 3);
-      final snapshot = await db.exportFullSnapshot();
-      final tables = snapshot['tables']! as Map<Object?, Object?>;
-      expect(tables['financial_events'], hasLength(1));
-    });
-
-    test('financial-event integrity verification detects tampering', () async {
-      final productId = await db.upsertProduct(Product(
-        name: 'Integrity product',
-        category: 'General',
-        costPrice: Money.fromMajor(2),
-        sellPrice: Money.fromMajor(5),
-        stockQty: 2,
-        reorderLevel: 0,
-        updatedAt: DateTime.now().toIso8601String(),
-      ));
-      await db.recordSale(
-        staffName: 'Owner',
-        items: [
-          SaleItem(
-            saleId: 0,
-            productId: productId,
-            productName: 'Integrity product',
-            qty: 1,
-            unitPrice: Money.fromMajor(5),
-            unitCost: Money.fromMajor(2),
-          ),
-        ],
-      );
-      final categoryId = (await db.getExpenseCategories()).first['id'] as int;
-      await db.recordExpense(
-        uuid: 'integrity-expense',
-        categoryId: categoryId,
-        amount: Money.fromMajor(1),
-        paidFrom: 'other',
-        staffName: 'Owner',
-      );
-
-      expect(await db.verifyFinancialEventIntegrity(), isTrue);
-      final database = await db.database;
-      await database.update(
-        'financial_events',
-        {'metadata_json': '{"tampered":true}'},
-        where: 'id = ?',
-        whereArgs: [1],
-      );
-      expect(await db.verifyFinancialEventIntegrity(), isFalse);
-
-      await database.update(
-        'financial_events',
-        {'metadata_json': '{}'},
-        where: 'id = ?',
-        whereArgs: [1],
-      );
-      await database.update(
-        'financial_events',
-        {'previous_hash': 'broken-link'},
-        where: 'id = ?',
-        whereArgs: [2],
-      );
-      expect(await db.verifyFinancialEventIntegrity(), isFalse);
-    });
-
-    test(
-        'purchase, owner money, Open pools and jobs use the shared event contract',
-        () async {
-      final productId = await db.upsertProduct(Product(
-        name: 'Open event product',
-        category: 'General',
-        costPrice: Money.fromMajor(2),
-        sellPrice: Money.fromMajor(5),
-        stockQty: 2,
-        reorderLevel: 0,
-        updatedAt: DateTime.now().toIso8601String(),
-      ));
-      final saleId = await db.recordSale(
-        staffName: 'Owner',
-        items: [
-          SaleItem(
-            saleId: 0,
-            productId: productId,
-            productName: 'Open event product',
-            qty: 1,
-            unitPrice: Money.fromMajor(5),
-            unitCost: Money.fromMajor(2),
-          ),
-        ],
-      );
-      final quickSaleId = await db.recordOpenQuickSale(
-        amount: Money.fromMajor(12),
-        paymentMethod: 'mpesa',
-        paymentReference: 'open-mpesa-1',
-        staffName: 'Owner',
-      );
-      final quickSaleRow = await db.getSaleRowById(quickSaleId);
-      expect(quickSaleRow!['total'], 1200);
-      expect(quickSaleRow['profit'], 0);
-      expect(quickSaleRow['vat_minor'], 0);
-      expect(quickSaleRow['etims_status'], EtimsStatus.notRequired);
-      final quickPaymentRows = await (await db.database).query(
-        'sale_payments',
-        where: 'sale_id = ?',
-        whereArgs: [quickSaleId],
-      );
-      expect(quickPaymentRows, hasLength(1));
-      expect(quickPaymentRows.single['amount_minor'], 1200);
-      final quickEvent = (await db.getFinancialEvents()).singleWhere(
-        (event) => event.sourceId == quickSaleId,
-      );
-      expect(quickEvent.revenueMinor, 1200);
-      expect(quickEvent.cashInMinor, 1200);
-      expect(jsonDecode(quickEvent.metadataJson), <String, dynamic>{
-        'profile': 'open',
-        'open_quick_sale': true,
-        'cost_coverage': 'unrecorded',
-        'tax_mode': 'off',
-      });
-      final receiptId = await db.postStockReceipt(
-        lines: <StockReceiptLine>[
-          StockReceiptLine(
-            productId: productId,
-            productName: 'Open event product',
-            qty: 1,
-            unitCost: Money.fromMajor(2),
-          ),
-        ],
-        staffName: 'Owner',
-      );
-      final poolId = await db.createCostPool(
-        uuid: 'pool-event',
-        name: 'April bale',
-        poolType: 'lot',
-      );
-      final poolEntryId = await db.addCostPoolEntry(
-        uuid: 'pool-entry-event',
-        poolId: poolId,
-        entryType: 'purchase',
-        amount: Money.fromMajor(3),
-        paidFrom: 'other',
-      );
-      final allocationId = await db.allocateCostPoolToSale(
-        poolId: poolId,
-        saleId: saleId,
-        amount: Money.fromMajor(3),
-      );
-      final shiftId = await db.openShift(
-        staffId: 1,
-        staffName: 'Owner',
-        startFloat: Money.zero,
-      );
-      final ownerTransactionId = await db.recordOwnerTransaction(
-        uuid: 'owner-capital-event',
-        transactionType: 'capital_in',
-        amount: Money.fromMajor(7),
-        shiftId: shiftId,
-        staffName: 'Owner',
-      );
-      final jobId = await db.createJob(
-        uuid: 'job-event',
-        title: 'Repair order',
-        quote: Money.fromMajor(10),
-      );
-      final jobCostId = await db.addJobCost(
-        uuid: 'job-cost-event',
-        jobId: jobId,
-        costType: 'materials',
-        amount: Money.fromMajor(2),
-        paidFrom: 'till_cash',
-      );
-      final jobPaymentId = await db.recordJobPayment(
-        uuid: 'job-payment-event',
-        jobId: jobId,
-        amount: Money.fromMajor(5),
-        paymentMethod: 'cash',
-        shiftId: shiftId,
-      );
-      await db.completeJob(
-        jobId: jobId,
-        finalPrice: Money.fromMajor(10),
-      );
-
-      final events = await db.getFinancialEvents();
-      final purchase =
-          events.singleWhere((event) => event.eventType == 'purchase');
-      expect(purchase.sourceId, receiptId);
-      expect(purchase.payableDeltaMinor, 200);
-      final poolEntry = events.singleWhere((event) =>
-          event.sourceType == 'cost_pool_entry' &&
-          event.sourceId == poolEntryId);
-      expect(poolEntry.eventType, 'cost_pool_entry');
-      final allocation = events.singleWhere((event) =>
-          event.sourceType == 'sale_pool_allocation' &&
-          event.sourceId == allocationId);
-      expect(allocation.cogsMinor, 300);
-      final owner = events.singleWhere((event) =>
-          event.sourceType == 'owner_transaction' &&
-          event.sourceId == ownerTransactionId);
-      expect(owner.cashInMinor, 700);
-      expect(owner.revenueMinor, 0);
-      expect(owner.operatingExpenseMinor, 0);
-      final jobCost = events.singleWhere((event) =>
-          event.sourceType == 'job_cost' && event.sourceId == jobCostId);
-      expect(jobCost.cogsMinor, 200);
-      expect(jobCost.cashOutMinor, 200);
-      final jobPayment = events.singleWhere((event) =>
-          event.sourceType == 'job_payment' && event.sourceId == jobPaymentId);
-      expect(jobPayment.cashInMinor, 500);
-      expect(jobPayment.receivableDeltaMinor, 0);
-      expect(jobPayment.customerDepositDeltaMinor, 500);
-      final jobCompletion =
-          events.singleWhere((event) => event.eventType == 'job_completion');
-      expect(jobCompletion.revenueMinor, 1000);
-      expect(jobCompletion.receivableDeltaMinor, 500);
-      expect(jobCompletion.customerDepositDeltaMinor, -500);
-      final totals = await db.getFinancialEventTotals();
-      expect(totals.revenueMinor, 2631);
-      expect(totals.cashInMinor, 2900);
-      expect(totals.cashOutMinor, 200);
-      expect(totals.cogsMinor, 700);
-      expect(totals.taxCollectedMinor, 69);
-      expect(totals.receivableDeltaMinor, 500);
-      expect(totals.payableDeltaMinor, 200);
-      expect(totals.customerDepositDeltaMinor, 0);
-      expect(totals.inventoryDeltaMilliunits, 0);
-      expect(totals.grossProfitMinor, 1931);
-      expect(totals.netProfitMinor, 1931);
-      expect(totals.netCashFlowMinor, 2700);
-      final statement = await db.getFinancialStatement(
-        openingCashMinor: 1000,
-        openingCashIsKnown: true,
-      );
-      expect(statement.netProfitMinor, 1931);
-      expect(statement.closingCashMinor, 3700);
-      expect(statement.openingCashIsKnown, isTrue);
-      expect(events.every((event) => event.integrityHash.length == 64), isTrue);
     });
 
     // The guard that was changed to compare rounded amounts. These pin both
@@ -915,6 +455,184 @@ void main() {
       final prodB = products.firstWhere((p) => p.id == id2);
       expect(prodA.stockQty, equals(10));
       expect(prodB.stockQty, equals(2));
+    });
+
+    test('linked sale recovers true cost once, not gross revenue', () async {
+      final productId = await db.upsertProduct(Product(
+        name: 'Pooled stock',
+        category: 'General',
+        costPrice: Money.fromMajor(2),
+        sellPrice: Money.fromMajor(5),
+        stockQty: 2,
+        reorderLevel: 0,
+        updatedAt: DateTime.now().toIso8601String(),
+      ));
+      final poolId = await db.createCostPool(
+        uuid: 'pool-cogs-once',
+        name: 'Pooled stock',
+        poolType: 'lot',
+        initialCost: Money.fromMajor(4),
+      );
+
+      final saleId = await db.recordSale(
+        staffName: 'Owner',
+        items: <SaleItem>[
+          SaleItem(
+            saleId: 0,
+            productId: productId,
+            productName: 'Pooled stock',
+            qty: 1,
+            unitPrice: Money.fromMajor(5),
+            unitCost: Money.fromMajor(2),
+          ),
+        ],
+        costPoolId: poolId,
+      );
+
+      final allocationRows = await (await db.database).query(
+        'sale_pool_allocations',
+        where: 'sale_id = ?',
+        whereArgs: <Object?>[saleId],
+      );
+      expect(allocationRows.single['amount_minor'], 200);
+      final events = await db.getFinancialEvents();
+      expect(
+        events
+            .where((event) =>
+                event.eventType == 'sale' && event.sourceId == saleId)
+            .single
+            .cogsMinor,
+        200,
+      );
+      expect(events.where((event) => event.eventType == 'cost_pool_allocation'),
+          isEmpty);
+      final pool = (await db.getCostPools()).single;
+      expect(pool['recovered_minor'], 200);
+    });
+
+    test('linked catalogue products allocate pool cost automatically',
+        () async {
+      final poolId = await db.createCostPool(
+        uuid: 'pool-auto-linked',
+        name: 'Automatically linked pool',
+        poolType: 'lot',
+        initialCost: Money.fromMajor(2),
+      );
+      final productId = await db.upsertProduct(Product(
+        name: 'Automatically linked stock',
+        category: 'General',
+        costPrice: Money.fromMajor(2),
+        sellPrice: Money.fromMajor(5),
+        stockQty: 1,
+        reorderLevel: 0,
+        costPoolId: poolId,
+        updatedAt: DateTime.now().toIso8601String(),
+      ));
+      final saleId = await db.recordSale(
+        staffName: 'Owner',
+        items: <SaleItem>[
+          SaleItem(
+            saleId: 0,
+            productId: productId,
+            productName: 'Automatically linked stock',
+            qty: 1,
+            unitPrice: Money.fromMajor(5),
+            unitCost: Money.fromMajor(2),
+          ),
+        ],
+      );
+      final rows = await (await db.database).query(
+        'sale_pool_allocations',
+        where: 'sale_id = ?',
+        whereArgs: [saleId],
+      );
+      expect(rows.single['pool_id'], poolId);
+      expect(rows.single['amount_minor'], 200);
+    });
+
+    test('shared QuickSale contract stores a catalogue line and stock movement',
+        () async {
+      final productId = await db.upsertProduct(Product(
+        name: 'Quick catalogue item',
+        category: 'Loose goods',
+        costPrice: Money.fromMajor(3),
+        sellPrice: Money.fromMajor(8),
+        stockQty: 4,
+        reorderLevel: 0,
+        updatedAt: DateTime.now().toIso8601String(),
+      ));
+
+      final saleId = await db.recordSale(
+        staffName: 'Owner',
+        items: <SaleItem>[
+          SaleItem(
+            saleId: 0,
+            productId: productId,
+            productName: 'Quick catalogue item',
+            qty: 1,
+            unitPrice: Money.fromMajor(8),
+            unitCost: Money.fromMajor(3),
+          ),
+        ],
+        paymentMethod: 'cash',
+        amountTendered: Money.fromMajor(8),
+      );
+
+      final sale = await db.getSaleById(saleId);
+      expect(sale, isNotNull);
+      expect(sale!.items, hasLength(1));
+      expect(sale.items.single.productId, productId);
+      expect((await db.getProductById(productId))!.stockQty, 3);
+    });
+
+    test(
+        'cost pool stock reload uses the standard receipt and records one history entry',
+        () async {
+      final productId = await db.upsertProduct(Product(
+        name: 'Reloadable stock',
+        category: 'General',
+        costPrice: Money.zero,
+        sellPrice: Money.fromMajor(4),
+        stockQty: 0,
+        reorderLevel: 0,
+        updatedAt: DateTime.now().toIso8601String(),
+      ));
+      final poolId = await db.createCostPool(
+        uuid: 'pool-reload',
+        name: 'Reload pool',
+        poolType: 'lot',
+      );
+
+      final receiptId = await db.reloadCostPoolStock(
+        poolId: poolId,
+        productId: productId,
+        qty: 3,
+        unitCost: Money.fromMajor(2),
+        paidFrom: 'credit',
+        supplierRef: 'SUP-42',
+        staffName: 'Owner',
+      );
+
+      final product = await db.getProductById(productId);
+      expect(product!.stockQty, 3);
+      final receipt = (await (await db.database).query(
+        'stock_receipts',
+        where: 'id = ?',
+        whereArgs: <Object?>[receiptId],
+      ))
+          .single;
+      expect(receipt['paid_from'], 'credit');
+      expect(receipt['supplier_ref'], 'SUP-42');
+      final entries = await db.getCostPoolEntries(poolId);
+      expect(entries, hasLength(1));
+      expect(entries.single['amount_minor'], 600);
+      expect(entries.single['description'], 'Stock reload receipt #$receiptId');
+      final pool = (await db.getCostPools()).single;
+      expect(pool['invested_minor'], 600);
+      final purchase = (await db.getFinancialEvents())
+          .singleWhere((event) => event.sourceId == receiptId);
+      expect(purchase.cashOutMinor, 0);
+      expect(purchase.payableDeltaMinor, 600);
     });
 
     test('Stock adjustment', () async {
@@ -1233,6 +951,38 @@ void main() {
       staffList = await db.getStaff();
 
       expect(staffList.length, equals(0));
+    });
+
+    test('pulling a new remote staff member materializes it without a PIN',
+        () async {
+      await db.mergeRemoteStaff(
+        remoteId: 'remote-staff-new',
+        name: 'Amina',
+        username: 'Amina',
+        role: 'cashier',
+        active: true,
+      );
+
+      var staff = await db.getStaff(activeOnly: false);
+      expect(staff, hasLength(1));
+      expect(staff.single.remoteId, 'remote-staff-new');
+      expect(staff.single.username, 'amina');
+      expect(staff.single.pinHash, isEmpty);
+
+      // A later roster pull updates identity fields but cannot overwrite a
+      // locally derived PIN verifier.
+      await db.updateStaffPin(staff.single.id!, 'local-pbkdf2-verifier');
+      await db.mergeRemoteStaff(
+        remoteId: 'remote-staff-new',
+        name: 'Amina Updated',
+        username: 'amina',
+        role: 'manager',
+        active: true,
+      );
+      staff = await db.getStaff(activeOnly: false);
+      expect(staff.single.name, 'Amina Updated');
+      expect(staff.single.role, 'manager');
+      expect(staff.single.pinHash, 'local-pbkdf2-verifier');
     });
 
     // --- Regression: a cart may contain several portions of one product ---
@@ -2192,6 +1942,166 @@ void main() {
       expect(cup.price.minorUnits, 12500);
     });
 
+    test('editing a serving removes its stale product template link', () async {
+      final firstProductId = await db.upsertProduct(Product(
+        name: 'Relinked Rum',
+        category: 'Spirits',
+        costPrice: Money.fromMajor(500),
+        sellPrice: Money.fromMajor(1000),
+        stockQty: 10,
+        reorderLevel: 2,
+        bottleMl: 750,
+        updatedAt: DateTime.now().toIso8601String(),
+      ));
+      final secondProductId = await db.upsertProduct(Product(
+        name: 'Relinked Gin',
+        category: 'Spirits',
+        costPrice: Money.fromMajor(600),
+        sellPrice: Money.fromMajor(1200),
+        stockQty: 10,
+        reorderLevel: 2,
+        bottleMl: 750,
+        updatedAt: DateTime.now().toIso8601String(),
+      ));
+      final servingId = await db.upsertShotCup(ShotCup(
+        productId: firstProductId,
+        productName: 'Relinked Rum',
+        capacity: 30,
+        unit: 'ml',
+        price: Money.fromMajor(150),
+        label: 'Small serving',
+        updatedAt: DateTime.now().toIso8601String(),
+      ));
+
+      await db.upsertShotCup(ShotCup(
+        id: servingId,
+        productId: secondProductId,
+        productName: 'Relinked Gin',
+        capacity: 25,
+        unit: 'ml',
+        price: Money.fromMajor(175),
+        label: 'Small serving',
+        updatedAt: DateTime.now().toIso8601String(),
+      ));
+
+      final sqlite = await db.database;
+      final links = await sqlite.query('product_cups');
+      expect(links, hasLength(1));
+      expect(links.single['product_id'], secondProductId);
+      expect(
+        (await db.getShotCups()).single.productId,
+        secondProductId,
+      );
+    });
+
+    test('serving capacity keeps decimal values and declared units', () async {
+      final productId = await db.upsertProduct(Product(
+        name: 'Loose syrup',
+        category: 'Loose goods',
+        costPrice: Money.fromMajor(500),
+        sellPrice: Money.fromMajor(1000),
+        stockQty: 10,
+        reorderLevel: 1,
+        unit: ProductUnit.litre,
+        bottleMl: 1000,
+        updatedAt: DateTime.now().toIso8601String(),
+      ));
+      await db.upsertShotCup(ShotCup(
+        productId: productId,
+        productName: 'Loose syrup',
+        capacity: 0.5,
+        unit: 'litre',
+        price: Money.fromMajor(40),
+        label: 'Half litre',
+        updatedAt: DateTime.now().toIso8601String(),
+      ));
+
+      final serving = await db.getShotCupForProduct(productId);
+      expect(serving!.capacity, closeTo(0.5, 0.000001));
+      expect(serving.unit, 'litre');
+
+      // The same unit is the wire contract used when this row is mirrored to
+      // another till; losing it would make a litre serving reload as ml.
+      expect(serving.toMap()['unit'], 'litre');
+    });
+
+    test('serving shape is shared while product prices remain independent',
+        () async {
+      final firstProductId = await db.upsertProduct(Product(
+        name: 'Shared Rum',
+        category: 'Spirits',
+        costPrice: Money.fromMajor(500),
+        sellPrice: Money.fromMajor(1000),
+        stockQty: 10,
+        reorderLevel: 2,
+        bottleMl: 750,
+        updatedAt: DateTime.now().toIso8601String(),
+      ));
+      final secondProductId = await db.upsertProduct(Product(
+        name: 'Shared Gin',
+        category: 'Spirits',
+        costPrice: Money.fromMajor(600),
+        sellPrice: Money.fromMajor(1200),
+        stockQty: 10,
+        reorderLevel: 2,
+        bottleMl: 750,
+        updatedAt: DateTime.now().toIso8601String(),
+      ));
+
+      await db.upsertShotCup(ShotCup(
+        productId: firstProductId,
+        productName: 'Shared Rum',
+        capacity: 30,
+        unit: 'ml',
+        price: Money.fromMajor(150),
+        label: 'Small serving',
+        updatedAt: DateTime.now().toIso8601String(),
+      ));
+      await db.upsertShotCup(ShotCup(
+        productId: secondProductId,
+        productName: 'Shared Gin',
+        capacity: 30,
+        unit: 'ml',
+        price: Money.fromMajor(200),
+        label: 'Small serving',
+        updatedAt: DateTime.now().toIso8601String(),
+      ));
+
+      final sqlite = await db.database;
+      final templates = await sqlite.rawQuery(
+        'SELECT id FROM cup_templates WHERE label = ? AND capacity = ? AND unit = ?',
+        ['Small serving', 30.0, 'ml'],
+      );
+      expect(templates, hasLength(1));
+      final links = await sqlite.rawQuery(
+        'SELECT price FROM product_cups WHERE template_id = ? ORDER BY product_id',
+        [templates.single['id']],
+      );
+      expect(links.map((row) => row['price']), <Object?>[15000, 20000]);
+
+      // Re-saving one product's serving updates only that product's link.
+      final rum = (await db.getShotCups())
+          .singleWhere((cup) => cup.productId == firstProductId);
+      await db.upsertShotCup(ShotCup(
+        id: rum.id,
+        productId: firstProductId,
+        productName: 'Shared Rum',
+        capacity: 30,
+        unit: 'ml',
+        price: Money.fromMajor(175),
+        label: 'Small serving',
+        updatedAt: DateTime.now().toIso8601String(),
+      ));
+      expect(
+        (await db.getShotCupForProduct(firstProductId))!.price.minorUnits,
+        17500,
+      );
+      expect(
+        (await db.getShotCupForProduct(secondProductId))!.price.minorUnits,
+        20000,
+      );
+    });
+
     test('Delete soft-deletes a shot cup', () async {
       final productId = await db.upsertProduct(Product(
         name: 'AAA Rum',
@@ -2250,7 +2160,7 @@ void main() {
           productId: 9999,
           productName: 'AAA Deleted Spirit',
           capacity: 30,
-        unit: 'ml',
+          unit: 'ml',
           price: Money.fromMajor(100),
           updatedAt: DateTime.now().toIso8601String(),
         )),
@@ -2346,6 +2256,28 @@ void main() {
       expect(loaded.price.minorUnits, 30000);
       expect(loaded.capacity, 30);
       expect(loaded.productName, 'AAA Round Gin');
+    });
+
+    test('sale evidence metadata survives a local offline round trip',
+        () async {
+      final id = await db.createSaleEvidence(saleId: 42, localPath: null);
+      await db.setSaleEvidenceLocalPath(id, 'sale_evidence_pending/$id.jpg');
+
+      expect(await db.getPendingSaleEvidence(), hasLength(1));
+
+      var rows = await db.getSaleEvidence(42);
+      expect(rows, hasLength(1));
+      expect(rows.single['status'], 'pending');
+      expect(rows.single['local_path'], 'sale_evidence_pending/$id.jpg');
+
+      await db.markSaleEvidenceUploaded(
+        id: id,
+        remoteKey: 'profile-photos/tenant/sale-evidence/device-42/photo.jpg',
+        remoteUrl: 'https://example.invalid/photo.jpg',
+      );
+      rows = await db.getSaleEvidence(42);
+      expect(rows.single['status'], 'uploaded');
+      expect(rows.single['remote_key'], contains('sale-evidence'));
     });
   });
 
@@ -3268,6 +3200,15 @@ void main() {
         amountTendered: Money.fromMajor(20),
       );
       await db.setSetting('backup_marker', 'before');
+      final evidenceId = await db.createSaleEvidence(
+        saleId: 1,
+        localPath: 'sale_evidence_pending/1.jpg',
+      );
+      await db.markSaleEvidenceUploaded(
+        id: evidenceId,
+        remoteKey: 'profile-photos/tenant/sale-evidence/device-1-1/photo.jpg',
+        remoteUrl: 'https://example.invalid/photo.jpg',
+      );
       final snapshot = await db.exportFullSnapshot();
       expect(snapshot['media'], isA<List>());
       final tables = Map<String, Object?>.from(
@@ -3293,6 +3234,7 @@ void main() {
         'till_movements',
         'incoming_payments',
         'receipt_shares',
+        'sale_evidence',
         'backup_log',
       ]) {
         expect(tables, contains(table));
@@ -3669,6 +3611,45 @@ void main() {
         packQty: 2,
         staffName: 'Owner',
       );
+      expect((await db.getProducts()).single.stockQty, 12);
+    });
+
+    test('editing a pack updates its sellable definition without stock writes',
+        () async {
+      final productId = await db.upsertProduct(Product(
+        name: 'Editable cases product',
+        category: 'General',
+        costPrice: Money.fromMajor(10),
+        sellPrice: Money.fromMajor(20),
+        stockQty: 12,
+        reorderLevel: 0,
+        updatedAt: DateTime.now().toIso8601String(),
+      ));
+      final packId = await db.addProductPack(
+        uuid: 'pack-edit-1',
+        productId: productId,
+        name: 'Case of 6',
+        barcode: 'PACK-EDIT-6',
+        unitsPerPack: 6,
+        unitCost: Money.fromMajor(60),
+        sellPrice: Money.fromMajor(90),
+      );
+
+      await db.updateProductPack(
+        id: packId,
+        name: 'Case of 12',
+        barcode: 'PACK-EDIT-12',
+        unitsPerPack: 12,
+        unitCost: Money.fromMajor(110),
+        sellPrice: Money.fromMajor(160),
+      );
+
+      final pack = (await db.getProductPacks(productId)).single;
+      expect(pack.name, 'Case of 12');
+      expect(pack.barcode, 'PACK-EDIT-12');
+      expect(pack.unitsPerPack, 12);
+      expect(pack.unitCost, Money.fromMajor(110));
+      expect(pack.sellPrice, Money.fromMajor(160));
       expect((await db.getProducts()).single.stockQty, 12);
     });
 

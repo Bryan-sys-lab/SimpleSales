@@ -49,7 +49,6 @@ import '../ui/components/product_photo.dart';
 import '../utils/validation_utils.dart';
 import 'tank_form_sheet.dart';
 import 'loose_goods_form_sheet.dart';
-import 'stocktake_screen.dart';
 import 'reorder_screen.dart';
 import '../models/product_pack.dart';
 import '../profile/profile_navigation.dart';
@@ -65,7 +64,9 @@ class InventoryScreen extends StatefulWidget {
 }
 
 class _InventoryScreenState extends State<InventoryScreen>
-    with LiveRefresh<InventoryScreen>, SessionRefresh<InventoryScreen>,
+    with
+        LiveRefresh<InventoryScreen>,
+        SessionRefresh<InventoryScreen>,
         TickerProviderStateMixin {
   List<Product> _products = [];
 
@@ -128,6 +129,8 @@ class _InventoryScreenState extends State<InventoryScreen>
     // RefreshIndicator's own spinner says the reload is happening.
     final includeVariants =
         context.read<AppState>().shopProfile.navigation.showVariants;
+    final bool showDrinkService =
+        context.read<AppState>().shopProfile.navigation.showDrinkService;
     final p = await DatabaseHelper.instance.getProducts();
     final catalogue = await VariantCatalogue.load(
       includeVariants: includeVariants,
@@ -143,11 +146,18 @@ class _InventoryScreenState extends State<InventoryScreen>
     setState(() {
       _loading = false;
       final List<Product> all = p;
-      // Tanks live under their own category; everything else is packaged stock.
-      // Tab 0 = packaged, tab 1 = tanks.
-      _products = _inventoryTab == _kTankTab
-          ? all.where((Product product) => product.category == kTankCategory).toList()
-          : all.where((Product product) => product.category != kTankCategory).toList();
+      // Drinks gives tanks their own tab. Other profiles keep legacy tank rows
+      // visible in the shared catalogue rather than silently hiding an item
+      // that was imported before profile-specific tank operations existed.
+      _products = showDrinkService && _inventoryTab == _kTankTab
+          ? all
+              .where((Product product) => product.category == kTankCategory)
+              .toList()
+          : showDrinkService
+              ? all
+                  .where((Product product) => product.category != kTankCategory)
+                  .toList()
+              : all;
       _variants = catalogue;
       // The level the shop actually uses, when every product agrees on one. If
       // they disagree, the dialog starts on the default rather than silently
@@ -227,7 +237,8 @@ class _InventoryScreenState extends State<InventoryScreen>
     if (!mounted) return;
     if (codes.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-        content: Text(AppLocalizations.of(context).assignABarcodeBeforePrintingItsLabel),
+        content: Text(
+            AppLocalizations.of(context).assignABarcodeBeforePrintingItsLabel),
       ));
       return;
     }
@@ -537,7 +548,8 @@ class _InventoryScreenState extends State<InventoryScreen>
     if (quantity == null || !quantity.isFinite || quantity <= 0) return;
     if (quantity > p.stockQty) {
       ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-        content: Text(AppLocalizations.of(context).wasteCannotBeGreaterThanCurrentStock),
+        content: Text(
+            AppLocalizations.of(context).wasteCannotBeGreaterThanCurrentStock),
       ));
       return;
     }
@@ -845,7 +857,9 @@ class _InventoryScreenState extends State<InventoryScreen>
     } catch (_) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(AppLocalizations.of(context).repackCouldNotBeRecorded)),
+        SnackBar(
+            content:
+                Text(AppLocalizations.of(context).repackCouldNotBeRecorded)),
       );
     }
   }
@@ -885,12 +899,10 @@ class _InventoryScreenState extends State<InventoryScreen>
           p.category.toLowerCase().contains(query);
       final matchesFilter = switch (_filter) {
         InventoryFilter.all => true,
-        InventoryFilter.counted =>
-            p.unit == ProductUnit.each,
+        InventoryFilter.counted => p.unit == ProductUnit.each,
         InventoryFilter.measured =>
-            p.unit == ProductUnit.kilogram || p.unit == ProductUnit.litre,
-        InventoryFilter.low =>
-            p.stockQty > 0 && p.stockQty <= p.reorderLevel,
+          p.unit == ProductUnit.kilogram || p.unit == ProductUnit.litre,
+        InventoryFilter.low => p.stockQty > 0 && p.stockQty <= p.reorderLevel,
         InventoryFilter.out => p.isOutOfStock,
       };
       return matchesQuery && matchesFilter;
@@ -906,6 +918,7 @@ class _InventoryScreenState extends State<InventoryScreen>
     final canReorder = appState.hasPermission(PermissionKey.manageSuppliers);
     final showDrinkService = appState.shopProfile.navigation.showDrinkService;
     final l10n = AppLocalizations.of(context);
+    final spacing = AppSpacing.of(context);
     final filteredProducts = _filteredProducts();
     return Scaffold(
       floatingActionButton: FloatingActionButton(
@@ -930,69 +943,66 @@ class _InventoryScreenState extends State<InventoryScreen>
             horizontal: AppSpacing.of(context).md,
             vertical: AppSpacing.of(context).sm,
           ),
-          child: Row(
+          child: Wrap(
+            spacing: AppSpacing.of(context).sm,
             children: <Widget>[
               if (canReceive)
-                TextButton.icon(
+                ActionChip(
+                  avatar: const Icon(Icons.local_shipping_outlined, size: 16),
                   onPressed: () => _receiveStock(),
-                  icon: const Icon(Icons.local_shipping_outlined, size: 18),
                   label: Text(l10n.inventoryManualRestock),
                 ),
               if (canReceive)
-                TextButton.icon(
+                ActionChip(
+                  avatar: const Icon(Icons.receipt_long_outlined, size: 16),
                   onPressed: () => _openDeliveries(),
-                  icon: const Icon(Icons.receipt_long_outlined, size: 18),
                   label: Text(l10n.receiveDeliveriesAction),
                 ),
               if (canStocktake)
-                TextButton.icon(
-                  onPressed: () => Navigator.of(context).push(
-                    MaterialPageRoute<void>(
-                        builder: (_) => const StocktakeScreen()),
-                  ),
-                  icon: const Icon(Icons.fact_check_outlined, size: 18),
+                ActionChip(
+                  avatar: const Icon(Icons.fact_check_outlined, size: 16),
+                  onPressed: () => context.push(Routes.stocktake),
                   label: Text(AppLocalizations.of(context).stocktake),
                 ),
               if (canReorder)
-                TextButton.icon(
+                ActionChip(
+                  avatar: const Icon(Icons.playlist_add_check_outlined, size: 16),
                   onPressed: () => Navigator.of(context).push(
                     MaterialPageRoute<void>(
                         builder: (_) => const ReorderScreen()),
                   ),
-                  icon: const Icon(Icons.playlist_add_check_outlined, size: 18),
                   label: Text(AppLocalizations.of(context).reorder),
                 ),
-                if (isOwner && showDrinkService)
-                  TextButton.icon(
-                    onPressed: () => showTankFormSheet(context),
-                    icon: const Icon(Icons.propane_tank_outlined, size: 18),
-                    label: Text(l10n.tankAddEntry),
-                  ),
-                if (showDrinkService)
-                  TextButton.icon(
-                    onPressed: () => context.push(Routes.tankRegister),
-                    icon: const Icon(Icons.list_alt_outlined, size: 18),
-                    label: Text(AppLocalizations.of(context).tankRegister),
-                  ),
-                  if ((appState.shopProfile == ShopProfile.duka ||
+              if (isOwner && showDrinkService)
+                ActionChip(
+                  avatar: const Icon(Icons.propane_tank_outlined, size: 16),
+                  onPressed: () => showTankFormSheet(context),
+                  label: Text(l10n.tankAddEntry),
+                ),
+              if (showDrinkService)
+                ActionChip(
+                  avatar: const Icon(Icons.list_alt_outlined, size: 16),
+                  onPressed: () => context.push(Routes.tankRegister),
+                  label: Text(AppLocalizations.of(context).tankRegister),
+                ),
+              if ((appState.shopProfile == ShopProfile.duka ||
                       appState.shopProfile == ShopProfile.drinks ||
                       appState.shopProfile == ShopProfile.open) &&
-                      appState.hasPermission(PermissionKey.adjustStock))
-                    TextButton.icon(
-                      onPressed: () => showLooseGoodsFormSheet(
-                        context,
-                        profile: appState.shopProfile,
-                      ),
-                      icon: const Icon(Icons.inventory_2_outlined, size: 18),
-                      label: Text(AppLocalizations.of(context).looseGoods),
-                    ),
-                if (appState.hasPermission(PermissionKey.adjustStock))
-                  TextButton.icon(
-                    onPressed: _repackStock,
-                    icon: const Icon(Icons.swap_horiz, size: 18),
-                    label: Text(AppLocalizations.of(context).repack),
+                  appState.hasPermission(PermissionKey.adjustStock))
+                ActionChip(
+                  avatar: const Icon(Icons.inventory_2_outlined, size: 16),
+                  onPressed: () => showLooseGoodsFormSheet(
+                    context,
+                    profile: appState.shopProfile,
                   ),
-
+                  label: Text(AppLocalizations.of(context).looseGoods),
+                ),
+              if (appState.hasPermission(PermissionKey.adjustStock))
+                ActionChip(
+                  avatar: const Icon(Icons.swap_horiz, size: 16),
+                  onPressed: _repackStock,
+                  label: Text(AppLocalizations.of(context).repack),
+                ),
             ],
           ),
         ),
@@ -1034,8 +1044,7 @@ class _InventoryScreenState extends State<InventoryScreen>
                     minHeight: AppSpacing.of(context).textFieldHeight,
                   ),
                 ),
-                onChanged: (value) =>
-                    setState(() => _searchQuery = value),
+                onChanged: (value) => setState(() => _searchQuery = value),
               ),
             ),
             // Filters: All, counted, measured, low, out.
@@ -1090,7 +1099,8 @@ class _InventoryScreenState extends State<InventoryScreen>
             // Two distinct inventory views for drinks: packaged stock and tank
             // inventory. The tabs only appear when a tank exists, so a duka
             // (which never has tanks) keeps its simple list.
-            if (showDrinkService && _products.any((p) => p.category == kTankCategory))
+            if (showDrinkService &&
+                _products.any((p) => p.category == kTankCategory))
               Column(
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: <Widget>[
@@ -1121,7 +1131,9 @@ class _InventoryScreenState extends State<InventoryScreen>
               child: _products.isEmpty && _loading
                   ? const _InventorySkeleton()
                   : ListView.separated(
-                      itemCount: filteredProducts.isEmpty ? 1 : filteredProducts.length + 1,
+                      itemCount: filteredProducts.isEmpty
+                          ? 1
+                          : filteredProducts.length + 1,
                       separatorBuilder: (_, i) => Divider(
                         height: 1,
                         indent: _rowDividerInset(context),
@@ -1139,32 +1151,45 @@ class _InventoryScreenState extends State<InventoryScreen>
                         // line of it, and burying it under the first hundred sodas is
                         // how a bar never finds the feature that makes it a bar.
                         if (filteredProducts.isEmpty || i == 0) {
-                          return Column(
-                            children: <Widget>[
-                              if (showDrinkService)
+                          return Padding(
+                            padding: EdgeInsetsDirectional.fromSTEB(
+                              spacing.md,
+                              spacing.sm,
+                              spacing.md,
+                              spacing.sm,
+                            ),
+                            child: Wrap(
+                              spacing: spacing.sm,
+                              runSpacing: spacing.sm,
+                              children: <Widget>[
+                                if (showDrinkService)
+                                  Semantics(
+                                    label: l10n.inventoryServingsSpoken,
+                                    button: true,
+                                    child: ActionChip(
+                                      avatar: const Icon(
+                                        Icons.local_drink_outlined,
+                                        size: 18,
+                                      ),
+                                      label: Text(l10n.inventoryServingsTitle),
+                                      onPressed: () =>
+                                          context.push(Routes.servings),
+                                    ),
+                                  ),
                                 Semantics(
-                                  label: l10n.inventoryServingsSpoken,
-                                  child: ListTile(
-                                    leading:
-                                        const Icon(Icons.local_drink_outlined),
-                                    title: Text(l10n.inventoryServingsTitle),
-                                    trailing: const Icon(Icons.chevron_right),
-                                    onTap: () => context.push(Routes.servings),
+                                  button: true,
+                                  label: '${l10n.inventoryLowStockLimitTitle}: '
+                                      '${l10n.inventoryLowStockLimitSubtitle(_lowStockLimit)}',
+                                  child: ActionChip(
+                                    avatar: const Icon(Icons.tune, size: 18),
+                                    label: Text(
+                                      l10n.inventoryLowStockLimitTitle,
+                                    ),
+                                    onPressed: _setLowStockLimit,
                                   ),
                                 ),
-                              ListTile(
-                                leading: const Icon(Icons.tune),
-                                title: Text(l10n.inventoryLowStockLimitTitle),
-                                // The CURRENT limit, so a seller opening this sees what
-                                // the warning is set to rather than a blank field. A
-                                // policy nobody can read is a policy nobody sets.
-                                subtitle: Text(
-                                    l10n.inventoryLowStockLimitSubtitle(
-                                        _lowStockLimit)),
-                                trailing: const Icon(Icons.chevron_right),
-                                onTap: _setLowStockLimit,
-                              ),
-                            ],
+                              ],
+                            ),
                           );
                         }
                         final p = filteredProducts[i - 1];
@@ -1516,8 +1541,8 @@ class _ProductListTile extends StatelessWidget {
 
     return Semantics(
       button: true,
-        child: InkWell(
-          onTap: onTap ?? onEdit,
+      child: InkWell(
+        onTap: onTap ?? onEdit,
         child: Padding(
           padding: EdgeInsetsDirectional.only(
             start: spacing.md,
@@ -1546,21 +1571,23 @@ class _ProductListTile extends StatelessWidget {
                 // row would otherwise go on drawing the old picture.
                 if (product.imagePath != null) ...<Widget>[
                   ExcludeSemantics(
-                    child: ProductPhoto(
-                      imagePath: product.imagePath,
-                      size: 40,
-                      revision: product.updatedAt,
-                    ),
+                    child: product.id == null
+                        ? ProductPhoto(
+                            imagePath: product.imagePath,
+                            size: 40,
+                            revision: product.updatedAt,
+                          )
+                        : Hero(
+                            tag: 'product-photo-${product.id}',
+                            child: ProductPhoto(
+                              imagePath: product.imagePath,
+                              size: 40,
+                              revision: product.updatedAt,
+                            ),
+                          ),
                   ),
                   SizedBox(width: spacing.md),
                 ],
-                _StockCountBadge(
-                  quantity: product.stockQty.round(),
-                  // The COUNT is a number, not a state: it stays neutral so the
-                  // only coloured thing on the row is the state chip.
-                  tone: StatusTone.neutral,
-                ),
-                SizedBox(width: spacing.md),
                 Expanded(
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
@@ -1632,6 +1659,15 @@ class _ProductListTile extends StatelessWidget {
                     ],
                   ),
                 ),
+                // Keep stock at the action end of the row. It remains visible
+                // when a product photo is present and avoids placing two
+                // competing visual badges beside one another at the leading
+                // edge.
+                _StockCountBadge(
+                  quantity: product.stockQty.round(),
+                  tone: StatusTone.neutral,
+                ),
+                SizedBox(width: spacing.xs),
                 _ProductActionMenu(
                   isOwner: isOwner,
                   onEdit: onEdit,
@@ -1837,7 +1873,9 @@ class _ProductPacksSheetState extends State<_ProductPacksSheet> {
     } catch (error) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(AppLocalizations.of(context).inventoryCouldNotSavePack(error))),
+        SnackBar(
+            content: Text(
+                AppLocalizations.of(context).inventoryCouldNotSavePack(error))),
       );
     }
   }
@@ -1845,6 +1883,34 @@ class _ProductPacksSheetState extends State<_ProductPacksSheet> {
   Future<void> _deactivate(ProductPack pack) async {
     await DatabaseHelper.instance.deactivateProductPack(pack.id!);
     await _load();
+  }
+
+  Future<void> _edit(ProductPack pack) async {
+    final result = await showDialog<Map<String, String>>(
+      context: context,
+      builder: (_) => _PackFormDialog(existing: pack),
+    );
+    if (result == null) return;
+    try {
+      await DatabaseHelper.instance.updateProductPack(
+        id: pack.id!,
+        name: result['name']!,
+        barcode: result['barcode']!,
+        unitsPerPack: double.parse(result['units']!),
+        unitCost: Money.fromMajor(double.parse(result['cost']!)),
+        sellPrice: result['sell']!.trim().isEmpty
+            ? null
+            : Money.fromMajor(double.parse(result['sell']!)),
+      );
+      await _load();
+    } catch (error) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+            content: Text(
+                AppLocalizations.of(context).inventoryCouldNotSavePack(error))),
+      );
+    }
   }
 
   @override
@@ -1861,16 +1927,27 @@ class _ProductPacksSheetState extends State<_ProductPacksSheet> {
               if (_loading)
                 const LinearProgressIndicator()
               else if (_packs.isEmpty)
-                Text(AppLocalizations.of(context).noPacksYetAddACaseCartonOrBundleBarcode),
+                Text(AppLocalizations.of(context)
+                    .noPacksYetAddACaseCartonOrBundleBarcode),
               ..._packs.map((pack) => ListTile(
                     contentPadding: EdgeInsets.zero,
                     title: Text(pack.name),
                     subtitle: Text(
                         '${pack.unitsPerPack} base units · ${pack.barcode} · cost ${formatMoney(pack.unitCost)}'),
-                    trailing: IconButton(
-                      tooltip: 'Deactivate pack',
-                      onPressed: () => _deactivate(pack),
-                      icon: const Icon(Icons.remove_circle_outline),
+                    trailing: Wrap(
+                      spacing: 4,
+                      children: <Widget>[
+                        IconButton(
+                          tooltip: 'Edit pack',
+                          onPressed: () => _edit(pack),
+                          icon: const Icon(Icons.edit_outlined),
+                        ),
+                        IconButton(
+                          tooltip: 'Deactivate pack',
+                          onPressed: () => _deactivate(pack),
+                          icon: const Icon(Icons.remove_circle_outline),
+                        ),
+                      ],
                     ),
                   )),
               const SizedBox(height: 8),
@@ -1886,7 +1963,9 @@ class _ProductPacksSheetState extends State<_ProductPacksSheet> {
 }
 
 class _PackFormDialog extends StatefulWidget {
-  const _PackFormDialog();
+  const _PackFormDialog({this.existing});
+
+  final ProductPack? existing;
 
   @override
   State<_PackFormDialog> createState() => _PackFormDialogState();
@@ -1899,6 +1978,23 @@ class _PackFormDialogState extends State<_PackFormDialog> {
   final _units = TextEditingController(text: '1');
   final _cost = TextEditingController();
   final _sell = TextEditingController();
+
+  @override
+  void initState() {
+    super.initState();
+    final pack = widget.existing;
+    if (pack != null) {
+      _name.text = pack.name;
+      _barcode.text = pack.barcode;
+      _units.text = _number(pack.unitsPerPack);
+      _cost.text = _number(pack.unitCost.asMajor);
+      _sell.text =
+          pack.sellPrice == null ? '' : _number(pack.sellPrice!.asMajor);
+    }
+  }
+
+  static String _number(double value) =>
+      value % 1 == 0 ? value.toInt().toString() : value.toString();
 
   @override
   void dispose() {
@@ -1929,7 +2025,9 @@ class _PackFormDialogState extends State<_PackFormDialog> {
 
   @override
   Widget build(BuildContext context) => AlertDialog(
-        title: Text(AppLocalizations.of(context).addPackOrCarton),
+        title: Text(widget.existing == null
+            ? AppLocalizations.of(context).addPackOrCarton
+            : 'Edit pack'),
         content: Form(
           key: _formKey,
           child: SingleChildScrollView(
@@ -1940,11 +2038,13 @@ class _PackFormDialogState extends State<_PackFormDialog> {
                     controller: _name,
                     decoration: const InputDecoration(labelText: 'Name'),
                     validator: _required),
+                const SizedBox(height: 16),
                 TextFormField(
                     controller: _barcode,
                     decoration:
                         const InputDecoration(labelText: 'Pack barcode'),
                     validator: _required),
+                const SizedBox(height: 16),
                 TextFormField(
                     controller: _units,
                     decoration:
@@ -1952,12 +2052,14 @@ class _PackFormDialogState extends State<_PackFormDialog> {
                     keyboardType:
                         const TextInputType.numberWithOptions(decimal: true),
                     validator: _positive),
+                const SizedBox(height: 16),
                 TextFormField(
                     controller: _cost,
                     decoration: const InputDecoration(labelText: 'Pack cost'),
                     keyboardType:
                         const TextInputType.numberWithOptions(decimal: true),
                     validator: _positive),
+                const SizedBox(height: 16),
                 TextFormField(
                     controller: _sell,
                     decoration: const InputDecoration(
@@ -1974,7 +2076,8 @@ class _PackFormDialogState extends State<_PackFormDialog> {
           TextButton(
               onPressed: () => Navigator.of(context).pop(),
               child: Text(AppLocalizations.of(context).cancel)),
-          FilledButton(onPressed: _save, child: Text(AppLocalizations.of(context).save)),
+          FilledButton(
+              onPressed: _save, child: Text(AppLocalizations.of(context).save)),
         ],
       );
 }
@@ -3070,11 +3173,6 @@ class ProductEditorState extends State<ProductEditor> {
             ? '${product.name} · sold as variants'
             : product.name,
       );
-      // Then the variants, still inside this same dialog session — the owner
-      // configured "Kenyana Beer" and its four variants as one thing, and
-      // saving half of it would leave the till offering something the catalogue
-      // does not have.
-      if (widget.allowVariants) await _saveVariants(productId);
       // Then the photograph, now that there is an id to name its file after.
       //
       // Flushed here rather than before the insert because the store names a
@@ -3161,6 +3259,93 @@ class ProductEditorState extends State<ProductEditor> {
     };
   }
 
+  Widget _adaptiveFieldRow(List<Widget> fields) {
+    final spacing = AppSpacing.of(context);
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        if (constraints.maxWidth < 520) {
+          return Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              for (int i = 0; i < fields.length; i++) ...[
+                if (i > 0) SizedBox(height: spacing.md),
+                fields[i],
+              ],
+            ],
+          );
+        }
+        return Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            for (int i = 0; i < fields.length; i++) ...[
+              if (i > 0) SizedBox(width: spacing.md),
+              Expanded(child: fields[i]),
+            ],
+          ],
+        );
+      },
+    );
+  }
+
+  Widget _stockField(AppLocalizations l10n) => TextField(
+        controller: _stock,
+        decoration: InputDecoration(
+          labelText: _trackVariants
+              ? l10n.inventoryFieldTotalStock
+              : _unit == ProductUnit.each
+                  ? l10n.inventoryFieldStockQty
+                  : l10n.inventoryFieldStockQtyUnit(
+                      _unitStockSuffix(l10n, _unit)),
+          helperText: _trackVariants ? l10n.inventoryStockIsDerived : null,
+        ),
+        keyboardType: const TextInputType.numberWithOptions(decimal: true),
+        inputFormatters: <TextInputFormatter>[
+          FilteringTextInputFormatter.allow(userNumberPattern),
+        ],
+      );
+
+  Widget _reorderField(AppLocalizations l10n) => TextField(
+        controller: _reorder,
+        decoration: InputDecoration(
+          labelText: _unit == ProductUnit.each
+              ? l10n.inventoryFieldReorderLevel
+              : l10n.inventoryFieldReorderLevelUnit(
+                  _unitStockSuffix(l10n, _unit)),
+        ),
+        keyboardType: TextInputType.numberWithOptions(
+          decimal: _unit != ProductUnit.each,
+        ),
+        inputFormatters: <TextInputFormatter>[
+          FilteringTextInputFormatter.allow(
+            _unit == ProductUnit.each ? userDigitsPattern : userNumberPattern,
+          ),
+        ],
+      );
+
+  Widget _priceField(TextEditingController controller, String label) =>
+      TextField(
+        controller: controller,
+        decoration: InputDecoration(labelText: label),
+        keyboardType: const TextInputType.numberWithOptions(decimal: true),
+        inputFormatters: <TextInputFormatter>[
+          FilteringTextInputFormatter.allow(userNumberPattern),
+        ],
+      );
+
+  Widget _optionalPriceField(
+    TextEditingController controller,
+    String label,
+    String helper,
+  ) =>
+      TextField(
+        controller: controller,
+        decoration: InputDecoration(labelText: label, helperText: helper),
+        keyboardType: const TextInputType.numberWithOptions(decimal: true),
+        inputFormatters: <TextInputFormatter>[
+          FilteringTextInputFormatter.allow(userNumberPattern),
+        ],
+      );
+
   @override
   Widget build(BuildContext context) {
     final AppLocalizations l10n = AppLocalizations.of(context);
@@ -3213,15 +3398,15 @@ class ProductEditorState extends State<ProductEditor> {
               if (widget.shopProfile.navigation.showDrinkService ||
                   widget.shopProfile == ShopProfile.duka)
                 TextField(
-                  controller: _bottleMl,
-                  decoration: InputDecoration(
-                      labelText: _sizeLabelOf(context, _unit),
-                      helperText: AppLocalizations.of(context)
-                          .inventoryFieldSizeMlHelper),
-                  keyboardType: TextInputType.number,
-                  inputFormatters: <TextInputFormatter>[
-                    FilteringTextInputFormatter.allow(userDigitsPattern),
-                  ]),
+                    controller: _bottleMl,
+                    decoration: InputDecoration(
+                        labelText: _sizeLabelOf(context, _unit),
+                        helperText: AppLocalizations.of(context)
+                            .inventoryFieldSizeMlHelper),
+                    keyboardType: TextInputType.number,
+                    inputFormatters: <TextInputFormatter>[
+                      FilteringTextInputFormatter.allow(userDigitsPattern),
+                    ]),
               // The one thing a cup product needs to be told: it is poured from
               // something bigger, and where. Without this the next screen is a
               // dead end, which is exactly how this used to read.
@@ -3241,101 +3426,35 @@ class ProductEditorState extends State<ProductEditor> {
                 ),
               if (_visibleSizeSuggestions.isNotEmpty) _sizeSuggestionChips(),
               SizedBox(height: spacing.md),
-              Row(children: [
-                Expanded(
-                    child: TextField(
-                        controller: _stock,
-                        decoration: InputDecoration(
-                            labelText: _trackVariants
-                                ? l10n.inventoryFieldTotalStock
-                                : _unit == ProductUnit.each
-                                    ? l10n.inventoryFieldStockQty
-                                    : l10n.inventoryFieldStockQtyUnit(
-                                        _unitStockSuffix(l10n, _unit)),
-                            helperText: _trackVariants
-                                ? l10n.inventoryStockIsDerived
-                                : null),
-                        keyboardType: const TextInputType.numberWithOptions(
-                            decimal: true),
-                        inputFormatters: <TextInputFormatter>[
-                      FilteringTextInputFormatter.allow(userNumberPattern),
-                    ])),
-                SizedBox(width: spacing.md),
-                Expanded(
-                    child: TextField(
-                        controller: _reorder,
-                        decoration: InputDecoration(
-                            labelText: _unit == ProductUnit.each
-                                ? l10n.inventoryFieldReorderLevel
-                                : l10n.inventoryFieldReorderLevelUnit(
-                                    _unitStockSuffix(l10n, _unit))),
-                        keyboardType: TextInputType.numberWithOptions(
-                            decimal: _unit != ProductUnit.each),
-                        inputFormatters: <TextInputFormatter>[
-                      FilteringTextInputFormatter.allow(
-                          _unit == ProductUnit.each
-                              ? userDigitsPattern
-                              : userNumberPattern),
-                    ])),
-              ]),
+              _adaptiveFieldRow([_stockField(l10n), _reorderField(l10n)]),
               SizedBox(height: spacing.md),
-              Row(children: [
-                Expanded(
-                    child: TextField(
-                        controller: _cost,
-                        decoration: InputDecoration(
-                            labelText: AppLocalizations.of(context)
-                                .inventoryFieldCostPrice),
-                        keyboardType: const TextInputType.numberWithOptions(
-                            decimal: true),
-                        inputFormatters: <TextInputFormatter>[
-                      FilteringTextInputFormatter.allow(userNumberPattern),
-                    ])),
-                SizedBox(width: spacing.md),
-                Expanded(
-                    child: TextField(
-                        controller: _price,
-                        decoration: InputDecoration(
-                            labelText: AppLocalizations.of(context)
-                                .inventoryFieldSellPrice),
-                        keyboardType: const TextInputType.numberWithOptions(
-                            decimal: true),
-                        inputFormatters: <TextInputFormatter>[
-                      FilteringTextInputFormatter.allow(userNumberPattern),
-                    ])),
+              _adaptiveFieldRow([
+                _priceField(
+                  _cost,
+                  AppLocalizations.of(context).inventoryFieldCostPrice,
+                ),
+                _priceField(
+                  _price,
+                  AppLocalizations.of(context).inventoryFieldSellPrice,
+                ),
               ]),
               if (widget.shopProfile.navigation.showDrinkService ||
                   widget.shopProfile == ShopProfile.duka)
-                Row(children: [
-                  Expanded(
-                    child: TextField(
-                        controller: _halfPrice,
-                        decoration: InputDecoration(
-                            labelText: AppLocalizations.of(context)
-                                .inventoryFieldHalfPriceOptional,
-                            helperText: AppLocalizations.of(context)
-                                .inventoryFieldHalfPriceHelper),
-                        keyboardType: const TextInputType.numberWithOptions(
-                            decimal: true),
-                        inputFormatters: <TextInputFormatter>[
-                      FilteringTextInputFormatter.allow(userNumberPattern),
-                    ])),
-                SizedBox(width: spacing.md),
-                Expanded(
-                    child: TextField(
-                        controller: _quarterPrice,
-                        decoration: InputDecoration(
-                            labelText: AppLocalizations.of(context)
-                                .inventoryFieldQuarterPriceOptional,
-                            helperText: AppLocalizations.of(context)
-                                .inventoryFieldQuarterPriceHelper),
-                        keyboardType: const TextInputType.numberWithOptions(
-                            decimal: true),
-                        inputFormatters: <TextInputFormatter>[
-                      FilteringTextInputFormatter.allow(userNumberPattern),
-                    ])),
-              ]),
-              SizedBox(height: spacing.md),
+                _adaptiveFieldRow([
+                  _optionalPriceField(
+                    _halfPrice,
+                    AppLocalizations.of(context)
+                        .inventoryFieldHalfPriceOptional,
+                    AppLocalizations.of(context).inventoryFieldHalfPriceHelper,
+                  ),
+                  _optionalPriceField(
+                    _quarterPrice,
+                    AppLocalizations.of(context)
+                        .inventoryFieldQuarterPriceOptional,
+                    AppLocalizations.of(context)
+                        .inventoryFieldQuarterPriceHelper,
+                  ),
+                ]),
               SizedBox(height: spacing.md),
               TextField(
                   controller: _stamp,
@@ -3728,9 +3847,15 @@ class _RepackNewDialogState extends State<_RepackNewDialog> {
               initialValue: _unit,
               decoration: const InputDecoration(labelText: 'Unit'),
               items: [
-                DropdownMenuItem(value: 'each', child: Text(AppLocalizations.of(context).each)),
-                DropdownMenuItem(value: 'kg', child: Text(AppLocalizations.of(context).kilogram)),
-                DropdownMenuItem(value: 'litre', child: Text(AppLocalizations.of(context).litre)),
+                DropdownMenuItem(
+                    value: 'each',
+                    child: Text(AppLocalizations.of(context).each)),
+                DropdownMenuItem(
+                    value: 'kg',
+                    child: Text(AppLocalizations.of(context).kilogram)),
+                DropdownMenuItem(
+                    value: 'litre',
+                    child: Text(AppLocalizations.of(context).litre)),
               ],
               onChanged: (value) => setState(() => _unit = value ?? 'each'),
             ),
@@ -3754,7 +3879,9 @@ class _RepackNewDialogState extends State<_RepackNewDialog> {
           onPressed: () => Navigator.pop(context),
           child: Text(AppLocalizations.of(context).cancel),
         ),
-        FilledButton(onPressed: _save, child: Text(AppLocalizations.of(context).createRepack)),
+        FilledButton(
+            onPressed: _save,
+            child: Text(AppLocalizations.of(context).createRepack)),
       ],
     );
   }

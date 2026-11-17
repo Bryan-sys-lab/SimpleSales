@@ -10,6 +10,7 @@ import '../services/backend_service.dart';
 import '../services/live_channel_service.dart';
 import '../services/live_refresh_mixin.dart';
 import '../services/roles.dart';
+import '../ui/components/states.dart';
 import '../utils/money.dart';
 
 class IncomingPaymentsScreen extends StatefulWidget {
@@ -116,8 +117,8 @@ class _IncomingPaymentsScreenState extends State<IncomingPaymentsScreen>
       await _load();
     } catch (_) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-            content: Text(l10n.incomingPaymentsSetAsideFailed)));
+        ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text(l10n.incomingPaymentsSetAsideFailed)));
       }
     }
   }
@@ -152,7 +153,7 @@ class _IncomingPaymentsScreenState extends State<IncomingPaymentsScreen>
       body: _loading
           ? const Center(child: CircularProgressIndicator())
           : _error != null
-              ? Center(child: Text(_error!))
+              ? ErrorStateView(message: _error!, onRetry: _load)
               : TabBarView(
                   controller: _tabs,
                   children: [

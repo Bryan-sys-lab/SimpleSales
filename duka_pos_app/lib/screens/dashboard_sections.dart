@@ -214,6 +214,27 @@ class DashboardCreditCard extends StatelessWidget {
   }
 }
 
+class DashboardPortfolioCard extends StatelessWidget {
+  const DashboardPortfolioCard({required this.onOpen, super.key});
+
+  final VoidCallback onOpen;
+
+  @override
+  Widget build(BuildContext context) {
+    return DashboardPanel(
+      title: 'Portfolio',
+      trailing: ActionChip(
+        avatar: const Icon(Icons.arrow_outward, size: 16),
+        label: const Text('View'),
+        onPressed: onOpen,
+      ),
+      child: const Text(
+        'Compare sales, profit and till health across your shops.',
+      ),
+    );
+  }
+}
+
 // ---------------------------------------------------------------------------
 // Today's figures.
 // ---------------------------------------------------------------------------

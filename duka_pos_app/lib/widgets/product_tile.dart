@@ -318,11 +318,17 @@ class ProductTile extends StatelessWidget {
                             photoMinEdge,
                             photoMaxEdge,
                           );
-                          return ProductPhoto(
+                          final Widget photo = ProductPhoto(
                             imagePath: data.product.imagePath,
                             size: edge,
                             revision: data.product.updatedAt,
                           );
+                          return data.product.id == null
+                              ? photo
+                              : Hero(
+                                  tag: 'product-photo-${data.product.id}',
+                                  child: photo,
+                                );
                         },
                       ),
                       SizedBox(height: spacing.xs),

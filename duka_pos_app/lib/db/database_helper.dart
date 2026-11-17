@@ -11,6 +11,7 @@ import 'package:path_provider/path_provider.dart';
 import 'package:sqflite/sqflite.dart';
 
 import '../data/local/database/workspace_database.dart';
+import '../data/local/database/schema_version.dart';
 import '../data/local/database/schema.dart';
 import '../data/local/repositories/audit_log_repository.dart';
 import '../data/local/repositories/crash_log_repository.dart';
@@ -19,7 +20,6 @@ import '../data/local/repositories/drinks_repository.dart';
 import '../data/local/repositories/fashion_repository.dart';
 import '../data/local/repositories/finance_repository.dart';
 import '../data/local/repositories/inventory_repository.dart';
-import '../data/local/repositories/job_repository.dart';
 import '../data/local/repositories/notification_repository.dart';
 import '../data/local/repositories/sales_repository.dart';
 import '../data/local/repositories/settings_repository.dart';
@@ -82,17 +82,23 @@ class DatabaseHelper {
   /// class until its SQL is migrated in Phase 8.
   static final StaffRepository staffRepository = StaffRepository.instance;
   static final FinanceRepository financeRepository = FinanceRepository.instance;
-  static final InventoryRepository inventoryRepository = InventoryRepository.instance;
-  static final SettingsRepository settingsRepository = SettingsRepository.instance;
+  static final InventoryRepository inventoryRepository =
+      InventoryRepository.instance;
+  static final SettingsRepository settingsRepository =
+      SettingsRepository.instance;
   static final SalesRepository salesRepository = SalesRepository.instance;
-  static final CustomerRepository customerRepository = CustomerRepository.instance;
-  static final JobRepository jobRepository = JobRepository.instance;
+  static final CustomerRepository customerRepository =
+      CustomerRepository.instance;
   static final DrinksRepository drinksRepository = DrinksRepository.instance;
   static final FashionRepository fashionRepository = FashionRepository.instance;
-  static final AuditLogRepository auditLogRepository = AuditLogRepository.instance;
-  static final CrashLogRepository crashLogRepository = CrashLogRepository.instance;
-  static final NotificationRepository notificationRepository = NotificationRepository.instance;
-  static final SyncConflictRepository syncConflictRepository = SyncConflictRepository.instance;
+  static final AuditLogRepository auditLogRepository =
+      AuditLogRepository.instance;
+  static final CrashLogRepository crashLogRepository =
+      CrashLogRepository.instance;
+  static final NotificationRepository notificationRepository =
+      NotificationRepository.instance;
+  static final SyncConflictRepository syncConflictRepository =
+      SyncConflictRepository.instance;
 
   /// Whether a database handle is currently open for the current workspace.
   bool get hasOpenDatabase => WorkspaceDatabase.instance.hasOpenDatabase;
@@ -108,7 +114,8 @@ class DatabaseHelper {
   ///
   /// A caller that walked several shops and wants to put things back exactly as
   /// they found them needs THIS.
-  String get currentWorkspaceKey => WorkspaceDatabase.instance.currentWorkspaceKey;
+  String get currentWorkspaceKey =>
+      WorkspaceDatabase.instance.currentWorkspaceKey;
 
   /// The open SQLite database handle for the current workspace.
   ///
@@ -202,7 +209,7 @@ class DatabaseHelper {
   /// shipped — always add a new one, even for a one-line fix — because a
   /// shop's phone may be several versions behind and needs every step run
   /// in order to land on the current schema without data loss.
-  static const _schemaVersion = 82;
+  static const _schemaVersion = SchemaVersion.current;
 
   /// Slack allowed when deciding whether a container has enough left for a sale.
   ///
@@ -219,6 +226,7 @@ class DatabaseHelper {
   static const String settingMpesaChannelId = 'mpesa_payhero_channel_id';
   static const String settingMpesaChannelType = 'mpesa_payhero_channel_type';
   static const String settingMpesaMerchantNumber = 'mpesa_merchant_number';
+  static const String settingPayheroAccountNumber = 'payhero_account_number';
   static const String settingTin = 'tin';
   static const String settingEtimsDeviceId = 'etims_device_id';
   static const String settingCashDrawerEnabled = 'cash_drawer_enabled';
@@ -314,8 +322,8 @@ class DatabaseHelper {
   ///
   /// Delegates to [_onUpgrade]. Kept public so the new data layer can upgrade
   /// existing databases without reaching into private members.
-  Future<void> upgradeSchema(
-      Database db, int oldVersion, int newVersion) => _onUpgrade(db, oldVersion, newVersion);
+  Future<void> upgradeSchema(Database db, int oldVersion, int newVersion) =>
+      _onUpgrade(db, oldVersion, newVersion);
 
   /// Appends a financial event within an existing transaction, used by
   /// repositories that compose atomic business operations.
@@ -885,6 +893,65 @@ SELECT name FROM staff GROUP BY name HAVING COUNT(*) = 1
       if (crashExists) {
         await _addColumnIfMissing(db, 'crash_log', 'environment', 'TEXT');
       }
+    }
+    if (oldVersion < 84) {
+      final receiptsExists = (await db.rawQuery(
+              "SELECT name FROM sqlite_master WHERE type='table' AND name='stock_receipts'"))
+          .isNotEmpty;
+      if (receiptsExists) {
+        await _addColumnIfMissing(db, 'stock_receipts', 'paid_from',
+            "TEXT NOT NULL DEFAULT 'till_cash'");
+      }
+    }
+    if (oldVersion < 85) {
+      // v85: jobs were never used and are removed by explicit product
+      // direction. Drop child tables first, then the parent and its indexes.
+      await db.execute('DROP TABLE IF EXISTS job_payments');
+      await db.execute('DROP TABLE IF EXISTS job_costs');
+      await db.execute('DROP TABLE IF EXISTS jobs');
+    }
+    if (oldVersion < 86) {
+      await _migrateCostPoolRecoveryReversals(db);
+    }
+    if (oldVersion < 87) {
+      await _migrateAnalyticsIndexes(db);
+    }
+    if (oldVersion < 88) {
+      await _addColumnIfMissing(db, 'shot_cups', 'image_path', 'TEXT');
+    }
+    if (oldVersion < 89) {
+      await _createSaleEvidenceTable(db);
+    }
+  }
+
+  Future<void> _migrateCostPoolRecoveryReversals(Database db) async {
+    await db
+        .execute('''CREATE TABLE IF NOT EXISTS sale_pool_allocation_reversals (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      pool_id INTEGER NOT NULL,
+      sale_id INTEGER NOT NULL,
+      return_id INTEGER NOT NULL,
+      amount_minor INTEGER NOT NULL CHECK (amount_minor > 0),
+      created_at TEXT NOT NULL,
+      UNIQUE (pool_id, return_id),
+      FOREIGN KEY (pool_id) REFERENCES cost_pools (id)
+    )''');
+  }
+
+  Future<void> _migrateAnalyticsIndexes(Database db) async {
+    final shiftsTable = await db.rawQuery(
+        "SELECT name FROM sqlite_master WHERE type = 'table' AND name = 'shifts'");
+    if (shiftsTable.isNotEmpty) {
+      await db.execute(
+          'CREATE INDEX IF NOT EXISTS idx_shifts_start_staff ON shifts (start_time, staff_id)');
+      await db.execute(
+          'CREATE INDEX IF NOT EXISTS idx_shifts_end_staff ON shifts (end_time, staff_id)');
+    }
+    final reconciliationTable = await db.rawQuery(
+        "SELECT name FROM sqlite_master WHERE type = 'table' AND name = 'reconciliations'");
+    if (reconciliationTable.isNotEmpty) {
+      await db.execute(
+          'CREATE INDEX IF NOT EXISTS idx_reconciliations_shift_id ON reconciliations (shift_id, id DESC)');
     }
   }
 
@@ -1914,6 +1981,7 @@ SELECT name FROM staff GROUP BY name HAVING COUNT(*) = 1
         staff_id INTEGER,
         staff_name TEXT NOT NULL,
         total_cost_minor INTEGER NOT NULL DEFAULT 0,
+        paid_from TEXT NOT NULL DEFAULT 'till_cash',
         status TEXT NOT NULL DEFAULT 'posted',
         note TEXT,
         synced_to_backend INTEGER NOT NULL DEFAULT 0
@@ -2760,7 +2828,10 @@ SELECT name FROM staff GROUP BY name HAVING COUNT(*) = 1
         'CREATE INDEX IF NOT EXISTS idx_shifts_staff ON shifts (staff_id)');
     await db.execute(
         'CREATE INDEX IF NOT EXISTS idx_shifts_status_time ON shifts (status, start_time)');
-
+    await db.execute(
+        'CREATE INDEX IF NOT EXISTS idx_shifts_start_staff ON shifts (start_time, staff_id)');
+    await db.execute(
+        'CREATE INDEX IF NOT EXISTS idx_shifts_end_staff ON shifts (end_time, staff_id)');
     await db.execute('''CREATE TABLE IF NOT EXISTS till_counts (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       shift_id INTEGER NOT NULL,
@@ -2782,6 +2853,8 @@ SELECT name FROM staff GROUP BY name HAVING COUNT(*) = 1
       recorded_at TEXT NOT NULL,
       FOREIGN KEY (shift_id) REFERENCES shifts (id) ON DELETE CASCADE
     )''');
+    await db.execute(
+        'CREATE INDEX IF NOT EXISTS idx_reconciliations_shift_id ON reconciliations (shift_id, id DESC)');
   }
 
   /// v14 -> v15: fixed shot cup configurations.
@@ -2802,6 +2875,7 @@ SELECT name FROM staff GROUP BY name HAVING COUNT(*) = 1
       label TEXT NOT NULL DEFAULT 'Shot',
       active INTEGER NOT NULL DEFAULT 1,
       updated_at TEXT NOT NULL,
+      image_path TEXT,
       -- Whether the server has this cup. A cup is set up ONCE, on one phone,
       -- and it is the whole shop's shelf after that.
       synced_to_backend INTEGER NOT NULL DEFAULT 0,
@@ -2809,6 +2883,21 @@ SELECT name FROM staff GROUP BY name HAVING COUNT(*) = 1
     )''');
     await db.execute(
         'CREATE INDEX IF NOT EXISTS idx_shot_cups_product ON shot_cups (product_id)');
+  }
+
+  Future<void> _createSaleEvidenceTable(Database db) async {
+    await db.execute('''CREATE TABLE IF NOT EXISTS sale_evidence (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      sale_id INTEGER NOT NULL,
+      local_path TEXT,
+      remote_key TEXT,
+      remote_url TEXT,
+      status TEXT NOT NULL DEFAULT 'pending',
+      created_at TEXT NOT NULL,
+      uploaded_at TEXT
+    )''');
+    await db.execute(
+        'CREATE INDEX IF NOT EXISTS idx_sale_evidence_sale ON sale_evidence (sale_id, id)');
   }
 
   Future<void> _createCupTemplatesTable(Database db) async {
@@ -3016,51 +3105,22 @@ SELECT name FROM staff GROUP BY name HAVING COUNT(*) = 1
       UNIQUE (pool_id, sale_id),
       FOREIGN KEY (pool_id) REFERENCES cost_pools (id)
     )''');
-    await db.execute('''CREATE TABLE IF NOT EXISTS jobs (
+    await db
+        .execute('''CREATE TABLE IF NOT EXISTS sale_pool_allocation_reversals (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
-      uuid TEXT NOT NULL UNIQUE,
-      customer_name TEXT,
-      title TEXT NOT NULL,
-      quote_minor INTEGER,
-      final_price_minor INTEGER,
-      due_at TEXT,
-      status TEXT NOT NULL DEFAULT 'open',
-      cost_pool_id INTEGER,
-      created_at TEXT NOT NULL,
-      closed_at TEXT
-    )''');
-    await db.execute('''CREATE TABLE IF NOT EXISTS job_costs (
-      id INTEGER PRIMARY KEY AUTOINCREMENT,
-      uuid TEXT NOT NULL UNIQUE,
-      job_id INTEGER NOT NULL,
-      cost_type TEXT NOT NULL,
+      pool_id INTEGER NOT NULL,
+      sale_id INTEGER NOT NULL,
+      return_id INTEGER NOT NULL,
       amount_minor INTEGER NOT NULL CHECK (amount_minor > 0),
-      paid_from TEXT NOT NULL DEFAULT 'other',
-      description TEXT,
       created_at TEXT NOT NULL,
-      FOREIGN KEY (job_id) REFERENCES jobs (id)
-    )''');
-    await db.execute('''CREATE TABLE IF NOT EXISTS job_payments (
-      id INTEGER PRIMARY KEY AUTOINCREMENT,
-      uuid TEXT NOT NULL UNIQUE,
-      job_id INTEGER NOT NULL,
-      amount_minor INTEGER NOT NULL CHECK (amount_minor > 0),
-      payment_method TEXT NOT NULL,
-      reference TEXT,
-      shift_id INTEGER,
-      status TEXT NOT NULL DEFAULT 'pending',
-      created_at TEXT NOT NULL,
-      FOREIGN KEY (job_id) REFERENCES jobs (id)
+      UNIQUE (pool_id, return_id),
+      FOREIGN KEY (pool_id) REFERENCES cost_pools (id)
     )''');
     await db.execute('CREATE INDEX IF NOT EXISTS idx_cost_pool_entries_pool '
         'ON cost_pool_entries (pool_id, created_at)');
     await db
         .execute('CREATE INDEX IF NOT EXISTS idx_sale_pool_allocations_sale '
             'ON sale_pool_allocations (sale_id, created_at)');
-    await db.execute(
-        'CREATE INDEX IF NOT EXISTS idx_job_costs_job ON job_costs (job_id, created_at)');
-    await db.execute('CREATE INDEX IF NOT EXISTS idx_job_payments_job '
-        'ON job_payments (job_id, created_at)');
   }
 
   /// Appends one normalized financial fact and chains it to the previous fact.
@@ -3155,8 +3215,7 @@ SELECT name FROM staff GROUP BY name HAVING COUNT(*) = 1
         previousHash: previousHash,
       );
 
-  Future<String?> settingFromExecutor(
-          DatabaseExecutor executor, String key) =>
+  Future<String?> settingFromExecutor(DatabaseExecutor executor, String key) =>
       _settingFromExecutor(executor, key);
 
   Future<String> tillCodeFromExecutor(DatabaseExecutor executor) =>
@@ -3184,7 +3243,8 @@ SELECT name FROM staff GROUP BY name HAVING COUNT(*) = 1
     required double onHandQty,
     required double incomingQty,
     required int incomingMinor,
-  }) => _weightedAverageCost(
+  }) =>
+      _weightedAverageCost(
         onHandMinor: onHandMinor,
         onHandQty: onHandQty,
         incomingQty: incomingQty,
@@ -3561,8 +3621,7 @@ SELECT name FROM staff GROUP BY name HAVING COUNT(*) = 1
 
     // Optional link to a cost group / bale. When set, selling this product
     // allocates the sale amount to that pool's recovery.
-    await db.execute(
-        'ALTER TABLE products ADD COLUMN cost_pool_id INTEGER');
+    await db.execute('ALTER TABLE products ADD COLUMN cost_pool_id INTEGER');
 
     // --- Weight-stocked tanks -----------------------------------------------
     //
@@ -3940,6 +3999,7 @@ SELECT name FROM staff GROUP BY name HAVING COUNT(*) = 1
     await _createVariantsAndImportTables(db);
     await _createShiftTables(db);
     await _createShotCupsTable(db);
+    await _createSaleEvidenceTable(db);
     await _createCupTemplatesTable(db);
     await _createProductCupsTable(db);
     await _createCupSizeSuggestionsTable(db);
@@ -4193,11 +4253,6 @@ SELECT name FROM staff GROUP BY name HAVING COUNT(*) = 1
 
   /// Re-derives a staff PIN hash in place (used when upgrading a legacy
   /// single-round SHA-256 hash to PBKDF2 on successful sign-in).
-  Future<void> updateStaffPin(int id, String pinHash) async {
-    await (await database).update('staff', {'pin_hash': pinHash},
-        where: 'id = ?', whereArgs: [id]);
-  }
-
   // ---------------- Staff ----------------
   Future<List<Staff>> getStaff({bool activeOnly = true}) async {
     final rows = await (await database).query('staff',
@@ -4230,9 +4285,10 @@ SELECT name FROM staff GROUP BY name HAVING COUNT(*) = 1
         where: 'id = ?', whereArgs: [id]);
   }
 
-  /// Refreshes a locally provisioned staff profile without touching its PIN.
-  /// PIN hashes never cross the network, so a new device must still provision
-  /// its local PIN before that person can sign in there.
+  /// Refreshes or materializes a staff profile without touching its PIN.
+  /// PIN hashes never cross the network, so a newly materialized row can only
+  /// unlock after that staff member authenticates online on this device (the
+  /// authenticated merge then stores a locally derived verifier).
   Future<void> mergeRemoteStaff({
     required String remoteId,
     required String name,
@@ -4244,18 +4300,48 @@ SELECT name FROM staff GROUP BY name HAVING COUNT(*) = 1
       throw ArgumentError.value(remoteId, 'remoteId');
     }
     final db = await database;
-    await db.update(
+    final normalizedUsername = username?.trim().toLowerCase();
+    final existingByRemote = await db.query(
       'staff',
-      {
-        'name': name,
-        if (username != null && username.trim().isNotEmpty)
-          'username': username.trim(),
-        'role': role,
-        'active': active ? 1 : 0,
-      },
+      columns: const ['id'],
       where: 'remote_id = ?',
       whereArgs: [remoteId],
+      limit: 1,
     );
+    final existing = existingByRemote.isNotEmpty
+        ? existingByRemote
+        : normalizedUsername == null || normalizedUsername.isEmpty
+            ? const <Map<String, Object?>>[]
+            : await db.query(
+                'staff',
+                columns: const ['id'],
+                where: 'LOWER(username) = ?',
+                whereArgs: [normalizedUsername],
+                limit: 1,
+              );
+    final values = <String, Object?>{
+      'name': name,
+      'role': role,
+      'active': active ? 1 : 0,
+      'remote_id': remoteId,
+      if (normalizedUsername != null && normalizedUsername.isNotEmpty)
+        'username': normalizedUsername,
+    };
+    if (existing.isEmpty) {
+      await db.insert('staff', {
+        ...values,
+        // Deliberately unusable until the staff member completes online
+        // authentication on this device; never invent or transfer a PIN.
+        'pin_hash': '',
+      });
+    } else {
+      await db.update(
+        'staff',
+        values,
+        where: 'id = ?',
+        whereArgs: [existing.first['id']],
+      );
+    }
   }
 
   /// Materialises a staff member authenticated by the backend so the same
@@ -4306,7 +4392,7 @@ SELECT name FROM staff GROUP BY name HAVING COUNT(*) = 1
     return Staff.fromMap(row.single);
   }
 
-  Future<void> resetStaffPin(int id, String pinHash) async {
+  Future<void> updateStaffPin(int id, String pinHash) async {
     await (await database).update('staff', {'pin_hash': pinHash},
         where: 'id = ?', whereArgs: [id]);
   }
@@ -4738,6 +4824,65 @@ SELECT name FROM staff GROUP BY name HAVING COUNT(*) = 1
   Future<void> deactivateProductPack(int id) async {
     await (await database).update('product_packs', {'active': 0},
         where: 'id = ?', whereArgs: [id]);
+  }
+
+  /// Edits an active pack definition without changing stock or historical sale
+  /// snapshots. Pack and product barcodes remain globally unique.
+  Future<void> updateProductPack({
+    required int id,
+    required String name,
+    required String barcode,
+    required double unitsPerPack,
+    required Money unitCost,
+    Money? sellPrice,
+  }) async {
+    if (name.trim().isEmpty || barcode.trim().isEmpty) {
+      throw ArgumentError('Pack identity is required');
+    }
+    if (!unitsPerPack.isFinite || unitsPerPack <= 0) {
+      throw ArgumentError.value(unitsPerPack, 'unitsPerPack');
+    }
+    final db = await database;
+    final current = await db.query(
+      'product_packs',
+      columns: ['id'],
+      where: 'id = ? AND active = 1',
+      whereArgs: [id],
+      limit: 1,
+    );
+    if (current.isEmpty) throw StateError('Pack not found');
+    final otherPack = await db.query(
+      'product_packs',
+      columns: ['id'],
+      where: 'barcode = ? AND id != ?',
+      whereArgs: [barcode.trim(), id],
+      limit: 1,
+    );
+    if (otherPack.isNotEmpty) {
+      throw StateError('That barcode already belongs to a pack');
+    }
+    final productBarcode = await db.query(
+      'product_barcodes',
+      columns: ['barcode'],
+      where: 'barcode = ?',
+      whereArgs: [barcode.trim()],
+      limit: 1,
+    );
+    if (productBarcode.isNotEmpty) {
+      throw StateError('That barcode already belongs to a product');
+    }
+    await db.update(
+      'product_packs',
+      <String, Object?>{
+        'name': name.trim(),
+        'barcode': barcode.trim(),
+        'units_per_pack': unitsPerPack,
+        'unit_cost_minor': unitCost.minorUnits,
+        'sell_price_minor': sellPrice?.minorUnits,
+      },
+      where: 'id = ?',
+      whereArgs: [id],
+    );
   }
 
   Future<int> createLabelPrintJob({
@@ -5184,6 +5329,62 @@ SELECT name FROM staff GROUP BY name HAVING COUNT(*) = 1
     await (await database).update('product_variants', map,
         where: 'id = ?', whereArgs: [variant.id]);
     return variant.id!;
+  }
+
+  /// Merges a variant received from the tenant catalogue.
+  ///
+  /// The backend id is the only cross-device identity. Local integer ids are
+  /// device-scoped and must never be used as the merge key.
+  Future<int> mergeRemoteVariant({
+    required String remoteId,
+    required int productId,
+    required String name,
+    required String sku,
+    required String unit,
+    required int sizeMl,
+    required double sellPrice,
+    required double costPrice,
+    required double stockQty,
+    required double reservedQty,
+    required int reorderLevel,
+    required int position,
+    required bool active,
+  }) async {
+    if (remoteId.trim().isEmpty) {
+      throw ArgumentError.value(remoteId, 'remoteId');
+    }
+    final db = await database;
+    return db.transaction<int>((txn) async {
+      final values = <String, Object?>{
+        'product_id': productId,
+        'name': name,
+        'sku': sku,
+        'unit': unit,
+        'size_ml': sizeMl,
+        'sell_price': Money.fromMajor(sellPrice).minorUnits,
+        'cost_price': Money.fromMajor(costPrice).minorUnits,
+        'stock_qty': stockQty,
+        'reserved_qty': reservedQty,
+        'reorder_level': reorderLevel,
+        'position': position,
+        'active': active ? 1 : 0,
+        'remote_id': remoteId,
+      };
+      final existing = await txn.query(
+        'product_variants',
+        columns: <String>['id'],
+        where: 'remote_id = ?',
+        whereArgs: <Object?>[remoteId],
+        limit: 1,
+      );
+      if (existing.isNotEmpty) {
+        final id = (existing.first['id'] as num).toInt();
+        await txn.update('product_variants', values,
+            where: 'id = ?', whereArgs: <Object?>[id]);
+        return id;
+      }
+      return txn.insert('product_variants', values);
+    });
   }
 
   /// A new variant's count, and the product's count beside it.
@@ -5796,6 +5997,15 @@ SELECT name FROM staff GROUP BY name HAVING COUNT(*) = 1
       final imagePath = row['image_path'];
       if (imagePath is String && imagePath.isNotEmpty) paths.add(imagePath);
     }
+    for (final row in tables['shot_cups'] ?? const <Map<String, Object?>>[]) {
+      final imagePath = row['image_path'];
+      if (imagePath is String && imagePath.isNotEmpty) paths.add(imagePath);
+    }
+    for (final row
+        in tables['sale_evidence'] ?? const <Map<String, Object?>>[]) {
+      final localPath = row['local_path'];
+      if (localPath is String && localPath.isNotEmpty) paths.add(localPath);
+    }
     final media = <Map<String, String>>[];
     final docs = await _applicationDocumentsDirectory();
     if (docs == null) return media;
@@ -5838,7 +6048,9 @@ SELECT name FROM staff GROUP BY name HAVING COUNT(*) = 1
     final snapshotWorkspace = snapshot['workspaceKey'];
     if (snapshotWorkspace is! String ||
         snapshotWorkspace.isEmpty ||
-        (!allowWorkspaceMismatch && snapshotWorkspace != WorkspaceDatabase.instance.currentWorkspaceKey)) {
+        (!allowWorkspaceMismatch &&
+            snapshotWorkspace !=
+                WorkspaceDatabase.instance.currentWorkspaceKey)) {
       throw const FormatException('Backup belongs to a different shop');
     }
     final db = await database;
@@ -7017,6 +7229,83 @@ SELECT name FROM staff GROUP BY name HAVING COUNT(*) = 1
     );
   }
 
+  Future<void> setServingImage(String? relativePath, int servingId) async {
+    final db = await database;
+    await db.update(
+      'shot_cups',
+      {
+        'image_path': relativePath,
+        'updated_at': DateTime.now().toIso8601String()
+      },
+      where: 'id = ?',
+      whereArgs: [servingId],
+    );
+  }
+
+  Future<int> createSaleEvidence({
+    required int saleId,
+    required String? localPath,
+  }) async {
+    final db = await database;
+    return db.insert('sale_evidence', <String, Object?>{
+      'sale_id': saleId,
+      'local_path': localPath,
+      'status': 'pending',
+      'created_at': DateTime.now().toIso8601String(),
+    });
+  }
+
+  Future<List<Map<String, dynamic>>> getSaleEvidence(int saleId) async {
+    final db = await database;
+    return db.query(
+      'sale_evidence',
+      where: 'sale_id = ?',
+      whereArgs: [saleId],
+      orderBy: 'id ASC',
+    );
+  }
+
+  Future<List<Map<String, dynamic>>> getPendingSaleEvidence({
+    int limit = 100,
+  }) async {
+    final db = await database;
+    return db.query(
+      'sale_evidence',
+      where: "status = 'pending' AND local_path IS NOT NULL",
+      orderBy: 'created_at ASC, id ASC',
+      limit: limit,
+    );
+  }
+
+  Future<void> setSaleEvidenceLocalPath(int id, String path) async {
+    final db = await database;
+    await db.update(
+      'sale_evidence',
+      {'local_path': path},
+      where: 'id = ?',
+      whereArgs: [id],
+    );
+  }
+
+  Future<void> markSaleEvidenceUploaded({
+    required int id,
+    required String remoteKey,
+    required String? remoteUrl,
+  }) async {
+    final db = await database;
+    await db.update(
+      'sale_evidence',
+      <String, Object?>{
+        'remote_key': remoteKey,
+        'remote_url': remoteUrl,
+        'status': 'uploaded',
+        'uploaded_at': DateTime.now().toIso8601String(),
+      },
+      where: 'id = ?',
+      whereArgs: [id],
+    );
+  }
+
   /// Clears every cached `remote_id`, on products and on staff.
   ///
   /// Called when the tenant this shop is bound to changes. The ids are minted
@@ -7845,6 +8134,7 @@ SELECT name FROM staff GROUP BY name HAVING COUNT(*) = 1
     /// lands on the customer's ledger inside the SAME transaction as the sale,
     /// so a crash can never leave goods gone and nobody owing them.
     int? customerId,
+    Customer? customerDraft,
 
     /// The manager or owner who approved an over-limit credit sale, when one
     /// has approved it. Their presence is what permits the sale to exceed the
@@ -7854,18 +8144,17 @@ SELECT name FROM staff GROUP BY name HAVING COUNT(*) = 1
     int? orderDiscountReasonId,
     int? laybyId,
     int? shiftId,
+    int? costPoolId,
     DatabaseExecutor? existingTransaction,
   }) async {
     if (existingTransaction != null) {
       final tillCode = await _tillCodeFromExecutor(existingTransaction);
-      final vatRatePercent =
-          await _vatRateFromExecutor(existingTransaction);
-      final taxRuleId = await _settingFromExecutor(
-          existingTransaction, settingTaxRuleId);
-      final taxRuleVersion = int.tryParse(
-          await _settingFromExecutor(
-                  existingTransaction, settingTaxRuleVersion) ??
-              '');
+      final vatRatePercent = await _vatRateFromExecutor(existingTransaction);
+      final taxRuleId =
+          await _settingFromExecutor(existingTransaction, settingTaxRuleId);
+      final taxRuleVersion = int.tryParse(await _settingFromExecutor(
+              existingTransaction, settingTaxRuleVersion) ??
+          '');
       final defaultLimitMinor =
           await _creditDefaultLimitFromExecutor(existingTransaction);
       return SalesRepository.instance.recordSaleInTransaction(
@@ -7881,11 +8170,13 @@ SELECT name FROM staff GROUP BY name HAVING COUNT(*) = 1
         etimsPending: etimsPending,
         paymentVerified: paymentVerified,
         customerId: customerId,
+        customerDraft: customerDraft,
         creditApprovedBy: creditApprovedBy,
         discountApprovedBy: discountApprovedBy,
         orderDiscountReasonId: orderDiscountReasonId,
         laybyId: laybyId,
         shiftId: shiftId,
+        costPoolId: costPoolId,
         tillCode: tillCode,
         vatRatePercent: vatRatePercent,
         taxRuleId: taxRuleId ?? '',
@@ -7905,11 +8196,13 @@ SELECT name FROM staff GROUP BY name HAVING COUNT(*) = 1
       etimsPending: etimsPending,
       paymentVerified: paymentVerified,
       customerId: customerId,
+      customerDraft: customerDraft,
       creditApprovedBy: creditApprovedBy,
       discountApprovedBy: discountApprovedBy,
       orderDiscountReasonId: orderDiscountReasonId,
       laybyId: laybyId,
       shiftId: shiftId,
+      costPoolId: costPoolId,
     );
   }
 
@@ -8990,6 +9283,7 @@ SELECT name FROM staff GROUP BY name HAVING COUNT(*) = 1
       existingTransaction: existingTransaction,
     );
   }
+
   /// Puts [units] back on the shelf, in the same transaction as the movement.
   ///
   /// The shape mirrors the sale's deduction exactly, in reverse: a variant
@@ -9159,6 +9453,7 @@ SELECT name FROM staff GROUP BY name HAVING COUNT(*) = 1
     DateTime? receivedAt,
     String costingMode = 'weighted_average',
     int? purchaseOrderId,
+    String paidFrom = 'till_cash',
   }) async {
     return FinanceRepository.instance.postStockReceipt(
       lines: lines,
@@ -9174,9 +9469,9 @@ SELECT name FROM staff GROUP BY name HAVING COUNT(*) = 1
       receivedAt: receivedAt,
       costingMode: costingMode,
       purchaseOrderId: purchaseOrderId,
+      paidFrom: paidFrom,
     );
   }
-
 
   /// Posts a delivery entered in packs while keeping the stock ledger in base
   /// units. The pack cost is the cost of one pack; the receipt line stores the
@@ -9427,6 +9722,7 @@ SELECT name FROM staff GROUP BY name HAVING COUNT(*) = 1
             staffId: r.staffId,
             staffName: r.staffName,
             totalCost: r.totalCost,
+            paidFrom: r.paidFrom,
             status: r.status,
             note: r.note,
             items: itemRows.map(StockReceiptItem.fromMap).toList(),
@@ -9846,6 +10142,7 @@ SELECT name FROM staff GROUP BY name HAVING COUNT(*) = 1
             staffId: r.staffId,
             staffName: r.staffName,
             totalCost: r.totalCost,
+            paidFrom: r.paidFrom,
             status: r.status,
             note: r.note,
             items: itemRows.map(StockReceiptItem.fromMap).toList(),
@@ -11106,7 +11403,17 @@ $untilClause
   }
 
   /// Every shift for a staff member, newest first.
-  Future<List<Shift>> getShifts({int? staffId, bool openOnly = false}) async {
+  ///
+  /// When [from] and [until] are supplied, only shifts started in the
+  /// half-open window or closed in it are returned. The bounded form is used
+  /// by analytics so a long-lived till does not read its entire shift history
+  /// just to render one date range.
+  Future<List<Shift>> getShifts({
+    int? staffId,
+    bool openOnly = false,
+    DateTime? from,
+    DateTime? until,
+  }) async {
     final db = await database;
     final where = <String>[];
     final args = <dynamic>[];
@@ -11116,6 +11423,17 @@ $untilClause
     }
     if (openOnly) {
       where.add("status = 'open'");
+    }
+    if (from != null && until != null) {
+      final String start = from.toIso8601String();
+      final String end = until.toIso8601String();
+      where.add(
+        '((start_time >= ? AND start_time < ?) OR '
+        "(status != 'open' AND end_time >= ? AND end_time < ?))",
+      );
+      args.addAll(<String>[start, end, start, end]);
+    } else if (from != null || until != null) {
+      throw ArgumentError('from and until must be supplied together');
     }
     final rows = await db.query(
       'shifts',
@@ -11573,11 +11891,13 @@ $untilClause
     if (shiftIds.isEmpty) return <int, List<Reconciliation>>{};
     final db = await database;
     final placeholders = List.filled(shiftIds.length, '?').join(',');
-    final rows = await db.query(
-      'reconciliations',
-      where: 'shift_id IN ($placeholders)',
-      whereArgs: shiftIds,
-      orderBy: 'recorded_at DESC',
+    final rows = await db.rawQuery(
+      'SELECT r.* FROM reconciliations r '
+      'WHERE r.shift_id IN ($placeholders) '
+      'AND r.id = (SELECT MAX(r2.id) FROM reconciliations r2 '
+      'WHERE r2.shift_id = r.shift_id) '
+      'ORDER BY r.recorded_at DESC',
+      shiftIds,
     );
     final result = <int, List<Reconciliation>>{};
     for (final id in shiftIds) {
@@ -11672,19 +11992,6 @@ $untilClause
     );
     final repaid = (repayments.first['total_minor'] as num?)?.toInt() ?? 0;
 
-    // PLUS the cash taken on jobs in this shift. `recordJobPayment` refuses a
-    // cash payment unless a shift is open and stamps the payment with it, so
-    // the money is in this drawer; leaving it out made every cash deposit show
-    // up as an overage when the shift was counted.
-    final jobCash = await (await database).rawQuery(
-      '''SELECT COALESCE(SUM(amount_minor), 0) AS total_minor
-         FROM job_payments
-         WHERE shift_id = ?
-           AND payment_method = 'cash' ''',
-      [shift.id],
-    );
-    final jobCashMinor = (jobCash.first['total_minor'] as num?)?.toInt() ?? 0;
-
     final expenses = await (await database).rawQuery(
       '''SELECT COALESCE(SUM(amount_minor), 0) AS total_minor
          FROM expenses
@@ -11705,7 +12012,7 @@ $untilClause
     final moved = (movements.first['total_minor'] as num?)?.toInt() ?? 0;
 
     return Money.fromMinor(
-        totalCashMinor - refunded + repaid + jobCashMinor - paidOut + moved);
+        totalCashMinor - refunded + repaid - paidOut + moved);
   }
 
   /// Active expense categories, in the order shown to the person paying out.
@@ -12091,28 +12398,34 @@ $untilClause
   Future<List<Map<String, dynamic>>> getCostPools() async =>
       (await database).query('cost_pools', orderBy: 'created_at DESC, id DESC');
 
+  Future<void> mergeRemoteCostPool(Map<String, dynamic> remote) async {
+    final uuid = remote['uuid'] as String?;
+    if (uuid == null || uuid.trim().isEmpty) return;
+    final db = await database;
+    final values = <String, Object?>{
+      'uuid': uuid,
+      'name': remote['name'] as String? ?? 'Cost pool',
+      'pool_type': remote['poolType'] as String? ?? 'lot',
+      'invested_minor': (remote['investedMinor'] as num?)?.toInt() ?? 0,
+      'recovered_minor': (remote['recoveredMinor'] as num?)?.toInt() ?? 0,
+      'status': remote['status'] as String? ?? 'open',
+      'created_at': remote['createdAt'] as String? ?? DateTime.now().toIso8601String(),
+    };
+    final existing = await db.query('cost_pools',
+        columns: <String>['id'], where: 'uuid = ?', whereArgs: <Object?>[uuid], limit: 1);
+    if (existing.isEmpty) {
+      await db.insert('cost_pools', values);
+    } else {
+      await db.update('cost_pools', values,
+          where: 'id = ?', whereArgs: <Object?>[existing.first['id']]);
+    }
+  }
+
   Future<List<Map<String, dynamic>>> getCostPoolEntries(int poolId) async =>
       (await database).query('cost_pool_entries',
           where: 'pool_id = ?',
           whereArgs: [poolId],
           orderBy: 'created_at DESC, id DESC');
-
-  Future<List<Map<String, dynamic>>> getOpenJobs() async =>
-      (await database).query('jobs', orderBy: 'created_at DESC, id DESC');
-
-  /// Jobs with what was collected and spent on each, in ONE query.
-  ///
-  /// Replaces a per-job loop of getJobCosts / getJobPayments calls. The rows
-  /// are read-only (sqflite result sets are), so callers copy before editing.
-  Future<List<Map<String, dynamic>>> getJobsWithTotals() async =>
-      (await database).rawQuery('''
-        SELECT j.*,
-          COALESCE((SELECT SUM(p.amount_minor) FROM job_payments p
-                    WHERE p.job_id = j.id), 0) AS paid_minor,
-          COALESCE((SELECT SUM(c.amount_minor) FROM job_costs c
-                    WHERE c.job_id = j.id), 0) AS cost_minor
-        FROM jobs j
-        ORDER BY j.created_at DESC, j.id DESC''');
 
   Future<void> updateCostPool({
     required int id,
@@ -12127,42 +12440,56 @@ $untilClause
         .update('cost_pools', values, where: 'id = ?', whereArgs: [id]);
   }
 
-  Future<void> updateJob({
-    required int id,
-    String? title,
-    String? customerName,
-    int? finalPriceMinor,
+  Future<int> reloadCostPoolStock({
+    required int poolId,
+    required int productId,
+    required double qty,
+    required Money unitCost,
+    String paidFrom = 'till_cash',
+    String? supplierRef,
+    String? note,
+    required String staffName,
+    int? staffId,
   }) async {
-    final values = <String, Object?>{};
-    if (title != null && title.trim().isNotEmpty) {
-      values['title'] = title.trim();
-    }
-    if (customerName != null) {
-      values['customer_name'] = customerName.trim();
-    }
-    if (finalPriceMinor != null) {
-      values['final_price_minor'] = finalPriceMinor;
-    }
-    if (values.isEmpty) return;
-    await (await database)
-        .update('jobs', values, where: 'id = ?', whereArgs: [id]);
+    final db = await database;
+    return db.transaction<int>(
+        (txn) => FinanceRepository.instance.reloadCostPoolStockInTransaction(
+              txn: txn,
+              poolId: poolId,
+              productId: productId,
+              qty: qty,
+              unitCost: unitCost,
+              paidFrom: paidFrom,
+              supplierRef: supplierRef,
+              note: note,
+              staffName: staffName,
+              staffId: staffId,
+            ));
   }
-
-  Future<List<Map<String, dynamic>>> getJobCosts(int jobId) async =>
-      (await database).query('job_costs',
-          where: 'job_id = ?',
-          whereArgs: [jobId],
-          orderBy: 'created_at DESC, id DESC');
-
-  Future<List<Map<String, dynamic>>> getJobPayments(int jobId) async =>
-      (await database).query('job_payments',
-          where: 'job_id = ?',
-          whereArgs: [jobId],
-          orderBy: 'created_at DESC, id DESC');
 
   Future<List<Map<String, dynamic>>> getOwnerTransactions() async =>
       (await database)
           .query('owner_transactions', orderBy: 'created_at DESC, id DESC');
+
+  Future<void> mergeRemoteOwnerTransaction(Map<String, dynamic> remote) async {
+    final uuid = remote['uuid'] as String?;
+    if (uuid == null || uuid.trim().isEmpty) return;
+    await (await database).insert(
+      'owner_transactions',
+      <String, Object?>{
+        'uuid': uuid,
+        'transaction_type': remote['transactionType'] ?? 'capital_in',
+        'amount_minor': (remote['amountMinor'] as num?)?.toInt() ?? 0,
+        'shift_id': remote['shiftId'],
+        'staff_id': null,
+        'staff_name': remote['staffName'] ?? 'Another till',
+        'note': remote['note'],
+        'created_at': remote['createdAt'] ?? DateTime.now().toIso8601String(),
+        'synced_to_backend': 1,
+      },
+      conflictAlgorithm: ConflictAlgorithm.ignore,
+    );
+  }
 
   /// Records a money-first Open sale without inventing an item, stock cost, or
   /// tax figure. It is still a normal sale ledger row, so sales, cash and
@@ -12190,8 +12517,8 @@ $untilClause
     );
   }
 
-  /// Transaction-aware quick sale so [recordJobSale] can commit the sale and
-  /// its cost-pool allocation atomically.
+  /// Transaction-aware quick sale so cost-pool allocation can commit the sale
+  /// atomically.
   Future<int> addCostPoolEntry({
     required String uuid,
     required int poolId,
@@ -12216,344 +12543,18 @@ $untilClause
     required Money amount,
   }) async {
     final db = await database;
-    return db.transaction<int>((txn) => FinanceRepository.instance
-        .allocateCostPoolToSaleInTransaction(
-      txn: txn,
-      poolId: poolId,
-      saleId: saleId,
-      amount: amount,
-    ));
+    return db.transaction<int>(
+        (txn) => FinanceRepository.instance.allocateCostPoolToSaleInTransaction(
+              txn: txn,
+              poolId: poolId,
+              saleId: saleId,
+              amount: amount,
+            ));
   }
 
-  /// Transaction-aware pool allocation so [recordJobSale] commits atomically.
-  Future<int> createJob({
-    required String uuid,
-    required String title,
-    String? customerName,
-    Money? quote,
-    DateTime? dueAt,
-    int? costPoolId,
-    int? poolId,
-    int? linkedPoolId,
-    int? pool,
-  }) async {
-    if (uuid.trim().isEmpty || title.trim().isEmpty) {
-      throw StateError('A job needs an id and a title');
-    }
-    final resolvedPool = costPoolId ?? poolId ?? linkedPoolId ?? pool;
-    return (await database).insert('jobs', {
-      'uuid': uuid,
-      'customer_name': customerName,
-      'title': title.trim(),
-      'quote_minor': quote?.minorUnits,
-      'due_at': dueAt?.toIso8601String(),
-      'cost_pool_id': resolvedPool,
-      'created_at': DateTime.now().toIso8601String(),
-    });
-  }
+  /// Transaction-aware pool allocation for Open profile cost recovery.
 
-  Future<int> addJobCost({
-    required String uuid,
-    required int jobId,
-    required String costType,
-    required Money amount,
-    String paidFrom = 'other',
-    String? description,
-  }) async {
-    const costTypes = <String>{'materials', 'helper', 'transport', 'other'};
-    if (!costTypes.contains(costType)) throw StateError('Unknown job cost');
-    if (paidFrom != 'till_cash' &&
-        paidFrom != 'other' &&
-        paidFrom != 'credit') {
-      throw StateError('A job cost is paid from cash, elsewhere or credit');
-    }
-    if (amount.minorUnits <= 0) {
-      throw StateError('A job cost must be more than zero');
-    }
-    final db = await database;
-    return db.transaction<int>((txn) async {
-      final jobs = await txn.query('jobs',
-          where: "id = ? AND status != 'closed'", whereArgs: [jobId], limit: 1);
-      if (jobs.isEmpty) throw StateError('Job not found or closed');
-      final costId = await txn.insert('job_costs', {
-        'uuid': uuid,
-        'job_id': jobId,
-        'cost_type': costType,
-        'amount_minor': amount.minorUnits,
-        'paid_from': paidFrom,
-        'description': description,
-        'created_at': DateTime.now().toIso8601String(),
-      });
-      await FinanceRepository.instance.appendFinancialEventInTransaction(
-        txn: txn,
-        eventType: 'job_cost',
-        sourceType: 'job_cost',
-        sourceId: costId,
-        occurredAtUtc: DateTime.now().toUtc().toIso8601String(),
-        cogsMinor: amount.minorUnits,
-        cashOutMinor: paidFrom == 'till_cash' ? amount.minorUnits : 0,
-        payableDeltaMinor: paidFrom == 'credit' ? amount.minorUnits : 0,
-        metadata: <String, Object?>{
-          'job_id': jobId,
-          'cost_type': costType,
-          'paid_from': paidFrom,
-        },
-      );
-      return costId;
-    });
-  }
-
-  /// Completes a job and recognizes its final price exactly once.
-  ///
-  /// Payments taken while the job was open are customer deposits. Completion
-  /// converts that liability into earned revenue and leaves only the unpaid
-  /// balance as a receivable. The job row and the normalized event are written
-  /// atomically so reports cannot observe an earned job without its source.
-  Future<void> completeJob({
-    required int jobId,
-    required Money finalPrice,
-  }) async {
-    if (finalPrice.minorUnits <= 0) {
-      throw StateError('A completed job must have a final price');
-    }
-    final db = await database;
-    await db.transaction((txn) async {
-      final jobs = await txn.query(
-        'jobs',
-        where: "id = ? AND status = 'open'",
-        whereArgs: [jobId],
-        limit: 1,
-      );
-      if (jobs.isEmpty) throw StateError('Job not found or already closed');
-      final depositsRows = await txn.rawQuery(
-        'SELECT COALESCE(SUM(amount_minor), 0) AS total FROM job_payments '
-        'WHERE job_id = ?',
-        [jobId],
-      );
-      final deposits = (depositsRows.first['total'] as num?)?.toInt() ?? 0;
-      if (deposits > finalPrice.minorUnits) {
-        throw StateError('The final price cannot be below collected deposits');
-      }
-      final now = DateTime.now().toIso8601String();
-      await txn.update(
-        'jobs',
-        {
-          'final_price_minor': finalPrice.minorUnits,
-          'status': 'closed',
-          'closed_at': now,
-        },
-        where: 'id = ?',
-        whereArgs: [jobId],
-      );
-      await FinanceRepository.instance.appendFinancialEventInTransaction(
-        txn: txn,
-        eventType: 'job_completion',
-        sourceType: 'job',
-        sourceId: jobId,
-        occurredAtUtc: DateTime.parse(now).toUtc().toIso8601String(),
-        revenueMinor: finalPrice.minorUnits,
-        receivableDeltaMinor: finalPrice.minorUnits - deposits,
-        customerDepositDeltaMinor: -deposits,
-        metadata: <String, Object?>{
-          'final_price_minor': finalPrice.minorUnits,
-          'deposits_applied_minor': deposits,
-        },
-      );
-    });
-  }
-
-  /// Records a sale against an Open job with atomic cost-pool allocation.
-  ///
-  /// STATUS: UNCALLED — no screen invokes this method yet. Routes.sell now
-  /// accepts a jobId extra (see app_router.dart) but SellScreen still calls the
-  /// generic recordSale(). Wire this into SellScreen when the job-linked sale
-  /// flow is complete.
-  Future<int> recordJobSale({
-    required int jobId,
-    required Money amount,
-    required String paymentMethod,
-    String? paymentReference,
-    String? staffName,
-    int? staffId,
-  }) async {
-    return JobRepository.instance.recordJobSale(
-      jobId: jobId,
-      amount: amount,
-      paymentMethod: paymentMethod,
-      paymentReference: paymentReference,
-      staffName: staffName,
-      staffId: staffId,
-    );
-  }
-
-  /// Convenience alias for [recordJobSale].
-  ///
-  /// STATUS: UNCALLED — no screen invokes this method yet.
-  Future<int> recordSaleAgainstJob({
-    required int jobId,
-    required Money amount,
-    required String paymentMethod,
-    String? paymentReference,
-    String? staffName,
-    int? staffId,
-  }) =>
-      recordJobSale(
-        jobId: jobId,
-        amount: amount,
-        paymentMethod: paymentMethod,
-        paymentReference: paymentReference,
-        staffName: staffName,
-        staffId: staffId,
-      );
-
-  /// Quick sale against a job (no cost-pool allocation).
-  ///
-  /// STATUS: UNCALLED — no screen invokes this method yet.
-  Future<int> recordJobQuickSale({
-    required int jobId,
-    required Money amount,
-    required String paymentMethod,
-    String? paymentReference,
-    String? staffName,
-    int? staffId,
-  }) =>
-      recordJobSale(
-        jobId: jobId,
-        amount: amount,
-        paymentMethod: paymentMethod,
-        paymentReference: paymentReference,
-        staffName: staffName,
-        staffId: staffId,
-      );
-
-  Future<int> recordJobPayment({
-    required String uuid,
-    required int jobId,
-    required Money amount,
-    required String paymentMethod,
-    String? reference,
-    int? shiftId,
-    String status = 'pending',
-  }) async {
-    if (amount.minorUnits <= 0) {
-      throw StateError('A job payment must be more than zero');
-    }
-    if (!<String>{'cash', 'mpesa', 'bank_transfer'}.contains(paymentMethod)) {
-      throw StateError('Unsupported job payment method');
-    }
-    final db = await database;
-    return db.transaction<int>((txn) async {
-      final jobs = await txn.query('jobs',
-          where: 'id = ?', whereArgs: [jobId], limit: 1);
-      if (jobs.isEmpty) throw StateError('Job not found');
-      final job = jobs.first;
-      int? resolvedShiftId = shiftId;
-      if (paymentMethod == 'cash') {
-        if (resolvedShiftId == null) {
-          final shifts = await txn.query('shifts',
-              where: 'status = ?',
-              whereArgs: ['open'],
-              orderBy: 'start_time DESC',
-              limit: 1);
-          if (shifts.isEmpty) {
-            throw StateError('Open a shift before taking cash');
-          }
-          resolvedShiftId = shifts.first['id'] as int;
-        } else {
-          final shifts = await txn.query('shifts',
-              where: 'id = ? AND status = ?',
-              whereArgs: [resolvedShiftId, 'open']);
-          if (shifts.isEmpty) throw StateError('Shift is not open');
-        }
-      }
-      final isDeposit = (job['status'] as String?) != 'closed';
-      if (!isDeposit) {
-        final finalPrice = (job['final_price_minor'] as num?)?.toInt();
-        if (finalPrice == null) {
-          throw StateError('A closed job must have a final price');
-        }
-        final paidRows = await txn.rawQuery(
-          'SELECT COALESCE(SUM(amount_minor), 0) AS total FROM job_payments '
-          'WHERE job_id = ?',
-          [jobId],
-        );
-        final paid = (paidRows.first['total'] as num?)?.toInt() ?? 0;
-        if (paid + amount.minorUnits > finalPrice) {
-          throw StateError('That payment exceeds the job balance');
-        }
-      }
-      final paymentId = await txn.insert('job_payments', {
-        'uuid': uuid,
-        'job_id': jobId,
-        'amount_minor': amount.minorUnits,
-        'payment_method': paymentMethod,
-        'reference': reference,
-        'shift_id': resolvedShiftId,
-        'status': status,
-        'created_at': DateTime.now().toIso8601String(),
-      });
-      await FinanceRepository.instance.appendFinancialEventInTransaction(
-        txn: txn,
-        eventType: 'job_payment',
-        sourceType: 'job_payment',
-        sourceId: paymentId,
-        occurredAtUtc: DateTime.now().toUtc().toIso8601String(),
-        cashInMinor: amount.minorUnits,
-        receivableDeltaMinor: isDeposit ? 0 : -amount.minorUnits,
-        customerDepositDeltaMinor: isDeposit ? amount.minorUnits : 0,
-        metadata: <String, Object?>{
-          'job_id': jobId,
-          'payment_method': paymentMethod,
-          'shift_id': resolvedShiftId,
-          'is_deposit': isDeposit,
-        },
-      );
-      return paymentId;
-    });
-  }
-
-  /// Verifies a pending job payment — admin-only. Marks the payment as
-  /// 'verified' and updates the corresponding financial event. Rejects if the
-  /// payment is already verified or does not exist.
-  Future<int> verifyJobPayment(int paymentId) async {
-    final db = await database;
-    return db.transaction<int>((txn) async {
-      final rows = await txn.query(
-        'job_payments',
-        where: 'id = ?',
-        whereArgs: [paymentId],
-        limit: 1,
-      );
-      if (rows.isEmpty) throw StateError('Payment not found');
-      final row = rows.first;
-      if ((row['status'] as String?) == 'verified') {
-        throw StateError('Payment already verified');
-      }
-      await txn.update(
-        'job_payments',
-        {'status': 'verified'},
-        where: 'id = ?',
-        whereArgs: [paymentId],
-      );
-      // Mirror the verification in the financial event so the ledger agrees.
-      final events = await txn.query(
-        'financial_events',
-        where: 'source_type = ? AND source_id = ?',
-        whereArgs: ['job_payment', paymentId],
-        limit: 1,
-      );
-      if (events.isNotEmpty) {
-        await txn.update(
-          'financial_events',
-          {'metadata': '{"verified": true}'},
-          where: 'id = ?',
-          whereArgs: [events.first['id']],
-        );
-      }
-      return paymentId;
-    });
-  }
-    Future<int> recordOwnerTransaction({
+  Future<int> recordOwnerTransaction({
     required String uuid,
     required String transactionType,
     required Money amount,
@@ -12633,7 +12634,6 @@ $untilClause
     );
   }
 
-
   /// What the drawer should hold for [shift]: the float it opened with plus
   /// the cash rung up since.
   ///
@@ -12684,6 +12684,41 @@ $untilClause
           'Shot cup product ${cup.productId} does not exist in the catalogue');
     }
     return db.transaction((txn) async {
+      // A serving can be reassigned to another product or have its shape
+      // edited. Remove the old normalized link before replacing the row;
+      // otherwise the legacy shot_cups row looks correct while product_cups
+      // still exposes the previous product/template association.
+      if (cup.id != null) {
+        final previousRows = await txn.query(
+          'shot_cups',
+          columns: ['product_id', 'label', 'capacity', 'unit'],
+          where: 'id = ?',
+          whereArgs: [cup.id],
+          limit: 1,
+        );
+        if (previousRows.isNotEmpty) {
+          final previous = previousRows.single;
+          final previousProductId = previous['product_id'];
+          final previousTemplate = await txn.query(
+            'cup_templates',
+            columns: ['id'],
+            where: 'label = ? AND capacity = ? AND unit = ?',
+            whereArgs: [
+              previous['label'],
+              previous['capacity'],
+              previous['unit'],
+            ],
+            limit: 1,
+          );
+          if (previousProductId is int && previousTemplate.isNotEmpty) {
+            await txn.delete(
+              'product_cups',
+              where: 'product_id = ? AND template_id = ?',
+              whereArgs: [previousProductId, previousTemplate.single['id']],
+            );
+          }
+        }
+      }
       final row = await txn.query('products',
           columns: ['unit'],
           where: 'id = ?',
@@ -12704,19 +12739,19 @@ $untilClause
       }
       // Shared template + link (dual-write) so the new schema stays in sync.
       int templateId;
+      // A serving template is identified by its shape, not by its price.
+      // Price belongs to the product link, which lets one "Small" serving be
+      // shared by several products while each product keeps its own selling
+      // price.
       final existing = await txn.query('cup_templates',
-          where: 'label = ? AND capacity = ? AND price = ?',
-          whereArgs: [cup.label, cup.capacity, cup.price.minorUnits],
+          where: 'label = ? AND capacity = ? AND unit = ?',
+          whereArgs: [cup.label, cup.capacity, cup.unit],
           limit: 1);
       if (existing.isNotEmpty) {
         templateId = existing.first['id'] as int;
         await txn.update(
             'cup_templates',
             {
-              'label': cup.label,
-              'capacity': cup.capacity,
-              'unit': cup.unit,
-              'price': cup.price.minorUnits,
               'active': cup.active ? 1 : 0,
               'updated_at': cup.updatedAt,
             },
@@ -12734,8 +12769,15 @@ $untilClause
       }
       await txn.insert(
         'product_cups',
-        {'product_id': cup.productId, 'template_id': templateId},
-        conflictAlgorithm: ConflictAlgorithm.ignore,
+        {
+          'product_id': cup.productId,
+          'template_id': templateId,
+          'price': cup.price.minorUnits,
+        },
+        // Re-saving a serving must update its product-specific price. The old
+        // ignore policy made the screen appear to save while Till retained the
+        // original price in the shared link.
+        conflictAlgorithm: ConflictAlgorithm.replace,
       );
       return shotCupId;
     });

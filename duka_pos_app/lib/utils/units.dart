@@ -64,8 +64,10 @@ enum ProductUnit {
   /// a tank is for. The weight lives only in the form and the stock count; the
   /// pour never sees it.
   bool get isVolumetric =>
-      this == ProductUnit.litre || this == ProductUnit.millilitre ||
-      this == ProductUnit.cup || this == ProductUnit.kilogram;
+      this == ProductUnit.litre ||
+      this == ProductUnit.millilitre ||
+      this == ProductUnit.cup ||
+      this == ProductUnit.kilogram;
 
   /// One of these, in millilitres.
   ///
@@ -143,6 +145,43 @@ double kilogramsToMillilitres(
   return kilograms * millilitresPerKilogram;
 }
 
+/// Converts a configured measured-serving size to the canonical sale unit.
+///
+/// A serving is allowed to be entered in litres or kilograms, but only after
+/// its dimension is understood. Count/pack/carton values are deliberately
+/// rejected here instead of being mistaken for millilitres.
+double? measuredServingMillilitres(
+  num capacity,
+  String unit, {
+  double millilitresPerKilogram = defaultKilogramsToMillilitres,
+}) {
+  if (!capacity.isFinite || capacity < 0) return null;
+  switch (unit.trim().toLowerCase()) {
+    case 'ml':
+    case 'millilitre':
+    case 'millilitres':
+    case 'milliliter':
+    case 'milliliters':
+    case 'cup':
+      return capacity.toDouble();
+    case 'l':
+    case 'litre':
+    case 'litres':
+    case 'liter':
+    case 'liters':
+      return litresToMillilitres(capacity);
+    case 'kg':
+    case 'kilogram':
+    case 'kilograms':
+      return kilogramsToMillilitres(
+        capacity,
+        millilitresPerKilogram: millilitresPerKilogram,
+      );
+    default:
+      return null;
+  }
+}
+
 /// Millilitres to kilograms, at [millilitresPerKilogram] per kg.
 ///
 /// The other direction, for reading a stock figure back as the weight the owner
@@ -164,7 +203,6 @@ double millilitresToKilograms(
 /// count, so it is spelled exactly once.
 double litresToMillilitres(num litres) =>
     litres.isFinite && litres >= 0 ? litres * 1000 : 0;
-
 
 /// Conversions between a typed volume and millilitres.
 ///

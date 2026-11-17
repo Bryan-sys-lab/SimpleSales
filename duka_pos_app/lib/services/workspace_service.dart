@@ -1,4 +1,5 @@
 import 'dart:convert';
+import 'dart:math';
 import 'package:flutter/foundation.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
@@ -37,6 +38,34 @@ class WorkspaceService {
   static Future<void> setActiveWorkspace(String key) async {
     final prefs = await SharedPreferences.getInstance();
     await prefs.setString(activeKey, key);
+  }
+
+  /// Creates a short, human-readable local shop identifier for new shops.
+  /// Existing workspace keys are never renamed because the key is also the
+  /// database filename and changing it would make an existing shop appear
+  /// empty. The random suffix prevents two shops with the same names colliding.
+  static Future<String> createReadableWorkspaceKey({
+    required String ownerName,
+    required String shopName,
+  }) async {
+    String slug(String value, String fallback) {
+      final normalized = value
+          .toLowerCase()
+          .replaceAll(RegExp(r'[^a-z0-9]+'), '-')
+          .replaceAll(RegExp(r'^-+|-+$'), '');
+      final result = normalized.substring(0, normalized.length.clamp(0, 24));
+      return result.isEmpty ? fallback : result;
+    }
+
+    final owner = slug(ownerName, 'owner');
+    final shop = slug(shopName, 'shop');
+    final current = await registry();
+    final random = Random.secure();
+    String key;
+    do {
+      key = 'local-$owner-$shop-${1000 + random.nextInt(9000)}';
+    } while (current.containsKey(key));
+    return key;
   }
 
   static Future<Map<String, Map<String, String>>> registry() async {

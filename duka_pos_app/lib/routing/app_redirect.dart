@@ -1,6 +1,7 @@
 import 'routes.dart';
 import '../services/app_stage.dart';
 import '../profile/shop_profile.dart';
+import '../profile/profile_navigation.dart';
 import 'app_stage_controller.dart';
 
 /// The app's only navigation guard.
@@ -141,13 +142,25 @@ String? appRedirect({
       snapshot.shopProfile != ShopProfile.fashion) {
     return Routes.dashboard;
   }
-  if ((location.startsWith('/inventory/tank') ||
-          location == Routes.servings) &&
-      snapshot.shopProfile != ShopProfile.drinks) {
+  // Servings are a shared measured-goods operation. Only the tank register and
+  // tank details remain Drinks-specific; Open and Duka must be able to reach
+  // their persisted serving definitions from Inventory/Profile.
+  if (location == Routes.servings &&
+      !snapshot.shopProfile.navigation.showMeasuredGoods) {
     return Routes.dashboard;
   }
-  if (location == Routes.inventory && snapshot.shopProfile == ShopProfile.open) {
-    return Routes.portfolio;
+  if (location.startsWith('/inventory/tank') &&
+      !snapshot.shopProfile.navigation.showDrinkService) {
+    return Routes.dashboard;
+  }
+  // Legacy Open-business paths redirect safely; cost groups go to the shared
+  // Inventory Cost of Goods destination when available.
+  if (location.startsWith('/open-business')) {
+    if (location.startsWith('/open-business/cost-groups')) {
+      final suffix = location.substring('/open-business/cost-groups'.length);
+      return '/inventory/cost-of-goods$suffix';
+    }
+    return Routes.dashboard;
   }
 
   return null;

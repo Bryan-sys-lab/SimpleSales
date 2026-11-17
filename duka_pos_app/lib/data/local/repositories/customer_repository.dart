@@ -70,8 +70,9 @@ class CustomerRepository {
         FOREIGN KEY (charge_entry_id) REFERENCES credit_ledger (id)
       )
     ''');
-    await db.execute('CREATE INDEX IF NOT EXISTS idx_credit_allocations_payment '
-        'ON credit_allocations (payment_entry_id)');
+    await db
+        .execute('CREATE INDEX IF NOT EXISTS idx_credit_allocations_payment '
+            'ON credit_allocations (payment_entry_id)');
     await db.execute('CREATE INDEX IF NOT EXISTS idx_credit_allocations_charge '
         'ON credit_allocations (charge_entry_id)');
 
@@ -209,14 +210,14 @@ class CustomerRepository {
       FOREIGN KEY (return_id) REFERENCES sale_returns (id),
       FOREIGN KEY (replacement_sale_id) REFERENCES sales (id)
     )''');
-    await db.execute(
-        'CREATE INDEX IF NOT EXISTS idx_exchanges_original_sale '
+    await db.execute('CREATE INDEX IF NOT EXISTS idx_exchanges_original_sale '
         'ON exchanges (original_sale_id, created_at)');
   }
 
   // ── Transaction-aware variants ─────────────────────────────────────
 
-  Future<int> upsertCustomerInTransaction(Transaction txn, Customer customer) async {
+  Future<int> upsertCustomerInTransaction(
+      Transaction txn, Customer customer) async {
     final name = customer.name.trim();
     if (name.isEmpty) {
       throw StateError('Enter a name');
@@ -272,7 +273,8 @@ class CustomerRepository {
 
   Future<int> upsertCustomer(Customer customer) async {
     final db = await DatabaseHelper.instance.database;
-    return db.transaction<int>((txn) => upsertCustomerInTransaction(txn, customer));
+    return db
+        .transaction<int>((txn) => upsertCustomerInTransaction(txn, customer));
   }
 
   Future<Customer?> getCustomer(int id) async {
@@ -287,7 +289,8 @@ class CustomerRepository {
     return Customer.fromMap(rows.first);
   }
 
-  Future<List<Map<String, dynamic>>> getCustomers({bool activeOnly = true}) async {
+  Future<List<Map<String, dynamic>>> getCustomers(
+      {bool activeOnly = true}) async {
     final db = await DatabaseHelper.instance.database;
     return db.query(
       'customers',
@@ -297,7 +300,8 @@ class CustomerRepository {
   }
 
   /// Returns goods within [txn]. Never opens its own transaction.
-  Future<int> recordReturnInTransaction(Transaction txn, {
+  Future<int> recordReturnInTransaction(
+    Transaction txn, {
     required Sale sale,
     required List<ReturnLineDraft> lines,
     required String reason,
@@ -425,9 +429,11 @@ class CustomerRepository {
       // The refund for the line: the line total scaled by the returned
       // fraction, rounded half-up.
       final int lineTotal = sold.total.minorUnits;
-      final int refund = DatabaseHelper.roundHalfUp(lineTotal * (draft.qty / soldQty));
+      final int refund =
+          DatabaseHelper.roundHalfUp(lineTotal * (draft.qty / soldQty));
       final int soldVat = sold.vatMinor ?? 0;
-      final int lineVat = DatabaseHelper.roundHalfUp(soldVat * (draft.qty / soldQty));
+      final int lineVat =
+          DatabaseHelper.roundHalfUp(soldVat * (draft.qty / soldQty));
       totalMinor += refund;
       vatMinor += lineVat;
       // The profit this return takes back, on the same basis as `sales.profit`
@@ -454,15 +460,16 @@ class CustomerRepository {
 
       // The goods: back on the shelf, or written off.
       final double units = draft.qty *
-          DatabaseHelper.portionFactor(sold, containerMlByProduct[sold.productId]!);
+          DatabaseHelper.portionFactor(
+              sold, containerMlByProduct[sold.productId]!);
       final int returnCostMinor = DatabaseHelper.roundHalfUp(
         sold.unitCost.minorUnits * draft.qty,
       );
       if (draft.restock) {
         restockedCostMinor += returnCostMinor;
         restockedMilliunits += (units * 1000).round();
-        final double balance =
-            await DatabaseHelper.instance.productBalanceAfter(txn, sold.productId);
+        final double balance = await DatabaseHelper.instance
+            .productBalanceAfter(txn, sold.productId);
         await DatabaseHelper.instance.writeStockMovement(
           txn: txn,
           productId: sold.productId,
@@ -505,8 +512,8 @@ class CustomerRepository {
         }
       } else {
         writtenOffCostMinor += returnCostMinor;
-        final double balance =
-            await DatabaseHelper.instance.productBalanceAfter(txn, sold.productId);
+        final double balance = await DatabaseHelper.instance
+            .productBalanceAfter(txn, sold.productId);
         await DatabaseHelper.instance.writeStockMovement(
           txn: txn,
           productId: sold.productId,
@@ -626,7 +633,8 @@ class CustomerRepository {
         'qty': draft.qty,
         'unit_price': sold.unitPrice.minorUnits,
         'unit_cost': sold.unitCost.minorUnits,
-        'refund_minor': DatabaseHelper.roundHalfUp(lineTotal * (draft.qty / sold.qty)),
+        'refund_minor':
+            DatabaseHelper.roundHalfUp(lineTotal * (draft.qty / sold.qty)),
         'vat_minor': DatabaseHelper.roundHalfUp(
           (sold.vatMinor ?? 0) * (draft.qty / sold.qty),
         ),
@@ -635,6 +643,54 @@ class CustomerRepository {
         'restock': draft.restock ? 1 : 0,
         'restock_reason': draft.restockReason,
       });
+    }
+
+    // Reverse the pool recovery for the cost of goods that returned to stock.
+    // The reversal is a separate audit row; the original sale allocation is
+    // never edited or deleted.
+    if (restockedCostMinor > 0) {
+      int originalCostMinor = 0;
+      for (final sold in sale.items) {
+        final productRows = await txn.query(
+          'products',
+          columns: ['bottle_ml'],
+          where: 'id = ?',
+          whereArgs: [sold.productId],
+          limit: 1,
+        );
+        final containerMl =
+            (productRows.firstOrNull?['bottle_ml'] as num?)?.toDouble() ?? 0;
+        originalCostMinor += sold.unitCost
+            .times(sold.qty * DatabaseHelper.portionFactor(sold, containerMl))
+            .minorUnits;
+      }
+      if (originalCostMinor > 0) {
+        final allocations = await txn.query(
+          'sale_pool_allocations',
+          where: 'sale_id = ?',
+          whereArgs: [sale.id],
+          orderBy: 'id ASC',
+        );
+        var reversedSoFar = 0;
+        for (var i = 0; i < allocations.length; i++) {
+          final allocation = allocations[i];
+          final allocated = (allocation['amount_minor'] as num).toInt();
+          final reversal = i == allocations.length - 1
+              ? restockedCostMinor - reversedSoFar
+              : DatabaseHelper.roundHalfUp(
+                  allocated * restockedCostMinor / originalCostMinor,
+                );
+          if (reversal <= 0) continue;
+          await FinanceRepository.instance.reverseCostPoolRecoveryInTransaction(
+            txn: txn,
+            poolId: (allocation['pool_id'] as num).toInt(),
+            saleId: sale.id!,
+            returnId: returnId,
+            amount: Money.fromMinor(reversal),
+          );
+          reversedSoFar += reversal;
+        }
+      }
     }
 
     await FinanceRepository.instance.appendFinancialEventInTransaction(
@@ -693,20 +749,21 @@ class CustomerRepository {
       );
     }
     return db.transaction<int>((txn) => recordReturnInTransaction(
-      txn,
-      sale: sale,
-      lines: lines,
-      reason: reason,
-      kind: kind,
-      refundMethod: refundMethod,
-      paymentReference: paymentReference,
-      staffName: staffName,
-      staffId: staffId,
-    ));
+          txn,
+          sale: sale,
+          lines: lines,
+          reason: reason,
+          kind: kind,
+          refundMethod: refundMethod,
+          paymentReference: paymentReference,
+          staffName: staffName,
+          staffId: staffId,
+        ));
   }
 
   /// Puts [units] back on the shelf, in the same transaction as the movement.
-  Future<void> restoreStockCount(Transaction txn, {
+  Future<void> restoreStockCount(
+    Transaction txn, {
     required int productId,
     int? variantId,
     required double units,
@@ -778,8 +835,7 @@ class CustomerRepository {
     if (rows.isEmpty) throw StateError('Customer not found or inactive');
     final customer = rows.first;
     final balanceBefore = (customer['balance_minor'] as num?)?.toInt() ?? 0;
-    final limit =
-        (customer['credit_limit_minor'] as num?)?.toInt();
+    final limit = (customer['credit_limit_minor'] as num?)?.toInt();
     if (limit != null && balanceBefore + amount.minorUnits > limit) {
       throw StateError(
         'That charge would exceed the customer credit limit',
@@ -814,13 +870,13 @@ class CustomerRepository {
   }) async {
     final db = await DatabaseHelper.instance.database;
     return db.transaction<int>((txn) => recordCreditChargeInTransaction(
-      txn: txn,
-      customerId: customerId,
-      amount: amount,
-      saleId: saleId,
-      reference: reference,
-      staffId: staffId,
-      staffName: staffName,
-    ));
+          txn: txn,
+          customerId: customerId,
+          amount: amount,
+          saleId: saleId,
+          reference: reference,
+          staffId: staffId,
+          staffName: staffName,
+        ));
   }
 }

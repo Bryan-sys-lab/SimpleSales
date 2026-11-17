@@ -24,6 +24,7 @@ import '../ui/components/notification_sheet.dart';
 import '../screens/cash_control_sheets.dart';
 import '../ui/layout/window_size_class.dart';
 import '../widgets/sign_out_sheet.dart';
+import '../widgets/staff_pin_change_dialog.dart';
 import 'idle_guard.dart';
 import 'routes.dart';
 import 'shell_nav_bar.dart';
@@ -42,18 +43,6 @@ List<AppDestination> visibleDestinations(AppState state) {
   // split is as even as each role can make it — a cashier gets one on each
   // side, a manager two and two, an owner two and three — and so the
   // everyday destinations are the ones nearest the ball.
-  
-  // Open profile primary navigation: Jobs/Pots/Business Record instead of inventory
-  if (state.shopProfile == ShopProfile.open) {
-    return <AppDestination>[
-      AppDestination.dashboard,
-      AppDestination.openBusiness,
-      AppDestination.sell,
-      AppDestination.analytics,
-      AppDestination.more,
-      AppDestination.support,
-    ];
-  }
   
   return <AppDestination>[
     AppDestination.dashboard,
@@ -303,8 +292,6 @@ class _HomeShellState extends State<HomeShell> {
         if (destination != null && context.mounted) context.push(destination);
       case _MoreAction.reserves:
         context.push(Routes.laybys);
-      case _MoreAction.openBusiness:
-        context.push(Routes.openBusiness);
       case _MoreAction.reports:
         context.push(Routes.reports);
       case _MoreAction.switchProfile:
@@ -313,6 +300,8 @@ class _HomeShellState extends State<HomeShell> {
         // the sheet's own builder already applied it. Nothing to do here but
         // let the shell rebuild on notifyListeners.
         break;
+      case _MoreAction.changePin:
+        await showStaffPinChangeDialog(context, state);
     }
   }
 
@@ -502,9 +491,9 @@ enum _MoreAction {
   help,
   notifications,
   reserves,
-  openBusiness,
   reports,
-  switchProfile
+  switchProfile,
+  changePin
 }
 
 Future<void> showBusinessProfileSwitcher(BuildContext context) async {
@@ -629,16 +618,6 @@ class _MoreSheet extends StatelessWidget {
               context.push(Routes.exchangeScreen);
             },
           ),
-        // Open business record is now primary navigation for Open profile
-        // so it's not in the more sheet for that profile
-        if (state.shopProfile.navigation.showJobs &&
-            state.shopProfile != ShopProfile.open)
-          ListTile(
-            leading: const Icon(Icons.work_outline),
-            title: Text(AppLocalizations.of(context).moreOpenBusinessRecord),
-            subtitle: Text(AppLocalizations.of(context).moreOpenBusinessRecordSubtitle),
-            onTap: () => Navigator.pop(context, _MoreAction.openBusiness),
-          ),
         if (context.read<AppState>().canViewReports)
           ListTile(
             leading: const Icon(Icons.assessment_outlined),
@@ -650,6 +629,13 @@ class _MoreSheet extends StatelessWidget {
             leading: const Icon(Icons.tune_outlined),
             title: Text(l10n.navSettings),
             onTap: () => Navigator.pop(context, _MoreAction.settings),
+          ),
+        if (!state.isOwnerSession)
+          ListTile(
+            leading: const Icon(Icons.lock_outline),
+            title: const Text('Change my PIN'),
+            subtitle: const Text('Keep your staff account private'),
+            onTap: () => Navigator.pop(context, _MoreAction.changePin),
           ),
         ListTile(
           leading: const Icon(Icons.menu_book_outlined),

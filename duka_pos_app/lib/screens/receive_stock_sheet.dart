@@ -431,43 +431,44 @@ class _ReceiveStockSheetState extends State<ReceiveStockSheet> {
                         ),
                       ],
                     ),
-                    SizedBox(height: spacing.sm),
-                    TextField(
-                      controller: _supplierRef,
-                      decoration: InputDecoration(
-                        labelText: l10n.receiveSupplierRefLabel,
-                        hintText: l10n.receiveSupplierRefHint,
-                      ),
-                      onChanged: (String value) {
-                        _autosave();
-                      },
-                    ),
-                    SizedBox(height: spacing.sm),
-                    TextField(
-                      controller: _supplierPin,
-                      decoration: const InputDecoration(
-                        labelText: 'Supplier PIN (optional)',
-                      ),
-                      onChanged: (_) => _autosave(),
-                    ),
-                    SizedBox(height: spacing.sm),
-                    TextField(
-                      controller: _etimsInvoiceRef,
-                      decoration: const InputDecoration(
-                        labelText: 'eTIMS/TIMS invoice reference (optional)',
-                      ),
-                      onChanged: (_) => _autosave(),
-                    ),
-                    SizedBox(height: spacing.sm),
-                    TextField(
-                      controller: _inputVat,
-                      keyboardType: TextInputType.number,
-                      decoration: const InputDecoration(
-                        labelText: 'Input VAT in cents (optional)',
-                        helperText:
-                            'Leave blank until the invoice is verified.',
-                      ),
-                      onChanged: (_) => _autosave(),
+                    FormFieldGroup(
+                      children: <Widget>[
+                        TextField(
+                          controller: _supplierRef,
+                          decoration: InputDecoration(
+                            labelText: l10n.receiveSupplierRefLabel,
+                            hintText: l10n.receiveSupplierRefHint,
+                          ),
+                          onChanged: (String value) {
+                            _autosave();
+                          },
+                        ),
+                        TextField(
+                          controller: _supplierPin,
+                          decoration: const InputDecoration(
+                            labelText: 'Supplier PIN (optional)',
+                          ),
+                          onChanged: (_) => _autosave(),
+                        ),
+                        TextField(
+                          controller: _etimsInvoiceRef,
+                          decoration: const InputDecoration(
+                            labelText:
+                                'eTIMS/TIMS invoice reference (optional)',
+                          ),
+                          onChanged: (_) => _autosave(),
+                        ),
+                        TextField(
+                          controller: _inputVat,
+                          keyboardType: TextInputType.number,
+                          decoration: const InputDecoration(
+                            labelText: 'Input VAT in cents (optional)',
+                            helperText:
+                                'Leave blank until the invoice is verified.',
+                          ),
+                          onChanged: (_) => _autosave(),
+                        ),
+                      ],
                     ),
                     SizedBox(height: spacing.sm),
                     DropdownButtonFormField<String>(
@@ -479,19 +480,23 @@ class _ReceiveStockSheetState extends State<ReceiveStockSheet> {
                       items: <DropdownMenuItem<String>>[
                         DropdownMenuItem(
                           value: 'needs_review',
-                          child: Text(AppLocalizations.of(context).receiveStockNeedsReview),
+                          child: Text(AppLocalizations.of(context)
+                              .receiveStockNeedsReview),
                         ),
                         DropdownMenuItem(
                           value: 'verified',
-                          child: Text(AppLocalizations.of(context).receiveStockVerified),
+                          child: Text(AppLocalizations.of(context)
+                              .receiveStockVerified),
                         ),
                         DropdownMenuItem(
                           value: 'valid_exception',
-                          child: Text(AppLocalizations.of(context).receiveStockValidException),
+                          child: Text(AppLocalizations.of(context)
+                              .receiveStockValidException),
                         ),
                         DropdownMenuItem(
                           value: 'unmatched',
-                          child: Text(AppLocalizations.of(context).receiveStockUnmatched),
+                          child: Text(AppLocalizations.of(context)
+                              .receiveStockUnmatched),
                         ),
                       ],
                       onChanged: (value) {

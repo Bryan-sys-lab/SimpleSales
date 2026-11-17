@@ -108,6 +108,7 @@ class InventoryRepository {
       staff_id INTEGER,
       staff_name TEXT NOT NULL,
       total_cost_minor INTEGER NOT NULL DEFAULT 0,
+      paid_from TEXT NOT NULL DEFAULT 'till_cash',
       status TEXT NOT NULL DEFAULT 'posted',
       note TEXT,
       synced_to_backend INTEGER NOT NULL DEFAULT 0

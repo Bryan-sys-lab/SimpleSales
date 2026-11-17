@@ -5,9 +5,10 @@ import '../utils/money.dart';
 import 'shop_profile.dart';
 import '../models/models.dart';
 import '../db/database_helper.dart';
+import '../ui/components/controls.dart';
 
 /// Profile-specific product creation flows.
-/// 
+///
 /// Each profile gets a tailored add-product flow:
 /// - Drinks: bottle/shot/crate/keg (via ProfileProductForms)
 /// - Duka: product name + servings wording (via ProfileProductForms)
@@ -21,7 +22,7 @@ class ProfileProductForms {
   const ProfileProductForms();
 
   /// Creates a product form tailored to the profile.
-  /// 
+  ///
   /// Returns a map of field values keyed by field name.
   static Future<Map<String, dynamic>?> showForm({
     required BuildContext context,
@@ -41,23 +42,22 @@ class ProfileProductForms {
     Product? existing,
   ) async {
     final nameController = TextEditingController(text: existing?.name ?? '');
-    final categoryController = TextEditingController(text: existing?.category ?? 'Drinks');
+    final categoryController =
+        TextEditingController(text: existing?.category ?? 'Drinks');
     final costController = TextEditingController(
         text: existing?.costPrice.asMajor.toStringAsFixed(2) ?? '');
     final priceController = TextEditingController(
         text: existing?.sellPrice.asMajor.toStringAsFixed(2) ?? '');
-    final stockController = TextEditingController(
-        text: existing?.stockQty.toString() ?? '0');
-    final bottleMlController = TextEditingController(
-        text: existing?.bottleMl.toString() ?? '750');
+    final stockController =
+        TextEditingController(text: existing?.stockQty.toString() ?? '0');
+    final bottleMlController =
+        TextEditingController(text: existing?.bottleMl.toString() ?? '750');
     final halfPriceController = TextEditingController(
         text: existing?.halfPrice?.asMajor.toStringAsFixed(2) ?? '');
     final quarterPriceController = TextEditingController(
         text: existing?.quarterPrice?.asMajor.toStringAsFixed(2) ?? '');
 
     String unit = existing?.unit.wire ?? 'bottle';
-    String? packType;
-
     return await showDialog<Map<String, dynamic>>(
       context: context,
       builder: (context) => StatefulBuilder(
@@ -66,72 +66,91 @@ class ProfileProductForms {
           content: SingleChildScrollView(
             child: Column(
               mainAxisSize: MainAxisSize.min,
-              children: [
-                TextField(
-                  controller: nameController,
-                  decoration: const InputDecoration(labelText: 'Drink name'),
-                  autofocus: true,
-                ),
-                TextField(
-                  controller: categoryController,
-                  decoration: const InputDecoration(labelText: 'Category'),
-                ),
-                DropdownButtonFormField<String>(
-                  initialValue: unit,
-                  decoration: const InputDecoration(labelText: 'Unit'),
-                  items: [
-                    DropdownMenuItem(value: 'bottle', child: Text(AppLocalizations.of(context).profileFormBottle)),
-                    DropdownMenuItem(value: 'crate', child: Text(AppLocalizations.of(context).profileFormCrate)),
-                    DropdownMenuItem(value: 'keg', child: Text(AppLocalizations.of(context).profileFormKeg)),
-                    DropdownMenuItem(value: 'shot', child: Text(AppLocalizations.of(context).profileFormShot)),
-                  ],
-                  onChanged: (value) => setState(() => unit = value ?? 'bottle'),
-                ),
-                if (unit == 'bottle' || unit == 'keg')
-                  TextField(
-                    controller: bottleMlController,
-                    decoration: InputDecoration(
-                      labelText: unit == 'bottle' ? 'Bottle size (ml)' : 'Keg size (ml)',
+              children: <Widget>[
+                FormFieldGroup(
+                  children: <Widget>[
+                    TextField(
+                      controller: nameController,
+                      decoration:
+                          const InputDecoration(labelText: 'Drink name'),
+                      autofocus: true,
                     ),
-                    keyboardType: TextInputType.number,
-                  ),
-                if (unit == 'bottle')
-                  DropdownButtonFormField<String?>(
-                    initialValue: packType,
-                    decoration: const InputDecoration(labelText: 'Pack type (optional)'),
-                    items: [
-                      DropdownMenuItem(value: null, child: Text(AppLocalizations.of(context).profileFormSingleBottle)),
-                      DropdownMenuItem(value: 'crate', child: Text(AppLocalizations.of(context).profileFormCrateOfBottles)),
-                      DropdownMenuItem(value: 'carton', child: Text(AppLocalizations.of(context).profileFormCarton)),
+                    TextField(
+                      controller: categoryController,
+                      decoration: const InputDecoration(labelText: 'Category'),
+                    ),
+                    DropdownButtonFormField<String>(
+                      initialValue: unit,
+                      decoration: const InputDecoration(labelText: 'Unit'),
+                      items: [
+                        DropdownMenuItem(
+                            value: 'bottle',
+                            child: Text(AppLocalizations.of(context)
+                                .profileFormBottle)),
+                        DropdownMenuItem(
+                            value: 'crate',
+                            child: Text(
+                                AppLocalizations.of(context).profileFormCrate)),
+                        DropdownMenuItem(
+                            value: 'keg',
+                            child: Text(
+                                AppLocalizations.of(context).profileFormKeg)),
+                        DropdownMenuItem(
+                            value: 'shot',
+                            child: Text(
+                                AppLocalizations.of(context).profileFormShot)),
+                      ],
+                      onChanged: (value) =>
+                          setState(() => unit = value ?? 'bottle'),
+                    ),
+                    if (unit == 'bottle' || unit == 'keg')
+                      TextField(
+                        controller: bottleMlController,
+                        decoration: InputDecoration(
+                          labelText: unit == 'bottle'
+                              ? 'Bottle size (ml)'
+                              : 'Keg size (ml)',
+                        ),
+                        keyboardType: TextInputType.number,
+                      ),
+                    TextField(
+                      controller: costController,
+                      decoration:
+                          const InputDecoration(labelText: 'Cost (KES)'),
+                      keyboardType:
+                          TextInputType.numberWithOptions(decimal: true),
+                    ),
+                    TextField(
+                      controller: priceController,
+                      decoration: const InputDecoration(
+                          labelText: 'Selling price (KES)'),
+                      keyboardType:
+                          TextInputType.numberWithOptions(decimal: true),
+                    ),
+                    if (unit == 'bottle') ...<Widget>[
+                      TextField(
+                        controller: halfPriceController,
+                        decoration: const InputDecoration(
+                            labelText: 'Half price (KES, optional)'),
+                        keyboardType:
+                            TextInputType.numberWithOptions(decimal: true),
+                      ),
+                      TextField(
+                        controller: quarterPriceController,
+                        decoration: const InputDecoration(
+                            labelText: 'Quarter price (KES, optional)'),
+                        keyboardType:
+                            TextInputType.numberWithOptions(decimal: true),
+                      ),
                     ],
-                    onChanged: (value) => setState(() => packType = value),
-                  ),
-                TextField(
-                  controller: costController,
-                  decoration: const InputDecoration(labelText: 'Cost (KES)'),
-                  keyboardType: TextInputType.numberWithOptions(decimal: true),
-                ),
-                TextField(
-                  controller: priceController,
-                  decoration: const InputDecoration(labelText: 'Selling price (KES)'),
-                  keyboardType: TextInputType.numberWithOptions(decimal: true),
-                ),
-                if (unit == 'bottle') ...[
-                  TextField(
-                    controller: halfPriceController,
-                    decoration: const InputDecoration(labelText: 'Half price (KES, optional)'),
-                    keyboardType: TextInputType.numberWithOptions(decimal: true),
-                  ),
-                  TextField(
-                    controller: quarterPriceController,
-                    decoration: const InputDecoration(labelText: 'Quarter price (KES, optional)'),
-                    keyboardType: TextInputType.numberWithOptions(decimal: true),
-                  ),
-                ],
-                TextField(
-                  controller: stockController,
-                  decoration: const InputDecoration(labelText: 'Starting stock'),
-                  keyboardType: TextInputType.numberWithOptions(decimal: true),
+                    TextField(
+                      controller: stockController,
+                      decoration:
+                          const InputDecoration(labelText: 'Starting stock'),
+                      keyboardType:
+                          TextInputType.numberWithOptions(decimal: true),
+                    ),
+                  ],
                 ),
               ],
             ),
@@ -148,7 +167,8 @@ class ProfileProductForms {
                 final stock = double.tryParse(stockController.text);
                 final bottleMl = int.tryParse(bottleMlController.text);
                 final halfPrice = parseMoneyInput(halfPriceController.text);
-                final quarterPrice = parseMoneyInput(quarterPriceController.text);
+                final quarterPrice =
+                    parseMoneyInput(quarterPriceController.text);
 
                 if (nameController.text.isEmpty ||
                     cost == null ||
@@ -167,7 +187,6 @@ class ProfileProductForms {
                   if (bottleMl != null) 'bottle_ml': bottleMl,
                   if (halfPrice != null) 'half_price': halfPrice,
                   if (quarterPrice != null) 'quarter_price': quarterPrice,
-                  if (packType != null) 'pack_type': packType,
                 });
               },
               child: Text(AppLocalizations.of(context).profileFormSave),
@@ -183,13 +202,14 @@ class ProfileProductForms {
     Product? existing,
   ) async {
     final nameController = TextEditingController(text: existing?.name ?? '');
-    final categoryController = TextEditingController(text: existing?.category ?? 'Fashion');
+    final categoryController =
+        TextEditingController(text: existing?.category ?? 'Fashion');
     final costController = TextEditingController(
         text: existing?.costPrice.asMajor.toStringAsFixed(2) ?? '');
     final priceController = TextEditingController(
         text: existing?.sellPrice.asMajor.toStringAsFixed(2) ?? '');
-    final stockController = TextEditingController(
-        text: existing?.stockQty.toString() ?? '0');
+    final stockController =
+        TextEditingController(text: existing?.stockQty.toString() ?? '0');
 
     bool trackVariants = true; // Fashion always tracks variants
     final variants = <Map<String, dynamic>>[];
@@ -216,32 +236,44 @@ class ProfileProductForms {
           }
 
           return AlertDialog(
-            title: Text(AppLocalizations.of(context).profileFormAddFashionStyle),
+            title:
+                Text(AppLocalizations.of(context).profileFormAddFashionStyle),
             content: SingleChildScrollView(
               child: Column(
                 mainAxisSize: MainAxisSize.min,
-                children: [
-                  TextField(
-                    controller: nameController,
-                    decoration: const InputDecoration(labelText: 'Style name'),
-                    autofocus: true,
-                  ),
-                  TextField(
-                    controller: categoryController,
-                    decoration: const InputDecoration(labelText: 'Collection/Category'),
-                  ),
-                  TextField(
-                    controller: costController,
-                    decoration: const InputDecoration(labelText: 'Cost per item (KES)'),
-                    keyboardType: TextInputType.numberWithOptions(decimal: true),
-                  ),
-                  TextField(
-                    controller: priceController,
-                    decoration: const InputDecoration(labelText: 'Selling price per item (KES)'),
-                    keyboardType: TextInputType.numberWithOptions(decimal: true),
+                children: <Widget>[
+                  FormFieldGroup(
+                    children: <Widget>[
+                      TextField(
+                        controller: nameController,
+                        decoration:
+                            const InputDecoration(labelText: 'Style name'),
+                        autofocus: true,
+                      ),
+                      TextField(
+                        controller: categoryController,
+                        decoration: const InputDecoration(
+                            labelText: 'Collection/Category'),
+                      ),
+                      TextField(
+                        controller: costController,
+                        decoration: const InputDecoration(
+                            labelText: 'Cost per item (KES)'),
+                        keyboardType:
+                            TextInputType.numberWithOptions(decimal: true),
+                      ),
+                      TextField(
+                        controller: priceController,
+                        decoration: const InputDecoration(
+                            labelText: 'Selling price per item (KES)'),
+                        keyboardType:
+                            TextInputType.numberWithOptions(decimal: true),
+                      ),
+                    ],
                   ),
                   const SizedBox(height: 16),
-                  Text(AppLocalizations.of(context).profileFormVariants, style: TextStyle(fontWeight: FontWeight.bold)),
+                  Text(AppLocalizations.of(context).profileFormVariants,
+                      style: TextStyle(fontWeight: FontWeight.bold)),
                   ...variants.asMap().entries.map((entry) {
                     final index = entry.key;
                     final variant = entry.value;
@@ -251,21 +283,24 @@ class ProfileProductForms {
                         children: [
                           Expanded(
                             child: TextField(
-                              decoration: const InputDecoration(labelText: 'Variant name'),
+                              decoration: const InputDecoration(
+                                  labelText: 'Variant name'),
                               onChanged: (value) => variant['name'] = value,
                             ),
                           ),
                           const SizedBox(width: 8),
                           Expanded(
                             child: TextField(
-                              decoration: const InputDecoration(labelText: 'Size'),
+                              decoration:
+                                  const InputDecoration(labelText: 'Size'),
                               onChanged: (value) => variant['size'] = value,
                             ),
                           ),
                           const SizedBox(width: 8),
                           Expanded(
                             child: TextField(
-                              decoration: const InputDecoration(labelText: 'Colour'),
+                              decoration:
+                                  const InputDecoration(labelText: 'Colour'),
                               onChanged: (value) => variant['colour'] = value,
                             ),
                           ),
@@ -280,13 +315,16 @@ class ProfileProductForms {
                   OutlinedButton.icon(
                     onPressed: addVariant,
                     icon: const Icon(Icons.add),
-                    label: Text(AppLocalizations.of(context).profileFormAddVariant),
+                    label: Text(
+                        AppLocalizations.of(context).profileFormAddVariant),
                   ),
                   if (variants.isEmpty)
                     TextField(
                       controller: stockController,
-                      decoration: const InputDecoration(labelText: 'Total stock'),
-                      keyboardType: TextInputType.numberWithOptions(decimal: true),
+                      decoration:
+                          const InputDecoration(labelText: 'Total stock'),
+                      keyboardType:
+                          TextInputType.numberWithOptions(decimal: true),
                     ),
                 ],
               ),
@@ -336,12 +374,12 @@ class ProfileProductForms {
         text: existing?.sellPrice.asMajor.toStringAsFixed(2) ?? '');
     final costController = TextEditingController(
         text: existing?.costPrice.asMajor.toStringAsFixed(2) ?? '');
-    final stockController = TextEditingController(
-        text: existing?.stockQty.toString() ?? '0');
-    final reorderController = TextEditingController(
-        text: existing?.reorderLevel.toString() ?? '0');
-    final unitController = TextEditingController(
-        text: existing?.unit.wire ?? 'each');
+    final stockController =
+        TextEditingController(text: existing?.stockQty.toString() ?? '0');
+    final reorderController =
+        TextEditingController(text: existing?.reorderLevel.toString() ?? '0');
+    final unitController =
+        TextEditingController(text: existing?.unit.wire ?? 'each');
 
     var optionalStock = existing != null;
     var selectedPoolId = existing?.costPoolId;
@@ -365,68 +403,88 @@ class ProfileProductForms {
             loadPools();
           }
           return AlertDialog(
-            title: Text(AppLocalizations.of(context).profileFormAddItemOrService),
+            title:
+                Text(AppLocalizations.of(context).profileFormAddItemOrService),
             content: SingleChildScrollView(
               child: Column(
                 mainAxisSize: MainAxisSize.min,
-                children: [
-                  TextField(
-                    controller: nameController,
-                    decoration: const InputDecoration(labelText: 'Item or service name'),
-                    autofocus: true,
-                  ),
-                  TextField(
-                    controller: priceController,
-                    decoration: const InputDecoration(labelText: 'Price (KES)'),
-                    keyboardType: TextInputType.numberWithOptions(decimal: true),
-                  ),
-                  CheckboxListTile(
-                    title: Text(AppLocalizations.of(context).profileFormTrackStock),
-                    value: optionalStock,
-                    onChanged: (value) => setState(() => optionalStock = value ?? false),
-                    controlAffinity: ListTileControlAffinity.leading,
-                  ),
-                  if (optionalStock) ...[
-                    TextField(
-                      controller: unitController,
-                      decoration: const InputDecoration(labelText: 'Unit (e.g. each, kg, litre, bale, piece)'),
-                    ),
-                    TextField(
-                      controller: costController,
-                      decoration: const InputDecoration(labelText: 'Cost (KES, optional)'),
-                      keyboardType: TextInputType.numberWithOptions(decimal: true),
-                    ),
-                    TextField(
-                      controller: stockController,
-                      decoration: const InputDecoration(labelText: 'Starting stock (optional)'),
-                      keyboardType: TextInputType.numberWithOptions(decimal: true),
-                    ),
-                    TextField(
-                      controller: reorderController,
-                      decoration: const InputDecoration(
-                        labelText: 'Reorder level (optional)',
-                        helperText: 'Alert when stock drops to this level',
+                children: <Widget>[
+                  FormFieldGroup(
+                    children: <Widget>[
+                      TextField(
+                        controller: nameController,
+                        decoration: const InputDecoration(
+                            labelText: 'Item or service name'),
+                        autofocus: true,
                       ),
-                      keyboardType: TextInputType.numberWithOptions(decimal: true),
-                    ),
-                    SizedBox(height: 12),
-                    DropdownButtonFormField<int?>(
-                      initialValue: selectedPoolId,
-                      decoration: const InputDecoration(
-                        labelText: 'Link to cost group (optional)',
-                        helperText: 'Leave unlinked for items with no cost group',
+                      TextField(
+                        controller: priceController,
+                        decoration:
+                            const InputDecoration(labelText: 'Price (KES)'),
+                        keyboardType:
+                            TextInputType.numberWithOptions(decimal: true),
                       ),
-                      items: <DropdownMenuItem<int?>>[
-                        const DropdownMenuItem<int?>(value: null, child: Text('None')),
-                        for (final pool in pools)
-                          DropdownMenuItem<int?>(
-                            value: (pool['id'] as num).toInt(),
-                            child: Text(pool['name'] as String? ?? 'Untitled group'),
+                      CheckboxListTile(
+                        title: Text(
+                            AppLocalizations.of(context).profileFormTrackStock),
+                        value: optionalStock,
+                        onChanged: (value) =>
+                            setState(() => optionalStock = value ?? false),
+                        controlAffinity: ListTileControlAffinity.leading,
+                      ),
+                      if (optionalStock) ...<Widget>[
+                        TextField(
+                          controller: unitController,
+                          decoration: const InputDecoration(
+                              labelText:
+                                  'Unit (e.g. each, kg, litre, bale, piece)'),
+                        ),
+                        TextField(
+                          controller: costController,
+                          decoration: const InputDecoration(
+                              labelText: 'Cost (KES, optional)'),
+                          keyboardType:
+                              TextInputType.numberWithOptions(decimal: true),
+                        ),
+                        TextField(
+                          controller: stockController,
+                          decoration: const InputDecoration(
+                              labelText: 'Starting stock (optional)'),
+                          keyboardType:
+                              TextInputType.numberWithOptions(decimal: true),
+                        ),
+                        TextField(
+                          controller: reorderController,
+                          decoration: const InputDecoration(
+                            labelText: 'Reorder level (optional)',
+                            helperText: 'Alert when stock drops to this level',
                           ),
+                          keyboardType:
+                              TextInputType.numberWithOptions(decimal: true),
+                        ),
+                        SizedBox(height: 12),
+                        DropdownButtonFormField<int?>(
+                          initialValue: selectedPoolId,
+                          decoration: const InputDecoration(
+                            labelText: 'Link to cost group (optional)',
+                            helperText:
+                                'Leave unlinked for items with no cost group',
+                          ),
+                          items: <DropdownMenuItem<int?>>[
+                            const DropdownMenuItem<int?>(
+                                value: null, child: Text('None')),
+                            for (final pool in pools)
+                              DropdownMenuItem<int?>(
+                                value: (pool['id'] as num).toInt(),
+                                child: Text(pool['name'] as String? ??
+                                    'Untitled group'),
+                              ),
+                          ],
+                          onChanged: (v) => setState(() => selectedPoolId = v),
+                        ),
                       ],
-                      onChanged: (v) => setState(() => selectedPoolId = v),
-                    ),
-                  ],
+                    ],
+                  ),
                 ],
               ),
             ),
@@ -438,9 +496,13 @@ class ProfileProductForms {
               FilledButton(
                 onPressed: () {
                   final price = parseMoneyInput(priceController.text);
-                  final cost = optionalStock ? parseMoneyInput(costController.text) : 0;
-                  final stock = optionalStock ? double.tryParse(stockController.text) : 0;
-                  final reorder = optionalStock ? double.tryParse(reorderController.text) : 0;
+                  final cost =
+                      optionalStock ? parseMoneyInput(costController.text) : 0;
+                  final stock =
+                      optionalStock ? double.tryParse(stockController.text) : 0;
+                  final reorder = optionalStock
+                      ? double.tryParse(reorderController.text)
+                      : 0;
 
                   if (nameController.text.isEmpty || price == null) {
                     return;
@@ -453,7 +515,11 @@ class ProfileProductForms {
                     'cost': cost ?? 0,
                     'stock': stock ?? 0,
                     'reorder_level': reorder ?? 0,
-                    'unit': optionalStock ? (unitController.text.trim().isEmpty ? 'each' : unitController.text.trim()) : 'each',
+                    'unit': optionalStock
+                        ? (unitController.text.trim().isEmpty
+                            ? 'each'
+                            : unitController.text.trim())
+                        : 'each',
                     'track_stock': optionalStock,
                     'cost_pool_id': selectedPoolId,
                   });
@@ -473,14 +539,14 @@ class ProfileProductForms {
   ) async {
     final l10n = AppLocalizations.of(context);
     final nameController = TextEditingController(text: existing?.name ?? '');
-    final categoryController = TextEditingController(
-        text: existing?.category ?? 'General');
+    final categoryController =
+        TextEditingController(text: existing?.category ?? 'General');
     final costController = TextEditingController(
         text: existing?.costPrice.asMajor.toStringAsFixed(2) ?? '');
     final priceController = TextEditingController(
         text: existing?.sellPrice.asMajor.toStringAsFixed(2) ?? '');
-    final stockController = TextEditingController(
-        text: existing?.stockQty.toString() ?? '0');
+    final stockController =
+        TextEditingController(text: existing?.stockQty.toString() ?? '0');
 
     return await showDialog<Map<String, dynamic>>(
       context: context,
@@ -490,32 +556,41 @@ class ProfileProductForms {
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: <Widget>[
-              TextField(
-                controller: nameController,
-                decoration: InputDecoration(
-                  labelText: l10n.dukaFieldProductName,
-                  hintText: l10n.dukaFieldProductNameHint,
-                ),
-                autofocus: true,
-              ),
-              TextField(
-                controller: categoryController,
-                decoration: const InputDecoration(labelText: 'Category'),
-              ),
-              TextField(
-                controller: costController,
-                decoration: const InputDecoration(labelText: 'Cost (KES)'),
-                keyboardType: TextInputType.numberWithOptions(decimal: true),
-              ),
-              TextField(
-                controller: priceController,
-                decoration: const InputDecoration(labelText: 'Selling price (KES)'),
-                keyboardType: TextInputType.numberWithOptions(decimal: true),
-              ),
-              TextField(
-                controller: stockController,
-                decoration: const InputDecoration(labelText: 'Starting stock'),
-                keyboardType: TextInputType.numberWithOptions(decimal: true),
+              FormFieldGroup(
+                children: <Widget>[
+                  TextField(
+                    controller: nameController,
+                    decoration: InputDecoration(
+                      labelText: l10n.dukaFieldProductName,
+                      hintText: l10n.dukaFieldProductNameHint,
+                    ),
+                    autofocus: true,
+                  ),
+                  TextField(
+                    controller: categoryController,
+                    decoration: const InputDecoration(labelText: 'Category'),
+                  ),
+                  TextField(
+                    controller: costController,
+                    decoration: const InputDecoration(labelText: 'Cost (KES)'),
+                    keyboardType:
+                        TextInputType.numberWithOptions(decimal: true),
+                  ),
+                  TextField(
+                    controller: priceController,
+                    decoration:
+                        const InputDecoration(labelText: 'Selling price (KES)'),
+                    keyboardType:
+                        TextInputType.numberWithOptions(decimal: true),
+                  ),
+                  TextField(
+                    controller: stockController,
+                    decoration:
+                        const InputDecoration(labelText: 'Starting stock'),
+                    keyboardType:
+                        TextInputType.numberWithOptions(decimal: true),
+                  ),
+                ],
               ),
             ],
           ),

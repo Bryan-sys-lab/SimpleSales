@@ -127,7 +127,10 @@ class FinancialEventContract {
     'expense_payment': FinancialEventSemantics(
         sourceTypes: <String>{'expense_payment'}, cash: true, payable: true),
     'purchase': FinancialEventSemantics(
-        sourceTypes: <String>{'stock_receipt'}, payable: true, inventory: true),
+        sourceTypes: <String>{'stock_receipt'},
+        cash: true,
+        payable: true,
+        inventory: true),
     'purchase_void': FinancialEventSemantics(
         sourceTypes: <String>{'stock_receipt'}, payable: true, inventory: true),
     'refund': FinancialEventSemantics(
@@ -169,21 +172,6 @@ class FinancialEventContract {
         sourceTypes: <String>{'cost_pool_entry'}, cash: true, payable: true),
     'cost_pool_allocation': FinancialEventSemantics(
         sourceTypes: <String>{'sale_pool_allocation'}, directCost: true),
-    'job_cost': FinancialEventSemantics(
-        sourceTypes: <String>{'job_cost'},
-        directCost: true,
-        cash: true,
-        payable: true),
-    'job_completion': FinancialEventSemantics(
-        sourceTypes: <String>{'job'},
-        revenue: true,
-        receivable: true,
-        deposit: true),
-    'job_payment': FinancialEventSemantics(
-        sourceTypes: <String>{'job_payment'},
-        cash: true,
-        receivable: true,
-        deposit: true),
     'owner_transaction': FinancialEventSemantics(
         sourceTypes: <String>{'owner_transaction'}, cash: true),
     'till_movement': FinancialEventSemantics(

@@ -18,6 +18,8 @@ import '../services/printer/printer_config.dart';
 import '../services/etims/etims_service.dart';
 import '../utils/money.dart';
 import '../theme/app_colors.dart';
+import '../ui/components/states.dart';
+import '../routing/routes.dart';
 
 /// A compact owner/manager view of work that still needs reconciliation.
 class SyncCenterScreen extends StatefulWidget {
@@ -147,7 +149,8 @@ class _SyncCenterScreenState extends State<SyncCenterScreen>
     } catch (_) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-        content: Text(AppLocalizations.of(context).kraCouldNotBeReachedTheReceiptsRemainQueuedForTheNextConnection),
+        content: Text(AppLocalizations.of(context)
+            .kraCouldNotBeReachedTheReceiptsRemainQueuedForTheNextConnection),
       ));
     } finally {
       if (mounted) setState(() => _syncing = false);
@@ -236,7 +239,9 @@ class _SyncCenterScreenState extends State<SyncCenterScreen>
     } catch (error) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(AppLocalizations.of(context).syncCenterCouldNotResolveConflict(error))),
+        SnackBar(
+            content: Text(AppLocalizations.of(context)
+                .syncCenterCouldNotResolveConflict(error))),
       );
     }
   }
@@ -248,7 +253,9 @@ class _SyncCenterScreenState extends State<SyncCenterScreen>
     if (!allowed) {
       return Scaffold(
         appBar: AppBar(title: Text(AppLocalizations.of(context).syncCenter)),
-        body: Center(child: Text(AppLocalizations.of(context).onlyAManagerCanViewSyncCenter)),
+        body: Center(
+            child: Text(
+                AppLocalizations.of(context).onlyAManagerCanViewSyncCenter)),
       );
     }
     return Scaffold(
@@ -279,7 +286,7 @@ class _SyncCenterScreenState extends State<SyncCenterScreen>
       body: _loading
           ? const Center(child: CircularProgressIndicator())
           : _error != null
-              ? Center(child: Text(_error!))
+              ? ErrorStateView(message: _error!, onRetry: _load)
               : RefreshIndicator(
                   onRefresh: _load,
                   child: ListView(
@@ -297,37 +304,43 @@ class _SyncCenterScreenState extends State<SyncCenterScreen>
                             ListTile(
                               contentPadding: EdgeInsets.zero,
                               dense: true,
-                              title: Text(AppLocalizations.of(context).rejectedReceiptsToRetry),
-                              trailing: TextButton(
+                              title: Text(AppLocalizations.of(context)
+                                  .rejectedReceiptsToRetry),
+                              trailing: ActionChip(
+                                avatar: const Icon(Icons.refresh, size: 16),
                                 onPressed: _syncing
                                     ? null
                                     : () => _retryEtims(rejected: true),
-                                child: Text(AppLocalizations.of(context).retry),
+                                label: Text(AppLocalizations.of(context).retry),
                               ),
                             ),
                           ListTile(
                             contentPadding: EdgeInsets.zero,
                             dense: true,
-                            title: Text(AppLocalizations.of(context).unverifiedPayments),
+                            title: Text(AppLocalizations.of(context)
+                                .unverifiedPayments),
                             trailing: _attention!.unverifiedPayments == 0
                                 ? const Text('0')
-                                : TextButton(
+                                : ActionChip(
+                                    avatar: const Icon(Icons.open_in_new, size: 16),
                                     onPressed: () => context
-                                        .push('/settings/incoming-payments'),
-                                    child: Text(
+                                        .push(Routes.incomingPayments),
+                                    label: Text(
                                         'Open (${_attention!.unverifiedPayments})'),
                                   ),
                           ),
                           ListTile(
                             contentPadding: EdgeInsets.zero,
                             dense: true,
-                            title: Text(AppLocalizations.of(context).unclaimedMPesa),
+                            title: Text(
+                                AppLocalizations.of(context).unclaimedMPesa),
                             trailing: _unclaimed == 0
                                 ? const Text('0')
-                                : TextButton(
+                                : ActionChip(
+                                    avatar: const Icon(Icons.open_in_new, size: 16),
                                     onPressed: () => context
-                                        .push('/settings/incoming-payments'),
-                                    child: Text('Open ($_unclaimed)'),
+                                        .push(Routes.incomingPayments),
+                                    label: Text('Open ($_unclaimed)'),
                                   ),
                           ),
                           _status('eTIMS queue rows', _etims.length),
@@ -349,7 +362,8 @@ class _SyncCenterScreenState extends State<SyncCenterScreen>
                             ListTile(
                               contentPadding: EdgeInsets.zero,
                               dense: true,
-                              title: Text(AppLocalizations.of(context).lastLocalBackup),
+                              title: Text(
+                                  AppLocalizations.of(context).lastLocalBackup),
                               trailing: Text(_lastBackup!.toLocal().toString()),
                             ),
                           _status('Unverified sales', _unverified.length),
@@ -391,7 +405,8 @@ class _SyncCenterScreenState extends State<SyncCenterScreen>
                           ListTile(
                             contentPadding: EdgeInsets.zero,
                             dense: true,
-                            title: Text(AppLocalizations.of(context).localStorageAccess),
+                            title: Text(AppLocalizations.of(context)
+                                .localStorageAccess),
                             trailing: Text(
                               _storageAvailable ? 'Available' : 'Unavailable',
                               style: TextStyle(
@@ -416,7 +431,8 @@ class _SyncCenterScreenState extends State<SyncCenterScreen>
                                     style:
                                         TextStyle(fontWeight: FontWeight.w700)),
                                 const SizedBox(height: 4),
-                                Text(AppLocalizations.of(context).theseOfflineSalesCouldNotReserveStockAfterAnotherTillSoldTheLastUnitsTheyRemainQueuedAndAreNotSilentlyDiscarded),
+                                Text(AppLocalizations.of(context)
+                                    .theseOfflineSalesCouldNotReserveStockAfterAnotherTillSoldTheLastUnitsTheyRemainQueuedAndAreNotSilentlyDiscarded),
                                 for (final conflict in _conflicts)
                                   ListTile(
                                     contentPadding: EdgeInsets.zero,
@@ -429,7 +445,8 @@ class _SyncCenterScreenState extends State<SyncCenterScreen>
                                     trailing: TextButton(
                                       onPressed: () =>
                                           _reviewConflict(conflict),
-                                      child: Text(AppLocalizations.of(context).review),
+                                      child: Text(
+                                          AppLocalizations.of(context).review),
                                     ),
                                   ),
                               ],
@@ -484,7 +501,8 @@ class _SyncCenterScreenState extends State<SyncCenterScreen>
                                         ? null
                                         : () => _retryEtims(rejected: false),
                                     icon: const Icon(Icons.sync),
-                                    label: Text(AppLocalizations.of(context).retryQueuedReceipts),
+                                    label: Text(AppLocalizations.of(context)
+                                        .retryQueuedReceipts),
                                   ),
                                 ),
                                 for (final receipt in _etims.take(5))

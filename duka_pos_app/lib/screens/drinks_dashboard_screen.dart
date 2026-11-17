@@ -4,14 +4,13 @@ import 'package:go_router/go_router.dart';
 import 'package:provider/provider.dart';
 
 import '../app_brand.dart';
-import '../db/database_helper.dart';
 import '../l10n/generated/app_localizations.dart';
 import '../models/models.dart';
 import '../profile/profile_capabilities.dart';
-import '../profile/profile_product_forms.dart';
 import '../profile/profile_terminology.dart';
 import '../profile/shop_profile.dart';
 import '../routing/routes.dart';
+import '../routing/home_shell.dart' show markCatalogueChanged;
 import '../services/analytics.dart';
 import '../services/app_state.dart';
 import '../services/roles.dart';
@@ -24,11 +23,11 @@ import '../ui/components/status.dart';
 import '../ui/components/surface.dart';
 import '../ui/layout/page.dart';
 import '../utils/money.dart';
-import '../utils/units.dart';
 import '../widgets/backup_reminder_banner.dart';
 import 'dashboard_attention.dart';
 import 'dashboard_sections.dart';
 import 'dashboard_shared.dart';
+import 'inventory_screen.dart' show ProductEditor;
 
 const double _drinksDashboardMaxWidth = 1200;
 const double _drinksTwoColumnBreakpoint = 840;
@@ -133,6 +132,7 @@ class DrinksDashboardScreen extends StatelessWidget {
     );
 
     final Widget financialHero = DashboardMoneyHero(
+      profile: ShopProfile.drinks,
       label: l10n.dashboardNetSalesToday,
       amount: data.totals.total,
       primaryActionLabel: l10n.dashboardNewSale,
@@ -156,6 +156,19 @@ class DrinksDashboardScreen extends StatelessWidget {
         tone: DashboardKpiTone.expense,
       ),
       DashboardKpiData(
+        label: 'Average sale',
+        value: formatMoney(data.totals.averageBasket),
+        icon: Icons.shopping_basket_outlined,
+        tone: DashboardKpiTone.neutral,
+      ),
+      DashboardKpiData(
+        label: l10n.dashboardStockValue,
+        value: formatMoney(data.stockValue),
+        icon: Icons.inventory_2_outlined,
+        tone: DashboardKpiTone.info,
+        onTap: onOpenInventory,
+      ),
+      DashboardKpiData(
         label: l10n.dashboardMeasuredVolume,
         value: '${data.drinksAnalytics.litresSold.toStringAsFixed(1)} L',
         icon: Icons.local_bar_outlined,
@@ -163,7 +176,8 @@ class DrinksDashboardScreen extends StatelessWidget {
       ),
       DashboardKpiData(
         label: l10n.dashboardWasteValue,
-        value: formatMoney(Money.fromMinor(data.drinksAnalytics.wasteValueMinor)),
+        value:
+            formatMoney(Money.fromMinor(data.drinksAnalytics.wasteValueMinor)),
         icon: Icons.delete_outline,
         tone: DashboardKpiTone.pending,
       ),
@@ -198,14 +212,14 @@ class DrinksDashboardScreen extends StatelessWidget {
       ),
     );
 
-  final Widget beverageStock = data.tanks.isNotEmpty
-      ? BeverageStockPreview(
-          tanks: data.tanks,
-          tankSales: data.tankSales,
-          onOpenTankRegister: () => context.push(Routes.tankRegister),
-          onOpenPackaged: () => context.push(Routes.inventory),
-          onOpenMeasured: () => context.push(Routes.servings),
-        )
+    final Widget beverageStock = data.tanks.isNotEmpty
+        ? BeverageStockPreview(
+            tanks: data.tanks,
+            tankSales: data.tankSales,
+            onOpenTankRegister: () => context.push(Routes.tankRegister),
+            onOpenPackaged: () => context.push(Routes.inventory),
+            onOpenMeasured: () => context.push(Routes.servings),
+          )
         : const SizedBox.shrink();
 
     final bool twoColumns =
@@ -213,6 +227,8 @@ class DrinksDashboardScreen extends StatelessWidget {
 
     final List<Widget> body = <Widget>[
       header,
+      if (appState.isOwnerSession)
+        DashboardPortfolioCard(onOpen: () => context.push(Routes.portfolio)),
       if (attention != null)
         Semantics(
           sortKey: const OrdinalSortKey(0),
@@ -227,11 +243,14 @@ class DrinksDashboardScreen extends StatelessWidget {
       SizedBox(height: spacing.lg),
       DashboardPanel(
         title: l10n.dashboardHeldCarts,
-        topAccent: DashboardProfilePalette.forProfile(ShopProfile.drinks, brightness: Theme.of(context).brightness).accent,
+        topAccent: DashboardProfilePalette.forProfile(ShopProfile.drinks,
+                brightness: Theme.of(context).brightness)
+            .accent,
         child: Padding(
           padding: EdgeInsets.all(spacing.md),
           child: Text('${data.drinksAnalytics.openTabs}',
-              style: AppTypography.money(context, size: 24, weight: FontWeight.w700)),
+              style: AppTypography.money(context,
+                  size: 24, weight: FontWeight.w700)),
         ),
       ),
       SizedBox(height: spacing.lg),
@@ -240,7 +259,8 @@ class DrinksDashboardScreen extends StatelessWidget {
       if (appState.shopProfile.capabilities.trackStock) ...<Widget>[
         Semantics(
           button: true,
-          label: 'Add ${appState.shopProfile.terminologyLocalized(AppLocalizations.of(context)).product}',
+          label:
+              'Add ${appState.shopProfile.terminologyLocalized(AppLocalizations.of(context)).product}',
           child: ExcludeSemantics(
             child: SizedBox(
               width: double.infinity,
@@ -272,7 +292,7 @@ class DrinksDashboardScreen extends StatelessWidget {
                     sales,
                     topProducts,
                     beverageStock,
-                      if (data.tanks.isNotEmpty)
+                    if (data.tanks.isNotEmpty)
                       _TankCards(
                         tanks: data.tanks,
                         tankSales: data.tankSales,
@@ -348,37 +368,17 @@ class DrinksDashboardScreen extends StatelessWidget {
   /// point for the profile-defined product creation capability, gated on the
   /// profile tracking stock.
   Future<void> _openAddProduct(BuildContext context) async {
-    final result = await ProfileProductForms.showForm(
+    await showModalBottomSheet<void>(
       context: context,
-      profile: ShopProfile.drinks,
-    );
-    if (!context.mounted || result == null) return;
-    final unit = ProductUnit.parse(result['unit'] as String?);
-    final cost = (result['cost'] as num?)?.toDouble() ?? 0;
-    final price = (result['price'] as num?)?.toDouble() ?? 0;
-    final stock = (result['stock'] as num?)?.toDouble() ?? 0;
-    final bottleMl = (result['bottle_ml'] as num?)?.toInt() ?? 750;
-    final halfPrice = (result['half_price'] as num?)?.toDouble();
-    final quarterPrice = (result['quarter_price'] as num?)?.toDouble();
-    final packType = result['pack_type'] as String?;
-    final product = Product(
-      name: result['name'] as String,
-      category: (result['category'] as String? ?? 'Drinks'),
-      costPrice: Money.fromMajor(cost),
-      sellPrice: Money.fromMajor(price),
-      stockQty: stock,
-      reorderLevel: 5,
-      bottleMl: bottleMl,
-      unit: unit,
-      halfPrice: halfPrice != null ? Money.fromMajor(halfPrice) : null,
-      quarterPrice:
-          quarterPrice != null ? Money.fromMajor(quarterPrice) : null,
-      updatedAt: DateTime.now().toIso8601String(),
-    );
-    await DatabaseHelper.instance.upsertProduct(product);
-    if (!context.mounted) return;
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text('${product.name} saved (pack: $packType)')),
+      isScrollControlled: true,
+      builder: (_) => ProductEditor(
+        existing: null,
+        allowVariants: false,
+        shopProfile: ShopProfile.drinks,
+        onSaved: () {
+          markCatalogueChanged();
+        },
+      ),
     );
   }
 }
@@ -410,16 +410,17 @@ class _DrinksShiftOverview extends StatelessWidget {
   Widget build(BuildContext context) {
     final int activeTanks = tanks.where((p) => p.active).length;
     final int remainingLitres = tanks.fold<int>(
-      0,
-      (sum, p) => sum + p.bottleMl.round(),
-    ) ~/ 1000;
+          0,
+          (sum, p) => sum + p.bottleMl.round(),
+        ) ~/
+        1000;
 
     return DashboardPanel(
       sortKey: 2,
       title: 'Shift overview',
-      trailing: TextButton.icon(
+      trailing: ActionChip(
+        avatar: const Icon(Icons.arrow_outward, size: 16),
         onPressed: onOpenShift,
-        icon: const Icon(Icons.chevron_right, size: 18),
         label: Text(l10n.dashboardViewAll),
       ),
       padChild: false,
@@ -582,9 +583,9 @@ class BeverageStockPreview extends StatelessWidget {
     return DashboardPanel(
       sortKey: 3,
       title: l10n.dashboardBeverageStock,
-      trailing: TextButton.icon(
+      trailing: ActionChip(
+        avatar: const Icon(Icons.arrow_outward, size: 16),
         onPressed: onOpenTankRegister,
-        icon: const Icon(Icons.chevron_right, size: 18),
         label: Text(l10n.dashboardViewAll),
       ),
       child: Column(
@@ -758,8 +759,8 @@ class _TankCards extends StatelessWidget {
                                 style: AppTypography.of(context)
                                     .bodySmall
                                     ?.copyWith(
-                                  color: colors.onSurfaceMuted,
-                                ),
+                                      color: colors.onSurfaceMuted,
+                                    ),
                               ),
                             ],
                           ),
@@ -767,11 +768,11 @@ class _TankCards extends StatelessWidget {
                         Text(
                           breakEven.$2,
                           style: AppTypography.of(context).bodyLarge?.copyWith(
-                            fontWeight: FontWeight.w600,
-                            color: breakEven.$3 == StatusTone.success
-                                ? colors.success
-                                : colors.warning,
-                          ),
+                                fontWeight: FontWeight.w600,
+                                color: breakEven.$3 == StatusTone.success
+                                    ? colors.success
+                                    : colors.warning,
+                              ),
                         ),
                       ],
                     ),
@@ -787,16 +788,15 @@ class _TankCards extends StatelessWidget {
                                 style: AppTypography.of(context)
                                     .bodySmall
                                     ?.copyWith(
-                                  color: colors.onSurfaceMuted,
-                                ),
+                                      color: colors.onSurfaceMuted,
+                                    ),
                               ),
                               SizedBox(height: 2),
                               Text(
                                 formatMoney(
                                   tankSales[tank.id] != null
                                       ? Money.fromMinor(
-                                          tankSales[tank.id]!
-                                              .revenueMinor,
+                                          tankSales[tank.id]!.revenueMinor,
                                         )
                                       : Money.zero,
                                 ),
@@ -813,8 +813,8 @@ class _TankCards extends StatelessWidget {
                                 style: AppTypography.of(context)
                                     .bodySmall
                                     ?.copyWith(
-                                  color: colors.onSurfaceMuted,
-                                ),
+                                      color: colors.onSurfaceMuted,
+                                    ),
                               ),
                               SizedBox(height: 2),
                               Text(

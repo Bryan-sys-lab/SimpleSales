@@ -28,6 +28,6 @@ enum ShopProfile {
         ShopProfile.drinks => 'Measured drinks, pours, tabs and crates',
         ShopProfile.duka => 'Products, counted goods and everyday shop sales',
         ShopProfile.fashion => 'Styles, sizes, colours, lay-by and exchanges',
-        ShopProfile.open => 'Money-first records with optional stock and jobs',
+        ShopProfile.open => 'Products, measured goods, stock and Cost of Goods',
       };
 }

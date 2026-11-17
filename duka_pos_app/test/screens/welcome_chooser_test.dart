@@ -104,30 +104,21 @@ void main() {
         reason: 'setup must not compete with the daily action');
   });
 
-  testWidgets('the vector mark is drawn, not a raster asset',
+  testWidgets('the supplied safe mark is used consistently',
       (WidgetTester tester) async {
-    // A PNG of a mark the app draws as paths is the one place the brand lands
-    // fuzzy, and this is the first screen a shop owner sees. The launcher icon
-    // and the app should finally agree.
+    // The in-app mark and launcher now share the supplied SimpleSales safe
+    // artwork. This prevents the old geometric mark from drifting from the
+    // approved green brand icon.
     await pumpChooser(tester);
 
     expect(find.byType(SimplePosMark), findsOneWidget);
 
-    // Scoped to the APP'S OWN brand, which is the point of the rule.
-    //
-    // The VENDOR's wordmark at the foot of this screen IS a raster asset: it
-    // is a different company's logo, drawn by them, and this app does not draw
-    // it as paths. What must never happen is the app's OWN mark arriving as a
-    // PNG — that is the launcher icon and the app disagreeing about the brand.
-    for (final Image image in tester.widgetList<Image>(find.byType(Image))) {
-      final AssetImage? asset = image.image as AssetImage?;
-      expect(
-        asset?.assetName,
-        isNot(startsWith('assets/branding/simple_pos')),
-        reason:
-            'the app\'s own brand is drawn as paths, never shipped as a PNG',
-      );
-    }
+    final bool hasSafeMark = tester.widgetList<Image>(find.byType(Image)).any(
+      (Image image) =>
+          (image.image as AssetImage?)?.assetName ==
+          'assets/branding/simple_sales_s_mark.png',
+    );
+    expect(hasSafeMark, isTrue);
   });
 
   testWidgets('a shop that is already set up says so',

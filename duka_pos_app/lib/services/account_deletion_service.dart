@@ -373,10 +373,6 @@ class AccountDeletionService {
       await _eraseColumn(txn, 'cost_pools', 'name', key);
       await _eraseColumn(txn, 'cost_pools', 'note', key);
       await _eraseColumn(txn, 'cost_pool_entries', 'description', key);
-      await _eraseColumn(txn, 'jobs', 'customer_name', key);
-      await _eraseColumn(txn, 'jobs', 'title', key);
-      await _eraseColumn(txn, 'job_costs', 'description', key);
-      await _eraseColumn(txn, 'job_payments', 'reference', key);
       await _eraseColumn(txn, 'expense_payments', 'reference', key);
       await _eraseColumn(txn, 'pending_payments', 'phone_number', key);
       await _eraseColumn(txn, 'pending_payments', 'staff_name', key);

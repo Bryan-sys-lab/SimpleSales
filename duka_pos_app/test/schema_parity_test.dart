@@ -7,14 +7,11 @@ import 'package:sqflite_common_ffi/sqflite_ffi.dart';
 /// repository's `createTable`), while an upgraded till and `openInMemoryForTests`
 /// build them through the older definitions in `database_helper.dart`. When the
 /// two disagree, code that works in every other test fails on a fresh install
-/// ("table job_payments has no column named uuid").
+/// (for example, a table missing a column that a repository writes).
 ///
 /// These are the tables whose columns code actually writes. Add a table here
 /// when you touch both definitions of it.
 const List<String> _guardedTables = <String>[
-  'jobs',
-  'job_costs',
-  'job_payments',
   'cost_pools',
   'cost_pool_entries',
   'sale_pool_allocations',
@@ -23,6 +20,8 @@ const List<String> _guardedTables = <String>[
   'credit_ledger',
   'cup_size_suggestions',
   'discount_reasons',
+  'stock_receipts',
+  'stock_receipt_items',
 ];
 
 Future<Map<String, List<String>>> _columnsByTable(Database db) async {

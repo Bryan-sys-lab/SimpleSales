@@ -40,6 +40,14 @@ enum SimplePosMarkVariant {
   monochrome,
 }
 
+/// The supplied, reviewed safe mark used by the app and platform icon pipeline.
+const String kBrandSafeMarkAsset =
+    'assets/branding/simple_sales_s_mark.png';
+
+/// The supplied full SimpleSales lockup, used where the wordmark is legible.
+const String kBrandLockupAsset =
+    'assets/branding/Glossy SimpleSales App Icon.png';
+
 /// The source SVG's coordinate space. Every dimension below is expressed in it
 /// and scaled by `size / kBrandViewBox` at paint time.
 const double kBrandViewBox = 512;
@@ -97,6 +105,11 @@ class SimplePosMark extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final bool isDark = Theme.of(context).brightness == Brightness.dark;
+    final bool useSuppliedMark =
+        variant == SimplePosMarkVariant.full &&
+        plate == null &&
+        glyph == null &&
+        screen == null;
 
     return Semantics(
       image: true,
@@ -104,16 +117,45 @@ class SimplePosMark extends StatelessWidget {
       child: ExcludeSemantics(
         child: SizedBox.square(
           dimension: size,
-          child: CustomPaint(
-            painter: SimplePosMarkPainter(
-              variant: variant,
-              plate: plate ?? kBrandInk,
-              glyph: glyph ?? kBrandPaper,
-              screen: screen ?? (isDark ? kBrandScreenDark : kBrandScreenLight),
-              scale: size / kBrandViewBox,
-            ),
+          child: useSuppliedMark
+              ? Image.asset(kBrandSafeMarkAsset, fit: BoxFit.cover)
+              : CustomPaint(
+                  painter: SimplePosMarkPainter(
+                    variant: variant,
+                    plate: plate ?? kBrandInk,
+                    glyph: glyph ?? kBrandPaper,
+                    screen: screen ??
+                        (isDark ? kBrandScreenDark : kBrandScreenLight),
+                    scale: size / kBrandViewBox,
+                  ),
+                ),
           ),
         ),
+      );
+  }
+}
+
+/// The supplied full lockup for startup and other spacious brand moments.
+class SimpleSalesLockup extends StatelessWidget {
+  const SimpleSalesLockup({
+    this.width = 280,
+    this.semanticLabel = SimplePosBrand.appName,
+    super.key,
+  });
+
+  final double width;
+  final String semanticLabel;
+
+  @override
+  Widget build(BuildContext context) {
+    return Semantics(
+      image: true,
+      label: semanticLabel,
+      child: Image.asset(
+        kBrandLockupAsset,
+        width: width,
+        fit: BoxFit.contain,
+        excludeFromSemantics: true,
       ),
     );
   }

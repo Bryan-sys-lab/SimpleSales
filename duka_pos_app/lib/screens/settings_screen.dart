@@ -90,10 +90,12 @@ class _MpesaChannelDetails {
   const _MpesaChannelDetails({
     required this.channelType,
     required this.merchantNumber,
+    this.accountNumber = '',
   });
 
   final String channelType;
   final String merchantNumber;
+  final String accountNumber;
 }
 
 class _SettingsScreenState extends State<SettingsScreen>
@@ -101,6 +103,7 @@ class _SettingsScreenState extends State<SettingsScreen>
   final _sync = SyncService();
   final _excel = ExcelService();
   List<Staff> _staff = [];
+  List<Map<String, dynamic>> _pinResetRequests = const [];
 
   /// Whether an import is running.
   ///
@@ -123,8 +126,11 @@ class _SettingsScreenState extends State<SettingsScreen>
   int? _mpesaChannelId;
   String _mpesaChannelType = 'Till';
   String _mpesaMerchantNumber = '';
+  String _payheroAccountNumber = '';
   bool _backendLinked = false;
-  bool _automaticBackupSync = false;
+  // Auto-sync is on for new workspaces; the persisted workspace preference is
+  // loaded immediately after the settings screen opens.
+  bool _automaticBackupSync = true;
   bool _savingToggle = false;
   PrinterConfig _printer = const PrinterConfig();
   int _vatRatePercent = kDefaultVatRatePercent;
@@ -158,6 +164,7 @@ class _SettingsScreenState extends State<SettingsScreen>
   @override
   void clearForSession() {
     _staff = const <Staff>[];
+    _pinResetRequests = const [];
   }
 
   @override
@@ -208,14 +215,22 @@ class _SettingsScreenState extends State<SettingsScreen>
     final mpesaMerchantNumber =
         (await db.getSetting(DatabaseHelper.settingMpesaMerchantNumber))
             ?.trim();
+    final payheroAccountNumber =
+        (await db.getSetting(DatabaseHelper.settingPayheroAccountNumber))
+            ?.trim();
     final automaticBackupSync = await AutoSyncService.enabled;
     if (!mounted) return;
     setState(() {
       _staff = staff;
       _mpesaEnabled = prefs.getBool('mpesa_enabled_local') ?? false;
       _mpesaChannelId = mpesaChannelId;
-      _mpesaChannelType = mpesaChannelType == 'Paybill' ? 'Paybill' : 'Till';
+      _mpesaChannelType = switch (mpesaChannelType) {
+        'Paybill' => 'Paybill',
+        'Bank' => 'Bank',
+        _ => 'Till',
+      };
       _mpesaMerchantNumber = mpesaMerchantNumber ?? '';
+      _payheroAccountNumber = payheroAccountNumber ?? '';
       _automaticBackupSync = automaticBackupSync;
       _printer = printer;
       _tillCode = tillCode;
@@ -237,10 +252,65 @@ class _SettingsScreenState extends State<SettingsScreen>
       _cashDrawerPin = cashDrawerPin;
       _cashDrawerOnMs = cashDrawerOnMs;
       _cashDrawerOffMs = cashDrawerOffMs;
+      _pinResetRequests = const [];
     });
     _backendLinked = await BackendService.isBackendLinked;
+    if (_backendLinked) {
+      try {
+        final requests = await BackendService.getStaffPinResetRequests();
+        if (mounted) setState(() => _pinResetRequests = requests);
+      } catch (_) {}
+    }
     if (!mounted) return;
     setState(() {});
+  }
+
+  Future<void> _completeStaffPinReset(Map<String, dynamic> request) async {
+    final requestId = request['id'] as String?;
+    if (requestId == null || requestId.isEmpty) return;
+    final controller = TextEditingController();
+    final pin = await showDialog<String>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: const Text('Issue a temporary staff PIN'),
+        content: TextField(
+          controller: controller,
+          autofocus: true,
+          obscureText: true,
+          maxLength: 4,
+          keyboardType: TextInputType.number,
+          decoration: InputDecoration(
+            labelText: 'Temporary PIN for ${request['staff_name'] ?? 'staff member'}',
+            helperText: 'Give it directly to the staff member. It is not recorded in activity.',
+          ),
+        ),
+        actions: <Widget>[
+          TextButton(onPressed: () => Navigator.pop(dialogContext), child: const Text('Cancel')),
+          FilledButton(onPressed: () => Navigator.pop(dialogContext, controller.text), child: const Text('Issue PIN')),
+        ],
+      ),
+    );
+    controller.dispose();
+    if (pin == null || !RegExp(r'^\d{4}$').hasMatch(pin)) return;
+    if (!mounted) return;
+    final state = context.read<AppState>();
+    try {
+      await BackendService.resetStaffPinFromRequest(requestId: requestId, temporaryPin: pin);
+      await recordActionAudit(
+        state,
+        action: AuditAction.staffPinReset,
+        entity: AuditEntity.staff,
+        entityId: request['staff_profile_id']?.toString(),
+        detail: 'Temporary PIN issued to staff member (value hidden)',
+      );
+      await _load();
+    } catch (_) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('The reset request could not be completed. Refresh and try again.')),
+        );
+      }
+    }
   }
 
   bool get _printerBusy => _printerBusyCount > 0;
@@ -489,7 +559,8 @@ class _SettingsScreenState extends State<SettingsScreen>
     final value = await showDialog<double>(
       context: context,
       builder: (_) => AlertDialog(
-        title: Text(AppLocalizations.of(context).settingsCashierPayoutApprovalLimit),
+        title: Text(
+            AppLocalizations.of(context).settingsCashierPayoutApprovalLimit),
         content: TextField(
           controller: controller,
           autofocus: true,
@@ -520,7 +591,8 @@ class _SettingsScreenState extends State<SettingsScreen>
     final result = await showDialog<Map<String, Object?>>(
       context: context,
       builder: (_) => AlertDialog(
-        title: Text(AppLocalizations.of(context).settingsDiscountsPriceOverrides),
+        title:
+            Text(AppLocalizations.of(context).settingsDiscountsPriceOverrides),
         content: _DiscountSettingsForm(
           enabled: _discountsEnabled,
           cashierPercent: _cashierDiscountPercent,
@@ -891,53 +963,6 @@ class _SettingsScreenState extends State<SettingsScreen>
     }
   }
 
-  Future<void> _resetPin(Staff s) async {
-    final l10n = AppLocalizations.of(context);
-    final state = context.read<AppState>();
-    final result = await showDialog<Map<String, String>>(
-        context: context,
-        builder: (_) => _StaffDialog(existingName: s.name, pinOnly: true));
-    if (result == null) return;
-    if (!RegExp(r'^\d{4}$').hasMatch(result['pin'] ?? '')) {
-      _err(l10n.validationPinNotFourDigits);
-      return;
-    }
-    try {
-      await DatabaseHelper.instance
-          .resetStaffPin(s.id!, await AuthService.hashPin(result['pin']!));
-      // The cached offline credential goes with it. The cache holds a hash of
-      // the OLD pin, and the till falls back to it when the backend is
-      // unreachable — so without this the cashier who just had their PIN
-      // changed keeps signing in with the old one until the next online
-      // sign-in overwrites the cache.
-      await StaffCredentialCache.clearStaffCredentials(s.id!);
-      if (!mounted) return;
-      showOperationSuccess(
-        context,
-        title: l10n.settingsPinResetTitle,
-        message: l10n.settingsPinResetFor(s.name),
-        detailIcon: Icons.pin_outlined,
-      );
-      if (!mounted) return;
-      // A reset is how a locked-out cashier gets back in, so a PIN changed at
-      // 11pm by someone who is not the named cashier is worth having recorded.
-      await recordActionAudit(
-        state,
-        action: AuditAction.staffPinReset,
-        entity: AuditEntity.staff,
-        entityId: s.name,
-        detail: 'PIN reset',
-      );
-    } catch (e) {
-      if (!mounted) return;
-      showOperationFailure(
-        context,
-        title: l10n.settingsPinResetTitle,
-        message: l10n.settingsResetPinFailed,
-      );
-    }
-  }
-
   Future<void> _removeStaff(Staff s) async {
     final l10n = AppLocalizations.of(context);
     final state = context.read<AppState>();
@@ -1008,6 +1033,7 @@ class _SettingsScreenState extends State<SettingsScreen>
       setup = await _showMpesaSetupDialog(
         initialChannelType: _mpesaChannelType,
         initialMerchantNumber: _mpesaMerchantNumber,
+        initialAccountNumber: _payheroAccountNumber,
       );
       if (setup == null || !mounted) return;
     }
@@ -1024,6 +1050,7 @@ class _SettingsScreenState extends State<SettingsScreen>
           channelId = await BackendService.registerMpesaChannel(
             channelType: setup!.channelType,
             shortCode: setup.merchantNumber,
+            accountNumber: setup.accountNumber,
           );
         }
         await BackendService.setMpesaEnabled(value, channelId: channelId);
@@ -1047,6 +1074,10 @@ class _SettingsScreenState extends State<SettingsScreen>
           DatabaseHelper.settingMpesaMerchantNumber,
           setup.merchantNumber,
         );
+        await DatabaseHelper.instance.setSetting(
+          DatabaseHelper.settingPayheroAccountNumber,
+          setup.accountNumber,
+        );
       }
       // Turning M-Pesa on or off changes what the till can take, so it is one
       // of the settings whose change an owner would want attributed.
@@ -1063,6 +1094,7 @@ class _SettingsScreenState extends State<SettingsScreen>
           if (setup != null) {
             _mpesaChannelType = setup.channelType;
             _mpesaMerchantNumber = setup.merchantNumber;
+            _payheroAccountNumber = setup.accountNumber;
           }
           _backendLinked = true;
         });
@@ -1082,10 +1114,16 @@ class _SettingsScreenState extends State<SettingsScreen>
   Future<_MpesaChannelDetails?> _showMpesaSetupDialog({
     required String initialChannelType,
     required String initialMerchantNumber,
+    required String initialAccountNumber,
   }) async {
     final merchantController =
         TextEditingController(text: initialMerchantNumber);
-    var channelType = initialChannelType == 'Paybill' ? 'Paybill' : 'Till';
+    final accountController = TextEditingController(text: initialAccountNumber);
+    var channelType = switch (initialChannelType) {
+      'Paybill' => 'Paybill',
+      'Bank' => 'Bank',
+      _ => 'Till',
+    };
     final result = await showDialog<_MpesaChannelDetails>(
       context: context,
       builder: (dialogContext) => StatefulBuilder(
@@ -1111,6 +1149,7 @@ class _SettingsScreenState extends State<SettingsScreen>
                     DropdownMenuItem(value: 'Till', child: Text('M-Pesa Till')),
                     DropdownMenuItem(
                         value: 'Paybill', child: Text('M-Pesa Paybill')),
+                    DropdownMenuItem(value: 'Bank', child: Text('Bank account')),
                   ],
                   onChanged: (value) {
                     if (value != null) {
@@ -1125,11 +1164,24 @@ class _SettingsScreenState extends State<SettingsScreen>
                   decoration: InputDecoration(
                     labelText: channelType == 'Paybill'
                         ? 'Paybill number'
-                        : 'Till number',
+                        : channelType == 'Bank'
+                            ? 'Bank paybill number'
+                            : 'Till number',
                     helperText:
                         'For your records; PayHero uses the channel ID below.',
                   ),
                 ),
+                if (channelType == 'Bank') ...[
+                  const SizedBox(height: 12),
+                  TextField(
+                    controller: accountController,
+                    keyboardType: TextInputType.number,
+                    decoration: const InputDecoration(
+                      labelText: 'Bank account number',
+                      helperText: 'The account where the bank channel settles.',
+                    ),
+                  ),
+                ],
               ],
             ),
           ),
@@ -1141,7 +1193,10 @@ class _SettingsScreenState extends State<SettingsScreen>
             FilledButton(
               onPressed: () {
                 final merchant = merchantController.text.trim();
-                if (!RegExp(r'^\d{5,12}$').hasMatch(merchant)) {
+                final account = accountController.text.trim();
+                if (!RegExp(r'^\d{5,12}$').hasMatch(merchant) ||
+                    (channelType == 'Bank' &&
+                        !RegExp(r'^\d{3,30}$').hasMatch(account))) {
                   return;
                 }
                 Navigator.pop(
@@ -1149,6 +1204,7 @@ class _SettingsScreenState extends State<SettingsScreen>
                   _MpesaChannelDetails(
                     channelType: channelType,
                     merchantNumber: merchant,
+                    accountNumber: account,
                   ),
                 );
               },
@@ -1159,6 +1215,7 @@ class _SettingsScreenState extends State<SettingsScreen>
       ),
     );
     merchantController.dispose();
+    accountController.dispose();
     return result;
   }
 
@@ -1299,8 +1356,11 @@ class _SettingsScreenState extends State<SettingsScreen>
               email: owner.email,
               pin: pin,
               code: code,
-              shopName: (owner.shopName.trim().isEmpty ? 'My Shop' : owner.shopName).trim(),
-              ownerName: (owner.name.trim().isEmpty ? 'Owner' : owner.name).trim(),
+              shopName:
+                  (owner.shopName.trim().isEmpty ? 'My Shop' : owner.shopName)
+                      .trim(),
+              ownerName:
+                  (owner.name.trim().isEmpty ? 'Owner' : owner.name).trim(),
             );
             return null;
           } on VerificationException catch (error) {
@@ -1314,8 +1374,11 @@ class _SettingsScreenState extends State<SettingsScreen>
             await BackendService.requestVerificationCode(
               email: owner.email,
               pin: pin,
-              shopName: (owner.shopName.trim().isEmpty ? 'My Shop' : owner.shopName).trim(),
-              ownerName: (owner.name.trim().isEmpty ? 'Owner' : owner.name).trim(),
+              shopName:
+                  (owner.shopName.trim().isEmpty ? 'My Shop' : owner.shopName)
+                      .trim(),
+              ownerName:
+                  (owner.name.trim().isEmpty ? 'Owner' : owner.name).trim(),
             );
             return l10n
                 .settingsVerifyCodeSent(PinResetService.maskEmail(owner.email));
@@ -2141,7 +2204,10 @@ class _SettingsScreenState extends State<SettingsScreen>
     }
     final PendingVerification pending = gate.pending!;
 
-    final key = 'local-${DateTime.now().microsecondsSinceEpoch}';
+    final key = await WorkspaceService.createReadableWorkspaceKey(
+      ownerName: previous.name,
+      shopName: shop,
+    );
     // The new shop is registered only now, with the tenant the verified account
     // runs. Clearing the legacy global key (done when the session is adopted)
     // stops it inheriting the shop it was created from.
@@ -2219,14 +2285,16 @@ class _SettingsScreenState extends State<SettingsScreen>
       onVerifyIdentity: ownerSession ? _verifyIdentityOnline : null,
       staff: _staff,
       onAddStaff: _addStaff,
-      onResetPin: _resetPin,
       onRemoveStaff: _removeStaff,
+      pinResetRequests: _pinResetRequests,
+      onCompletePinReset: _completeStaffPinReset,
       onOpenPermissions:
           ownerSession ? () => context.push(Routes.permissionsMatrix) : null,
       mpesaEnabled: _mpesaEnabled,
       mpesaChannelId: _mpesaChannelId,
       mpesaChannelType: _mpesaChannelType,
       mpesaMerchantNumber: _mpesaMerchantNumber,
+      payheroAccountNumber: _payheroAccountNumber,
       savingPaymentToggle: _savingToggle,
       onToggleMpesa: _toggleMpesa,
       printer: _printer,
@@ -2274,7 +2342,8 @@ class _SettingsScreenState extends State<SettingsScreen>
           : null,
       onExport: _exportInventory,
       onImport: _importInventory,
-      onSeedBlackbee: ownerSession && context.read<AppState>().shopProfile == ShopProfile.drinks
+      onSeedBlackbee: ownerSession &&
+              context.read<AppState>().shopProfile == ShopProfile.drinks
           ? () => Navigator.of(context).push(
                 MaterialPageRoute<void>(
                   builder: (_) => const BlackbeeSeedScreen(),
@@ -2412,13 +2481,15 @@ class SettingsPanel extends StatelessWidget {
     required this.identityVerified,
     required this.staff,
     required this.onAddStaff,
-    required this.onResetPin,
     required this.onRemoveStaff,
+    this.pinResetRequests = const <Map<String, dynamic>>[],
+    this.onCompletePinReset,
     this.onOpenPermissions,
     required this.mpesaEnabled,
     this.mpesaChannelId,
     this.mpesaChannelType = 'Till',
     this.mpesaMerchantNumber = '',
+    this.payheroAccountNumber = '',
     required this.savingPaymentToggle,
     required this.onToggleMpesa,
     required this.printer,
@@ -2493,14 +2564,16 @@ class SettingsPanel extends StatelessWidget {
 
   final List<Staff> staff;
   final Future<void> Function() onAddStaff;
-  final void Function(Staff) onResetPin;
   final Future<void> Function(Staff) onRemoveStaff;
+  final List<Map<String, dynamic>> pinResetRequests;
+  final Future<void> Function(Map<String, dynamic>)? onCompletePinReset;
   final VoidCallback? onOpenPermissions;
 
   final bool mpesaEnabled;
   final int? mpesaChannelId;
   final String mpesaChannelType;
   final String mpesaMerchantNumber;
+  final String payheroAccountNumber;
   final bool savingPaymentToggle;
   final Future<void> Function(bool) onToggleMpesa;
 
@@ -2608,8 +2681,9 @@ class SettingsPanel extends StatelessWidget {
         ),
         _StaffPanel(
           staff: staff,
+          pinResetRequests: pinResetRequests,
+          onCompletePinReset: onCompletePinReset,
           onAdd: onAddStaff,
-          onResetPin: onResetPin,
           onRemove: onRemoveStaff,
           onOpenPermissions: onOpenPermissions,
         ),
@@ -2618,6 +2692,7 @@ class SettingsPanel extends StatelessWidget {
           mpesaChannelId: mpesaChannelId,
           mpesaChannelType: mpesaChannelType,
           mpesaMerchantNumber: mpesaMerchantNumber,
+          payheroAccountNumber: payheroAccountNumber,
           saving: savingPaymentToggle,
           onToggleMpesa: onToggleMpesa,
         ),
@@ -3192,7 +3267,8 @@ class _AboutFooterState extends State<_AboutFooter> {
   Future<void> _openAssetPdf(String asset) async {
     try {
       final data = await rootBundle.load(asset);
-      final file = File('${(await getTemporaryDirectory()).path}/${asset.split('/').last}');
+      final file = File(
+          '${(await getTemporaryDirectory()).path}/${asset.split('/').last}');
       await file.writeAsBytes(data.buffer.asUint8List());
       await SharePlus.instance.share(ShareParams(
         files: <XFile>[XFile(file.path, mimeType: 'application/pdf')],
@@ -3201,7 +3277,9 @@ class _AboutFooterState extends State<_AboutFooter> {
     } catch (_) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text(AppLocalizations.of(context).settingsCouldNotOpenDocument)),
+          SnackBar(
+              content: Text(
+                  AppLocalizations.of(context).settingsCouldNotOpenDocument)),
         );
       }
     }
@@ -3267,11 +3345,13 @@ class _AboutFooterState extends State<_AboutFooter> {
           spacing: 8,
           children: <Widget>[
             TextButton(
-              onPressed: () => _openAssetPdf('assets/SimpleSales_Terms_of_Service.pdf'),
+              onPressed: () =>
+                  _openAssetPdf('assets/SimpleSales_Terms_of_Service.pdf'),
               child: Text(AppLocalizations.of(context).settingsTermsOfService),
             ),
             TextButton(
-              onPressed: () => _openAssetPdf('assets/SimpleSales_Privacy_Policy.pdf'),
+              onPressed: () =>
+                  _openAssetPdf('assets/SimpleSales_Privacy_Policy.pdf'),
               child: Text(AppLocalizations.of(context).settingsPrivacyPolicy),
             ),
           ],
@@ -3282,9 +3362,7 @@ class _AboutFooterState extends State<_AboutFooter> {
 }
 
 class _StaffDialog extends StatefulWidget {
-  final String? existingName;
-  final bool pinOnly;
-  const _StaffDialog({this.existingName, this.pinOnly = false});
+  const _StaffDialog();
   @override
   State<_StaffDialog> createState() => _StaffDialogState();
 }
@@ -3307,11 +3385,7 @@ class _StaffDialogState extends State<_StaffDialog> {
   Widget build(BuildContext context) {
     final l10n = AppLocalizations.of(context);
     return AlertDialog(
-      title: Text(
-        widget.pinOnly
-            ? l10n.settingsResetPinTitle(widget.existingName ?? '')
-            : l10n.settingsAddStaffAction,
-      ),
+      title: Text(l10n.settingsAddStaffAction),
       // The same field rhythm as the product editor, so a form's spacing is a
       // property of the app rather than of whichever screen you happen to be on.
       // These three used to sit edge to edge: the floating label of each field
@@ -3319,8 +3393,7 @@ class _StaffDialogState extends State<_StaffDialog> {
       // the inventory form was fixed for.
       content: SingleChildScrollView(
         child: Column(mainAxisSize: MainAxisSize.min, children: [
-          if (!widget.pinOnly) ...[
-            TextField(
+          TextField(
                 controller: _name,
                 decoration: InputDecoration(
                     labelText:
@@ -3331,7 +3404,8 @@ class _StaffDialogState extends State<_StaffDialog> {
                 controller: _username,
                 decoration: InputDecoration(
                     labelText: 'Username',
-                    helperText: 'Used by this staff member to sign in on any till'),
+                    helperText:
+                        'Used by this staff member to sign in on any till'),
                 textInputAction: TextInputAction.next,
                 textCapitalization: TextCapitalization.none,
                 autofillHints: const [AutofillHints.username]),
@@ -3362,7 +3436,7 @@ class _StaffDialogState extends State<_StaffDialog> {
                 onChanged: (value) {
                   if (value != null) setState(() => _role = value);
                 }),
-          ],
+
           SizedBox(height: AppSpacing.of(context).md),
           TextField(
               controller: _pin,
@@ -3380,7 +3454,7 @@ class _StaffDialogState extends State<_StaffDialog> {
             child: Text(AppLocalizations.of(context).actionCancel)),
         FilledButton(
           onPressed: () => Navigator.pop(context, {
-            'name': widget.existingName ?? _name.text.trim(),
+            'name': _name.text.trim(),
             'username': _username.text.trim(),
             'pin': _pin.text,
             'role': _role
@@ -3564,15 +3638,17 @@ class _ShopsPanel extends StatelessWidget {
 class _StaffPanel extends StatelessWidget {
   const _StaffPanel({
     required this.staff,
+    required this.pinResetRequests,
+    required this.onCompletePinReset,
     required this.onAdd,
-    required this.onResetPin,
     required this.onRemove,
     this.onOpenPermissions,
   });
 
   final List<Staff> staff;
+  final List<Map<String, dynamic>> pinResetRequests;
+  final Future<void> Function(Map<String, dynamic>)? onCompletePinReset;
   final Future<void> Function() onAdd;
-  final void Function(Staff) onResetPin;
   final Future<void> Function(Staff) onRemove;
   final VoidCallback? onOpenPermissions;
 
@@ -3586,6 +3662,31 @@ class _StaffPanel extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: <Widget>[
+          if (pinResetRequests.isNotEmpty && onCompletePinReset != null)
+            SurfaceCard(
+              margin: EdgeInsets.only(bottom: AppSpacing.of(context).md),
+              padding: EdgeInsets.all(AppSpacing.of(context).md),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: <Widget>[
+                  Text('PIN reset requests', style: AppTypography.of(context).titleMedium),
+                  SizedBox(height: AppSpacing.of(context).xs),
+                  Text('A staff member forgot their PIN. Issue a temporary PIN privately, then ask them to change it.', style: AppTypography.of(context).bodySmall?.copyWith(color: colors.onSurfaceMuted)),
+                  for (final request in pinResetRequests)
+                    ListTile(
+                      contentPadding: EdgeInsets.zero,
+                      leading: const Icon(Icons.lock_reset_outlined),
+                      title: Text(request['staff_name']?.toString() ?? 'Staff member'),
+                      subtitle: const Text('Pending owner action'),
+                      trailing: ActionChip(
+                        avatar: const Icon(Icons.lock_reset_outlined, size: 16),
+                        onPressed: () => onCompletePinReset!(request),
+                        label: const Text('Issue temporary PIN'),
+                      ),
+                    ),
+                ],
+              ),
+            ),
           if (staff.isEmpty)
             // "nobody yet" is its own state, distinct from "none on the backend"
             // and from a failed load: the roster is local, so an empty list is
@@ -3602,7 +3703,6 @@ class _StaffPanel extends StatelessWidget {
           for (final Staff s in staff)
             _StaffRow(
               staff: s,
-              onResetPin: () => onResetPin(s),
               onRemove: () => onRemove(s),
             ),
           SettingsNavRow(
@@ -3625,12 +3725,10 @@ class _StaffPanel extends StatelessWidget {
 class _StaffRow extends StatelessWidget {
   const _StaffRow({
     required this.staff,
-    required this.onResetPin,
     required this.onRemove,
   });
 
   final Staff staff;
-  final VoidCallback onResetPin;
   final Future<void> Function() onRemove;
 
   @override
@@ -3663,20 +3761,9 @@ class _StaffRow extends StatelessWidget {
             tooltip: l10n.settingsStaffActionsTooltip(staff.name),
             icon: const Icon(Icons.more_vert),
             onSelected: (value) {
-              if (value == 'reset') onResetPin();
               if (value == 'remove') onRemove();
             },
             itemBuilder: (_) => <PopupMenuEntry<String>>[
-              PopupMenuItem<String>(
-                value: 'reset',
-                child: Row(
-                  children: <Widget>[
-                    const Icon(Icons.lock_reset_outlined, size: 20),
-                    SizedBox(width: AppSpacing.of(context).md),
-                    Text(l10n.settingsResetPinAction),
-                  ],
-                ),
-              ),
               PopupMenuItem<String>(
                 value: 'remove',
                 child: Text(l10n.settingsRemoveAction),
@@ -3695,6 +3782,7 @@ class _PaymentsPanel extends StatelessWidget {
     this.mpesaChannelId,
     required this.mpesaChannelType,
     required this.mpesaMerchantNumber,
+    this.payheroAccountNumber = '',
     required this.saving,
     required this.onToggleMpesa,
   });
@@ -3703,6 +3791,7 @@ class _PaymentsPanel extends StatelessWidget {
   final int? mpesaChannelId;
   final String mpesaChannelType;
   final String mpesaMerchantNumber;
+  final String payheroAccountNumber;
   final bool saving;
   final Future<void> Function(bool) onToggleMpesa;
 
@@ -3722,7 +3811,7 @@ class _PaymentsPanel extends StatelessWidget {
             icon: Icons.phone_iphone_outlined,
             title: l10n.settingsMpesaMethod,
             subtitle: mpesaEnabled
-                ? '${l10n.settingsMpesaOnSubtitle} · $mpesaChannelType ${mpesaMerchantNumber.isEmpty ? 'number not set' : mpesaMerchantNumber} · Channel ${mpesaChannelId ?? 'not set'}'
+                ? '${l10n.settingsMpesaOnSubtitle} · $mpesaChannelType ${mpesaMerchantNumber.isEmpty ? 'number not set' : mpesaMerchantNumber}${mpesaChannelType == 'Bank' && payheroAccountNumber.isNotEmpty ? ' · account ••••${payheroAccountNumber.substring(payheroAccountNumber.length - 4)}' : ''} · Channel ${mpesaChannelId ?? 'not set'}'
                 : l10n.settingsMpesaOffSubtitle,
             value: mpesaEnabled,
             enabled: !saving,
@@ -3796,7 +3885,8 @@ class _CashDrawerPanel extends StatelessWidget {
             ListTile(
               leading: const Icon(Icons.timer_outlined),
               title: Text(AppLocalizations.of(context).settingsPulseTiming),
-              subtitle: Text(AppLocalizations.of(context).settingsPulseTimingSubtitle),
+              subtitle: Text(
+                  AppLocalizations.of(context).settingsPulseTimingSubtitle),
               trailing: DropdownButton<int>(
                 value: onMs,
                 items: const [
@@ -4109,7 +4199,8 @@ class _DiscountSettingsFormState extends State<_DiscountSettingsForm> {
             ),
             SwitchListTile(
               contentPadding: EdgeInsets.zero,
-              title: Text(AppLocalizations.of(context).settingsAllowDiscountsBelowCost),
+              title: Text(
+                  AppLocalizations.of(context).settingsAllowDiscountsBelowCost),
               value: belowCostAllowed,
               onChanged: (value) => setState(() => belowCostAllowed = value),
             ),
@@ -4119,7 +4210,9 @@ class _DiscountSettingsFormState extends State<_DiscountSettingsForm> {
                 TextButton(
                     onPressed: () => Navigator.pop(context),
                     child: Text(AppLocalizations.of(context).settingsCancel)),
-                FilledButton(onPressed: _save, child: Text(AppLocalizations.of(context).settingsSave)),
+                FilledButton(
+                    onPressed: _save,
+                    child: Text(AppLocalizations.of(context).settingsSave)),
               ],
             ),
           ],
@@ -4436,23 +4529,27 @@ class _BackupPanel extends StatelessWidget {
               if (onExportFullBackup != null)
                 OutlinedButton(
                   onPressed: onExportFullBackup,
-                  child: Text(AppLocalizations.of(context).settingsBackupAllShopData),
+                  child: Text(
+                      AppLocalizations.of(context).settingsBackupAllShopData),
                 ),
               if (onRestoreFullBackup != null)
                 OutlinedButton(
                   onPressed: onRestoreFullBackup,
-                  child: Text(AppLocalizations.of(context).settingsRestoreAllShopData),
+                  child: Text(
+                      AppLocalizations.of(context).settingsRestoreAllShopData),
                 ),
               if (onUploadCloudFullBackup != null)
                 OutlinedButton.icon(
                   onPressed: onUploadCloudFullBackup,
                   icon: const Icon(Icons.cloud_upload_outlined),
-                  label: Text(AppLocalizations.of(context).settingsUploadPortableCloudCopy),
+                  label: Text(AppLocalizations.of(context)
+                      .settingsUploadPortableCloudCopy),
                 ),
               if (onRestoreCloudFullBackup != null)
                 OutlinedButton(
                   onPressed: onRestoreCloudFullBackup,
-                  child: Text(AppLocalizations.of(context).settingsRestoreLatestCloudCopy),
+                  child: Text(AppLocalizations.of(context)
+                      .settingsRestoreLatestCloudCopy),
                 ),
               OutlinedButton(
                 onPressed: () => onExport(),
@@ -4468,7 +4565,8 @@ class _BackupPanel extends StatelessWidget {
                 OutlinedButton.icon(
                   onPressed: onSeedBlackbee,
                   icon: const Icon(Icons.playlist_add_outlined),
-                  label: Text(AppLocalizations.of(context).settingsSeedBlackbeeProducts),
+                  label: Text(AppLocalizations.of(context)
+                      .settingsSeedBlackbeeProducts),
                 ),
             ],
           ),

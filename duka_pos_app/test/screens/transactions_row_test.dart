@@ -16,6 +16,7 @@ import 'package:duka_pos/models/models.dart';
 import 'package:duka_pos/utils/money.dart';
 import 'package:duka_pos/screens/transactions_screen.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:flutter/material.dart';
 
 import '../support/harness.dart';
 
@@ -78,6 +79,7 @@ void main() {
       // The accountability half: the same act, read as who logged it.
       expect(find.text(l10n.transactionsAuditBy('Amina')), findsOneWidget);
       expect(find.textContaining('KSh'), findsWidgets);
+      expect(find.byIcon(Icons.chevron_right_rounded), findsOneWidget);
     });
 
     testWidgets(

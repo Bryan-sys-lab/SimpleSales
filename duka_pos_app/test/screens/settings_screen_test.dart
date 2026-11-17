@@ -44,7 +44,6 @@ Widget _panel({
       // the rules they encode are covered where the rule was written.
       onVerifyIdentity: () async {},
       onAddStaff: () async {},
-      onResetPin: (_) {},
       onRemoveStaff: (_) async {},
       onToggleMpesa: (_) async {},
       onPairPrinter: () async {},

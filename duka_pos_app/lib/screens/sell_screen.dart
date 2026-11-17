@@ -7,11 +7,6 @@ import 'package:flutter/services.dart';
 import 'package:flutter/semantics.dart';
 import 'package:provider/provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
-import 'package:share_plus/share_plus.dart';
-import '../data/local/repositories/customer_repository.dart';
-import '../data/local/repositories/finance_repository.dart';
-import '../data/local/repositories/job_repository.dart';
-import '../data/local/repositories/sales_repository.dart';
 import '../routing/routes.dart';
 import '../models/audit_log.dart';
 import '../models/credit.dart';
@@ -24,9 +19,10 @@ import '../services/printer/cash_drawer_service.dart';
 import '../utils/crypto_utils.dart';
 import '../services/audit_actor.dart';
 import '../services/backend_service.dart';
-import '../services/receipt_share_service.dart';
-import '../services/receipt_pdf_service.dart';
+import '../services/receipt_actions_service.dart';
 import '../services/session_refresh_mixin.dart';
+import '../services/live_channel_service.dart';
+import '../services/live_refresh_mixin.dart';
 import '../services/barcode/scan_input_service.dart';
 import '../services/etims/etims_service.dart';
 import '../services/printer/printer_config.dart';
@@ -47,26 +43,24 @@ import '../theme/typography.dart';
 import '../ui/components/surface.dart';
 import '../ui/layout/page.dart';
 import '../models/models.dart';
+import '../utils/units.dart';
 import '../db/database_helper.dart';
 import '../utils/money.dart';
-import '../utils/units.dart';
 import '../models/product_pack.dart';
 import '../profile/profile_navigation.dart';
 import '../profile/shop_profile.dart';
 import '../models/incoming_payment.dart';
+import 'quick_sale_dialog.dart';
 
 class SellScreen extends StatefulWidget {
-  const SellScreen({super.key, this.jobId, this.openQuickSale = false});
-
-  final int? jobId;
-  final bool openQuickSale;
+  const SellScreen({super.key});
 
   @override
   State<SellScreen> createState() => _SellScreenState();
 }
 
 class _SellScreenState extends State<SellScreen>
-    with SessionRefresh<SellScreen> {
+    with SessionRefresh<SellScreen>, LiveRefresh<SellScreen> {
   static const _pollTimeout = Duration(seconds: 20);
   final List<CartItem> _cart = [];
   bool _cartOpen = false;
@@ -137,11 +131,6 @@ class _SellScreenState extends State<SellScreen>
     });
     _loadProducts();
     context.read<AppState>().addListener(_reloadCatalogue);
-    if (widget.openQuickSale) {
-      WidgetsBinding.instance.addPostFrameCallback((_) {
-        if (mounted) _openQuickSale();
-      });
-    }
   }
 
   int _seenCatalogueGeneration = 0;
@@ -166,6 +155,12 @@ class _SellScreenState extends State<SellScreen>
 
   @override
   Future<void> reloadFromSession() => _loadProducts();
+
+  @override
+  Set<LiveReason> get liveReasons => const <LiveReason>{};
+
+  @override
+  Future<void> reloadFromLive() => _loadProducts();
 
   @override
   void dispose() {
@@ -272,8 +267,17 @@ class _SellScreenState extends State<SellScreen>
   }
 
   List<ShotCup> _shotsFor(Product product) =>
-      context.read<AppState>().shopProfile.navigation.showDrinkService
-          ? _shots.where((c) => c.productId == product.id).toList()
+      context.read<AppState>().shopProfile.navigation.showMeasuredGoods
+          ? _shots
+              .where((c) =>
+                  c.productId == product.id &&
+                  measuredServingMillilitres(
+                        c.capacity,
+                        c.unit,
+                        millilitresPerKilogram: product.millilitresPerKilogram,
+                      ) !=
+                      null)
+              .toList()
           : const <ShotCup>[];
 
   double _cartUnitsFor(Product product) =>
@@ -291,10 +295,7 @@ class _SellScreenState extends State<SellScreen>
         _reservedByVariant[variant.id!] =
             (_reservedByVariant[variant.id] ?? 0.0) + line.qty;
       } else if (line.shotCup != null) {
-        final fraction = line.product.bottleMl <= 0
-            ? 1.0
-            : (line.shotCup!.capacity / line.product.bottleMl)
-                .clamp(0.0, 1.0);
+        final fraction = line.fraction;
         if (line.product.id != null) {
           _reservedByProduct[line.product.id!] =
               (_reservedByProduct[line.product.id] ?? 0.0) +
@@ -565,7 +566,8 @@ class _SellScreenState extends State<SellScreen>
             .showSnackBar(SnackBar(content: Text(message)));
         return;
       }
-      await DatabaseHelper.instance.attachBarcodeToProduct(scan.normalised, chosen.id!);
+      await DatabaseHelper.instance
+          .attachBarcodeToProduct(scan.normalised, chosen.id!);
       if (!mounted) return;
       // Re-resolve now that the code is attached.
       await _applyScan(scan);
@@ -695,74 +697,6 @@ class _SellScreenState extends State<SellScreen>
   }
 
   Future<void> _addToCart(Product product) async {
-    final appState = context.read<AppState>();
-    if (appState.shopProfile == ShopProfile.open) {
-      final controller = TextEditingController();
-      final qty = await showDialog<double>(
-        context: context,
-        builder: (ctx) => AlertDialog(
-          title: Text(product.name),
-          content: TextField(
-            controller: controller,
-            autofocus: true,
-            keyboardType: const TextInputType.numberWithOptions(decimal: true),
-            decoration: const InputDecoration(labelText: 'Amount'),
-          ),
-          actions: [
-            TextButton(onPressed: () => Navigator.pop(ctx), child: Text(AppLocalizations.of(context).cancel)),
-              FilledButton(
-                onPressed: () {
-                  final parsed = parseMoneyInput(controller.text.trim());
-                  if (parsed == null || parsed <= 0) return;
-                  Navigator.pop(ctx, parsed);
-                },
-                child: Text(AppLocalizations.of(context).add),
-              ),
-          ],
-        ),
-      );
-      controller.dispose();
-      if (qty == null || !mounted) return;
-      await _addToCartDirect(product, 'full', qty: qty);
-      return;
-    }
-    if (appState.shopProfile == ShopProfile.drinks) {
-      final shots = _shotsFor(product);
-      final hasSomethingToSell = product.sellsWhole ||
-          product.halfPrice != null ||
-          product.quarterPrice != null ||
-          shots.isNotEmpty;
-      if (!hasSomethingToSell) {
-        final controller = TextEditingController();
-        final qty = await showDialog<double>(
-          context: context,
-          builder: (ctx) => AlertDialog(
-            title: Text(product.name),
-            content: TextField(
-              controller: controller,
-              autofocus: true,
-              keyboardType: const TextInputType.numberWithOptions(decimal: true),
-              decoration: const InputDecoration(labelText: 'Amount'),
-            ),
-            actions: [
-              TextButton(onPressed: () => Navigator.pop(ctx), child: Text(AppLocalizations.of(context).cancel)),
-              FilledButton(
-                onPressed: () {
-                  final parsed = parseMoneyInput(controller.text.trim());
-                  if (parsed == null || parsed <= 0) return;
-                  Navigator.pop(ctx, parsed);
-                },
-                child: Text(AppLocalizations.of(context).add),
-              ),
-            ],
-          ),
-        );
-        controller.dispose();
-        if (qty == null || !mounted) return;
-        await _addToCartDirect(product, 'full', qty: qty);
-        return;
-      }
-    }
     // Re-entrancy guard. `_addToCart` is async and opens a modal; a fast `_addToCart` is async and opens a modal; a fast
     // double-tap on a product tile, or a wedge scan landing mid-sheet, would
     // otherwise stack two sheets on top of each other.
@@ -921,9 +855,15 @@ class _SellScreenState extends State<SellScreen>
       // A cup with NO size takes nothing that can be measured, so nothing is
       // reserved against the bottle: the owner did not say how big the shot
       // is, and the app does not guess. The shot is still sold, at its price.
-      final needed = shotCup.capacity <= 0 || current.bottleMl <= 0
+      final double servingMl = measuredServingMillilitres(
+            shotCup.capacity,
+            shotCup.unit,
+            millilitresPerKilogram: current.millilitresPerKilogram,
+          ) ??
+          0;
+      final needed = servingMl <= 0 || current.bottleMl <= 0
           ? 0.0
-          : (shotCup.capacity / current.bottleMl).clamp(0.0, 1.0);
+          : (servingMl / current.bottleMl).clamp(0.0, 1.0);
       final available = current.stockQty - _cartUnitsFor(current);
       if (available < needed) {
         _say(AppLocalizations.of(context).sellNotEnoughForShot(current.name));
@@ -991,7 +931,8 @@ class _SellScreenState extends State<SellScreen>
       context: context,
       builder: (dialogContext) => AlertDialog(
         title: Text(AppLocalizations.of(context).holdSale),
-        content: Text(AppLocalizations.of(context).attachACustomerToThisHeldSale),
+        content:
+            Text(AppLocalizations.of(context).attachACustomerToThisHeldSale),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(dialogContext, false),
@@ -1021,7 +962,7 @@ class _SellScreenState extends State<SellScreen>
           'variant_name': line.variant?.name ?? '',
           'shot_cup_id': line.shotCup?.id,
           'shot_label': line.shotCup?.label,
-          'shot_capacity_ml': line.shotCup?.capacity,
+          'shot_capacity_ml': line.portionMl,
           'shot_price': line.shotCup?.price.minorUnits,
           'unit_price': line.unitPrice.minorUnits,
           'unit_cost': line.unitCost.minorUnits,
@@ -1058,7 +999,8 @@ class _SellScreenState extends State<SellScreen>
       builder: (context) => SafeArea(
         child: held.isEmpty
             ? Padding(
-                padding: EdgeInsets.all(24), child: Text(AppLocalizations.of(context).noHeldSales))
+                padding: EdgeInsets.all(24),
+                child: Text(AppLocalizations.of(context).noHeldSales))
             : ListView(
                 shrinkWrap: true,
                 children: [
@@ -1086,12 +1028,10 @@ class _SellScreenState extends State<SellScreen>
     bool priceChanged = false;
     // Pre-fetch packs for every product that has a pack line, once.
     final packsByProduct = <int, List<ProductPack>>{};
-    final productIdsWithPacks = rows
-        .map((r) => (r['product_id'] as num).toInt())
-        .toSet();
+    final productIdsWithPacks =
+        rows.map((r) => (r['product_id'] as num).toInt()).toSet();
     for (final pid in productIdsWithPacks) {
-      packsByProduct[pid] =
-          await DatabaseHelper.instance.getProductPacks(pid);
+      packsByProduct[pid] = await DatabaseHelper.instance.getProductPacks(pid);
     }
     final productsById = <int, Product>{
       for (final candidate in _products)
@@ -1260,7 +1200,7 @@ class _SellScreenState extends State<SellScreen>
   /// THE CUSTOMER PICKER — the sell flow's on-account sheet, public and
   /// shared with the customers screen.
   Future<Customer?> _pickCustomerForCredit(BuildContext context) =>
-      showCustomerPickerSheet(context);
+      showCustomerPickerSheet(context, persistNewCustomer: false);
 
   SaleItem _saleItemFor(CartItem line) => SaleItem(
         saleId: 0,
@@ -1329,7 +1269,8 @@ class _SellScreenState extends State<SellScreen>
                   decoration: const InputDecoration(labelText: 'Reason'),
                   items: [
                     DropdownMenuItem<int?>(
-                        value: null, child: Text(AppLocalizations.of(context).noReason)),
+                        value: null,
+                        child: Text(AppLocalizations.of(context).noReason)),
                     for (final row in reasons)
                       DropdownMenuItem<int?>(
                           value: row['id'] as int,
@@ -1431,7 +1372,8 @@ class _SellScreenState extends State<SellScreen>
                   decoration: const InputDecoration(labelText: 'Reason'),
                   items: [
                     DropdownMenuItem<int?>(
-                        value: null, child: Text(AppLocalizations.of(context).noReason)),
+                        value: null,
+                        child: Text(AppLocalizations.of(context).noReason)),
                     for (final row in reasons)
                       DropdownMenuItem<int?>(
                         value: row['id'] as int,
@@ -1556,7 +1498,7 @@ class _SellScreenState extends State<SellScreen>
     // the one context the dialog always needs is guarded here by mounted.
     if (!mounted) return;
     final AppLocalizations l10n = AppLocalizations.of(context);
-    final result = await showDialog<Map<String, String>>(
+    final result = await showDialog<Map<String, dynamic>>(
       context: context,
       builder: (dialogContext) => StatefulBuilder(
         builder: (dialogContext, setDialogState) {
@@ -1595,19 +1537,29 @@ class _SellScreenState extends State<SellScreen>
                       child: Text(AppLocalizations.of(context).mPesaPaidToTill),
                     ),
                   DropdownMenuItem<String>(
-                      value: 'split', child: Text(AppLocalizations.of(context).splitPayment)),
-                  // On account, only when the shop sells credit and the
-                  // signed-in person may offer it.
-                  if (canSellOnAccount)
-                    DropdownMenuItem<String>(
-                      value: 'credit',
-                      child: Text(l10n.sellPaymentOnAccount),
-                    ),
+                      value: 'split',
+                      child: Text(AppLocalizations.of(context).splitPayment)),
+                  // Customer credit / tab is always visible; disabled with a
+                  // reason when unavailable.
+                  DropdownMenuItem<String>(
+                    value: 'credit',
+                    enabled: canSellOnAccount,
+                    child: Text(l10n.sellPaymentOnAccount),
+                  ),
                 ],
                 onChanged: (value) {
                   if (value != null) setDialogState(() => method = value);
                 },
               ),
+              if (!canSellOnAccount) ...<Widget>[
+                const SizedBox(height: 8),
+                Text(
+                  !creditEnabled
+                      ? 'Disabled by shop settings'
+                      : 'You do not have permission to record credit sales',
+                  style: const TextStyle(fontSize: 12, color: Colors.grey),
+                ),
+              ],
               // On account: WHO takes the goods — the picker beside a clear
               // label, and no amount field at all (nothing is "received").
               if (method == 'credit') ...<Widget>[
@@ -1632,14 +1584,16 @@ class _SellScreenState extends State<SellScreen>
                 ),
               ] else if (method == 'split') ...<Widget>[
                 const SizedBox(height: 12),
-                Text(AppLocalizations.of(context).firstTenderRemainingIsPaidByTheSecondTender),
+                Text(AppLocalizations.of(context)
+                    .firstTenderRemainingIsPaidByTheSecondTender),
                 DropdownButtonFormField<String>(
                   initialValue: firstSplitMethod,
                   decoration: const InputDecoration(labelText: 'First tender'),
                   items: [
                     for (final entry in _offlinePaymentLabels.entries)
-                      DropdownMenuItem(
-                          value: entry.key, child: Text(entry.value)),
+                      if (entry.key != 'credit')
+                        DropdownMenuItem(
+                            value: entry.key, child: Text(entry.value)),
                   ],
                   onChanged: (value) {
                     if (value != null) {
@@ -1747,9 +1701,10 @@ class _SellScreenState extends State<SellScreen>
                       ));
                       return;
                     }
-                    Navigator.pop(dialogContext, <String, String>{
+                    Navigator.pop(dialogContext, <String, dynamic>{
                       'method': 'credit',
-                      'customer_id': '${onAccountCustomer!.id}',
+                      'customer_id': onAccountCustomer!.id,
+                      'customer': onAccountCustomer,
                     });
                     return;
                   }
@@ -1766,9 +1721,9 @@ class _SellScreenState extends State<SellScreen>
                         firstMoney + secondMoney != _total ||
                         firstMoney.isNegative ||
                         secondMoney.isNegative) {
-                      ScaffoldMessenger.of(dialogContext).showSnackBar(
-                          SnackBar(
-                              content: Text(AppLocalizations.of(context).tendersMustEqualTheTotal)));
+                      ScaffoldMessenger.of(dialogContext).showSnackBar(SnackBar(
+                          content: Text(AppLocalizations.of(context)
+                              .tendersMustEqualTheTotal)));
                       return;
                     }
                     Navigator.pop(dialogContext, {
@@ -1813,6 +1768,7 @@ class _SellScreenState extends State<SellScreen>
                   Navigator.pop(dialogContext, {
                     'method': method,
                     'amount': amount.minorUnits.toString(),
+                    'customer': onAccountCustomer,
                     'reference': method == 'mpesa_till'
                         ? incomingTillPayment!.remoteId
                         : referenceController.text.trim(),
@@ -1833,7 +1789,8 @@ class _SellScreenState extends State<SellScreen>
       await _checkout(
         'credit',
         amountTendered: _total,
-        customerId: int.tryParse(result['customer_id'] ?? ''),
+        customerId: result['customer_id'] as int?,
+        customerDraft: result['customer'] as Customer?,
       );
       return;
     }
@@ -1867,6 +1824,7 @@ class _SellScreenState extends State<SellScreen>
     required Money amountTendered,
     String? paymentReference,
     int? customerId,
+    Customer? customerDraft,
     List<SaleTender>? tenders,
   }) async {
     if (_cart.isEmpty || _processingPayment) return;
@@ -1900,9 +1858,11 @@ class _SellScreenState extends State<SellScreen>
     // who allowed it, and the database re-judges the same rule inside its
     // transaction.
     int? creditApprovedBy;
-    if (paymentMethod == 'credit' && customerId != null) {
-      final Customer? customer =
-          await DatabaseHelper.instance.getCustomerById(customerId);
+    if (paymentMethod == 'credit' &&
+        (customerId != null || customerDraft != null)) {
+      final Customer? customer = customerId == null
+          ? customerDraft
+          : await DatabaseHelper.instance.getCustomerById(customerId);
       if (customer != null && customer.active) {
         final int defaultLimit =
             await DatabaseHelper.instance.getCreditDefaultLimit();
@@ -1950,6 +1910,7 @@ class _SellScreenState extends State<SellScreen>
         staffId: staffId,
         etimsPending: etimsEnabled,
         customerId: customerId,
+        customerDraft: customerDraft,
         creditApprovedBy: creditApprovedBy,
         discountApprovedBy: _discountApprovedBy,
         orderDiscountReasonId: _orderDiscountReasonId,
@@ -2107,7 +2068,8 @@ class _SellScreenState extends State<SellScreen>
             'Sale could not be completed. Check stock and try again.');
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-              content: Text(AppLocalizations.of(context).couldnTCompleteTheSaleCheckStockAndTryAgain)),
+              content: Text(AppLocalizations.of(context)
+                  .couldnTCompleteTheSaleCheckStockAndTryAgain)),
         );
       }
     } finally {
@@ -2196,83 +2158,18 @@ class _SellScreenState extends State<SellScreen>
   Future<void> _shareSale(int saleId) async {
     final sale = await DatabaseHelper.instance.getSaleById(saleId);
     if (sale == null || !mounted) return;
-    final recipientMasked = await askReceiptRecipient(context);
-    if (!mounted) return;
-    final state = context.read<AppState>();
-    String? link;
-    final snapshot = <String, dynamic>{
-      'shop_name': state.owner?.shopName ?? 'Duka POS',
-      'receipt_id': sale.id,
-      'staff_name': sale.staffName,
-      'created_at': sale.createdAt,
-      'payment_method': sale.paymentMethod,
-      'total_minor': sale.total.minorUnits,
-      'items': [
-        for (final item in sale.items)
-          {
-            'name': item.productName,
-            'qty': item.qty,
-            'total_minor': item.total.minorUnits
-          },
-      ],
-    };
     try {
-      final response = await BackendService.createReceiptLink(snapshot);
-      final relative = response?['url'] as String?;
-      if (relative != null) {
-        link = BackendService.backendUrl.replaceFirst(RegExp(r'/api$'), '') +
-            relative;
-        await DatabaseHelper.instance.recordReceiptShare(
-          uuid: 'receipt-share-${DateTime.now().microsecondsSinceEpoch}',
-          saleId: saleId,
-          token: response?['token'] as String?,
-          url: link,
-          recipientMasked: recipientMasked,
-          expiresAt: response?['expires_at']?.toString(),
-        );
-      } else {
-        await DatabaseHelper.instance.recordReceiptShare(
-          uuid: 'receipt-share-${DateTime.now().microsecondsSinceEpoch}',
-          saleId: saleId,
-          recipientMasked: recipientMasked,
-        );
-      }
+      await ReceiptActionsService.instance.shareSaleText(context, sale: sale);
     } on Object catch (_) {
-      // Offline text sharing remains available when a public link cannot be minted.
-      await DatabaseHelper.instance.recordReceiptShare(
-        uuid: 'receipt-share-${DateTime.now().microsecondsSinceEpoch}',
-        saleId: saleId,
-        recipientMasked: recipientMasked,
-      );
+      // The committed sale remains safe when the share sheet or network fails.
     }
-    final lines = <String>[
-      if ((state.owner?.shopName ?? '').isNotEmpty) state.owner!.shopName,
-      'Receipt ${sale.id ?? ''}'.trim(),
-      for (final item in sale.items)
-        '${item.productName} × ${item.qty}  ${formatMoney(item.total)}',
-      'Total: ${formatMoney(sale.total)}',
-      if (link != null) link,
-    ];
-    await SharePlus.instance.share(ShareParams(
-      text: lines.join('\n'),
-      subject: 'Receipt from ${state.owner?.shopName ?? 'Duka POS'}',
-    ));
   }
 
   Future<void> _shareSalePdf(int saleId) async {
     final sale = await DatabaseHelper.instance.getSaleById(saleId);
     if (sale == null || !mounted) return;
     try {
-      final state = context.read<AppState>();
-      final file = await const ReceiptPdfService().write(
-        sale: sale,
-        shopName: state.owner?.shopName ?? 'Duka POS',
-      );
-      if (!mounted) return;
-      await SharePlus.instance.share(ShareParams(
-        files: <XFile>[XFile(file.path, mimeType: 'application/pdf')],
-        subject: 'Receipt ${sale.id ?? ''}'.trim(),
-      ));
+      await ReceiptActionsService.instance.shareSalePdf(context, sale: sale);
     } on Object catch (_) {
       // The sale is already committed; an export failure must not change it.
     }
@@ -2407,27 +2304,42 @@ class _SellScreenState extends State<SellScreen>
     // round-trip, and `context` must not be touched once the screen could have
     // been popped.
     final state = context.read<AppState>();
+    final configuredChannelType =
+        (await DatabaseHelper.instance.getSetting(
+              DatabaseHelper.settingMpesaChannelType,
+            ))
+            ?.trim()
+            .toLowerCase();
+    final canUseDynamicQr = configuredChannelType != 'bank';
 
     final phoneController = TextEditingController();
     final customerNameController = TextEditingController();
+    if (!context.mounted) {
+      phoneController.dispose();
+      customerNameController.dispose();
+      return;
+    }
+    final dialogContext = context;
+    final qrScanWithAppLabel =
+        AppLocalizations.of(dialogContext).sellScanWithMpesaApp;
 
     final result = await showDialog<Map<String, String>>(
-      context: context,
+      context: dialogContext,
       builder: (ctx) => AlertDialog(
-        title: Text(AppLocalizations.of(context).sellMpesaPaymentTitle),
+        title: Text(AppLocalizations.of(dialogContext).sellMpesaPaymentTitle),
         content: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
             Text(
-              AppLocalizations.of(context)
+              AppLocalizations.of(dialogContext)
                   .sellSaleTotalLabel(formatMoney(_total)),
             ),
             const SizedBox(height: 16),
             TextField(
               controller: phoneController,
               decoration: InputDecoration(
-                labelText: AppLocalizations.of(context).sellPhoneNumberLabel,
-                hintText: AppLocalizations.of(context).sellPhoneNumberHint,
+                labelText: AppLocalizations.of(dialogContext).sellPhoneNumberLabel,
+                hintText: AppLocalizations.of(dialogContext).sellPhoneNumberHint,
               ),
               keyboardType: TextInputType.phone,
               autofillHints: const [AutofillHints.telephoneNumber],
@@ -2437,34 +2349,52 @@ class _SellScreenState extends State<SellScreen>
               controller: customerNameController,
               decoration: InputDecoration(
                 labelText:
-                    AppLocalizations.of(context).sellCustomerNameOptionalLabel,
+                    AppLocalizations.of(dialogContext).sellCustomerNameOptionalLabel,
               ),
               autofillHints: const [AutofillHints.name],
             ),
           ],
         ),
         actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(ctx),
-            child: Text(AppLocalizations.of(context).actionCancel),
-          ),
-          ElevatedButton(
-            onPressed: () {
-              final phone = phoneController.text.trim();
-              if (phone.length < 10) {
-                ScaffoldMessenger.of(ctx).showSnackBar(
-                  SnackBar(
-                      content: Text(
-                          AppLocalizations.of(context).sellEnterValidPhone)),
-                );
-                return;
-              }
-              Navigator.pop(ctx, {
-                'phone': phone,
-                'customer': customerNameController.text.trim(),
-              });
-            },
-            child: Text(AppLocalizations.of(context).sellPayAction),
+          Wrap(
+            alignment: WrapAlignment.end,
+            spacing: 8,
+            runSpacing: 8,
+            children: [
+              ActionChip(
+                label: Text(AppLocalizations.of(dialogContext).actionCancel),
+                onPressed: () => Navigator.pop(ctx),
+              ),
+              if (canUseDynamicQr)
+                ActionChip(
+                  avatar: const Icon(Icons.qr_code_2, size: 18),
+                  label: Text(AppLocalizations.of(dialogContext).sellShowQrAction),
+                  onPressed: () => Navigator.pop(ctx, {
+                    'mode': 'qr',
+                    'customer': customerNameController.text.trim(),
+                  }),
+                ),
+              ActionChip(
+                avatar: const Icon(Icons.phone_android, size: 18),
+                label: Text(AppLocalizations.of(dialogContext).sellPayAction),
+                onPressed: () {
+                  final phone = phoneController.text.trim();
+                  if (phone.length < 10) {
+                    ScaffoldMessenger.of(ctx).showSnackBar(
+                      SnackBar(
+                          content: Text(AppLocalizations.of(dialogContext)
+                              .sellEnterValidPhone)),
+                    );
+                    return;
+                  }
+                  Navigator.pop(ctx, {
+                    'mode': 'stk',
+                    'phone': phone,
+                    'customer': customerNameController.text.trim(),
+                  });
+                },
+              ),
+            ],
           ),
         ],
       ),
@@ -2491,17 +2421,28 @@ class _SellScreenState extends State<SellScreen>
         return;
       }
 
-      final unsynced = _cart.where((c) => c.product.remoteId == null).toList();
-      if (unsynced.isNotEmpty) {
-        unawaited(BackendService.syncProductsToBackend());
-        if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(
-                content: Text(
-                    'Some products are not yet synced. The sale will proceed '
-                    'and they will be synced in the background.')),
-          );
+      final remoteProductIds = <int, String>{};
+      if (_cart.any((c) => c.product.remoteId == null)) {
+        // M-Pesa's backend route requires tenant-scoped opaque product IDs.
+        // Await catalogue sync and reload the rows: posting the stale cart
+        // objects here would send null product IDs and fail after the customer
+        // has already started an STK payment.
+        await BackendService.syncProductsToBackend();
+      }
+      for (final cartItem in _cart) {
+        final productId = cartItem.product.id;
+        final product = productId == null
+            ? null
+            : await DatabaseHelper.instance.getProductById(productId);
+        final remoteId = product?.remoteId ?? cartItem.product.remoteId;
+        if (productId != null && remoteId != null && remoteId.isNotEmpty) {
+          remoteProductIds[productId] = remoteId;
         }
+      }
+      if (_cart.any((c) =>
+          c.product.id == null || remoteProductIds[c.product.id] == null)) {
+        throw StateError(
+            'Some products are not linked to the backend yet. Sync the catalogue and try again.');
       }
 
       await BackendService.syncStaffToBackend();
@@ -2527,22 +2468,37 @@ class _SellScreenState extends State<SellScreen>
         return;
       }
 
-      final reference = await BackendService.initiatePayment(
-        items: _cart
-            .map((c) => {
-                  'product_id': c.product.remoteId,
-                  // The provider bills for a name, and a variant's name is the
-                  // one the customer asked for.
-                  'product_name': c.foldedName,
-                  'qty': c.qty,
-                  'portion': c.portion,
-                })
-            .toList(),
-        phoneNumber: result['phone']!,
-        staffName: state.currentStaffName ?? 'Unknown',
-        staffProfileId: state.isOwnerSession ? null : cashierProfile!.remoteId,
-        customerName: result['customer'],
-      );
+      final paymentItems = _cart
+          .map((c) => {
+                'product_id': remoteProductIds[c.product.id],
+                // The provider bills for a name, and a variant's name is the
+                // one the customer asked for.
+                'product_name': c.foldedName,
+                'qty': c.qty,
+                'portion': c.portion,
+              })
+          .toList();
+      final useQr = result['mode'] == 'qr';
+      final String reference;
+      String? qrCode;
+      if (useQr) {
+        final session = await BackendService.initiateQrPayment(
+          items: paymentItems,
+          staffName: state.currentStaffName ?? 'Unknown',
+          staffProfileId: state.isOwnerSession ? null : cashierProfile!.remoteId,
+          customerName: result['customer'],
+        );
+        reference = session.reference;
+        qrCode = session.qrCode;
+      } else {
+        reference = await BackendService.initiatePayment(
+          items: paymentItems,
+          phoneNumber: result['phone']!,
+          staffName: state.currentStaffName ?? 'Unknown',
+          staffProfileId: state.isOwnerSession ? null : cashierProfile!.remoteId,
+          customerName: result['customer'],
+        );
+      }
 
       // Durable record written BEFORE polling. If the poll times out the cart
       // survives, and this row prevents the same basket being pushed again.
@@ -2579,7 +2535,9 @@ class _SellScreenState extends State<SellScreen>
         intendedTotal: _total,
       );
 
-      // Show waiting dialog.
+      // Show the payment waiting surface. QR uses the same durable polling and
+      // sale-finalization path as STK, but puts the image in a rounded, quiet
+      // card so the customer can scan without losing the reference.
       //
       // `showDialog` pushes onto the ROOT navigator, so popping it with the
       // screen's own context closed the SELL SCREEN and left the spinner
@@ -2600,10 +2558,27 @@ class _SellScreenState extends State<SellScreen>
                 children: [
                   const CircularProgressIndicator(),
                   const SizedBox(height: 16),
-                  Text(
-                    AppLocalizations.of(context)
-                        .sellCheckPhoneForStk('${result['phone']}'),
-                  ),
+                  if (qrCode != null) ...[
+                    ClipRRect(
+                      borderRadius: BorderRadius.circular(20),
+                      child: Image.memory(
+                        base64Decode(qrCode),
+                        width: 240,
+                        height: 240,
+                        fit: BoxFit.contain,
+                        errorBuilder: (_, __, ___) => const Icon(
+                          Icons.broken_image_outlined,
+                          size: 48,
+                        ),
+                      ),
+                    ),
+                    const SizedBox(height: 12),
+                    Text(qrScanWithAppLabel),
+                  ] else
+                    Text(
+                      AppLocalizations.of(context)
+                          .sellCheckPhoneForStk('${result['phone']}'),
+                    ),
                   const SizedBox(height: 8),
                   Text(AppLocalizations.of(context)
                       .sellReferenceValue(reference)),
@@ -2666,7 +2641,8 @@ class _SellScreenState extends State<SellScreen>
             if (!mounted) return;
             ScaffoldMessenger.of(context).showSnackBar(
               SnackBar(
-                  content: Text(AppLocalizations.of(context).paymentSucceededLocalRecordingFailedContactSupportBeforeReconcilingReports)),
+                  content: Text(AppLocalizations.of(context)
+                      .paymentSucceededLocalRecordingFailedContactSupportBeforeReconcilingReports)),
             );
             setState(() {
               _cart.clear();
@@ -2730,7 +2706,8 @@ class _SellScreenState extends State<SellScreen>
             'M-Pesa payment could not be started. Check your connection and try again.');
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-              content: Text(AppLocalizations.of(context).paymentCouldNotBeStartedCheckYourConnectionAndTryAgain)),
+              content: Text(AppLocalizations.of(context)
+                  .paymentCouldNotBeStartedCheckYourConnectionAndTryAgain)),
         );
       }
     } finally {
@@ -2745,19 +2722,17 @@ class _SellScreenState extends State<SellScreen>
     if (parents.isEmpty) return;
 
     int? selectedParentId = parents.first.id;
-    int? selectedCupId = _shots
-        .where((c) => c.productId == selectedParentId)
-        .firstOrNull
-        ?.id;
+    int? selectedCupId =
+        _shots.where((c) => c.productId == selectedParentId).firstOrNull?.id;
 
     final result = await showDialog<ShotCup>(
       context: context,
       builder: (ctx) => StatefulBuilder(
         builder: (ctx, setState) {
-          final cups = _shots
-              .where((c) => c.productId == selectedParentId)
-              .toList();
-          if (selectedCupId == null || !cups.any((c) => c.id == selectedCupId)) {
+          final cups =
+              _shots.where((c) => c.productId == selectedParentId).toList();
+          if (selectedCupId == null ||
+              !cups.any((c) => c.id == selectedCupId)) {
             selectedCupId = cups.isEmpty ? null : cups.first.id;
           }
           return AlertDialog(
@@ -2818,430 +2793,6 @@ class _SellScreenState extends State<SellScreen>
     await _addToCartDirect(parent, SalePortion.measured, shotCup: result);
   }
 
-  Future<void> _openQuickSale() async {
-    final appState = context.read<AppState>();
-    final db = DatabaseHelper.instance;
-    final l10n = AppLocalizations.of(context);
-
-    // Load linkage options once when the dialog opens.
-    final jobs = await db.getOpenJobs();
-    final pools = await db.getCostPools();
-    var customers = await db.getCustomers(activeOnly: true);
-
-    int? selectedJobId;
-    int? selectedPoolId;
-    Customer? selectedCustomer;
-    String method = 'cash';
-
-    final amountController = TextEditingController();
-    final qtyController = TextEditingController(text: '1');
-    final nameController = TextEditingController();
-    final unitController = TextEditingController();
-    final referenceController = TextEditingController();
-
-    final values = await showDialog<Map<String, dynamic>>(
-      context: context, // ignore: use_build_context_synchronously
-      builder: (context) {
-        return StatefulBuilder(builder: (context, setState) {
-          final dialogContext = context;
-          return AlertDialog(
-            title: Text(l10n.quickSale),
-            content: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: <Widget>[
-                // Link the sale to an open job so its proceeds recover the job's
-                // cost pool (a bale bought for this job).
-                DropdownButtonFormField<int?>(
-                  initialValue: selectedJobId,
-                  decoration: const InputDecoration(
-                    labelText: 'Link to job (optional)',
-                    hintText: 'None',
-                  ),
-                  items: <DropdownMenuItem<int?>>[
-                    const DropdownMenuItem<int?>(
-                      value: null,
-                      child: Text('None'),
-                    ),
-                    for (final j in jobs)
-                      DropdownMenuItem<int?>(
-                        value: j['id'] as int,
-                        child: Text(j['title'] as String? ?? 'Job'),
-                      ),
-                  ],
-                  onChanged: (v) {
-                    selectedJobId = v;
-                    if (v != null) selectedPoolId = null;
-                  },
-                ),
-                // Link the sale directly to a cost group / bale.
-                DropdownButtonFormField<int?>(
-                  initialValue: selectedPoolId,
-                  decoration: const InputDecoration(
-                    labelText: 'Link to cost group / bale (optional)',
-                    hintText: 'None',
-                  ),
-                  items: <DropdownMenuItem<int?>>[
-                    const DropdownMenuItem<int?>(
-                      value: null,
-                      child: Text('None'),
-                    ),
-                    for (final p in pools)
-                      DropdownMenuItem<int?>(
-                        value: p['id'] as int,
-                        child: Text(
-                          '${p['name'] as String? ?? 'Cost group'} — KES '
-                          '${(((p['invested_minor'] as num).toInt()) - ((p['recovered_minor'] as num?)?.toInt() ?? 0)) / 100} left',
-                        ),
-                      ),
-                  ],
-                  onChanged: (v) {
-                    selectedPoolId = v;
-                    if (v != null) selectedJobId = null;
-                  },
-                ),
-                DropdownButtonFormField<Product?>(
-                  initialValue: null,
-                  decoration: const InputDecoration(labelText: 'Product (optional)'),
-                  items: <DropdownMenuItem<Product?>>[
-                    DropdownMenuItem<Product?>(
-                      value: null,
-                      child: Text(l10n.noneNew),
-                    ),
-                    for (final Product p in _products)
-                      DropdownMenuItem<Product?>(
-                        value: p,
-                        child: Text(p.name),
-                      ),
-                  ],
-                  onChanged: (value) {
-                    if (value != null) {
-                      nameController.text = value.name;
-                    }
-                  },
-                ),
-                TextField(
-                  controller: nameController,
-                  decoration: const InputDecoration(
-                    labelText: 'Product name (optional)',
-                  ),
-                ),
-                TextField(
-                  controller: unitController,
-                  decoration: const InputDecoration(
-                    labelText: 'Unit (optional)',
-                  ),
-                ),
-                TextField(
-                  controller: qtyController,
-                  decoration: const InputDecoration(
-                    labelText: 'Quantity',
-                  ),
-                  keyboardType:
-                      const TextInputType.numberWithOptions(decimal: true),
-                ),
-                TextField(
-                  controller: amountController,
-                  decoration: const InputDecoration(
-                    labelText: 'Amount (KES)',
-                  ),
-                  keyboardType:
-                      const TextInputType.numberWithOptions(decimal: true),
-                  autofocus: true,
-                ),
-                DropdownButtonFormField<String>(
-                  initialValue: method,
-                  decoration: const InputDecoration(
-                    labelText: 'Payment method',
-                  ),
-                  items: const <DropdownMenuItem<String>>[
-                    DropdownMenuItem(value: 'cash', child: Text('cash')),
-                    DropdownMenuItem(value: 'mpesa', child: Text('mpesa')),
-                    DropdownMenuItem(
-                        value: 'bank_transfer', child: Text('bank transfer')),
-                    DropdownMenuItem(
-                        value: 'credit', child: Text('credit (tab)')),
-                  ],
-                  onChanged: (value) {
-                    if (value != null) setState(() => method = value);
-                  },
-                ),
-                if (method == 'credit') ...[
-                  // Buy now, pay later — the core of the open market. The
-                  // customer takes the goods on account and settles when able.
-                  // They can be an existing customer or a brand-new one
-                  // created inline right here.
-                  Column(
-                    crossAxisAlignment: CrossAxisAlignment.stretch,
-                    mainAxisSize: MainAxisSize.min,
-                    children: <Widget>[
-                      DropdownButtonFormField<Customer?>(
-                        initialValue: selectedCustomer,
-                        decoration: const InputDecoration(
-                          labelText: 'Customer on account',
-                          hintText: 'Select or add new customer',
-                        ),
-                        items: <DropdownMenuItem<Customer?>>[
-                          const DropdownMenuItem<Customer?>(
-                            value: null,
-                            child: Text('Select existing customer'),
-                          ),
-                          for (final c in customers)
-                            DropdownMenuItem<Customer?>(
-                              value: c,
-                              child: Text(
-                                '${c.name}${c.phone != null ? ' (${c.phone})' : ''}',
-                              ),
-                            ),
-                          const DropdownMenuItem<Customer?>(
-                            value: Customer.newCustomerSentinel,
-                            child: Text('+ Add new customer'),
-                          ),
-                        ],
-                        onChanged: (v) async {
-                          if (v == Customer.newCustomerSentinel) {
-                            final created = await showCustomerEditSheet(
-                              dialogContext,
-                              null,
-                            );
-                            if (created != null && mounted) {
-                              final updated =
-                                  await db.getCustomers(activeOnly: true);
-                              if (mounted) {
-                                setState(() {
-                                  selectedCustomer = created;
-                                  customers = updated;
-                                });
-                              }
-                            }
-                          } else {
-                            selectedCustomer = v;
-                          }
-                          return;
-                        },
-                      ),
-                      if (selectedCustomer != null)
-                        Padding(
-                          padding: const EdgeInsets.only(top: 8),
-                          child: Text(
-                            '${selectedCustomer!.name} — '
-                            'owes ${formatMoney(Money.fromMinor(selectedCustomer!.balanceMinor))}',
-                            style: const TextStyle(
-                              fontSize: 12,
-                              color: Colors.grey,
-                            ),
-                          ),
-                        ),
-                    ],
-                  ),
-                ],
-                TextField(
-                  controller: referenceController,
-                  decoration: const InputDecoration(
-                    labelText: 'Reference (optional)',
-                  ),
-                ),
-              ],
-            ),
-            actions: <Widget>[
-              TextButton(
-                onPressed: () => Navigator.pop(context),
-                child: Text(l10n.cancel),
-              ),
-              FilledButton(
-                onPressed: () {
-                  Navigator.pop(context, <String, dynamic>{
-                    'name': nameController.text.trim(),
-                    'amount': amountController.text.trim(),
-                    'qty': qtyController.text.trim(),
-                    'unit': unitController.text.trim(),
-                    'method': method,
-                    'reference': referenceController.text.trim(),
-                    'jobId': selectedJobId,
-                    'poolId': selectedPoolId,
-                    'customerId': selectedCustomer?.id,
-                  });
-                },
-                child: Text(l10n.sell),
-              ),
-            ],
-          );
-        });
-      },
-    );
-    if (values == null) return;
-    final amount = parseMoneyInput(values['amount'] ?? '');
-    if (amount == null || amount <= 0) return;
-    if (!mounted) return;
-    final name = (values['name'] ?? '').trim();
-    final payMethod = (values['method'] ?? 'cash') as String;
-    final reference =
-        (values['reference'] ?? '').trim();
-    try {
-      if (payMethod == 'credit') {
-        final customer = selectedCustomer;
-        if (customer == null || customer.id == null) {
-          if (!mounted) return;
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(
-              content: Text('Select a customer before recording on credit'),
-            ),
-          );
-          return;
-        }
-        // Credit wall: judge before writing.
-        final int defaultLimit = await db.getCreditDefaultLimit();
-        final int limit = customer.effectiveLimit(defaultLimit);
-        final int wouldOwe = customer.balanceMinor + amount.toInt();
-        if (wouldOwe > limit) {
-          final String mode = await db.getCreditLimitMode();
-          if (!mounted) return;
-          if (mode != 'warn') {
-            final Staff? approver =
-                await showManagerApprovalSheet(
-                  context,
-                  purpose: l10n.sellCreditOverLimit(
-                    customer.name,
-                    formatMoney(Money.fromMinor(wouldOwe)),
-                  ),
-                );
-            if (approver == null) {
-              if (mounted) setState(() {});
-              return;
-            }
-          }
-        }
-        // Record the sale and credit charge atomically in one transaction.
-        final database = await db.database;
-        await database.transaction<int>((txn) async {
-          final saleId = await SalesRepository.instance.recordOpenQuickSaleInTransaction(
-            txn,
-            amount: Money.fromMajor(amount),
-            paymentMethod: 'credit',
-            staffName: appState.currentStaffName ?? 'Owner',
-            staffId: appState.currentStaffId,
-            paymentReference: reference.isEmpty ? null : reference,
-          );
-          await CustomerRepository.instance.recordCreditChargeInTransaction(
-            txn: txn,
-            customerId: customer.id!,
-            amount: Money.fromMajor(amount),
-            saleId: saleId,
-            reference: reference.isEmpty ? null : reference,
-            staffId: appState.currentStaffId,
-            staffName: appState.currentStaffName ?? 'Owner',
-          );
-          return saleId;
-        });
-      } else if (values['jobId'] != null) {
-        await JobRepository.instance.recordJobSale(
-          jobId: (values['jobId'] as int),
-          amount: Money.fromMajor(amount),
-          paymentMethod: payMethod,
-          paymentReference: reference.isEmpty ? null : reference,
-          staffName: appState.currentStaffName ?? 'Owner',
-          staffId: appState.currentStaffId,
-        );
-      } else if (values['poolId'] != null) {
-        final database = await db.database;
-        await database.transaction<int>((txn) async {
-          final saleId = await SalesRepository.instance.recordOpenQuickSaleInTransaction(
-            txn,
-            amount: Money.fromMajor(amount),
-            paymentMethod: payMethod,
-            staffName: appState.currentStaffName ?? 'Owner',
-            staffId: appState.currentStaffId,
-            paymentReference: reference.isEmpty ? null : reference,
-          );
-          await FinanceRepository.instance.allocateCostPoolToSaleInTransaction(
-            txn: txn,
-            poolId: (values['poolId'] as int),
-            saleId: saleId,
-            amount: Money.fromMajor(amount),
-          );
-          return saleId;
-        });
-      } else {
-        await DatabaseHelper.instance.recordOpenQuickSale(
-          amount: Money.fromMajor(amount),
-          paymentMethod: payMethod,
-          paymentReference: reference.isEmpty ? null : reference,
-          staffId: appState.currentStaffId,
-          staffName: appState.currentStaffName ?? 'Owner',
-          costAmount: null,
-          trackCost: false,
-        );
-      }
-      // Create / refresh the product from the named item so the catalogue
-      // grows as the seller names what they sell (money-first: tracking is
-      // opt-in and does not block the sale).
-      final int? qty = int.tryParse((values['qty'] ?? '').trim());
-      if (name.isNotEmpty) {
-        final products = await DatabaseHelper.instance.getProducts();
-        final match = products
-            .where((p) => p.name.toLowerCase() == name.toLowerCase())
-            .firstOrNull;
-        if (match == null) {
-          final product = Product(
-            name: name,
-            category: 'Quick sale',
-            costPrice: Money.zero,
-            sellPrice: Money.fromMajor(amount),
-            stockQty: (qty != null && qty > 0) ? qty.toDouble() : 0,
-            trackStock: false,
-            costPoolId: values['poolId'] != null
-                ? (values['poolId'] as int)
-                : null,
-            reorderLevel: 0,
-            unit: ProductUnit.parse(
-              (values['unit'] ?? '').isEmpty
-                  ? null
-                  : (values['unit'] as String),
-            ),
-            updatedAt: DateTime.now().toIso8601String(),
-          );
-          await DatabaseHelper.instance.upsertProduct(product);
-          // Ask whether to track this item in inventory now that the sale
-          // is recorded. Tracking is opt-in and never blocks the sale.
-          if (!mounted) return;
-          final bool? track = await showDialog<bool>(
-            context: context,
-            builder: (ctx) => AlertDialog(
-              title: const Text('Track in inventory?'),
-              content: Text(
-                'Add "$name" to your inventory and track stock levels?',
-              ),
-              actions: <Widget>[
-                TextButton(
-                  onPressed: () => Navigator.pop(ctx, false),
-                  child: const Text('No'),
-                ),
-                FilledButton(
-                  onPressed: () => Navigator.pop(ctx, true),
-                  child: const Text('Yes'),
-                ),
-              ],
-            ),
-          );
-          if (track == true) {
-            final updated = product.copyWith(trackStock: true);
-            await DatabaseHelper.instance.upsertProduct(updated);
-          }
-        }
-      }
-      if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(l10n.quickSaleRecorded),
-        ),
-      );
-    } catch (e) {
-      if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('$e')),
-      );
-    }
-  }
-
   @override
   Widget build(BuildContext context) {
     // Published for the sign-out sheet, which warns about a part-built cart
@@ -3255,7 +2806,8 @@ class _SellScreenState extends State<SellScreen>
 
     final query = _searchQuery.trim().toLowerCase();
     final categories = <String>{
-      for (final Product p in _products) if (p.category.isNotEmpty) p.category,
+      for (final Product p in _products)
+        if (p.category.isNotEmpty) p.category,
     };
     final filteredProducts = _products
         .where((p) =>
@@ -3330,12 +2882,17 @@ class _SellScreenState extends State<SellScreen>
                       bottom: spacing.sm,
                     ),
                     child: FilledButton.icon(
-                      onPressed: _openQuickSale,
+                      onPressed: () => showQuickSaleDialog(
+                        context: context,
+                        profile: context.read<AppState>().shopProfile,
+                      ),
                       icon: const Icon(Icons.point_of_sale_outlined),
-                      label: Text(AppLocalizations.of(context).recordSaleAmount),
+                      label:
+                          Text(AppLocalizations.of(context).recordSaleAmount),
                     ),
                   ),
-                if (context.read<AppState>().shopProfile == ShopProfile.drinks &&
+                if (context.read<AppState>().shopProfile ==
+                        ShopProfile.drinks &&
                     _shots.isNotEmpty)
                   Padding(
                     padding: EdgeInsetsDirectional.only(
@@ -3370,8 +2927,8 @@ class _SellScreenState extends State<SellScreen>
                             onSelected: (bool selected) =>
                                 setState(() => _selectedCategory = null),
                           ),
-                          for (final String category in categories
-                              .toList(growable: false)..sort())
+                          for (final String category
+                              in categories.toList(growable: false)..sort())
                             ChoiceChip(
                               label: Text(category),
                               selected: _selectedCategory == category,
@@ -3459,7 +3016,8 @@ class _SellScreenState extends State<SellScreen>
                                     TextButton(
                                       onPressed: () =>
                                           setState(() => _cartOpen = false),
-                                      child: Text(AppLocalizations.of(context).addMoreProducts),
+                                      child: Text(AppLocalizations.of(context)
+                                          .addMoreProducts),
                                     ),
                                   ],
                                 ),
@@ -3492,8 +3050,7 @@ class _SellScreenState extends State<SellScreen>
                         child: Badge(
                           label: Text('${_cart.length}'),
                           child: FloatingActionButton(
-                            onPressed: () =>
-                                setState(() => _cartOpen = true),
+                            onPressed: () => setState(() => _cartOpen = true),
                             child: const Icon(Icons.shopping_cart),
                           ),
                         ),
@@ -3527,9 +3084,8 @@ class _SellScreenState extends State<SellScreen>
           onIncrease: () => _updateQty(i, 1),
           onRemove: () => _removeFromCart(i),
           onEdit: () => _editCartLine(i),
-          profitLabel: formatMoney(Money.fromMinor(
-              _cart[i].total.minorUnits -
-                  _cart[i].unitCost.times(_cart[i].qty).minorUnits)),
+          profitLabel: formatMoney(Money.fromMinor(_cart[i].total.minorUnits -
+              _cart[i].unitCost.times(_cart[i].qty).minorUnits)),
         ),
     ];
   }
@@ -3605,8 +3161,7 @@ class _ProductDiscoveryRow extends StatelessWidget {
                                 item.product.name,
                                 maxLines: 2,
                                 overflow: TextOverflow.ellipsis,
-                                style:
-                                    AppTypography.of(context).bodyMedium,
+                                style: AppTypography.of(context).bodyMedium,
                               ),
                             ),
                             SizedBox(height: spacing.xs),
@@ -3624,8 +3179,7 @@ class _ProductDiscoveryRow extends StatelessWidget {
                               style: AppTypography.of(context)
                                   .labelSmall
                                   ?.copyWith(
-                                    color:
-                                        AppColors.of(context).onSurfaceMuted,
+                                    color: AppColors.of(context).onSurfaceMuted,
                                   ),
                             ),
                           ],
@@ -3687,8 +3241,15 @@ class CartItem {
       // A shot with no size takes nothing that can be measured, so it costs
       // the drink nothing and reserves nothing: the whole price is the
       // profit, because the drink that went into it is not being counted.
-      if (shot.capacity <= 0 || product.bottleMl <= 0) return 0;
-      final f = shot.capacity / product.bottleMl;
+      final servingMl = measuredServingMillilitres(
+        shot.capacity,
+        shot.unit,
+        millilitresPerKilogram: product.millilitresPerKilogram,
+      );
+      if (servingMl == null || servingMl <= 0 || product.bottleMl <= 0) {
+        return 0;
+      }
+      final f = servingMl / product.bottleMl;
       return f > 1 ? 1 : f;
     }
     return product.fractionFor(portion);
@@ -3698,7 +3259,14 @@ class CartItem {
 
   double get portionMl {
     final shot = shotCup;
-    if (shot != null) return shot.capacity;
+    if (shot != null) {
+      return measuredServingMillilitres(
+            shot.capacity,
+            shot.unit,
+            millilitresPerKilogram: product.millilitresPerKilogram,
+          ) ??
+          0;
+    }
     return (variant?.sizeMl)?.toDouble() ?? product.mlFor(portion).toDouble();
   }
 
@@ -3737,7 +3305,7 @@ class CartItem {
     }
     final shot = shotCup;
     if (shot != null && product.bottleMl > 0) {
-      return product.costPrice.times(shot.capacity / product.bottleMl);
+      return product.costPrice.times(fraction);
     }
     return variant?.costPrice ?? product.costPrice.times(fraction);
   }

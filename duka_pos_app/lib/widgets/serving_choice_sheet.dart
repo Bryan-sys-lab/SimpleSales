@@ -44,6 +44,7 @@ import 'package:flutter/material.dart';
 
 import '../l10n/generated/app_localizations.dart';
 import '../models/models.dart';
+import '../ui/components/product_photo.dart';
 import '../theme/app_spacing.dart';
 import '../utils/money.dart';
 
@@ -301,9 +302,11 @@ class _ShotOption extends StatelessWidget {
     final ({bool canPour, String reason}) verdict =
         shotAvailability(l10n, product, cup, product.stockQty);
     return ListTile(
-      leading: Icon(verdict.canPour
-          ? Icons.local_drink_outlined
-          : Icons.warning_amber_outlined),
+      leading: ProductPhoto(
+        imagePath: cup.imagePath,
+        size: 44,
+        revision: cup.updatedAt,
+      ),
       title: Text(
         l10n.sellPourOptionTitle(cup.label, _capacityText(cup.capacity)),
       ),

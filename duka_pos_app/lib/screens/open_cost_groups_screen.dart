@@ -18,7 +18,7 @@ const double _openCostGroupsMaxWidth = 1200;
 /// Cost groups list for the Open profile.
 ///
 /// Each row: group name, total invested, allocated/consumed, remaining
-/// unallocated, number of linked jobs. Tap opens cost group detail.
+/// unallocated, and allocated sales. Tap opens cost group detail.
 class OpenCostGroupsScreen extends StatefulWidget {
   const OpenCostGroupsScreen({super.key});
 

@@ -364,5 +364,15 @@ void main() {
       await DatabaseHelper.instance.initializeWorkspace(shopA);
       expect((await DatabaseHelper.instance.getProducts()).length, 1);
     });
+
+    test('new workspace ids are readable and include a short random suffix',
+        () async {
+      final key = await WorkspaceService.createReadableWorkspaceKey(
+        ownerName: 'Amina Mwangi',
+        shopName: 'Mama & Sons Duka',
+      );
+      expect(
+          key, matches(RegExp(r'^local-amina-mwangi-mama-sons-duka-\d{4}$')));
+    });
   });
 }

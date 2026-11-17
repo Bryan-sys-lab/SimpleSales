@@ -203,13 +203,12 @@ void main() {
         ],
       );
 
-      // Switch to open: inventory is replaced by openBusiness; sell stays.
+      // Switch to open: inventory stays shared; sell stays.
       state.setShopProfile(ShopProfile.open);
       final after = visibleDestinations(state).toList();
       expect(after, contains(AppDestination.dashboard));
-      expect(after, contains(AppDestination.openBusiness));
+      expect(after, contains(AppDestination.inventory));
       expect(after, contains(AppDestination.sell));
-      expect(after, isNot(contains(AppDestination.inventory)));
       expect(after.toSet().length, after.length,
           reason: 'a destination appeared twice after the switch: $after');
 
@@ -217,7 +216,6 @@ void main() {
       state.setShopProfile(ShopProfile.duka);
       final again = visibleDestinations(state).toList();
       expect(again, contains(AppDestination.inventory));
-      expect(again, isNot(contains(AppDestination.openBusiness)));
       expect(again.toSet().length, again.length,
           reason: 'a destination appeared twice after switching back: $again');
     },
@@ -239,12 +237,11 @@ void main() {
       expect(_destination(AppDestination.inventory), findsOneWidget);
       expect(_destination(AppDestination.sell), findsOneWidget);
 
-      // Switch to open: inventory is replaced by openBusiness; sell stays.
+      // Switch to open: inventory stays shared; sell stays.
       state.setShopProfile(ShopProfile.open);
       await tester.pumpAndSettle();
       expect(_destination(AppDestination.dashboard), findsOneWidget);
-      expect(_destination(AppDestination.inventory), findsNothing);
-      expect(_destination(AppDestination.openBusiness), findsOneWidget);
+      expect(_destination(AppDestination.inventory), findsOneWidget);
       expect(_destination(AppDestination.sell), findsOneWidget);
     },
   );

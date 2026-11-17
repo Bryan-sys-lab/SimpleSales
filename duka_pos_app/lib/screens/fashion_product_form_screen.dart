@@ -1,24 +1,33 @@
+import 'dart:io';
+
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
+import 'package:image_picker/image_picker.dart';
 
 import '../db/database_helper.dart';
 import '../l10n/generated/app_localizations.dart';
 import '../models/models.dart';
+import '../services/barcode/barcode_service.dart';
 import '../theme/app_colors.dart';
 import '../theme/app_spacing.dart';
 import '../theme/typography.dart';
+import '../ui/components/controls.dart';
 import '../ui/components/surface.dart';
 import '../ui/layout/page.dart';
+import '../ui/components/product_photo.dart';
+import '../services/product_image_store.dart';
+import '../services/workspace_service.dart';
 import '../utils/money.dart';
 import '../utils/units.dart';
 import '../widgets/backup_reminder_banner.dart';
+import '../widgets/variant_catalogue.dart';
 
 const double _fashionProductFormMaxWidth = 900;
 
 /// Create or edit a fashion style with variants.
 ///
-/// Sections: product identity (name, category, brand, description), variants
-/// (size, colour, SKU, barcode, stock, sell price, cost price, reorder level).
+/// Sections: product identity (name and category), variants (size, SKU, barcode,
+/// stock, sell price, cost price, reorder level).
 /// Variants can be added one at a time — no forced size × colour matrix.
 class FashionProductFormScreen extends StatefulWidget {
   const FashionProductFormScreen({super.key, this.product, this.productId});
@@ -35,13 +44,13 @@ class _FashionProductFormScreenState extends State<FashionProductFormScreen> {
   final _formKey = GlobalKey<FormState>();
   final _nameCtrl = TextEditingController();
   final _categoryCtrl = TextEditingController();
-  final _brandCtrl = TextEditingController();
-  final _descriptionCtrl = TextEditingController();
 
   final List<_VariantEditor> _variants = [];
   bool _saving = false;
   bool _loading = false;
   Product? _product;
+  File? _pickedPhoto;
+  bool _photoRemoved = false;
 
   @override
   void initState() {
@@ -72,6 +81,11 @@ class _FashionProductFormScreenState extends State<FashionProductFormScreen> {
         _categoryCtrl.text = p.category;
       }
       final variants = await db.getVariants(pid, activeOnly: false);
+      final codes = await VariantCatalogue.codesForProduct(pid);
+      final codesByVariant = <int, String>{
+        for (final code in codes)
+          if (code.variantId != null) code.variantId!: code.barcode,
+      };
       if (!mounted) return;
       for (final v in _variants) {
         v.dispose();
@@ -85,7 +99,10 @@ class _FashionProductFormScreenState extends State<FashionProductFormScreen> {
           e.variantId = v.id;
           e.productId = v.productId;
           e.nameCtrl.text = v.name;
+          if (v.sizeMl > 0) e.sizeCtrl.text = v.sizeMl.toString();
           e.skuCtrl.text = v.sku;
+          e.storedBarcode = codesByVariant[v.id];
+          e.barcodeCtrl.text = e.storedBarcode ?? '';
           e.stockCtrl.text = v.stockQty.toString();
           e.sellPriceCtrl.text = v.sellPrice.asMajor.toString();
           e.costPriceCtrl.text = v.costPrice.asMajor.toString();
@@ -102,8 +119,6 @@ class _FashionProductFormScreenState extends State<FashionProductFormScreen> {
   void dispose() {
     _nameCtrl.dispose();
     _categoryCtrl.dispose();
-    _brandCtrl.dispose();
-    _descriptionCtrl.dispose();
     for (final v in _variants) {
       v.dispose();
     }
@@ -128,9 +143,8 @@ class _FashionProductFormScreenState extends State<FashionProductFormScreen> {
     setState(() => _saving = true);
 
     try {
-      final variantEditors = _variants
-          .where((v) => v.nameCtrl.text.trim().isNotEmpty)
-          .toList();
+      final variantEditors =
+          _variants.where((v) => v.nameCtrl.text.trim().isNotEmpty).toList();
 
       if (variantEditors.isEmpty) {
         if (!mounted) return;
@@ -143,10 +157,30 @@ class _FashionProductFormScreenState extends State<FashionProductFormScreen> {
 
       final db = DatabaseHelper.instance;
       final existingVariants = <ProductVariant>[];
+      final existingCodes = <int, String>{};
       final pid = _product?.id;
       if (pid != null) {
         existingVariants.addAll(await db.getVariants(pid, activeOnly: false));
+        for (final code in await VariantCatalogue.codesForProduct(pid)) {
+          if (code.variantId != null) {
+            existingCodes[code.variantId!] = code.barcode;
+          }
+        }
       }
+      final requestedCodes = <String, _VariantEditor>{};
+      for (final v in variantEditors) {
+        final rawCode = v.barcodeCtrl.text.trim();
+        if (rawCode.isEmpty) continue;
+        final code = Barcode.normalise(rawCode);
+        if (!Barcode.isValid(code)) {
+          throw StateError('Barcode must be 6–64 valid characters');
+        }
+        if (requestedCodes.containsKey(code)) {
+          throw StateError('Each variant barcode must be unique');
+        }
+        requestedCodes[code] = v;
+      }
+      var savedProductId = pid;
       await (await db.database).transaction((txn) async {
         final product = Product(
           id: _product?.id,
@@ -164,8 +198,10 @@ class _FashionProductFormScreenState extends State<FashionProductFormScreen> {
           trackExpiry: false,
           active: true,
           updatedAt: DateTime.now().toIso8601String(),
+          imagePath: _product?.imagePath,
         );
         final productId = await db.upsertProductInTransaction(txn, product);
+        savedProductId = productId;
 
         final keptVariantIds = <int>{};
         for (final v in variantEditors) {
@@ -174,8 +210,10 @@ class _FashionProductFormScreenState extends State<FashionProductFormScreen> {
             productId: productId,
             name: v.nameCtrl.text.trim(),
             sku: v.skuCtrl.text.trim(),
-            unit: ProductUnit.each,
-            sizeMl: 0,
+            unit: (int.tryParse(v.sizeCtrl.text.trim()) ?? 0) > 0
+                ? ProductUnit.millilitre
+                : ProductUnit.each,
+            sizeMl: int.tryParse(v.sizeCtrl.text.trim()) ?? 0,
             sellPrice: Money.fromMajor(
               parseMoneyInput(v.sellPriceCtrl.text) ?? 0,
             ),
@@ -186,15 +224,56 @@ class _FashionProductFormScreenState extends State<FashionProductFormScreen> {
             reorderLevel: int.tryParse(v.reorderCtrl.text) ?? 0,
           );
           final savedId = await db.upsertVariantInTransaction(txn, variant);
-          if (savedId > 0) keptVariantIds.add(savedId);
+          if (savedId > 0) {
+            v.variantId = savedId;
+            keptVariantIds.add(savedId);
+          }
         }
 
         for (final existing in existingVariants) {
-            if (!keptVariantIds.contains(existing.id!)) {
-              await db.deleteVariantInTransaction(txn, existing.id!);
-            }
+          if (!keptVariantIds.contains(existing.id!)) {
+            await db.deleteVariantInTransaction(txn, existing.id!);
           }
+        }
       });
+
+      // Barcode rows are deliberately separate from variant upserts. Reconcile
+      // them only after the variant transaction succeeds, preserving existing
+      // codes when a save fails.
+      if (savedProductId != null) {
+        for (final oldCode in existingCodes.values) {
+          await db.removeBarcode(oldCode);
+        }
+        for (final v in variantEditors) {
+          final code = Barcode.normalise(v.barcodeCtrl.text.trim());
+          if (code.isEmpty || v.variantId == null) continue;
+          if (!await db.addBarcode(
+              productId: savedProductId!,
+              variantId: v.variantId,
+              barcode: code)) {
+            throw StateError('Barcode $code is already in use');
+          }
+        }
+        await VariantCatalogue.writeAggregateStock(savedProductId!);
+
+        if (_pickedPhoto != null || _photoRemoved) {
+          final workspaceKey = await WorkspaceService.activeWorkspaceKey();
+          if (_photoRemoved) {
+            await ProductImageStore.delete(
+              savedProductId!,
+              workspaceKey: workspaceKey,
+            );
+            await db.setProductImage(null, savedProductId!);
+          } else {
+            final relative = await ProductImageStore.save(
+              _pickedPhoto!,
+              productId: savedProductId!,
+              workspaceKey: workspaceKey,
+            );
+            await db.setProductImage(relative, savedProductId!);
+          }
+        }
+      }
 
       if (!mounted) return;
       context.pop(true);
@@ -205,6 +284,40 @@ class _FashionProductFormScreenState extends State<FashionProductFormScreen> {
         content: Text('Save failed: $e'),
       ));
     }
+  }
+
+  Future<void> _pickPhoto() async {
+    final source = await showModalBottomSheet<ImageSource>(
+      context: context,
+      builder: (sheetContext) => SafeArea(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: <Widget>[
+            ListTile(
+              leading: const Icon(Icons.photo_library_outlined),
+              title: const Text('Choose from gallery'),
+              onTap: () => Navigator.pop(sheetContext, ImageSource.gallery),
+            ),
+            ListTile(
+              leading: const Icon(Icons.photo_camera_outlined),
+              title: const Text('Take a photo'),
+              onTap: () => Navigator.pop(sheetContext, ImageSource.camera),
+            ),
+          ],
+        ),
+      ),
+    );
+    if (source == null) return;
+    final file = await ImagePicker().pickImage(
+      source: source,
+      maxWidth: 1024,
+      imageQuality: 90,
+    );
+    if (!mounted || file == null) return;
+    setState(() {
+      _pickedPhoto = File(file.path);
+      _photoRemoved = false;
+    });
   }
 
   @override
@@ -252,7 +365,7 @@ class _FashionProductFormScreenState extends State<FashionProductFormScreen> {
               ),
             ],
           ),
-          SizedBox(height: spacing.sm),
+          SizedBox(height: spacing.md),
           Form(
             key: _formKey,
             child: Column(
@@ -263,37 +376,60 @@ class _FashionProductFormScreenState extends State<FashionProductFormScreen> {
                   title: l10n.fashionProductFormProductInfo,
                 ),
                 SizedBox(height: spacing.sm),
-                TextFormField(
-                  controller: _nameCtrl,
-                  decoration: InputDecoration(
-                    labelText: l10n.fashionProductFormStyleName,
-                  ),
-                  validator: (v) =>
-                      v == null || v.trim().isEmpty
+                FormFieldGroup(
+                  children: <Widget>[
+                    TextFormField(
+                      controller: _nameCtrl,
+                      decoration: InputDecoration(
+                        labelText: l10n.fashionProductFormStyleName,
+                      ),
+                      validator: (v) => v == null || v.trim().isEmpty
                           ? l10n.fashionProductFormStyleNameRequired
                           : null,
+                    ),
+                    TextFormField(
+                      controller: _categoryCtrl,
+                      decoration: InputDecoration(
+                        labelText: l10n.fashionProductFormCategory,
+                      ),
+                    ),
+                  ],
                 ),
-                SizedBox(height: spacing.sm),
-                TextFormField(
-                  controller: _categoryCtrl,
-                  decoration: InputDecoration(
-                    labelText: l10n.fashionProductFormCategory,
+                SizedBox(height: spacing.md),
+                SurfaceCard(
+                  padding: EdgeInsets.all(spacing.md),
+                  child: Row(
+                    children: <Widget>[
+                      ProductPhoto(
+                        imagePath: _pickedPhoto == null
+                            ? (_photoRemoved ? null : _product?.imagePath)
+                            : null,
+                        size: 72,
+                        revision: _product?.updatedAt,
+                      ),
+                      SizedBox(width: spacing.md),
+                      Expanded(
+                        child: Text(
+                          'Style photo',
+                          style: type.titleSmall,
+                        ),
+                      ),
+                      OutlinedButton.icon(
+                        onPressed: _pickPhoto,
+                        icon: const Icon(Icons.add_a_photo_outlined),
+                        label: Text(_pickedPhoto == null ? 'Add' : 'Replace'),
+                      ),
+                      if (_product?.imagePath != null || _pickedPhoto != null)
+                        IconButton(
+                          tooltip: 'Remove photo',
+                          onPressed: () => setState(() {
+                            _pickedPhoto = null;
+                            _photoRemoved = true;
+                          }),
+                          icon: const Icon(Icons.delete_outline),
+                        ),
+                    ],
                   ),
-                ),
-                SizedBox(height: spacing.sm),
-                TextFormField(
-                  controller: _brandCtrl,
-                  decoration: InputDecoration(
-                    labelText: l10n.fashionProductFormBrand,
-                  ),
-                ),
-                SizedBox(height: spacing.sm),
-                TextFormField(
-                  controller: _descriptionCtrl,
-                  decoration: InputDecoration(
-                    labelText: l10n.fashionProductFormDescription,
-                  ),
-                  maxLines: 2,
                 ),
                 SizedBox(height: spacing.lg),
 
@@ -348,6 +484,7 @@ class _FashionProductFormScreenState extends State<FashionProductFormScreen> {
 class _VariantEditor {
   int? variantId;
   int? productId;
+  String? storedBarcode;
   final nameCtrl = TextEditingController();
   final sizeCtrl = TextEditingController();
   final colourCtrl = TextEditingController();
@@ -404,110 +541,122 @@ class _VariantCard extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: <Widget>[
-          Row(
-            children: <Widget>[
-              Expanded(
-                flex: 2,
-                child: TextFormField(
+          LayoutBuilder(
+            builder: (context, constraints) {
+              final narrow = constraints.maxWidth < 600;
+
+              Widget field(Widget child) => narrow
+                  ? Padding(
+                      padding: EdgeInsets.only(bottom: spacing.md),
+                      child: child,
+                    )
+                  : Expanded(child: child);
+
+              Widget row(List<Widget> fields) => narrow
+                  ? Column(
+                      crossAxisAlignment: CrossAxisAlignment.stretch,
+                      children: fields,
+                    )
+                  : Row(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        for (int i = 0; i < fields.length; i++) ...[
+                          if (i > 0) SizedBox(width: spacing.sm),
+                          fields[i],
+                        ],
+                      ],
+                    );
+
+              final identity = row([
+                field(TextFormField(
                   controller: variant.nameCtrl,
                   decoration: InputDecoration(
                     labelText: l10n.fashionProductFormVariantName,
                   ),
-                ),
-              ),
-              SizedBox(width: spacing.sm),
-              Expanded(
-                child: TextFormField(
+                )),
+                field(TextFormField(
                   controller: variant.sizeCtrl,
                   decoration: InputDecoration(
                     labelText: l10n.fashionProductFormSize,
                   ),
-                ),
-              ),
-              SizedBox(width: spacing.sm),
-              Expanded(
-                child: TextFormField(
+                )),
+                field(TextFormField(
                   controller: variant.colourCtrl,
                   decoration: InputDecoration(
                     labelText: l10n.fashionProductFormColour,
                   ),
-                ),
-              ),
-              SizedBox(width: spacing.sm),
-              IconButton(
-                icon: Icon(Icons.remove, color: colors.danger),
-                onPressed: onRemove,
-              ),
-            ],
-          ),
-          SizedBox(height: spacing.sm),
-          Row(
-            children: <Widget>[
-              Expanded(
-                child: TextFormField(
+                )),
+              ]);
+              final codes = row([
+                field(TextFormField(
                   controller: variant.skuCtrl,
                   decoration: InputDecoration(
                     labelText: l10n.fashionProductFormSKU,
                   ),
-                ),
-              ),
-              SizedBox(width: spacing.sm),
-              Expanded(
-                child: TextFormField(
+                )),
+                field(TextFormField(
                   controller: variant.barcodeCtrl,
                   decoration: InputDecoration(
                     labelText: l10n.fashionProductFormBarcode,
                   ),
-                ),
-              ),
-            ],
-          ),
-          SizedBox(height: spacing.sm),
-          Row(
-            children: <Widget>[
-              Expanded(
-                child: TextFormField(
+                )),
+              ]);
+              final stock = row([
+                field(TextFormField(
                   controller: variant.stockCtrl,
                   decoration: InputDecoration(
                     labelText: l10n.fashionProductFormStock,
                   ),
                   keyboardType:
                       const TextInputType.numberWithOptions(decimal: true),
-                ),
-              ),
-              SizedBox(width: spacing.sm),
-              Expanded(
-                child: TextFormField(
+                )),
+                field(TextFormField(
                   controller: variant.sellPriceCtrl,
                   decoration: InputDecoration(
                     labelText: l10n.fashionProductFormSellPrice,
                   ),
                   keyboardType:
                       const TextInputType.numberWithOptions(decimal: true),
-                ),
-              ),
-              SizedBox(width: spacing.sm),
-              Expanded(
-                child: TextFormField(
+                )),
+                field(TextFormField(
                   controller: variant.costPriceCtrl,
                   decoration: InputDecoration(
                     labelText: l10n.fashionProductFormCostPrice,
                   ),
                   keyboardType:
                       const TextInputType.numberWithOptions(decimal: true),
-                ),
-              ),
-              SizedBox(width: spacing.sm),
-              Expanded(
-                child: TextFormField(
+                )),
+                field(TextFormField(
                   controller: variant.reorderCtrl,
                   decoration: InputDecoration(
                     labelText: l10n.fashionProductFormReorderLevel,
                   ),
                   keyboardType: TextInputType.number,
-                ),
-              ),
-            ],
+                )),
+              ]);
+
+              return Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: <Widget>[
+                  Row(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: <Widget>[
+                      Expanded(child: identity),
+                      SizedBox(width: spacing.sm),
+                      IconButton(
+                        tooltip: 'Remove variant',
+                        icon: Icon(Icons.remove, color: colors.danger),
+                        onPressed: onRemove,
+                      ),
+                    ],
+                  ),
+                  SizedBox(height: spacing.sm),
+                  codes,
+                  SizedBox(height: spacing.sm),
+                  stock,
+                ],
+              );
+            },
           ),
         ],
       ),

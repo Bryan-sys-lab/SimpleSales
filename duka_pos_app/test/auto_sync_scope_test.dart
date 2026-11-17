@@ -7,6 +7,14 @@ import 'package:duka_pos/services/workspace_service.dart';
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
 
+  test('automatic backup sync defaults on for a new workspace', () async {
+    SharedPreferences.setMockInitialValues(<String, Object>{
+      WorkspaceService.activeKey: 'new-shop',
+    });
+
+    expect(await AutoSyncService.enabled, isTrue);
+  });
+
   test('automatic backup sync preference belongs to the active shop', () async {
     SharedPreferences.setMockInitialValues(<String, Object>{
       WorkspaceService.activeKey: 'shop-a',

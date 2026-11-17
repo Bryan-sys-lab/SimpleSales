@@ -184,6 +184,7 @@ class Product {
   final String exciseStampBatch;
   final bool active;
   final String updatedAt;
+  final String? imagePath;
   final String?
       remoteId; // Supabase products.id, once synced — see backend_service.dart
 
@@ -199,8 +200,6 @@ class Product {
   /// Read and drawn on the SELL screen only. Everywhere else a product is a row
   /// in a list, and a photograph there would make the list slower to scan and
   /// slower to render for no gain the owner asked for.
-  final String? imagePath;
-
   /// The primary barcode, carried through a spreadsheet import only.
   ///
   /// Deliberately *not* persisted on this model: barcodes live in their own
@@ -230,8 +229,8 @@ class Product {
     this.millilitresPerKilogram = 0,
     this.active = true,
     required this.updatedAt,
-    this.remoteId,
     this.imagePath,
+    this.remoteId,
     this.primaryBarcode,
   });
 
@@ -367,8 +366,8 @@ class Product {
         'excise_stamp_batch': exciseStampBatch,
         'active': active ? 1 : 0,
         'updated_at': updatedAt,
-        'remote_id': remoteId,
         'image_path': imagePath,
+        'remote_id': remoteId,
       };
 
   factory Product.fromMap(Map<String, dynamic> m) => Product(
@@ -1571,6 +1570,7 @@ class ShotCup {
   final String label;
   final bool active;
   final String updatedAt;
+  final String? imagePath;
 
   ShotCup({
     this.id,
@@ -1582,6 +1582,7 @@ class ShotCup {
     this.label = 'Small serving',
     this.active = true,
     required this.updatedAt,
+    this.imagePath,
   });
 
   Map<String, dynamic> toMap() => {
@@ -1594,6 +1595,7 @@ class ShotCup {
         'label': label,
         'active': active ? 1 : 0,
         'updated_at': updatedAt,
+        'image_path': imagePath,
       };
 
   factory ShotCup.fromMap(Map<String, dynamic> m) => ShotCup(
@@ -1606,6 +1608,9 @@ class ShotCup {
         label: (m['label'] as String?) ?? 'Small serving',
         active: m['active'] == 1,
         updatedAt: (m['updated_at'] as String?) ?? '',
+        imagePath: (m['image_path'] as String?)?.isEmpty ?? true
+            ? null
+            : m['image_path'] as String?,
       );
 }
 
@@ -1821,6 +1826,7 @@ class StockReceipt {
     this.staffId,
     required this.staffName,
     required this.totalCost,
+    this.paidFrom = 'till_cash',
     this.status = 'posted',
     this.note,
     this.items = const <StockReceiptItem>[],
@@ -1845,6 +1851,11 @@ class StockReceipt {
   /// What the whole delivery cost.
   final Money totalCost;
 
+  /// How the delivery was funded: till cash, supplier credit, or another
+  /// external source. Kept on the receipt so sync and reports do not infer
+  /// cash movement from the total alone.
+  final String paidFrom;
+
   /// 'draft', 'posted' or 'voided'.
   final String status;
 
@@ -1867,6 +1878,7 @@ class StockReceipt {
         staffId: (m['staff_id'] as num?)?.toInt(),
         staffName: m['staff_name'] as String,
         totalCost: Money.fromMinor((m['total_cost_minor'] as num).toInt()),
+        paidFrom: (m['paid_from'] as String?) ?? 'till_cash',
         status: (m['status'] as String?) ?? 'posted',
         note: m['note'] as String?,
       );

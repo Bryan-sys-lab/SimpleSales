@@ -413,21 +413,24 @@ String statementLineLabel(AppLocalizations l10n, CreditLedgerEntry entry) {
 /// next balance is the ledger's, not the form's), or null when dismissed.
 /// With `null` as the customer it CREATES.
 Future<Customer?> showCustomerEditSheet(
-    BuildContext context, Customer? customer) async {
+    BuildContext context, Customer? customer,
+    {bool persist = true}) async {
   final result = await showModalBottomSheet<Customer>(
     context: context,
     isScrollControlled: true,
     useSafeArea: true,
-    builder: (_) => _CustomerEditSheet(customer: customer),
+    builder: (_) => _CustomerEditSheet(customer: customer, persist: persist),
   );
-  if (result == null || result.id == null) return null;
+  if (result == null) return null;
+  if (!persist || result.id == null) return result;
   return DatabaseHelper.instance.getCustomerById(result.id!);
 }
 
 class _CustomerEditSheet extends StatefulWidget {
-  const _CustomerEditSheet({this.customer});
+  const _CustomerEditSheet({this.customer, this.persist = true});
 
   final Customer? customer;
+  final bool persist;
 
   @override
   State<_CustomerEditSheet> createState() => _CustomerEditSheetState();
@@ -491,19 +494,20 @@ class _CustomerEditSheetState extends State<_CustomerEditSheet> {
         createdAt:
             widget.customer?.createdAt ?? DateTime.now().toIso8601String(),
       );
-      final int id = await DatabaseHelper.instance.upsertCustomer(
-        Customer(
-          id: customer.id,
-          uuid: customer.uuid.isEmpty ? _newUuid() : customer.uuid,
-          name: customer.name,
-          phone: customer.phone,
-          notes: customer.notes,
-          creditLimitMinor: customer.creditLimitMinor,
-          balanceMinor: widget.customer?.balanceMinor ?? 0,
-          active: widget.customer?.active ?? true,
-          createdAt: customer.createdAt,
-        ),
+      final Customer draft = Customer(
+        id: widget.persist ? customer.id : null,
+        uuid: customer.uuid.isEmpty ? _newUuid() : customer.uuid,
+        name: customer.name,
+        phone: customer.phone,
+        notes: customer.notes,
+        creditLimitMinor: customer.creditLimitMinor,
+        balanceMinor: widget.customer?.balanceMinor ?? 0,
+        active: widget.customer?.active ?? true,
+        createdAt: customer.createdAt,
       );
+      final int id = widget.persist
+          ? await DatabaseHelper.instance.upsertCustomer(draft)
+          : 0;
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text(l10n.customerSavedTitle)),
@@ -511,14 +515,15 @@ class _CustomerEditSheetState extends State<_CustomerEditSheet> {
       Navigator.pop(
           context,
           Customer(
-            id: id,
-            uuid: customer.uuid,
-            name: customer.name,
-            phone: customer.phone,
-            creditLimitMinor: customer.creditLimitMinor,
-            balanceMinor: widget.customer?.balanceMinor ?? 0,
-            active: widget.customer?.active ?? true,
-            createdAt: customer.createdAt,
+            id: widget.persist ? id : null,
+            uuid: draft.uuid,
+            name: draft.name,
+            phone: draft.phone,
+            notes: draft.notes,
+            creditLimitMinor: draft.creditLimitMinor,
+            balanceMinor: draft.balanceMinor,
+            active: draft.active,
+            createdAt: draft.createdAt,
           ));
     } on StateError catch (error) {
       if (!mounted) return;
@@ -586,7 +591,9 @@ class _CustomerEditSheetState extends State<_CustomerEditSheet> {
                 ),
                 validator: (String? value) {
                   final String typed = (value ?? '').trim();
-                  if (typed.isEmpty) return null;
+                  if (typed.isEmpty) {
+                    return widget.persist ? null : l10n.supplierPhoneInvalid;
+                  }
                   return normaliseKenyanPhone(typed) == null
                       ? l10n.supplierPhoneInvalid
                       : null;
@@ -868,17 +875,22 @@ class _CreditPaymentSheetState extends State<_CreditPaymentSheet> {
 /// because the sale is mid-service and cannot be sent to another screen. A
 /// customer's row carries the balance and the ROOM under the limit — the two
 /// facts a decision to extend credit is made on.
-Future<Customer?> showCustomerPickerSheet(BuildContext context) {
+Future<Customer?> showCustomerPickerSheet(BuildContext context,
+    {bool persistNewCustomer = true}) {
   return showModalBottomSheet<Customer>(
     context: context,
     isScrollControlled: true,
     useSafeArea: true,
-    builder: (BuildContext sheetContext) => const CustomerPickerSheet(),
+    builder: (BuildContext sheetContext) => CustomerPickerSheet(
+      persistNewCustomer: persistNewCustomer,
+    ),
   );
 }
 
 class CustomerPickerSheet extends StatefulWidget {
-  const CustomerPickerSheet({super.key});
+  const CustomerPickerSheet({super.key, this.persistNewCustomer = true});
+
+  final bool persistNewCustomer;
 
   @override
   State<CustomerPickerSheet> createState() => _CustomerPickerSheetState();
@@ -923,7 +935,11 @@ class _CustomerPickerSheetState extends State<CustomerPickerSheet> {
   }
 
   Future<void> _addInline() async {
-    final Customer? created = await showCustomerEditSheet(context, null);
+    final Customer? created = await showCustomerEditSheet(
+      context,
+      null,
+      persist: widget.persistNewCustomer,
+    );
     if (created == null || !mounted) return;
     Navigator.pop(context, created);
   }

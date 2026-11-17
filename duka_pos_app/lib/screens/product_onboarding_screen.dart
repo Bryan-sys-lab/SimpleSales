@@ -6,6 +6,8 @@ import '../theme/app_colors.dart';
 import '../theme/app_shapes.dart';
 import '../theme/app_spacing.dart';
 import '../theme/typography.dart';
+import '../ui/brand/simple_pos_mark.dart';
+import '../ui/onboarding_style.dart';
 
 /// A three-page product tour shown before anyone has an account.
 ///
@@ -304,6 +306,8 @@ class _ProductOnboardingScreenState extends State<ProductOnboardingScreen> {
               padding: EdgeInsets.all(spacing.md),
               child: Row(
                 children: <Widget>[
+                  const SimplePosMark(size: 32),
+                  SizedBox(width: spacing.sm),
                   Expanded(
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
@@ -328,8 +332,15 @@ class _ProductOnboardingScreenState extends State<ProductOnboardingScreen> {
                       ],
                     ),
                   ),
-                  FilledButton(
+                  OutlinedButton(
                     onPressed: widget.onSignIn,
+                    style: OutlinedButton.styleFrom(
+                      foregroundColor: colors.accent,
+                      side: BorderSide(color: colors.accent),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: shapes.controlRadius,
+                      ),
+                    ),
                     child: Text(l10n.actionSignIn),
                   ),
                 ],
@@ -349,19 +360,24 @@ class _ProductOnboardingScreenState extends State<ProductOnboardingScreen> {
               child: Row(
                 children: <Widget>[
                   if (widget.onSkip != null)
-                    TextButton(
+                    OnboardStyle.link(
+                      context: context,
                       onPressed: widget.onSkip,
-                      child: Text(l10n.actionSkip),
+                      label: l10n.actionSkip,
+                      colors: colors,
                     )
                   else
                     const SizedBox.shrink(),
                   const Spacer(),
-                  FilledButton(
-                    onPressed: _next,
-                    child: Text(
-                      _page == _pageCount - 1
+                  Expanded(
+                    child: OnboardStyle.primaryButton(
+                      context: context,
+                      onPressed: _next,
+                      label: _page == _pageCount - 1
                           ? l10n.actionCreateAccount
                           : l10n.actionContinue,
+                      colors: colors,
+                      spacing: spacing,
                     ),
                   ),
                 ],

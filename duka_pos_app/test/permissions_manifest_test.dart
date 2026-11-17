@@ -70,10 +70,15 @@ void main() {
             'withholds it from every modern device and the in-app updater can '
             'never install anything',
       );
+      // The API floor is a Gradle application setting, not an attribute on
+      // uses-permission (Android has no minSdkVersion permission attribute).
+      final gradle = File(
+        'android/app/build.gradle.kts',
+      ).readAsStringSync();
       expect(
-        element,
-        contains('minSdkVersion="26"'),
-        reason: 'the floor belongs on the permission, not a ceiling',
+        gradle,
+        contains('minSdk = 26'),
+        reason: 'the app floor belongs in Gradle, not on the permission',
       );
     });
   });

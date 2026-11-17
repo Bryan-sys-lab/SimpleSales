@@ -195,6 +195,30 @@ class SearchField extends StatelessWidget {
   }
 }
 
+/// Keeps editable fields from collapsing into one dense wall when a form is
+/// composed from several controls. The gap is a minimum: helper and error text
+/// are allowed to grow naturally with Dynamic Type.
+class FormFieldGroup extends StatelessWidget {
+  const FormFieldGroup({required this.children, this.gap, super.key});
+
+  final List<Widget> children;
+  final double? gap;
+
+  @override
+  Widget build(BuildContext context) {
+    final double fieldGap = gap ?? AppSpacing.of(context).md;
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: <Widget>[
+        for (int i = 0; i < children.length; i++) ...<Widget>[
+          if (i > 0) SizedBox(height: fieldGap),
+          children[i],
+        ],
+      ],
+    );
+  }
+}
+
 /// A filter pill: the shape a filter row is made of.
 ///
 /// SELECTED is a solid accent fill with the accent's own ink on top. A tonal

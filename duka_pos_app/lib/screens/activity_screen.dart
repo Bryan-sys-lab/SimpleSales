@@ -22,6 +22,8 @@ import 'package:flutter/material.dart';
 import '../l10n/generated/app_localizations.dart';
 import '../models/audit_log.dart';
 import '../services/cross_shop_audit_reader.dart';
+import '../services/live_channel_service.dart';
+import '../services/live_refresh_mixin.dart';
 import '../services/session_refresh_mixin.dart';
 import '../theme/app_colors.dart';
 import '../theme/app_shapes.dart';
@@ -74,7 +76,7 @@ class ActivityScreen extends StatefulWidget {
 }
 
 class _ActivityScreenState extends State<ActivityScreen>
-    with SessionRefresh<ActivityScreen> {
+    with SessionRefresh<ActivityScreen>, LiveRefresh<ActivityScreen> {
   ActivityView _view = ActivityView.merged;
   ActivitySnapshot _snapshot = ActivitySnapshot.empty;
   bool _loading = true;
@@ -95,6 +97,12 @@ class _ActivityScreenState extends State<ActivityScreen>
 
   @override
   Future<void> reloadFromSession() => _load();
+
+  @override
+  Set<LiveReason> get liveReasons => const <LiveReason>{};
+
+  @override
+  Future<void> reloadFromLive() => _load();
 
   Future<void> _load() async {
     setState(() {
@@ -128,6 +136,13 @@ class _ActivityScreenState extends State<ActivityScreen>
     return Scaffold(
       appBar: AppBar(
         title: Text(l10n.activityTitle),
+        actions: <Widget>[
+          IconButton(
+            onPressed: _loading ? null : _load,
+            icon: const Icon(Icons.refresh_rounded),
+            tooltip: l10n.actionRetry,
+          ),
+        ],
       ),
       body: AdaptivePage(
         scrollable: false,
@@ -473,8 +488,11 @@ class _ActivityRow extends StatelessWidget {
               padding: EdgeInsetsDirectional.only(
                 start: spacing.xl,
                 end: spacing.xl,
-                top: spacing.md,
-                bottom: spacing.md,
+                // Activity rows are read as a timeline. The extra vertical
+                // breathing room keeps the sentence, actor and timestamp from
+                // collapsing into one dense block on small phones.
+                top: spacing.lg,
+                bottom: spacing.lg,
               ),
               child: Row(
                 crossAxisAlignment: CrossAxisAlignment.start,
@@ -530,7 +548,7 @@ class _ActivityRow extends StatelessWidget {
       AuditAction.barcodeKindChanged => l10n.activityBarcodeKindChanged,
       AuditAction.stockAdjusted => l10n.activityStockAdjusted,
       AuditAction.saleRecorded => l10n.activitySaleRecorded,
-        AuditAction.servingSold => l10n.activityServingSold,
+      AuditAction.servingSold => l10n.activityServingSold,
       AuditAction.staffAdded => l10n.activityStaffAdded,
       AuditAction.staffRemoved => l10n.activityStaffRemoved,
       AuditAction.staffPinReset => l10n.activityStaffPinReset,

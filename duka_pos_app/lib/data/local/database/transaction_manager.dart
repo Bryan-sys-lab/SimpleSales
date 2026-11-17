@@ -6,7 +6,7 @@ import 'database_session.dart';
 ///
 /// Wraps a body in a single SQLite transaction so that all changes succeed or
 /// fail together. Used by repositories and use cases to guarantee that a
-/// complete business operation (sale, return, expense, stock adjustment, job
+/// complete business operation (sale, return, expense, or stock adjustment
 /// completion) is atomic.
 ///
 /// A repository should never independently commit half of a larger business

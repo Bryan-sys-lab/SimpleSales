@@ -1,6 +1,8 @@
 import '../db/database_helper.dart';
 import '../models/credit.dart';
 import '../models/notification.dart';
+import '../routing/routes.dart';
+import 'backend_service.dart';
 
 /// A notification candidate deliberately carries a count, never business
 /// names, customer details or money. This keeps lock-screen content private.
@@ -57,7 +59,7 @@ class NotificationService {
   /// Computes the local, offline-safe attention conditions from the same
   /// database queries used by the dashboard and Sync Center. Counts are the
   /// only values that leave this method.
-  Future<List<NotificationCandidate>> localCandidates({DateTime? now}) async {
+  Future<List<NotificationCandidate>> localCandidates({DateTime? now, String role = 'admin'}) async {
     final at = now ?? _clock();
     final candidates = <NotificationCandidate>[];
 
@@ -147,6 +149,22 @@ class NotificationService {
         count: 1,
       ));
     }
+    if (role == 'admin') {
+      try {
+        final requests = await BackendService.getStaffPinResetRequests();
+        if (requests.isNotEmpty) {
+          candidates.add(NotificationCandidate(
+            type: ShopNotificationType.staffPinResetRequest,
+            dedupeKey: 'staff-pin-reset:${requests.map((row) => row['id']).join(',')}',
+            count: requests.length,
+            minimumInterval: const Duration(minutes: 15),
+          ));
+        }
+      } catch (_) {
+        // The settings inbox remains the source of truth if the notification
+        // check runs while the backend is unavailable.
+      }
+    }
     return candidates;
   }
 
@@ -163,7 +181,7 @@ class NotificationService {
       for (final preference in saved) preference.type: preference,
     };
     final scheduled = <ScheduledNotification>[];
-    for (final candidate in await localCandidates(now: now)) {
+    for (final candidate in await localCandidates(now: now, role: role)) {
       final preference = preferences[candidate.type] ??
           NotificationPreference(staffId: staffId, type: candidate.type);
       final result = await schedule(
@@ -220,6 +238,7 @@ class NotificationService {
         ShopNotificationType.stockExpiring => 'Expiry reminder',
         ShopNotificationType.shiftOpen => 'Open shift',
         ShopNotificationType.incomingMpesa => 'Incoming payment',
+        ShopNotificationType.staffPinResetRequest => 'Staff PIN request',
       };
 
   String _body(ShopNotificationType type, int count) {
@@ -237,6 +256,8 @@ class NotificationService {
       ShopNotificationType.shiftOpen => 'open shift',
       ShopNotificationType.incomingMpesa =>
         'incoming payment${count == 1 ? '' : 's'}',
+      ShopNotificationType.staffPinResetRequest =>
+          'staff PIN reset request${count == 1 ? '' : 's'}',
     };
     return '$count $noun need attention';
   }
@@ -252,13 +273,14 @@ class NotificationService {
   }
 
   String _destination(ShopNotificationType type) => switch (type) {
-        ShopNotificationType.lowStock => '/inventory',
-        ShopNotificationType.etimsAttention => '/settings/sync-center',
-        ShopNotificationType.backupOverdue => '/settings',
-        ShopNotificationType.mpesaUnverified => '/settings/incoming-payments',
-        ShopNotificationType.overdueCredit => '/dashboard/customers',
-        ShopNotificationType.stockExpiring => '/inventory',
-        ShopNotificationType.shiftOpen => '/analytics/shift',
-        ShopNotificationType.incomingMpesa => '/settings/incoming-payments',
+        ShopNotificationType.lowStock => Routes.inventory,
+        ShopNotificationType.etimsAttention => Routes.syncCenter,
+        ShopNotificationType.backupOverdue => Routes.settings,
+        ShopNotificationType.mpesaUnverified => Routes.incomingPayments,
+        ShopNotificationType.overdueCredit => Routes.customers,
+        ShopNotificationType.stockExpiring => Routes.inventory,
+        ShopNotificationType.shiftOpen => Routes.shift,
+        ShopNotificationType.incomingMpesa => Routes.incomingPayments,
+        ShopNotificationType.staffPinResetRequest => Routes.settings,
       };
 }

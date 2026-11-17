@@ -6,6 +6,7 @@
 // component language across profiles.
 
 import 'package:flutter/material.dart';
+import 'package:flutter/physics.dart';
 import 'package:intl/intl.dart';
 
 import '../l10n/generated/app_localizations.dart';
@@ -13,6 +14,7 @@ import '../models/models.dart';
 import '../profile/shop_profile.dart';
 import '../services/analytics.dart';
 import '../theme/app_colors.dart';
+import '../theme/app_motion.dart';
 import '../theme/app_spacing.dart';
 import '../theme/typography.dart';
 import '../ui/components/status.dart';
@@ -55,6 +57,9 @@ final class DashboardReady extends DashboardState {
     this.lowStockVariants = const <ProductVariant>[],
     this.drinksAnalytics = DrinksAnalyticsSnapshot.empty,
     this.paymentMix = const <PaymentMixRow>[],
+    this.openCostPoolCount = 0,
+    this.openCostInvestedMinor = 0,
+    this.openCostRecoveredMinor = 0,
   });
 
   final DailyTotals totals;
@@ -81,12 +86,16 @@ final class DashboardReady extends DashboardState {
   final Money stockValue;
   final DrinksAnalyticsSnapshot drinksAnalytics;
   final List<PaymentMixRow> paymentMix;
+  final int openCostPoolCount;
+  final int openCostInvestedMinor;
+  final int openCostRecoveredMinor;
 }
 
 List<Widget> spaced(List<Widget?> children, double gap) {
   return children.whereType<Widget>().expand((Widget child) {
     return <Widget>[child, SizedBox(height: gap)];
-  }).toList()..removeLast();
+  }).toList()
+    ..removeLast();
 }
 
 /// Compact business header: identity, status, date, and the business switch.
@@ -145,9 +154,7 @@ class FinancialHero extends StatelessWidget {
                   Expanded(
                     child: Text(
                       l10n.dashboardNetSalesToday,
-                      style: AppTypography.of(context)
-                          .labelMedium
-                          ?.copyWith(
+                      style: AppTypography.of(context).labelMedium?.copyWith(
                             color: colors.onSurface,
                             fontWeight: FontWeight.w700,
                             letterSpacing: 0.6,
@@ -201,7 +208,8 @@ class FinancialHero extends StatelessWidget {
               SizedBox(height: spacing.lg),
               Semantics(
                 button: true,
-                label: '${l10n.dashboardTransactionsLabel}: ${totals.transactions}',
+                label:
+                    '${l10n.dashboardTransactionsLabel}: ${totals.transactions}',
                 child: InkWell(
                   onTap: onTransactions,
                   child: Padding(
@@ -286,7 +294,12 @@ class SupportingMetrics extends StatelessWidget {
           return Wrap(
             spacing: spacing.lg,
             runSpacing: spacing.lg,
-            children: tiles.map((t) => SizedBox(width: ((constraints.maxWidth - spacing.lg) / 2).clamp(120.0, double.infinity), child: t)).toList(),
+            children: tiles
+                .map((t) => SizedBox(
+                    width: ((constraints.maxWidth - spacing.lg) / 2)
+                        .clamp(120.0, double.infinity),
+                    child: t))
+                .toList(),
           );
         },
       ),
@@ -403,7 +416,6 @@ class _ShiftStateChip extends StatelessWidget {
 
 /// Reads localisations without holding a [BuildContext] across an await.
 
-
 double dashboardTextScale(BuildContext context) =>
     MediaQuery.textScalerOf(context).scale(1).clamp(1.0, 2.5).toDouble();
 
@@ -415,14 +427,16 @@ int dashboardGridColumns({
   double gap = 12,
 }) {
   final double requiredCellWidth = minCellWidth * textScale;
-  final int count = ((availableWidth + gap) / (requiredCellWidth + gap)).floor();
+  final int count =
+      ((availableWidth + gap) / (requiredCellWidth + gap)).floor();
   return count.clamp(1, maxColumns).toInt();
 }
 
 bool dashboardCanUseTwoColumns({
   required double availableWidth,
   required double textScale,
-}) => availableWidth >= 840 && textScale <= 1.25;
+}) =>
+    availableWidth >= 840 && textScale <= 1.25;
 
 // ---------------------------------------------------------------------------
 // New shared dashboard components (v79 redesign)
@@ -470,7 +484,8 @@ class DashboardKpiCard extends StatelessWidget {
       decoration: BoxDecoration(
         color: colors.surface,
         borderRadius: BorderRadius.circular(spacing.md + 4),
-        border: Border.all(color: colors.onSurfaceMuted.withValues(alpha: 0.15)),
+        border:
+            Border.all(color: colors.onSurfaceMuted.withValues(alpha: 0.15)),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -494,14 +509,13 @@ class DashboardKpiCard extends StatelessWidget {
             softWrap: true,
           ),
           SizedBox(height: spacing.xs),
-          Text(
-            data.value,
+          _AnimatedDashboardText(
+            value: data.value,
             style: AppTypography.money(
               context,
               size: 18,
               weight: FontWeight.w700,
             ).copyWith(color: fg),
-            softWrap: true,
           ),
         ],
       ),
@@ -516,10 +530,123 @@ class DashboardKpiCard extends StatelessWidget {
     return Semantics(
       button: true,
       label: data.semanticsLabel ?? '${data.label}: ${data.value}',
-      child: InkWell(
+      child: _DashboardPressable(
         onTap: data.onTap,
         borderRadius: BorderRadius.circular(spacing.md + 4),
         child: card,
+      ),
+    );
+  }
+}
+
+/// A small physical response for dashboard doors.
+///
+/// The scale is deliberately restrained: the card follows the press without
+/// becoming a toy. A spring starts from the controller's current value, so a
+/// quick press/release is interruptible instead of snapping between two
+/// scripted animations. Reduced-motion users receive the same immediate state
+/// change with no animated travel.
+class _DashboardPressable extends StatefulWidget {
+  const _DashboardPressable({
+    required this.child,
+    required this.onTap,
+    required this.borderRadius,
+  });
+
+  final Widget child;
+  final VoidCallback? onTap;
+  final BorderRadius borderRadius;
+
+  @override
+  State<_DashboardPressable> createState() => _DashboardPressableState();
+}
+
+/// Changes in dashboard figures crossfade and travel a few pixels upward. The
+/// key is the committed display value, so a refresh that returns the same value
+/// remains visually quiet.
+class _AnimatedDashboardText extends StatelessWidget {
+  const _AnimatedDashboardText({required this.value, required this.style});
+
+  final String value;
+  final TextStyle style;
+
+  @override
+  Widget build(BuildContext context) {
+    final AppMotion motion = AppMotion.of(context);
+    return AnimatedSwitcher(
+      duration: AppMotion.resolve(context, motion.fast),
+      switchInCurve: AppMotion.resolveCurve(context, motion.enter),
+      switchOutCurve: AppMotion.resolveCurve(context, motion.exit),
+      transitionBuilder: (Widget child, Animation<double> animation) {
+        return FadeTransition(
+          opacity: animation,
+          child: SlideTransition(
+            position: Tween<Offset>(
+              begin: const Offset(0, 0.08),
+              end: Offset.zero,
+            ).animate(animation),
+            child: child,
+          ),
+        );
+      },
+      child: Text(
+        value,
+        key: ValueKey<String>(value),
+        style: style,
+        softWrap: true,
+      ),
+    );
+  }
+}
+
+class _DashboardPressableState extends State<_DashboardPressable>
+    with SingleTickerProviderStateMixin {
+  late final AnimationController _controller = AnimationController(
+    vsync: this,
+    lowerBound: 0,
+    upperBound: 1,
+    value: 0,
+  );
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  void _settle(double target) {
+    if (!mounted) return;
+    if (MediaQuery.disableAnimationsOf(context)) {
+      _controller.value = target;
+      return;
+    }
+    final SpringDescription spring = SpringDescription(
+      mass: 1,
+      stiffness: 520,
+      damping: 38,
+    );
+    _controller.animateWith(
+      SpringSimulation(spring, _controller.value, target, _controller.velocity),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return InkWell(
+      onTap: widget.onTap,
+      borderRadius: widget.borderRadius,
+      onTapDown: (_) => _settle(1),
+      onTapUp: (_) => _settle(0),
+      onTapCancel: () => _settle(0),
+      child: AnimatedBuilder(
+        animation: _controller,
+        child: widget.child,
+        builder: (BuildContext context, Widget? child) {
+          return Transform.scale(
+            scale: 1 - (_controller.value * 0.025),
+            child: child,
+          );
+        },
       ),
     );
   }
@@ -577,8 +704,9 @@ class DashboardBusinessHeader extends StatelessWidget {
   Widget build(BuildContext context) {
     final AppSpacing spacing = AppSpacing.of(context);
     final AppLocalizations l10n = AppLocalizations.of(context);
-    final DashboardProfilePalette palette =
-        DashboardProfilePalette.forProfile(profile, brightness: Theme.of(context).brightness);
+    final DashboardProfilePalette palette = DashboardProfilePalette.forProfile(
+        profile,
+        brightness: Theme.of(context).brightness);
     final String formatted = _headerDate(l10n);
 
     return Column(
@@ -593,14 +721,28 @@ class DashboardBusinessHeader extends StatelessWidget {
           ),
           child: Semantics(
             header: true,
-            child: Text(
-              (staffName != null && staffName!.trim().isNotEmpty)
-                  ? '${staffName!.trim()} welcome to $shopName'
-                  : 'Welcome to $shopName',
-              style: AppTypography.of(context).headlineSmall?.copyWith(
-                    color: AppColors.of(context).onSurface,
-                  ),
-              softWrap: true,
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: <Widget>[
+                Text(
+                  (staffName != null && staffName!.trim().isNotEmpty)
+                      ? l10n.dashboardGreetingNamed(
+                          timeOfDayWord(l10n), staffName!.trim())
+                      : l10n.dashboardGreetingAnonymous(timeOfDayWord(l10n)),
+                  style: AppTypography.of(context).headlineSmall?.copyWith(
+                        color: AppColors.of(context).onSurface,
+                      ),
+                  softWrap: true,
+                ),
+                SizedBox(height: spacing.xs),
+                Text(
+                  shopName,
+                  style: AppTypography.of(context)
+                      .bodySmall
+                      ?.copyWith(color: AppColors.of(context).onSurfaceMuted),
+                  softWrap: true,
+                ),
+              ],
             ),
           ),
         ),
@@ -611,7 +753,8 @@ class DashboardBusinessHeader extends StatelessWidget {
           runSpacing: spacing.xs,
           children: <Widget>[
             Container(
-              padding: EdgeInsets.symmetric(horizontal: spacing.sm, vertical: spacing.xs),
+              padding: EdgeInsets.symmetric(
+                  horizontal: spacing.sm, vertical: spacing.xs),
               decoration: BoxDecoration(
                 color: palette.tint,
                 borderRadius: BorderRadius.circular(999),
@@ -623,9 +766,8 @@ class DashboardBusinessHeader extends StatelessWidget {
                   SizedBox(width: spacing.xs),
                   Text(
                     profile.displayName.toUpperCase(),
-                    style: AppTypography.of(context)
-                        .labelSmall
-                        ?.copyWith(color: palette.ink, fontWeight: FontWeight.w700),
+                    style: AppTypography.of(context).labelSmall?.copyWith(
+                        color: palette.ink, fontWeight: FontWeight.w700),
                   ),
                 ],
               ),
@@ -647,6 +789,7 @@ class DashboardBusinessHeader extends StatelessWidget {
 
 class DashboardMoneyHero extends StatelessWidget {
   const DashboardMoneyHero({
+    required this.profile,
     required this.label,
     required this.amount,
     required this.primaryActionLabel,
@@ -658,6 +801,7 @@ class DashboardMoneyHero extends StatelessWidget {
     super.key,
   });
 
+  final ShopProfile profile;
   final String label;
   final Money amount;
   final String primaryActionLabel;
@@ -671,6 +815,14 @@ class DashboardMoneyHero extends StatelessWidget {
   Widget build(BuildContext context) {
     final AppSpacing spacing = AppSpacing.of(context);
     final AppLocalizations l10n = AppLocalizations.of(context);
+    final DashboardProfilePalette palette = DashboardProfilePalette.forProfile(
+      profile,
+      brightness: Theme.of(context).brightness,
+    );
+    final Color heroStart =
+        Color.lerp(palette.accent, Colors.black, 0.42) ?? palette.accent;
+    final Color heroEnd =
+        Color.lerp(palette.accent, Colors.black, 0.62) ?? palette.accent;
     return LayoutBuilder(
       builder: (BuildContext context, BoxConstraints constraints) {
         final double ts = dashboardTextScale(context);
@@ -679,8 +831,8 @@ class DashboardMoneyHero extends StatelessWidget {
           padding: PageGutter.card(context),
           decoration: BoxDecoration(
             borderRadius: BorderRadius.circular(20),
-            gradient: const LinearGradient(
-              colors: <Color>[Color(0xFF0F3D2E), Color(0xFF16523E)],
+            gradient: LinearGradient(
+              colors: <Color>[heroStart, heroEnd],
               begin: Alignment.topLeft,
               end: Alignment.bottomRight,
             ),
@@ -694,9 +846,7 @@ class DashboardMoneyHero extends StatelessWidget {
                   Expanded(
                     child: Text(
                       label,
-                      style: AppTypography.of(context)
-                          .labelMedium
-                          ?.copyWith(
+                      style: AppTypography.of(context).labelMedium?.copyWith(
                             color: const Color(0xFFB7E4D4),
                             fontWeight: FontWeight.w700,
                             letterSpacing: 0.6,
@@ -720,14 +870,13 @@ class DashboardMoneyHero extends StatelessWidget {
                   children: <Widget>[
                     Semantics(
                       label: '$label: ${formatMoney(amount)}',
-                      child: Text(
-                        formatMoney(amount),
+                      child: _AnimatedDashboardText(
+                        value: formatMoney(amount),
                         style: AppTypography.money(
                           context,
                           size: 40,
                           weight: FontWeight.w800,
                         ).copyWith(color: Colors.white),
-                        softWrap: true,
                       ),
                     ),
                     SizedBox(height: spacing.sm),
@@ -735,7 +884,7 @@ class DashboardMoneyHero extends StatelessWidget {
                       onPressed: onPrimaryAction,
                       style: FilledButton.styleFrom(
                         backgroundColor: Colors.white,
-                        foregroundColor: const Color(0xFF0F3D2E),
+                        foregroundColor: heroEnd,
                       ),
                       child: Text(primaryActionLabel),
                     ),
@@ -748,14 +897,13 @@ class DashboardMoneyHero extends StatelessWidget {
                     Expanded(
                       child: Semantics(
                         label: '$label: ${formatMoney(amount)}',
-                        child: Text(
-                          formatMoney(amount),
+                        child: _AnimatedDashboardText(
+                          value: formatMoney(amount),
                           style: AppTypography.money(
                             context,
                             size: 40,
                             weight: FontWeight.w800,
                           ).copyWith(color: Colors.white),
-                          softWrap: true,
                         ),
                       ),
                     ),
@@ -763,7 +911,7 @@ class DashboardMoneyHero extends StatelessWidget {
                       onPressed: onPrimaryAction,
                       style: FilledButton.styleFrom(
                         backgroundColor: Colors.white,
-                        foregroundColor: const Color(0xFF0F3D2E),
+                        foregroundColor: heroEnd,
                       ),
                       child: Text(primaryActionLabel),
                     ),
@@ -809,7 +957,8 @@ class DashboardMoneyHero extends StatelessWidget {
                   onTap: onTransactions,
                   child: Row(
                     children: <Widget>[
-                      const Icon(Icons.receipt_long_outlined, size: 18, color: Colors.white),
+                      const Icon(Icons.receipt_long_outlined,
+                          size: 18, color: Colors.white),
                       SizedBox(width: spacing.xs),
                       Text(
                         l10n.dashboardTransactionsLabel,

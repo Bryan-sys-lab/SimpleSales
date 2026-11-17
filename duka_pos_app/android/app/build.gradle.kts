@@ -97,6 +97,15 @@ android {
             providers.gradleProperty("appAuthRedirectScheme").getOrElse("dukapos")
     }
 
+    // Keep native libraries extractable for OEM package installers that reject
+    // APKs with compressed/unusual JNI entries (reported on several Redmi
+    // Note generations). This preserves one universal APK install path.
+    packaging {
+        jniLibs {
+            useLegacyPackaging = true
+        }
+    }
+
     signingConfigs {
         if (hasReleaseSigning) {
             create("release") {

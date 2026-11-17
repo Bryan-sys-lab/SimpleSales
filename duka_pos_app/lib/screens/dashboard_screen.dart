@@ -15,19 +15,18 @@ import '../services/live_channel_service.dart';
 import '../services/live_refresh_mixin.dart';
 import '../services/session_refresh_mixin.dart';
 import '../services/etims/etims_service.dart';
-import '../services/excel_service.dart';
 import '../theme/app_haptics.dart';
 import '../theme/app_spacing.dart';
 import '../ui/components/controls.dart';
-import '../ui/components/operation_result.dart';
 import '../ui/components/states.dart';
 import '../ui/layout/page.dart';
 import '../utils/money.dart';
 import 'dashboard_shared.dart';
 import 'drinks_dashboard_screen.dart';
 import 'duka_dashboard_screen.dart';
-import 'fashion_dashboard_screen.dart';
 import 'open_dashboard_screen.dart';
+import 'fashion_dashboard_screen.dart';
+import '../widgets/backup_reminder_banner.dart';
 
 class DashboardScreen extends StatefulWidget {
   const DashboardScreen({super.key});
@@ -121,7 +120,20 @@ class _DashboardContent extends StatelessWidget {
           onDismiss: onDismiss == null ? null : (String id) => onDismiss!(id),
         );
       case ShopProfile.open:
-        return const OpenDashboardScreen();
+        return OpenDashboardScreen(
+          data: data,
+          onRefresh: onRefresh,
+          onBackupNow: onBackupNow,
+          onOpenShift: onOpenShift,
+          onOpenSell: onOpenSell,
+          onOpenInventory: onOpenInventory,
+          onOpenEtimsSettings: onOpenEtimsSettings,
+          onOpenProduct: onOpenProduct,
+          onRetryEtims: onRetryEtims,
+          onRetryRejectedEtims: onRetryRejectedEtims,
+          dismissed: dismissed,
+          onDismiss: onDismiss == null ? null : (String id) => onDismiss!(id),
+        );
     }
   }
 }
@@ -174,6 +186,10 @@ class _DashboardScreenState extends State<DashboardScreen>
     // so a sign-out or sign-in landing mid-load would otherwise be answered
     // with one session's scope and another session's greeting.
     final int session = appState.sessionGeneration;
+    final String workspace = appState.workspaceKey;
+    final ShopProfile profile = appState.shopProfile;
+    final int? staff = appState.currentStaffId;
+    final String role = appState.currentRole;
     setState(() {
       _state ??= const DashboardLoading();
     });
@@ -211,15 +227,13 @@ class _DashboardScreenState extends State<DashboardScreen>
       final List<Product> tanks =
           products.where((p) => p.category == 'Tanks' && p.active).toList();
       final int totalProducts = products.where((p) => p.active).length;
-      final int outOfStockCount = products
-          .where((p) => p.active && p.isOutOfStock)
-          .length;
+      final int outOfStockCount =
+          products.where((p) => p.active && p.isOutOfStock).length;
       final Money stockValue = Money.fromMinor(
         products.where((p) => p.active).fold<int>(
-          0,
-          (sum, p) =>
-              sum + (p.stockQty * p.costPrice.minorUnits).round(),
-        ),
+              0,
+              (sum, p) => sum + (p.stockQty * p.costPrice.minorUnits).round(),
+            ),
       );
       // Variant-level low stock for fashion: a variant is low when its own
       // available count is at or below its reorder level.
@@ -236,14 +250,26 @@ class _DashboardScreenState extends State<DashboardScreen>
           ? (totalOwedMinor: 0, customerCount: 0)
           : await db.creditSummary();
 
-      if (!_current(serial, session, appState)) return;
+      if (!_current(serial, session, appState,
+          workspace: workspace,
+          profile: profile,
+          staff: staff,
+          role: role)) {
+        return;
+      }
       if (products.isEmpty && !totalsAll.hasSales) {
         final Shift? shift = appState.currentStaffId == null
             ? null
             : await db.getOpenShift(appState.currentStaffId!);
         // Re-checked: the greeting below reads the session again, and the read
         // that follows it is enough time for an idle sign-out to land.
-        if (!_current(serial, session, appState)) return;
+        if (!_current(serial, session, appState,
+            workspace: workspace,
+            profile: profile,
+            staff: staff,
+            role: role)) {
+          return;
+        }
         final String scopeLabel = _scopeLabel(l10n, ownOnly: ownOnly);
         setState(() {
           _state = DashboardReady(
@@ -276,7 +302,13 @@ class _DashboardScreenState extends State<DashboardScreen>
         });
         if (shift == null) return;
         final Money expected = await db.expectedTillBalance(shift);
-        if (!_current(serial, session, appState)) return;
+        if (!_current(serial, session, appState,
+            workspace: workspace,
+            profile: profile,
+            staff: staff,
+            role: role)) {
+          return;
+        }
         final DashboardReady? ready = _state as DashboardReady?;
         if (ready == null || ready.openShift?.id != shift.id) return;
         setState(() => _state = DashboardReady(
@@ -311,18 +343,19 @@ class _DashboardScreenState extends State<DashboardScreen>
         db.topProducts(since: DateTime(2000), staffId: staffId, limit: 1000),
         db.salesTenderMix(since: dayStart, until: tomorrow, staffId: staffId),
         appState.shopProfile == ShopProfile.drinks
-            ? db.drinksAnalytics(since: dayStart, until: tomorrow, staffId: staffId)
+            ? db.drinksAnalytics(
+                since: dayStart, until: tomorrow, staffId: staffId)
             : Future.value(DrinksAnalyticsSnapshot.empty),
+        db.getCostPools(),
       ]);
 
-      final List<Product> low = products
-          .where((Product product) => product.isLow)
-          .toList()
-        ..sort((Product a, Product b) {
-          final int byEmpty =
-              (a.isOutOfStock ? 0 : 1).compareTo(b.isOutOfStock ? 0 : 1);
-          return byEmpty != 0 ? byEmpty : a.stockQty.compareTo(b.stockQty);
-        });
+      final List<Product> low =
+          products.where((Product product) => product.isLow).toList()
+            ..sort((Product a, Product b) {
+              final int byEmpty =
+                  (a.isOutOfStock ? 0 : 1).compareTo(b.isOutOfStock ? 0 : 1);
+              return byEmpty != 0 ? byEmpty : a.stockQty.compareTo(b.stockQty);
+            });
 
       final Shift? shift = results[4] as Shift?;
       final List<ProductSalesRow> allTimeSales =
@@ -330,15 +363,29 @@ class _DashboardScreenState extends State<DashboardScreen>
       final Map<int, ProductSalesRow> tankSales = <int, ProductSalesRow>{
         for (final row in allTimeSales) row.productId: row,
       };
-      final List<PaymentMixRow> paymentMix =
-          results[6] as List<PaymentMixRow>;
+      final List<PaymentMixRow> paymentMix = results[6] as List<PaymentMixRow>;
       final DrinksAnalyticsSnapshot drinksAnalytics =
           results[7] as DrinksAnalyticsSnapshot;
+      final pools = results[8] as List<Map<String, dynamic>>;
+      final int poolInvested = pools.fold<int>(
+        0,
+        (sum, pool) => sum + ((pool['invested_minor'] as num?)?.toInt() ?? 0),
+      );
+      final int poolRecovered = pools.fold<int>(
+        0,
+        (sum, pool) => sum + ((pool['recovered_minor'] as num?)?.toInt() ?? 0),
+      );
 
       // Every session read from here on — the scope label and the greeting —
       // is behind the guard, so a sign-out that landed during the batch above
       // cannot flavour the figures it finally leaves on screen.
-      if (!_current(serial, session, appState)) return;
+      if (!_current(serial, session, appState,
+          workspace: workspace,
+          profile: profile,
+          staff: staff,
+          role: role)) {
+        return;
+      }
       final String scopeLabel =
           ownOnly ? (appState.currentStaffName ?? 'you') : 'the shop';
 
@@ -364,12 +411,23 @@ class _DashboardScreenState extends State<DashboardScreen>
           lowStockVariants: lowVariants,
           drinksAnalytics: drinksAnalytics,
           paymentMix: paymentMix,
+          openCostPoolCount: pools
+              .where((pool) => (pool['status'] as String? ?? 'open') == 'open')
+              .length,
+          openCostInvestedMinor: poolInvested,
+          openCostRecoveredMinor: poolRecovered,
         );
       });
 
       if (shift == null) return;
       final Money expected = await db.expectedTillBalance(shift);
-      if (!_current(serial, session, appState)) return;
+      if (!_current(serial, session, appState,
+          workspace: workspace,
+          profile: profile,
+          staff: staff,
+            role: role)) {
+          return;
+        }
       final DashboardReady? ready = _state as DashboardReady?;
       if (ready == null || ready.openShift?.id != shift.id) return;
       setState(() => _state = DashboardReady(
@@ -391,9 +449,18 @@ class _DashboardScreenState extends State<DashboardScreen>
             outOfStockCount: ready.outOfStockCount,
             stockValue: ready.stockValue,
             lowStockVariants: ready.lowStockVariants,
+            openCostPoolCount: ready.openCostPoolCount,
+            openCostInvestedMinor: ready.openCostInvestedMinor,
+            openCostRecoveredMinor: ready.openCostRecoveredMinor,
           ));
     } catch (_) {
-      if (!_current(serial, session, appState)) return;
+      if (!_current(serial, session, appState,
+          workspace: workspace,
+          profile: profile,
+          staff: staff,
+          role: role)) {
+        return;
+      }
       setState(() {
         _state = const DashboardFailed();
       });
@@ -407,8 +474,22 @@ class _DashboardScreenState extends State<DashboardScreen>
   /// started (which will deliver), or the session changed underneath it — in
   /// which case what it read is a mix of two sessions' scope and greeting and
 
-  bool _current(int serial, int session, AppState appState) =>
-      mounted && serial == _loadSerial && appState.sessionGeneration == session;
+  bool _current(
+    int serial,
+    int session,
+    AppState appState, {
+    required String workspace,
+    required ShopProfile profile,
+    required int? staff,
+    required String role,
+  }) =>
+      mounted &&
+      serial == _loadSerial &&
+      appState.sessionGeneration == session &&
+      appState.workspaceKey == workspace &&
+      appState.shopProfile == profile &&
+      appState.currentStaffId == staff &&
+      appState.currentRole == role;
 
   /// Whose takings the screen is showing.
   ///
@@ -457,27 +538,7 @@ class _DashboardScreenState extends State<DashboardScreen>
   /// quietly failed leaves them MORE worried, not less. So both outcomes are a
   /// screen: what was made, or why there was not one.
   Future<void> _backupNow() async {
-    final l10n = AppLocalizations.of(context);
-    try {
-      final file = await ExcelService().exportEncryptedInventory();
-      await ExcelService().shareFile(file);
-      if (!mounted) return;
-      showOperationSuccess(
-        context,
-        title: l10n.settingsBackupDoneTitle,
-        message: l10n.settingsBackupDone,
-        detailIcon: Icons.backup_outlined,
-      );
-    } on Object {
-      if (!mounted) return;
-      showOperationFailure(
-        context,
-        title: l10n.settingsBackupFailedTitle,
-        message: l10n.settingsBackupFailed,
-        icon: Icons.backup_outlined,
-        onRetry: _backupNow,
-      );
-    }
+    await performBackup(context);
   }
 
   Future<void> _retryEtims() async {
@@ -530,14 +591,12 @@ class _DashboardScreenState extends State<DashboardScreen>
   Future<void> _dismissAttention(String id) async {
     setState(() => _dismissedAttention = {..._dismissedAttention, id});
     final prefs = await SharedPreferences.getInstance();
-    await prefs.setStringList('dismissed_attention', _dismissedAttention.toList());
+    await prefs.setStringList(
+        'dismissed_attention', _dismissedAttention.toList());
   }
 
   @override
   Widget build(BuildContext context) {
-    if (context.read<AppState>().shopProfile == ShopProfile.open) {
-      return const OpenDashboardScreen();
-    }
     return switch (_state) {
       null || DashboardLoading() => const _DashboardSkeleton(),
       DashboardFailed() => ErrorStateView(

@@ -283,14 +283,43 @@ void main() {
       ]);
     });
 
-    test('Open profile hides stock navigation for an owner', () {
+    test('Open profile keeps shared inventory navigation for an owner', () {
       final AppState state = AppState();
       state.shopProfile = ShopProfile.open;
       state.signIn('Owner', asOwner: true);
       expect(
         visibleDestinations(state),
+        contains(AppDestination.inventory),
+      );
+    });
+
+    test('Open profile keeps the same stock permission gate as Duka', () {
+      final AppState manager = AppState();
+      manager.shopProfile = ShopProfile.open;
+      manager.signIn('Manager', asOwner: false, role: 'manager');
+      expect(visibleDestinations(manager), contains(AppDestination.inventory));
+
+      final AppState cashier = AppState();
+      cashier.shopProfile = ShopProfile.open;
+      cashier.signIn('Cashier', asOwner: false, role: 'cashier');
+      expect(
+        visibleDestinations(cashier),
         isNot(contains(AppDestination.inventory)),
       );
+    });
+
+    test('Open uses the shared six-destination shell', () {
+      final AppState state = AppState();
+      state.shopProfile = ShopProfile.open;
+      state.signIn('Owner', asOwner: true);
+      expect(visibleDestinations(state), <AppDestination>[
+        AppDestination.dashboard,
+        AppDestination.inventory,
+        AppDestination.sell,
+        AppDestination.analytics,
+        AppDestination.more,
+        AppDestination.support,
+      ]);
     });
   });
 

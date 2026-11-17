@@ -64,6 +64,8 @@ class ProductImageStore {
 
   /// The folder photographs live in, relative to the app's documents directory.
   static const _folder = 'product_photos';
+  static const _servingFolder = 'serving_photos';
+  static const _pendingEvidenceFolder = 'sale_evidence_pending';
 
   /// The folder account avatars live in.
   static const avatarFolder = 'avatars';
@@ -101,6 +103,53 @@ class ProductImageStore {
         ? _folder
         : '$_folder/${workspaceKey.replaceAll(RegExp(r'[^A-Za-z0-9_-]'), '_')}';
     return '$folder/$productId.$_extension';
+  }
+
+  static String servingRelativePathFor(int servingId, {String? workspaceKey}) {
+    final folder = workspaceKey == null
+        ? _servingFolder
+        : '$_servingFolder/${workspaceKey.replaceAll(RegExp(r'[^A-Za-z0-9_-]'), '_')}';
+    return '$folder/$servingId.$_extension';
+  }
+
+  static Future<String> saveServing(
+    File source, {
+    required int servingId,
+    String? workspaceKey,
+  }) =>
+      _saveAs(source,
+          servingRelativePathFor(servingId, workspaceKey: workspaceKey));
+
+  static Future<void> deleteServing(
+    int servingId, {
+    String? workspaceKey,
+  }) async {
+    try {
+      final file = await _fileForPath(
+        servingRelativePathFor(servingId, workspaceKey: workspaceKey),
+      );
+      if (await file.exists()) await file.delete();
+    } on FileSystemException {
+      // Best effort, matching product-photo removal semantics.
+    }
+  }
+
+  static String pendingEvidencePath(int evidenceId) =>
+      '$_pendingEvidenceFolder/$evidenceId.jpg';
+
+  static Future<String> savePendingEvidence(
+    File source,
+    int evidenceId,
+  ) =>
+      _saveAs(source, pendingEvidencePath(evidenceId));
+
+  static Future<void> deletePendingEvidence(int evidenceId) async {
+    try {
+      final file = await _fileForPath(pendingEvidencePath(evidenceId));
+      if (await file.exists()) await file.delete();
+    } on FileSystemException {
+      // Cleanup is best effort after a successful remote upload.
+    }
   }
 
   /// The relative path this shop's avatar is stored under.
@@ -220,6 +269,14 @@ class ProductImageStore {
       } on FileSystemException {
         // Best effort — the account is already erased; leftover photos are
         // unreadable without the key anyway.
+      }
+    }
+    final pending = Directory('${docs.path}/$_pendingEvidenceFolder');
+    if (await pending.exists()) {
+      try {
+        await pending.delete(recursive: true);
+      } on FileSystemException {
+        // Best effort cleanup for staged offline evidence.
       }
     }
     // Also erase the per-device avatar: a deleted account leaves no face.

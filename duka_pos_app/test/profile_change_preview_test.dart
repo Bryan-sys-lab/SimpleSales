@@ -31,7 +31,7 @@ void main() {
     expect(
       find.text(l10n.settingsBusinessProfilePreviewNavigation(
         l10n.settingsBusinessProfileStock,
-        l10n.settingsBusinessProfileMoneyFirst,
+        l10n.settingsBusinessProfileStock,
       )),
       findsOneWidget,
     );

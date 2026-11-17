@@ -24,6 +24,7 @@ import '../screens/incoming_payments_screen.dart';
 import '../screens/sync_center_screen.dart';
 import '../screens/permissions_matrix_screen.dart';
 import '../screens/profile_screen.dart';
+import '../screens/paywall_screen.dart';
 import '../screens/settings_screen.dart';
 import '../screens/customers_screen.dart';
 import '../screens/layby_screen.dart';
@@ -39,19 +40,13 @@ import '../screens/tank_register_screen.dart';
 import '../screens/product_detail_screen.dart';
 import '../screens/marketplace_screen.dart';
 import '../screens/help_screen.dart';
-import '../screens/open_dashboard_screen.dart';
-import '../screens/open_jobs_screen.dart';
-import '../screens/open_job_form_screen.dart';
-import '../screens/open_job_detail_screen.dart';
 import '../screens/fashion_catalogue_screen.dart';
 import '../screens/fashion_product_detail_screen.dart';
 import '../screens/fashion_product_form_screen.dart';
 import '../screens/exchange_screen.dart';
-import '../screens/open_job_add_cost_screen.dart';
 import '../screens/open_cost_groups_screen.dart';
 import '../screens/open_cost_group_form_screen.dart';
 import '../screens/open_cost_group_detail_screen.dart';
-import '../screens/open_receivables_screen.dart';
 import '../screens/tax_settings_screen.dart';
 import '../widgets/camera_scan_screen.dart';
 import '../screens/welcome_chooser_screen.dart';
@@ -205,6 +200,7 @@ List<RouteBase> _doorRoutes(AppStageController stage, AppState appState) {
             stage.abandonChoice();
             context.go(Routes.welcome);
           },
+          onCreated: (_) => context.go(Routes.paywall),
         ),
       ),
     ),
@@ -310,7 +306,7 @@ List<RouteBase> _shellRoutes(AppState appState) {
               pageBuilder: (BuildContext context, GoRouterState routerState) =>
                   _fadeThrough(
                 routerState,
-                SellScreen(jobId: routerState.extra is int ? routerState.extra as int : null, openQuickSale: routerState.extra is Map && (routerState.extra as Map)['quickSale'] == true),
+                const SellScreen(),
               ),
               routes: <RouteBase>[
                 // Covers the shell: a scanner wants the whole screen, including
@@ -370,7 +366,7 @@ List<RouteBase> _shellRoutes(AppState appState) {
                       (BuildContext context, GoRouterState routerState) =>
                           _fadeThrough(
                     routerState,
-                    appState.shopProfile.navigation.showDrinkService
+                    appState.shopProfile.navigation.showMeasuredGoods
                         ? const ServingsScreen()
                         : NotFoundScreen(location: routerState.matchedLocation),
                   ),
@@ -397,7 +393,11 @@ List<RouteBase> _shellRoutes(AppState appState) {
                           _fadeThrough(
                     routerState,
                     appState.shopProfile.navigation.showDrinkService
-                        ? const TankDetailScreen()
+                        ? TankDetailScreen(
+                            productId: int.tryParse(
+                              routerState.pathParameters['tankId'] ?? '',
+                            ),
+                          )
                         : NotFoundScreen(location: routerState.matchedLocation),
                   ),
                 ),
@@ -425,8 +425,8 @@ List<RouteBase> _shellRoutes(AppState appState) {
                     routerState,
                     ProductDetailScreen(
                       productId: int.tryParse(
-                            routerState.pathParameters['productId'] ?? '',
-                          ),
+                        routerState.pathParameters['productId'] ?? '',
+                      ),
                     ),
                   ),
                 ),
@@ -608,6 +608,12 @@ List<RouteBase> _shellRoutes(AppState appState) {
                       (BuildContext context, GoRouterState routerState) =>
                           _fadeThrough(routerState, const ProfileScreenOpen()),
                 ),
+                GoRoute(
+                  path: 'subscription',
+                  parentNavigatorKey: rootNavigatorKey,
+                  pageBuilder: (BuildContext context, GoRouterState state) =>
+                      _fadeThrough(state, const PaywallScreen()),
+                ),
                 // The rows an import asked about. A child of Settings for the
                 // same reason as the others — an owner looks for what needs
                 // finishing where they look for everything else — and a `push`
@@ -633,141 +639,34 @@ List<RouteBase> _shellRoutes(AppState appState) {
             ),
           ],
         ),
-        StatefulShellBranch(
-          navigatorKey: branchNavigatorKeys[AppDestination.openBusiness.index],
-          routes: <RouteBase>[
-            GoRoute(
-              path: Routes.openBusiness, // '/open-business'
-              pageBuilder: (BuildContext context, GoRouterState routerState) =>
-                  _fadeThrough(
-                routerState,
-                _ProfileBusiness(location: routerState.matchedLocation),
-              ),
-              routes: <RouteBase>[
-                // Jobs list — the heart of the Open profile.
-                GoRoute(
-                  path: 'jobs',
-                  parentNavigatorKey: rootNavigatorKey,
-                  pageBuilder:
-                      (BuildContext context, GoRouterState routerState) =>
-                          _fadeThrough(
-                    routerState,
-                    const OpenJobsScreen(),
-                  ),
-                ),
-                // New job form.
-                GoRoute(
-                  path: 'jobs/new',
-                  parentNavigatorKey: rootNavigatorKey,
-                  pageBuilder:
-                      (BuildContext context, GoRouterState routerState) =>
-                          _fadeThrough(
-                    routerState,
-                    const OpenJobFormScreen(),
-                  ),
-                ),
-                // Edit an existing job.
-                GoRoute(
-                  path: 'jobs/:jobId/edit',
-                  parentNavigatorKey: rootNavigatorKey,
-                  pageBuilder:
-                      (BuildContext context, GoRouterState routerState) =>
-                          _fadeThrough(
-                    routerState,
-                    OpenJobFormScreen(
-                      jobId: int.tryParse(
-                            routerState.pathParameters['jobId'] ?? '',
-                          ),
-                    ),
-                  ),
-                ),
-                // One job's detail: overview, financials, activity, actions.
-                GoRoute(
-                  path: 'jobs/:jobId',
-                  parentNavigatorKey: rootNavigatorKey,
-                  pageBuilder:
-                      (BuildContext context, GoRouterState routerState) =>
-                          _fadeThrough(
-                    routerState,
-                    OpenJobDetailScreen(
-                      jobId: int.tryParse(
-                            routerState.pathParameters['jobId'] ?? '',
-                          ) ??
-                          0,
-                    ),
-                  ),
-                ),
-                // Add a direct cost to a job.
-                GoRoute(
-                  path: 'jobs/:jobId/cost',
-                  parentNavigatorKey: rootNavigatorKey,
-                  pageBuilder:
-                      (BuildContext context, GoRouterState routerState) =>
-                          _fadeThrough(
-                    routerState,
-                    OpenJobAddCostScreen(
-                      jobId: int.tryParse(
-                            routerState.pathParameters['jobId'] ?? '',
-                          ) ??
-                          0,
-                    ),
-                  ),
-                ),
-                // Cost groups list.
-                GoRoute(
-                  path: 'cost-groups',
-                  parentNavigatorKey: rootNavigatorKey,
-                  pageBuilder:
-                      (BuildContext context, GoRouterState routerState) =>
-                          _fadeThrough(
-                    routerState,
-                    const OpenCostGroupsScreen(),
-                  ),
-                ),
-                // New cost group.
-                GoRoute(
-                  path: 'cost-groups/new',
-                  parentNavigatorKey: rootNavigatorKey,
-                  pageBuilder:
-                      (BuildContext context, GoRouterState routerState) =>
-                          _fadeThrough(
-                    routerState,
-                    const OpenCostGroupFormScreen(),
-                  ),
-                ),
-                // One cost group's detail.
-                GoRoute(
-                  path: 'cost-groups/:poolId',
-                  parentNavigatorKey: rootNavigatorKey,
-                  pageBuilder:
-                      (BuildContext context, GoRouterState routerState) =>
-                          _fadeThrough(
-                    routerState,
-                    OpenCostGroupDetailScreen(
-                      poolId: int.tryParse(
-                            routerState.pathParameters['poolId'] ?? '',
-                          ) ??
-                          0,
-                    ),
-                  ),
-                ),
-                // Receivables / customer payment history.
-                GoRoute(
-                  path: 'receivables',
-                  parentNavigatorKey: rootNavigatorKey,
-                  pageBuilder:
-                      (BuildContext context, GoRouterState routerState) =>
-                          _fadeThrough(
-                    routerState,
-                    const OpenReceivablesScreen(),
-                  ),
-                ),
-              ],
-            ),
-          ],
-        ),
       ],
     ),
+    // Cost of Goods (Open) — nested under Inventory conceptually, reachable from
+    // Inventory and dashboard shortcuts.
+    GoRoute(
+      path: Routes.openCostGroups,
+      parentNavigatorKey: rootNavigatorKey,
+      pageBuilder: (BuildContext context, GoRouterState routerState) =>
+          _fadeThrough(routerState, const OpenCostGroupsScreen()),
+    ),
+    GoRoute(
+      path: Routes.openCostGroupNew,
+      parentNavigatorKey: rootNavigatorKey,
+      pageBuilder: (BuildContext context, GoRouterState routerState) =>
+          _fadeThrough(routerState, const OpenCostGroupFormScreen()),
+    ),
+    GoRoute(
+      path: Routes.openCostGroupDetailPattern,
+      parentNavigatorKey: rootNavigatorKey,
+      pageBuilder: (BuildContext context, GoRouterState routerState) =>
+          _fadeThrough(
+        routerState,
+        OpenCostGroupDetailScreen(
+          poolId: int.tryParse(routerState.pathParameters['poolId'] ?? '') ?? 0,
+        ),
+      ),
+    ),
+
     // Exchange: return goods from one sale and sell replacements — one atomic
     // transaction. Reachable from the dashboard's More area and from sale
     // detail wherever the profile exposes it. Fashion-only.
@@ -911,11 +810,7 @@ class _ProfileDashboard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final ShopProfile profile =
-        context.select<AppState, ShopProfile>((AppState s) => s.shopProfile);
-    return profile == ShopProfile.open
-        ? const OpenDashboardScreen()
-        : const DashboardScreen();
+    return const DashboardScreen();
   }
 }
 
@@ -928,25 +823,8 @@ class _ProfileInventory extends StatelessWidget {
     final ShopProfile profile =
         context.select<AppState, ShopProfile>((AppState s) => s.shopProfile);
     return switch (profile) {
-      ShopProfile.open => const PortfolioScreen(),
       ShopProfile.fashion => const FashionCatalogueScreen(),
       _ => const InventoryScreen(),
     };
-  }
-}
-
-/// Biz tab body: the Open profile's jobs list; a 404 for every other profile.
-class _ProfileBusiness extends StatelessWidget {
-  const _ProfileBusiness({required this.location});
-
-  final String location;
-
-  @override
-  Widget build(BuildContext context) {
-    final ShopProfile profile =
-        context.select<AppState, ShopProfile>((AppState s) => s.shopProfile);
-    return profile == ShopProfile.open
-        ? const OpenJobsScreen()
-        : NotFoundScreen(location: location);
   }
 }

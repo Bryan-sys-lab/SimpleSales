@@ -184,4 +184,20 @@ void main() {
           isFalse);
     });
   });
+
+  group('measured serving dimensions', () {
+    test('converts litres and kilograms once and rejects count units', () {
+      expect(measuredServingMillilitres(0.5, 'litre'), 500);
+      expect(
+        measuredServingMillilitres(
+          0.25,
+          'kg',
+          millilitresPerKilogram: 850,
+        ),
+        212.5,
+      );
+      expect(measuredServingMillilitres(2, 'each'), isNull);
+      expect(measuredServingMillilitres(-1, 'ml'), isNull);
+    });
+  });
 }

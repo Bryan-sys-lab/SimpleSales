@@ -62,4 +62,22 @@ void main() {
       tester.expectNoOverflow('drinks loose-goods form');
     },
   );
+
+  testWidgets(
+    'open loose-goods form uses the shared duka commerce wording',
+    (WidgetTester tester) async {
+      tester.useDevice(Device.compact);
+      await tester.pumpApp(
+        home: Scaffold(
+          body: const LooseGoodsFormSheet(profile: ShopProfile.open),
+        ),
+      );
+
+      expect(find.text(l10n.dukaFieldProductName), findsAtLeastNWidgets(1));
+      expect(find.text(l10n.dukaServingsTitle), findsAtLeastNWidgets(1));
+      expect(find.text(l10n.tankFieldNameHint), findsNothing);
+      expect(find.text('Cup 1'), findsNothing);
+      tester.expectNoOverflow('open loose-goods form');
+    },
+  );
 }

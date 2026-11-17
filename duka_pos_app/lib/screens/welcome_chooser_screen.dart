@@ -154,7 +154,7 @@ class _WelcomeChooserScreenState extends State<WelcomeChooserScreen> {
                   ),
                   SizedBox(height: spacing.lg),
 
-                  const Center(child: SimplePosWordmark()),
+                  const Center(child: SimpleSalesLockup(width: 220)),
                   SizedBox(height: spacing.lg),
 
                   // Either the shop this device is pointed at, or the one thing

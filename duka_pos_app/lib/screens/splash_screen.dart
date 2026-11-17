@@ -1,10 +1,11 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
+import '../app_brand.dart';
 import '../theme/app_colors.dart';
 import '../theme/app_spacing.dart';
 import '../theme/typography.dart';
-import '../ui/brand/nerva_wordmark.dart';
+import '../ui/brand/simple_pos_mark.dart';
 
 /// The startup page.
 ///
@@ -51,31 +52,8 @@ class SplashScreen extends StatelessWidget {
                 child: Column(
                   mainAxisSize: MainAxisSize.min,
                   children: <Widget>[
-                    // The mark, drawn rather than decoded, so it is correct on
-                    // the first frame and cannot flash unstyled while a PNG
-                    // loads. Its plate is the brand ink, the same ink as the
-                    // page behind it, so the lockup reads as one mark rather
-                    // than as an icon sitting on a background.
-                    // The ATTRIBUTION first, the app's own name after it.
-                    //
-                    // It used to be the other way round — the shop's app in
-                    // large type, then a small "Powered by Nerva" trailing
-                    // underneath like a footnote. Read in that order the
-                    // footer looked like it belonged to the line above it, and
-                    // the lockup said the app was made by whoever the line
-                    // named. The vendor comes first, the product second.
-                    //
-                    // The VENDOR'S MARK, not the vendor's name in the app's
-                    // typeface: a brand set in the wrong face is a line of
-                    // somebody else's copy.
-                    Center(
-                      child: PoweredByNerva(
-                        style: type.labelSmall?.copyWith(
-                          color: colors.onSurface.withValues(alpha: 0.55),
-                        ),
-                      ),
-                    ),
-                    SizedBox(height: spacing.md),
+                    _StartupBrandAnimation(),
+                    SizedBox(height: spacing.lg),
                     Text(
                       'Point of sale, built for the till it runs on',
                       textAlign: TextAlign.center,
@@ -90,6 +68,36 @@ class SplashScreen extends StatelessWidget {
               ),
             ),
           ),
+        ),
+      ),
+    );
+  }
+}
+
+/// A bounded, local startup animation. The derivative is intentionally smaller
+/// than the supplied master so boot never asks the decoder for a large frame
+/// sequence. Reduced motion gets the same lockup as a stable still frame.
+class _StartupBrandAnimation extends StatelessWidget {
+  const _StartupBrandAnimation();
+
+  @override
+  Widget build(BuildContext context) {
+    final bool reduced = MediaQuery.disableAnimationsOf(context);
+    return Semantics(
+      image: true,
+      label: SimplePosBrand.appName,
+      child: ExcludeSemantics(
+        child: ConstrainedBox(
+          constraints: const BoxConstraints(maxWidth: 320, maxHeight: 285),
+          child: reduced
+              ? const SimpleSalesLockup(width: 280)
+              : Image.asset(
+                  'assets/branding/simple_sales_startup_animation.gif',
+                  width: 320,
+                  fit: BoxFit.contain,
+                  gaplessPlayback: true,
+                  excludeFromSemantics: true,
+                ),
         ),
       ),
     );

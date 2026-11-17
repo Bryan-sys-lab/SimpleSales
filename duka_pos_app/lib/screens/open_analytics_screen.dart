@@ -9,10 +9,6 @@ import '../theme/app_spacing.dart';
 import '../theme/typography.dart';
 import '../ui/components/surface.dart';
 import '../ui/components/status.dart';
-import '../db/database_helper.dart';
-import '../services/live_refresh_mixin.dart';
-import '../services/session_refresh_mixin.dart';
-import '../services/live_channel_service.dart';
 import '../utils/money.dart';
 import '../widgets/chart.dart';
 import 'analytics_screen.dart';
@@ -20,10 +16,8 @@ import 'analytics_shared.dart';
 
 /// The open profile analytics screen.
 ///
-/// Job-centred rather than product-centred: revenue, net profit, cash
-/// position, pooled costs, jobs completed and receivables lead — then
-/// financial performance, job performance, cost performance, customer
-/// performance and staff performance sections.
+/// Open-profile analytics emphasizes revenue, net profit, cash position,
+/// pooled costs and receivables while reusing the shared analytics engine.
 class OpenAnalyticsScreen extends StatelessWidget {
   const OpenAnalyticsScreen({
     required this.range,
@@ -87,12 +81,15 @@ class OpenAnalyticsScreen extends StatelessWidget {
       title: l10n.navAnalytics,
       statement: statement,
       children: <Widget>[
-        // Open leads with job-centred figures: revenue, net profit, cash
-        // position, pooled costs, jobs completed, receivables.
+        // Open leads with commerce figures: revenue, net profit, cash
+        // position, pooled costs, and receivables.
         _OpenOpeningKpis(
           totals: snapshot.totals,
           lowStockCount: snapshot.lowStock.length,
           outOfStockCount: snapshot.outOfStock.length,
+          pooledCosts: snapshot.pooledCosts,
+          receivables: snapshot.receivables,
+          cashPosition: snapshot.cashPosition,
         ),
         SizedBox(height: spacing.lg),
         ...standardAnalyticsSections(
@@ -117,92 +114,49 @@ class OpenAnalyticsScreen extends StatelessWidget {
   }
 }
 
-/// Revenue, net profit, cash position, pooled costs, jobs completed,
-/// receivables — the six figures an Open business owner opens analytics for.
-class _OpenOpeningKpis extends StatefulWidget {
+/// Revenue, net profit, cash position, pooled costs, and receivables —
+/// the figures an Open business owner opens analytics for.
+class _OpenOpeningKpis extends StatelessWidget {
   const _OpenOpeningKpis({
     required this.totals,
     required this.lowStockCount,
     required this.outOfStockCount,
+    required this.pooledCosts,
+    required this.receivables,
+    required this.cashPosition,
   });
 
   final DailyTotals totals;
   final int lowStockCount;
   final int outOfStockCount;
-
-  @override
-  State<_OpenOpeningKpis> createState() => _OpenOpeningKpisState();
-}
-
-class _OpenOpeningKpisState extends State<_OpenOpeningKpis>
-    with LiveRefresh<_OpenOpeningKpis>, SessionRefresh<_OpenOpeningKpis> {
-  int _pooledCostsMinor = 0;
-  int _receivablesMinor = 0;
-  int _jobsCompleted = 0;
-  int _cashPositionMinor = 0;
-
-  @override
-  Set<LiveReason> get liveReasons => const <LiveReason>{};
-
-  @override
-  bool get liveIsVisible => TickerMode.valuesOf(context).enabled;
-
-  @override
-  Future<void> reloadFromLive() => _load();
-
-  @override
-  void clearForSession() {
-    _pooledCostsMinor = 0;
-    _receivablesMinor = 0;
-    _jobsCompleted = 0;
-  }
-
-  @override
-  Future<void> reloadFromSession() => _load();
-
-  @override
-  void initState() {
-    super.initState();
-    _load();
-  }
-
-  Future<void> _load() async {
-    try {
-      final db = DatabaseHelper.instance;
-      final pools = await db.getCostPools();
-      final credit = await db.creditSummary();
-      final jobs = await db.getOpenJobs();
-      final sums = await db.getFinancialSums();
-      final int cashIn = sums.cashInMinor;
-      final int cashOut = sums.cashOutMinor;
-      if (!mounted) return;
-      setState(() {
-        _pooledCostsMinor = pools.fold<int>(
-          0,
-          (s, p) => s + ((p['invested_minor'] as num?)?.toInt() ?? 0),
-        );
-        _receivablesMinor = credit.totalOwedMinor;
-        _jobsCompleted = jobs.where((j) {
-          final st = (j['status'] as String?) ?? '';
-          return st == 'completed' || st == 'closed';
-        }).length;
-        _cashPositionMinor = cashIn - cashOut;
-      });
-    } catch (_) {}
-  }
+  final Money pooledCosts;
+  final Money receivables;
+  final Money cashPosition;
 
   @override
   Widget build(BuildContext context) {
-    final totals = widget.totals;
+    final totals = this.totals;
     final AppSpacing spacing = AppSpacing.of(context);
     final AppColors colors = AppColors.of(context);
     final l10n = AppLocalizations.of(context);
     final type = AppTypography.of(context);
     final profit = totals.profit.minorUnits > 0
-        ? (l10n.openDashboardProfit, formatMoney(totals.profit.abs), StatusTone.success)
+        ? (
+            l10n.openDashboardProfit,
+            formatMoney(totals.profit.abs),
+            StatusTone.success
+          )
         : totals.profit.minorUnits < 0
-            ? (l10n.openDashboardNotInProfitYet, formatMoney(totals.profit.abs), StatusTone.danger)
-            : (l10n.openDashboardBreakEven, formatMoney(Money.zero), StatusTone.neutral);
+            ? (
+                l10n.openDashboardNotInProfitYet,
+                formatMoney(totals.profit.abs),
+                StatusTone.danger
+              )
+            : (
+                l10n.openDashboardBreakEven,
+                formatMoney(Money.zero),
+                StatusTone.neutral
+              );
 
     return SurfaceCard(
       padding: EdgeInsets.all(spacing.lg),
@@ -238,28 +192,24 @@ class _OpenOpeningKpisState extends State<_OpenOpeningKpis>
                 ),
                 _OpeningKpiTile(
                   label: l10n.openAnalyticsCashPosition,
-                  value: formatMoney(Money.fromMinor(_cashPositionMinor)),
+                  value: formatMoney(cashPosition),
                   icon: Icons.account_balance_wallet_outlined,
                 ),
                 _OpeningKpiTile(
                   label: l10n.openAnalyticsPooledCosts,
-                  value: formatMoney(Money.fromMinor(_pooledCostsMinor)),
+                  value: formatMoney(pooledCosts),
                   icon: Icons.account_balance_outlined,
                 ),
                 _OpeningKpiTile(
-                  label: l10n.openAnalyticsJobsCompleted,
-                  value: '$_jobsCompleted',
-                  icon: Icons.check_circle_outline,
-                ),
-                _OpeningKpiTile(
                   label: l10n.openAnalyticsReceivables,
-                  value: formatMoney(Money.fromMinor(_receivablesMinor)),
+                  value: formatMoney(receivables),
                   icon: Icons.schedule_outlined,
                   tone: StatusTone.warning,
                 ),
               ];
               if (row) {
-                return IntrinsicHeight(child: Row(
+                return IntrinsicHeight(
+                    child: Row(
                   crossAxisAlignment: CrossAxisAlignment.stretch,
                   children: <Widget>[
                     for (int i = 0; i < tiles.length; i++) ...<Widget>[
@@ -272,7 +222,8 @@ class _OpenOpeningKpisState extends State<_OpenOpeningKpis>
               return Wrap(
                 spacing: spacing.lg,
                 runSpacing: spacing.lg,
-                children: tiles.map((t) => SizedBox(width: 150, child: t)).toList(),
+                children:
+                    tiles.map((t) => SizedBox(width: 150, child: t)).toList(),
               );
             },
           ),

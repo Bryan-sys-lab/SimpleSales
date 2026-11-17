@@ -11,6 +11,7 @@ import 'package:duka_pos/routing/app_stage_controller.dart';
 import 'package:duka_pos/routing/routes.dart';
 import 'package:duka_pos/services/app_stage.dart';
 import 'package:duka_pos/profile/shop_profile.dart';
+import 'package:duka_pos/profile/profile_navigation.dart';
 import 'package:duka_pos/services/roles.dart';
 import '../support/harness.dart';
 
@@ -33,13 +34,8 @@ String? expectedRedirect({
   required ShopProfile profile,
   required String location,
 }) {
-  // Open profile: inventory → portfolio
-  if (location == Routes.inventory && profile == ShopProfile.open) {
-    return Routes.portfolio;
-  }
   // Profile capability guards
-  if (location.startsWith('/open-business') &&
-      profile != ShopProfile.open) {
+  if (location.startsWith('/open-business') && profile != ShopProfile.open) {
     return Routes.dashboard;
   }
   if (location.startsWith('/inventory/fashion-product') &&
@@ -49,9 +45,11 @@ String? expectedRedirect({
   if (location == Routes.exchangeScreen && profile != ShopProfile.fashion) {
     return Routes.dashboard;
   }
-  if ((location.startsWith('/inventory/tank') ||
-          location == Routes.servings) &&
-      profile != ShopProfile.drinks) {
+  if (location == Routes.servings && !profile.navigation.showMeasuredGoods) {
+    return Routes.dashboard;
+  }
+  if (location.startsWith('/inventory/tank') &&
+      !profile.navigation.showDrinkService) {
     return Routes.dashboard;
   }
   return null;
@@ -85,7 +83,8 @@ void main() {
                 snapshot: snapshot,
                 location: route,
               );
-              final expected = expectedRedirect(profile: profile, location: route);
+              final expected =
+                  expectedRedirect(profile: profile, location: route);
               expect(
                 result,
                 expected,
@@ -97,40 +96,6 @@ void main() {
         }
 
         // Profile-specific routes allowed under their own profile.
-        if (profile == ShopProfile.open) {
-          final List<String> openRoutes = <String>[
-            Routes.openBusiness,
-            '${Routes.openBusiness}/jobs',
-            '${Routes.openBusiness}/jobs/new',
-            '${Routes.openBusiness}/jobs/1',
-            '${Routes.openBusiness}/jobs/1/edit',
-            '${Routes.openBusiness}/jobs/1/cost',
-            '${Routes.openBusiness}/cost-groups',
-            '${Routes.openBusiness}/cost-groups/new',
-            '${Routes.openBusiness}/cost-groups/1',
-            '${Routes.openBusiness}/receivables',
-          ];
-          for (final route in openRoutes) {
-            testWidgets(
-              'open route $route allowed',
-              (WidgetTester tester) async {
-                tester.useDevice(Device.compact);
-                await loadAppFonts();
-
-                final snapshot = snapshotFor(profile: profile);
-                final result = appRedirect(
-                  snapshot: snapshot,
-                  location: route,
-                );
-                expect(
-                  result,
-                  isNull,
-                  reason: '$route under Open should be allowed (got $result)',
-                );
-              },
-            );
-          }
-        }
 
         if (profile == ShopProfile.fashion) {
           final List<String> fashionRoutes = <String>[
@@ -154,20 +119,23 @@ void main() {
                 expect(
                   result,
                   isNull,
-                  reason: '$route under Fashion should be allowed (got $result)',
+                  reason:
+                      '$route under Fashion should be allowed (got $result)',
                 );
               },
             );
           }
         }
 
-        if (profile == ShopProfile.drinks) {
-          final List<String> drinksRoutes = <String>[
-            Routes.servings,
-            Routes.tankRegister,
-            Routes.tankDetail(1),
-          ];
-          for (final route in drinksRoutes) {
+        if (profile.navigation.showMeasuredGoods) {
+          final List<String> measuredGoodsRoutes = <String>[Routes.servings];
+          if (profile.navigation.showDrinkService) {
+            measuredGoodsRoutes.addAll(<String>[
+              Routes.tankRegister,
+              Routes.tankDetail(1),
+            ]);
+          }
+          for (final route in measuredGoodsRoutes) {
             testWidgets(
               'drinks route $route allowed',
               (WidgetTester tester) async {
@@ -194,20 +162,14 @@ void main() {
           if (otherProfile == profile) continue;
 
           List<String> otherRoutes = <String>[];
-          if (otherProfile == ShopProfile.open) {
-            otherRoutes = <String>[
-              Routes.openBusiness,
-              '${Routes.openBusiness}/jobs/1',
-            ];
-          }
           if (otherProfile == ShopProfile.fashion) {
             otherRoutes = <String>[
               Routes.fashionProductForm,
               Routes.exchangeScreen,
             ];
           }
-          if (otherProfile == ShopProfile.drinks) {
-            otherRoutes = <String>[Routes.servings, Routes.tankRegister];
+          if (otherProfile.navigation.showDrinkService) {
+            otherRoutes = <String>[Routes.tankRegister];
           }
 
           for (final route in otherRoutes) {
@@ -231,29 +193,6 @@ void main() {
               },
             );
           }
-        }
-
-        // Open profile: inventory → portfolio redirect.
-        if (profile == ShopProfile.open) {
-          testWidgets(
-            '/inventory redirects to /analytics/portfolio under Open',
-            (WidgetTester tester) async {
-              tester.useDevice(Device.compact);
-              await loadAppFonts();
-
-              final snapshot = snapshotFor(profile: profile);
-              final result = appRedirect(
-                snapshot: snapshot,
-                location: Routes.inventory,
-              );
-              expect(
-                result,
-                Routes.portfolio,
-                reason:
-                    '/inventory under Open should redirect to /analytics/portfolio (got $result)',
-              );
-            },
-          );
         }
       });
     }

@@ -191,7 +191,7 @@ class _ExpenseSheetState extends State<_ExpenseSheet> {
           ],
           decoration: InputDecoration(labelText: l10n.expenseAmountLabel),
         ),
-        SizedBox(height: spacing.sm),
+        SizedBox(height: spacing.md),
         OutlinedButton.icon(
           onPressed: _saving ? null : _pickPhoto,
           icon: Icon(
@@ -199,7 +199,7 @@ class _ExpenseSheetState extends State<_ExpenseSheet> {
           label: Text(
               _photoPath == null ? 'Add receipt photo' : 'Receipt photo added'),
         ),
-        SizedBox(height: spacing.sm),
+        SizedBox(height: spacing.md),
         DropdownButtonFormField<int>(
           initialValue: _categoryId,
           isExpanded: true,
@@ -214,7 +214,7 @@ class _ExpenseSheetState extends State<_ExpenseSheet> {
               _saving ? null : (value) => setState(() => _categoryId = value),
           decoration: InputDecoration(labelText: l10n.expenseCategoryLabel),
         ),
-        SizedBox(height: spacing.sm),
+        SizedBox(height: spacing.md),
         DropdownButtonFormField<String>(
           initialValue: _paidFrom,
           isExpanded: true,
@@ -239,7 +239,7 @@ class _ExpenseSheetState extends State<_ExpenseSheet> {
                 },
           decoration: const InputDecoration(labelText: 'Paid from'),
         ),
-        SizedBox(height: spacing.sm),
+        SizedBox(height: spacing.md),
         TextField(
           controller: _note,
           maxLines: 2,
@@ -330,21 +330,27 @@ class _ExpensePaymentSheetState extends State<_ExpensePaymentSheet> {
           ],
           decoration: const InputDecoration(labelText: 'Payment amount'),
         ),
-        SizedBox(height: spacing.sm),
+        SizedBox(height: spacing.md),
         DropdownButtonFormField<String>(
           initialValue: _method,
           isExpanded: true,
           items: <DropdownMenuItem<String>>[
-            DropdownMenuItem(value: 'cash', child: Text(AppLocalizations.of(context).cashControlCash)),
-            DropdownMenuItem(value: 'mpesa', child: Text(AppLocalizations.of(context).cashControlMpesa)),
             DropdownMenuItem(
-                value: 'bank_transfer', child: Text(AppLocalizations.of(context).cashControlBankTransfer)),
+                value: 'cash',
+                child: Text(AppLocalizations.of(context).cashControlCash)),
+            DropdownMenuItem(
+                value: 'mpesa',
+                child: Text(AppLocalizations.of(context).cashControlMpesa)),
+            DropdownMenuItem(
+                value: 'bank_transfer',
+                child:
+                    Text(AppLocalizations.of(context).cashControlBankTransfer)),
           ],
           onChanged:
               _saving ? null : (value) => setState(() => _method = value!),
           decoration: const InputDecoration(labelText: 'Payment method'),
         ),
-        SizedBox(height: spacing.sm),
+        SizedBox(height: spacing.md),
         TextField(
           controller: _reference,
           decoration: const InputDecoration(labelText: 'Reference (optional)'),
@@ -426,7 +432,7 @@ class _TillMovementSheetState extends State<_TillMovementSheet> {
           onChanged: _saving ? null : (value) => setState(() => _type = value!),
           decoration: InputDecoration(labelText: l10n.tillMovementTypeLabel),
         ),
-        SizedBox(height: spacing.sm),
+        SizedBox(height: spacing.md),
         TextField(
           controller: _amount,
           autofocus: true,
@@ -436,7 +442,7 @@ class _TillMovementSheetState extends State<_TillMovementSheet> {
           ],
           decoration: InputDecoration(labelText: l10n.expenseAmountLabel),
         ),
-        SizedBox(height: spacing.sm),
+        SizedBox(height: spacing.md),
         TextField(
           controller: _note,
           maxLines: 2,

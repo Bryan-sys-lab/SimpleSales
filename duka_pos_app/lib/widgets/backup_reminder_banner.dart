@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../services/excel_service.dart';
+import '../services/auto_sync_service.dart';
 import '../ui/components/operation_result.dart';
 import '../l10n/generated/app_localizations.dart';
 import '../theme/app_colors.dart';
@@ -107,8 +108,19 @@ class _BackupReminderBannerState extends State<BackupReminderBanner> {
 Future<void> performBackup(BuildContext context) async {
   final AppLocalizations l10n = AppLocalizations.of(context);
   try {
-    final file = await ExcelService().exportEncryptedInventory();
-    await ExcelService().shareFile(file);
+    // A manual backup is an explicit sync opportunity. This runs the complete
+    // local-to-remote cycle, including the remote full backup when the shop is
+    // linked and verified. It remains safe offline because the sync service
+    // keeps the local encrypted copy as the source of truth.
+    await AutoSyncService.runNow(force: true);
+
+    // Keep the established share/export behavior for owners who have opted
+    // out of automatic sync. With auto-sync on, the remote backup is the
+    // requested backup and opening a share sheet would be needless friction.
+    if (!await AutoSyncService.enabled) {
+      final file = await ExcelService().exportEncryptedInventory();
+      await ExcelService().shareFile(file);
+    }
     if (!context.mounted) return;
     showOperationSuccess(
       context,

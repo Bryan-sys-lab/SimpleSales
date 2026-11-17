@@ -11,7 +11,6 @@ class ProfileDefinition {
     required this.variants,
     required this.drinkService,
     required this.layby,
-    required this.jobs,
     required this.pooledCosts,
     required this.enhancedAnalytics,
   });
@@ -22,7 +21,6 @@ class ProfileDefinition {
   final bool variants;
   final bool drinkService;
   final bool layby;
-  final bool jobs;
   final bool pooledCosts;
   final bool enhancedAnalytics;
 
@@ -35,7 +33,6 @@ class ProfileDefinition {
             variants: true,
             drinkService: true,
             layby: false,
-            jobs: false,
             pooledCosts: false,
             enhancedAnalytics: true,
           ),
@@ -46,7 +43,6 @@ class ProfileDefinition {
             variants: false,
             drinkService: false,
             layby: false,
-            jobs: false,
             pooledCosts: false,
             enhancedAnalytics: true,
           ),
@@ -57,18 +53,16 @@ class ProfileDefinition {
             variants: true,
             drinkService: false,
             layby: true,
-            jobs: false,
             pooledCosts: false,
             enhancedAnalytics: true,
           ),
         ShopProfile.open => const ProfileDefinition(
-            showInventory: false,
+            showInventory: true,
             trackStock: true,
-            measuredGoods: false,
+            measuredGoods: true,
             variants: false,
             drinkService: false,
             layby: false,
-            jobs: true,
             pooledCosts: true,
             enhancedAnalytics: true,
           ),
@@ -88,7 +82,6 @@ class ProfileCapabilities {
     required this.variants,
     required this.drinkService,
     required this.layby,
-    required this.jobs,
     required this.pooledCosts,
     required this.enhancedAnalytics,
   });
@@ -99,7 +92,6 @@ class ProfileCapabilities {
   final bool variants;
   final bool drinkService;
   final bool layby;
-  final bool jobs;
   final bool pooledCosts;
   final bool enhancedAnalytics;
 
@@ -112,7 +104,6 @@ class ProfileCapabilities {
       variants: d.variants,
       drinkService: d.drinkService,
       layby: d.layby,
-      jobs: d.jobs,
       pooledCosts: d.pooledCosts,
       enhancedAnalytics: d.enhancedAnalytics,
     );

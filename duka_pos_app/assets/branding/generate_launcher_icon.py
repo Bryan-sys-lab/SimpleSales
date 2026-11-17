@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Generate every Simple POS launcher icon from the geometric S mark.
+"""Generate every SimpleSales launcher icon from the supplied brand artwork.
 
 Why a script and not checked-in binaries alone: the mark is described once,
 here, and every size is rendered from that single source. A hand-painted PNG
@@ -21,7 +21,7 @@ from __future__ import annotations
 
 import json
 import os
-from PIL import Image, ImageChops, ImageDraw
+from PIL import Image
 
 # ---------------------------------------------------------------------------
 # Palette — mirrors DukaColors in lib/theme/app_theme.dart
@@ -31,10 +31,9 @@ PAPER = (0xFF, 0xFF, 0xFF, 0xFF)      # DukaColors.onPrimary  #FFFFFF
 GREEN = (0x1B, 0x6B, 0x3A, 0xFF)      # DukaColors.primary    #1B6B3A
 
 # ---------------------------------------------------------------------------
-# The mark: the geometric "S" — a single continuous white curve with a brand
-# green accent dot. The source PNG is exported from the design tool's SVG and
-# rendered on a solid ink background; this script strips that background so
-# the mark can composited onto whatever surface the platform provides.
+# The supplied glossy lockup is the source of truth. Small adaptive layers use
+# its extracted S-and-dot safe mark; full legacy/iOS icons use the complete
+# approved square artwork so the platform icon and app branding agree.
 # ---------------------------------------------------------------------------
 
 # How much of the canvas the mark fills, per context. Each is set by how much
@@ -73,39 +72,26 @@ APPICONSET = os.path.join(
 )
 BRANDING = os.path.join(ROOT, "assets", "branding")
 
-_GEOMETRIC_S_SOURCE = os.path.join(
-    BRANDING, "stitch_simple_pos_launcher_icon",
-    "simple_pos_geometric_s_icon", "screen.png",
-)
+_GLOSSY_SOURCE = os.path.join(BRANDING, "Glossy SimpleSales App Icon.png")
+_SAFE_MARK_OUTPUT = os.path.join(BRANDING, "simple_sales_s_mark.png")
 
 
 def _load_s_source() -> Image.Image:
-    """Load the geometric S source PNG and return it centred in a square canvas.
+    """Extract the supplied artwork's S-and-dot mark into a square tile."""
+    source = Image.open(_GLOSSY_SOURCE).convert("RGBA")
+    # Explicit crop around the S and dot; excludes the wordmark and tagline.
+    src = source.crop((350, 200, 910, 740))
+    canvas = Image.new("RGBA", (560, 560), (0, 0, 0, 255))
+    canvas.alpha_composite(src, (0, 10))
+    s = canvas.width * SUPERSAMPLE
+    return canvas.resize((s, s), Image.LANCZOS)
 
-    The source may be 512x520 (taller than wide) with a solid ink background.
-    We centre-crop to a square, upscale for supersampling, and strip the ink
-    background to transparency using fast C-level `ImageChops` operations so the
-    mark can be composited onto any platform-supplied background.
-    """
-    src = Image.open(_GEOMETRIC_S_SOURCE).convert("RGBA")
-    # Centre-crop to square.
-    min_dim = min(src.size)
-    left = (src.size[0] - min_dim) // 2
-    top = (src.size[1] - min_dim) // 2
-    src = src.crop((left, top, left + min_dim, top + min_dim))
-    s = min_dim * SUPERSAMPLE
-    src = src.resize((s, s), Image.LANCZOS)
 
-    # Build a mask: pixels close to ink become transparent, everything else is kept.
-    ink_bg = Image.new("RGB", (s, s), INK[:3])
-    diff = ImageChops.difference(src.convert("RGB"), ink_bg)
-    diff_gray = diff.convert("L")
-    # Threshold: anything that differs from ink by >10 is part of the mark.
-    mask = diff_gray.point(lambda v: 255 if v > 10 else 0, mode="L")
-
-    result = Image.new("RGBA", (s, s), (0, 0, 0, 0))
-    result.paste(src, (0, 0), mask)
-    return result
+def _load_full_source(size: int) -> Image.Image:
+    """Return the supplied full lockup as a square, opaque app icon."""
+    return Image.open(_GLOSSY_SOURCE).convert("RGB").resize(
+        (size, size), Image.LANCZOS
+    )
 
 
 def render_mark(size: int, scale: float) -> Image.Image:
@@ -142,33 +128,17 @@ def render_monochrome(size: int, scale: float) -> Image.Image:
 
 
 def render_legacy(size: int) -> Image.Image:
-    """Pre-API-26 launcher icon: rounded ink square, S centred on it."""
-    s = size * SUPERSAMPLE
-    base = Image.new("RGBA", (s, s), (0, 0, 0, 0))
-    ImageDraw.Draw(base).rounded_rectangle(
-        (0, 0, s - 1, s - 1),
-        radius=LEGACY_BG_RADIUS * s,
-        fill=INK,
-    )
-    # Render the mark at supersampled resolution, then downsample the base.
-    mark = _load_s_source()
-    mark_size = int(size * SCALE_LEGACY * SUPERSAMPLE)
-    mark = mark.resize((mark_size, mark_size), Image.LANCZOS)
-    offset = (s - mark_size) // 2
-    base.alpha_composite(mark, (offset, offset))
-    return base.resize((size, size), Image.LANCZOS)
+    """Pre-API-26 launcher icon from the supplied safe full lockup."""
+    return _load_full_source(size).convert("RGBA")
 
 
 def render_apple(size: int) -> Image.Image:
-    """iOS app icon: full-bleed ink square, no alpha channel.
+    """iOS app icon from the supplied full lockup, with no alpha channel.
 
     App Store validation rejects an icon PNG with transparency, so the result
     is flattened to RGB rather than written as RGBA.
     """
-    canvas = Image.new("RGB", (size, size), INK[:3])
-    mark = render_mark(size, SCALE_APPLE)
-    canvas.paste(mark, (0, 0), mark)
-    return canvas
+    return _load_full_source(size)
 
 
 def _save(image: Image.Image, path: str) -> None:
@@ -208,6 +178,7 @@ def main() -> None:
         _save(render_apple(round(points * scale)), os.path.join(APPICONSET, filename))
 
     print("Brand masters")
+    _save(_load_s_source().resize((1024, 1024), Image.LANCZOS), _SAFE_MARK_OUTPUT)
     _save(render_apple(1024), os.path.join(BRANDING, "simple_pos_icon_1024.png"))
     _save(render_apple(512), os.path.join(BRANDING, "simple_pos_icon_512.png"))
     _save(

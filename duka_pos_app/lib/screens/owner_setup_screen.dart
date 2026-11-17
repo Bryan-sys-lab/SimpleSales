@@ -262,7 +262,10 @@ class _OwnerSetupScreenState extends State<OwnerSetupScreen> {
       if (widget.isAdditionalShop) {
         // A second shop gets its OWN workspace. It used to write its owner row
         // into the shop already open, which already has one.
-        final String key = 'local-${DateTime.now().microsecondsSinceEpoch}';
+        final String key = await WorkspaceService.createReadableWorkspaceKey(
+          ownerName: owner.name,
+          shopName: owner.shopName,
+        );
         final String previousWorkspace = state.workspaceKey;
         await WorkspaceService.register(
             workspaceKey: key, shopName: owner.shopName);
@@ -463,8 +466,8 @@ class _OwnerSetupScreenState extends State<OwnerSetupScreen> {
                           'is created once the code is confirmed.',
                           textAlign: TextAlign.center,
                           style: AppTypography.of(context).bodySmall?.copyWith(
-                            color: colors.onSurfaceMuted,
-                          ),
+                                color: colors.onSurfaceMuted,
+                              ),
                         ),
                         SizedBox(height: spacing.md),
                         OnboardStyle.primaryButton(
@@ -488,7 +491,6 @@ class _OwnerSetupScreenState extends State<OwnerSetupScreen> {
     );
   }
 }
-
 
 /// The media/header panel at the top of the setup form.
 ///
@@ -522,7 +524,9 @@ class SetupIntroHeader extends StatelessWidget {
             borderRadius: AppShapes.of(context).cardRadius,
           ),
           child: Text(
-            isAdditionalShop ? l10n.setupIntroAddShopLabel : l10n.setupIntroSetUpLabel,
+            isAdditionalShop
+                ? l10n.setupIntroAddShopLabel
+                : l10n.setupIntroSetUpLabel,
             style: type.labelLarge?.copyWith(
               color: colors.accent,
               fontWeight: FontWeight.w600,
@@ -531,7 +535,9 @@ class SetupIntroHeader extends StatelessWidget {
         ),
         SizedBox(height: spacing.sm),
         Text(
-          isAdditionalShop ? l10n.setupIntroAddShopTitle : l10n.setupIntroSetUpTitle,
+          isAdditionalShop
+              ? l10n.setupIntroAddShopTitle
+              : l10n.setupIntroSetUpTitle,
           style: type.headlineSmall?.copyWith(
             color: colors.onSurface,
             fontWeight: FontWeight.w700,
@@ -539,7 +545,9 @@ class SetupIntroHeader extends StatelessWidget {
         ),
         SizedBox(height: spacing.sm),
         Text(
-          isAdditionalShop ? l10n.setupIntroAddShopBody : l10n.setupIntroSetUpBody,
+          isAdditionalShop
+              ? l10n.setupIntroAddShopBody
+              : l10n.setupIntroSetUpBody,
           style: type.bodyLarge?.copyWith(
             color: colors.onSurfaceVariant,
             height: 1.5,

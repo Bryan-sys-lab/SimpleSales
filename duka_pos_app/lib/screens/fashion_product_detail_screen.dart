@@ -14,6 +14,7 @@ import '../theme/typography.dart';
 import '../ui/components/status.dart';
 import '../ui/layout/page.dart';
 import '../ui/components/surface.dart';
+import '../ui/components/product_photo.dart';
 import '../utils/money.dart';
 import '../widgets/backup_reminder_banner.dart';
 
@@ -109,6 +110,15 @@ class _FashionProductDetailScreenState
     final lowVariantCount = _variants.where((v) => v.isLow).length;
 
     final bool canManageStock = appState.canManageStock;
+    final Widget productPhoto = Semantics(
+      image: true,
+      label: p.name,
+      child: ProductPhoto(
+        imagePath: p.imagePath,
+        size: 128,
+        revision: p.updatedAt,
+      ),
+    );
 
     return RefreshIndicator(
       onRefresh: _load,
@@ -128,6 +138,13 @@ class _FashionProductDetailScreenState
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: <Widget>[
+                      p.id == null
+                          ? productPhoto
+                          : Hero(
+                              tag: 'product-photo-${p.id}',
+                              child: productPhoto,
+                            ),
+                      SizedBox(height: spacing.md),
                       Text(
                         p.name,
                         style: AppTypography.of(context).headlineSmall,
@@ -175,10 +192,12 @@ class _FashionProductDetailScreenState
                         ),
                       ),
                     ]
-                  : _variants.map((v) => _VariantRowDetail(
-                      variant: v,
-                      canEdit: canManageStock,
-                    )).toList(),
+                  : _variants
+                      .map((v) => _VariantRowDetail(
+                            variant: v,
+                            canEdit: canManageStock,
+                          ))
+                      .toList(),
             ),
             SizedBox(height: spacing.xl),
             // Actions
@@ -198,8 +217,13 @@ class _FashionProductDetailScreenState
     );
   }
 
-  void _editProduct(BuildContext context) {
-    context.push(Routes.fashionProductEdit(widget.productId));
+  Future<void> _editProduct(BuildContext context) async {
+    final changed = await context.push<bool>(
+      Routes.fashionProductEdit(widget.productId),
+    );
+    if (changed == true && mounted) {
+      await _load();
+    }
   }
 }
 
@@ -291,10 +315,15 @@ class _VariantRowDetail extends StatelessWidget {
     final AppColors colors = AppColors.of(context);
     final type = AppTypography.of(context);
     final isLow = variant.availableStockQty <= 0;
-    final tone = isLow ? StatusTone.danger : variant.isLow ? StatusTone.warning : StatusTone.success;
+    final tone = isLow
+        ? StatusTone.danger
+        : variant.isLow
+            ? StatusTone.warning
+            : StatusTone.success;
 
     return SurfaceCard(
-      padding: EdgeInsets.symmetric(horizontal: spacing.md, vertical: spacing.sm),
+      padding:
+          EdgeInsets.symmetric(horizontal: spacing.md, vertical: spacing.sm),
       child: Row(
         children: <Widget>[
           Expanded(
@@ -310,7 +339,8 @@ class _VariantRowDetail extends StatelessWidget {
                 SizedBox(height: spacing.xs),
                 Text(
                   variant.sku.isNotEmpty ? variant.sku : 'No SKU',
-                  style: type.labelSmall?.copyWith(color: colors.onSurfaceMuted),
+                  style:
+                      type.labelSmall?.copyWith(color: colors.onSurfaceMuted),
                 ),
               ],
             ),
@@ -325,13 +355,16 @@ class _VariantRowDetail extends StatelessWidget {
                   '${variant.availableStockQty.toInt()}',
                   style: type.bodyMedium?.copyWith(
                     fontWeight: FontWeight.w700,
-                    color: tone == StatusTone.danger ? colors.danger : colors.onSurface,
+                    color: tone == StatusTone.danger
+                        ? colors.danger
+                        : colors.onSurface,
                   ),
                 ),
                 SizedBox(height: spacing.xs),
                 Text(
                   'Reorder at ${variant.reorderLevel}',
-                  style: type.labelSmall?.copyWith(color: colors.onSurfaceMuted),
+                  style:
+                      type.labelSmall?.copyWith(color: colors.onSurfaceMuted),
                 ),
               ],
             ),
@@ -349,7 +382,8 @@ class _VariantRowDetail extends StatelessWidget {
                 SizedBox(height: spacing.xs),
                 Text(
                   formatMoney(variant.costPrice),
-                  style: type.labelSmall?.copyWith(color: colors.onSurfaceMuted),
+                  style:
+                      type.labelSmall?.copyWith(color: colors.onSurfaceMuted),
                 ),
               ],
             ),
