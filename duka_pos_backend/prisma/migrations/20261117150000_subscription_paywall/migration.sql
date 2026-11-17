@@ -28,6 +28,9 @@ CREATE TABLE "access_vouchers" (
   "redeemed_at" TIMESTAMP(3),
   "redeemed_by_profile_id" TEXT,
   "revoked_at" TIMESTAMP(3),
+  "paused_at" TIMESTAMP(3),
+  "deleted_at" TIMESTAMP(3),
+  "auto_issued" BOOLEAN NOT NULL DEFAULT false,
   "created_by" TEXT NOT NULL,
   "created_at" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
   CONSTRAINT "access_vouchers_pkey" PRIMARY KEY ("id")

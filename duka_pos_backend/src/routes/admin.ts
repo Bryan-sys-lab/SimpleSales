@@ -62,7 +62,7 @@ router.patch('/billing/provider', asyncHandler(async (req: Request, res: Respons
 // Subscription terms are negotiated per shop. Only system administrators can
 // set the amount or activate/suspend access; the app never decides entitlement.
 router.get('/billing/subscriptions', asyncHandler(async (_req: Request, res: Response) => {
-  const rows = await prisma.tenantSubscription.findMany({ include: { tenant: { select: { shopName: true } } }, orderBy: { updatedAt: 'desc' } });
+  const rows = await prisma.tenantSubscription.findMany({ include: { tenant: { select: { id: true, shopName: true, profiles: { where: { role: 'admin', active: true, deletedAt: null }, orderBy: { createdAt: 'asc' }, take: 1, select: { id: true, name: true, email: true, user: { select: { email: true } } } } } } }, orderBy: { updatedAt: 'desc' } });
   return res.json({ subscriptions: rows });
 }));
 
@@ -88,7 +88,7 @@ router.post('/billing/vouchers', asyncHandler(async (req: Request, res: Response
       ? new Date(Date.now() + input.durationMonths * 30 * 24 * 60 * 60 * 1000)
       : null;
   const voucher = await prisma.accessVoucher.create({
-    data: { codeHash: generated.hash, codePrefix: generated.prefix, tenantId: input.tenantId, issuedToProfileId: input.profileId, issuedToEmail: input.email, expiresAt, createdBy: req.auth?.sub ?? 'unknown' },
+    data: { codeHash: generated.hash, codePrefix: generated.prefix, tenantId: input.tenantId, issuedToProfileId: input.profileId, issuedToEmail: input.email, expiresAt, createdBy: req.auth?.sub ?? 'unknown', autoIssued: false },
   });
   await prisma.adminAuditLog.create({ data: { adminId: req.auth?.sub ?? 'unknown', action: 'create_access_voucher', targetType: 'access_voucher', targetId: voucher.id, tenantId: input.tenantId ?? null } });
   // The plaintext is returned exactly once. It is never persisted or exposed
@@ -97,14 +97,17 @@ router.post('/billing/vouchers', asyncHandler(async (req: Request, res: Response
 }));
 
 router.get('/billing/vouchers', asyncHandler(async (_req: Request, res: Response) => {
-  const vouchers = await prisma.accessVoucher.findMany({ select: { id: true, codePrefix: true, tenantId: true, issuedToProfileId: true, issuedToEmail: true, expiresAt: true, redeemedAt: true, revokedAt: true, createdAt: true }, orderBy: { createdAt: 'desc' } });
+  const vouchers = await prisma.accessVoucher.findMany({ select: { id: true, codePrefix: true, tenantId: true, issuedToProfileId: true, issuedToEmail: true, expiresAt: true, redeemedAt: true, revokedAt: true, pausedAt: true, deletedAt: true, autoIssued: true, createdAt: true }, orderBy: { createdAt: 'desc' } });
   return res.json({ vouchers });
 }));
 
-router.post('/billing/vouchers/:id/revoke', asyncHandler(async (req: Request, res: Response) => {
-  const voucher = await prisma.accessVoucher.update({ where: { id: String(req.params.id) }, data: { revokedAt: new Date() } });
-  await prisma.adminAuditLog.create({ data: { adminId: req.auth?.sub ?? 'unknown', action: 'revoke_access_voucher', targetType: 'access_voucher', targetId: voucher.id, tenantId: voucher.tenantId } });
-  return res.json({ status: 'revoked' });
+router.post('/billing/vouchers/:id/:action', asyncHandler(async (req: Request, res: Response) => {
+  const action = String(req.params.action);
+  if (!['pause', 'resume', 'revoke', 'delete'].includes(action)) return res.status(400).json({ error: 'Unsupported voucher action' });
+  const id = String(req.params.id);
+  const voucher = await prisma.accessVoucher.update({ where: { id }, data: action === 'pause' ? { pausedAt: new Date() } : action === 'resume' ? { pausedAt: null } : action === 'revoke' ? { revokedAt: new Date() } : { deletedAt: new Date() } });
+  await prisma.adminAuditLog.create({ data: { adminId: req.auth?.sub ?? 'unknown', action: `${action}_access_voucher`, targetType: 'access_voucher', targetId: voucher.id, tenantId: voucher.tenantId } });
+  return res.json({ status: action });
 }));
 
 // Policy disclosure is visible only in the existing system-admin console.

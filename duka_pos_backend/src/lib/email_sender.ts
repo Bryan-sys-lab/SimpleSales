@@ -16,6 +16,7 @@ export type VerificationEmail = {
   code: string;
   shopName?: string;
   ttlMinutes: number;
+  firstVoucherCode?: string;
 };
 
 export type EmailTransport = (message: VerificationEmail) => Promise<void>;
@@ -66,6 +67,10 @@ export function createCloudflareEmailTransport(options: CloudflareEmailOptions):
       .replaceAll("'", '&#39;');
     const safeAppName = escapeHtml(appName);
     const safeCode = escapeHtml(message.code);
+    const safeVoucher = message.firstVoucherCode ? escapeHtml(message.firstVoucherCode) : '';
+    const voucherText = message.firstVoucherCode
+      ? `Your first-month access voucher is ${message.firstVoucherCode}. It is valid for one month from account verification and is automatically activated after verification. Keep it for support or reactivation.`
+      : '';
 
     const text = [
       `${appName}`,
@@ -79,6 +84,7 @@ export function createCloudflareEmailTransport(options: CloudflareEmailOptions):
       message.code,
       '',
       `Expires in ${message.ttlMinutes} minutes`,
+      ...(message.firstVoucherCode ? ['', 'FIRST-MONTH ACCESS', voucherText] : []),
       '',
       "If you didn't request this code, no action is required. For your security, never share your verification code with anyone.",
       '',
@@ -105,6 +111,7 @@ export function createCloudflareEmailTransport(options: CloudflareEmailOptions):
           <div style="display:inline-block;background:#f1f5f9;border:1px solid #e2e8f0;border-radius:12px;padding:18px 30px;font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:30px;line-height:1;font-weight:800;letter-spacing:8px;color:#111;">${safeCode}</div>
         </td></tr>
         <tr><td style="font-size:13px;line-height:1.5;color:#6b7280;padding-bottom:24px;">Expires in ${message.ttlMinutes} minutes.</td></tr>
+        ${message.firstVoucherCode ? `<tr><td style="padding:18px 20px;background:#ecfdf5;border:1px solid #a7f3d0;border-radius:12px;color:#065f46;font-size:13px;line-height:1.6;padding-bottom:18px;"><strong>First-month access</strong><br>Your one-month voucher is <span style="font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-weight:800;letter-spacing:1px;">${safeVoucher}</span>.<br>It is automatically activated after verification. Keep this code for support or reactivation.</td></tr>` : ''}
         <tr><td style="font-size:13px;line-height:1.5;color:#6b7280;padding-bottom:24px;">If you didn't request this code, no action is required. For your security, never share your verification code with anyone.</td></tr>
         <tr><td style="font-size:13px;line-height:1.5;color:#374151;padding-bottom:8px;">Thank you for choosing <strong>${safeAppName}</strong>.</td></tr>
         <tr><td style="font-size:12px;line-height:1.5;color:#9ca3af;"><em>This is an automated security email. Please do not reply.</em></td></tr>

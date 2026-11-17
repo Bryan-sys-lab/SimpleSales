@@ -152,7 +152,8 @@ export const authMiddleware = async (req: express.Request, res: express.Response
     // can redeem a voucher or inspect the negotiated shop terms.
     const billingExemption = normalizedOriginalPath === '/auth/voucher/redeem' ||
       normalizedOriginalPath === '/tenant/subscription' ||
-      normalizedOriginalPath.startsWith('/tenant/subscription/');
+      normalizedOriginalPath.startsWith('/tenant/subscription/') ||
+      normalizedOriginalPath === '/telemetry/support';
     if (!billingExemption) {
       const entitlement = await tenantEntitlement(profile.tenantId);
       if (!entitlement.allowed) {

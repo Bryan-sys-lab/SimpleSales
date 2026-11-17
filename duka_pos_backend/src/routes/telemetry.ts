@@ -10,6 +10,7 @@ import { asyncHandler } from '../lib/http';
 import { parseBody } from '../lib/validation';
 import { ingestTelemetrySchema, telemetryQuerySchema, churnSnapshotSchema, ingestSupportSchema } from '../lib/validation';
 import { prisma } from '../lib/prisma';
+import { broadcastAll } from '../services/live_broker';
 
 const router = Router();
 
@@ -133,6 +134,14 @@ router.post(
         status: item.status,
       })),
     });
+    if (items.some((item: any) => item.type === 'request' &&
+        item.title.toLowerCase().includes('subscription'))) {
+      broadcastAll({
+        type: 'subscription_quote_requested',
+        tenantId,
+        at: new Date().toISOString(),
+      });
+    }
     return res.status(201).json({ ingested: result.count });
   })
 );
