@@ -91,7 +91,8 @@ router.post('/qr', requireRole('admin', 'manager', 'cashier'), asyncHandler(asyn
   const input = parseBody(paymentQrSchema, req.body);
   const user = req.user!;
   const { tenant, payment, reference, amount } = await createPaymentDraft(input, user, 'qr');
-  if (!tenant.mpesaQrCpi || !tenant.mpesaQrTrxCode || !['BG', 'PB'].includes(tenant.mpesaQrTrxCode)) {
+  const supportedQrCodes = ['BG', 'PB', 'SM', 'SB', 'WA'] as const;
+  if (!tenant.mpesaQrCpi || !tenant.mpesaQrTrxCode || !supportedQrCodes.includes(tenant.mpesaQrTrxCode as typeof supportedQrCodes[number])) {
     await prisma.payment.update({ where: { id: payment.id }, data: { status: 'FAILED' } });
     return res.status(409).json({ error: 'Dynamic QR is not configured for this shop till or paybill' });
   }
@@ -100,7 +101,7 @@ router.post('/qr', requireRole('admin', 'manager', 'cashier'), asyncHandler(asyn
       merchantName: tenant.shopName,
       reference,
       amount,
-      transactionCode: tenant.mpesaQrTrxCode as 'BG' | 'PB',
+      transactionCode: tenant.mpesaQrTrxCode as 'BG' | 'PB' | 'SM' | 'SB' | 'WA',
       creditPartyIdentifier: tenant.mpesaQrCpi,
     });
     await prisma.payment.update({

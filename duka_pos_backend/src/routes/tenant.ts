@@ -196,7 +196,7 @@ router.post(
     if (user.role !== 'admin') {
       return res.status(403).json({ error: 'Shop admin access required' });
     }
-    const { channelType, shortCode, accountNumber, description } = parseBody(mpesaChannelSchema, req.body);
+    const { channelType, shortCode, accountNumber, qrTransactionCode, qrCreditPartyIdentifier, description } = parseBody(mpesaChannelSchema, req.body);
     const channel = await registerPaymentChannel({
       channelType,
       shortCode,
@@ -211,8 +211,8 @@ router.post(
         // Safaricom Dynamic QR uses the merchant till/paybill directly. A
         // PayHero bank destination remains valid for STK but cannot be used
         // as a Dynamic QR CPI.
-        mpesaQrCpi: channelType === 'bank' ? null : shortCode,
-        mpesaQrTrxCode: channelType === 'till' ? 'BG' : channelType === 'paybill' ? 'PB' : null,
+        mpesaQrCpi: channelType === 'bank' ? null : (qrCreditPartyIdentifier ?? shortCode),
+        mpesaQrTrxCode: channelType === 'bank' ? null : (qrTransactionCode ?? (channelType === 'till' ? 'BG' : 'PB')),
       },
     });
     return res.json({ channelId: channel.id, channelType, shortCode });

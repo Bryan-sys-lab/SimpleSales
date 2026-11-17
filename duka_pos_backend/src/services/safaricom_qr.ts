@@ -14,15 +14,15 @@ export class SafaricomQrError extends Error {
 }
 
 function baseUrl(): string {
-  return (process.env.SAFARICOM_BASE_URL ||
-    (process.env.SAFARICOM_ENV === 'production'
+  return (process.env.SAFARICOM_QR_BASE_URL || process.env.SAFARICOM_BASE_URL ||
+    (process.env.SAFARICOM_QR_ENV === 'production' || process.env.SAFARICOM_ENV === 'production'
       ? 'https://api.safaricom.co.ke'
       : 'https://sandbox.safaricom.co.ke')).replace(/\/$/, '');
 }
 
 function configuredCredentials(): { key: string; secret: string } {
-  const key = process.env.SAFARICOM_CONSUMER_KEY?.trim();
-  const secret = process.env.SAFARICOM_CONSUMER_SECRET?.trim();
+  const key = (process.env.SAFARICOM_QR_CONSUMER_KEY || process.env.SAFARICOM_CONSUMER_KEY)?.trim();
+  const secret = (process.env.SAFARICOM_QR_CONSUMER_SECRET || process.env.SAFARICOM_CONSUMER_SECRET)?.trim();
   if (!key || !secret) {
     throw new SafaricomQrError('Safaricom Dynamic QR credentials are not configured', 'misconfigured');
   }
@@ -61,7 +61,7 @@ export async function generateDynamicQr(input: {
   merchantName: string;
   reference: string;
   amount: number;
-  transactionCode: 'BG' | 'PB';
+  transactionCode: 'BG' | 'PB' | 'SM' | 'SB' | 'WA';
   creditPartyIdentifier: string;
 }): Promise<{ qrCode: string; requestId?: string }> {
   const token = await accessToken();

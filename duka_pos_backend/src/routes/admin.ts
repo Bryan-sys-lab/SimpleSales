@@ -44,6 +44,27 @@ export function setPlatformAnnouncementNotifier(
 // All admin routes require a system-admin OIDC subject.
 router.use(systemAdminMiddleware);
 
+// Verified account directory. This is deliberately separate from tenant
+// listings because a newly verified owner may not have completed shop
+// provisioning yet; the admin must still see the account immediately.
+router.get('/users', asyncHandler(async (_req: Request, res: Response) => {
+  const users = await prisma.user.findMany({
+    select: {
+      id: true,
+      email: true,
+      emailVerifiedAt: true,
+      createdAt: true,
+      profiles: {
+        where: { active: true, deletedAt: null },
+        select: { id: true, name: true, role: true, tenant: { select: { id: true, shopName: true } } },
+        orderBy: { createdAt: 'asc' },
+      },
+    },
+    orderBy: { createdAt: 'desc' },
+  });
+  return res.json({ users });
+}));
+
 router.get('/billing/provider', asyncHandler(async (_req: Request, res: Response) => {
   const rows = await prisma.systemSettings.findMany({ where: { key: { in: ['billing_channel_type', 'billing_channel_id', 'billing_short_code', 'billing_account_number'] } } });
   const values = Object.fromEntries(rows.map((row) => [row.key, row.value]));

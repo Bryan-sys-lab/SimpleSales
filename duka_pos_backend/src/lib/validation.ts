@@ -66,6 +66,10 @@ export const mpesaChannelSchema = z.object({
   channelType: z.enum(['till', 'paybill', 'bank']),
   shortCode: z.string().trim().regex(/^\d{5,12}$/),
   accountNumber: z.string().trim().regex(/^\d{3,30}$/).optional(),
+  // Safaricom Dynamic QR transaction types: BG buy goods, PB paybill,
+  // SM send money, SB business-to-Pochi, WA agent withdrawal.
+  qrTransactionCode: z.enum(['BG', 'PB', 'SM', 'SB', 'WA']).optional(),
+  qrCreditPartyIdentifier: z.string().trim().regex(/^\d{5,15}$/).optional(),
   description: z.string().trim().max(120).optional(),
 }).strict().superRefine((value, context) => {
   if (value.channelType === 'bank' && !value.accountNumber) {
