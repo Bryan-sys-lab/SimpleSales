@@ -122,7 +122,10 @@ export function createCloudflareEmailTransport(options: CloudflareEmailOptions):
 </html>`.trim();
 
     return {
-      to: message.to,
+      // Cloudflare's structured Email Sending REST API accepts recipients as
+      // an array. Sending the single address as a string makes the provider
+      // reject the entire verification message before delivery.
+      to: [message.to],
       from,
       subject,
       text,

@@ -300,9 +300,13 @@ router.post('/verify', verifyLimiter, asyncHandler(async (req: Request, res: Res
   if (firstRegistration && accessVoucherModel) {
     const voucher = await accessVoucherModel.findFirst({ where: { issuedToEmail: email, autoIssued: true, redeemedAt: null, revokedAt: null, pausedAt: null, deletedAt: null }, orderBy: { createdAt: 'desc' } });
     if (voucher) {
+      // The first month starts when the owner finishes verification, not when
+      // they first request the email. A delayed inbox or a resend must not
+      // consume the user's access period before the account can be used.
+      const firstMonthEndsAt = new Date(now.getTime() + 30 * 24 * 60 * 60 * 1000);
       await prisma.$transaction([
-        prisma.accessVoucher.update({ where: { id: voucher.id }, data: { tenantId: shop.tenantId, issuedToProfileId: shop.profileId, redeemedAt: now, redeemedByProfileId: shop.profileId } }),
-        prisma.tenantSubscription.upsert({ where: { tenantId: shop.tenantId }, create: { tenantId: shop.tenantId, status: 'voucher', voucherId: voucher.id, currentPeriodEnd: voucher.expiresAt }, update: { status: 'voucher', voucherId: voucher.id, currentPeriodEnd: voucher.expiresAt, graceUntil: null } }),
+        prisma.accessVoucher.update({ where: { id: voucher.id }, data: { tenantId: shop.tenantId, issuedToProfileId: shop.profileId, redeemedAt: now, redeemedByProfileId: shop.profileId, expiresAt: firstMonthEndsAt } }),
+        prisma.tenantSubscription.upsert({ where: { tenantId: shop.tenantId }, create: { tenantId: shop.tenantId, status: 'voucher', voucherId: voucher.id, currentPeriodEnd: firstMonthEndsAt }, update: { status: 'voucher', voucherId: voucher.id, currentPeriodEnd: firstMonthEndsAt, graceUntil: null } }),
       ]);
       firstVoucherCode = voucher.codePrefix;
     }
