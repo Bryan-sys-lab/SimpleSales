@@ -18,6 +18,7 @@ AppStageSnapshot snapshot({
   bool? canViewReports,
   bool isAdmin = true,
   ShopProfile shopProfile = ShopProfile.duka,
+  bool subscriptionRequired = false,
 }) =>
     AppStageSnapshot(
       stage: stage,
@@ -25,13 +26,15 @@ AppStageSnapshot snapshot({
       canViewReports: canViewReports ?? canManageStock,
       isAdmin: isAdmin,
       shopProfile: shopProfile,
+      subscriptionRequired: subscriptionRequired,
     );
 
 String? guard(AppStage stage, String location,
         {bool canManageStock = true,
         bool? canViewReports,
         bool isAdmin = true,
-        ShopProfile shopProfile = ShopProfile.duka}) =>
+        ShopProfile shopProfile = ShopProfile.duka,
+        bool subscriptionRequired = false}) =>
     appRedirect(
       snapshot: snapshot(
         stage: stage,
@@ -39,6 +42,7 @@ String? guard(AppStage stage, String location,
         canViewReports: canViewReports,
         isAdmin: isAdmin,
         shopProfile: shopProfile,
+        subscriptionRequired: subscriptionRequired,
       ),
       location: location,
     );
@@ -243,6 +247,47 @@ void main() {
     });
   });
 
+  group('expired subscription access', () {
+    test('keeps the operational surfaces available', () {
+      for (final String path in <String>[
+        Routes.dashboard,
+        Routes.sell,
+        Routes.inventory,
+        Routes.servings,
+        Routes.transactions,
+        Routes.paywall,
+      ]) {
+        expect(
+          guard(AppStage.ready, path, subscriptionRequired: true),
+          isNull,
+          reason: '$path must remain usable while renewing',
+        );
+      }
+    });
+
+    test('locks management and reporting surfaces for every profile', () {
+      for (final ShopProfile profile in ShopProfile.values) {
+        expect(
+          guard(AppStage.ready, Routes.analytics,
+              subscriptionRequired: true, shopProfile: profile),
+          Routes.paywall,
+        );
+        expect(
+          guard(AppStage.ready, Routes.settings,
+              subscriptionRequired: true, shopProfile: profile),
+          Routes.paywall,
+        );
+      }
+    });
+
+    test('allows the paywall to settle without redirecting to itself', () {
+      expect(
+        guard(AppStage.ready, Routes.paywall, subscriptionRequired: true),
+        isNull,
+      );
+    });
+  });
+
   group('the guard terminates', () {
     // A redirect that bounces forever is the classic go_router failure, and it
     // presents as a blank screen with no error. Every stage's canonical location
@@ -300,8 +345,7 @@ void main() {
       expect(AppDestination.fromPath('/nope'), isNull);
     });
 
-    test('there are seven destinations, and Reports is not one of them',
-        () {
+    test('there are seven destinations, and Reports is not one of them', () {
       expect(AppDestination.values.length, 7);
       expect(
         AppDestination.values.map((AppDestination d) => d.path),

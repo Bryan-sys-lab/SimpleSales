@@ -154,16 +154,24 @@ class VerifiedIdentity {
 }
 
 class SubscriptionEntitlement {
-  const SubscriptionEntitlement({required this.allowed, required this.status, this.reason, this.priceMinor, this.currency = 'KES', this.billingInterval = 'monthly', this.currentPeriodEnd});
-  factory SubscriptionEntitlement.fromJson(Map<String, dynamic> json) => SubscriptionEntitlement(
-    allowed: json['allowed'] == true,
-    status: json['status'] as String? ?? 'pending',
-    reason: json['reason'] as String?,
-    priceMinor: (json['priceMinor'] as num?)?.toInt(),
-    currency: json['currency'] as String? ?? 'KES',
-    billingInterval: json['billingInterval'] as String? ?? 'monthly',
-    currentPeriodEnd: json['currentPeriodEnd'] as String?,
-  );
+  const SubscriptionEntitlement(
+      {required this.allowed,
+      required this.status,
+      this.reason,
+      this.priceMinor,
+      this.currency = 'KES',
+      this.billingInterval = 'monthly',
+      this.currentPeriodEnd});
+  factory SubscriptionEntitlement.fromJson(Map<String, dynamic> json) =>
+      SubscriptionEntitlement(
+        allowed: json['allowed'] == true,
+        status: json['status'] as String? ?? 'pending',
+        reason: json['reason'] as String?,
+        priceMinor: (json['priceMinor'] as num?)?.toInt(),
+        currency: json['currency'] as String? ?? 'KES',
+        billingInterval: json['billingInterval'] as String? ?? 'monthly',
+        currentPeriodEnd: json['currentPeriodEnd'] as String?,
+      );
   final bool allowed;
   final String status;
   final String? reason;
@@ -657,7 +665,8 @@ class BackendService {
   static Future<String?> get tenantId async =>
       WorkspaceService.activeTenantId();
 
-  static Future<SubscriptionEntitlement?> redeemAccessVoucher(String code) async {
+  static Future<SubscriptionEntitlement?> redeemAccessVoucher(
+      String code) async {
     final tid = await tenantId;
     if (tid == null || tid.isEmpty) return null;
     final response = await _dio.post(
@@ -666,27 +675,59 @@ class BackendService {
       options: Options(extra: <String, Object>{'staffTenantOverride': tid}),
     );
     final raw = response.data is Map ? response.data['entitlement'] : null;
-    return raw is Map ? SubscriptionEntitlement.fromJson(Map<String, dynamic>.from(raw)) : null;
+    return raw is Map
+        ? SubscriptionEntitlement.fromJson(Map<String, dynamic>.from(raw))
+        : null;
   }
 
   static Future<SubscriptionEntitlement?> fetchSubscriptionEntitlement() async {
     final response = await _dio.get('$backendUrl/tenant/subscription');
     final raw = response.data is Map ? response.data['entitlement'] : null;
-    return raw is Map ? SubscriptionEntitlement.fromJson(Map<String, dynamic>.from(raw)) : null;
+    return raw is Map
+        ? SubscriptionEntitlement.fromJson(Map<String, dynamic>.from(raw))
+        : null;
   }
 
-  static Future<String> startSubscriptionPayment({required String phoneNumber, int durationMonths = 1}) async {
-    final response = await _dio.post('$backendUrl/tenant/subscription/payment', data: <String, dynamic>{'phoneNumber': phoneNumber, 'durationMonths': durationMonths});
+  /// Persists a quote request in the system-admin Support screen and broadcasts
+  /// it over the existing live channel. Billing remains reachable after expiry.
+  static Future<void> requestSubscriptionQuote() async {
+    final tid = await tenantId;
+    if (tid == null || tid.isEmpty) return;
+    await _dio.post('$backendUrl/telemetry/support', data: <String, dynamic>{
+      'items': <Map<String, dynamic>>[
+        <String, dynamic>{
+          'type': 'request',
+          'title': 'Subscription price request',
+          'description':
+              'This shop is requesting its negotiated monthly subscription price so it can activate or renew access.',
+          'status': 'open',
+          'deviceId': tid,
+        },
+      ],
+    });
+  }
+
+  static Future<String> startSubscriptionPayment(
+      {required String phoneNumber, int durationMonths = 1}) async {
+    final response = await _dio.post('$backendUrl/tenant/subscription/payment',
+        data: <String, dynamic>{
+          'phoneNumber': phoneNumber,
+          'durationMonths': durationMonths
+        });
     return response.data['reference'] as String;
   }
 
   static Future<String> subscriptionPaymentStatus(String reference) async {
-    final response = await _dio.get('$backendUrl/tenant/subscription/payment/${Uri.encodeComponent(reference)}');
+    final response = await _dio.get(
+        '$backendUrl/tenant/subscription/payment/${Uri.encodeComponent(reference)}');
     return response.data['status'] as String? ?? 'PENDING';
   }
 
-  static Future<void> confirmSubscriptionPaymentCode({required String reference, required String mpesaCode}) async {
-    await _dio.post('$backendUrl/tenant/subscription/payment/${Uri.encodeComponent(reference)}/confirm-code', data: <String, dynamic>{'mpesaCode': mpesaCode.trim()});
+  static Future<void> confirmSubscriptionPaymentCode(
+      {required String reference, required String mpesaCode}) async {
+    await _dio.post(
+        '$backendUrl/tenant/subscription/payment/${Uri.encodeComponent(reference)}/confirm-code',
+        data: <String, dynamic>{'mpesaCode': mpesaCode.trim()});
   }
 
   static const _syncDeviceIdKey = 'sync_device_id';
@@ -1193,7 +1234,8 @@ class BackendService {
   /// reserved for transport/5xx failures, where offline login may continue.
   static bool isAuthoritativeStaffAuthenticationRejection(
     Map<String, dynamic>? response,
-  ) => response?['_rejected'] == true;
+  ) =>
+      response?['_rejected'] == true;
 
   static Future<void> changeStaffPin({
     required int staffId,
@@ -1203,27 +1245,37 @@ class BackendService {
     await ensureInitialized();
     final token = await StaffCredentialCache.readSessionToken(staffId);
     final tenantId = await WorkspaceService.activeTenantId();
-    if (token == null || token.isEmpty || tenantId == null || tenantId.isEmpty) {
-      throw StateError('Sign in online as this staff member before changing the PIN');
+    if (token == null ||
+        token.isEmpty ||
+        tenantId == null ||
+        tenantId.isEmpty) {
+      throw StateError(
+          'Sign in online as this staff member before changing the PIN');
     }
     await _dio.post(
       '$backendUrl/tenant/staff/self-pin',
       data: <String, String>{'currentPin': currentPin, 'newPin': newPin},
       options: Options(
-        extra: <String, Object>{'staffSessionToken': token, 'staffTenantOverride': tenantId},
+        extra: <String, Object>{
+          'staffSessionToken': token,
+          'staffTenantOverride': tenantId
+        },
         headers: <String, String>{'x-tenant-id': tenantId},
       ),
     );
-    await DatabaseHelper.instance.updateStaffPin(staffId, await AuthService.hashPin(newPin));
+    await DatabaseHelper.instance
+        .updateStaffPin(staffId, await AuthService.hashPin(newPin));
     Staff? staff;
-    for (final candidate in await DatabaseHelper.instance.getStaff(activeOnly: false)) {
+    for (final candidate
+        in await DatabaseHelper.instance.getStaff(activeOnly: false)) {
       if (candidate.id == staffId) {
         staff = candidate;
         break;
       }
     }
     if (staff != null && staff.username != null) {
-      await StaffCredentialCache.cacheStaffCredentials(staffId, staff.username!, newPin);
+      await StaffCredentialCache.cacheStaffCredentials(
+          staffId, staff.username!, newPin);
     }
   }
 
@@ -1246,12 +1298,16 @@ class BackendService {
 
   static Future<List<Map<String, dynamic>>> getStaffPinResetRequests() async {
     await ensureInitialized();
-    final response = await _dio.get('$backendUrl/tenant/staff/pin-reset-requests');
+    final response =
+        await _dio.get('$backendUrl/tenant/staff/pin-reset-requests');
     final raw = response.data is Map<String, dynamic>
         ? (response.data as Map<String, dynamic>)['requests']
         : null;
     if (raw is! List) return const <Map<String, dynamic>>[];
-    return raw.whereType<Map>().map((row) => Map<String, dynamic>.from(row)).toList();
+    return raw
+        .whereType<Map>()
+        .map((row) => Map<String, dynamic>.from(row))
+        .toList();
   }
 
   static Future<void> resetStaffPinFromRequest({
@@ -3651,7 +3707,9 @@ class BackendService {
       if (customerName != null) 'customer_name': customerName,
     });
     final data = response.data;
-    if (data is! Map || data['reference'] is! String || data['qr_code'] is! String) {
+    if (data is! Map ||
+        data['reference'] is! String ||
+        data['qr_code'] is! String) {
       throw StateError('No Dynamic QR payment was returned');
     }
     return QrPaymentSession(

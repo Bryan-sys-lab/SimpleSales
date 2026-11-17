@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/foundation.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
@@ -7,6 +9,7 @@ import '../services/app_state.dart';
 import '../profile/shop_profile.dart';
 import '../services/auto_sync_service.dart';
 import '../services/failure_recorder.dart';
+import '../services/backend_service.dart';
 
 /// The boot gate, as something the router can watch.
 ///
@@ -35,6 +38,8 @@ class AppStageController extends ChangeNotifier {
   bool _loading = true;
   bool _databaseFailed = false;
   bool _onboardingComplete = false;
+  bool _subscriptionRequired = false;
+  String? _subscriptionRefreshFor;
 
   /// Whether the till has already asked for its permissions.
   ///
@@ -75,8 +80,65 @@ class AppStageController extends ChangeNotifier {
       _flagsReadFor = key;
       _onboardingComplete = prefs.getBool('onboarding_completed_$key') ?? false;
       _permissionsAsked = prefs.getBool('permissions_asked_$key') ?? false;
+      _readCachedSubscription(prefs, key);
+    }
+    if (_state.isSignedIn &&
+        _state.isOwnerSession &&
+        _subscriptionRefreshFor != key) {
+      _subscriptionRefreshFor = key;
+      unawaited(refreshSubscription());
     }
     notifyListeners();
+  }
+
+  String _subscriptionKey(String workspace) =>
+      'subscription_entitlement@$workspace';
+
+  void _readCachedSubscription(SharedPreferences prefs, String workspace) {
+    final String prefix = _subscriptionKey(workspace);
+    final bool? allowed = prefs.getBool('$prefix.allowed');
+    if (allowed == null) {
+      _subscriptionRequired = false;
+      return;
+    }
+    final String? end = prefs.getString('$prefix.period_end');
+    final DateTime? periodEnd = end == null ? null : DateTime.tryParse(end);
+    _subscriptionRequired = !allowed ||
+        (periodEnd != null && !periodEnd.isAfter(DateTime.now().toUtc()));
+  }
+
+  /// Refreshes the server entitlement and stores it per shop so staff sessions
+  /// on the same till observe the same lock state without borrowing an owner
+  /// credential. Network failures deliberately retain the last known state:
+  /// offline selling remains available, while the backend still enforces the
+  /// entitlement on every protected remote operation.
+  Future<void> refreshSubscription() async {
+    if (_disposed || !_state.isSignedIn) return;
+    final String workspace = _state.workspaceKey;
+    try {
+      final SubscriptionEntitlement? entitlement =
+          await BackendService.fetchSubscriptionEntitlement();
+      if (_disposed || entitlement == null) return;
+      final SharedPreferences prefs =
+          _prefs ??= await SharedPreferences.getInstance();
+      final String prefix = _subscriptionKey(workspace);
+      await prefs.setBool('$prefix.allowed', entitlement.allowed);
+      if (entitlement.currentPeriodEnd == null) {
+        await prefs.remove('$prefix.period_end');
+      } else {
+        await prefs.setString(
+            '$prefix.period_end', entitlement.currentPeriodEnd!);
+      }
+      if (_disposed || workspace != _state.workspaceKey) return;
+      final DateTime? periodEnd = entitlement.currentPeriodEnd == null
+          ? null
+          : DateTime.tryParse(entitlement.currentPeriodEnd!);
+      _subscriptionRequired = !entitlement.allowed ||
+          (periodEnd != null && !periodEnd.isAfter(DateTime.now().toUtc()));
+      notifyListeners();
+    } catch (_) {
+      // Keep the cached decision. The API remains the final authority.
+    }
   }
 
   AppChooserIntent _intent = AppChooserIntent.signIn;
@@ -109,6 +171,7 @@ class AppStageController extends ChangeNotifier {
       // through the step and moved on.
       _permissionsAsked =
           prefs.getBool('permissions_asked_${_state.workspaceKey}') ?? false;
+      _readCachedSubscription(prefs, _state.workspaceKey);
       if (_disposed) return;
       await AutoSyncService.start();
     } catch (error, stack) {
@@ -267,6 +330,7 @@ class AppStageController extends ChangeNotifier {
         canViewReports: _state.canViewReports,
         isAdmin: _state.isAdmin,
         shopProfile: _state.shopProfile,
+        subscriptionRequired: _subscriptionRequired,
       );
 }
 
@@ -282,6 +346,7 @@ class AppStageSnapshot {
     this.canViewReports = false,
     required this.isAdmin,
     required this.shopProfile,
+    this.subscriptionRequired = false,
   });
 
   final AppStage stage;
@@ -297,4 +362,9 @@ class AppStageSnapshot {
 
   /// Active shop profile; drives profile-specific route availability.
   final ShopProfile shopProfile;
+
+  /// Whether the shop's subscription or voucher is expired or otherwise
+  /// inactive. The redirect uses this synchronously; the controller refreshes
+  /// it asynchronously from the backend.
+  final bool subscriptionRequired;
 }

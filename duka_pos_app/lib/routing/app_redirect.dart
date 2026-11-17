@@ -102,6 +102,20 @@ String? appRedirect({
     return location == Routes.permissions ? null : Routes.permissions;
   }
 
+  // An expired subscription is a shop-level lock, shared by owners and staff
+  // on every profile. Keep the operational surfaces needed to renew in person
+  // available, while protecting reporting, settings, analytics and all other
+  // management flows behind the paywall.
+  if (snapshot.subscriptionRequired) {
+    final bool allowedWhileExpired = location == Routes.paywall ||
+        location == Routes.dashboard ||
+        location == Routes.sell ||
+        location.startsWith('${Routes.inventory}/') ||
+        location == Routes.inventory ||
+        location == Routes.transactions;
+    if (!allowedWhileExpired) return Routes.paywall;
+  }
+
   // 6. Role gating on the branch itself.
   // The shift sub-route is explicitly NOT in this set: it reconciles the
   // signed-in person's own till and is reachable from the dashboard's "Open
