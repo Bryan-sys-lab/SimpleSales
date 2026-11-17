@@ -6,18 +6,22 @@
  * tenant-selected staff bootstrap route.
  */
 import { Router } from 'express';
-import { pbkdf2Sync, timingSafeEqual } from 'node:crypto';
+import { pbkdf2Sync, timingSafeEqual, randomUUID } from 'node:crypto';
 import { Prisma } from '@prisma/client';
 import { asyncHandler, HttpError, requireUser } from '../lib/http';
 import { parseBody } from '../lib/validation';
-import { provisionSchema, settingsSchema, staffSyncSchema, deletionSchema, staffAuthenticateSchema, mpesaChannelSchema, taxEntitySchema, vatReturnStatusSchema } from '../lib/validation';
+import { provisionSchema, settingsSchema, staffSyncSchema, deletionSchema, staffAuthenticateSchema, staffSelfPinSchema, staffPinResetRequestSchema, staffPinResetApproveSchema, mpesaChannelSchema, taxEntitySchema, vatReturnStatusSchema, subscriptionPaymentSchema } from '../lib/validation';
 import { prisma } from '../lib/prisma';
 import { authMiddleware } from '../middleware/auth';
 import rateLimit from 'express-rate-limit';
-import { registerPaymentChannel } from '../services/payhero';
+import { registerPaymentChannel, initiateStkPush, queryTransactionStatus } from '../services/payhero';
 import { taxReportingActivated, taxReportingStatus } from '../services/tax_reporting';
 import { encryptTaxSecret, lastFour } from '../services/tax_entity';
 import { activityTenantScope } from '../lib/activity_scope';
+import { readableTenantId } from '../lib/tenant_id';
+import { issueStaffSessionToken, verifyStaffSessionToken } from '../lib/jwt';
+import { broadcastTenantChange } from '../services/live_broker';
+import { tenantEntitlement } from '../lib/entitlements';
 
 const router = Router();
 
@@ -48,6 +52,13 @@ function verifyStaffPin(pin: string, stored: string | null): boolean {
     // A malformed verifier is simply an invalid credential.
     return false;
   }
+}
+
+function hashStaffPin(pin: string): string {
+  const salt = Buffer.from(globalThis.crypto?.randomUUID?.() ?? Math.random().toString(36)).subarray(0, 16);
+  const iterations = 120_000;
+  const hash = pbkdf2Sync(pin, salt, iterations, 32, 'sha256');
+  return `pbkdf2$${iterations}$${salt.toString('base64url')}$${hash.toString('base64url')}`;
 }
 
 // Prisma stores server ledger amounts as major currency units. The mobile KPI
@@ -109,6 +120,75 @@ const totReturnView = (record: any) => ({
 // checks inline here.)
 router.use(authMiddleware);
 
+router.get('/subscription', asyncHandler(async (req, res) => {
+  if (!req.user) return res.status(401).json({ error: 'Tenant selection required' });
+  return res.json({ entitlement: await tenantEntitlement(req.user.tenantId) });
+}));
+
+router.post('/subscription/payment', asyncHandler(async (req, res) => {
+  if (!req.user || req.user.role !== 'admin') return res.status(403).json({ error: 'Shop owner access required' });
+  const input = parseBody(subscriptionPaymentSchema, req.body);
+  const subscription = await prisma.tenantSubscription.findUnique({ where: { tenantId: req.user.tenantId } });
+  if (!subscription?.priceMinor) return res.status(409).json({ error: 'Subscription price has not been set by the system administrator' });
+  const provider = await prisma.systemSettings.findMany({ where: { key: { in: ['billing_channel_id'] } } });
+  const channelId = Number(provider.find((row) => row.key === 'billing_channel_id')?.value);
+  if (!Number.isSafeInteger(channelId) || channelId <= 0) return res.status(503).json({ error: 'Subscription payment destination is not configured' });
+  const reference = `SUBS-${randomUUID()}`;
+  const amountMinor = subscription.priceMinor * input.durationMonths;
+  const payment = await prisma.subscriptionPayment.create({ data: { tenantId: req.user.tenantId, reference, phoneNumber: input.phoneNumber, amountMinor, durationMonths: input.durationMonths } });
+  try {
+    const push = await initiateStkPush({ amount: amountMinor / 100, phoneNumber: input.phoneNumber, channelId, externalReference: reference, customerName: req.user.name, callbackUrl: `${process.env.PUBLIC_API_URL}/webhooks/payhero-callback` });
+    await prisma.subscriptionPayment.update({ where: { id: payment.id }, data: { checkoutRequestId: push.checkoutRequestId } });
+    return res.status(201).json({ reference, amountMinor, status: 'PENDING' });
+  } catch (error) {
+    await prisma.subscriptionPayment.update({ where: { id: payment.id }, data: { status: 'FAILED', providerStatus: error instanceof Error ? error.message : 'provider_error' } });
+    throw error;
+  }
+}));
+
+router.get('/subscription/payment/:reference', asyncHandler(async (req, res) => {
+  if (!req.user || req.user.role !== 'admin') return res.status(403).json({ error: 'Shop owner access required' });
+  const reference = String(req.params.reference);
+  const payment = await prisma.subscriptionPayment.findFirst({ where: { reference, tenantId: req.user.tenantId } });
+  if (!payment) return res.status(404).json({ error: 'Subscription payment not found' });
+  if (payment.status === 'PENDING') {
+    const provider = await queryTransactionStatus(reference);
+    if (provider.status === 'SUCCESS') await activateSubscriptionPayment(payment.id);
+    else if (provider.status === 'FAILED') await prisma.subscriptionPayment.update({ where: { id: payment.id }, data: { status: 'FAILED', providerStatus: String(provider.status) } });
+  }
+  return res.json({ reference, status: (await prisma.subscriptionPayment.findUnique({ where: { id: payment.id } }))?.status ?? payment.status });
+}));
+
+router.post('/subscription/payment/:reference/confirm-code', asyncHandler(async (req, res) => {
+  if (!req.user || req.user.role !== 'admin') return res.status(403).json({ error: 'Shop owner access required' });
+  const reference = String(req.params.reference);
+  const code = typeof req.body?.mpesaCode === 'string' ? req.body.mpesaCode.trim().toUpperCase() : '';
+  if (!/^[A-Z0-9]{6,20}$/.test(code)) return res.status(400).json({ error: 'Enter the M-Pesa receipt code shown in the confirmation message' });
+  const payment = await prisma.subscriptionPayment.findFirst({ where: { reference, tenantId: req.user.tenantId } });
+  if (!payment) return res.status(404).json({ error: 'Subscription payment not found' });
+  const provider = await queryTransactionStatus(reference);
+  const providerReceipt = String(provider.MpesaReceiptNumber ?? provider.mpesa_receipt_number ?? provider.receipt ?? '').trim().toUpperCase();
+  if (provider.status !== 'SUCCESS' || providerReceipt !== code) {
+    return res.status(409).json({ error: 'The receipt code does not match a successful PayHero transaction yet', code: 'PAYMENT_NOT_VERIFIED' });
+  }
+  await prisma.subscriptionPayment.update({ where: { id: payment.id }, data: { mpesaReceiptCode: code } });
+  await activateSubscriptionPayment(payment.id);
+  return res.json({ status: 'SUCCESS', reference });
+}));
+
+async function activateSubscriptionPayment(paymentId: string) {
+  const payment = await prisma.subscriptionPayment.findUnique({ where: { id: paymentId } });
+  if (!payment || payment.status === 'SUCCESS') return;
+  const current = await prisma.tenantSubscription.findUnique({ where: { tenantId: payment.tenantId } });
+  const base = current?.currentPeriodEnd && current.currentPeriodEnd > new Date() ? current.currentPeriodEnd : new Date();
+  const end = new Date(base);
+  end.setUTCMonth(end.getUTCMonth() + payment.durationMonths);
+  await prisma.$transaction([
+    prisma.subscriptionPayment.update({ where: { id: payment.id }, data: { status: 'SUCCESS', providerStatus: 'SUCCESS' } }),
+    prisma.tenantSubscription.upsert({ where: { tenantId: payment.tenantId }, create: { tenantId: payment.tenantId, status: 'active', currentPeriodEnd: end }, update: { status: 'active', currentPeriodEnd: end, voucherId: null, graceUntil: null } }),
+  ]);
+}
+
 router.post(
   '/mpesa/channel',
   asyncHandler(async (req, res) => {
@@ -116,15 +196,24 @@ router.post(
     if (user.role !== 'admin') {
       return res.status(403).json({ error: 'Shop admin access required' });
     }
-    const { channelType, shortCode, description } = parseBody(mpesaChannelSchema, req.body);
+    const { channelType, shortCode, accountNumber, description } = parseBody(mpesaChannelSchema, req.body);
     const channel = await registerPaymentChannel({
       channelType,
       shortCode,
+      accountNumber,
       description,
     });
     await prisma.tenant.update({
       where: { id: user.tenantId },
-      data: { mpesaEnabled: true, payheroChannelId: channel.id },
+      data: {
+        mpesaEnabled: true,
+        payheroChannelId: channel.id,
+        // Safaricom Dynamic QR uses the merchant till/paybill directly. A
+        // PayHero bank destination remains valid for STK but cannot be used
+        // as a Dynamic QR CPI.
+        mpesaQrCpi: channelType === 'bank' ? null : shortCode,
+        mpesaQrTrxCode: channelType === 'till' ? 'BG' : channelType === 'paybill' ? 'PB' : null,
+      },
     });
     return res.json({ channelId: channel.id, channelType, shortCode });
   }),
@@ -152,7 +241,12 @@ router.post(
     }
     const result = await prisma.$transaction(async (tx) => {
       const tenant = await tx.tenant.create({
-        data: { shopName: shopName.trim(), businessProfile },
+        data: {
+          id: readableTenantId(ownerName, shopName),
+          shopName: shopName.trim(),
+          businessProfile,
+          subscription: { create: { status: 'pending' } },
+        },
       });
       const profile = await tx.profile.create({
         data: {
@@ -1021,10 +1115,12 @@ router.post(
         const existing = item.remoteId
           ? await tx.profile.findFirst({ where: { id: item.remoteId, tenantId, role: { in: ['cashier', 'manager'] } } })
           : await tx.profile.findFirst({ where: { tenantId, localId: item.localId, role: { in: ['cashier', 'manager'] } } });
-        const credential = item.pinHash == null ? {} : { pinHash: item.pinHash };
+        // Owner roster sync may create the initial credential, but it can never
+        // replace an existing staff PIN. Only the staff member can rotate it.
+        const credential = existing == null && item.pinHash != null ? { pinHash: item.pinHash } : {};
         const username = item.username?.trim().toLowerCase() ?? null;
         const profile = existing
-          ? await tx.profile.update({ where: { id: existing.id }, data: { name: item.name, username, active: item.active, ...credential } })
+          ? await tx.profile.update({ where: { id: existing.id }, data: { name: item.name, username, role: item.role, active: item.active, ...credential } })
           : await tx.profile.create({ data: { tenantId, localId: item.localId, name: item.name, username, role: item.role, active: item.active, ...credential } });
         result.push({ localId: item.localId, remoteId: profile.id });
       }
@@ -1111,6 +1207,10 @@ router.post(
     if (!tenantId || tenantId.trim().length === 0) {
       return res.status(400).json({ error: 'Shop selection required' });
     }
+    const entitlement = await tenantEntitlement(tenantId);
+    if (!entitlement.allowed) {
+      return res.status(402).json({ error: 'An active subscription or voucher is required', code: 'SUBSCRIPTION_REQUIRED', entitlement });
+    }
     const profile = await prisma.profile.findFirst({
       where: {
         tenantId,
@@ -1138,8 +1238,127 @@ router.post(
       role: profile.role,
       tenant_id: profile.tenantId,
       shop_name: profile.tenant.shopName,
+      session_token: issueStaffSessionToken({
+        profileId: profile.id,
+        tenantId: profile.tenantId,
+        userId: `staff:${profile.id}`,
+      }).token,
     });
   })
+);
+
+router.post(
+  '/staff/self-pin',
+  staffAuthLimiter,
+  asyncHandler(async (req, res) => {
+    const authorization = req.header('authorization') ?? '';
+    const token = authorization.match(/^Bearer\s+(.+)$/i)?.[1]?.trim() ?? '';
+    const claims = verifyStaffSessionToken(token);
+    const tenantId = req.header('x-tenant-id');
+    if (!claims || !tenantId || claims.tenantId !== tenantId) {
+      return res.status(401).json({ error: 'Staff session required' });
+    }
+    const { currentPin, newPin } = parseBody(staffSelfPinSchema, req.body);
+    if (currentPin === newPin) return res.status(400).json({ error: 'New PIN must be different' });
+    const profile = await prisma.profile.findFirst({
+      where: { id: claims.profileId, tenantId, role: { in: ['cashier', 'manager'] }, active: true, deletedAt: null },
+    });
+    if (!profile || !verifyStaffPin(currentPin, profile.pinHash)) {
+      return res.status(401).json({ error: 'Current PIN is incorrect' });
+    }
+    await prisma.profile.update({ where: { id: profile.id }, data: { pinHash: hashStaffPin(newPin) } });
+    return res.json({ status: 'pin_changed', staff_id: profile.id });
+  }),
+);
+
+// A forgotten PIN cannot authenticate, so this deliberately narrow bootstrap
+// route accepts only the selected tenant and username. It never confirms
+// whether a username exists; the same response prevents staff enumeration.
+router.post(
+  '/staff/pin-reset-request',
+  staffAuthLimiter,
+  asyncHandler(async (req, res) => {
+    const { username: rawUsername } = parseBody(staffPinResetRequestSchema, req.body);
+    const tenantId = req.header('x-tenant-id')?.trim();
+    if (!tenantId) return res.status(400).json({ error: 'Shop selection required' });
+    const username = rawUsername.toLowerCase();
+    const profile = await prisma.profile.findFirst({
+      where: { tenantId, username, role: { in: ['cashier', 'manager'] }, active: true, deletedAt: null },
+      select: { id: true, localId: true, name: true },
+    });
+    if (profile) {
+      await prisma.syncRecord.create({
+        data: {
+          tenantId,
+          kind: 'staff_pin_reset_request',
+          deviceId: `staff:${profile.id}`,
+          localId: Date.now(),
+          payload: { status: 'pending', staffProfileId: profile.id, staffLocalId: profile.localId, staffName: profile.name },
+          createdAt: new Date(),
+        },
+      });
+      broadcastTenantChange(tenantId, ['staff_pin_reset_requested']);
+    }
+    return res.status(202).json({ status: 'request_received' });
+  }),
+);
+
+router.get(
+  '/staff/pin-reset-requests',
+  asyncHandler(async (req, res) => {
+    const user = requireUser(req);
+    if (user.role !== 'admin') return res.status(403).json({ error: 'Shop admin access required' });
+    const records = await prisma.syncRecord.findMany({
+      where: { tenantId: user.tenantId, kind: 'staff_pin_reset_request' },
+      orderBy: { createdAt: 'desc' },
+      take: 50,
+    });
+    return res.json({ requests: records.map((record: any) => {
+      const payload = record.payload as Record<string, unknown>;
+      return {
+        id: record.id,
+        status: payload.status ?? 'pending',
+        staff_profile_id: payload.staffProfileId,
+        staff_local_id: payload.staffLocalId,
+        staff_name: payload.staffName,
+        created_at: record.createdAt,
+        updated_at: record.updatedAt,
+      };
+    }).filter((request: any) => request.status === 'pending') });
+  }),
+);
+
+router.post(
+  '/staff/pin-reset-requests/:requestId/reset',
+  asyncHandler(async (req, res) => {
+    const user = requireUser(req);
+    if (user.role !== 'admin') return res.status(403).json({ error: 'Shop admin access required' });
+    const { temporaryPin } = parseBody(staffPinResetApproveSchema, req.body);
+    const requestId = typeof req.params.requestId === 'string' ? req.params.requestId : '';
+    const record = await prisma.syncRecord.findFirst({
+      where: { id: requestId, tenantId: user.tenantId, kind: 'staff_pin_reset_request' },
+    });
+    if (!record) return res.status(404).json({ error: 'PIN reset request not found' });
+    const payload = record.payload as Record<string, unknown>;
+    if (payload.status !== 'pending' || typeof payload.staffProfileId !== 'string') {
+      return res.status(409).json({ error: 'PIN reset request is no longer pending' });
+    }
+    const profile = await prisma.profile.findFirst({
+      where: { id: payload.staffProfileId, tenantId: user.tenantId, role: { in: ['cashier', 'manager'] }, active: true, deletedAt: null },
+    });
+    if (!profile) return res.status(404).json({ error: 'Staff profile is no longer active' });
+    await prisma.$transaction(async (tx) => {
+      await tx.profile.update({ where: { id: profile.id }, data: { pinHash: hashStaffPin(temporaryPin) } });
+      await tx.syncRecord.update({
+        where: { id: record.id },
+        data: { payload: { ...payload, status: 'completed', completedAt: new Date().toISOString() } },
+      });
+    });
+    // Never include the temporary PIN in the response, live signal, or audit
+    // payload. The owner communicates it directly to the named staff member.
+    broadcastTenantChange(user.tenantId, ['staff_pin_reset_completed']);
+    return res.json({ status: 'reset_completed', staff_profile_id: profile.id });
+  }),
 );
 
 // ---------------------------------------------------------------------------

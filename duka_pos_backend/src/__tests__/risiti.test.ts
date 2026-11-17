@@ -1,5 +1,5 @@
-import { describe, expect, it } from 'vitest';
-import { buildRisitiInvoiceRequest, submissionOutcome } from '../services/risiti';
+import { describe, expect, it, vi } from 'vitest';
+import { buildRisitiInvoiceRequest, RisitiError, submissionOutcome, submitInvoice } from '../services/risiti';
 import { taxReportingStatus } from '../services/tax_reporting';
 
 describe('Risiti tax provider boundary', () => {
@@ -58,6 +58,36 @@ describe('Risiti tax provider boundary', () => {
     } finally {
       if (previous === undefined) delete process.env.TAX_REPORTING_ACTIVATED;
       else process.env.TAX_REPORTING_ACTIVATED = previous;
+    }
+  });
+
+  it('treats provider rate limits as retryable and preserves the request metadata', async () => {
+    const previousKey = process.env.RISITI_API_KEY;
+    process.env.RISITI_API_KEY = 'test-key';
+    const fetchMock = vi.fn().mockResolvedValue(new Response(JSON.stringify({
+      error: { code: 'rate_limited', message: 'Try again later' },
+    }), {
+      status: 429,
+      headers: { 'content-type': 'application/json', 'retry-after': '7', 'x-request-id': 'req-7' },
+    }));
+    vi.stubGlobal('fetch', fetchMock);
+    try {
+      await expect(submitInvoice({
+        merchant_id: 'merchant-1',
+        external_id: 'shop-1:receipt-1',
+        payment_method: '06',
+        items: [{ external_id: 'line-1', name: 'Water', quantity: 1, unit_price: 1, tax_type: 'D' }],
+      })).rejects.toMatchObject({
+        name: 'RisitiError',
+        kind: 'network',
+        requestId: 'req-7',
+        statusCode: 429,
+        retryAfterSeconds: 7,
+      } satisfies Partial<RisitiError>);
+    } finally {
+      vi.unstubAllGlobals();
+      if (previousKey === undefined) delete process.env.RISITI_API_KEY;
+      else process.env.RISITI_API_KEY = previousKey;
     }
   });
 });

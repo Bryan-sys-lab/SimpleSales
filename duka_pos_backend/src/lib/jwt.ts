@@ -1,6 +1,15 @@
 import jwt from 'jsonwebtoken';
 
 export type TokenTier = 'device' | 'access';
+export type StaffSessionClaims = {
+  sub: string;
+  tenantId: string;
+  profileId: string;
+  token_use: 'staff';
+  iat: number;
+  exp: number;
+  jti: string;
+};
 
 export type AccessTokenClaims = {
   sub: string;
@@ -15,6 +24,7 @@ export type AccessTokenClaims = {
 const DEVICE_TTL_SECONDS = 12 * 60 * 60;
 const ACCESS_TTL_SECONDS = 60 * 60;
 const CLOCK_SKEW_SECONDS = 60;
+const STAFF_SESSION_TTL_SECONDS = 12 * 60 * 60;
 
 export function issueAccessToken(params: {
   userId: string;
@@ -61,6 +71,41 @@ export function verifyAccessToken(token: string): AccessTokenClaims | null {
     }
   }
   return null;
+}
+
+/** A PIN-authenticated staff session, intentionally not accepted as an app token. */
+export function issueStaffSessionToken(params: {
+  profileId: string;
+  tenantId: string;
+  userId: string;
+}): { token: string; expiresIn: number } {
+  const secret = process.env.AUTH_JWT_SECRET;
+  if (!secret) throw new Error('AUTH_JWT_SECRET must be configured');
+  const jti = (globalThis.crypto?.randomUUID?.() ?? Math.random().toString(36).slice(2));
+  return {
+    token: jwt.sign(
+      { sub: params.userId, tenantId: params.tenantId, profileId: params.profileId, token_use: 'staff', jti },
+      secret,
+      { algorithm: 'HS256', expiresIn: STAFF_SESSION_TTL_SECONDS },
+    ),
+    expiresIn: STAFF_SESSION_TTL_SECONDS,
+  };
+}
+
+export function verifyStaffSessionToken(token: string): StaffSessionClaims | null {
+  const secret = process.env.AUTH_JWT_SECRET;
+  if (!secret) return null;
+  try {
+    const claims = jwt.verify(token, secret, {
+      algorithms: ['HS256'],
+      clockTolerance: CLOCK_SKEW_SECONDS,
+    }) as StaffSessionClaims;
+    if (claims.token_use !== 'staff' || !claims.sub || !claims.tenantId || !claims.profileId) return null;
+    if (claims.exp - claims.iat > STAFF_SESSION_TTL_SECONDS + CLOCK_SKEW_SECONDS) return null;
+    return claims;
+  } catch {
+    return null;
+  }
 }
 
 export function accessTokenTtlSeconds(tier: TokenTier): number {

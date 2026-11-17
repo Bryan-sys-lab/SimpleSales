@@ -186,4 +186,31 @@ export async function getProfilePhotoDownloadUrl(key: string, expiresIn = 3600) 
   };
 }
 
+export async function getSaleEvidenceUploadUrl(params: {
+  tenantId: string;
+  saleKey: string;
+  fileName: string;
+  contentType: string;
+}) {
+  const safeName = params.fileName.replace(/[^a-zA-Z0-9._-]/g, '_');
+  const key = `profile-photos/${params.tenantId}/sale-evidence/${params.saleKey}/${Date.now()}-${safeName}`;
+  const uploadUrl = await getSignedUrl(r2, new PutObjectCommand({
+    Bucket: BUCKET,
+    Key: key,
+    ContentType: params.contentType,
+  }), { expiresIn: 3600 });
+  return { key, uploadUrl, expiresIn: 3600 };
+}
+
+export async function getSaleEvidenceDownloadUrl(key: string, expiresIn = 3600) {
+  return {
+    key,
+    downloadUrl: await getSignedUrl(r2, new GetObjectCommand({
+      Bucket: BUCKET,
+      Key: key,
+    }), { expiresIn }),
+    expiresIn,
+  };
+}
+
 export { BUCKET };

@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import { parseBody, paymentSchema, salesSyncSchema, settingsSchema, staffSyncSchema, deletionSchema, provisionSchema, cloudBackupSchema, creditSyncSchema, operationalSyncSchema, productSyncSchema, stockMovementsSyncSchema, platformAnnouncementSchema, taxEntitySchema, taxRuleSchema, vatReturnStatusSchema, laybySyncSchema } from '../lib/validation';
+import { costPoolSyncSchema, parseBody, paymentQrSchema, paymentSchema, productVariantSyncSchema, salesSyncSchema, settingsSchema, staffSyncSchema, deletionSchema, provisionSchema, cloudBackupSchema, creditSyncSchema, operationalSyncSchema, productSyncSchema, shotCupsSyncSchema, stockMovementsSyncSchema, platformAnnouncementSchema, taxEntitySchema, taxRuleSchema, vatReturnStatusSchema, laybySyncSchema } from '../lib/validation';
+import { missingVariantParentIds } from '../routes/product-variants';
 
 describe('request validation', () => {
   it('allows only explicit VAT return lifecycle states', () => {
@@ -59,6 +60,14 @@ describe('request validation', () => {
     expect(input.items).toHaveLength(2);
   });
 
+  it('allows Dynamic QR payments without a payer phone number', () => {
+    const input = parseBody(paymentQrSchema, {
+      items: [{ product_id: '00000000-0000-0000-0000-000000000001', qty: 1 }],
+      staff_name: 'Cashier',
+    });
+    expect(input).not.toHaveProperty('phone_number');
+  });
+
   it('allows different configured portions of the same product', () => {
     // The exact basket a cashier builds for "one whole plus one half of the
     // same bottle" — 1.5 bottles of stock, one full line and one half line.
@@ -70,6 +79,17 @@ describe('request validation', () => {
       phone_number: '+254700000000', staff_name: 'Cashier',
     });
     expect(input.items).toHaveLength(2);
+  });
+
+  it('accepts backend CUIDs for owner M-Pesa product and staff references', () => {
+    const input = parseBody(paymentSchema, {
+      items: [{ product_id: 'clw7productcuid123', qty: 1 }],
+      phone_number: '+254700000000',
+      staff_name: 'Cashier',
+      staff_profile_id: 'clw7staffcuid123',
+    });
+    expect(input.items[0].product_id).toBe('clw7productcuid123');
+    expect(input.staff_profile_id).toBe('clw7staffcuid123');
   });
 
   it('accepts an optional append-only tender ledger for offline sales', () => {
@@ -143,6 +163,15 @@ describe('request validation', () => {
   it('accepts only cashier or manager staff roles', () => {
     const valid = parseBody(staffSyncSchema, { staff: [{ localId: 1, name: 'Manager', role: 'manager' }] });
     expect(valid.staff[0].role).toBe('manager');
+    const cuidRemoteId = parseBody(staffSyncSchema, {
+      staff: [{
+        localId: 2,
+        remoteId: 'clw7staffcuid123',
+        name: 'Cashier',
+        role: 'cashier',
+      }],
+    });
+    expect(cuidRemoteId.staff[0].remoteId).toBe('clw7staffcuid123');
     expect(() => parseBody(staffSyncSchema, { staff: [{ localId: 2, name: 'Root', role: 'admin' }] })).toThrow();
   });
 
@@ -265,6 +294,125 @@ describe('request validation', () => {
       records: [{ localId: 1, deviceId: 'till-a' }],
     });
     expect(input.records[0].deviceId).toBe('till-a');
+  });
+
+  it('requires a resolved product id for serving sync records', () => {
+    const input = parseBody(shotCupsSyncSchema, {
+      shotCups: [{
+        localId: 1,
+        deviceId: 'till-a',
+        createdAt: '2026-11-01T12:00:00.000Z',
+        productId: 'clx_product_1',
+        productName: 'Soda',
+        label: 'Glass',
+        unit: 'ml',
+        capacity: 330,
+        price: 5000,
+        active: true,
+      }],
+    });
+    expect(input.shotCups[0].productId).toBe('clx_product_1');
+    for (const unit of ['litre', 'l', 'kilogram', 'kg', 'cup', 'each']) {
+      expect(parseBody(shotCupsSyncSchema, {
+        shotCups: [{
+          localId: 1,
+          createdAt: '2026-11-01T12:00:00.000Z',
+          productId: 'clx_product_1',
+          productName: 'Soda',
+          label: 'Glass',
+          unit,
+          capacity: 0.5,
+          price: 5000,
+          active: true,
+        }],
+      }).shotCups[0].unit).toBe(unit);
+    }
+    expect(() => parseBody(shotCupsSyncSchema, {
+      shotCups: [{
+        localId: 1,
+        createdAt: '2026-11-01T12:00:00.000Z',
+        productId: null,
+        productName: 'Soda',
+        label: 'Glass',
+        unit: 'ml',
+        capacity: 330,
+        price: 5000,
+        active: true,
+      }],
+    })).toThrow();
+    expect(() => parseBody(shotCupsSyncSchema, {
+      shotCups: [{
+        localId: 1,
+        createdAt: '2026-11-01T12:00:00.000Z',
+        productId: 'clx_product_1',
+        productName: 'Soda',
+        label: 'Glass',
+        unit: 'mystery-unit',
+        capacity: 330,
+        price: 5000,
+        active: true,
+      }],
+    })).toThrow();
+  });
+
+  it('preserves optional variant SKU and reserved stock fields', () => {
+    const parsed = parseBody(productVariantSyncSchema, {
+      productVariants: [{
+        id: 4,
+        productId: 'clx_product_1',
+        name: 'Large',
+        sku: '',
+        unit: 'each',
+        sizeMl: 0,
+        sellPrice: 100,
+        costPrice: 50,
+        stockQty: 3,
+        reservedQty: 1,
+        reorderLevel: 0,
+        position: 0,
+        active: true,
+        syncKey: 'till-a:4',
+      }],
+    });
+    expect(parsed.productVariants[0].sku).toBe('');
+    expect(parsed.productVariants[0].reservedQty).toBe(1);
+  });
+
+  it('accepts the Open profile cost-pool types', () => {
+    for (const poolType of ['lot', 'bale', 'rolling_stock']) {
+      const parsed = parseBody(costPoolSyncSchema, {
+        costPools: [{
+          id: 1,
+          uuid: 'pool-1',
+          name: 'Inventory pool',
+          poolType,
+          investedMinor: 100,
+          recoveredMinor: 0,
+          status: 'open',
+          syncKey: 'till-a:pool:1',
+        }],
+      });
+      expect(parsed.costPools[0].poolType).toBe(poolType);
+    }
+  });
+
+  it('requires variant parents to belong to the selected tenant', () => {
+    expect(missingVariantParentIds(
+      ['product-a', 'product-b'],
+      ['product-a'],
+    )).toEqual(['product-b']);
+  });
+
+  it('preserves stock receipt payment source in operational payloads', () => {
+    const input = parseBody(operationalSyncSchema, {
+      records: [{
+        localId: 9,
+        deviceId: 'till-a',
+        createdAt: '2026-11-01T12:00:00.000Z',
+        paidFrom: 'credit',
+      }],
+    });
+    expect(input.records[0].paidFrom).toBe('credit');
   });
 
   it('validates a complete lay-by lifecycle snapshot', () => {
@@ -391,6 +539,21 @@ describe('request validation', () => {
     expect(input.products[0].unit).toBe('cup');
     expect(input.products[0].mlPerKg).toBe(1000);
     expect(input.products[0].openingStockQty).toBe(5);
+  });
+
+  it('accepts a returned CUID when an owner catalogue row syncs again', () => {
+    const input = parseBody(productSyncSchema, {
+      products: [{
+        id: 1,
+        remoteId: 'clw7productcuid123',
+        name: 'Mineral water',
+        costPrice: 50,
+        sellPrice: 80,
+        stockQty: 10,
+        reorderLevel: 2,
+      }],
+    });
+    expect(input.products[0].remoteId).toBe('clw7productcuid123');
   });
 
   it('accepts only bounded opaque cloud backup payloads', () => {

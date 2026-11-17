@@ -29,6 +29,12 @@ model Tenant {
 
   payheroCredentialId String? @map("payhero_credential_id")
 
+  /// Safaricom Dynamic QR configuration. These are populated from the
+  /// registered till/paybill channel; bank channels do not support this QR
+  /// contract.
+  mpesaQrCpi      String? @map("mpesa_qr_cpi")
+  mpesaQrTrxCode  String? @map("mpesa_qr_trx_code")
+
   tin       String?
   createdAt DateTime @default(now()) @map("created_at")
 
@@ -38,6 +44,7 @@ model Tenant {
   products               Product[]
   productVariants        ProductVariant[]
   sales                  Sale[]
+  saleEvidence           SaleEvidence[]
   salePayments           SalePayment[]
   saleItems              SaleItem[]
   stockAdjustments       StockAdjustment[]
@@ -59,10 +66,12 @@ model Tenant {
   syncRecords            SyncRecord[]
   saleSyncConflicts      SaleSyncConflict[]
   taxEntityLinks         ShopTaxEntity[]
-  jobs                   Job[]
   costPools              CostPool[]
-  jobCosts               JobCost[]
-  jobPayments            JobPayment[]
+  deviceDiagnostics      DeviceDiagnostic[]
+  subscription           TenantSubscription?
+  subscriptionPayments   SubscriptionPayment[]
+  accessVouchers         AccessVoucher[]
+
   ownerTransactions      OwnerTransaction[]
 
   @@map("tenants")
@@ -431,6 +440,8 @@ model Profile {
   sales            Sale[]            @relation("ProfileSales")
   stockAdjustments StockAdjustment[] @relation("ProfileStockAdjustments")
   payments         Payment[]         @relation("ProfilePayments")
+  issuedVouchers   AccessVoucher[]   @relation("VoucherIssuedTo")
+  redeemedVouchers AccessVoucher[]   @relation("VoucherRedeemedBy")
 
   // Usernames are unique inside a shop; the same username may exist in a
   // different shop because the shop ID is part of the login identity.
@@ -438,6 +449,70 @@ model Profile {
   @@index([tenantId])
   @@index([userId])
   @@map("profiles")
+}
+
+model TenantSubscription {
+  id                String   @id @default(cuid())
+  tenantId          String   @unique @map("tenant_id")
+  status            String   @default("pending")
+  priceMinor        Int?     @map("price_minor")
+  currency          String   @default("KES")
+  billingInterval   String   @default("monthly") @map("billing_interval")
+  currentPeriodEnd  DateTime? @map("current_period_end")
+  graceUntil        DateTime? @map("grace_until")
+  voucherId         String?  @unique @map("voucher_id")
+  updatedBy         String?  @map("updated_by")
+  createdAt         DateTime @default(now()) @map("created_at")
+  updatedAt         DateTime @updatedAt @map("updated_at")
+
+  tenant            Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  voucher           AccessVoucher? @relation(fields: [voucherId], references: [id], onDelete: SetNull)
+
+  @@index([status, currentPeriodEnd])
+  @@map("tenant_subscriptions")
+}
+
+model AccessVoucher {
+  id                String   @id @default(cuid())
+  codeHash          String   @unique @map("code_hash")
+  codePrefix        String   @map("code_prefix")
+  tenantId          String?  @map("tenant_id")
+  issuedToProfileId String?  @map("issued_to_profile_id")
+  issuedToEmail     String?  @map("issued_to_email")
+  expiresAt         DateTime? @map("expires_at")
+  redeemedAt        DateTime? @map("redeemed_at")
+  redeemedByProfileId String? @map("redeemed_by_profile_id")
+  revokedAt         DateTime? @map("revoked_at")
+  createdBy         String   @map("created_by")
+  createdAt         DateTime @default(now()) @map("created_at")
+
+  tenant            Tenant?  @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  issuedToProfile   Profile? @relation("VoucherIssuedTo", fields: [issuedToProfileId], references: [id], onDelete: SetNull)
+  redeemedByProfile Profile? @relation("VoucherRedeemedBy", fields: [redeemedByProfileId], references: [id], onDelete: SetNull)
+  subscription      TenantSubscription?
+
+  @@index([tenantId, expiresAt])
+  @@index([issuedToEmail])
+  @@map("access_vouchers")
+}
+
+model SubscriptionPayment {
+  id                String   @id @default(cuid())
+  tenantId          String   @map("tenant_id")
+  reference         String   @unique
+  phoneNumber       String   @map("phone_number")
+  amountMinor       Int      @map("amount_minor")
+  durationMonths    Int      @default(1) @map("duration_months")
+  status            String   @default("PENDING")
+  checkoutRequestId String?  @map("checkout_request_id")
+  providerStatus    String?  @map("provider_status")
+  mpesaReceiptCode  String?  @map("mpesa_receipt_code")
+  createdAt         DateTime @default(now()) @map("created_at")
+  updatedAt         DateTime @updatedAt @map("updated_at")
+
+  tenant            Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  @@index([tenantId, status])
+  @@map("subscription_payments")
 }
 
 model Product {
@@ -515,11 +590,35 @@ model Sale {
   profile      Profile?      @relation("ProfileSales", fields: [staffId], references: [id])
   items        SaleItem[]
   salePayments SalePayment[]
+  evidence    SaleEvidence[]
 
   @@unique([tenantId, deviceId, localId])
   @@index([tenantId])
   @@index([createdAt])
   @@map("sales")
+}
+
+/// Metadata for sale-evidence photographs. The binary remains in R2; this row
+/// is the tenant-scoped, exportable link between a sale and its object.
+model SaleEvidence {
+  id        String   @id @default(cuid())
+  tenantId  String   @map("tenant_id")
+  saleId    String?  @map("sale_id")
+  deviceId  String   @default("legacy") @map("device_id")
+  localId   Int      @map("local_id")
+  objectKey String   @map("object_key")
+  publicUrl String?  @map("public_url")
+  mimeType  String   @map("mime_type")
+  byteSize  Int?     @map("byte_size")
+  createdBy String   @map("created_by")
+  createdAt DateTime @default(now()) @map("created_at")
+
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  sale   Sale?  @relation(fields: [saleId], references: [id], onDelete: SetNull)
+
+  @@unique([tenantId, deviceId, localId, objectKey])
+  @@index([tenantId, deviceId, localId])
+  @@map("sale_evidence")
 }
 
 /// The append-only tender ledger for an offline sale. Keeping this separate
@@ -620,6 +719,10 @@ model Payment {
 
   status            String  @default("QUEUED")
   checkoutRequestId String? @map("checkout_request_id")
+  paymentMode      String  @default("stk") @map("payment_mode")
+  qrCodeData       String? @map("qr_code_data") @db.Text
+  providerStatus    String? @map("provider_status")
+  providerCheckedAt DateTime? @map("provider_checked_at")
 
   saleId String? @map("sale_id")
 
@@ -917,7 +1020,7 @@ model DeviceDiagnostic {
 
   tenant     Tenant? @relation(fields: [tenantId], references: [id])
 
-  @@index([deviceId])
+  @@unique([deviceId])
   @@index([tenantId])
   @@index([lastSeen])
   @@map("device_diagnostics")
@@ -1022,47 +1125,6 @@ model ProductVariant {
   @@map("product_variants")
 }
 
-/// Open profile job (service work order) synced from an offline till.
-model Job {
-  id          String @id @default(cuid())
-  tenantId    String @map("tenant_id")
-
-  /// The till's local job id is the idempotency key for offline retries.
-  localId Int? @map("local_id")
-
-  /// Stable client key makes a retried offline job create idempotent.
-  syncKey  String? @map("sync_key")
-
-  /// Backend-assigned opaque id; the till stores this to reference the job in
-  /// later syncs (e.g. job costs, job payments, cost pools).
-  remoteId String? @map("remote_id")
-
-  uuid         String   @map("uuid")
-  title        String
-  customerName String?  @map("customer_name")
-  customerPhone String? @map("customer_phone")
-  quoteMinor   Int      @default(0) @map("quote_minor")
-  finalPriceMinor Int?   @map("final_price_minor")
-  status       String   @default("draft") @map("status") // draft | awaiting_payment | completed | closed | cancelled
-  dueAt        DateTime? @map("due_at")
-  costPoolId   String? @map("cost_pool_id")
-  staffId      String   @map("staff_id")
-  staffName    String   @map("staff_name")
-  createdAt    DateTime @default(now()) @map("created_at")
-  updatedAt    DateTime @updatedAt @map("updated_at")
-
-  tenant Tenant @relation(fields: [tenantId], references: [id])
-  jobCosts   JobCost[]
-  jobPayments JobPayment[]
-
-  @@unique([tenantId, syncKey])
-  @@unique([tenantId, uuid])
-  @@index([tenantId])
-  @@index([status])
-  @@index([costPoolId])
-  @@map("jobs")
-}
-
 /// Open profile cost pool for shared cost recovery across job sales.
 model CostPool {
   id          String @id @default(cuid())
@@ -1079,7 +1141,7 @@ model CostPool {
 
   uuid           String   @map("uuid")
   name           String
-  poolType       String   @default("lot") @map("pool_type") // lot | hourly | percentage
+  poolType       String   @default("lot") @map("pool_type") // lot | bale | rolling_stock
   investedMinor  Int      @default(0) @map("invested_minor")
   recoveredMinor Int      @default(0) @map("recovered_minor")
   status         String   @default("open") @map("status") // open | closed | cancelled
@@ -1093,73 +1155,6 @@ model CostPool {
   @@index([tenantId])
   @@index([status])
   @@map("cost_pools")
-}
-
-/// Open profile job cost (materials/transport/helper) synced from an offline till.
-model JobCost {
-  id          String @id @default(cuid())
-  tenantId    String @map("tenant_id")
-
-  /// The till's local cost id is the idempotency key for offline retries.
-  localId Int? @map("local_id")
-
-  /// Stable client key makes a retried offline job cost create idempotent.
-  syncKey  String? @map("sync_key")
-
-  /// Backend-assigned opaque id.
-  remoteId String? @map("remote_id")
-
-  uuid          String   @map("uuid")
-  jobId         String   @map("job_id")
-  type          String   @map("type") // materials | transport | helper | other
-  amountMinor   Int      @map("amount_minor")
-  paymentMethod String   @default("cash") @map("payment_method")
-  reference     String? @map("reference")
-  staffId       String? @map("staff_id")
-  staffName     String? @map("staff_name")
-  createdAt     DateTime @default(now()) @map("created_at")
-
-  tenant Tenant @relation(fields: [tenantId], references: [id])
-  job    Job    @relation(fields: [jobId], references: [id], onDelete: Cascade)
-
-  @@unique([tenantId, syncKey])
-  @@unique([tenantId, jobId, localId])
-  @@index([tenantId])
-  @@index([jobId])
-  @@map("job_costs")
-}
-
-/// Open profile job payment (deposit / balance / partial) synced from an offline till.
-model JobPayment {
-  id          String @id @default(cuid())
-  tenantId    String @map("tenant_id")
-
-  /// The till's local payment id is the idempotency key for offline retries.
-  localId Int? @map("local_id")
-
-  /// Stable client key makes a retried offline job payment create idempotent.
-  syncKey  String? @map("sync_key")
-
-  /// Backend-assigned opaque id.
-  remoteId String? @map("remote_id")
-
-  uuid          String   @map("uuid")
-  jobId         String   @map("job_id")
-  amountMinor   Int      @map("amount_minor")
-  paymentMethod String   @map("payment_method") // cash | mpesa | bank_transfer | card
-  reference     String? @map("reference")
-  staffId       String? @map("staff_id")
-  staffName     String? @map("staff_name")
-  createdAt     DateTime @default(now()) @map("created_at")
-
-  tenant Tenant @relation(fields: [tenantId], references: [id])
-  job    Job    @relation(fields: [jobId], references: [id], onDelete: Cascade)
-
-  @@unique([tenantId, syncKey])
-  @@unique([tenantId, jobId, localId])
-  @@index([tenantId])
-  @@index([jobId])
-  @@map("job_payments")
 }
 
 /// Open profile owner finance transaction (capital / drawing / loan / repayment).

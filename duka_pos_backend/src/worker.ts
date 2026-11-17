@@ -1,6 +1,7 @@
 import { IncomingMessage, ServerResponse } from 'node:http';
 import { Duplex } from 'node:stream';
 import app from './index.js';
+import { verifyAccessToken } from './lib/jwt.js';
 
 function makeSocket(): Duplex {
   const socket = new Duplex({
@@ -22,7 +23,16 @@ export default {
 
     const url = new URL(request.url);
     if (url.pathname === '/live' || url.pathname === '/api/live') {
-      const id = env.LIVE_ROOM.idFromName('default');
+      const token = request.headers.get('authorization')?.match(/^Bearer\s+(.+)$/i)?.[1]?.trim();
+      const tenantId = request.headers.get('x-tenant-id')?.trim();
+      if (request.headers.get('Upgrade')?.toLowerCase() !== 'websocket' ||
+          !token || !tenantId || !verifyAccessToken(token)) {
+        return new Response('Authentication required', { status: 401 });
+      }
+      // One room per tenant prevents a till in shop A from receiving shop B's
+      // change signals. The HTTP API remains the source of truth and the
+      // socket carries signals only.
+      const id = env.LIVE_ROOM.idFromName(`tenant:${tenantId}`);
       const stub = env.LIVE_ROOM.get(id);
       return stub.fetch(request);
     }
@@ -39,7 +49,7 @@ export default {
 
     const socket = makeSocket();
 
-    return new Promise<Response>((resolve) => {
+    const response = await new Promise<Response>((resolve) => {
       const timer = setTimeout(() => resolve(new Response('gateway timeout', { status: 504 })), 28000);
 
       const req = new IncomingMessage(socket as any);
@@ -75,8 +85,22 @@ export default {
       if (bodyText) req.push(Buffer.from(bodyText));
       req.push(null);
     });
+    if (request.method !== 'GET' && request.method !== 'HEAD' &&
+        response.status >= 200 && response.status < 300) {
+      const tenantId = request.headers.get('x-tenant-id')?.trim();
+      if (tenantId && url.pathname.startsWith('/api/')) {
+        const id = env.LIVE_ROOM.idFromName(`tenant:${tenantId}`);
+        const stub = env.LIVE_ROOM.get(id);
+        await stub.fetch(new Request('https://live.internal/broadcast', {
+          method: 'POST',
+          headers: { 'x-live-internal': '1' },
+          body: JSON.stringify({ type: 'snapshot', reasons: [], at: new Date().toISOString() }),
+        }));
+      }
+    }
+    return response;
   },
-  async scheduled(event: any, env: any, ctx: any) {
+  async scheduled(event: any, env: any, _ctx: any) {
     for (const [k, v] of Object.entries(env || {})) {
       if (typeof v === 'string') process.env[k] = v;
     }
@@ -101,6 +125,13 @@ export class LiveRoom {
   constructor(_state: any, _env: any) {}
 
   async fetch(request: any): Promise<Response> {
+    if (request.headers.get('x-live-internal') === '1' && request.method === 'POST') {
+      const message = await request.text();
+      for (const s of this.sessions) {
+        if (s.readyState === 1) s.send(message);
+      }
+      return new Response(null, { status: 204 });
+    }
     if (request.headers.get('Upgrade') !== 'websocket') {
       return new Response('Expected websocket', { status: 426 });
     }
@@ -112,8 +143,17 @@ export class LiveRoom {
     server.send(JSON.stringify({ type: 'connected', at: new Date().toISOString() }));
     server.addEventListener('close', () => this.sessions.delete(server));
     server.addEventListener('message', (ev: any) => {
-      for (const s of this.sessions) {
-        if (s.readyState === 1) s.send(ev.data);
+      try {
+        const message = JSON.parse(String(ev.data));
+        if (message?.type === 'read' && server.readyState === 1) {
+          server.send(JSON.stringify({
+            type: 'snapshot',
+            reasons: [],
+            at: new Date().toISOString(),
+          }));
+        }
+      } catch {
+        // Ignore malformed optional signal frames.
       }
     });
     return new Response(null, { status: 101, webSocket: client } as any);

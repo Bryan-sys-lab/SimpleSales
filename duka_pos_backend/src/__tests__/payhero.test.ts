@@ -54,7 +54,31 @@ describe('PayHero merchant channel integration', () => {
       account_number: '',
     });
     expect((request.headers as Record<string, string>).Authorization)
-      .toBe('server-only-token');
+      .toBe('Basic server-only-token');
+  });
+
+  it('registers a bank channel with its destination account', async () => {
+    process.env.PAYHERO_AUTH_TOKEN = 'Basic server-only-token';
+    process.env.PAYHERO_ACCOUNT_ID = '42';
+    const fetchMock = vi.fn()
+      .mockResolvedValueOnce({ ok: true, json: async () => ({ payment_channels: [] }) })
+      .mockResolvedValueOnce({ ok: true, status: 201, json: async () => ({ id: 11 }) });
+    vi.stubGlobal('fetch', fetchMock);
+
+    await expect(registerPaymentChannel({
+      channelType: 'bank',
+      shortCode: '802200',
+      accountNumber: '1234567890',
+    })).resolves.toEqual({ id: 11, channelType: 'bank', shortCode: '802200' });
+
+    const request = fetchMock.mock.calls[1][1] as RequestInit;
+    expect(JSON.parse(String(request.body))).toMatchObject({
+      channel_type: 'bank',
+      short_code: 802200,
+      account_number: '1234567890',
+    });
+    expect((request.headers as Record<string, string>).Authorization)
+      .toBe('Basic server-only-token');
   });
 
   it('extracts the documented nested callback reference without trusting its status', () => {

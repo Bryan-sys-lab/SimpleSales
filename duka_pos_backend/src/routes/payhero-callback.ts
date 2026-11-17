@@ -18,8 +18,28 @@ export const handlePayheroCallback = async (req: Request, res: Response) => {
   try {
     const reference = payheroReferenceFromCallback(req.body);
 
-    if (typeof reference !== 'string' || !/^DUKA-[0-9a-f-]{36}$/.test(reference)) {
+    if (typeof reference !== 'string' || !/^(DUKA|SUBS)-[0-9a-f-]{36}$/.test(reference)) {
       return res.status(400).json({ error: 'reference required' });
+    }
+
+    if (reference.startsWith('SUBS-')) {
+      const payment = await prisma.subscriptionPayment.findUnique({ where: { reference } });
+      if (!payment) return res.status(404).json({ error: 'Subscription payment not found' });
+      const status = await queryTransactionStatus(reference);
+      if (status.status === 'SUCCESS' && payment.status !== 'SUCCESS') {
+        const receiptCode = String(status.MpesaReceiptNumber ?? status.mpesa_receipt_number ?? status.receipt ?? '').trim().toUpperCase() || null;
+        const current = await prisma.tenantSubscription.findUnique({ where: { tenantId: payment.tenantId } });
+        const base = current?.currentPeriodEnd && current.currentPeriodEnd > new Date() ? current.currentPeriodEnd : new Date();
+        const end = new Date(base);
+        end.setUTCMonth(end.getUTCMonth() + payment.durationMonths);
+        await prisma.$transaction([
+          prisma.subscriptionPayment.update({ where: { id: payment.id }, data: { status: 'SUCCESS', providerStatus: 'SUCCESS', mpesaReceiptCode: receiptCode } }),
+          prisma.tenantSubscription.upsert({ where: { tenantId: payment.tenantId }, create: { tenantId: payment.tenantId, status: 'active', currentPeriodEnd: end }, update: { status: 'active', currentPeriodEnd: end, voucherId: null, graceUntil: null } }),
+        ]);
+      } else if (status.status === 'FAILED') {
+        await prisma.subscriptionPayment.update({ where: { id: payment.id }, data: { status: 'FAILED', providerStatus: 'FAILED' } });
+      }
+      return res.json({ received: true });
     }
 
     // Find payment by reference

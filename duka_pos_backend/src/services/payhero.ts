@@ -1,14 +1,46 @@
 const PAYHERO_BASE = process.env.PAYHERO_BASE_URL || 'https://backend.payhero.co.ke/api/v2';
+const PAYHERO_TIMEOUT_MS = 15_000;
 
-type PayHeroChannelType = 'till' | 'paybill';
+export type PayHeroChannelType = 'till' | 'paybill' | 'bank';
+
+export class PayHeroError extends Error {
+  constructor(
+    message: string,
+    readonly statusCode?: number,
+  ) {
+    super(message);
+    this.name = 'PayHeroError';
+  }
+}
 
 function payHeroHeaders(): Record<string, string> {
-  const token = process.env.PAYHERO_AUTH_TOKEN;
-  if (!token) throw new Error('PAYHERO_AUTH_TOKEN not configured');
+  const configured = process.env.PAYHERO_AUTH_TOKEN?.trim();
+  if (!configured) throw new PayHeroError('PAYHERO_AUTH_TOKEN not configured');
+  const authorization = /^Basic\s+/i.test(configured)
+    ? configured
+    : `Basic ${configured}`;
   return {
-    Authorization: token,
+    Authorization: authorization,
     'Content-Type': 'application/json',
   };
+}
+
+async function fetchWithTimeout(
+  input: string,
+  init: RequestInit,
+  timeoutMs = PAYHERO_TIMEOUT_MS,
+): Promise<Response> {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
+  try {
+    return await fetch(input, { ...init, signal: controller.signal });
+  } catch (error) {
+    throw new PayHeroError(
+      error instanceof Error ? error.message : 'PayHero request failed',
+    );
+  } finally {
+    clearTimeout(timer);
+  }
 }
 
 /**
@@ -19,6 +51,7 @@ function payHeroHeaders(): Record<string, string> {
 export async function registerPaymentChannel(params: {
   channelType: PayHeroChannelType;
   shortCode: string;
+  accountNumber?: string;
   description?: string;
 }): Promise<{ id: number; channelType: PayHeroChannelType; shortCode: string }> {
   const accountId = Number(process.env.PAYHERO_ACCOUNT_ID);
@@ -26,35 +59,41 @@ export async function registerPaymentChannel(params: {
     throw new Error('PAYHERO_ACCOUNT_ID not configured');
   }
   const shortCode = params.shortCode.trim();
+  const accountNumber = params.accountNumber?.trim() ?? '';
   const headers = payHeroHeaders();
 
-  const existingResponse = await fetch(
+  const existingResponse = await fetchWithTimeout(
     `${PAYHERO_BASE}/payment_channels?is_active=true`,
     { headers },
   );
-  if (existingResponse.ok) {
-    const existing = (await existingResponse.json()) as { payment_channels?: unknown };
-    const channels = Array.isArray(existing.payment_channels)
-      ? existing.payment_channels
-      : [];
-    const match = channels.find((raw): raw is Record<string, unknown> => {
-      if (!raw || typeof raw !== 'object') return false;
-      const row = raw as Record<string, unknown>;
-      return Number(row.account_id) === accountId &&
-          row.channel_type === params.channelType &&
-          String(row.short_code ?? '') === shortCode &&
-          row.is_active === true;
-    });
-    if (match && Number.isSafeInteger(Number(match.id))) {
-      return {
-        id: Number(match.id),
-        channelType: params.channelType,
-        shortCode,
-      };
-    }
+  if (!existingResponse.ok) {
+    throw new PayHeroError(
+      `PayHero channel lookup failed (${existingResponse.status})`,
+      existingResponse.status,
+    );
+  }
+  const existing = (await existingResponse.json()) as { payment_channels?: unknown };
+  const channels = Array.isArray(existing.payment_channels)
+    ? existing.payment_channels
+    : [];
+  const match = channels.find((raw): raw is Record<string, unknown> => {
+    if (!raw || typeof raw !== 'object') return false;
+    const row = raw as Record<string, unknown>;
+    return Number(row.account_id) === accountId &&
+        row.channel_type === params.channelType &&
+        String(row.short_code ?? '') === shortCode &&
+        String(row.account_number ?? '') === accountNumber &&
+        row.is_active === true;
+  });
+  if (match && Number.isSafeInteger(Number(match.id))) {
+    return {
+      id: Number(match.id),
+      channelType: params.channelType,
+      shortCode,
+    };
   }
 
-  const response = await fetch(`${PAYHERO_BASE}/payment_channels`, {
+  const response = await fetchWithTimeout(`${PAYHERO_BASE}/payment_channels`, {
     method: 'POST',
     headers,
     body: JSON.stringify({
@@ -62,22 +101,31 @@ export async function registerPaymentChannel(params: {
       account_id: accountId,
       short_code: Number(shortCode),
       // PayHero requires this field for both channel types; Till collections
-      // do not use an account number, so an empty string is intentional.
-      account_number: '',
+      // do not use an account number, so an empty string is intentional. Bank
+      // channels use it as the destination account.
+      account_number: accountNumber,
       description: params.description?.trim() || `SimpleSales ${params.channelType} ${shortCode}`,
     }),
   });
-  const body = (await response.json()) as Record<string, unknown>;
+  const body = await response.json().catch(() => ({})) as Record<string, unknown>;
   const id = Number(body.id);
   if (!response.ok || !Number.isSafeInteger(id) || id <= 0) {
-    throw new Error(`PayHero channel registration failed: ${response.status}`);
+    throw new PayHeroError(`PayHero channel registration failed: ${response.status}`, response.status);
   }
   return { id, channelType: params.channelType, shortCode };
 }
 
-export async function initiateStkPush(params: any) {
+export async function initiateStkPush(params: {
+  amount: number;
+  phoneNumber: string;
+  channelId: number;
+  externalReference: string;
+  customerName?: string;
+  callbackUrl: string;
+  credentialId?: string;
+}) {
   const headers = payHeroHeaders();
-  const res = await fetch(`${PAYHERO_BASE}/payments`, {
+  const res = await fetchWithTimeout(`${PAYHERO_BASE}/payments`, {
     method: 'POST',
     headers,
     body: JSON.stringify({
@@ -94,13 +142,13 @@ export async function initiateStkPush(params: any) {
   // PayHero's shape varies by deployment: the field arrives camelCased on some
   // accounts and snake_cased on others. Both spellings are checked before the
   // response is considered valid.
-  const body = (await res.json()) as Record<string, unknown>;
+  const body = await res.json().catch(() => ({})) as Record<string, unknown>;
   if (!res.ok) {
-    throw new Error(`PayHero STK push failed: ${res.status} ${JSON.stringify(body)}`);
+    throw new PayHeroError(`PayHero STK push failed: ${res.status}`, res.status);
   }
   const checkoutRequestId = body?.CheckoutRequestID ?? body?.checkout_request_id;
   if (typeof checkoutRequestId !== 'string' || checkoutRequestId.length > 160) {
-    throw new Error('PayHero response did not contain a valid checkout request ID');
+    throw new PayHeroError('PayHero response did not contain a valid checkout request ID');
   }
   return {
     raw: body,
@@ -113,12 +161,12 @@ export async function queryTransactionStatus(
   reference: string,
 ) {
   const headers = payHeroHeaders();
-  const res = await fetch(`${PAYHERO_BASE}/transaction-status?reference=${encodeURIComponent(reference)}`, {
+  const res = await fetchWithTimeout(`${PAYHERO_BASE}/transaction-status?reference=${encodeURIComponent(reference)}`, {
     headers,
   });
-  const body = (await res.json()) as Record<string, unknown>;
+  const body = await res.json().catch(() => ({})) as Record<string, unknown>;
   if (!res.ok) {
-    throw new Error(`PayHero status query failed: ${res.status}`);
+    throw new PayHeroError(`PayHero status query failed: ${res.status}`, res.status);
   }
   return body;
 }

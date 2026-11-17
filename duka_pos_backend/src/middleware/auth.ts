@@ -8,7 +8,8 @@
  */
 import express from 'express';
 import { prisma } from '../lib/prisma';
-import { verifyAccessToken } from '../lib/jwt';
+import { verifyAccessToken, verifyStaffSessionToken } from '../lib/jwt';
+import { tenantEntitlement } from '../lib/entitlements';
 
 declare global {
   namespace Express {
@@ -42,11 +43,33 @@ if (!jwtSecret || jwtSecret.trim() === '') {
 // ---------------------------------------------------------------------------
 
 export const authMiddleware = async (req: express.Request, res: express.Response, next: express.NextFunction): Promise<any> => {
+  // `authMiddleware` is mounted once at `/api` and some route modules also
+  // apply it locally. `req.path` therefore changes from
+  // `/tenant/staff/authenticate` to `/staff/authenticate` on the second pass;
+  // use the normalized original URL so the bootstrap exception remains
+  // equally narrow at both layers.
+  const normalizedOriginalPath = req.originalUrl
+    .split('?')[0]
+    .replace(/^\/api(?=\/)/, '');
   // Public paths.
   if (req.method === 'GET' && req.path.startsWith('/etims/verify/')) return next();
   if (req.method === 'GET' && req.path.startsWith('/receipt-links/')) return next();
   if (req.method === 'GET' && req.path.startsWith('/health')) return next();
   if (req.method === 'GET' && req.path.startsWith('/ready')) return next();
+
+  // Staff PIN authentication is the bootstrap path for a fresh till. It
+  // cannot require the app bearer token that staff are trying to obtain; the
+  // selected tenant ID scopes the request and the staff route verifies the
+  // username/PIN against that tenant. Keep the exception narrow: only this
+  // POST and only with an explicit tenant selector may pass without a bearer.
+  if (
+    req.method === 'POST' &&
+    (normalizedOriginalPath === '/tenant/staff/authenticate' ||
+      normalizedOriginalPath === '/tenant/staff/pin-reset-request') &&
+    Boolean(req.header('x-tenant-id')?.trim())
+  ) {
+    return next();
+  }
 
   const authorization = req.header('authorization');
   const token = authorization?.match(/^Bearer\s+(.+)$/i)?.[1]?.trim();
@@ -54,6 +77,17 @@ export const authMiddleware = async (req: express.Request, res: express.Response
     const err: any = new Error('Missing bearer token');
     err.status = 401;
     return next(err);
+  }
+  if (req.method === 'POST' && normalizedOriginalPath === '/tenant/staff/self-pin') {
+    const staffClaims = verifyStaffSessionToken(token);
+    if (!staffClaims || req.header('x-tenant-id') !== staffClaims.tenantId) {
+      const err: any = new Error('Invalid or expired staff session');
+      err.status = 401;
+      return next(err);
+    }
+    req.auth = { sub: staffClaims.sub, token_use: 'staff' };
+    req.user = { id: staffClaims.profileId, tenantId: staffClaims.tenantId, role: 'cashier', name: 'Staff' };
+    return next();
   }
   const claims = verifyAccessToken(token);
   if (!claims) {
@@ -114,6 +148,22 @@ export const authMiddleware = async (req: express.Request, res: express.Response
       role: profile.role,
       name: profile.name,
     };
+    // Billing endpoints remain reachable while access is blocked so an owner
+    // can redeem a voucher or inspect the negotiated shop terms.
+    const billingExemption = normalizedOriginalPath === '/auth/voucher/redeem' ||
+      normalizedOriginalPath === '/tenant/subscription' ||
+      normalizedOriginalPath.startsWith('/tenant/subscription/');
+    if (!billingExemption) {
+      const entitlement = await tenantEntitlement(profile.tenantId);
+      if (!entitlement.allowed) {
+        return res.status(402).json({
+          error: 'An active subscription or voucher is required',
+          code: 'SUBSCRIPTION_REQUIRED',
+          entitlement,
+          requestId: req.requestId,
+        });
+      }
+    }
     next();
   } catch (error) {
     next(error);

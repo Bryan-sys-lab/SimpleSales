@@ -4,11 +4,11 @@ export const parseBody = <T>(schema: z.ZodType<T>, body: unknown): T =>
   schema.parse(body);
 
 const boundedName = z.string().trim().min(1).max(120);
-// Keep accepting legacy UUIDs created by the offline client (including the
-// all-zero/version-less form) while still enforcing UUID shape. Zod 4's
-// `.uuid()` only accepts RFC-versioned UUIDs.
-const uuid = z.string().regex(
-  /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i,
+// Prisma profile IDs are CUIDs, while older mobile rows may carry UUIDs.
+// Staff remote identity is opaque to the client, so validate it as an
+// identifier rather than incorrectly requiring one particular ID algorithm.
+const remoteIdentifier = z.string().trim().min(1).max(120).regex(
+  /^[A-Za-z0-9_-]+$/,
 );
 
 /**
@@ -63,10 +63,19 @@ export const taxRuleSchema = z.object({
 }).strict();
 
 export const mpesaChannelSchema = z.object({
-  channelType: z.enum(['till', 'paybill']),
+  channelType: z.enum(['till', 'paybill', 'bank']),
   shortCode: z.string().trim().regex(/^\d{5,12}$/),
+  accountNumber: z.string().trim().regex(/^\d{3,30}$/).optional(),
   description: z.string().trim().max(120).optional(),
-}).strict();
+}).strict().superRefine((value, context) => {
+  if (value.channelType === 'bank' && !value.accountNumber) {
+    context.addIssue({
+      code: 'custom',
+      path: ['accountNumber'],
+      message: 'Bank channels require an account number',
+    });
+  }
+});
 
 /**
  * Bulk product sync (upsert).
@@ -74,7 +83,9 @@ export const mpesaChannelSchema = z.object({
 export const productSyncSchema = z.object({
   products: z.array(z.object({
     id: z.number().int().positive().optional(),
-    remoteId: uuid.optional().nullable(),
+    // Backend Product.id values are opaque Prisma CUIDs. Older clients may
+    // still have UUID-shaped ids, so accept both identifier forms.
+    remoteId: remoteIdentifier.optional().nullable(),
     syncKey: z.string().trim().min(1).max(200).optional().nullable(),
     name: boundedName,
     category: z.string().trim().max(80).default('General'),
@@ -148,7 +159,7 @@ export const salesSyncSchema = z.object({
  */
 export const paymentSchema = z.object({
   items: z.array(z.object({
-    product_id: uuid,
+    product_id: remoteIdentifier,
     qty: z.number().finite().positive().max(10000),
     // A row of stock may appear on two lines — a client that sent qty 1
     // twice instead of qty 2 built the same basket, and refusing it at the
@@ -159,11 +170,15 @@ export const paymentSchema = z.object({
   })).min(1).max(100),
   phone_number: z.string().trim().regex(/^\+?[0-9]{9,15}$/),
   staff_name: boundedName,
-  staff_profile_id: uuid.optional(),
+  staff_profile_id: remoteIdentifier.optional(),
   // Named by the till: whose cart this was, for the receipt. Free of charge,
   // free of a customer record — the account's owner is a later feature.
   customer_name: z.string().trim().max(120).optional(),
 });
+
+/** M-Pesa Dynamic QR payments use the same cart and staff contract but no
+ * customer phone number: the payer scans and authorizes in M-Pesa. */
+export const paymentQrSchema = paymentSchema.omit({ phone_number: true });
 
 /**
  * Bulk staff sync (upsert).
@@ -171,7 +186,7 @@ export const paymentSchema = z.object({
 export const staffSyncSchema = z.object({
   staff: z.array(z.object({
     localId: z.number().int().positive(),
-    remoteId: uuid.optional().nullable(),
+    remoteId: remoteIdentifier.optional().nullable(),
     name: boundedName,
     username: z.string().trim().min(1).max(120).nullable().optional(),
     role: z.enum(['cashier', 'manager']).default('cashier'),
@@ -255,6 +270,38 @@ const operationalRecord = z.object({
   deviceId: z.string().trim().min(1).max(120).optional(),
   createdAt: z.string().datetime({ offset: true }).optional(),
 }).passthrough();
+
+const shotCupRecord = z.object({
+  localId: z.number().int().positive(),
+  deviceId: z.string().trim().min(1).max(120).optional(),
+  createdAt: z.string().datetime({ offset: true }),
+  productId: remoteIdentifier,
+  productName: boundedName,
+  label: boundedName,
+  // Keep the operational stream aligned with the mobile ProductUnit/storage
+  // vocabulary. Legacy aliases remain accepted so an older till can upgrade
+  // without losing its serving queue, but arbitrary labels must not become
+  // unresolvable dimensions on another device.
+  unit: z.enum([
+    'ml',
+    'litre',
+    'l',
+    'kilogram',
+    'kg',
+    'cup',
+    'each',
+    'count',
+    'pack',
+    'carton',
+  ]),
+  capacity: z.number().finite().nonnegative().max(100000000),
+  price: z.number().int().nonnegative().max(100000000000),
+  active: z.boolean(),
+}).passthrough();
+
+export const shotCupsSyncSchema = z.object({
+  shotCups: z.array(shotCupRecord).max(500),
+}).strict();
 
 export const operationalSyncSchema = z.object({
   records: z.array(operationalRecord).max(500),
@@ -384,7 +431,42 @@ export const authVerifySchema = z.object({
 export const authLoginSchema = z.object({
   email: z.string().trim().toLowerCase().email().max(254),
   password: z.string().trim().regex(/^\d{6}$/),
+  voucherCode: z.string().trim().min(8).max(80).optional(),
 });
+
+export const voucherRedeemSchema = z.object({
+  code: z.string().trim().min(8).max(80),
+}).strict();
+
+export const subscriptionUpdateSchema = z.object({
+  status: z.enum(['pending', 'active', 'suspended']).default('active'),
+  priceMinor: z.number().int().nonnegative().nullable().optional(),
+  currency: z.string().trim().toUpperCase().regex(/^[A-Z]{3}$/).default('KES'),
+  billingInterval: z.enum(['monthly', 'quarterly', 'annual']).default('monthly'),
+  currentPeriodEnd: z.string().datetime({ offset: true }).nullable().optional(),
+  graceUntil: z.string().datetime({ offset: true }).nullable().optional(),
+}).strict();
+
+export const voucherCreateSchema = z.object({
+  tenantId: z.string().trim().min(1).max(120).optional(),
+  profileId: z.string().trim().min(1).max(120).optional(),
+  email: z.string().trim().toLowerCase().email().max(254).optional(),
+  expiresAt: z.string().datetime({ offset: true }).nullable().optional(),
+  durationMonths: z.number().int().min(1).max(36).optional(),
+}).strict().refine((v) => Boolean(v.tenantId || v.profileId || v.email), { message: 'A tenant, profile, or email is required' });
+
+export const billingProviderSchema = z.object({
+  channelType: z.enum(['till', 'paybill', 'bank']),
+  shortCode: z.string().trim().regex(/^\d{5,12}$/),
+  accountNumber: z.string().trim().regex(/^\d{3,30}$/).optional(),
+}).strict().superRefine((value, context) => {
+  if (value.channelType === 'bank' && !value.accountNumber) context.addIssue({ code: 'custom', path: ['accountNumber'], message: 'Bank account number is required' });
+});
+
+export const subscriptionPaymentSchema = z.object({
+  phoneNumber: z.string().trim().regex(/^\+?\d{9,15}$/),
+  durationMonths: z.number().int().min(1).max(36).default(1),
+}).strict();
 
 export const authRefreshSchema = z.object({
   refreshToken: z.string().min(1),
@@ -473,12 +555,12 @@ export const etimsDeviceSchema = z.object({
 // ---------------------------------------------------------------------------
 
 export const stockAdjustSchema = z.object({
-  product_id: uuid,
+  product_id: remoteIdentifier,
   // Measured goods can lose a fraction of one stock unit during a spill or
   // tank dip. Keep the same bounded contract while accepting that quantity.
   delta: z.number().finite().min(-1000000).max(1000000),
   reason: z.string().trim().max(240).optional(),
-  staff_profile_id: uuid.optional(),
+  staff_profile_id: remoteIdentifier.optional(),
 });
 
 // ---------------------------------------------------------------------------
@@ -489,6 +571,19 @@ export const staffAuthenticateSchema = z.object({
   username: z.string().trim().min(1).max(120),
   pin: z.string().trim().min(4).max(8),
 });
+
+export const staffSelfPinSchema = z.object({
+  currentPin: z.string().trim().regex(/^\d{4}$/),
+  newPin: z.string().trim().regex(/^\d{4}$/),
+}).strict();
+
+export const staffPinResetRequestSchema = z.object({
+  username: z.string().trim().min(1).max(120),
+}).strict();
+
+export const staffPinResetApproveSchema = z.object({
+  temporaryPin: z.string().trim().regex(/^\d{4}$/),
+}).strict();
 
 // ---------------------------------------------------------------------------
 // Telemetry (device -> backend event ingestion)
@@ -623,34 +718,23 @@ const syncedRecord = z.object({
 
 export const productVariantSyncSchema = z.object({
   productVariants: z.array(z.object({
-    ...syncedRecord.shape,
+    id: z.number().int().positive(),
+    syncKey: z.string().trim().min(1).max(200),
+    remoteId: z.string().trim().min(1).max(120).optional().nullable(),
     productId: z.string().trim().min(1).max(120),
     name: boundedName,
-    sku: z.string().trim().min(1).max(80),
+    // SKU is optional in the mobile catalogue; an empty value is stored as
+    // the canonical "no SKU" value rather than rejecting the whole batch.
+    sku: z.string().trim().max(80),
     unit: z.enum(['each', 'ml', 'litre', 'cup', 'kilogram']).default('each'),
     sizeMl: z.number().int().nonnegative().max(200000).default(0),
     sellPrice: z.number().finite().nonnegative().max(100000000),
     costPrice: z.number().finite().nonnegative().max(100000000),
     stockQty: z.number().finite().nonnegative().max(2000000),
+    reservedQty: z.number().finite().nonnegative().max(2000000).default(0),
     reorderLevel: z.number().int().nonnegative().max(2000000),
     position: z.number().int().nonnegative().default(0),
     active: z.boolean().default(true),
-  })).max(2000),
-}).strict();
-
-export const jobSyncSchema = z.object({
-  jobs: z.array(z.object({
-    ...syncedRecord.shape,
-    title: boundedName,
-    customerName: z.string().trim().min(1).max(120).optional().nullable(),
-    customerPhone: z.string().trim().max(40).optional().nullable(),
-    quoteMinor: z.number().int().nonnegative().max(100000000).default(0),
-    finalPriceMinor: z.number().int().nonnegative().max(100000000).optional().nullable(),
-    status: z.enum(['draft', 'awaiting_payment', 'completed', 'closed', 'cancelled']).default('draft'),
-    dueAt: z.string().datetime({ offset: true }).optional().nullable(),
-    costPoolId: z.string().trim().min(1).max(120).optional().nullable(),
-    staffName: boundedName,
-    staffId: z.string().trim().min(1).max(120),
   })).max(2000),
 }).strict();
 
@@ -658,35 +742,10 @@ export const costPoolSyncSchema = z.object({
   costPools: z.array(z.object({
     ...syncedRecord.shape,
     name: boundedName,
-    poolType: z.enum(['lot', 'hourly', 'percentage']).default('lot'),
+    poolType: z.enum(['lot', 'bale', 'rolling_stock']).default('lot'),
     investedMinor: z.number().int().nonnegative().max(100000000).default(0),
     recoveredMinor: z.number().int().nonnegative().max(100000000).default(0),
     status: z.enum(['open', 'closed', 'cancelled']).default('open'),
-  })).max(2000),
-}).strict();
-
-export const jobCostSyncSchema = z.object({
-  jobCosts: z.array(z.object({
-    ...syncedRecord.shape,
-    jobId: z.string().trim().min(1).max(120),
-    type: z.string().trim().min(1).max(40),
-    amountMinor: z.number().int().nonnegative().max(100000000),
-    paymentMethod: z.string().trim().min(1).max(40).default('cash'),
-    reference: z.string().trim().max(120).optional().nullable(),
-    staffName: boundedName.optional().nullable(),
-    staffId: z.string().trim().min(1).max(120).optional().nullable(),
-  })).max(2000),
-}).strict();
-
-export const jobPaymentSyncSchema = z.object({
-  jobPayments: z.array(z.object({
-    ...syncedRecord.shape,
-    jobId: z.string().trim().min(1).max(120),
-    amountMinor: z.number().int().nonnegative().max(100000000),
-    paymentMethod: z.enum(['cash', 'mpesa', 'bank_transfer', 'card']),
-    reference: z.string().trim().max(120).optional().nullable(),
-    staffName: boundedName.optional().nullable(),
-    staffId: z.string().trim().min(1).max(120).optional().nullable(),
   })).max(2000),
 }).strict();
 

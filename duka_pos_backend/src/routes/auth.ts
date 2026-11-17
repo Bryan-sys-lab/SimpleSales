@@ -16,6 +16,7 @@ import {
   authChangePasswordSchema,
   pinResetRequestSchema,
   pinResetConfirmSchema,
+  voucherRedeemSchema,
   parseBody,
 } from '../lib/validation';
 import { log } from '../lib/observability';
@@ -35,6 +36,8 @@ import { hashPassword, verifyPassword } from '../lib/password';
 import { issueAccessToken } from '../lib/jwt';
 import { authMiddleware } from '../middleware/auth';
 import { createCloudflareEmailTransport } from '../lib/email_sender';
+import { readableTenantId } from '../lib/tenant_id';
+import { hashVoucher, tenantEntitlement } from '../lib/entitlements';
 
 const router = Router();
 
@@ -114,7 +117,13 @@ async function ensureOwnerProfile(input: { userId: string; email: string; shopNa
   if (!options.allowCreate || !input.shopName?.trim() || !input.ownerName?.trim()) return null;
 
   const created = await prisma.$transaction(async (tx) => {
-    const tenant = await tx.tenant.create({ data: { shopName: input.shopName!.trim() } });
+    const tenant = await tx.tenant.create({
+      data: {
+        id: readableTenantId(input.ownerName!, input.shopName!),
+        shopName: input.shopName!.trim(),
+        subscription: { create: { status: 'pending' } },
+      },
+    });
     const profile = await tx.profile.create({
       data: { userId: input.userId, tenantId: tenant.id, name: input.ownerName!.trim(), email: input.email, role: 'admin' },
     });
@@ -336,8 +345,35 @@ router.post('/login', loginLimiter, asyncHandler(async (req: Request, res: Respo
     refresh_token: refresh.token,
     expires_in_seconds: access.expiresIn,
     refresh_expires_in_seconds: REFRESH_TOKEN_TTL_MS / 1000,
-    tenants: profiles.map((p) => ({ id: p.tenantId, shopName: p.tenant.shopName, role: p.role })),
+    tenants: await Promise.all(profiles.map(async (p) => ({ id: p.tenantId, shopName: p.tenant.shopName, role: p.role, entitlement: await tenantEntitlement(p.tenantId) }))),
   });
+}));
+
+// Redeeming is intentionally separate from login: the caller must first
+// authenticate, while this endpoint remains available when the shop is behind
+// the paywall. The voucher is stored only as a hash and can be used once.
+router.post('/voucher/redeem', authMiddleware, asyncHandler(async (req: Request, res: Response) => {
+  const { code } = parseBody(voucherRedeemSchema, req.body);
+  const profile = req.user;
+  if (!profile) return res.status(401).json({ error: 'Tenant selection required' });
+  const voucher = await prisma.accessVoucher.findUnique({ where: { codeHash: hashVoucher(code) } });
+  const now = new Date();
+  if (!voucher || voucher.revokedAt || voucher.redeemedAt || (voucher.expiresAt && voucher.expiresAt <= now)) {
+    return res.status(400).json({ error: 'Voucher is invalid, expired, or already used', code: 'VOUCHER_INVALID' });
+  }
+  if (voucher.tenantId && voucher.tenantId !== profile.tenantId) return res.status(403).json({ error: 'Voucher is issued for another shop', code: 'VOUCHER_TENANT_MISMATCH' });
+  if (voucher.issuedToProfileId && voucher.issuedToProfileId !== profile.id) return res.status(403).json({ error: 'Voucher is issued to another user', code: 'VOUCHER_PROFILE_MISMATCH' });
+  if (voucher.issuedToEmail && voucher.issuedToEmail !== (req.auth?.email ?? '').toLowerCase()) return res.status(403).json({ error: 'Voucher is issued to another email', code: 'VOUCHER_EMAIL_MISMATCH' });
+  await prisma.$transaction(async (tx) => {
+    const claimed = await tx.accessVoucher.updateMany({ where: { id: voucher.id, redeemedAt: null, revokedAt: null }, data: { redeemedAt: now, redeemedByProfileId: profile.id } });
+    if (claimed.count !== 1) throw new Error('Voucher already claimed');
+    await tx.tenantSubscription.upsert({
+      where: { tenantId: profile.tenantId },
+      create: { tenantId: profile.tenantId, status: 'voucher', voucherId: voucher.id, currentPeriodEnd: voucher.expiresAt },
+      update: { status: 'voucher', voucherId: voucher.id, currentPeriodEnd: voucher.expiresAt, graceUntil: null },
+    });
+  });
+  return res.json({ status: 'voucher_redeemed', entitlement: await tenantEntitlement(profile.tenantId) });
 }));
 
 // POST /auth/refresh
