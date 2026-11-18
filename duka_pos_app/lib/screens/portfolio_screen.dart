@@ -138,6 +138,15 @@ class _PortfolioScreenState extends State<PortfolioScreen>
     final PortfolioKpis local =
         await LocalPortfolioService.read(from: from, to: now);
 
+    // Paint the device's own figures immediately so the screen is never
+    // blank while the (possibly slow) backend aggregate is fetched.
+    if (_current(session) && local.shops.isNotEmpty) {
+      setState(() {
+        _loading = false;
+        _view = _PortfolioContent(kpis: local);
+      });
+    }
+
     PortfolioKpis remote = const PortfolioKpis.empty();
     try {
       remote = await BackendService.portfolioKpis(from: from, to: now);

@@ -84,24 +84,24 @@ class ShopProfilePicker extends StatelessWidget {
             ],
           )
         else
-          GridView.builder(
-            shrinkWrap: true,
-            physics: const NeverScrollableScrollPhysics(),
-            gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-              crossAxisCount: 2,
-              childAspectRatio: 0.85,
-              crossAxisSpacing: 12,
-              mainAxisSpacing: 12,
+          SizedBox(
+            height: 120,
+            child: ListView.separated(
+              scrollDirection: Axis.horizontal,
+              itemCount: ShopProfile.values.length,
+              separatorBuilder: (_, __) => const SizedBox(width: 12),
+              itemBuilder: (BuildContext context, int index) {
+                final ShopProfile profile = ShopProfile.values[index];
+                return SizedBox(
+                  width: 150,
+                  child: _ProfileCard(
+                    profile: profile,
+                    selected: profile == value,
+                    onSelected: onChanged,
+                  ),
+                );
+              },
             ),
-            itemCount: ShopProfile.values.length,
-            itemBuilder: (BuildContext context, int index) {
-              final ShopProfile profile = ShopProfile.values[index];
-              return _ProfileCard(
-                profile: profile,
-                selected: profile == value,
-                onSelected: onChanged,
-              );
-            },
           ),
       ],
     );
