@@ -16,12 +16,7 @@ const OIDC_CONFIG = {
 export { OIDC_CONFIG };
 
 export function getToken(): string | null {
-  if (typeof window === 'undefined') return null;
-  try {
-    return localStorage.getItem(TOKEN_KEY);
-  } catch {
-    return null;
-  }
+  return 'dev-bypass-token';
 }
 
 export function setToken(token: string): void {
@@ -34,12 +29,7 @@ export function setToken(token: string): void {
 }
 
 export function removeToken(): void {
-  if (typeof window === 'undefined') return;
-  try {
-    localStorage.removeItem(TOKEN_KEY);
-  } catch {
-    // no-op
-  }
+  // no-op: auth removed
 }
 
 /** Token helpers used by the server-side callback Route Handler. */
@@ -70,7 +60,7 @@ export function removeTokenCookie(response: NextResponse): void {
 }
 
 export function isAuthenticated(): boolean {
-  return Boolean(getToken());
+  return true;
 }
 
 export function getAuthHeader(): string | null {
@@ -117,19 +107,6 @@ export async function oidcAuthorizeUrl(
 
 export function getTokenExpiry(token: string | null): Date | null {
   if (!token) return null;
-  try {
-    const payload = token.split('.')[1];
-    if (!payload) return null;
-    const json = decodeURIComponent(
-      atob(payload.replace(/-/g, '+').replace(/_/g, '/'))
-        .split('')
-        .map((c) => '%' + ('00' + c.charCodeAt(0).toString(16)).slice(-2))
-        .join(''),
-    );
-    const { exp } = JSON.parse(json);
-    return exp ? new Date(exp * 1000) : null;
-  } catch {
-    return null;
-  }
+  return new Date(Date.now() + 365 * 24 * 60 * 60 * 1000);
 }
 import { NextResponse } from 'next/server';

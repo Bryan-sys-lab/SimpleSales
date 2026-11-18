@@ -12,18 +12,21 @@ export default function DashboardPage() {
   const [tenants, setTenants] = useState<Tenant[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [sys, setSys] = useState<any>(null);
 
   useEffect(() => {
     let cancelled = false;
     (async () => {
       try {
-        const [statsRes, tenantsRes] = await Promise.all([
+        const [statsRes, tenantsRes, sysRes] = await Promise.all([
           fetchJson<DashboardStats>('/api/admin/dashboard'),
           fetchJson<{ tenants: Tenant[] }>('/api/admin/tenants?limit=8'),
+          fetchJson<any>('/api/system/analytics'),
         ]);
         if (!cancelled) {
           setStats(statsRes);
           setTenants(tenantsRes.tenants);
+          setSys(sysRes);
         }
       } catch (err) {
         if (!cancelled) setError(err instanceof Error ? err.message : 'Failed to load dashboard');
@@ -103,6 +106,32 @@ export default function DashboardPage() {
               emptyMessage="No tenants"
             />
           </div>
+        </div>
+        <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
+          <div className="card p-5">
+            <h3 className="text-sm font-semibold text-base-900 mb-4">Sales by payment method</h3>
+            <div className="space-y-3">
+              {Object.entries(Object.values(sys?.byTenant ?? {}).reduce((acc: any, t: any) => {
+                  Object.entries(t.byPaymentMethod ?? {}).forEach(([m, v]) => { acc[m] = (acc[m] ?? 0) + (v as number); });
+                  return acc;
+                }, {} as Record<string, number>) as Record<string, number>).map(([method, total]) => {
+                const max = Math.max(...Object.values(Object.values(sys?.byTenant ?? {}).reduce((acc: any, t: any) => { Object.entries(t.byPaymentMethod ?? {}).forEach(([m, v]) => { acc[m] = (acc[m] ?? 0) + (v as number); }); return acc; }, {} as Record<string, number>) as Record<string, number>), 1);
+                return (
+                  <div key={method}>
+                    <div className="flex items-center justify-between text-sm mb-1">
+                      <span className="text-base-600">{method}</span>
+                      <span className="font-mono tabular-nums text-base-900">{new Intl.NumberFormat('en-KE', { style: 'currency', currency: 'KES' }).format((total as number) / 100)}</span>
+                    </div>
+                    <div className="h-2.5 rounded-full bg-base-100 overflow-hidden">
+                      <div className="h-full rounded-full bg-accent-600" style={{ width: `${((total as number) / max) * 100}%` }} />
+                    </div>
+                  </div>
+                );
+              })}
+              {Object.keys(sys?.byTenant ?? {}).length === 0 && <p className="text-sm text-base-400">No payment data</p>}
+            </div>
+          </div>
+
         </div>
       </div>
     </ShellLayout>

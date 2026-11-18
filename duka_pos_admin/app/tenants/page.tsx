@@ -11,29 +11,36 @@ export default function TenantsPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
-  useEffect(() => {
-    let cancelled = false;
-    (async () => {
-      try {
-        const res = await fetchJson<{ tenants: Tenant[] }>('/api/admin/tenants');
-        if (!cancelled) setData(res.tenants);
-      } catch (err) {
-        if (!cancelled) setError(err instanceof Error ? err.message : 'Failed to load tenants');
-      } finally {
-        if (!cancelled) setLoading(false);
-      }
-    })();
-    return () => {
-      cancelled = true;
-    };
+  const load = useCallback(async () => {
+    setLoading(true);
+    setError(null);
+    try {
+      const res = await fetchJson<{ tenants: Tenant[] }>('/api/admin/tenants');
+      setData(res.tenants);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to load tenants');
+    } finally {
+      setLoading(false);
+    }
   }, []);
+
+  useEffect(() => { load(); }, [load]);
+
+  const act = async (id: string, action: 'activate' | 'deactivate' | 'delete') => {
+    try {
+      await fetchJson(`/api/admin/tenants/${encodeURIComponent(id)}/${action}`, { method: 'POST' });
+      await load();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Action failed');
+    }
+  };
 
   return (
     <ShellLayout>
       <div className="space-y-6">
         <div>
           <h2 className="text-2xl font-semibold tracking-tight text-base-900">Tenants</h2>
-          <p className="text-sm text-base-500">Tenant directory with profile and sale counts.</p>
+          <p className="text-sm text-base-500">Tenant directory with profile and sale counts. Actions are audit-logged.</p>
         </div>
 
         {error && (
@@ -49,22 +56,15 @@ export default function TenantsPage() {
             { key: '_count.profiles', label: 'Active profiles', sortable: true, align: 'right' },
             { key: '_count.sales', label: 'Total sales', sortable: true, align: 'right' },
             { key: 'settings', label: 'Settings' },
+            { key: 'actions', label: 'Actions' },
           ]}
           data={data}
           rowKey={(t) => t.id}
           renderCell={(row, key) => {
-            if (key === 'shopName') {
-              return <span className="text-base-900">{row.shopName}</span>;
-            }
-            if (key === 'admin') {
-              return <span className="text-base-900">{row.admin ?? '—'}</span>;
-            }
-            if (key === '_count.profiles') {
-              return <span className="font-mono tabular-nums text-base-900">{row._count?.profiles ?? 0}</span>;
-            }
-            if (key === '_count.sales') {
-              return <span className="font-mono tabular-nums text-base-900">{row._count?.sales ?? 0}</span>;
-            }
+            if (key === 'shopName') return <span className="text-base-900">{row.shopName}</span>;
+            if (key === 'admin') return <span className="text-base-900">{row.admin ?? '—'}</span>;
+            if (key === '_count.profiles') return <span className="font-mono tabular-nums text-base-900">{row._count?.profiles ?? 0}</span>;
+            if (key === '_count.sales') return <span className="font-mono tabular-nums text-base-900">{row._count?.sales ?? 0}</span>;
             if (key === 'settings') {
               const s = row.settings ?? {};
               return (
@@ -76,10 +76,18 @@ export default function TenantsPage() {
                 </span>
               );
             }
+            if (key === 'actions') {
+              return (
+                <div className="flex gap-1">
+                  <button className="button-secondary text-xs" onClick={() => act(row.id, 'deactivate')}>Deactivate</button>
+                  <button className="button-secondary text-xs" onClick={() => act(row.id, 'delete')}>Delete</button>
+                </div>
+              );
+            }
             const value = row[key as keyof Tenant];
             return <span className="text-base-900">{typeof value === 'object' ? '—' : value ?? '—'}</span>;
           }}
-          emptyMessage="No tenants"
+          emptyMessage={loading ? 'Loading tenants…' : 'No tenants'}
         />
       </div>
     </ShellLayout>

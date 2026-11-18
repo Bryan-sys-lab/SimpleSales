@@ -7,21 +7,16 @@ export interface MetricCardProps {
   caption?: string;
 }
 
-export function MetricCard({
-  label,
-  value,
-  trend,
-  caption,
-}: MetricCardProps) {
+export function MetricCard({ label, value, trend, caption }: MetricCardProps) {
   return (
-    <div className="card p-5">
-      <p className="text-sm font-medium text-base-500 mb-1">{label}</p>
-      <div className="text-2xl font-semibold text-base-900 tracking-tight">{value}</div>
+    <div className="card p-5 transition-transform duration-200 hover:-translate-y-0.5">
+      <p className="text-xs font-medium uppercase tracking-wide text-base-500 mb-2">{label}</p>
+      <div className="text-2xl font-semibold text-base-900 tracking-tight tabular-nums">{value}</div>
       {caption && <p className="text-xs text-base-400 mt-1">{caption}</p>}
       {trend && (
         <div className="mt-3 flex items-center gap-1.5">
           <span
-            className={`text-xs font-medium rounded-md px-2 py-0.5 ${
+            className={`text-xs font-medium rounded-md px-2 py-0.5 tabular-nums ${
               trend.positive !== false
                 ? 'bg-emerald-50 text-emerald-700'
                 : 'bg-red-50 text-red-700'

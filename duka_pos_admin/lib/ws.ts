@@ -15,7 +15,7 @@ export class WebSocketClient {
   private manuallyClosed = false;
   private pingTimer: ReturnType<typeof setInterval> | null = null;
 
-  constructor(url: string = `${WS_URL}/api/live`) {
+  constructor(url: string = `${WS_URL}/api/admin/live`) {
     this.url = url;
   }
 

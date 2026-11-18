@@ -3,29 +3,33 @@
 import { usePathname, useRouter } from 'next/navigation';
 import { useEffect, useState } from 'react';
 import { removeToken } from '@/lib/auth';
-import { Nav } from './nav';
+import { Nav, ICONS } from './nav';
+import { ThemeToggle } from './theme-toggle';
 
 const NAV_ITEMS: import('./nav').NavItem[] = [
   { href: '/dashboard', label: 'Dashboard', icon: 'dashboard' },
   { href: '/churn', label: 'Churn', icon: 'churn' },
   { href: '/sales', label: 'Sales', icon: 'sales' },
-  { href: '/laybys', label: 'Lay-bys', icon: 'laybys' },
-  { href: '/exchanges', label: 'Exchanges', icon: 'exchanges' },
   { href: '/sessions', label: 'Sessions', icon: 'sessions' },
   { href: '/tenants', label: 'Tenants', icon: 'tenants' },
+  { href: '/users', label: 'Verified users', icon: 'sessions' },
+  { href: '/products', label: 'Products (all shops)', icon: 'sales' },
   { href: '/billing', label: 'Billing & access', icon: 'billing' },
-  { href: '/tax-rules', label: 'Tax rules', icon: 'tax-rules' },
-  { href: '/tax-compliance', label: 'Tax compliance', icon: 'tax-compliance' },
+  { href: '/financials', label: 'Revenue & costs', icon: 'dashboard' },
+  { href: '/expenses', label: 'Expenses settings', icon: 'commercial-quality' },
   { href: '/commercial-policy', label: 'Commercial policy', icon: 'commercial-policy' },
   { href: '/commercial-ledger', label: 'Contribution ledger', icon: 'commercial-ledger' },
   { href: '/commercial-quality', label: 'Data quality', icon: 'commercial-quality' },
   { href: '/support', label: 'Support', icon: 'support' },
   { href: '/audit', label: 'Audit log', icon: 'audit' },
   { href: '/diagnostics', label: 'Device diagnostics', icon: 'diagnostics' },
+  { href: '/announcements', label: 'Announcements', icon: 'support' },
 ];
 
+const MOBILE_PRIMARY = ['/dashboard', '/tenants', '/products', '/billing'];
+
 export function ShellLayout({ children }: { children: React.ReactNode }) {
-  const [sidebarOpen, setSidebarOpen] = useState(false);
+  const [moreOpen, setMoreOpen] = useState(false);
   const pathname = usePathname();
   const router = useRouter();
 
@@ -35,17 +39,18 @@ export function ShellLayout({ children }: { children: React.ReactNode }) {
   };
 
   useEffect(() => {
-    setSidebarOpen(false);
+    setMoreOpen(false);
   }, [pathname]);
 
+  const primaryItems = NAV_ITEMS.filter((i) => MOBILE_PRIMARY.includes(i.href));
+  const moreItems = NAV_ITEMS.filter((i) => !MOBILE_PRIMARY.includes(i.href));
+
   return (
-    <div className="flex h-screen bg-base-50 text-base-900">
-      <aside
-        className={`sidebar transform transition-transform duration-300 ${sidebarOpen ? 'translate-x-0' : '-translate-x-full'} md:relative md:translate-x-0`}
-        aria-label="Main navigation"
-      >
-        <div className="flex h-full flex-col">
-          <div className="flex items-center gap-2 h-12 px-5 bg-base-100 border-b border-base-200 shrink-0">
+    <div className="min-h-screen bg-base-50 text-base-900">
+      {/* Top bar */}
+      <header className="sticky top-0 z-40 bg-white/80 backdrop-blur-xl border-b border-base-200">
+        <div className="flex items-center justify-between h-14 px-4 md:px-6 gap-4">
+          <div className="flex items-center gap-2 shrink-0">
             <span className="rounded-lg bg-accent-600 p-1">
               <svg className="w-5 h-5 text-white" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
                 <rect width="18" height="18" x="3" y="3" rx="2" ry="2"/>
@@ -53,65 +58,68 @@ export function ShellLayout({ children }: { children: React.ReactNode }) {
                 <line x1="9" y1="21" x2="9" y2="9"/>
               </svg>
             </span>
-            <span className="font-semibold tracking-tight">Duka Admin</span>
+            <span className="font-semibold tracking-tight text-base-900 hidden sm:inline">SimplerAnalytics</span>
           </div>
-          <nav className="flex-1 overflow-y-auto px-3 py-4 space-y-1">
-            <Nav items={NAV_ITEMS} pathname={pathname} />
+          {/* Desktop horizontal nav (scrollable) */}
+          <nav className="hidden md:flex items-center gap-0.5 flex-1 min-w-0 overflow-x-auto scrollbar-thin">
+            <Nav items={NAV_ITEMS} pathname={pathname} horizontal />
           </nav>
-          <div className="px-3 py-4 border-t border-base-200 shrink-0">
+          <ThemeToggle />
+          <button
+            onClick={handleSignOut}
+            className="shrink-0 rounded-md px-3 py-1.5 text-sm text-base-600 hover:bg-base-100 focus:outline-none focus:ring-2 focus:ring-base-900"
+            aria-label="Sign out"
+          >
+            Sign out
+          </button>
+        </div>
+      </header>
+
+      {/* Mobile bottom bar */}
+      <nav className="md:hidden fixed bottom-0 inset-x-0 z-40 bg-white/90 backdrop-blur-xl border-t border-base-200 safe-bottom">
+        <ul className="flex items-stretch justify-around">
+          {primaryItems.map((item) => {
+            const active = pathname === item.href;
+            return (
+              <li key={item.href} className="flex-1">
+                <a
+                  href={item.href}
+                  className={`flex flex-col items-center justify-center py-2 text-[10px] font-medium ${active ? 'text-accent-700' : 'text-base-500'}`}
+                >
+                  <span className="mb-0.5 w-5 h-5">{ICONS[item.icon]}</span>
+                  {item.label.split(' ')[0]}
+                </a>
+              </li>
+            );
+          })}
+          <li className="flex-1">
             <button
-              onClick={handleSignOut}
-              className="btn btn-ghost w-full text-left"
-              aria-label="Sign out"
+              onClick={() => setMoreOpen(true)}
+              className="w-full flex flex-col items-center justify-center py-2 text-[11px] font-medium text-base-500"
             >
-              Sign out
+              More
             </button>
+          </li>
+        </ul>
+      </nav>
+
+      {/* More sheet */}
+      {moreOpen && (
+        <div className="md:hidden fixed inset-0 z-50">
+          <div className="absolute inset-0 bg-base-900/40" onClick={() => setMoreOpen(false)} />
+          <div className="absolute bottom-0 inset-x-0 bg-white rounded-t-2xl p-4 max-h-[70vh] overflow-y-auto">
+            <div className="flex items-center justify-between mb-3">
+              <h3 className="font-semibold">More</h3>
+              <button onClick={() => setMoreOpen(false)} className="text-base-500">✕</button>
+            </div>
+            <Nav items={moreItems} pathname={pathname} />
           </div>
         </div>
-      </aside>
-
-      {sidebarOpen && (
-        <div
-          className="fixed inset-0 z-20 bg-base-900/60 backdrop-blur-sm md:hidden"
-          aria-hidden="true"
-          onClick={() => setSidebarOpen(false)}
-        />
       )}
 
-      <div className="flex flex-col flex-1 relative md:pl-64">
-        <header className="topbar px-6 h-16 flex items-center justify-between shrink-0">
-          <div className="flex items-center gap-3">
-            <button
-              onClick={() => setSidebarOpen((o) => !o)}
-              className="rounded-md p-2 text-base-600 hover:bg-base-200 focus:outline-none focus:ring-2 focus:ring-base-900 md:hidden"
-              aria-label="Open navigation"
-            >
-              <svg className="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                <line x1="4" y1="6" x2="20" y2="6"/>
-                <line x1="4" y1="12" x2="20" y2="12"/>
-                <line x1="4" y1="18" x2="20" y2="18"/>
-              </svg>
-            </button>
-            <h1 className="text-lg font-semibold tracking-tight">Dashboard</h1>
-          </div>
-          <div className="flex items-center gap-3">
-            <span className="hidden md:block text-sm text-base-600">System Administrator</span>
-            <button
-              onClick={handleSignOut}
-              className="hidden md:flex items-center gap-2 rounded-md px-3 py-1.5 text-sm text-base-600 hover:bg-base-200 focus:outline-none focus:ring-2 focus:ring-base-900"
-              aria-label="Sign out"
-            >
-              <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/>
-                <polyline points="16 17 21 12 16 7"/>
-                <line x1="21" y1="21" x2="9" y2="21"/>
-              </svg>
-              Sign out
-            </button>
-          </div>
-        </header>
-        <main className="flex-1 overflow-y-auto p-6 md:p-8">{children}</main>
-      </div>
+      <main className="p-4 md:p-6 lg:p-8 pb-20 md:pb-8">
+        {children}
+      </main>
     </div>
   );
 }

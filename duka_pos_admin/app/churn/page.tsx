@@ -79,6 +79,7 @@ export default function ChurnPage() {
             { key: 'daysSinceLastActive', label: 'Days since last active', sortable: true, align: 'right' },
             { key: 'risk', label: 'Risk', sortable: true },
             { key: 'score', label: 'Score', sortable: true, align: 'right' },
+            { key: 'dropReason', label: 'Drop reason', sortable: true },
             { key: 'computedAt', label: 'Last computed', sortable: true },
           ]}
           data={sorted}
@@ -94,6 +95,9 @@ export default function ChurnPage() {
             }
             if (key === 'score') {
               return <span className="font-mono tabular-nums text-base-900">{Number(row.score).toFixed(2)}</span>;
+            }
+            if (key === 'dropReason') {
+              return <span className="text-sm text-base-700">{row.dropReason ?? '—'}</span>;
             }
             if (key === 'computedAt') {
               return <span className="text-sm text-base-500">{new Date(row.computedAt).toLocaleString()}</span>;

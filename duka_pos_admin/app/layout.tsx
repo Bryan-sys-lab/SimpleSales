@@ -1,10 +1,34 @@
-import type { Metadata } from 'next';
+import type { Metadata, Viewport } from 'next';
 import './globals.css';
 import { AppProviders } from '@/components/app-providers';
+import { ThemeProvider } from '@/components/theme-provider';
+import { ServiceWorkerRegistrar } from '@/components/sw-registrar';
 
 export const metadata: Metadata = {
-  title: 'Duka POS — Systems Admin',
-  description: 'Systems administration dashboard for Duka POS tenant shops',
+  title: 'SimplerAnalytics',
+  description: 'Mobile-first analytics dashboard for tenant shops',
+  applicationName: 'SimplerAnalytics',
+  appleWebApp: {
+    capable: true,
+    statusBarStyle: 'default',
+    title: 'SimplerAnalytics',
+  },
+  formatDetection: { telephone: false },
+  other: { 'mobile-web-app-capable': 'yes' },
+  icons: {
+    icon: '/icon.svg',
+    apple: '/icon.svg',
+  },
+  manifest: '/manifest.webmanifest',
+};
+
+export const viewport: Viewport = {
+  themeColor: '#a86f0a',
+  width: 'device-width',
+  initialScale: 1,
+  maximumScale: 5,
+  userScalable: true,
+  viewportFit: 'cover',
 };
 
 export default function RootLayout({
@@ -14,7 +38,7 @@ export default function RootLayout({
 }) {
   return (
     <html lang="en" className="font-sans">
-      <body className="antialiased"><AppProviders>{children}</AppProviders></body>
+      <body className="antialiased"><ThemeProvider><AppProviders>{children}</AppProviders></ThemeProvider><ServiceWorkerRegistrar /></body>
     </html>
   );
 }

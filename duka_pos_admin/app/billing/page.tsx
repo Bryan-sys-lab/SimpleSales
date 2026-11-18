@@ -10,6 +10,7 @@ type Voucher = { id: string; codePrefix: string; tenantId: string | null; issued
 export default function BillingPage() {
   const [subscriptions, setSubscriptions] = useState<Subscription[]>([]);
   const [vouchers, setVouchers] = useState<Voucher[]>([]);
+  const [tenants, setTenants] = useState<{ id: string; shopName: string }[]>([]);
   const [tenantId, setTenantId] = useState('');
   const [price, setPrice] = useState('');
   const [end, setEnd] = useState('');
@@ -22,12 +23,14 @@ export default function BillingPage() {
   const [accountNumber, setAccountNumber] = useState('');
 
   const load = async () => {
-    const [s, v, p] = await Promise.all([
+    const [s, v, p, t] = await Promise.all([
       fetchJson<{ subscriptions: Subscription[] }>('/api/admin/billing/subscriptions'),
       fetchJson<{ vouchers: Voucher[] }>('/api/admin/billing/vouchers'),
       fetchJson<{ provider: { channelType?: string; shortCode?: string; accountNumber?: string } }>('/api/admin/billing/provider'),
+      fetchJson<{ tenants: { id: string; shopName: string }[] }>('/api/admin/tenants'),
     ]);
     setSubscriptions(s.subscriptions); setVouchers(v.vouchers);
+    setTenants(t.tenants.map((x: any) => ({ id: x.id, shopName: x.shopName })));
     setChannelType(p.provider.channelType ?? 'till'); setShortCode(p.provider.shortCode ?? ''); setAccountNumber(p.provider.accountNumber ?? '');
   };
   useEffect(() => { void load(); }, []);
@@ -53,8 +56,14 @@ export default function BillingPage() {
     <div><h2 className="text-2xl font-semibold tracking-tight text-base-900">Billing & access</h2><p className="text-sm text-base-500">Set negotiated monthly terms, activate shops, and issue time-limited vouchers.</p></div>
     {message && <div className="rounded-xl border border-accent-200 bg-accent-50 px-4 py-3 text-sm text-accent-800">{message}{newCode && <code className="ml-2 rounded bg-white px-2 py-1 font-semibold">{newCode}</code>}</div>}
     <div className="grid gap-4 lg:grid-cols-2">
-      <form onSubmit={saveSubscription} className="card space-y-4 p-5"><h3 className="font-semibold">Shop subscription</h3><input className="input" required placeholder="Tenant ID" value={tenantId} onChange={e => setTenantId(e.target.value)} /><input className="input" required type="number" min="0" step="0.01" placeholder="Monthly price (KES)" value={price} onChange={e => setPrice(e.target.value)} /><input className="input" type="date" value={end} onChange={e => setEnd(e.target.value)} /><button className="button-primary" type="submit">Activate / update terms</button></form>
-      <form onSubmit={createVoucher} className="card space-y-4 p-5"><h3 className="font-semibold">Generate voucher</h3><input className="input" placeholder="Tenant ID (optional)" value={voucherTarget} onChange={e => setVoucherTarget(e.target.value)} /><select className="input" value={duration} onChange={e => setDuration(e.target.value)}><option value="1">1 month</option><option value="3">3 months</option><option value="6">6 months</option><option value="12">1 year</option><option value="none">No expiry</option></select><button className="button-primary" type="submit">Generate one-time voucher</button><p className="text-xs text-base-500">Give the generated code to the issued user. The code is stored hashed and cannot be recovered later.</p></form>
+      <form onSubmit={saveSubscription} className="card space-y-4 p-5"><h3 className="font-semibold">Shop subscription</h3><select className="input" required value={tenantId} onChange={e => setTenantId(e.target.value)}>
+  <option value="">Select verified tenant…</option>
+  {tenants.map((t) => <option key={t.id} value={t.id}>{t.shopName}</option>)}
+</select><input className="input" required type="number" min="0" step="0.01" placeholder="Monthly price (KES)" value={price} onChange={e => setPrice(e.target.value)} /><input className="input" type="date" value={end} onChange={e => setEnd(e.target.value)} /><button className="button-primary" type="submit">Activate / update terms</button></form>
+      <form onSubmit={createVoucher} className="card space-y-4 p-5"><h3 className="font-semibold">Generate voucher</h3><select className="input" value={voucherTarget} onChange={e => setVoucherTarget(e.target.value)}>
+  <option value="">No specific tenant (open voucher)</option>
+  {tenants.map((t) => <option key={t.id} value={t.id}>{t.shopName}</option>)}
+</select><select className="input" value={duration} onChange={e => setDuration(e.target.value)}><option value="1">1 month</option><option value="3">3 months</option><option value="6">6 months</option><option value="12">1 year</option><option value="none">No expiry</option></select><button className="button-primary" type="submit">Generate one-time voucher</button><p className="text-xs text-base-500">Give the generated code to the issued user. The code is stored hashed and cannot be recovered later.</p></form>
       <form onSubmit={saveProvider} className="card space-y-4 p-5"><h3 className="font-semibold">PayHero destination</h3><select className="input" value={channelType} onChange={e => setChannelType(e.target.value)}><option value="till">Till</option><option value="paybill">Paybill</option><option value="bank">Bank</option></select><input className="input" required placeholder="Till / Paybill / bank short code" value={shortCode} onChange={e => setShortCode(e.target.value)} />{channelType === 'bank' && <input className="input" required placeholder="Bank account number" value={accountNumber} onChange={e => setAccountNumber(e.target.value)} />}<button className="button-primary" type="submit">Save PayHero destination</button><p className="text-xs text-base-500">The backend registers this destination with PayHero using its server-side credentials.</p></form>
     </div>
     <section className="card p-5"><h3 className="mb-4 font-semibold">Shop access</h3><div className="space-y-2">{subscriptions.map(s => <div key={s.tenantId} className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-base-200 px-3 py-3 text-sm"><span><b>{s.tenant?.shopName ?? s.tenantId}</b><span className="ml-2 text-base-500">{s.tenant?.profiles?.[0]?.name ?? 'Owner not linked'} · {s.tenant?.profiles?.[0]?.user?.email ?? s.tenant?.profiles?.[0]?.email ?? 'email unavailable'} · {s.status}</span></span><span>{s.priceMinor == null ? 'Price not set' : `${s.currency} ${(s.priceMinor / 100).toFixed(2)} / ${s.billingInterval}`} {s.currentPeriodEnd && `· ends ${new Date(s.currentPeriodEnd).toLocaleDateString()}`}</span></div>)}</div></section>

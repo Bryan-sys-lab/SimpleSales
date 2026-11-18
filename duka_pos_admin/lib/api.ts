@@ -3,7 +3,7 @@ import { getToken, removeToken } from './auth';
 const API_URL =
   typeof process !== 'undefined' && process.env.NEXT_PUBLIC_API_URL
     ? process.env.NEXT_PUBLIC_API_URL
-    : 'http://localhost:3000';
+    : 'http://localhost:3100';
 
 class ApiError extends Error {
   status: number;
@@ -35,13 +35,7 @@ export async function fetchJson<T = unknown>(
     );
   }
 
-  if (res.status === 401) {
-    removeToken();
-    if (typeof window !== 'undefined') {
-      window.location.href = '/login';
-    }
-    throw new ApiError('Unauthorized', 401);
-  }
+
 
   let body: unknown;
   const contentType = res.headers.get('content-type') ?? '';

@@ -60,6 +60,7 @@ export type TaxComplianceReturn = {
 };
 
 export type ChurnSnapshot = {
+  dropReason?: string | null;
   id: string;
   tenantId: string;
   tenant?: { id: string; shopName: string };
@@ -207,4 +208,17 @@ export type DeviceDiagnosticQuery = {
   from?: string;
   to?: string;
   limit?: number;
+};
+
+export type AdminUser = {
+  id: string;
+  email: string;
+  emailVerifiedAt: string | null;
+  createdAt: string;
+  profiles: {
+    id: string;
+    name: string;
+    role: string;
+    tenant: { id: string; shopName: string } | null;
+  }[];
 };

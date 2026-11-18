@@ -10,6 +10,8 @@ export default function AuditPage() {
   const [data, setData] = useState<AuditLog[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [running, setRunning] = useState(false);
+  const [msg, setMsg] = useState<string | null>(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -28,12 +30,27 @@ export default function AuditPage() {
     };
   }, []);
 
+  const runRetention = async () => {
+    setRunning(true); setMsg(null);
+    try {
+      await fetchJson('/api/admin/retention/run', { method: 'POST', body: JSON.stringify({ olderThanDays: 30, dryRun: 0 }) });
+      setMsg('Retention run completed.');
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Retention failed');
+    } finally {
+      setRunning(false);
+    }
+  };
+
   return (
     <ShellLayout>
       <div className="space-y-6">
-        <div>
-          <h2 className="text-2xl font-semibold tracking-tight text-base-900">Audit log</h2>
-          <p className="text-sm text-base-500">Admin audit log across all tenants.</p>
+        <div className="flex items-center justify-between">
+          <div>
+            <h2 className="text-2xl font-semibold tracking-tight text-base-900">Audit log</h2>
+            <p className="text-sm text-base-500">Admin audit log across all tenants.</p>
+          </div>
+          <button className="button-secondary" onClick={runRetention} disabled={running}>{running ? 'Running…' : 'Run retention'}</button>
         </div>
 
         {error && (
@@ -41,6 +58,7 @@ export default function AuditPage() {
             {error}
           </div>
         )}
+        {msg && <div className="rounded-xl border border-accent-200 bg-accent-50 px-4 py-3 text-sm text-accent-800">{msg}</div>}
 
         <DataTable
           columns={[

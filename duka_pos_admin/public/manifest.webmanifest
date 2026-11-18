@@ -1,0 +1,13 @@
+{
+  "name": "SimplerAnalytics",
+  "short_name": "SimplerAnalytics",
+  "description": "Mobile-first analytics dashboard for tenant shops",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#f7f8f6",
+  "theme_color": "#a86f0a",
+  "orientation": "portrait-primary",
+  "icons": [
+    { "src": "/icon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any maskable" }
+  ]
+}
