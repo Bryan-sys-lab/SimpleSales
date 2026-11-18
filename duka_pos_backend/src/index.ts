@@ -81,7 +81,7 @@ const isNode = typeof module !== 'undefined';
 if (isNode) {
   app.use(rateLimit({
     windowMs: 60000,
-    limit: Number(process.env.RATE_LIMIT_LIMIT ?? 120),
+    limit: Number(process.env.RATE_LIMIT_LIMIT ?? 300),
     standardHeaders: 'draft-7',
     legacyHeaders: false,
     skip: (req) => req.path === '/health' || req.path === '/ready',
