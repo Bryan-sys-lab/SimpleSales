@@ -24,7 +24,7 @@ export type AccessTokenClaims = {
 const DEVICE_TTL_SECONDS = 12 * 60 * 60;
 const ACCESS_TTL_SECONDS = 60 * 60;
 const CLOCK_SKEW_SECONDS = 60;
-const STAFF_SESSION_TTL_SECONDS = 12 * 60 * 60;
+const STAFF_SESSION_TTL_SECONDS = 30 * 24 * 60 * 60;
 
 export function issueAccessToken(params: {
   userId: string;
