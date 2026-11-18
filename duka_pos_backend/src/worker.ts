@@ -1,3 +1,4 @@
+import { DurableObject } from "cloudflare:workers";
 import { IncomingMessage, ServerResponse } from "node:http";
 import { Duplex } from "node:stream";
 import app from "./index.js";
