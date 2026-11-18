@@ -47,6 +47,8 @@ interface ReleaseManifest {
   notes?: string;
   required?: boolean;
   minimumBuild?: number;
+  sha256?: string;
+  appId?: string;
 }
 
 /**
@@ -73,6 +75,14 @@ function readManifest(raw: string): ReleaseManifest | null {
   }
   if (typeof record.version !== 'string' || record.version.trim() === '') return null;
   if (typeof record.downloadUrl !== 'string' || record.downloadUrl.trim() === '') return null;
+  let downloadUri: URL;
+  try {
+    downloadUri = new URL(record.downloadUrl.trim());
+  } catch {
+    return null;
+  }
+  if (downloadUri.protocol !== 'https:') return null;
+  if (downloadUri.hostname === '') return null;
 
   return {
     build: record.build,
@@ -82,6 +92,14 @@ function readManifest(raw: string): ReleaseManifest | null {
     required: record.required === true,
     minimumBuild:
       typeof record.minimumBuild === 'number' ? record.minimumBuild : undefined,
+    sha256:
+      typeof record.sha256 === 'string' && record.sha256.trim() !== ''
+        ? record.sha256.trim()
+        : undefined,
+    appId:
+      typeof record.appId === 'string' && record.appId.trim() !== ''
+        ? record.appId.trim()
+        : undefined,
   };
 }
 
@@ -150,6 +168,14 @@ router.post('/api/app/release', async (request: Request, response: Response) => 
     required: body?.required === true,
     minimumBuild:
       typeof body?.minimumBuild === 'number' ? body.minimumBuild : undefined,
+    sha256:
+      typeof body?.sha256 === 'string' && (body.sha256 as string).trim() !== ''
+        ? (body.sha256 as string).trim()
+        : undefined,
+    appId:
+      typeof body?.appId === 'string' && (body.appId as string).trim() !== ''
+        ? (body.appId as string).trim()
+        : undefined,
   };
 
   const path = manifestPath();

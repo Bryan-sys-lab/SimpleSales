@@ -6,6 +6,8 @@ import '../app_brand.dart';
 import '../db/database_helper.dart';
 import '../l10n/generated/app_localizations.dart';
 import '../models/models.dart';
+import '../ui/dialogs/manager_approval_sheet.dart';
+import 'receive_stock_sheet.dart';
 import '../profile/shop_profile.dart';
 import '../routing/routes.dart';
 import '../services/app_state.dart';
@@ -13,7 +15,7 @@ import '../services/roles.dart';
 import '../theme/app_spacing.dart';
 import '../utils/money.dart';
 import '../utils/units.dart';
-import '../ui/components/surface.dart';
+import '../ui/components/operation_result.dart';
 import '../ui/layout/page.dart';
 import 'dashboard_sections.dart';
 import 'dashboard_shared.dart';
@@ -69,6 +71,8 @@ class OpenDashboardScreen extends StatelessWidget {
       profile: ShopProfile.open,
       staffName: appState.currentStaffName ?? appState.owner?.name,
       shift: data.openShift,
+      showPortfolioLink: appState.isOwnerSession,
+      onOpenPortfolio: () => context.push(Routes.portfolio),
     );
 
     final Widget financialHero = DashboardMoneyHero(
@@ -136,6 +140,12 @@ class OpenDashboardScreen extends StatelessWidget {
 
     final Widget kpiGrid = DashboardKpiGrid(items: kpis);
 
+  final Widget shift = DashboardShiftCard(
+    shift: data.openShift,
+    expected: data.expectedTill,
+    onOpen: onOpenShift,
+  );
+
     final Widget stockOverview = _OpenStockOverview(
       totalProducts: data.totalProducts,
       lowStockCount: data.lowStockCount,
@@ -146,14 +156,16 @@ class OpenDashboardScreen extends StatelessWidget {
 
     final Widget quickActions = _OpenQuickActions(
       onOpenSell: onOpenSell,
-      onOpenQuickSale: () => showOpenQuickSaleDialog(
+      onOpenQuickSale: () => showQuickSaleDialog(
         context: context,
+        profile: ShopProfile.open,
       ),
       onOpenAddProduct: () => _openAddProduct(context),
       onOpenLooseGoods: () => _openLooseGoods(context),
       onOpenReceiveStock: () => _receiveStock(context),
       onOpenStocktake: () => _openStocktake(context),
       onOpenCostOfGoods: () => context.push(Routes.openCostGroups),
+      onOpenServings: () => context.push(Routes.servings),
       canManageStock: canManageStock,
       canReceiveStock: appState.hasPermission(PermissionKey.receiveStock),
       canStocktake: appState.hasPermission(PermissionKey.stocktake),
@@ -182,17 +194,16 @@ class OpenDashboardScreen extends StatelessWidget {
             SizedBox(height: spacing.lg),
             kpiGrid,
             SizedBox(height: spacing.lg),
+            shift,
+            SizedBox(height: spacing.lg),
+            quickActions,
+            SizedBox(height: spacing.lg),
             stockOverview,
             if (canViewCost && data.openCostPoolCount > 0) ...<Widget>[
               SizedBox(height: spacing.lg),
               _OpenCostSummary(
                   data: data,
                   onOpen: () => context.push(Routes.openCostGroups)),
-            ],
-            if (appState.isOwnerSession) ...<Widget>[
-              SizedBox(height: spacing.lg),
-              DashboardPortfolioCard(
-                  onOpen: () => context.push(Routes.portfolio)),
             ],
             if (data.paymentMix.isNotEmpty) ...<Widget>[
               SizedBox(height: spacing.lg),
@@ -202,8 +213,6 @@ class OpenDashboardScreen extends StatelessWidget {
               SizedBox(height: spacing.lg),
               _OpenTopProducts(data: data),
             ],
-            SizedBox(height: spacing.lg),
-            quickActions,
             if (credit != null) ...<Widget>[
               SizedBox(height: spacing.lg),
               credit,
@@ -241,9 +250,44 @@ class OpenDashboardScreen extends StatelessWidget {
         .showSnackBar(SnackBar(content: Text('${product.name} saved')));
   }
 
-  void _receiveStock(BuildContext context) {
-    // reuse existing receive stock sheet via inventory screen navigation
-    context.push(Routes.inventory);
+  void _receiveStock(BuildContext context) async {
+    final AppState state = context.read<AppState>();
+    if (!state.isOwnerSession &&
+        state.permissionMode(PermissionKey.receiveStock) ==
+            PermissionMode.approval) {
+      final approver = await showManagerApprovalSheet(
+        context,
+        purpose: 'Approve receiving new stock',
+      );
+      if (!context.mounted || approver == null) return;
+    }
+    final DatabaseHelper db = DatabaseHelper.instance;
+    final List<Product> products = await db.getProducts();
+    final List<Supplier> suppliers = await db.getSuppliers();
+    final Map<String, dynamic>? draftJson =
+        await db.getReceiveDraft(state.currentStaffId);
+    final ReceiveDraftSnapshot? draft =
+        draftJson == null ? null : ReceiveDraftSnapshot.fromJson(draftJson);
+    final String costingMode = await db.getCostingMode();
+    if (!context.mounted) return;
+    final int? receiptId = await showReceiveStockSheet(
+      context,
+      products: products,
+      suppliers: suppliers,
+      lastCostFor: db.lastCostForProduct,
+      staffName: state.currentStaffName ?? '',
+      staffId: state.currentStaffId,
+      costingMode: costingMode,
+      draft: draft,
+    );
+    if (receiptId == null || !context.mounted) return;
+    if (receiptId == 0) {
+      showOperationSuccess(
+        context,
+        title: 'Draft discarded',
+      );
+    }
+    await onRefresh();
   }
 
   Future<void> _openLooseGoods(BuildContext context) async {
@@ -361,8 +405,8 @@ class _OpenStockOverview extends StatelessWidget {
         subtitle: Text(
           '$totalProducts SKUs · Low: $lowStockCount · Out: $outOfStockCount · ${formatMoney(stockValue)}',
         ),
-        trailing: const Icon(Icons.chevron_right),
-        onTap: onOpenInventory,
+      trailing: null,
+      onTap: null,
       ),
     );
   }
@@ -377,6 +421,7 @@ class _OpenQuickActions extends StatelessWidget {
     required this.onOpenReceiveStock,
     required this.onOpenStocktake,
     required this.onOpenCostOfGoods,
+    required this.onOpenServings,
     required this.canManageStock,
     required this.canReceiveStock,
     required this.canStocktake,
@@ -389,6 +434,7 @@ class _OpenQuickActions extends StatelessWidget {
   final VoidCallback onOpenReceiveStock;
   final VoidCallback onOpenStocktake;
   final VoidCallback onOpenCostOfGoods;
+  final VoidCallback onOpenServings;
   final bool canManageStock;
   final bool canReceiveStock;
   final bool canStocktake;
@@ -443,6 +489,13 @@ class _OpenQuickActions extends StatelessWidget {
           subtitle: 'Tanks and servings',
           onTap: onOpenLooseGoods,
         ),
+      if (canManageStock)
+        _OpenQuickTile(
+          icon: Icons.local_drink_outlined,
+          label: 'Servings',
+          subtitle: 'Measured goods',
+          onTap: onOpenServings,
+        ),
     ];
 
     return Wrap(
@@ -468,30 +521,10 @@ class _OpenQuickTile extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return SizedBox(
-      width: 160,
-      child: SurfaceCard(
-        onTap: onTap,
-        semanticLabel: label,
-        padding: const EdgeInsets.all(12),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: <Widget>[
-            Icon(icon),
-            const SizedBox(height: 8),
-            Text(
-              label,
-              style: Theme.of(context).textTheme.titleSmall,
-              textAlign: TextAlign.center,
-            ),
-            Text(
-              subtitle,
-              style: Theme.of(context).textTheme.bodySmall,
-              textAlign: TextAlign.center,
-            ),
-          ],
-        ),
-      ),
+    return ActionChip(
+      avatar: Icon(icon, size: 18),
+      label: Text(label),
+      onPressed: onTap,
     );
   }
 }

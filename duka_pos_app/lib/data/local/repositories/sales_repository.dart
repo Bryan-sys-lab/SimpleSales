@@ -977,6 +977,7 @@ class SalesRepository {
     String? paymentReference,
     Money? costAmount,
     bool trackCost = false,
+    String? itemName,
   }) async {
     if (amount.minorUnits <= 0) {
       throw StateError('A quick sale must be more than zero');
@@ -1014,6 +1015,18 @@ class SalesRepository {
       'status': 'confirmed',
       'created_at': now,
     });
+    await txn.insert('sale_items', <String, Object?>{
+      'sale_id': saleId,
+      'product_id': 0,
+      'product_name': (itemName == null || itemName.trim().isEmpty)
+          ? 'Quick sale'
+          : itemName.trim(),
+      'qty': 1.0,
+      'unit_price': amount.minorUnits,
+      'unit_cost': 0,
+      'portion': 'full',
+      'portion_ml': 0,
+    });
     await FinanceRepository.instance.appendFinancialEventInTransaction(
       txn: txn,
       eventType: 'sale',
@@ -1043,6 +1056,7 @@ class SalesRepository {
     String? paymentReference,
     Money? costAmount,
     bool trackCost = false,
+    String? itemName,
   }) async {
     final db = await DatabaseHelper.instance.database;
     return db.transaction<int>((txn) => recordOpenQuickSaleInTransaction(
@@ -1055,6 +1069,7 @@ class SalesRepository {
           paymentReference: paymentReference,
           costAmount: costAmount,
           trackCost: trackCost,
+          itemName: itemName,
         ));
   }
 

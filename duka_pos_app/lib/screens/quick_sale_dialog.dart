@@ -22,6 +22,7 @@ Future<int?> showOpenQuickSaleDialog({required BuildContext context}) async {
   final appState = context.read<AppState>();
   final amountController = TextEditingController();
   final referenceController = TextEditingController();
+  final itemNameController = TextEditingController();
   String method = 'cash';
   final result = await showDialog<Map<String, String>>(
     context: context,
@@ -31,6 +32,11 @@ Future<int?> showOpenQuickSaleDialog({required BuildContext context}) async {
         content: Column(
           mainAxisSize: MainAxisSize.min,
           children: <Widget>[
+            TextField(
+              controller: itemNameController,
+              decoration: const InputDecoration(labelText: 'Item name (optional)'),
+            ),
+            const SizedBox(height: 12),
             TextField(
               controller: amountController,
               autofocus: true,
@@ -68,6 +74,7 @@ Future<int?> showOpenQuickSaleDialog({required BuildContext context}) async {
               'amount': amountController.text.trim(),
               'method': method,
               'reference': referenceController.text.trim(),
+              'itemName': itemNameController.text.trim(),
             }),
             child: const Text('Record sale'),
           ),
@@ -77,6 +84,7 @@ Future<int?> showOpenQuickSaleDialog({required BuildContext context}) async {
   );
   amountController.dispose();
   referenceController.dispose();
+  itemNameController.dispose();
   if (result == null || !context.mounted) return null;
   final amount = parseMoneyInput(result['amount'] ?? '');
   if (amount == null || amount <= 0) {
@@ -92,6 +100,7 @@ Future<int?> showOpenQuickSaleDialog({required BuildContext context}) async {
           (result['reference'] ?? '').isEmpty ? null : result['reference'],
       staffId: appState.currentStaffId,
       staffName: appState.currentStaffName ?? 'Owner',
+      itemName: (result['itemName'] ?? '').isEmpty ? null : result['itemName'],
     );
     if (context.mounted) {
       ScaffoldMessenger.of(context)
@@ -125,6 +134,7 @@ Future<int?> showQuickSaleDialog({
 
   final qtyController = TextEditingController(text: '1');
   final amountController = TextEditingController();
+  final itemNameController = TextEditingController();
   final customers = await db.getCustomers(activeOnly: true);
   if (!context.mounted) return null;
   final referenceController = TextEditingController();
@@ -173,9 +183,19 @@ Future<int?> showQuickSaleDialog({
                   });
                 },
               ),
-              SizedBox(height: AppSpacing.of(ctx).md),
-              TextField(
-                controller: qtyController,
+               SizedBox(height: AppSpacing.of(ctx).md),
+               if (selectedProduct == null)
+                 TextField(
+                   controller: itemNameController,
+                   decoration: const InputDecoration(
+                     labelText: 'Item name',
+                     helperText: 'Name of the item being sold',
+                   ),
+                 ),
+               if (selectedProduct == null)
+                 SizedBox(height: AppSpacing.of(ctx).md),
+               TextField(
+                 controller: qtyController,
                 decoration: const InputDecoration(labelText: 'Quantity'),
                 keyboardType:
                     const TextInputType.numberWithOptions(decimal: true),
@@ -283,12 +303,13 @@ Future<int?> showQuickSaleDialog({
               ActionChip(
                 avatar: const Icon(Icons.point_of_sale, size: 18),
                 onPressed: () => Navigator.pop(ctx, <String, dynamic>{
-                  'qty': qtyController.text.trim(),
-                  'amount': amountController.text.trim(),
-                  'method': method,
-                  'reference': referenceController.text.trim(),
-                  'productId': selectedProduct?.id,
-                  'customerId': selectedCustomer?.id,
+                   'qty': qtyController.text.trim(),
+                   'amount': amountController.text.trim(),
+                   'method': method,
+                   'reference': referenceController.text.trim(),
+                   'productId': selectedProduct?.id,
+                   'itemName': itemNameController.text.trim(),
+                   'customerId': selectedCustomer?.id,
                   'customer': selectedCustomer,
                   'poolId': selectedPoolId,
                 }),
@@ -304,10 +325,11 @@ Future<int?> showQuickSaleDialog({
   if (result == null) return null;
   final qty = double.tryParse((result['qty'] ?? '').toString());
   final productId = result['productId'] as int?;
+  final itemName = (result['itemName'] ?? '').toString().trim();
   final enteredAmount = parseMoneyInput((result['amount'] ?? '').toString());
   if (qty == null ||
       qty <= 0 ||
-      (productId == null && (enteredAmount == null || enteredAmount <= 0))) {
+      (productId == null && itemName.isEmpty && (enteredAmount == null || enteredAmount <= 0))) {
     if (context.mounted) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
@@ -347,6 +369,7 @@ Future<int?> showQuickSaleDialog({
         staffId: appState.currentStaffId,
         staffName: appState.currentStaffName ?? 'Owner',
         profile: profile,
+        itemName: itemName.isEmpty ? null : itemName,
       );
       if (context.mounted) {
         ScaffoldMessenger.of(context)

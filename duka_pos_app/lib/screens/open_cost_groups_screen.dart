@@ -99,14 +99,15 @@ class _OpenCostGroupsScreenState extends State<OpenCostGroupsScreen> {
               ],
             ),
             SizedBox(height: spacing.sm),
-            Expanded(
-              child: _loading || pools.isEmpty
-                  ? _OpenCostGroupsEmpty(
-                      isEmpty: pools.isEmpty && !_loading,
-                      onNewGroup: () => context.push(Routes.openCostGroupNew),
-                    )
-                  : ListView.separated(
-                      itemCount: pools.length,
+            _loading || pools.isEmpty
+                ? _OpenCostGroupsEmpty(
+                    isEmpty: pools.isEmpty && !_loading,
+                    onNewGroup: () => context.push(Routes.openCostGroupNew),
+                  )
+                : ListView.separated(
+                    shrinkWrap: true,
+                    physics: const NeverScrollableScrollPhysics(),
+                    itemCount: pools.length,
                       separatorBuilder: (_, i) => Divider(
                         height: 1,
                         indent: spacing.md,
@@ -185,7 +186,6 @@ class _OpenCostGroupsScreenState extends State<OpenCostGroupsScreen> {
                         );
                       },
                     ),
-            ),
           ],
         ),
       ),

@@ -12510,6 +12510,7 @@ $untilClause
     String? paymentReference,
     Money? costAmount,
     bool trackCost = false,
+    String? itemName,
   }) async {
     return SalesRepository.instance.recordOpenQuickSale(
       amount: amount,
@@ -12520,6 +12521,7 @@ $untilClause
       paymentReference: paymentReference,
       costAmount: costAmount,
       trackCost: trackCost,
+      itemName: itemName,
     );
   }
 

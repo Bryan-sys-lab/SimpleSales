@@ -692,6 +692,8 @@ class DashboardBusinessHeader extends StatelessWidget {
     required this.profile,
     this.staffName,
     this.shift,
+    this.onOpenPortfolio,
+    this.showPortfolioLink = false,
     super.key,
   });
 
@@ -699,6 +701,8 @@ class DashboardBusinessHeader extends StatelessWidget {
   final ShopProfile profile;
   final String? staffName;
   final Shift? shift;
+  final VoidCallback? onOpenPortfolio;
+  final bool showPortfolioLink;
 
   @override
   Widget build(BuildContext context) {
@@ -779,6 +783,12 @@ class DashboardBusinessHeader extends StatelessWidget {
                   .bodySmall
                   ?.copyWith(color: AppColors.of(context).onSurfaceMuted),
             ),
+            if (showPortfolioLink && onOpenPortfolio != null)
+              ActionChip(
+                avatar: const Icon(Icons.insights_outlined, size: 16),
+                label: const Text('Portfolio'),
+                onPressed: onOpenPortfolio,
+              ),
           ],
         ),
         SizedBox(height: spacing.lg),

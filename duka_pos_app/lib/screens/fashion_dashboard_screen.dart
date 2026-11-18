@@ -22,6 +22,8 @@ import '../theme/typography.dart';
 import '../theme/dashboard_profile_palette.dart';
 import '../ui/components/surface.dart';
 import '../ui/components/status.dart';
+import '../ui/dialogs/manager_approval_sheet.dart';
+import 'receive_stock_sheet.dart';
 import '../ui/layout/page.dart';
 import '../utils/money.dart';
 import '../widgets/backup_reminder_banner.dart';
@@ -136,6 +138,8 @@ class FashionDashboardScreen extends StatelessWidget {
       profile: ShopProfile.fashion,
       staffName: appState.currentStaffName ?? appState.owner?.name,
       shift: data.openShift,
+      showPortfolioLink: appState.isOwnerSession,
+      onOpenPortfolio: () => context.push(Routes.portfolio),
     );
 
     final Widget financialHero = DashboardMoneyHero(
@@ -212,8 +216,6 @@ class FashionDashboardScreen extends StatelessWidget {
 
     final List<Widget> body = <Widget>[
       header,
-      if (appState.isOwnerSession)
-        DashboardPortfolioCard(onOpen: () => context.push(Routes.portfolio)),
       if (attention != null)
         Semantics(
           sortKey: const OrdinalSortKey(0),
@@ -301,8 +303,36 @@ class FashionDashboardScreen extends StatelessWidget {
     context.push(Routes.fashionProductForm);
   }
 
-  void _receiveStock(BuildContext context) {
-    context.push(Routes.inventory);
+  void _receiveStock(BuildContext context) async {
+    final AppState state = context.read<AppState>();
+    if (!state.isOwnerSession &&
+        state.permissionMode(PermissionKey.receiveStock) ==
+            PermissionMode.approval) {
+      final approver = await showManagerApprovalSheet(
+        context,
+        purpose: 'Approve receiving new stock',
+      );
+      if (!context.mounted || approver == null) return;
+    }
+    final DatabaseHelper db = DatabaseHelper.instance;
+    final List<Product> products = await db.getProducts();
+    final List<Supplier> suppliers = await db.getSuppliers();
+    final Map<String, dynamic>? draftJson =
+        await db.getReceiveDraft(state.currentStaffId);
+    final ReceiveDraftSnapshot? draft =
+        draftJson == null ? null : ReceiveDraftSnapshot.fromJson(draftJson);
+    final String costingMode = await db.getCostingMode();
+    if (!context.mounted) return;
+    await showReceiveStockSheet(
+      context,
+      products: products,
+      suppliers: suppliers,
+      lastCostFor: db.lastCostForProduct,
+      staffName: state.currentStaffName ?? '',
+      staffId: state.currentStaffId,
+      costingMode: costingMode,
+      draft: draft,
+    );
   }
 
   void _viewCatalogue(BuildContext context) {
@@ -741,50 +771,10 @@ class _FashionQuickTile extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final AppSpacing spacing = AppSpacing.of(context);
-    final AppColors colors = AppColors.of(context);
-    final TextTheme type = AppTypography.of(context);
-
-    return Semantics(
-      button: true,
-      label: '$label, $subtitle',
-      child: SurfaceCard(
-        padding: EdgeInsets.all(spacing.md),
-        onTap: onTap,
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          mainAxisSize: MainAxisSize.min,
-          children: <Widget>[
-            Container(
-              padding: EdgeInsets.all(spacing.xs),
-              decoration: BoxDecoration(
-                color: colors.surfaceSunken,
-                borderRadius: AppShapes.of(context).controlRadius,
-              ),
-              child: Icon(
-                icon,
-                size: 20,
-                color: colors.onSurfaceVariant,
-              ),
-            ),
-            SizedBox(height: spacing.md),
-            Text(
-              label,
-              style: type.titleSmall?.copyWith(
-                fontWeight: FontWeight.w700,
-                color: colors.onSurface,
-              ),
-            ),
-            SizedBox(height: 2),
-            Text(
-              subtitle,
-              style: type.bodySmall?.copyWith(
-                color: colors.onSurfaceMuted,
-              ),
-            ),
-          ],
-        ),
-      ),
+    return ActionChip(
+      avatar: Icon(icon, size: 18),
+      label: Text(label),
+      onPressed: onTap,
     );
   }
 }

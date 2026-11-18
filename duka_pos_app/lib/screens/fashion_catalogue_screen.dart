@@ -104,10 +104,20 @@ class _FashionCatalogueScreenState extends State<FashionCatalogueScreen> {
                     ],
                   ),
                 ),
-                FilledButton.icon(
-                  onPressed: () => context.push(Routes.fashionProductForm),
-                  icon: const Icon(Icons.add),
-                  label: Text(l10n.fashionCatalogueAddStyle),
+                Wrap(
+                  spacing: spacing.sm,
+                  children: <Widget>[
+                    OutlinedButton.icon(
+                      onPressed: () => context.push(Routes.stocktake),
+                      icon: const Icon(Icons.fact_check_outlined),
+                      label: const Text('Stocktake'),
+                    ),
+                    FilledButton.icon(
+                      onPressed: () => context.push(Routes.fashionProductForm),
+                      icon: const Icon(Icons.add),
+                      label: Text(l10n.fashionCatalogueAddStyle),
+                    ),
+                  ],
                 ),
               ],
             ),
@@ -127,14 +137,15 @@ class _FashionCatalogueScreenState extends State<FashionCatalogueScreen> {
                 onChanged: (value) => setState(() => _searchQuery = value),
               ),
             ),
-            Expanded(
-              child: _loading || products.isEmpty
-                  ? _FashionCatalogueEmpty(
-                      isEmpty: products.isEmpty && !_loading,
-                      onAddStyle: () => context.push(Routes.fashionProductForm),
-                    )
-                  : ListView.separated(
-                      itemCount: products.length,
+            _loading || products.isEmpty
+                ? _FashionCatalogueEmpty(
+                    isEmpty: products.isEmpty && !_loading,
+                    onAddStyle: () => context.push(Routes.fashionProductForm),
+                  )
+                : ListView.separated(
+                    shrinkWrap: true,
+                    physics: const NeverScrollableScrollPhysics(),
+                    itemCount: products.length,
                       separatorBuilder: (_, i) => Divider(
                         height: 1,
                         indent: spacing.md,
@@ -201,7 +212,6 @@ class _FashionCatalogueScreenState extends State<FashionCatalogueScreen> {
                         );
                       },
                     ),
-            ),
           ],
         ),
       ),

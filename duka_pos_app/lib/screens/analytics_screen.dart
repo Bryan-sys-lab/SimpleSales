@@ -383,6 +383,36 @@ class _AnalyticsScreenState extends State<AnalyticsScreen>
       DailyTotals previousTotals = results[8] as DailyTotals;
       List<PaymentMixRow> payments = results[3] as List<PaymentMixRow>;
       List<DateBucket> chartDays = results[1] as List<DateBucket>;
+      // Paint the local figures immediately so the screen is not blank while
+      // the (possibly slow) remote aggregates are fetched.
+      if (requestIsCurrent()) {
+        setState(() {
+          _sortedProducts = _order(productRows, _sort, _ascending);
+          _salesPoints = _salesChartPoints(chartDays);
+          _view = AnalyticsContent(AnalyticsSnapshot(
+            totals: totals,
+            previousTotals: previousTotals,
+            days: chartDays,
+            products: productRows,
+            payments: payments,
+            outOfStock: products.where((Product p) => p.isOutOfStock).toList()
+              ..sort((Product a, Product b) => a.name.compareTo(b.name)),
+            lowStock: products.where((Product p) => p.stockQty > 0 && p.isLow).toList()
+              ..sort((Product a, Product b) => a.stockQty.compareTo(b.stockQty)),
+            costCoverage: costCoverage,
+            stockValue: stockValue,
+            expiring: expiring,
+            expired: expired,
+            slowMovers: slowMovers,
+            shifts: results[9] as ShiftAnalytics,
+            drinks: results[10] as DrinksAnalyticsSnapshot,
+            pooledCosts: Money.fromMinor(pools.fold<int>(0, (sum, pool) => sum + ((pool['invested_minor'] as num?)?.toInt() ?? 0))),
+            receivables: Money.fromMinor(creditSummary.totalOwedMinor),
+            cashPosition: Money.fromMinor(financialSums.cashInMinor - financialSums.cashOutMinor),
+            statement: statement,
+          ));
+        });
+      }
       // Once this till has no pending sales, the verified backend aggregate is
       // authoritative: it includes sales from every till in the tenant. While
       // this device still has an offline queue, keep its local figures so a

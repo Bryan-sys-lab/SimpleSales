@@ -136,6 +136,8 @@ class DukaDashboardScreen extends StatelessWidget {
       profile: ShopProfile.duka,
       staffName: appState.currentStaffName ?? appState.owner?.name,
       shift: data.openShift,
+      showPortfolioLink: appState.isOwnerSession,
+      onOpenPortfolio: () => context.push(Routes.portfolio),
     );
 
     final Widget financialHero = DashboardMoneyHero(
@@ -231,8 +233,6 @@ class DukaDashboardScreen extends StatelessWidget {
 
     final List<Widget> body = <Widget>[
       header,
-      if (appState.isOwnerSession)
-        DashboardPortfolioCard(onOpen: () => context.push(Routes.portfolio)),
       if (attention != null)
         Semantics(
           sortKey: const OrdinalSortKey(0),
@@ -655,50 +655,10 @@ class _DukaQuickTile extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final AppSpacing spacing = AppSpacing.of(context);
-    final AppColors colors = AppColors.of(context);
-    final TextTheme type = AppTypography.of(context);
-
-    return Semantics(
-      button: true,
-      label: '$label, $subtitle',
-      child: SurfaceCard(
-        padding: EdgeInsets.all(spacing.md),
-        onTap: onTap,
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          mainAxisSize: MainAxisSize.min,
-          children: <Widget>[
-            Container(
-              padding: EdgeInsets.all(spacing.xs),
-              decoration: BoxDecoration(
-                color: colors.surfaceSunken,
-                borderRadius: AppShapes.of(context).controlRadius,
-              ),
-              child: Icon(
-                icon,
-                size: 20,
-                color: colors.onSurfaceVariant,
-              ),
-            ),
-            SizedBox(height: spacing.md),
-            Text(
-              label,
-              style: type.titleSmall?.copyWith(
-                fontWeight: FontWeight.w700,
-                color: colors.onSurface,
-              ),
-            ),
-            SizedBox(height: 2),
-            Text(
-              subtitle,
-              style: type.bodySmall?.copyWith(
-                color: colors.onSurfaceMuted,
-              ),
-            ),
-          ],
-        ),
-      ),
+    return ActionChip(
+      avatar: Icon(icon, size: 18),
+      label: Text(label),
+      onPressed: onTap,
     );
   }
 }

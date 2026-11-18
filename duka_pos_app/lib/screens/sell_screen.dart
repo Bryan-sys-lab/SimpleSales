@@ -68,6 +68,7 @@ class _SellScreenState extends State<SellScreen>
   final Map<int, double> _reservedByProduct = <int, double>{};
   final Map<int, double> _reservedByVariant = <int, double>{};
 
+  late final AppState _appState;
   late final HomeShellTabs _shellTabs;
   final _searchController = TextEditingController();
   final _searchFocus = FocusNode();
@@ -117,6 +118,8 @@ class _SellScreenState extends State<SellScreen>
     // the catalogue is written to rather than only when it is first shown.
     _shellTabs = context.read<HomeShellTabs>();
     _shellTabs.addListener(_onShellChanged);
+    _appState = context.read<AppState>();
+    _appState.addListener(_reloadCatalogue);
     _searchFocus.addListener(() {
       // The wedge buffer is disarmed while the search field holds focus, so a
       // human typing a product name can never be read as a scan. Tracked as
@@ -130,7 +133,6 @@ class _SellScreenState extends State<SellScreen>
       });
     });
     _loadProducts();
-    context.read<AppState>().addListener(_reloadCatalogue);
   }
 
   int _seenCatalogueGeneration = 0;
@@ -164,7 +166,7 @@ class _SellScreenState extends State<SellScreen>
 
   @override
   void dispose() {
-    context.read<AppState>().removeListener(_reloadCatalogue);
+    _appState.removeListener(_reloadCatalogue);
     _shellTabs.removeListener(_onShellChanged);
     _searchController.dispose();
     _searchFocus.dispose();
@@ -210,8 +212,7 @@ class _SellScreenState extends State<SellScreen>
       // wait for something that was never going to arrive.
       if (!mounted) return;
       setState(() {
-        _catalogueError =
-            AppLocalizations.of(context).sellCatalogueLoadFailedMessage;
+        _catalogueError = 'Could not load the catalogue. Please retry.';
         _loading = false;
       });
       return;

@@ -558,13 +558,13 @@ class AppUpdateService extends ChangeNotifier {
   static Future<int> _availableStorage() async {
     try {
       final external = await getExternalStorageDirectory();
-      if (external == null) return 0;
+      if (external == null) return _maxDownloadSize * 2;
       final stat = await external.stat();
       return stat.type == FileSystemEntityType.directory
           ? _maxDownloadSize * 2
           : 0;
     } catch (_) {
-      return 0;
+      return _maxDownloadSize * 2;
     }
   }
 

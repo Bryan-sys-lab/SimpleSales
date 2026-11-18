@@ -129,6 +129,8 @@ class DrinksDashboardScreen extends StatelessWidget {
       profile: ShopProfile.drinks,
       staffName: appState.currentStaffName ?? appState.owner?.name,
       shift: data.openShift,
+      showPortfolioLink: appState.isOwnerSession,
+      onOpenPortfolio: () => context.push(Routes.portfolio),
     );
 
     final Widget financialHero = DashboardMoneyHero(
@@ -227,8 +229,6 @@ class DrinksDashboardScreen extends StatelessWidget {
 
     final List<Widget> body = <Widget>[
       header,
-      if (appState.isOwnerSession)
-        DashboardPortfolioCard(onOpen: () => context.push(Routes.portfolio)),
       if (attention != null)
         Semantics(
           sortKey: const OrdinalSortKey(0),
@@ -463,7 +463,7 @@ class _DrinksShiftOverview extends StatelessWidget {
                     dense: true,
                   )
                 : null,
-            onTap: onOpenShots,
+             onTap: onOpenInventory,
           ),
         ],
       ),
