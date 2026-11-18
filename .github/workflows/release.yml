@@ -235,6 +235,7 @@ jobs:
         env:
           SENTRY_DSN: ${{ secrets.SENTRY_DSN }}
           BACKEND_URL: ${{ secrets.BACKEND_URL }}
+          APK_CDN_HOST: ${{ secrets.APK_CDN_HOST }}
           DEPLOYMENT_MODE: ${{ vars.DEPLOYMENT_MODE || 'local_only' }}
         run: |
           set -euo pipefail
@@ -272,6 +273,7 @@ jobs:
         env:
           SENTRY_DSN: ${{ secrets.SENTRY_DSN }}
           BACKEND_URL: ${{ secrets.BACKEND_URL }}
+          APK_CDN_HOST: ${{ secrets.APK_CDN_HOST }}
         run: |
           set -euo pipefail
           apk="build/app/outputs/flutter-apk/app-release.apk"
@@ -301,6 +303,7 @@ jobs:
           }
           add_define SENTRY_DSN "$SENTRY_DSN"
           add_define BACKEND_URL "$BACKEND_URL"
+          add_define APK_CDN_HOST "$APK_CDN_HOST"
           add_define DEPLOYMENT_MODE "${DEPLOYMENT_MODE:-local_only}"
 
           echo "dart-defines injected: ${#defines[@]}"

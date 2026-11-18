@@ -165,7 +165,7 @@ async function publishedAppRelease(): Promise<PublishedAppRelease> {
   }
 
   const repository = process.env.APP_RELEASE_REPOSITORY ?? 'Bryan-sys-lab/SimpleSales';
-  const manifestUrl = process.env.APP_RELEASE_MANIFEST_URL ?? 'https://nerva.co.ke/api/app/latest';
+  const manifestUrl = process.env.APP_RELEASE_MANIFEST_URL ?? 'https://pub-304b56b967d4462f8ca28cdb5a6fc43a.r2.dev/current.json';
   try {
     // Prefer the R2-backed manifest served by the website, so a build uploaded
     // to storage becomes the update the handset sees without a GitHub release.

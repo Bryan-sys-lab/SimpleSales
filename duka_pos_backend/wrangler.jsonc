@@ -9,6 +9,7 @@
   "migrations": [ { "tag": "v1", "new_sqlite_classes": ["LiveRoom"] } ],
   "triggers": { "crons": ["*/5 * * * *"] },
   "vars": {
-    "APP_RELEASE_REPOSITORY": "Bryan-sys-lab/SimpleSales"
+    "APP_RELEASE_REPOSITORY": "Bryan-sys-lab/SimpleSales",
+    "APP_RELEASE_MANIFEST_URL": "https://pub-304b56b967d4462f8ca28cdb5a6fc43a.r2.dev/current.json"
   }
 }
