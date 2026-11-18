@@ -252,6 +252,41 @@ class BackendService {
     return run;
   }
 
+  /// Post a churn snapshot for the active tenant. Never throws.
+  static Future<void> postChurnSnapshot({
+    required String token,
+    required String tenantId,
+    required String deviceId,
+    required DateTime date,
+    required int streakDays,
+    required int daysSinceLastActive,
+    required int totalSessions,
+    required String risk,
+    required double score,
+  }) async {
+    await ensureInitialized();
+    try {
+      await _dio.post(
+        '$backendUrl/telemetry/churn',
+        data: <String, dynamic>{
+          'deviceId': deviceId,
+          'date': date.toIso8601String(),
+          'streakDays': streakDays,
+          'daysSinceLastActive': daysSinceLastActive,
+          'totalSessions': totalSessions,
+          'risk': risk,
+          'score': score,
+        },
+        options: Options(headers: <String, String>{
+          'Authorization': 'Bearer $token',
+          'x-tenant-id': tenantId,
+        }),
+      );
+    } catch (e) {
+      debugPrint('Churn snapshot post failed: $e');
+    }
+  }
+
   static bool _initialized = false;
   static final Dio _dio = Dio(BaseOptions(
     connectTimeout: const Duration(minutes: 1),
@@ -471,6 +506,8 @@ class BackendService {
     ));
 
     _initialized = true;
+    // Warm up the backend (Neon cold start) so the first real request is fast.
+    unawaited(_dio.get('$backendUrl/ready').then((_) {}, onError: (_) {}));
   }
 
   /// Points the till at the shop the verify flow just linked.
