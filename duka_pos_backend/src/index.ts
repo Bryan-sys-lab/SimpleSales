@@ -165,7 +165,53 @@ async function publishedAppRelease(): Promise<PublishedAppRelease> {
   }
 
   const repository = process.env.APP_RELEASE_REPOSITORY ?? 'Bryan-sys-lab/SimpleSales';
+  const manifestUrl = process.env.APP_RELEASE_MANIFEST_URL ?? 'https://pub-304b56b967d4462f8ca28cdb5a6fc43a.r2.dev/current.json';
   try {
+    // Prefer the R2-backed manifest served by the website, so a build uploaded
+    // to storage becomes the update the handset sees without a GitHub release.
+    try {
+      const manifestResponse = await fetch(manifestUrl, {
+        headers: { accept: 'application/json', 'user-agent': 'SimpleSales-backend-update-channel' },
+        signal: AbortSignal.timeout(5000),
+      });
+      if (manifestResponse.ok) {
+        const manifest = (await manifestResponse.json()) as {
+          build?: unknown;
+          version?: unknown;
+          downloadUrl?: unknown;
+          download_url?: unknown;
+          notes?: unknown;
+          release_notes?: unknown;
+        };
+        const build = typeof manifest.build === 'number' ? manifest.build : Number(manifest.build);
+        const version = typeof manifest.version === 'string' ? manifest.version.trim() : '';
+        const downloadUrl =
+          typeof manifest.downloadUrl === 'string'
+            ? manifest.downloadUrl.trim()
+            : typeof manifest.download_url === 'string'
+              ? manifest.download_url.trim()
+              : '';
+        const notes =
+          typeof manifest.notes === 'string'
+            ? manifest.notes.trim()
+            : typeof manifest.release_notes === 'string'
+              ? manifest.release_notes.trim()
+              : fallback.notes;
+        if (Number.isInteger(build) && build > 0 && version && downloadUrl) {
+          const resolved: PublishedAppRelease = {
+            versionName: version,
+            versionCode: build,
+            downloadUrl,
+            notes,
+          };
+          appReleaseCache = { expiresAt: Date.now() + 60_000, value: resolved };
+          return resolved;
+        }
+      }
+    } catch {
+      // Fall through to GitHub.
+    }
+
     const response = await fetch(`https://api.github.com/repos/${repository}/releases/latest`, {
       headers: {
         accept: 'application/vnd.github+json',
@@ -258,8 +304,6 @@ app.use('/callback/mpesa', mpesaWebhookRoutes);
 // Protected routes (require OIDC JWT)
 // ---------------------------------------------------------------------------
 
-
-
 app.use('/api', authMiddleware);
 // Every successful authenticated mutation is a change signal for the active
 // tenant. This covers catalogue, stock, sales, finance, staff and settings
@@ -317,7 +361,6 @@ app.use('/api/telemetry', telemetryRoutes);
 app.use('/api/admin', adminRoutes);
 
 // ---------------------------------------------------------------------------
-
 
 app.use((_req, res) => res.status(404).json({ error: 'Not found' }));
 
