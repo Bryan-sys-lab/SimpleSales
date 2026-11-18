@@ -46,7 +46,10 @@ class _StaffLoginScreenState extends State<StaffLoginScreen> {
   bool _shopsLoaded = false;
   String? _activeShopName;
 
-  bool get _needsShopId => _shopsLoaded && _shops.isEmpty;
+  // The shop ID is always needed for a remote staff login on a device that
+  // does not already hold the shop. Show the field whenever there is no active
+  // tenant, and also allow entering it manually even when local shops exist.
+  bool get _needsShopId => _shopsLoaded && (_shops.isEmpty || _activeShopName == null);
 
   @override
   void initState() {
@@ -231,12 +234,14 @@ class _StaffLoginScreenState extends State<StaffLoginScreen> {
       // null here made an online staff login look like a missing bearer-token
       // request even though the correct shop was selected on this device.
       final String? activeTenant = await BackendService.tenantId;
+      final String shopIdField = _shopIdController.text.trim().toLowerCase();
       final String? requestedTenant = activeTenant ??
-          (_needsShopId ? _shopIdController.text.trim().toLowerCase() : null);
-      if (_needsShopId &&
-          (requestedTenant == null || requestedTenant.isEmpty)) {
-        setState(() => _error = 'Enter the shop ID supplied by the owner.');
-        return;
+          (shopIdField.isNotEmpty ? shopIdField : null);
+      if (requestedTenant == null || requestedTenant.isEmpty) {
+        if (_shops.isEmpty) {
+          setState(() => _error = 'Enter the shop ID supplied by the owner.');
+          return;
+        }
       }
 
       final String userKey = username;
@@ -429,7 +434,7 @@ class _StaffLoginScreenState extends State<StaffLoginScreen> {
                       spacing: spacing,
                     ),
                     SizedBox(height: spacing.lg),
-                    if (_needsShopId) ...<Widget>[
+                    if (_shopsLoaded) ...<Widget>[
                       TextFormField(
                         controller: _shopIdController,
                         textInputAction: TextInputAction.next,
@@ -439,10 +444,13 @@ class _StaffLoginScreenState extends State<StaffLoginScreen> {
                           helperText: 'Ask the owner for the verified shop ID',
                           prefixIcon: Icon(Icons.storefront_outlined),
                         ),
-                        validator: (String? value) =>
-                            (value == null || value.trim().isEmpty)
-                                ? 'Shop ID is required on a new device'
-                                : null,
+                        validator: (String? value) {
+                          final String v = (value ?? '').trim();
+                          if (_shops.isEmpty && v.isEmpty) {
+                            return 'Shop ID is required on a new device';
+                          }
+                          return null;
+                        },
                       ),
                       SizedBox(height: spacing.md),
                     ],
