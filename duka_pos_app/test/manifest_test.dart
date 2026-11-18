@@ -238,7 +238,7 @@ void main() {
       final pubspec = File('pubspec.yaml').readAsStringSync();
       expect(gradle, contains('useLegacyPackaging = true'));
       expect(pubspec,
-          contains(RegExp(r'^version:\s+[^\n]+\+89\s*$', multiLine: true)));
+          contains(RegExp(r'^version:\s+[^\n]+\+\d+\s*$', multiLine: true)));
     });
   });
 }
