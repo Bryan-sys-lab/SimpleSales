@@ -116,19 +116,24 @@ async function ensureOwnerProfile(input: { userId: string; email: string; shopNa
 
   if (!options.allowCreate || !input.shopName?.trim() || !input.ownerName?.trim()) return null;
 
-  const created = await prisma.$transaction(async (tx) => {
-    const tenant = await tx.tenant.create({
-      data: {
-        id: readableTenantId(input.ownerName!, input.shopName!),
-        shopName: input.shopName!.trim(),
-        subscription: { create: { status: 'pending' } },
-      },
-    });
-    const profile = await tx.profile.create({
-      data: { userId: input.userId, tenantId: tenant.id, name: input.ownerName!.trim(), email: input.email, role: 'admin' },
-    });
-    return { tenant, profile };
+  const tenant = await prisma.tenant.create({
+    data: {
+      id: readableTenantId(input.ownerName!, input.shopName!),
+      shopName: input.shopName!.trim(),
+    },
   });
+  try {
+    await prisma.tenantSubscription.create({
+      data: { tenantId: tenant.id, status: 'pending' },
+    });
+  } catch (error) {
+    // eslint-disable-next-line no-console
+    console.error('tenant_subscription_create_failed', error);
+  }
+  const profile = await prisma.profile.create({
+    data: { userId: input.userId, tenantId: tenant.id, name: input.ownerName!.trim(), email: input.email, role: 'admin' },
+  });
+  const created = { tenant, profile };
   return { tenantId: created.tenant.id, shopName: created.tenant.shopName, profileId: created.profile.id, created: true };
 }
 
@@ -298,17 +303,21 @@ router.post('/verify', verifyLimiter, asyncHandler(async (req: Request, res: Res
   let firstVoucherCode: string | null = null;
   const accessVoucherModel = (prisma as typeof prisma & { accessVoucher?: typeof prisma.accessVoucher }).accessVoucher;
   if (firstRegistration && accessVoucherModel) {
-    const voucher = await accessVoucherModel.findFirst({ where: { issuedToEmail: email, autoIssued: true, redeemedAt: null, revokedAt: null, pausedAt: null, deletedAt: null }, orderBy: { createdAt: 'desc' } });
-    if (voucher) {
-      // The first month starts when the owner finishes verification, not when
-      // they first request the email. A delayed inbox or a resend must not
-      // consume the user's access period before the account can be used.
-      const firstMonthEndsAt = new Date(now.getTime() + 30 * 24 * 60 * 60 * 1000);
-      await prisma.$transaction([
-        prisma.accessVoucher.update({ where: { id: voucher.id }, data: { tenantId: shop.tenantId, issuedToProfileId: shop.profileId, redeemedAt: now, redeemedByProfileId: shop.profileId, expiresAt: firstMonthEndsAt } }),
-        prisma.tenantSubscription.upsert({ where: { tenantId: shop.tenantId }, create: { tenantId: shop.tenantId, status: 'voucher', voucherId: voucher.id, currentPeriodEnd: firstMonthEndsAt }, update: { status: 'voucher', voucherId: voucher.id, currentPeriodEnd: firstMonthEndsAt, graceUntil: null } }),
-      ]);
-      firstVoucherCode = voucher.codePrefix;
+    try {
+      const voucher = await accessVoucherModel.findFirst({ where: { issuedToEmail: email, autoIssued: true, redeemedAt: null, revokedAt: null, pausedAt: null, deletedAt: null }, orderBy: { createdAt: 'desc' } });
+      if (voucher) {
+        // The first month starts when the owner finishes verification, not when
+        // they first request the email. A delayed inbox or a resend must not
+        // consume the user's access period before the account can be used.
+        const firstMonthEndsAt = new Date(now.getTime() + 30 * 24 * 60 * 60 * 1000);
+        await prisma.$transaction([
+          prisma.accessVoucher.update({ where: { id: voucher.id }, data: { tenantId: shop.tenantId, issuedToProfileId: shop.profileId, redeemedAt: now, redeemedByProfileId: shop.profileId, expiresAt: firstMonthEndsAt } }),
+          prisma.tenantSubscription.upsert({ where: { tenantId: shop.tenantId }, create: { tenantId: shop.tenantId, status: 'voucher', voucherId: voucher.id, currentPeriodEnd: firstMonthEndsAt }, update: { status: 'voucher', voucherId: voucher.id, currentPeriodEnd: firstMonthEndsAt, graceUntil: null } }),
+        ]);
+        firstVoucherCode = voucher.codePrefix;
+      }
+    } catch (error) {
+      console.error('voucher_redeem_failed', error);
     }
   }
 
