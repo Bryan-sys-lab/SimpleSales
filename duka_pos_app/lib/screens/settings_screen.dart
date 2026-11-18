@@ -930,7 +930,11 @@ class _SettingsScreenState extends State<SettingsScreen>
       if (await BackendService.isBackendLinked) {
         try {
           await BackendService.syncStaffToBackend();
-        } catch (_) {
+        } catch (e) {
+          // Surface the underlying error so a sync failure is diagnosable
+          // instead of a generic "could not sync" message.
+          // ignore: avoid_print
+          print('Staff sync failed: $e');
           // Roll back the local row so a failed sync does not leave a staff
           // member that exists only on this till.
           final db = await DatabaseHelper.instance.database;
@@ -939,7 +943,7 @@ class _SettingsScreenState extends State<SettingsScreen>
           showOperationFailure(
             context,
             title: l10n.settingsStaffSaveFailedTitle,
-            message: l10n.settingsStaffSyncFailed,
+            message: '${l10n.settingsStaffSyncFailed}\n$e',
             icon: Icons.cloud_off_outlined,
           );
           return;
