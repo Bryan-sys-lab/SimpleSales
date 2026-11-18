@@ -53,6 +53,7 @@ import ownerTransactionRoutes from './routes/owner-transactions';
 import saleEvidenceRoutes from './routes/sale_evidence';
 import { verifyAccessToken } from './lib/jwt';
 import { addLiveClient, broadcastAll, broadcastTenantChange, removeLiveClient } from './services/live_broker';
+import { addAdminLiveClient, broadcastAdmin, removeAdminLiveClient } from './services/admin_live_broker';
 
 if (typeof module !== 'undefined') { dotenv.config(); }
 
@@ -407,6 +408,32 @@ if (isNode && require.main === module) {
     });
     ws.send(JSON.stringify({ type: 'connected', at: new Date().toISOString() }));
   });
+
+  const adminWss = new WebSocketServer({ server, path: '/api/admin/live' });
+  adminWss.on('connection', async (ws, request) => {
+    const token = request.headers.authorization?.match(/^Bearer\s+(.+)$/i)?.[1]?.trim();
+    const claims = token ? verifyAccessToken(token) : null;
+    const allowed = (process.env.SYSTEM_ADMIN_SUBJECTS ?? '').split(',').map((v) => v.trim()).filter(Boolean);
+    if (!claims || !allowed.includes(claims.sub)) {
+      ws.close(1008, 'System administrator access required');
+      return;
+    }
+    const client = { socket: ws };
+    addAdminLiveClient(client);
+    ws.once('close', () => removeAdminLiveClient(client));
+    ws.on('message', (raw) => {
+      try {
+        const message = JSON.parse(raw.toString()) as { type?: unknown };
+        if (message.type === 'read' && ws.readyState === ws.OPEN) {
+          ws.send(JSON.stringify({ type: 'snapshot', reasons: [], at: new Date().toISOString() }));
+        }
+      } catch {
+        // ignore
+      }
+    });
+    ws.send(JSON.stringify({ type: 'connected', at: new Date().toISOString() }));
+  });
+
   setMpesaPaymentNotifier(() => {
     broadcastAll({ type: 'mpesa_incoming' });
   });

@@ -13,6 +13,7 @@ import { prisma } from '../lib/prisma';
 import { runRetention } from '../lib/retention';
 import { log } from '../lib/observability';
 import { systemAdminMiddleware } from '../middleware/auth';
+import { broadcastAdmin } from '../services/admin_live_broker';
 import { COMMERCIAL_POLICY } from '../lib/commercial_policy';
 import { commercialContributionSelect, projectCommercialContribution } from '../lib/commercial_ledger';
 import { aggregateCommercialRows, COMMERCIAL_DISCLOSURE_THRESHOLDS, commercialRetentionCutoff, isEligibleForCommercialOutput, prepareCommercialAggregateOutput } from '../lib/commercial_controls';
@@ -343,6 +344,7 @@ router.post('/announcement', asyncHandler(async (req: Request, res: Response) =>
     prisma.adminAuditLog.create({ data: { adminId: req.auth?.sub ?? 'unknown', action: 'publish_platform_announcement', targetType: 'platform_announcement', targetId: id, tenantId: null } }),
   ]);
   platformAnnouncementNotifier?.({ id, title: input.title, body: input.body });
+  broadcastAdmin({ type: 'platform_announcement', announcement: { id, title: input.title, body: input.body } });
   return res.status(201).json({ id, title: input.title, body: input.body, active: input.active });
 }));
 
@@ -350,6 +352,7 @@ router.delete('/announcement', asyncHandler(async (req: Request, res: Response) 
   await prisma.systemSettings.updateMany({ where: { key: 'platform_announcement_active' }, data: { value: 'false' } });
   await prisma.adminAuditLog.create({ data: { adminId: req.auth?.sub ?? 'unknown', action: 'clear_platform_announcement', targetType: 'platform_announcement', tenantId: null } });
   platformAnnouncementNotifier?.({ id: '', title: '', body: '' });
+  broadcastAdmin({ type: 'platform_announcement_cleared' });
   return res.status(204).send();
 }));
 
