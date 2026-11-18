@@ -24,6 +24,7 @@ import '../ui/components/surface.dart';
 import '../ui/layout/page.dart';
 import '../utils/money.dart';
 import '../services/backend_service.dart';
+import '../services/tax_export_service.dart';
 
 /// Tax and receipt-numbering configuration.
 ///
@@ -875,6 +876,12 @@ class TaxSettingsPanel extends StatelessWidget {
                   title: 'Registered obligations',
                   subtitle: taxEntity!.obligations.join(', '),
                 ),
+              const SettingsInfoRow(
+                icon: Icons.pause_circle_outline,
+                title: 'Live filing: suspended',
+                subtitle:
+                    'KRA filing is disabled until the backend Risiti vars are configured. Figures below are local evidence only — double-check before any manual submission.',
+              ),
               ...?taxEntity?.conditionalObligations.map(
                 (obligation) => SettingsInfoRow(
                   icon: obligation.status ==
@@ -938,6 +945,24 @@ class TaxSettingsPanel extends StatelessWidget {
                   subtitle:
                       '${taxEntity!.etimsQueue!.issued} issued · ${taxEntity!.etimsQueue!.pending} pending · ${taxEntity!.etimsQueue!.rejected} rejected · ${taxEntity!.etimsQueue!.status}',
                 ),
+              Padding(
+                padding: const EdgeInsets.symmetric(vertical: 8),
+                child: FilledButton.icon(
+                  onPressed: () async {
+                    final path = await TaxExportService.exportVatReturnCsv(
+                      from: DateTime.now().subtract(const Duration(days: 30)),
+                      to: DateTime.now(),
+                    );
+                    if (!context.mounted) return;
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      SnackBar(content: Text('Exported to $path')),
+                    );
+                  },
+                  icon: const Icon(Icons.download_outlined),
+                  label: const Text(
+                      'Export VAT return (CSV) — local figures only, double-check before filing'),
+                ),
+              ),
               if (taxEntity != null && taxEntity!.kraPinSet)
                 SettingsInfoRow(
                   icon: Icons.verified_outlined,
