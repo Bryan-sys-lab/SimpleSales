@@ -52,6 +52,7 @@ router.patch('/tenants/:tenantId/settings', asyncHandler(async (req: Request, re
     ...(input.etimsEnabled !== undefined && { etimsEnabled: input.etimsEnabled }),
     ...(input.payheroChannelId !== undefined && { payheroChannelId: input.payheroChannelId }),
   } });
+  await prisma.adminAuditLog.create({ data: { adminId: (req as any).auth?.sub ?? 'unknown', action: 'update_tenant_settings', targetType: 'tenant', targetId: tenantId, tenantId } });
   res.json({ id: tenant.id, mpesaEnabled: tenant.mpesaEnabled, etimsEnabled: tenant.etimsEnabled });
 }));
 

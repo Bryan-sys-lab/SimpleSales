@@ -1061,4 +1061,85 @@ router.get(
   })
 );
 
+
+// Cross-shop aggregated product catalog (deduplicated by name + category).
+// System admin only; tenant identifiers are stripped from the response to
+// avoid leaking which shop stocks what.
+router.get('/products', asyncHandler(async (_req: Request, res: Response) => {
+  const rows = await prisma.product.findMany({
+    where: { active: true },
+    select: { name: true, category: true, sellPrice: true, stockQty: true, tenantId: true },
+  });
+  const map = new Map<string, { name: string; category: string; shops: Set<string>; minPrice: number; maxPrice: number; totalStock: number }>();
+  for (const r of rows) {
+    const key = `${r.name}::${r.category}`;
+    const entry = map.get(key) ?? { name: r.name, category: r.category, shops: new Set(), minPrice: Number(r.sellPrice), maxPrice: Number(r.sellPrice), totalStock: 0 };
+    entry.shops.add(r.tenantId);
+    entry.minPrice = Math.min(entry.minPrice, Number(r.sellPrice));
+    entry.maxPrice = Math.max(entry.maxPrice, Number(r.sellPrice));
+    entry.totalStock += Number(r.stockQty);
+    map.set(key, entry);
+  }
+  const products = [...map.values()].map((e) => ({
+    key: `${e.name}::${e.category}`,
+    name: e.name,
+    category: e.category,
+    shops: e.shops.size,
+    minPrice: Math.round(e.minPrice * 100),
+    maxPrice: Math.round(e.maxPrice * 100),
+    totalStock: e.totalStock,
+  }));
+  return res.json({ products, total: products.length });
+}));
+
+
+// Aggregated expenses across all tenants (from synced operational records).
+router.get('/expenses', asyncHandler(async (_req: Request, res: Response) => {
+  const rows = await prisma.syncRecord.findMany({
+    where: { kind: 'expenses', deviceId: 'admin' },
+    orderBy: { createdAt: 'desc' },
+    take: 500,
+    select: { id: true, tenantId: true, payload: true, createdAt: true },
+  });
+  const items = rows.map((r) => {
+    const p = (r.payload ?? {}) as Record<string, unknown>;
+    return {
+      id: r.id,
+      tenantId: r.tenantId,
+      category: (p['category'] as string) ?? 'General',
+      description: (p['description'] as string) ?? (p['note'] as string) ?? 'Expense',
+      amount: Number(p['amount'] ?? p['amountMinor'] ?? 0),
+      date: r.createdAt.toISOString(),
+    };
+  });
+  return res.json({ items });
+}));
+
+// Create a manual expense entry (app/infra costs) recorded by a system admin.
+router.post('/expenses', asyncHandler(async (req: Request, res: Response) => {
+  const input = (req.body ?? {}) as { category?: string; description?: string; amount?: number };
+  const tenantId = (req as any).user?.tenantId ?? (process.env.SYSTEM_ADMIN_DEFAULT_TENANT ?? '');
+  // Admin-entered expenses are stored under a synthetic tenant-less record by
+  // using the first available tenant; if none, skip persistence but still audit.
+  const tenant = tenantId
+    ? await prisma.tenant.findUnique({ where: { id: tenantId } })
+    : await prisma.tenant.findFirst();
+  if (!tenant) {
+    await prisma.adminAuditLog.create({ data: { adminId: (req as any).auth?.sub ?? 'unknown', action: 'add_expense', targetType: 'expense', targetId: null, tenantId: null } });
+    return res.status(201).json({ ok: true });
+  }
+  const record = await prisma.syncRecord.create({
+    data: {
+      tenantId: tenant.id,
+      kind: 'expenses',
+      deviceId: 'admin',
+      localId: Date.now(),
+      createdAt: new Date(),
+      payload: { category: input.category ?? 'General', description: input.description ?? 'Expense', amount: input.amount ?? 0 },
+    },
+  });
+  await prisma.adminAuditLog.create({ data: { adminId: (req as any).auth?.sub ?? 'unknown', action: 'add_expense', targetType: 'expense', targetId: record.id, tenantId: tenant.id } });
+  return res.status(201).json({ ok: true, id: record.id });
+}));
+
 export default router;
