@@ -254,10 +254,21 @@ class BackendService {
 
   static bool _initialized = false;
   static final Dio _dio = Dio(BaseOptions(
-    connectTimeout: const Duration(seconds: 10),
-    sendTimeout: const Duration(seconds: 15),
-    receiveTimeout: const Duration(seconds: 20),
+    connectTimeout: const Duration(seconds: 15),
+    sendTimeout: const Duration(seconds: 20),
+    receiveTimeout: const Duration(seconds: 30),
   ));
+
+  static bool _isRetryable(DioException e) {
+    if (e.type == DioExceptionType.connectionTimeout ||
+        e.type == DioExceptionType.sendTimeout ||
+        e.type == DioExceptionType.receiveTimeout ||
+        e.type == DioExceptionType.connectionError) {
+      return true;
+    }
+    final status = e.response?.statusCode;
+    return status != null && (status == 502 || status == 503 || status == 504 || status >= 500);
+  }
 
   static SharedPreferences? _prefs;
 
@@ -358,6 +369,26 @@ class BackendService {
           'https:// for any non-local deployment.');
     }
 
+    // Retry transient failures (cold starts, 5xx) with exponential backoff.
+    _dio.interceptors.add(InterceptorsWrapper(
+      onError: (error, handler) async {
+        final opts = error.requestOptions;
+        final retries = (opts.extra['coldRetry'] as int?) ?? 0;
+        if (retries < 3 && _isRetryable(error)) {
+          opts.extra['coldRetry'] = retries + 1;
+          await Future.delayed(Duration(seconds: 1 << retries));
+          try {
+            final response = await _dio.fetch(opts);
+            return handler.resolve(response);
+          } catch (e) {
+            return handler.next(e is DioException
+                ? e
+                : DioException(requestOptions: opts, error: e));
+          }
+        }
+        return handler.next(error);
+      },
+    ));
     _dio.interceptors.add(InterceptorsWrapper(
       onRequest: (options, handler) async {
         // Presigned R2 uploads are external to the API origin. They must not
