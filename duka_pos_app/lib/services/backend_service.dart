@@ -254,9 +254,9 @@ class BackendService {
 
   static bool _initialized = false;
   static final Dio _dio = Dio(BaseOptions(
-    connectTimeout: const Duration(seconds: 15),
-    sendTimeout: const Duration(seconds: 20),
-    receiveTimeout: const Duration(seconds: 30),
+    connectTimeout: const Duration(minutes: 1),
+    sendTimeout: const Duration(minutes: 1),
+    receiveTimeout: const Duration(minutes: 1),
   ));
 
   static bool _isRetryable(DioException e) {
@@ -376,7 +376,7 @@ class BackendService {
         final retries = (opts.extra['coldRetry'] as int?) ?? 0;
         if (retries < 3 && _isRetryable(error)) {
           opts.extra['coldRetry'] = retries + 1;
-          await Future.delayed(Duration(seconds: 1 << retries));
+          await Future.delayed(Duration(seconds: (1 << retries) * 5));
           try {
             final response = await _dio.fetch(opts);
             return handler.resolve(response);
