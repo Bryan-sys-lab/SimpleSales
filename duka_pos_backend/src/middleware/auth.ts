@@ -187,6 +187,9 @@ export const requireRole = (...roles: string[]) => (req: express.Request, res: e
 };
 
 export const systemAdminMiddleware = async (req: express.Request, res: express.Response, next: express.NextFunction) => {
+  // Admin auth endpoints (login, mint) are handled by a separate router and
+  // must not be blocked by this middleware.
+  if (req.path.startsWith('/auth/') || req.path === '/auth') return next();
   const allowed = (process.env.SYSTEM_ADMIN_SUBJECTS ?? '').split(',').map((v) => v.trim()).filter(Boolean);
   // Open mode: when no subjects are configured, allow unauthenticated admin
   // access so the admin panel can read live data without an IdP. Set
