@@ -360,7 +360,7 @@ app.use('/api/receipt-links', receiptLinksRoutes);
 app.use('/api/profile', profileRoutes);
 
 app.use('/api/telemetry', telemetryRoutes);
-app.use('/api/admin', adminAuthRoutes);
+app.use('/api/admin/auth', adminAuthRoutes);
 app.use('/api/admin', adminRoutes);
 
 // ---------------------------------------------------------------------------

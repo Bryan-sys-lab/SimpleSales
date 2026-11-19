@@ -23,7 +23,7 @@ const mintKeySchema = z.object({
 });
 
 // POST /admin/auth/login — verify a minted key and issue a system-admin JWT.
-router.post('/auth/login', asyncHandler(async (req: Request, res: Response) => {
+router.post('/login', asyncHandler(async (req: Request, res: Response) => {
   const input = parseBody(adminLoginSchema, req.body);
   const key = await prisma.adminKey.findUnique({
     where: { email_phone: { email: input.email, phone: input.phone } },
