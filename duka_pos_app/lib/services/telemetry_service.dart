@@ -24,6 +24,9 @@ import 'dart:async';
 import 'dart:convert';
 
 import 'package:flutter/foundation.dart';
+import 'backend_service.dart';
+import 'identity_service.dart';
+import 'workspace_service.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 /// The most recent telemetry events are kept. Older ones are dropped on write,
@@ -194,6 +197,8 @@ class TelemetryService extends ChangeNotifier {
     // ignore: unawaited_futures
     _persistInt(_kTotalSessions, _totalSessions);
     record(name: 'app_open', route: route);
+    // ignore: unawaited_futures
+    syncChurnSnapshot();
   }
 
   /// Record that the app was closed or backgrounded.
@@ -331,6 +336,53 @@ class TelemetryService extends ChangeNotifier {
   Future<void> _persistString(String key, String value) async {
     final prefs = await _prefsFuture;
     await prefs.setString(key, value);
+  }
+
+  /// Compute a churn snapshot from local telemetry and push it to the backend
+  /// so the admin panel can surface drop reasons. Never throws.
+  Future<void> syncChurnSnapshot() async {
+    try {
+      final token = await IdentityService.accessToken;
+      final tenantId = await WorkspaceService.activeTenantId();
+      if (token == null || tenantId == null) return;
+
+      final now = DateTime.now();
+      final today = DateTime(now.year, now.month, now.day);
+      final lastActive = _lastActiveDate;
+      final daysSince = lastActive == null
+          ? 0
+          : today.difference(lastActive).inDays;
+      final streak = _streakCount;
+      final sessions = _totalSessions;
+
+      // Risk heuristic: based on days since last active + streak.
+      String risk = 'none';
+      double score = 0.0;
+      if (daysSince >= 14) {
+        risk = 'high';
+        score = 0.9;
+      } else if (daysSince >= 7) {
+        risk = 'medium';
+        score = 0.6;
+      } else if (daysSince >= 3) {
+        risk = 'low';
+        score = 0.3;
+      }
+
+      await BackendService.postChurnSnapshot(
+        token: token,
+        tenantId: tenantId,
+        deviceId: 'till',
+        date: today,
+        streakDays: streak,
+        daysSinceLastActive: daysSince,
+        totalSessions: sessions,
+        risk: risk,
+        score: score,
+      );
+    } catch (e) {
+      debugPrint('Churn sync failed: $e');
+    }
   }
 
   DateTime? _parseDate(String? value) {
