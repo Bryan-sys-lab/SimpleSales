@@ -41,6 +41,7 @@ import etimsRoutes from './routes/etims';
 import profileRoutes from './routes/profile';
 import telemetryRoutes from './routes/telemetry';
 import adminRoutes from './routes/admin';
+import adminAuthRoutes from './routes/admin_auth';
 import { setPlatformAnnouncementNotifier } from './routes/admin';
 import salesRoutes from './routes/sales';
 import backupRoutes from './routes/backup';
@@ -359,6 +360,7 @@ app.use('/api/receipt-links', receiptLinksRoutes);
 app.use('/api/profile', profileRoutes);
 
 app.use('/api/telemetry', telemetryRoutes);
+app.use('/api/admin', adminAuthRoutes);
 app.use('/api/admin', adminRoutes);
 
 // ---------------------------------------------------------------------------

@@ -200,7 +200,15 @@ export const systemAdminMiddleware = async (req: express.Request, res: express.R
   if (!token) return res.status(401).json({ error: 'Missing bearer token', requestId: req.requestId });
   const claims = verifyAccessToken(token);
   if (!claims) return res.status(401).json({ error: 'Invalid or expired token', requestId: req.requestId });
-  if (!allowed.includes(claims.sub)) {
+  // Accept minted admin keys (sub: admin:<keyId>) in addition to the
+  // configured subject allowlist.
+  if (claims.sub.startsWith('admin:')) {
+    const keyId = claims.sub.slice('admin:'.length);
+    const key = await prisma.adminKey.findUnique({ where: { id: keyId } });
+    if (!key || key.revokedAt || key.expiresAt < new Date()) {
+      return res.status(403).json({ error: 'System administrator access required', requestId: req.requestId });
+    }
+  } else if (!allowed.includes(claims.sub)) {
     return res.status(403).json({ error: 'System administrator access required', requestId: req.requestId });
   }
   req.auth = { sub: claims.sub, email: claims.email, email_verified: claims.email_verified, token_use: claims.token_use };
