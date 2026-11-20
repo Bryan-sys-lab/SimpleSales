@@ -1,9 +1,4 @@
-import { getToken, removeToken } from './auth';
-
-const API_URL =
-  typeof process !== 'undefined' && process.env.NEXT_PUBLIC_API_URL
-    ? process.env.NEXT_PUBLIC_API_URL
-    : 'http://localhost:3100';
+const API_URL = '';
 
 class ApiError extends Error {
   status: number;
@@ -18,16 +13,13 @@ export async function fetchJson<T = unknown>(
   path: string,
   options: RequestInit = {},
 ): Promise<T> {
-  const token = getToken();
   const headers: Record<string, string> = {
     'Content-Type': 'application/json',
     ...(options.headers as Record<string, string> | undefined),
   };
-  if (token) headers.Authorization = `Bearer ${token}`;
-
   let res: Response;
   try {
-    res = await fetch(`${API_URL}${path}`, { ...options, headers });
+    res = await fetch(`${API_URL}${path}`, { ...options, headers, credentials: 'same-origin', cache: 'no-store' });
   } catch (err) {
     throw new ApiError(
       err instanceof Error ? err.message : 'Network request failed',
@@ -50,6 +42,7 @@ export async function fetchJson<T = unknown>(
   }
 
   if (!res.ok) {
+    if (res.status === 401 && typeof window !== 'undefined') window.location.assign('/login');
     const message =
       body && typeof body === 'object' && 'error' in body
         ? String((body as { error?: unknown }).error)

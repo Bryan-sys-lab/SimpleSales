@@ -12,7 +12,9 @@ const NAV_ITEMS: import('./nav').NavItem[] = [
   { href: '/sales', label: 'Sales', icon: 'sales' },
   { href: '/sessions', label: 'Sessions', icon: 'sessions' },
   { href: '/tenants', label: 'Tenants', icon: 'tenants' },
-  { href: '/users', label: 'Verified users', icon: 'sessions' },
+  { href: '/users', label: 'Shop users', icon: 'sessions' },
+  { href: '/admins', label: 'Admin access', icon: 'audit' },
+  { href: '/tasks', label: 'Team tasks', icon: 'support' },
   { href: '/products', label: 'Products (all shops)', icon: 'sales' },
   { href: '/billing', label: 'Billing & access', icon: 'billing' },
   { href: '/financials', label: 'Revenue & costs', icon: 'dashboard' },
@@ -26,15 +28,50 @@ const NAV_ITEMS: import('./nav').NavItem[] = [
   { href: '/announcements', label: 'Announcements', icon: 'support' },
 ];
 
-const MOBILE_PRIMARY = ['/dashboard', '/tenants', '/products', '/billing'];
+const MOBILE_PRIMARY = ['/dashboard', '/tenants', '/admins', '/tasks'];
+const NAV_SCOPE: Record<string, string> = {
+  '/dashboard':'analytics:read','/churn':'analytics:read','/sales':'analytics:read','/sessions':'sessions:read',
+  '/tenants':'tenants:read','/users':'users:read','/admins':'keys:read','/tasks':'tasks:read','/products':'analytics:read',
+  '/billing':'configuration:read','/financials':'analytics:read','/expenses':'analytics:read',
+  '/commercial-policy':'commercial:read','/commercial-ledger':'commercial:read','/commercial-quality':'commercial:read',
+  '/support':'support:read','/audit':'audit:read','/diagnostics':'diagnostics:read','/announcements':'configuration:read',
+};
+type AdminAccess = { email: string; role: string; department: string; permissions: string[]; canRecruit: boolean; canMintKeys: boolean; canAssignTasks: boolean };
+export function useAdminAccess() {
+  const [access, setAccess] = useState<AdminAccess | null>(null);
+  useEffect(() => {
+    let active = true;
+    fetch('/api/admin/auth/session', { credentials: 'same-origin', cache: 'no-store' })
+      .then(response => response.ok ? response.json() as Promise<AdminAccess> : Promise.reject(new Error('Access unavailable')))
+      .then(info => { if (active) setAccess(info); })
+      .catch(() => undefined);
+    return () => { active = false; };
+  }, []);
+  const can = (permission: string) => access?.role === 'super_admin' || Boolean(access?.permissions.includes(permission));
+  return { access, can };
+}
 
 export function ShellLayout({ children }: { children: React.ReactNode }) {
   const [moreOpen, setMoreOpen] = useState(false);
+  const [access, setAccess] = useState<AdminAccess | null>(null);
   const pathname = usePathname();
   const router = useRouter();
 
-  const handleSignOut = () => {
-    removeToken();
+  useEffect(() => {
+    let active = true;
+    fetch('/api/admin/auth/session', { credentials: 'same-origin', cache: 'no-store' }).then(async response => {
+      if (!response.ok) throw new Error('Session expired');
+      const info = await response.json() as AdminAccess;
+      if (active) setAccess(info);
+    }).catch(() => { if (active) router.replace('/login'); });
+    return () => { active = false; };
+  }, [router]);
+
+  const can = (permission: string) => access?.role === 'super_admin' || Boolean(access?.permissions.includes(permission));
+  const visibleItems = access ? NAV_ITEMS.filter(item => access.role === 'super_admin' || can(NAV_SCOPE[item.href])) : [];
+
+  const handleSignOut = async () => {
+    await removeToken();
     router.push('/login');
   };
 
@@ -42,8 +79,24 @@ export function ShellLayout({ children }: { children: React.ReactNode }) {
     setMoreOpen(false);
   }, [pathname]);
 
-  const primaryItems = NAV_ITEMS.filter((i) => MOBILE_PRIMARY.includes(i.href));
-  const moreItems = NAV_ITEMS.filter((i) => !MOBILE_PRIMARY.includes(i.href));
+  useEffect(() => {
+    if (!moreOpen) return;
+    const closeOnEscape = (event: KeyboardEvent) => { if (event.key === 'Escape') setMoreOpen(false); };
+    window.addEventListener('keydown', closeOnEscape);
+    return () => window.removeEventListener('keydown', closeOnEscape);
+  }, [moreOpen]);
+
+  const primaryItems = visibleItems.filter((i) => MOBILE_PRIMARY.includes(i.href));
+  const moreItems = visibleItems.filter((i) => !MOBILE_PRIMARY.includes(i.href));
+
+  useEffect(() => {
+    if (!access || !pathname || access.role === 'super_admin') return;
+    const required = NAV_SCOPE[pathname] ?? (pathname.startsWith('/tenants/') ? 'tenants:read' : undefined);
+    if (required && !access.permissions.includes(required)) {
+      const fallback = NAV_ITEMS.find((item) => access.permissions.includes(NAV_SCOPE[item.href]));
+      router.replace(fallback?.href ?? '/login');
+    }
+  }, [access, pathname, router]);
 
   return (
     <div className="min-h-screen bg-base-50 text-base-900">
@@ -62,7 +115,7 @@ export function ShellLayout({ children }: { children: React.ReactNode }) {
           </div>
           {/* Desktop horizontal nav (scrollable) */}
           <nav className="hidden md:flex items-center gap-0.5 flex-1 min-w-0 overflow-x-auto scrollbar-thin">
-            <Nav items={NAV_ITEMS} pathname={pathname} horizontal />
+            <Nav items={visibleItems} pathname={pathname} horizontal />
           </nav>
           <ThemeToggle />
           <button
@@ -80,6 +133,7 @@ export function ShellLayout({ children }: { children: React.ReactNode }) {
         <ul className="flex items-stretch justify-around">
           {primaryItems.map((item) => {
             const active = pathname === item.href;
+            const mobileLabel: Record<string, string> = { '/dashboard': 'Home', '/tenants': 'Shops', '/admins': 'Admins', '/tasks': 'Tasks' };
             return (
               <li key={item.href} className="flex-1">
                 <a
@@ -87,30 +141,32 @@ export function ShellLayout({ children }: { children: React.ReactNode }) {
                   className={`flex flex-col items-center justify-center py-2 text-[10px] font-medium ${active ? 'text-accent-700' : 'text-base-500'}`}
                 >
                   <span className="mb-0.5 w-5 h-5">{ICONS[item.icon]}</span>
-                  {item.label.split(' ')[0]}
+                  {mobileLabel[item.href] ?? item.label.split(' ')[0]}
                 </a>
               </li>
             );
           })}
-          <li className="flex-1">
+          {moreItems.length > 0 && <li className="flex-1">
             <button
               onClick={() => setMoreOpen(true)}
+              aria-haspopup="dialog"
+              aria-expanded={moreOpen}
               className="w-full flex flex-col items-center justify-center py-2 text-[11px] font-medium text-base-500"
             >
               More
             </button>
-          </li>
+          </li>}
         </ul>
       </nav>
 
       {/* More sheet */}
       {moreOpen && (
         <div className="md:hidden fixed inset-0 z-50">
-          <div className="absolute inset-0 bg-base-900/40" onClick={() => setMoreOpen(false)} />
-          <div className="absolute bottom-0 inset-x-0 bg-white rounded-t-2xl p-4 max-h-[70vh] overflow-y-auto">
+          <button className="absolute inset-0 bg-base-900/40" onClick={() => setMoreOpen(false)} aria-label="Close navigation" />
+          <div role="dialog" aria-modal="true" aria-labelledby="more-navigation-title" className="absolute bottom-0 inset-x-0 bg-white rounded-t-2xl p-4 pb-8 max-h-[80vh] overflow-y-auto">
             <div className="flex items-center justify-between mb-3">
-              <h3 className="font-semibold">More</h3>
-              <button onClick={() => setMoreOpen(false)} className="text-base-500">✕</button>
+              <h3 id="more-navigation-title" className="font-semibold">More sections</h3>
+              <button onClick={() => setMoreOpen(false)} className="min-h-11 min-w-11 rounded-md text-base-600 hover:bg-base-100" aria-label="Close navigation">✕</button>
             </div>
             <Nav items={moreItems} pathname={pathname} />
           </div>

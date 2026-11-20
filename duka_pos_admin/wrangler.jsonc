@@ -3,12 +3,24 @@
   "name": "analytics",
   "main": "dist/server/index.js",
   "compatibility_date": "2026-11-17",
-  "compatibility_flags": ["nodejs_compat"],
+  "compatibility_flags": [
+    "nodejs_compat"
+  ],
   "workers_dev": true,
   "assets": {
     "directory": "./dist/client",
     "binding": "ASSETS"
   },
-  "routes": [ { "pattern": "simpleranalytics.nerva.co.ke", "custom_domain": true } ],
-  "observability": { "enabled": true }
+  "routes": [
+    {
+      "pattern": "simpleranalytics.nerva.co.ke",
+      "custom_domain": true
+    }
+  ],
+  "observability": {
+    "enabled": true
+  },
+  "vars": {
+    "ADMIN_BACKEND_URL": "https://duka-pos-backend.brianbmk332.workers.dev"
+  }
 }

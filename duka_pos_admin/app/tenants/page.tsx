@@ -3,10 +3,12 @@
 import { useCallback, useEffect, useState } from 'react';
 import { fetchJson } from '@/lib/api';
 import { Tenant } from '@/lib/types';
-import { ShellLayout } from '@/components/layout';
+import { ShellLayout, useAdminAccess } from '@/components/layout';
 import { DataTable } from '@/components/data-table';
+import Link from 'next/link';
 
 export default function TenantsPage() {
+  const { can } = useAdminAccess(); const canManageTenants = can('tenants:manage');
   const [data, setData] = useState<Tenant[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -26,9 +28,9 @@ export default function TenantsPage() {
 
   useEffect(() => { load(); }, [load]);
 
-  const act = async (id: string, action: 'activate' | 'deactivate' | 'delete') => {
+  const act = async (id: string, setting: 'mpesaEnabled' | 'etimsEnabled', value: boolean) => {
     try {
-      await fetchJson(`/api/admin/tenants/${encodeURIComponent(id)}/${action}`, { method: 'POST' });
+      await fetchJson(`/api/system/tenants/${encodeURIComponent(id)}/settings`, { method: 'PATCH', body: JSON.stringify({ [setting]: value }) });
       await load();
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Action failed');
@@ -55,8 +57,10 @@ export default function TenantsPage() {
             { key: 'admin', label: 'Admin' },
             { key: '_count.profiles', label: 'Active profiles', sortable: true, align: 'right' },
             { key: '_count.sales', label: 'Total sales', sortable: true, align: 'right' },
-            { key: 'settings', label: 'Settings' },
-            { key: 'actions', label: 'Actions' },
+            { key: 'mpesaEnabled', label: 'M-Pesa' },
+            { key: 'etimsEnabled', label: 'eTIMS' },
+            { key: 'businessContext', label: 'Business details' },
+            ...(canManageTenants ? [{ key: 'actions', label: 'Controls' }] : []),
           ]}
           data={data}
           rowKey={(t) => t.id}
@@ -65,22 +69,14 @@ export default function TenantsPage() {
             if (key === 'admin') return <span className="text-base-900">{row.admin ?? '—'}</span>;
             if (key === '_count.profiles') return <span className="font-mono tabular-nums text-base-900">{row._count?.profiles ?? 0}</span>;
             if (key === '_count.sales') return <span className="font-mono tabular-nums text-base-900">{row._count?.sales ?? 0}</span>;
-            if (key === 'settings') {
-              const s = row.settings ?? {};
-              return (
-                <span className="text-xs flex gap-1">
-                  {s.mpesa ? <span className="rounded bg-emerald-50 px-1.5 py-0.5 text-emerald-700">M-Pesa</span> : null}
-                  {s.etims ? <span className="rounded bg-blue-50 px-1.5 py-0.5 text-blue-700">eTIMS</span> : null}
-                  {s.payhero ? <span className="rounded bg-amber-50 px-1.5 py-0.5 text-amber-700">PayHero</span> : null}
-                  {!s.mpesa && !s.etims && !s.payhero && <span className="text-base-400">—</span>}
-                </span>
-              );
-            }
+            if (key === 'mpesaEnabled') return <span className={`badge ${(row as any).mpesaEnabled ? 'badge-none' : 'badge-high'}`}>{(row as any).mpesaEnabled ? 'On' : 'Off'}</span>;
+            if (key === 'etimsEnabled') return <span className={`badge ${(row as any).etimsEnabled ? 'badge-none' : 'badge-high'}`}>{(row as any).etimsEnabled ? 'On' : 'Off'}</span>;
+            if (key === 'businessContext') return <Link className="button-secondary inline-flex min-h-11 items-center" href={`/tenants/${encodeURIComponent(row.id)}/business-context`} onClick={(e) => e.stopPropagation()}>View details</Link>;
             if (key === 'actions') {
               return (
-                <div className="flex gap-1">
-                  <button className="button-secondary text-xs" onClick={() => act(row.id, 'deactivate')}>Deactivate</button>
-                  <button className="button-secondary text-xs" onClick={() => act(row.id, 'delete')}>Delete</button>
+                <div className="flex flex-wrap gap-1">
+                  <button className="button-secondary min-h-10 text-xs" onClick={(e) => { e.stopPropagation(); void act(row.id, 'mpesaEnabled', !(row as any).mpesaEnabled); }}>{(row as any).mpesaEnabled ? 'Turn M-Pesa off' : 'Turn M-Pesa on'}</button>
+                  <button className="button-secondary min-h-10 text-xs" onClick={(e) => { e.stopPropagation(); void act(row.id, 'etimsEnabled', !(row as any).etimsEnabled); }}>{(row as any).etimsEnabled ? 'Turn eTIMS off' : 'Turn eTIMS on'}</button>
                 </div>
               );
             }

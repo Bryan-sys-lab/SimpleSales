@@ -1,10 +1,11 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { fetchJson } from '@/lib/api';
-import { DeviceDiagnostic, DeviceDiagnosticQuery, DeviceCrashEntry } from '@/lib/types';
+import { DeviceDiagnostic } from '@/lib/types';
 import { ShellLayout } from '@/components/layout';
 import { DataTable } from '@/components/data-table';
+import { useWebSocket } from '@/components/websocket-provider';
 
 type DiagnosticsListItem = {
   id: string;
@@ -29,48 +30,32 @@ export default function DiagnosticsPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [selected, setSelected] = useState<DeviceDiagnostic | null>(null);
+  const { subscribe } = useWebSocket();
+
+  const load = useCallback(async () => {
+      try {
+        const res = await fetchJson<{ diagnostics: DeviceDiagnostic[] }>('/api/admin/diagnostics?limit=100');
+        setItems(res.diagnostics.map((d) => ({
+          id: d.id, deviceId: d.deviceId, tenantName: d.tenant?.shopName ?? '(unlinked)',
+          platform: d.platform, osVersion: d.osVersion, appVersion: d.appVersion,
+          buildNumber: d.buildNumber, locale: d.locale, manufacturer: d.manufacturer,
+          model: d.model, crashCount: d.crashCount, errorCount: d.errorCount,
+          warningCount: d.warningCount, firstSeen: d.firstSeen, lastSeen: d.lastSeen,
+        })));
+        setError(null);
+      } catch (err) {
+        setError(err instanceof Error ? err.message : 'Failed to load diagnostics');
+      } finally { setLoading(false); }
+  }, []);
 
   useEffect(() => {
-    let cancelled = false;
-    (async () => {
-      try {
-        const res = await fetchJson<{ diagnostics: DeviceDiagnostic[] }>(
-          '/api/admin/diagnostics?limit=100',
-        );
-        if (!cancelled) {
-          setItems(
-            res.diagnostics.map((d) => ({
-              id: d.id,
-              deviceId: d.deviceId,
-              tenantName: d.tenant?.shopName ?? '(unlinked)',
-              platform: d.platform,
-              osVersion: d.osVersion,
-              appVersion: d.appVersion,
-              buildNumber: d.buildNumber,
-              locale: d.locale,
-              manufacturer: d.manufacturer,
-              model: d.model,
-              crashCount: d.crashCount,
-              errorCount: d.errorCount,
-              warningCount: d.warningCount,
-              firstSeen: d.firstSeen,
-              lastSeen: d.lastSeen,
-            })),
-          );
-        }
-      } catch (err) {
-        if (!cancelled)
-          setError(
-            err instanceof Error ? err.message : 'Failed to load diagnostics',
-          );
-      } finally {
-        if (!cancelled) setLoading(false);
-      }
-    })();
-    return () => {
-      cancelled = true;
-    };
-  }, []);
+    void load();
+    const unsubscribe = subscribe((message) => {
+      if (message && typeof message === 'object' && (message as { type?: unknown }).type === 'device_diagnostic_reported') void load();
+    });
+    const interval = setInterval(() => void load(), 30000);
+    return () => { unsubscribe(); clearInterval(interval); };
+  }, [load, subscribe]);
 
   async function openDiagnostic(id: string) {
     try {
@@ -90,6 +75,7 @@ export default function DiagnosticsPage() {
     error: 'bg-amber-50 text-amber-800 border-amber-100',
     warning: 'bg-blue-50 text-blue-800 border-blue-100',
   };
+  const selectedEntries = selected?.crashes ?? selected?.recentCrashes ?? [];
 
   return (
     <ShellLayout>
@@ -147,11 +133,7 @@ export default function DiagnosticsPage() {
                 }
                 if (key === 'platform') {
                   return (
-                    <span
-                      className={`inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium ${kindColors[String(value)] ?? 'bg-base-200 text-base-600'}`}
-                    >
-                        {String(value)}
-                    </span>
+                    <span className="badge border-base-200 bg-base-100 text-base-700">{String(value)}</span>
                   );
                 }
                 return (
@@ -232,13 +214,13 @@ export default function DiagnosticsPage() {
               <h3 className="px-4 py-3 text-xs font-semibold text-base-600 uppercase tracking-wider border-b border-base-200">
                 Failure entries
               </h3>
-              {(selected.recentCrashes ?? []).length === 0 ? (
+              {selectedEntries.length === 0 ? (
                 <div className="p-4 text-sm text-base-400 text-center">
                   No failure entries recorded.
                 </div>
               ) : (
                 <div className="divide-y divide-base-200">
-                  {(selected.recentCrashes ?? []).map((entry) => (
+                  {selectedEntries.map((entry) => (
                     <div key={entry.id} className="p-4">
                       <div className="flex items-start gap-3 mb-1">
                         <span
@@ -259,12 +241,12 @@ export default function DiagnosticsPage() {
                         </div>
                       )}
                       {entry.breadcrumbs && (
-                        <div className="text-xs text-base-500 mb-2">
+                        <div className="whitespace-pre-wrap break-words text-xs text-base-600 mb-2">
                           trail: {entry.breadcrumbs}
                         </div>
                       )}
                       {entry.stack && (
-                        <div className="text-xs font-mono text-base-500 mt-1 max-h-32 overflow-y-auto">
+                        <div className="whitespace-pre-wrap break-words text-xs font-mono text-base-600 mt-1 max-h-48 overflow-y-auto">
                           {entry.stack}
                         </div>
                       )}

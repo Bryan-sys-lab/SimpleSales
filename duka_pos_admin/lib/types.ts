@@ -120,8 +120,10 @@ export type AppSession = {
   id: string;
   tenantId: string;
   tenant?: { id: string; shopName: string };
-  device?: string | null;
+  deviceId?: string | null;
+  eventCount: number;
   createdAt: string;
+  lastActivityAt: string;
   expiresAt: string;
 };
 
@@ -184,6 +186,7 @@ export type DeviceDiagnostic = {
   firstSeen: string;
   lastSeen: string;
   recentCrashes?: DeviceCrashEntry[];
+  crashes?: DeviceCrashEntry[];
 };
 
 /// One failure entry inside a device diagnostic report.
