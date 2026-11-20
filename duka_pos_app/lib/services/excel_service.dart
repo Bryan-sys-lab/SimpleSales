@@ -205,8 +205,7 @@ class ExcelService {
   /// transferred back as a workbook object — only plain lists of primitive
   /// values come across, which is what keeps the import from killing the app
   /// on memory-constrained phones.
-  static Map<String, List<List<dynamic>>> _decodeWorkbookSync(
-      List<int> bytes) {
+  static Map<String, List<List<dynamic>>> _decodeWorkbookSync(List<int> bytes) {
     final book = xl.Excel.decodeBytes(bytes);
     if (book.tables.isEmpty) {
       throw ArgumentError('The workbook has no worksheets');
@@ -469,13 +468,17 @@ class ExcelService {
       throw UnreadableLayoutException(layout.refusal!);
     }
     final importer = InventoryImporter(_db);
+    final profile = await _db.getShopProfile();
     return importer.apply(
       source: 'excel',
       sheetName: sheetName,
       rows: layout.rows,
       columns: layout.columns,
       barcodes: readBarcodeRows(_rawRowsOf(sheets, barcodesSheetName)),
-      variants: readVariantRows(_rawRowsOf(sheets, variantsSheetName)),
+      variants: readVariantRows(
+        _rawRowsOf(sheets, variantsSheetName),
+        profile: profile,
+      ),
       skippedSheets: _skippedSheets(sheets),
       onProgress: onProgress,
     );
@@ -506,8 +509,7 @@ class ExcelService {
   /// separately by name, and a file that has them would otherwise have its
   /// barcode list chosen as the product list because it is shorter and its
   /// header maps cleanly.
-  static String _inventorySheetName(
-      Map<String, List<List<dynamic>>> sheets) {
+  static String _inventorySheetName(Map<String, List<List<dynamic>>> sheets) {
     for (final name in sheets.keys) {
       if (name.trim().toLowerCase() == inventorySheetName.toLowerCase()) {
         return name;
@@ -559,8 +561,8 @@ class ExcelService {
   /// [skipEmptySheets] drops `Sheet1`-style defaults, which are absent from the
   /// file the owner actually sees and would otherwise be listed as ignored
   /// content they never knew was there.
-  List<String> _skippedSheets(
-      Map<String, List<List<dynamic>>> sheets, {bool skipEmpty = true}) {
+  List<String> _skippedSheets(Map<String, List<List<dynamic>>> sheets,
+      {bool skipEmpty = true}) {
     final read = _inventorySheetName(sheets).trim().toLowerCase();
     return sheets.keys
         .where((name) => name.trim().toLowerCase() != read)

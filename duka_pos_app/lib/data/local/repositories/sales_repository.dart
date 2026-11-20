@@ -380,6 +380,7 @@ class SalesRepository {
       final containerMlByProduct = <int, double>{};
       final taxClassByProduct = <int, String>{};
       final trackExpiryByProduct = <int, bool>{};
+      final stockableByProduct = <int, bool>{};
       final costPoolByProduct = <int, int?>{};
       for (final productId in items.map((it) => it.productId).toSet()) {
         final current = await txn.query('products',
@@ -400,6 +401,9 @@ class SalesRepository {
             (current.first['cost_pool_id'] as num?)?.toInt();
         trackExpiryByProduct[productId] =
             (current.first['track_expiry'] as num?)?.toInt() == 1;
+        final kind = current.first['item_kind'] as String? ?? 'unknown';
+        stockableByProduct[productId] = kind != 'service' && kind != 'fee' &&
+            ((current.first['track_stock'] as num?)?.toInt() ?? 1) == 1;
       }
 
       final variantRowsById = <int, Map<String, dynamic>>{};
@@ -436,6 +440,7 @@ class SalesRepository {
         }
       }
       for (final item in items) {
+        if (stockableByProduct[item.productId] != true) continue;
         final units = item.qty *
             portionFactor(item, containerMlByProduct[item.productId]!);
         final variantId = item.variantId;
@@ -609,7 +614,8 @@ class SalesRepository {
         'profit': saleTaxableMinor - saleCostMinor,
         'payment_method': paymentMethod,
         'payment_reference': paymentReference,
-        'amount_tendered': paid.minorUnits,
+        // Credit charges increase the receivable; they are not cash received.
+        'amount_tendered': paymentMethod == 'credit' ? 0 : paid.minorUnits,
         'change_given': change.minorUnits,
         'created_at': now,
         'receipt_number': receiptNumber,
@@ -712,6 +718,7 @@ class SalesRepository {
       }
 
       for (final productId in items.map((it) => it.productId).toSet()) {
+        if (stockableByProduct[productId] != true) continue;
         final flagRows = await txn.query('products',
             columns: ['track_variants'],
             where: 'id = ?',
@@ -737,6 +744,7 @@ class SalesRepository {
       }
 
       for (final it in items) {
+        if (stockableByProduct[it.productId] != true) continue;
         final fraction = portionFactor(it, containerMlByProduct[it.productId]!);
         final double units = it.qty * fraction;
         final variantId = it.variantId;
@@ -777,7 +785,9 @@ class SalesRepository {
       }
 
       for (final tender in tenderRows) {
-        final tendered = tender.tendered ?? tender.amount;
+        final tendered = tender.method == 'credit'
+            ? Money.zero
+            : (tender.tendered ?? tender.amount);
         final tenderChange = tendered - tender.amount;
         await txn.insert('sale_payments', {
           'uuid': DatabaseHelper.newUuid(),
@@ -978,23 +988,73 @@ class SalesRepository {
     Money? costAmount,
     bool trackCost = false,
     String? itemName,
+    int? customerId,
+    Customer? customerDraft,
+    int? creditApprovedBy,
+    int defaultLimitMinor = 0,
   }) async {
     if (amount.minorUnits <= 0) {
       throw StateError('A quick sale must be more than zero');
     }
-    if (!<String>{'cash', 'mpesa', 'bank_transfer'}.contains(paymentMethod)) {
+    if (!<String>{'cash', 'mpesa', 'bank_transfer', 'credit'}
+        .contains(paymentMethod)) {
       throw StateError('Unsupported quick-sale payment method');
     }
+    if (paymentMethod == 'credit' &&
+        customerId == null &&
+        customerDraft == null) {
+      throw StateError('A credit sale must name the customer taking it');
+    }
+    if (paymentMethod != 'credit' &&
+        (customerId != null || customerDraft != null)) {
+      throw StateError('A customer may only be attached to a credit sale');
+    }
     final now = DateTime.now().toIso8601String();
+    Map<String, Object?>? customerRow;
+    if (paymentMethod == 'credit') {
+      if (customerId == null) {
+        final draft = customerDraft!;
+        if (draft.name.trim().isEmpty || draft.phone == null) {
+          throw StateError('A credit customer needs a name and Kenyan phone');
+        }
+        customerId = await txn.insert('customers', <String, Object?>{
+          'uuid': draft.uuid.isEmpty ? DatabaseHelper.newUuid() : draft.uuid,
+          'name': draft.name.trim(),
+          'phone': draft.phone,
+          'tin': draft.tin,
+          'notes': draft.notes,
+          'credit_limit_minor': draft.creditLimitMinor,
+          'balance_minor': 0,
+          'active': 1,
+          'created_at': draft.createdAt.isEmpty ? now : draft.createdAt,
+        });
+      }
+      final rows = await txn.query('customers',
+          where: 'id = ?', whereArgs: [customerId], limit: 1);
+      if (rows.isEmpty || (rows.first['active'] as num?)?.toInt() != 1) {
+        throw StateError('Customer not found or inactive');
+      }
+      customerRow = rows.first;
+      final balance = (customerRow['balance_minor'] as num?)?.toInt() ?? 0;
+      final limit = (customerRow['credit_limit_minor'] as num?)?.toInt() ??
+          defaultLimitMinor;
+      if (balance + amount.minorUnits > limit && creditApprovedBy == null) {
+        throw StateError(
+            'That sale would take ${customerRow['name']} past their credit limit');
+      }
+    }
     final saleId = await txn.insert('sales', <String, Object?>{
       'staff_name': staffName.trim().isEmpty ? 'Open business' : staffName,
       'staff_id': staffId,
+      'customer_id': customerId,
+      'buyer_name': customerRow?['name'],
+      'buyer_tin': customerRow?['tin'],
       'total': amount.minorUnits,
       'profit':
           (trackCost ? (amount.minorUnits - (costAmount?.minorUnits ?? 0)) : 0),
       'payment_method': paymentMethod,
       'payment_reference': paymentReference,
-      'amount_tendered': amount.minorUnits,
+      'amount_tendered': paymentMethod == 'credit' ? 0 : amount.minorUnits,
       'change_given': 0,
       'created_at': now,
       'vat_rate_percent': 0,
@@ -1009,12 +1069,29 @@ class SalesRepository {
       'sale_id': saleId,
       'method': paymentMethod,
       'amount_minor': amount.minorUnits,
-      'tendered_minor': amount.minorUnits,
+      // A credit charge records the amount owed, not money received.
+      'tendered_minor': paymentMethod == 'credit' ? 0 : amount.minorUnits,
       'change_minor': 0,
       'reference': paymentReference,
       'status': 'confirmed',
       'created_at': now,
     });
+    if (paymentMethod == 'credit') {
+      final balance = (customerRow!['balance_minor'] as num?)?.toInt() ?? 0;
+      await txn.insert('credit_ledger', <String, Object?>{
+        'uuid': DatabaseHelper.newUuid(),
+        'customer_id': customerId,
+        'entry_type': 'charge',
+        'amount_minor': amount.minorUnits,
+        'sale_id': saleId,
+        'staff_id': staffId,
+        'staff_name': staffName,
+        'approved_by': creditApprovedBy,
+        'created_at': now,
+      });
+      await txn.rawUpdate('UPDATE customers SET balance_minor = ? WHERE id = ?',
+          <Object?>[balance + amount.minorUnits, customerId]);
+    }
     await txn.insert('sale_items', <String, Object?>{
       'sale_id': saleId,
       'product_id': 0,
@@ -1034,10 +1111,11 @@ class SalesRepository {
       sourceId: saleId,
       occurredAtUtc: DateTime.parse(now).toUtc().toIso8601String(),
       revenueMinor: amount.minorUnits,
-      cashInMinor: amount.minorUnits,
+      cashInMinor: paymentMethod == 'credit' ? 0 : amount.minorUnits,
       metadata: <String, Object?>{
         'profile': profile.wireValue,
         'quick_sale': true,
+        if (paymentMethod == 'credit') 'customer_id': customerId,
         if (profile == ShopProfile.open) 'open_quick_sale': true,
         'cost_coverage': 'unrecorded',
         'tax_mode': 'off',
@@ -1057,8 +1135,13 @@ class SalesRepository {
     Money? costAmount,
     bool trackCost = false,
     String? itemName,
+    int? customerId,
+    Customer? customerDraft,
+    int? creditApprovedBy,
   }) async {
     final db = await DatabaseHelper.instance.database;
+    final defaultLimitMinor =
+        await DatabaseHelper.instance.creditDefaultLimitFromExecutor(db);
     return db.transaction<int>((txn) => recordOpenQuickSaleInTransaction(
           txn,
           amount: amount,
@@ -1070,6 +1153,10 @@ class SalesRepository {
           costAmount: costAmount,
           trackCost: trackCost,
           itemName: itemName,
+          customerId: customerId,
+          customerDraft: customerDraft,
+          creditApprovedBy: creditApprovedBy,
+          defaultLimitMinor: defaultLimitMinor,
         ));
   }
 

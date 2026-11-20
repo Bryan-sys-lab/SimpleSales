@@ -11,6 +11,7 @@ import 'package:provider/provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../db/database_helper.dart';
 import '../profile/shop_profile.dart';
+import '../profile/business_context_editor.dart';
 import '../profile/profile_navigation.dart';
 import '../profile/profile_terminology.dart';
 import '../l10n/generated/app_localizations.dart';
@@ -280,13 +281,19 @@ class _SettingsScreenState extends State<SettingsScreen>
           maxLength: 4,
           keyboardType: TextInputType.number,
           decoration: InputDecoration(
-            labelText: 'Temporary PIN for ${request['staff_name'] ?? 'staff member'}',
-            helperText: 'Give it directly to the staff member. It is not recorded in activity.',
+            labelText:
+                'Temporary PIN for ${request['staff_name'] ?? 'staff member'}',
+            helperText:
+                'Give it directly to the staff member. It is not recorded in activity.',
           ),
         ),
         actions: <Widget>[
-          TextButton(onPressed: () => Navigator.pop(dialogContext), child: const Text('Cancel')),
-          FilledButton(onPressed: () => Navigator.pop(dialogContext, controller.text), child: const Text('Issue PIN')),
+          TextButton(
+              onPressed: () => Navigator.pop(dialogContext),
+              child: const Text('Cancel')),
+          FilledButton(
+              onPressed: () => Navigator.pop(dialogContext, controller.text),
+              child: const Text('Issue PIN')),
         ],
       ),
     );
@@ -295,7 +302,8 @@ class _SettingsScreenState extends State<SettingsScreen>
     if (!mounted) return;
     final state = context.read<AppState>();
     try {
-      await BackendService.resetStaffPinFromRequest(requestId: requestId, temporaryPin: pin);
+      await BackendService.resetStaffPinFromRequest(
+          requestId: requestId, temporaryPin: pin);
       await recordActionAudit(
         state,
         action: AuditAction.staffPinReset,
@@ -307,7 +315,9 @@ class _SettingsScreenState extends State<SettingsScreen>
     } catch (_) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('The reset request could not be completed. Refresh and try again.')),
+          const SnackBar(
+              content: Text(
+                  'The reset request could not be completed. Refresh and try again.')),
         );
       }
     }
@@ -1153,7 +1163,8 @@ class _SettingsScreenState extends State<SettingsScreen>
                     DropdownMenuItem(value: 'Till', child: Text('M-Pesa Till')),
                     DropdownMenuItem(
                         value: 'Paybill', child: Text('M-Pesa Paybill')),
-                    DropdownMenuItem(value: 'Bank', child: Text('Bank account')),
+                    DropdownMenuItem(
+                        value: 'Bank', child: Text('Bank account')),
                   ],
                   onChanged: (value) {
                     if (value != null) {
@@ -2081,6 +2092,23 @@ class _SettingsScreenState extends State<SettingsScreen>
     }
   }
 
+  Future<void> _editBusinessContext() async {
+    final initial = await DatabaseHelper.instance.getBusinessContext();
+    if (!mounted) return;
+    final saved =
+        await Navigator.of(context).push<bool>(MaterialPageRoute<bool>(
+      builder: (_) => BusinessContextEditor(
+        initial: initial,
+        profile: context.read<AppState>().shopProfile,
+      ),
+    ));
+    if (saved == true && mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Business details saved on this shop.')),
+      );
+    }
+  }
+
   Future<void> _addShopOnThisDevice() async {
     final previous = context.read<AppState>().owner;
     final previousWorkspace = context.read<AppState>().workspaceKey;
@@ -2362,6 +2390,7 @@ class _SettingsScreenState extends State<SettingsScreen>
       onAddShop: _addShopOnThisDevice,
       onManageShops: _manageShops,
       onChangeBusinessProfile: ownerSession ? _changeBusinessProfile : null,
+      onEditBusinessContext: ownerSession ? _editBusinessContext : null,
       onOpenPortfolio: () => context.push(Routes.portfolio),
       onOpenActivity: () => context.push(Routes.activity),
       onOpenIncomingPayments: () => context.push(Routes.incomingPayments),
@@ -2547,6 +2576,7 @@ class SettingsPanel extends StatelessWidget {
     required this.onAddShop,
     required this.onManageShops,
     this.onChangeBusinessProfile,
+    this.onEditBusinessContext,
     required this.onOpenPortfolio,
     required this.onOpenActivity,
   });
@@ -2654,6 +2684,7 @@ class SettingsPanel extends StatelessWidget {
   final Future<void> Function() onAddShop;
   final Future<void> Function() onManageShops;
   final Future<void> Function()? onChangeBusinessProfile;
+  final Future<void> Function()? onEditBusinessContext;
   final VoidCallback onOpenPortfolio;
   final VoidCallback onOpenActivity;
 
@@ -2680,6 +2711,7 @@ class SettingsPanel extends StatelessWidget {
           onAddShop: onAddShop,
           onManage: onManageShops,
           onChangeProfile: onChangeBusinessProfile,
+          onEditBusinessContext: onEditBusinessContext,
           onOpenPortfolio: onOpenPortfolio,
           onOpenActivity: onOpenActivity,
         ),
@@ -3398,49 +3430,47 @@ class _StaffDialogState extends State<_StaffDialog> {
       content: SingleChildScrollView(
         child: Column(mainAxisSize: MainAxisSize.min, children: [
           TextField(
-                controller: _name,
-                decoration: InputDecoration(
-                    labelText:
-                        AppLocalizations.of(context).settingsStaffNameLabel),
-                autofillHints: const [AutofillHints.name]),
-            SizedBox(height: AppSpacing.of(context).md),
-            TextField(
-                controller: _username,
-                decoration: InputDecoration(
-                    labelText: 'Username',
-                    helperText:
-                        'Used by this staff member to sign in on any till'),
-                textInputAction: TextInputAction.next,
-                textCapitalization: TextCapitalization.none,
-                autofillHints: const [AutofillHints.username]),
-            SizedBox(height: AppSpacing.of(context).md),
-            DropdownButtonFormField<String>(
-                initialValue: ShopRole.parse(_role).wire,
-                decoration: InputDecoration(
-                    labelText: AppLocalizations.of(context).settingsRoleLabel),
-                items: [
-                  // Built from ShopRole.assignable rather than a literal list, so
-                  // a role added there cannot be forgotten here. Admin is
-                  // excluded from that list on purpose: the owner already holds it,
-                  // and it sits below as a separate, clearly-labelled choice so
-                  // handing over full admin rights is deliberate rather than a
-                  // mis-tap between two adjacent dropdown entries.
-                  ...ShopRole.assignable.map(
-                    (role) => DropdownMenuItem(
-                      value: role.wire,
-                      child: Text(role.label),
-                    ),
+              controller: _name,
+              decoration: InputDecoration(
+                  labelText:
+                      AppLocalizations.of(context).settingsStaffNameLabel),
+              autofillHints: const [AutofillHints.name]),
+          SizedBox(height: AppSpacing.of(context).md),
+          TextField(
+              controller: _username,
+              decoration: InputDecoration(
+                  labelText: 'Username',
+                  helperText:
+                      'Used by this staff member to sign in on any till'),
+              textInputAction: TextInputAction.next,
+              textCapitalization: TextCapitalization.none,
+              autofillHints: const [AutofillHints.username]),
+          SizedBox(height: AppSpacing.of(context).md),
+          DropdownButtonFormField<String>(
+              initialValue: ShopRole.parse(_role).wire,
+              decoration: InputDecoration(
+                  labelText: AppLocalizations.of(context).settingsRoleLabel),
+              items: [
+                // Built from ShopRole.assignable rather than a literal list, so
+                // a role added there cannot be forgotten here. Admin is
+                // excluded from that list on purpose: the owner already holds it,
+                // and it sits below as a separate, clearly-labelled choice so
+                // handing over full admin rights is deliberate rather than a
+                // mis-tap between two adjacent dropdown entries.
+                ...ShopRole.assignable.map(
+                  (role) => DropdownMenuItem(
+                    value: role.wire,
+                    child: Text(role.label),
                   ),
-                  DropdownMenuItem(
-                    value: ShopRole.admin.wire,
-                    child:
-                        Text(l10n.settingsRoleAdminFull(ShopRole.admin.label)),
-                  ),
-                ],
-                onChanged: (value) {
-                  if (value != null) setState(() => _role = value);
-                }),
-
+                ),
+                DropdownMenuItem(
+                  value: ShopRole.admin.wire,
+                  child: Text(l10n.settingsRoleAdminFull(ShopRole.admin.label)),
+                ),
+              ],
+              onChanged: (value) {
+                if (value != null) setState(() => _role = value);
+              }),
           SizedBox(height: AppSpacing.of(context).md),
           TextField(
               controller: _pin,
@@ -3583,6 +3613,7 @@ class _ShopsPanel extends StatelessWidget {
     required this.onAddShop,
     required this.onManage,
     this.onChangeProfile,
+    this.onEditBusinessContext,
     required this.onOpenPortfolio,
     required this.onOpenActivity,
   });
@@ -3590,6 +3621,7 @@ class _ShopsPanel extends StatelessWidget {
   final Future<void> Function() onAddShop;
   final Future<void> Function() onManage;
   final Future<void> Function()? onChangeProfile;
+  final Future<void> Function()? onEditBusinessContext;
   final VoidCallback onOpenPortfolio;
   final VoidCallback onOpenActivity;
 
@@ -3627,6 +3659,13 @@ class _ShopsPanel extends StatelessWidget {
               icon: Icons.tune_outlined,
               title: l10n.settingsBusinessProfile,
               onTap: onChangeProfile,
+            ),
+          if (onEditBusinessContext != null)
+            SettingsNavRow(
+              icon: Icons.storefront_outlined,
+              title: 'Business details',
+              subtitle: 'Activity and optional shop details',
+              onTap: () => onEditBusinessContext!(),
             ),
           SettingsNavRow(
             icon: Icons.add_business_outlined,
@@ -3673,14 +3712,20 @@ class _StaffPanel extends StatelessWidget {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: <Widget>[
-                  Text('PIN reset requests', style: AppTypography.of(context).titleMedium),
+                  Text('PIN reset requests',
+                      style: AppTypography.of(context).titleMedium),
                   SizedBox(height: AppSpacing.of(context).xs),
-                  Text('A staff member forgot their PIN. Issue a temporary PIN privately, then ask them to change it.', style: AppTypography.of(context).bodySmall?.copyWith(color: colors.onSurfaceMuted)),
+                  Text(
+                      'A staff member forgot their PIN. Issue a temporary PIN privately, then ask them to change it.',
+                      style: AppTypography.of(context)
+                          .bodySmall
+                          ?.copyWith(color: colors.onSurfaceMuted)),
                   for (final request in pinResetRequests)
                     ListTile(
                       contentPadding: EdgeInsets.zero,
                       leading: const Icon(Icons.lock_reset_outlined),
-                      title: Text(request['staff_name']?.toString() ?? 'Staff member'),
+                      title: Text(
+                          request['staff_name']?.toString() ?? 'Staff member'),
                       subtitle: const Text('Pending owner action'),
                       trailing: ActionChip(
                         avatar: const Icon(Icons.lock_reset_outlined, size: 16),
@@ -4414,6 +4459,7 @@ class _SyncPanel extends StatelessWidget {
           SettingsSwitchRow(
             icon: Icons.cloud_sync_outlined,
             title: l10n.settingsAutoBackupSync,
+            subtitle: l10n.settingsAutoBackupSyncDisclosure,
             // The subtitle says which step is missing rather than leaving a
             // dead switch with no explanation: a control that cannot move
             // and does not say why is the one thing on this screen that reads
@@ -4516,6 +4562,15 @@ class _BackupPanel extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: <Widget>[
+          Padding(
+            padding: EdgeInsets.only(bottom: AppSpacing.of(context).sm),
+            child: Text(
+              AppLocalizations.of(context).settingsFullBackupDisclosure,
+              style: AppTypography.of(context)
+                  .bodySmall
+                  ?.copyWith(color: AppColors.of(context).onSurfaceMuted),
+            ),
+          ),
           // Wraps rather than scrolls: at a large text scale these labels
           // become two lines each and a horizontal row would clip them.
           Wrap(

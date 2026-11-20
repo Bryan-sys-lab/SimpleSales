@@ -7,12 +7,12 @@
 import { Request, Response, Router } from 'express';
 import crypto from 'node:crypto';
 import { z } from 'zod';
-import { asyncHandler } from '../lib/http';
+import { asyncHandler, requireUser } from '../lib/http';
 import { adminAuditSchema, adminListQuerySchema, commercialLedgerQuerySchema, platformAnnouncementSchema, taxRuleSchema, parseBody, subscriptionUpdateSchema, voucherCreateSchema, billingProviderSchema } from '../lib/validation';
 import { prisma } from '../lib/prisma';
 import { runRetention } from '../lib/retention';
 import { log } from '../lib/observability';
-import { systemAdminMiddleware } from '../middleware/auth';
+import { requireRole, systemAdminMiddleware } from '../middleware/auth';
 import { COMMERCIAL_POLICY } from '../lib/commercial_policy';
 import { commercialContributionSelect, projectCommercialContribution } from '../lib/commercial_ledger';
 import { aggregateCommercialRows, COMMERCIAL_DISCLOSURE_THRESHOLDS, commercialRetentionCutoff, isEligibleForCommercialOutput, prepareCommercialAggregateOutput } from '../lib/commercial_controls';
@@ -41,7 +41,86 @@ export function setPlatformAnnouncementNotifier(
   platformAnnouncementNotifier = notifier;
 }
 
-// All admin routes require a system-admin OIDC subject.
+// Till upload path. It is deliberately mounted before the system-admin guard:
+// a device reports through its authenticated shop session, while every read
+// and administrative action below still requires the system-admin allowlist.
+const deviceReportSchema = z.object({
+  deviceId: z.string().trim().min(1).max(128),
+  platform: z.string().trim().min(1).max(32),
+  osVersion: z.string().trim().min(1).max(128),
+  appVersion: z.string().trim().min(1).max(64),
+  buildNumber: z.string().trim().min(1).max(64),
+  locale: z.string().trim().min(1).max(32),
+  manufacturer: z.string().max(128).optional().nullable(),
+  model: z.string().max(128).optional().nullable(),
+  tenantId: z.string().max(120).optional().nullable(),
+  crashes: z.array(z.object({
+    kind: z.enum(['crash', 'error', 'warning']),
+    message: z.string().trim().min(1).max(4096),
+    stack: z.string().max(16000).optional().nullable(),
+    route: z.string().max(512).optional().nullable(),
+    actorName: z.string().max(128).optional().nullable(),
+    action: z.string().max(256).optional().nullable(),
+    breadcrumbs: z.array(z.string().max(512)).max(30).optional().nullable(),
+    createdAt: z.string().datetime().optional(),
+  }).strict()).max(200).default([]),
+}).strict();
+
+function scrubDiagnostic(value: string | null | undefined): string | null {
+  if (!value) return null;
+  return value
+    .replace(/(authorization\s*[:=]\s*bearer\s+)[^\s,;]+/gi, '$1[redacted]')
+    .replace(/((?:password|pin|token|secret|api[_-]?key)\s*[:=]\s*)[^\s,;]+/gi, '$1[redacted]')
+    .slice(0, 16000);
+}
+
+router.post('/diagnostics', requireRole('admin', 'manager', 'cashier'), asyncHandler(async (req, res) => {
+  const input = parseBody(deviceReportSchema, req.body);
+  const { tenantId } = requireUser(req);
+  const scopedDeviceId = crypto.createHash('sha256')
+    .update(`${tenantId}\0${input.deviceId}`)
+    .digest('hex');
+  const now = new Date();
+  const diagnostic = await prisma.$transaction(async (tx) => {
+    const row = await tx.deviceDiagnostic.upsert({
+    where: { deviceId: scopedDeviceId },
+    update: {
+      tenantId, platform: input.platform, osVersion: input.osVersion,
+      appVersion: input.appVersion, buildNumber: input.buildNumber,
+      locale: input.locale, manufacturer: input.manufacturer ?? null,
+      model: input.model ?? null, lastSeen: now,
+      crashCount: { increment: input.crashes.filter((c) => c.kind === 'crash').length },
+      errorCount: { increment: input.crashes.filter((c) => c.kind === 'error').length },
+      warningCount: { increment: input.crashes.filter((c) => c.kind === 'warning').length },
+    },
+    create: {
+      deviceId: scopedDeviceId, tenantId, platform: input.platform,
+      osVersion: input.osVersion, appVersion: input.appVersion,
+      buildNumber: input.buildNumber, locale: input.locale,
+      manufacturer: input.manufacturer ?? null, model: input.model ?? null,
+      firstSeen: now, lastSeen: now,
+      crashCount: input.crashes.filter((c) => c.kind === 'crash').length,
+      errorCount: input.crashes.filter((c) => c.kind === 'error').length,
+      warningCount: input.crashes.filter((c) => c.kind === 'warning').length,
+    },
+    });
+    if (input.crashes.length) {
+      await tx.deviceCrashEntry.createMany({ data: input.crashes.map((entry) => ({
+        diagnosticId: row.id, kind: entry.kind,
+        message: scrubDiagnostic(entry.message) ?? 'Diagnostic event',
+        stack: scrubDiagnostic(entry.stack), route: scrubDiagnostic(entry.route),
+        actorName: scrubDiagnostic(entry.actorName), action: scrubDiagnostic(entry.action),
+        breadcrumbs: scrubDiagnostic((entry.breadcrumbs ?? []).join('\n')),
+        createdAt: entry.createdAt ? new Date(entry.createdAt) : now,
+      })) });
+    }
+    return row;
+  });
+  return res.status(201).json({ id: diagnostic.id, crashesReceived: input.crashes.length });
+}));
+
+// All admin reads and administrative actions below require a system-admin
+// OIDC subject. The one authenticated device-report upload is registered above.
 router.use(systemAdminMiddleware);
 
 router.get('/billing/provider', asyncHandler(async (_req: Request, res: Response) => {
@@ -472,12 +551,17 @@ router.get(
     }
     const where: Record<string, unknown> = { createdAt: { gte: fromDate } };
     if (tenantId) where.tenantId = tenantId;
-    const sessions = await prisma.appSession.findMany({
+    const rows = await prisma.appSession.findMany({
       where,
       include: { tenant: { select: { id: true, shopName: true } } },
       orderBy: { createdAt: 'desc' },
       take: limit,
     });
+    // Session credentials are secrets, even inside the system-admin console.
+    // Report lifecycle facts only; never serialize access/refresh tokens.
+    const sessions = rows.map(({ id, tenantId, createdAt, expiresAt, tenant }) => ({
+      id, tenantId, createdAt, expiresAt, tenant,
+    }));
     return res.json({ sessions });
   })
 );

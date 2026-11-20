@@ -62,6 +62,40 @@ void main() {
   }
 
   group('the ledger', () {
+    test('a fee stays on the sale without stock checks or stock movements', () async {
+      final feeId = await db.upsertProduct(Product(
+        name: 'Delivery fee',
+        category: 'Fees',
+        costPrice: Money.zero,
+        sellPrice: Money.fromMajor(50),
+        stockQty: 0,
+        trackStock: false,
+        itemKind: 'fee',
+        reorderLevel: 0,
+        updatedAt: DateTime.now().toIso8601String(),
+      ));
+      final saleId = await db.recordSale(
+        staffName: 'Alice',
+        items: [SaleItem(
+          saleId: 0,
+          productId: feeId,
+          productName: 'Delivery fee',
+          qty: 1,
+          unitPrice: Money.fromMajor(50),
+          unitCost: Money.zero,
+        )],
+        paymentMethod: 'cash',
+        amountTendered: Money.fromMajor(50),
+      );
+
+      final rows = await (await db.database).query('sale_items',
+          where: 'sale_id = ?', whereArgs: [saleId]);
+      expect(rows, hasLength(1));
+      expect(await db.getStockMovements(feeId), hasLength(1),
+          reason: 'the only movement is the zero-quantity opening row');
+      expect((await db.getProductById(feeId))?.stockQty, 0);
+    });
+
     test('a product arrives with an opening row', () async {
       final movements = await db.getStockMovements(colaId);
       expect(movements, hasLength(1));

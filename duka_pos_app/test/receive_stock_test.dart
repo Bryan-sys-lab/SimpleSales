@@ -59,6 +59,36 @@ void main() {
   }
 
   group('the delivery', () {
+    test('partial receipts retain their specific purchase-order line UUID', () async {
+      final productId = await seedProduct(stock: 0);
+      final orderId = await DatabaseHelper.instance.createPurchaseOrder(
+        uuid: 'c6e78ed9-9a16-4ef7-bf3f-bfbeec96f14e',
+        supplierId: await DatabaseHelper.instance.addSupplier(name: 'Local supplier'),
+        staffName: 'Amina',
+        lines: [{'product_id': productId, 'product_name': 'Tusker', 'qty': 5, 'unit_cost_minor': 6000}],
+      );
+      final orderLine = (await DatabaseHelper.instance.getPurchaseOrderLines(orderId)).single;
+
+      await DatabaseHelper.instance.postStockReceipt(
+        purchaseOrderId: orderId,
+        lines: [StockReceiptLine(productId: productId, productName: 'Tusker', qty: 2, unitCost: Money.fromMajor(60))],
+        staffName: 'Amina',
+      );
+      await DatabaseHelper.instance.postStockReceipt(
+        purchaseOrderId: orderId,
+        lines: [StockReceiptLine(productId: productId, productName: 'Tusker', qty: 3, unitCost: Money.fromMajor(60))],
+        staffName: 'Amina',
+      );
+
+      final receipts = await DatabaseHelper.instance.getUnsyncedReceipts();
+      expect(receipts, hasLength(2));
+      expect(receipts.map((receipt) => receipt.purchaseOrderUuid).toSet(),
+          {'c6e78ed9-9a16-4ef7-bf3f-bfbeec96f14e'});
+      expect(receipts.expand((receipt) => receipt.items).map((item) => item.purchaseOrderLineUuid).toSet(),
+          {orderLine['uuid']});
+      expect((await DatabaseHelper.instance.getPurchaseOrders()).single['status'], 'received');
+    });
+
     test('turning expiry tracking on backfills existing countable stock',
         () async {
       final productId = await seedProduct(stock: 3);

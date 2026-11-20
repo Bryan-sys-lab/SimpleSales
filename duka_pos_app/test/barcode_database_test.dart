@@ -11,6 +11,7 @@ import 'package:sqflite_common_ffi/sqflite_ffi.dart';
 
 import 'package:duka_pos/db/database_helper.dart';
 import 'package:duka_pos/models/models.dart';
+import 'package:duka_pos/services/barcode/barcode_service.dart';
 import 'package:duka_pos/utils/money.dart';
 
 Product product(String name, {int? stock}) => Product(
@@ -54,6 +55,20 @@ void main() {
   });
 
   group('barcodes', () {
+    test('only validated supplier GTINs enter product sync metadata', () async {
+      final imported = await db.upsertProduct(product('Packaged item'));
+      final local = await db.upsertProduct(product('Shop label'));
+      await db.addBarcode(productId: imported, barcode: '036000291452');
+      await db.addBarcode(
+        productId: local,
+        barcode: Barcode.internalEan13(itemNumber: local),
+        kind: BarcodeKind.own,
+      );
+
+      expect(await db.getVerifiedGtinsForProducts([imported, local]),
+          {imported: '036000291452'});
+    });
+
     test('a scan resolves to the product that owns the code', () async {
       final soda = await db.upsertProduct(product('Soda 350ml'));
       await db.addBarcode(productId: soda, barcode: '6001234567899');

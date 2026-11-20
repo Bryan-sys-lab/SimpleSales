@@ -2,6 +2,7 @@ import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import 'package:provider/provider.dart';
+import 'package:url_launcher/url_launcher.dart';
 
 import '../services/backend_service.dart';
 import '../routing/app_stage_controller.dart';
@@ -218,106 +219,145 @@ class _PaywallScreenState extends State<PaywallScreen> {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
+    final colors = theme.colorScheme;
     final price = _entitlement?.priceMinor;
+    final hasStarterVoucher = _entitlement?.firstMonthVoucherAvailable == true;
     return Scaffold(
-      appBar: AppBar(title: const Text('Shop subscription')),
+      appBar: AppBar(title: const Text('Activate your shop')),
       body: SafeArea(
         child: ListView(
-          padding: const EdgeInsets.fromLTRB(24, 28, 24, 32),
+          padding: const EdgeInsets.fromLTRB(20, 12, 20, 32),
           children: [
-            Icon(Icons.lock_rounded,
-                size: 46, color: theme.colorScheme.primary),
+            Card(
+              color: colors.primaryContainer,
+              child: Padding(
+                padding: const EdgeInsets.all(20),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Icon(Icons.storefront_outlined,
+                        color: colors.onPrimaryContainer, size: 30),
+                    const SizedBox(height: 14),
+                    Text(
+                        hasStarterVoucher
+                            ? 'Your shop is ready for its first month'
+                            : 'Activate access for this shop',
+                        style: theme.textTheme.headlineSmall?.copyWith(
+                            color: colors.onPrimaryContainer,
+                            fontWeight: FontWeight.w700)),
+                    const SizedBox(height: 8),
+                    Text(
+                        hasStarterVoucher
+                            ? 'Enter the one-month voucher sent to your email, or choose a subscription below. The 30 days start when you redeem it.'
+                            : 'Choose a subscription or enter a voucher issued for this shop. Access is shared by the shop’s owner and staff.',
+                        style: theme.textTheme.bodyLarge
+                            ?.copyWith(color: colors.onPrimaryContainer)),
+                  ],
+                ),
+              ),
+            ),
             const SizedBox(height: 18),
-            Text('Keep this shop running',
-                style: theme.textTheme.headlineSmall
-                    ?.copyWith(fontWeight: FontWeight.w700)),
-            const SizedBox(height: 10),
             Text(
-                'This shop uses a negotiated subscription. The system administrator sets the price and billing terms for each shop.',
-                style: theme.textTheme.bodyLarge),
-            if (price != null) ...[
-              const SizedBox(height: 18),
-              Text(
-                  '${_entitlement?.currency ?? 'KES'} ${(price / 100).toStringAsFixed(2)} / ${_entitlement?.billingInterval ?? 'month'}',
-                  style: theme.textTheme.titleLarge
-                      ?.copyWith(fontWeight: FontWeight.w700)),
-            ],
-            if (price == null) ...[
-              const SizedBox(height: 18),
-              Text('Your negotiated price is not set yet',
-                  style: theme.textTheme.titleMedium
-                      ?.copyWith(fontWeight: FontWeight.w700)),
-              const SizedBox(height: 8),
-              Text(
-                  'Request a quote and the system administrator will set your shop’s agreed price. Payment will appear here as soon as the price is configured.',
-                  style: theme.textTheme.bodyMedium),
-              const SizedBox(height: 14),
-              FilledButton.icon(
-                  onPressed: _loading || _quoteRequested ? null : _requestQuote,
-                  icon: const Icon(Icons.request_quote_outlined),
-                  label: Text(
-                      _quoteRequested ? 'Quote requested' : 'Request a quote')),
-            ],
-            const SizedBox(height: 28),
-            Text('Have a voucher?',
-                style: theme.textTheme.titleMedium
-                    ?.copyWith(fontWeight: FontWeight.w700)),
-            const SizedBox(height: 10),
+                hasStarterVoucher
+                    ? 'Use your one-month voucher'
+                    : 'Have a voucher?',
+                style: theme.textTheme.titleLarge),
+            const SizedBox(height: 6),
+            Text(
+                hasStarterVoucher
+                    ? 'Find the code in the email with your verification code.'
+                    : 'Enter a code issued by your shop administrator.',
+                style: theme.textTheme.bodyMedium),
+            const SizedBox(height: 12),
             TextField(
                 controller: _voucher,
                 textCapitalization: TextCapitalization.characters,
-                decoration: const InputDecoration(
+                autofillHints: const [AutofillHints.oneTimeCode],
+                decoration: InputDecoration(
                     labelText: 'Voucher code',
-                    hintText: 'SS-…',
+                    hintText: hasStarterVoucher
+                        ? 'Enter code from email'
+                        : 'Enter voucher code',
                     border: OutlineInputBorder())),
-            const SizedBox(height: 14),
+            const SizedBox(height: 12),
             FilledButton.icon(
                 onPressed: _loading ? null : _redeem,
                 icon: const Icon(Icons.redeem_rounded),
-                label: Text(_loading ? 'Checking…' : 'Redeem voucher')),
+                label: Text(_loading
+                    ? 'Checking…'
+                    : hasStarterVoucher
+                        ? 'Redeem one-month voucher'
+                        : 'Redeem voucher')),
+            const SizedBox(height: 22),
+            const Divider(),
+            const SizedBox(height: 10),
+            Text('Choose a subscription', style: theme.textTheme.titleLarge),
+            const SizedBox(height: 6),
+            Text(
+                'Your shop’s price and billing terms are set by the SimpleSales team.',
+                style: theme.textTheme.bodyMedium),
             if (price != null) ...[
-              const SizedBox(height: 28),
-              Text('Pay by M-Pesa',
-                  style: theme.textTheme.titleMedium
-                      ?.copyWith(fontWeight: FontWeight.w700)),
-              const SizedBox(height: 10),
+              const SizedBox(height: 18),
+              Card(
+                  child: ListTile(
+                      leading: const Icon(Icons.receipt_long_outlined),
+                      title: const Text('Your agreed price'),
+                      subtitle: Text(
+                          '${_entitlement?.currency ?? 'KES'} ${(price / 100).toStringAsFixed(2)} / ${_entitlement?.billingInterval ?? 'month'}'))),
+              const SizedBox(height: 12),
               TextField(
                   controller: _phone,
                   keyboardType: TextInputType.phone,
+                  autofillHints: const [AutofillHints.telephoneNumber],
                   decoration: const InputDecoration(
                       labelText: 'M-Pesa phone number',
                       border: OutlineInputBorder())),
-              const SizedBox(height: 10),
+              const SizedBox(height: 12),
               FilledButton.tonalIcon(
                   onPressed: _loading ? null : _startPayment,
                   icon: const Icon(Icons.phone_android_rounded),
-                  label: const Text('Send payment prompt')),
+                  label: const Text('Pay with M-Pesa')),
               if (_paymentReference != null) ...[
-                const SizedBox(height: 10),
+                const SizedBox(height: 8),
                 OutlinedButton(
                     onPressed: _loading ? null : _checkPayment,
-                    child: const Text('I have paid — verify payment')),
-                const SizedBox(height: 10),
+                    child: const Text('Check payment status')),
                 TextField(
                     controller: _receipt,
                     textCapitalization: TextCapitalization.characters,
                     decoration: const InputDecoration(
                         labelText: 'M-Pesa receipt code (if needed)',
                         border: OutlineInputBorder())),
-                const SizedBox(height: 8),
                 TextButton(
                     onPressed: _loading ? null : _confirmReceipt,
                     child: const Text('Verify receipt code')),
               ],
             ],
+            if (price == null) ...[
+              const SizedBox(height: 12),
+              FilledButton.icon(
+                  onPressed: _loading || _quoteRequested ? null : _requestQuote,
+                  icon: const Icon(Icons.request_quote_outlined),
+                  label: Text(
+                      _quoteRequested ? 'Quote requested' : 'Request a quote')),
+            ],
+            if (_entitlement?.whatsappUrl case final String whatsappUrl) ...[
+              const SizedBox(height: 10),
+              OutlinedButton.icon(
+                  onPressed: () async {
+                    final uri = Uri.tryParse(whatsappUrl);
+                    if (uri != null) {
+                      await launchUrl(uri,
+                          mode: LaunchMode.externalApplication);
+                    }
+                  },
+                  icon: const Icon(Icons.chat_outlined),
+                  label: const Text('Chat with us on WhatsApp')),
+            ],
             if (_error != null) ...[
               const SizedBox(height: 14),
               Text(_error!, style: TextStyle(color: Colors.red))
             ],
-            const SizedBox(height: 22),
-            Text(
-                'Ask your system administrator to activate the shop subscription or issue a voucher. No payment is collected by this screen.',
-                style: theme.textTheme.bodyMedium),
           ],
         ),
       ),

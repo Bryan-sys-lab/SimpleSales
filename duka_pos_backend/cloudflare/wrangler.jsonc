@@ -16,7 +16,7 @@
     }
   ],
   "durable_objects": { "bindings": [ { "name": "BACKEND_CONTAINER", "class_name": "BackendContainer" } ] },
-  "exports": { "BackendContainer": { "type": "durable-object", "storage": "sqlite" } },
+  "exports": { "BackendContainer": { "type": "durable-object", "storage": "sqlite" }, "LiveRoom": { "type": "durable-object", "state": "deleted" } },
   "secrets": {
     "required": [
       "DATABASE_URL", "AUTH_JWT_SECRET", "AUTH_JWT_SECRET_PREVIOUS",

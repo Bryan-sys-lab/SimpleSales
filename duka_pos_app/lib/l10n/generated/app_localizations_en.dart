@@ -1561,6 +1561,10 @@ class AppLocalizationsEn extends AppLocalizations {
   String get settingsAutoBackupSync => 'Automatic backup and online sync';
 
   @override
+  String get settingsAutoBackupSyncDisclosure =>
+      'Shop records, including Business details, sync to your operational shop account. This does not enable commercial contribution.';
+
+  @override
   String get settingsBackupSection => 'Backup';
 
   @override
@@ -6601,6 +6605,10 @@ class AppLocalizationsEn extends AppLocalizations {
   String get settingsBackupAllShopData => 'Back up all shop data';
 
   @override
+  String get settingsFullBackupDisclosure =>
+      'A full backup includes all saved shop records, including Business details. Anyone with the backup file and its passphrase can restore it.';
+
+  @override
   String get settingsRestoreAllShopData => 'Restore all shop data';
 
   @override
@@ -7326,4 +7334,99 @@ class AppLocalizationsEn extends AppLocalizations {
   @override
   String get settingsStaffSyncFailed =>
       'Could not sync to the server. The staff member was not saved.';
+
+  @override
+  String get productItemKind => 'Item type';
+
+  @override
+  String get productKindGood => 'Physical good';
+
+  @override
+  String get productKindService => 'Service';
+
+  @override
+  String get productKindFee => 'Fee';
+
+  @override
+  String get productKindUnknown => 'Needs review';
+
+  @override
+  String get productKindNoStock => 'Services and fees do not change stock.';
+
+  @override
+  String get productMerchantSku => 'Shop SKU (private)';
+
+  @override
+  String get productBrandLabel => 'Brand label (shop only)';
+
+  @override
+  String get productGpcCode => 'GS1 GPC code (optional)';
+
+  @override
+  String get productGpcVersion => 'GPC version';
+
+  @override
+  String get productGpcMappingStatus => 'Taxonomy mapping status';
+
+  @override
+  String get productMappingMapped => 'Mapped';
+
+  @override
+  String get productMappingUnmapped => 'Unmapped';
+
+  @override
+  String get productMappingUnknown => 'Unknown';
+
+  @override
+  String get productMappingNotApplicable => 'Not applicable';
+
+  @override
+  String get productMappingRejected => 'Rejected';
+
+  @override
+  String get productGpcVersionRequired => 'Add the GPC version for this code.';
+
+  @override
+  String get productGpcCodeRequired =>
+      'Add a GPC code or change the mapping status.';
+
+  @override
+  String get productExternalUnitCode => 'UNECE unit code (optional)';
+
+  @override
+  String get productUnitVersion => 'UNECE Rec.20 version';
+
+  @override
+  String get productUnitMappingStatus => 'Unit mapping status';
+
+  @override
+  String get productPackQuantity => 'Quantity per pack (optional)';
+
+  @override
+  String get productPackUnitCode => 'Pack unit code';
+
+  @override
+  String get productUnitCodeRequired =>
+      'Add an UNECE unit code or change the mapping status.';
+
+  @override
+  String get productPackMappingInvalid =>
+      'Enter a positive pack quantity and its unit code.';
+
+  @override
+  String get productMappingReviewAction => 'Review mappings';
+
+  @override
+  String get productMappingReviewTitle => 'Product mapping review';
+
+  @override
+  String get productMappingReviewHelp =>
+      'Unmapped products remain available for sales. Review the external product and unit codes when you have them.';
+
+  @override
+  String get productMappingReviewEmpty => 'All product mappings are reviewed.';
+
+  @override
+  String get productMappingReviewLoadFailed =>
+      'Could not load products for review. Try again.';
 }

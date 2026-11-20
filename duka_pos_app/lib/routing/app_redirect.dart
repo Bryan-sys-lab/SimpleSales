@@ -74,6 +74,13 @@ String? appRedirect({
   };
   if (doors.contains(location)) return Routes.dashboard;
 
+  // Billing is the first owner-facing step after identity verification. It
+  // outranks optional onboarding and permissions so a new owner cannot enter
+  // operating screens before redeeming a voucher or paying.
+  if (snapshot.subscriptionRequired) {
+    return location == Routes.paywall ? null : Routes.paywall;
+  }
+
   // A finished walkthrough is stale the moment the stage flips to ready.
   if (snapshot.stage == AppStage.ready && location == Routes.onboarding) {
     return Routes.dashboard;
@@ -100,20 +107,6 @@ String? appRedirect({
   if (snapshot.stage == AppStage.permissions) {
     if (!snapshot.isAdmin) return Routes.dashboard;
     return location == Routes.permissions ? null : Routes.permissions;
-  }
-
-  // An expired subscription is a shop-level lock, shared by owners and staff
-  // on every profile. Keep the operational surfaces needed to renew in person
-  // available, while protecting reporting, settings, analytics and all other
-  // management flows behind the paywall.
-  if (snapshot.subscriptionRequired) {
-    final bool allowedWhileExpired = location == Routes.paywall ||
-        location == Routes.dashboard ||
-        location == Routes.sell ||
-        location.startsWith('${Routes.inventory}/') ||
-        location == Routes.inventory ||
-        location == Routes.transactions;
-    if (!allowedWhileExpired) return Routes.paywall;
   }
 
   // 6. Role gating on the branch itself.

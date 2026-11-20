@@ -1,0 +1,23 @@
+{
+  "package": "DUKA_POS_V84_NEW_DATA_INTELLIGENCE_PATCHES_13_TO_18",
+  "source_archive": "duka_pos_app_source_v84.zip",
+  "source_sha256": "59d6107f2697237c5dc146e112df352ff387a9e2660f7a74995c244191ba5a01",
+  "patch_range": "13-18",
+  "includes_earlier_patches_00_12": false,
+  "files": [
+    "AGENT-WORK-ORDER.md",
+    "BACKEND-ADMIN-API-CONTRACT.md",
+    "DATA-DICTIONARY-V2.md",
+    "LEGAL-PURPOSE-AND-COLLECTION-MATRIX-KENYA.md",
+    "PATCH-13-BUSINESS-CONTEXT-AND-KESIC.md",
+    "PATCH-14-PRODUCT-IDENTITY-TAXONOMY-UNITS-AND-SUPPLY-CHAIN.md",
+    "PATCH-15-KENYA-LAWFUL-COLLECTION-CONSENT-AND-GOVERNANCE.md",
+    "PATCH-16-BACKEND-CONTRIBUTION-PIPELINE-AND-EXISTING-ADMIN-PANEL.md",
+    "PATCH-17-NGO-MANUFACTURER-SUPPLIER-DATA-PRODUCTS.md",
+    "PATCH-18-DATA-QUALITY-DIGITISATION-METRICS-AND-OPEN-SERVICES.md",
+    "README-NEW-PATCHES-13-TO-18.md",
+    "SOURCE-REFERENCE-AND-GAP-REPORT.md"
+  ],
+  "implementation_status": "specifications_and_logical_contracts_only; not_applied_code",
+  "note": "Backend/admin repositories are not in the original Flutter v84 archive; map logical contracts to existing repositories."
+}

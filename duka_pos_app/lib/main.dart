@@ -26,6 +26,9 @@ import 'theme/appearance_controller.dart';
 import 'services/app_release.dart';
 import 'routing/routes.dart';
 import 'services/auto_backup_worker.dart';
+import 'services/diagnostics_upload_service.dart';
+import 'services/identity_service.dart';
+import 'services/workspace_service.dart';
 
 /// Sentry DSN for crash reporting - get from https://sentry.io
 const String sentryDsn = String.fromEnvironment(
@@ -154,39 +157,41 @@ class DukaPosApp extends StatelessWidget {
     return ChangeNotifierProvider<AppearanceController>.value(
       value: appearance,
       child: MultiProvider(
-      providers: <SingleChildWidget>[
-        ChangeNotifierProvider<AppState>(create: (_) => AppState()),
-        // The boot gate reads the session, so it is created after it — and both
-        // live ABOVE `MaterialApp.router`, because the router's `redirect` reads
-        // the gate and a provider below the router could not be seen by the
-        // guard.
-        ChangeNotifierProvider<AppStageController>(
-          create: (BuildContext context) =>
-              AppStageController(context.read<AppState>())..boot(),
+        providers: <SingleChildWidget>[
+          ChangeNotifierProvider<AppState>(create: (_) => AppState()),
+          // The boot gate reads the session, so it is created after it — and both
+          // live ABOVE `MaterialApp.router`, because the router's `redirect` reads
+          // the gate and a provider below the router could not be seen by the
+          // guard.
+          ChangeNotifierProvider<AppStageController>(
+            create: (BuildContext context) =>
+                AppStageController(context.read<AppState>())..boot(),
+          ),
+          // The live change stream. Created after the session and before the
+          // router so a screen can watch it from any branch, and torn down with
+          // the tree so a socket is never left open behind a closed app.
+          ChangeNotifierProvider<LiveChannelService>(
+            create: (BuildContext context) => LiveChannelService()..start(),
+          ),
+          // The update channel. Provided here so one instance serves the whole
+          // app: a check started from the splash banner is the same download the
+          // Settings row installs, rather than two of each.
+          ChangeNotifierProvider<AppUpdateService>(
+            create: (BuildContext context) => AppUpdateService(),
+          ),
+          // Last: the router needs the two above. It is never rebuilt afterwards —
+          // `refreshListenable` re-runs the guard on its own, and rebuilding a
+          // `GoRouter` throws away every branch's navigation stack.
+          Provider<GoRouter>(
+              create: (BuildContext context) => appRouter(context)),
+        ],
+        // The gate sits above the router so a lifecycle change reaches the
+        // channel from one place, whatever branch is showing.
+        child: const _DiagnosticsSyncGate(
+          child: _UpdateGate(child: _LiveChannelGate(child: _ThemedApp())),
         ),
-        // The live change stream. Created after the session and before the
-        // router so a screen can watch it from any branch, and torn down with
-        // the tree so a socket is never left open behind a closed app.
-        ChangeNotifierProvider<LiveChannelService>(
-          create: (BuildContext context) => LiveChannelService()..start(),
-        ),
-        // The update channel. Provided here so one instance serves the whole
-        // app: a check started from the splash banner is the same download the
-        // Settings row installs, rather than two of each.
-        ChangeNotifierProvider<AppUpdateService>(
-          create: (BuildContext context) => AppUpdateService(),
-        ),
-        // Last: the router needs the two above. It is never rebuilt afterwards —
-        // `refreshListenable` re-runs the guard on its own, and rebuilding a
-        // `GoRouter` throws away every branch's navigation stack.
-        Provider<GoRouter>(
-            create: (BuildContext context) => appRouter(context)),
-      ],
-      // The gate sits above the router so a lifecycle change reaches the
-      // channel from one place, whatever branch is showing.
-      child: const _UpdateGate(child: _LiveChannelGate(child: _ThemedApp())),
-    ),
-  );
+      ),
+    );
   }
 }
 
@@ -274,6 +279,73 @@ class _ThemedApp extends StatelessWidget {
   }
 }
 
+/// Retries a locally recorded crash report after startup/recovery.
+///
+/// A process can be killed before the recorder's debounce timer fires. The
+/// local crash row is the durable queue; once the app has a signed-in tenant,
+/// this gate uploads it and stops. It never blocks the UI or a sale.
+class _DiagnosticsSyncGate extends StatefulWidget {
+  const _DiagnosticsSyncGate({required this.child});
+  final Widget child;
+
+  @override
+  State<_DiagnosticsSyncGate> createState() => _DiagnosticsSyncGateState();
+}
+
+class _DiagnosticsSyncGateState extends State<_DiagnosticsSyncGate>
+    with WidgetsBindingObserver {
+  Timer? _timer;
+  bool _syncing = false;
+  bool _finished = false;
+
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addObserver(this);
+    WidgetsBinding.instance.addPostFrameCallback((_) => _attemptUpload());
+    _timer =
+        Timer.periodic(const Duration(seconds: 30), (_) => _attemptUpload());
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed) _attemptUpload();
+  }
+
+  void _attemptUpload() {
+    if (_finished || _syncing || !BuildConfiguration.isConnected) return;
+    _syncing = true;
+    unawaited(() async {
+      try {
+        if (await IdentityService.accessToken == null ||
+            await WorkspaceService.activeTenantId() == null) {
+          return;
+        }
+        final result = await DiagnosticsUploadService.instance.uploadAndClear();
+        if (result.ok) {
+          _finished = true;
+          _timer?.cancel();
+          _timer = null;
+        }
+      } catch (_) {
+        // Reporting stays best-effort; retry when the app resumes or later.
+      } finally {
+        _syncing = false;
+      }
+    }());
+  }
+
+  @override
+  void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    _timer?.cancel();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) => widget.child;
+}
+
 /// Keeps the live channel honest about the app's actual state.
 ///
 /// Two facts drive the channel and neither lives in it: whether this shop is
@@ -299,6 +371,7 @@ class _LiveChannelGateState extends State<_LiveChannelGate>
   late AppState _appState;
   int _lastSeenGeneration = -1;
   bool _lastIdentityVerified = false;
+
   /// Generation counter for snapshot requests. Incremented on every explicit
   /// transition that warrants a fresh snapshot (init, foreground resume, link
   /// change). `_sync()` only requests a snapshot when the generation has

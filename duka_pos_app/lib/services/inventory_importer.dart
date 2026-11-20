@@ -13,6 +13,7 @@ import 'package:flutter/foundation.dart';
 
 import '../db/database_helper.dart';
 import '../models/models.dart';
+import '../profile/shop_profile.dart';
 import '../utils/money.dart';
 import '../utils/units.dart';
 import 'barcode/barcode_service.dart';
@@ -194,9 +195,10 @@ List<PendingBarcode> readBarcodeRows(List<List<dynamic>> raw) {
 List<PendingVariant> readVariantRows(
   List<List<dynamic>> raw, {
   List<String> fields = ProductVariant.sheetHeaders,
+  ShopProfile profile = ShopProfile.drinks,
 }) {
   if (raw.isEmpty) return const [];
-  final columns = _variantColumns(raw.first, fields);
+  final columns = _variantColumns(raw.first, fields, profile: profile);
   final start = columns.headerRowDetected ? 1 : 0;
   final variants = <PendingVariant>[];
   for (var i = start; i < raw.length; i++) {
@@ -249,8 +251,29 @@ SheetColumns _namedColumns(List<dynamic> header, List<String> fields) {
       : SheetColumns.named(map, headerRowDetected: true);
 }
 
-SheetColumns _variantColumns(List<dynamic> header, List<String> fields) =>
-    _namedColumns(header, fields);
+SheetColumns _variantColumns(
+  List<dynamic> header,
+  List<String> fields, {
+  ShopProfile profile = ShopProfile.drinks,
+}) {
+  if (profile != ShopProfile.fashion) return _namedColumns(header, fields);
+  final byName = {
+    for (final field in fields) SheetColumns.normaliseHeader(field): field,
+  };
+  final map = <String, int>{};
+  for (var i = 0; i < header.length; i++) {
+    final text = SheetColumns.normaliseHeader(header[i]?.toString() ?? '');
+    if (text.isEmpty) continue;
+    final fashionLabel =
+        const {'size', 'colour', 'color', 'style'}.contains(text);
+    final field =
+        byName[text] ?? (fashionLabel ? 'name' : _extraSheetAliases[text]);
+    if (field != null) map.putIfAbsent(field, () => i);
+  }
+  return map.isEmpty
+      ? SheetColumns.positionalFor(fields)
+      : SheetColumns.named(map, headerRowDetected: true);
+}
 
 PendingVariant _parseVariant(int rowNumber, List<dynamic> row, SheetColumns c) {
   int? int_(String field) =>
@@ -388,6 +411,7 @@ class InventoryImporter {
     void Function(ImportProgress)? onProgress,
   }) async {
     final cols = columns ?? SheetColumns.positional;
+    final profile = await _db.getShopProfile();
     var needsAttention = 0;
 
     // The progress reporter, throttled.
@@ -448,7 +472,10 @@ class InventoryImporter {
       );
       if (SheetColumns.isBlankRow(row.cells)) continue;
       final parsed = ImportRowParser.parseProductRow(row.cells,
-          parseId: _parseId, columns: cols, section: row.section);
+          parseId: _parseId,
+          columns: cols,
+          section: row.section,
+          profile: profile);
       if (parsed.needsAttention) await flag(row, parsed.problem!);
       final product = parsed.product;
       if (product != null) {

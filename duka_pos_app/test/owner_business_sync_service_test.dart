@@ -13,6 +13,7 @@ void main() {
           'staff',
           'sales',
           'customer_credit',
+          'business_context',
           'expenses_and_till_movements',
           'encrypted_full_backup',
         ]));

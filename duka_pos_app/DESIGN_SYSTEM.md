@@ -33,6 +33,14 @@ This document describes what the live widgets do. Do not write aspirational rule
 
 **Voice & UX copy:** Plain, verb-first CTAs ("+ Start a sale", "Record measurement", "Receive stock", "New job"). Empty states explain the next action; errors say what happened + how to fix. Real or honestly-marked mock data only — no "Acme / John Doe / Lorem ipsum".
 
+### 2.1 Account setup, access, and startup
+
+These screens use the same **precision instrument** concept as the till: an uncluttered surface, one clear next action, and the existing emerald accent reserved for selection and primary actions. Setup presents three numbered groups (business type, shop and owner, secure sign-in) so the reason for each piece of information is visible before entry. Email verification is an explicit handoff; the emailed starter voucher is then entered on the access screen and its 30-day period begins on redemption. Payment terms are shown before the M-Pesa action; quote and WhatsApp support remain secondary actions.
+
+Startup is a short, accessible status surface. It uses the shared brand mark and theme, announces “Opening your shop” to assistive technology, and leaves restoration and route decisions to the app stage controller. It has no timed animation that delays a returning owner.
+
+This is informed by current subscription onboarding research: present the value and terms before the decision, keep the next step obvious, and use goal/value framing before asking for account details. Published results are app-specific experiments, so they guide hypotheses rather than predict SimpleSales conversion. References: [Apple In-App Purchase HIG](https://developer.apple.com/design/human-interface-guidelines/in-app-purchase), [RevenueCat paywall redesign case studies](https://www.revenuecat.com/blog/growth/paywall-redesigns-case-studies), [Everlove onboarding experiment](https://www.revenuecat.com/blog/growth/everlove-onboarding-experiment), and [Five Minute Journal onboarding redesign](https://www.revenuecat.com/blog/growth/five-minute-journal-onboarding).
+
 ---
 
 ## 3. Color system

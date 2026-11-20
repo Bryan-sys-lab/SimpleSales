@@ -346,6 +346,7 @@ class SheetsService {
     if (layout.refusal != null) {
       throw UnreadableLayoutException(layout.refusal!);
     }
+    final profile = await _db.getShopProfile();
     final result = await InventoryImporter(_db).apply(
       source: 'sheets',
       sheetName: inventorySheetName,
@@ -353,8 +354,10 @@ class SheetsService {
       columns: layout.columns,
       barcodes:
           readBarcodeRows(await _values(api, spreadsheetId, barcodesRange)),
-      variants:
-          readVariantRows(await _values(api, spreadsheetId, variantsRange)),
+      variants: readVariantRows(
+        await _values(api, spreadsheetId, variantsRange),
+        profile: profile,
+      ),
     );
     return result.imported;
   }

@@ -20,7 +20,8 @@ void main() {
 
     expect(find.text('Duka'), findsOneWidget);
     expect(find.text('Drinks'), findsOneWidget);
-    expect(find.text('Fashion'), findsOneWidget);
+    await tester.scrollUntilVisible(find.text('Open'), 120,
+        scrollable: find.byType(Scrollable).first);
     expect(find.text('Open'), findsOneWidget);
 
     // Duka card shows selected state.
@@ -38,28 +39,33 @@ void main() {
       ),
     );
 
-    // Tap Drinks.
+    final rail = find.byType(Scrollable).first;
+    // Each option remains reachable in order on the horizontal rail.
     await tester.tap(find.text('Drinks').first);
     await tester.pumpAndSettle();
     expect(selected, ShopProfile.drinks);
 
     // Tap Fashion.
+    await tester.scrollUntilVisible(find.text('Fashion'), 120, scrollable: rail);
     await tester.tap(find.text('Fashion').first);
     await tester.pumpAndSettle();
     expect(selected, ShopProfile.fashion);
 
     // Tap Open.
+    await tester.scrollUntilVisible(find.text('Open'), 120, scrollable: rail);
     await tester.tap(find.text('Open').first);
     await tester.pumpAndSettle();
     expect(selected, ShopProfile.open);
 
     // Back to Duka.
+    await tester.drag(find.byType(ListView), const Offset(400, 0));
+    await tester.pumpAndSettle();
     await tester.tap(find.text('Duka').first);
     await tester.pumpAndSettle();
     expect(selected, ShopProfile.duka);
   });
 
-  testWidgets('shows four columns on wide surfaces',
+  testWidgets('keeps the profile rail horizontally scrollable on wide surfaces',
       (WidgetTester tester) async {
     tester.useDevice(Device.tablet);
     await tester.pumpApp(
@@ -69,9 +75,11 @@ void main() {
       ),
     );
 
-    expect(find.text('Duka'), findsOneWidget);
-    expect(find.text('Drinks'), findsOneWidget);
-    expect(find.text('Fashion'), findsOneWidget);
+    expect(find.byType(ListView), findsOneWidget);
+    expect(find.byWidgetPredicate((widget) =>
+        widget is ListView && widget.scrollDirection == Axis.horizontal), findsOneWidget);
+    await tester.scrollUntilVisible(find.text('Open'), 160,
+        scrollable: find.byType(Scrollable).first);
     expect(find.text('Open'), findsOneWidget);
   });
 

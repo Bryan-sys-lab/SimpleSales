@@ -9,10 +9,9 @@ import '../theme/typography.dart';
 
 /// A visual profile selector for the account-setup form.
 ///
-/// Renders each shop profile as a card with an icon, name, and one-line
-/// description.  On narrow surfaces the cards stack as a 2×2 grid; once there
-/// is enough width they spread into four columns so every profile is visible
-/// at a glance.
+/// Renders each shop profile as a card with an icon, name, and short
+/// description in a horizontal rail, so the choices remain browsable on a
+/// narrow phone without shrinking into a cramped grid.
 ///
 /// Duka is the default — callers set [`ShopProfilePicker.value`] to change it.
 class ShopProfilePicker extends StatelessWidget {
@@ -28,16 +27,15 @@ class ShopProfilePicker extends StatelessWidget {
   /// Called when the person taps a different profile card.
   final ValueChanged<ShopProfile> onChanged;
 
-  /// Four columns fit once the surface is this wide.
-  static const double _fourColumnMinWidth = 600;
-
   @override
   Widget build(BuildContext context) {
     final AppColors colors = AppColors.of(context);
     final AppSpacing spacing = AppSpacing.of(context);
     final TextTheme type = AppTypography.of(context);
     final AppLocalizations l10n = AppLocalizations.of(context);
-    final bool wide = MediaQuery.sizeOf(context).width >= _fourColumnMinWidth;
+    final double textScale = MediaQuery.textScalerOf(context).scale(1).clamp(1, 1.6).toDouble();
+    final double cardWidth = 150 * textScale;
+    final double railHeight = 140 + (textScale - 1) * 34;
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -69,40 +67,25 @@ class ShopProfilePicker extends StatelessWidget {
           ),
         ),
         SizedBox(height: spacing.md),
-        if (wide)
-          Row(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: <Widget>[
-              for (final ShopProfile profile in ShopProfile.values)
-                Expanded(
-                  child: _ProfileCard(
-                    profile: profile,
-                    selected: profile == value,
-                    onSelected: onChanged,
-                  ),
+        SizedBox(
+          height: railHeight,
+          child: ListView.separated(
+            scrollDirection: Axis.horizontal,
+            itemCount: ShopProfile.values.length,
+            separatorBuilder: (_, __) => const SizedBox(width: 12),
+            itemBuilder: (BuildContext context, int index) {
+              final ShopProfile profile = ShopProfile.values[index];
+              return SizedBox(
+                width: cardWidth,
+                child: _ProfileCard(
+                  profile: profile,
+                  selected: profile == value,
+                  onSelected: onChanged,
                 ),
-            ],
-          )
-        else
-          SizedBox(
-            height: 120,
-            child: ListView.separated(
-              scrollDirection: Axis.horizontal,
-              itemCount: ShopProfile.values.length,
-              separatorBuilder: (_, __) => const SizedBox(width: 12),
-              itemBuilder: (BuildContext context, int index) {
-                final ShopProfile profile = ShopProfile.values[index];
-                return SizedBox(
-                  width: 150,
-                  child: _ProfileCard(
-                    profile: profile,
-                    selected: profile == value,
-                    onSelected: onChanged,
-                  ),
-                );
-              },
-            ),
+              );
+            },
           ),
+        ),
       ],
     );
   }
@@ -155,7 +138,11 @@ class _ProfileCard extends StatelessWidget {
     final AppShapes shapes = AppShapes.of(context);
     final TextTheme type = AppTypography.of(context);
 
-    return Material(
+    return Semantics(
+      button: true,
+      selected: selected,
+      label: '$_title. $_subtitle',
+      child: Material(
       color: selected
           ? colors.accentContainer.withValues(alpha: 0.15)
           : colors.surface,
@@ -224,6 +211,7 @@ class _ProfileCard extends StatelessWidget {
             ],
           ),
         ),
+      ),
       ),
     );
   }

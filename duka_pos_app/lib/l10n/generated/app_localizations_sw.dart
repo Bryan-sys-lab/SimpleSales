@@ -1561,6 +1561,10 @@ class AppLocalizationsSw extends AppLocalizations {
   String get settingsAutoBackupSync => 'Automatic backup and online sync';
 
   @override
+  String get settingsAutoBackupSyncDisclosure =>
+      'Rekodi za duka, pamoja na Maelezo ya biashara, husawazishwa na akaunti ya uendeshaji ya duka. Hii haiwashi uchangiaji wa kibiashara.';
+
+  @override
   String get settingsBackupSection => 'Backup';
 
   @override
@@ -6606,6 +6610,10 @@ class AppLocalizationsSw extends AppLocalizations {
   String get settingsBackupAllShopData => 'Hifadhi data yote ya duka';
 
   @override
+  String get settingsFullBackupDisclosure =>
+      'Hifadhi rudufu kamili inajumuisha rekodi zote za duka zilizohifadhiwa, pamoja na Maelezo ya biashara. Mtu yeyote aliye na faili na kaulisiri yake anaweza kurejesha data hiyo.';
+
+  @override
   String get settingsRestoreAllShopData => 'Rudisha data yote ya duka';
 
   @override
@@ -7333,4 +7341,101 @@ class AppLocalizationsSw extends AppLocalizations {
   @override
   String get settingsStaffSyncFailed =>
       'Could not sync to the server. The staff member was not saved.';
+
+  @override
+  String get productItemKind => 'Aina ya bidhaa';
+
+  @override
+  String get productKindGood => 'Bidhaa halisi';
+
+  @override
+  String get productKindService => 'Huduma';
+
+  @override
+  String get productKindFee => 'Ada';
+
+  @override
+  String get productKindUnknown => 'Inahitaji kukaguliwa';
+
+  @override
+  String get productKindNoStock =>
+      'Huduma na ada hazibadilishi hesabu ya bidhaa.';
+
+  @override
+  String get productMerchantSku => 'Nambari ya duka (ya faragha)';
+
+  @override
+  String get productBrandLabel => 'Jina la chapa (duka pekee)';
+
+  @override
+  String get productGpcCode => 'Msimbo wa GS1 GPC (si lazima)';
+
+  @override
+  String get productGpcVersion => 'Toleo la GPC';
+
+  @override
+  String get productGpcMappingStatus => 'Hali ya uainishaji';
+
+  @override
+  String get productMappingMapped => 'Imeainishwa';
+
+  @override
+  String get productMappingUnmapped => 'Haijaainishwa';
+
+  @override
+  String get productMappingUnknown => 'Haijulikani';
+
+  @override
+  String get productMappingNotApplicable => 'Haitumiki';
+
+  @override
+  String get productMappingRejected => 'Imekataliwa';
+
+  @override
+  String get productGpcVersionRequired => 'Weka toleo la GPC la msimbo huu.';
+
+  @override
+  String get productGpcCodeRequired =>
+      'Weka msimbo wa GPC au ubadilishe hali ya uainishaji.';
+
+  @override
+  String get productExternalUnitCode => 'Msimbo wa kipimo wa UNECE (si lazima)';
+
+  @override
+  String get productUnitVersion => 'Toleo la UNECE Rec.20';
+
+  @override
+  String get productUnitMappingStatus => 'Hali ya ulinganishaji wa kipimo';
+
+  @override
+  String get productPackQuantity => 'Kiasi kwa pakiti (si lazima)';
+
+  @override
+  String get productPackUnitCode => 'Msimbo wa kipimo cha pakiti';
+
+  @override
+  String get productUnitCodeRequired =>
+      'Weka msimbo wa kipimo wa UNECE au ubadilishe hali ya ulinganishaji.';
+
+  @override
+  String get productPackMappingInvalid =>
+      'Weka kiasi chanya cha pakiti pamoja na msimbo wake wa kipimo.';
+
+  @override
+  String get productMappingReviewAction => 'Kagua ulinganishaji';
+
+  @override
+  String get productMappingReviewTitle => 'Kagua ulinganishaji wa bidhaa';
+
+  @override
+  String get productMappingReviewHelp =>
+      'Bidhaa zisizoainishwa bado zinaweza kuuzwa. Kagua misimbo ya bidhaa na vipimo ukiwa nayo.';
+
+  @override
+  String get productMappingReviewEmpty =>
+      'Ulinganishaji wote wa bidhaa umekaguliwa.';
+
+  @override
+  String get productMappingReviewLoadFailed =>
+      'Haikuwezekana kupakia bidhaa za kukaguliwa. Jaribu tena.';
 }

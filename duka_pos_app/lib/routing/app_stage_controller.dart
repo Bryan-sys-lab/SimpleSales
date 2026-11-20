@@ -82,9 +82,7 @@ class AppStageController extends ChangeNotifier {
       _permissionsAsked = prefs.getBool('permissions_asked_$key') ?? false;
       _readCachedSubscription(prefs, key);
     }
-    if (_state.isSignedIn &&
-        _state.isOwnerSession &&
-        _subscriptionRefreshFor != key) {
+    if (_state.isSignedIn && _subscriptionRefreshFor != key) {
       _subscriptionRefreshFor = key;
       unawaited(refreshSubscription());
     }
@@ -98,7 +96,9 @@ class AppStageController extends ChangeNotifier {
     final String prefix = _subscriptionKey(workspace);
     final bool? allowed = prefs.getBool('$prefix.allowed');
     if (allowed == null) {
-      _subscriptionRequired = false;
+      // No server decision has been cached for this shop on this device yet.
+      // Keep access gated until the shop entitlement can be verified.
+      _subscriptionRequired = true;
       return;
     }
     final String? end = prefs.getString('$prefix.period_end');
@@ -107,9 +107,9 @@ class AppStageController extends ChangeNotifier {
         (periodEnd != null && !periodEnd.isAfter(DateTime.now().toUtc()));
   }
 
-  /// Refreshes the server entitlement and stores it per shop so staff sessions
-  /// on the same till observe the same lock state without borrowing an owner
-  /// credential. Network failures deliberately retain the last known state:
+  /// Refreshes the server entitlement for the active shop and stores it per
+  /// workspace. Owners and staff read the same tenant-scoped decision using
+  /// their own session. Network failures deliberately retain the last known state:
   /// offline selling remains available, while the backend still enforces the
   /// entitlement on every protected remote operation.
   Future<void> refreshSubscription() async {

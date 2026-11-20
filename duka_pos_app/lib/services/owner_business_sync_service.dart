@@ -3,9 +3,9 @@ import 'backend_service.dart';
 /// The owner-controlled server copy described by the release-1 sync contract.
 ///
 /// This service is deliberately an allowlist of operational/business records:
-/// catalogue, staff, sales, books, stock, customer credit, and encrypted
-/// backup. It has no commercial-intelligence contribution method and does not
-/// send a second, inferred copy of these records to an analytics pipeline.
+/// catalogue, staff, sales, books, stock, customer credit, business context,
+/// and encrypted backup. Business context uses its own strict tenant endpoint;
+/// it is not added to the backup payload or commercial contribution pipeline.
 /// Keeping this boundary named makes a future commercial contributor harder to
 /// accidentally wire into the owner backup path.
 class OwnerBusinessSyncService {
@@ -32,6 +32,7 @@ class OwnerBusinessSyncService {
     'encrypted_full_backup',
     'cost_pools',
     'owner_transactions',
+    'business_context',
   ];
 
   static Future<OwnerBusinessSyncReport> run() async {
@@ -97,6 +98,8 @@ class OwnerBusinessSyncService {
       await BackendService.syncOwnerTransactionsToBackend();
       await BackendService.pullOwnerTransactionsFromBackend();
     });
+    await attempt(
+        'business_context', BackendService.syncLocalBusinessContextToBackend);
 
     return OwnerBusinessSyncReport(
       completed: List<String>.unmodifiable(completed),

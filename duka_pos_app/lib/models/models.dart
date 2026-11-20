@@ -207,6 +207,20 @@ class Product {
   /// barcode field again is how the two start disagreeing. This is the
   /// transient hand-off between "read a row" and "write the codes".
   final String? primaryBarcode;
+  final String itemKind;
+  final String? gpcCode;
+  final String? gpcVersion;
+  final String gpcMappingStatus;
+  final String? merchantSku;
+  final String? brandLabelLocal;
+  final String? externalUnitCode;
+  final String? unitScheme;
+  final String? unitVersion;
+  final String unitMappingStatus;
+  final double? packQuantity;
+  final String? packUnitCode;
+  final String identityProvenance;
+  final String? productUuid;
 
   Product({
     this.id,
@@ -232,6 +246,20 @@ class Product {
     this.imagePath,
     this.remoteId,
     this.primaryBarcode,
+    this.itemKind = 'unknown',
+    this.gpcCode,
+    this.gpcVersion,
+    this.gpcMappingStatus = 'unmapped',
+    this.merchantSku,
+    this.brandLabelLocal,
+    this.externalUnitCode,
+    this.unitScheme,
+    this.unitVersion,
+    this.unitMappingStatus = 'unknown',
+    this.packQuantity,
+    this.packUnitCode,
+    this.identityProvenance = 'system_derived',
+    this.productUuid,
   });
 
   /// Computed from minor units so the ratio does not inherit float error from
@@ -242,14 +270,16 @@ class Product {
       : ((sellPrice.minorUnits - costPrice.minorUnits) / sellPrice.minorUnits) *
           100;
   double get availableStockQty => math.max(0.0, stockQty - reservedQty);
-  bool get isLow => availableStockQty <= reorderLevel;
+  bool get isLow => trackStock && itemKind != 'service' && itemKind != 'fee' &&
+      availableStockQty <= reorderLevel;
 
   /// Whether this product should ever be treated as out of stock.
   ///
   /// Items and services added without stock tracking (trackStock = false) are
   /// never out of stock no matter what stock_qty says. Only tracked products
   /// can be out of stock.
-  bool get isOutOfStock => trackStock && stockQty <= 0;
+  bool get isOutOfStock =>
+      itemKind != 'service' && itemKind != 'fee' && trackStock && stockQty <= 0;
 
   /// The price charged for one portion of a bottle.
   ///
@@ -315,6 +345,20 @@ class Product {
     bool? trackVariants,
     String? imagePath,
     String? primaryBarcode,
+    String? itemKind,
+    String? gpcCode,
+    String? gpcVersion,
+    String? gpcMappingStatus,
+    String? merchantSku,
+    String? brandLabelLocal,
+    String? externalUnitCode,
+    String? unitScheme,
+    String? unitVersion,
+    String? unitMappingStatus,
+    double? packQuantity,
+    String? packUnitCode,
+    String? identityProvenance,
+    String? productUuid,
   }) =>
       Product(
         id: id,
@@ -341,6 +385,20 @@ class Product {
         trackVariants: trackVariants ?? this.trackVariants,
         imagePath: imagePath ?? this.imagePath,
         primaryBarcode: primaryBarcode ?? this.primaryBarcode,
+        itemKind: itemKind ?? this.itemKind,
+        gpcCode: gpcCode ?? this.gpcCode,
+        gpcVersion: gpcVersion ?? this.gpcVersion,
+        gpcMappingStatus: gpcMappingStatus ?? this.gpcMappingStatus,
+        merchantSku: merchantSku ?? this.merchantSku,
+        brandLabelLocal: brandLabelLocal ?? this.brandLabelLocal,
+        externalUnitCode: externalUnitCode ?? this.externalUnitCode,
+        unitScheme: unitScheme ?? this.unitScheme,
+        unitVersion: unitVersion ?? this.unitVersion,
+        unitMappingStatus: unitMappingStatus ?? this.unitMappingStatus,
+        packQuantity: packQuantity ?? this.packQuantity,
+        packUnitCode: packUnitCode ?? this.packUnitCode,
+        identityProvenance: identityProvenance ?? this.identityProvenance,
+        productUuid: productUuid ?? this.productUuid,
       );
 
   Map<String, dynamic> toMap() => {
@@ -368,6 +426,20 @@ class Product {
         'updated_at': updatedAt,
         'image_path': imagePath,
         'remote_id': remoteId,
+        'item_kind': itemKind,
+        'gpc_code': gpcCode,
+        'gpc_version': gpcVersion,
+        'gpc_mapping_status': gpcMappingStatus,
+        'merchant_sku': merchantSku,
+        'brand_label_local': brandLabelLocal,
+        'external_unit_code': externalUnitCode,
+        'unit_scheme': unitScheme,
+        'unit_version': unitVersion,
+        'unit_mapping_status': unitMappingStatus,
+        'pack_quantity': packQuantity,
+        'pack_unit_code': packUnitCode,
+        'identity_provenance': identityProvenance,
+        if (productUuid != null) 'product_uuid': productUuid,
       };
 
   factory Product.fromMap(Map<String, dynamic> m) => Product(
@@ -408,6 +480,20 @@ class Product {
         imagePath: (m['image_path'] as String?)?.isEmpty ?? true
             ? null
             : m['image_path'] as String,
+        itemKind: m['item_kind'] as String? ?? 'unknown',
+        gpcCode: m['gpc_code'] as String?,
+        gpcVersion: m['gpc_version'] as String?,
+        gpcMappingStatus: m['gpc_mapping_status'] as String? ?? 'unmapped',
+        merchantSku: m['merchant_sku'] as String?,
+        brandLabelLocal: m['brand_label_local'] as String?,
+        externalUnitCode: m['external_unit_code'] as String?,
+        unitScheme: m['unit_scheme'] as String?,
+        unitVersion: m['unit_version'] as String?,
+        unitMappingStatus: m['unit_mapping_status'] as String? ?? 'unknown',
+        packQuantity: (m['pack_quantity'] as num?)?.toDouble(),
+        packUnitCode: m['pack_unit_code'] as String?,
+        identityProvenance: m['identity_provenance'] as String? ?? 'system_derived',
+        productUuid: m['product_uuid'] as String?,
       );
 
   /// Row order used for both Excel export and Google Sheets export, so the
@@ -1738,6 +1824,8 @@ class StockReceiptLine {
     this.variantId,
     this.expiryDate,
     this.batchCode,
+    this.purchaseOrderLineId,
+    this.purchaseOrderLineUuid,
   });
 
   final int productId;
@@ -1752,6 +1840,8 @@ class StockReceiptLine {
   final int? variantId;
   final DateTime? expiryDate;
   final String? batchCode;
+  final int? purchaseOrderLineId;
+  final String? purchaseOrderLineUuid;
 }
 
 /// One line of a posted delivery.
@@ -1769,6 +1859,8 @@ class StockReceiptItem {
     this.variantId,
     this.expiryDate,
     this.batchCode,
+    this.purchaseOrderLineId,
+    this.purchaseOrderLineUuid,
   });
 
   final int? id;
@@ -1777,6 +1869,8 @@ class StockReceiptItem {
   final int? variantId;
   final DateTime? expiryDate;
   final String? batchCode;
+  final int? purchaseOrderLineId;
+  final String? purchaseOrderLineUuid;
   final String productName;
   final double qty;
 
@@ -1809,6 +1903,8 @@ class StockReceiptItem {
             : Money.fromMinor((m['new_cost_minor'] as num).toInt()),
         expiryDate: DateTime.tryParse(m['expiry_date'] as String? ?? ''),
         batchCode: m['batch_code'] as String?,
+        purchaseOrderLineId: (m['purchase_order_line_id'] as num?)?.toInt(),
+        purchaseOrderLineUuid: m['purchase_order_line_uuid'] as String?,
       );
 }
 
@@ -1829,6 +1925,8 @@ class StockReceipt {
     this.paidFrom = 'till_cash',
     this.status = 'posted',
     this.note,
+    this.purchaseOrderId,
+    this.purchaseOrderUuid,
     this.items = const <StockReceiptItem>[],
   });
 
@@ -1860,6 +1958,8 @@ class StockReceipt {
   final String status;
 
   final String? note;
+  final int? purchaseOrderId;
+  final String? purchaseOrderUuid;
 
   final List<StockReceiptItem> items;
 
@@ -1881,6 +1981,8 @@ class StockReceipt {
         paidFrom: (m['paid_from'] as String?) ?? 'till_cash',
         status: (m['status'] as String?) ?? 'posted',
         note: m['note'] as String?,
+        purchaseOrderId: (m['purchase_order_id'] as num?)?.toInt(),
+        purchaseOrderUuid: m['purchase_order_uuid'] as String?,
       );
 }
 

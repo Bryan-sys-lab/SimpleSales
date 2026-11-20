@@ -379,6 +379,13 @@ class _OwnerSetupScreenState extends State<OwnerSetupScreen> {
                             isAdditionalShop: widget.isAdditionalShop,
                           ),
                           SizedBox(height: spacing.lg),
+                          const _SetupSectionLabel(
+                            number: '1',
+                            title: 'Choose your business type',
+                            detail:
+                                'This sets up the right products and workflows.',
+                          ),
+                          SizedBox(height: spacing.sm),
                           // Profile picker
                           ShopProfilePicker(
                             value: _shopProfile,
@@ -387,17 +394,34 @@ class _OwnerSetupScreenState extends State<OwnerSetupScreen> {
                             },
                           ),
                           SizedBox(height: spacing.lg),
+                          const _SetupSectionLabel(
+                            number: '2',
+                            title: 'Name your shop and owner account',
+                            detail:
+                                'We use your email to verify and secure access.',
+                          ),
+                          SizedBox(height: spacing.sm),
                           // Form
                           _SetupFields(
                             formKey: _formKey,
                             shop: _shop,
                             name: _name,
                             email: _email,
-                            pin: _pin,
-                            pin2: _pin2,
                             validateShop: _validateShop,
                             validateName: _validateName,
                             validateEmail: _validateEmail,
+                          ),
+                          SizedBox(height: spacing.md),
+                          const _SetupSectionLabel(
+                            number: '3',
+                            title: 'Create your secure sign-in',
+                            detail:
+                                'Choose a private PIN, then accept the terms.',
+                          ),
+                          SizedBox(height: spacing.sm),
+                          _SetupPinFields(
+                            pin: _pin,
+                            pin2: _pin2,
                             validatePin: _validatePin,
                             validatePinConfirm: _validatePinConfirm,
                             onSubmit: _create,
@@ -468,8 +492,8 @@ class _OwnerSetupScreenState extends State<OwnerSetupScreen> {
                       crossAxisAlignment: CrossAxisAlignment.stretch,
                       children: <Widget>[
                         Text(
-                          'We will email you a 6-digit code first. Your shop '
-                          'is created once the code is confirmed.',
+                          'Next, confirm the 6-digit code sent to your email. '
+                          'Your shop is created after confirmation.',
                           textAlign: TextAlign.center,
                           style: AppTypography.of(context).bodySmall?.copyWith(
                                 color: colors.onSurfaceMuted,
@@ -481,7 +505,7 @@ class _OwnerSetupScreenState extends State<OwnerSetupScreen> {
                           onPressed: _saving ? null : _create,
                           label: _saving
                               ? 'Verifying your email'
-                              : 'Create shop admin account',
+                              : 'Continue to email verification',
                           colors: colors,
                           spacing: spacing,
                         ),
@@ -570,28 +594,18 @@ class _SetupFields extends StatelessWidget {
     required this.shop,
     required this.name,
     required this.email,
-    required this.pin,
-    required this.pin2,
     required this.validateShop,
     required this.validateName,
     required this.validateEmail,
-    required this.validatePin,
-    required this.validatePinConfirm,
-    required this.onSubmit,
   });
 
   final GlobalKey<FormState> formKey;
   final TextEditingController shop;
   final TextEditingController name;
   final TextEditingController email;
-  final TextEditingController pin;
-  final TextEditingController pin2;
   final String? Function(String?) validateShop;
   final String? Function(String?) validateName;
   final String? Function(String?) validateEmail;
-  final String? Function(String?) validatePin;
-  final String? Function(String?) validatePinConfirm;
-  final VoidCallback onSubmit;
 
   @override
   Widget build(BuildContext context) {
@@ -624,31 +638,82 @@ class _SetupFields extends StatelessWidget {
             autofillHints: const <String>[AutofillHints.email],
             validator: validateEmail,
           ),
-          SizedBox(height: spacing.md),
-          _SetupField(
-            controller: pin,
-            label: AppLocalizations.of(context).ownerSetupPinLabel,
-            keyboardType: TextInputType.number,
-            obscure: true,
-            maxLength: PinRules.adminLength,
-            autofillHints: const <String>[AutofillHints.newPassword],
-            validator: validatePin,
-          ),
-          SizedBox(height: spacing.md),
-          _SetupField(
-            controller: pin2,
-            label: AppLocalizations.of(context).ownerSetupPinConfirmLabel,
-            keyboardType: TextInputType.number,
-            obscure: true,
-            maxLength: PinRules.adminLength,
-            isLast: true,
-            onSubmitted: onSubmit,
-            autofillHints: const <String>[AutofillHints.newPassword],
-            validator: validatePinConfirm,
-          ),
         ],
       ),
     );
+  }
+}
+
+class _SetupSectionLabel extends StatelessWidget {
+  const _SetupSectionLabel(
+      {required this.number, required this.title, required this.detail});
+  final String number;
+  final String title;
+  final String detail;
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = AppColors.of(context);
+    final type = AppTypography.of(context);
+    return Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+      CircleAvatar(
+          radius: 14,
+          backgroundColor: colors.accentContainer,
+          child: Text(number,
+              style:
+                  type.labelMedium?.copyWith(color: colors.onAccentContainer))),
+      const SizedBox(width: 12),
+      Expanded(
+          child:
+              Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        Text(title,
+            style: type.titleMedium?.copyWith(
+                color: colors.onSurface, fontWeight: FontWeight.w700)),
+        const SizedBox(height: 2),
+        Text(detail,
+            style: type.bodySmall?.copyWith(color: colors.onSurfaceVariant)),
+      ])),
+    ]);
+  }
+}
+
+class _SetupPinFields extends StatelessWidget {
+  const _SetupPinFields(
+      {required this.pin,
+      required this.pin2,
+      required this.validatePin,
+      required this.validatePinConfirm,
+      required this.onSubmit});
+  final TextEditingController pin;
+  final TextEditingController pin2;
+  final String? Function(String?) validatePin;
+  final String? Function(String?) validatePinConfirm;
+  final VoidCallback onSubmit;
+
+  @override
+  Widget build(BuildContext context) {
+    final spacing = AppSpacing.of(context);
+    return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+      _SetupField(
+          controller: pin,
+          label: AppLocalizations.of(context).ownerSetupPinLabel,
+          keyboardType: TextInputType.number,
+          obscure: true,
+          maxLength: PinRules.adminLength,
+          autofillHints: const [AutofillHints.newPassword],
+          validator: validatePin),
+      SizedBox(height: spacing.md),
+      _SetupField(
+          controller: pin2,
+          label: AppLocalizations.of(context).ownerSetupPinConfirmLabel,
+          keyboardType: TextInputType.number,
+          obscure: true,
+          maxLength: PinRules.adminLength,
+          isLast: true,
+          onSubmitted: onSubmit,
+          autofillHints: const [AutofillHints.newPassword],
+          validator: validatePinConfirm),
+    ]);
   }
 }
 

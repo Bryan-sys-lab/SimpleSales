@@ -16,6 +16,7 @@ import 'package:duka_pos/models/models.dart';
 import 'package:duka_pos/services/excel_service.dart';
 import 'package:duka_pos/services/inventory_importer.dart';
 import 'package:duka_pos/services/import_row_parser.dart';
+import 'package:duka_pos/profile/shop_profile.dart';
 import 'package:duka_pos/utils/money.dart';
 import 'package:duka_pos/utils/units.dart';
 
@@ -136,6 +137,7 @@ void main() {
   setUp(() async {
     DatabaseHelper.resetForTests();
     db = await DatabaseHelper.openInMemoryForTests();
+    await db.setShopProfile(ShopProfile.drinks);
   });
 
   tearDown(() => DatabaseHelper.resetForTests());
@@ -489,6 +491,70 @@ void main() {
       expect(ImportRowParser.resolveCategory(null, 'Ken Stout'), 'Beer');
       expect(ImportRowParser.resolveCategory('', 'Zebra Widget'),
           CategoryName.general);
+    });
+  });
+
+  group('inventory imports across shop profiles', () {
+    test('keeps non-drink stock countable and uses profile-safe categories',
+        () {
+      for (final profile in ShopProfile.values) {
+        final parsed = ImportRowParser.parseProductRow(
+          _row(name: 'Everyday Item', category: '', bottle: ''),
+          profile: profile,
+        );
+        expect(parsed.product, isNotNull, reason: profile.name);
+        expect(
+            parsed.product!.bottleMl, profile == ShopProfile.drinks ? 750 : 0,
+            reason: profile.name);
+        expect(parsed.product!.category,
+            profile == ShopProfile.fashion ? 'Fashion' : 'General',
+            reason: profile.name);
+        expect(parsed.needsAttention, profile == ShopProfile.drinks,
+            reason: profile.name);
+      }
+    });
+
+    test('fashion size labels are not parsed as bottle volume', () {
+      final layout = SheetLayout.fromRawRows([
+        ['name', 'category', 'cost price', 'sell price', 'stock', 'size'],
+        ['Cotton Shirt', '', 300, 650, 4, 'XL'],
+      ]);
+      final parsed = ImportRowParser.parseProductRow(
+        layout.rows.single.cells,
+        columns: layout.columns,
+        profile: ShopProfile.fashion,
+      );
+      expect(parsed.product, isNotNull);
+      expect(parsed.product!.category, 'Fashion');
+      expect(parsed.product!.bottleMl, 0);
+    });
+
+    test('fashion variant size labels can identify a variant', () {
+      final variants = readVariantRows([
+        ['product_id', 'size', 'sku', 'sell_price', 'stock_qty'],
+        [9, 'XL', 'SHIRT-XL', 650, 3],
+      ], profile: ShopProfile.fashion);
+      expect(variants.single.isRejected, isFalse);
+      expect(variants.single.name, 'XL');
+      expect(variants.single.sizeMl, 0);
+    });
+
+    test('Excel import service applies the saved fashion profile', () async {
+      await db.setShopProfile(ShopProfile.fashion);
+      final result = await ExcelService().importInventoryBytes(
+        _workbook({
+          'Inventory': [
+            ['name', 'cost price', 'sell price', 'stock', 'size'],
+            ['Cotton Shirt', 300, 650, 4, 'XL'],
+          ],
+        }),
+      );
+      final product = await productNamed('Cotton Shirt');
+      expect(result.imported, 1);
+      expect(product, isNotNull);
+      expect(product!.category, 'Fashion');
+      expect(product.bottleMl, 0);
+      expect(result.needsAttention, 0);
     });
   });
 
@@ -938,7 +1004,8 @@ void main() {
         trackExpiry: true,
         updatedAt: '2026-01-01T00:00:00.000',
       );
-      expect(product.toSheetRow()[Product.sheetHeaders.indexOf('unit')], 'litre');
+      expect(
+          product.toSheetRow()[Product.sheetHeaders.indexOf('unit')], 'litre');
       // The size column carries litres for a litre-declared row. Writing 50000
       // there and reading it back as litres produced 50 000 000 ml — a
       // thousand-fold error that survived the round trip looking perfectly

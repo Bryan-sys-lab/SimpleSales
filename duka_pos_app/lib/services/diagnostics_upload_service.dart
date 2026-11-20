@@ -17,6 +17,7 @@ import 'backend_service.dart';
 /// A single failure entry packaged for upload.
 class CrashEntryPayload {
   const CrashEntryPayload({
+    this.clientEventId,
     required this.kind,
     required this.message,
     this.stack,
@@ -28,6 +29,7 @@ class CrashEntryPayload {
     this.environment = const <String, String>{},
   });
 
+  final String? clientEventId;
   final String kind;
   final String message;
   final String? stack;
@@ -39,6 +41,7 @@ class CrashEntryPayload {
   final Map<String, String> environment;
 
   Map<String, dynamic> toJson() => <String, dynamic>{
+        if (clientEventId != null) 'clientEventId': clientEventId,
         'kind': kind,
         'message': message,
         if (stack != null) 'stack': stack,
@@ -46,8 +49,8 @@ class CrashEntryPayload {
         if (actorName != null) 'actorName': actorName,
         if (action != null) 'action': action,
         if (breadcrumbs.isNotEmpty) 'breadcrumbs': breadcrumbs,
-        if (environment.isNotEmpty) 'environment': environment,
-        if (createdAt != null) 'createdAt': createdAt!.toUtc().toIso8601String(),
+        if (createdAt != null)
+          'createdAt': createdAt!.toUtc().toIso8601String(),
       };
 }
 
@@ -115,21 +118,22 @@ class DiagnosticUploadResult {
 class DiagnosticsUploadService {
   DiagnosticsUploadService._();
   static final DiagnosticsUploadService instance = DiagnosticsUploadService._();
-
-  final Dio _dio = Dio();
+  Future<DiagnosticUploadResult>? _uploading;
 
   /// A stable device id, read from storage once and regenerated on first use.
   static const _deviceIdKey = 'diagnostic_device_id';
 
-  /// The backend path device diagnostics are posted to.
-  static const _uploadPath = '/api/admin/diagnostics';
+  /// Shared stable device identity used by crash reports and session replay.
+  Future<String> get deviceId => _deviceId();
 
+  /// The backend path device diagnostics are posted to.
   Future<String> _deviceId() async {
     final prefs = await SharedPreferences.getInstance();
     final existing = prefs.getString(_deviceIdKey);
     if (existing != null && existing.isNotEmpty) return existing;
     final generated = String.fromEnvironment('DEVICE_ID',
-        defaultValue: '${Platform.localHostname}-${DateTime.now().millisecondsSinceEpoch}');
+        defaultValue:
+            '${Platform.localHostname}-${DateTime.now().millisecondsSinceEpoch}');
     await prefs.setString(_deviceIdKey, generated);
     return generated;
   }
@@ -217,19 +221,22 @@ class DiagnosticsUploadService {
 
   /// Reads the local failure log and maps it to upload payloads.
   Future<List<CrashEntryPayload>> _crashEntries() async {
-    final entries = await DatabaseHelper.instance
-        .crashLog(const CrashLogQuery(limit: 200));
-    return entries.map((e) => CrashEntryPayload(
-      kind: e.kind.wire,
-      message: e.message,
-      stack: e.stack,
-      route: e.route,
-      actorName: e.actorName,
-      action: e.action,
-      breadcrumbs: e.breadcrumbs,
-      createdAt: e.at.isNotEmpty ? DateTime.tryParse(e.at) : null,
-      environment: e.environment,
-    )).toList();
+    final entries =
+        await DatabaseHelper.instance.crashLog(const CrashLogQuery(limit: 200));
+    return entries
+        .map((e) => CrashEntryPayload(
+              clientEventId: e.id == null ? null : 'crash-${e.id}',
+              kind: e.kind.wire,
+              message: e.message,
+              stack: e.stack,
+              route: e.route,
+              actorName: e.actorName,
+              action: e.action,
+              breadcrumbs: e.breadcrumbs,
+              createdAt: e.at.isNotEmpty ? DateTime.tryParse(e.at) : null,
+              environment: e.environment,
+            ))
+        .toList();
   }
 
   /// POST the report to the backend. Best-effort: failures are swallowed and
@@ -237,23 +244,8 @@ class DiagnosticsUploadService {
   Future<DiagnosticUploadResult> upload() async {
     try {
       final report = await buildReport();
-      final base = BackendService.backendUrl.replaceAll(RegExp(r'/+$'), '');
-      final response = await _dio.post(
-        '$base$_uploadPath',
-        data: report.toJson(),
-        options: Options(
-          headers: {'Content-Type': 'application/json'},
-          sendTimeout: const Duration(seconds: 15),
-          receiveTimeout: const Duration(seconds: 15),
-        ),
-      );
-      if (response.statusCode == 201 || response.statusCode == 200) {
-        final data = response.data as Map<String, dynamic>?;
-        return DiagnosticUploadResult.ok(data?['id'] as String? ?? '');
-      }
-      return DiagnosticUploadResult.failed([
-        'HTTP ${response.statusCode}',
-      ]);
+      final data = await BackendService.postDeviceDiagnostic(report.toJson());
+      return DiagnosticUploadResult.ok(data['id'] as String? ?? '');
     } on DioException catch (e) {
       return DiagnosticUploadResult.failed([
         'Network: ${e.message}',
@@ -267,7 +259,15 @@ class DiagnosticsUploadService {
 
   /// Upload and, if successful, clear the local log so the phone does not
   /// keep re-sending the same failures.
-  Future<DiagnosticUploadResult> uploadAndClear() async {
+  Future<DiagnosticUploadResult> uploadAndClear() {
+    final inFlight = _uploading;
+    if (inFlight != null) return inFlight;
+    final future = _uploadAndClearOnce();
+    _uploading = future;
+    return future.whenComplete(() { _uploading = null; });
+  }
+
+  Future<DiagnosticUploadResult> _uploadAndClearOnce() async {
     final result = await upload();
     if (result.ok) {
       try {

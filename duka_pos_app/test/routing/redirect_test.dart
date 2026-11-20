@@ -248,19 +248,18 @@ void main() {
   });
 
   group('expired subscription access', () {
-    test('keeps the operational surfaces available', () {
+    test('requires an active subscription before all shop screens', () {
       for (final String path in <String>[
         Routes.dashboard,
         Routes.sell,
         Routes.inventory,
         Routes.servings,
         Routes.transactions,
-        Routes.paywall,
       ]) {
         expect(
           guard(AppStage.ready, path, subscriptionRequired: true),
-          isNull,
-          reason: '$path must remain usable while renewing',
+          Routes.paywall,
+          reason: '$path must be gated until access is active',
         );
       }
     });
@@ -284,6 +283,20 @@ void main() {
       expect(
         guard(AppStage.ready, Routes.paywall, subscriptionRequired: true),
         isNull,
+      );
+    });
+
+    test('puts a newly verified owner on the paywall before optional setup',
+        () {
+      expect(
+        guard(AppStage.onboarding, Routes.onboarding,
+            subscriptionRequired: true),
+        Routes.paywall,
+      );
+      expect(
+        guard(AppStage.permissions, Routes.permissions,
+            subscriptionRequired: true),
+        Routes.paywall,
       );
     });
   });

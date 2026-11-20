@@ -1027,6 +1027,29 @@ class _InventoryScreenState extends State<InventoryScreen>
                 bottom: AppSpacing.of(context).sm,
               ),
             ),
+            if (isOwner)
+              Align(
+                alignment: AlignmentDirectional.centerStart,
+                child: Padding(
+                  padding: EdgeInsetsDirectional.only(
+                    start: AppSpacing.of(context).xl,
+                    end: AppSpacing.of(context).xl,
+                    bottom: AppSpacing.of(context).sm,
+                  ),
+                  child: ActionChip(
+                    avatar: const Icon(Icons.rule_folder_outlined, size: 18),
+                    label: Text(l10n.productMappingReviewAction),
+                    onPressed: () async {
+                      await Navigator.of(context).push<void>(
+                        MaterialPageRoute<void>(
+                          builder: (_) => const ProductIdentityReviewScreen(),
+                        ),
+                      );
+                      if (mounted) await _load();
+                    },
+                  ),
+                ),
+              ),
             // Search: the fastest way to find a product in a long list.
             Padding(
               padding: EdgeInsetsDirectional.only(
@@ -1233,6 +1256,122 @@ class _InventoryScreenState extends State<InventoryScreen>
 
   double _rowDividerInset(BuildContext context) =>
       AppSpacing.of(context).md + 40 + AppSpacing.of(context).md;
+}
+
+class ProductIdentityReviewScreen extends StatefulWidget {
+  const ProductIdentityReviewScreen({super.key});
+
+  @override
+  State<ProductIdentityReviewScreen> createState() =>
+      _ProductIdentityReviewScreenState();
+}
+
+class _ProductIdentityReviewScreenState
+    extends State<ProductIdentityReviewScreen> {
+  List<Product> _products = const [];
+  bool _loading = true;
+  String? _error;
+
+  Future<void> _load() async {
+    setState(() {
+      _loading = true;
+      _error = null;
+    });
+    try {
+      final products = await DatabaseHelper.instance.getProducts(activeOnly: false);
+      if (!mounted) return;
+      setState(() {
+        _products = products.where((product) =>
+            (product.gpcMappingStatus == 'unknown' ||
+                product.gpcMappingStatus == 'unmapped') ||
+            (product.unitMappingStatus == 'unknown' ||
+                product.unitMappingStatus == 'unmapped')).toList();
+        _loading = false;
+      });
+    } catch (_) {
+      if (!mounted) return;
+      setState(() {
+        _error = AppLocalizations.of(context).productMappingReviewLoadFailed;
+        _loading = false;
+      });
+    }
+  }
+
+  Future<void> _edit(Product product) async {
+    final appState = context.read<AppState>();
+    await showModalBottomSheet<void>(
+      context: context,
+      isScrollControlled: true,
+      builder: (_) => ProductEditor(
+        existing: product,
+        allowVariants: appState.shopProfile.navigation.showVariants,
+        shopProfile: appState.shopProfile,
+        onSaved: _load,
+      ),
+    );
+    if (mounted) await _load();
+  }
+
+  @override
+  void initState() {
+    super.initState();
+    _load();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final l10n = AppLocalizations.of(context);
+    final colors = AppColors.of(context);
+    return Scaffold(
+      appBar: AppBar(title: Text(l10n.productMappingReviewTitle)),
+      body: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Padding(
+            padding: EdgeInsets.all(AppSpacing.of(context).md),
+            child: Text(l10n.productMappingReviewHelp,
+                style: Theme.of(context).textTheme.bodyMedium),
+          ),
+          if (_error != null)
+            Padding(
+              padding: EdgeInsets.symmetric(horizontal: AppSpacing.of(context).md),
+              child: Text(_error!, style: TextStyle(color: colors.danger)),
+            ),
+          Expanded(
+            child: _loading
+                ? const Center(child: CircularProgressIndicator())
+                : _error != null
+                    ? Center(child: TextButton(onPressed: _load, child: Text(l10n.retry)))
+                    : _products.isEmpty
+                        ? Center(child: Text(l10n.productMappingReviewEmpty))
+                        : ListView.separated(
+                            padding: EdgeInsets.all(AppSpacing.of(context).md),
+                            itemCount: _products.length,
+                            separatorBuilder: (_, __) => SizedBox(height: AppSpacing.of(context).xs),
+                            itemBuilder: (context, index) {
+                              final product = _products[index];
+                              String statusLabel(String status) => switch (status) {
+                                    'mapped' => l10n.productMappingMapped,
+                                    'unmapped' => l10n.productMappingUnmapped,
+                                    'not_applicable' => l10n.productMappingNotApplicable,
+                                    'rejected' => l10n.productMappingRejected,
+                                    _ => l10n.productMappingUnknown,
+                                  };
+                              return Card(
+                                child: ListTile(
+                                  title: Text(product.name),
+                                  subtitle: Text('${product.category} · GPC: ${statusLabel(product.gpcMappingStatus)} · Unit: ${statusLabel(product.unitMappingStatus)}'),
+                                  trailing: const Icon(Icons.chevron_right),
+                                  onTap: () => _edit(product),
+                                ),
+                              );
+                            },
+                          ),
+          ),
+        ],
+      ),
+    );
+  }
 }
 
 class _InventorySkeleton extends StatelessWidget {
@@ -2292,6 +2431,11 @@ class ProductEditorState extends State<ProductEditor> {
       _halfPrice,
       _quarterPrice,
       _barcode;
+  late final TextEditingController _gpcCode, _gpcVersion, _merchantSku, _brandLabel,
+      _externalUnitCode, _unitVersion, _packQuantity, _packUnitCode;
+  String _itemKind = 'unknown';
+  String _gpcMappingStatus = 'unmapped';
+  String _unitMappingStatus = 'unknown';
   String? _error;
 
   /// Codes already attached to this product, at both levels.
@@ -2382,6 +2526,14 @@ class ProductEditorState extends State<ProductEditor> {
     _halfPrice.dispose();
     _quarterPrice.dispose();
     _barcode.dispose();
+    _gpcCode.dispose();
+    _gpcVersion.dispose();
+    _merchantSku.dispose();
+    _brandLabel.dispose();
+    _externalUnitCode.dispose();
+    _unitVersion.dispose();
+    _packQuantity.dispose();
+    _packUnitCode.dispose();
     super.dispose();
   }
 
@@ -2409,6 +2561,17 @@ class ProductEditorState extends State<ProductEditor> {
     _halfPrice = TextEditingController(text: _editAmount(e?.halfPrice));
     _quarterPrice = TextEditingController(text: _editAmount(e?.quarterPrice));
     _barcode = TextEditingController();
+    _gpcCode = TextEditingController(text: e?.gpcCode ?? '');
+    _gpcVersion = TextEditingController(text: e?.gpcVersion ?? '2026-05');
+    _merchantSku = TextEditingController(text: e?.merchantSku ?? '');
+    _brandLabel = TextEditingController(text: e?.brandLabelLocal ?? '');
+    _externalUnitCode = TextEditingController(text: e?.externalUnitCode ?? '');
+    _unitVersion = TextEditingController(text: e?.unitVersion ?? '17 (2021)');
+    _packQuantity = TextEditingController(text: e?.packQuantity?.toString() ?? '');
+    _packUnitCode = TextEditingController(text: e?.packUnitCode ?? '');
+    _itemKind = e?.itemKind ?? 'good';
+    _gpcMappingStatus = e?.gpcMappingStatus ?? 'unmapped';
+    _unitMappingStatus = e?.unitMappingStatus ?? 'unknown';
     _trackExpiry = e?.trackExpiry ?? false;
     _loadMeta();
     _loadSizeSuggestions();
@@ -2641,6 +2804,21 @@ class ProductEditorState extends State<ProductEditor> {
       active: existing?.active ?? true,
       updatedAt: DateTime.now().toIso8601String(),
       remoteId: existing?.remoteId,
+      trackStock: _itemKind != 'service' && _itemKind != 'fee',
+      itemKind: _itemKind,
+      gpcCode: _gpcCode.text.trim().isEmpty ? null : _gpcCode.text.trim(),
+      gpcVersion: _gpcVersion.text.trim().isEmpty ? null : _gpcVersion.text.trim(),
+      gpcMappingStatus: _gpcMappingStatus,
+      merchantSku: _merchantSku.text.trim().isEmpty ? null : _merchantSku.text.trim(),
+      brandLabelLocal: _brandLabel.text.trim().isEmpty ? null : _brandLabel.text.trim(),
+      externalUnitCode: _externalUnitCode.text.trim().isEmpty ? null : _externalUnitCode.text.trim().toUpperCase(),
+      unitScheme: _externalUnitCode.text.trim().isEmpty ? null : 'UNECE Rec.20',
+      unitVersion: _unitVersion.text.trim().isEmpty ? null : _unitVersion.text.trim(),
+      unitMappingStatus: _unitMappingStatus,
+      packQuantity: parseUserNumber(_packQuantity.text),
+      packUnitCode: _packUnitCode.text.trim().isEmpty ? null : _packUnitCode.text.trim().toUpperCase(),
+      identityProvenance: existing?.identityProvenance ?? 'system_derived',
+      productUuid: existing?.productUuid,
     );
   }
 
@@ -3081,6 +3259,27 @@ class ProductEditorState extends State<ProductEditor> {
           AppLocalizations.of(context), problem));
       return;
     }
+    final gpcCode = _gpcCode.text.trim();
+    if (gpcCode.isNotEmpty && _gpcVersion.text.trim().isEmpty) {
+      setState(() => _error = AppLocalizations.of(context).productGpcVersionRequired);
+      return;
+    }
+    if (_gpcMappingStatus == 'mapped' && gpcCode.isEmpty) {
+      setState(() => _error = AppLocalizations.of(context).productGpcCodeRequired);
+      return;
+    }
+    if (_unitMappingStatus == 'mapped' && _externalUnitCode.text.trim().isEmpty) {
+      setState(() => _error = AppLocalizations.of(context).productUnitCodeRequired);
+      return;
+    }
+    final packQtyText = _packQuantity.text.trim();
+    final packUnitText = _packUnitCode.text.trim();
+    final packQty = parseUserNumber(packQtyText);
+    if ((packQtyText.isEmpty) != (packUnitText.isEmpty) ||
+        (packQtyText.isNotEmpty && (packQty == null || packQty <= 0))) {
+      setState(() => _error = AppLocalizations.of(context).productPackMappingInvalid);
+      return;
+    }
     if (price < cost) {
       // The shared dialog, so the buttons and the dismissal case are handled
       // the same way everywhere. A tap outside the dialog is a DECISION NOT TO
@@ -3142,6 +3341,21 @@ class ProductEditorState extends State<ProductEditor> {
       active: widget.existing?.active ?? true,
       updatedAt: DateTime.now().toIso8601String(),
       remoteId: widget.existing?.remoteId,
+      trackStock: _itemKind != 'service' && _itemKind != 'fee',
+      itemKind: _itemKind,
+      gpcCode: _gpcCode.text.trim().isEmpty ? null : _gpcCode.text.trim(),
+      gpcVersion: _gpcVersion.text.trim().isEmpty ? null : _gpcVersion.text.trim(),
+      gpcMappingStatus: _gpcMappingStatus,
+      merchantSku: _merchantSku.text.trim().isEmpty ? null : _merchantSku.text.trim(),
+      brandLabelLocal: _brandLabel.text.trim().isEmpty ? null : _brandLabel.text.trim(),
+      externalUnitCode: _externalUnitCode.text.trim().isEmpty ? null : _externalUnitCode.text.trim().toUpperCase(),
+      unitScheme: _externalUnitCode.text.trim().isEmpty ? null : 'UNECE Rec.20',
+      unitVersion: _unitVersion.text.trim().isEmpty ? null : _unitVersion.text.trim(),
+      unitMappingStatus: _unitMappingStatus,
+      packQuantity: parseUserNumber(_packQuantity.text),
+      packUnitCode: _packUnitCode.text.trim().isEmpty ? null : _packUnitCode.text.trim().toUpperCase(),
+      identityProvenance: widget.existing?.identityProvenance ?? 'system_derived',
+      productUuid: widget.existing?.productUuid,
       // The photograph is flushed after the insert, not here: see
       // [_pickedPhoto]. `imagePath` is only written when it changes, so an
       // unrelated edit never rewrites the column.
@@ -3379,6 +3593,46 @@ class ProductEditorState extends State<ProductEditor> {
                       labelText:
                           AppLocalizations.of(context).inventoryFieldCategory)),
               SizedBox(height: spacing.md),
+              DropdownButtonFormField<String>(
+                key: ValueKey(_itemKind),
+                initialValue: _itemKind,
+                decoration: InputDecoration(labelText: AppLocalizations.of(context).productItemKind),
+                items: [
+                  DropdownMenuItem(value: 'good', child: Text(AppLocalizations.of(context).productKindGood)),
+                  DropdownMenuItem(value: 'service', child: Text(AppLocalizations.of(context).productKindService)),
+                  DropdownMenuItem(value: 'fee', child: Text(AppLocalizations.of(context).productKindFee)),
+                  DropdownMenuItem(value: 'unknown', child: Text(AppLocalizations.of(context).productKindUnknown)),
+                ],
+                onChanged: (value) => setState(() => _itemKind = value ?? 'unknown'),
+              ),
+              if (_itemKind == 'service' || _itemKind == 'fee')
+                Padding(
+                  padding: const EdgeInsets.only(top: 6),
+                  child: Text(AppLocalizations.of(context).productKindNoStock, style: Theme.of(context).textTheme.bodySmall),
+                ),
+              SizedBox(height: spacing.md),
+              TextField(controller: _merchantSku, decoration: InputDecoration(labelText: AppLocalizations.of(context).productMerchantSku)),
+              SizedBox(height: spacing.md),
+              TextField(controller: _brandLabel, decoration: InputDecoration(labelText: AppLocalizations.of(context).productBrandLabel)),
+              SizedBox(height: spacing.md),
+              TextField(controller: _gpcCode, decoration: InputDecoration(labelText: AppLocalizations.of(context).productGpcCode), keyboardType: TextInputType.number),
+              SizedBox(height: spacing.md),
+              TextField(controller: _gpcVersion, decoration: InputDecoration(labelText: AppLocalizations.of(context).productGpcVersion)),
+              SizedBox(height: spacing.md),
+              DropdownButtonFormField<String>(
+                key: ValueKey(_gpcMappingStatus),
+                initialValue: _gpcMappingStatus,
+                decoration: InputDecoration(labelText: AppLocalizations.of(context).productGpcMappingStatus),
+                items: [
+                  DropdownMenuItem(value: 'mapped', child: Text(AppLocalizations.of(context).productMappingMapped)),
+                  DropdownMenuItem(value: 'unmapped', child: Text(AppLocalizations.of(context).productMappingUnmapped)),
+                  DropdownMenuItem(value: 'unknown', child: Text(AppLocalizations.of(context).productMappingUnknown)),
+                  DropdownMenuItem(value: 'not_applicable', child: Text(AppLocalizations.of(context).productMappingNotApplicable)),
+                  DropdownMenuItem(value: 'rejected', child: Text(AppLocalizations.of(context).productMappingRejected)),
+                ],
+                onChanged: (value) => setState(() => _gpcMappingStatus = value ?? 'unmapped'),
+              ),
+              SizedBox(height: spacing.md),
               // What the product is measured in, and the one control this form
               // has never had. `_unit` was read from the row and written back
               // unchanged, so a product created HERE was always `each` — and a
@@ -3393,6 +3647,43 @@ class ProductEditorState extends State<ProductEditor> {
                     .navigation
                     .showMeasuredGoods,
                 onChanged: (ProductUnit unit) => setState(() => _unit = unit),
+              ),
+              SizedBox(height: spacing.md),
+              TextField(
+                controller: _externalUnitCode,
+                decoration: InputDecoration(labelText: AppLocalizations.of(context).productExternalUnitCode),
+                textCapitalization: TextCapitalization.characters,
+              ),
+              SizedBox(height: spacing.xs),
+              TextField(
+                controller: _unitVersion,
+                decoration: InputDecoration(labelText: AppLocalizations.of(context).productUnitVersion),
+              ),
+              SizedBox(height: spacing.xs),
+              DropdownButtonFormField<String>(
+                key: ValueKey(_unitMappingStatus),
+                initialValue: _unitMappingStatus,
+                decoration: InputDecoration(labelText: AppLocalizations.of(context).productUnitMappingStatus),
+                items: [
+                  DropdownMenuItem(value: 'mapped', child: Text(AppLocalizations.of(context).productMappingMapped)),
+                  DropdownMenuItem(value: 'unmapped', child: Text(AppLocalizations.of(context).productMappingUnmapped)),
+                  DropdownMenuItem(value: 'unknown', child: Text(AppLocalizations.of(context).productMappingUnknown)),
+                  DropdownMenuItem(value: 'not_applicable', child: Text(AppLocalizations.of(context).productMappingNotApplicable)),
+                  DropdownMenuItem(value: 'rejected', child: Text(AppLocalizations.of(context).productMappingRejected)),
+                ],
+                onChanged: (value) => setState(() => _unitMappingStatus = value ?? 'unknown'),
+              ),
+              SizedBox(height: spacing.xs),
+              TextField(
+                controller: _packQuantity,
+                decoration: InputDecoration(labelText: AppLocalizations.of(context).productPackQuantity),
+                keyboardType: const TextInputType.numberWithOptions(decimal: true),
+              ),
+              SizedBox(height: spacing.xs),
+              TextField(
+                controller: _packUnitCode,
+                decoration: InputDecoration(labelText: AppLocalizations.of(context).productPackUnitCode),
+                textCapitalization: TextCapitalization.characters,
               ),
               SizedBox(height: spacing.md),
               if (widget.shopProfile.navigation.showDrinkService ||

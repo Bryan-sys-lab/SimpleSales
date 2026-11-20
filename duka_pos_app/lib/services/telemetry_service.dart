@@ -15,18 +15,21 @@
 /// ## What "idle" means here
 ///
 /// A till is idle when no one has touched it for [kIdleWindow]. The
-/// [IdleGuard] already signs the session out after that window; this service
+/// [IdleGuard] already signs the session out after that window; thi s service
 /// records *when* the idle started and ended so churn analytics can tell a
 /// shop that has gone quiet from one that is simply closed for the weekend.
 library;
 
 import 'dart:async';
 import 'dart:convert';
+import 'dart:math';
 
 import 'package:flutter/foundation.dart';
 import 'backend_service.dart';
 import 'identity_service.dart';
 import 'workspace_service.dart';
+import 'build_configuration.dart';
+import 'diagnostics_upload_service.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 /// The most recent telemetry events are kept. Older ones are dropped on write,
@@ -54,23 +57,30 @@ const String _kAutoUpdateEnabled = 'telemetry_auto_update_enabled';
 
 /// The most recent telemetry events, as a JSON array of maps.
 const String _kEvents = 'telemetry_events';
+const String _kUploadedEventIds = 'telemetry_uploaded_event_ids';
+
+String _newTelemetryId() =>
+    '${DateTime.now().microsecondsSinceEpoch}-${Random.secure().nextInt(1 << 32).toRadixString(16)}';
 
 /// One recorded event: what happened, when, and where.
 @immutable
 class TelemetryEvent {
   const TelemetryEvent({
+    required this.clientEventId,
     required this.name,
     required this.at,
     this.route,
     this.detail,
   });
 
+  final String clientEventId;
   final String name;
   final DateTime at;
   final String? route;
   final String? detail;
 
   Map<String, Object?> toMap() => <String, Object?>{
+        'clientEventId': clientEventId,
         'name': name,
         'at': at.toIso8601String(),
         if (route != null) 'route': route,
@@ -78,6 +88,7 @@ class TelemetryEvent {
       };
 
   static TelemetryEvent fromMap(Map<String, dynamic> m) => TelemetryEvent(
+        clientEventId: m['clientEventId'] as String? ?? _newTelemetryId(),
         name: m['name'] as String,
         at: DateTime.tryParse(m['at'] as String? ?? '') ?? DateTime.now(),
         route: m['route'] as String?,
@@ -111,6 +122,8 @@ class TelemetryService extends ChangeNotifier {
   /// Serializes event persistence so concurrent `record()` calls cannot
   /// interleave read-modify-write cycles against SharedPreferences.
   bool _persisting = false;
+  Timer? _remoteSyncTimer;
+  bool _remoteSyncing = false;
   final List<Future<void>> _pendingWrites = <Future<void>>[];
 
   DateTime? _lastActiveDate;
@@ -172,6 +185,7 @@ class TelemetryService extends ChangeNotifier {
     // ignore: unawaited_futures
     _initFuture.then((_) {
       final event = TelemetryEvent(
+        clientEventId: _newTelemetryId(),
         name: name,
         at: at ?? DateTime.now(),
         route: route,
@@ -188,6 +202,7 @@ class TelemetryService extends ChangeNotifier {
       notifyListeners();
       // ignore: unawaited_futures
       _persistEventSerial(event);
+      _scheduleRemoteSync();
     });
   }
 
@@ -263,13 +278,75 @@ class TelemetryService extends ChangeNotifier {
       }
     }
     notifyListeners();
+    _scheduleRemoteSync();
+  }
+
+  void _scheduleRemoteSync() {
+    if (!BuildConfiguration.isConnected || _remoteSyncTimer != null) return;
+    _remoteSyncTimer = Timer(const Duration(seconds: 4), () {
+      _remoteSyncTimer = null;
+      // ignore: unawaited_futures
+      _flushRemoteEvents();
+    });
+  }
+
+  Future<void> _flushRemoteEvents() async {
+    if (_remoteSyncing || !BuildConfiguration.isConnected || _events.isEmpty) {
+      return;
+    }
+    _remoteSyncing = true;
+    try {
+      if (await IdentityService.accessToken == null ||
+          await WorkspaceService.activeTenantId() == null) {
+        return;
+      }
+      final prefs = await _prefsFuture;
+      final uploaded =
+          (prefs.getStringList(_kUploadedEventIds) ?? <String>[]).toSet();
+      final pending = _events.reversed
+          .where((event) => !uploaded.contains(event.clientEventId))
+          .take(50)
+          .toList();
+      if (pending.isEmpty) return;
+      final deviceId = await DiagnosticsUploadService.instance.deviceId;
+      await BackendService.postTelemetryEvents(pending.map((event) {
+        final rawRoute = event.route;
+        final route = rawRoute == null ? null : Uri.tryParse(rawRoute)?.path;
+        return <String, dynamic>{
+          'clientEventId': event.clientEventId,
+          'deviceId': deviceId,
+          'name': event.name,
+          'at': event.at.toUtc().toIso8601String(),
+          if (route != null && route.isNotEmpty) 'route': route,
+          // Local details can contain user-entered titles; never upload them.
+        };
+      }).toList());
+      uploaded.addAll(pending.map((event) => event.clientEventId));
+      final currentIds = _events.map((event) => event.clientEventId).toSet();
+      uploaded.removeWhere((id) => !currentIds.contains(id));
+      await prefs.setStringList(_kUploadedEventIds, uploaded.toList());
+      if (_events.any((event) => !uploaded.contains(event.clientEventId))) {
+        _scheduleRemoteSync();
+      }
+    } catch (_) {
+      // Session telemetry is best-effort. It must never affect checkout or app startup.
+      _remoteSyncTimer ??= Timer(const Duration(seconds: 30), () {
+        _remoteSyncTimer = null;
+        // ignore: unawaited_futures
+        _flushRemoteEvents();
+      });
+    } finally {
+      _remoteSyncing = false;
+    }
   }
 
   Future<void> _persistEventSerial(TelemetryEvent event) async {
     if (_persisting) {
       // A write is already in flight; queue this one to run after it.
       final completer = Completer<void>();
-      _pendingWrites.add(completer.future.then((_) => _doPersistEvent(event)).then((_) => completer.complete()));
+      _pendingWrites.add(completer.future
+          .then((_) => _doPersistEvent(event))
+          .then((_) => completer.complete()));
       return;
     }
     _persisting = true;
@@ -349,9 +426,8 @@ class TelemetryService extends ChangeNotifier {
       final now = DateTime.now();
       final today = DateTime(now.year, now.month, now.day);
       final lastActive = _lastActiveDate;
-      final daysSince = lastActive == null
-          ? 0
-          : today.difference(lastActive).inDays;
+      final daysSince =
+          lastActive == null ? 0 : today.difference(lastActive).inDays;
       final streak = _streakCount;
       final sessions = _totalSessions;
 

@@ -36,13 +36,30 @@ class InventoryRepository {
       active INTEGER NOT NULL DEFAULT 1,
       updated_at TEXT,
       remote_id TEXT,
+      product_uuid TEXT,
       image_path TEXT,
       unit TEXT NOT NULL DEFAULT 'each',
       track_variants INTEGER NOT NULL DEFAULT 0,
       ml_per_kg REAL NOT NULL DEFAULT 0,
-      track_expiry INTEGER NOT NULL DEFAULT 0
+      track_expiry INTEGER NOT NULL DEFAULT 0,
+      item_kind TEXT NOT NULL DEFAULT 'unknown',
+      gpc_code TEXT,
+      gpc_version TEXT,
+      gpc_mapping_status TEXT NOT NULL DEFAULT 'unmapped',
+      merchant_sku TEXT,
+      brand_label_local TEXT,
+      external_unit_code TEXT,
+      unit_scheme TEXT,
+      unit_version TEXT,
+      unit_mapping_status TEXT NOT NULL DEFAULT 'unknown',
+      pack_quantity REAL,
+      pack_unit_code TEXT,
+      identity_provenance TEXT NOT NULL DEFAULT 'system_derived'
     )''');
     await db.execute('CREATE INDEX IF NOT EXISTS idx_products_active ON products (active)');
+    await db.execute('CREATE INDEX IF NOT EXISTS idx_products_item_kind ON products (item_kind)');
+    await db.execute('CREATE INDEX IF NOT EXISTS idx_products_gpc_status ON products (gpc_mapping_status)');
+    await db.execute('CREATE UNIQUE INDEX IF NOT EXISTS idx_products_product_uuid ON products (product_uuid)');
 
     await db.execute('''CREATE TABLE IF NOT EXISTS stock_adjustments (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -111,6 +128,7 @@ class InventoryRepository {
       paid_from TEXT NOT NULL DEFAULT 'till_cash',
       status TEXT NOT NULL DEFAULT 'posted',
       note TEXT,
+      purchase_order_id INTEGER,
       synced_to_backend INTEGER NOT NULL DEFAULT 0
     )''');
 
@@ -127,11 +145,14 @@ class InventoryRepository {
       new_cost_minor INTEGER,
       expiry_date TEXT,
       batch_code TEXT,
+      purchase_order_line_id INTEGER,
       FOREIGN KEY (receipt_id) REFERENCES stock_receipts (id) ON DELETE CASCADE
     )''');
     await db.execute(
         'CREATE INDEX IF NOT EXISTS idx_stock_receipt_items_receipt '
         'ON stock_receipt_items (receipt_id)');
+    await db.execute('CREATE INDEX IF NOT EXISTS idx_stock_receipts_purchase_order ON stock_receipts (purchase_order_id)');
+    await db.execute('CREATE INDEX IF NOT EXISTS idx_receipt_items_purchase_order_line ON stock_receipt_items (purchase_order_line_id)');
 
     await db.execute('''CREATE TABLE IF NOT EXISTS product_cost_history (
       id INTEGER PRIMARY KEY AUTOINCREMENT,

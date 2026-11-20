@@ -26,6 +26,7 @@ import '../models/tax_entity.dart';
 import '../utils/money.dart';
 import '../utils/crypto_utils.dart';
 import '../profile/shop_profile.dart';
+import '../profile/business_context.dart';
 
 /// Why a verification step failed.
 ///
@@ -161,7 +162,9 @@ class SubscriptionEntitlement {
       this.priceMinor,
       this.currency = 'KES',
       this.billingInterval = 'monthly',
-      this.currentPeriodEnd});
+      this.currentPeriodEnd,
+      this.whatsappUrl,
+      this.firstMonthVoucherAvailable = false});
   factory SubscriptionEntitlement.fromJson(Map<String, dynamic> json) =>
       SubscriptionEntitlement(
         allowed: json['allowed'] == true,
@@ -171,6 +174,8 @@ class SubscriptionEntitlement {
         currency: json['currency'] as String? ?? 'KES',
         billingInterval: json['billingInterval'] as String? ?? 'monthly',
         currentPeriodEnd: json['currentPeriodEnd'] as String?,
+        whatsappUrl: json['whatsappUrl'] as String?,
+        firstMonthVoucherAvailable: json['firstMonthVoucherAvailable'] == true,
       );
   final bool allowed;
   final String status;
@@ -179,6 +184,8 @@ class SubscriptionEntitlement {
   final String currency;
   final String billingInterval;
   final String? currentPeriodEnd;
+  final String? whatsappUrl;
+  final bool firstMonthVoucherAvailable;
 }
 
 /// A code the server accepted, with the session it issued, held back until the
@@ -302,7 +309,8 @@ class BackendService {
       return true;
     }
     final status = e.response?.statusCode;
-    return status != null && (status == 502 || status == 503 || status == 504 || status >= 500);
+    return status != null &&
+        (status == 502 || status == 503 || status == 504 || status >= 500);
   }
 
   static SharedPreferences? _prefs;
@@ -386,6 +394,30 @@ class BackendService {
 
   static Future<SharedPreferences> get _prefsInstance async =>
       _prefs ??= await SharedPreferences.getInstance();
+
+  /// Sends a device report through the same authenticated, tenant scoped
+  /// transport used by the rest of the app API.
+  static Future<Map<String, dynamic>> postDeviceDiagnostic(
+      Map<String, dynamic> payload) async {
+    await ensureInitialized();
+    final response = await _dio.post<Map<String, dynamic>>(
+      '$backendUrl/admin/diagnostics',
+      data: payload,
+    );
+    return response.data ?? <String, dynamic>{};
+  }
+
+  /// Uploads privacy-minimized session activity for administrator replay.
+  /// The auth interceptor supplies the current user token and tenant scope.
+  static Future<void> postTelemetryEvents(
+      List<Map<String, dynamic>> events) async {
+    if (events.isEmpty) return;
+    await ensureInitialized();
+    await _dio.post<Map<String, dynamic>>(
+      '$backendUrl/telemetry/events',
+      data: <String, dynamic>{'events': events},
+    );
+  }
 
   static Future<void> ensureInitialized() async {
     if (_initialized) return;
@@ -751,9 +783,25 @@ class BackendService {
   static Future<SubscriptionEntitlement?> fetchSubscriptionEntitlement() async {
     final response = await _dio.get('$backendUrl/tenant/subscription');
     final raw = response.data is Map ? response.data['entitlement'] : null;
-    return raw is Map
-        ? SubscriptionEntitlement.fromJson(Map<String, dynamic>.from(raw))
-        : null;
+    if (raw is! Map) return null;
+    final entitlement =
+        SubscriptionEntitlement.fromJson(Map<String, dynamic>.from(raw));
+    final support = response.data is Map ? response.data['support'] : null;
+    final whatsappUrl =
+        support is Map ? support['whatsappUrl'] as String? : null;
+    final firstMonthVoucherAvailable =
+        support is Map && support['firstMonthVoucherAvailable'] == true;
+    return SubscriptionEntitlement(
+      allowed: entitlement.allowed,
+      status: entitlement.status,
+      reason: entitlement.reason,
+      priceMinor: entitlement.priceMinor,
+      currency: entitlement.currency,
+      billingInterval: entitlement.billingInterval,
+      currentPeriodEnd: entitlement.currentPeriodEnd,
+      whatsappUrl: whatsappUrl,
+      firstMonthVoucherAvailable: firstMonthVoucherAvailable,
+    );
   }
 
   /// Persists a quote request in the system-admin Support screen and broadcasts
@@ -1726,6 +1774,35 @@ class BackendService {
     });
   }
 
+  /// Syncs the owner's separately captured operational business details.
+  /// This endpoint is tenant-scoped and is not a commercial contribution path.
+  static Future<void> syncBusinessContext(BusinessContext context) async {
+    await ensureInitialized();
+    if (await tenantId == null) return;
+    context.validate();
+    await _dio.put('$backendUrl/tenant/business-context', data: {
+      'primaryActivityCode': context.primaryActivityCode,
+      'primaryActivityStatus': context.primaryActivityStatus,
+      'activityScheme': context.primaryActivityCode == null ? null : 'KESIC',
+      'activityVersion':
+          context.primaryActivityCode == null ? null : context.activityVersion,
+      'secondaryActivityCodes': context.secondaryActivityCodes,
+      'operatorRoles': context.operatorRoles,
+      'salesChannels': context.salesChannels,
+      'countyCode': context.countyCode,
+      'settlementContext': context.settlementContext,
+      'fieldProvenance': context.fieldProvenance,
+      'confirmedAt': context.confirmedAtUtc,
+      'schemaVersion': context.schemaVersion,
+    });
+  }
+
+  static Future<void> syncLocalBusinessContextToBackend() async {
+    if (await tenantId == null) return;
+    await syncBusinessContext(
+        await DatabaseHelper.instance.getBusinessContext());
+  }
+
   // ---------------- eTIMS ----------------
 
   /// Asks the backend to issue a KRA receipt for one sale.
@@ -1896,7 +1973,7 @@ class BackendService {
   /// integer cents and is expressed in shillings. Sending a Money object
   /// here would serialise as "Money(4050 minor units)".
   static Map<String, dynamic> _productPayload(Product product,
-          {double? openingStockQty, String? syncKey}) =>
+          {double? openingStockQty, String? syncKey, String? gtin}) =>
       {
         'id': product.id,
         'remoteId': product.remoteId,
@@ -1915,6 +1992,21 @@ class BackendService {
         'quarterPrice': product.quarterPrice?.asMajor,
         'exciseStampBatch': product.exciseStampBatch,
         'active': product.active,
+        'productUuid': product.productUuid,
+        if (gtin != null) 'gtin': gtin,
+        'itemKind': product.itemKind,
+        'gpcCode': product.gpcCode,
+        'gpcVersion': product.gpcVersion,
+        'gpcMappingStatus': product.gpcMappingStatus,
+        'merchantSku': product.merchantSku,
+        'brandLabelLocal': product.brandLabelLocal,
+        'externalUnitCode': product.externalUnitCode,
+        'unitScheme': product.unitScheme,
+        'unitVersion': product.unitVersion,
+        'unitMappingStatus': product.unitMappingStatus,
+        'packQuantity': product.packQuantity,
+        'packUnitCode': product.packUnitCode,
+        'identityProvenance': product.identityProvenance,
       };
 
   static Map<String, dynamic> _variantPayload(ProductVariant variant,
@@ -2030,6 +2122,8 @@ class BackendService {
     // caller swallowed the result, so the cross-tenant write was silent.
     await _assertRowsInScope();
     final deviceId = await _syncDeviceId();
+    final verifiedGtins = await DatabaseHelper.instance
+        .getVerifiedGtinsForProducts([product.id!]);
     final openingStockQty = product.remoteId == null
         ? await DatabaseHelper.instance.openingStockQtyForProduct(product.id!)
         : null;
@@ -2039,6 +2133,7 @@ class BackendService {
           product,
           openingStockQty: openingStockQty,
           syncKey: product.id == null ? null : '$deviceId:${product.id}',
+          gtin: verifiedGtins[product.id],
         ),
       ],
     });
@@ -2078,6 +2173,9 @@ class BackendService {
     const batchSize = 200;
     for (var start = 0; start < products.length; start += batchSize) {
       final batch = products.skip(start).take(batchSize).toList();
+      final verifiedGtins = await DatabaseHelper.instance
+          .getVerifiedGtinsForProducts(
+              batch.map((p) => p.id).whereType<int>().toList());
       final openingStockByProduct =
           await DatabaseHelper.instance.openingStockQtyForProducts(
         batch
@@ -2094,6 +2192,7 @@ class BackendService {
           product,
           openingStockQty: openingStockQty,
           syncKey: product.id == null ? null : '$deviceId:${product.id}',
+          gtin: verifiedGtins[product.id],
         ));
       }
       final response = await _dio.post('$backendUrl/products/sync', data: {
@@ -3259,6 +3358,7 @@ class BackendService {
             'paidFrom': receipt.paidFrom,
             'staffName': receipt.staffName,
             'createdAt': receipt.receivedAt,
+            'purchaseOrderUuid': receipt.purchaseOrderUuid,
             'items': receipt.items
                 .map((StockReceiptItem item) => <String, dynamic>{
                       // A receipt may be replayed by another till, so never
@@ -3270,6 +3370,7 @@ class BackendService {
                       'variantId': item.variantId,
                       'expiryDate': item.expiryDate?.toIso8601String(),
                       'batchCode': item.batchCode,
+                      'purchaseOrderLineUuid': item.purchaseOrderLineUuid,
                     })
                 .toList(),
           });

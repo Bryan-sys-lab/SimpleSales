@@ -3,6 +3,7 @@ import { prisma } from '../lib/prisma';
 import { asyncHandler } from '../lib/http';
 import { parseBody, settingsSchema } from '../lib/validation';
 import { taxReportingActivated } from '../services/tax_reporting';
+import { z } from 'zod';
 
 const router = Router();
 
@@ -10,11 +11,46 @@ router.get('/access', (_req, res) => res.json({ systemAdmin: true }));
 
 router.get('/users', asyncHandler(async (_req: Request, res) => {
   const users = await prisma.profile.findMany({
-    where: { active: true, deletedAt: null },
-    select: { id: true, name: true, role: true, createdAt: true, tenant: { select: { id: true, shopName: true } } },
+    where: { deletedAt: null },
+    select: { id: true, name: true, role: true, active: true, createdAt: true, tenant: { select: { id: true, shopName: true } } },
     orderBy: { createdAt: 'desc' },
   });
   res.json({ users });
+}));
+
+// System-admin user control for correcting access without impersonating a
+// shop owner. Every change is attributable in the platform audit log.
+router.patch('/users/:profileId', asyncHandler(async (req: Request, res) => {
+  const input = z.object({
+    active: z.boolean().optional(),
+    role: z.enum(['admin', 'manager', 'cashier']).optional(),
+  }).strict().refine((value) => value.active !== undefined || value.role !== undefined)
+    .parse(req.body);
+  const profileId = req.params.profileId as string;
+  const profile = await prisma.profile.findUnique({ where: { id: profileId } });
+  if (!profile || profile.deletedAt) return res.status(404).json({ error: 'User not found' });
+  const updated = await prisma.$transaction(async (tx) => {
+    const row = await tx.profile.update({
+      where: { id: profileId },
+      data: {
+        ...(input.active !== undefined ? { active: input.active } : {}),
+        ...(input.role !== undefined ? { role: input.role } : {}),
+        ...(input.active === false ? { refreshTokenHash: null, refreshTokenPreviousHash: null } : {}),
+      },
+      select: { id: true, tenantId: true, name: true, role: true, active: true },
+    });
+    await tx.adminAuditLog.create({
+      data: {
+        adminId: req.auth?.sub ?? 'unknown',
+        action: 'update_system_user',
+        targetType: 'profile',
+        targetId: profileId,
+        tenantId: profile.tenantId,
+      },
+    });
+    return row;
+  });
+  return res.json({ user: updated });
 }));
 
 router.get('/analytics', asyncHandler(async (_req: Request, res) => {

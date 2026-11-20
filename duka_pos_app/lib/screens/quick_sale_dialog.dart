@@ -18,103 +18,8 @@ import 'customer_credit_sheets.dart';
 
 /// Money-first sale for the Open profile. It remains a normal sale ledger row
 /// so transactions, analytics, backup, and sync all see it.
-Future<int?> showOpenQuickSaleDialog({required BuildContext context}) async {
-  final appState = context.read<AppState>();
-  final amountController = TextEditingController();
-  final referenceController = TextEditingController();
-  final itemNameController = TextEditingController();
-  String method = 'cash';
-  final result = await showDialog<Map<String, String>>(
-    context: context,
-    builder: (ctx) => StatefulBuilder(
-      builder: (ctx, setState) => AlertDialog(
-        title: const Text('QuickSale'),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: <Widget>[
-            TextField(
-              controller: itemNameController,
-              decoration: const InputDecoration(labelText: 'Item name (optional)'),
-            ),
-            const SizedBox(height: 12),
-            TextField(
-              controller: amountController,
-              autofocus: true,
-              keyboardType:
-                  const TextInputType.numberWithOptions(decimal: true),
-              decoration: const InputDecoration(labelText: 'Amount (KES)'),
-            ),
-            const SizedBox(height: 12),
-            DropdownButtonFormField<String>(
-              initialValue: method,
-              decoration: const InputDecoration(labelText: 'Payment method'),
-              items: const <DropdownMenuItem<String>>[
-                DropdownMenuItem(value: 'cash', child: Text('Cash')),
-                DropdownMenuItem(value: 'mpesa', child: Text('M-Pesa')),
-                DropdownMenuItem(
-                    value: 'bank_transfer', child: Text('Bank transfer')),
-              ],
-              onChanged: (value) {
-                if (value != null) setState(() => method = value);
-              },
-            ),
-            const SizedBox(height: 12),
-            TextField(
-              controller: referenceController,
-              decoration:
-                  const InputDecoration(labelText: 'Reference (optional)'),
-            ),
-          ],
-        ),
-        actions: <Widget>[
-          TextButton(
-              onPressed: () => Navigator.pop(ctx), child: const Text('Cancel')),
-          FilledButton(
-            onPressed: () => Navigator.pop(ctx, <String, String>{
-              'amount': amountController.text.trim(),
-              'method': method,
-              'reference': referenceController.text.trim(),
-              'itemName': itemNameController.text.trim(),
-            }),
-            child: const Text('Record sale'),
-          ),
-        ],
-      ),
-    ),
-  );
-  amountController.dispose();
-  referenceController.dispose();
-  itemNameController.dispose();
-  if (result == null || !context.mounted) return null;
-  final amount = parseMoneyInput(result['amount'] ?? '');
-  if (amount == null || amount <= 0) {
-    ScaffoldMessenger.of(context)
-        .showSnackBar(const SnackBar(content: Text('Enter a valid amount')));
-    return null;
-  }
-  try {
-    final saleId = await DatabaseHelper.instance.recordOpenQuickSale(
-      amount: Money.fromMajor(amount),
-      paymentMethod: result['method'] ?? 'cash',
-      paymentReference:
-          (result['reference'] ?? '').isEmpty ? null : result['reference'],
-      staffId: appState.currentStaffId,
-      staffName: appState.currentStaffName ?? 'Owner',
-      itemName: (result['itemName'] ?? '').isEmpty ? null : result['itemName'],
-    );
-    if (context.mounted) {
-      ScaffoldMessenger.of(context)
-          .showSnackBar(const SnackBar(content: Text('Quick sale recorded')));
-    }
-    return saleId;
-  } catch (error) {
-    if (context.mounted) {
-      ScaffoldMessenger.of(context)
-          .showSnackBar(SnackBar(content: Text('$error')));
-    }
-    return null;
-  }
-}
+Future<int?> showOpenQuickSaleDialog({required BuildContext context}) =>
+    showQuickSaleDialog(context: context, profile: ShopProfile.open);
 
 /// Shared QuickSale entry point. Opens a modal dialog in place; never pushes a
 /// route. Returns the committed sale id, or null when cancelled/failed.
@@ -183,19 +88,19 @@ Future<int?> showQuickSaleDialog({
                   });
                 },
               ),
-               SizedBox(height: AppSpacing.of(ctx).md),
-               if (selectedProduct == null)
-                 TextField(
-                   controller: itemNameController,
-                   decoration: const InputDecoration(
-                     labelText: 'Item name',
-                     helperText: 'Name of the item being sold',
-                   ),
-                 ),
-               if (selectedProduct == null)
-                 SizedBox(height: AppSpacing.of(ctx).md),
-               TextField(
-                 controller: qtyController,
+              SizedBox(height: AppSpacing.of(ctx).md),
+              if (selectedProduct == null)
+                TextField(
+                  controller: itemNameController,
+                  decoration: const InputDecoration(
+                    labelText: 'Item name',
+                    helperText: 'Name of the item being sold',
+                  ),
+                ),
+              if (selectedProduct == null)
+                SizedBox(height: AppSpacing.of(ctx).md),
+              TextField(
+                controller: qtyController,
                 decoration: const InputDecoration(labelText: 'Quantity'),
                 keyboardType:
                     const TextInputType.numberWithOptions(decimal: true),
@@ -303,13 +208,13 @@ Future<int?> showQuickSaleDialog({
               ActionChip(
                 avatar: const Icon(Icons.point_of_sale, size: 18),
                 onPressed: () => Navigator.pop(ctx, <String, dynamic>{
-                   'qty': qtyController.text.trim(),
-                   'amount': amountController.text.trim(),
-                   'method': method,
-                   'reference': referenceController.text.trim(),
-                   'productId': selectedProduct?.id,
-                   'itemName': itemNameController.text.trim(),
-                   'customerId': selectedCustomer?.id,
+                  'qty': qtyController.text.trim(),
+                  'amount': amountController.text.trim(),
+                  'method': method,
+                  'reference': referenceController.text.trim(),
+                  'productId': selectedProduct?.id,
+                  'itemName': itemNameController.text.trim(),
+                  'customerId': selectedCustomer?.id,
                   'customer': selectedCustomer,
                   'poolId': selectedPoolId,
                 }),
@@ -329,7 +234,7 @@ Future<int?> showQuickSaleDialog({
   final enteredAmount = parseMoneyInput((result['amount'] ?? '').toString());
   if (qty == null ||
       qty <= 0 ||
-      (productId == null && itemName.isEmpty && (enteredAmount == null || enteredAmount <= 0))) {
+      (productId == null && (enteredAmount == null || enteredAmount <= 0))) {
     if (context.mounted) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
@@ -356,32 +261,11 @@ Future<int?> showQuickSaleDialog({
     final customerId = result['customerId'] as int?;
     final customerDraft = result['customer'] as Customer?;
     final costPoolId = result['poolId'] as int?;
-    if (product == null && method == 'credit') {
-      throw StateError('Choose a product before recording a credit sale');
-    }
-    if (product == null) {
-      final saleId = await db.recordOpenQuickSale(
-        amount: Money.fromMajor(enteredAmount!),
-        paymentMethod: method,
-        paymentReference: (result['reference'] ?? '').toString().isEmpty
-            ? null
-            : (result['reference'] ?? '').toString(),
-        staffId: appState.currentStaffId,
-        staffName: appState.currentStaffName ?? 'Owner',
-        profile: profile,
-        itemName: itemName.isEmpty ? null : itemName,
-      );
-      if (context.mounted) {
-        ScaffoldMessenger.of(context)
-            .showSnackBar(const SnackBar(content: Text('Quick sale recorded')));
-      }
-      return saleId;
-    }
-    if (method == 'credit' && customerId == null && customerDraft == null) {
-      throw StateError('Select a customer before recording on credit');
-    }
     int? creditApprovedBy;
     if (method == 'credit') {
+      if (customerId == null && customerDraft == null) {
+        throw StateError('Select a customer before recording on credit');
+      }
       if (!await db.getCreditEnabled()) {
         throw StateError('Customer credit is disabled in Settings');
       }
@@ -396,10 +280,12 @@ Future<int?> showQuickSaleDialog({
       if (customer == null || !customer.active) {
         throw StateError('That customer is not active');
       }
+      final chargeMinor =
+          Money.fromMajor(enteredAmount ?? unitPrice!.times(qty).asMajor)
+              .minorUnits;
       final limit = customer.effectiveLimit(await db.getCreditDefaultLimit());
-      final wouldOwe = customer.balanceMinor +
-          ((enteredAmount ?? unitPrice!.times(qty).asMajor) * 100).round();
-      if (wouldOwe > limit && await db.getCreditLimitMode() != 'warn') {
+      if (customer.balanceMinor + chargeMinor > limit &&
+          await db.getCreditLimitMode() != 'warn') {
         if (!context.mounted) return null;
         final approver = await showManagerApprovalSheet(
           context,
@@ -409,6 +295,27 @@ Future<int?> showQuickSaleDialog({
         if (approver == null) return null;
         creditApprovedBy = approver.id;
       }
+    }
+    if (product == null) {
+      final saleId = await db.recordOpenQuickSale(
+        amount: Money.fromMajor(enteredAmount!),
+        paymentMethod: method,
+        paymentReference: (result['reference'] ?? '').toString().isEmpty
+            ? null
+            : (result['reference'] ?? '').toString(),
+        staffId: appState.currentStaffId,
+        staffName: appState.currentStaffName ?? 'Owner',
+        profile: profile,
+        itemName: itemName.isEmpty ? null : itemName,
+        customerId: method == 'credit' ? customerId : null,
+        customerDraft: method == 'credit' ? customerDraft : null,
+        creditApprovedBy: creditApprovedBy,
+      );
+      if (context.mounted) {
+        ScaffoldMessenger.of(context)
+            .showSnackBar(const SnackBar(content: Text('Quick sale recorded')));
+      }
+      return saleId;
     }
     final saleId = await SalesRepository.instance.recordSale(
       items: <SaleItem>[
@@ -431,8 +338,8 @@ Future<int?> showQuickSaleDialog({
           : (result['reference'] ?? '').toString(),
       staffId: appState.currentStaffId,
       staffName: appState.currentStaffName ?? 'Owner',
-      customerId: customerId,
-      customerDraft: customerDraft,
+      customerId: method == 'credit' ? customerId : null,
+      customerDraft: method == 'credit' ? customerDraft : null,
       creditApprovedBy: creditApprovedBy,
       costPoolId: costPoolId,
     );

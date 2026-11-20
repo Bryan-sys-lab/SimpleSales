@@ -234,10 +234,8 @@ class _TankRegisterScreenState extends State<TankRegisterScreen>
               query: _searchQuery,
               chips: const <String>['All', 'Tanks', 'Packaged', 'Low stock'],
               selected: _selectedChip,
-              onQueryChanged: (value) =>
-                  setState(() => _searchQuery = value),
-              onChipSelected: (value) =>
-                  setState(() => _selectedChip = value),
+              onQueryChanged: (value) => setState(() => _searchQuery = value),
+              onChipSelected: (value) => setState(() => _selectedChip = value),
             ),
             SizedBox(height: spacing.lg),
 

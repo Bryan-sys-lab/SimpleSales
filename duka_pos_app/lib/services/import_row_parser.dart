@@ -20,6 +20,7 @@ library;
 import 'dart:convert';
 
 import '../models/models.dart';
+import '../profile/shop_profile.dart';
 import '../utils/money.dart';
 import '../utils/units.dart';
 
@@ -155,8 +156,9 @@ class SheetColumns {
   ///
   /// The measure a multi-tab workbook is judged on: the tab that maps the most
   /// columns is the tab that is the product list, whatever it is called.
-  int get mappedCount =>
-      _indexesByField.isNotEmpty ? _indexesByField.length : (_single?.length ?? 0);
+  int get mappedCount => _indexesByField.isNotEmpty
+      ? _indexesByField.length
+      : (_single?.length ?? 0);
 
   /// The canonical column order, for a file with no recognisable header row.
   static final SheetColumns positional =
@@ -195,18 +197,19 @@ class SheetColumns {
   /// convenience for a cell the workbook left blank, and a re-parse of the raw
   /// cells has the same file to consult again.
   String toJson() => jsonEncode(<String, int>{
-        for (final String field in _allFields()) field: _indexesFor(field).first,
+        for (final String field in _allFields())
+          field: _indexesFor(field).first,
       });
 
-  Iterable<String> _allFields() =>
-      _indexesByField.isNotEmpty ? _indexesByField.keys : (_single?.keys ?? const <String>[]);
+  Iterable<String> _allFields() => _indexesByField.isNotEmpty
+      ? _indexesByField.keys
+      : (_single?.keys ?? const <String>[]);
 
   /// The canonical order for any header list — [ProductVariant.sheetHeaders]
   /// for the `Variants` sheet, [Product.sheetHeaders] for `Inventory`.
   static SheetColumns positionalFor(List<String> fields) => SheetColumns._(
         {
-          for (var i = 0; i < fields.length; i++)
-            fields[i]: <int>[i],
+          for (var i = 0; i < fields.length; i++) fields[i]: <int>[i],
         },
         false,
       );
@@ -431,13 +434,50 @@ class SheetColumns {
   /// stamp batch, and vetoing on those words would refuse three columns this
   /// app really does read.
   static const Set<String> _vetoTokens = <String>{
-    'value', 'amount', 'amt', 'profit', 'loss', 'margin', 'sold', 'sales',
-    'revenue', 'turnover', 'discount', 'tax', 'vat', 'date', 'time',
-    'new', 'received', 'paid', 'note', 'notes', 'remark', 'remarks',
-    'serial', 'sno', 'index', 'no', 'sr',
-    'sum', 'avg', 'average',
-    'expiry', 'exp', 'location', 'store', 'branch', 'supplier',
-    'vendor', 'contact', 'phone', 'email', 'address', 'image', 'photo', 'url',
+    'value',
+    'amount',
+    'amt',
+    'profit',
+    'loss',
+    'margin',
+    'sold',
+    'sales',
+    'revenue',
+    'turnover',
+    'discount',
+    'tax',
+    'vat',
+    'date',
+    'time',
+    'new',
+    'received',
+    'paid',
+    'note',
+    'notes',
+    'remark',
+    'remarks',
+    'serial',
+    'sno',
+    'index',
+    'no',
+    'sr',
+    'sum',
+    'avg',
+    'average',
+    'expiry',
+    'exp',
+    'location',
+    'store',
+    'branch',
+    'supplier',
+    'vendor',
+    'contact',
+    'phone',
+    'email',
+    'address',
+    'image',
+    'photo',
+    'url',
   };
 
   /// The field a header cell means, and how sure the matcher is.
@@ -474,12 +514,10 @@ class SheetColumns {
         // that is how `stock value` would reach `stock` — because a lone word
         // is too common to carry a field on its own.
         final phraseTokens = phrase.split(' ');
-        if (phraseTokens.length > 1 &&
-            tokens.containsAll(phraseTokens)) {
+        if (phraseTokens.length > 1 && tokens.containsAll(phraseTokens)) {
           // Discounted for the extra words, so the column that says the
           // field plainly still outranks the one that says it in passing.
-          final double diluted =
-              score * phraseTokens.length / tokens.length;
+          final double diluted = score * phraseTokens.length / tokens.length;
           if (diluted >= 0.6) {
             best = _better(best, (field: field, score: diluted));
           }
@@ -990,6 +1028,7 @@ class ImportRowParser {
     int? Function(dynamic)? parseId,
     SheetColumns? columns,
     String? section,
+    ShopProfile profile = ShopProfile.drinks,
   }) {
     final cols = columns ?? SheetColumns.positional;
 
@@ -1056,7 +1095,10 @@ class ImportRowParser {
     // Volume, not a bare number. "750", "0.75", "1.5 L" and "500ml" are all real
     // supplier spellings, and reading a tank as 750 millilitres is a
     // factor-of-two stock error that nobody sees until the month-end count.
-    final sizeCell = cols.cell(row, 'bottle_ml');
+    // A fashion catalogue's `Size` column contains labels such as S, XL or
+    // 42, not a volume. Older drink sheets use the same heading for millilitres.
+    final sizeCell =
+        profile == ShopProfile.fashion ? null : cols.cell(row, 'bottle_ml');
     final sizeText = sizeCell?.toString().trim() ?? '';
     late final int bottleMl;
     if (sizeText.isEmpty) {
@@ -1068,8 +1110,10 @@ class ImportRowParser {
           'so the size cannot be guessed',
         );
       }
-      bottleMl = defaultBottleMl;
-      warning ??= 'No bottle size — imported as $defaultBottleMl ml';
+      bottleMl = profile == ShopProfile.drinks ? defaultBottleMl : 0;
+      if (profile == ShopProfile.drinks) {
+        warning ??= 'No bottle size — imported as $defaultBottleMl ml';
+      }
     } else {
       final volume = Volume.parse(sizeText, declared: unit);
       if (!volume.isValid) {
@@ -1112,8 +1156,15 @@ class ImportRowParser {
     // The sheet's own section title wins over nothing and loses to the row's
     // own cell: an owner who filled in the category column meant it, and a
     // supplier section is only what the sheet says when the row says nothing.
-    final category =
-        resolveCategory(cols.text(row, 'category') ?? section, name);
+    final rawCategory = cols.text(row, 'category') ?? section;
+    final category = (rawCategory ?? '').trim().isNotEmpty
+        ? resolveCategory(rawCategory, name)
+        : switch (profile) {
+            ShopProfile.drinks =>
+              inferCategoryFromName(name) ?? CategoryName.general,
+            ShopProfile.fashion => 'Fashion',
+            ShopProfile.duka || ShopProfile.open => CategoryName.general,
+          };
 
     final expiryCell =
         (cols.text(row, 'track_expiry') ?? '').trim().toLowerCase();

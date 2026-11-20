@@ -1121,8 +1121,8 @@ class FinanceRepository {
     }
     final String now = (receivedAt ?? DateTime.now()).toIso8601String();
     int totalCost = 0;
-    final List<({StockReceiptLine line, int oldCost, int newCost})> costs =
-        <({StockReceiptLine line, int oldCost, int newCost})>[];
+    final List<({StockReceiptLine line, int oldCost, int newCost, int? poLineId})> costs =
+        <({StockReceiptLine line, int oldCost, int newCost, int? poLineId})>[];
     final int receiptId = await txn.insert('stock_receipts', {
       'supplier_id': supplierId,
       'supplier_ref': supplierRef,
@@ -1137,6 +1137,7 @@ class FinanceRepository {
       'paid_from': paidFrom,
       'status': 'posted',
       'note': note,
+      'purchase_order_id': purchaseOrderId,
       'synced_to_backend': 0,
     });
 
@@ -1147,6 +1148,11 @@ class FinanceRepository {
     if (purchaseOrderId != null && poLines.isEmpty) {
       throw StateError('Purchase order not found');
     }
+    final poRemaining = <int, double>{
+      for (final row in poLines)
+        (row['id'] as num).toInt():
+            (row['qty'] as num).toDouble() - ((row['received_qty'] as num?)?.toDouble() ?? 0),
+    };
 
     for (final StockReceiptLine line in lines) {
       if (line.qty <= 0) {
@@ -1177,18 +1183,22 @@ class FinanceRepository {
           !line.expiryDate!.isAfter(receivedAt ?? DateTime.now())) {
         throw StateError('The expiry date must be after the received date');
       }
+      int? matchedPoLineId;
       if (purchaseOrderId != null) {
         final matches = poLines.where(
-            (row) => (row['product_id'] as num).toInt() == line.productId);
+            (row) => (row['product_id'] as num).toInt() == line.productId &&
+                (line.purchaseOrderLineId == null || (row['id'] as num).toInt() == line.purchaseOrderLineId) &&
+                (poRemaining[(row['id'] as num).toInt()] ?? 0) > DatabaseHelper.qtyEpsilon);
         if (matches.isEmpty) {
           throw StateError('Product is not on the purchase order');
         }
         final poLine = matches.first;
-        final ordered = (poLine['qty'] as num).toDouble();
-        final received = (poLine['received_qty'] as num?)?.toDouble() ?? 0;
-        if (received + line.qty > ordered + DatabaseHelper.qtyEpsilon) {
+        matchedPoLineId = (poLine['id'] as num).toInt();
+        final remaining = poRemaining[matchedPoLineId] ?? 0;
+        if (line.qty > remaining + DatabaseHelper.qtyEpsilon) {
           throw StateError('Received quantity exceeds the purchase order');
         }
+        poRemaining[matchedPoLineId] = remaining - line.qty;
       }
       final int oldCost = (product.first['cost_price'] as num?)?.toInt() ?? 0;
       final int newCost;
@@ -1204,7 +1214,7 @@ class FinanceRepository {
       }
       final int lineCost = (line.unitCost.minorUnits * line.qty).round();
       totalCost += lineCost;
-      costs.add((line: line, oldCost: oldCost, newCost: newCost));
+      costs.add((line: line, oldCost: oldCost, newCost: newCost, poLineId: matchedPoLineId));
 
       final double balance = await DatabaseHelper.instance
           .productBalanceAfter(txn, line.productId);
@@ -1234,7 +1244,7 @@ class FinanceRepository {
     await txn.update('stock_receipts', {'total_cost_minor': totalCost},
         where: 'id = ?', whereArgs: [receiptId]);
 
-    for (final ({StockReceiptLine line, int oldCost, int newCost}) cost
+    for (final ({StockReceiptLine line, int oldCost, int newCost, int? poLineId}) cost
         in costs) {
       await txn.insert('stock_receipt_items', {
         'receipt_id': receiptId,
@@ -1249,6 +1259,7 @@ class FinanceRepository {
         'new_cost_minor': cost.newCost,
         'expiry_date': cost.line.expiryDate?.toIso8601String(),
         'batch_code': cost.line.batchCode,
+        'purchase_order_line_id': cost.poLineId,
       });
       if (cost.line.expiryDate != null) {
         final expiry = cost.line.expiryDate!;
@@ -1284,10 +1295,13 @@ class FinanceRepository {
 
     if (purchaseOrderId != null) {
       for (final line in lines) {
+        final allocation = costs.firstWhere((c) => identical(c.line, line));
+        final lineId = allocation.poLineId;
+        if (lineId == null) continue;
         await txn.rawUpdate(
           'UPDATE purchase_order_lines SET received_qty = received_qty + ? '
-          'WHERE purchase_order_id = ? AND product_id = ?',
-          [line.qty, purchaseOrderId, line.productId],
+          'WHERE id = ? AND purchase_order_id = ?',
+          [line.qty, lineId, purchaseOrderId],
         );
       }
       final remaining = await txn.rawQuery(

@@ -194,7 +194,7 @@ class FailureRecorder {
     _uploadTimer = Timer(_autoUploadDebounce, () async {
       _uploadTimer = null;
       try {
-        await DiagnosticsUploadService.instance.upload();
+        await DiagnosticsUploadService.instance.uploadAndClear();
       } catch (_) {
         // Best-effort: a failed upload never stops a till from selling.
       }

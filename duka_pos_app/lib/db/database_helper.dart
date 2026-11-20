@@ -43,10 +43,12 @@ import '../utils/units.dart';
 // than here so this file stays a data layer: it produces rows, it does not
 // define what a chart or a screen does with them.
 import '../services/analytics.dart';
+import '../services/barcode/barcode_service.dart';
 import '../services/product_image_store.dart';
 import '../services/workspace_service.dart';
 import '../services/roles.dart';
 import '../profile/shop_profile.dart';
+import '../profile/business_context.dart';
 
 class _SnapshotMediaRollback {
   const _SnapshotMediaRollback(this.oldBytes, {this.documents});
@@ -469,6 +471,9 @@ class DatabaseHelper {
       // M-Pesa and bank transfer start pending until confirmed.
       await _addColumnIfMissing(
           db, 'job_payments', 'status', "TEXT NOT NULL DEFAULT 'pending'");
+    }
+    if (oldVersion < 90) {
+      await _createBusinessContextTable(db);
     }
     if (oldVersion < 3) {
       await db.execute(
@@ -921,6 +926,22 @@ SELECT name FROM staff GROUP BY name HAVING COUNT(*) = 1
     }
     if (oldVersion < 89) {
       await _createSaleEvidenceTable(db);
+    }
+    if (oldVersion < 91) {
+      // Run after the historical product rebuild migrations (v11/v12) so the
+      // identity columns are added to the final table shape for every upgrade.
+      await _ensureProductIdentityColumns(db);
+      await _addColumnIfMissing(db, 'stock_receipts', 'purchase_order_id', 'INTEGER');
+      await _addColumnIfMissing(db, 'stock_receipt_items', 'purchase_order_line_id', 'INTEGER');
+      final receiptTables = await db.rawQuery(
+          "SELECT name FROM sqlite_master WHERE type='table' AND name IN ('stock_receipts','stock_receipt_items')");
+      final existingReceiptTables = receiptTables.map((row) => row['name']).toSet();
+      if (existingReceiptTables.contains('stock_receipts')) {
+        await db.execute('CREATE INDEX IF NOT EXISTS idx_stock_receipts_purchase_order ON stock_receipts (purchase_order_id)');
+      }
+      if (existingReceiptTables.contains('stock_receipt_items')) {
+        await db.execute('CREATE INDEX IF NOT EXISTS idx_receipt_items_purchase_order_line ON stock_receipt_items (purchase_order_line_id)');
+      }
     }
   }
 
@@ -1984,6 +2005,7 @@ SELECT name FROM staff GROUP BY name HAVING COUNT(*) = 1
         paid_from TEXT NOT NULL DEFAULT 'till_cash',
         status TEXT NOT NULL DEFAULT 'posted',
         note TEXT,
+        purchase_order_id INTEGER,
         synced_to_backend INTEGER NOT NULL DEFAULT 0
       )
     ''');
@@ -2003,12 +2025,15 @@ SELECT name FROM staff GROUP BY name HAVING COUNT(*) = 1
         new_cost_minor INTEGER,
         expiry_date TEXT,
         batch_code TEXT,
+        purchase_order_line_id INTEGER,
         FOREIGN KEY (receipt_id) REFERENCES stock_receipts (id) ON DELETE CASCADE
       )
     ''');
     await db
         .execute('CREATE INDEX IF NOT EXISTS idx_stock_receipt_items_receipt '
             'ON stock_receipt_items (receipt_id)');
+    await db.execute('CREATE INDEX IF NOT EXISTS idx_stock_receipts_purchase_order ON stock_receipts (purchase_order_id)');
+    await db.execute('CREATE INDEX IF NOT EXISTS idx_receipt_items_purchase_order_line ON stock_receipt_items (purchase_order_line_id)');
 
     await db.execute('''
       CREATE TABLE IF NOT EXISTS product_cost_history (
@@ -2281,7 +2306,7 @@ SELECT name FROM staff GROUP BY name HAVING COUNT(*) = 1
   /// way one DDL definition can be applied twice without a "duplicate column
   /// name" on every fresh install.
   Future<void> _addColumnIfMissing(
-    Database db,
+    DatabaseExecutor db,
     String table,
     String column,
     String definition,
@@ -2979,6 +3004,8 @@ SELECT name FROM staff GROUP BY name HAVING COUNT(*) = 1
       created_at TEXT NOT NULL
     )''');
     await _createShopProfileTable(db);
+    await _createBusinessContextTable(db);
+    await _ensureProductIdentityColumns(db);
     await db.execute('''CREATE TABLE IF NOT EXISTS staff (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       name TEXT NOT NULL,
@@ -3014,11 +3041,63 @@ SELECT name FROM staff GROUP BY name HAVING COUNT(*) = 1
     )''');
   }
 
+  Future<void> _ensureProductIdentityColumns(DatabaseExecutor db) async {
+    final tables = await db.rawQuery(
+        "SELECT name FROM sqlite_master WHERE type='table' AND name='products'");
+    if (tables.isEmpty) return;
+    const columns = <String, String>{
+      'product_uuid': 'TEXT',
+      'item_kind': "TEXT NOT NULL DEFAULT 'unknown'",
+      'gpc_code': 'TEXT',
+      'gpc_version': 'TEXT',
+      'gpc_mapping_status': "TEXT NOT NULL DEFAULT 'unmapped'",
+      'merchant_sku': 'TEXT',
+      'brand_label_local': 'TEXT',
+      'external_unit_code': 'TEXT',
+      'unit_scheme': 'TEXT',
+      'unit_version': 'TEXT',
+      'unit_mapping_status': "TEXT NOT NULL DEFAULT 'unknown'",
+      'pack_quantity': 'REAL',
+      'pack_unit_code': 'TEXT',
+      'identity_provenance': "TEXT NOT NULL DEFAULT 'system_derived'",
+    };
+    for (final entry in columns.entries) {
+      await _addColumnIfMissing(db, 'products', entry.key, entry.value);
+    }
+    final missingUuids = await db.query('products', columns: ['id'], where: 'product_uuid IS NULL OR product_uuid = ? ', whereArgs: ['']);
+    for (final row in missingUuids) {
+      await db.update('products', {'product_uuid': _newUuid()}, where: 'id = ?', whereArgs: [row['id']]);
+    }
+    await db.execute('CREATE UNIQUE INDEX IF NOT EXISTS idx_products_product_uuid ON products (product_uuid)');
+    await db.execute('CREATE INDEX IF NOT EXISTS idx_products_item_kind ON products (item_kind)');
+    await db.execute('CREATE INDEX IF NOT EXISTS idx_products_gpc_status ON products (gpc_mapping_status)');
+  }
+
   Future<void> _createShopProfileTable(Database db) async {
     await db.execute('''CREATE TABLE IF NOT EXISTS shop_profile (
       id INTEGER PRIMARY KEY CHECK (id = 1),
       profile TEXT NOT NULL DEFAULT 'duka',
       updated_at TEXT NOT NULL
+    )''');
+  }
+
+  Future<void> _createBusinessContextTable(DatabaseExecutor db) async {
+    await db.execute('''CREATE TABLE IF NOT EXISTS business_context (
+      id INTEGER PRIMARY KEY CHECK (id = 1),
+      app_profile TEXT NOT NULL DEFAULT 'duka',
+      primary_activity_status TEXT NOT NULL DEFAULT 'pending',
+      primary_activity_code TEXT,
+      activity_scheme TEXT,
+      activity_version TEXT,
+      secondary_activity_codes_json TEXT NOT NULL DEFAULT '[]',
+      operator_roles_json TEXT NOT NULL DEFAULT '[]',
+      sales_channels_json TEXT NOT NULL DEFAULT '[]',
+      county_code TEXT,
+      settlement_context TEXT NOT NULL DEFAULT 'unknown',
+      field_provenance_json TEXT NOT NULL DEFAULT '{}',
+      confirmed_at_utc TEXT,
+      schema_version INTEGER NOT NULL DEFAULT 1,
+      updated_at_utc TEXT NOT NULL
     )''');
   }
 
@@ -4960,6 +5039,31 @@ SELECT name FROM staff GROUP BY name HAVING COUNT(*) = 1
     return rows.map(ProductBarcode.fromMap).toList();
   }
 
+  /// Valid supplier GTINs ready for the tenant catalogue sync. Shop-assigned
+  /// and restricted-circulation codes remain local identifiers, never GTINs.
+  Future<Map<int, String>> getVerifiedGtinsForProducts(List<int> productIds) async {
+    if (productIds.isEmpty) return const <int, String>{};
+    final rows = await (await database).rawQuery(
+      'SELECT product_id, barcode, kind FROM product_barcodes '
+      'WHERE product_id IN (${List.filled(productIds.length, '?').join(',')}) '
+      'ORDER BY product_id, barcode',
+      productIds,
+    );
+    final gtins = <int, String>{};
+    for (final row in rows) {
+      final code = Barcode.normalise(row['barcode'] as String? ?? '');
+      final kind = row['kind'] as String? ?? BarcodeKind.supplier;
+      final restrictedCirculation = code.length >= 2 &&
+          code.substring(0, 2).startsWith('2');
+      if (kind == BarcodeKind.own || restrictedCirculation ||
+          !Barcode.isGtin(code) || !Barcode.hasValidCheckDigit(code)) {
+        continue;
+      }
+      gtins.putIfAbsent((row['product_id'] as num).toInt(), () => code);
+    }
+    return gtins;
+  }
+
   /// What a barcode already belongs to, if anything.
   ///
   /// Used to turn a constraint failure into "this code is already on *Kenyana
@@ -5712,15 +5816,75 @@ SELECT name FROM staff GROUP BY name HAVING COUNT(*) = 1
   }
 
   Future<void> setShopProfile(ShopProfile profile) async {
-    await (await database).insert(
-      'shop_profile',
-      {
-        'id': 1,
-        'profile': profile.wireValue,
-        'updated_at': DateTime.now().toUtc().toIso8601String(),
-      },
-      conflictAlgorithm: ConflictAlgorithm.replace,
-    );
+    final db = await database;
+    final now = DateTime.now().toUtc().toIso8601String();
+    await db.transaction((txn) async {
+      await txn.insert(
+        'shop_profile',
+        {
+          'id': 1,
+          'profile': profile.wireValue,
+          'updated_at': now,
+        },
+        conflictAlgorithm: ConflictAlgorithm.replace,
+      );
+      final contextRows = await txn.query(
+        'business_context',
+        where: 'id = ?',
+        whereArgs: [1],
+        limit: 1,
+      );
+      if (contextRows.isEmpty) return;
+      final existing = BusinessContext.fromMap(contextRows.first);
+      await txn.update(
+        'business_context',
+        {
+          'app_profile': profile.wireValue,
+          'field_provenance_json': jsonEncode({
+            ...existing.fieldProvenance,
+            'app_profile': 'system_derived',
+          }),
+          'updated_at_utc': now,
+        },
+        where: 'id = ?',
+        whereArgs: [1],
+      );
+    });
+  }
+
+  /// Returns operational business details for the currently open workspace.
+  /// WorkspaceDatabase isolates this table per shop; no client supplied
+  /// workspace identifier participates in the lookup.
+  Future<BusinessContext> getBusinessContext() async {
+    final rows = await (await database)
+        .query('business_context', where: 'id = ?', whereArgs: [1], limit: 1);
+    return rows.isEmpty
+        ? const BusinessContext()
+        : BusinessContext.fromMap(rows.first);
+  }
+
+  /// Saves owner-confirmed business details as a single workspace-local row.
+  Future<void> saveBusinessContext(BusinessContext context) async {
+    final db = await database;
+    final now = DateTime.now().toUtc().toIso8601String();
+    await db.transaction((txn) async {
+      final profileRows = await txn.query('shop_profile', limit: 1);
+      final currentProfile = ShopProfile.fromWire(profileRows.isEmpty
+          ? null
+          : profileRows.first['profile'] as String?);
+      final provenance = {
+        ...context.fieldProvenance,
+        'app_profile': 'system_derived',
+      };
+      final row = context.toRow(updatedAtUtc: now)
+        ..['app_profile'] = currentProfile.wireValue
+        ..['field_provenance_json'] = jsonEncode(provenance);
+      await txn.insert(
+        'business_context',
+        row,
+        conflictAlgorithm: ConflictAlgorithm.replace,
+      );
+    });
   }
 
   Future<List<NotificationPreference>> getNotificationPreferences(
@@ -5935,6 +6099,7 @@ SELECT name FROM staff GROUP BY name HAVING COUNT(*) = 1
       ]),
       'profile': _snapshotDomainTables(tables, const <String>[
         'shop_profile',
+        'business_context',
         'owner',
         'staff',
         'staff_deletion_tombstones',
@@ -6555,7 +6720,8 @@ SELECT name FROM staff GROUP BY name HAVING COUNT(*) = 1
   Future<int> upsertProduct(Product p) async {
     final db = await database;
     if (p.id == null) {
-      final int id = await db.insert('products', p.toMap());
+      final values = p.toMap()..putIfAbsent('product_uuid', _newUuid);
+      final int id = await db.insert('products', values);
       // A product that arrives with stock arrives with a reason for having
       // it, and the ledger records that reason. Without this row the count
       // would have no history, and the ledger check would read every product
@@ -6582,6 +6748,7 @@ SELECT name FROM staff GROUP BY name HAVING COUNT(*) = 1
           whereArgs: [p.id],
           limit: 1);
       final values = p.toMap();
+      if (p.productUuid == null) values.remove('product_uuid');
       // Older imports and editor forms may not carry the backend ID. Never
       // erase it during a local edit; remote linkage is durable metadata.
       if (p.remoteId == null) values.remove('remote_id');
@@ -6650,7 +6817,8 @@ SELECT name FROM staff GROUP BY name HAVING COUNT(*) = 1
   /// the editor still thinks is new — and the next Save inserts it again.
   Future<int> upsertProductInTransaction(Transaction txn, Product p) async {
     if (p.id == null) {
-      final id = await txn.insert('products', p.toMap());
+      final values = p.toMap()..putIfAbsent('product_uuid', _newUuid);
+      final id = await txn.insert('products', values);
       await _recordProductPriceIfChanged(txn,
           productId: id,
           costPrice: p.costPrice.minorUnits,
@@ -6664,6 +6832,7 @@ SELECT name FROM staff GROUP BY name HAVING COUNT(*) = 1
           whereArgs: [p.id],
           limit: 1);
       final values = p.toMap();
+      if (p.productUuid == null) values.remove('product_uuid');
       if (p.remoteId == null) values.remove('remote_id');
       final updated = await txn
           .update('products', values, where: 'id = ?', whereArgs: [p.id]);
@@ -9695,19 +9864,18 @@ SELECT name FROM staff GROUP BY name HAVING COUNT(*) = 1
   /// The deliveries, newest first.
   Future<List<StockReceipt>> getStockReceipts({int limit = 100}) async {
     final db = await database;
-    final rows = await db.query(
-      'stock_receipts',
-      orderBy: 'received_at DESC, id DESC',
-      limit: limit,
-    );
+    final rows = await db.rawQuery('''
+      SELECT r.*, po.uuid AS purchase_order_uuid
+      FROM stock_receipts r LEFT JOIN purchase_orders po ON po.id = r.purchase_order_id
+      ORDER BY r.received_at DESC, r.id DESC LIMIT ?
+    ''', [limit]);
     final receipts = <StockReceipt>[];
     for (final row in rows) {
-      final itemRows = await db.query(
-        'stock_receipt_items',
-        where: 'receipt_id = ?',
-        whereArgs: [row['id']],
-        orderBy: 'id ASC',
-      );
+      final itemRows = await db.rawQuery('''
+        SELECT ri.*, pol.uuid AS purchase_order_line_uuid
+        FROM stock_receipt_items ri LEFT JOIN purchase_order_lines pol ON pol.id = ri.purchase_order_line_id
+        WHERE ri.receipt_id = ? ORDER BY ri.id ASC
+      ''', [row['id']]);
       receipts.add(
         StockReceipt.fromMap(row).let(
           (r) => StockReceipt(
@@ -9725,6 +9893,8 @@ SELECT name FROM staff GROUP BY name HAVING COUNT(*) = 1
             paidFrom: r.paidFrom,
             status: r.status,
             note: r.note,
+            purchaseOrderId: r.purchaseOrderId,
+            purchaseOrderUuid: row['purchase_order_uuid'] as String?,
             items: itemRows.map(StockReceiptItem.fromMap).toList(),
           ),
         ),
@@ -10114,20 +10284,19 @@ SELECT name FROM staff GROUP BY name HAVING COUNT(*) = 1
   /// The deliveries the server has not seen yet.
   Future<List<StockReceipt>> getUnsyncedReceipts({int limit = 100}) async {
     final db = await database;
-    final rows = await db.query(
-      'stock_receipts',
-      where: 'synced_to_backend = 0',
-      orderBy: 'received_at ASC, id ASC',
-      limit: limit,
-    );
+    final rows = await db.rawQuery('''
+      SELECT r.*, po.uuid AS purchase_order_uuid
+      FROM stock_receipts r LEFT JOIN purchase_orders po ON po.id = r.purchase_order_id
+      WHERE r.synced_to_backend = 0
+      ORDER BY r.received_at ASC, r.id ASC LIMIT ?
+    ''', [limit]);
     final receipts = <StockReceipt>[];
     for (final row in rows) {
-      final itemRows = await db.query(
-        'stock_receipt_items',
-        where: 'receipt_id = ?',
-        whereArgs: [row['id']],
-        orderBy: 'id ASC',
-      );
+      final itemRows = await db.rawQuery('''
+        SELECT ri.*, pol.uuid AS purchase_order_line_uuid
+        FROM stock_receipt_items ri LEFT JOIN purchase_order_lines pol ON pol.id = ri.purchase_order_line_id
+        WHERE ri.receipt_id = ? ORDER BY ri.id ASC
+      ''', [row['id']]);
       receipts.add(
         StockReceipt.fromMap(row).let(
           (r) => StockReceipt(
@@ -10145,6 +10314,8 @@ SELECT name FROM staff GROUP BY name HAVING COUNT(*) = 1
             paidFrom: r.paidFrom,
             status: r.status,
             note: r.note,
+            purchaseOrderId: r.purchaseOrderId,
+            purchaseOrderUuid: row['purchase_order_uuid'] as String?,
             items: itemRows.map(StockReceiptItem.fromMap).toList(),
           ),
         ),
@@ -11108,6 +11279,8 @@ $untilClause
     final rows = await (await database).rawQuery('''
       SELECT COUNT(*) AS c FROM products
       WHERE stock_qty <= reorder_level AND active = 1
+        AND item_kind NOT IN ('service', 'fee')
+        AND track_stock = 1
     ''');
     return (rows.first['c'] as num?)?.toInt() ?? 0;
   }
@@ -12499,8 +12672,8 @@ $untilClause
   /// tax figure. It is still a normal sale ledger row, so sales, cash and
   /// analytics see it through the same financial-event contract as checkout.
   ///
-  /// Open's quick sale is intentionally limited to confirmed tender methods;
-  /// credit sales continue through the customer-aware checkout flow.
+  /// Quick sales support confirmed tenders and customer-linked credit. Credit
+  /// entries and their sale row commit together in the sales repository.
   Future<int> recordOpenQuickSale({
     required Money amount,
     required String paymentMethod,
@@ -12511,6 +12684,9 @@ $untilClause
     Money? costAmount,
     bool trackCost = false,
     String? itemName,
+    int? customerId,
+    Customer? customerDraft,
+    int? creditApprovedBy,
   }) async {
     return SalesRepository.instance.recordOpenQuickSale(
       amount: amount,
@@ -12522,6 +12698,9 @@ $untilClause
       costAmount: costAmount,
       trackCost: trackCost,
       itemName: itemName,
+      customerId: customerId,
+      customerDraft: customerDraft,
+      creditApprovedBy: creditApprovedBy,
     );
   }
 

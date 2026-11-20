@@ -2662,6 +2662,12 @@ abstract class AppLocalizations {
   /// **'Automatic backup and online sync'**
   String get settingsAutoBackupSync;
 
+  /// No description provided for @settingsAutoBackupSyncDisclosure.
+  ///
+  /// In en, this message translates to:
+  /// **'Shop records, including Business details, sync to your operational shop account. This does not enable commercial contribution.'**
+  String get settingsAutoBackupSyncDisclosure;
+
   /// No description provided for @settingsBackupSection.
   ///
   /// In en, this message translates to:
@@ -11098,6 +11104,12 @@ abstract class AppLocalizations {
   /// **'Back up all shop data'**
   String get settingsBackupAllShopData;
 
+  /// No description provided for @settingsFullBackupDisclosure.
+  ///
+  /// In en, this message translates to:
+  /// **'A full backup includes all saved shop records, including Business details. Anyone with the backup file and its passphrase can restore it.'**
+  String get settingsFullBackupDisclosure;
+
   /// No description provided for @settingsRestoreAllShopData.
   ///
   /// In en, this message translates to:
@@ -12485,6 +12497,186 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'Could not sync to the server. The staff member was not saved.'**
   String get settingsStaffSyncFailed;
+
+  /// No description provided for @productItemKind.
+  ///
+  /// In en, this message translates to:
+  /// **'Item type'**
+  String get productItemKind;
+
+  /// No description provided for @productKindGood.
+  ///
+  /// In en, this message translates to:
+  /// **'Physical good'**
+  String get productKindGood;
+
+  /// No description provided for @productKindService.
+  ///
+  /// In en, this message translates to:
+  /// **'Service'**
+  String get productKindService;
+
+  /// No description provided for @productKindFee.
+  ///
+  /// In en, this message translates to:
+  /// **'Fee'**
+  String get productKindFee;
+
+  /// No description provided for @productKindUnknown.
+  ///
+  /// In en, this message translates to:
+  /// **'Needs review'**
+  String get productKindUnknown;
+
+  /// No description provided for @productKindNoStock.
+  ///
+  /// In en, this message translates to:
+  /// **'Services and fees do not change stock.'**
+  String get productKindNoStock;
+
+  /// No description provided for @productMerchantSku.
+  ///
+  /// In en, this message translates to:
+  /// **'Shop SKU (private)'**
+  String get productMerchantSku;
+
+  /// No description provided for @productBrandLabel.
+  ///
+  /// In en, this message translates to:
+  /// **'Brand label (shop only)'**
+  String get productBrandLabel;
+
+  /// No description provided for @productGpcCode.
+  ///
+  /// In en, this message translates to:
+  /// **'GS1 GPC code (optional)'**
+  String get productGpcCode;
+
+  /// No description provided for @productGpcVersion.
+  ///
+  /// In en, this message translates to:
+  /// **'GPC version'**
+  String get productGpcVersion;
+
+  /// No description provided for @productGpcMappingStatus.
+  ///
+  /// In en, this message translates to:
+  /// **'Taxonomy mapping status'**
+  String get productGpcMappingStatus;
+
+  /// No description provided for @productMappingMapped.
+  ///
+  /// In en, this message translates to:
+  /// **'Mapped'**
+  String get productMappingMapped;
+
+  /// No description provided for @productMappingUnmapped.
+  ///
+  /// In en, this message translates to:
+  /// **'Unmapped'**
+  String get productMappingUnmapped;
+
+  /// No description provided for @productMappingUnknown.
+  ///
+  /// In en, this message translates to:
+  /// **'Unknown'**
+  String get productMappingUnknown;
+
+  /// No description provided for @productMappingNotApplicable.
+  ///
+  /// In en, this message translates to:
+  /// **'Not applicable'**
+  String get productMappingNotApplicable;
+
+  /// No description provided for @productMappingRejected.
+  ///
+  /// In en, this message translates to:
+  /// **'Rejected'**
+  String get productMappingRejected;
+
+  /// No description provided for @productGpcVersionRequired.
+  ///
+  /// In en, this message translates to:
+  /// **'Add the GPC version for this code.'**
+  String get productGpcVersionRequired;
+
+  /// No description provided for @productGpcCodeRequired.
+  ///
+  /// In en, this message translates to:
+  /// **'Add a GPC code or change the mapping status.'**
+  String get productGpcCodeRequired;
+
+  /// No description provided for @productExternalUnitCode.
+  ///
+  /// In en, this message translates to:
+  /// **'UNECE unit code (optional)'**
+  String get productExternalUnitCode;
+
+  /// No description provided for @productUnitVersion.
+  ///
+  /// In en, this message translates to:
+  /// **'UNECE Rec.20 version'**
+  String get productUnitVersion;
+
+  /// No description provided for @productUnitMappingStatus.
+  ///
+  /// In en, this message translates to:
+  /// **'Unit mapping status'**
+  String get productUnitMappingStatus;
+
+  /// No description provided for @productPackQuantity.
+  ///
+  /// In en, this message translates to:
+  /// **'Quantity per pack (optional)'**
+  String get productPackQuantity;
+
+  /// No description provided for @productPackUnitCode.
+  ///
+  /// In en, this message translates to:
+  /// **'Pack unit code'**
+  String get productPackUnitCode;
+
+  /// No description provided for @productUnitCodeRequired.
+  ///
+  /// In en, this message translates to:
+  /// **'Add an UNECE unit code or change the mapping status.'**
+  String get productUnitCodeRequired;
+
+  /// No description provided for @productPackMappingInvalid.
+  ///
+  /// In en, this message translates to:
+  /// **'Enter a positive pack quantity and its unit code.'**
+  String get productPackMappingInvalid;
+
+  /// No description provided for @productMappingReviewAction.
+  ///
+  /// In en, this message translates to:
+  /// **'Review mappings'**
+  String get productMappingReviewAction;
+
+  /// No description provided for @productMappingReviewTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Product mapping review'**
+  String get productMappingReviewTitle;
+
+  /// No description provided for @productMappingReviewHelp.
+  ///
+  /// In en, this message translates to:
+  /// **'Unmapped products remain available for sales. Review the external product and unit codes when you have them.'**
+  String get productMappingReviewHelp;
+
+  /// No description provided for @productMappingReviewEmpty.
+  ///
+  /// In en, this message translates to:
+  /// **'All product mappings are reviewed.'**
+  String get productMappingReviewEmpty;
+
+  /// No description provided for @productMappingReviewLoadFailed.
+  ///
+  /// In en, this message translates to:
+  /// **'Could not load products for review. Try again.'**
+  String get productMappingReviewLoadFailed;
 }
 
 class _AppLocalizationsDelegate
