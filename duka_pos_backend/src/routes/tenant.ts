@@ -122,7 +122,17 @@ router.use(authMiddleware);
 
 router.get('/subscription', asyncHandler(async (req, res) => {
   if (!req.user) return res.status(401).json({ error: 'Tenant selection required' });
-  return res.json({ entitlement: await tenantEntitlement(req.user.tenantId) });
+  const digits = (process.env.WHATSAPP_CONTACT_NUMBER ?? '').replace(/\D/g, '');
+  const whatsappUrl = digits.length >= 8 && digits.length <= 15
+    ? `https://wa.me/${digits}?text=${encodeURIComponent(`Hello, I would like a subscription quote for ${req.user.tenantId}.`)}`
+    : null;
+  const starterVoucher = req.auth?.email
+    ? await prisma.accessVoucher.findFirst({
+        where: { issuedToEmail: req.auth.email.toLowerCase(), autoIssued: true, redeemedAt: null, revokedAt: null, pausedAt: null, deletedAt: null },
+        select: { id: true },
+      })
+    : null;
+  return res.json({ entitlement: await tenantEntitlement(req.user.tenantId), support: { whatsappUrl, firstMonthVoucherAvailable: Boolean(starterVoucher) } });
 }));
 
 router.post('/subscription/payment', asyncHandler(async (req, res) => {
@@ -341,15 +351,25 @@ router.patch(
         kra_activated: false,
       });
     }
-    const tenant = await prisma.tenant.update({
-      where: { id: requireUser(req).tenantId },
-      data: {
-        ...(mpesaEnabled !== undefined && { mpesaEnabled }),
-        ...(etimsEnabled !== undefined && { etimsEnabled }),
-        ...(payheroChannelId !== undefined && { payheroChannelId }),
-        ...(businessProfile !== undefined && { businessProfile }),
-        ...(risitiMerchantId !== undefined && { risitiMerchantId }),
-      },
+    const tenantId = requireUser(req).tenantId;
+    const tenant = await prisma.$transaction(async (tx) => {
+      const updated = await tx.tenant.update({
+        where: { id: tenantId },
+        data: {
+          ...(mpesaEnabled !== undefined && { mpesaEnabled }),
+          ...(etimsEnabled !== undefined && { etimsEnabled }),
+          ...(payheroChannelId !== undefined && { payheroChannelId }),
+          ...(businessProfile !== undefined && { businessProfile }),
+          ...(risitiMerchantId !== undefined && { risitiMerchantId }),
+        },
+      });
+      if (businessProfile !== undefined) {
+        await tx.businessContext.updateMany({
+          where: { tenantId },
+          data: { appProfile: businessProfile },
+        });
+      }
+      return updated;
     });
     return res.json(tenant);
   })

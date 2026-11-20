@@ -71,10 +71,38 @@ model Tenant {
   subscription           TenantSubscription?
   subscriptionPayments   SubscriptionPayment[]
   accessVouchers         AccessVoucher[]
+  businessContext        BusinessContext?
 
   ownerTransactions      OwnerTransaction[]
 
   @@map("tenants")
+}
+
+/// Operational classification details supplied by a shop owner. This record
+/// is tenant scoped and is never a commercial contribution or consent record.
+model BusinessContext {
+  id                      String   @id @default(cuid())
+  tenantId                String   @unique @map("tenant_id")
+  appProfile              String   @map("app_profile")
+  primaryActivityCode     String?  @map("primary_activity_code")
+  primaryActivityStatus   String   @default("pending") @map("primary_activity_status")
+  activityScheme          String?  @map("activity_scheme")
+  activityVersion         String?  @map("activity_version")
+  secondaryActivityCodes  Json     @default("[]") @map("secondary_activity_codes")
+  operatorRoles           Json     @default("[]") @map("operator_roles")
+  salesChannels           Json     @default("[]") @map("sales_channels")
+  countyCode              String?  @map("county_code")
+  settlementContext       String   @default("unknown") @map("settlement_context")
+  fieldProvenance         Json     @default("{}") @map("field_provenance")
+  confirmedAt             DateTime? @map("confirmed_at")
+  schemaVersion           Int      @default(1) @map("schema_version")
+  createdAt               DateTime @default(now()) @map("created_at")
+  updatedAt               DateTime @updatedAt @map("updated_at")
+
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  @@index([primaryActivityCode])
+  @@map("business_context")
 }
 
 /// Tax registration belongs to the taxpayer, not to a profile preset or one
@@ -541,6 +569,25 @@ model Product {
   unit    String  @default("each")
   mlPerKg Decimal @default(0) @map("ml_per_kg")
 
+  productUuid          String?  @map("product_uuid")
+  itemKind             String   @default("unknown") @map("item_kind")
+  gpcCode              String?  @map("gpc_code")
+  gpcVersion           String?  @map("gpc_version")
+  gpcMappingStatus     String   @default("unmapped") @map("gpc_mapping_status")
+  gtin                 String?
+  merchantSku          String?  @map("merchant_sku")
+  brandEntityId        String?  @map("brand_entity_id")
+  brandLabelLocal      String?  @map("brand_label_local")
+  manufacturerEntityId String?  @map("manufacturer_entity_id")
+  variantAttributes    Json?    @map("variant_attributes")
+  externalUnitCode     String?  @map("external_unit_code")
+  unitScheme           String?  @map("unit_scheme")
+  unitVersion          String?  @map("unit_version")
+  unitMappingStatus    String   @default("unknown") @map("unit_mapping_status")
+  packQuantity         Decimal? @map("pack_quantity")
+  packUnitCode         String?  @map("pack_unit_code")
+  identityProvenance   String   @default("system_derived") @map("identity_provenance")
+
   halfPrice Decimal? @map("half_price")
 
   quarterPrice Decimal? @map("quarter_price")
@@ -558,7 +605,9 @@ model Product {
   productVariants  ProductVariant[]
 
   @@unique([tenantId, syncKey])
+  @@unique([tenantId, productUuid])
   @@index([tenantId])
+  @@index([itemKind, gpcMappingStatus])
   @@map("products")
 }
 
@@ -928,9 +977,11 @@ model EtimsZReport {
 /// (rule 3 of TelemetryService: route names, feature names, timestamps only).
 model TelemetryEvent {
   id       String @id @default(cuid())
+  clientEventId String? @unique @map("client_event_id")
   tenantId String @map("tenant_id")
 
   deviceId String? // phone device identifier@map("device_id")
+  sessionJti String? @map("session_jti")
 
   name      String // app_open | app_close | screen_view | feature_use | sale_recorded | idle_start | idle_end
   at        DateTime @default(now()) // when the event occurred on the device, UTC
@@ -944,6 +995,7 @@ model TelemetryEvent {
   @@index([name])
   @@index([at])
   @@index([createdAt])
+  @@index([sessionJti, at])
   @@map("telemetry_events")
 }
 
@@ -1043,11 +1095,15 @@ model DeviceCrashEntry {
   breadcrumbs String? // newline-joined
 
   createdAt   DateTime @default(now()) @map("created_at")
+  sessionJti String? @map("session_jti")
+  clientEventId String? @map("client_event_id")
 
   diagnostic  DeviceDiagnostic @relation("DeviceCrashes", fields: [diagnosticId], references: [id])
 
   @@index([diagnosticId])
   @@index([createdAt])
+  @@index([sessionJti])
+  @@unique([diagnosticId, clientEventId])
   @@map("device_crash_entries")
 }
 
@@ -1278,8 +1334,37 @@ model AdminKey {
   usedAt    DateTime? @map("used_at")
   expiresAt DateTime  @map("expires_at")
   revokedAt DateTime? @map("revoked_at")
+  department String @default("operations")
+  role String @default("worker")
+  permissions Json @default("[]")
+  canRecruit Boolean @default(false) @map("can_recruit")
+  canMintKeys Boolean @default(false) @map("can_mint_keys")
+  canAssignTasks Boolean @default(false) @map("can_assign_tasks")
+  parentKeyId String? @map("parent_key_id")
+  parent AdminKey? @relation("AdminKeyHierarchy", fields: [parentKeyId], references: [id])
+  children AdminKey[] @relation("AdminKeyHierarchy")
+  assignedTasks AdminTask[] @relation("AdminTaskAssignee")
 
-  @@unique([email, phone])
+  @@index([email, phone])
   @@index([email])
+  @@index([parentKeyId])
   @@map("admin_keys")
+}
+
+model AdminTask {
+  id String @id @default(cuid())
+  title String
+  description String? @db.Text
+  department String
+  status String @default("assigned")
+  createdBy String @map("created_by")
+  assigneeKeyId String @map("assignee_key_id")
+  dueAt DateTime? @map("due_at")
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+  assignee AdminKey @relation("AdminTaskAssignee", fields: [assigneeKeyId], references: [id])
+
+  @@index([assigneeKeyId, status])
+  @@index([department, createdAt])
+  @@map("admin_tasks")
 }

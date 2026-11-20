@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { costPoolSyncSchema, parseBody, paymentQrSchema, paymentSchema, productVariantSyncSchema, salesSyncSchema, settingsSchema, staffSyncSchema, deletionSchema, provisionSchema, cloudBackupSchema, creditSyncSchema, operationalSyncSchema, productSyncSchema, shotCupsSyncSchema, stockMovementsSyncSchema, platformAnnouncementSchema, taxEntitySchema, taxRuleSchema, vatReturnStatusSchema, laybySyncSchema } from '../lib/validation';
+import { costPoolSyncSchema, parseBody, paymentQrSchema, paymentSchema, productVariantSyncSchema, salesSyncSchema, settingsSchema, staffSyncSchema, deletionSchema, provisionSchema, cloudBackupSchema, creditSyncSchema, operationalSyncSchema, productSyncSchema, shotCupsSyncSchema, stockMovementsSyncSchema, platformAnnouncementSchema, taxEntitySchema, taxRuleSchema, vatReturnStatusSchema, laybySyncSchema, purchaseSyncSchema } from '../lib/validation';
 import { missingVariantParentIds } from '../routes/product-variants';
 
 describe('request validation', () => {
@@ -554,6 +554,38 @@ describe('request validation', () => {
       }],
     });
     expect(input.products[0].remoteId).toBe('clw7productcuid123');
+  });
+
+  it('validates GTIN check digits while preserving leading zeroes', () => {
+    const input = parseBody(productSyncSchema, { products: [{
+      name: 'Packaged item', costPrice: 1, sellPrice: 2, stockQty: 1, reorderLevel: 0,
+      gtin: '036000291452', itemKind: 'good',
+    }] });
+    expect(input.products[0].gtin).toBe('036000291452');
+    expect(() => parseBody(productSyncSchema, { products: [{
+      name: 'Bad code', costPrice: 1, sellPrice: 2, stockQty: 1, reorderLevel: 0,
+      gtin: '036000291453',
+    }] })).toThrow();
+  });
+
+  it('requires versioned taxonomy and unit mappings', () => {
+    expect(() => parseBody(productSyncSchema, { products: [{
+      name: 'Item', costPrice: 1, sellPrice: 2, stockQty: 1, reorderLevel: 0,
+      gpcCode: '10000001', gpcMappingStatus: 'mapped',
+    }] })).toThrow();
+    expect(() => parseBody(productSyncSchema, { products: [{
+      name: 'Item', costPrice: 1, sellPrice: 2, stockQty: 1, reorderLevel: 0,
+      externalUnitCode: 'EA', unitMappingStatus: 'mapped',
+    }] })).toThrow();
+  });
+
+  it('accepts versioned PO lineage references on receipt sync', () => {
+    const input = parseBody(purchaseSyncSchema, { records: [{
+      localId: 1, deviceId: 'device-a', createdAt: '2026-11-19T10:00:00.000Z',
+      purchaseOrderUuid: '0d4c2dd6-335c-4b9f-901a-b15de50697ed',
+      items: [{ productId: 'clw7productcuid123', qty: 2, purchaseOrderLineUuid: '10e1d00b-bca5-40e1-aad8-61173e2c3938' }],
+    }] });
+    expect(input.records[0].purchaseOrderUuid).toBe('0d4c2dd6-335c-4b9f-901a-b15de50697ed');
   });
 
   it('accepts only bounded opaque cloud backup payloads', () => {

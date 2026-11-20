@@ -1,6 +1,6 @@
 import jwt from 'jsonwebtoken';
 
-export type TokenTier = 'device' | 'access';
+export type TokenTier = 'device' | 'access' | 'admin';
 export type StaffSessionClaims = {
   sub: string;
   tenantId: string;
@@ -23,6 +23,7 @@ export type AccessTokenClaims = {
 
 const DEVICE_TTL_SECONDS = 12 * 60 * 60;
 const ACCESS_TTL_SECONDS = 60 * 60;
+const ADMIN_TTL_SECONDS = 60 * 60;
 const CLOCK_SKEW_SECONDS = 60;
 const STAFF_SESSION_TTL_SECONDS = 30 * 24 * 60 * 60;
 
@@ -32,7 +33,7 @@ export function issueAccessToken(params: {
   emailVerified: boolean;
   tier: TokenTier;
 }): { token: string; expiresIn: number } {
-  const ttl = params.tier === 'device' ? DEVICE_TTL_SECONDS : ACCESS_TTL_SECONDS;
+  const ttl = params.tier === 'device' ? DEVICE_TTL_SECONDS : params.tier === 'admin' ? ADMIN_TTL_SECONDS : ACCESS_TTL_SECONDS;
   const secret = process.env.AUTH_JWT_SECRET;
   if (!secret) throw new Error('AUTH_JWT_SECRET must be configured');
   const jti = (globalThis.crypto?.randomUUID?.() ?? Math.random().toString(36).slice(2));
@@ -61,10 +62,10 @@ export function verifyAccessToken(token: string): AccessTokenClaims | null {
       }) as AccessTokenClaims;
       if (!decoded || typeof decoded.sub !== 'string') return null;
       if (typeof decoded.iat === 'number' && typeof decoded.exp === 'number') {
-        const maxLifetime = decoded.token_use === 'device' ? DEVICE_TTL_SECONDS : ACCESS_TTL_SECONDS;
+        const maxLifetime = decoded.token_use === 'device' ? DEVICE_TTL_SECONDS : decoded.token_use === 'admin' ? ADMIN_TTL_SECONDS : ACCESS_TTL_SECONDS;
         if (decoded.exp - decoded.iat > maxLifetime + CLOCK_SKEW_SECONDS) return null;
       }
-      if (decoded.token_use !== 'device' && decoded.token_use !== 'access') return null;
+      if (decoded.token_use !== 'device' && decoded.token_use !== 'access' && decoded.token_use !== 'admin') return null;
       return decoded;
     } catch {
       // try next

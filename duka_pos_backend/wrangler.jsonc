@@ -3,14 +3,45 @@
   "name": "duka-pos-backend",
   "main": "src/worker.ts",
   "compatibility_date": "2026-10-26",
-  "compatibility_flags": ["nodejs_compat"],
-  "durable_objects": { "bindings": [ { "name": "LIVE_ROOM", "class_name": "LiveRoom" } ] },
-  "hyperdrive": [ { "binding": "HYPERDRIVE", "id": "613edae2cb28470c8d3693a6ab2df1b4" } ],
-  "migrations": [ { "tag": "v1", "new_sqlite_classes": ["LiveRoom"] } ],
-  "triggers": { "crons": ["*/5 * * * *"] },
+  "compatibility_flags": [
+    "nodejs_compat"
+  ],
+  "durable_objects": {
+    "bindings": [
+      {
+        "name": "LIVE_ROOM",
+        "class_name": "LiveRoom"
+      }
+    ]
+  },
+  "hyperdrive": [
+    {
+      "binding": "HYPERDRIVE",
+      "id": "613edae2cb28470c8d3693a6ab2df1b4"
+    }
+  ],
+  "migrations": [
+    {
+      "tag": "v1",
+      "new_sqlite_classes": [
+        "LiveRoom"
+      ]
+    }
+  ],
+  "triggers": {
+    "crons": [
+      "*/5 * * * *"
+    ]
+  },
   "vars": {
     "APP_RELEASE_REPOSITORY": "Bryan-sys-lab/SimpleSales",
-    "APP_RELEASE_MANIFEST_URL": "https://pub-304b56b967d4462f8ca28cdb5a6fc43a.r2.dev/current.json"
+    "APP_RELEASE_MANIFEST_URL": "https://pub-304b56b967d4462f8ca28cdb5a6fc43a.r2.dev/current.json",
+    "SYSTEM_ADMIN_EMAIL": "brian@nerva.co.ke",
+    "ADMIN_APP_ORIGIN": "https://simpleranalytics.nerva.co.ke"
   },
-  "send_email": [{"name": "EMAIL"}]
+  "send_email": [
+    {
+      "name": "EMAIL"
+    }
+  ]
 }

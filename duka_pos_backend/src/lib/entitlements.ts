@@ -28,7 +28,9 @@ export async function tenantEntitlement(tenantId: string): Promise<Entitlement> 
   // a generated production client always has this model and therefore never
   // takes this compatibility branch.
   const subscriptionModel = (prisma as typeof prisma & { tenantSubscription?: typeof prisma.tenantSubscription }).tenantSubscription;
-  if (!subscriptionModel) return { allowed: true, status: 'legacy', reason: 'active', priceMinor: null, currency: 'KES', billingInterval: 'monthly', currentPeriodEnd: null };
+  // Missing billing schema must never silently grant production access. This
+  // also makes partial migrations fail closed until the database is repaired.
+  if (!subscriptionModel) return { allowed: false, status: 'pending', reason: 'subscription_required', priceMinor: null, currency: 'KES', billingInterval: 'monthly', currentPeriodEnd: null };
   const subscription = await subscriptionModel.findUnique({ where: { tenantId } });
   const now = new Date();
   if (!subscription) return { allowed: false, status: 'pending', reason: 'subscription_required', priceMinor: null, currency: 'KES', billingInterval: 'monthly', currentPeriodEnd: null };

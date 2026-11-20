@@ -2,7 +2,8 @@
  * System administration routes.
  *
  * Mounted at /api/admin. Every route is protected by systemAdminMiddleware
- * (OIDC JWT + SYSTEM_ADMIN_SUBJECTS allowlist). A system admin sees ALL tenants.
+ * A short-lived administrator JWT + permission middleware. The super admin
+ * sees all tenants; department keys receive only their granted capabilities.
  */
 import { Request, Response, Router } from 'express';
 import crypto from 'node:crypto';
@@ -12,7 +13,7 @@ import { adminAuditSchema, adminListQuerySchema, commercialLedgerQuerySchema, pl
 import { prisma } from '../lib/prisma';
 import { runRetention } from '../lib/retention';
 import { log } from '../lib/observability';
-import { systemAdminMiddleware } from '../middleware/auth';
+import { authMiddleware, requireRole, systemAdminMiddleware } from '../middleware/auth';
 import { broadcastAdmin } from '../services/admin_live_broker';
 import { COMMERCIAL_POLICY } from '../lib/commercial_policy';
 import { commercialContributionSelect, projectCommercialContribution } from '../lib/commercial_ledger';
@@ -42,7 +43,66 @@ export function setPlatformAnnouncementNotifier(
   platformAnnouncementNotifier = notifier;
 }
 
-// All admin routes require a system-admin OIDC subject.
+// Device uploads use the authenticated shop profile. Scope device identity to
+// that tenant and strip common secrets before storing crash replay context.
+const deviceReportSchema = z.object({
+  deviceId: z.string().trim().min(1).max(128), platform: z.string().trim().min(1).max(32),
+  osVersion: z.string().trim().min(1).max(128), appVersion: z.string().trim().min(1).max(64),
+  buildNumber: z.string().trim().min(1).max(64), locale: z.string().trim().min(1).max(32),
+  manufacturer: z.string().max(128).optional().nullable(), model: z.string().max(128).optional().nullable(),
+  tenantId: z.string().max(120).optional().nullable(),
+  crashes: z.array(z.object({
+    clientEventId: z.string().trim().min(1).max(80).optional().nullable(),
+    kind: z.enum(['crash', 'error', 'warning']), message: z.string().trim().min(1).max(4096),
+    stack: z.string().max(16000).optional().nullable(), route: z.string().max(512).optional().nullable(),
+    actorName: z.string().max(128).optional().nullable(), action: z.string().max(256).optional().nullable(),
+    breadcrumbs: z.array(z.string().max(512)).max(30).optional().nullable(), createdAt: z.string().datetime().optional(),
+  }).strict()).max(200).default([]),
+}).strict();
+function scrubDiagnostic(value: string | null | undefined): string | null {
+  if (!value) return null;
+  return value.replace(/(authorization\s*[:=]\s*bearer\s+)[^\s,;]+/gi, '$1[redacted]')
+    .replace(/((?:password|pin|token|secret|api[_-]?key)\s*[:=]\s*)(?:"[^"]*"|'[^']*'|[^\s,;}]+)/gi, '$1[redacted]')
+    .slice(0, 16000);
+}
+router.post('/diagnostics', authMiddleware, requireRole('admin', 'manager', 'cashier'), asyncHandler(async (req, res) => {
+  const input = parseBody(deviceReportSchema, req.body);
+  const tenantId = req.user!.tenantId;
+  const deviceId = crypto.createHash('sha256').update(`${tenantId}\0${input.deviceId}`).digest('hex');
+  const now = new Date();
+  const diagnostic = await prisma.$transaction(async (tx) => {
+    const row = await tx.deviceDiagnostic.upsert({ where: { deviceId }, update: {
+      tenantId, platform: input.platform, osVersion: input.osVersion, appVersion: input.appVersion,
+      buildNumber: input.buildNumber, locale: input.locale, manufacturer: input.manufacturer ?? null,
+      model: input.model ?? null, lastSeen: now,
+    }, create: {
+      deviceId, tenantId, platform: input.platform, osVersion: input.osVersion, appVersion: input.appVersion,
+      buildNumber: input.buildNumber, locale: input.locale, manufacturer: input.manufacturer ?? null,
+      model: input.model ?? null, firstSeen: now, lastSeen: now,
+      crashCount: 0, errorCount: 0, warningCount: 0,
+    } });
+    const inserted = input.crashes.length ? await tx.deviceCrashEntry.createMany({ data: input.crashes.map((entry) => ({
+      diagnosticId: row.id, kind: entry.kind, message: scrubDiagnostic(entry.message) ?? 'Diagnostic event',
+      stack: scrubDiagnostic(entry.stack), route: scrubDiagnostic(entry.route), actorName: scrubDiagnostic(entry.actorName),
+      action: scrubDiagnostic(entry.action), breadcrumbs: scrubDiagnostic((entry.breadcrumbs ?? []).join('\n')),
+      sessionJti: req.auth?.jti ?? null,
+      clientEventId: entry.clientEventId ? crypto.createHash('sha256').update(`${deviceId}\0${entry.clientEventId}`).digest('hex') : null,
+      createdAt: entry.createdAt ? new Date(entry.createdAt) : now,
+    })), skipDuplicates: true }) : { count: 0 };
+    const counts = await tx.deviceCrashEntry.groupBy({ by: ['kind'], where: { diagnosticId: row.id }, _count: { _all: true } });
+    const countByKind = new Map(counts.map((entry) => [entry.kind, entry._count._all]));
+    await tx.deviceDiagnostic.update({ where: { id: row.id }, data: {
+      crashCount: countByKind.get('crash') ?? 0,
+      errorCount: countByKind.get('error') ?? 0,
+      warningCount: countByKind.get('warning') ?? 0,
+    } });
+    return { id: row.id, insertedCount: inserted.count };
+  });
+  broadcastAdmin({ type: 'device_diagnostic_reported', tenantId, diagnosticId: diagnostic.id, crashes: diagnostic.insertedCount, at: now.toISOString() });
+  return res.status(201).json({ id: diagnostic.id, crashesReceived: diagnostic.insertedCount });
+}));
+
+// All administration/reporting reads require an administrator capability.
 router.use(systemAdminMiddleware);
 
 // Verified account directory. This is deliberately separate from tenant
@@ -86,6 +146,16 @@ router.patch('/billing/provider', asyncHandler(async (req: Request, res: Respons
 router.get('/billing/subscriptions', asyncHandler(async (_req: Request, res: Response) => {
   const rows = await prisma.tenantSubscription.findMany({ include: { tenant: { select: { id: true, shopName: true, profiles: { where: { role: 'admin', active: true, deletedAt: null }, orderBy: { createdAt: 'asc' }, take: 1, select: { id: true, name: true, email: true, user: { select: { email: true } } } } } } }, orderBy: { updatedAt: 'desc' } });
   return res.json({ subscriptions: rows });
+}));
+
+router.get('/billing/payments', asyncHandler(async (req: Request, res: Response) => {
+  const limit = Math.min(Math.max(Number(req.query.limit) || 50, 1), 100);
+  const payments = await prisma.subscriptionPayment.findMany({
+    take: limit,
+    orderBy: { createdAt: 'desc' },
+    select: { id: true, tenantId: true, reference: true, amountMinor: true, durationMonths: true, status: true, providerStatus: true, mpesaReceiptCode: true, createdAt: true, updatedAt: true, tenant: { select: { shopName: true, subscription: { select: { currency: true } } } } },
+  });
+  return res.json({ payments });
 }));
 
 router.patch('/billing/subscriptions/:tenantId', asyncHandler(async (req: Request, res: Response) => {
@@ -494,17 +564,50 @@ router.get(
     if (!Number.isFinite(fromDate.getTime())) {
       return res.status(400).json({ error: 'Invalid report date range' });
     }
-    const where: Record<string, unknown> = { createdAt: { gte: fromDate } };
+    const where: Record<string, unknown> = { sessionJti: { not: null }, at: { gte: fromDate } };
     if (tenantId) where.tenantId = tenantId;
-    const sessions = await prisma.appSession.findMany({
-      where,
-      include: { tenant: { select: { id: true, shopName: true } } },
-      orderBy: { createdAt: 'desc' },
-      take: limit,
+    const groups = await prisma.telemetryEvent.groupBy({
+      by: ['sessionJti', 'tenantId'], where, _count: { _all: true }, _min: { at: true }, _max: { at: true },
+      orderBy: { _max: { at: 'desc' } }, take: limit,
     });
+    const sessionIds = groups.map((g) => g.sessionJti).filter((id): id is string => Boolean(id));
+    const [tenantRows, deviceRows] = await Promise.all([
+      prisma.tenant.findMany({ where: { id: { in: [...new Set(groups.map((g) => g.tenantId))] } }, select: { id: true, shopName: true } }),
+      sessionIds.length ? prisma.telemetryEvent.findMany({ where: { sessionJti: { in: sessionIds } }, select: { sessionJti: true, deviceId: true }, distinct: ['sessionJti'], orderBy: { at: 'desc' } }) : Promise.resolve([]),
+    ]);
+    const tenantsById = new Map(tenantRows.map((t) => [t.id, t]));
+    const devicesBySession = new Map(deviceRows.map((d) => [d.sessionJti, d.deviceId]));
+    const sessions = groups.filter((g) => g.sessionJti && g._min.at && g._max.at).map((g) => ({
+      id: g.sessionJti!, tenantId: g.tenantId, tenant: tenantsById.get(g.tenantId) ?? null,
+      deviceId: devicesBySession.get(g.sessionJti!) ?? null,
+      createdAt: g._min.at!, lastActivityAt: g._max.at!, expiresAt: new Date(g._max.at!.getTime() + 60 * 60 * 1000),
+      eventCount: g._count._all,
+    })).sort((a, b) => b.lastActivityAt.getTime() - a.lastActivityAt.getTime());
     return res.json({ sessions });
   })
 );
+
+router.get('/sessions/:sessionJti/replay', asyncHandler(async (req: Request, res: Response) => {
+  const sessionJti = req.params.sessionJti as string;
+  if (!/^[A-Za-z0-9_-]{8,128}$/.test(sessionJti)) return res.status(400).json({ error: 'Invalid session identifier' });
+  const events = await prisma.telemetryEvent.findMany({
+    where: { sessionJti }, orderBy: { at: 'asc' }, take: 500,
+    select: { id: true, tenantId: true, deviceId: true, name: true, at: true, route: true },
+  });
+  const crashes = await prisma.deviceCrashEntry.findMany({
+    where: { sessionJti }, orderBy: { createdAt: 'asc' }, take: 200,
+    select: { id: true, diagnosticId: true, kind: true, message: true, route: true, action: true, actorName: true, createdAt: true, diagnostic: { select: { tenantId: true, deviceId: true } } },
+  });
+  const tenantId = events[0]?.tenantId ?? crashes[0]?.diagnostic.tenantId;
+  if (!tenantId) return res.status(404).json({ error: 'Session replay is no longer available' });
+  const tenant = await prisma.tenant.findUnique({ where: { id: tenantId }, select: { id: true, shopName: true } });
+  const activity = [
+    ...events.map((event) => ({ id: event.id, name: event.name, route: event.route, at: event.at, deviceId: event.deviceId, message: null, kind: null, action: null, actorName: null, diagnosticId: null })),
+    ...crashes.filter((crash) => crash.diagnostic.tenantId === tenantId).map((crash) => ({ id: crash.id, name: `diagnostic_${crash.kind}`, route: crash.route, at: crash.createdAt, deviceId: crash.diagnostic.deviceId, message: crash.message, kind: crash.kind, action: crash.action, actorName: crash.actorName, diagnosticId: crash.diagnosticId })),
+  ].sort((a, b) => a.at.getTime() - b.at.getTime());
+  await prisma.adminAuditLog.create({ data: { adminId: req.auth?.sub ?? 'unknown', action: 'view_session_replay', targetType: 'app_session_activity', targetId: sessionJti, tenantId } });
+  return res.json({ sessionId: sessionJti, tenant, deviceId: events[0]?.deviceId ?? crashes[0]?.diagnostic.deviceId ?? null, events: activity });
+}));
 
 // ---------------------------------------------------------------------------
 // GET /api/admin/tenants — all tenants with profile and sale counts
@@ -520,6 +623,32 @@ router.get(
     return res.json({ tenants });
   })
 );
+
+// Business details are operational tenant data, not commercial contributions.
+// Access is covered by tenants:read and every tenant-specific view is audited.
+router.get('/tenants/:tenantId/business-context', asyncHandler(async (req: Request, res: Response) => {
+  const tenantId = tenantIdentifier.parse(req.params.tenantId);
+  const tenant = await prisma.tenant.findUnique({
+    where: { id: tenantId },
+    select: {
+      id: true,
+      shopName: true,
+      businessProfile: true,
+      businessContext: true,
+    },
+  });
+  if (!tenant) return res.status(404).json({ error: 'Shop not found' });
+  await prisma.adminAuditLog.create({
+    data: {
+      adminId: req.auth?.sub ?? 'unknown',
+      action: 'view_business_context',
+      targetType: 'business_context',
+      targetId: tenant.businessContext?.id ?? tenant.id,
+      tenantId,
+    },
+  });
+  return res.json({ tenant: { ...tenant, businessContext: tenant.businessContext ? { ...tenant.businessContext, appProfile: tenant.businessProfile } : null } });
+}));
 
 router.get(
   '/tax-entities',
@@ -1029,6 +1158,7 @@ router.get(
       },
     });
     if (!diagnostic) return res.status(404).json({ error: 'Device diagnostic not found' });
+    await prisma.adminAuditLog.create({ data: { adminId: req.auth?.sub ?? 'unknown', action: 'view_device_diagnostic', targetType: 'device_diagnostic', targetId: diagnostic.id, tenantId: diagnostic.tenantId } });
     return res.json({
       id: diagnostic.id,
       deviceId: diagnostic.deviceId,
@@ -1068,8 +1198,24 @@ router.get(
 router.get('/products', asyncHandler(async (_req: Request, res: Response) => {
   const rows = await prisma.product.findMany({
     where: { active: true },
-    select: { name: true, category: true, sellPrice: true, stockQty: true, tenantId: true },
+    select: { name: true, category: true, sellPrice: true, stockQty: true, tenantId: true, itemKind: true, gpcMappingStatus: true, unitMappingStatus: true, gtin: true },
   });
+  const identityCoverage = {
+    activeProducts: rows.length,
+    verifiedGtinProducts: 0,
+    itemKinds: { good: 0, service: 0, fee: 0, unknown: 0 },
+    gpcMapping: { mapped: 0, unmapped: 0, unknown: 0, notApplicable: 0, rejected: 0 },
+    unitMapping: { mapped: 0, unmapped: 0, unknown: 0, notApplicable: 0, rejected: 0 },
+  };
+  for (const row of rows) {
+    if (row.gtin) identityCoverage.verifiedGtinProducts++;
+    const kind = row.itemKind as keyof typeof identityCoverage.itemKinds;
+    if (kind in identityCoverage.itemKinds) identityCoverage.itemKinds[kind]++;
+    const gpc = row.gpcMappingStatus === 'not_applicable' ? 'notApplicable' : row.gpcMappingStatus;
+    if (gpc in identityCoverage.gpcMapping) identityCoverage.gpcMapping[gpc as keyof typeof identityCoverage.gpcMapping]++;
+    const unit = row.unitMappingStatus === 'not_applicable' ? 'notApplicable' : row.unitMappingStatus;
+    if (unit in identityCoverage.unitMapping) identityCoverage.unitMapping[unit as keyof typeof identityCoverage.unitMapping]++;
+  }
   const map = new Map<string, { name: string; category: string; shops: Set<string>; minPrice: number; maxPrice: number; totalStock: number }>();
   for (const r of rows) {
     const key = `${r.name}::${r.category}`;
@@ -1089,7 +1235,7 @@ router.get('/products', asyncHandler(async (_req: Request, res: Response) => {
     maxPrice: Math.round(e.maxPrice * 100),
     totalStock: e.totalStock,
   }));
-  return res.json({ products, total: products.length });
+  return res.json({ products, total: products.length, identityCoverage });
 }));
 
 

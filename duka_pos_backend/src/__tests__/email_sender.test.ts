@@ -106,7 +106,7 @@ describe("verification email branding", () => {
     });
 
     expect(sent.text).toContain("SS-FIRST-MONTH");
-    expect(sent.text).toContain("valid for one month");
+    expect(sent.text).toContain("30 days begin when you redeem it");
     expect(sent.html).toContain("SS-FIRST-MONTH");
     expect(sent.html).toContain("First-month access");
   });

@@ -84,6 +84,14 @@ export const mpesaChannelSchema = z.object({
 /**
  * Bulk product sync (upsert).
  */
+const validGtin = (value: string) => {
+  if (!/^(\d{8}|\d{12}|\d{13}|\d{14})$/.test(value)) return false;
+  const digits = [...value].map(Number);
+  const check = digits.pop()!;
+  const sum = digits.reverse().reduce((total, digit, index) => total + digit * (index % 2 === 0 ? 3 : 1), 0);
+  return (10 - (sum % 10)) % 10 === check;
+};
+
 export const productSyncSchema = z.object({
   products: z.array(z.object({
     id: z.number().int().positive().optional(),
@@ -99,12 +107,46 @@ export const productSyncSchema = z.object({
     openingStockQty: z.number().finite().nonnegative().max(2000000).optional(),
     reorderLevel: z.number().int().nonnegative().max(2000000),
     bottleMl: z.number().int().positive().max(200000).default(750),
-    unit: z.enum(['each', 'ml', 'litre', 'cup', 'kilogram']).default('each'),
+    unit: z.enum(['each', 'ml', 'litre', 'cup', 'kilogram', 'pack', 'carton']).default('each'),
     mlPerKg: z.number().finite().nonnegative().max(1000000).default(0),
+    productUuid: z.string().uuid().optional().nullable(),
+    itemKind: z.enum(['good', 'service', 'fee', 'unknown']).default('unknown'),
+    gpcCode: z.string().trim().regex(/^\d{8}$/).optional().nullable(),
+    gpcVersion: z.string().trim().max(32).optional().nullable(),
+    gpcMappingStatus: z.enum(['mapped', 'unmapped', 'unknown', 'not_applicable', 'rejected']).default('unmapped'),
+    gtin: z.string().trim().refine(validGtin, 'Invalid GTIN format or check digit').optional().nullable(),
+    merchantSku: z.string().trim().max(120).optional().nullable(),
+    brandEntityId: z.string().trim().max(120).optional().nullable(),
+    brandLabelLocal: z.string().trim().max(120).optional().nullable(),
+    manufacturerEntityId: z.string().trim().max(120).optional().nullable(),
+    variantAttributes: z.record(z.enum(['size', 'color', 'style', 'material']), z.string().trim().max(80)).optional().nullable(),
+    externalUnitCode: z.string().trim().max(8).optional().nullable(),
+    unitScheme: z.string().trim().max(40).optional().nullable(),
+    unitVersion: z.string().trim().max(40).optional().nullable(),
+    unitMappingStatus: z.enum(['mapped', 'unmapped', 'unknown', 'not_applicable', 'rejected']).default('unknown'),
+    packQuantity: z.number().finite().positive().max(1000000).optional().nullable(),
+    packUnitCode: z.string().trim().max(8).optional().nullable(),
+    identityProvenance: z.enum(['owner_confirmed', 'staff_entered', 'scan_verified', 'catalogue_reference', 'admin_reviewed', 'system_derived']).default('system_derived'),
     halfPrice: z.number().finite().nonnegative().max(100000000).nullable().optional(),
     quarterPrice: z.number().finite().nonnegative().max(100000000).nullable().optional(),
     exciseStampBatch: z.string().trim().max(120).optional().nullable(),
     active: z.boolean().default(true),
+  }).superRefine((product, ctx) => {
+    if (product.gpcCode && !product.gpcVersion) {
+      ctx.addIssue({ code: 'custom', path: ['gpcVersion'], message: 'GPC version is required when a code is set' });
+    }
+    if (product.externalUnitCode && (!product.unitScheme || !product.unitVersion)) {
+      ctx.addIssue({ code: 'custom', path: ['unitScheme'], message: 'Unit scheme and version are required with an external code' });
+    }
+    if (product.gpcMappingStatus === 'mapped' && !product.gpcCode) {
+      ctx.addIssue({ code: 'custom', path: ['gpcCode'], message: 'Mapped products require a GPC code' });
+    }
+    if (product.unitMappingStatus === 'mapped' && !product.externalUnitCode) {
+      ctx.addIssue({ code: 'custom', path: ['externalUnitCode'], message: 'Mapped units require an external unit code' });
+    }
+    if ((product.packQuantity == null) !== (product.packUnitCode == null)) {
+      ctx.addIssue({ code: 'custom', path: ['packUnitCode'], message: 'Pack quantity and unit must be provided together' });
+    }
   })).max(2000),
 });
 
@@ -309,6 +351,17 @@ export const shotCupsSyncSchema = z.object({
 
 export const operationalSyncSchema = z.object({
   records: z.array(operationalRecord).max(500),
+}).strict();
+
+export const purchaseSyncSchema = z.object({
+  records: z.array(operationalRecord.extend({
+    purchaseOrderUuid: z.string().uuid().nullable().optional(),
+    items: z.array(z.object({
+      productId: remoteIdentifier,
+      qty: z.number().finite().positive().max(100000),
+      purchaseOrderLineUuid: z.string().uuid().nullable().optional(),
+    }).passthrough()).min(1).max(200),
+  })).max(500),
 }).strict();
 
 /** Fashion lay-by lifecycle snapshots from an offline till. */
@@ -598,8 +651,9 @@ export const staffPinResetApproveSchema = z.object({
  * names and timestamps only — never secrets or PII.
  */
 export const telemetryEventSchema = z.object({
+  clientEventId: z.string().trim().min(1).max(80).optional().nullable(),
   deviceId: z.string().trim().min(1).max(200).optional().nullable(),
-  name: z.string().trim().min(1).max(120),
+  name: z.string().trim().min(1).max(120).regex(/^[A-Za-z0-9_.-]+$/),
   at: z.string().datetime().optional().nullable(),
   route: z.string().trim().max(200).optional().nullable(),
   detail: z.string().trim().max(1000).optional().nullable(),

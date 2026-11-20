@@ -7,8 +7,30 @@ import { parseBody } from '../lib/validation';
 import { productSyncSchema, stockAdjustSchema } from '../lib/validation';
 import { prisma } from '../lib/prisma';
 import { log } from '../lib/observability';
+import { z } from 'zod';
 
 const router = Router();
+
+const identityData = (product: z.infer<typeof productSyncSchema>['products'][number]) => ({
+  productUuid: product.productUuid ?? undefined,
+  itemKind: product.itemKind,
+  gpcCode: product.gpcCode,
+  gpcVersion: product.gpcVersion,
+  gpcMappingStatus: product.gpcMappingStatus,
+  gtin: product.gtin,
+  merchantSku: product.merchantSku,
+  brandEntityId: product.brandEntityId,
+  brandLabelLocal: product.brandLabelLocal,
+  manufacturerEntityId: product.manufacturerEntityId,
+  variantAttributes: product.variantAttributes ?? undefined,
+  externalUnitCode: product.externalUnitCode,
+  unitScheme: product.unitScheme,
+  unitVersion: product.unitVersion,
+  unitMappingStatus: product.unitMappingStatus,
+  packQuantity: product.packQuantity,
+  packUnitCode: product.packUnitCode,
+  identityProvenance: product.identityProvenance,
+});
 
 // ---------------------------------------------------------------------------
 // Bulk product sync (owner or manager)
@@ -45,6 +67,7 @@ router.post(
               quarterPrice: product.quarterPrice,
               exciseStampBatch: product.exciseStampBatch,
               active: product.active,
+              ...identityData(product),
             },
           });
           result.push({ localId: product.id, remoteId: updated.id });
@@ -76,6 +99,7 @@ router.post(
               quarterPrice: product.quarterPrice,
               exciseStampBatch: product.exciseStampBatch,
               active: product.active,
+              ...identityData(product),
             },
             update: {
               name: product.name,
@@ -90,6 +114,7 @@ router.post(
               quarterPrice: product.quarterPrice,
               exciseStampBatch: product.exciseStampBatch,
               active: product.active,
+              ...identityData(product),
             },
           });
           result.push({ localId: product.id, remoteId: synced.id });
@@ -110,6 +135,7 @@ router.post(
               quarterPrice: product.quarterPrice,
               exciseStampBatch: product.exciseStampBatch,
               active: product.active,
+              ...identityData(product),
             },
           });
           result.push({ localId: product.id, remoteId: created.id });

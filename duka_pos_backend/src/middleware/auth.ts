@@ -19,6 +19,7 @@ declare global {
         email?: string;
         email_verified?: boolean;
         token_use?: string;
+        jti?: string;
         [key: string]: unknown;
       };
       user?: {
@@ -51,6 +52,8 @@ export const authMiddleware = async (req: express.Request, res: express.Response
   const normalizedOriginalPath = req.originalUrl
     .split('?')[0]
     .replace(/^\/api(?=\/)/, '');
+  // Admin auth is a separate credential domain from shop profiles.
+  if (normalizedOriginalPath === '/admin/auth/login') return next();
   // Public paths.
   if (req.method === 'GET' && req.path.startsWith('/etims/verify/')) return next();
   if (req.method === 'GET' && req.path.startsWith('/receipt-links/')) return next();
@@ -100,6 +103,7 @@ export const authMiddleware = async (req: express.Request, res: express.Response
     email: claims.email,
     email_verified: claims.email_verified,
     token_use: claims.token_use,
+    jti: claims.jti,
   };
 
   // Provisioning / shop listing allowed for any authenticated account.
@@ -187,34 +191,65 @@ export const requireRole = (...roles: string[]) => (req: express.Request, res: e
 };
 
 export const systemAdminMiddleware = async (req: express.Request, res: express.Response, next: express.NextFunction) => {
-  // Admin auth endpoints (login, mint) are handled by a separate router and
-  // must not be blocked by this middleware.
-  console.log('systemAdminMiddleware req.path=', req.path, 'originalUrl=', req.originalUrl);
-  if (req.path.startsWith('/auth/') || req.path === '/auth') return next();
   const allowed = (process.env.SYSTEM_ADMIN_SUBJECTS ?? '').split(',').map((v) => v.trim()).filter(Boolean);
-  // Open mode: when no subjects are configured, allow unauthenticated admin
-  // access so the admin panel can read live data without an IdP. Set
-  // SYSTEM_ADMIN_SUBJECTS to a comma-separated list of JWT subjects to enforce.
-  if (allowed.length === 0 || allowed.includes('*')) {
-    req.auth = { sub: 'admin', token_use: 'admin' };
-    return next();
-  }
   const authorization = req.header('authorization');
   const token = authorization?.match(/^Bearer\s+(.+)$/i)?.[1]?.trim();
   if (!token) return res.status(401).json({ error: 'Missing bearer token', requestId: req.requestId });
   const claims = verifyAccessToken(token);
-  if (!claims) return res.status(401).json({ error: 'Invalid or expired token', requestId: req.requestId });
-  // Accept minted admin keys (sub: admin:<keyId>) in addition to the
-  // configured subject allowlist.
-  if (claims.sub.startsWith('admin:')) {
-    const keyId = claims.sub.slice('admin:'.length);
+  if (!claims || claims.token_use !== 'admin') return res.status(401).json({ error: 'Invalid or expired administrator token', requestId: req.requestId });
+  let permissions: string[] = [];
+  let keyId: string | null = null;
+  let department = 'system';
+  let canRecruit = true;
+  let canMintKeys = true;
+  let canAssignTasks = true;
+  const isSuperAdmin = claims.sub === 'super-admin' || allowed.includes(claims.sub);
+  if (!isSuperAdmin && claims.sub.startsWith('admin:')) {
+    keyId = claims.sub.slice('admin:'.length);
     const key = await prisma.adminKey.findUnique({ where: { id: keyId } });
     if (!key || key.revokedAt || key.expiresAt < new Date()) {
       return res.status(403).json({ error: 'System administrator access required', requestId: req.requestId });
     }
-  } else if (!allowed.includes(claims.sub)) {
+    if (claims.email !== key.email) return res.status(403).json({ error: 'Administrator identity mismatch', requestId: req.requestId });
+    permissions = Array.isArray(key.permissions) ? key.permissions.filter((p): p is string => typeof p === 'string') : [];
+    department = key.department;
+    canRecruit = key.canRecruit;
+    canMintKeys = key.canMintKeys;
+    canAssignTasks = key.canAssignTasks;
+  } else if (!isSuperAdmin && !allowed.includes(claims.sub)) {
     return res.status(403).json({ error: 'System administrator access required', requestId: req.requestId });
   }
+  (req as any).adminAccess = { isSuperAdmin, permissions, department, canRecruit, canMintKeys, canAssignTasks, keyId };
   req.auth = { sub: claims.sub, email: claims.email, email_verified: claims.email_verified, token_use: claims.token_use };
-  next();
+  if (isSuperAdmin) return next();
+
+  const method = req.method.toUpperCase();
+  const path = req.originalUrl.split('?')[0].replace(/^\/api/, '');
+  // The signed-in caller may read their own access descriptor so the UI can
+  // hide screens and controls they cannot use.
+  if (method === 'GET' && path === '/admin/auth/session') return next();
+  const permission = adminPermissionFor(method, path);
+  if (!permission || !permissions.includes(permission)) return res.status(403).json({ error: 'Administrator permission required', permission, requestId: req.requestId });
+  if (method === 'POST' && /\/keys(?:\/mint)?$/.test(path) && !canMintKeys) return res.status(403).json({ error: 'Key minting is not permitted', requestId: req.requestId });
+  if (/\/org\/tasks\/?$/.test(path) && method === 'POST' && !canAssignTasks) return res.status(403).json({ error: 'Task assignment is not permitted', requestId: req.requestId });
+  if ((method === 'POST' || method === 'PATCH') && /\/users(?:\/|$)/.test(path) && !canRecruit) return res.status(403).json({ error: 'Recruiting is not permitted', requestId: req.requestId });
+  return next();
 };
+
+function adminPermissionFor(method: string, path: string): string | null {
+  if (/\/auth\/(?:session|logout)$/.test(path)) return 'system:read';
+  if (/\/org\/reports(?:\/|$)/.test(path)) return 'tasks:read';
+  if (/\/keys(?:\/|$)/.test(path)) return method === 'GET' ? 'keys:read' : 'keys:manage';
+  if (/\/org\/tasks(?:\/|$)/.test(path)) return method === 'POST' ? 'tasks:manage' : 'tasks:read';
+  if (/\/users(?:\/|$)/.test(path)) return method === 'GET' ? 'users:read' : 'users:manage';
+  if (/\/tenants(?:\/|$)/.test(path)) return method === 'GET' ? 'tenants:read' : 'tenants:manage';
+  if (/\/sessions(?:\/|$)/.test(path)) return method === 'GET' ? 'sessions:read' : 'sessions:manage';
+  if (/\/diagnostics(?:\/|$)/.test(path)) return method === 'GET' ? 'diagnostics:read' : 'diagnostics:manage';
+  if (/\/commercial\/(?:ledger|aggregate-preview|quality)/.test(path)) return method === 'GET' ? 'commercial:read' : 'commercial:manage';
+  if (/\/commercial\//.test(path)) return method === 'GET' ? 'commercial:read' : 'commercial:manage';
+  if (/\/audit/.test(path)) return 'audit:read';
+  if (/\/analytics|\/churn|\/financials|\/sales|\/products|\/expenses|\/laybys|\/exchanges|\/tax-compliance/.test(path)) return 'analytics:read';
+  if (/\/billing|\/tax-rules|\/commercial-policy|\/announcement/.test(path)) return method === 'GET' ? 'configuration:read' : 'configuration:manage';
+  if (/\/support/.test(path)) return method === 'GET' ? 'support:read' : 'support:manage';
+  return 'system:read';
+}

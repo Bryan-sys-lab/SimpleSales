@@ -42,6 +42,7 @@ import profileRoutes from './routes/profile';
 import telemetryRoutes from './routes/telemetry';
 import adminRoutes from './routes/admin';
 import adminAuthRoutes from './routes/admin_auth';
+import adminOrgRoutes from './routes/admin_org';
 import { setPlatformAnnouncementNotifier } from './routes/admin';
 import salesRoutes from './routes/sales';
 import backupRoutes from './routes/backup';
@@ -51,10 +52,12 @@ import evidenceRoutes from './routes/evidence';
 import productVariantRoutes from './routes/product-variants';
 import costPoolRoutes from './routes/cost-pools';
 import ownerTransactionRoutes from './routes/owner-transactions';
+import businessContextRoutes from './routes/business_context';
 import saleEvidenceRoutes from './routes/sale_evidence';
 import { verifyAccessToken } from './lib/jwt';
 import { addLiveClient, broadcastAll, broadcastTenantChange, removeLiveClient } from './services/live_broker';
 import { addAdminLiveClient, broadcastAdmin, removeAdminLiveClient } from './services/admin_live_broker';
+import { consumeAdminWebSocketTicket } from './services/admin_ws_tickets';
 
 if (typeof module !== 'undefined') { dotenv.config(); }
 
@@ -306,6 +309,12 @@ app.use('/callback/mpesa', mpesaWebhookRoutes);
 // Protected routes (require OIDC JWT)
 // ---------------------------------------------------------------------------
 
+// Admin routes authenticate their own credential domain. Mount them before
+// shop-profile auth so the platform token is never treated as a till user.
+app.use('/api/admin/auth', adminAuthRoutes);
+app.use('/api/admin/org', adminOrgRoutes);
+app.use('/api/admin', adminRoutes);
+
 app.use('/api', authMiddleware);
 // Every successful authenticated mutation is a change signal for the active
 // tenant. This covers catalogue, stock, sales, finance, staff and settings
@@ -321,6 +330,7 @@ app.use('/api', (req, res, next) => {
   next();
 });
 app.use('/api/mpesa', mpesaRoutes);
+app.use('/api/tenant/business-context', businessContextRoutes);
 app.use('/api/tenant', tenantRoutes);
 app.use('/api/payments', paymentRoutes);
 app.use('/api/products', productRoutes);
@@ -360,8 +370,6 @@ app.use('/api/receipt-links', receiptLinksRoutes);
 app.use('/api/profile', profileRoutes);
 
 app.use('/api/telemetry', telemetryRoutes);
-app.use('/api/admin/auth', adminAuthRoutes);
-app.use('/api/admin', adminRoutes);
 
 // ---------------------------------------------------------------------------
 
@@ -413,10 +421,11 @@ if (isNode && require.main === module) {
 
   const adminWss = new WebSocketServer({ server, path: '/api/admin/live' });
   adminWss.on('connection', async (ws, request) => {
-    const token = request.headers.authorization?.match(/^Bearer\s+(.+)$/i)?.[1]?.trim();
-    const claims = token ? verifyAccessToken(token) : null;
-    const allowed = (process.env.SYSTEM_ADMIN_SUBJECTS ?? '').split(',').map((v) => v.trim()).filter(Boolean);
-    if (!claims || !allowed.includes(claims.sub)) {
+    const requestUrl = new URL(request.url ?? '/', 'http://localhost');
+    const ticket = requestUrl.searchParams.get('ticket') ?? '';
+    const expectedOrigin = process.env.ADMIN_APP_ORIGIN;
+    const origin = request.headers.origin;
+    if ((expectedOrigin && origin !== expectedOrigin) || !consumeAdminWebSocketTicket(ticket)) {
       ws.close(1008, 'System administrator access required');
       return;
     }

@@ -42,4 +42,17 @@ describe('tenant entitlement voucher expiry', () => {
       reason: 'expired',
     });
   });
+
+  it('fails closed when the subscription model is unavailable', async () => {
+    const model = mocks.tenantSubscription;
+    delete (mocks as any).tenantSubscription;
+    try {
+      await expect(tenantEntitlement('tenant-1')).resolves.toMatchObject({
+        allowed: false,
+        reason: 'subscription_required',
+      });
+    } finally {
+      (mocks as any).tenantSubscription = model;
+    }
+  });
 });

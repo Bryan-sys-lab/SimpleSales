@@ -3,6 +3,7 @@ import { prisma } from '../lib/prisma';
 import { asyncHandler } from '../lib/http';
 import { parseBody, settingsSchema } from '../lib/validation';
 import { taxReportingActivated } from '../services/tax_reporting';
+import { z } from 'zod';
 
 const router = Router();
 
@@ -10,11 +11,29 @@ router.get('/access', (_req, res) => res.json({ systemAdmin: true }));
 
 router.get('/users', asyncHandler(async (_req: Request, res) => {
   const users = await prisma.profile.findMany({
-    where: { active: true, deletedAt: null },
-    select: { id: true, name: true, role: true, createdAt: true, tenant: { select: { id: true, shopName: true } } },
+    where: { deletedAt: null },
+    select: { id: true, name: true, role: true, active: true, createdAt: true, user: { select: { email: true } }, tenant: { select: { id: true, shopName: true } } },
     orderBy: { createdAt: 'desc' },
   });
   res.json({ users });
+}));
+
+router.patch('/users/:profileId', asyncHandler(async (req: Request, res) => {
+  const input = z.object({ active: z.boolean().optional(), role: z.enum(['admin', 'manager', 'cashier']).optional() })
+    .strict().refine((v) => v.active !== undefined || v.role !== undefined).parse(req.body);
+  const profileId = req.params.profileId as string;
+  const profile = await prisma.profile.findUnique({ where: { id: profileId } });
+  if (!profile || profile.deletedAt) return res.status(404).json({ error: 'User not found' });
+  const user = await prisma.$transaction(async (tx) => {
+    const updated = await tx.profile.update({ where: { id: profileId }, data: {
+      ...(input.active !== undefined ? { active: input.active } : {}),
+      ...(input.role !== undefined ? { role: input.role } : {}),
+      ...(input.active === false ? { refreshTokenHash: null, refreshTokenPreviousHash: null } : {}),
+    }, select: { id: true, tenantId: true, name: true, role: true, active: true } });
+    await tx.adminAuditLog.create({ data: { adminId: req.auth?.sub ?? 'unknown', action: 'update_system_user', targetType: 'profile', targetId: profileId, tenantId: profile.tenantId } });
+    return updated;
+  });
+  return res.json({ user });
 }));
 
 router.get('/analytics', asyncHandler(async (_req: Request, res) => {

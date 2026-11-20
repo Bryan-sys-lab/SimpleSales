@@ -233,6 +233,23 @@ jobs:
           DATABASE_URL: postgresql://user:password@localhost:5432/duka_pos
         run: npx prisma generate
 
+      - name: Configure WhatsApp support contact
+        env:
+          WHATSAPP_CONTACT_NUMBER: ${{ secrets.WHATSAPP_CONTACT_NUMBER }}
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+        run: |
+          set -euo pipefail
+          if [ -z "$WHATSAPP_CONTACT_NUMBER" ]; then
+            echo "::error::Set WHATSAPP_CONTACT_NUMBER in repository Actions secrets (international digits, no +)."
+            exit 1
+          fi
+          if ! [[ "$WHATSAPP_CONTACT_NUMBER" =~ ^[0-9]{8,15}$ ]]; then
+            echo "::error::WHATSAPP_CONTACT_NUMBER must contain 8–15 international digits, without + or spaces."
+            exit 1
+          fi
+          printf '%s' "$WHATSAPP_CONTACT_NUMBER" | npx wrangler secret put WHATSAPP_CONTACT_NUMBER --config wrangler.jsonc
+
       - name: Deploy to Cloudflare Workers
         uses: cloudflare/wrangler-action@v3
         with:

@@ -6,6 +6,7 @@ import {
   laybySyncSchema,
   parseBody,
   operationalSyncSchema,
+  purchaseSyncSchema,
   shotCupsSyncSchema,
   stockMovementsSyncSchema
 } from '../lib/validation';
@@ -316,7 +317,9 @@ router.post(
       });
       return res.json({ synced });
     }
-    const { records: valid } = parseBody(operationalSyncSchema, { records });
+    const { records: valid } = pathKind === 'purchases'
+      ? parseBody(purchaseSyncSchema, { records })
+      : parseBody(operationalSyncSchema, { records });
     const synced: Array<{ localId: number; remoteId: string }> = [];
 
     // Purchases and returns are historical tax/financial evidence. A retry may

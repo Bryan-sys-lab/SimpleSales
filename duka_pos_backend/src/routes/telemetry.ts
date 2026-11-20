@@ -6,6 +6,7 @@
  * (req.user.tenantId).
  */
 import { Request, Response, Router } from 'express';
+import crypto from 'node:crypto';
 import { asyncHandler } from '../lib/http';
 import { parseBody } from '../lib/validation';
 import { ingestTelemetrySchema, telemetryQuerySchema, churnSnapshotSchema, ingestSupportSchema } from '../lib/validation';
@@ -14,6 +15,16 @@ import { broadcastAll } from '../services/live_broker';
 import { broadcastAdmin } from '../services/admin_live_broker';
 
 const router = Router();
+
+function safeReplayRoute(raw: string | null | undefined): string | null {
+  if (!raw) return null;
+  const pathname = raw.split(/[?#]/, 1)[0];
+  return pathname.split('/').map((segment) => {
+    if (!segment) return segment;
+    if (segment.includes('@') || /^\+?\d{6,}$/.test(segment) || /^[0-9a-f]{8}-[0-9a-f-]{27,}$/i.test(segment) || segment.length > 48) return ':id';
+    return segment;
+  }).join('/').slice(0, 200);
+}
 
 // ---------------------------------------------------------------------------
 // POST /api/telemetry/events — ingest a batch of device telemetry events
@@ -26,14 +37,19 @@ router.post(
     const tenantId = req.user!.tenantId;
     const defaultAt = new Date();
     const data = events.map((event: any) => ({
+      clientEventId: event.clientEventId ?? null,
       tenantId,
-      deviceId: event.deviceId ?? null,
+      deviceId: event.deviceId ? crypto.createHash('sha256').update(`${tenantId}\0${event.deviceId}`).digest('hex') : null,
+      sessionJti: req.auth?.jti ?? null,
       name: event.name,
       at: event.at ? new Date(event.at) : defaultAt,
-      route: event.route ?? null,
-      detail: event.detail ?? null,
+      route: safeReplayRoute(event.route),
+      // Details may contain free text on older clients. Keep the admin replay
+      // limited to names and routes, never user-entered content.
+      detail: null,
     }));
-    const result = await prisma.telemetryEvent.createMany({ data });
+    const result = await prisma.telemetryEvent.createMany({ data, skipDuplicates: true });
+    if (result.count > 0) broadcastAdmin({ type: 'session_activity', tenantId, at: new Date().toISOString() });
     return res.status(201).json({ ingested: result.count });
   })
 );
