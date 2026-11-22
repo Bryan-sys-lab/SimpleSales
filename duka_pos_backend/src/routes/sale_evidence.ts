@@ -1,13 +1,22 @@
-import { Router } from 'express';
+import { Router, type Request } from 'express';
 import { z } from 'zod';
 import { asyncHandler, requireUser } from '../lib/http';
 import { prisma } from '../lib/prisma';
 import { parseBody } from '../lib/validation';
-import { getSaleEvidenceDownloadUrl, getSaleEvidenceUploadUrl, profilePhotoExists } from '../lib/r2';
+import {
+  getSaleEvidenceDownloadUrl,
+  getSaleEvidenceUploadUrl,
+  profilePhotoExists,
+  type ProfileImageStorage,
+} from '../lib/r2';
 import { requireRole } from '../middleware/auth';
 
 const router = Router();
 router.use(requireRole('admin', 'manager', 'cashier'));
+
+function getProfileImageStorage(req: Request): ProfileImageStorage | undefined {
+  return (req as Request & { profileImageStorage?: ProfileImageStorage }).profileImageStorage;
+}
 
 const identity = z.object({
   deviceId: z.string().min(1).max(160),
@@ -44,7 +53,7 @@ router.post('/confirm', asyncHandler(async (req, res) => {
   const input = parseBody(confirmRequest, req.body);
   const user = requireUser(req);
   if (!ownedKey(user.tenantId, input.deviceId, input.localId, input.key) ||
-      !(await profilePhotoExists(input.key))) {
+      !(await profilePhotoExists(input.key, getProfileImageStorage(req)))) {
     return res.status(400).json({ error: 'Uploaded sale evidence was not found' });
   }
   const sale = await prisma.sale.findFirst({

@@ -28,6 +28,7 @@ const r2 = new S3Client({
 const BUCKET = process.env.R2_BUCKET_NAME || 'duka-pos-profile-photos';
 
 export type BackupStorage = Pick<R2Bucket, 'put' | 'get' | 'delete'>;
+export type ProfileImageStorage = Pick<R2Bucket, 'head' | 'delete'>;
 
 export function isR2Configured(backupStorage?: BackupStorage): boolean {
   return Boolean(
@@ -101,14 +102,27 @@ export async function getProfilePhoto(key: string) {
 /**
  * Delete a profile photo from R2.
  */
-export async function deleteProfilePhoto(key: string) {
+export async function deleteProfilePhoto(
+  key: string,
+  profileImageStorage?: ProfileImageStorage,
+) {
+  if (profileImageStorage) {
+    await profileImageStorage.delete(key);
+    return;
+  }
   await r2.send(new DeleteObjectCommand({
     Bucket: BUCKET,
     Key: key,
   }));
 }
 
-export async function profilePhotoExists(key: string): Promise<boolean> {
+export async function profilePhotoExists(
+  key: string,
+  profileImageStorage?: ProfileImageStorage,
+): Promise<boolean> {
+  if (profileImageStorage) {
+    return Boolean(await profileImageStorage.head(key));
+  }
   try {
     await r2.send(new HeadObjectCommand({ Bucket: BUCKET, Key: key }));
     return true;

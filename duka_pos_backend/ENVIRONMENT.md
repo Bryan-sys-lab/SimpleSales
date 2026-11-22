@@ -21,14 +21,20 @@ email API credentials are only needed if the binding is removed. Optional
 integrations: `PAYHERO_AUTH_TOKEN`, `PAYHERO_ACCOUNT_ID`, `MPESA_CALLBACK_KEY`,
 `R2_*`, `TAX_*`, `RISITI_*`.
 
-The app's Cloudflare backup flow encrypts a snapshot of every local workspace
-table on-device, uploads only ciphertext to R2, and keeps tenant/workspace
+The production Worker binds `BACKUP_BUCKET` to `duka-pos-backups` and
+`PROFILE_IMAGE_BUCKET` to `duka-pos-profile-photos`. The app's Cloudflare
+backup flow encrypts a snapshot of every local workspace table on-device,
+uploads only ciphertext to the backup bucket, and keeps tenant/workspace
 metadata in D1. Manual backups are available in Settings; the opt-in automatic
 sync also retries cloud backups while the app is open. These are currently
 device-bound backups: the AES key stays in that installation's OS keystore, so
 the R2 copy cannot be decrypted after reinstalling the app or moving to a
 replacement device. The separate `.duka` export remains an encrypted
 inventory-only local file.
+
+Profile-photo and sale-evidence existence checks and deletions use the
+`PROFILE_IMAGE_BUCKET` binding in production. Their direct-upload/download
+URLs remain signed with the configured `R2_*` S3-compatible credentials.
 
 ### Safe local deployment (Windows)
 
@@ -51,7 +57,6 @@ responses in production.
 
 Staging encrypted-backup journeys use the isolated
 `duka-pos-backups-staging` R2 bucket through the `BACKUP_BUCKET` binding.
-Production continues using its configured `R2_*` S3-compatible secrets.
 
 On `cloudflare` pushes, the promotion job waits for backend tests and local D1
 migration/schema checks, deploys to staging, and runs its live journeys before

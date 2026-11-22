@@ -5,7 +5,7 @@ import app from "./index.js";
 import { verifyAccessToken } from "./lib/jwt.js";
 import { setCloudflareEmailBinding } from "./lib/email_sender.js";
 import { setD1DatabaseBinding } from "./lib/prisma.js";
-import type { BackupStorage } from "./lib/r2.js";
+import type { BackupStorage, ProfileImageStorage } from "./lib/r2.js";
 
 function makeSocket(): Duplex {
   const socket = new Duplex({
@@ -71,8 +71,10 @@ export default {
 
       const req = new IncomingMessage(socket as any) as IncomingMessage & {
         backupStorage?: BackupStorage;
+        profileImageStorage?: ProfileImageStorage;
       };
       req.backupStorage = env?.BACKUP_BUCKET;
+      req.profileImageStorage = env?.PROFILE_IMAGE_BUCKET;
       req.method = request.method;
       req.url = url.pathname + url.search;
       req.headers = Object.fromEntries(request.headers.entries());

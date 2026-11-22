@@ -23,6 +23,16 @@
       "migrations_pattern": "prisma/migrations-d1/*/migration.sql"
     }
   ],
+  "r2_buckets": [
+    {
+      "binding": "BACKUP_BUCKET",
+      "bucket_name": "duka-pos-backups"
+    },
+    {
+      "binding": "PROFILE_IMAGE_BUCKET",
+      "bucket_name": "duka-pos-profile-photos"
+    }
+  ],
   "env": {
     "staging": {
       "name": "duka-pos-backend-staging",

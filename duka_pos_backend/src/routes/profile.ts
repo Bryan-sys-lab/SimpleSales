@@ -10,7 +10,7 @@
  *   GET    /api/profile/photo/download-url - Get presigned GET URL for download
  *   DELETE /api/profile/photo              - Delete profile photo from R2 and profile
  */
-import { Router } from 'express';
+import { Router, type Request } from 'express';
 import { asyncHandler } from '../lib/http';
 import { parseBody } from '../lib/validation';
 import { prisma } from '../lib/prisma';
@@ -20,10 +20,15 @@ import {
   getProfilePhotoUploadUrl,
   getProfilePhotoDownloadUrl,
   profilePhotoExists,
+  type ProfileImageStorage,
 } from '../lib/r2';
 import { z } from 'zod';
 
 const router = Router();
+
+function getProfileImageStorage(req: Request): ProfileImageStorage | undefined {
+  return (req as Request & { profileImageStorage?: ProfileImageStorage }).profileImageStorage;
+}
 
 // All profile routes require OIDC authentication
 router.use(authMiddleware);
@@ -99,7 +104,7 @@ router.post(
       return res.status(404).json({ error: 'Profile not found' });
     }
 
-    if (!ownedPhotoKey(userId, key) || !(await profilePhotoExists(key))) {
+    if (!ownedPhotoKey(userId, key) || !(await profilePhotoExists(key, getProfileImageStorage(req)))) {
       return res.status(400).json({ error: 'Uploaded profile photo not found' });
     }
 
@@ -187,7 +192,7 @@ router.delete(
 
     // Delete from R2
     try {
-      await deleteProfilePhoto(key);
+      await deleteProfilePhoto(key, getProfileImageStorage(req));
     } catch {
       // R2 cleanup is best-effort; the database reference is still cleared.
       // Log but continue - we still want to clear the DB reference
