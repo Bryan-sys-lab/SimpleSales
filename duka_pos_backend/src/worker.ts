@@ -1,3 +1,4 @@
+import { DurableObject } from "cloudflare:workers";
 import { IncomingMessage, ServerResponse } from "node:http";
 import { Duplex } from "node:stream";
 import app from "./index.js";
@@ -146,12 +147,10 @@ export default {
 };
 
 // Durable Object backing the /live WebSocket channel.
-export class LiveRoom {
+export class LiveRoom extends DurableObject {
   private sessions: Set<any> = new Set();
 
-  constructor(_state: any, _env: any) {}
-
-  async fetch(request: any): Promise<Response> {
+  async fetch(request: Request): Promise<Response> {
     if (
       request.headers.get("x-live-internal") === "1" &&
       request.method === "POST"
