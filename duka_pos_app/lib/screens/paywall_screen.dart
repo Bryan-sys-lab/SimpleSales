@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:dio/dio.dart';
 import 'package:material_ui/material_ui.dart';
 import 'package:go_router/go_router.dart';
@@ -26,7 +28,11 @@ class _PaywallScreenState extends State<PaywallScreen> {
   bool _loading = true;
   String? _error;
   String? _paymentReference;
+  SubscriptionPaymentQuote? _paymentQuote;
   bool _quoteRequested = false;
+  bool _refreshing = false;
+  int _durationMonths = 1;
+  Timer? _voucherRefreshTimer;
 
   Future<void> _unlockAndReturn() async {
     await context.read<AppStageController>().refreshSubscription();
@@ -89,6 +95,10 @@ class _PaywallScreenState extends State<PaywallScreen> {
   void initState() {
     super.initState();
     _load();
+    _voucherRefreshTimer = Timer.periodic(
+      const Duration(seconds: 20),
+      (_) => _refreshEntitlement(),
+    );
   }
 
   Future<void> _load() async {
@@ -114,6 +124,35 @@ class _PaywallScreenState extends State<PaywallScreen> {
           _error = 'Connect to the internet to check this shop subscription.';
         });
       }
+    }
+  }
+
+  Future<void> _refreshEntitlement() async {
+    if (_loading || _refreshing) return;
+    _refreshing = true;
+    try {
+      final result = await BackendService.fetchSubscriptionEntitlement();
+      if (result?.allowed == true) {
+        await _unlockAndReturn();
+        return;
+      }
+      if (mounted) {
+        setState(() {
+          _entitlement = result;
+          _error = null;
+        });
+      }
+    } catch (error, stack) {
+      debugPrint(
+          'Could not refresh subscription voucher status: $error\n$stack');
+      if (mounted) {
+        setState(() {
+          _error =
+              'Could not refresh your voucher status. Check your connection.';
+        });
+      }
+    } finally {
+      _refreshing = false;
     }
   }
 
@@ -156,6 +195,44 @@ class _PaywallScreenState extends State<PaywallScreen> {
     }
   }
 
+  Future<void> _claimAvailableVoucher() async {
+    setState(() {
+      _loading = true;
+      _error = null;
+    });
+    try {
+      final result = await BackendService.claimAvailableVoucher();
+      if (!mounted) return;
+      if (result?.allowed == true) {
+        await _unlockAndReturn();
+      } else {
+        setState(() {
+          _loading = false;
+          _error =
+              'The issued voucher could not be claimed. Refresh and try again.';
+        });
+      }
+    } on DioException catch (error) {
+      if (mounted) {
+        setState(() {
+          _loading = false;
+          _error = (error.response?.data is Map
+                  ? error.response!.data['error'] as String?
+                  : null) ??
+              'The issued voucher could not be claimed.';
+        });
+      }
+    } catch (error, stack) {
+      debugPrint('Could not claim issued subscription voucher: $error\n$stack');
+      if (mounted) {
+        setState(() {
+          _loading = false;
+          _error = 'The issued voucher could not be claimed.';
+        });
+      }
+    }
+  }
+
   Future<void> _startPayment() async {
     if (_phone.text.trim().isEmpty) return;
     setState(() {
@@ -163,11 +240,14 @@ class _PaywallScreenState extends State<PaywallScreen> {
       _error = null;
     });
     try {
-      final reference = await BackendService.startSubscriptionPayment(
-          phoneNumber: _phone.text.trim());
+      final quote = await BackendService.startSubscriptionPayment(
+        phoneNumber: _phone.text.trim(),
+        durationMonths: _durationMonths,
+      );
       if (mounted) {
         setState(() {
-          _paymentReference = reference;
+          _paymentQuote = quote;
+          _paymentReference = quote.reference;
           _loading = false;
         });
       }
@@ -234,6 +314,7 @@ class _PaywallScreenState extends State<PaywallScreen> {
 
   @override
   void dispose() {
+    _voucherRefreshTimer?.cancel();
     _voucher.dispose();
     _phone.dispose();
     _receipt.dispose();
@@ -245,9 +326,21 @@ class _PaywallScreenState extends State<PaywallScreen> {
     final theme = Theme.of(context);
     final colors = theme.colorScheme;
     final price = _entitlement?.priceMinor;
-    final hasStarterVoucher = _entitlement?.firstMonthVoucherAvailable == true;
+    final AppLocalizations l10n = AppLocalizations.of(context);
+    final int? availableVoucherDurationMonths =
+        _entitlement?.availableVoucherDurationMonths;
+    final int discountPercent = _entitlement?.discountPercent ?? 0;
+    final int baseAmountMinor = (price ?? 0) * _durationMonths;
+    final int discountedAmountMinor =
+        (baseAmountMinor * (100 - discountPercent) / 100).round();
+    final List<(int, String)> durations = <(int, String)>[
+      (1, l10n.paywallOneMonth),
+      (3, l10n.paywallThreeMonths),
+      (6, l10n.paywallSixMonths),
+      (12, l10n.paywallTwelveMonths),
+    ];
     return Scaffold(
-      appBar: AppBar(title: const Text('Activate your shop')),
+      appBar: AppBar(title: Text(l10n.paywallActivateTitle)),
       body: SafeArea(
         child: ListView(
           padding: const EdgeInsets.fromLTRB(20, 12, 20, 32),
@@ -263,55 +356,79 @@ class _PaywallScreenState extends State<PaywallScreen> {
                         color: colors.onPrimaryContainer, size: 30),
                     const SizedBox(height: 14),
                     Text(
-                        hasStarterVoucher
-                            ? 'Your shop is ready for its first month'
-                            : 'Activate access for this shop',
+                        availableVoucherDurationMonths == null
+                            ? l10n.paywallActivateTitle
+                            : l10n.paywallVoucherReady(
+                                availableVoucherDurationMonths,
+                              ),
                         style: theme.textTheme.headlineSmall?.copyWith(
                             color: colors.onPrimaryContainer,
                             fontWeight: FontWeight.w700)),
                     const SizedBox(height: 8),
                     Text(
-                        hasStarterVoucher
-                            ? 'Enter the one-month voucher sent to your email, or choose a subscription below. The 30 days start when you redeem it.'
-                            : 'Choose a subscription or enter a voucher issued for this shop. Access is shared by the shop’s owner and staff.',
+                        availableVoucherDurationMonths == null
+                            ? l10n.paywallVoucherChooseText
+                            : l10n.paywallVoucherClaimText,
                         style: theme.textTheme.bodyLarge
                             ?.copyWith(color: colors.onPrimaryContainer)),
                   ],
                 ),
               ),
             ),
+            if (availableVoucherDurationMonths != null) ...[
+              const SizedBox(height: 14),
+              Card(
+                child: Padding(
+                  padding: const EdgeInsets.all(16),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
+                      Text(
+                        l10n.paywallVoucherReady(
+                          availableVoucherDurationMonths,
+                        ),
+                        style: theme.textTheme.titleMedium,
+                      ),
+                      const SizedBox(height: 10),
+                      FilledButton.icon(
+                        onPressed: _loading ? null : _claimAvailableVoucher,
+                        icon: const Icon(Icons.redeem_rounded),
+                        label: Text(l10n.paywallClaimVoucher),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            ],
             const SizedBox(height: 18),
-            Text(
-                hasStarterVoucher
-                    ? 'Use your one-month voucher'
-                    : 'Have a voucher?',
+            Text(l10n.paywallVoucherSectionTitle,
                 style: theme.textTheme.titleLarge),
             const SizedBox(height: 6),
             Text(
-                hasStarterVoucher
-                    ? 'Find the code in the email with your verification code.'
-                    : 'Enter a code issued by your shop administrator.',
-                style: theme.textTheme.bodyMedium),
+              l10n.paywallVoucherManualHelp,
+              style: theme.textTheme.bodyMedium,
+            ),
             const SizedBox(height: 12),
             TextField(
                 controller: _voucher,
                 textCapitalization: TextCapitalization.characters,
                 autofillHints: const [AutofillHints.oneTimeCode],
                 decoration: InputDecoration(
-                    labelText: 'Voucher code',
-                    hintText: hasStarterVoucher
-                        ? 'Enter code from email'
-                        : 'Enter voucher code',
+                    labelText: l10n.paywallVoucherPlaceholder,
+                    hintText: l10n.paywallVoucherPlaceholder,
                     border: OutlineInputBorder())),
             const SizedBox(height: 12),
             FilledButton.icon(
                 onPressed: _loading ? null : _redeem,
                 icon: const Icon(Icons.redeem_rounded),
                 label: Text(_loading
-                    ? 'Checking…'
-                    : hasStarterVoucher
-                        ? 'Redeem one-month voucher'
-                        : 'Redeem voucher')),
+                    ? l10n.paywallCheckingVoucher
+                    : l10n.paywallRedeemVoucher)),
+            TextButton.icon(
+              onPressed: _loading ? null : _refreshEntitlement,
+              icon: const Icon(Icons.refresh),
+              label: Text(l10n.paywallCheckVoucher),
+            ),
             const SizedBox(height: 22),
             const Divider(),
             const SizedBox(height: 10),
@@ -325,9 +442,51 @@ class _PaywallScreenState extends State<PaywallScreen> {
               Card(
                   child: ListTile(
                       leading: const Icon(Icons.receipt_long_outlined),
-                      title: const Text('Your agreed price'),
+                      title: Text(l10n.paywallAgreedPrice),
                       subtitle: Text(
                           '${_entitlement?.currency ?? 'KES'} ${(price / 100).toStringAsFixed(2)} / ${_entitlement?.billingInterval ?? 'month'}'))),
+              const SizedBox(height: 12),
+              DropdownButtonFormField<int>(
+                initialValue: _durationMonths,
+                decoration: InputDecoration(
+                  labelText: l10n.paywallDuration,
+                  border: const OutlineInputBorder(),
+                ),
+                items: durations
+                    .map(
+                      (duration) => DropdownMenuItem<int>(
+                        value: duration.$1,
+                        child: Text(duration.$2),
+                      ),
+                    )
+                    .toList(),
+                onChanged: _loading
+                    ? null
+                    : (int? value) {
+                        if (value != null) {
+                          setState(() {
+                            _durationMonths = value;
+                            _paymentQuote = null;
+                            _paymentReference = null;
+                          });
+                        }
+                      },
+              ),
+              const SizedBox(height: 10),
+              Text(
+                '${l10n.paywallQuoteBase}: ${_entitlement?.currency ?? 'KES'} ${(baseAmountMinor / 100).toStringAsFixed(2)}',
+              ),
+              if (discountPercent > 0) ...[
+                const SizedBox(height: 4),
+                Text(
+                  '${l10n.paywallDiscount(discountPercent)}: -${_entitlement?.currency ?? 'KES'} ${((baseAmountMinor - discountedAmountMinor) / 100).toStringAsFixed(2)}',
+                ),
+              ],
+              const SizedBox(height: 4),
+              Text(
+                '${l10n.paywallAmountDue}: ${_entitlement?.currency ?? 'KES'} ${(discountedAmountMinor / 100).toStringAsFixed(2)}',
+                style: theme.textTheme.titleMedium,
+              ),
               const SizedBox(height: 12),
               TextField(
                   controller: _phone,
@@ -340,7 +499,18 @@ class _PaywallScreenState extends State<PaywallScreen> {
               FilledButton.tonalIcon(
                   onPressed: _loading ? null : _startPayment,
                   icon: const Icon(Icons.phone_android_rounded),
-                  label: const Text('Pay with M-Pesa')),
+                  label: Text(l10n.paywallPayMpesa)),
+              if (_paymentQuote != null) ...[
+                const SizedBox(height: 8),
+                Text(
+                  l10n.paywallPaymentPrompt(
+                    _entitlement?.currency ?? 'KES',
+                    (_paymentQuote!.amountMinor / 100).toStringAsFixed(2),
+                    _paymentQuote!.durationMonths,
+                  ),
+                  style: theme.textTheme.bodyMedium,
+                ),
+              ],
               if (_paymentReference != null) ...[
                 const SizedBox(height: 8),
                 OutlinedButton(
@@ -375,6 +545,18 @@ class _PaywallScreenState extends State<PaywallScreen> {
                   onPressed: () => _openSupport(whatsappUri),
                   icon: const Icon(Icons.chat_outlined),
                   label: const Text('Chat with us on WhatsApp')),
+            ],
+            if (SupportContact.whatsappUri(
+              message: AppLocalizations.of(context).paywallSalesMessage,
+              phoneNumber: SupportContact.secondaryNumber,
+            )
+                case final Uri salesWhatsappUri) ...[
+              const SizedBox(height: 10),
+              OutlinedButton.icon(
+                  onPressed: () => _openSupport(salesWhatsappUri),
+                  icon: const Icon(Icons.forum_outlined),
+                  label:
+                      Text(AppLocalizations.of(context).paywallWhatsAppSales)),
             ],
             if (_error != null) ...[
               const SizedBox(height: 14),

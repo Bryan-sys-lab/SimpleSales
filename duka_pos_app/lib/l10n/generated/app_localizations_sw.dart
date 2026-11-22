@@ -2203,57 +2203,98 @@ class AppLocalizationsSw extends AppLocalizations {
       'This account has no shop yet. Finish shop setup first.';
 
   @override
-  String get signupPaywallTitle => 'Activate your shop';
-
-  @override
-  String get signupPaywallHeadline => 'Your shop is ready for its first month';
-
-  @override
-  String get signupPaywallBody =>
-      'Your email is verified. Enter the first-month voucher from that email to activate this shop. The 30 days start when you redeem it.';
-
-  @override
-  String get signupPaywallIncludedMonth =>
-      'One month of access, included with your new shop.';
-
-  @override
-  String get signupPaywallVoucherLabel => 'Voucher code';
-
-  @override
-  String get signupPaywallVoucherHint => 'SS-XXXXXXXXXXXX';
-
-  @override
-  String get signupPaywallVoucherRequired =>
-      'Enter the voucher code from your email.';
-
-  @override
   String get signupPaywallVoucherInvalid =>
       'That voucher is invalid, expired, already used, or belongs to another email. Check it and try again.';
-
-  @override
-  String get signupPaywallRedeem => 'Redeem voucher';
-
-  @override
-  String get signupPaywallActivating => 'Activating shop';
-
-  @override
-  String get signupPaywallWhatsApp => 'Need help? Chat with us on WhatsApp';
-
-  @override
-  String get signupPaywallSupportMessage =>
-      'Hello, I need help activating my SimpleSales shop.';
 
   @override
   String get supportContactOpenFailed =>
       'WhatsApp haikufunguka. Tafadhali jaribu tena.';
 
   @override
-  String get signupPaywallVoucherNote =>
-      'The code is checked against this email and can only be used once.';
-
-  @override
   String get paywallWhatsAppMessage =>
       'Hello, I need help with my SimpleSales subscription.';
+
+  @override
+  String get paywallWhatsAppSales => 'Zungumza kuhusu mipango kupitia WhatsApp';
+
+  @override
+  String get paywallSalesMessage =>
+      'Habari, ningependa kujadili mipango na bei za SimpleSales.';
+
+  @override
+  String get paywallCheckVoucher => 'Angalia kama vocha imetolewa';
+
+  @override
+  String get paywallClaimVoucher => 'Dai vocha iliyopo';
+
+  @override
+  String paywallVoucherReady(int duration) {
+    return 'Vocha ya miezi $duration iliyotolewa na msimamizi iko tayari kudaiwa.';
+  }
+
+  @override
+  String get paywallDuration => 'Muda wa usajili';
+
+  @override
+  String get paywallOneMonth => 'Mwezi 1';
+
+  @override
+  String get paywallThreeMonths => 'Miezi 3';
+
+  @override
+  String get paywallSixMonths => 'Miezi 6';
+
+  @override
+  String get paywallTwelveMonths => 'Miezi 12';
+
+  @override
+  String get paywallQuoteBase => 'Bei ya msingi';
+
+  @override
+  String paywallDiscount(int percent) {
+    return 'Punguzo la msimamizi ($percent%)';
+  }
+
+  @override
+  String get paywallAmountDue => 'Kiasi cha kulipa';
+
+  @override
+  String get paywallActivateTitle => 'Washa ufikiaji wa duka hili';
+
+  @override
+  String get paywallVoucherChooseText =>
+      'Chagua usajili au weka vocha iliyotolewa na msimamizi. Ufikiaji unashirikiwa na mmiliki na wafanyakazi wa duka.';
+
+  @override
+  String get paywallVoucherClaimText =>
+      'Dai vocha iliyotolewa sasa, au weka msimbo wake hapa chini. Muda wake huanza unapoidai.';
+
+  @override
+  String get paywallVoucherSectionTitle => 'Una vocha?';
+
+  @override
+  String get paywallVoucherManualHelp =>
+      'Weka msimbo kutoka kwenye barua pepe ikiwa kitufe cha kudai hakionekani.';
+
+  @override
+  String get paywallVoucherPlaceholder => 'Weka msimbo wa vocha';
+
+  @override
+  String get paywallRedeemVoucher => 'Tumia vocha';
+
+  @override
+  String get paywallCheckingVoucher => 'Inakagua...';
+
+  @override
+  String get paywallAgreedPrice => 'Bei mliyokubaliana';
+
+  @override
+  String get paywallPayMpesa => 'Lipa kwa M-Pesa';
+
+  @override
+  String paywallPaymentPrompt(String currency, String amount, int duration) {
+    return 'Ombi la malipo: $currency $amount kwa miezi $duration';
+  }
 
   @override
   String get diagnosticsTitle => 'Diagnostics';

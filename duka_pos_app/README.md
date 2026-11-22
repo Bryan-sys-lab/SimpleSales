@@ -122,12 +122,14 @@ Build-time configuration goes in `--dart-define`, never in committed source:
 | `DEPLOYMENT_MODE` | `local_only` (default), `connected` | Whether the build expects a backend |
 | `BACKEND_URL` | `https://<host>/api` | Required when `DEPLOYMENT_MODE=connected` |
 | `WHATSAPP_CONTACT_NUMBER` | International phone number (8-15 digits) | WhatsApp support contact; supplied to signed CI builds through the Actions secret of the same name |
+| `WHATSAPP_SECONDARY_CONTACT_NUMBER` | International phone number (8-15 digits) | Optional WhatsApp sales/pricing contact shown as a separate paywall button |
 
 `local_only` is the default so development keeps working without a backend.
 `connected` requires a valid HTTPS URL — placeholder, localhost, HTTP and
 local-dev hosts are rejected by CI.
-Keep `WHATSAPP_CONTACT_NUMBER` in GitHub Actions secrets, not repository
-variables or source; CI validates it before producing a signed app build.
+Keep both WhatsApp numbers in GitHub Actions secrets, not repository variables
+or source. The secondary number is optional; the second paywall button appears
+only when `WHATSAPP_SECONDARY_CONTACT_NUMBER` is configured.
 
 ## Database encryption
 

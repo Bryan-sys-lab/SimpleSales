@@ -317,10 +317,9 @@ class _OwnerSetupScreenState extends State<OwnerSetupScreen> {
       if (!mounted) return;
       if (!widget.isAdditionalShop) state.signInAsOwner();
       if (!mounted) return;
-      // The verified response has already redeemed the first-month voucher.
-      // Resolve that entitlement before routing so a newly registered owner
-      // lands in their shop immediately, while an expired/disabled shop is
-      // still redirected to the paywall by the route guard.
+      // Resolve the entitlement before routing. New accounts without an
+      // administrator-issued voucher are redirected to the paywall by the
+      // route guard; an already entitled shop opens normally.
       await stage.refreshSubscription();
       if (!mounted) return;
       setState(() => _saving = false);

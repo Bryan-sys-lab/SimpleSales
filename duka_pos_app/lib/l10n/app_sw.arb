@@ -719,5 +719,56 @@
   "productMappingReviewHelp": "Bidhaa zisizoainishwa bado zinaweza kuuzwa. Kagua misimbo ya bidhaa na vipimo ukiwa nayo.",
   "productMappingReviewEmpty": "Ulinganishaji wote wa bidhaa umekaguliwa.",
   "productMappingReviewLoadFailed": "Haikuwezekana kupakia bidhaa za kukaguliwa. Jaribu tena.",
+  "paywallWhatsAppSales": "Zungumza kuhusu mipango kupitia WhatsApp",
+  "paywallSalesMessage": "Habari, ningependa kujadili mipango na bei za SimpleSales.",
+  "paywallCheckVoucher": "Angalia kama vocha imetolewa",
+  "paywallClaimVoucher": "Dai vocha iliyopo",
+  "paywallVoucherReady": "Vocha ya miezi {duration} iliyotolewa na msimamizi iko tayari kudaiwa.",
+  "@paywallVoucherReady": {
+    "placeholders": {
+      "duration": {
+        "type": "int"
+      }
+    }
+  },
+  "paywallDuration": "Muda wa usajili",
+  "paywallOneMonth": "Mwezi 1",
+  "paywallThreeMonths": "Miezi 3",
+  "paywallSixMonths": "Miezi 6",
+  "paywallTwelveMonths": "Miezi 12",
+  "paywallQuoteBase": "Bei ya msingi",
+  "paywallDiscount": "Punguzo la msimamizi ({percent}%)",
+  "@paywallDiscount": {
+    "placeholders": {
+      "percent": {
+        "type": "int"
+      }
+    }
+  },
+  "paywallAmountDue": "Kiasi cha kulipa",
+  "paywallActivateTitle": "Washa ufikiaji wa duka hili",
+  "paywallVoucherChooseText": "Chagua usajili au weka vocha iliyotolewa na msimamizi. Ufikiaji unashirikiwa na mmiliki na wafanyakazi wa duka.",
+  "paywallVoucherClaimText": "Dai vocha iliyotolewa sasa, au weka msimbo wake hapa chini. Muda wake huanza unapoidai.",
+  "paywallVoucherSectionTitle": "Una vocha?",
+  "paywallVoucherManualHelp": "Weka msimbo kutoka kwenye barua pepe ikiwa kitufe cha kudai hakionekani.",
+  "paywallVoucherPlaceholder": "Weka msimbo wa vocha",
+  "paywallRedeemVoucher": "Tumia vocha",
+  "paywallCheckingVoucher": "Inakagua...",
+  "paywallAgreedPrice": "Bei mliyokubaliana",
+  "paywallPayMpesa": "Lipa kwa M-Pesa",
+  "paywallPaymentPrompt": "Ombi la malipo: {currency} {amount} kwa miezi {duration}",
+  "@paywallPaymentPrompt": {
+    "placeholders": {
+      "currency": {
+        "type": "String"
+      },
+      "amount": {
+        "type": "String"
+      },
+      "duration": {
+        "type": "int"
+      }
+    }
+  },
   "supportContactOpenFailed": "WhatsApp haikufunguka. Tafadhali jaribu tena."
 }

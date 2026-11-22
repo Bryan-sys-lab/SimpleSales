@@ -19,19 +19,22 @@ void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
 
   group('the channel URL', () {
-    // Reached through the public surface rather than a private helper: the
-    // private `_liveUrl` is static, so it is called through the one method that
-    // uses it. This documents the shape a reader needs to know — the channel is
-    // on `/live`, NOT under the API prefix.
+    // The Worker accepts the websocket under the API prefix used by the app's
+    // backend base URL, as well as `/live` for deployments without that prefix.
     test('is derived from the same backend base URL the API uses', () {
-      // The upgrade is handled by the HTTP server, not Express, which is
-      // exactly why it is on its own path. Deriving from one base URL keeps one
-      // source of truth.
-      final base = BackendService.backendUrl;
-      expect(base, isNotEmpty);
-      // The app's default placeholder, or an injected one: either way the
-      // derivation must strip a trailing slash rather than build `//live`.
-      expect(base.endsWith('/'), isFalse);
+      final Uri base = Uri.parse(BackendService.backendUrl);
+      final String? liveUrl = LiveChannelService.liveUrlForTesting();
+      expect(base.hasAbsolutePath, isTrue);
+      if (base.scheme != 'https') {
+        expect(liveUrl, isNull);
+        return;
+      }
+
+      expect(liveUrl, isNotNull);
+      final Uri live = Uri.parse(liveUrl!);
+      expect(live.scheme, 'wss');
+      expect(live.host, base.host);
+      expect(live.path, '${base.path.replaceAll(RegExp(r'/+$'), '')}/live');
     });
   });
 

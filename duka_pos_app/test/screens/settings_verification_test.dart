@@ -186,6 +186,24 @@ void main() {
       );
     });
 
+    test('a malformed error code does not break verification error handling',
+        () {
+      final RequestOptions options = RequestOptions(path: '/auth/verify');
+      final cause = BackendService.verificationFailure(
+        DioException.badResponse(
+          statusCode: 500,
+          requestOptions: options,
+          response: Response<Object?>(
+            requestOptions: options,
+            statusCode: 500,
+            data: <String, Object?>{'code': 500, 'requestId': 123},
+          ),
+        ),
+      );
+      expect(cause.failure, VerificationFailure.unknown);
+      expect(verificationMessage(l10n, cause), isNotEmpty);
+    });
+
     test('every cause maps to a non-empty sentence', () {
       // Adding a value to VerificationFailure without a branch here is a
       // compile error, but adding one without copy is not: this walks the lot.

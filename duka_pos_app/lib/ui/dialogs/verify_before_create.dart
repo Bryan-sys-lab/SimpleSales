@@ -11,7 +11,6 @@
 import 'package:material_ui/material_ui.dart';
 
 import '../../l10n/generated/app_localizations.dart';
-import '../../screens/signup_paywall_screen.dart';
 import '../../services/backend_service.dart';
 import '../../services/pin_reset_service.dart';
 import '../verification_message.dart';
@@ -41,6 +40,17 @@ class VerificationGateResult {
   bool get isFailed => message != null;
 }
 
+void _logUnexpectedVerificationSetupError(
+  String stage,
+  Object error,
+  StackTrace stack,
+) {
+  debugPrint(
+    'Unexpected verification setup error at $stage: '
+    '${error.runtimeType}\n$stack',
+  );
+}
+
 /// Emails a code to [email], takes it, and returns the accepted session.
 ///
 /// [pin] is the PIN the shop will have; the server binds it into the challenge
@@ -65,7 +75,8 @@ Future<VerificationGateResult> verifyEmailBeforeCreate(
     return VerificationGateResult.failed(
       verificationFailureMessage(l10n, error),
     );
-  } catch (_) {
+  } catch (error, stack) {
+    _logUnexpectedVerificationSetupError('request-code', error, stack);
     return VerificationGateResult.failed(l10n.settingsIdentityLinkFailed);
   }
   if (!context.mounted) return const VerificationGateResult.cancelled();
@@ -92,7 +103,8 @@ Future<VerificationGateResult> verifyEmailBeforeCreate(
         return null;
       } on VerificationException catch (error) {
         return verificationFailureMessage(l10n, error);
-      } catch (_) {
+      } catch (error, stack) {
+        _logUnexpectedVerificationSetupError('verify-code', error, stack);
         return l10n.settingsIdentityLinkFailed;
       }
     },
@@ -107,7 +119,8 @@ Future<VerificationGateResult> verifyEmailBeforeCreate(
         return l10n.settingsVerifyCodeSent(masked);
       } on VerificationException catch (error) {
         return verificationFailureMessage(l10n, error);
-      } catch (_) {
+      } catch (error, stack) {
+        _logUnexpectedVerificationSetupError('resend-code', error, stack);
         return l10n.settingsIdentityLinkFailed;
       }
     },
@@ -118,12 +131,19 @@ Future<VerificationGateResult> verifyEmailBeforeCreate(
     return const VerificationGateResult.cancelled();
   }
 
-  final PendingVerification? completed =
-      await Navigator.of(context).push<PendingVerification>(
-    MaterialPageRoute<PendingVerification>(
-      builder: (_) => SignupPaywallScreen(registration: registration),
-    ),
-  );
-  if (completed != null) return VerificationGateResult.accepted(completed);
-  return const VerificationGateResult.cancelled();
+  try {
+    final PendingVerification completed =
+        await BackendService.completePendingVerification(
+      registration: registration,
+    );
+    if (!context.mounted) return const VerificationGateResult.cancelled();
+    return VerificationGateResult.accepted(completed);
+  } on VerificationException catch (error) {
+    return VerificationGateResult.failed(
+      verificationFailureMessage(l10n, error),
+    );
+  } catch (error, stack) {
+    _logUnexpectedVerificationSetupError('complete-registration', error, stack);
+    return VerificationGateResult.failed(l10n.settingsIdentityLinkFailed);
+  }
 }

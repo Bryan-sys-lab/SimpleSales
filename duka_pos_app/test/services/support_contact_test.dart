@@ -29,4 +29,27 @@ void main() {
       isNull,
     );
   });
+
+  test('builds a separate WhatsApp URI from the secondary contact number', () {
+    final Uri? uri = SupportContact.whatsappUri(
+      message: 'Discuss pricing',
+      phoneNumber: '254708797491',
+    );
+
+    expect(uri?.host, 'wa.me');
+    expect(uri?.pathSegments, <String>['254708797491']);
+    expect(uri?.queryParameters['text'], 'Discuss pricing');
+  });
+
+  test('does not fall back to support for an unconfigured secondary number',
+      () {
+    expect(
+      SupportContact.whatsappUri(
+        message: 'Discuss pricing',
+        phoneNumber: '',
+        fallbackUrl: 'https://wa.me/254712345678',
+      ),
+      isNull,
+    );
+  });
 }

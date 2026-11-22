@@ -5,6 +5,7 @@ import 'package:crypto/crypto.dart' show sha256;
 import 'package:flutter/foundation.dart'
     show debugPrint, kReleaseMode, visibleForTesting;
 import 'package:dio/dio.dart';
+import 'package:dio/io.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../db/database_helper.dart';
 import '../models/models.dart';
@@ -163,39 +164,70 @@ class SubscriptionEntitlement {
       required this.status,
       this.reason,
       this.priceMinor,
+      this.discountPercent = 0,
       this.currency = 'KES',
       this.billingInterval = 'monthly',
       this.currentPeriodEnd,
       this.whatsappUrl,
-      this.firstMonthVoucherAvailable = false});
+      this.availableVoucherDurationMonths});
   factory SubscriptionEntitlement.fromJson(Map<String, dynamic> json) =>
       SubscriptionEntitlement(
         allowed: json['allowed'] == true,
         status: json['status'] as String? ?? 'pending',
         reason: json['reason'] as String?,
         priceMinor: (json['priceMinor'] as num?)?.toInt(),
+        discountPercent: (json['discountPercent'] as num?)?.toInt() ?? 0,
         currency: json['currency'] as String? ?? 'KES',
         billingInterval: json['billingInterval'] as String? ?? 'monthly',
         currentPeriodEnd: json['currentPeriodEnd'] as String?,
         whatsappUrl: json['whatsappUrl'] as String?,
-        firstMonthVoucherAvailable: json['firstMonthVoucherAvailable'] == true,
+        availableVoucherDurationMonths:
+            (json['availableVoucherDurationMonths'] as num?)?.toInt(),
       );
   final bool allowed;
   final String status;
   final String? reason;
   final int? priceMinor;
+  final int discountPercent;
   final String currency;
   final String billingInterval;
   final String? currentPeriodEnd;
   final String? whatsappUrl;
-  final bool firstMonthVoucherAvailable;
+  final int? availableVoucherDurationMonths;
+}
+
+class SubscriptionPaymentQuote {
+  const SubscriptionPaymentQuote({
+    required this.reference,
+    required this.amountMinor,
+    required this.baseAmountMinor,
+    required this.discountAmountMinor,
+    required this.discountPercent,
+    required this.durationMonths,
+  });
+
+  factory SubscriptionPaymentQuote.fromJson(Map<String, dynamic> json) =>
+      SubscriptionPaymentQuote(
+        reference: json['reference'] as String,
+        amountMinor: (json['amountMinor'] as num).toInt(),
+        baseAmountMinor: (json['baseAmountMinor'] as num).toInt(),
+        discountAmountMinor: (json['discountAmountMinor'] as num).toInt(),
+        discountPercent: (json['discountPercent'] as num).toInt(),
+        durationMonths: (json['durationMonths'] as num).toInt(),
+      );
+
+  final String reference;
+  final int amountMinor;
+  final int baseAmountMinor;
+  final int discountAmountMinor;
+  final int discountPercent;
+  final int durationMonths;
 }
 
 /// The email code and setup details accepted for the next signup step.
 ///
-/// The voucher screen completes verification and creates the remote identity;
-/// keeping this short-lived payload in memory means no account or shop is
-/// created until the owner submits the issued voucher.
+/// The payload stays in memory between email-code verification and remote
+/// account creation; it is never persisted as a password or verification code.
 class PendingRegistration {
   const PendingRegistration({
     required this.email,
@@ -212,8 +244,8 @@ class PendingRegistration {
   final String ownerName;
 }
 
-/// A code and voucher accepted by the server, with the session it issued,
-/// held back until the shop exists on this device.
+/// A verified signup accepted by the server, with the session it issued, held
+/// back until the shop exists on this device.
 ///
 /// Setup proves the address BEFORE the shop is created. At that point there is
 /// no workspace to record the tenant against, and switching to a new workspace
@@ -324,6 +356,11 @@ class BackendService {
     sendTimeout: const Duration(minutes: 1),
     receiveTimeout: const Duration(minutes: 1),
   ));
+
+  @visibleForTesting
+  static void setHttpClientAdapterForTesting(HttpClientAdapter? adapter) {
+    _dio.httpClientAdapter = adapter ?? IOHttpClientAdapter();
+  }
 
   static bool _isRetryable(DioException e) {
     if (e.type == DioExceptionType.connectionTimeout ||
@@ -705,12 +742,14 @@ class BackendService {
     }
   }
 
-  /// Completes registration after the owner enters the voucher shown in the
-  /// post-verification paywall. The backend rechecks the code and atomically
-  /// redeems the voucher before issuing a session.
+  /// Completes registration after the owner confirms the emailed code.
+  ///
+  /// A voucher is optional here: an administrator may issue one later, and
+  /// the authenticated paywall offers a one-tap claim plus manual entry.
   static Future<PendingVerification> completePendingVerification({
     required PendingRegistration registration,
-    required String voucherCode,
+    String? voucherCode,
+    bool claimVoucher = false,
   }) async {
     await ensureInitialized();
     try {
@@ -718,7 +757,9 @@ class BackendService {
         'email': registration.email,
         'password': registration.pin,
         'code': registration.code,
-        'voucherCode': voucherCode.trim(),
+        if (voucherCode != null && voucherCode.trim().isNotEmpty)
+          'voucherCode': voucherCode.trim(),
+        if (claimVoucher) 'claimVoucher': true,
         if (registration.shopName.isNotEmpty) 'shopName': registration.shopName,
         if (registration.ownerName.isNotEmpty)
           'ownerName': registration.ownerName,
@@ -771,7 +812,8 @@ class BackendService {
   static VerificationException verificationFailure(DioException error) {
     final status = error.response?.statusCode;
     final data = error.response?.data;
-    final String? code = data is Map ? data['code'] as String? : null;
+    final rawCode = data is Map ? data['code'] : null;
+    final String? code = rawCode is String ? rawCode : null;
     switch (code) {
       case 'TOO_MANY_CODES':
         return const VerificationException(VerificationFailure.tooManyCodes);
@@ -780,8 +822,8 @@ class BackendService {
       case 'VERIFICATION_EXPIRED':
         return const VerificationException(VerificationFailure.expired);
       case 'VERIFICATION_INVALID':
-        final remaining =
-            data is Map ? data['attempts_remaining'] as num? : null;
+        final rawRemaining = data is Map ? data['attempts_remaining'] : null;
+        final remaining = rawRemaining is num ? rawRemaining : null;
         return VerificationException(VerificationFailure.invalidCode,
             attemptsRemaining: remaining?.toInt());
       case 'SHOP_SETUP_REQUIRED':
@@ -809,8 +851,21 @@ class BackendService {
           VerificationFailure.identityUnavailable);
     }
     if (status == null) {
+      debugPrint(
+        'Verification request failed without a response: '
+        '${error.requestOptions.method} ${error.requestOptions.uri.path}; '
+        'type=${error.type}',
+      );
       return const VerificationException(VerificationFailure.network);
     }
+    final rawRequestId = data is Map ? data['requestId'] : null;
+    final requestId = rawRequestId is String ? rawRequestId : null;
+    debugPrint(
+      'Unclassified verification response: '
+      '${error.requestOptions.method} ${error.requestOptions.uri.path}; '
+      'status=$status code=${code ?? 'none'} '
+      'requestId=${requestId ?? 'none'}',
+    );
     return const VerificationException(VerificationFailure.unknown);
   }
 
@@ -832,6 +887,14 @@ class BackendService {
         : null;
   }
 
+  static Future<SubscriptionEntitlement?> claimAvailableVoucher() async {
+    final response = await _dio.post('$backendUrl/auth/voucher/claim');
+    final raw = response.data is Map ? response.data['entitlement'] : null;
+    return raw is Map
+        ? SubscriptionEntitlement.fromJson(Map<String, dynamic>.from(raw))
+        : null;
+  }
+
   static Future<SubscriptionEntitlement?> fetchSubscriptionEntitlement() async {
     final response = await _dio.get('$backendUrl/tenant/subscription');
     final raw = response.data is Map ? response.data['entitlement'] : null;
@@ -841,18 +904,21 @@ class BackendService {
     final support = response.data is Map ? response.data['support'] : null;
     final whatsappUrl =
         support is Map ? support['whatsappUrl'] as String? : null;
-    final firstMonthVoucherAvailable =
-        support is Map && support['firstMonthVoucherAvailable'] == true;
+    final availableVoucher =
+        support is Map ? support['availableVoucher'] : null;
     return SubscriptionEntitlement(
       allowed: entitlement.allowed,
       status: entitlement.status,
       reason: entitlement.reason,
       priceMinor: entitlement.priceMinor,
+      discountPercent: entitlement.discountPercent,
       currency: entitlement.currency,
       billingInterval: entitlement.billingInterval,
       currentPeriodEnd: entitlement.currentPeriodEnd,
       whatsappUrl: whatsappUrl,
-      firstMonthVoucherAvailable: firstMonthVoucherAvailable,
+      availableVoucherDurationMonths: availableVoucher is Map
+          ? (availableVoucher['durationMonths'] as num?)?.toInt()
+          : null,
     );
   }
 
@@ -875,14 +941,18 @@ class BackendService {
     });
   }
 
-  static Future<String> startSubscriptionPayment(
-      {required String phoneNumber, int durationMonths = 1}) async {
+  static Future<SubscriptionPaymentQuote> startSubscriptionPayment({
+    required String phoneNumber,
+    int durationMonths = 1,
+  }) async {
     final response = await _dio.post('$backendUrl/tenant/subscription/payment',
         data: <String, dynamic>{
           'phoneNumber': phoneNumber,
           'durationMonths': durationMonths
         });
-    return response.data['reference'] as String;
+    return SubscriptionPaymentQuote.fromJson(
+      Map<String, dynamic>.from(response.data as Map),
+    );
   }
 
   static Future<String> subscriptionPaymentStatus(String reference) async {

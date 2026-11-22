@@ -133,11 +133,18 @@ jobs:
         env:
           BACKEND_URL: ${{ secrets.BACKEND_URL }}
           WHATSAPP_CONTACT_NUMBER: ${{ secrets.WHATSAPP_CONTACT_NUMBER }}
+          WHATSAPP_SECONDARY_CONTACT_NUMBER: ${{ secrets.WHATSAPP_SECONDARY_CONTACT_NUMBER }}
         run: |
           set -euo pipefail
           whatsapp_digits="${WHATSAPP_CONTACT_NUMBER//[^0-9]/}"
           if (( ${#whatsapp_digits} < 8 || ${#whatsapp_digits} > 15 )); then
             echo "::error::Set WHATSAPP_CONTACT_NUMBER as a GitHub Actions secret containing a valid international phone number (8-15 digits)."
+            exit 1
+          fi
+          secondary_digits="${WHATSAPP_SECONDARY_CONTACT_NUMBER//[^0-9]/}"
+          if [[ -n "${WHATSAPP_SECONDARY_CONTACT_NUMBER:-}" ]] &&
+             (( ${#secondary_digits} < 8 || ${#secondary_digits} > 15 )); then
+            echo "::error::WHATSAPP_SECONDARY_CONTACT_NUMBER must contain 8-15 digits when configured."
             exit 1
           fi
           defines=()
@@ -146,6 +153,9 @@ jobs:
           fi
           if [ -n "${WHATSAPP_CONTACT_NUMBER:-}" ]; then
             defines+=("--dart-define=WHATSAPP_CONTACT_NUMBER=${WHATSAPP_CONTACT_NUMBER}")
+          fi
+          if [ -n "${WHATSAPP_SECONDARY_CONTACT_NUMBER:-}" ]; then
+            defines+=("--dart-define=WHATSAPP_SECONDARY_CONTACT_NUMBER=${WHATSAPP_SECONDARY_CONTACT_NUMBER}")
           fi
           flutter build apk --release ${defines[@]+"${defines[@]}"}
 

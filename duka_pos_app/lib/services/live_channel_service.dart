@@ -392,9 +392,9 @@ class LiveChannelService extends ChangeNotifier {
 
   /// The channel's absolute URL, or null when this build has no backend.
   ///
-  /// The channel is on `/live`, NOT under the API prefix: the upgrade is handled
-  /// by the HTTP server rather than Express, which is precisely why it is on its
-  /// own path. Deriving it from the same base URL keeps the one source of truth.
+  /// The channel is `/api/live` when the configured backend base includes `/api`.
+  /// The Worker also accepts `/live` for deployments without that prefix.
+  /// Deriving it from the same base URL keeps the one source of truth.
   static String? _liveUrl() {
     if (BackendService.backendUrl.isEmpty) return null;
     final base = BackendService.backendUrl.replaceAll(RegExp(r'/+$'), '');
@@ -410,6 +410,9 @@ class LiveChannelService extends ChangeNotifier {
     // http:// or ws:// or anything else: refuse plaintext transport.
     return null;
   }
+
+  @visibleForTesting
+  static String? liveUrlForTesting() => _liveUrl();
 
   @override
   void dispose() {

@@ -82,7 +82,10 @@ void main() {
   Future<void> pumpUntilClosed(WidgetTester tester) async {
     for (var i = 0; i < 30; i++) {
       await tester.pump(const Duration(milliseconds: 60));
-      if (find.byType(ManagerApprovalSheet).evaluate().isEmpty) return;
+      if (find.byType(ManagerApprovalSheet).evaluate().isEmpty) {
+        await tester.pump(const Duration(milliseconds: 400));
+        return;
+      }
       await tester.runAsync(
           () => Future<void>.delayed(const Duration(milliseconds: 100)));
     }
@@ -154,15 +157,22 @@ void main() {
     await tester.enterText(find.byType(TextField), pin);
     for (var i = 0; i < 30; i++) {
       await tester.pump(const Duration(milliseconds: 60));
-      final bool closed =
-          find.byType(ManagerApprovalSheet).evaluate().isEmpty;
+      final bool closed = find.byType(ManagerApprovalSheet).evaluate().isEmpty;
       final bool failed =
           find.text(l10n.approvalWrongPin).evaluate().isNotEmpty;
-      if (closed || failed) return;
+      if (closed) {
+        await tester.pump(const Duration(milliseconds: 400));
+        return;
+      }
+      if (failed) return;
       await tester.runAsync(
           () => Future<void>.delayed(const Duration(milliseconds: 100)));
     }
     await tester.pump(const Duration(milliseconds: 300));
+    if (find.byType(ManagerApprovalSheet).evaluate().isNotEmpty &&
+        find.text(l10n.approvalWrongPin).evaluate().isEmpty) {
+      fail('the PIN check did not resolve');
+    }
   }
 
   /// Presses a named action button through its own callback.
@@ -221,8 +231,7 @@ void main() {
     final ManagerApprovalCapture capture = await openSheet(tester);
     await pumpUntilFound(tester, find.byType(TextField));
 
-    await press(
-        tester, find.text(l10n.actionCancel), OutlinedButton);
+    await press(tester, find.text(l10n.actionCancel), OutlinedButton);
 
     expect(capture.result, isNull);
     expect(find.byType(ManagerApprovalSheet), findsNothing);

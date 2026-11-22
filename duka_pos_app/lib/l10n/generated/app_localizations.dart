@@ -3748,77 +3748,11 @@ abstract class AppLocalizations {
   /// **'This account has no shop yet. Finish shop setup first.'**
   String get settingsVerifyShopMissing;
 
-  /// No description provided for @signupPaywallTitle.
-  ///
-  /// In en, this message translates to:
-  /// **'Activate your shop'**
-  String get signupPaywallTitle;
-
-  /// No description provided for @signupPaywallHeadline.
-  ///
-  /// In en, this message translates to:
-  /// **'Your shop is ready for its first month'**
-  String get signupPaywallHeadline;
-
-  /// No description provided for @signupPaywallBody.
-  ///
-  /// In en, this message translates to:
-  /// **'Your email is verified. Enter the first-month voucher from that email to activate this shop. The 30 days start when you redeem it.'**
-  String get signupPaywallBody;
-
-  /// No description provided for @signupPaywallIncludedMonth.
-  ///
-  /// In en, this message translates to:
-  /// **'One month of access, included with your new shop.'**
-  String get signupPaywallIncludedMonth;
-
-  /// No description provided for @signupPaywallVoucherLabel.
-  ///
-  /// In en, this message translates to:
-  /// **'Voucher code'**
-  String get signupPaywallVoucherLabel;
-
-  /// No description provided for @signupPaywallVoucherHint.
-  ///
-  /// In en, this message translates to:
-  /// **'SS-XXXXXXXXXXXX'**
-  String get signupPaywallVoucherHint;
-
-  /// No description provided for @signupPaywallVoucherRequired.
-  ///
-  /// In en, this message translates to:
-  /// **'Enter the voucher code from your email.'**
-  String get signupPaywallVoucherRequired;
-
   /// No description provided for @signupPaywallVoucherInvalid.
   ///
   /// In en, this message translates to:
   /// **'That voucher is invalid, expired, already used, or belongs to another email. Check it and try again.'**
   String get signupPaywallVoucherInvalid;
-
-  /// No description provided for @signupPaywallRedeem.
-  ///
-  /// In en, this message translates to:
-  /// **'Redeem voucher'**
-  String get signupPaywallRedeem;
-
-  /// No description provided for @signupPaywallActivating.
-  ///
-  /// In en, this message translates to:
-  /// **'Activating shop'**
-  String get signupPaywallActivating;
-
-  /// No description provided for @signupPaywallWhatsApp.
-  ///
-  /// In en, this message translates to:
-  /// **'Need help? Chat with us on WhatsApp'**
-  String get signupPaywallWhatsApp;
-
-  /// No description provided for @signupPaywallSupportMessage.
-  ///
-  /// In en, this message translates to:
-  /// **'Hello, I need help activating my SimpleSales shop.'**
-  String get signupPaywallSupportMessage;
 
   /// No description provided for @supportContactOpenFailed.
   ///
@@ -3826,17 +3760,155 @@ abstract class AppLocalizations {
   /// **'Could not open WhatsApp. Please try again.'**
   String get supportContactOpenFailed;
 
-  /// No description provided for @signupPaywallVoucherNote.
-  ///
-  /// In en, this message translates to:
-  /// **'The code is checked against this email and can only be used once.'**
-  String get signupPaywallVoucherNote;
-
   /// No description provided for @paywallWhatsAppMessage.
   ///
   /// In en, this message translates to:
   /// **'Hello, I need help with my SimpleSales subscription.'**
   String get paywallWhatsAppMessage;
+
+  /// No description provided for @paywallWhatsAppSales.
+  ///
+  /// In en, this message translates to:
+  /// **'Chat about plans on WhatsApp'**
+  String get paywallWhatsAppSales;
+
+  /// No description provided for @paywallSalesMessage.
+  ///
+  /// In en, this message translates to:
+  /// **'Hello, I would like to discuss SimpleSales plans and pricing.'**
+  String get paywallSalesMessage;
+
+  /// No description provided for @paywallCheckVoucher.
+  ///
+  /// In en, this message translates to:
+  /// **'Check for an issued voucher'**
+  String get paywallCheckVoucher;
+
+  /// No description provided for @paywallClaimVoucher.
+  ///
+  /// In en, this message translates to:
+  /// **'Claim available voucher'**
+  String get paywallClaimVoucher;
+
+  /// No description provided for @paywallVoucherReady.
+  ///
+  /// In en, this message translates to:
+  /// **'An administrator-issued {duration}-month voucher is ready to claim.'**
+  String paywallVoucherReady(int duration);
+
+  /// No description provided for @paywallDuration.
+  ///
+  /// In en, this message translates to:
+  /// **'Subscription duration'**
+  String get paywallDuration;
+
+  /// No description provided for @paywallOneMonth.
+  ///
+  /// In en, this message translates to:
+  /// **'1 month'**
+  String get paywallOneMonth;
+
+  /// No description provided for @paywallThreeMonths.
+  ///
+  /// In en, this message translates to:
+  /// **'3 months'**
+  String get paywallThreeMonths;
+
+  /// No description provided for @paywallSixMonths.
+  ///
+  /// In en, this message translates to:
+  /// **'6 months'**
+  String get paywallSixMonths;
+
+  /// No description provided for @paywallTwelveMonths.
+  ///
+  /// In en, this message translates to:
+  /// **'12 months'**
+  String get paywallTwelveMonths;
+
+  /// No description provided for @paywallQuoteBase.
+  ///
+  /// In en, this message translates to:
+  /// **'Base quote'**
+  String get paywallQuoteBase;
+
+  /// No description provided for @paywallDiscount.
+  ///
+  /// In en, this message translates to:
+  /// **'Administrator discount ({percent}%)'**
+  String paywallDiscount(int percent);
+
+  /// No description provided for @paywallAmountDue.
+  ///
+  /// In en, this message translates to:
+  /// **'Amount due'**
+  String get paywallAmountDue;
+
+  /// No description provided for @paywallActivateTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Activate access for this shop'**
+  String get paywallActivateTitle;
+
+  /// No description provided for @paywallVoucherChooseText.
+  ///
+  /// In en, this message translates to:
+  /// **'Choose a subscription or enter an administrator-issued voucher. Access is shared by the shop\'s owner and staff.'**
+  String get paywallVoucherChooseText;
+
+  /// No description provided for @paywallVoucherClaimText.
+  ///
+  /// In en, this message translates to:
+  /// **'Claim the issued voucher now, or enter its code manually below. Its access period begins when claimed.'**
+  String get paywallVoucherClaimText;
+
+  /// No description provided for @paywallVoucherSectionTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Have a voucher?'**
+  String get paywallVoucherSectionTitle;
+
+  /// No description provided for @paywallVoucherManualHelp.
+  ///
+  /// In en, this message translates to:
+  /// **'Enter the code from your email if the claim button is unavailable.'**
+  String get paywallVoucherManualHelp;
+
+  /// No description provided for @paywallVoucherPlaceholder.
+  ///
+  /// In en, this message translates to:
+  /// **'Enter voucher code'**
+  String get paywallVoucherPlaceholder;
+
+  /// No description provided for @paywallRedeemVoucher.
+  ///
+  /// In en, this message translates to:
+  /// **'Redeem voucher'**
+  String get paywallRedeemVoucher;
+
+  /// No description provided for @paywallCheckingVoucher.
+  ///
+  /// In en, this message translates to:
+  /// **'Checking...'**
+  String get paywallCheckingVoucher;
+
+  /// No description provided for @paywallAgreedPrice.
+  ///
+  /// In en, this message translates to:
+  /// **'Your agreed price'**
+  String get paywallAgreedPrice;
+
+  /// No description provided for @paywallPayMpesa.
+  ///
+  /// In en, this message translates to:
+  /// **'Pay with M-Pesa'**
+  String get paywallPayMpesa;
+
+  /// No description provided for @paywallPaymentPrompt.
+  ///
+  /// In en, this message translates to:
+  /// **'Payment prompt: {currency} {amount} for {duration} months'**
+  String paywallPaymentPrompt(String currency, String amount, int duration);
 
   /// No description provided for @diagnosticsTitle.
   ///

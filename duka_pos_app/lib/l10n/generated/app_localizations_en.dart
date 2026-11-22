@@ -2203,57 +2203,98 @@ class AppLocalizationsEn extends AppLocalizations {
       'This account has no shop yet. Finish shop setup first.';
 
   @override
-  String get signupPaywallTitle => 'Activate your shop';
-
-  @override
-  String get signupPaywallHeadline => 'Your shop is ready for its first month';
-
-  @override
-  String get signupPaywallBody =>
-      'Your email is verified. Enter the first-month voucher from that email to activate this shop. The 30 days start when you redeem it.';
-
-  @override
-  String get signupPaywallIncludedMonth =>
-      'One month of access, included with your new shop.';
-
-  @override
-  String get signupPaywallVoucherLabel => 'Voucher code';
-
-  @override
-  String get signupPaywallVoucherHint => 'SS-XXXXXXXXXXXX';
-
-  @override
-  String get signupPaywallVoucherRequired =>
-      'Enter the voucher code from your email.';
-
-  @override
   String get signupPaywallVoucherInvalid =>
       'That voucher is invalid, expired, already used, or belongs to another email. Check it and try again.';
-
-  @override
-  String get signupPaywallRedeem => 'Redeem voucher';
-
-  @override
-  String get signupPaywallActivating => 'Activating shop';
-
-  @override
-  String get signupPaywallWhatsApp => 'Need help? Chat with us on WhatsApp';
-
-  @override
-  String get signupPaywallSupportMessage =>
-      'Hello, I need help activating my SimpleSales shop.';
 
   @override
   String get supportContactOpenFailed =>
       'Could not open WhatsApp. Please try again.';
 
   @override
-  String get signupPaywallVoucherNote =>
-      'The code is checked against this email and can only be used once.';
-
-  @override
   String get paywallWhatsAppMessage =>
       'Hello, I need help with my SimpleSales subscription.';
+
+  @override
+  String get paywallWhatsAppSales => 'Chat about plans on WhatsApp';
+
+  @override
+  String get paywallSalesMessage =>
+      'Hello, I would like to discuss SimpleSales plans and pricing.';
+
+  @override
+  String get paywallCheckVoucher => 'Check for an issued voucher';
+
+  @override
+  String get paywallClaimVoucher => 'Claim available voucher';
+
+  @override
+  String paywallVoucherReady(int duration) {
+    return 'An administrator-issued $duration-month voucher is ready to claim.';
+  }
+
+  @override
+  String get paywallDuration => 'Subscription duration';
+
+  @override
+  String get paywallOneMonth => '1 month';
+
+  @override
+  String get paywallThreeMonths => '3 months';
+
+  @override
+  String get paywallSixMonths => '6 months';
+
+  @override
+  String get paywallTwelveMonths => '12 months';
+
+  @override
+  String get paywallQuoteBase => 'Base quote';
+
+  @override
+  String paywallDiscount(int percent) {
+    return 'Administrator discount ($percent%)';
+  }
+
+  @override
+  String get paywallAmountDue => 'Amount due';
+
+  @override
+  String get paywallActivateTitle => 'Activate access for this shop';
+
+  @override
+  String get paywallVoucherChooseText =>
+      'Choose a subscription or enter an administrator-issued voucher. Access is shared by the shop\'s owner and staff.';
+
+  @override
+  String get paywallVoucherClaimText =>
+      'Claim the issued voucher now, or enter its code manually below. Its access period begins when claimed.';
+
+  @override
+  String get paywallVoucherSectionTitle => 'Have a voucher?';
+
+  @override
+  String get paywallVoucherManualHelp =>
+      'Enter the code from your email if the claim button is unavailable.';
+
+  @override
+  String get paywallVoucherPlaceholder => 'Enter voucher code';
+
+  @override
+  String get paywallRedeemVoucher => 'Redeem voucher';
+
+  @override
+  String get paywallCheckingVoucher => 'Checking...';
+
+  @override
+  String get paywallAgreedPrice => 'Your agreed price';
+
+  @override
+  String get paywallPayMpesa => 'Pay with M-Pesa';
+
+  @override
+  String paywallPaymentPrompt(String currency, String amount, int duration) {
+    return 'Payment prompt: $currency $amount for $duration months';
+  }
 
   @override
   String get diagnosticsTitle => 'Diagnostics';

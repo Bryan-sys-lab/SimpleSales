@@ -608,21 +608,60 @@
   "settingsVerifyEmailFailed": "The email could not be sent. Check your connection and send a new code.",
   "settingsVerifyIdentityUnavailable": "Could not reach the account server. Try again when you have signal.",
   "settingsVerifyShopMissing": "This account has no shop yet. Finish shop setup first.",
-  "signupPaywallTitle": "Activate your shop",
-  "signupPaywallHeadline": "Your shop is ready for its first month",
-  "signupPaywallBody": "Your email is verified. Enter the first-month voucher from that email to activate this shop. The 30 days start when you redeem it.",
-  "signupPaywallIncludedMonth": "One month of access, included with your new shop.",
-  "signupPaywallVoucherLabel": "Voucher code",
-  "signupPaywallVoucherHint": "SS-XXXXXXXXXXXX",
-  "signupPaywallVoucherRequired": "Enter the voucher code from your email.",
   "signupPaywallVoucherInvalid": "That voucher is invalid, expired, already used, or belongs to another email. Check it and try again.",
-  "signupPaywallRedeem": "Redeem voucher",
-  "signupPaywallActivating": "Activating shop",
-  "signupPaywallWhatsApp": "Need help? Chat with us on WhatsApp",
-  "signupPaywallSupportMessage": "Hello, I need help activating my SimpleSales shop.",
   "supportContactOpenFailed": "Could not open WhatsApp. Please try again.",
-  "signupPaywallVoucherNote": "The code is checked against this email and can only be used once.",
   "paywallWhatsAppMessage": "Hello, I need help with my SimpleSales subscription.",
+  "paywallWhatsAppSales": "Chat about plans on WhatsApp",
+  "paywallSalesMessage": "Hello, I would like to discuss SimpleSales plans and pricing.",
+  "paywallCheckVoucher": "Check for an issued voucher",
+  "paywallClaimVoucher": "Claim available voucher",
+  "paywallVoucherReady": "An administrator-issued {duration}-month voucher is ready to claim.",
+  "@paywallVoucherReady": {
+    "placeholders": {
+      "duration": {
+        "type": "int"
+      }
+    }
+  },
+  "paywallDuration": "Subscription duration",
+  "paywallOneMonth": "1 month",
+  "paywallThreeMonths": "3 months",
+  "paywallSixMonths": "6 months",
+  "paywallTwelveMonths": "12 months",
+  "paywallQuoteBase": "Base quote",
+  "paywallDiscount": "Administrator discount ({percent}%)",
+  "@paywallDiscount": {
+    "placeholders": {
+      "percent": {
+        "type": "int"
+      }
+    }
+  },
+  "paywallAmountDue": "Amount due",
+  "paywallActivateTitle": "Activate access for this shop",
+  "paywallVoucherChooseText": "Choose a subscription or enter an administrator-issued voucher. Access is shared by the shop's owner and staff.",
+  "paywallVoucherClaimText": "Claim the issued voucher now, or enter its code manually below. Its access period begins when claimed.",
+  "paywallVoucherSectionTitle": "Have a voucher?",
+  "paywallVoucherManualHelp": "Enter the code from your email if the claim button is unavailable.",
+  "paywallVoucherPlaceholder": "Enter voucher code",
+  "paywallRedeemVoucher": "Redeem voucher",
+  "paywallCheckingVoucher": "Checking...",
+  "paywallAgreedPrice": "Your agreed price",
+  "paywallPayMpesa": "Pay with M-Pesa",
+  "paywallPaymentPrompt": "Payment prompt: {currency} {amount} for {duration} months",
+  "@paywallPaymentPrompt": {
+    "placeholders": {
+      "currency": {
+        "type": "String"
+      },
+      "amount": {
+        "type": "String"
+      },
+      "duration": {
+        "type": "int"
+      }
+    }
+  },
   "diagnosticsTitle": "Diagnostics",
   "diagnosticsRecentTitle": "Recent failures",
   "diagnosticsRecentCount": "{count, plural, =1{1 failure kept} other{{count} failures kept}} — the last {days} weeks, newer than {cap} rows are not kept",
