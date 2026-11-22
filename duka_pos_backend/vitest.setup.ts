@@ -9,7 +9,7 @@ import { execSync } from 'child_process';
 // Ensure test env vars are set
 process.env.NODE_ENV = 'test';
 process.env.AUTH_JWT_SECRET = process.env.AUTH_JWT_SECRET || 'test-secret-at-least-32-bytes-long-xxxxxxxx';
-process.env.DATABASE_URL = process.env.DATABASE_URL || 'postgresql://localhost:5432/duka_pos_test';
+process.env.D1_LOCAL_DATABASE_URL = process.env.D1_LOCAL_DATABASE_URL || 'file:./prisma/test.db';
 process.env.PAYHERO_AUTH_TOKEN = process.env.PAYHERO_AUTH_TOKEN || 'test-payhero-token';
 process.env.SYSTEM_ADMIN_SUBJECTS = process.env.SYSTEM_ADMIN_SUBJECTS || 'admin-subject';
 process.env.BACKEND_URL = process.env.BACKEND_URL || 'http://localhost:3000/api';

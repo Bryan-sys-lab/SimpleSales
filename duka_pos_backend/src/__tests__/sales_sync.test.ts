@@ -5,7 +5,7 @@ let orderedStockProductIds: (required: ReadonlyMap<string, number>) => string[];
 beforeAll(async () => {
   process.env.OIDC_ISSUER_URL = 'https://id.example.test/realms/duka';
   process.env.OIDC_AUDIENCE = 'duka-api';
-  process.env.DATABASE_URL ??= 'postgresql://localhost:5432/duka_pos_test';
+  process.env.D1_LOCAL_DATABASE_URL ??= 'file:./prisma/test.db';
   ({ orderedStockProductIds } = await import('../routes/sales'));
 });
 

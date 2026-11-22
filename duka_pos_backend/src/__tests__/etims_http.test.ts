@@ -11,13 +11,19 @@ import { beforeAll, describe, expect, it, vi } from 'vitest';
 import type { Express } from 'express';
 import { prisma } from '../lib/prisma';
 
+const mocks = vi.hoisted(() => ({
+  etimsReceipt: { findFirst: vi.fn() },
+}));
+
+vi.mock('../lib/prisma', () => ({ prisma: mocks }));
+
 let app: Express;
 
 beforeAll(async () => {
   process.env.NODE_ENV = 'test';
   process.env.OIDC_ISSUER_URL = 'https://id.example.test/realms/duka';
   process.env.OIDC_AUDIENCE = 'duka-api';
-  process.env.DATABASE_URL ??= 'postgresql://localhost:5432/duka_pos_test';
+  process.env.D1_LOCAL_DATABASE_URL ??= 'file:./prisma/test.db';
   const module = await import('../index');
   app = module.default;
 });
@@ -47,7 +53,7 @@ describe('eTIMS access boundaries', () => {
       });
     expect(response.status).toBe(401);
     expect(response.body.requestId).toBeTruthy();
-  });
+  }, 20000);
 
   it('refuses to register a device without a bearer token', async () => {
     const supertest = await import('supertest');

@@ -3,6 +3,7 @@ import { Duplex } from "node:stream";
 import app from "./index.js";
 import { verifyAccessToken } from "./lib/jwt.js";
 import { setCloudflareEmailBinding } from "./lib/email_sender.js";
+import { setD1DatabaseBinding } from "./lib/prisma.js";
 
 function makeSocket(): Duplex {
   const socket = new Duplex({
@@ -17,14 +18,12 @@ function makeSocket(): Duplex {
 
 export default {
   async fetch(request: Request, env: any, _ctx: any): Promise<Response> {
+    setD1DatabaseBinding(env?.DB);
     setCloudflareEmailBinding(
       env?.EMAIL && typeof env.EMAIL.send === "function" ? env.EMAIL : null,
     );
     for (const [k, v] of Object.entries(env || {})) {
       if (typeof v === "string") process.env[k] = v;
-    }
-    if (env?.HYPERDRIVE?.connectionString) {
-      process.env.DATABASE_URL = env.HYPERDRIVE.connectionString;
     }
 
     const url = new URL(request.url);
@@ -132,15 +131,13 @@ export default {
     return response;
   },
   async scheduled(event: any, env: any, _ctx: any) {
+    setD1DatabaseBinding(env?.DB);
     for (const [k, v] of Object.entries(env || {})) {
       if (typeof v === "string") process.env[k] = v;
     }
-    if (env?.HYPERDRIVE?.connectionString) {
-      process.env.DATABASE_URL = env.HYPERDRIVE.connectionString;
-    }
     try {
       const { prisma } = await import("./lib/prisma.js");
-      await (prisma as any).user.count();
+      await prisma.user.count();
       console.log("db warm ping ok");
     } catch (e) {
       console.error("db warm ping failed", e);

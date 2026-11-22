@@ -48,7 +48,24 @@ router.post(
       // limited to names and routes, never user-entered content.
       detail: null,
     }));
-    const result = await prisma.telemetryEvent.createMany({ data, skipDuplicates: true });
+    const clientEventIds = [...new Set(data.flatMap((event) => event.clientEventId ? [event.clientEventId] : []))];
+    const existingEvents = clientEventIds.length > 0
+      ? await prisma.telemetryEvent.findMany({
+        where: { clientEventId: { in: clientEventIds } },
+        select: { clientEventId: true },
+      })
+      : [];
+    const existingIds = new Set(existingEvents.map((event) => event.clientEventId));
+    const seenIds = new Set<string>();
+    const newEvents = data.filter((event) => {
+      if (!event.clientEventId) return true;
+      if (existingIds.has(event.clientEventId) || seenIds.has(event.clientEventId)) return false;
+      seenIds.add(event.clientEventId);
+      return true;
+    });
+    const result = newEvents.length > 0
+      ? await prisma.telemetryEvent.createMany({ data: newEvents })
+      : { count: 0 };
     if (result.count > 0) broadcastAdmin({ type: 'session_activity', tenantId, at: new Date().toISOString() });
     return res.status(201).json({ ingested: result.count });
   })

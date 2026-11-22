@@ -7,7 +7,7 @@ beforeAll(async () => {
   process.env.NODE_ENV = 'test';
   process.env.OIDC_ISSUER_URL = 'https://id.example.test/realms/duka';
   process.env.OIDC_AUDIENCE = 'duka-api';
-  process.env.DATABASE_URL ??= 'postgresql://localhost:5432/duka_pos_test';
+  process.env.D1_LOCAL_DATABASE_URL ??= 'file:./prisma/test.db';
   const module = await import('../index');
   app = module.default;
 });

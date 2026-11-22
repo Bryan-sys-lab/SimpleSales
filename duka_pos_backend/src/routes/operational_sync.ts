@@ -1,5 +1,4 @@
 import { Router } from 'express';
-import { Prisma } from '@prisma/client';
 import { asyncHandler, HttpError, requireUser } from '../lib/http';
 import {
   exchangeSyncSchema,
@@ -10,7 +9,9 @@ import {
   shotCupsSyncSchema,
   stockMovementsSyncSchema
 } from '../lib/validation';
-import { prisma } from '../lib/prisma';
+import { getD1DatabaseBinding, prisma } from '../lib/prisma';
+import { requiredD1String } from '../lib/d1_results';
+import { upsertSyncRecords } from '../lib/sync_records_d1';
 import { requireRole } from '../middleware/auth';
 
 const router = Router();
@@ -150,129 +151,121 @@ router.post(
           throw new HttpError(409, 'Product is not available in this shop');
         }
       }
-      const synced: Array<{ localId: number; remoteId: string }> = [];
-      await prisma.$transaction(async (tx) => {
-        for (const layby of laybys) {
-          const deviceId = layby.deviceId ?? 'legacy';
-          const saved = await tx.syncRecord.upsert({
-            where: {
-              tenantId_kind_deviceId_localId: {
-                tenantId: user.tenantId,
-                kind: pathKind,
-                deviceId,
-                localId: layby.localId
-              }
-            },
-            create: {
-              tenantId: user.tenantId,
-              kind: pathKind,
-              deviceId,
-              localId: layby.localId,
-              payload: layby as Prisma.InputJsonValue,
-              createdAt: new Date(layby.createdAt)
-            },
-            update: {
-              payload: layby as Prisma.InputJsonValue
-            },
-            select: { id: true }
-          });
-          synced.push({ localId: layby.localId, remoteId: saved.id });
-        }
-      });
+      const synced = await upsertSyncRecords(laybys.map((layby) => ({
+        tenantId: user.tenantId,
+        kind: pathKind,
+        deviceId: layby.deviceId ?? 'legacy',
+        localId: layby.localId,
+        payload: layby,
+        createdAt: new Date(layby.createdAt),
+        updatePayload: true,
+      })));
       return res.json({ synced });
     }
     if (pathKind === 'exchanges') {
       const { exchanges } = parseBody(exchangeSyncSchema, {
         exchanges: records
       });
-      const synced: Array<{ localId: number; remoteId: string }> = [];
-      await prisma.$transaction(async (tx) => {
-        for (const exchange of exchanges) {
-          const deviceId = exchange.deviceId ?? 'legacy';
-          const saved = await tx.syncRecord.upsert({
-            where: {
-              tenantId_kind_deviceId_localId: {
-                tenantId: user.tenantId,
-                kind: pathKind,
-                deviceId,
-                localId: exchange.localId
-              }
-            },
-            create: {
-              tenantId: user.tenantId,
-              kind: pathKind,
-              deviceId,
-              localId: exchange.localId,
-              payload: exchange as Prisma.InputJsonValue,
-              createdAt: new Date(exchange.createdAt)
-            },
-            update: { payload: exchange as Prisma.InputJsonValue },
-            select: { id: true }
-          });
-          synced.push({ localId: exchange.localId, remoteId: saved.id });
-        }
-      });
+      const synced = await upsertSyncRecords(exchanges.map((exchange) => ({
+        tenantId: user.tenantId,
+        kind: pathKind,
+        deviceId: exchange.deviceId ?? 'legacy',
+        localId: exchange.localId,
+        payload: exchange,
+        createdAt: new Date(exchange.createdAt),
+        updatePayload: true,
+      })));
       return res.json({ synced });
     }
     if (pathKind === 'stock-movements') {
       const { stockMovements } = parseBody(stockMovementsSyncSchema, {
         stockMovements: records
       });
-      const synced: Array<{ localId: number; remoteId: string }> = [];
-      await prisma.$transaction(async (tx) => {
-        for (const record of orderedStockMovements(stockMovements)) {
-          const deviceId = record.deviceId ?? 'legacy';
-          const keyValue = {
-            tenantId_kind_deviceId_localId: {
-              tenantId: user.tenantId,
-              kind: pathKind,
-              deviceId,
-              localId: record.localId
-            }
-          };
-          // INSERT ... ON CONFLICT DO NOTHING closes the check-then-create
-          // race when two tills retry the same movement at the same time.
-          // Only the transaction that inserted the row may apply its stock
-          // delta; the other transaction is an idempotent acknowledgement.
-          const inserted = await tx.syncRecord.createMany({
-            data: {
-              tenantId: user.tenantId,
-              kind: pathKind,
-              deviceId,
-              localId: record.localId,
-              payload: record as Prisma.InputJsonValue,
-              createdAt: new Date(record.createdAt)
-            },
-            skipDuplicates: true
-          });
-          const saved = await tx.syncRecord.findUnique({
-            where: keyValue,
-            select: { id: true }
-          });
-          if (!saved) throw new HttpError(409, 'Movement could not be recorded');
-          // Variant rows explain the variant balance, while the parent row is
-          // the one canonical product-stock delta. Opening is already included
-          // when the product is first created and must not be counted twice.
-          if (
-            inserted.count === 1 &&
-            record.productId &&
-            !record.variantId &&
-            stockMovementChangesProductBalance(record.movementType)
-          ) {
-            const updated = await tx.product.updateMany({
-              where: { id: record.productId, tenantId: user.tenantId },
-              data: { stockQty: { increment: record.qtyDelta } }
-            });
-            if (updated.count !== 1) {
-              // Roll back the ledger row as well. The client keeps this movement
-              // pending and retries after catalogue sync has established the
-              // product in this tenant.
-              throw new HttpError(409, 'Product is not available in this shop');
-            }
-          }
-          synced.push({ localId: record.localId, remoteId: saved.id });
+      const db = getD1DatabaseBinding();
+      const ordered = orderedStockMovements(stockMovements);
+      const statements = [];
+      const resultIndexes: number[] = [];
+      for (const record of ordered) {
+        const deviceId = record.deviceId ?? 'legacy';
+        const createdAt = new Date(record.createdAt).toISOString();
+        const changesProduct = Boolean(
+          record.productId &&
+          !record.variantId &&
+          stockMovementChangesProductBalance(record.movementType),
+        );
+        if (changesProduct) {
+          statements.push(db.prepare(`
+            UPDATE products
+            SET stock_qty = stock_qty + ?, updated_at = ?
+            WHERE id = ? AND tenant_id = ?
+              AND NOT EXISTS (
+                SELECT 1 FROM sync_records
+                WHERE tenant_id = ? AND kind = ? AND device_id = ? AND local_id = ?
+              )
+          `).bind(
+            record.qtyDelta,
+            createdAt,
+            record.productId,
+            user.tenantId,
+            user.tenantId,
+            pathKind,
+            deviceId,
+            record.localId,
+          ));
+          statements.push(db.prepare(`
+            INSERT INTO sync_records (
+              id, tenant_id, kind, device_id, local_id, payload, created_at, updated_at
+            )
+            SELECT ?, ?, ?, ?, ?, ?, ?, ?
+            WHERE changes() = 1
+            ON CONFLICT (tenant_id, kind, device_id, local_id) DO NOTHING
+          `).bind(
+            globalThis.crypto.randomUUID(),
+            user.tenantId,
+            pathKind,
+            deviceId,
+            record.localId,
+            JSON.stringify(record),
+            createdAt,
+            createdAt,
+          ));
+          statements.push(db.prepare(`
+            INSERT INTO products (id, tenant_id, name)
+            SELECT NULL, NULL, NULL
+            WHERE changes() = 0
+              AND NOT EXISTS (
+                SELECT 1 FROM sync_records
+                WHERE tenant_id = ? AND kind = ? AND device_id = ? AND local_id = ?
+              )
+          `).bind(user.tenantId, pathKind, deviceId, record.localId));
+        } else {
+          statements.push(db.prepare(`
+            INSERT INTO sync_records (
+              id, tenant_id, kind, device_id, local_id, payload, created_at, updated_at
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+            ON CONFLICT (tenant_id, kind, device_id, local_id) DO NOTHING
+          `).bind(
+            globalThis.crypto.randomUUID(),
+            user.tenantId,
+            pathKind,
+            deviceId,
+            record.localId,
+            JSON.stringify(record),
+            createdAt,
+            createdAt,
+          ));
         }
-      });
+        resultIndexes.push(statements.length);
+        statements.push(db.prepare(`
+          SELECT id FROM sync_records
+          WHERE tenant_id = ? AND kind = ? AND device_id = ? AND local_id = ?
+        `).bind(user.tenantId, pathKind, deviceId, record.localId));
+      }
+      const results = statements.length === 0 ? [] : await db.batch(statements);
+      const synced = ordered.map((record, index) => ({
+        localId: record.localId,
+        remoteId: requiredD1String(results[resultIndexes[index]], 'id', 'stock movement'),
+      }));
       return res.json({ synced });
     }
     if (pathKind === 'shot-cups') {
@@ -288,33 +281,15 @@ router.post(
       if (products.length !== productIds.length) {
         throw new HttpError(409, 'Product is not available in this shop');
       }
-      const synced: Array<{ localId: number; remoteId: string }> = [];
-      await prisma.$transaction(async (tx) => {
-        for (const cup of shotCups) {
-          const deviceId = cup.deviceId ?? 'legacy';
-          const saved = await tx.syncRecord.upsert({
-            where: {
-              tenantId_kind_deviceId_localId: {
-                tenantId: user.tenantId,
-                kind: pathKind,
-                deviceId,
-                localId: cup.localId
-              }
-            },
-            create: {
-              tenantId: user.tenantId,
-              kind: pathKind,
-              deviceId,
-              localId: cup.localId,
-              payload: cup as Prisma.InputJsonValue,
-              createdAt: new Date(cup.createdAt)
-            },
-            update: { payload: cup as Prisma.InputJsonValue },
-            select: { id: true }
-          });
-          synced.push({ localId: cup.localId, remoteId: saved.id });
-        }
-      });
+      const synced = await upsertSyncRecords(shotCups.map((cup) => ({
+        tenantId: user.tenantId,
+        kind: pathKind,
+        deviceId: cup.deviceId ?? 'legacy',
+        localId: cup.localId,
+        payload: cup,
+        createdAt: new Date(cup.createdAt),
+        updatePayload: true,
+      })));
       return res.json({ synced });
     }
     const { records: valid } = pathKind === 'purchases'
@@ -327,35 +302,14 @@ router.post(
     // later client mutation. Corrections are represented by a new document or
     // linked credit note, not an update to the original sync record.
     if (pathKind === 'purchases' || pathKind === 'returns') {
-      await prisma.$transaction(async (tx) => {
-        for (const record of valid) {
-          const deviceId = record.deviceId ?? 'legacy';
-          await tx.syncRecord.createMany({
-            data: {
-              tenantId: user.tenantId,
-              kind: pathKind,
-              deviceId,
-              localId: record.localId,
-              payload: record as Prisma.InputJsonValue,
-              createdAt: new Date(record.createdAt ?? new Date().toISOString())
-            },
-            skipDuplicates: true
-          });
-          const saved = await tx.syncRecord.findUnique({
-            where: {
-              tenantId_kind_deviceId_localId: {
-                tenantId: user.tenantId,
-                kind: pathKind,
-                deviceId,
-                localId: record.localId
-              }
-            },
-            select: { id: true }
-          });
-          if (!saved) throw new HttpError(409, 'Operational record could not be recorded');
-          synced.push({ localId: record.localId, remoteId: saved.id });
-        }
-      });
+      synced.push(...await upsertSyncRecords(valid.map((record) => ({
+        tenantId: user.tenantId,
+        kind: pathKind,
+        deviceId: record.deviceId ?? 'legacy',
+        localId: record.localId,
+        payload: record,
+        createdAt: new Date(record.createdAt ?? new Date().toISOString()),
+      }))));
       if (Array.isArray(raw)) return res.json({ synced });
       return res.json({
         localId: synced[0]?.localId,
@@ -363,35 +317,16 @@ router.post(
       });
     }
 
-    await prisma.$transaction(async (tx) => {
-      for (const record of valid) {
-        const deviceId = record.deviceId ?? 'legacy';
-        const saved = await tx.syncRecord.upsert({
-          where: {
-            tenantId_kind_deviceId_localId: {
-              tenantId: user.tenantId,
-              kind: pathKind,
-              deviceId,
-              localId: record.localId
-            }
-          },
-          create: {
-            tenantId: user.tenantId,
-            kind: pathKind,
-            deviceId,
-            localId: record.localId,
-            payload: record as Prisma.InputJsonValue,
-            createdAt: new Date(record.createdAt ?? new Date().toISOString())
-          },
-          update: {
-            payload: record as Prisma.InputJsonValue,
-            createdAt: new Date(record.createdAt ?? new Date().toISOString())
-          },
-          select: { id: true }
-        });
-        synced.push({ localId: record.localId, remoteId: saved.id });
-      }
-    });
+    synced.push(...await upsertSyncRecords(valid.map((record) => ({
+      tenantId: user.tenantId,
+      kind: pathKind,
+      deviceId: record.deviceId ?? 'legacy',
+      localId: record.localId,
+      payload: record,
+      createdAt: new Date(record.createdAt ?? new Date().toISOString()),
+      updatePayload: true,
+      updateCreatedAt: true,
+    }))));
 
     if (Array.isArray(raw)) return res.json({ synced });
     return res.json({

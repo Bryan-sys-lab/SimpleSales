@@ -10,7 +10,7 @@ export function isVerifiedEmailMatch(claims: any, requestedEmail: string): boole
   if (!claims) {
     return false;
   }
-  if (claims.email_verified === false) {
+  if (claims.email_verified !== true) {
     return false;
   }
   const tokenEmail = normalizeEmail(claims.email);

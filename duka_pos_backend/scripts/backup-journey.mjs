@@ -1,8 +1,6 @@
-import { randomUUID } from 'node:crypto';
+import { createHash, randomUUID } from 'node:crypto';
 
 const baseUrl = (process.env.BASE_URL || 'http://localhost:3100').replace(/\/$/, '');
-const code = process.env.AUTH_TEST_CODE;
-if (!/^\d{6}$/.test(code || '')) throw new Error('AUTH_TEST_CODE must be a six-digit test value');
 
 async function request(path, options = {}) {
   return fetch(`${baseUrl}${path}`, {
@@ -14,22 +12,45 @@ async function request(path, options = {}) {
 
 const suffix = randomUUID().slice(0, 8);
 const email = `ci-backup-${suffix}@example.com`;
+const password = '123456';
+const shopName = `CI Backup ${suffix}`;
+const ownerName = 'CI Owner';
 const link = await request('/api/auth/link', {
   method: 'POST',
-  body: JSON.stringify({ email, pin: '1234', shopName: `CI Backup ${suffix}`, ownerName: 'CI Owner' }),
+  body: JSON.stringify({ email, password, shopName, ownerName }),
 });
 if (!link.ok) throw new Error(`auth/link returned ${link.status}`);
+const challenge = await link.json();
+if (!/^\d{6}$/.test(challenge.debug_code || '')) {
+  throw new Error('auth/link did not return a test code; enable test-only verification debug codes');
+}
+if (!challenge.debug_first_voucher_code) {
+  throw new Error('first-registration voucher was not created before email verification');
+}
 const verified = await request('/api/auth/verify', {
   method: 'POST',
-  body: JSON.stringify({ email, pin: '1234', code }),
+  body: JSON.stringify({
+    email,
+    password,
+    code: challenge.debug_code,
+    voucherCode: challenge.debug_first_voucher_code,
+    shopName,
+    ownerName,
+  }),
 });
 if (!verified.ok) throw new Error(`auth/verify returned ${verified.status}`);
 const session = await verified.json();
+if (session.voucher_redeemed !== true) {
+  throw new Error('verified account did not redeem the first-registration voucher');
+}
 const headers = {
   authorization: `Bearer ${session.access_token}`,
   'x-tenant-id': session.tenant_id,
 };
 const workspaceKey = `backup-${suffix}`;
+const snapshotHash = createHash('sha256')
+  .update(`backup-journey:${suffix}`)
+  .digest('hex');
 
 for (const [kind, ciphertext] of [
   ['device_bound', `device-ciphertext-${suffix}`],
@@ -38,9 +59,31 @@ for (const [kind, ciphertext] of [
   const uploaded = await request('/api/backups/full', {
     method: 'POST',
     headers,
-    body: JSON.stringify({ workspaceKey, kind, payload: ciphertext }),
+    body: JSON.stringify({
+      workspaceKey,
+      kind,
+      payload: ciphertext,
+      snapshotHash: kind === 'device_bound' ? snapshotHash : undefined,
+    }),
   });
-  if (uploaded.status !== 201) throw new Error(`${kind} upload returned ${uploaded.status}`);
+  if (uploaded.status !== 201) {
+    throw new Error(`${kind} upload returned ${uploaded.status}: ${JSON.stringify(await uploaded.json())}`);
+  }
+  if (kind === 'device_bound') {
+    const retried = await request('/api/backups/full', {
+      method: 'POST',
+      headers,
+      body: JSON.stringify({
+        workspaceKey,
+        kind,
+        payload: `retry-${ciphertext}`,
+        snapshotHash,
+      }),
+    });
+    if (retried.status !== 200) {
+      throw new Error(`idempotent ${kind} retry returned ${retried.status}`);
+    }
+  }
 }
 
 for (const [kind, expected] of [

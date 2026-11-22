@@ -1,0 +1,66 @@
+import { beforeEach, describe, expect, it, vi } from 'vitest';
+
+const mocks = vi.hoisted(() => ({
+  batch: vi.fn(),
+  prepare: vi.fn(),
+  statements: [] as Array<{ sql: string; values: unknown[] }>,
+}));
+
+vi.mock('../lib/prisma', () => ({
+  getD1DatabaseBinding: () => ({
+    batch: mocks.batch,
+    prepare: mocks.prepare,
+  }),
+}));
+
+import { redeemVoucherAtomically } from '../lib/voucher_redemption';
+
+describe('voucher redemption D1 batch', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mocks.statements.length = 0;
+    mocks.prepare.mockImplementation((sql: string) => ({
+      bind: (...values: unknown[]) => {
+        const statement = { sql, values };
+        mocks.statements.push(statement);
+        return statement;
+      },
+    }));
+    mocks.batch.mockResolvedValue([{ meta: { changes: 1 } }, { meta: { changes: 1 } }]);
+  });
+
+  it('claims the voucher and conditionally updates entitlement in one D1 batch', async () => {
+    const now = new Date('2026-03-01T12:00:00.000Z');
+    const expiresAt = new Date('2026-03-31T12:00:00.000Z');
+
+    await expect(redeemVoucherAtomically({
+      voucherId: 'voucher-1',
+      tenantId: 'tenant-1',
+      profileId: 'profile-1',
+      email: 'owner@example.com',
+      now,
+      expiresAt,
+    })).resolves.toBe(true);
+
+    expect(mocks.batch).toHaveBeenCalledTimes(1);
+    expect(mocks.batch.mock.calls[0][0]).toHaveLength(2);
+    expect(mocks.statements[0].sql).toContain('redeemed_at IS NULL');
+    expect(mocks.statements[0].sql).toContain('issued_to_email = ?');
+    expect(mocks.statements[0].values).toContain('owner@example.com');
+    expect(mocks.statements[1].sql).toContain('WHERE changes() = 1');
+    expect(mocks.statements[1].sql).toContain('ON CONFLICT (tenant_id)');
+  });
+
+  it('does not report redemption when another request already claimed the voucher', async () => {
+    mocks.batch.mockResolvedValue([{ meta: { changes: 0 } }, { meta: { changes: 0 } }]);
+
+    await expect(redeemVoucherAtomically({
+      voucherId: 'voucher-1',
+      tenantId: 'tenant-1',
+      profileId: 'profile-1',
+      email: 'owner@example.com',
+      now: new Date('2026-03-01T12:00:00.000Z'),
+      expiresAt: null,
+    })).resolves.toBe(false);
+  });
+});

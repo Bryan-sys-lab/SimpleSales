@@ -15,6 +15,7 @@ const mocks = vi.hoisted(() => ({
   putOpaqueBackup: vi.fn(),
   getOpaqueBackup: vi.fn(),
   deleteOpaqueBackup: vi.fn(),
+  isR2Configured: vi.fn(),
 }));
 
 vi.mock('../lib/prisma', () => ({ prisma: mocks.prisma }));
@@ -22,6 +23,7 @@ vi.mock('../lib/r2', () => ({
   putOpaqueBackup: mocks.putOpaqueBackup,
   getOpaqueBackup: mocks.getOpaqueBackup,
   deleteOpaqueBackup: mocks.deleteOpaqueBackup,
+  isR2Configured: mocks.isR2Configured,
 }));
 vi.mock('../middleware/auth', () => ({
   requireRole: () => (req: any, _res: any, next: () => void) => {
@@ -43,6 +45,7 @@ describe('cloud backup storage', () => {
 
   beforeEach(() => {
     vi.clearAllMocks();
+    mocks.isR2Configured.mockReturnValue(true);
     mocks.prisma.cloudBackup.findMany.mockResolvedValue([]);
     mocks.prisma.cloudBackup.deleteMany.mockResolvedValue({ count: 0 });
     mocks.prisma.cloudBackup.create.mockResolvedValue({
@@ -53,7 +56,7 @@ describe('cloud backup storage', () => {
     });
   });
 
-  it('stores new ciphertext in R2 and only an empty legacy field in Postgres', async () => {
+  it('stores new ciphertext in R2 and only an empty legacy field in D1', async () => {
     const response = await supertest(app).post('/backups/full').send({
       workspaceKey: 'shop one',
       payload: 'opaque-ciphertext',
@@ -105,6 +108,33 @@ describe('cloud backup storage', () => {
 
     expect(response.status).toBe(400);
     expect(mocks.putOpaqueBackup).not.toHaveBeenCalled();
+  });
+
+  it('reports missing R2 configuration before uploading or restoring an object', async () => {
+    mocks.isR2Configured.mockReturnValue(false);
+    mocks.prisma.cloudBackup.findFirst.mockResolvedValue({
+      id: 'existing',
+      workspaceKey: 'shop one',
+      kind: 'device_bound',
+      payload: '',
+      storageKey: 'backups/tenant-1/shop%20one/existing.duka',
+      createdAt: new Date('2026-10-24T00:00:00.000Z'),
+    });
+
+    const upload = await supertest(app).post('/backups/full').send({
+      workspaceKey: 'shop one',
+      payload: 'opaque-ciphertext',
+    });
+    const restore = await supertest(app)
+      .get('/backups/full')
+      .query({ workspaceKey: 'shop one' });
+
+    expect(upload.status).toBe(503);
+    expect(upload.body.code).toBe('BACKUP_STORAGE_NOT_CONFIGURED');
+    expect(restore.status).toBe(503);
+    expect(restore.body.code).toBe('BACKUP_STORAGE_NOT_CONFIGURED');
+    expect(mocks.putOpaqueBackup).not.toHaveBeenCalled();
+    expect(mocks.getOpaqueBackup).not.toHaveBeenCalled();
   });
 
   it('reads new R2-backed snapshots and legacy database snapshots', async () => {

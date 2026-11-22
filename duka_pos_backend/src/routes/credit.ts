@@ -1,7 +1,7 @@
 import { Router } from 'express';
 import { asyncHandler, requireUser } from '../lib/http';
 import { parseBody, creditSyncSchema } from '../lib/validation';
-import { prisma } from '../lib/prisma';
+import { getD1DatabaseBinding, prisma } from '../lib/prisma';
 import { requireRole } from '../middleware/auth';
 
 const router = Router();
@@ -9,24 +9,81 @@ const router = Router();
 router.post('/sync', requireRole('admin', 'manager', 'cashier'), asyncHandler(async (req, res) => {
   const { customers, entries } = parseBody(creditSyncSchema, req.body);
   const tenantId = requireUser(req).tenantId;
-  await prisma.$transaction(async (tx) => {
-    for (const input of customers) {
-      await tx.customer.upsert({
-        where: { tenantId_localUuid: { tenantId, localUuid: input.localUuid } },
-        create: { tenantId, localUuid: input.localUuid, name: input.name, phone: input.phone ?? null, tin: input.tin ?? null, notes: input.notes ?? null, creditLimitMinor: input.creditLimitMinor ?? null, balanceMinor: input.balanceMinor, active: input.active, createdAt: new Date(input.createdAt) },
-        update: { name: input.name, phone: input.phone ?? null, tin: input.tin ?? null, notes: input.notes ?? null, creditLimitMinor: input.creditLimitMinor ?? null, balanceMinor: input.balanceMinor, active: input.active, createdAt: new Date(input.createdAt) },
-      });
-    }
-    for (const input of entries) {
-      const customer = await tx.customer.findUnique({ where: { tenantId_localUuid: { tenantId, localUuid: input.customerUuid } }, select: { id: true } });
-      if (!customer) continue;
-      await tx.creditLedger.upsert({
-        where: { tenantId_localUuid: { tenantId, localUuid: input.localUuid } },
-        create: { tenantId, localUuid: input.localUuid, customerId: customer.id, entryType: input.entryType, amountMinor: input.amountMinor, saleLocalId: input.saleLocalId ?? null, returnLocalId: input.returnLocalId ?? null, paymentMethod: input.paymentMethod ?? null, reference: input.reference ?? null, staffName: input.staffName, note: input.note ?? null, createdAt: new Date(input.createdAt) },
-        update: { customerId: customer.id, entryType: input.entryType, amountMinor: input.amountMinor, saleLocalId: input.saleLocalId ?? null, returnLocalId: input.returnLocalId ?? null, paymentMethod: input.paymentMethod ?? null, reference: input.reference ?? null, staffName: input.staffName, note: input.note ?? null, createdAt: new Date(input.createdAt) },
-      });
-    }
-  });
+  const db = getD1DatabaseBinding();
+  const statements = [];
+  const now = new Date().toISOString();
+  for (const input of customers) {
+    const createdAt = new Date(input.createdAt).toISOString();
+    statements.push(db.prepare(`
+      INSERT INTO customers (
+        id, tenant_id, local_uuid, name, phone, tin, notes, credit_limit_minor,
+        balance_minor, active, created_at, updated_at
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      ON CONFLICT (tenant_id, local_uuid) DO UPDATE SET
+        name = excluded.name,
+        phone = excluded.phone,
+        tin = excluded.tin,
+        notes = excluded.notes,
+        credit_limit_minor = excluded.credit_limit_minor,
+        balance_minor = excluded.balance_minor,
+        active = excluded.active,
+        created_at = excluded.created_at,
+        updated_at = excluded.updated_at
+    `).bind(
+      globalThis.crypto.randomUUID(),
+      tenantId,
+      input.localUuid,
+      input.name,
+      input.phone ?? null,
+      input.tin ?? null,
+      input.notes ?? null,
+      input.creditLimitMinor ?? null,
+      input.balanceMinor,
+      input.active ? 1 : 0,
+      createdAt,
+      now,
+    ));
+  }
+  for (const input of entries) {
+    const createdAt = new Date(input.createdAt).toISOString();
+    statements.push(db.prepare(`
+      INSERT INTO credit_ledger (
+        id, tenant_id, local_uuid, customer_id, entry_type, amount_minor,
+        sale_local_id, return_local_id, payment_method, reference, staff_name,
+        note, created_at
+      )
+      SELECT ?, ?, ?, customers.id, ?, ?, ?, ?, ?, ?, ?, ?, ?
+      FROM customers
+      WHERE customers.tenant_id = ? AND customers.local_uuid = ?
+      ON CONFLICT (tenant_id, local_uuid) DO UPDATE SET
+        customer_id = excluded.customer_id,
+        entry_type = excluded.entry_type,
+        amount_minor = excluded.amount_minor,
+        sale_local_id = excluded.sale_local_id,
+        return_local_id = excluded.return_local_id,
+        payment_method = excluded.payment_method,
+        reference = excluded.reference,
+        staff_name = excluded.staff_name,
+        note = excluded.note,
+        created_at = excluded.created_at
+    `).bind(
+      globalThis.crypto.randomUUID(),
+      tenantId,
+      input.localUuid,
+      input.entryType,
+      input.amountMinor,
+      input.saleLocalId ?? null,
+      input.returnLocalId ?? null,
+      input.paymentMethod ?? null,
+      input.reference ?? null,
+      input.staffName,
+      input.note ?? null,
+      createdAt,
+      tenantId,
+      input.customerUuid,
+    ));
+  }
+  if (statements.length > 0) await db.batch(statements);
   res.json({ syncedCustomers: customers.length, syncedEntries: entries.length });
 }));
 

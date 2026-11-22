@@ -18,7 +18,7 @@ export async function runRetention(options?: {
   const cutoff = new Date(Date.now() - olderThanDays * 24 * 60 * 60 * 1000);
   const where = { createdAt: { lt: cutoff } };
 
-  let deleted = 0;
+  let deleted: number;
   if (options?.dryRun) {
     deleted = await prisma.telemetryEvent.count({ where });
     log('info', 'retention.dry_run', { olderThanDays, wouldDelete: deleted, cutoff: cutoff.toISOString() });

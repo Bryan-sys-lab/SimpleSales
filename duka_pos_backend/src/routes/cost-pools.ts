@@ -5,7 +5,8 @@
 import { Router } from 'express';
 import { asyncHandler, HttpError, requireUser } from '../lib/http';
 import { parseBody, costPoolSyncSchema } from '../lib/validation';
-import { prisma } from '../lib/prisma';
+import { getD1DatabaseBinding, prisma } from '../lib/prisma';
+import { requiredD1String } from '../lib/d1_results';
 
 const router = Router();
 
@@ -45,37 +46,41 @@ router.post(
   asyncHandler(async (req, res) => {
     const { costPools } = parseBody(costPoolSyncSchema, req.body);
     const tenantId = requireUser(req).tenantId;
-    const synced = await prisma.$transaction(async (tx) => {
-      const result: Array<{ localId: number; remoteId: string }> = [];
-      for (const pool of costPools) {
-        if (!pool.syncKey) {
-          throw new HttpError(400, 'Cost pool missing syncKey');
-        }
-        const saved = await tx.costPool.upsert({
-          where: {
-            tenantId_syncKey: { tenantId, syncKey: pool.syncKey },
-          },
-          create: {
-            tenantId,
-            syncKey: pool.syncKey,
-            uuid: pool.uuid,
-            name: pool.name,
-            poolType: pool.poolType,
-            investedMinor: pool.investedMinor,
-            recoveredMinor: pool.recoveredMinor,
-            status: pool.status,
-          },
-          update: {
-            name: pool.name,
-            poolType: pool.poolType,
-            investedMinor: pool.investedMinor,
-            recoveredMinor: pool.recoveredMinor,
-            status: pool.status,
-          },
-        });
-        result.push({ localId: pool.id, remoteId: saved.id });
-      }
-      return result;
+    const records = costPools.map((pool) => {
+      if (!pool.syncKey) throw new HttpError(400, 'Cost pool missing syncKey');
+      return pool;
+    });
+    const db = getD1DatabaseBinding();
+    const now = new Date().toISOString();
+    const results = records.length === 0 ? [] : await db.batch(records.map((pool) => db.prepare(`
+      INSERT INTO cost_pools (
+        id, tenant_id, sync_key, uuid, name, pool_type, invested_minor,
+        recovered_minor, status, created_at, updated_at
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      ON CONFLICT (tenant_id, sync_key) DO UPDATE SET
+        name = excluded.name,
+        pool_type = excluded.pool_type,
+        invested_minor = excluded.invested_minor,
+        recovered_minor = excluded.recovered_minor,
+        status = excluded.status,
+        updated_at = excluded.updated_at
+      RETURNING id
+    `).bind(
+      globalThis.crypto.randomUUID(),
+      tenantId,
+      pool.syncKey,
+      pool.uuid,
+      pool.name,
+      pool.poolType,
+      pool.investedMinor,
+      pool.recoveredMinor,
+      pool.status,
+      now,
+      now,
+    )));
+    const synced = records.map((pool, index) => {
+      const remoteId = requiredD1String(results[index], 'id', 'cost pool');
+      return { localId: pool.id, remoteId };
     });
     return res.json({ synced });
   })

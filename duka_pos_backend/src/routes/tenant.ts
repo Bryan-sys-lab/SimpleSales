@@ -6,12 +6,12 @@
  * tenant-selected staff bootstrap route.
  */
 import { Router } from 'express';
-import { pbkdf2Sync, timingSafeEqual, randomUUID } from 'node:crypto';
-import { Prisma } from '@prisma/client';
+import { randomUUID } from 'node:crypto';
+import { Prisma } from '../generated/prisma/client';
 import { asyncHandler, HttpError, requireUser } from '../lib/http';
 import { parseBody } from '../lib/validation';
 import { provisionSchema, settingsSchema, staffSyncSchema, deletionSchema, staffAuthenticateSchema, staffSelfPinSchema, staffPinResetRequestSchema, staffPinResetApproveSchema, mpesaChannelSchema, taxEntitySchema, vatReturnStatusSchema, subscriptionPaymentSchema } from '../lib/validation';
-import { prisma } from '../lib/prisma';
+import { getD1DatabaseBinding, prisma } from '../lib/prisma';
 import { authMiddleware } from '../middleware/auth';
 import rateLimit from 'express-rate-limit';
 import { registerPaymentChannel, initiateStkPush, queryTransactionStatus } from '../services/payhero';
@@ -22,6 +22,8 @@ import { readableTenantId } from '../lib/tenant_id';
 import { issueStaffSessionToken, verifyStaffSessionToken } from '../lib/jwt';
 import { broadcastTenantChange } from '../services/live_broker';
 import { tenantEntitlement } from '../lib/entitlements';
+import { isVerifiedEmailMatch } from '../lib/identity';
+import { activateSubscriptionPaymentAtomically } from '../lib/subscription_settlement';
 
 const router = Router();
 
@@ -33,32 +35,65 @@ const staffAuthLimiter = _isNode ? rateLimit({
   legacyHeaders: false,
 }) : ((_req: any, _res: any, next: any) => next());
 
+async function deriveStaffPin(pin: string, salt: Uint8Array, iterations: number, length: number): Promise<Uint8Array> {
+  const key = await globalThis.crypto.subtle.importKey(
+    'raw',
+    new TextEncoder().encode(pin),
+    'PBKDF2',
+    false,
+    ['deriveBits'],
+  );
+  const bits = await globalThis.crypto.subtle.deriveBits(
+    { name: 'PBKDF2', hash: 'SHA-256', salt: new Uint8Array(salt), iterations },
+    key,
+    length * 8,
+  );
+  return new Uint8Array(bits);
+}
+
+function decodeBase64Url(value: string): Uint8Array {
+  const base64 = value.replace(/-/g, '+').replace(/_/g, '/');
+  const decoded = atob(base64 + '='.repeat((4 - base64.length % 4) % 4));
+  return Uint8Array.from(decoded, (character) => character.charCodeAt(0));
+}
+
+function encodeBase64Url(value: Uint8Array): string {
+  let binary = '';
+  for (const byte of value) binary += String.fromCharCode(byte);
+  return btoa(binary).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/g, '');
+}
+
 /** Verifies the app's self-describing PBKDF2-HMAC-SHA256 PIN format. */
-function verifyStaffPin(pin: string, stored: string | null): boolean {
+async function verifyStaffPin(pin: string, stored: string | null): Promise<boolean> {
   if (!stored?.startsWith('pbkdf2$')) return false;
   const parts = stored.split('$');
   if (parts.length !== 4) return false;
   const iterations = Number.parseInt(parts[1], 10);
-  if (!Number.isSafeInteger(iterations) || iterations < 1 || iterations > 2_000_000) {
+  if (!Number.isSafeInteger(iterations) || iterations < 1 || iterations > 100_000) {
     return false;
   }
   try {
-    const salt = Buffer.from(parts[2], 'base64url');
-    const expected = Buffer.from(parts[3], 'base64url');
+    const salt = decodeBase64Url(parts[2]);
+    const expected = decodeBase64Url(parts[3]);
     if (salt.length < 8 || expected.length === 0 || expected.length > 64) return false;
-    const actual = pbkdf2Sync(pin, salt, iterations, expected.length, 'sha256');
-    return actual.length === expected.length && timingSafeEqual(actual, expected);
+    const actual = await deriveStaffPin(pin, salt, iterations, expected.length);
+    if (actual.length !== expected.length) return false;
+    let difference = 0;
+    for (let index = 0; index < actual.length; index += 1) {
+      difference |= actual[index] ^ expected[index];
+    }
+    return difference === 0;
   } catch {
     // A malformed verifier is simply an invalid credential.
     return false;
   }
 }
 
-function hashStaffPin(pin: string): string {
-  const salt = Buffer.from(globalThis.crypto?.randomUUID?.() ?? Math.random().toString(36)).subarray(0, 16);
-  const iterations = 120_000;
-  const hash = pbkdf2Sync(pin, salt, iterations, 32, 'sha256');
-  return `pbkdf2$${iterations}$${salt.toString('base64url')}$${hash.toString('base64url')}`;
+async function hashStaffPin(pin: string): Promise<string> {
+  const salt = globalThis.crypto.getRandomValues(new Uint8Array(16));
+  const iterations = 100_000;
+  const hash = await deriveStaffPin(pin, salt, iterations, 32);
+  return `pbkdf2$${iterations}$${encodeBase64Url(salt)}$${encodeBase64Url(hash)}`;
 }
 
 // Prisma stores server ledger amounts as major currency units. The mobile KPI
@@ -114,6 +149,67 @@ const totReturnView = (record: any) => ({
   created_at: record.createdAt,
   updated_at: record.updatedAt,
 });
+
+async function saveTaxReturnStatus(params: {
+  kind: 'vat' | 'tot';
+  returnId: string;
+  taxEntityId: string;
+  currentStatus: string;
+  nextStatus: string;
+  rejectionReason?: string | null;
+  actorId: string;
+  now: Date;
+}): Promise<void> {
+  const table = params.kind === 'vat' ? 'vat_returns' : 'tot_returns';
+  const eventColumn = params.kind === 'vat' ? 'vat_return_id' : 'tot_return_id';
+  const db = getD1DatabaseBinding();
+  const statements = [
+    db.prepare(`
+      UPDATE ${table}
+      SET status = ?,
+          rejection_reason = CASE WHEN ? = 'rejected' THEN ? ELSE NULL END,
+          submitted_at = CASE WHEN ? = 'submitted' THEN ? ELSE submitted_at END,
+          accepted_at = CASE WHEN ? = 'accepted' THEN ? ELSE accepted_at END,
+          paid_at = CASE WHEN ? = 'settled' THEN ? ELSE paid_at END,
+          updated_at = ?
+      WHERE id = ? AND status = ?
+    `).bind(
+      params.nextStatus,
+      params.nextStatus,
+      params.rejectionReason ?? null,
+      params.nextStatus,
+      params.now.toISOString(),
+      params.nextStatus,
+      params.now.toISOString(),
+      params.nextStatus,
+      params.now.toISOString(),
+      params.now.toISOString(),
+      params.returnId,
+      params.currentStatus,
+    ),
+  ];
+  if (params.currentStatus !== params.nextStatus) {
+    statements.push(db.prepare(`
+      INSERT INTO tax_return_events (
+        id, tax_entity_id, ${eventColumn}, from_status, to_status, actor_id, note, created_at
+      )
+      SELECT ?, ?, ?, ?, ?, ?, ?, ? WHERE changes() = 1
+    `).bind(
+      randomUUID(),
+      params.taxEntityId,
+      params.returnId,
+      params.currentStatus,
+      params.nextStatus,
+      params.actorId,
+      params.rejectionReason ?? null,
+      params.now.toISOString(),
+    ));
+  }
+  const results = await db.batch(statements);
+  if ((results[0]?.meta.changes ?? 0) !== 1) {
+    throw new HttpError(409, 'Tax return status changed; reload before retrying');
+  }
+}
 
 // Apply OIDC auth to all routes except provision and shops.
 // (authMiddleware is applied in index.ts at the /api level; we apply role
@@ -189,14 +285,12 @@ router.post('/subscription/payment/:reference/confirm-code', asyncHandler(async 
 async function activateSubscriptionPayment(paymentId: string) {
   const payment = await prisma.subscriptionPayment.findUnique({ where: { id: paymentId } });
   if (!payment || payment.status === 'SUCCESS') return;
-  const current = await prisma.tenantSubscription.findUnique({ where: { tenantId: payment.tenantId } });
-  const base = current?.currentPeriodEnd && current.currentPeriodEnd > new Date() ? current.currentPeriodEnd : new Date();
-  const end = new Date(base);
-  end.setUTCMonth(end.getUTCMonth() + payment.durationMonths);
-  await prisma.$transaction([
-    prisma.subscriptionPayment.update({ where: { id: payment.id }, data: { status: 'SUCCESS', providerStatus: 'SUCCESS' } }),
-    prisma.tenantSubscription.upsert({ where: { tenantId: payment.tenantId }, create: { tenantId: payment.tenantId, status: 'active', currentPeriodEnd: end }, update: { status: 'active', currentPeriodEnd: end, voucherId: null, graceUntil: null } }),
-  ]);
+  await activateSubscriptionPaymentAtomically({
+    paymentId: payment.id,
+    tenantId: payment.tenantId,
+    durationMonths: payment.durationMonths,
+    receiptCode: payment.mpesaReceiptCode,
+  });
 }
 
 router.post(
@@ -241,35 +335,41 @@ router.post(
     if (!userId) {
       return res.status(401).json({ error: 'Authenticated user required' });
     }
-    // Verify the OIDC email matches the account email.
-    // (identity.isVerifiedEmailMatch is imported where needed.)
+    if (!isVerifiedEmailMatch(req.auth, email)) {
+      return res.status(403).json({
+        error: 'A verified account email matching the shop owner email is required',
+        code: 'EMAIL_IDENTITY_MISMATCH',
+      });
+    }
     const existingShop = await prisma.profile.findFirst({
       where: { userId: userId, tenant: { shopName: shopName.trim() } },
     });
     if (existingShop) {
       return res.status(409).json({ error: 'This account is already linked to this shop', tenant_id: existingShop.tenantId });
     }
-    const result = await prisma.$transaction(async (tx) => {
-      const tenant = await tx.tenant.create({
-        data: {
-          id: readableTenantId(ownerName, shopName),
-          shopName: shopName.trim(),
-          businessProfile,
-          subscription: { create: { status: 'pending' } },
-        },
-      });
-      const profile = await tx.profile.create({
-        data: {
-          userId: userId,
-          tenantId: tenant.id,
-          name: ownerName.trim(),
-          email,
-          role: 'admin',
-        },
-      });
-      return { tenant, profile };
-    });
-    return res.json({ tenant_id: result.tenant.id });
+    const tenantId = readableTenantId(ownerName, shopName);
+    const profileId = globalThis.crypto.randomUUID();
+    const subscriptionId = globalThis.crypto.randomUUID();
+    const now = new Date().toISOString();
+    const db = getD1DatabaseBinding();
+    const results = await db.batch([
+      db.prepare(`
+        INSERT INTO tenants (id, shop_name, business_profile, created_at, updated_at)
+        VALUES (?, ?, ?, ?, ?)
+      `).bind(tenantId, shopName.trim(), businessProfile, now, now),
+      db.prepare(`
+        INSERT INTO tenant_subscriptions (id, tenant_id, status, created_at, updated_at)
+        SELECT ?, ?, 'pending', ?, ? WHERE changes() = 1
+      `).bind(subscriptionId, tenantId, now, now),
+      db.prepare(`
+        INSERT INTO profiles (id, user_id, tenant_id, name, email, role, created_at)
+        SELECT ?, ?, ?, ?, ?, 'admin', ? WHERE changes() = 1
+      `).bind(profileId, userId, tenantId, ownerName.trim(), email, now),
+    ]);
+    if (results.some((result) => (result.meta.changes ?? 0) !== 1)) {
+      throw new Error('Tenant provisioning did not create all required records');
+    }
+    return res.json({ tenant_id: tenantId });
   })
 );
 
@@ -352,25 +452,44 @@ router.patch(
       });
     }
     const tenantId = requireUser(req).tenantId;
-    const tenant = await prisma.$transaction(async (tx) => {
-      const updated = await tx.tenant.update({
-        where: { id: tenantId },
-        data: {
-          ...(mpesaEnabled !== undefined && { mpesaEnabled }),
-          ...(etimsEnabled !== undefined && { etimsEnabled }),
-          ...(payheroChannelId !== undefined && { payheroChannelId }),
-          ...(businessProfile !== undefined && { businessProfile }),
-          ...(risitiMerchantId !== undefined && { risitiMerchantId }),
-        },
-      });
-      if (businessProfile !== undefined) {
-        await tx.businessContext.updateMany({
-          where: { tenantId },
-          data: { appProfile: businessProfile },
-        });
-      }
-      return updated;
-    });
+    const now = new Date().toISOString();
+    const db = getD1DatabaseBinding();
+    const statements = [
+      db.prepare(`
+        UPDATE tenants
+        SET mpesa_enabled = CASE WHEN ? = 1 THEN ? ELSE mpesa_enabled END,
+            etims_enabled = CASE WHEN ? = 1 THEN ? ELSE etims_enabled END,
+            payhero_channel_id = CASE WHEN ? = 1 THEN ? ELSE payhero_channel_id END,
+            business_profile = CASE WHEN ? = 1 THEN ? ELSE business_profile END,
+            risiti_merchant_id = CASE WHEN ? = 1 THEN ? ELSE risiti_merchant_id END,
+            updated_at = ?
+        WHERE id = ?
+      `).bind(
+        mpesaEnabled !== undefined ? 1 : 0,
+        mpesaEnabled ?? null,
+        etimsEnabled !== undefined ? 1 : 0,
+        etimsEnabled ?? null,
+        payheroChannelId !== undefined ? 1 : 0,
+        payheroChannelId ?? null,
+        businessProfile !== undefined ? 1 : 0,
+        businessProfile ?? null,
+        risitiMerchantId !== undefined ? 1 : 0,
+        risitiMerchantId ?? null,
+        now,
+        tenantId,
+      ),
+    ];
+    if (businessProfile !== undefined) {
+      statements.push(db.prepare(`
+        UPDATE business_context SET app_profile = ? WHERE tenant_id = ?
+      `).bind(businessProfile, tenantId));
+    }
+    const results = await db.batch(statements);
+    if ((results[0]?.meta.changes ?? 0) !== 1) {
+      return res.status(404).json({ error: 'Shop not found' });
+    }
+    const tenant = await prisma.tenant.findUnique({ where: { id: tenantId } });
+    if (!tenant) return res.status(404).json({ error: 'Shop not found' });
     return res.json(tenant);
   })
 );
@@ -843,31 +962,18 @@ router.post(
       return res.status(409).json({ error: `Invalid VAT return status transition: ${current.status} -> ${input.status}` });
     }
     const now = new Date();
-    const updated = await prisma.$transaction(async (tx) => {
-      const saved = await tx.vatReturn.update({
-        where: { id: current.id },
-        data: {
-          status: input.status,
-          rejectionReason: input.status === 'rejected' ? input.rejectionReason ?? null : null,
-          submittedAt: input.status === 'submitted' ? now : current.submittedAt,
-          acceptedAt: input.status === 'accepted' ? now : current.acceptedAt,
-          paidAt: input.status === 'settled' ? now : current.paidAt,
-        },
-      });
-      if (current.status !== input.status) {
-        await tx.taxReturnEvent.create({
-          data: {
-            taxEntityId: link.taxEntityId,
-            vatReturnId: current.id,
-            fromStatus: current.status,
-            toStatus: input.status,
-            actorId: user.id,
-            note: input.rejectionReason ?? null,
-          },
-        });
-      }
-      return saved;
+    await saveTaxReturnStatus({
+      kind: 'vat',
+      returnId: current.id,
+      taxEntityId: link.taxEntityId,
+      currentStatus: current.status,
+      nextStatus: input.status,
+      rejectionReason: input.rejectionReason,
+      actorId: user.id,
+      now,
     });
+    const updated = await prisma.vatReturn.findUnique({ where: { id: current.id } });
+    if (!updated) throw new Error('Updated VAT return could not be reloaded');
     return res.json({ vat_return: vatReturnView(updated) });
   }),
 );
@@ -994,31 +1100,18 @@ router.post(
       return res.status(409).json({ error: `Invalid TOT return status transition: ${current.status} -> ${input.status}` });
     }
     const now = new Date();
-    const updated = await prisma.$transaction(async (tx) => {
-      const saved = await tx.totReturn.update({
-        where: { id: current.id },
-        data: {
-          status: input.status,
-          rejectionReason: input.status === 'rejected' ? input.rejectionReason ?? null : null,
-          submittedAt: input.status === 'submitted' ? now : current.submittedAt,
-          acceptedAt: input.status === 'accepted' ? now : current.acceptedAt,
-          paidAt: input.status === 'settled' ? now : current.paidAt,
-        },
-      });
-      if (current.status !== input.status) {
-        await tx.taxReturnEvent.create({
-          data: {
-            taxEntityId: link.taxEntityId,
-            totReturnId: current.id,
-            fromStatus: current.status,
-            toStatus: input.status,
-            actorId: user.id,
-            note: input.rejectionReason ?? null,
-          },
-        });
-      }
-      return saved;
+    await saveTaxReturnStatus({
+      kind: 'tot',
+      returnId: current.id,
+      taxEntityId: link.taxEntityId,
+      currentStatus: current.status,
+      nextStatus: input.status,
+      rejectionReason: input.rejectionReason,
+      actorId: user.id,
+      now,
     });
+    const updated = await prisma.totReturn.findUnique({ where: { id: current.id } });
+    if (!updated) throw new Error('Updated TOT return could not be reloaded');
     return res.json({ tot_return: totReturnView(updated) });
   }),
 );
@@ -1031,56 +1124,104 @@ router.patch(
     const input = parseBody(taxEntitySchema, req.body);
     const tenantId = user.tenantId;
     const effectiveFrom = new Date(input.effectiveFrom);
-    const saved = await prisma.$transaction(async (tx) => {
-      const now = new Date();
-      const current = await tx.shopTaxEntity.findFirst({
-        where: {
-          tenantId,
-          effectiveFrom: { lte: now },
-          OR: [{ effectiveTo: null }, { effectiveTo: { gt: now } }],
-        },
-        include: { taxEntity: true },
-        orderBy: { effectiveFrom: 'desc' },
-      });
-      if (current && effectiveFrom < current.effectiveFrom) {
-        throw new HttpError(409, 'A tax-entity mapping cannot be back-dated over the current mapping');
-      }
-      const data = {
-        legalForm: input.legalForm,
-        displayLabel: input.displayLabel,
-        registeredTaxObligations: input.registeredTaxObligations,
-        accountingPeriodStartMonth: input.accountingPeriodStartMonth,
-        status: input.status,
-        etimsOnboardingStatus: input.etimsOnboardingStatus,
-        etimsMethod: input.etimsMethod ?? null,
-        ...(input.kraPin === undefined ? {} : {
-          kraPinCiphertext: encryptTaxSecret(input.kraPin),
-          kraPinLast4: lastFour(input.kraPin),
-        }),
-      };
-      const entity = current
-        ? await tx.taxEntity.update({ where: { id: current.taxEntityId }, data })
-        : await tx.taxEntity.create({ data });
-      if (current && current.effectiveFrom.getTime() === effectiveFrom.getTime()) {
-        await tx.shopTaxEntity.update({
-          where: { id: current.id },
-          data: { taxEntityId: entity.id, outletReference: input.outletReference },
-        });
-      } else {
-        if (current && current.effectiveTo == null && effectiveFrom > current.effectiveFrom) {
-          await tx.shopTaxEntity.update({ where: { id: current.id }, data: { effectiveTo: effectiveFrom } });
-        }
-        await tx.shopTaxEntity.create({
-          data: {
-            tenantId,
-            taxEntityId: entity.id,
-            outletReference: input.outletReference,
-            effectiveFrom,
-          },
-        });
-      }
-      return entity;
+    const now = new Date();
+    const current = await prisma.shopTaxEntity.findFirst({
+      where: {
+        tenantId,
+        effectiveFrom: { lte: now },
+        OR: [{ effectiveTo: null }, { effectiveTo: { gt: now } }],
+      },
+      include: { taxEntity: true },
+      orderBy: { effectiveFrom: 'desc' },
     });
+    if (current && effectiveFrom < current.effectiveFrom) {
+      throw new HttpError(409, 'A tax-entity mapping cannot be back-dated over the current mapping');
+    }
+
+    const taxEntityId = current?.taxEntityId ?? randomUUID();
+    const nowIso = now.toISOString();
+    const kraPinCiphertext = input.kraPin === undefined ? null : encryptTaxSecret(input.kraPin);
+    const kraPinLast4 = input.kraPin === undefined ? null : lastFour(input.kraPin);
+    const db = getD1DatabaseBinding();
+    const statements = current
+      ? [db.prepare(`
+          UPDATE tax_entities
+          SET legal_form = ?, display_label = ?,
+              kra_pin_ciphertext = COALESCE(?, kra_pin_ciphertext),
+              kra_pin_last4 = COALESCE(?, kra_pin_last4),
+              registered_tax_obligations = ?, accounting_period_start_month = ?,
+              status = ?, etims_onboarding_status = ?, etims_method = ?, updated_at = ?
+          WHERE id = ?
+        `).bind(
+          input.legalForm,
+          input.displayLabel,
+          kraPinCiphertext,
+          kraPinLast4,
+          JSON.stringify(input.registeredTaxObligations),
+          input.accountingPeriodStartMonth,
+          input.status,
+          input.etimsOnboardingStatus,
+          input.etimsMethod ?? null,
+          nowIso,
+          taxEntityId,
+        )]
+      : [db.prepare(`
+          INSERT INTO tax_entities (
+            id, legal_form, display_label, kra_pin_ciphertext, kra_pin_last4,
+            registered_tax_obligations, accounting_period_start_month, status,
+            etims_onboarding_status, etims_method, created_at, updated_at
+          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        `).bind(
+          taxEntityId,
+          input.legalForm,
+          input.displayLabel,
+          kraPinCiphertext,
+          kraPinLast4,
+          JSON.stringify(input.registeredTaxObligations),
+          input.accountingPeriodStartMonth,
+          input.status,
+          input.etimsOnboardingStatus,
+          input.etimsMethod ?? null,
+          nowIso,
+          nowIso,
+        )];
+
+    if (current && current.effectiveFrom.getTime() === effectiveFrom.getTime()) {
+      statements.push(db.prepare(`
+        UPDATE shop_tax_entities
+        SET tax_entity_id = ?, outlet_reference = ?
+        WHERE id = ?
+      `).bind(taxEntityId, input.outletReference, current.id));
+      statements.push(db.prepare(`
+        INSERT INTO shop_tax_entities (id, tenant_id, tax_entity_id, effective_from)
+        SELECT NULL, NULL, NULL, NULL WHERE changes() <> 1
+      `));
+    } else {
+      if (current && current.effectiveTo == null && effectiveFrom > current.effectiveFrom) {
+        statements.push(db.prepare(`
+          UPDATE shop_tax_entities SET effective_to = ? WHERE id = ?
+        `).bind(effectiveFrom.toISOString(), current.id));
+        statements.push(db.prepare(`
+          INSERT INTO shop_tax_entities (id, tenant_id, tax_entity_id, effective_from)
+          SELECT NULL, NULL, NULL, NULL WHERE changes() <> 1
+        `));
+      }
+      statements.push(db.prepare(`
+        INSERT INTO shop_tax_entities (
+          id, tenant_id, tax_entity_id, outlet_reference, effective_from, created_at
+        ) VALUES (?, ?, ?, ?, ?, ?)
+      `).bind(
+        randomUUID(),
+        tenantId,
+        taxEntityId,
+        input.outletReference,
+        effectiveFrom.toISOString(),
+        nowIso,
+      ));
+    }
+    await db.batch(statements);
+    const saved = await prisma.taxEntity.findUnique({ where: { id: taxEntityId } });
+    if (!saved) throw new Error('Tax entity could not be reloaded after update');
     return res.json({ tax_entity: taxEntityView(saved) });
   }),
 );
@@ -1129,23 +1270,66 @@ router.post(
         }
       }
     }
-    const synced = await prisma.$transaction(async (tx) => {
-      const result: any[] = [];
-      for (const item of staff) {
-        const existing = item.remoteId
-          ? await tx.profile.findFirst({ where: { id: item.remoteId, tenantId, role: { in: ['cashier', 'manager'] } } })
-          : await tx.profile.findFirst({ where: { tenantId, localId: item.localId, role: { in: ['cashier', 'manager'] } } });
-        // Owner roster sync may create the initial credential, but it can never
-        // replace an existing staff PIN. Only the staff member can rotate it.
-        const credential = existing == null && item.pinHash != null ? { pinHash: item.pinHash } : {};
-        const username = item.username?.trim().toLowerCase() ?? null;
-        const profile = existing
-          ? await tx.profile.update({ where: { id: existing.id }, data: { name: item.name, username, role: item.role, active: item.active, ...credential } })
-          : await tx.profile.create({ data: { tenantId, localId: item.localId, name: item.name, username, role: item.role, active: item.active, ...credential } });
-        result.push({ localId: item.localId, remoteId: profile.id });
+    const remoteIds = staff.map((item) => item.remoteId).filter((id): id is string => Boolean(id));
+    const localIds = staff.map((item) => item.localId);
+    const profiles = staff.length === 0
+      ? []
+      : await prisma.profile.findMany({
+          where: {
+            tenantId,
+            role: { in: ['cashier', 'manager'] },
+            OR: [
+              ...(remoteIds.length > 0 ? [{ id: { in: remoteIds } }] : []),
+              { localId: { in: localIds } },
+            ],
+          },
+          select: { id: true, localId: true, role: true },
+        });
+    const plannedProfiles = profiles.map((profile) => ({
+      id: profile.id,
+      localId: profile.localId,
+      role: profile.role,
+    }));
+    const db = getD1DatabaseBinding();
+    const statements = [];
+    const synced: Array<{ localId: number; remoteId: string }> = [];
+    for (const item of staff) {
+      const existing = item.remoteId
+        ? plannedProfiles.find((profile) => profile.id === item.remoteId)
+        : plannedProfiles.find((profile) => profile.localId === item.localId);
+      const username = item.username?.trim().toLowerCase() ?? null;
+      if (existing) {
+        statements.push(db.prepare(`
+          UPDATE profiles
+          SET name = ?, username = ?, role = ?, active = ?
+          WHERE id = ? AND tenant_id = ? AND role IN ('cashier', 'manager')
+        `).bind(item.name, username, item.role, item.active, existing.id, tenantId));
+        synced.push({ localId: item.localId, remoteId: existing.id });
+      } else {
+        const remoteId = randomUUID();
+        statements.push(db.prepare(`
+          INSERT INTO profiles (id, tenant_id, local_id, name, username, pin_hash, role, active)
+          VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+        `).bind(
+          remoteId,
+          tenantId,
+          item.localId,
+          item.name,
+          username,
+          item.pinHash ?? null,
+          item.role,
+          item.active,
+        ));
+        plannedProfiles.push({ id: remoteId, localId: item.localId, role: item.role });
+        synced.push({ localId: item.localId, remoteId });
       }
-      return result;
-    });
+    }
+    if (statements.length > 0) {
+      const results = await db.batch(statements);
+      if (results.some((result) => (result.meta.changes ?? 0) !== 1)) {
+        throw new HttpError(409, 'One or more staff profiles changed during sync; retry the roster');
+      }
+    }
     return res.json({ synced });
   })
 );
@@ -1160,10 +1344,16 @@ router.get(
         tenantId: requireUser(req).tenantId,
         role: { in: ['cashier', 'manager'] },
       },
-      select: { id: true, localId: true, name: true, username: true, role: true, active: true },
+      select: { id: true, localId: true, name: true, username: true, role: true, active: true, deletedAt: true },
       orderBy: { name: 'asc' },
     });
-    return res.json({ staff: profiles });
+    return res.json({
+      staff: profiles.map(({ deletedAt, ...profile }) => ({
+        ...profile,
+        active: profile.active &&
+          (deletedAt === null || deletedAt === undefined),
+      })),
+    });
   })
 );
 
@@ -1186,24 +1376,36 @@ router.delete(
       return res.status(404).json({ error: 'Staff profile not found' });
     }
     const deletedLabel = 'Deleted cashier';
-    await prisma.$transaction(async (tx) => {
-      await tx.deletionLedger.create({
-        data: {
-          tenantId: requireUser(req).tenantId,
-          subjectType: 'staff_profile',
-          subjectId: profile.id,
-          reason,
-          completedAt: new Date(),
-        },
-      });
-      await tx.profile.update({
-        where: { id: profile.id },
-        data: { name: deletedLabel, active: false, deletedAt: new Date() },
-      });
-      await tx.sale.updateMany({ where: { tenantId: requireUser(req).tenantId, staffId: profile.id }, data: { staffName: deletedLabel } });
-      await tx.stockAdjustment.updateMany({ where: { tenantId: requireUser(req).tenantId, staffId: profile.id }, data: { staffId: profile.id } });
-      await tx.payment.updateMany({ where: { tenantId: requireUser(req).tenantId, initiatedBy: profile.id }, data: { staffName: deletedLabel } });
-    });
+    const tenantId = requireUser(req).tenantId;
+    const now = new Date().toISOString();
+    const ledgerId = randomUUID();
+    const db = getD1DatabaseBinding();
+    const results = await db.batch([
+      db.prepare(`
+        UPDATE profiles
+        SET name = ?, active = 0, deleted_at = ?
+        WHERE id = ? AND tenant_id = ? AND role IN ('cashier', 'manager')
+          AND deleted_at IS NULL
+      `).bind(deletedLabel, now, profile.id, tenantId),
+      db.prepare(`
+        INSERT INTO deletion_ledgers (id, tenant_id, subject_type, subject_id, reason, completed_at)
+        SELECT ?, ?, 'staff_profile', ?, ?, ?
+        WHERE changes() = 1
+      `).bind(ledgerId, tenantId, profile.id, reason ?? null, now),
+      db.prepare(`
+        UPDATE sales SET staff_name = ?
+        WHERE tenant_id = ? AND staff_id = ?
+          AND EXISTS (SELECT 1 FROM deletion_ledgers WHERE id = ?)
+      `).bind(deletedLabel, tenantId, profile.id, ledgerId),
+      db.prepare(`
+        UPDATE payments SET staff_name = ?
+        WHERE tenant_id = ? AND initiated_by = ?
+          AND EXISTS (SELECT 1 FROM deletion_ledgers WHERE id = ?)
+      `).bind(deletedLabel, tenantId, profile.id, ledgerId),
+    ]);
+    if ((results[0]?.meta.changes ?? 0) !== 1 || (results[1]?.meta.changes ?? 0) !== 1) {
+      return res.status(409).json({ error: 'Staff profile changed during deletion; reload before retrying' });
+    }
     return res.json({ deleted: true, profile_id: profile.id });
   })
 );
@@ -1231,16 +1433,27 @@ router.post(
     if (!entitlement.allowed) {
       return res.status(402).json({ error: 'An active subscription or voucher is required', code: 'SUBSCRIPTION_REQUIRED', entitlement });
     }
-    const profile = await prisma.profile.findFirst({
-      where: {
-        tenantId,
-        username,
-        role: { in: ['cashier', 'manager'] },
-        active: true,
-        deletedAt: null,
-      },
-      include: { tenant: { select: { shopName: true } } },
-    });
+    const profile = await getD1DatabaseBinding().prepare(`
+      SELECT p.id, p.local_id, p.name, p.username, p.role, p.active,
+             p.pin_hash, t.shop_name
+      FROM profiles p
+      JOIN tenants t ON t.id = p.tenant_id
+      WHERE p.tenant_id = ?
+        AND p.username = ?
+        AND p.role IN ('cashier', 'manager')
+        AND p.active = 1
+        AND p.deleted_at IS NULL
+      LIMIT 1
+    `).bind(tenantId, username).first<{
+      id: string;
+      local_id: number | null;
+      name: string;
+      username: string;
+      role: 'cashier' | 'manager';
+      active: number;
+      pin_hash: string | null;
+      shop_name: string;
+    }>();
     if (!profile) {
       return res.status(401).json({ error: 'Staff not found or inactive' });
     }
@@ -1248,19 +1461,19 @@ router.post(
     // Keep a server-side verifier so a fresh device can bootstrap its offline
     // roster without accepting an arbitrary PIN. Existing local devices still
     // verify first, but the backend closes the online trust boundary too.
-    if (!verifyStaffPin(pin, profile.pinHash)) {
+    if (!await verifyStaffPin(pin, profile.pin_hash)) {
       return res.status(401).json({ error: 'Invalid staff credentials' });
     }
     return res.json({
       staff_id: profile.id,
-      local_id: profile.localId ?? null,
+      local_id: profile.local_id ?? null,
       name: profile.name,
       role: profile.role,
-      tenant_id: profile.tenantId,
-      shop_name: profile.tenant.shopName,
+      tenant_id: tenantId,
+      shop_name: profile.shop_name,
       session_token: issueStaffSessionToken({
         profileId: profile.id,
-        tenantId: profile.tenantId,
+        tenantId,
         userId: `staff:${profile.id}`,
       }).token,
     });
@@ -1283,10 +1496,10 @@ router.post(
     const profile = await prisma.profile.findFirst({
       where: { id: claims.profileId, tenantId, role: { in: ['cashier', 'manager'] }, active: true, deletedAt: null },
     });
-    if (!profile || !verifyStaffPin(currentPin, profile.pinHash)) {
+    if (!profile || !await verifyStaffPin(currentPin, profile.pinHash)) {
       return res.status(401).json({ error: 'Current PIN is incorrect' });
     }
-    await prisma.profile.update({ where: { id: profile.id }, data: { pinHash: hashStaffPin(newPin) } });
+    await prisma.profile.update({ where: { id: profile.id }, data: { pinHash: await hashStaffPin(newPin) } });
     return res.json({ status: 'pin_changed', staff_id: profile.id });
   }),
 );
@@ -1367,13 +1580,46 @@ router.post(
       where: { id: payload.staffProfileId, tenantId: user.tenantId, role: { in: ['cashier', 'manager'] }, active: true, deletedAt: null },
     });
     if (!profile) return res.status(404).json({ error: 'Staff profile is no longer active' });
-    await prisma.$transaction(async (tx) => {
-      await tx.profile.update({ where: { id: profile.id }, data: { pinHash: hashStaffPin(temporaryPin) } });
-      await tx.syncRecord.update({
-        where: { id: record.id },
-        data: { payload: { ...payload, status: 'completed', completedAt: new Date().toISOString() } },
-      });
-    });
+    const now = new Date().toISOString();
+    const db = getD1DatabaseBinding();
+    const newPinHash = await hashStaffPin(temporaryPin);
+    const results = await db.batch([
+      db.prepare(`
+        UPDATE profiles
+        SET pin_hash = ?
+        WHERE id = ? AND tenant_id = ? AND role IN ('cashier', 'manager')
+          AND active = 1 AND deleted_at IS NULL
+          AND EXISTS (
+            SELECT 1 FROM sync_records
+            WHERE id = ? AND tenant_id = ? AND kind = 'staff_pin_reset_request'
+              AND json_extract(payload, '$.status') = 'pending'
+              AND json_extract(payload, '$.staffProfileId') = ?
+          )
+      `).bind(
+        newPinHash,
+        profile.id,
+        user.tenantId,
+        record.id,
+        user.tenantId,
+        profile.id,
+      ),
+      db.prepare(`
+        UPDATE sync_records
+        SET payload = ?
+        WHERE id = ? AND tenant_id = ? AND kind = 'staff_pin_reset_request'
+          AND json_extract(payload, '$.status') = 'pending'
+          AND json_extract(payload, '$.staffProfileId') = ?
+          AND changes() = 1
+      `).bind(
+        JSON.stringify({ ...payload, status: 'completed', completedAt: now }),
+        record.id,
+        user.tenantId,
+        profile.id,
+      ),
+    ]);
+    if ((results[0]?.meta.changes ?? 0) !== 1 || (results[1]?.meta.changes ?? 0) !== 1) {
+      return res.status(409).json({ error: 'PIN reset request changed; reload before retrying' });
+    }
     // Never include the temporary PIN in the response, live signal, or audit
     // payload. The owner communicates it directly to the named staff member.
     broadcastTenantChange(user.tenantId, ['staff_pin_reset_completed']);
@@ -1451,29 +1697,31 @@ router.get(
       }),
       prisma.$queryRaw<Array<{
         tenant_id: string;
-        shifts_closed: bigint;
-        shifts_open: bigint;
-        cash_variance: bigint | null;
+        shifts_closed: number;
+        shifts_open: number;
+        cash_variance: number | null;
       }>>(Prisma.sql`
         SELECT tenant_id,
-               COUNT(*) FILTER (
-                 WHERE payload->>'status' = 'closed'
+               SUM(CASE
+                 WHEN json_extract(payload, '$.status') = 'closed'
                    AND created_at >= ${from}
                    AND created_at < ${to}
-               ) AS shifts_closed,
-               COUNT(*) FILTER (
-                 WHERE payload->>'status' = 'open'
+                 THEN 1 ELSE 0
+               END) AS shifts_closed,
+               SUM(CASE
+                 WHEN json_extract(payload, '$.status') = 'open'
                    AND created_at >= ${from}
                    AND created_at < ${to}
-               ) AS shifts_open,
+                 THEN 1 ELSE 0
+               END) AS shifts_open,
                COALESCE(SUM(
-                 CASE WHEN payload->>'status' = 'closed'
+                 CASE WHEN json_extract(payload, '$.status') = 'closed'
                            AND created_at >= ${from}
                            AND created_at < ${to} THEN
-                   COALESCE(NULLIF(payload->>'countedCash', '')::bigint, 0) -
-                   COALESCE(NULLIF(payload->>'expectedCash', '')::bigint, 0)
+                   COALESCE(CAST(NULLIF(json_extract(payload, '$.countedCash'), '') AS INTEGER), 0) -
+                   COALESCE(CAST(NULLIF(json_extract(payload, '$.expectedCash'), '') AS INTEGER), 0)
                  ELSE 0 END
-               ), 0)::bigint AS cash_variance
+               ), 0) AS cash_variance
           FROM sync_records
          WHERE kind = 'shifts'
            AND tenant_id IN (${tenantList})

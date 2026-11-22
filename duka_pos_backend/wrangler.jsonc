@@ -14,12 +14,56 @@
       }
     ]
   },
-  "hyperdrive": [
+  "d1_databases": [
     {
-      "binding": "HYPERDRIVE",
-      "id": "613edae2cb28470c8d3693a6ab2df1b4"
+      "binding": "DB",
+      "database_name": "duka-pos-prod",
+      "database_id": "97bc5492-0b27-41b8-a95e-1b96c01c57c3",
+      "migrations_dir": "prisma/migrations-d1",
+      "migrations_pattern": "prisma/migrations-d1/*/migration.sql"
     }
   ],
+  "env": {
+    "staging": {
+      "name": "duka-pos-backend-staging",
+      "d1_databases": [
+        {
+          "binding": "DB",
+          "database_name": "duka-pos-staging",
+          "database_id": "5fcb4921-29dc-41a3-8c04-c01bf7fec76c",
+          "migrations_dir": "prisma/migrations-d1",
+          "migrations_pattern": "prisma/migrations-d1/*/migration.sql"
+        }
+      ],
+      "durable_objects": {
+        "bindings": [
+          {
+            "name": "LIVE_ROOM",
+            "class_name": "LiveRoom"
+          }
+        ]
+      },
+      "migrations": [
+        {
+          "tag": "v1",
+          "new_sqlite_classes": [
+            "LiveRoom"
+          ]
+        }
+      ],
+      "vars": {
+        "APP_RELEASE_REPOSITORY": "Bryan-sys-lab/SimpleSales",
+        "APP_RELEASE_MANIFEST_URL": "https://pub-304b56b967d4462f8ca28cdb5a6fc43a.r2.dev/current.json",
+        "SYSTEM_ADMIN_EMAIL": "brian@nerva.co.ke",
+        "ADMIN_APP_ORIGIN": "https://simpleranalytics.nerva.co.ke"
+      },
+      "send_email": [
+        {
+          "name": "EMAIL"
+        }
+      ]
+    }
+  },
   "migrations": [
     {
       "tag": "v1",

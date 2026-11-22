@@ -5,7 +5,8 @@
 import { Router } from 'express';
 import { asyncHandler, HttpError, requireUser } from '../lib/http';
 import { parseBody, ownerTransactionSyncSchema } from '../lib/validation';
-import { prisma } from '../lib/prisma';
+import { getD1DatabaseBinding, prisma } from '../lib/prisma';
+import { requiredD1String } from '../lib/d1_results';
 
 const router = Router();
 
@@ -45,39 +46,41 @@ router.post(
   asyncHandler(async (req, res) => {
     const { ownerTransactions } = parseBody(ownerTransactionSyncSchema, req.body);
     const tenantId = requireUser(req).tenantId;
-    const synced = await prisma.$transaction(async (tx) => {
-      const result: Array<{ localId: number; remoteId: string }> = [];
-      for (const txn of ownerTransactions) {
-        if (!txn.syncKey) {
-          throw new HttpError(400, 'Owner transaction missing syncKey');
-        }
-        const saved = await tx.ownerTransaction.upsert({
-          where: {
-            tenantId_syncKey: { tenantId, syncKey: txn.syncKey },
-          },
-          create: {
-            tenantId,
-            syncKey: txn.syncKey,
-            uuid: txn.uuid,
-            transactionType: txn.transactionType,
-            amountMinor: txn.amountMinor,
-            shiftId: txn.shiftId,
-            staffName: txn.staffName,
-            staffId: txn.staffId,
-            note: txn.note,
-          },
-          update: {
-            transactionType: txn.transactionType,
-            amountMinor: txn.amountMinor,
-            shiftId: txn.shiftId,
-            staffName: txn.staffName,
-            staffId: txn.staffId,
-            note: txn.note,
-          },
-        });
-        result.push({ localId: txn.id, remoteId: saved.id });
-      }
-      return result;
+    const records = ownerTransactions.map((txn) => {
+      if (!txn.syncKey) throw new HttpError(400, 'Owner transaction missing syncKey');
+      return txn;
+    });
+    const db = getD1DatabaseBinding();
+    const now = new Date().toISOString();
+    const results = records.length === 0 ? [] : await db.batch(records.map((txn) => db.prepare(`
+      INSERT INTO owner_transactions (
+        id, tenant_id, sync_key, uuid, transaction_type, amount_minor,
+        shift_id, staff_id, staff_name, note, created_at
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      ON CONFLICT (tenant_id, sync_key) DO UPDATE SET
+        transaction_type = excluded.transaction_type,
+        amount_minor = excluded.amount_minor,
+        shift_id = excluded.shift_id,
+        staff_id = excluded.staff_id,
+        staff_name = excluded.staff_name,
+        note = excluded.note
+      RETURNING id
+    `).bind(
+      globalThis.crypto.randomUUID(),
+      tenantId,
+      txn.syncKey,
+      txn.uuid,
+      txn.transactionType,
+      txn.amountMinor,
+      txn.shiftId,
+      txn.staffId,
+      txn.staffName,
+      txn.note,
+      now,
+    )));
+    const synced = records.map((txn, index) => {
+      const remoteId = requiredD1String(results[index], 'id', 'owner transaction');
+      return { localId: txn.id, remoteId };
     });
     return res.json({ synced });
   })

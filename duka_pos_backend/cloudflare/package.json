@@ -6,7 +6,7 @@
     "deploy": "wrangler deploy --config wrangler.jsonc"
   },
   "devDependencies": {
-    "@cloudflare/containers": "latest",
-    "wrangler": "latest"
+    "@cloudflare/containers": "0.3.7",
+    "wrangler": "4.166.0"
   }
 }

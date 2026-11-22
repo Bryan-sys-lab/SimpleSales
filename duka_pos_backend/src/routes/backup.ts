@@ -3,7 +3,7 @@ import { asyncHandler, requireUser } from '../lib/http';
 import { parseBody, cloudBackupSchema } from '../lib/validation';
 import { prisma } from '../lib/prisma';
 import { requireRole } from '../middleware/auth';
-import { deleteOpaqueBackup, getOpaqueBackup, putOpaqueBackup } from '../lib/r2';
+import { deleteOpaqueBackup, getOpaqueBackup, isR2Configured, putOpaqueBackup } from '../lib/r2';
 import { randomUUID } from 'node:crypto';
 
 const router = Router();
@@ -21,6 +21,12 @@ router.post('/', requireRole('admin', 'manager'), asyncHandler(async (req, res) 
       select: { id: true, workspaceKey: true, kind: true, createdAt: true },
     });
     if (existing) return res.status(200).json(existing);
+  }
+  if (!isR2Configured()) {
+    return res.status(503).json({
+      error: 'Cloud backup storage is not configured',
+      code: 'BACKUP_STORAGE_NOT_CONFIGURED',
+    });
   }
   const id = randomUUID();
   const storageKey = `backups/${tenantId}/${encodeURIComponent(workspaceKey)}/${id}.duka`;
@@ -83,6 +89,12 @@ router.get('/', requireRole('admin', 'manager'), asyncHandler(async (req, res) =
     select: { id: true, workspaceKey: true, kind: true, payload: true, storageKey: true, createdAt: true },
   });
   if (!backup) return res.json({ payload: null });
+  if (backup.storageKey && !isR2Configured()) {
+    return res.status(503).json({
+      error: 'Cloud backup storage is not configured',
+      code: 'BACKUP_STORAGE_NOT_CONFIGURED',
+    });
+  }
   const payload = backup.storageKey
     ? await getOpaqueBackup(backup.storageKey)
     : backup.payload;

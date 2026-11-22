@@ -2,13 +2,13 @@
 // Run: npx prisma generate
 
 generator client {
-  provider        = "prisma-client-js"
-  previewFeatures = ["driverAdapters"]
+  provider = "prisma-client"
+  output   = "../src/generated/prisma"
+  runtime  = "cloudflare"
 }
 
 datasource db {
-  provider = "postgresql"
-  url      = env("DATABASE_URL")
+  provider = "sqlite"
 }
 
 model Tenant {
@@ -111,7 +111,7 @@ model TaxEntity {
   id                         String   @id @default(cuid())
   legalForm                  String   @map("legal_form")
   displayLabel               String   @map("display_label")
-  kraPinCiphertext           String?  @map("kra_pin_ciphertext") @db.Text
+  kraPinCiphertext           String?  @map("kra_pin_ciphertext")
   kraPinLast4                String?  @map("kra_pin_last4")
   registeredTaxObligations   Json     @default("[]") @map("registered_tax_obligations")
   accountingPeriodStartMonth Int      @default(1) @map("accounting_period_start_month")
@@ -148,7 +148,7 @@ model VatReturn {
   submittedAt          DateTime? @map("submitted_at")
   acceptedAt           DateTime? @map("accepted_at")
   paidAt               DateTime? @map("paid_at")
-  rejectionReason      String?   @map("rejection_reason") @db.Text
+  rejectionReason      String?   @map("rejection_reason")
   createdAt            DateTime  @default(now()) @map("created_at")
   updatedAt            DateTime  @updatedAt @map("updated_at")
 
@@ -176,7 +176,7 @@ model TotReturn {
   submittedAt     DateTime? @map("submitted_at")
   acceptedAt      DateTime? @map("accepted_at")
   paidAt          DateTime? @map("paid_at")
-  rejectionReason String?   @map("rejection_reason") @db.Text
+  rejectionReason String?   @map("rejection_reason")
   createdAt       DateTime  @default(now()) @map("created_at")
   updatedAt       DateTime  @updatedAt @map("updated_at")
 
@@ -199,7 +199,7 @@ model TaxReturnEvent {
   fromStatus  String?  @map("from_status")
   toStatus    String   @map("to_status")
   actorId     String   @map("actor_id")
-  note        String?  @db.Text
+  note        String?
   createdAt   DateTime @default(now()) @map("created_at")
 
   taxEntity TaxEntity  @relation(fields: [taxEntityId], references: [id], onDelete: Cascade)
@@ -246,11 +246,11 @@ model TaxRule {
   thresholdMinor  Decimal?  @map("threshold_minor")
   effectiveFrom   DateTime  @map("effective_from")
   effectiveTo     DateTime? @map("effective_to")
-  sourceUrl       String    @map("source_url") @db.Text
-  sourceReference String?   @map("source_reference") @db.Text
+  sourceUrl       String    @map("source_url")
+  sourceReference String?   @map("source_reference")
   reviewedAt      DateTime? @map("reviewed_at")
   approvedBy      String?   @map("approved_by")
-  approvalNote    String?   @map("approval_note") @db.Text
+  approvalNote    String?   @map("approval_note")
   status          String    @default("needs_review")
   version         Int       @default(1)
   createdAt       DateTime  @default(now()) @map("created_at")
@@ -274,7 +274,7 @@ model CloudBackup {
   snapshotHash String?  @map("snapshot_hash")
   // Legacy rows keep their ciphertext here. New rows store it in R2 and keep
   // only this object key in Postgres.
-  payload      String   @db.Text
+  payload      String
   storageKey   String?  @map("storage_key")
   createdAt    DateTime @default(now()) @map("created_at")
 
@@ -772,7 +772,7 @@ model Payment {
   status            String  @default("QUEUED")
   checkoutRequestId String? @map("checkout_request_id")
   paymentMode      String  @default("stk") @map("payment_mode")
-  qrCodeData       String? @map("qr_code_data") @db.Text
+  qrCodeData       String? @map("qr_code_data")
   providerStatus    String? @map("provider_status")
   providerCheckedAt DateTime? @map("provider_checked_at")
 
@@ -895,7 +895,7 @@ model EtimsReceipt {
   // A sale queues an invoice; a return queues a credit note against the
   // SAME table, on its own number series. The note carries the invoice it
   // reverses, because that is the KRA-side key.
-  documentType String @default("invoice") // invoice | credit_note@map("document_type")
+  documentType String @default("invoice") @map("document_type") // invoice | credit_note
 
   originalReceiptNumber String? @map("original_receipt_number")
 
@@ -980,7 +980,7 @@ model TelemetryEvent {
   clientEventId String? @unique @map("client_event_id")
   tenantId String @map("tenant_id")
 
-  deviceId String? // phone device identifier@map("device_id")
+  deviceId String? @map("device_id") // phone device identifier
   sessionJti String? @map("session_jti")
 
   name      String // app_open | app_close | screen_view | feature_use | sale_recorded | idle_start | idle_end
@@ -1029,14 +1029,14 @@ model ChurnSnapshot {
 /// Audit log of systems-admin actions (global admin viewing/editing any tenant).
 model AdminAuditLog {
   id      String @id @default(cuid())
-  adminId String // profile id of the system admin who acted@map("admin_id")
+  adminId String @map("admin_id") // profile id of the system admin who acted
 
   action     String // e.g. view_churn, update_tenant_settings, purge_telemetry
-  targetType String? // e.g. tenant, sale, profile, telemetry_event@map("target_type")
+  targetType String? @map("target_type") // e.g. tenant, sale, profile, telemetry_event
 
   targetId String? @map("target_id")
 
-  tenantId String? // which tenant was affected; null for cross-tenant actions@map("tenant_id")
+  tenantId String? @map("tenant_id") // which tenant was affected; null for cross-tenant actions
 
   at DateTime @default(now())
 
@@ -1354,7 +1354,7 @@ model AdminKey {
 model AdminTask {
   id String @id @default(cuid())
   title String
-  description String? @db.Text
+  description String?
   department String
   status String @default("assigned")
   createdBy String @map("created_by")

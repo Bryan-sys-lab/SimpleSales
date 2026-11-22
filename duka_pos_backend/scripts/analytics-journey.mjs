@@ -1,10 +1,6 @@
 import { randomUUID } from 'node:crypto';
 
 const baseUrl = (process.env.BASE_URL || 'http://localhost:3100').replace(/\/$/, '');
-const code = process.env.AUTH_TEST_CODE;
-if (!/^\d{6}$/.test(code || '')) {
-  throw new Error('AUTH_TEST_CODE must be a six-digit non-production test value');
-}
 
 async function request(path, options = {}) {
   return fetch(`${baseUrl}${path}`, {
@@ -16,23 +12,43 @@ async function request(path, options = {}) {
 
 const suffix = randomUUID().slice(0, 8);
 const email = `ci-analytics-${suffix}@example.com`;
+const password = '123456';
+const shopName = `CI Analytics ${suffix}`;
+const ownerName = 'CI Owner';
 const link = await request('/api/auth/link', {
   method: 'POST',
-  body: JSON.stringify({ email, pin: '1234', shopName: `CI Analytics ${suffix}`, ownerName: 'CI Owner' }),
+  body: JSON.stringify({ email, password, shopName, ownerName }),
 });
 if (link.status !== 200) throw new Error(`auth/link returned ${link.status}`);
+const challenge = await link.json();
+if (!/^\d{6}$/.test(challenge.debug_code || '')) {
+  throw new Error('auth/link did not return a test code; enable test-only verification debug codes');
+}
+const voucherCode = challenge.debug_first_voucher_code;
+if (typeof voucherCode !== 'string' || !voucherCode.startsWith('SS-')) {
+  throw new Error('auth/link did not return the first-registration voucher in the test environment');
+}
 
 const verified = await request('/api/auth/verify', {
   method: 'POST',
-  body: JSON.stringify({ email, pin: '1234', code }),
+  body: JSON.stringify({
+    email,
+    password,
+    code: challenge.debug_code,
+    voucherCode,
+    shopName,
+    ownerName,
+  }),
 });
 if (verified.status !== 200) throw new Error(`auth/verify returned ${verified.status}`);
 const session = await verified.json();
+if (session.voucher_redeemed !== true) {
+  throw new Error('verified account did not redeem the first-registration voucher');
+}
 const headers = {
   authorization: `Bearer ${session.access_token}`,
   'x-tenant-id': session.tenant_id,
 };
-
 const productResponse = await request('/api/products/sync', {
   method: 'POST',
   headers,
@@ -100,6 +116,10 @@ const saleResponse = await request('/api/sales/sync', {
   }] }),
 });
 if (saleResponse.status !== 200) throw new Error(`sales/sync returned ${saleResponse.status}`);
+const saleBody = await saleResponse.json();
+if (saleBody.synced?.[0]?.localId !== 1) {
+  throw new Error('sales/sync did not confirm the expected sale');
+}
 
 const from = new Date(createdAt.getTime() - 60 * 60 * 1000).toISOString();
 const to = new Date(createdAt.getTime() + 60 * 60 * 1000).toISOString();

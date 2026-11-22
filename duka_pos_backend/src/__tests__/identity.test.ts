@@ -15,9 +15,9 @@ describe('authoritative online identity', () => {
     )).toBe(true);
   });
 
-  it('is case-insensitive and whitespace-tolerant', () => {
+  it('matches only a verified email, case-insensitively and with trimmed whitespace', () => {
     expect(isVerifiedEmailMatch(
-      { sub: 'u1', email: 'Owner@Example.com' },
+      { sub: 'u1', email: 'Owner@Example.com', email_verified: true },
       ' owner@example.com ',
     )).toBe(true);
   });
@@ -32,6 +32,13 @@ describe('authoritative online identity', () => {
   it('rejects an explicitly unverified email', () => {
     expect(isVerifiedEmailMatch(
       { sub: 'u1', email: 'owner@example.com', email_verified: false },
+      'owner@example.com',
+    )).toBe(false);
+  });
+
+  it('rejects an email whose verification status is missing', () => {
+    expect(isVerifiedEmailMatch(
+      { sub: 'u1', email: 'owner@example.com' },
       'owner@example.com',
     )).toBe(false);
   });

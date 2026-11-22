@@ -4,16 +4,15 @@ import { beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 
 const mocks = vi.hoisted(() => ({
   prisma: {
-    $transaction: vi.fn(),
     product: { findFirst: vi.fn(), findMany: vi.fn() },
   },
-  tx: {
-    product: { updateMany: vi.fn(), findFirst: vi.fn() },
-    stockAdjustment: { create: vi.fn() },
-  },
+  d1: { prepare: vi.fn(), batch: vi.fn() },
 }));
 
-vi.mock('../lib/prisma', () => ({ prisma: mocks.prisma }));
+vi.mock('../lib/prisma', () => ({
+  prisma: mocks.prisma,
+  getD1DatabaseBinding: () => mocks.d1,
+}));
 describe('atomic stock adjustments', () => {
   let app: express.Express;
 
@@ -30,9 +29,12 @@ describe('atomic stock adjustments', () => {
 
   beforeEach(() => {
     vi.clearAllMocks();
-    mocks.prisma.$transaction.mockImplementation(async (work: (tx: typeof mocks.tx) => Promise<unknown>) => work(mocks.tx));
-    mocks.tx.product.updateMany.mockResolvedValue({ count: 1 });
-    mocks.tx.stockAdjustment.create.mockResolvedValue({ id: 'adjustment-1' });
+    mocks.d1.prepare.mockImplementation((sql: string) => ({
+      sql,
+      bind: (...bindings: unknown[]) => ({ sql, bindings }),
+    }));
+    mocks.d1.batch.mockImplementation(async (statements: unknown[]) =>
+      statements.map(() => ({ meta: { changes: 1 } })));
     mocks.prisma.product.findFirst.mockResolvedValue({ stockQty: 8 });
   });
 
@@ -44,18 +46,18 @@ describe('atomic stock adjustments', () => {
     });
 
     expect(response.status).toBe(200);
-    expect(mocks.tx.product.updateMany).toHaveBeenCalledWith({
-      where: {
-        id: '11111111-1111-4111-8111-111111111111',
-        tenantId: 'tenant-1',
-      },
-      data: { stockQty: { increment: 5 } },
-    });
+    const [update] = mocks.d1.batch.mock.calls[0][0];
+    expect(update.sql).toContain('stock_qty = stock_qty + ?');
+    expect(update.bindings).toContain(5);
+    expect(update.bindings).toContain('tenant-1');
   });
 
   it('conditionally decrements stock so the last unit cannot be oversold', async () => {
-    mocks.tx.product.updateMany.mockResolvedValue({ count: 0 });
-    mocks.tx.product.findFirst.mockResolvedValue({ id: 'product-1' });
+    mocks.d1.batch.mockImplementation(async () => [
+      { meta: { changes: 0 } },
+      { meta: { changes: 0 } },
+    ]);
+    mocks.prisma.product.findFirst.mockResolvedValue({ id: 'product-1' });
 
     const response = await supertest(app).post('/products/stock-adjust').send({
       product_id: '11111111-1111-4111-8111-111111111111',
@@ -63,15 +65,9 @@ describe('atomic stock adjustments', () => {
     });
 
     expect(response.status).toBe(409);
-    expect(mocks.tx.product.updateMany).toHaveBeenCalledWith({
-      where: {
-        id: '11111111-1111-4111-8111-111111111111',
-        tenantId: 'tenant-1',
-        stockQty: { gte: 1 },
-      },
-      data: { stockQty: { increment: -1 } },
-    });
-    expect(mocks.tx.stockAdjustment.create).not.toHaveBeenCalled();
+    const [update] = mocks.d1.batch.mock.calls[0][0];
+    expect(update.sql).toContain('stock_qty >= ?');
+    expect(update.bindings).toContain(1);
   });
 
   it('accepts a fractional measured-goods adjustment', async () => {
@@ -82,14 +78,8 @@ describe('atomic stock adjustments', () => {
     });
 
     expect(response.status).toBe(200);
-    expect(mocks.tx.product.updateMany).toHaveBeenCalledWith({
-      where: {
-        id: '11111111-1111-4111-8111-111111111111',
-        tenantId: 'tenant-1',
-        stockQty: { gte: 0.5 },
-      },
-      data: { stockQty: { increment: -0.5 } },
-    });
+    const [update] = mocks.d1.batch.mock.calls[0][0];
+    expect(update.bindings).toContain(0.5);
   });
 
   it('returns bounded, resumable catalogue pages', async () => {

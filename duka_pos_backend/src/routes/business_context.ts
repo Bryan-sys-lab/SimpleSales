@@ -6,7 +6,6 @@ import { prisma } from '../lib/prisma';
 import { KESIC_REFERENCE_VERSION, KESIC_VERIFIED_CODES } from '../data/kesic_codes';
 
 const router = Router();
-const profiles = ['drinks', 'duka', 'fashion', 'open'] as const;
 const roleValues = ['producer', 'manufacturer', 'importer', 'distributor', 'wholesaler', 'retailer', 'service_provider', 'mixed', 'other'] as const;
 const channelValues = ['physical_shop', 'market_stall', 'mobile_route', 'online_store', 'social_commerce', 'wholesale', 'delivery', 'other'] as const;
 const provenanceValues = ['owner_confirmed', 'staff_entered', 'imported', 'system_derived', 'admin_reviewed'] as const;

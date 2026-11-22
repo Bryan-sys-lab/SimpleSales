@@ -2,20 +2,58 @@
 
 ## Cloudflare Worker (backend)
 
-Set these as secrets on the Worker (or via `wrangler secret put`):
+The backend uses Cloudflare D1 for relational data. `wrangler.jsonc` binds the
+production and staging databases as `DB`; apply versioned SQL migrations with
+Wrangler, not `prisma migrate deploy`. Cloudflare R2 remains the object store
+for profile photos and encrypted backups.
 
-- `DATABASE_URL` — Neon Postgres connection string (pooled or direct)
+Set these as Worker secrets (or via `wrangler secret put`):
+
 - `AUTH_JWT_SECRET` — HS256 signing secret, >=32 random bytes (base64)
 - `AUTH_JWT_SECRET_PREVIOUS` — previous secret during rotation (optional)
 - `EMAIL_VERIFICATION_SECRET` — HMAC key for verification codes
-- `CLOUDFLARE_ACCOUNT_ID` — 0d995e8087844342ed0da43d9ccd9993
-- `CLOUDFLARE_API_TOKEN` — token with Email Sending permission
-- `CLOUDFLARE_EMAIL_FROM` — verified sender, e.g. security@nerva.co.ke
 - `PUBLIC_API_URL` — public worker URL, e.g. https://duka-pos-backend.<account>.workers.dev
 - `SYSTEM_ADMIN_SUBJECTS` — comma-separated User.id values granted system admin
 - `APP_VERSION_NAME`, `APP_VERSION_CODE`, `APP_DOWNLOAD_URL`, `APP_UPDATE_REQUIRED`, `APP_RELEASE_NOTES`, `APP_RELEASE_REPOSITORY` — app update manifest
 
-Optional integrations: `PAYHERO_AUTH_TOKEN`, `PAYHERO_ACCOUNT_ID`, `MPESA_CALLBACK_KEY`, `R2_*`, `TAX_*`, `RISITI_*`.
+Verification email uses the configured Cloudflare `EMAIL` binding. The REST
+email API credentials are only needed if the binding is removed. Optional
+integrations: `PAYHERO_AUTH_TOKEN`, `PAYHERO_ACCOUNT_ID`, `MPESA_CALLBACK_KEY`,
+`R2_*`, `TAX_*`, `RISITI_*`.
+
+The app's Cloudflare backup flow encrypts a snapshot of every local workspace
+table on-device, uploads only ciphertext to R2, and keeps tenant/workspace
+metadata in D1. Manual backups are available in Settings; the opt-in automatic
+sync also retries cloud backups while the app is open. These are currently
+device-bound backups: the AES key stays in that installation's OS keystore, so
+the R2 copy cannot be decrypted after reinstalling the app or moving to a
+replacement device. The separate `.duka` export remains an encrypted
+inventory-only local file.
+
+### Safe local deployment (Windows)
+
+From `duka_pos_backend`, run `.\scripts\deploy-cloudflare.ps1`. The script runs
+the backend test suite and build and verifies the staging D1 schema. It refuses
+to proceed while Prisma `$transaction` call sites remain: the D1 adapter does
+not make those operations atomic. The default run is preflight-only and never
+changes production. Production promotion additionally requires an HTTPS
+`STAGING_BASE_URL` whose hostname contains `staging`, passes live smoke and
+authenticated staging journeys, and must be requested explicitly with
+`.\scripts\deploy-cloudflare.ps1 -PromoteProduction`.
+
+The authenticated staging journeys create test accounts and need the isolated
+staging Worker configured for test verification. Keep that test Worker
+restricted; never enable test-only verification responses in production.
+
+Authenticate Wrangler once with `wrangler login`; this uses the browser-based
+OAuth flow and keeps deployment credentials out of scripts, command history,
+and environment files. Do not pass an API token on a command line or store one
+in this repository. The account token previously pasted into chat should be
+revoked and must not be used by the deploy script.
+
+The deployment script checks only `AUTH_JWT_SECRET` and
+`EMAIL_VERIFICATION_SECRET` by name. Configure secret values in Cloudflare's
+Worker Secrets UI; the script never changes them.
 
 ## GitHub Actions (app release)
 

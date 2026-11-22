@@ -472,6 +472,7 @@ export const authLinkSchema = z.object({
   password: z.string().trim().regex(/^\d{6}$/),
   shopName: boundedName,
   ownerName: boundedName,
+  firstVoucherRecovery: z.boolean().optional(),
 });
 
 /**
@@ -481,9 +482,12 @@ export const authVerifySchema = z.object({
   email: z.string().trim().toLowerCase().email().max(254),
   password: z.string().trim().regex(/^\d{6}$/),
   code: z.string().trim().length(6),
+  voucherCode: z.string().trim().min(8).max(80),
   shopName: boundedName.optional(),
   ownerName: boundedName.optional(),
 });
+
+export const authVerifyCodeSchema = authVerifySchema.omit({ voucherCode: true });
 
 export const authLoginSchema = z.object({
   email: z.string().trim().toLowerCase().email().max(254),

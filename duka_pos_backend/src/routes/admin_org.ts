@@ -2,7 +2,8 @@ import { Request, Response, Router } from 'express';
 import { z } from 'zod';
 import { asyncHandler } from '../lib/http';
 import { parseBody } from '../lib/validation';
-import { prisma } from '../lib/prisma';
+import { getD1DatabaseBinding, prisma } from '../lib/prisma';
+import { prepareAdminAudit } from '../lib/admin_audit_d1';
 import { systemAdminMiddleware } from '../middleware/auth';
 
 const router = Router();
@@ -52,14 +53,54 @@ router.post('/tasks', asyncHandler(async (req: Request, res: Response) => {
   if (!access.isSuperAdmin && (!access.canAssignTasks || assignee.parentKeyId !== access.keyId || assignee.department !== access.department)) {
     return res.status(403).json({ error: 'Tasks can only be assigned to your active direct reports' });
   }
-  const task = await prisma.$transaction(async (tx) => {
-    const created = await tx.adminTask.create({ data: {
-      title: input.title, description: input.description ?? null, department: assignee.department,
-      assigneeKeyId: assignee.id, createdBy: req.auth?.sub ?? 'unknown', dueAt: input.dueAt ? new Date(input.dueAt) : null,
-    }, include: { assignee: { select: { id: true, email: true, department: true, role: true, parentKeyId: true } } } });
-    await tx.adminAuditLog.create({ data: { adminId: req.auth?.sub ?? 'unknown', action: 'admin_task_assigned', targetType: 'admin_task', targetId: created.id, tenantId: null } });
-    return created;
-  });
+  const taskId = crypto.randomUUID();
+  const now = new Date();
+  const db = getD1DatabaseBinding();
+  const results = await db.batch([
+    db.prepare(`
+      INSERT INTO admin_tasks (
+        id, title, description, department, status, created_by,
+        assignee_key_id, due_at, created_at, updated_at
+      ) VALUES (?, ?, ?, ?, 'assigned', ?, ?, ?, ?, ?)
+    `).bind(
+      taskId,
+      input.title,
+      input.description ?? null,
+      assignee.department,
+      req.auth?.sub ?? 'unknown',
+      assignee.id,
+      input.dueAt ? new Date(input.dueAt).toISOString() : null,
+      now.toISOString(),
+      now.toISOString(),
+    ),
+    prepareAdminAudit({
+      adminId: req.auth?.sub ?? 'unknown',
+      action: 'admin_task_assigned',
+      targetType: 'admin_task',
+      targetId: taskId,
+      onlyAfterSuccessfulWrite: true,
+    }, db),
+  ]);
+  if ((results[0]?.meta.changes ?? 0) !== 1) throw new Error('Administrator task could not be created');
+  const task = {
+    id: taskId,
+    title: input.title,
+    description: input.description ?? null,
+    department: assignee.department,
+    status: 'assigned',
+    createdBy: req.auth?.sub ?? 'unknown',
+    assigneeKeyId: assignee.id,
+    dueAt: input.dueAt ? new Date(input.dueAt) : null,
+    createdAt: now,
+    updatedAt: now,
+    assignee: {
+      id: assignee.id,
+      email: assignee.email,
+      department: assignee.department,
+      role: assignee.role,
+      parentKeyId: assignee.parentKeyId,
+    },
+  };
   res.status(201).json({ task });
 }));
 
@@ -71,11 +112,24 @@ router.patch('/tasks/:taskId', asyncHandler(async (req: Request, res: Response) 
   const isAssignee = access.keyId === task.assigneeKeyId;
   const managesAssignee = !access.isSuperAdmin && await isReportOf(access.keyId, task.assignee, access.department);
   if (!access.isSuperAdmin && !isAssignee && !managesAssignee) return res.status(403).json({ error: 'Task is outside your reporting line' });
-  const updated = await prisma.$transaction(async (tx) => {
-    const row = await tx.adminTask.update({ where: { id: task.id }, data: { status }, include: { assignee: { select: { id: true, email: true, department: true, role: true, parentKeyId: true } } } });
-    await tx.adminAuditLog.create({ data: { adminId: req.auth?.sub ?? 'unknown', action: 'admin_task_status_updated', targetType: 'admin_task', targetId: row.id, tenantId: null } });
-    return row;
+  const db = getD1DatabaseBinding();
+  const results = await db.batch([
+    db.prepare('UPDATE admin_tasks SET status = ?, updated_at = ? WHERE id = ?')
+      .bind(status, new Date().toISOString(), task.id),
+    prepareAdminAudit({
+      adminId: req.auth?.sub ?? 'unknown',
+      action: 'admin_task_status_updated',
+      targetType: 'admin_task',
+      targetId: task.id,
+      onlyAfterSuccessfulWrite: true,
+    }, db),
+  ]);
+  if ((results[0]?.meta.changes ?? 0) !== 1) throw new Error('Administrator task could not be updated');
+  const updated = await prisma.adminTask.findUnique({
+    where: { id: task.id },
+    include: { assignee: { select: { id: true, email: true, department: true, role: true, parentKeyId: true } } },
   });
+  if (!updated) throw new Error('Updated administrator task could not be reloaded');
   res.json({ task: updated });
 }));
 

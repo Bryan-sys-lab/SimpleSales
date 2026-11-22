@@ -10,7 +10,9 @@ import crypto from 'node:crypto';
 import { z } from 'zod';
 import { asyncHandler } from '../lib/http';
 import { adminAuditSchema, adminListQuerySchema, commercialLedgerQuerySchema, platformAnnouncementSchema, taxRuleSchema, parseBody, subscriptionUpdateSchema, voucherCreateSchema, billingProviderSchema } from '../lib/validation';
-import { prisma } from '../lib/prisma';
+import { getD1DatabaseBinding, prisma } from '../lib/prisma';
+import { prepareAdminAudit } from '../lib/admin_audit_d1';
+import { requiredD1String } from '../lib/d1_results';
 import { runRetention } from '../lib/retention';
 import { log } from '../lib/observability';
 import { authMiddleware, requireRole, systemAdminMiddleware } from '../middleware/auth';
@@ -70,34 +72,90 @@ router.post('/diagnostics', authMiddleware, requireRole('admin', 'manager', 'cas
   const tenantId = req.user!.tenantId;
   const deviceId = crypto.createHash('sha256').update(`${tenantId}\0${input.deviceId}`).digest('hex');
   const now = new Date();
-  const diagnostic = await prisma.$transaction(async (tx) => {
-    const row = await tx.deviceDiagnostic.upsert({ where: { deviceId }, update: {
-      tenantId, platform: input.platform, osVersion: input.osVersion, appVersion: input.appVersion,
-      buildNumber: input.buildNumber, locale: input.locale, manufacturer: input.manufacturer ?? null,
-      model: input.model ?? null, lastSeen: now,
-    }, create: {
-      deviceId, tenantId, platform: input.platform, osVersion: input.osVersion, appVersion: input.appVersion,
-      buildNumber: input.buildNumber, locale: input.locale, manufacturer: input.manufacturer ?? null,
-      model: input.model ?? null, firstSeen: now, lastSeen: now,
-      crashCount: 0, errorCount: 0, warningCount: 0,
-    } });
-    const inserted = input.crashes.length ? await tx.deviceCrashEntry.createMany({ data: input.crashes.map((entry) => ({
-      diagnosticId: row.id, kind: entry.kind, message: scrubDiagnostic(entry.message) ?? 'Diagnostic event',
-      stack: scrubDiagnostic(entry.stack), route: scrubDiagnostic(entry.route), actorName: scrubDiagnostic(entry.actorName),
-      action: scrubDiagnostic(entry.action), breadcrumbs: scrubDiagnostic((entry.breadcrumbs ?? []).join('\n')),
-      sessionJti: req.auth?.jti ?? null,
-      clientEventId: entry.clientEventId ? crypto.createHash('sha256').update(`${deviceId}\0${entry.clientEventId}`).digest('hex') : null,
-      createdAt: entry.createdAt ? new Date(entry.createdAt) : now,
-    })), skipDuplicates: true }) : { count: 0 };
-    const counts = await tx.deviceCrashEntry.groupBy({ by: ['kind'], where: { diagnosticId: row.id }, _count: { _all: true } });
-    const countByKind = new Map(counts.map((entry) => [entry.kind, entry._count._all]));
-    await tx.deviceDiagnostic.update({ where: { id: row.id }, data: {
-      crashCount: countByKind.get('crash') ?? 0,
-      errorCount: countByKind.get('error') ?? 0,
-      warningCount: countByKind.get('warning') ?? 0,
-    } });
-    return { id: row.id, insertedCount: inserted.count };
-  });
+  const db = getD1DatabaseBinding();
+  const statements = [db.prepare(`
+    INSERT INTO device_diagnostics (
+      id, tenant_id, device_id, platform, os_version, app_version, build_number,
+      locale, manufacturer, model, crash_count, error_count, warning_count,
+      first_seen, last_seen
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, 0, 0, ?, ?)
+    ON CONFLICT (device_id) DO UPDATE SET
+      tenant_id = excluded.tenant_id,
+      platform = excluded.platform,
+      os_version = excluded.os_version,
+      app_version = excluded.app_version,
+      build_number = excluded.build_number,
+      locale = excluded.locale,
+      manufacturer = excluded.manufacturer,
+      model = excluded.model,
+      last_seen = excluded.last_seen
+    RETURNING id
+  `).bind(
+    crypto.randomUUID(),
+    tenantId,
+    deviceId,
+    input.platform,
+    input.osVersion,
+    input.appVersion,
+    input.buildNumber,
+    input.locale,
+    input.manufacturer ?? null,
+    input.model ?? null,
+    now.toISOString(),
+    now.toISOString(),
+  )];
+  const entryResultIndexes: number[] = [];
+  for (const entry of input.crashes) {
+    entryResultIndexes.push(statements.length);
+    statements.push(db.prepare(`
+      INSERT INTO device_crash_entries (
+        id, diagnostic_id, kind, message, stack, route, actor_name, action,
+        breadcrumbs, created_at, session_jti, client_event_id
+      )
+      SELECT ?, device_diagnostics.id, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?
+      FROM device_diagnostics
+      WHERE device_diagnostics.device_id = ?
+      ON CONFLICT (diagnostic_id, client_event_id) DO NOTHING
+    `).bind(
+      crypto.randomUUID(),
+      entry.kind,
+      scrubDiagnostic(entry.message) ?? 'Diagnostic event',
+      scrubDiagnostic(entry.stack),
+      scrubDiagnostic(entry.route),
+      scrubDiagnostic(entry.actorName),
+      scrubDiagnostic(entry.action),
+      scrubDiagnostic((entry.breadcrumbs ?? []).join('\n')),
+      entry.createdAt ? new Date(entry.createdAt).toISOString() : now.toISOString(),
+      req.auth?.jti ?? null,
+      entry.clientEventId
+        ? crypto.createHash('sha256').update(`${deviceId}\0${entry.clientEventId}`).digest('hex')
+        : null,
+      deviceId,
+    ));
+  }
+  statements.push(db.prepare(`
+    UPDATE device_diagnostics
+    SET crash_count = (
+          SELECT COUNT(*) FROM device_crash_entries
+          WHERE diagnostic_id = device_diagnostics.id AND kind = 'crash'
+        ),
+        error_count = (
+          SELECT COUNT(*) FROM device_crash_entries
+          WHERE diagnostic_id = device_diagnostics.id AND kind = 'error'
+        ),
+        warning_count = (
+          SELECT COUNT(*) FROM device_crash_entries
+          WHERE diagnostic_id = device_diagnostics.id AND kind = 'warning'
+        )
+    WHERE device_id = ?
+  `).bind(deviceId));
+  const results = await db.batch(statements);
+  const diagnosticId = requiredD1String(results[0], 'id', 'device diagnostic');
+  const insertedCount = entryResultIndexes.reduce(
+    (count, index) => count + (results[index]?.meta.changes ?? 0),
+    0,
+  );
+  const diagnostic = { id: diagnosticId, insertedCount };
   broadcastAdmin({ type: 'device_diagnostic_reported', tenantId, diagnosticId: diagnostic.id, crashes: diagnostic.insertedCount, at: now.toISOString() });
   return res.status(201).json({ id: diagnostic.id, crashesReceived: diagnostic.insertedCount });
 }));
@@ -136,7 +194,11 @@ router.patch('/billing/provider', asyncHandler(async (req: Request, res: Respons
   const input = parseBody(billingProviderSchema, req.body);
   const channel = await registerPaymentChannel(input);
   const values = { billing_channel_type: input.channelType, billing_channel_id: String(channel.id), billing_short_code: input.shortCode, billing_account_number: input.accountNumber ?? '' };
-  await prisma.$transaction(Object.entries(values).map(([key, value]) => prisma.systemSettings.upsert({ where: { key }, update: { value }, create: { key, value } })));
+  const db = getD1DatabaseBinding();
+  await db.batch(Object.entries(values).map(([key, value]) => db.prepare(`
+    INSERT INTO system_settings (key, value) VALUES (?, ?)
+    ON CONFLICT (key) DO UPDATE SET value = excluded.value
+  `).bind(key, value)));
   await prisma.adminAuditLog.create({ data: { adminId: req.auth?.sub ?? 'unknown', action: 'update_billing_provider', targetType: 'system_settings', tenantId: null } });
   return res.json({ provider: { ...input, channelId: channel.id } });
 }));
@@ -333,23 +395,27 @@ router.post('/commercial/ledger/:recordId/withdraw', asyncHandler(async (req: Re
   const recordId = Array.isArray(req.params.recordId) ? req.params.recordId[0] : req.params.recordId;
   const existing = await prisma.commercialContribution.findUnique({ where: { recordId } });
   if (!existing) return res.status(404).json({ error: 'Commercial contribution not found' });
-  const updated = await prisma.$transaction(async (tx) => {
-    const row = await tx.commercialContribution.update({
-      where: { recordId },
-      data: { status: 'withdrawn', retentionState: 'withdrawn' },
-      select: commercialContributionSelect,
-    });
-    await tx.adminAuditLog.create({
-      data: {
-        adminId: req.auth?.sub ?? 'unknown',
-        action: 'withdraw_commercial_contribution',
-        targetType: 'commercial_contribution',
-        targetId: recordId,
-        tenantId: null,
-      },
-    });
-    return row;
+  const db = getD1DatabaseBinding();
+  const results = await db.batch([
+    db.prepare(`
+      UPDATE commercial_contributions
+      SET status = 'withdrawn', retention_state = 'withdrawn'
+      WHERE record_id = ?
+    `).bind(recordId),
+    prepareAdminAudit({
+      adminId: req.auth?.sub ?? 'unknown',
+      action: 'withdraw_commercial_contribution',
+      targetType: 'commercial_contribution',
+      targetId: recordId,
+      onlyAfterSuccessfulWrite: true,
+    }, db),
+  ]);
+  if ((results[0]?.meta.changes ?? 0) !== 1) throw new Error('Commercial contribution could not be withdrawn');
+  const updated = await prisma.commercialContribution.findUnique({
+    where: { recordId },
+    select: commercialContributionSelect,
   });
+  if (!updated) throw new Error('Withdrawn commercial contribution could not be reloaded');
   log('info', 'commercial.contribution_withdrawn', { recordId, reason: input.reason, adminId: req.auth?.sub ?? 'unknown' });
   return res.json({ contribution: projectCommercialContribution(updated), withdrawn: true });
 }));
@@ -406,12 +472,24 @@ router.get('/announcement', asyncHandler(async (_req: Request, res: Response) =>
 router.post('/announcement', asyncHandler(async (req: Request, res: Response) => {
   const input = parseBody(platformAnnouncementSchema, req.body);
   const id = crypto.randomUUID();
-  await prisma.$transaction([
-    prisma.systemSettings.upsert({ where: { key: 'platform_announcement_id' }, update: { value: id }, create: { key: 'platform_announcement_id', value: id } }),
-    prisma.systemSettings.upsert({ where: { key: 'platform_announcement_title' }, update: { value: input.title }, create: { key: 'platform_announcement_title', value: input.title } }),
-    prisma.systemSettings.upsert({ where: { key: 'platform_announcement_body' }, update: { value: input.body }, create: { key: 'platform_announcement_body', value: input.body } }),
-    prisma.systemSettings.upsert({ where: { key: 'platform_announcement_active' }, update: { value: String(input.active) }, create: { key: 'platform_announcement_active', value: String(input.active) } }),
-    prisma.adminAuditLog.create({ data: { adminId: req.auth?.sub ?? 'unknown', action: 'publish_platform_announcement', targetType: 'platform_announcement', targetId: id, tenantId: null } }),
+  const db = getD1DatabaseBinding();
+  const announcementValues = {
+    platform_announcement_id: id,
+    platform_announcement_title: input.title,
+    platform_announcement_body: input.body,
+    platform_announcement_active: String(input.active),
+  };
+  await db.batch([
+    ...Object.entries(announcementValues).map(([key, value]) => db.prepare(`
+      INSERT INTO system_settings (key, value) VALUES (?, ?)
+      ON CONFLICT (key) DO UPDATE SET value = excluded.value
+    `).bind(key, value)),
+    prepareAdminAudit({
+      adminId: req.auth?.sub ?? 'unknown',
+      action: 'publish_platform_announcement',
+      targetType: 'platform_announcement',
+      targetId: id,
+    }, db),
   ]);
   platformAnnouncementNotifier?.({ id, title: input.title, body: input.body });
   broadcastAdmin({ type: 'platform_announcement', announcement: { id, title: input.title, body: input.body } });
@@ -860,28 +938,33 @@ router.post(
     });
     if (overlaps) return res.status(409).json({ error: 'An approved rule already covers part of this effective period' });
     const now = new Date();
-    const rule = await prisma.$transaction(async (tx) => {
-      const updated = await tx.taxRule.update({
-        where: { id: existing.id },
-        data: {
-          status: existing.effectiveFrom <= now ? 'active' : 'approved',
-          reviewedAt: now,
-          approvedBy: req.auth?.sub ?? 'unknown',
-          approvalNote: input.approvalNote ?? existing.approvalNote,
-        },
-        include: { taxEntity: { select: { id: true, displayLabel: true, legalForm: true } } },
-      });
-      await tx.adminAuditLog.create({
-        data: {
-          adminId: req.auth?.sub ?? 'unknown',
-          action: 'approve_tax_rule',
-          targetType: 'tax_rule',
-          targetId: existing.id,
-          tenantId: null,
-        },
-      });
-      return updated;
+    const db = getD1DatabaseBinding();
+    const results = await db.batch([
+      db.prepare(`
+        UPDATE tax_rules
+        SET status = ?, reviewed_at = ?, approved_by = ?, approval_note = ?
+        WHERE id = ?
+      `).bind(
+        existing.effectiveFrom <= now ? 'active' : 'approved',
+        now.toISOString(),
+        req.auth?.sub ?? 'unknown',
+        input.approvalNote ?? existing.approvalNote,
+        existing.id,
+      ),
+      prepareAdminAudit({
+        adminId: req.auth?.sub ?? 'unknown',
+        action: 'approve_tax_rule',
+        targetType: 'tax_rule',
+        targetId: existing.id,
+        onlyAfterSuccessfulWrite: true,
+      }, db),
+    ]);
+    if ((results[0]?.meta.changes ?? 0) !== 1) throw new Error('Tax rule could not be approved');
+    const rule = await prisma.taxRule.findUnique({
+      where: { id: existing.id },
+      include: { taxEntity: { select: { id: true, displayLabel: true, legalForm: true } } },
     });
+    if (!rule) throw new Error('Approved tax rule could not be reloaded');
     return res.json({ rule: taxRuleView(rule) });
   }),
 );

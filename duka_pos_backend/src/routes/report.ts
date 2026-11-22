@@ -1,6 +1,6 @@
 import { Router, Request } from 'express';
 import { prisma } from '../lib/prisma';
-import { Prisma } from '@prisma/client';
+import { Prisma } from '../generated/prisma/client';
 import { asyncHandler } from '../lib/http';
 import { requireRole } from '../middleware/auth';
 import { isReportRangeAllowed } from '../lib/report_range';
@@ -89,17 +89,17 @@ router.get('/sales', requireRole('admin', 'manager', 'cashier'), asyncHandler(as
       transactions: number;
     }>>(Prisma.sql`
       SELECT
-        TO_CHAR(DATE_TRUNC('day', s.created_at), 'YYYY-MM-DD') AS day,
+        strftime('%Y-%m-%d', s.created_at) AS day,
         COALESCE(SUM(s.total), 0) AS sales,
         COALESCE(SUM(s.profit), 0) AS profit,
-        COUNT(*)::int AS transactions
+        COUNT(*) AS transactions
       FROM sales s
       WHERE s.tenant_id = ${req.user!.tenantId}
         AND s.created_at >= ${from}
         AND s.created_at < ${to}
         ${req.user!.role === 'cashier' ? Prisma.sql`AND s.staff_id = ${req.user!.id}` : Prisma.empty}
-      GROUP BY DATE_TRUNC('day', s.created_at)
-      ORDER BY DATE_TRUNC('day', s.created_at) ASC
+      GROUP BY strftime('%Y-%m-%d', s.created_at)
+      ORDER BY day ASC
     `),
   ]);
 
@@ -246,7 +246,7 @@ router.get('/sales/:saleId', requireRole('admin', 'manager', 'cashier'), asyncHa
 }));
 
 // Product analytics uses the same tenant/date scope as the sales report. The
-// aggregation stays in Postgres so an online manager can drill into a large
+// aggregation stays in D1 so an online manager can drill into a large
 // catalogue without downloading every sale item to the phone.
 router.get('/products', requireRole('admin', 'manager'), asyncHandler(async (req: Request, res) => {
   const from = typeof req.query.from === 'string' ? new Date(req.query.from) : new Date(Date.now() - 30 * 24 * 60 * 60 * 1000);
@@ -271,20 +271,20 @@ router.get('/products', requireRole('admin', 'manager'), asyncHandler(async (req
     product_id: string | null;
     product_name: string;
     units: number;
-    net_sales: string;
-    covered_sales: string;
-    gross_profit: string;
+    net_sales: number | string;
+    covered_sales: number | string;
+    gross_profit: number | string;
     transactions: number;
   }>>(Prisma.sql`
     SELECT si.product_id,
            si.product_name,
-           SUM(si.qty)::float8 AS units,
-           COALESCE(SUM(si.qty * si.unit_price), 0)::text AS net_sales,
+           SUM(si.qty) AS units,
+           COALESCE(SUM(si.qty * si.unit_price), 0) AS net_sales,
            COALESCE(SUM(CASE WHEN COALESCE(p.cost_price, 0) > 0
-                             THEN si.qty * si.unit_price ELSE 0 END), 0)::text AS covered_sales,
+                             THEN si.qty * si.unit_price ELSE 0 END), 0) AS covered_sales,
            COALESCE(SUM(COALESCE(si.taxable_amount, si.qty * si.unit_price) -
-                        si.qty * si.unit_cost), 0)::text AS gross_profit,
-           COUNT(DISTINCT si.sale_id)::int AS transactions
+                        si.qty * si.unit_cost), 0) AS gross_profit,
+           COUNT(DISTINCT si.sale_id) AS transactions
       FROM sale_items si
       JOIN sales s ON s.id = si.sale_id AND s.tenant_id = si.tenant_id
       LEFT JOIN products p ON p.id = si.product_id AND p.tenant_id = si.tenant_id
@@ -302,11 +302,11 @@ router.get('/products', requireRole('admin', 'manager'), asyncHandler(async (req
     // Coverage is a report total, not a top-products display metric. Keep it
     // independent of the 500-row response cap or a large catalogue will make
     // the owner's revenue and margin coverage silently too small.
-    prisma.$queryRaw<Array<{ total_revenue: string; covered_revenue: string }>>(
+    prisma.$queryRaw<Array<{ total_revenue: number | string; covered_revenue: number | string }>>(
       Prisma.sql`
-        SELECT COALESCE(SUM(si.qty * si.unit_price), 0)::text AS total_revenue,
+        SELECT COALESCE(SUM(si.qty * si.unit_price), 0) AS total_revenue,
                COALESCE(SUM(CASE WHEN COALESCE(p.cost_price, 0) > 0
-                                 THEN si.qty * si.unit_price ELSE 0 END), 0)::text
+                                 THEN si.qty * si.unit_price ELSE 0 END), 0)
                  AS covered_revenue
           FROM sale_items si
           JOIN sales s ON s.id = si.sale_id AND s.tenant_id = si.tenant_id
@@ -334,9 +334,9 @@ router.get('/products', requireRole('admin', 'manager'), asyncHandler(async (req
   });
 
   const [staff, payments, hourly, daily, records, companions, stockMovements] = await Promise.all([
-    prisma.$queryRaw<Array<{ staff_name: string; transactions: number; net_sales: string }>>(Prisma.sql`
-      SELECT s.staff_name, COUNT(DISTINCT s.id)::int AS transactions,
-             COALESCE(SUM(si.qty * si.unit_price), 0)::text AS net_sales
+    prisma.$queryRaw<Array<{ staff_name: string; transactions: number; net_sales: number | string }>>(Prisma.sql`
+      SELECT s.staff_name, COUNT(DISTINCT s.id) AS transactions,
+             COALESCE(SUM(si.qty * si.unit_price), 0) AS net_sales
         FROM sale_items si JOIN sales s ON s.id = si.sale_id AND s.tenant_id = si.tenant_id
        WHERE ${where}
        GROUP BY s.staff_name ORDER BY SUM(si.qty * si.unit_price) DESC
@@ -345,7 +345,7 @@ router.get('/products', requireRole('admin', 'manager'), asyncHandler(async (req
     // against that sale's product-line total, so the product drill-down keeps
     // the same payment mix as the checkout ledger instead of collapsing every
     // split sale to the sale-level `payment_method` summary.
-    prisma.$queryRaw<Array<{ payment_method: string; transactions: number; net_sales: string }>>(Prisma.sql`
+    prisma.$queryRaw<Array<{ payment_method: string; transactions: number; net_sales: number | string }>>(Prisma.sql`
       WITH product_sales AS (
         SELECT s.id AS sale_id,
                s.tenant_id,
@@ -358,13 +358,13 @@ router.get('/products', requireRole('admin', 'manager'), asyncHandler(async (req
          GROUP BY s.id, s.tenant_id, s.total, s.payment_method
       )
       SELECT COALESCE(sp.method, ps.payment_method) AS payment_method,
-             COUNT(DISTINCT ps.sale_id)::int AS transactions,
+             COUNT(DISTINCT ps.sale_id) AS transactions,
              COALESCE(SUM(
                CASE
                  WHEN sp.id IS NULL OR ps.sale_total = 0 THEN ps.product_total
                  ELSE ps.product_total * sp.amount / ps.sale_total
                END
-             ), 0)::text AS net_sales
+             ), 0) AS net_sales
         FROM product_sales ps
         LEFT JOIN sale_payments sp
           ON sp.sale_id = ps.sale_id AND sp.tenant_id = ps.tenant_id
@@ -376,31 +376,31 @@ router.get('/products', requireRole('admin', 'manager'), asyncHandler(async (req
          END
        ) DESC
     `),
-    prisma.$queryRaw<Array<{ hour: number; units: number; transactions: number; net_sales: string }>>(Prisma.sql`
-      SELECT EXTRACT(HOUR FROM s.created_at)::int AS hour,
-             COALESCE(SUM(si.qty), 0)::float8 AS units,
-             COUNT(DISTINCT s.id)::int AS transactions,
-             COALESCE(SUM(si.qty * si.unit_price), 0)::text AS net_sales
+    prisma.$queryRaw<Array<{ hour: number; units: number; transactions: number; net_sales: number | string }>>(Prisma.sql`
+      SELECT CAST(strftime('%H', s.created_at) AS INTEGER) AS hour,
+             COALESCE(SUM(si.qty), 0) AS units,
+             COUNT(DISTINCT s.id) AS transactions,
+             COALESCE(SUM(si.qty * si.unit_price), 0) AS net_sales
         FROM sale_items si JOIN sales s ON s.id = si.sale_id AND s.tenant_id = si.tenant_id
        WHERE ${where}
-       GROUP BY EXTRACT(HOUR FROM s.created_at)
+       GROUP BY strftime('%H', s.created_at)
        ORDER BY hour
     `),
-    prisma.$queryRaw<Array<{ day: string; transactions: number; net_sales: string; gross_profit: string }>>(Prisma.sql`
-      SELECT TO_CHAR(s.created_at AT TIME ZONE 'UTC', 'YYYY-MM-DD') AS day,
-             COUNT(DISTINCT s.id)::int AS transactions,
-             COALESCE(SUM(si.qty * si.unit_price), 0)::text AS net_sales,
+    prisma.$queryRaw<Array<{ day: string; transactions: number; net_sales: number | string; gross_profit: number | string }>>(Prisma.sql`
+      SELECT strftime('%Y-%m-%d', s.created_at) AS day,
+             COUNT(DISTINCT s.id) AS transactions,
+             COALESCE(SUM(si.qty * si.unit_price), 0) AS net_sales,
              COALESCE(SUM(COALESCE(si.taxable_amount, si.qty * si.unit_price) -
-                          si.qty * si.unit_cost), 0)::text AS gross_profit
+                          si.qty * si.unit_cost), 0) AS gross_profit
         FROM sale_items si JOIN sales s ON s.id = si.sale_id AND s.tenant_id = si.tenant_id
        WHERE ${where}
        GROUP BY day
        ORDER BY day
     `),
-    prisma.$queryRaw<Array<{ sale_id: string; created_at: Date; staff_name: string; payment_method: string; sale_total: string; product_sales: string }>>(Prisma.sql`
+    prisma.$queryRaw<Array<{ sale_id: string; created_at: Date | string; staff_name: string; payment_method: string; sale_total: number | string; product_sales: number | string }>>(Prisma.sql`
       SELECT s.id AS sale_id, s.created_at, s.staff_name, s.payment_method,
-             s.total::text AS sale_total,
-             COALESCE(SUM(si.qty * si.unit_price), 0)::text AS product_sales
+             s.total AS sale_total,
+             COALESCE(SUM(si.qty * si.unit_price), 0) AS product_sales
         FROM sale_items si JOIN sales s ON s.id = si.sale_id AND s.tenant_id = si.tenant_id
        WHERE ${where}
        GROUP BY s.id, s.created_at, s.staff_name, s.payment_method, s.total
@@ -409,8 +409,8 @@ router.get('/products', requireRole('admin', 'manager'), asyncHandler(async (req
     `),
     prisma.$queryRaw<Array<{ product_id: string; product_name: string; baskets: number; units: number }>>(Prisma.sql`
       SELECT si2.product_id, MAX(si2.product_name) AS product_name,
-             COUNT(DISTINCT s.id)::int AS baskets,
-             COALESCE(SUM(si2.qty), 0)::float8 AS units
+             COUNT(DISTINCT s.id) AS baskets,
+             COALESCE(SUM(si2.qty), 0) AS units
         FROM sale_items si1
         JOIN sales s ON s.id = si1.sale_id AND s.tenant_id = si1.tenant_id
         JOIN sale_items si2 ON si2.sale_id = si1.sale_id AND si2.tenant_id = si1.tenant_id
@@ -434,10 +434,10 @@ router.get('/products', requireRole('admin', 'manager'), asyncHandler(async (req
         FROM sync_records
        WHERE tenant_id = ${tenantId}
          AND kind = 'stock-movements'
-         AND payload->>'productId' = ${productId}
-         AND (payload->>'createdAt')::timestamptz >= ${from}
-         AND (payload->>'createdAt')::timestamptz < ${to}
-       ORDER BY (payload->>'createdAt')::timestamptz DESC, id DESC
+         AND json_extract(payload, '$.productId') = ${productId}
+         AND datetime(json_extract(payload, '$.createdAt')) >= datetime(${from})
+         AND datetime(json_extract(payload, '$.createdAt')) < datetime(${to})
+       ORDER BY datetime(json_extract(payload, '$.createdAt')) DESC, id DESC
        LIMIT 200
     `),
   ]);
@@ -455,7 +455,7 @@ router.get('/products', requireRole('admin', 'manager'), asyncHandler(async (req
     })),
     records: records.map((row) => ({
       ...row,
-      created_at: row.created_at.toISOString(),
+      created_at: new Date(row.created_at).toISOString(),
       sale_total: toMinor(row.sale_total),
       product_sales: toMinor(row.product_sales),
     })),

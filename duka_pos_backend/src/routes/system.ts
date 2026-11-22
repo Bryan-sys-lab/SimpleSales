@@ -1,11 +1,15 @@
 import { Router, Request } from 'express';
-import { prisma } from '../lib/prisma';
+import { getD1DatabaseBinding, prisma } from '../lib/prisma';
 import { asyncHandler } from '../lib/http';
 import { parseBody, settingsSchema } from '../lib/validation';
 import { taxReportingActivated } from '../services/tax_reporting';
 import { z } from 'zod';
 
 const router = Router();
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null;
+}
 
 router.get('/access', (_req, res) => res.json({ systemAdmin: true }));
 
@@ -24,16 +28,61 @@ router.patch('/users/:profileId', asyncHandler(async (req: Request, res) => {
   const profileId = req.params.profileId as string;
   const profile = await prisma.profile.findUnique({ where: { id: profileId } });
   if (!profile || profile.deletedAt) return res.status(404).json({ error: 'User not found' });
-  const user = await prisma.$transaction(async (tx) => {
-    const updated = await tx.profile.update({ where: { id: profileId }, data: {
-      ...(input.active !== undefined ? { active: input.active } : {}),
-      ...(input.role !== undefined ? { role: input.role } : {}),
-      ...(input.active === false ? { refreshTokenHash: null, refreshTokenPreviousHash: null } : {}),
-    }, select: { id: true, tenantId: true, name: true, role: true, active: true } });
-    await tx.adminAuditLog.create({ data: { adminId: req.auth?.sub ?? 'unknown', action: 'update_system_user', targetType: 'profile', targetId: profileId, tenantId: profile.tenantId } });
-    return updated;
+  const now = new Date().toISOString();
+  const db = getD1DatabaseBinding();
+  const results = await db.batch([
+    db.prepare(`
+      UPDATE profiles
+      SET active = COALESCE(?, active),
+          role = COALESCE(?, role),
+          refresh_token_hash = CASE WHEN ? = 1 THEN NULL ELSE refresh_token_hash END,
+          refresh_token_previous_hash = CASE WHEN ? = 1 THEN NULL ELSE refresh_token_previous_hash END
+      WHERE id = ? AND deleted_at IS NULL
+      RETURNING id, tenant_id, name, role, active
+    `).bind(
+      input.active ?? null,
+      input.role ?? null,
+      input.active === false ? 1 : 0,
+      input.active === false ? 1 : 0,
+      profileId,
+    ),
+    db.prepare(`
+      INSERT INTO admin_audit_logs (
+        id, admin_id, action, target_type, target_id, tenant_id, "at"
+      )
+      SELECT ?, ?, 'update_system_user', 'profile', ?, ?, ?
+      WHERE changes() = 1
+    `).bind(
+      globalThis.crypto.randomUUID(),
+      req.auth?.sub ?? 'unknown',
+      profileId,
+      profile.tenantId,
+      now,
+    ),
+  ]);
+  if ((results[0]?.meta.changes ?? 0) !== 1) {
+    return res.status(404).json({ error: 'User not found' });
+  }
+  const updated: unknown = results[0]?.results?.[0];
+  if (
+    !isRecord(updated) ||
+    typeof updated.id !== 'string' ||
+    typeof updated.tenant_id !== 'string' ||
+    typeof updated.name !== 'string' ||
+    typeof updated.role !== 'string' ||
+    (typeof updated.active !== 'boolean' && typeof updated.active !== 'number')
+  ) {
+    throw new Error('Updated system user was not returned by D1');
+  }
+  return res.json({
+    user: {
+      id: updated.id,
+      tenantId: updated.tenant_id,
+      name: updated.name,
+      role: updated.role,
+      active: updated.active === true || updated.active === 1,
+    },
   });
-  return res.json({ user });
 }));
 
 router.get('/analytics', asyncHandler(async (_req: Request, res) => {

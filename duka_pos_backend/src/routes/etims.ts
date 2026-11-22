@@ -1,12 +1,12 @@
 /**
  * eTIMS (KRA tax compliance) routes.
- * Uses PostgreSQL/Prisma for persistent storage.
+ * Uses D1 through Prisma for persistent storage.
  */
 import { Router } from 'express';
 import { asyncHandler } from '../lib/http';
 import { parseBody } from '../lib/validation';
 import { etimsReceiptSchema, etimsDeviceSchema } from '../lib/validation';
-import { Prisma } from '@prisma/client';
+import { Prisma } from '../generated/prisma/client';
 import { prisma } from '../lib/prisma';
 
 import { log } from '../lib/observability';

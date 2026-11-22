@@ -112,7 +112,15 @@ export const authMiddleware = async (req: express.Request, res: express.Response
 
   // Device-tier restriction.
   if (claims.token_use === 'device') {
-    const allowedPrefixes = ['/tenant', '/products', '/reports', '/admin'];
+    const allowedPrefixes = [
+      '/tenant',
+      '/products',
+      '/reports',
+      '/admin',
+      '/sales',
+      '/backups',
+      '/payments',
+    ];
     const ok = allowedPrefixes.some((p) => normalizedOriginalPath === p || normalizedOriginalPath.startsWith(p + '/'));
     if (!ok) {
       return res.status(403).json({ error: 'Device token not allowed', code: 'DEVICE_TOKEN_NOT_ALLOWED', requestId: req.requestId });

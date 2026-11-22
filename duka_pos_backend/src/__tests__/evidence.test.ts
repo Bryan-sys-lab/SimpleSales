@@ -5,12 +5,14 @@ import { errorHandler } from '../lib/http';
 
 const mocks = vi.hoisted(() => ({
   prisma: {
-    syncRecord: { upsert: vi.fn() },
-    $transaction: vi.fn(),
   },
+  d1: { prepare: vi.fn(), batch: vi.fn() },
 }));
 
-vi.mock('../lib/prisma', () => ({ prisma: mocks.prisma }));
+vi.mock('../lib/prisma', () => ({
+  prisma: mocks.prisma,
+  getD1DatabaseBinding: () => mocks.d1,
+}));
 vi.mock('../middleware/auth', () => ({
   requireRole: () => (req: any, _res: any, next: () => void) => {
     req.user = { id: 'profile-1', tenantId: 'tenant-1', role: 'admin', name: 'Owner' };
@@ -31,13 +33,12 @@ describe('financial evidence sync', () => {
 
   beforeEach(() => {
     vi.clearAllMocks();
-    mocks.prisma.$transaction.mockImplementation(async (callback: any) =>
-      callback({
-        syncRecord: {
-          upsert: vi.fn().mockResolvedValue({ id: 'evidence-1' }),
-        },
-      }),
-    );
+    mocks.d1.prepare.mockImplementation((sql: string) => ({
+      sql,
+      bind: (...bindings: unknown[]) => ({ sql, bindings }),
+    }));
+    mocks.d1.batch.mockImplementation(async (statements: unknown[]) =>
+      statements.map(() => ({ results: [{ id: 'evidence-1' }], meta: { changes: 1 } })));
   });
 
   it('accepts only sanitized financial facts and stores a server hash', async () => {
@@ -67,8 +68,12 @@ describe('financial evidence sync', () => {
 
     expect(response.status).toBe(200);
     expect(response.body.synced[0].serverIntegrityHash).toMatch(/^[a-f0-9]{64}$/);
-    const upsert = mocks.prisma.$transaction.mock.calls[0][0];
-    expect(upsert).toBeTypeOf('function');
+    const [statement] = mocks.d1.batch.mock.calls[0][0];
+    expect(statement.sql).toContain('ON CONFLICT (tenant_id, kind, device_id, local_id)');
+    expect(statement.sql).toContain('RETURNING id');
+    const payload = JSON.parse(statement.bindings[5] as string);
+    expect(payload.clientIntegrityHash).toBe('a'.repeat(64));
+    expect(payload.serverIntegrityHash).toBe(response.body.synced[0].serverIntegrityHash);
   });
 
   it('rejects customer fields instead of allowing them into evidence', async () => {
@@ -96,6 +101,6 @@ describe('financial evidence sync', () => {
     });
 
     expect(response.status).toBe(400);
-    expect(mocks.prisma.$transaction).not.toHaveBeenCalled();
+    expect(mocks.d1.batch).not.toHaveBeenCalled();
   });
 });

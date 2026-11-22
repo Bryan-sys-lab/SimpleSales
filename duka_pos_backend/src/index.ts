@@ -56,7 +56,7 @@ import businessContextRoutes from './routes/business_context';
 import saleEvidenceRoutes from './routes/sale_evidence';
 import { verifyAccessToken } from './lib/jwt';
 import { addLiveClient, broadcastAll, broadcastTenantChange, removeLiveClient } from './services/live_broker';
-import { addAdminLiveClient, broadcastAdmin, removeAdminLiveClient } from './services/admin_live_broker';
+import { addAdminLiveClient, removeAdminLiveClient } from './services/admin_live_broker';
 import { consumeAdminWebSocketTicket } from './services/admin_ws_tickets';
 
 if (typeof module !== 'undefined') { dotenv.config(); }

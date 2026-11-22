@@ -7,14 +7,14 @@ const mocks = vi.hoisted(() => ({
     customer: { findMany: vi.fn() },
     product: { findMany: vi.fn() },
     syncRecord: { upsert: vi.fn() },
-    $transaction: vi.fn(),
   },
-  tx: {
-    syncRecord: { upsert: vi.fn() },
-  },
+  d1: { prepare: vi.fn(), batch: vi.fn() },
 }));
 
-vi.mock("../lib/prisma", () => ({ prisma: mocks.prisma }));
+vi.mock("../lib/prisma", () => ({
+  prisma: mocks.prisma,
+  getD1DatabaseBinding: () => mocks.d1,
+}));
 vi.mock("../middleware/auth", () => ({
   requireRole:
     (..._roles: string[]) =>
@@ -55,12 +55,14 @@ describe("serving sync tenant boundary", () => {
 
   beforeEach(() => {
     vi.clearAllMocks();
-    mocks.prisma.$transaction.mockImplementation(
-      async (work: (tx: typeof mocks.tx) => Promise<unknown>) => work(mocks.tx),
-    );
+    mocks.d1.prepare.mockImplementation((sql: string) => ({
+      sql,
+      bind: (...bindings: unknown[]) => ({ sql, bindings }),
+    }));
+    mocks.d1.batch.mockImplementation(async (statements: unknown[]) =>
+      statements.map(() => ({ results: [{ id: "remote-cup-1" }], meta: { changes: 1 } })));
     mocks.prisma.customer.findMany.mockResolvedValue([{ localUuid: "customer-1" }]);
     mocks.prisma.product.findMany.mockResolvedValue([{ id: "product-1" }]);
-    mocks.tx.syncRecord.upsert.mockResolvedValue({ id: "remote-cup-1" });
   });
 
   const serving = (productId: string) => ({
@@ -99,7 +101,7 @@ describe("serving sync tenant boundary", () => {
 
     expect(response.status).toBe(409);
     expect(response.body.error).toBe("Product is not available in this shop");
-    expect(mocks.prisma.$transaction).not.toHaveBeenCalled();
+    expect(mocks.d1.batch).not.toHaveBeenCalled();
   });
 
   it("rejects a lay-by whose customer or product belongs to another shop", async () => {
@@ -136,7 +138,7 @@ describe("serving sync tenant boundary", () => {
 
     expect(response.status).toBe(409);
     expect(response.body.error).toBe("Customer is not available in this shop");
-    expect(mocks.prisma.$transaction).not.toHaveBeenCalled();
+    expect(mocks.d1.batch).not.toHaveBeenCalled();
 
     mocks.prisma.customer.findMany.mockResolvedValue([
       { localUuid: "other-shop-customer" },
@@ -151,6 +153,6 @@ describe("serving sync tenant boundary", () => {
     expect(productResponse.body.error).toBe(
       "Product is not available in this shop",
     );
-    expect(mocks.prisma.$transaction).not.toHaveBeenCalled();
+    expect(mocks.d1.batch).not.toHaveBeenCalled();
   });
 });

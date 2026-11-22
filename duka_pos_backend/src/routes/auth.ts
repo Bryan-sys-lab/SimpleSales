@@ -8,6 +8,7 @@ import { prisma } from '../lib/prisma';
 import { asyncHandler } from '../lib/http';
 import {
   authLinkSchema,
+  authVerifyCodeSchema,
   authVerifySchema,
   authLoginSchema,
   authRefreshSchema,
@@ -38,6 +39,7 @@ import { authMiddleware } from '../middleware/auth';
 import { createCloudflareEmailTransport } from '../lib/email_sender';
 import { readableTenantId } from '../lib/tenant_id';
 import { generateVoucher, hashVoucher, tenantEntitlement } from '../lib/entitlements';
+import { redeemVoucherAtomically } from '../lib/voucher_redemption';
 
 const router = Router();
 
@@ -50,10 +52,6 @@ function verificationSecret(): string {
 
 function isConfigured(): boolean {
   return Boolean(verificationSecret() && process.env.AUTH_JWT_SECRET);
-}
-
-function mailerConfigured(): boolean {
-  return Boolean(process.env.CLOUDFLARE_ACCOUNT_ID && process.env.CLOUDFLARE_API_TOKEN);
 }
 
 function notConfigured(res: Response, requestId?: string) {
@@ -83,8 +81,69 @@ function buildMailer() {
   });
 }
 
+function debugCodesEnabled(): boolean {
+  if (process.env.VERIFICATION_DEBUG_CODES !== 'true') return false;
+  const publicUrl = process.env.PUBLIC_API_URL ?? '';
+  if (/^https:\/\/[^/]*staging[^/]*/i.test(publicUrl)) return true;
+  return process.env.NODE_ENV === 'test';
+}
+
+function createVerificationCode(): string {
+  const testCode = process.env.AUTH_TEST_CODE;
+  if (process.env.NODE_ENV === 'test' && testCode && /^\d{6}$/.test(testCode)) {
+    return testCode;
+  }
+  return generateVerificationCode();
+}
+
+function mailerConfigured(): boolean {
+  return buildMailer().configured;
+}
+
 function hashRefreshToken(token: string): string {
   return hashCodeSecret(token, 'app-session-refresh', verificationSecret());
+}
+
+type VerificationCodeCheck =
+  | { valid: true }
+  | { valid: false; error: string; code: string };
+
+async function checkVerificationCode(input: {
+  email: string;
+  password: string;
+  code: string;
+  now: Date;
+}): Promise<VerificationCodeCheck> {
+  const challenge = await prisma.verificationChallenge.findFirst({
+    where: { email: input.email, used: false },
+    orderBy: { createdAt: 'desc' },
+  });
+  if (!challenge) return { valid: false, error: 'Code expired', code: 'VERIFICATION_EXPIRED' };
+  if (isVerificationExpired(challenge.expiresAt, input.now)) {
+    await prisma.verificationChallenge.update({
+      where: { id: challenge.id },
+      data: { used: true },
+    });
+    return { valid: false, error: 'Code expired', code: 'VERIFICATION_EXPIRED' };
+  }
+
+  const parts = (challenge.code || '').split(':');
+  if (parts.length !== 3) {
+    return { valid: false, error: 'Invalid challenge', code: 'VERIFICATION_INVALID' };
+  }
+  const [salt, codeHash, pinHash] = parts;
+  const codeCorrect = hashesMatch(
+    hashCodeSecret(input.code, salt, verificationSecret()),
+    codeHash,
+  );
+  const pinCorrect = hashesMatch(
+    hashCodeSecret(input.password, salt, verificationSecret()),
+    pinHash,
+  );
+  if (!codeCorrect || !pinCorrect) {
+    return { valid: false, error: 'Code is not right', code: 'VERIFICATION_INVALID' };
+  }
+  return { valid: true };
 }
 
 async function ensureOwnerProfile(input: { userId: string; email: string; shopName?: string; ownerName?: string }, options: { allowCreate: boolean }) {
@@ -127,7 +186,6 @@ async function ensureOwnerProfile(input: { userId: string; email: string; shopNa
       data: { tenantId: tenant.id, status: 'pending' },
     });
   } catch (error) {
-    // eslint-disable-next-line no-console
     console.error('tenant_subscription_create_failed', error);
   }
   const profile = await prisma.profile.create({
@@ -172,8 +230,13 @@ async function rotateRefreshToken(profile: any, tier: string) {
 // POST /auth/link
 router.post('/link', linkLimiter, asyncHandler(async (req: Request, res: Response) => {
   const requestId = req.requestId;
-  const { email, password, shopName } = parseBody(authLinkSchema, req.body);
+  const { email, password, shopName, firstVoucherRecovery } = parseBody(authLinkSchema, req.body);
   if (!isConfigured()) return notConfigured(res, requestId);
+  const mailer = buildMailer();
+  const debugWithoutEmail = debugCodesEnabled();
+  if (!mailer.configured && !debugCodesEnabled()) {
+    return res.status(503).json({ error: 'Email verification is not configured on this server', code: 'EMAIL_NOT_CONFIGURED', requestId });
+  }
 
   const secret = verificationSecret();
   // rate limit per mailbox
@@ -185,20 +248,20 @@ router.post('/link', linkLimiter, asyncHandler(async (req: Request, res: Respons
   }
 
   // upsert user (unverified) with passwordHash
-  let user: any = await prisma.user.findUnique({ where: { email } });
+  const user: any = await prisma.user.findUnique({ where: { email } });
   if (!user || !user.emailVerifiedAt) {
     const passwordHash = await hashPassword(password);
     if (user) {
       await prisma.user.update({ where: { id: user.id }, data: { passwordHash } });
     } else {
-      user = await prisma.user.create({ data: { email, passwordHash } });
+      await prisma.user.create({ data: { email, passwordHash } });
     }
   }
 
   // invalidate outstanding codes
   await prisma.verificationChallenge.updateMany({ where: { email, used: false }, data: { used: true } });
 
-  const code = generateVerificationCode();
+  const code = createVerificationCode();
   const salt = newSalt();
   const challenge = await prisma.verificationChallenge.create({
     data: {
@@ -216,9 +279,24 @@ router.post('/link', linkLimiter, asyncHandler(async (req: Request, res: Respons
   });
 
   // email
-  const existingProfile = user ? await prisma.profile.findFirst({ where: { userId: user.id }, select: { id: true } }) : null;
   const accessVoucherModel = (prisma as typeof prisma & { accessVoucher?: typeof prisma.accessVoucher }).accessVoucher;
-  const issueFirstVoucher = Boolean(accessVoucherModel) && (!user || (!user.emailVerifiedAt && !existingProfile));
+  let activeFirstVoucher = false;
+  if (accessVoucherModel) {
+    activeFirstVoucher = Boolean(await accessVoucherModel.findFirst({
+      where: {
+        issuedToEmail: email,
+        autoIssued: true,
+        redeemedAt: null,
+        revokedAt: null,
+        pausedAt: null,
+        deletedAt: null,
+      },
+      select: { id: true },
+      orderBy: { createdAt: 'desc' },
+    }));
+  }
+  const issueFirstVoucher = Boolean(accessVoucherModel)
+    && (!activeFirstVoucher || firstVoucherRecovery === true);
   let firstVoucherCode: string | undefined;
   if (issueFirstVoucher) {
     await accessVoucherModel!.updateMany({ where: { issuedToEmail: email, autoIssued: true, redeemedAt: null, revokedAt: null }, data: { revokedAt: new Date() } });
@@ -239,9 +317,8 @@ router.post('/link', linkLimiter, asyncHandler(async (req: Request, res: Respons
     // the verification email. It is never stored in the database.
     firstVoucherCode = generatedVoucher.code;
   }
-  if (mailerConfigured()) {
+  if (!debugWithoutEmail) {
     try {
-      const mailer = buildMailer();
       await mailer.send({ to: email, code, shopName, ttlMinutes: VERIFICATION_TTL_MINUTES, firstVoucherCode });
     } catch {
       await prisma.verificationChallenge.update({ where: { id: challenge.id }, data: { used: true } });
@@ -255,39 +332,60 @@ router.post('/link', linkLimiter, asyncHandler(async (req: Request, res: Respons
     challenge_id: challenge.id,
     email: maskEmail(email),
     expires_in_seconds: VERIFICATION_TTL_MINUTES * 60,
-    ...(process.env.NODE_ENV !== 'production' && process.env.VERIFICATION_DEBUG_CODES === 'true' ? { debug_code: code } : {}),
+    ...(debugCodesEnabled() ? {
+      debug_code: code,
+      ...(firstVoucherCode ? { debug_first_voucher_code: firstVoucherCode } : {}),
+    } : {}),
   });
+}));
+
+// POST /auth/verify-code
+// Confirms the email code before showing the voucher paywall. It deliberately
+// leaves the challenge unused; /verify rechecks it when the voucher is submitted.
+router.post('/verify-code', verifyLimiter, asyncHandler(async (req: Request, res: Response) => {
+  const requestId = req.requestId;
+  const { email, password, code } = parseBody(authVerifyCodeSchema, req.body);
+  if (!isConfigured()) return notConfigured(res, requestId);
+
+  const check = await checkVerificationCode({ email, password, code, now: new Date() });
+  if (!check.valid) {
+    return res.status(400).json({ error: check.error, code: check.code, requestId });
+  }
+  return res.json({ status: 'code_verified' });
 }));
 
 // POST /auth/verify
 router.post('/verify', verifyLimiter, asyncHandler(async (req: Request, res: Response) => {
   const requestId = req.requestId;
-  const { email, password, code, shopName, ownerName } = parseBody(authVerifySchema, req.body);
+  const { email, password, code, voucherCode, shopName, ownerName } = parseBody(authVerifySchema, req.body);
   if (!isConfigured()) return notConfigured(res, requestId);
 
-  const secret = verificationSecret();
   const now = new Date();
-  const challenge = await prisma.verificationChallenge.findFirst({ where: { email, used: false }, orderBy: { createdAt: 'desc' } });
-  if (!challenge) return res.status(400).json({ error: 'Code expired', code: 'VERIFICATION_EXPIRED', requestId });
-  if (isVerificationExpired(challenge.expiresAt, now)) {
-    await prisma.verificationChallenge.update({ where: { id: challenge.id }, data: { used: true } });
-    return res.status(400).json({ error: 'Code expired', code: 'VERIFICATION_EXPIRED', requestId });
+  const check = await checkVerificationCode({ email, password, code, now });
+  if (!check.valid) {
+    return res.status(400).json({ error: check.error, code: check.code, requestId });
   }
 
-  const parts = (challenge.code || '').split(':');
-  if (parts.length !== 3) return res.status(400).json({ error: 'Invalid challenge', code: 'VERIFICATION_INVALID', requestId });
-  const [salt, codeHash, pinHash] = parts;
-  const codeCorrect = hashesMatch(hashCodeSecret(code, salt, secret), codeHash);
-  const pinCorrect = hashesMatch(hashCodeSecret(password, salt, secret), pinHash);
-  if (!codeCorrect || !pinCorrect) {
-    return res.status(400).json({ error: 'Code is not right', code: 'VERIFICATION_INVALID', requestId });
+  const accessVoucherModel = (prisma as typeof prisma & { accessVoucher?: typeof prisma.accessVoucher }).accessVoucher;
+  const voucher = accessVoucherModel
+    ? await accessVoucherModel.findUnique({
+        where: { codeHash: hashVoucher(voucherCode) },
+      })
+    : null;
+  if (!voucher || voucher.revokedAt || voucher.pausedAt || voucher.deletedAt ||
+      voucher.redeemedAt || (voucher.expiresAt && voucher.expiresAt <= now) ||
+      (voucher.issuedToEmail && voucher.issuedToEmail !== email)) {
+    return res.status(400).json({
+      error: 'Voucher code is invalid or does not belong to this account',
+      code: 'VOUCHER_INVALID',
+      requestId,
+    });
   }
 
   await prisma.verificationChallenge.updateMany({ where: { email, used: false }, data: { used: true } });
 
   // set user verified
   let user: any = await prisma.user.findUnique({ where: { email }, include: { profiles: true } });
-  const firstRegistration = !user?.emailVerifiedAt && (user?.profiles?.length ?? 0) === 0;
   if (!user) {
     const passwordHash = await hashPassword(password);
     user = await prisma.user.create({ data: { email, passwordHash, emailVerifiedAt: now } });
@@ -302,9 +400,25 @@ router.post('/verify', verifyLimiter, asyncHandler(async (req: Request, res: Res
     return res.status(400).json({ error: 'Shop setup required', code: 'SHOP_SETUP_REQUIRED', requestId });
   }
 
+  const voucherExpiry = new Date(now.getTime() + 30 * 24 * 60 * 60 * 1000);
+  const redeemed = await redeemVoucherAtomically({
+    voucherId: voucher.id,
+    tenantId: shop.tenantId,
+    profileId: shop.profileId,
+    email,
+    now,
+    expiresAt: voucherExpiry,
+  });
+  if (!redeemed) {
+    return res.status(409).json({
+      error: 'Voucher could not be redeemed',
+      code: 'VOUCHER_REDEEM_FAILED',
+      requestId,
+    });
+  }
+
   let firstVoucherAvailable = false;
-  const accessVoucherModel = (prisma as typeof prisma & { accessVoucher?: typeof prisma.accessVoucher }).accessVoucher;
-  if (firstRegistration && accessVoucherModel) {
+  if (accessVoucherModel) {
     firstVoucherAvailable = Boolean(await accessVoucherModel.findFirst({
       where: { issuedToEmail: email, autoIssued: true, redeemedAt: null, revokedAt: null, pausedAt: null, deletedAt: null },
       select: { id: true },
@@ -325,6 +439,7 @@ router.post('/verify', verifyLimiter, asyncHandler(async (req: Request, res: Res
     refresh_token: refresh.token,
     expires_in_seconds: access.expiresIn,
     refresh_expires_in_seconds: REFRESH_TOKEN_TTL_MS / 1000,
+    voucher_redeemed: true,
     first_registration_voucher: firstVoucherAvailable ? { available: true, duration_days: 30 } : null,
   });
 }));
@@ -405,15 +520,17 @@ router.post('/voucher/redeem', authMiddleware, asyncHandler(async (req: Request,
   if (voucher.issuedToProfileId && voucher.issuedToProfileId !== profile.id) return res.status(403).json({ error: 'Voucher is issued to another user', code: 'VOUCHER_PROFILE_MISMATCH' });
   if (voucher.issuedToEmail && voucher.issuedToEmail !== (req.auth?.email ?? '').toLowerCase()) return res.status(403).json({ error: 'Voucher is issued to another email', code: 'VOUCHER_EMAIL_MISMATCH' });
   const starterExpiry = voucher.autoIssued ? new Date(now.getTime() + 30 * 24 * 60 * 60 * 1000) : voucher.expiresAt;
-  await prisma.$transaction(async (tx) => {
-    const claimed = await tx.accessVoucher.updateMany({ where: { id: voucher.id, redeemedAt: null, revokedAt: null, pausedAt: null, deletedAt: null }, data: { redeemedAt: now, redeemedByProfileId: profile.id, tenantId: voucher.tenantId ?? profile.tenantId, issuedToProfileId: voucher.issuedToProfileId ?? profile.id, expiresAt: starterExpiry } });
-    if (claimed.count !== 1) throw new Error('Voucher already claimed');
-    await tx.tenantSubscription.upsert({
-      where: { tenantId: profile.tenantId },
-      create: { tenantId: profile.tenantId, status: 'voucher', voucherId: voucher.id, currentPeriodEnd: starterExpiry },
-      update: { status: 'voucher', voucherId: voucher.id, currentPeriodEnd: starterExpiry, graceUntil: null },
-    });
+  const claimed = await redeemVoucherAtomically({
+    voucherId: voucher.id,
+    tenantId: profile.tenantId,
+    profileId: profile.id,
+    email: (req.auth?.email ?? '').toLowerCase(),
+    now,
+    expiresAt: starterExpiry,
   });
+  if (!claimed) {
+    return res.status(400).json({ error: 'Voucher is invalid, expired, or already used', code: 'VOUCHER_INVALID' });
+  }
   return res.json({ status: 'voucher_redeemed', entitlement: await tenantEntitlement(profile.tenantId) });
 }));
 
@@ -482,7 +599,7 @@ router.post('/forgot-password', loginLimiter, asyncHandler(async (req: Request, 
   let debugCode: string | undefined;
   if (user) {
     // generate code, store EmailVerification? use VerificationChallenge
-    const code = generateVerificationCode();
+    const code = createVerificationCode();
     debugCode = (process.env.NODE_ENV !== 'production' && process.env.VERIFICATION_DEBUG_CODES === 'true') ? code : undefined;
     const salt = newSalt();
     const secret = verificationSecret();
@@ -618,7 +735,7 @@ router.post('/pin-reset/request', pinResetLimiter, asyncHandler(async (req: Requ
 
   await prisma.verificationChallenge.updateMany({ where: { email, used: false }, data: { used: true } });
 
-  const code = generateVerificationCode();
+  const code = createVerificationCode();
   const salt = newSalt();
   const challenge = await prisma.verificationChallenge.create({
     data: {

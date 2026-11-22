@@ -8,13 +8,17 @@ process.env.NODE_ENV = 'test';
 const mocks = vi.hoisted(() => ({
   verifyAccessToken: vi.fn(),
   profileFindMany: vi.fn(),
+  tenantSubscriptionFindUnique: vi.fn(),
 }));
 
 vi.mock('../lib/jwt', () => ({
   verifyAccessToken: mocks.verifyAccessToken,
 }));
 vi.mock('../lib/prisma', () => ({
-  prisma: { profile: { findMany: mocks.profileFindMany } },
+  prisma: {
+    profile: { findMany: mocks.profileFindMany },
+    tenantSubscription: { findUnique: mocks.tenantSubscriptionFindUnique },
+  },
 }));
 
 describe('auth middleware staff bootstrap', () => {
@@ -77,5 +81,52 @@ describe('auth middleware staff bootstrap', () => {
 
       expect(response.status).toBe(204);
       expect(mocks.verifyAccessToken).not.toHaveBeenCalled();
+    });
+
+  it('allows device sessions to use app sales, backup, and payment routes only within the allowlist',
+    async () => {
+      const { authMiddleware } = await import('../middleware/auth');
+      mocks.verifyAccessToken.mockReturnValue({ sub: 'user-1', token_use: 'device' });
+      mocks.profileFindMany.mockResolvedValue([{
+        id: 'profile-1',
+        tenantId: 'tenant-1',
+        role: 'admin',
+        name: 'Owner',
+        tenant: { shopName: 'Shop' },
+      }]);
+      mocks.tenantSubscriptionFindUnique.mockResolvedValue({
+        status: 'active',
+        currentPeriodEnd: null,
+        graceUntil: null,
+        priceMinor: null,
+        currency: 'KES',
+        billingInterval: 'monthly',
+      });
+
+      const app = express();
+      app.use('/api', authMiddleware);
+      app.post('/api/sales/sync', (_req, res) => res.status(204).end());
+      app.post('/api/backups/full', (_req, res) => res.status(204).end());
+      app.post('/api/payments/initiate', (_req, res) => res.status(204).end());
+      app.get('/api/owner-transactions', (_req, res) => res.status(204).end());
+
+      for (const path of [
+        '/api/sales/sync',
+        '/api/backups/full',
+        '/api/payments/initiate',
+      ]) {
+        const response = await supertest(app)
+          .post(path)
+          .set('authorization', 'Bearer device-token')
+          .set('x-tenant-id', 'tenant-1');
+        expect(response.status, path).toBe(204);
+      }
+
+      const restricted = await supertest(app)
+        .get('/api/owner-transactions')
+        .set('authorization', 'Bearer device-token')
+        .set('x-tenant-id', 'tenant-1');
+      expect(restricted.status).toBe(403);
+      expect(restricted.body.code).toBe('DEVICE_TOKEN_NOT_ALLOWED');
     });
 });

@@ -1,22 +1,14 @@
 /**
  * Prisma's configuration.
  *
- * ## WHY THE CONNECTION STRING IS HERE AND NOT IN THE SCHEMA
+ * ## WHY THE LOCAL SQLITE URL IS HERE AND NOT IN THE SCHEMA
  *
- * Prisma 7 took the datasource URL out of `schema.prisma`. The schema says
- * WHAT it is talking to — Postgres — and this file says WHERE, which is the
- * right way round: the URL is a property of the deployment, and a schema
- * that carries it is a schema that has to be edited to move between
- * environments.
+ * Prisma 7 took the datasource URL out of `schema.prisma`. Prisma CLI
+ * operations use a disposable local SQLite database; deployed Workers access
+ * D1 through the `DB` binding and Wrangler migrations, never through this URL.
  *
- * The CLI reads it from here. The service does not: it builds an ADAPTER
- * (`@prisma/adapter-pg`) and hands that to the client, so the service
- * connects the same way whether it is talking to Postgres, to a pooler, or to
- * something else that speaks the protocol.
- *
- * The URL is read from the environment, and the environment says it: nothing
- * here has a default that could send a development machine at a production
- * database.
+ * Keeping this URL separate from the legacy `DATABASE_URL` prevents a local
+ * Prisma command from accidentally targeting a PostgreSQL service.
  */
 import 'dotenv/config';
 import { defineConfig } from 'prisma/config';
@@ -24,9 +16,9 @@ import { defineConfig } from 'prisma/config';
 export default defineConfig({
   schema: 'prisma/schema.prisma',
   migrations: {
-    path: 'prisma/migrations',
+    path: 'prisma/migrations-d1',
   },
   datasource: {
-    url: process.env.DATABASE_URL ?? '',
+    url: process.env.D1_LOCAL_DATABASE_URL ?? 'file:./prisma/local.db',
   },
 });

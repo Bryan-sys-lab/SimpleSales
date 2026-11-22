@@ -4,19 +4,15 @@ import { beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 
 const mocks = vi.hoisted(() => ({
   prisma: {
-    $transaction: vi.fn(),
+    product: { findMany: vi.fn() },
   },
-  tx: {
-    product: {
-      findFirst: vi.fn(),
-      create: vi.fn(),
-      update: vi.fn(),
-      upsert: vi.fn(),
-    },
-  },
+  d1: { prepare: vi.fn(), batch: vi.fn() },
 }));
 
-vi.mock('../lib/prisma', () => ({ prisma: mocks.prisma }));
+vi.mock('../lib/prisma', () => ({
+  prisma: mocks.prisma,
+  getD1DatabaseBinding: () => mocks.d1,
+}));
 
 describe('product sync CUID contract', () => {
   let app: express.Express;
@@ -39,16 +35,17 @@ describe('product sync CUID contract', () => {
 
   beforeEach(() => {
     vi.clearAllMocks();
-    mocks.prisma.$transaction.mockImplementation(
-      async (work: (tx: typeof mocks.tx) => Promise<unknown>) => work(mocks.tx),
-    );
-    mocks.tx.product.create.mockResolvedValue({ id: 'clw7productcuid123' });
-    mocks.tx.product.upsert.mockResolvedValue({ id: 'clw7productcuid123' });
-    mocks.tx.product.findFirst.mockResolvedValue({
-      id: 'clw7productcuid123',
-      tenantId: 'owner-shop-1234',
-    });
-    mocks.tx.product.update.mockResolvedValue({ id: 'clw7productcuid123' });
+    mocks.prisma.product.findMany.mockResolvedValue([
+      { id: 'clw7productcuid123' },
+    ]);
+    mocks.d1.prepare.mockImplementation((sql: string) => ({
+      sql,
+      bind: (...bindings: unknown[]) => ({ sql, bindings }),
+    }));
+    mocks.d1.batch.mockImplementation(async (statements: Array<{ sql: string }>) =>
+      statements.map((statement) => statement.sql.includes('RETURNING id')
+        ? { results: [{ id: 'clw7productcuid123' }], meta: { changes: 1 } }
+        : { meta: { changes: 0 } }));
   });
 
   it('returns and accepts the CUID on the next catalogue sync', async () => {
@@ -85,8 +82,8 @@ describe('product sync CUID contract', () => {
     expect(second.body.synced).toEqual([
       { localId: 7, remoteId: 'clw7productcuid123' },
     ]);
-    expect(mocks.tx.product.update).toHaveBeenCalledWith(
-      expect.objectContaining({ where: { id: 'clw7productcuid123' } }),
-    );
+    const [update] = mocks.d1.batch.mock.calls[1][0];
+    expect(update.sql).toContain('WHERE id = ? AND tenant_id = ?');
+    expect(update.sql).not.toContain('stock_qty');
   });
 });

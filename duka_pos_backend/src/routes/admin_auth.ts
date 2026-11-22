@@ -3,7 +3,8 @@ import rateLimit from 'express-rate-limit';
 import crypto from 'node:crypto';
 import { z } from 'zod';
 import { asyncHandler } from '../lib/http';
-import { prisma } from '../lib/prisma';
+import { getD1DatabaseBinding, prisma } from '../lib/prisma';
+import { prepareAdminAudit } from '../lib/admin_audit_d1';
 import { parseBody } from '../lib/validation';
 import { issueAccessToken } from '../lib/jwt';
 import { systemAdminMiddleware } from '../middleware/auth';
@@ -130,15 +131,51 @@ router.post('/keys/mint', systemAdminMiddleware, asyncHandler(async (req: Reques
   const rawKey = crypto.randomBytes(32).toString('base64url');
   const keyHash = crypto.createHash('sha256').update(rawKey).digest('hex');
   const expiresAt = new Date(Date.now() + input.expiresInDays * 86400000);
-  const key = await prisma.$transaction(async (tx) => {
-    const created = await tx.adminKey.create({ data: {
-      email: input.email, phone: input.phone, keyHash, createdBy: req.auth?.sub ?? 'unknown',
-      expiresAt, department: input.department, role: input.role, permissions: input.permissions,
-      canRecruit: input.canRecruit, canMintKeys: input.canMintKeys, canAssignTasks: input.canAssignTasks, parentKeyId: access?.keyId ?? null,
-    } });
-    await tx.adminAuditLog.create({ data: { adminId: req.auth?.sub ?? 'unknown', action: 'admin_account_invited', targetType: 'admin_key', targetId: created.id, tenantId: null } });
-    return created;
-  });
+  const keyId = crypto.randomUUID();
+  const db = getD1DatabaseBinding();
+  const results = await db.batch([
+    db.prepare(`
+      INSERT INTO admin_keys (
+        id, email, phone, key_hash, created_by, created_at, expires_at,
+        department, role, permissions, can_recruit, can_mint_keys,
+        can_assign_tasks, parent_key_id
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `).bind(
+      keyId,
+      input.email,
+      input.phone,
+      keyHash,
+      req.auth?.sub ?? 'unknown',
+      new Date().toISOString(),
+      expiresAt.toISOString(),
+      input.department,
+      input.role,
+      JSON.stringify(input.permissions),
+      input.canRecruit ? 1 : 0,
+      input.canMintKeys ? 1 : 0,
+      input.canAssignTasks ? 1 : 0,
+      access?.keyId ?? null,
+    ),
+    prepareAdminAudit({
+      adminId: req.auth?.sub ?? 'unknown',
+      action: 'admin_account_invited',
+      targetType: 'admin_key',
+      targetId: keyId,
+      onlyAfterSuccessfulWrite: true,
+    }, db),
+  ]);
+  if ((results[0]?.meta.changes ?? 0) !== 1) throw new Error('Administrator key could not be created');
+  const key = {
+    id: keyId,
+    email: input.email,
+    phone: input.phone,
+    department: input.department,
+    role: input.role,
+    permissions: input.permissions,
+    canRecruit: input.canRecruit,
+    canMintKeys: input.canMintKeys,
+    canAssignTasks: input.canAssignTasks,
+  };
   log('info', 'admin.key.minted', { keyId: key.id, createdBy: req.auth?.sub, department: key.department });
   res.status(201).json({ key: rawKey, id: key.id, email: key.email, phone: key.phone, department: key.department, role: key.role, permissions: key.permissions, canRecruit: key.canRecruit, canMintKeys: key.canMintKeys, canAssignTasks: key.canAssignTasks, expiresAt });
 }));
@@ -162,18 +199,31 @@ router.patch('/keys/:id', systemAdminMiddleware, asyncHandler(async (req: Reques
       return res.status(403).json({ error: 'Requested access exceeds your department permissions' });
     }
   }
-  const updated = await prisma.$transaction(async (tx) => {
-    const row = await tx.adminKey.update({ where: { id: target.id }, data: {
-      ...(input.role !== undefined ? { role: input.role } : {}),
-      ...(input.permissions !== undefined ? { permissions: input.permissions } : {}),
-      ...(input.canRecruit !== undefined ? { canRecruit: input.canRecruit } : {}),
-      ...(input.canMintKeys !== undefined ? { canMintKeys: input.canMintKeys } : {}),
-      ...(input.canAssignTasks !== undefined ? { canAssignTasks: input.canAssignTasks } : {}),
-      ...(input.expiresInDays !== undefined ? { expiresAt: new Date(Date.now() + input.expiresInDays * 86400000) } : {}),
-    }, select: { id: true, email: true, department: true, role: true, permissions: true, canRecruit: true, canMintKeys: true, canAssignTasks: true, expiresAt: true, revokedAt: true } });
-    await tx.adminAuditLog.create({ data: { adminId: req.auth?.sub ?? 'unknown', action: 'admin_access_updated', targetType: 'admin_key', targetId: row.id, tenantId: null } });
-    return row;
-  });
+  const changes: string[] = [];
+  const bindings: unknown[] = [];
+  if (input.role !== undefined) { changes.push('role = ?'); bindings.push(input.role); }
+  if (input.permissions !== undefined) { changes.push('permissions = ?'); bindings.push(JSON.stringify(input.permissions)); }
+  if (input.canRecruit !== undefined) { changes.push('can_recruit = ?'); bindings.push(input.canRecruit ? 1 : 0); }
+  if (input.canMintKeys !== undefined) { changes.push('can_mint_keys = ?'); bindings.push(input.canMintKeys ? 1 : 0); }
+  if (input.canAssignTasks !== undefined) { changes.push('can_assign_tasks = ?'); bindings.push(input.canAssignTasks ? 1 : 0); }
+  if (input.expiresInDays !== undefined) {
+    changes.push('expires_at = ?');
+    bindings.push(new Date(Date.now() + input.expiresInDays * 86400000).toISOString());
+  }
+  const db = getD1DatabaseBinding();
+  const results = await db.batch([
+    db.prepare(`UPDATE admin_keys SET ${changes.join(', ')} WHERE id = ?`).bind(...bindings, target.id),
+    prepareAdminAudit({
+      adminId: req.auth?.sub ?? 'unknown',
+      action: 'admin_access_updated',
+      targetType: 'admin_key',
+      targetId: target.id,
+      onlyAfterSuccessfulWrite: true,
+    }, db),
+  ]);
+  if ((results[0]?.meta.changes ?? 0) !== 1) throw new Error('Administrator key could not be updated');
+  const updated = await prisma.adminKey.findUnique({ where: { id: target.id }, select: { id: true, email: true, department: true, role: true, permissions: true, canRecruit: true, canMintKeys: true, canAssignTasks: true, expiresAt: true, revokedAt: true } });
+  if (!updated) throw new Error('Updated administrator key could not be reloaded');
   log('info', 'admin.key.permissions_updated', { keyId: updated.id, updatedBy: req.auth?.sub });
   res.json({ key: updated });
 }));
@@ -191,10 +241,20 @@ router.post('/keys/:id/revoke', systemAdminMiddleware, asyncHandler(async (req: 
     descendants.push(...frontier);
   }
   const revokedAt = new Date();
-  await prisma.$transaction(async (tx) => {
-    await tx.adminKey.updateMany({ where: { id: { in: descendants }, revokedAt: null }, data: { revokedAt } });
-    await tx.adminAuditLog.create({ data: { adminId: req.auth?.sub ?? 'unknown', action: 'admin_access_revoked', targetType: 'admin_key', targetId: target.id, tenantId: null } });
-  });
+  const db = getD1DatabaseBinding();
+  await db.batch([
+    db.prepare(`
+      UPDATE admin_keys SET revoked_at = ?
+      WHERE revoked_at IS NULL
+        AND id IN (SELECT value FROM json_each(?))
+    `).bind(revokedAt.toISOString(), JSON.stringify(descendants)),
+    prepareAdminAudit({
+      adminId: req.auth?.sub ?? 'unknown',
+      action: 'admin_access_revoked',
+      targetType: 'admin_key',
+      targetId: target.id,
+    }, db),
+  ]);
   const key = { id: target.id, revokedAt };
   log('info', 'admin.key.revoked', { keyId: key.id, revokedBy: req.auth?.sub });
   res.json({ key });
