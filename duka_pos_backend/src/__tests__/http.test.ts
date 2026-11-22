@@ -13,12 +13,35 @@ beforeAll(async () => {
 });
 
 describe('HTTP safety boundaries', () => {
-  it('returns a health response without authentication', async () => {
-    const supertest = await import('supertest');
-    const response = await supertest.default(app).get('/health');
-    expect(response.status).toBe(200);
-    expect(response.body.status).toBe('ok');
-    expect(response.headers['x-request-id']).toBeTruthy();
+  it('returns backend build metadata from the health endpoint', async () => {
+    const previousVersion = process.env.BACKEND_VERSION_NAME;
+    const previousCode = process.env.BACKEND_VERSION_CODE;
+    const previousCommit = process.env.BACKEND_COMMIT_SHA;
+    process.env.BACKEND_VERSION_NAME = '2.0.0';
+    process.env.BACKEND_VERSION_CODE = '42';
+    process.env.BACKEND_COMMIT_SHA = 'e699c1f';
+    try {
+      const supertest = await import('supertest');
+      const response = await supertest.default(app).get('/health');
+      expect(response.status).toBe(200);
+      expect(response.body.status).toBe('ok');
+      expect(response.body.backend_version_name).toBe('2.0.0');
+      expect(response.body.backend_version_code).toBe(42);
+      expect(response.body.backend_commit_sha).toBe('e699c1f');
+      expect(response.headers['x-request-id']).toBeTruthy();
+
+      process.env.BACKEND_VERSION_CODE = 'not-a-number';
+      const misconfigured = await supertest.default(app).get('/health');
+      expect(misconfigured.status).toBe(500);
+      expect(misconfigured.body.error).toBe('Backend build version is misconfigured');
+    } finally {
+      if (previousVersion === undefined) delete process.env.BACKEND_VERSION_NAME;
+      else process.env.BACKEND_VERSION_NAME = previousVersion;
+      if (previousCode === undefined) delete process.env.BACKEND_VERSION_CODE;
+      else process.env.BACKEND_VERSION_CODE = previousCode;
+      if (previousCommit === undefined) delete process.env.BACKEND_COMMIT_SHA;
+      else process.env.BACKEND_COMMIT_SHA = previousCommit;
+    }
   });
 
   it('rejects protected routes without a bearer token', async () => {

@@ -97,7 +97,22 @@ if (isNode) {
 // ---------------------------------------------------------------------------
 
 app.get('/health', (_req, res) => {
-  res.json({ status: 'ok', timestamp: new Date().toISOString() });
+  const rawVersionCode = process.env.BACKEND_VERSION_CODE;
+  const versionCode = rawVersionCode === undefined ? 0 : Number(rawVersionCode);
+  if (
+    (rawVersionCode !== undefined && !/^(0|[1-9]\d*)$/.test(rawVersionCode)) ||
+    !Number.isSafeInteger(versionCode)
+  ) {
+    res.status(500).json({ status: 'error', error: 'Backend build version is misconfigured' });
+    return;
+  }
+  res.json({
+    status: 'ok',
+    timestamp: new Date().toISOString(),
+    backend_version_name: process.env.BACKEND_VERSION_NAME ?? '2.0.0',
+    backend_version_code: versionCode,
+    backend_commit_sha: process.env.BACKEND_COMMIT_SHA ?? 'local',
+  });
 });
 
 app.get('/ready', async (_req, res, next) => {

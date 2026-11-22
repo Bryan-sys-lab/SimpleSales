@@ -49,10 +49,20 @@ voucher to the auth test, and the response is gated by the
 Worker and as a GitHub Actions secret; never enable test-only verification
 responses in production.
 
-The `cloudflare` branch workflow automatically promotes after backend tests,
-local D1 migration/schema checks, staging migrations, and staging journeys all
-pass. Configure the public staging origin as the GitHub repository variable
-`STAGING_BASE_URL`.
+On `cloudflare` pushes, the promotion job waits for backend tests and local D1
+migration/schema checks, deploys to staging, and runs its live journeys before
+production migration or deployment. It can also be started manually on that
+branch. A missing staging auth-test secret or any failed journey stops the job
+before production. Configure the public staging origin as the GitHub
+repository variable `STAGING_BASE_URL` and configure the same
+`STAGING_AUTH_TEST_SECRET` on the staging Worker and in GitHub Actions.
+
+Each successful backend promotion uses `package.json`'s semantic version as
+`BACKEND_VERSION_NAME`, GitHub Actions' monotonically increasing run number as
+`BACKEND_VERSION_CODE`, and the pushed commit's short SHA as
+`BACKEND_COMMIT_SHA`. The backend version is shown by `/health` and in the
+Cloudflare deployment message; app update fields (`APP_VERSION_*`) remain
+independent.
 
 Authenticate Wrangler once with `wrangler login`; this uses the browser-based
 OAuth flow and keeps deployment credentials out of scripts, command history,

@@ -63,6 +63,12 @@ try {
     return
   }
 
+  if ($env:BACKEND_VERSION_NAME -notmatch '^\d+\.\d+\.\d+$' -or
+      $env:BACKEND_VERSION_CODE -notmatch '^[1-9]\d*$' -or
+      $env:BACKEND_COMMIT_SHA -notmatch '^[0-9a-f]{7,40}$') {
+    throw 'Set BACKEND_VERSION_NAME, a positive BACKEND_VERSION_CODE, and BACKEND_COMMIT_SHA before production promotion.'
+  }
+
   if (-not $env:STAGING_BASE_URL) {
     throw 'Set STAGING_BASE_URL to the HTTPS origin of the staging Worker before production promotion.'
   }
@@ -122,7 +128,10 @@ try {
   }
 
   Write-Host 'Validating the production Worker bundle...'
-  & $wranglerPath deploy --dry-run --env '' --config $configPath
+  & $wranglerPath deploy --dry-run --env= --config $configPath `
+    --var "BACKEND_VERSION_NAME:$($env:BACKEND_VERSION_NAME)" `
+    --var "BACKEND_VERSION_CODE:$($env:BACKEND_VERSION_CODE)" `
+    --var "BACKEND_COMMIT_SHA:$($env:BACKEND_COMMIT_SHA)"
   if ($LASTEXITCODE -ne 0) {
     throw 'Production Worker dry-run failed; production migration and deployment were stopped.'
   }
@@ -137,8 +146,12 @@ try {
     throw 'Production D1 schema check failed; Worker deployment was stopped.'
   }
 
-  Write-Host 'Verification passed. Deploying the backend Worker...'
-  & $wranglerPath deploy --config $configPath
+  $deploymentMessage = "Backend $($env:BACKEND_VERSION_NAME)+$($env:BACKEND_VERSION_CODE) ($($env:BACKEND_COMMIT_SHA))"
+  Write-Host "Verification passed. Deploying $deploymentMessage..."
+  & $wranglerPath deploy --env= --config $configPath --message $deploymentMessage `
+    --var "BACKEND_VERSION_NAME:$($env:BACKEND_VERSION_NAME)" `
+    --var "BACKEND_VERSION_CODE:$($env:BACKEND_VERSION_CODE)" `
+    --var "BACKEND_COMMIT_SHA:$($env:BACKEND_COMMIT_SHA)"
   if ($LASTEXITCODE -ne 0) {
     throw 'Wrangler deployment failed.'
   }
