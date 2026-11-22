@@ -472,22 +472,35 @@ export const authLinkSchema = z.object({
   password: z.string().trim().regex(/^\d{6}$/),
   shopName: boundedName,
   ownerName: boundedName,
-  firstVoucherRecovery: z.boolean().optional(),
 });
 
 /**
  * Step 2: confirm the code and mint session tokens.
  */
-export const authVerifySchema = z.object({
+const authVerifyFields = z.object({
   email: z.string().trim().toLowerCase().email().max(254),
   password: z.string().trim().regex(/^\d{6}$/),
   code: z.string().trim().length(6),
-  voucherCode: z.string().trim().min(8).max(80),
+  voucherCode: z.string().trim().min(8).max(80).optional(),
+  claimVoucher: z.boolean().optional().default(false),
   shopName: boundedName.optional(),
   ownerName: boundedName.optional(),
 });
 
-export const authVerifyCodeSchema = authVerifySchema.omit({ voucherCode: true });
+export const authVerifySchema = authVerifyFields.strict().superRefine((value, context) => {
+  if (value.claimVoucher && value.voucherCode) {
+    context.addIssue({
+      code: 'custom',
+      path: ['claimVoucher'],
+      message: 'Choose either a voucher code or the assigned voucher',
+    });
+  }
+});
+
+export const authVerifyCodeSchema = authVerifyFields.omit({
+  voucherCode: true,
+  claimVoucher: true,
+}).strict();
 
 export const authLoginSchema = z.object({
   email: z.string().trim().toLowerCase().email().max(254),
@@ -500,10 +513,11 @@ export const voucherRedeemSchema = z.object({
 }).strict();
 
 export const subscriptionUpdateSchema = z.object({
-  status: z.enum(['pending', 'active', 'suspended']).default('active'),
+  status: z.enum(['pending', 'active', 'suspended']).optional(),
   priceMinor: z.number().int().nonnegative().nullable().optional(),
-  currency: z.string().trim().toUpperCase().regex(/^[A-Z]{3}$/).default('KES'),
-  billingInterval: z.enum(['monthly', 'quarterly', 'annual']).default('monthly'),
+  discountPercent: z.number().int().min(0).max(99).optional(),
+  currency: z.string().trim().toUpperCase().regex(/^[A-Z]{3}$/).optional(),
+  billingInterval: z.enum(['monthly', 'quarterly', 'annual']).optional(),
   currentPeriodEnd: z.string().datetime({ offset: true }).nullable().optional(),
   graceUntil: z.string().datetime({ offset: true }).nullable().optional(),
 }).strict();
@@ -511,10 +525,14 @@ export const subscriptionUpdateSchema = z.object({
 export const voucherCreateSchema = z.object({
   tenantId: z.string().trim().min(1).max(120).optional(),
   profileId: z.string().trim().min(1).max(120).optional(),
-  email: z.string().trim().toLowerCase().email().max(254).optional(),
-  expiresAt: z.string().datetime({ offset: true }).nullable().optional(),
-  durationMonths: z.number().int().min(1).max(36).optional(),
-}).strict().refine((v) => Boolean(v.tenantId || v.profileId || v.email), { message: 'A tenant, profile, or email is required' });
+  email: z.string().trim().toLowerCase().email().max(254),
+  durationMonths: z.union([
+    z.literal(1),
+    z.literal(3),
+    z.literal(6),
+    z.literal(12),
+  ]),
+}).strict();
 
 export const billingProviderSchema = z.object({
   channelType: z.enum(['till', 'paybill', 'bank']),
@@ -526,7 +544,12 @@ export const billingProviderSchema = z.object({
 
 export const subscriptionPaymentSchema = z.object({
   phoneNumber: z.string().trim().regex(/^\+?\d{9,15}$/),
-  durationMonths: z.number().int().min(1).max(36).default(1),
+  durationMonths: z.union([
+    z.literal(1),
+    z.literal(3),
+    z.literal(6),
+    z.literal(12),
+  ]).default(1),
 }).strict();
 
 export const authRefreshSchema = z.object({

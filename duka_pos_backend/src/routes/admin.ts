@@ -23,8 +23,18 @@ import { aggregateCommercialRows, COMMERCIAL_DISCLOSURE_THRESHOLDS, commercialRe
 import { buildCommercialQualityReport, dedupeCommercialRows } from '../lib/commercial_quality';
 import { generateVoucher } from '../lib/entitlements';
 import { registerPaymentChannel } from '../services/payhero';
+import { createCloudflareEmailTransport } from '../lib/email_sender';
 
 const router = Router();
+
+function buildMailer() {
+  return createCloudflareEmailTransport({
+    accountId: process.env.CLOUDFLARE_ACCOUNT_ID ?? '',
+    apiToken: process.env.CLOUDFLARE_API_TOKEN ?? '',
+    from: process.env.CLOUDFLARE_EMAIL_FROM ?? 'security@nerva.co.ke',
+    appName: process.env.APP_NAME ?? 'SimpleSales',
+  });
+}
 
 // New tenant IDs are readable owner-shop-number identifiers; older tenants
 // may still be UUIDs. Support and diagnostics filters treat IDs as opaque and
@@ -215,7 +225,7 @@ router.get('/billing/payments', asyncHandler(async (req: Request, res: Response)
   const payments = await prisma.subscriptionPayment.findMany({
     take: limit,
     orderBy: { createdAt: 'desc' },
-    select: { id: true, tenantId: true, reference: true, amountMinor: true, durationMonths: true, status: true, providerStatus: true, mpesaReceiptCode: true, createdAt: true, updatedAt: true, tenant: { select: { shopName: true, subscription: { select: { currency: true } } } } },
+    select: { id: true, tenantId: true, reference: true, amountMinor: true, durationMonths: true, discountPercent: true, status: true, providerStatus: true, mpesaReceiptCode: true, createdAt: true, updatedAt: true, tenant: { select: { shopName: true, subscription: { select: { currency: true } } } } },
   });
   return res.json({ payments });
 }));
@@ -223,10 +233,24 @@ router.get('/billing/payments', asyncHandler(async (req: Request, res: Response)
 router.patch('/billing/subscriptions/:tenantId', asyncHandler(async (req: Request, res: Response) => {
   const input = parseBody(subscriptionUpdateSchema, req.body);
   const tenantId = String(req.params.tenantId);
-  const currentPeriodEnd = input.currentPeriodEnd ? new Date(input.currentPeriodEnd) : input.status === 'active' ? new Date(Date.now() + 30 * 24 * 60 * 60 * 1000) : null;
+  const currentPeriodEnd = input.currentPeriodEnd !== undefined
+    ? input.currentPeriodEnd ? new Date(input.currentPeriodEnd) : null
+    : (input.status ?? 'active') === 'active'
+      ? new Date(Date.now() + 30 * 24 * 60 * 60 * 1000)
+      : null;
   const subscription = await prisma.tenantSubscription.upsert({
     where: { tenantId },
-    create: { tenantId, ...input, currentPeriodEnd, graceUntil: input.graceUntil ? new Date(input.graceUntil) : null, updatedBy: req.auth?.sub },
+    create: {
+      tenantId,
+      status: input.status ?? 'active',
+      priceMinor: input.priceMinor ?? null,
+      discountPercent: input.discountPercent ?? 0,
+      currency: input.currency ?? 'KES',
+      billingInterval: input.billingInterval ?? 'monthly',
+      currentPeriodEnd,
+      graceUntil: input.graceUntil ? new Date(input.graceUntil) : null,
+      updatedBy: req.auth?.sub,
+    },
     update: { ...input, currentPeriodEnd: input.currentPeriodEnd === undefined ? undefined : input.currentPeriodEnd ? new Date(input.currentPeriodEnd) : null, graceUntil: input.graceUntil === undefined ? undefined : input.graceUntil ? new Date(input.graceUntil) : null, updatedBy: req.auth?.sub },
   });
   await prisma.adminAuditLog.create({ data: { adminId: req.auth?.sub ?? 'unknown', action: 'update_subscription', targetType: 'tenant_subscription', targetId: subscription.id, tenantId } });
@@ -235,23 +259,83 @@ router.patch('/billing/subscriptions/:tenantId', asyncHandler(async (req: Reques
 
 router.post('/billing/vouchers', asyncHandler(async (req: Request, res: Response) => {
   const input = parseBody(voucherCreateSchema, req.body);
+  const mailer = buildMailer();
+  if (!mailer.configured) {
+    return res.status(503).json({
+      error: 'Access voucher email delivery is not configured',
+      code: 'EMAIL_NOT_CONFIGURED',
+    });
+  }
+  if (input.profileId) {
+    const profile = await prisma.profile.findUnique({
+      where: { id: input.profileId },
+      select: { tenantId: true, email: true },
+    });
+    if (!profile || profile.email?.toLowerCase() !== input.email) {
+      return res.status(400).json({
+        error: 'Voucher email must match the selected profile',
+        code: 'VOUCHER_RECIPIENT_MISMATCH',
+      });
+    }
+    if (input.tenantId && profile.tenantId !== input.tenantId) {
+      return res.status(400).json({
+        error: 'Profile does not belong to the selected shop',
+        code: 'VOUCHER_TENANT_MISMATCH',
+      });
+    }
+  }
   const generated = generateVoucher();
-  const expiresAt = input.expiresAt
-    ? new Date(input.expiresAt)
-    : input.durationMonths
-      ? new Date(Date.now() + input.durationMonths * 30 * 24 * 60 * 60 * 1000)
-      : null;
   const voucher = await prisma.accessVoucher.create({
-    data: { codeHash: generated.hash, codePrefix: generated.prefix, tenantId: input.tenantId, issuedToProfileId: input.profileId, issuedToEmail: input.email, expiresAt, createdBy: req.auth?.sub ?? 'unknown', autoIssued: false },
+    data: {
+      codeHash: generated.hash,
+      codePrefix: generated.prefix,
+      tenantId: input.tenantId,
+      issuedToProfileId: input.profileId,
+      issuedToEmail: input.email,
+      expiresAt: null,
+      durationMonths: input.durationMonths,
+      createdBy: req.auth?.sub ?? 'unknown',
+      autoIssued: false,
+    },
   });
+  try {
+    await mailer.send({
+      kind: 'access_voucher',
+      to: input.email,
+      code: generated.code,
+      durationMonths: input.durationMonths,
+    });
+  } catch (error) {
+    await prisma.accessVoucher.update({
+      where: { id: voucher.id },
+      data: { revokedAt: new Date() },
+    });
+    await prisma.adminAuditLog.create({
+      data: {
+        adminId: req.auth?.sub ?? 'unknown',
+        action: 'access_voucher_email_failed',
+        targetType: 'access_voucher',
+        targetId: voucher.id,
+        tenantId: input.tenantId ?? null,
+      },
+    });
+    log('error', 'admin.voucher_email_failed', {
+      voucherId: voucher.id,
+      message: error instanceof Error ? error.message : 'email_provider_error',
+    });
+    return res.status(502).json({
+      error: 'Voucher email could not be sent. The code was revoked; issue a new voucher and retry.',
+      code: 'VOUCHER_EMAIL_UNAVAILABLE',
+    });
+  }
   await prisma.adminAuditLog.create({ data: { adminId: req.auth?.sub ?? 'unknown', action: 'create_access_voucher', targetType: 'access_voucher', targetId: voucher.id, tenantId: input.tenantId ?? null } });
   // The plaintext is returned exactly once. It is never persisted or exposed
   // in list/audit responses.
-  return res.status(201).json({ voucher: { id: voucher.id, code: generated.code, codePrefix: voucher.codePrefix, tenantId: voucher.tenantId, expiresAt: voucher.expiresAt } });
+  return res.status(201).json({ voucher: { id: voucher.id, code: generated.code, codePrefix: voucher.codePrefix, tenantId: voucher.tenantId, email: input.email, durationMonths: input.durationMonths, expiresAt: null, emailSent: true } });
 }));
 
 router.get('/billing/vouchers', asyncHandler(async (_req: Request, res: Response) => {
-  const vouchers = await prisma.accessVoucher.findMany({ select: { id: true, codePrefix: true, tenantId: true, issuedToProfileId: true, issuedToEmail: true, expiresAt: true, redeemedAt: true, revokedAt: true, pausedAt: true, deletedAt: true, autoIssued: true, createdAt: true }, orderBy: { createdAt: 'desc' } });
+  const vouchers = await prisma.accessVoucher.findMany({ select: { id: true, codePrefix: true, tenantId: true, issuedToProfileId: true, issuedToEmail: true, expiresAt: true, durationMonths: true, redeemedAt: true, revokedAt: true, pausedAt: true, deletedAt: true, autoIssued: true, createdAt: true }, orderBy: { createdAt: 'desc' } });
   return res.json({ vouchers });
 }));
 

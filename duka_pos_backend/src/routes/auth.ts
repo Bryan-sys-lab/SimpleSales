@@ -38,7 +38,7 @@ import { issueAccessToken } from '../lib/jwt';
 import { authMiddleware } from '../middleware/auth';
 import { createCloudflareEmailTransport } from '../lib/email_sender';
 import { readableTenantId } from '../lib/tenant_id';
-import { generateVoucher, hashVoucher, tenantEntitlement } from '../lib/entitlements';
+import { hashVoucher, tenantEntitlement } from '../lib/entitlements';
 import { redeemVoucherAtomically } from '../lib/voucher_redemption';
 
 const router = Router();
@@ -236,7 +236,7 @@ async function rotateRefreshToken(profile: any, tier: string) {
 // POST /auth/link
 router.post('/link', linkLimiter, asyncHandler(async (req: Request, res: Response) => {
   const requestId = req.requestId;
-  const { email, password, shopName, firstVoucherRecovery } = parseBody(authLinkSchema, req.body);
+  const { email, password, shopName } = parseBody(authLinkSchema, req.body);
   if (!isConfigured()) return notConfigured(res, requestId);
   const mailer = buildMailer();
   const debugWithoutEmail = debugCodesEnabled(req);
@@ -285,47 +285,9 @@ router.post('/link', linkLimiter, asyncHandler(async (req: Request, res: Respons
   });
 
   // email
-  const accessVoucherModel = (prisma as typeof prisma & { accessVoucher?: typeof prisma.accessVoucher }).accessVoucher;
-  let activeFirstVoucher = false;
-  if (accessVoucherModel) {
-    activeFirstVoucher = Boolean(await accessVoucherModel.findFirst({
-      where: {
-        issuedToEmail: email,
-        autoIssued: true,
-        redeemedAt: null,
-        revokedAt: null,
-        pausedAt: null,
-        deletedAt: null,
-      },
-      select: { id: true },
-      orderBy: { createdAt: 'desc' },
-    }));
-  }
-  const issueFirstVoucher = Boolean(accessVoucherModel)
-    && (!activeFirstVoucher || firstVoucherRecovery === true);
-  let firstVoucherCode: string | undefined;
-  if (issueFirstVoucher) {
-    await accessVoucherModel!.updateMany({ where: { issuedToEmail: email, autoIssued: true, redeemedAt: null, revokedAt: null }, data: { revokedAt: new Date() } });
-    const generatedVoucher = generateVoucher();
-    await accessVoucherModel!.create({
-      data: {
-        codeHash: generatedVoucher.hash,
-        codePrefix: generatedVoucher.prefix,
-        issuedToEmail: email,
-        // The starter voucher does not expire before use. Its 30-day access
-        // period begins only when the owner explicitly redeems it.
-        expiresAt: null,
-        autoIssued: true,
-        createdBy: 'system:first-registration',
-      },
-    });
-    // The plaintext is kept only for this request so it can be delivered in
-    // the verification email. It is never stored in the database.
-    firstVoucherCode = generatedVoucher.code;
-  }
   if (!debugWithoutEmail) {
     try {
-      await mailer.send({ to: email, code, shopName, ttlMinutes: VERIFICATION_TTL_MINUTES, firstVoucherCode });
+      await mailer.send({ to: email, code, shopName, ttlMinutes: VERIFICATION_TTL_MINUTES });
     } catch {
       await prisma.verificationChallenge.update({ where: { id: challenge.id }, data: { used: true } });
       return res.status(502).json({ error: 'Email could not be sent', code: 'EMAIL_UNAVAILABLE', requestId });
@@ -340,7 +302,6 @@ router.post('/link', linkLimiter, asyncHandler(async (req: Request, res: Respons
     expires_in_seconds: VERIFICATION_TTL_MINUTES * 60,
     ...(debugCodesEnabled(req) ? {
       debug_code: code,
-      ...(firstVoucherCode ? { debug_first_voucher_code: firstVoucherCode } : {}),
     } : {}),
   });
 }));
@@ -363,7 +324,7 @@ router.post('/verify-code', verifyLimiter, asyncHandler(async (req: Request, res
 // POST /auth/verify
 router.post('/verify', verifyLimiter, asyncHandler(async (req: Request, res: Response) => {
   const requestId = req.requestId;
-  const { email, password, code, voucherCode, shopName, ownerName } = parseBody(authVerifySchema, req.body);
+  const { email, password, code, voucherCode, claimVoucher, shopName, ownerName } = parseBody(authVerifySchema, req.body);
   if (!isConfigured()) return notConfigured(res, requestId);
 
   const now = new Date();
@@ -373,17 +334,33 @@ router.post('/verify', verifyLimiter, asyncHandler(async (req: Request, res: Res
   }
 
   const accessVoucherModel = (prisma as typeof prisma & { accessVoucher?: typeof prisma.accessVoucher }).accessVoucher;
-  const voucher = accessVoucherModel
-    ? await accessVoucherModel.findUnique({
-        where: { codeHash: hashVoucher(voucherCode) },
-      })
-    : null;
-  if (!voucher || voucher.revokedAt || voucher.pausedAt || voucher.deletedAt ||
-      voucher.redeemedAt || (voucher.expiresAt && voucher.expiresAt <= now) ||
-      (voucher.issuedToEmail && voucher.issuedToEmail !== email)) {
+  let voucher: Awaited<ReturnType<typeof prisma.accessVoucher.findUnique>> = null;
+  if (voucherCode && accessVoucherModel) {
+    voucher = await accessVoucherModel.findUnique({
+      where: { codeHash: hashVoucher(voucherCode) },
+    });
+  } else if (claimVoucher && accessVoucherModel) {
+    voucher = await accessVoucherModel.findFirst({
+      where: {
+        issuedToEmail: email,
+        redeemedAt: null,
+        revokedAt: null,
+        pausedAt: null,
+        deletedAt: null,
+        OR: [{ expiresAt: null }, { expiresAt: { gt: now } }],
+      },
+      orderBy: { createdAt: 'desc' },
+    });
+  }
+  if ((voucherCode || claimVoucher) &&
+      (!voucher || voucher.revokedAt || voucher.pausedAt || voucher.deletedAt ||
+        voucher.redeemedAt || (voucher.expiresAt && voucher.expiresAt <= now) ||
+        (voucher.issuedToEmail && voucher.issuedToEmail !== email))) {
     return res.status(400).json({
-      error: 'Voucher code is invalid or does not belong to this account',
-      code: 'VOUCHER_INVALID',
+      error: claimVoucher
+        ? 'No active access voucher is assigned to this account yet'
+        : 'Voucher code is invalid or does not belong to this account',
+      code: claimVoucher ? 'VOUCHER_UNAVAILABLE' : 'VOUCHER_INVALID',
       requestId,
     });
   }
@@ -406,30 +383,30 @@ router.post('/verify', verifyLimiter, asyncHandler(async (req: Request, res: Res
     return res.status(400).json({ error: 'Shop setup required', code: 'SHOP_SETUP_REQUIRED', requestId });
   }
 
-  const voucherExpiry = new Date(now.getTime() + 30 * 24 * 60 * 60 * 1000);
-  const redeemed = await redeemVoucherAtomically({
-    voucherId: voucher.id,
-    tenantId: shop.tenantId,
-    profileId: shop.profileId,
-    email,
-    now,
-    expiresAt: voucherExpiry,
-  });
-  if (!redeemed) {
-    return res.status(409).json({
-      error: 'Voucher could not be redeemed',
-      code: 'VOUCHER_REDEEM_FAILED',
-      requestId,
+  if (voucher) {
+    if ((voucher.tenantId && voucher.tenantId !== shop.tenantId) ||
+        (voucher.issuedToProfileId && voucher.issuedToProfileId !== shop.profileId)) {
+      return res.status(403).json({
+        error: 'Voucher is assigned to another shop or profile',
+        code: 'VOUCHER_PROFILE_MISMATCH',
+        requestId,
+      });
+    }
+    const redeemed = await redeemVoucherAtomically({
+      voucherId: voucher.id,
+      tenantId: shop.tenantId,
+      profileId: shop.profileId,
+      email,
+      now,
+      durationMonths: voucher.durationMonths,
     });
-  }
-
-  let firstVoucherAvailable = false;
-  if (accessVoucherModel) {
-    firstVoucherAvailable = Boolean(await accessVoucherModel.findFirst({
-      where: { issuedToEmail: email, autoIssued: true, redeemedAt: null, revokedAt: null, pausedAt: null, deletedAt: null },
-      select: { id: true },
-      orderBy: { createdAt: 'desc' },
-    }));
+    if (!redeemed) {
+      return res.status(409).json({
+        error: 'Voucher could not be redeemed',
+        code: 'VOUCHER_REDEEM_FAILED',
+        requestId,
+      });
+    }
   }
 
   const tier = 'device';
@@ -445,8 +422,8 @@ router.post('/verify', verifyLimiter, asyncHandler(async (req: Request, res: Res
     refresh_token: refresh.token,
     expires_in_seconds: access.expiresIn,
     refresh_expires_in_seconds: REFRESH_TOKEN_TTL_MS / 1000,
-    voucher_redeemed: true,
-    first_registration_voucher: firstVoucherAvailable ? { available: true, duration_days: 30 } : null,
+    voucher_redeemed: Boolean(voucher),
+    voucher_duration_months: voucher?.durationMonths ?? null,
   });
 }));
 
@@ -525,19 +502,68 @@ router.post('/voucher/redeem', authMiddleware, asyncHandler(async (req: Request,
   if (voucher.tenantId && voucher.tenantId !== profile.tenantId) return res.status(403).json({ error: 'Voucher is issued for another shop', code: 'VOUCHER_TENANT_MISMATCH' });
   if (voucher.issuedToProfileId && voucher.issuedToProfileId !== profile.id) return res.status(403).json({ error: 'Voucher is issued to another user', code: 'VOUCHER_PROFILE_MISMATCH' });
   if (voucher.issuedToEmail && voucher.issuedToEmail !== (req.auth?.email ?? '').toLowerCase()) return res.status(403).json({ error: 'Voucher is issued to another email', code: 'VOUCHER_EMAIL_MISMATCH' });
-  const starterExpiry = voucher.autoIssued ? new Date(now.getTime() + 30 * 24 * 60 * 60 * 1000) : voucher.expiresAt;
   const claimed = await redeemVoucherAtomically({
     voucherId: voucher.id,
     tenantId: profile.tenantId,
     profileId: profile.id,
     email: (req.auth?.email ?? '').toLowerCase(),
     now,
-    expiresAt: starterExpiry,
+    durationMonths: voucher.durationMonths,
   });
   if (!claimed) {
     return res.status(400).json({ error: 'Voucher is invalid, expired, or already used', code: 'VOUCHER_INVALID' });
   }
   return res.json({ status: 'voucher_redeemed', entitlement: await tenantEntitlement(profile.tenantId) });
+}));
+
+router.post('/voucher/claim', authMiddleware, asyncHandler(async (req: Request, res: Response) => {
+  const profile = req.user;
+  const email = (req.auth?.email ?? '').toLowerCase();
+  if (!profile || !email) return res.status(401).json({ error: 'Tenant selection required' });
+  if (profile.role !== 'admin') return res.status(403).json({ error: 'Shop owner access required' });
+
+  const now = new Date();
+  const voucher = await prisma.accessVoucher.findFirst({
+    where: {
+      issuedToEmail: email,
+      redeemedAt: null,
+      revokedAt: null,
+      pausedAt: null,
+      deletedAt: null,
+      AND: [
+        { OR: [{ expiresAt: null }, { expiresAt: { gt: now } }] },
+        { OR: [{ tenantId: null }, { tenantId: profile.tenantId }] },
+        { OR: [{ issuedToProfileId: null }, { issuedToProfileId: profile.id }] },
+      ],
+    },
+    orderBy: { createdAt: 'desc' },
+  });
+  if (!voucher) {
+    return res.status(404).json({
+      error: 'No active access voucher is assigned to this account yet',
+      code: 'VOUCHER_UNAVAILABLE',
+    });
+  }
+
+  const claimed = await redeemVoucherAtomically({
+    voucherId: voucher.id,
+    tenantId: profile.tenantId,
+    profileId: profile.id,
+    email,
+    now,
+    durationMonths: voucher.durationMonths,
+  });
+  if (!claimed) {
+    return res.status(409).json({
+      error: 'Voucher could not be claimed. Refresh and try again.',
+      code: 'VOUCHER_REDEEM_FAILED',
+    });
+  }
+  return res.json({
+    status: 'voucher_redeemed',
+    voucher: { durationMonths: voucher.durationMonths },
+    entitlement: await tenantEntitlement(profile.tenantId),
+  });
 }));
 
 // POST /auth/refresh

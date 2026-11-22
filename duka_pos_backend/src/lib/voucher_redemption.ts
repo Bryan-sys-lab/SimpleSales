@@ -1,3 +1,4 @@
+import { addCalendarMonths } from './entitlements';
 import { getD1DatabaseBinding } from './prisma';
 
 export async function redeemVoucherAtomically(params: {
@@ -6,11 +7,11 @@ export async function redeemVoucherAtomically(params: {
   profileId: string;
   email: string;
   now: Date;
-  expiresAt: Date | null;
+  durationMonths: number;
 }): Promise<boolean> {
   const db = getD1DatabaseBinding();
   const now = params.now.toISOString();
-  const expiresAt = params.expiresAt?.toISOString() ?? null;
+  const expiresAt = addCalendarMonths(params.now, params.durationMonths).toISOString();
   const subscriptionId = globalThis.crypto.randomUUID();
 
   const results = await db.batch([
@@ -19,8 +20,7 @@ export async function redeemVoucherAtomically(params: {
       SET redeemed_at = ?,
           redeemed_by_profile_id = ?,
           tenant_id = COALESCE(tenant_id, ?),
-          issued_to_profile_id = COALESCE(issued_to_profile_id, ?),
-          expires_at = ?
+          issued_to_profile_id = COALESCE(issued_to_profile_id, ?)
       WHERE id = ?
         AND redeemed_at IS NULL
         AND revoked_at IS NULL
@@ -35,7 +35,6 @@ export async function redeemVoucherAtomically(params: {
       params.profileId,
       params.tenantId,
       params.profileId,
-      expiresAt,
       params.voucherId,
       now,
       params.tenantId,

@@ -22,6 +22,7 @@ import { readableTenantId } from '../lib/tenant_id';
 import { issueStaffSessionToken, verifyStaffSessionToken } from '../lib/jwt';
 import { broadcastTenantChange } from '../services/live_broker';
 import { tenantEntitlement } from '../lib/entitlements';
+import { calculateSubscriptionQuote } from '../lib/subscription_pricing';
 import { isVerifiedEmailMatch } from '../lib/identity';
 import { activateSubscriptionPaymentAtomically } from '../lib/subscription_settlement';
 
@@ -222,13 +223,33 @@ router.get('/subscription', asyncHandler(async (req, res) => {
   const whatsappUrl = digits.length >= 8 && digits.length <= 15
     ? `https://wa.me/${digits}?text=${encodeURIComponent(`Hello, I would like a subscription quote for ${req.user.tenantId}.`)}`
     : null;
-  const starterVoucher = req.auth?.email
+  const availableVoucher = req.auth?.email
     ? await prisma.accessVoucher.findFirst({
-        where: { issuedToEmail: req.auth.email.toLowerCase(), autoIssued: true, redeemedAt: null, revokedAt: null, pausedAt: null, deletedAt: null },
-        select: { id: true },
+        where: {
+          issuedToEmail: req.auth.email.toLowerCase(),
+          redeemedAt: null,
+          revokedAt: null,
+          pausedAt: null,
+          deletedAt: null,
+          AND: [
+            { OR: [{ expiresAt: null }, { expiresAt: { gt: new Date() } }] },
+            { OR: [{ tenantId: null }, { tenantId: req.user.tenantId }] },
+            { OR: [{ issuedToProfileId: null }, { issuedToProfileId: req.user.id }] },
+          ],
+        },
+        select: { durationMonths: true },
+        orderBy: { createdAt: 'desc' },
       })
     : null;
-  return res.json({ entitlement: await tenantEntitlement(req.user.tenantId), support: { whatsappUrl, firstMonthVoucherAvailable: Boolean(starterVoucher) } });
+  return res.json({
+    entitlement: await tenantEntitlement(req.user.tenantId),
+    support: {
+      whatsappUrl,
+      availableVoucher: availableVoucher
+        ? { durationMonths: availableVoucher.durationMonths }
+        : null,
+    },
+  });
 }));
 
 router.post('/subscription/payment', asyncHandler(async (req, res) => {
@@ -236,16 +257,30 @@ router.post('/subscription/payment', asyncHandler(async (req, res) => {
   const input = parseBody(subscriptionPaymentSchema, req.body);
   const subscription = await prisma.tenantSubscription.findUnique({ where: { tenantId: req.user.tenantId } });
   if (!subscription?.priceMinor) return res.status(409).json({ error: 'Subscription price has not been set by the system administrator' });
+  const discountPercent = subscription.discountPercent ?? 0;
   const provider = await prisma.systemSettings.findMany({ where: { key: { in: ['billing_channel_id'] } } });
   const channelId = Number(provider.find((row) => row.key === 'billing_channel_id')?.value);
   if (!Number.isSafeInteger(channelId) || channelId <= 0) return res.status(503).json({ error: 'Subscription payment destination is not configured' });
   const reference = `SUBS-${randomUUID()}`;
-  const amountMinor = subscription.priceMinor * input.durationMonths;
-  const payment = await prisma.subscriptionPayment.create({ data: { tenantId: req.user.tenantId, reference, phoneNumber: input.phoneNumber, amountMinor, durationMonths: input.durationMonths } });
+  const quote = calculateSubscriptionQuote(
+    subscription.priceMinor,
+    input.durationMonths,
+    discountPercent,
+  );
+  const { baseAmountMinor, amountMinor } = quote;
+  const payment = await prisma.subscriptionPayment.create({ data: { tenantId: req.user.tenantId, reference, phoneNumber: input.phoneNumber, amountMinor, durationMonths: input.durationMonths, discountPercent } });
   try {
     const push = await initiateStkPush({ amount: amountMinor / 100, phoneNumber: input.phoneNumber, channelId, externalReference: reference, customerName: req.user.name, callbackUrl: `${process.env.PUBLIC_API_URL}/webhooks/payhero-callback` });
     await prisma.subscriptionPayment.update({ where: { id: payment.id }, data: { checkoutRequestId: push.checkoutRequestId } });
-    return res.status(201).json({ reference, amountMinor, status: 'PENDING' });
+    return res.status(201).json({
+      reference,
+      amountMinor,
+      baseAmountMinor,
+      discountAmountMinor: quote.discountAmountMinor,
+      discountPercent,
+      durationMonths: input.durationMonths,
+      status: 'PENDING',
+    });
   } catch (error) {
     await prisma.subscriptionPayment.update({ where: { id: payment.id }, data: { status: 'FAILED', providerStatus: error instanceof Error ? error.message : 'provider_error' } });
     throw error;

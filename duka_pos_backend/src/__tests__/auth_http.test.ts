@@ -23,6 +23,9 @@ const mocks = vi.hoisted(() => ({
     tenant: {
       create: vi.fn(),
     },
+    tenantSubscription: {
+      create: vi.fn(),
+    },
     verificationChallenge: {
       count: vi.fn(),
       findFirst: vi.fn(),
@@ -38,6 +41,7 @@ const mocks = vi.hoisted(() => ({
     },
   },
   sendEmail: vi.fn(),
+  redeemVoucherAtomically: vi.fn(),
   emailConfigured: true,
 }));
 
@@ -54,6 +58,9 @@ vi.mock('../middleware/auth', () => ({
   systemAdminMiddleware: (_req: any, _res: any, next: () => void) => next(),
   requireOwner: (_req: any, _res: any, next: () => void) => next(),
   requireRole: () => (_req: any, _res: any, next: () => void) => next(),
+}));
+vi.mock('../lib/voucher_redemption', () => ({
+  redeemVoucherAtomically: mocks.redeemVoucherAtomically,
 }));
 
 // ensure env
@@ -84,7 +91,7 @@ describe('auth http', () => {
     mocks.prisma.accessVoucher.updateMany.mockResolvedValue({ count: 0 });
   });
 
-  it('sends the first-registration voucher with the verification code', async () => {
+  it('sends only an email code and waits for an administrator to issue a voucher', async () => {
     mocks.prisma.user.findUnique.mockResolvedValue(null);
     mocks.prisma.user.create.mockResolvedValue({ id: 'user-1', email: 'owner@example.com', emailVerifiedAt: null });
     mocks.prisma.verificationChallenge.create.mockResolvedValue({ id: 'ch-1', expiresAt: new Date(Date.now() + 600000) });
@@ -95,18 +102,12 @@ describe('auth http', () => {
     }).set('x-forwarded-for', '198.51.100.10');
     expect(res.status).toBe(200);
     expect(res.body.status).toBe('code_sent');
-    expect(mocks.prisma.accessVoucher.create).toHaveBeenCalledWith({
-      data: expect.objectContaining({
-        issuedToEmail: 'owner@example.com',
-        autoIssued: true,
-        createdBy: 'system:first-registration',
-      }),
-    });
+    expect(mocks.prisma.accessVoucher.create).not.toHaveBeenCalled();
     expect(mocks.sendEmail).toHaveBeenCalledWith(expect.objectContaining({
       to: 'owner@example.com',
       code: '123456',
-      firstVoucherCode: expect.stringMatching(/^SS-/),
     }));
+    expect(mocks.sendEmail.mock.calls[0][0]).not.toHaveProperty('firstVoucherCode');
   });
 
   it('rejects account setup when no email transport is configured', async () => {
@@ -137,7 +138,7 @@ describe('auth http', () => {
 
     expect(res.status).toBe(200);
     expect(res.body.debug_code).toBe('123456');
-    expect(res.body.debug_first_voucher_code).toMatch(/^SS-/);
+    expect(res.body).not.toHaveProperty('debug_first_voucher_code');
     expect(mocks.sendEmail).not.toHaveBeenCalled();
   });
 
@@ -179,7 +180,7 @@ describe('auth http', () => {
       const authorized = await postLink('198.51.100.13', 'staging-ci-test-secret');
       expect(authorized.status).toBe(200);
       expect(authorized.body.debug_code).toMatch(/^\d{6}$/);
-      expect(authorized.body.debug_first_voucher_code).toMatch(/^SS-/);
+      expect(authorized.body).not.toHaveProperty('debug_first_voucher_code');
     } finally {
       if (previousEnv.nodeEnv === undefined) delete process.env.NODE_ENV;
       else process.env.NODE_ENV = previousEnv.nodeEnv;
@@ -276,7 +277,31 @@ describe('auth http', () => {
     expect(res.status).toBe(401);
   });
 
-  it('requires a voucher code during email verification', async () => {
+  it('verifies an email and creates the shop without auto-issuing a voucher', async () => {
+    const salt = newSalt();
+    const secret = process.env.EMAIL_VERIFICATION_SECRET!;
+    const challenge = {
+      id: 'ch-1',
+      expiresAt: new Date(Date.now() + 60_000),
+      code: [
+        salt,
+        hashCodeSecret('123456', salt, secret),
+        hashCodeSecret('123456', salt, secret),
+      ].join(':'),
+    };
+    mocks.prisma.verificationChallenge.findFirst.mockResolvedValue(challenge);
+    mocks.prisma.user.findUnique.mockResolvedValue({
+      id: 'user-1',
+      email: 'owner@example.com',
+      profiles: [],
+    });
+    mocks.prisma.user.update.mockResolvedValue({});
+    mocks.prisma.tenant.create.mockResolvedValue({ id: 'tenant-1', shopName: 'Shop' });
+    mocks.prisma.tenantSubscription.create.mockResolvedValue({});
+    mocks.prisma.profile.findFirst.mockResolvedValue(null);
+    mocks.prisma.profile.create.mockResolvedValue({ id: 'profile-1' });
+    mocks.prisma.profile.update.mockResolvedValue({});
+
     const res = await supertest(app).post('/auth/verify').send({
       email: 'owner@example.com',
       password: '123456',
@@ -285,9 +310,75 @@ describe('auth http', () => {
       ownerName: 'Owner',
     });
 
-    expect(res.status).toBe(400);
-    expect(mocks.prisma.verificationChallenge.findFirst).not.toHaveBeenCalled();
-    expect(mocks.prisma.user.update).not.toHaveBeenCalled();
+    expect(res.status).toBe(200);
+    expect(res.body.voucher_redeemed).toBe(false);
+    expect(res.body.access_token).toEqual(expect.any(String));
+    expect(mocks.prisma.accessVoucher.findUnique).not.toHaveBeenCalled();
+    expect(mocks.redeemVoucherAtomically).not.toHaveBeenCalled();
+  });
+
+  it('claims only a currently issued voucher for the verified signup email', async () => {
+    const salt = newSalt();
+    const secret = process.env.EMAIL_VERIFICATION_SECRET!;
+    const challenge = {
+      id: 'ch-1',
+      expiresAt: new Date(Date.now() + 60_000),
+      code: [
+        salt,
+        hashCodeSecret('123456', salt, secret),
+        hashCodeSecret('123456', salt, secret),
+      ].join(':'),
+    };
+    mocks.prisma.verificationChallenge.findFirst.mockResolvedValue(challenge);
+    mocks.prisma.user.findUnique.mockResolvedValue({
+      id: 'user-1',
+      email: 'owner@example.com',
+      profiles: [],
+    });
+    mocks.prisma.user.update.mockResolvedValue({});
+    mocks.prisma.tenant.create.mockResolvedValue({ id: 'tenant-1', shopName: 'Shop' });
+    mocks.prisma.tenantSubscription.create.mockResolvedValue({});
+    mocks.prisma.profile.findFirst.mockResolvedValue(null);
+    mocks.prisma.profile.create.mockResolvedValue({ id: 'profile-1' });
+    mocks.prisma.profile.update.mockResolvedValue({});
+    mocks.prisma.accessVoucher.findFirst.mockResolvedValue({
+      id: 'voucher-1',
+      durationMonths: 3,
+      issuedToEmail: 'owner@example.com',
+      expiresAt: null,
+      redeemedAt: null,
+      revokedAt: null,
+      pausedAt: null,
+      deletedAt: null,
+      tenantId: null,
+      issuedToProfileId: null,
+    });
+    mocks.redeemVoucherAtomically.mockResolvedValue(true);
+
+    const res = await supertest(app).post('/auth/verify').send({
+      email: 'owner@example.com',
+      password: '123456',
+      code: '123456',
+      claimVoucher: true,
+      shopName: 'Shop',
+      ownerName: 'Owner',
+    });
+
+    expect(res.status).toBe(200);
+    expect(res.body.voucher_redeemed).toBe(true);
+    expect(res.body.voucher_duration_months).toBe(3);
+    expect(mocks.prisma.accessVoucher.findFirst).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({ issuedToEmail: 'owner@example.com' }),
+      }),
+    );
+    expect(mocks.redeemVoucherAtomically).toHaveBeenCalledWith(
+      expect.objectContaining({
+        voucherId: 'voucher-1',
+        email: 'owner@example.com',
+        durationMonths: 3,
+      }),
+    );
   });
 
   it('accepts a valid code without consuming the challenge or creating an account', async () => {

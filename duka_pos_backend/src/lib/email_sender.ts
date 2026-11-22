@@ -11,14 +11,23 @@ import {
 } from "./nerva_logo";
 
 export type VerificationEmail = {
+  kind?: 'verification';
   to: string;
   code: string;
   shopName?: string;
   ttlMinutes: number;
-  firstVoucherCode?: string;
 };
 
-export type EmailTransport = (message: VerificationEmail) => Promise<void>;
+export type AccessVoucherEmail = {
+  kind: 'access_voucher';
+  to: string;
+  code: string;
+  durationMonths: number;
+};
+
+export type EmailMessage = VerificationEmail | AccessVoucherEmail;
+
+export type EmailTransport = (message: EmailMessage) => Promise<void>;
 
 /** Native Cloudflare Email Sending binding exposed by a Worker. */
 export type CloudflareEmailBinding = {
@@ -81,9 +90,8 @@ export function createCloudflareEmailTransport(
     nativeEmailBinding || (options.accountId && options.apiToken && from),
   );
 
-  const buildBody = (message: VerificationEmail) => {
+  const buildBody = (message: EmailMessage) => {
     const appName = options.appName ?? "SimpleSales";
-    const subject = `${appName} — your verification code`;
     const logoHtml = `<img src="cid:${NERVA_LOGO_CONTENT_ID}" alt="Nerva" width="180" style="display:block;width:180px;height:auto;margin:0 auto 28px;border:0;" />`;
     const escapeHtml = (value: string) =>
       value
@@ -93,13 +101,62 @@ export function createCloudflareEmailTransport(
         .replaceAll('"', "&quot;")
         .replaceAll("'", "&#39;");
     const safeAppName = escapeHtml(appName);
+    if (message.kind === "access_voucher") {
+      const safeVoucher = escapeHtml(message.code);
+      const duration = `${message.durationMonths} month${message.durationMonths === 1 ? "" : "s"}`;
+      const subject = `${appName} — your access voucher`;
+      const text = [
+        appName,
+        "",
+        "Your access voucher is ready",
+        "",
+        `Voucher: ${message.code}`,
+        `Access duration: ${duration}`,
+        "This code does not expire. Its access period begins when you claim it in the app.",
+        "Open the SimpleSales paywall and choose Claim voucher, or enter the code manually.",
+        "",
+        "If you did not expect this message, contact SimpleSales support.",
+      ].join("\n");
+      const html = `<!DOCTYPE html>
+<html lang="en">
+<head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"></head>
+<body style="margin:0;padding:0;background:#f3f5f7;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Arial,sans-serif;color:#1b1d21;">
+  <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:#f3f5f7;padding:32px 12px;">
+    <tr><td align="center">
+      <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="max-width:520px;background:#ffffff;border:1px solid #e5e7eb;border-radius:18px;padding:40px 36px;">
+        <tr><td align="center" style="padding-bottom:4px;">${logoHtml}</td></tr>
+        <tr><td style="font-size:24px;line-height:1.25;font-weight:750;color:#111;padding-bottom:16px;">Your access voucher is ready</td></tr>
+        <tr><td style="font-size:15px;line-height:1.6;color:#4b5563;padding-bottom:20px;">Your administrator has issued ${escapeHtml(duration)} of SimpleSales access.</td></tr>
+        <tr><td align="center" style="padding:4px 0 20px;">
+          <div style="display:inline-block;background:#f1f5f9;border:1px solid #e2e8f0;border-radius:12px;padding:18px 24px;font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:20px;line-height:1.2;font-weight:800;letter-spacing:1px;color:#111;">${safeVoucher}</div>
+        </td></tr>
+        <tr><td style="font-size:13px;line-height:1.6;color:#4b5563;">This code does not expire. Its access period starts when claimed. Open the SimpleSales paywall and tap <strong>Claim voucher</strong>, or enter the code manually.</td></tr>
+        <tr><td style="font-size:12px;line-height:1.5;color:#9ca3af;padding-top:24px;"><em>If you did not expect this message, contact SimpleSales support.</em></td></tr>
+      </table>
+    </td></tr>
+  </table>
+</body>
+</html>`.trim();
+      return {
+        to: [message.to],
+        from,
+        subject,
+        text,
+        html,
+        attachments: [
+          {
+            content: NERVA_LOGO_BASE64,
+            filename: NERVA_LOGO_FILENAME,
+            type: NERVA_LOGO_MIME_TYPE,
+            disposition: "inline",
+            contentId: NERVA_LOGO_CONTENT_ID,
+          },
+        ],
+      };
+    }
+
+    const subject = `${appName} — your verification code`;
     const safeCode = escapeHtml(message.code);
-    const safeVoucher = message.firstVoucherCode
-      ? escapeHtml(message.firstVoucherCode)
-      : "";
-    const voucherText = message.firstVoucherCode
-      ? `Your first-month access voucher is ${message.firstVoucherCode}. In the app, enter the 6-digit email code first; the next screen will ask for this voucher. Your 30 days begin when you redeem it.`
-      : "";
 
     const text = [
       `${appName}`,
@@ -113,9 +170,6 @@ export function createCloudflareEmailTransport(
       message.code,
       "",
       `Expires in ${message.ttlMinutes} minutes`,
-      ...(message.firstVoucherCode
-        ? ["", "FIRST-MONTH ACCESS", voucherText]
-        : []),
       "",
       "If you didn't request this code, no action is required. For your security, never share your verification code with anyone.",
       "",
@@ -142,7 +196,6 @@ export function createCloudflareEmailTransport(
           <div style="display:inline-block;background:#f1f5f9;border:1px solid #e2e8f0;border-radius:12px;padding:18px 30px;font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:30px;line-height:1;font-weight:800;letter-spacing:8px;color:#111;">${safeCode}</div>
         </td></tr>
         <tr><td style="font-size:13px;line-height:1.5;color:#6b7280;padding-bottom:24px;">Expires in ${message.ttlMinutes} minutes.</td></tr>
-        ${message.firstVoucherCode ? `<tr><td style="padding:18px 20px;background:#ecfdf5;border:1px solid #a7f3d0;border-radius:12px;color:#065f46;font-size:13px;line-height:1.6;padding-bottom:18px;"><strong>First-month access</strong><br>Your one-month voucher is <span style="font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-weight:800;letter-spacing:1px;">${safeVoucher}</span>.<br>In the app, enter the 6-digit email code first; the next screen will ask for this voucher. Your 30 days begin when you redeem it.</td></tr>` : ""}
         <tr><td style="font-size:13px;line-height:1.5;color:#6b7280;padding-bottom:24px;">If you didn't request this code, no action is required. For your security, never share your verification code with anyone.</td></tr>
         <tr><td style="font-size:13px;line-height:1.5;color:#374151;padding-bottom:8px;">Thank you for choosing <strong>${safeAppName}</strong>.</td></tr>
         <tr><td style="font-size:12px;line-height:1.5;color:#9ca3af;"><em>This is an automated security email. Please do not reply.</em></td></tr>
@@ -175,7 +228,7 @@ export function createCloudflareEmailTransport(
 
   return {
     configured,
-    send: async (message: VerificationEmail) => {
+    send: async (message: EmailMessage) => {
       const body = buildBody(message);
       if (nativeEmailBinding) {
         // The Worker binding accepts a single address directly; the REST

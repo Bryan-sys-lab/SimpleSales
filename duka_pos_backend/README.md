@@ -128,6 +128,13 @@ responses remain pending.
 - `POST /api/payments/initiate` - Start M-Pesa payment
 - `GET /api/payments/status?reference=xxx` - Check payment status
 
+### Subscription access and billing
+- Email verification creates the account and shop but does not issue or email an access voucher.
+- `POST /api/admin/billing/vouchers` - A system administrator issues an email-bound voucher for 1, 3, 6, or 12 months. The voucher has no claim deadline; its access term begins when redeemed, and the recipient receives a separate email.
+- `GET /api/tenant/subscription` - Returns the configured quote, administrator discount percentage, and whether an unclaimed voucher is available for the signed-in owner.
+- `POST /api/auth/voucher/claim` - Claims the latest eligible voucher for the signed-in owner. `POST /api/auth/voucher/redeem` remains available for manual entry.
+- `PATCH /api/admin/billing/subscriptions/:tenantId` - Sets the monthly quote and optional `discountPercent` (0-99). The server applies that discount to 1, 3, 6, or 12-month payment requests; clients cannot choose the percentage.
+
 ### Webhooks
 - `POST /webhooks/payhero-callback` - PayHero callback (no auth)
 

@@ -86,7 +86,7 @@ describe("verification email branding", () => {
     expect(sent.html).not.toContain("<Shop>");
   });
 
-  it("includes the first-month voucher in both email formats", async () => {
+  it("delivers an administrator-issued voucher without an expiry date", async () => {
     setCloudflareEmailBinding(null);
     let sent: any;
     const transport = createCloudflareEmailTransport({
@@ -99,15 +99,18 @@ describe("verification email branding", () => {
     });
 
     await transport.send({
+      kind: "access_voucher",
       to: "owner@example.com",
-      code: "123456",
-      ttlMinutes: 10,
-      firstVoucherCode: "SS-FIRST-MONTH",
+      code: "SS-ADMIN-ISSUED",
+      durationMonths: 3,
     });
 
-    expect(sent.text).toContain("SS-FIRST-MONTH");
-    expect(sent.text).toContain("30 days begin when you redeem it");
-    expect(sent.html).toContain("SS-FIRST-MONTH");
-    expect(sent.html).toContain("First-month access");
+    expect(sent.subject).toContain("access voucher");
+    expect(sent.text).toContain("SS-ADMIN-ISSUED");
+    expect(sent.text).toContain("3 months");
+    expect(sent.text).toContain("does not expire");
+    expect(sent.html).toContain("SS-ADMIN-ISSUED");
+    expect(sent.html).toContain("3 months");
+    expect(sent.html).toContain("Claim voucher");
   });
 });

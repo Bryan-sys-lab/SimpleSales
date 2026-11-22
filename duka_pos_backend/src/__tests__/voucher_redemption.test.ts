@@ -13,6 +13,7 @@ vi.mock('../lib/prisma', () => ({
   }),
 }));
 
+import { addCalendarMonths } from '../lib/entitlements';
 import { redeemVoucherAtomically } from '../lib/voucher_redemption';
 
 describe('voucher redemption D1 batch', () => {
@@ -31,7 +32,6 @@ describe('voucher redemption D1 batch', () => {
 
   it('claims the voucher and conditionally updates entitlement in one D1 batch', async () => {
     const now = new Date('2026-03-01T12:00:00.000Z');
-    const expiresAt = new Date('2026-03-31T12:00:00.000Z');
 
     await expect(redeemVoucherAtomically({
       voucherId: 'voucher-1',
@@ -39,16 +39,18 @@ describe('voucher redemption D1 batch', () => {
       profileId: 'profile-1',
       email: 'owner@example.com',
       now,
-      expiresAt,
+      durationMonths: 1,
     })).resolves.toBe(true);
 
     expect(mocks.batch).toHaveBeenCalledTimes(1);
     expect(mocks.batch.mock.calls[0][0]).toHaveLength(2);
     expect(mocks.statements[0].sql).toContain('redeemed_at IS NULL');
     expect(mocks.statements[0].sql).toContain('issued_to_email = ?');
+    expect(mocks.statements[0].sql).not.toContain('expires_at = ?');
     expect(mocks.statements[0].values).toContain('owner@example.com');
     expect(mocks.statements[1].sql).toContain('WHERE changes() = 1');
     expect(mocks.statements[1].sql).toContain('ON CONFLICT (tenant_id)');
+    expect(mocks.statements[1].values).toContain('2026-04-01T12:00:00.000Z');
   });
 
   it('does not report redemption when another request already claimed the voucher', async () => {
@@ -60,7 +62,14 @@ describe('voucher redemption D1 batch', () => {
       profileId: 'profile-1',
       email: 'owner@example.com',
       now: new Date('2026-03-01T12:00:00.000Z'),
-      expiresAt: null,
+      durationMonths: 12,
     })).resolves.toBe(false);
+  });
+
+  it('adds calendar months without overflowing shorter months', () => {
+    expect(addCalendarMonths(
+      new Date('2026-01-31T12:00:00.000Z'),
+      1,
+    ).toISOString()).toBe('2026-02-28T12:00:00.000Z');
   });
 });
