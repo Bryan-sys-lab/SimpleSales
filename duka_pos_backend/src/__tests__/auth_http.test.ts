@@ -141,6 +141,57 @@ describe('auth http', () => {
     expect(mocks.sendEmail).not.toHaveBeenCalled();
   });
 
+  it('requires the staging test secret before returning debug codes', async () => {
+    const previousEnv = {
+      nodeEnv: process.env.NODE_ENV,
+      publicApiUrl: process.env.PUBLIC_API_URL,
+      verificationDebugCodes: process.env.VERIFICATION_DEBUG_CODES,
+      stagingAuthTestSecret: process.env.STAGING_AUTH_TEST_SECRET,
+    };
+    process.env.NODE_ENV = 'production';
+    process.env.PUBLIC_API_URL = 'https://duka-pos-backend-staging.example.workers.dev';
+    process.env.VERIFICATION_DEBUG_CODES = 'true';
+    process.env.STAGING_AUTH_TEST_SECRET = 'staging-ci-test-secret';
+    mocks.prisma.user.findUnique.mockResolvedValue(null);
+    mocks.prisma.user.create.mockResolvedValue({ id: 'user-1', email: 'owner@example.com', emailVerifiedAt: null });
+    mocks.prisma.verificationChallenge.create.mockResolvedValue({ id: 'ch-1', expiresAt: new Date(Date.now() + 600000) });
+    mocks.prisma.verificationChallenge.update.mockResolvedValue({});
+
+    const postLink = (ip: string, secret?: string) => {
+      const request = supertest(app).post('/auth/link').send({
+        email: 'owner@example.com', password: '123456', shopName: 'Shop', ownerName: 'Owner',
+      }).set('x-forwarded-for', ip);
+      if (secret) request.set('x-staging-auth-test-secret', secret);
+      return request;
+    };
+
+    try {
+      const unauthenticated = await postLink('198.51.100.11');
+      expect(unauthenticated.status).toBe(200);
+      expect(unauthenticated.body).not.toHaveProperty('debug_code');
+      expect(unauthenticated.body).not.toHaveProperty('debug_first_voucher_code');
+
+      const rejected = await postLink('198.51.100.12', 'invalid-ci-test-secret');
+      expect(rejected.status).toBe(200);
+      expect(rejected.body).not.toHaveProperty('debug_code');
+      expect(rejected.body).not.toHaveProperty('debug_first_voucher_code');
+
+      const authorized = await postLink('198.51.100.13', 'staging-ci-test-secret');
+      expect(authorized.status).toBe(200);
+      expect(authorized.body.debug_code).toMatch(/^\d{6}$/);
+      expect(authorized.body.debug_first_voucher_code).toMatch(/^SS-/);
+    } finally {
+      if (previousEnv.nodeEnv === undefined) delete process.env.NODE_ENV;
+      else process.env.NODE_ENV = previousEnv.nodeEnv;
+      if (previousEnv.publicApiUrl === undefined) delete process.env.PUBLIC_API_URL;
+      else process.env.PUBLIC_API_URL = previousEnv.publicApiUrl;
+      if (previousEnv.verificationDebugCodes === undefined) delete process.env.VERIFICATION_DEBUG_CODES;
+      else process.env.VERIFICATION_DEBUG_CODES = previousEnv.verificationDebugCodes;
+      if (previousEnv.stagingAuthTestSecret === undefined) delete process.env.STAGING_AUTH_TEST_SECRET;
+      else process.env.STAGING_AUTH_TEST_SECRET = previousEnv.stagingAuthTestSecret;
+    }
+  });
+
   it('does not expose test verification codes outside NODE_ENV=test', async () => {
     const previousNodeEnv = process.env.NODE_ENV;
     process.env.NODE_ENV = 'production';

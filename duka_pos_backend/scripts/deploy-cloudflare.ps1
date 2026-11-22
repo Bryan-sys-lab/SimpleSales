@@ -67,10 +67,28 @@ try {
     throw 'Set STAGING_BASE_URL to the HTTPS origin of the staging Worker before production promotion.'
   }
   $stagingUri = [Uri]$env:STAGING_BASE_URL
-  if ($stagingUri.Scheme -ne 'https' -or $stagingUri.Host -notmatch 'staging' -or $stagingUri.AbsolutePath -ne '/') {
-    throw 'STAGING_BASE_URL must be an HTTPS staging Worker origin (host contains "staging", no path).'
+  if ($stagingUri.Scheme -ne 'https' -or $stagingUri.Host -ne 'duka-pos-backend-staging.brianbmk332.workers.dev' -or $stagingUri.AbsolutePath -ne '/') {
+    throw 'STAGING_BASE_URL must be the configured HTTPS staging Worker origin with no path.'
+  }
+  if (-not $env:STAGING_AUTH_TEST_SECRET) {
+    throw 'Set STAGING_AUTH_TEST_SECRET for the restricted staging auth journey.'
   }
   $env:BASE_URL = $stagingUri.GetLeftPart([UriPartial]::Authority)
+
+  Write-Host 'Checking the restricted staging auth secret name...'
+  $stagingSecretOutput = & $wranglerPath secret list --env staging --config $configPath --format json 2>&1
+  if ($LASTEXITCODE -ne 0) {
+    throw 'Could not list staging Worker secret names. Deployment was stopped.'
+  }
+  try {
+    $stagingSecrets = ($stagingSecretOutput -join [Environment]::NewLine) | ConvertFrom-Json
+  } catch {
+    throw 'Could not read the staging Worker secret-name list. Deployment was stopped.'
+  }
+  $stagingSecretNames = @($stagingSecrets | ForEach-Object { $_.name })
+  if ('STAGING_AUTH_TEST_SECRET' -notin $stagingSecretNames) {
+    throw 'The restricted staging auth secret is missing from the staging Worker.'
+  }
 
   Write-Host 'Running credential-free live smoke checks against staging...'
   & npm.cmd run test:live
@@ -101,6 +119,12 @@ try {
   $missingSecrets = @($requiredSecrets | Where-Object { $_ -notin $secretNames })
   if ($missingSecrets.Count -gt 0) {
     throw "Required Worker secrets are missing: $($missingSecrets -join ', '). Add them in the Cloudflare dashboard; values are never read by this script."
+  }
+
+  Write-Host 'Validating the production Worker bundle...'
+  & $wranglerPath deploy --dry-run --env '' --config $configPath
+  if ($LASTEXITCODE -ne 0) {
+    throw 'Production Worker dry-run failed; production migration and deployment were stopped.'
   }
 
   Write-Host 'Applying D1 migrations to production...'

@@ -268,6 +268,9 @@ jobs:
     if: github.ref == 'refs/heads/cloudflare' && github.event_name == 'workflow_dispatch'
     runs-on: windows-latest
     environment: production
+    permissions:
+      contents: read
+      deployments: write
     timeout-minutes: 30
     defaults:
       run:
@@ -289,9 +292,22 @@ jobs:
       - name: Generate Prisma client
         run: npx.cmd prisma generate
 
+      - name: Apply staging D1 migrations
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+        run: .\node_modules\.bin\wrangler.cmd d1 migrations apply duka-pos-staging --remote --env staging --config wrangler.jsonc
+
+      - name: Deploy candidate to staging
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+        run: .\node_modules\.bin\wrangler.cmd deploy --env staging --config wrangler.jsonc
+
       - name: Run guarded staging journeys and production promotion
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
-          STAGING_BASE_URL: ${{ secrets.STAGING_BASE_URL }}
+          STAGING_BASE_URL: ${{ vars.STAGING_BASE_URL }}
+          STAGING_AUTH_TEST_SECRET: ${{ secrets.STAGING_AUTH_TEST_SECRET }}
         run: .\scripts\deploy-cloudflare.ps1 -PromoteProduction

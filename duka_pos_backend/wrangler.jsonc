@@ -55,7 +55,8 @@
         "APP_RELEASE_REPOSITORY": "Bryan-sys-lab/SimpleSales",
         "APP_RELEASE_MANIFEST_URL": "https://pub-304b56b967d4462f8ca28cdb5a6fc43a.r2.dev/current.json",
         "SYSTEM_ADMIN_EMAIL": "brian@nerva.co.ke",
-        "ADMIN_APP_ORIGIN": "https://simpleranalytics.nerva.co.ke"
+        "ADMIN_APP_ORIGIN": "https://simpleranalytics.nerva.co.ke",
+        "VERIFICATION_DEBUG_CODES": "true"
       },
       "send_email": [
         {

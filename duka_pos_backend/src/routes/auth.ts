@@ -3,7 +3,7 @@
  */
 import { Router, Request, Response } from 'express';
 import rateLimit from 'express-rate-limit';
-import { randomBytes } from 'node:crypto';
+import { randomBytes, timingSafeEqual } from 'node:crypto';
 import { prisma } from '../lib/prisma';
 import { asyncHandler } from '../lib/http';
 import {
@@ -81,11 +81,17 @@ function buildMailer() {
   });
 }
 
-function debugCodesEnabled(): boolean {
+function debugCodesEnabled(req: Request): boolean {
   if (process.env.VERIFICATION_DEBUG_CODES !== 'true') return false;
+  if (process.env.NODE_ENV === 'test') return true;
   const publicUrl = process.env.PUBLIC_API_URL ?? '';
-  if (/^https:\/\/[^/]*staging[^/]*/i.test(publicUrl)) return true;
-  return process.env.NODE_ENV === 'test';
+  if (!/^https:\/\/[^/]*staging[^/]*/i.test(publicUrl)) return false;
+  const expectedSecret = process.env.STAGING_AUTH_TEST_SECRET;
+  const suppliedSecret = req.get('x-staging-auth-test-secret') ?? '';
+  if (!expectedSecret || !suppliedSecret) return false;
+  const expected = Buffer.from(expectedSecret, 'utf8');
+  const supplied = Buffer.from(suppliedSecret, 'utf8');
+  return expected.length === supplied.length && timingSafeEqual(expected, supplied);
 }
 
 function createVerificationCode(): string {
@@ -233,8 +239,8 @@ router.post('/link', linkLimiter, asyncHandler(async (req: Request, res: Respons
   const { email, password, shopName, firstVoucherRecovery } = parseBody(authLinkSchema, req.body);
   if (!isConfigured()) return notConfigured(res, requestId);
   const mailer = buildMailer();
-  const debugWithoutEmail = debugCodesEnabled();
-  if (!mailer.configured && !debugCodesEnabled()) {
+  const debugWithoutEmail = debugCodesEnabled(req);
+  if (!mailer.configured && !debugCodesEnabled(req)) {
     return res.status(503).json({ error: 'Email verification is not configured on this server', code: 'EMAIL_NOT_CONFIGURED', requestId });
   }
 
@@ -332,7 +338,7 @@ router.post('/link', linkLimiter, asyncHandler(async (req: Request, res: Respons
     challenge_id: challenge.id,
     email: maskEmail(email),
     expires_in_seconds: VERIFICATION_TTL_MINUTES * 60,
-    ...(debugCodesEnabled() ? {
+    ...(debugCodesEnabled(req) ? {
       debug_code: code,
       ...(firstVoucherCode ? { debug_first_voucher_code: firstVoucherCode } : {}),
     } : {}),

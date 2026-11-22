@@ -42,8 +42,17 @@ authenticated staging journeys, and must be requested explicitly with
 `.\scripts\deploy-cloudflare.ps1 -PromoteProduction`.
 
 The authenticated staging journeys create test accounts and need the isolated
-staging Worker configured for test verification. Keep that test Worker
-restricted; never enable test-only verification responses in production.
+staging Worker configured for test verification. In staging only,
+`VERIFICATION_DEBUG_CODES=true` enables returning the challenge and first
+voucher to the auth test, and the response is gated by the
+`STAGING_AUTH_TEST_SECRET` request header. Keep that secret on the staging
+Worker and as a GitHub Actions secret; never enable test-only verification
+responses in production.
+
+The `cloudflare` branch workflow automatically promotes after backend tests,
+local D1 migration/schema checks, staging migrations, and staging journeys all
+pass. Configure the public staging origin as the GitHub repository variable
+`STAGING_BASE_URL`.
 
 Authenticate Wrangler once with `wrangler login`; this uses the browser-based
 OAuth flow and keeps deployment credentials out of scripts, command history,
