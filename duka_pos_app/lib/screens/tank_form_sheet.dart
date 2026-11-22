@@ -47,7 +47,7 @@
 /// in cups.
 library;
 
-import 'package:flutter/material.dart';
+import 'package:material_ui/material_ui.dart';
 import 'package:sqflite/sqflite.dart' show Database;
 
 import '../db/database_helper.dart';

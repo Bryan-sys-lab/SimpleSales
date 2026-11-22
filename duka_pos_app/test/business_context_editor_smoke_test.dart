@@ -2,7 +2,7 @@ import 'package:duka_pos/profile/business_context.dart';
 import 'package:duka_pos/profile/business_context_editor.dart';
 import 'package:duka_pos/profile/shop_profile.dart';
 import 'package:duka_pos/db/database_helper.dart';
-import 'package:flutter/material.dart';
+import 'package:material_ui/material_ui.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:sqflite_common_ffi/sqflite_ffi.dart';
 

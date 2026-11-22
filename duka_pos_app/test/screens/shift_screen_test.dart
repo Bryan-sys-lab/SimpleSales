@@ -19,7 +19,7 @@ import 'package:duka_pos/screens/shift_till_count_sheet.dart';
 import 'package:duka_pos/screens/shift_variance.dart';
 import 'package:duka_pos/utils/money.dart';
 import 'package:duka_pos/l10n/generated/app_localizations.dart';
-import 'package:flutter/material.dart';
+import 'package:material_ui/material_ui.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 import '../support/harness.dart';

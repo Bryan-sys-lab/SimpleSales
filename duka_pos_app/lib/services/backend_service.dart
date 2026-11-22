@@ -57,6 +57,9 @@ enum VerificationFailure {
   /// Three codes in fifteen minutes; the mailbox is being protected.
   tooManyCodes,
 
+  /// The supplied access voucher is invalid, expired, or already redeemed.
+  invalidVoucher,
+
   /// The account has no shop and none was supplied to create one.
   shopSetupRequired,
 
@@ -188,8 +191,29 @@ class SubscriptionEntitlement {
   final bool firstMonthVoucherAvailable;
 }
 
-/// A code the server accepted, with the session it issued, held back until the
-/// shop that code belongs to exists on this device.
+/// The email code and setup details accepted for the next signup step.
+///
+/// The voucher screen completes verification and creates the remote identity;
+/// keeping this short-lived payload in memory means no account or shop is
+/// created until the owner submits the issued voucher.
+class PendingRegistration {
+  const PendingRegistration({
+    required this.email,
+    required this.pin,
+    required this.code,
+    required this.shopName,
+    required this.ownerName,
+  });
+
+  final String email;
+  final String pin;
+  final String code;
+  final String shopName;
+  final String ownerName;
+}
+
+/// A code and voucher accepted by the server, with the session it issued,
+/// held back until the shop exists on this device.
 ///
 /// Setup proves the address BEFORE the shop is created. At that point there is
 /// no workspace to record the tenant against, and switching to a new workspace
@@ -653,11 +677,9 @@ class BackendService {
 
   /// Step two of Verify, for a shop that does not exist yet.
   ///
-  /// Same call as [confirmVerificationCode], but it changes nothing on this
-  /// device: no tokens are stored and no workspace is registered. The caller
-  /// creates the shop first and then hands the result to
-  /// [adoptPendingVerification].
-  static Future<PendingVerification> confirmVerificationCodeDeferred({
+  /// Confirms only the email code. No account, shop, token, or voucher is
+  /// created here; the follow-up voucher step completes registration.
+  static Future<PendingRegistration> confirmVerificationCodeDeferred({
     required String email,
     required String pin,
     required String code,
@@ -666,12 +688,40 @@ class BackendService {
   }) async {
     await ensureInitialized();
     try {
-      final response = await _dio.post('$backendUrl/auth/verify', data: {
+      await _dio.post('$backendUrl/auth/verify-code', data: {
         'email': email,
         'password': pin,
         'code': code,
-        if (shopName.isNotEmpty) 'shopName': shopName,
-        if (ownerName.isNotEmpty) 'ownerName': ownerName,
+      });
+      return PendingRegistration(
+        email: email,
+        pin: pin,
+        code: code,
+        shopName: shopName,
+        ownerName: ownerName,
+      );
+    } on DioException catch (error) {
+      throw verificationFailure(error);
+    }
+  }
+
+  /// Completes registration after the owner enters the voucher shown in the
+  /// post-verification paywall. The backend rechecks the code and atomically
+  /// redeems the voucher before issuing a session.
+  static Future<PendingVerification> completePendingVerification({
+    required PendingRegistration registration,
+    required String voucherCode,
+  }) async {
+    await ensureInitialized();
+    try {
+      final response = await _dio.post('$backendUrl/auth/verify', data: {
+        'email': registration.email,
+        'password': registration.pin,
+        'code': registration.code,
+        'voucherCode': voucherCode.trim(),
+        if (registration.shopName.isNotEmpty) 'shopName': registration.shopName,
+        if (registration.ownerName.isNotEmpty)
+          'ownerName': registration.ownerName,
       });
       final data = response.data as Map<String, dynamic>? ?? const {};
       return PendingVerification(
@@ -737,6 +787,8 @@ class BackendService {
       case 'SHOP_SETUP_REQUIRED':
         return const VerificationException(
             VerificationFailure.shopSetupRequired);
+      case 'VOUCHER_INVALID':
+        return const VerificationException(VerificationFailure.invalidVoucher);
       case 'VERIFICATION_NOT_CONFIGURED':
         return const VerificationException(VerificationFailure.notConfigured);
       case 'IDENTITY_UNAVAILABLE':

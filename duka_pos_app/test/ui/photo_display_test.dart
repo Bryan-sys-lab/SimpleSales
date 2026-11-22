@@ -31,7 +31,7 @@ import 'package:duka_pos/services/app_state.dart';
 import 'package:duka_pos/ui/components/product_photo.dart';
 import 'package:duka_pos/utils/money.dart';
 import 'package:duka_pos/widgets/product_tile.dart';
-import 'package:flutter/material.dart';
+import 'package:material_ui/material_ui.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:image/image.dart' as img;
 import 'package:image_picker/image_picker.dart';

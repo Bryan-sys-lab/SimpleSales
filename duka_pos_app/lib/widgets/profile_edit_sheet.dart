@@ -33,7 +33,7 @@
 // What is NOT offered here is the PIN. It has its own flow, with its own
 // confirmation and its own lockout, and a profile edit is not a way around it.
 
-import 'package:flutter/material.dart';
+import 'package:material_ui/material_ui.dart';
 
 import '../../l10n/generated/app_localizations.dart';
 import '../../theme/app_colors.dart';

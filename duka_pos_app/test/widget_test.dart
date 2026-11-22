@@ -26,7 +26,7 @@ import 'package:duka_pos/theme/app_motion.dart';
 import 'package:duka_pos/theme/app_shapes.dart';
 import 'package:duka_pos/theme/app_spacing.dart';
 import 'package:duka_pos/theme/primitives.dart';
-import 'package:flutter/material.dart';
+import 'package:material_ui/material_ui.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:sqflite_common_ffi/sqflite_ffi.dart';
@@ -90,28 +90,22 @@ void main() {
     }
   });
 
-  testWidgets('the brand values the launcher icon also uses are pinned',
+  testWidgets('application colors use the current palette tokens',
       (WidgetTester tester) async {
     await tester.pumpWidget(DukaPosApp(appearance: appearance));
 
     final MaterialApp app =
         tester.widget<MaterialApp>(find.byType(MaterialApp));
 
-    // The accent IS the brand wine, and the body ink IS the brand ink. These four
-    // files must change together or the app grows a second logo:
-    // lib/theme/primitives.dart, lib/ui/brand/simple_pos_mark.dart,
-    // android/app/src/main/res/values/colors.xml,
-    // assets/branding/generate_launcher_icon.py
-    // plus the 19 iOS and 25 Android mipmaps, checked by app_brand_test.dart.
     expect(
       app.theme!.colorScheme.primary,
-      Primitives.botanical38,
-      reason: 'the accent must stay the brand green #1B6B3A',
+      Primitives.forest,
+      reason: 'primary actions use the forest-green brand token',
     );
     expect(
       app.theme!.extension<AppColors>()!.onSurface,
-      Primitives.neutral23,
-      reason: 'body ink must stay the brand ink #2D2A26',
+      Primitives.textInk,
+      reason: 'body text uses the specified primary ink',
     );
     expect(app.theme!.scaffoldBackgroundColor, Primitives.neutral97);
   });

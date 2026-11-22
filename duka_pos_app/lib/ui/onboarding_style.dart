@@ -1,4 +1,4 @@
-import 'package:flutter/material.dart';
+import 'package:material_ui/material_ui.dart';
 
 import '../theme/app_colors.dart';
 import '../theme/app_shapes.dart';
@@ -8,7 +8,7 @@ import '../ui/brand/simple_pos_mark.dart';
 
 /// Shared visual language for the onboarding + sign-in surfaces.
 ///
-/// Colours come from the theme (dark canvas, emerald accent) so this one file
+/// Colours come from the theme (warm canvas, forest primary and electric accent) so this one file
 /// is the single place the inspiration's look is authored. Every screen below
 /// assembles these primitives; none invents a hex or a radius.
 abstract class OnboardStyle {
@@ -42,7 +42,7 @@ abstract class OnboardStyle {
             children: <Widget>[
               // Brand photograph filling the window.
               Positioned.fill(child: image),
-              // Green glow in the bottom-left corner of the window.
+              // A restrained forest wash in the bottom-left corner.
               Positioned(
                 left: -spacing.md,
                 bottom: -spacing.md,
@@ -53,8 +53,8 @@ abstract class OnboardStyle {
                     shape: BoxShape.circle,
                     gradient: RadialGradient(
                       colors: <Color>[
-                        colors.accent.withValues(alpha: 0.45),
-                        colors.accent.withValues(alpha: 0.0),
+                        colors.primaryButton.withValues(alpha: 0.3),
+                        colors.primaryButton.withValues(alpha: 0.0),
                       ],
                       center: Alignment.bottomLeft,
                       radius: 1,
@@ -70,7 +70,7 @@ abstract class OnboardStyle {
                   width: _badgeSize,
                   height: _badgeSize,
                   decoration: BoxDecoration(
-                    color: colors.accent,
+                    color: colors.primaryButton,
                     borderRadius: AppShapes.of(context).controlRadius,
                   ),
                   child: Icon(badgeIcon, size: 28, color: colors.onAccent),
@@ -81,13 +81,15 @@ abstract class OnboardStyle {
         ),
         SizedBox(height: spacing.lg),
         Padding(
-          padding: EdgeInsetsDirectional.fromSTEB(spacing.xl, 0, spacing.xl, spacing.xl),
+          padding: EdgeInsetsDirectional.fromSTEB(
+              spacing.xl, 0, spacing.xl, spacing.xl),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: <Widget>[
               // Label chip: uppercase, green.
               Container(
-                padding: EdgeInsetsDirectional.fromSTEB(spacing.md, spacing.xs, spacing.md, spacing.xs),
+                padding: EdgeInsetsDirectional.fromSTEB(
+                    spacing.md, spacing.xs, spacing.md, spacing.xs),
                 decoration: BoxDecoration(
                   color: colors.accentContainer,
                   borderRadius: BorderRadius.circular(_chipRadius),
@@ -103,7 +105,7 @@ abstract class OnboardStyle {
                 ),
               ),
               SizedBox(height: spacing.md),
-              // Title: emerald accent.
+              // Title: selected-state accent.
               Text(
                 title,
                 style: type.headlineSmall?.copyWith(
@@ -163,7 +165,7 @@ abstract class OnboardStyle {
     );
   }
 
-  /// The primary action: full width, emerald fill, white ink, with an arrow.
+  /// The primary action: full width, forest fill, white ink, with an arrow.
   static Widget primaryButton({
     required BuildContext context,
     required VoidCallback? onPressed,
@@ -176,8 +178,8 @@ abstract class OnboardStyle {
       onPressed: onPressed,
       style: FilledButton.styleFrom(
         minimumSize: const Size(double.infinity, 48),
-        backgroundColor: colors.accent,
-        foregroundColor: colors.onAccent,
+        backgroundColor: colors.primaryButton,
+        foregroundColor: colors.onPrimaryButton,
         shape: RoundedRectangleBorder(
           borderRadius: AppShapes.of(context).controlRadius,
         ),
@@ -188,12 +190,14 @@ abstract class OnboardStyle {
           Flexible(
             child: Text(
               label,
-              style: type.titleMedium?.copyWith(fontWeight: FontWeight.w700, color: colors.onAccent),
+              style: type.titleMedium?.copyWith(
+                  fontWeight: FontWeight.w700, color: colors.onPrimaryButton),
               overflow: TextOverflow.ellipsis,
             ),
           ),
           const SizedBox(width: 8),
-          Icon(Icons.arrow_forward_rounded, size: 20, color: colors.onAccent),
+          Icon(Icons.arrow_forward_rounded,
+              size: 20, color: colors.onPrimaryButton),
         ],
       ),
     );
@@ -214,7 +218,10 @@ abstract class OnboardStyle {
         minimumSize: const Size(0, 44),
         tapTargetSize: MaterialTapTargetSize.padded,
       ),
-      child: Text(label, style: typeFor(context).labelLarge?.copyWith(fontWeight: FontWeight.w600)),
+      child: Text(label,
+          style: typeFor(context)
+              .labelLarge
+              ?.copyWith(fontWeight: FontWeight.w600)),
     );
   }
 
@@ -227,10 +234,12 @@ abstract class OnboardStyle {
     required TextTheme type,
   }) {
     return Padding(
-      padding: EdgeInsetsDirectional.fromSTEB(spacing.md, spacing.xs, spacing.md, spacing.xs),
+      padding: EdgeInsetsDirectional.fromSTEB(
+          spacing.md, spacing.xs, spacing.md, spacing.xs),
       child: Row(
         children: <Widget>[
-          const SimplePosMark(size: _markSize, variant: SimplePosMarkVariant.full),
+          const SimplePosMark(
+              size: _markSize, variant: SimplePosMarkVariant.full),
           const Spacer(),
           Expanded(
             child: TextButton(
@@ -318,7 +327,8 @@ class OnboardImportBox extends StatelessWidget {
         ],
         if (message != null) ...<Widget>[
           SizedBox(height: spacing.md),
-          OnboardImportMessage(message: message!, isError: messageIsError, type: type),
+          OnboardImportMessage(
+              message: message!, isError: messageIsError, type: type),
         ],
       ],
     );
@@ -361,9 +371,12 @@ class OnboardImportMessage extends StatelessWidget {
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: <Widget>[
-          Icon(isError ? Icons.error_outline : Icons.check_circle_outline, size: 18, color: tone, semanticLabel: ''),
+          Icon(isError ? Icons.error_outline : Icons.check_circle_outline,
+              size: 18, color: tone, semanticLabel: ''),
           SizedBox(width: spacing.sm),
-          Expanded(child: Text(message, style: type.bodyMedium?.copyWith(color: tone))),
+          Expanded(
+              child:
+                  Text(message, style: type.bodyMedium?.copyWith(color: tone))),
         ],
       ),
     );
@@ -408,13 +421,16 @@ class OnboardProfileCard extends StatelessWidget {
             color: selected ? colors.accentContainer : colors.surface,
             shape: RoundedRectangleBorder(
               borderRadius: shapes.controlRadius,
-              side: BorderSide(color: selected ? colors.accent : colors.outline, width: selected ? 2 : 1),
+              side: BorderSide(
+                  color: selected ? colors.accent : colors.outline,
+                  width: selected ? 2 : 1),
             ),
             clipBehavior: Clip.antiAlias,
             child: InkWell(
               onTap: onTap,
               child: Padding(
-                padding: EdgeInsetsDirectional.symmetric(horizontal: spacing.md, vertical: spacing.sm),
+                padding: EdgeInsetsDirectional.symmetric(
+                    horizontal: spacing.md, vertical: spacing.sm),
                 child: Row(
                   children: <Widget>[
                     Container(
@@ -424,7 +440,11 @@ class OnboardProfileCard extends StatelessWidget {
                         color: selected ? colors.accent : colors.surfaceSunken,
                         borderRadius: shapes.controlRadius,
                       ),
-                      child: Icon(icon, size: 22, color: selected ? colors.onAccent : colors.onSurfaceVariant),
+                      child: Icon(icon,
+                          size: 22,
+                          color: selected
+                              ? colors.onAccent
+                              : colors.onSurfaceVariant),
                     ),
                     SizedBox(width: spacing.md),
                     Expanded(
@@ -434,19 +454,25 @@ class OnboardProfileCard extends StatelessWidget {
                         children: <Widget>[
                           Text(label,
                               style: selected
-                                  ? type.titleMedium?.copyWith(color: colors.onAccentContainer, fontWeight: FontWeight.w700)
-                                  : type.bodyLarge?.copyWith(color: colors.onSurface)),
+                                  ? type.titleMedium?.copyWith(
+                                      color: colors.onAccentContainer,
+                                      fontWeight: FontWeight.w700)
+                                  : type.bodyLarge
+                                      ?.copyWith(color: colors.onSurface)),
                           SizedBox(height: spacing.xxs),
                           Text(subtitle,
                               style: type.labelMedium?.copyWith(
-                                color: selected ? colors.onAccentContainer : colors.onSurfaceMuted,
+                                color: selected
+                                    ? colors.onAccentContainer
+                                    : colors.onSurfaceMuted,
                               ),
                               maxLines: 1,
                               overflow: TextOverflow.ellipsis),
                         ],
                       ),
                     ),
-                    Icon(Icons.chevron_right, size: 20, color: colors.onSurfaceMuted),
+                    Icon(Icons.chevron_right,
+                        size: 20, color: colors.onSurfaceMuted),
                   ],
                 ),
               ),

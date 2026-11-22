@@ -10,7 +10,7 @@ import 'package:duka_pos/l10n/generated/app_localizations.dart';
 import 'package:duka_pos/routing/routes.dart';
 import 'package:duka_pos/routing/shell_nav_bar.dart';
 import 'package:duka_pos/ui/components/support_action.dart';
-import 'package:flutter/material.dart';
+import 'package:material_ui/material_ui.dart';
 import 'package:flutter/rendering.dart';
 import 'package:flutter_test/flutter_test.dart';
 
@@ -35,6 +35,34 @@ void main() {
       );
 
   group('the sell button is in the middle', () {
+    testWidgets('keeps destinations above the phone system navigation area',
+        (WidgetTester tester) async {
+      tester.useDevice(Device.small);
+      tester.view.viewPadding = const FakeViewPadding(bottom: 72);
+      tester.view.padding = const FakeViewPadding(bottom: 72);
+
+      await tester.pumpApp(
+        home: bar(
+          <AppDestination>[
+            AppDestination.dashboard,
+            AppDestination.inventory,
+            AppDestination.sell,
+            AppDestination.analytics,
+            AppDestination.settings,
+          ],
+          AppDestination.sell,
+        ),
+      );
+
+      final Finder labels = find.descendant(
+        of: find.byType(ShellNavBar),
+        matching: find.byType(Text),
+      );
+      final double safeBottom =
+          tester.view.physicalSize.height / tester.view.devicePixelRatio - 24;
+      expect(tester.getRect(labels.last).bottom, lessThanOrEqualTo(safeBottom));
+    });
+
     testWidgets('the bar puts the ball between the two halves',
         (WidgetTester tester) async {
       tester.useDevice(Device.small);

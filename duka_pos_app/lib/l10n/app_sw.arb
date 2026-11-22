@@ -228,6 +228,8 @@
   "openCostGroupsNoGroupsSubtitle": "Unda kundi la gharama ili kufuatilia gharama zinazorejeshwa kupitia mauzo.",
   "openCostGroupsLoading": "Inapakia kundi la gharama",
   "openCostGroupsLoadingSubtitle": "Subiri kidogo kundi la gharama zinakuatwa.",
+  "openCostGroupsLoadFailed": "Makundi ya gharama hayakuweza kupakiwa. Angalia hifadhi yako na ujaribu tena.",
+  "openCostGroupsRetry": "Jaribu tena",
   "openCostGroupDetailNotFound": "Kundi la gharama haijapatikana",
   "openCostGroupDetailNoNote": "Hakuna takwimu",
   "openCostGroupDetailInvestment": "Uwekezaji",
@@ -716,5 +718,6 @@
   "productMappingReviewTitle": "Kagua ulinganishaji wa bidhaa",
   "productMappingReviewHelp": "Bidhaa zisizoainishwa bado zinaweza kuuzwa. Kagua misimbo ya bidhaa na vipimo ukiwa nayo.",
   "productMappingReviewEmpty": "Ulinganishaji wote wa bidhaa umekaguliwa.",
-  "productMappingReviewLoadFailed": "Haikuwezekana kupakia bidhaa za kukaguliwa. Jaribu tena."
+  "productMappingReviewLoadFailed": "Haikuwezekana kupakia bidhaa za kukaguliwa. Jaribu tena.",
+  "supportContactOpenFailed": "WhatsApp haikufunguka. Tafadhali jaribu tena."
 }

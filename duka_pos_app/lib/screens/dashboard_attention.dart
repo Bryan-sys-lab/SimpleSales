@@ -9,7 +9,7 @@
 // The Sell button is the screen's single primary action. Every other control is
 // either a drill-down into a figure or a fix for a problem; "start a sale" is
 // the only reason someone opens a POS.
-import 'package:flutter/material.dart';
+import 'package:material_ui/material_ui.dart';
 import 'package:go_router/go_router.dart';
 import 'package:provider/provider.dart';
 import 'package:intl/intl.dart';

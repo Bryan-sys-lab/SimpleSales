@@ -8,7 +8,7 @@
 //     sideways as the digits change cannot be compared down the column, which is
 //     the only reason to put a column there.
 //   * Emphasis is SIZE, not colour. The sales figure is the biggest thing on the
-//     screen; its tinted card is decoration on top of that, so the hierarchy
+//     screen; its neutral card uses only a quiet edge accent, so the hierarchy
 //     survives greyscale.
 //   * Lists are one panel with a hairline between rows, never a card per item. A
 //     table of twenty low-stock lines rendered as twenty cards is a wall of
@@ -20,7 +20,7 @@
 
 import 'dart:math' as math;
 
-import 'package:flutter/material.dart';
+import 'package:material_ui/material_ui.dart';
 import 'package:flutter/semantics.dart';
 import 'package:intl/intl.dart';
 
@@ -381,13 +381,6 @@ class _KpiCard extends StatelessWidget {
     final TextTheme type = AppTypography.of(context);
 
     final bool hero = kpi.hero;
-    // The hero is a DARK card with a WHITE figure, not a green block.
-    //
-    // Filling the one card the eye lands on with the app's only saturated
-    // colour spends the accent on a container instead of on an action, and a
-    // large green field is the loudest thing on a screen that is supposed to
-    // be calm. The accent on this card is the GLYPH and the figure — small,
-    // and unmistakably the mark of the number that matters.
     final Color ink = colors.onSurface;
     final Color quiet = colors.onSurfaceMuted;
     final double size = hero ? (compact ? 22 : 32) : (compact ? 18 : 24);
@@ -406,6 +399,7 @@ class _KpiCard extends StatelessWidget {
         child: SurfaceCard(
           padding: EdgeInsets.all(spacing.xl),
           onTap: kpi.onTap,
+          accentEdge: hero,
           child: Stack(
             children: <Widget>[
               Column(
@@ -420,7 +414,9 @@ class _KpiCard extends StatelessWidget {
                           // A tonal well, not a tinted green block: the badge
                           // is a MARKER for the figure, and the marker's job is
                           // to be found, not to shout.
-                          color: colors.surfaceSunken,
+                          color: hero
+                              ? colors.accentContainer
+                              : colors.surfaceSunken,
                           borderRadius: AppShapes.of(context).controlRadius,
                         ),
                         child: Icon(

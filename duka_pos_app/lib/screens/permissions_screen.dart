@@ -39,7 +39,7 @@
 // need no OS permission; the app never derives a place from a radio, and reads
 // the gallery through the system photo picker, which needs no permission.
 
-import 'package:flutter/material.dart';
+import 'package:material_ui/material_ui.dart';
 
 import '../l10n/generated/app_localizations.dart';
 import '../services/permission_service.dart';

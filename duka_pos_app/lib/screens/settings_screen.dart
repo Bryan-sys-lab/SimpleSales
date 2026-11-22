@@ -1,7 +1,7 @@
 import 'dart:async';
 
 import 'package:flutter/foundation.dart';
-import 'package:flutter/material.dart';
+import 'package:material_ui/material_ui.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:share_plus/share_plus.dart';
 import 'dart:io';
@@ -39,6 +39,7 @@ import '../services/auto_sync_service.dart';
 import '../services/encrypted_backup_service.dart';
 import '../ui/brand/nerva_wordmark.dart';
 import '../ui/components/operation_result.dart';
+import '../ui/verification_message.dart';
 import '../services/workspace_service.dart';
 import '../services/printer/printer_config.dart';
 import '../services/printer/printer_service.dart';
@@ -4668,18 +4669,4 @@ String verificationMessage(
   AppLocalizations l10n,
   VerificationException error,
 ) =>
-    switch (error.failure) {
-      VerificationFailure.notConfigured => l10n.settingsVerifyNotConfigured,
-      VerificationFailure.identityUnavailable =>
-        l10n.settingsVerifyIdentityUnavailable,
-      VerificationFailure.emailUnavailable => l10n.settingsVerifyEmailFailed,
-      VerificationFailure.expired => l10n.settingsVerifyCodeExpired,
-      VerificationFailure.tooManyAttempts => l10n.settingsVerifyCodeBurnt,
-      VerificationFailure.tooManyCodes => l10n.settingsVerifyTooManyCodes,
-      VerificationFailure.shopSetupRequired => l10n.settingsVerifyShopMissing,
-      VerificationFailure.invalidCode => error.attemptsRemaining == null
-          ? l10n.settingsVerifyCodeWrong(1)
-          : l10n.settingsVerifyCodeWrong(error.attemptsRemaining!),
-      VerificationFailure.network => l10n.settingsIdentityLinkFailed,
-      VerificationFailure.unknown => l10n.settingsIdentityLinkFailed,
-    };
+    verificationFailureMessage(l10n, error);

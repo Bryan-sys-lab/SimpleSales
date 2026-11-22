@@ -15,7 +15,7 @@
 //     prefills the field, which is what makes "Count the till" feed
 //     reconciliation instead of being a separate chore.
 
-import 'package:flutter/material.dart';
+import 'package:material_ui/material_ui.dart';
 import 'package:flutter/services.dart';
 
 import '../db/database_helper.dart';

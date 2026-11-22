@@ -5,7 +5,7 @@
 // and the figure in the history afterwards — and each of those three previously
 // re-derived the word, the tone and the sign from the money. That is three
 // places to keep in agreement about the one thing an owner is reading the screen
-// for, and a difference that renders green in one and amber in the other is how a
+// for, and a difference that renders green in one and coral in the other is how a
 // real shortage gets argued about.
 //
 // Resolving it once also puts the accessibility channels in one place. A

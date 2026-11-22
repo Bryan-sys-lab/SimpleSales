@@ -28,7 +28,7 @@
 // above, because a thumb reaches the bottom of the screen and the bottom of
 // the screen is where the cart's money is.
 
-import 'package:flutter/material.dart';
+import 'package:material_ui/material_ui.dart';
 
 import '../l10n/generated/app_localizations.dart';
 import '../models/models.dart';

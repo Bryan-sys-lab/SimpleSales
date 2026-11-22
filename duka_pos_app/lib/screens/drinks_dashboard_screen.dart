@@ -1,4 +1,4 @@
-import 'package:flutter/material.dart';
+import 'package:material_ui/material_ui.dart';
 import 'package:flutter/semantics.dart';
 import 'package:go_router/go_router.dart';
 import 'package:provider/provider.dart';
@@ -198,20 +198,39 @@ class DrinksDashboardScreen extends StatelessWidget {
       l10n: l10n,
     );
 
-    // Primary action: start a sale, full width.
-    final Widget startSale = Semantics(
-      button: true,
-      label: '${l10n.dashboardSellAction} · ${formatMoney(data.totals.total)}',
-      child: ExcludeSemantics(
-        child: SizedBox(
-          width: double.infinity,
-          child: FilledButton.icon(
-            onPressed: onOpenSell,
-            icon: const Icon(Icons.point_of_sale_outlined, size: 18),
-            label: Text('+ ${l10n.dashboardSellAction}'),
-          ),
-        ),
+    final List<Widget> quickActionItems = <Widget>[
+      ActionChip(
+        avatar: const Icon(Icons.point_of_sale_outlined, size: 18),
+        label: Text(l10n.dashboardSellAction),
+        onPressed: onOpenSell,
       ),
+      if (canManageStock && appState.shopProfile.capabilities.trackStock)
+        ActionChip(
+          avatar: const Icon(Icons.add_circle_outline, size: 18),
+          label: Text(
+            'Add ${appState.shopProfile.terminologyLocalized(l10n).product}',
+          ),
+          onPressed: () => _openAddProduct(context),
+        ),
+      if (canManageStock)
+        ActionChip(
+          avatar: const Icon(Icons.inventory_2_outlined, size: 18),
+          label: Text(l10n.dashboardInventory),
+          onPressed: onOpenInventory,
+        ),
+      ActionChip(
+        avatar: const Icon(Icons.access_time_outlined, size: 18),
+        label: Text(l10n.dashboardShiftAction),
+        onPressed: onOpenShift,
+      ),
+      ActionChip(
+        avatar: const Icon(Icons.local_bar_outlined, size: 18),
+        label: Text(l10n.dashboardMeasuredVolume),
+        onPressed: () => context.push(Routes.servings),
+      ),
+    ];
+    final Widget quickActions = DashboardQuickActionStrip(
+      actions: quickActionItems,
     );
 
     final Widget beverageStock = data.tanks.isNotEmpty
@@ -237,6 +256,8 @@ class DrinksDashboardScreen extends StatelessWidget {
       SizedBox(height: spacing.lg),
       financialHero,
       SizedBox(height: spacing.lg),
+      quickActions,
+      SizedBox(height: spacing.lg),
       kpiGrid,
       SizedBox(height: spacing.lg),
       BackupReminderBanner(onBackupNow: onBackupNow),
@@ -255,27 +276,6 @@ class DrinksDashboardScreen extends StatelessWidget {
       ),
       SizedBox(height: spacing.lg),
       shiftOverview,
-      SizedBox(height: spacing.lg),
-      if (appState.shopProfile.capabilities.trackStock) ...<Widget>[
-        Semantics(
-          button: true,
-          label:
-              'Add ${appState.shopProfile.terminologyLocalized(AppLocalizations.of(context)).product}',
-          child: ExcludeSemantics(
-            child: SizedBox(
-              width: double.infinity,
-              child: FilledButton.tonalIcon(
-                onPressed: () => _openAddProduct(context),
-                icon: const Icon(Icons.add_circle_outline, size: 18),
-                label: Text(
-                    '+ Add ${appState.shopProfile.terminologyLocalized(AppLocalizations.of(context)).product}'),
-              ),
-            ),
-          ),
-        ),
-        SizedBox(height: spacing.lg),
-      ],
-      startSale,
     ];
 
     if (twoColumns) {
@@ -463,7 +463,7 @@ class _DrinksShiftOverview extends StatelessWidget {
                     dense: true,
                   )
                 : null,
-             onTap: onOpenInventory,
+            onTap: onOpenInventory,
           ),
         ],
       ),

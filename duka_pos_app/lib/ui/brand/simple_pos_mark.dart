@@ -1,4 +1,4 @@
-import 'package:flutter/material.dart';
+import 'package:material_ui/material_ui.dart';
 
 import '../../theme/primitives.dart';
 import '../../theme/typography.dart';
@@ -41,8 +41,7 @@ enum SimplePosMarkVariant {
 }
 
 /// The supplied, reviewed safe mark used by the app and platform icon pipeline.
-const String kBrandSafeMarkAsset =
-    'assets/branding/simple_sales_s_mark.png';
+const String kBrandSafeMarkAsset = 'assets/branding/simple_sales_s_mark.png';
 
 /// The supplied full SimpleSales lockup, used where the wordmark is legible.
 const String kBrandLockupAsset =
@@ -61,7 +60,7 @@ const Color kBrandInk = Primitives.neutral23;
 /// mode so the terminal screen stays legible against the plate instead of
 /// disappearing into it.
 const Color kBrandScreenLight = Primitives.botanical38;
-const Color kBrandScreenDark = Primitives.botanical58;
+const Color kBrandScreenDark = Primitives.electric;
 
 /// The brand paper — the mark's glyph colour in both brightnesses.
 const Color kBrandPaper = Primitives.neutral100;
@@ -105,8 +104,7 @@ class SimplePosMark extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final bool isDark = Theme.of(context).brightness == Brightness.dark;
-    final bool useSuppliedMark =
-        variant == SimplePosMarkVariant.full &&
+    final bool useSuppliedMark = variant == SimplePosMarkVariant.full &&
         plate == null &&
         glyph == null &&
         screen == null;
@@ -129,9 +127,9 @@ class SimplePosMark extends StatelessWidget {
                     scale: size / kBrandViewBox,
                   ),
                 ),
-          ),
         ),
-      );
+      ),
+    );
   }
 }
 

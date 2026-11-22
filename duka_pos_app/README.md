@@ -121,10 +121,13 @@ Build-time configuration goes in `--dart-define`, never in committed source:
 |---|---|---|
 | `DEPLOYMENT_MODE` | `local_only` (default), `connected` | Whether the build expects a backend |
 | `BACKEND_URL` | `https://<host>/api` | Required when `DEPLOYMENT_MODE=connected` |
+| `WHATSAPP_CONTACT_NUMBER` | International phone number (8-15 digits) | WhatsApp support contact; supplied to signed CI builds through the Actions secret of the same name |
 
 `local_only` is the default so development keeps working without a backend.
 `connected` requires a valid HTTPS URL — placeholder, localhost, HTTP and
 local-dev hosts are rejected by CI.
+Keep `WHATSAPP_CONTACT_NUMBER` in GitHub Actions secrets, not repository
+variables or source; CI validates it before producing a signed app build.
 
 ## Database encryption
 

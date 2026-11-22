@@ -1,4 +1,4 @@
-import 'package:flutter/material.dart';
+import 'package:material_ui/material_ui.dart';
 import 'package:flutter/semantics.dart';
 import 'package:go_router/go_router.dart';
 import 'package:provider/provider.dart';
@@ -236,9 +236,9 @@ class FashionDashboardScreen extends StatelessWidget {
                 children: spaced(
                   <Widget?>[
                     financialHero,
+                    quickActions,
                     kpiGrid,
                     BackupReminderBanner(onBackupNow: onBackupNow),
-                    quickActions,
                     sales,
                     topProducts,
                     reserves,
@@ -270,9 +270,9 @@ class FashionDashboardScreen extends StatelessWidget {
       body.addAll(spaced(
         <Widget?>[
           financialHero,
+          quickActions,
           kpiGrid,
           BackupReminderBanner(onBackupNow: onBackupNow),
-          quickActions,
           sales,
           topProducts,
           reserves,
@@ -671,8 +671,7 @@ class _ReservesMetric extends StatelessWidget {
 }
 
 /// The fashion quick actions: Sell, Add style, Receive stock, Create reserves,
-/// View catalogue — as a 2x2 grid of tiles with icon + label + subtitle,
-/// mirroring the mockup.
+/// and view the catalogue.
 class _FashionDashboardQuickActions extends StatelessWidget {
   const _FashionDashboardQuickActions({
     required this.onOpenSell,
@@ -694,9 +693,14 @@ class _FashionDashboardQuickActions extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final AppSpacing spacing = AppSpacing.of(context);
-
+    final AppLocalizations l10n = AppLocalizations.of(context);
     final List<Widget> tiles = <Widget>[
+      _FashionQuickTile(
+        icon: Icons.point_of_sale_outlined,
+        label: l10n.dashboardSellAction,
+        subtitle: 'Open Till',
+        onTap: onOpenSell,
+      ),
       if (canManageStock)
         _FashionQuickTile(
           icon: Icons.add_circle_outline,
@@ -725,33 +729,7 @@ class _FashionDashboardQuickActions extends StatelessWidget {
       ),
     ];
 
-    return LayoutBuilder(
-      builder: (BuildContext context, BoxConstraints constraints) {
-        final bool twoColumns = constraints.maxWidth >= 320;
-        if (twoColumns) {
-          return Wrap(
-            spacing: spacing.md,
-            runSpacing: spacing.md,
-            children: <Widget>[
-              for (final tile in tiles)
-                SizedBox(
-                  width: (constraints.maxWidth - spacing.md) / 2,
-                  child: tile,
-                ),
-            ],
-          );
-        }
-        return Column(
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: <Widget>[
-            for (int i = 0; i < tiles.length; i++) ...<Widget>[
-              if (i > 0) SizedBox(height: spacing.md),
-              tiles[i],
-            ],
-          ],
-        );
-      },
-    );
+    return DashboardQuickActionStrip(actions: tiles);
   }
 }
 

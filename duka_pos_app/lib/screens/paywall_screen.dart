@@ -1,12 +1,15 @@
 import 'package:dio/dio.dart';
-import 'package:flutter/material.dart';
+import 'package:material_ui/material_ui.dart';
 import 'package:go_router/go_router.dart';
 import 'package:provider/provider.dart';
 import 'package:url_launcher/url_launcher.dart';
 
+import '../l10n/generated/app_localizations.dart';
 import '../services/backend_service.dart';
+import '../services/support_contact.dart';
 import '../routing/app_stage_controller.dart';
 import '../routing/routes.dart';
+import '../theme/app_colors.dart';
 
 class PaywallScreen extends StatefulWidget {
   const PaywallScreen({super.key});
@@ -29,6 +32,27 @@ class _PaywallScreenState extends State<PaywallScreen> {
     await context.read<AppStageController>().refreshSubscription();
     if (!mounted) return;
     context.go(Routes.dashboard);
+  }
+
+  Future<void> _openSupport(Uri uri) async {
+    try {
+      final bool opened = await launchUrl(
+        uri,
+        mode: LaunchMode.externalApplication,
+      );
+      if (!opened && mounted) _showSupportError();
+    } catch (error, stack) {
+      debugPrint('Could not open subscription support contact: $error\n$stack');
+      if (mounted) _showSupportError();
+    }
+  }
+
+  void _showSupportError() {
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(AppLocalizations.of(context).supportContactOpenFailed),
+      ),
+    );
   }
 
   Future<void> _requestQuote() async {
@@ -341,22 +365,23 @@ class _PaywallScreenState extends State<PaywallScreen> {
                   label: Text(
                       _quoteRequested ? 'Quote requested' : 'Request a quote')),
             ],
-            if (_entitlement?.whatsappUrl case final String whatsappUrl) ...[
+            if (SupportContact.whatsappUri(
+              message: AppLocalizations.of(context).paywallWhatsAppMessage,
+              fallbackUrl: _entitlement?.whatsappUrl,
+            )
+                case final Uri whatsappUri) ...[
               const SizedBox(height: 10),
               OutlinedButton.icon(
-                  onPressed: () async {
-                    final uri = Uri.tryParse(whatsappUrl);
-                    if (uri != null) {
-                      await launchUrl(uri,
-                          mode: LaunchMode.externalApplication);
-                    }
-                  },
+                  onPressed: () => _openSupport(whatsappUri),
                   icon: const Icon(Icons.chat_outlined),
                   label: const Text('Chat with us on WhatsApp')),
             ],
             if (_error != null) ...[
               const SizedBox(height: 14),
-              Text(_error!, style: TextStyle(color: Colors.red))
+              Text(
+                _error!,
+                style: TextStyle(color: AppColors.of(context).danger),
+              )
             ],
           ],
         ),

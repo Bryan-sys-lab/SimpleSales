@@ -20,7 +20,7 @@ import 'package:duka_pos/services/app_stage.dart';
 import 'package:duka_pos/screens/welcome_chooser_screen.dart';
 import 'package:duka_pos/ui/brand/simple_pos_mark.dart';
 import 'package:duka_pos/services/app_state.dart';
-import 'package:flutter/material.dart';
+import 'package:material_ui/material_ui.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:provider/provider.dart';
 

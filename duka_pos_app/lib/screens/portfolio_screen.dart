@@ -15,7 +15,7 @@
 // from the ledger, so there is nothing to show without a connection, and a
 // blank screen that looks like a data loss is worse than one sentence saying why.
 
-import 'package:flutter/material.dart';
+import 'package:material_ui/material_ui.dart';
 import 'package:intl/intl.dart';
 import 'package:provider/provider.dart';
 

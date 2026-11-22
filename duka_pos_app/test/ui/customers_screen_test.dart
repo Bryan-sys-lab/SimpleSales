@@ -19,7 +19,7 @@ import 'package:duka_pos/services/app_state.dart';
 
 import '../support/harness.dart';
 import 'package:duka_pos/utils/money.dart';
-import 'package:flutter/material.dart';
+import 'package:material_ui/material_ui.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:sqflite_common_ffi/sqflite_ffi.dart';

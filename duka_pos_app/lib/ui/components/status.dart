@@ -1,4 +1,4 @@
-import 'package:flutter/material.dart';
+import 'package:material_ui/material_ui.dart';
 
 import '../../theme/app_colors.dart';
 import '../../theme/app_shapes.dart';
@@ -84,7 +84,7 @@ enum StatusTone {
 /// A status, rendered with its glyph, its word, and its colour.
 ///
 /// The screen-reader label is composed so the state is spoken as a state:
-/// "Low stock" rather than "Low". A user who cannot see the amber chip still
+/// "Low stock" rather than "Low". A user who cannot see the attention chip still
 /// hears that something needs attention.
 class StatusChip extends StatelessWidget {
   const StatusChip({
@@ -140,11 +140,11 @@ class StatusChip extends StatelessWidget {
                   label,
                   softWrap: true,
                   style: AppTypography.of(context).labelSmall?.copyWith(
-                      color: tone.onContainer(colors),
-                      fontWeight: tone.emphasis >= 3
-                          ? FontWeight.w700
-                          : FontWeight.w600,
-                    ),
+                        color: tone.onContainer(colors),
+                        fontWeight: tone.emphasis >= 3
+                            ? FontWeight.w700
+                            : FontWeight.w600,
+                      ),
                 ),
               ),
             ],

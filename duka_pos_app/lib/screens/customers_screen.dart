@@ -18,7 +18,7 @@
 
 import 'dart:async';
 
-import 'package:flutter/material.dart';
+import 'package:material_ui/material_ui.dart';
 
 import '../db/database_helper.dart';
 import '../l10n/generated/app_localizations.dart';

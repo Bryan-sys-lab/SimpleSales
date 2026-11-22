@@ -1,4 +1,4 @@
-import 'package:flutter/material.dart';
+import 'package:material_ui/material_ui.dart';
 import '../l10n/generated/app_localizations.dart';
 import '../utils/money.dart';
 
@@ -369,6 +369,27 @@ class ProfileProductForms {
     BuildContext context,
     Product? existing,
   ) async {
+    final List<Map<String, dynamic>> pools;
+    try {
+      pools = (await DatabaseHelper.instance.getCostPools())
+          .where((Map<String, dynamic> pool) => pool['status'] == 'open')
+          .toList();
+    } catch (error, stack) {
+      debugPrint(
+          'Could not load open cost groups for item form: $error\n$stack');
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(
+              AppLocalizations.of(context).openCostGroupsLoadFailed,
+            ),
+          ),
+        );
+      }
+      return null;
+    }
+    if (!context.mounted) return null;
+
     final nameController = TextEditingController(text: existing?.name ?? '');
     final priceController = TextEditingController(
         text: existing?.sellPrice.asMajor.toStringAsFixed(2) ?? '');
@@ -383,25 +404,17 @@ class ProfileProductForms {
 
     var optionalStock = existing != null;
     var selectedPoolId = existing?.costPoolId;
-    var pools = <Map<String, dynamic>>[];
-    var poolsLoaded = false;
-
-    Future<void> loadPools() async {
-      try {
-        final rows = await DatabaseHelper.instance.getCostPools();
-        poolsLoaded = true;
-        pools = rows;
-      } catch (_) {}
+    if (!pools.any(
+      (Map<String, dynamic> pool) =>
+          (pool['id'] as num).toInt() == selectedPoolId,
+    )) {
+      selectedPoolId = null;
     }
 
     return await showDialog<Map<String, dynamic>>(
       context: context,
       builder: (context) => StatefulBuilder(
         builder: (context, setState) {
-          if (!poolsLoaded) {
-            poolsLoaded = true;
-            loadPools();
-          }
           return AlertDialog(
             title:
                 Text(AppLocalizations.of(context).profileFormAddItemOrService),

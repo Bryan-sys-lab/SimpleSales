@@ -17,7 +17,7 @@
 // states, the RTL mirroring and the large-text survival are checked without
 // seeding three shops and their databases.
 
-import 'package:flutter/material.dart';
+import 'package:material_ui/material_ui.dart';
 
 import '../l10n/generated/app_localizations.dart';
 import '../models/audit_log.dart';

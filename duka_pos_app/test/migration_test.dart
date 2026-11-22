@@ -1418,6 +1418,7 @@ void main() {
       expect(freshTables, migratedTables,
           reason: 'a new till and an upgraded one must not diverge');
       await fresh.close();
+      await db.close();
     });
   });
 

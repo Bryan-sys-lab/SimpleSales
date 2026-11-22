@@ -1,4 +1,4 @@
-import 'package:flutter/material.dart';
+import 'package:material_ui/material_ui.dart';
 import 'package:dio/dio.dart';
 import 'package:go_router/go_router.dart';
 import 'dart:async';
@@ -1558,7 +1558,9 @@ class _SellScreenState extends State<SellScreen>
                   !creditEnabled
                       ? 'Disabled by shop settings'
                       : 'You do not have permission to record credit sales',
-                  style: const TextStyle(fontSize: 12, color: Colors.grey),
+                  style: AppTypography.of(context).labelSmall?.copyWith(
+                        color: AppColors.of(context).onSurfaceMuted,
+                      ),
                 ),
               ],
               // On account: WHO takes the goods — the picker beside a clear
@@ -2305,12 +2307,11 @@ class _SellScreenState extends State<SellScreen>
     // round-trip, and `context` must not be touched once the screen could have
     // been popped.
     final state = context.read<AppState>();
-    final configuredChannelType =
-        (await DatabaseHelper.instance.getSetting(
-              DatabaseHelper.settingMpesaChannelType,
-            ))
-            ?.trim()
-            .toLowerCase();
+    final configuredChannelType = (await DatabaseHelper.instance.getSetting(
+      DatabaseHelper.settingMpesaChannelType,
+    ))
+        ?.trim()
+        .toLowerCase();
     final canUseDynamicQr = configuredChannelType != 'bank';
 
     final phoneController = TextEditingController();
@@ -2339,8 +2340,10 @@ class _SellScreenState extends State<SellScreen>
             TextField(
               controller: phoneController,
               decoration: InputDecoration(
-                labelText: AppLocalizations.of(dialogContext).sellPhoneNumberLabel,
-                hintText: AppLocalizations.of(dialogContext).sellPhoneNumberHint,
+                labelText:
+                    AppLocalizations.of(dialogContext).sellPhoneNumberLabel,
+                hintText:
+                    AppLocalizations.of(dialogContext).sellPhoneNumberHint,
               ),
               keyboardType: TextInputType.phone,
               autofillHints: const [AutofillHints.telephoneNumber],
@@ -2349,8 +2352,8 @@ class _SellScreenState extends State<SellScreen>
             TextField(
               controller: customerNameController,
               decoration: InputDecoration(
-                labelText:
-                    AppLocalizations.of(dialogContext).sellCustomerNameOptionalLabel,
+                labelText: AppLocalizations.of(dialogContext)
+                    .sellCustomerNameOptionalLabel,
               ),
               autofillHints: const [AutofillHints.name],
             ),
@@ -2369,7 +2372,8 @@ class _SellScreenState extends State<SellScreen>
               if (canUseDynamicQr)
                 ActionChip(
                   avatar: const Icon(Icons.qr_code_2, size: 18),
-                  label: Text(AppLocalizations.of(dialogContext).sellShowQrAction),
+                  label:
+                      Text(AppLocalizations.of(dialogContext).sellShowQrAction),
                   onPressed: () => Navigator.pop(ctx, {
                     'mode': 'qr',
                     'customer': customerNameController.text.trim(),
@@ -2486,7 +2490,8 @@ class _SellScreenState extends State<SellScreen>
         final session = await BackendService.initiateQrPayment(
           items: paymentItems,
           staffName: state.currentStaffName ?? 'Unknown',
-          staffProfileId: state.isOwnerSession ? null : cashierProfile!.remoteId,
+          staffProfileId:
+              state.isOwnerSession ? null : cashierProfile!.remoteId,
           customerName: result['customer'],
         );
         reference = session.reference;
@@ -2496,7 +2501,8 @@ class _SellScreenState extends State<SellScreen>
           items: paymentItems,
           phoneNumber: result['phone']!,
           staffName: state.currentStaffName ?? 'Unknown',
-          staffProfileId: state.isOwnerSession ? null : cashierProfile!.remoteId,
+          staffProfileId:
+              state.isOwnerSession ? null : cashierProfile!.remoteId,
           customerName: result['customer'],
         );
       }

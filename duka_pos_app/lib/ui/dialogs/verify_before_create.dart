@@ -8,12 +8,13 @@
 // It changes nothing on the device. The caller creates the shop and then applies
 // the result with `BackendService.adoptPendingVerification`.
 
-import 'package:flutter/widgets.dart';
+import 'package:material_ui/material_ui.dart';
 
 import '../../l10n/generated/app_localizations.dart';
-import '../../screens/settings_screen.dart' show verificationMessage;
+import '../../screens/signup_paywall_screen.dart';
 import '../../services/backend_service.dart';
 import '../../services/pin_reset_service.dart';
+import '../verification_message.dart';
 import 'verify_identity_dialog.dart';
 
 /// How the check ended.
@@ -61,7 +62,9 @@ Future<VerificationGateResult> verifyEmailBeforeCreate(
       ownerName: ownerName,
     );
   } on VerificationException catch (error) {
-    return VerificationGateResult.failed(verificationMessage(l10n, error));
+    return VerificationGateResult.failed(
+      verificationFailureMessage(l10n, error),
+    );
   } catch (_) {
     return VerificationGateResult.failed(l10n.settingsIdentityLinkFailed);
   }
@@ -72,14 +75,14 @@ Future<VerificationGateResult> verifyEmailBeforeCreate(
       ? challenge.maskedEmail
       : PinResetService.maskEmail(email);
 
-  PendingVerification? accepted;
+  PendingRegistration? codeAccepted;
   final bool confirmed = await showVerifyCodeSheet(
     context,
     maskedEmail: masked,
     dismissible: false,
     onSubmit: (String code) async {
       try {
-        accepted = await BackendService.confirmVerificationCodeDeferred(
+        codeAccepted = await BackendService.confirmVerificationCodeDeferred(
           email: email,
           pin: pin,
           code: code,
@@ -88,7 +91,7 @@ Future<VerificationGateResult> verifyEmailBeforeCreate(
         );
         return null;
       } on VerificationException catch (error) {
-        return verificationMessage(l10n, error);
+        return verificationFailureMessage(l10n, error);
       } catch (_) {
         return l10n.settingsIdentityLinkFailed;
       }
@@ -103,14 +106,24 @@ Future<VerificationGateResult> verifyEmailBeforeCreate(
         );
         return l10n.settingsVerifyCodeSent(masked);
       } on VerificationException catch (error) {
-        return verificationMessage(l10n, error);
+        return verificationFailureMessage(l10n, error);
       } catch (_) {
         return l10n.settingsIdentityLinkFailed;
       }
     },
   );
 
-  final PendingVerification? result = accepted;
-  if (confirmed && result != null) return VerificationGateResult.accepted(result);
+  final PendingRegistration? registration = codeAccepted;
+  if (!confirmed || registration == null || !context.mounted) {
+    return const VerificationGateResult.cancelled();
+  }
+
+  final PendingVerification? completed =
+      await Navigator.of(context).push<PendingVerification>(
+    MaterialPageRoute<PendingVerification>(
+      builder: (_) => SignupPaywallScreen(registration: registration),
+    ),
+  );
+  if (completed != null) return VerificationGateResult.accepted(completed);
   return const VerificationGateResult.cancelled();
 }

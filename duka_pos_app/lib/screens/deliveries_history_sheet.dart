@@ -14,7 +14,7 @@
 // receipt, not a row of edit buttons, and it must be the OWNER doing it — the
 // receipt's numbers are the shop's books.
 
-import 'package:flutter/material.dart';
+import 'package:material_ui/material_ui.dart';
 
 import '../db/database_helper.dart';
 import '../l10n/generated/app_localizations.dart';

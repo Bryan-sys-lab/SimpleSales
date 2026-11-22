@@ -29,7 +29,7 @@
 // way back), error when the read fails with a retry, and the list. A blank body
 // while the database is still answering is what this screen replaces.
 
-import 'package:flutter/material.dart';
+import 'package:material_ui/material_ui.dart';
 
 import '../db/database_helper.dart';
 import '../l10n/generated/app_localizations.dart';

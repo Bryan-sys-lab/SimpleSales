@@ -5,7 +5,7 @@ import 'package:duka_pos/theme/app_shapes.dart';
 import 'package:duka_pos/theme/app_spacing.dart';
 import 'package:duka_pos/theme/app_theme.dart';
 import 'package:duka_pos/theme/typography.dart';
-import 'package:flutter/material.dart';
+import 'package:material_ui/material_ui.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 /// The structural half of the contrast gate.
@@ -157,6 +157,51 @@ void main() {
           ?.minimumSize
           ?.resolve(<WidgetState>{});
       expect(size?.height, greaterThanOrEqualTo(48));
+    });
+  });
+
+  group('button roles follow the brand palette', () {
+    test('primary and secondary buttons use their semantic slots', () {
+      for (final ThemeData theme in <ThemeData>[
+        buildDukaLightTheme(),
+        buildDukaDarkTheme(),
+      ]) {
+        final AppColors colors = theme.extension<AppColors>()!;
+        const Set<WidgetState> states = <WidgetState>{};
+        expect(theme.colorScheme.primary, colors.primaryButton);
+        expect(
+          theme.filledButtonTheme.style?.backgroundColor?.resolve(states),
+          colors.primaryButton,
+        );
+        expect(
+          theme.filledButtonTheme.style?.foregroundColor?.resolve(states),
+          colors.onPrimaryButton,
+        );
+        expect(
+          theme.segmentedButtonTheme.style?.backgroundColor?.resolve(
+            <WidgetState>{WidgetState.selected},
+          ),
+          colors.primaryButton,
+        );
+        expect(
+          theme.segmentedButtonTheme.style?.foregroundColor?.resolve(
+            <WidgetState>{WidgetState.selected},
+          ),
+          colors.onPrimaryButton,
+        );
+        expect(
+          theme.outlinedButtonTheme.style?.backgroundColor?.resolve(states),
+          colors.surface,
+        );
+        expect(
+          theme.outlinedButtonTheme.style?.side?.resolve(states)?.color,
+          colors.primaryButton,
+        );
+        expect(
+          theme.outlinedButtonTheme.style?.foregroundColor?.resolve(states),
+          colors.accent,
+        );
+      }
     });
   });
 

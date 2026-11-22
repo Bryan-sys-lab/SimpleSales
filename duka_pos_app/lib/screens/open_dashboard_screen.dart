@@ -1,4 +1,4 @@
-import 'package:flutter/material.dart';
+import 'package:material_ui/material_ui.dart';
 import 'package:go_router/go_router.dart';
 import 'package:provider/provider.dart';
 
@@ -140,11 +140,11 @@ class OpenDashboardScreen extends StatelessWidget {
 
     final Widget kpiGrid = DashboardKpiGrid(items: kpis);
 
-  final Widget shift = DashboardShiftCard(
-    shift: data.openShift,
-    expected: data.expectedTill,
-    onOpen: onOpenShift,
-  );
+    final Widget shift = DashboardShiftCard(
+      shift: data.openShift,
+      expected: data.expectedTill,
+      onOpen: onOpenShift,
+    );
 
     final Widget stockOverview = _OpenStockOverview(
       totalProducts: data.totalProducts,
@@ -192,11 +192,11 @@ class OpenDashboardScreen extends StatelessWidget {
             SizedBox(height: spacing.lg),
             financialHero,
             SizedBox(height: spacing.lg),
+            quickActions,
+            SizedBox(height: spacing.lg),
             kpiGrid,
             SizedBox(height: spacing.lg),
             shift,
-            SizedBox(height: spacing.lg),
-            quickActions,
             SizedBox(height: spacing.lg),
             stockOverview,
             if (canViewCost && data.openCostPoolCount > 0) ...<Widget>[
@@ -405,8 +405,8 @@ class _OpenStockOverview extends StatelessWidget {
         subtitle: Text(
           '$totalProducts SKUs · Low: $lowStockCount · Out: $outOfStockCount · ${formatMoney(stockValue)}',
         ),
-      trailing: null,
-      onTap: null,
+        trailing: null,
+        onTap: null,
       ),
     );
   }
@@ -441,7 +441,6 @@ class _OpenQuickActions extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final AppSpacing spacing = AppSpacing.of(context);
     final List<Widget> tiles = <Widget>[
       _OpenQuickTile(
         icon: Icons.point_of_sale_outlined,
@@ -498,11 +497,7 @@ class _OpenQuickActions extends StatelessWidget {
         ),
     ];
 
-    return Wrap(
-      spacing: spacing.md,
-      runSpacing: spacing.md,
-      children: tiles,
-    );
+    return DashboardQuickActionStrip(actions: tiles);
   }
 }
 

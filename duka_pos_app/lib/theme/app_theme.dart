@@ -1,4 +1,4 @@
-import 'package:flutter/material.dart';
+import 'package:material_ui/material_ui.dart';
 import 'package:flutter/services.dart';
 
 import 'app_colors.dart';
@@ -18,7 +18,7 @@ import 'typography.dart';
 /// identity means stating every role that is read — below, that is all of them —
 /// and letting Material's own defaults cover the rest.
 ///
-/// The light theme: a cool near-white canvas and the deep brand green.
+/// The light theme: a warm off-white canvas and the forest-green brand.
 ThemeData buildDukaLightTheme() => _buildTheme(
       brightness: Brightness.light,
       colors: const AppColors.light(),
@@ -26,14 +26,13 @@ ThemeData buildDukaLightTheme() => _buildTheme(
 
 /// The dark theme: authored, not flipped.
 ///
-/// This is the app's SIGNATURE surface. The canvas is a cool near-black, every
-/// surface above it is a step LIGHTER rather than a shadow darker, and the
-/// accent is a bright emerald — the only saturated colour anywhere in the app,
-/// reserved for the one action the screen is asking the user to take.
+/// This is the app's SIGNATURE surface. The canvas is a green-tinged near-black,
+/// every surface above it is a step LIGHTER rather than a shadow darker, and the
+/// selected-state accent is electric green. Primary buttons remain forest
+/// green, matching the light theme.
 ///
-/// The accent moves to a brighter green and the accent fill inverts to a deep
-/// green container, because the light brand green on a dark surface would not
-/// clear 4.5:1. Both themes pass AA independently;
+/// The accent moves to electric green because forest text on a dark surface
+/// would not clear 4.5:1. Both themes pass AA independently;
 /// `test/theme/contrast_test.dart` is the proof, not this comment.
 ThemeData buildDukaDarkTheme() => _buildTheme(
       brightness: Brightness.dark,
@@ -86,8 +85,7 @@ ThemeData _buildTheme({
     cardColor: colors.surface,
     dividerColor: colors.outline,
     disabledColor: colors.outlineStrong,
-    // Every overlay tint is the ONE accent, at a low alpha. A second hue for
-    // hover would be a second brand.
+    // Keep overlay tints subtle so they do not compete with content.
     focusColor: colors.accent.withValues(alpha: 0.12),
     highlightColor: colors.accent.withValues(alpha: 0.08),
     hoverColor: colors.accent.withValues(alpha: 0.05),
@@ -217,11 +215,8 @@ ThemeData _buildTheme({
         textStyle: WidgetStatePropertyAll<TextStyle?>(text.labelLarge),
         shape: WidgetStatePropertyAll<OutlinedBorder>(
             RoundedRectangleBorder(borderRadius: shapes.controlRadius)),
-        // The filled button IS the accent. Stated here rather than inherited
-        // from the scheme so that the one colour that means "press this" is
-        // declared in exactly one place.
-        backgroundColor: WidgetStatePropertyAll<Color>(colors.accent),
-        foregroundColor: WidgetStatePropertyAll<Color>(colors.onAccent),
+        backgroundColor: WidgetStatePropertyAll<Color>(colors.primaryButton),
+        foregroundColor: WidgetStatePropertyAll<Color>(colors.onPrimaryButton),
         elevation: const WidgetStatePropertyAll<double>(0),
       ),
     ),
@@ -237,11 +232,11 @@ ThemeData _buildTheme({
         textStyle: WidgetStatePropertyAll<TextStyle?>(text.labelLarge),
         shape: WidgetStatePropertyAll<OutlinedBorder>(
             RoundedRectangleBorder(borderRadius: shapes.controlRadius)),
-        // A raised button is a SECONDARY action, so it is a quiet raised
-        // surface rather than another green field. Two green buttons on one
-        // screen is one too many.
-        backgroundColor: WidgetStatePropertyAll<Color>(colors.surfaceRaised),
-        foregroundColor: WidgetStatePropertyAll<Color>(colors.onSurface),
+        backgroundColor: WidgetStatePropertyAll<Color>(colors.surface),
+        foregroundColor: WidgetStatePropertyAll<Color>(colors.accent),
+        side: WidgetStatePropertyAll<BorderSide>(
+          BorderSide(color: colors.primaryButton),
+        ),
         elevation: WidgetStatePropertyAll<double>(0),
       ),
     ),
@@ -258,8 +253,10 @@ ThemeData _buildTheme({
         shape: WidgetStatePropertyAll<OutlinedBorder>(
             RoundedRectangleBorder(borderRadius: shapes.controlRadius)),
         side: WidgetStatePropertyAll<BorderSide>(
-          BorderSide(color: colors.outlineStrong),
+          BorderSide(color: colors.primaryButton),
         ),
+        foregroundColor: WidgetStatePropertyAll<Color>(colors.accent),
+        backgroundColor: WidgetStatePropertyAll<Color>(colors.surface),
       ),
     ),
     textButtonTheme: TextButtonThemeData(
@@ -274,6 +271,7 @@ ThemeData _buildTheme({
         textStyle: WidgetStatePropertyAll<TextStyle?>(text.labelLarge),
         shape: WidgetStatePropertyAll<OutlinedBorder>(
             RoundedRectangleBorder(borderRadius: shapes.controlRadius)),
+        foregroundColor: WidgetStatePropertyAll<Color>(colors.accent),
       ),
     ),
     // The destructive variant: same silhouette, danger fill, and a name that
@@ -296,25 +294,23 @@ ThemeData _buildTheme({
         textStyle: WidgetStatePropertyAll<TextStyle?>(text.labelMedium),
         shape: WidgetStatePropertyAll<OutlinedBorder>(
             RoundedRectangleBorder(borderRadius: shapes.controlRadius)),
-        // The selected segment is the ACCENT, solid. A tonal wash of the same
-        // hue reads as "slightly on" and cannot be found at a glance.
+        // The selected segment is forest green; a tonal wash is too subtle to
+        // distinguish at a glance.
         backgroundColor: WidgetStateProperty.resolveWith<Color?>(
           (Set<WidgetState> states) => states.contains(WidgetState.selected)
-              ? colors.accent
+              ? colors.primaryButton
               : Colors.transparent,
         ),
         foregroundColor: WidgetStateProperty.resolveWith<Color?>(
           (Set<WidgetState> states) => states.contains(WidgetState.selected)
-              ? colors.onAccent
+              ? colors.onPrimaryButton
               : colors.onSurfaceVariant,
         ),
       ),
     ),
     floatingActionButtonTheme: FloatingActionButtonThemeData(
-      // NOT the accent. The floating button is a way to ADD something; the one
-      // saturated thing on screen is the action the screen is asking the user to
-      // take, and a green button next to the green Sell ball spends the colour
-      // twice on the same screen.
+      // NOT the primary fill. Keep the floating action visually secondary to
+      // the forest-green primary button.
       backgroundColor: colors.surfaceRaised,
       foregroundColor: colors.onSurface,
       elevation: 0,
@@ -504,7 +500,7 @@ ThemeData _buildTheme({
       shape: RoundedRectangleBorder(borderRadius: shapes.controlRadius),
     ),
     progressIndicatorTheme: ProgressIndicatorThemeData(
-      color: colors.accent,
+      color: colors.success,
       linearTrackColor: colors.surfaceSunken,
       circularTrackColor: colors.surfaceSunken,
       linearMinHeight: 4,
@@ -532,18 +528,16 @@ ThemeData _buildTheme({
 
 /// A hand-authored [ColorScheme].
 ///
-/// `secondary` and `tertiary` are deliberately NOT a second hue. This app has
-/// one accent, and a component that reads `secondary` (a FAB's container, some
-/// chips, a tonal surface) should get a quieter version of the same accent
-/// rather than inventing a companion colour nobody chose. Every role below is
-/// measured in `test/theme/contrast_test.dart`.
+/// `secondary` remains the selected-state accent; coral is reserved for
+/// attention semantics rather than generic Material chrome. Every role below
+/// is measured in `test/theme/contrast_test.dart`.
 ColorScheme _colorScheme(Brightness brightness, AppColors c) {
   final bool light = brightness == Brightness.light;
 
   return ColorScheme(
     brightness: brightness,
-    primary: c.accent,
-    onPrimary: c.onAccent,
+    primary: c.primaryButton,
+    onPrimary: c.onPrimaryButton,
     primaryContainer: c.accentContainer,
     onPrimaryContainer: c.onAccentContainer,
     secondary: c.accent,
@@ -586,6 +580,6 @@ ColorScheme _colorScheme(Brightness brightness, AppColors c) {
     // The brand green, inverted: the dark theme's accent in the light theme
     // and the light theme's accent in the dark one. It is the same brand
     // ramp, read from the other end — not a green that belongs to nothing.
-    inversePrimary: light ? Primitives.botanical58 : Primitives.botanical38,
+    inversePrimary: c.accent,
   );
 }

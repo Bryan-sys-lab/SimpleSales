@@ -26,10 +26,8 @@
 //
 // ## WHY THE BALL IS GREEN
 //
-// Everything else in the bar is ink: the icons, the labels. The one saturated
-// thing on the screen is the one thing to press. That is the whole colour
-// strategy of a till: the accent means "this is the action", and there is
-// exactly one.
+// The Sell action uses the forest primary fill; electric green remains a small
+// highlight for selected states and positive information.
 //
 // ## THE MOTION
 //
@@ -40,7 +38,7 @@
 
 import 'dart:math' as math;
 
-import 'package:flutter/material.dart';
+import 'package:material_ui/material_ui.dart';
 
 import '../l10n/generated/app_localizations.dart';
 import '../theme/app_colors.dart';
@@ -126,16 +124,22 @@ class ShellNavBar extends StatelessWidget {
     final AppColors colors = AppColors.of(context);
     final AppSpacing spacing = AppSpacing.of(context);
     final TextTheme type = AppTypography.of(context);
+    final MediaQueryData media = MediaQuery.of(context);
+    final double bottomInset =
+        math.max(media.padding.bottom, media.viewPadding.bottom);
 
     final int sellIndex = destinations.indexOf(AppDestination.sell);
     if (sellIndex < 0) {
       // No sell button: the bar is a plain row. It should not happen — every
       // role can sell — but a bar with a hump and no ball in it is a bar with
       // a mistake in it.
-      return _PlainBar(
-        destinations: destinations,
-        selected: selected,
-        onSelect: onSelect,
+      return Padding(
+        padding: EdgeInsets.only(bottom: bottomInset),
+        child: _PlainBar(
+          destinations: destinations,
+          selected: selected,
+          onSelect: onSelect,
+        ),
       );
     }
 
@@ -152,107 +156,110 @@ class ShellNavBar extends StatelessWidget {
     final double ballCentre =
         height - (_NavMetrics.bottomMargin + _NavMetrics.bodyHeight);
 
-    return LayoutBuilder(
-      builder: (BuildContext context, BoxConstraints constraints) {
-        // The LABELS are chosen by each button, against the width it is
-        // actually given — see `_DestinationButton`. The bar used to estimate
-        // the room per cell here, and the estimate was about ten pixels
-        // generous, which was invisible while the label was ellipsised and
-        // became a wrapped second line the moment it was not.
+    return Padding(
+      padding: EdgeInsets.only(bottom: bottomInset),
+      child: LayoutBuilder(
+        builder: (BuildContext context, BoxConstraints constraints) {
+          // The LABELS are chosen by each button, against the width it is
+          // actually given — see `_DestinationButton`. The bar used to estimate
+          // the room per cell here, and the estimate was about ten pixels
+          // generous, which was invisible while the label was ellipsised and
+          // became a wrapped second line the moment it was not.
 
-        return SizedBox(
-          height: height,
-          child: Stack(
-            clipBehavior: Clip.none,
-            children: <Widget>[
-              // The bar: the bottom of the app, in the app's own canvas colour.
-              //
-              // It used to be painted in the CARD colour, a step lighter than
-              // the canvas the screens sit on, and it carried a hairline along
-              // its top edge and a drop shadow. Together those three things
-              // drew a hard line across the bottom of every screen: a separate
-              // band with a visible edge, floating over the page. The bar is
-              // not furniture that sits on the screen — it IS the bottom of the
-              // screen. So it is painted in the canvas colour, with no edge
-              // and no shadow, and the only thing that marks where it begins
-              // is the hump and the green ball that sits on it.
-              Positioned(
-                left: _NavMetrics.sideMargin,
-                right: _NavMetrics.sideMargin,
-                bottom: _NavMetrics.bottomMargin,
-                height: _NavMetrics.humpHeight + _NavMetrics.bodyHeight,
-                child: CustomPaint(
-                  painter: _OmegaBarPainter(
-                    surface: colors.canvas,
-                    bodyHeight: _NavMetrics.bodyHeight,
-                    humpHeight: _NavMetrics.humpHeight,
+          return SizedBox(
+            height: height,
+            child: Stack(
+              clipBehavior: Clip.none,
+              children: <Widget>[
+                // The bar: the bottom of the app, in the app's own canvas colour.
+                //
+                // It used to be painted in the CARD colour, a step lighter than
+                // the canvas the screens sit on, and it carried a hairline along
+                // its top edge and a drop shadow. Together those three things
+                // drew a hard line across the bottom of every screen: a separate
+                // band with a visible edge, floating over the page. The bar is
+                // not furniture that sits on the screen — it IS the bottom of the
+                // screen. So it is painted in the canvas colour, with no edge
+                // and no shadow, and the only thing that marks where it begins
+                // is the hump and the green ball that sits on it.
+                Positioned(
+                  left: _NavMetrics.sideMargin,
+                  right: _NavMetrics.sideMargin,
+                  bottom: _NavMetrics.bottomMargin,
+                  height: _NavMetrics.humpHeight + _NavMetrics.bodyHeight,
+                  child: CustomPaint(
+                    painter: _OmegaBarPainter(
+                      surface: colors.canvas,
+                      bodyHeight: _NavMetrics.bodyHeight,
+                      humpHeight: _NavMetrics.humpHeight,
+                    ),
                   ),
                 ),
-              ),
-              // The destinations, on each shoulder of the hump.
-              //
-              // Inset from the screen's edges by a word's margin — the bar's ends
-              // are square now, so there is no cap for the outermost LABEL to
-              // clear. They use the width they are given, and the width is the
-              // whole screen.
-              Positioned(
-                left: _NavMetrics.endInset,
-                right: _NavMetrics.endInset,
-                bottom: _NavMetrics.bottomMargin,
-                height: _NavMetrics.bodyHeight,
-                child: Row(
-                  children: <Widget>[
-                    Expanded(
-                      child: _DestinationRow(
-                        destinations: left,
-                        l10n: l10n,
-                        selected: selected,
-                        onSelect: onSelect,
-                        type: type,
-                        colors: colors,
-                        spacing: spacing,
+                // The destinations, on each shoulder of the hump.
+                //
+                // Inset from the screen's edges by a word's margin — the bar's ends
+                // are square now, so there is no cap for the outermost LABEL to
+                // clear. They use the width they are given, and the width is the
+                // whole screen.
+                Positioned(
+                  left: _NavMetrics.endInset,
+                  right: _NavMetrics.endInset,
+                  bottom: _NavMetrics.bottomMargin,
+                  height: _NavMetrics.bodyHeight,
+                  child: Row(
+                    children: <Widget>[
+                      Expanded(
+                        child: _DestinationRow(
+                          destinations: left,
+                          l10n: l10n,
+                          selected: selected,
+                          onSelect: onSelect,
+                          type: type,
+                          colors: colors,
+                          spacing: spacing,
+                        ),
                       ),
-                    ),
-                    // The hump's width, kept clear.
-                    //
-                    // The BALL's width, and no more: the ball is what stands above
-                    // the bar here, and every extra pixel reserved for it is a
-                    // pixel taken off the labels beside it. On a 320dp phone with
-                    // four labels and a ball, twelve pixels of air was the
-                    // difference between "Reports" fitting and "Reports" being a
-                    // word the eye had to reconstruct.
-                    SizedBox(width: _NavMetrics.ballSize),
-                    Expanded(
-                      child: _DestinationRow(
-                        destinations: right,
-                        l10n: l10n,
-                        selected: selected,
-                        onSelect: onSelect,
-                        type: type,
-                        colors: colors,
-                        spacing: spacing,
+                      // The hump's width, kept clear.
+                      //
+                      // The BALL's width, and no more: the ball is what stands above
+                      // the bar here, and every extra pixel reserved for it is a
+                      // pixel taken off the labels beside it. On a 320dp phone with
+                      // four labels and a ball, twelve pixels of air was the
+                      // difference between "Reports" fitting and "Reports" being a
+                      // word the eye had to reconstruct.
+                      SizedBox(width: _NavMetrics.ballSize),
+                      Expanded(
+                        child: _DestinationRow(
+                          destinations: right,
+                          l10n: l10n,
+                          selected: selected,
+                          onSelect: onSelect,
+                          type: type,
+                          colors: colors,
+                          spacing: spacing,
+                        ),
                       ),
-                    ),
-                  ],
-                ),
-              ),
-              // The ball, sitting on the hump.
-              Positioned(
-                left: 0,
-                right: 0,
-                top: ballCentre - _NavMetrics.ballRadius,
-                child: Center(
-                  child: _SellBall(
-                    selected: selected == AppDestination.sell,
-                    onTap: () => onSelect(AppDestination.sell),
-                    l10n: l10n,
+                    ],
                   ),
                 ),
-              ),
-            ],
-          ),
-        );
-      },
+                // The ball, sitting on the hump.
+                Positioned(
+                  left: 0,
+                  right: 0,
+                  top: ballCentre - _NavMetrics.ballRadius,
+                  child: Center(
+                    child: _SellBall(
+                      selected: selected == AppDestination.sell,
+                      onTap: () => onSelect(AppDestination.sell),
+                      l10n: l10n,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          );
+        },
+      ),
     );
   }
 }
@@ -577,12 +584,12 @@ class _SellBallState extends State<_SellBall> {
             height: _NavMetrics.ballSize,
             decoration: BoxDecoration(
               shape: BoxShape.circle,
-              color: colors.accent,
+              color: colors.primaryButton,
             ),
             child: Icon(
               AppDestination.sell.icon,
               size: 26,
-              color: colors.onAccent,
+              color: colors.onPrimaryButton,
             ),
           ),
         ),

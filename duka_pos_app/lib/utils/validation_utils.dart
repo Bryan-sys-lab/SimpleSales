@@ -16,7 +16,7 @@
 // The regexes stay as they are on purpose: they are the shipped rules, and
 // tightening a validation is a behaviour change, not a localization task.
 
-import 'package:flutter/material.dart';
+import 'package:material_ui/material_ui.dart';
 
 import '../l10n/generated/app_localizations.dart';
 import '../models/models.dart';

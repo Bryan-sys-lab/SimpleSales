@@ -1,6 +1,6 @@
 import 'dart:async';
 
-import 'package:flutter/material.dart';
+import 'package:material_ui/material_ui.dart';
 import 'package:go_router/go_router.dart';
 import 'package:provider/provider.dart';
 
@@ -23,7 +23,7 @@ import '../ui/onboarding_style.dart';
 
 /// The username + password entry point for staff.
 ///
-/// Redesigned to match the inspiration: dark canvas, emerald accent,
+/// Redesigned to match the product palette: forest primary, electric accent,
 /// media window header, and styled actions.
 class StaffLoginScreen extends StatefulWidget {
   const StaffLoginScreen({super.key});
@@ -49,7 +49,8 @@ class _StaffLoginScreenState extends State<StaffLoginScreen> {
   // The shop ID is always needed for a remote staff login on a device that
   // does not already hold the shop. Show the field whenever there is no active
   // tenant, and also allow entering it manually even when local shops exist.
-  bool get _needsShopId => _shopsLoaded && (_shops.isEmpty || _activeShopName == null);
+  bool get _needsShopId =>
+      _shopsLoaded && (_shops.isEmpty || _activeShopName == null);
 
   @override
   void initState() {
@@ -202,20 +203,30 @@ class _StaffLoginScreenState extends State<StaffLoginScreen> {
       context: context,
       builder: (dialogContext) => AlertDialog(
         title: const Text('Forgot your staff PIN?'),
-        content: const Text('Send a private reset request to the shop owner. The owner will give you a temporary PIN, which you should change immediately.'),
+        content: const Text(
+            'Send a private reset request to the shop owner. The owner will give you a temporary PIN, which you should change immediately.'),
         actions: <Widget>[
-          TextButton(onPressed: () => Navigator.pop(dialogContext, false), child: const Text('Cancel')),
-          FilledButton(onPressed: () => Navigator.pop(dialogContext, true), child: const Text('Notify owner')),
+          TextButton(
+              onPressed: () => Navigator.pop(dialogContext, false),
+              child: const Text('Cancel')),
+          FilledButton(
+              onPressed: () => Navigator.pop(dialogContext, true),
+              child: const Text('Notify owner')),
         ],
       ),
     );
     if (confirmed != true || !mounted) return;
     try {
-      await BackendService.requestStaffPinReset(username: username, tenantId: tenantId);
+      await BackendService.requestStaffPinReset(
+          username: username, tenantId: tenantId);
       if (!mounted) return;
-      setState(() => _error = 'Request sent. Ask the owner for your temporary PIN.');
+      setState(
+          () => _error = 'Request sent. Ask the owner for your temporary PIN.');
     } catch (_) {
-      if (mounted) setState(() => _error = 'Could not send the request. Check the connection and try again.');
+      if (mounted) {
+        setState(() => _error =
+            'Could not send the request. Check the connection and try again.');
+      }
     }
   }
 
@@ -235,8 +246,8 @@ class _StaffLoginScreenState extends State<StaffLoginScreen> {
       // request even though the correct shop was selected on this device.
       final String? activeTenant = await BackendService.tenantId;
       final String shopIdField = _shopIdController.text.trim().toLowerCase();
-      final String? requestedTenant = activeTenant ??
-          (shopIdField.isNotEmpty ? shopIdField : null);
+      final String? requestedTenant =
+          activeTenant ?? (shopIdField.isNotEmpty ? shopIdField : null);
       if (requestedTenant == null || requestedTenant.isEmpty) {
         if (_shops.isEmpty) {
           setState(() => _error = 'Enter the shop ID supplied by the owner.');
@@ -330,7 +341,9 @@ class _StaffLoginScreenState extends State<StaffLoginScreen> {
       final int staffId =
           staff.id ?? context.read<AppState>().rememberedStaffId ?? 0;
       final sessionToken = onlineResponse?['session_token'];
-      if (sessionToken is String && sessionToken.isNotEmpty && staff.id != null) {
+      if (sessionToken is String &&
+          sessionToken.isNotEmpty &&
+          staff.id != null) {
         await StaffCredentialCache.storeSessionToken(staff.id!, sessionToken);
       }
       await StaffCredentialCache.cacheStaffCredentials(
@@ -342,7 +355,8 @@ class _StaffLoginScreenState extends State<StaffLoginScreen> {
       await context.read<AppState>().rememberStaff(staff);
       if (!mounted) return;
       context.read<AppState>().signInAsStaff(staff);
-      if (onlineResponse?['session_token'] is String && staff.id != null &&
+      if (onlineResponse?['session_token'] is String &&
+          staff.id != null &&
           !await StaffCredentialCache.pinPromptSeen(staff.id!)) {
         await StaffCredentialCache.markPinPromptSeen(staff.id!);
         if (!mounted) return;
@@ -350,10 +364,15 @@ class _StaffLoginScreenState extends State<StaffLoginScreen> {
           context: context,
           builder: (dialogContext) => AlertDialog(
             title: const Text('Keep your PIN private'),
-            content: const Text('For your security, change the temporary or shared PIN now. Do not share your staff PIN with anyone, including the owner.'),
+            content: const Text(
+                'For your security, change the temporary or shared PIN now. Do not share your staff PIN with anyone, including the owner.'),
             actions: <Widget>[
-              TextButton(onPressed: () => Navigator.pop(dialogContext, false), child: const Text('Later')),
-              FilledButton(onPressed: () => Navigator.pop(dialogContext, true), child: const Text('Change PIN')),
+              TextButton(
+                  onPressed: () => Navigator.pop(dialogContext, false),
+                  child: const Text('Later')),
+              FilledButton(
+                  onPressed: () => Navigator.pop(dialogContext, true),
+                  child: const Text('Change PIN')),
             ],
           ),
         );

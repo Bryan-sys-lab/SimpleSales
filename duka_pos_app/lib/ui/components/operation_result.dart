@@ -38,7 +38,7 @@
 // when there is something to try, and is announced to a screen reader rather
 // than only drawn.
 
-import 'package:flutter/material.dart';
+import 'package:material_ui/material_ui.dart';
 
 
 import '../../ui/components/controls.dart';

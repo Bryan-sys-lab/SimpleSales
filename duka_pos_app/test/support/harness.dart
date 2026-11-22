@@ -1,8 +1,9 @@
 import 'package:duka_pos/l10n/generated/app_localizations.dart';
+import 'package:duka_pos/l10n/app_localizations_config.dart';
 import 'package:duka_pos/theme/app_haptics.dart';
 import 'package:duka_pos/theme/app_theme.dart';
 import 'dart:math' as math;
-import 'package:flutter/material.dart';
+import 'package:material_ui/material_ui.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:provider/provider.dart';
@@ -164,8 +165,8 @@ extension TestHarness on WidgetTester {
         // preferences, and a harness that booted the app would make every
         // widget test depend on both.
         ChangeNotifierProvider<AppStageController>(
-            create: (BuildContext context) =>
-                AppStageController(context.read<AppState>()),
+          create: (BuildContext context) =>
+              AppStageController(context.read<AppState>()),
         ),
         ChangeNotifierProvider<LiveChannelService>(
             create: (_) => LiveChannelService(random: _FakeRandomForHarness())),
@@ -179,7 +180,7 @@ extension TestHarness on WidgetTester {
         // error deep inside a widget rather than failing the harness: a
         // screen's copy is part of its surface, so a test that renders it
         // without a catalogue is testing a build that cannot ship.
-        localizationsDelegates: AppLocalizations.localizationsDelegates,
+        localizationsDelegates: appLocalizationsDelegates,
         supportedLocales: supportedLocales,
         locale: locale,
         home: home,
@@ -352,4 +353,3 @@ class _FakeRandomForHarness implements math.Random {
 /// The channel jitters its reconnect to stop a room full of phones
 /// reconnecting on the same frame; in a test that jitter is a source of
 /// nondeterminism for no benefit.
-

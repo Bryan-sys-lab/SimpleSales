@@ -20,7 +20,7 @@
 // changed.
 
 import 'package:duka_pos/ui/components/operation_result.dart';
-import 'package:flutter/material.dart';
+import 'package:material_ui/material_ui.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 import '../support/harness.dart';

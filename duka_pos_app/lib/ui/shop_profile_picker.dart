@@ -1,4 +1,4 @@
-import 'package:flutter/material.dart';
+import 'package:material_ui/material_ui.dart';
 
 import '../l10n/generated/app_localizations.dart';
 import '../profile/shop_profile.dart';
@@ -33,9 +33,10 @@ class ShopProfilePicker extends StatelessWidget {
     final AppSpacing spacing = AppSpacing.of(context);
     final TextTheme type = AppTypography.of(context);
     final AppLocalizations l10n = AppLocalizations.of(context);
-    final double textScale = MediaQuery.textScalerOf(context).scale(1).clamp(1, 1.6).toDouble();
+    final double textScale =
+        MediaQuery.textScalerOf(context).scale(1).clamp(1, 1.6).toDouble();
     final double cardWidth = 150 * textScale;
-    final double railHeight = 140 + (textScale - 1) * 34;
+    final double railHeight = 176 + (textScale - 1) * 34;
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -131,6 +132,8 @@ class _ProfileCard extends StatelessWidget {
     }
   }
 
+  String get _imageAsset => 'assets/onboarding/${profile.name}_shop_photo.jpg';
+
   @override
   Widget build(BuildContext context) {
     final AppColors colors = AppColors.of(context);
@@ -143,75 +146,74 @@ class _ProfileCard extends StatelessWidget {
       selected: selected,
       label: '$_title. $_subtitle',
       child: Material(
-      color: selected
-          ? colors.accentContainer.withValues(alpha: 0.15)
-          : colors.surface,
-      borderRadius: shapes.cardRadius,
-      child: InkWell(
+        color: selected
+            ? colors.accentContainer.withValues(alpha: 0.15)
+            : colors.surface,
         borderRadius: shapes.cardRadius,
-        onTap: () => onSelected(profile),
-        child: Padding(
-          padding: EdgeInsets.all(spacing.xs),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            mainAxisSize: MainAxisSize.min,
-            children: <Widget>[
-              Row(
-                children: <Widget>[
-                  Container(
-                    width: 28,
-                    height: 28,
-                    decoration: BoxDecoration(
-                      color: selected
-                          ? colors.accent
-                          : colors.surfaceSunken,
-                      shape: BoxShape.circle,
-                    ),
-                    child: Icon(
-                      profile == ShopProfile.duka
-                          ? Icons.storefront_outlined
-                          : profile == ShopProfile.drinks
-                              ? Icons.local_bar_outlined
-                              : profile == ShopProfile.fashion
-                                  ? Icons.checkroom_outlined
-                                  : Icons.work_outline,
-                      color: selected
-                          ? colors.onAccentContainer
-                          : colors.onSurfaceVariant,
-                      size: 16,
+        child: InkWell(
+          borderRadius: shapes.cardRadius,
+          onTap: () => onSelected(profile),
+          child: Padding(
+            padding: EdgeInsets.all(spacing.xs),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              mainAxisSize: MainAxisSize.min,
+              children: <Widget>[
+                ClipRRect(
+                  borderRadius: shapes.controlRadius,
+                  child: SizedBox(
+                    height: 72,
+                    width: double.infinity,
+                    child: Stack(
+                      fit: StackFit.expand,
+                      children: <Widget>[
+                        Image.asset(
+                          _imageAsset,
+                          fit: BoxFit.cover,
+                          errorBuilder: (_, __, ___) => ColoredBox(
+                            color: colors.surfaceSunken,
+                            child: Icon(
+                              Icons.storefront_outlined,
+                              color: colors.onSurfaceVariant,
+                            ),
+                          ),
+                        ),
+                        if (selected)
+                          Positioned(
+                            top: spacing.xs,
+                            right: spacing.xs,
+                            child: Icon(
+                              Icons.check_circle,
+                              color: colors.onAccent,
+                              size: 20,
+                            ),
+                          ),
+                      ],
                     ),
                   ),
-                  const Spacer(),
-                  if (selected)
-                    Icon(
-                      Icons.check_circle,
-                      color: colors.accent,
-                      size: 16,
-                    ),
-                ],
-              ),
-              SizedBox(height: spacing.xxs),
-              Text(
-                _title,
-                style: type.titleSmall?.copyWith(
-                  color: colors.onSurface,
-                  fontWeight: FontWeight.w600,
                 ),
-              ),
-              SizedBox(height: 2),
-              Text(
-                _subtitle,
-                style: type.labelSmall?.copyWith(
-                  color: colors.onSurfaceVariant,
-                  height: 1.25,
+                SizedBox(height: spacing.xs),
+                Text(
+                  _title,
+                  style: type.titleSmall?.copyWith(
+                    color: colors.onSurface,
+                    fontWeight: FontWeight.w600,
+                  ),
                 ),
-                maxLines: 2,
-                overflow: TextOverflow.ellipsis,
-              ),
-            ],
+                SizedBox(height: 2),
+                Text(
+                  _subtitle,
+                  style: type.labelSmall?.copyWith(
+                    color: colors.onSurfaceVariant,
+                    height: 1.25,
+                  ),
+                  maxLines: 2,
+                  overflow: TextOverflow.ellipsis,
+                ),
+              ],
+            ),
           ),
         ),
-      ),
       ),
     );
   }

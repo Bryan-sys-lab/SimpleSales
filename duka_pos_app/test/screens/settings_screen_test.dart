@@ -20,7 +20,7 @@ import 'package:duka_pos/services/inventory_importer.dart';
 import 'package:duka_pos/ui/components/controls.dart';
 import 'package:duka_pos/ui/components/surface.dart';
 import 'package:duka_pos/services/printer/printer_config.dart';
-import 'package:flutter/material.dart';
+import 'package:material_ui/material_ui.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 import '../support/harness.dart';

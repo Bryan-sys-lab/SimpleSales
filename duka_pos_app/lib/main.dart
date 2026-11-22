@@ -2,13 +2,14 @@ import 'dart:async';
 
 import 'package:flutter/foundation.dart';
 import 'package:go_router/go_router.dart';
-import 'package:flutter/material.dart';
+import 'package:material_ui/material_ui.dart';
 import 'package:provider/provider.dart';
 import 'package:provider/single_child_widget.dart';
 import 'package:sentry_flutter/sentry_flutter.dart';
 import 'package:workmanager/workmanager.dart';
 
 import 'app_brand.dart';
+import 'l10n/app_localizations_config.dart';
 import 'l10n/generated/app_localizations.dart';
 import 'models/crash_log.dart';
 import 'routing/app_router.dart';
@@ -250,21 +251,8 @@ class _ThemedApp extends StatelessWidget {
       // `AppColors.colorsFor()` with `MediaQuery.highContrastOf(context)`.
       themeMode: appearance.themeMode,
 
-      // Localization. Three things have to be wired together or "English-only"
-      // silently costs more than it looks:
-      //
-      //   * `AppLocalizations.localizationsDelegates` already contains the three
-      //     `Global*` delegates, so appending them again would duplicate each one
-      //     and `Localizations._loadAll` would take the first — which is the
-      //     wrong one the moment anyone vendors their own.
-      //   * `supportedLocales` comes from the ARB catalogue rather than a
-      //     hand-written list, so a locale cannot be half-shipped: adding
-      //     `app_sw.arb` is the whole of adding Swahili.
-      //   * `locale` is left null so the OS decides. There is nothing to restore
-      //     before the first frame because there is no stored preference, which
-      //     is why there is no locale flash on boot the way a persisted choice
-      //     would cause.
-      localizationsDelegates: AppLocalizations.localizationsDelegates,
+      // Use delegates matching the Material and Cupertino packages in use.
+      localizationsDelegates: appLocalizationsDelegates,
       supportedLocales: AppLocalizations.supportedLocales,
       locale: null,
       // No `localeResolutionCallback`: the default resolution picks the first

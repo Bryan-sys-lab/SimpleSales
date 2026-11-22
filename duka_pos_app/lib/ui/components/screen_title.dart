@@ -20,7 +20,7 @@
 // another. One component makes the size, the weight, the gap and the colour a
 // single decision.
 
-import 'package:flutter/material.dart';
+import 'package:material_ui/material_ui.dart';
 
 import '../../theme/app_colors.dart';
 import '../../theme/app_spacing.dart';

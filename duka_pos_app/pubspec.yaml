@@ -128,6 +128,8 @@ dependencies:
   # Keep the latest compatible PDF line until excel releases that constraint.
   pdf: ^3.12.0
 
+  cupertino_ui: any
+  material_ui: any
 dev_dependencies:
   flutter_test:
     sdk: flutter

@@ -1,4 +1,4 @@
-import 'package:flutter/material.dart';
+import 'package:material_ui/material_ui.dart';
 import 'package:go_router/go_router.dart';
 
 import '../models/models.dart';
@@ -370,7 +370,8 @@ class _NarrowSortControl extends StatelessWidget {
 
 /// One product, as five aligned columns.
 class _ProductTableRow extends StatelessWidget {
-  const _ProductTableRow({required this.row, required this.showDivider, this.onTap});
+  const _ProductTableRow(
+      {required this.row, required this.showDivider, this.onTap});
 
   final ProductSalesRow row;
   final bool showDivider;
@@ -465,7 +466,8 @@ class _ProductTableRow extends StatelessWidget {
 /// truncated: a product name wraps instead of being ellipsised, because a
 /// truncated product name in a report is a defect, not a design.
 class _ProductLine extends StatelessWidget {
-  const _ProductLine({required this.row, required this.showDivider, this.onTap});
+  const _ProductLine(
+      {required this.row, required this.showDivider, this.onTap});
 
   final ProductSalesRow row;
   final bool showDivider;
@@ -941,7 +943,7 @@ class _StockList extends StatelessWidget {
 ///
 /// The word for it — "Short", "Over", "Balanced" — comes from
 /// [ShiftVariance], the same resolver the shift screen uses. A difference
-/// that reads green in one place and amber in another is a shortage that gets
+/// that reads green in one place and coral in another is a shortage that gets
 /// argued about instead of fixed.
 class ShiftAnalyticsCard extends StatelessWidget {
   const ShiftAnalyticsCard({required this.shifts, super.key});

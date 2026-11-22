@@ -1,4 +1,4 @@
-import 'package:flutter/material.dart';
+import 'package:material_ui/material_ui.dart';
 import 'package:flutter/services.dart';
 import 'package:go_router/go_router.dart';
 import 'package:provider/provider.dart';
@@ -29,7 +29,7 @@ import '../services/workspace_service.dart';
 
 /// The PIN pad. The only way into the shop.
 ///
-/// Redesigned to match the inspiration: dark canvas, emerald accent,
+/// Redesigned to match the product palette: forest primary, electric accent,
 /// brand header, roster, PIN field, and styled actions.
 class LoginScreen extends StatefulWidget {
   const LoginScreen({this.staffLoader, super.key});
@@ -360,132 +360,136 @@ class _LoginScreenState extends State<LoginScreen> {
                 child: Column(
                   mainAxisSize: MainAxisSize.min,
                   children: <Widget>[
-                  OnboardStyle.header(
-                    context: context,
-                    onSignIn: () => context.go(Routes.welcome),
-                    colors: colors,
-                    spacing: spacing,
-                    type: type,
-                  ),
-                  SizedBox(height: spacing.lg),
-                  // Media window style header
-                  OnboardStyle.window(
-                    context: context,
-                    image: DecoratedBox(
-                      decoration: BoxDecoration(
-                        gradient: LinearGradient(
-                          colors: <Color>[colors.surface, colors.surfaceSunken],
-                          begin: Alignment.topLeft,
-                          end: Alignment.bottomRight,
+                    OnboardStyle.header(
+                      context: context,
+                      onSignIn: () => context.go(Routes.welcome),
+                      colors: colors,
+                      spacing: spacing,
+                      type: type,
+                    ),
+                    SizedBox(height: spacing.lg),
+                    // Media window style header
+                    OnboardStyle.window(
+                      context: context,
+                      image: DecoratedBox(
+                        decoration: BoxDecoration(
+                          gradient: LinearGradient(
+                            colors: <Color>[
+                              colors.surface,
+                              colors.surfaceSunken
+                            ],
+                            begin: Alignment.topLeft,
+                            end: Alignment.bottomRight,
+                          ),
+                        ),
+                        child: Center(
+                          child: Icon(Icons.lock_outline,
+                              size: 56, color: colors.accent),
                         ),
                       ),
-                      child: Center(
-                        child: Icon(Icons.lock_outline, size: 56, color: colors.accent),
-                      ),
+                      badgeIcon: Icons.lock_outline,
+                      label: 'SIGN IN',
+                      title: shopName,
+                      body: 'Enter your PIN to unlock the till',
+                      type: type,
+                      colors: colors,
+                      spacing: spacing,
                     ),
-                    badgeIcon: Icons.lock_outline,
-                    label: 'SIGN IN',
-                    title: shopName,
-                    body: 'Enter your PIN to unlock the till',
-                    type: type,
-                    colors: colors,
-                    spacing: spacing,
-                  ),
-                  SizedBox(height: spacing.lg),
-                  _choosingShop
-                      ? _ShopChooser(
-                          shops: _shops,
-                          onChosen: _chooseShop,
-                        )
-                      : switch (_rosterState) {
-                          _RosterState.loading => const _RosterLoading(),
-                          _RosterState.noAccounts => _NoAccountsPanel(
-                              onSetUp: _setUpShop,
-                            ),
-                          _RosterState.ready => _WhoPicker(
-                              ownerName: owner?.name,
-                              staff: _staff,
-                              selected: _selected,
-                              onChanged: _selectIdentity,
-                            ),
-                        },
-                  if (!_choosingShop && _shops.length > 1)
-                    Align(
-                      alignment: AlignmentDirectional.centerStart,
-                      child: TextButton.icon(
-                        onPressed: () => setState(() => _choosingShop = true),
-                        icon: const Icon(Icons.storefront_outlined),
-                        label: Text(l10n.loginChooseShopAction),
+                    SizedBox(height: spacing.lg),
+                    _choosingShop
+                        ? _ShopChooser(
+                            shops: _shops,
+                            onChosen: _chooseShop,
+                          )
+                        : switch (_rosterState) {
+                            _RosterState.loading => const _RosterLoading(),
+                            _RosterState.noAccounts => _NoAccountsPanel(
+                                onSetUp: _setUpShop,
+                              ),
+                            _RosterState.ready => _WhoPicker(
+                                ownerName: owner?.name,
+                                staff: _staff,
+                                selected: _selected,
+                                onChanged: _selectIdentity,
+                              ),
+                          },
+                    if (!_choosingShop && _shops.length > 1)
+                      Align(
+                        alignment: AlignmentDirectional.centerStart,
+                        child: TextButton.icon(
+                          onPressed: () => setState(() => _choosingShop = true),
+                          icon: const Icon(Icons.storefront_outlined),
+                          label: Text(l10n.loginChooseShopAction),
+                        ),
                       ),
-                    ),
-                  if (_error != null) ...<Widget>[
+                    if (_error != null) ...<Widget>[
+                      SizedBox(height: spacing.md),
+                      PersistentBanner(
+                        message: _error!,
+                        icon: Icons.lock_outline,
+                        tone: StatusTone.danger,
+                      ),
+                    ],
                     SizedBox(height: spacing.md),
-                    PersistentBanner(
-                      message: _error!,
-                      icon: Icons.lock_outline,
-                      tone: StatusTone.danger,
-                    ),
-                  ],
-                  SizedBox(height: spacing.md),
-                  ValueListenableBuilder<TextEditingValue>(
-                    valueListenable: _pin,
-                    builder: (
-                      BuildContext context,
-                      TextEditingValue value,
-                      Widget? field,
-                    ) => Semantics(
-                      label: l10n.loginFilledPINDigitsEntered(
-                        value.text.length.clamp(0, _pinLength),
-                        _pinLength,
+                    ValueListenableBuilder<TextEditingValue>(
+                      valueListenable: _pin,
+                      builder: (
+                        BuildContext context,
+                        TextEditingValue value,
+                        Widget? field,
+                      ) =>
+                          Semantics(
+                        label: l10n.loginFilledPINDigitsEntered(
+                          value.text.length.clamp(0, _pinLength),
+                          _pinLength,
+                        ),
+                        child: ExcludeSemantics(child: field),
                       ),
-                      child: ExcludeSemantics(child: field),
+                      child: TextField(
+                        controller: _pin,
+                        focusNode: _pinFocus,
+                        autofocus: true,
+                        obscureText: true,
+                        keyboardType: TextInputType.number,
+                        textAlign: TextAlign.center,
+                        inputFormatters: <TextInputFormatter>[
+                          FilteringTextInputFormatter.digitsOnly,
+                          LengthLimitingTextInputFormatter(_pinLength),
+                        ],
+                        onChanged: _onPinChanged,
+                        onSubmitted: (_) => _tryLogin(),
+                        enabled: !_verifying,
+                        decoration: InputDecoration(
+                          labelText: l10n.loginPinLabel,
+                          hintText: '0' * _pinLength,
+                        ),
+                      ),
                     ),
-                    child: TextField(
-                      controller: _pin,
-                      focusNode: _pinFocus,
-                      autofocus: true,
-                      obscureText: true,
-                      keyboardType: TextInputType.number,
+                    SizedBox(height: spacing.sm),
+                    Text(
+                      _verifying ? 'Checking this PIN' : '',
                       textAlign: TextAlign.center,
-                      inputFormatters: <TextInputFormatter>[
-                        FilteringTextInputFormatter.digitsOnly,
-                        LengthLimitingTextInputFormatter(_pinLength),
-                      ],
-                      onChanged: _onPinChanged,
-                      onSubmitted: (_) => _tryLogin(),
-                      enabled: !_verifying,
-                      decoration: InputDecoration(
-                        labelText: l10n.loginPinLabel,
-                        hintText: '0' * _pinLength,
+                      style: type.labelSmall
+                          ?.copyWith(color: colors.onSurfaceMuted),
+                    ),
+                    if (owner != null &&
+                        owner.email.trim().isNotEmpty &&
+                        (_selected == null || _selected == _ownerValue))
+                      TextButton(
+                        onPressed: _verifying ? null : _forgotPin,
+                        child: Text(AppLocalizations.of(context)
+                            .settingsForgotPinAction),
                       ),
-                    ),
-                  ),
-                  SizedBox(height: spacing.sm),
-                  Text(
-                    _verifying ? 'Checking this PIN' : '',
-                    textAlign: TextAlign.center,
-                    style: type.labelSmall?.copyWith(color: colors.onSurfaceMuted),
-                  ),
-                  if (owner != null &&
-                      owner.email.trim().isNotEmpty &&
-                      (_selected == null || _selected == _ownerValue))
-                    TextButton(
-                      onPressed: _verifying ? null : _forgotPin,
-                      child: Text(
-                          AppLocalizations.of(context).settingsForgotPinAction),
-                    ),
-                ],
+                  ],
+                ),
               ),
             ),
           ),
         ),
       ),
-      ),
     );
   }
 }
-
-
 
 // Keep existing supporting classes (_ShopChooser, _ShopTile, _RosterLoading,
 // _NoAccountsPanel, _WhoPicker, _RosterRow, _WhoTile) unchanged for logic.
@@ -519,15 +523,15 @@ class _ShopChooser extends StatelessWidget {
           shrinkWrap: true,
           physics: const NeverScrollableScrollPhysics(),
           itemCount: shops.length,
-            separatorBuilder: (_, __) => SizedBox(height: spacing.sm),
-            itemBuilder: (BuildContext context, int index) {
-              final LocalShop shop = shops[index];
-              return _ShopTile(
-                shop: shop,
-                onTap: () => onChosen(shop),
-              );
-            },
-          ),
+          separatorBuilder: (_, __) => SizedBox(height: spacing.sm),
+          itemBuilder: (BuildContext context, int index) {
+            final LocalShop shop = shops[index];
+            return _ShopTile(
+              shop: shop,
+              onTap: () => onChosen(shop),
+            );
+          },
+        ),
       ],
     );
   }
@@ -758,29 +762,29 @@ class _WhoPicker extends StatelessWidget {
               shrinkWrap: true,
               physics: const NeverScrollableScrollPhysics(),
               padding: EdgeInsets.zero,
-                itemCount: rows.length,
-                itemBuilder: (BuildContext context, int index) {
-                  final _RosterRow row = rows[index];
-                  if (row.isHeader) {
-                    return SectionHeader(
-                      label: row.title!,
-                      padding: EdgeInsetsDirectional.only(
-                        top: spacing.sm,
-                        bottom: spacing.xs,
-                      ),
-                    );
-                  }
-                  return _WhoTile(
-                    key: ValueKey<String>(row.tag!),
-                    name: row.name!,
-                    roleLabel: row.roleLabel!,
-                    selected: row.selected,
-                    onTap: () => onChanged(row.tag),
+              itemCount: rows.length,
+              itemBuilder: (BuildContext context, int index) {
+                final _RosterRow row = rows[index];
+                if (row.isHeader) {
+                  return SectionHeader(
+                    label: row.title!,
+                    padding: EdgeInsetsDirectional.only(
+                      top: spacing.sm,
+                      bottom: spacing.xs,
+                    ),
                   );
-                },
-              );
-            },
-          ),
+                }
+                return _WhoTile(
+                  key: ValueKey<String>(row.tag!),
+                  name: row.name!,
+                  roleLabel: row.roleLabel!,
+                  selected: row.selected,
+                  onTap: () => onChanged(row.tag),
+                );
+              },
+            );
+          },
+        ),
         if (hasChosen)
           Padding(
             padding: EdgeInsetsDirectional.only(top: spacing.sm),

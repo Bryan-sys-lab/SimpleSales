@@ -27,7 +27,7 @@
 import 'package:duka_pos/models/models.dart';
 import 'package:duka_pos/widgets/serving_choice_sheet.dart';
 import 'package:duka_pos/utils/money.dart';
-import 'package:flutter/material.dart';
+import 'package:material_ui/material_ui.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 import 'support/harness.dart';

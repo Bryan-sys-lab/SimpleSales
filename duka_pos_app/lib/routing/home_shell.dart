@@ -1,6 +1,6 @@
 import 'dart:async';
 
-import 'package:flutter/material.dart';
+import 'package:material_ui/material_ui.dart';
 import 'package:go_router/go_router.dart';
 import 'package:provider/provider.dart';
 
@@ -43,7 +43,7 @@ List<AppDestination> visibleDestinations(AppState state) {
   // split is as even as each role can make it — a cashier gets one on each
   // side, a manager two and two, an owner two and three — and so the
   // everyday destinations are the ones nearest the ball.
-  
+
   return <AppDestination>[
     AppDestination.dashboard,
     // Inventory and Reports report the whole shop. A cashier's business is
@@ -788,25 +788,25 @@ class _ShellAppBar extends StatelessWidget implements PreferredSizeWidget {
             ),
           ),
         if (showProfile)
-        // Connection indicator: green when the shop is linked to the backend,
-        // yellow when it is not.
-        FutureBuilder<bool>(
-          future: BackendService.isBackendLinked,
-          builder: (BuildContext context, AsyncSnapshot<bool> snapshot) {
-            final bool linked = snapshot.data ?? false;
-            return Padding(
-              padding: const EdgeInsetsDirectional.only(end: 6),
-              child: Container(
-                width: 10,
-                height: 10,
-                decoration: BoxDecoration(
-                  shape: BoxShape.circle,
-                  color: linked ? Colors.green : Colors.amber,
+          // Connection indicator: green when the shop is linked to the backend,
+          // yellow when it is not.
+          FutureBuilder<bool>(
+            future: BackendService.isBackendLinked,
+            builder: (BuildContext context, AsyncSnapshot<bool> snapshot) {
+              final bool linked = snapshot.data ?? false;
+              return Padding(
+                padding: const EdgeInsetsDirectional.only(end: 6),
+                child: Container(
+                  width: 10,
+                  height: 10,
+                  decoration: BoxDecoration(
+                    shape: BoxShape.circle,
+                    color: linked ? colors.success : colors.warning,
+                  ),
                 ),
-              ),
-            );
-          },
-        ),
+              );
+            },
+          ),
         // The account: a VIEWER of who is signed in.
         //
         // It used to open the sign-out sheet, which is a trap: the person

@@ -11,7 +11,7 @@
 // lands, a working directory changes under an update. A screen that can only
 // report a failure has given up on the one thing it could still have done.
 
-import 'package:flutter/material.dart';
+import 'package:material_ui/material_ui.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 

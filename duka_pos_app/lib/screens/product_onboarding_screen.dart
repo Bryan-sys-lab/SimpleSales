@@ -1,4 +1,4 @@
-import 'package:flutter/material.dart';
+import 'package:material_ui/material_ui.dart';
 
 import '../l10n/generated/app_localizations.dart';
 import '../profile/shop_profile.dart';
@@ -36,7 +36,8 @@ class ProductOnboardingScreen extends StatefulWidget {
   final VoidCallback? onSkip;
 
   @override
-  State<ProductOnboardingScreen> createState() => _ProductOnboardingScreenState();
+  State<ProductOnboardingScreen> createState() =>
+      _ProductOnboardingScreenState();
 }
 
 class _ProductOnboardingScreenState extends State<ProductOnboardingScreen> {
@@ -182,26 +183,26 @@ class _ProductOnboardingScreenState extends State<ProductOnboardingScreen> {
                 child: Text(
                   label,
                   style: AppTypography.of(context).labelLarge?.copyWith(
-                    color: colors.accent,
-                    fontWeight: FontWeight.w600,
-                  ),
+                        color: colors.accent,
+                        fontWeight: FontWeight.w600,
+                      ),
                 ),
               ),
               SizedBox(height: spacing.sm),
               Text(
                 title,
                 style: AppTypography.of(context).headlineSmall?.copyWith(
-                  color: colors.onSurface,
-                  fontWeight: FontWeight.w700,
-                ),
+                      color: colors.onSurface,
+                      fontWeight: FontWeight.w700,
+                    ),
               ),
               SizedBox(height: spacing.sm),
               Text(
                 body,
                 style: AppTypography.of(context).bodyLarge?.copyWith(
-                  color: colors.onSurfaceVariant,
-                  height: 1.5,
-                ),
+                      color: colors.onSurfaceVariant,
+                      height: 1.5,
+                    ),
               ),
             ],
           ),
@@ -432,6 +433,8 @@ class _InfoCard extends StatelessWidget {
     }
   }
 
+  String get _imageAsset => 'assets/onboarding/${profile.name}_shop_photo.jpg';
+
   String get _title {
     switch (profile) {
       case ShopProfile.duka:
@@ -459,17 +462,22 @@ class _InfoCard extends StatelessWidget {
             crossAxisAlignment: CrossAxisAlignment.start,
             mainAxisSize: MainAxisSize.min,
             children: <Widget>[
-              Container(
-                width: 28,
-                height: 28,
-                decoration: BoxDecoration(
-                  color: colors.surfaceRaised,
-                  shape: BoxShape.circle,
-                ),
-                child: Icon(
-                  _icon,
-                  color: colors.onSurfaceVariant,
-                  size: 16,
+              ClipRRect(
+                borderRadius: AppShapes.of(context).controlRadius,
+                child: Image.asset(
+                  _imageAsset,
+                  height: 76,
+                  width: double.infinity,
+                  fit: BoxFit.cover,
+                  excludeFromSemantics: true,
+                  errorBuilder: (_, __, ___) => Container(
+                    height: 76,
+                    color: colors.surfaceRaised,
+                    child: Icon(
+                      _icon,
+                      color: colors.onSurfaceVariant,
+                    ),
+                  ),
                 ),
               ),
               SizedBox(height: spacing.xxs),

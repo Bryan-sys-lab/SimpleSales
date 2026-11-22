@@ -19,7 +19,7 @@
 import 'package:duka_pos/l10n/generated/app_localizations.dart';
 import 'package:duka_pos/services/pin_reset_service.dart';
 import 'package:duka_pos/ui/dialogs/pin_reset_dialog.dart';
-import 'package:flutter/material.dart';
+import 'package:material_ui/material_ui.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 import '../../support/harness.dart';

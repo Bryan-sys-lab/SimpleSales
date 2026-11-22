@@ -135,11 +135,20 @@ jobs:
         if: ${{ env.BUILD_RELEASE == 'true' }}
         env:
           BACKEND_URL: ${{ secrets.BACKEND_URL }}
+          WHATSAPP_CONTACT_NUMBER: ${{ secrets.WHATSAPP_CONTACT_NUMBER }}
         run: |
           set -euo pipefail
+          whatsapp_digits="${WHATSAPP_CONTACT_NUMBER//[^0-9]/}"
+          if (( ${#whatsapp_digits} < 8 || ${#whatsapp_digits} > 15 )); then
+            echo "::error::Set WHATSAPP_CONTACT_NUMBER as a GitHub Actions secret containing a valid international phone number (8-15 digits)."
+            exit 1
+          fi
           defines=()
           if [ -n "${BACKEND_URL:-}" ]; then
             defines+=("--dart-define=BACKEND_URL=${BACKEND_URL}")
+          fi
+          if [ -n "${WHATSAPP_CONTACT_NUMBER:-}" ]; then
+            defines+=("--dart-define=WHATSAPP_CONTACT_NUMBER=${WHATSAPP_CONTACT_NUMBER}")
           fi
           flutter build apk --release ${defines[@]+"${defines[@]}"}
 

@@ -1,4 +1,4 @@
-import 'package:flutter/material.dart';
+import 'package:material_ui/material_ui.dart';
 
 /// Collects an optional destination without retaining the raw phone or email.
 Future<String?> askReceiptRecipient(BuildContext context) async {

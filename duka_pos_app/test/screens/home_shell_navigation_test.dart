@@ -1,4 +1,4 @@
-import 'package:flutter/material.dart';
+import 'package:material_ui/material_ui.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:go_router/go_router.dart';
 import 'package:provider/provider.dart';
@@ -8,6 +8,7 @@ import 'package:sqflite_common_ffi/sqflite_ffi.dart';
 
 import 'package:duka_pos/db/database_helper.dart';
 import 'package:duka_pos/l10n/generated/app_localizations.dart';
+import 'package:duka_pos/l10n/app_localizations_config.dart';
 import 'package:duka_pos/models/models.dart';
 import 'package:duka_pos/routing/app_redirect.dart';
 import 'package:duka_pos/routing/app_stage_controller.dart';
@@ -179,7 +180,7 @@ Future<void> _pumpShell(
         // read the theme's extensions, and a hand-made theme renders
         // unstyled.
         theme: buildDukaLightTheme(),
-        localizationsDelegates: AppLocalizations.localizationsDelegates,
+        localizationsDelegates: appLocalizationsDelegates,
         supportedLocales: AppLocalizations.supportedLocales,
         locale: const Locale('en'),
       ),

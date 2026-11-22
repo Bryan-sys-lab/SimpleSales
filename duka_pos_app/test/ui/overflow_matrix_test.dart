@@ -3,7 +3,7 @@ import 'package:duka_pos/ui/components/surface.dart';
 import 'package:duka_pos/ui/components/status.dart';
 import 'package:duka_pos/theme/app_spacing.dart';
 import 'package:duka_pos/ui/layout/page.dart';
-import 'package:flutter/material.dart';
+import 'package:material_ui/material_ui.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 import '../support/harness.dart';

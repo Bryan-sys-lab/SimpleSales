@@ -1,4 +1,4 @@
-import 'package:flutter/material.dart';
+import 'package:material_ui/material_ui.dart';
 import 'package:flutter/physics.dart';
 
 import '../../theme/app_colors.dart';
@@ -26,9 +26,11 @@ class SurfaceCard extends StatelessWidget {
     this.semanticLabel,
     this.margin,
     this.color,
+    this.gradient,
+    this.accentEdge = false,
     this.clipContent = false,
     super.key,
-  });
+  }) : assert(color == null || gradient == null);
 
   final Widget child;
   final EdgeInsetsGeometry? padding;
@@ -44,6 +46,11 @@ class SurfaceCard extends StatelessWidget {
 
   final EdgeInsetsGeometry? margin;
   final Color? color;
+  final Gradient? gradient;
+
+  /// Adds a quiet, theme-aware outline to a feature card without tinting its
+  /// full surface.
+  final bool accentEdge;
 
   /// Clips the content to the card's radius. For a card whose child paints to its
   /// edge (a chart, a table) — never for one holding text, where clipping at
@@ -60,15 +67,19 @@ class SurfaceCard extends StatelessWidget {
       padding: padding ?? EdgeInsets.all(spacing.md),
       child: child,
     );
+    final BoxBorder border = accentEdge
+        ? Border.all(color: colors.accentContainer, width: 2)
+        : Border.all(color: colors.outline);
 
     if (onTap == null) {
       return Padding(
         padding: margin ?? EdgeInsets.zero,
         child: DecoratedBox(
           decoration: BoxDecoration(
-            color: color ?? colors.surface,
+            color: gradient == null ? color ?? colors.surface : null,
+            gradient: gradient,
             borderRadius: shapes.cardRadius,
-            border: Border.all(color: colors.outline),
+            border: border,
           ),
           child: clipContent
               ? ClipRRect(borderRadius: shapes.cardRadius, child: body)
@@ -84,7 +95,8 @@ class SurfaceCard extends StatelessWidget {
         label: semanticLabel,
         container: semanticLabel != null,
         child: Material(
-          color: color ?? colors.surface,
+          color:
+              gradient == null ? color ?? colors.surface : Colors.transparent,
           borderRadius: shapes.cardRadius,
           clipBehavior: Clip.antiAlias,
           child: _SurfaceCardPressable(
@@ -98,8 +110,10 @@ class SurfaceCard extends StatelessWidget {
               ),
               child: Ink(
                 decoration: BoxDecoration(
+                  color: gradient == null ? color ?? colors.surface : null,
+                  gradient: gradient,
                   borderRadius: shapes.cardRadius,
-                  border: Border.all(color: colors.outline),
+                  border: border,
                 ),
                 child: body,
               ),

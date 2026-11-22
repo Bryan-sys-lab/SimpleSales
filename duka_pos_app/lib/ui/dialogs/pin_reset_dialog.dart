@@ -13,7 +13,7 @@
 // field costs one keystroke and removes an entire class of "I am locked out of
 // my own shop".
 
-import 'package:flutter/material.dart';
+import 'package:material_ui/material_ui.dart';
 import 'package:flutter/services.dart';
 
 import '../../l10n/generated/app_localizations.dart';

@@ -23,7 +23,7 @@ import 'dart:io';
 import 'package:duka_pos/models/models.dart';
 import 'package:duka_pos/services/app_state.dart';
 import 'package:duka_pos/services/session_refresh_mixin.dart';
-import 'package:flutter/material.dart';
+import 'package:material_ui/material_ui.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:provider/provider.dart';
 import 'package:provider/single_child_widget.dart';

@@ -1,4 +1,4 @@
-import 'package:flutter/material.dart';
+import 'package:material_ui/material_ui.dart';
 import 'package:flutter/semantics.dart';
 import 'package:go_router/go_router.dart';
 import 'package:provider/provider.dart';
@@ -253,9 +253,9 @@ class DukaDashboardScreen extends StatelessWidget {
                 children: spaced(
                   <Widget?>[
                     financialHero,
+                    quickActions,
                     kpiGrid,
                     BackupReminderBanner(onBackupNow: onBackupNow),
-                    quickActions,
                     stockOverview,
                     sales,
                     topProducts,
@@ -292,9 +292,9 @@ class DukaDashboardScreen extends StatelessWidget {
       body.addAll(spaced(
         <Widget?>[
           financialHero,
+          quickActions,
           kpiGrid,
           BackupReminderBanner(onBackupNow: onBackupNow),
-          quickActions,
           stockOverview,
           sales,
           topProducts,
@@ -544,8 +544,7 @@ class _OverviewTile extends StatelessWidget {
   }
 }
 
-/// The duka quick actions: Sell, Add product, Receive stock, Stocktake — as a
-/// 2x2 grid of tiles with icon + label + subtitle, mirroring the mockup.
+/// The duka quick actions: Sell, Add product, Receive stock, Stocktake.
 class _DukaDashboardQuickActions extends StatelessWidget {
   const _DukaDashboardQuickActions({
     required this.onOpenSell,
@@ -569,9 +568,14 @@ class _DukaDashboardQuickActions extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final AppSpacing spacing = AppSpacing.of(context);
-
+    final AppLocalizations l10n = AppLocalizations.of(context);
     final List<Widget> tiles = <Widget>[
+      _DukaQuickTile(
+        icon: Icons.point_of_sale_outlined,
+        label: l10n.dashboardSellAction,
+        subtitle: 'Open Till',
+        onTap: onOpenSell,
+      ),
       if (canManageStock)
         _DukaQuickTile(
           icon: Icons.add_circle_outline,
@@ -608,38 +612,11 @@ class _DukaDashboardQuickActions extends StatelessWidget {
         ),
     ];
 
-    return LayoutBuilder(
-      builder: (BuildContext context, BoxConstraints constraints) {
-        final bool twoColumns = constraints.maxWidth >= 320;
-        if (twoColumns) {
-          return Wrap(
-            spacing: spacing.md,
-            runSpacing: spacing.md,
-            children: <Widget>[
-              for (final tile in tiles)
-                SizedBox(
-                  width: (constraints.maxWidth - spacing.md) / 2,
-                  child: tile,
-                ),
-            ],
-          );
-        }
-        return Column(
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: <Widget>[
-            for (int i = 0; i < tiles.length; i++) ...<Widget>[
-              if (i > 0) SizedBox(height: spacing.md),
-              tiles[i],
-            ],
-          ],
-        );
-      },
-    );
+    return DashboardQuickActionStrip(actions: tiles);
   }
 }
 
-/// One quick-action tile: icon + label + subtitle, matching the mockup's
-/// 2x2 grid of action tiles.
+/// One quick-action tile in the horizontal action strip.
 class _DukaQuickTile extends StatelessWidget {
   const _DukaQuickTile({
     required this.icon,

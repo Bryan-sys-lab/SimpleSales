@@ -24,7 +24,7 @@
 // with the ledger", which three parallel booleans cannot represent without at
 // some point showing a variance against a drawer nobody counted.
 
-import 'package:flutter/material.dart';
+import 'package:material_ui/material_ui.dart';
 import 'package:go_router/go_router.dart';
 import 'package:provider/provider.dart';
 

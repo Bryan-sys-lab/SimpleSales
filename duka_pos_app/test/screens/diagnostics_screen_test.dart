@@ -12,7 +12,7 @@
 import 'package:duka_pos/l10n/generated/app_localizations.dart';
 import 'package:duka_pos/models/crash_log.dart';
 import 'package:duka_pos/screens/diagnostics_screen.dart';
-import 'package:flutter/material.dart';
+import 'package:material_ui/material_ui.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 

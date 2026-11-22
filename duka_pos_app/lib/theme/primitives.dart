@@ -15,52 +15,46 @@ abstract final class Primitives {
 
   // ---------------------------------------------------------------- neutrals
   //
-  // A COOL ramp, on purpose. A warm sepia ramp is the single loudest way an app
-  // stops reading as an instrument and starts reading as a scrapbook: warm
-  // greys pull the eye toward the paper rather than toward the numbers, and they
-  // make every saturated colour on screen look dirtier than it is. The night
-  // ramp runs from a near-black with a blue cast up to a cool off-white, so
-  // elevation is read as LUMINANCE — a surface gets LIGHTER as it comes
-  // forward — rather than as a shadow smeared over a dark page.
+  // The light ramp is warm and quiet; the dark ramp has a subtle green cast.
+  // Elevation is read as luminance, while forest, electric green and coral are
+  // reserved for brand, positive and attention states.
   //
   // The numbers are lightness steps, not hues: 04 is the deepest value in the
   // app and 100 the lightest. Nothing in `lib/` outside this file names a
   // colour.
 
-  /// The deepest value in the app: a sunken well below the canvas.
-  static const neutral04 = Color(0xFF070A0E);
+  /// The deepest value in the app: a sunken well below the night canvas.
+  static const neutral04 = Color(0xFF111812);
 
-  /// The night canvas. Near-black with a blue cast.
-  static const neutral08 = Color(0xFF0B0F14);
+  /// The night canvas.
+  static const neutral08 = Color(0xFF0C130E);
 
-  /// One step above the canvas: the Material container ladder's low rung.
-  static const neutral12 = Color(0xFF11161D);
+  /// One step above the night canvas.
+  static const neutral12 = Color(0xFF172019);
 
   /// The night surface: a card, a tile, a panel resting on the canvas.
-  static const neutral16 = Color(0xFF151A21);
+  static const neutral16 = Color(0xFF172019);
 
   /// A surface resting on another surface: a dialog, a dropdown, a snackbar.
-  static const neutral20 = Color(0xFF1C222B);
+  static const neutral20 = Color(0xFF202A22);
 
   /// A control surface: an input field, a chip, a track.
-  static const neutral25 = Color(0xFF242C37);
+  static const neutral25 = Color(0xFF27332A);
 
   /// The hairline. Decorative only: below 3:1.
-  static const neutral32 = Color(0xFF2E3742);
+  static const neutral32 = Color(0xFF334438);
 
-  /// A meaningful boundary: an input edge, a focus ring. Clears 3:1 on the
-  /// night canvas and on the night surface.
-  static const neutral45 = Color(0xFF606B7A);
+  /// A meaningful boundary: an input edge, a focus ring.
+  static const neutral45 = Color(0xFF738576);
 
   /// Muted text on a night surface: clears 4.5:1.
-  static const neutral63 = Color(0xFF97A3B2);
+  static const neutral63 = Color(0xFFA0ADA3);
 
   /// Secondary text on a night surface.
-  static const neutral79 = Color(0xFFC4CDD8);
+  static const neutral79 = Color(0xFFC4CEC5);
 
-  /// Body text on a night surface. A cool off-white, never pure white — pure
-  /// white on a near-black canvas blooms.
-  static const neutral95 = Color(0xFFF2F5F8);
+  /// Body text on a night surface. A soft off-white.
+  static const neutral95 = Color(0xFFF4F6F2);
 
   /// Light-theme body ink: the brand ink, and not pure black.
   ///
@@ -70,28 +64,66 @@ abstract final class Primitives {
   /// regenerating those artefacts is how an app ends up with two logos.
   static const neutral23 = Color(0xFF2D2A26);
 
-  /// Light-theme tertiary body text.
-  static const neutral47 = Color(0xFF5C6673);
-
-  /// Light-theme secondary body text.
-  static const neutral34 = Color(0xFF414954);
+  /// Light-theme secondary and tertiary body text. The supplied #69766D is
+  /// slightly below 4.5:1 on the warm page canvas, so text uses this darker
+  /// accessible adjustment.
+  static const neutral47 = Color(0xFF667269);
 
   /// Light-theme meaningful boundary: clears 3:1 on the canvas and on a card.
-  static const neutral54 = Color(0xFF6B7480);
+  static const neutral54 = Color(0xFF69766D);
 
   /// Light-theme hairline. Decorative only.
-  static const neutral84 = Color(0xFFDCE1E8);
+  static const neutral84 = Color(0xFFE8ECE7);
 
   /// Sunken wells, chips, table stripes.
-  static const neutral94 = Color(0xFFE8ECF1);
+  static const neutral94 = Color(0xFFF1F4F0);
 
-  /// The app canvas behind cards. A cool near-white, not cream: a tinted
-  /// canvas carries a hue through every surface above it, and cream is the
-  /// hue that makes a green accent look like moss.
-  static const neutral97 = Color(0xFFF2F4F7);
+  /// The warm off-white app canvas behind cards.
+  static const neutral97 = Color(0xFFF7F8F5);
 
   /// Card and sheet surface. White.
   static const neutral100 = Color(0xFFFFFFFF);
+
+  /// Body ink from the product palette; distinct from the launcher mark's ink.
+  static const textInk = Color(0xFF17231B);
+
+  /// Forest brand color used for primary actions and featured cards.
+  static const forest = Color(0xFF174B35);
+
+  /// Lighter forest stop for the primary gradient and dark-theme buttons.
+  static const forestLight = Color(0xFF286447);
+
+  /// Slightly lighter forest fill to preserve a visible button boundary in dark
+  /// mode while retaining accessible white button text.
+  static const forestButtonDark = Color(0xFF3B7755);
+
+  /// Electric-green highlight.
+  static const electric = Color(0xFFB7F34A);
+
+  /// Coral accent for attention and secondary emphasis.
+  static const coral = Color(0xFFFF806F);
+
+  /// Contrast-safe coral text on soft coral surfaces.
+  static const coralInk = Color(0xFF8A2E24);
+
+  /// Warm page, inset, and card borders.
+  static const surfacePage = Color(0xFFF7F8F5);
+  static const surfaceInset = Color(0xFFF1F4F0);
+  static const borderDefault = Color(0xFFE8ECE7);
+
+  /// Soft, restrained brand and accent surfaces.
+  static const surfaceGreen = Color(0xFFEAF5E9);
+  static const surfaceElectric = Color(0xFFE9F8D9);
+  static const surfaceElectricStrong = Color(0xFFD7F2B6);
+  static const surfaceCoral = Color(0xFFFFF0EC);
+  static const surfaceCoralStrong = Color(0xFFFFDAD2);
+
+  /// Dark-theme counterparts of the soft accent surfaces.
+  static const surfaceGreenDark = Color(0xFF183323);
+  static const surfaceElectricDark = Color(0xFF1D3826);
+  static const surfaceElectricStrongDark = Color(0xFF234A2C);
+  static const surfaceCoralDark = Color(0xFF42231F);
+  static const surfaceCoralStrongDark = Color(0xFF572F29);
 
   // -------------------------------------------------------------------- veils and shadows
   //
@@ -112,17 +144,7 @@ abstract final class Primitives {
   /// A 40% black shadow: the dark theme's shadow.
   static const shadowNight40 = Color(0x66000000);
 
-  // -------------------------------------------------------------------- botanical green (primary brand)
-  /// The night accent container: a deep emerald wash. Tonal, never solid —
-  /// the SOLID emerald is [botanical58], and having both is what lets a
-  /// selected row glow while a selected chip announces itself.
-  static const botanical20 = Color(0xFF163A22);
-
-  /// The night accent green: the emerald. Clears 4.5:1 on the night canvas.
-  static const botanical58 = Color(0xFF4ADE7E);
-
-  /// The night on-accent-container text.
-  static const botanical90 = Color(0xFF9FF0C0);
+  // -------------------------------------------------------------------- supplied brand mark
 
   /// The light brand green: deep botanical. Clears 4.5:1 on the light canvas.
   ///
@@ -130,54 +152,12 @@ abstract final class Primitives {
   /// artwork — see `assets/branding/generate_launcher_icon.py`.
   static const botanical38 = Color(0xFF1B6B3A);
 
-  /// The light accent container.
-  static const botanical96 = Color(0xFFE4F3E9);
-
-  /// The light on-accent-container text.
-  static const botanical29 = Color(0xFF0D3D1E);
-
   // -------------------------------------------------------------------- status semantics
   // Each status is three values: text tone, container, on-container.
   // Colour is never the only channel — see StatusTone for glyph + word.
 
-  /// Light-theme success text. Natural green.
-  static const green47Light = Color(0xFF1A7A3A);
-
   /// Light-theme success container.
-  static const green95Light = Color(0xFFDCEFE1);
-
-  /// Text on green95Light.
-  static const green35Light = Color(0xFF0D4D1E);
-
-  /// The night success text.
-  static const green66 = Color(0xFF5CE68A);
-
-  /// The night success container: a deep green wash, not a near-black one.
-  static const green18Dark = Color(0xFF123520);
-
-  /// Text on green18Dark.
-  static const green90Dark = Color(0xFF8DE8AE);
-
-  /// Light-theme warning text. Warm amber, darkened to clear 4.5:1 on the
-  /// light canvas — a lighter gold fails AA as text on a white card (3.25:1),
-  /// so the text tone is this bronze-gold and the container below carries the
-  /// bright tint.
-  static const amber53Light = Color(0xFF8A6508);
-
-  /// Light-theme warning container.
-  static const amber93Light = Color(0xFFFFF3E0);
-
-  /// Text on amber93Light.
-  static const amber45Light = Color(0xFF7A5A00);
-
-  /// The night warning text.
-  static const amber72 = Color(0xFFFFB84D);
-
-  /// The night warning container.
-  static const amber22Dark = Color(0xFF3A2A0C);
-
-  /// Text on amber22Dark.
-  static const amber93Dark = Color(0xFFFFE0A0);
+  static const green95Light = Color(0xFFE9F8D9);
 
   /// Light-theme error text. Restrained red.
   static const red50Light = Color(0xFFC0392B);

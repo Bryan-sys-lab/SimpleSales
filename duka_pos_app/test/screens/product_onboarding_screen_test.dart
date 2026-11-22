@@ -1,5 +1,5 @@
 import 'package:duka_pos/screens/product_onboarding_screen.dart';
-import 'package:flutter/material.dart';
+import 'package:material_ui/material_ui.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 import '../support/harness.dart';
@@ -37,6 +37,16 @@ void main() {
     expect(find.text('Drinks'), findsOneWidget);
     expect(find.text('Fashion'), findsOneWidget);
     expect(find.text('Open'), findsOneWidget);
+    expect(
+      find.byWidgetPredicate(
+        (Widget widget) =>
+            widget is Image &&
+            widget.image is AssetImage &&
+            (widget.image as AssetImage).assetName ==
+                'assets/onboarding/fashion_shop_photo.jpg',
+      ),
+      findsOneWidget,
+    );
 
     // Continue advances to page 3.
     await tester.tap(find.text('Continue'));
@@ -50,8 +60,7 @@ void main() {
     expect(signedIn, isFalse);
   });
 
-  testWidgets('sign-in works from any page',
-      (WidgetTester tester) async {
+  testWidgets('sign-in works from any page', (WidgetTester tester) async {
     tester.useDevice(Device.small);
     bool signedIn = false;
     await tester.pumpApp(

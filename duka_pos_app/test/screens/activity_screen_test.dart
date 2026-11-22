@@ -22,7 +22,7 @@ import 'package:duka_pos/models/audit_log.dart';
 import 'package:duka_pos/screens/activity_screen.dart';
 import 'package:duka_pos/services/cross_shop_audit_reader.dart';
 import 'package:duka_pos/ui/components/states.dart';
-import 'package:flutter/material.dart';
+import 'package:material_ui/material_ui.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 import '../support/harness.dart';

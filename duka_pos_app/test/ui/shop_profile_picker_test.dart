@@ -1,6 +1,6 @@
 import 'package:duka_pos/ui/shop_profile_picker.dart';
 import 'package:duka_pos/profile/shop_profile.dart';
-import 'package:flutter/material.dart';
+import 'package:material_ui/material_ui.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 import '../support/harness.dart';
@@ -20,12 +20,32 @@ void main() {
 
     expect(find.text('Duka'), findsOneWidget);
     expect(find.text('Drinks'), findsOneWidget);
-    await tester.scrollUntilVisible(find.text('Open'), 120,
-        scrollable: find.byType(Scrollable).first);
-    expect(find.text('Open'), findsOneWidget);
 
     // Duka card shows selected state.
     expect(find.byIcon(Icons.check_circle), findsOneWidget);
+    final Map<String, String> profileImages = <String, String>{
+      'Duka': 'assets/onboarding/duka_shop_photo.jpg',
+      'Drinks': 'assets/onboarding/drinks_shop_photo.jpg',
+      'Fashion': 'assets/onboarding/fashion_shop_photo.jpg',
+      'Open': 'assets/onboarding/open_shop_photo.jpg',
+    };
+    for (final MapEntry<String, String> profile in profileImages.entries) {
+      await tester.scrollUntilVisible(
+        find.text(profile.key),
+        120,
+        scrollable: find.byType(Scrollable).first,
+      );
+      expect(
+        find.byWidgetPredicate(
+          (Widget widget) =>
+              widget is Image &&
+              widget.image is AssetImage &&
+              (widget.image as AssetImage).assetName == profile.value,
+        ),
+        findsOneWidget,
+      );
+    }
+    expect(find.text('Open'), findsOneWidget);
   });
 
   testWidgets('selecting a profile updates selection visibly',
@@ -46,7 +66,8 @@ void main() {
     expect(selected, ShopProfile.drinks);
 
     // Tap Fashion.
-    await tester.scrollUntilVisible(find.text('Fashion'), 120, scrollable: rail);
+    await tester.scrollUntilVisible(find.text('Fashion'), 120,
+        scrollable: rail);
     await tester.tap(find.text('Fashion').first);
     await tester.pumpAndSettle();
     expect(selected, ShopProfile.fashion);
@@ -76,8 +97,10 @@ void main() {
     );
 
     expect(find.byType(ListView), findsOneWidget);
-    expect(find.byWidgetPredicate((widget) =>
-        widget is ListView && widget.scrollDirection == Axis.horizontal), findsOneWidget);
+    expect(
+        find.byWidgetPredicate((widget) =>
+            widget is ListView && widget.scrollDirection == Axis.horizontal),
+        findsOneWidget);
     await tester.scrollUntilVisible(find.text('Open'), 160,
         scrollable: find.byType(Scrollable).first);
     expect(find.text('Open'), findsOneWidget);

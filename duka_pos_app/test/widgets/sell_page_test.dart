@@ -23,7 +23,7 @@
 // scales, and both themes. A tile that survives a phone at 200% text is a
 // tile that survives a shop.
 
-import 'package:flutter/material.dart';
+import 'package:material_ui/material_ui.dart';
 import 'package:flutter/semantics.dart';
 import 'package:flutter_test/flutter_test.dart';
 

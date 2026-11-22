@@ -1,7 +1,7 @@
 import 'dart:io';
 import 'dart:async';
 
-import 'package:flutter/material.dart';
+import 'package:material_ui/material_ui.dart';
 import 'package:go_router/go_router.dart';
 import 'package:flutter/semantics.dart';
 import 'package:flutter/services.dart';
@@ -966,7 +966,8 @@ class _InventoryScreenState extends State<InventoryScreen>
                 ),
               if (canReorder)
                 ActionChip(
-                  avatar: const Icon(Icons.playlist_add_check_outlined, size: 16),
+                  avatar:
+                      const Icon(Icons.playlist_add_check_outlined, size: 16),
                   onPressed: () => Navigator.of(context).push(
                     MaterialPageRoute<void>(
                         builder: (_) => const ReorderScreen()),
@@ -1278,14 +1279,17 @@ class _ProductIdentityReviewScreenState
       _error = null;
     });
     try {
-      final products = await DatabaseHelper.instance.getProducts(activeOnly: false);
+      final products =
+          await DatabaseHelper.instance.getProducts(activeOnly: false);
       if (!mounted) return;
       setState(() {
-        _products = products.where((product) =>
-            (product.gpcMappingStatus == 'unknown' ||
-                product.gpcMappingStatus == 'unmapped') ||
-            (product.unitMappingStatus == 'unknown' ||
-                product.unitMappingStatus == 'unmapped')).toList();
+        _products = products
+            .where((product) =>
+                (product.gpcMappingStatus == 'unknown' ||
+                    product.gpcMappingStatus == 'unmapped') ||
+                (product.unitMappingStatus == 'unknown' ||
+                    product.unitMappingStatus == 'unmapped'))
+            .toList();
         _loading = false;
       });
     } catch (_) {
@@ -1334,33 +1338,40 @@ class _ProductIdentityReviewScreenState
           ),
           if (_error != null)
             Padding(
-              padding: EdgeInsets.symmetric(horizontal: AppSpacing.of(context).md),
+              padding:
+                  EdgeInsets.symmetric(horizontal: AppSpacing.of(context).md),
               child: Text(_error!, style: TextStyle(color: colors.danger)),
             ),
           Expanded(
             child: _loading
                 ? const Center(child: CircularProgressIndicator())
                 : _error != null
-                    ? Center(child: TextButton(onPressed: _load, child: Text(l10n.retry)))
+                    ? Center(
+                        child: TextButton(
+                            onPressed: _load, child: Text(l10n.retry)))
                     : _products.isEmpty
                         ? Center(child: Text(l10n.productMappingReviewEmpty))
                         : ListView.separated(
                             padding: EdgeInsets.all(AppSpacing.of(context).md),
                             itemCount: _products.length,
-                            separatorBuilder: (_, __) => SizedBox(height: AppSpacing.of(context).xs),
+                            separatorBuilder: (_, __) =>
+                                SizedBox(height: AppSpacing.of(context).xs),
                             itemBuilder: (context, index) {
                               final product = _products[index];
-                              String statusLabel(String status) => switch (status) {
+                              String statusLabel(String status) =>
+                                  switch (status) {
                                     'mapped' => l10n.productMappingMapped,
                                     'unmapped' => l10n.productMappingUnmapped,
-                                    'not_applicable' => l10n.productMappingNotApplicable,
+                                    'not_applicable' =>
+                                      l10n.productMappingNotApplicable,
                                     'rejected' => l10n.productMappingRejected,
                                     _ => l10n.productMappingUnknown,
                                   };
                               return Card(
                                 child: ListTile(
                                   title: Text(product.name),
-                                  subtitle: Text('${product.category} · GPC: ${statusLabel(product.gpcMappingStatus)} · Unit: ${statusLabel(product.unitMappingStatus)}'),
+                                  subtitle: Text(
+                                      '${product.category} · GPC: ${statusLabel(product.gpcMappingStatus)} · Unit: ${statusLabel(product.unitMappingStatus)}'),
                                   trailing: const Icon(Icons.chevron_right),
                                   onTap: () => _edit(product),
                                 ),
@@ -1657,8 +1668,8 @@ class _ProductListTile extends StatelessWidget {
     // The state, resolved ONCE from the value.
     //
     // EVERY row wears a state, including the ones that are fine. A shopkeeper
-    // scanning for what to reorder is looking for the amber row, and a green
-    // chip on every other row is what makes the amber one findable — the same
+    // scanning for what to reorder is looking for the coral row, and a green
+    // chip on every other row is what makes the coral one findable — the same
     // way one alarm in a room of quiet indicators is the only thing anybody
     // looks at. It is not a second green badge: the COUNT on the leading edge
     // is neutral, and the chip beside the name carries the state.
@@ -1782,7 +1793,7 @@ class _ProductListTile extends StatelessWidget {
                       ),
                       // The state chip, on EVERY row.
                       //
-                      // The green one is a deep, quiet wash and the amber one
+                      // The green one is a deep, quiet wash and the coral one
                       // is bright, so the row that needs attention is the row
                       // the eye lands on — which is the whole point of a
                       // stock list.
@@ -2431,8 +2442,14 @@ class ProductEditorState extends State<ProductEditor> {
       _halfPrice,
       _quarterPrice,
       _barcode;
-  late final TextEditingController _gpcCode, _gpcVersion, _merchantSku, _brandLabel,
-      _externalUnitCode, _unitVersion, _packQuantity, _packUnitCode;
+  late final TextEditingController _gpcCode,
+      _gpcVersion,
+      _merchantSku,
+      _brandLabel,
+      _externalUnitCode,
+      _unitVersion,
+      _packQuantity,
+      _packUnitCode;
   String _itemKind = 'unknown';
   String _gpcMappingStatus = 'unmapped';
   String _unitMappingStatus = 'unknown';
@@ -2567,7 +2584,8 @@ class ProductEditorState extends State<ProductEditor> {
     _brandLabel = TextEditingController(text: e?.brandLabelLocal ?? '');
     _externalUnitCode = TextEditingController(text: e?.externalUnitCode ?? '');
     _unitVersion = TextEditingController(text: e?.unitVersion ?? '17 (2021)');
-    _packQuantity = TextEditingController(text: e?.packQuantity?.toString() ?? '');
+    _packQuantity =
+        TextEditingController(text: e?.packQuantity?.toString() ?? '');
     _packUnitCode = TextEditingController(text: e?.packUnitCode ?? '');
     _itemKind = e?.itemKind ?? 'good';
     _gpcMappingStatus = e?.gpcMappingStatus ?? 'unmapped';
@@ -2807,16 +2825,24 @@ class ProductEditorState extends State<ProductEditor> {
       trackStock: _itemKind != 'service' && _itemKind != 'fee',
       itemKind: _itemKind,
       gpcCode: _gpcCode.text.trim().isEmpty ? null : _gpcCode.text.trim(),
-      gpcVersion: _gpcVersion.text.trim().isEmpty ? null : _gpcVersion.text.trim(),
+      gpcVersion:
+          _gpcVersion.text.trim().isEmpty ? null : _gpcVersion.text.trim(),
       gpcMappingStatus: _gpcMappingStatus,
-      merchantSku: _merchantSku.text.trim().isEmpty ? null : _merchantSku.text.trim(),
-      brandLabelLocal: _brandLabel.text.trim().isEmpty ? null : _brandLabel.text.trim(),
-      externalUnitCode: _externalUnitCode.text.trim().isEmpty ? null : _externalUnitCode.text.trim().toUpperCase(),
+      merchantSku:
+          _merchantSku.text.trim().isEmpty ? null : _merchantSku.text.trim(),
+      brandLabelLocal:
+          _brandLabel.text.trim().isEmpty ? null : _brandLabel.text.trim(),
+      externalUnitCode: _externalUnitCode.text.trim().isEmpty
+          ? null
+          : _externalUnitCode.text.trim().toUpperCase(),
       unitScheme: _externalUnitCode.text.trim().isEmpty ? null : 'UNECE Rec.20',
-      unitVersion: _unitVersion.text.trim().isEmpty ? null : _unitVersion.text.trim(),
+      unitVersion:
+          _unitVersion.text.trim().isEmpty ? null : _unitVersion.text.trim(),
       unitMappingStatus: _unitMappingStatus,
       packQuantity: parseUserNumber(_packQuantity.text),
-      packUnitCode: _packUnitCode.text.trim().isEmpty ? null : _packUnitCode.text.trim().toUpperCase(),
+      packUnitCode: _packUnitCode.text.trim().isEmpty
+          ? null
+          : _packUnitCode.text.trim().toUpperCase(),
       identityProvenance: existing?.identityProvenance ?? 'system_derived',
       productUuid: existing?.productUuid,
     );
@@ -3261,15 +3287,19 @@ class ProductEditorState extends State<ProductEditor> {
     }
     final gpcCode = _gpcCode.text.trim();
     if (gpcCode.isNotEmpty && _gpcVersion.text.trim().isEmpty) {
-      setState(() => _error = AppLocalizations.of(context).productGpcVersionRequired);
+      setState(() =>
+          _error = AppLocalizations.of(context).productGpcVersionRequired);
       return;
     }
     if (_gpcMappingStatus == 'mapped' && gpcCode.isEmpty) {
-      setState(() => _error = AppLocalizations.of(context).productGpcCodeRequired);
+      setState(
+          () => _error = AppLocalizations.of(context).productGpcCodeRequired);
       return;
     }
-    if (_unitMappingStatus == 'mapped' && _externalUnitCode.text.trim().isEmpty) {
-      setState(() => _error = AppLocalizations.of(context).productUnitCodeRequired);
+    if (_unitMappingStatus == 'mapped' &&
+        _externalUnitCode.text.trim().isEmpty) {
+      setState(
+          () => _error = AppLocalizations.of(context).productUnitCodeRequired);
       return;
     }
     final packQtyText = _packQuantity.text.trim();
@@ -3277,7 +3307,8 @@ class ProductEditorState extends State<ProductEditor> {
     final packQty = parseUserNumber(packQtyText);
     if ((packQtyText.isEmpty) != (packUnitText.isEmpty) ||
         (packQtyText.isNotEmpty && (packQty == null || packQty <= 0))) {
-      setState(() => _error = AppLocalizations.of(context).productPackMappingInvalid);
+      setState(() =>
+          _error = AppLocalizations.of(context).productPackMappingInvalid);
       return;
     }
     if (price < cost) {
@@ -3344,17 +3375,26 @@ class ProductEditorState extends State<ProductEditor> {
       trackStock: _itemKind != 'service' && _itemKind != 'fee',
       itemKind: _itemKind,
       gpcCode: _gpcCode.text.trim().isEmpty ? null : _gpcCode.text.trim(),
-      gpcVersion: _gpcVersion.text.trim().isEmpty ? null : _gpcVersion.text.trim(),
+      gpcVersion:
+          _gpcVersion.text.trim().isEmpty ? null : _gpcVersion.text.trim(),
       gpcMappingStatus: _gpcMappingStatus,
-      merchantSku: _merchantSku.text.trim().isEmpty ? null : _merchantSku.text.trim(),
-      brandLabelLocal: _brandLabel.text.trim().isEmpty ? null : _brandLabel.text.trim(),
-      externalUnitCode: _externalUnitCode.text.trim().isEmpty ? null : _externalUnitCode.text.trim().toUpperCase(),
+      merchantSku:
+          _merchantSku.text.trim().isEmpty ? null : _merchantSku.text.trim(),
+      brandLabelLocal:
+          _brandLabel.text.trim().isEmpty ? null : _brandLabel.text.trim(),
+      externalUnitCode: _externalUnitCode.text.trim().isEmpty
+          ? null
+          : _externalUnitCode.text.trim().toUpperCase(),
       unitScheme: _externalUnitCode.text.trim().isEmpty ? null : 'UNECE Rec.20',
-      unitVersion: _unitVersion.text.trim().isEmpty ? null : _unitVersion.text.trim(),
+      unitVersion:
+          _unitVersion.text.trim().isEmpty ? null : _unitVersion.text.trim(),
       unitMappingStatus: _unitMappingStatus,
       packQuantity: parseUserNumber(_packQuantity.text),
-      packUnitCode: _packUnitCode.text.trim().isEmpty ? null : _packUnitCode.text.trim().toUpperCase(),
-      identityProvenance: widget.existing?.identityProvenance ?? 'system_derived',
+      packUnitCode: _packUnitCode.text.trim().isEmpty
+          ? null
+          : _packUnitCode.text.trim().toUpperCase(),
+      identityProvenance:
+          widget.existing?.identityProvenance ?? 'system_derived',
       productUuid: widget.existing?.productUuid,
       // The photograph is flushed after the insert, not here: see
       // [_pickedPhoto]. `imagePath` is only written when it changes, so an
@@ -3596,41 +3636,89 @@ class ProductEditorState extends State<ProductEditor> {
               DropdownButtonFormField<String>(
                 key: ValueKey(_itemKind),
                 initialValue: _itemKind,
-                decoration: InputDecoration(labelText: AppLocalizations.of(context).productItemKind),
+                decoration: InputDecoration(
+                    labelText: AppLocalizations.of(context).productItemKind),
                 items: [
-                  DropdownMenuItem(value: 'good', child: Text(AppLocalizations.of(context).productKindGood)),
-                  DropdownMenuItem(value: 'service', child: Text(AppLocalizations.of(context).productKindService)),
-                  DropdownMenuItem(value: 'fee', child: Text(AppLocalizations.of(context).productKindFee)),
-                  DropdownMenuItem(value: 'unknown', child: Text(AppLocalizations.of(context).productKindUnknown)),
+                  DropdownMenuItem(
+                      value: 'good',
+                      child:
+                          Text(AppLocalizations.of(context).productKindGood)),
+                  DropdownMenuItem(
+                      value: 'service',
+                      child: Text(
+                          AppLocalizations.of(context).productKindService)),
+                  DropdownMenuItem(
+                      value: 'fee',
+                      child: Text(AppLocalizations.of(context).productKindFee)),
+                  DropdownMenuItem(
+                      value: 'unknown',
+                      child: Text(
+                          AppLocalizations.of(context).productKindUnknown)),
                 ],
-                onChanged: (value) => setState(() => _itemKind = value ?? 'unknown'),
+                onChanged: (value) =>
+                    setState(() => _itemKind = value ?? 'unknown'),
               ),
               if (_itemKind == 'service' || _itemKind == 'fee')
                 Padding(
                   padding: const EdgeInsets.only(top: 6),
-                  child: Text(AppLocalizations.of(context).productKindNoStock, style: Theme.of(context).textTheme.bodySmall),
+                  child: Text(AppLocalizations.of(context).productKindNoStock,
+                      style: Theme.of(context).textTheme.bodySmall),
                 ),
               SizedBox(height: spacing.md),
-              TextField(controller: _merchantSku, decoration: InputDecoration(labelText: AppLocalizations.of(context).productMerchantSku)),
+              TextField(
+                  controller: _merchantSku,
+                  decoration: InputDecoration(
+                      labelText:
+                          AppLocalizations.of(context).productMerchantSku)),
               SizedBox(height: spacing.md),
-              TextField(controller: _brandLabel, decoration: InputDecoration(labelText: AppLocalizations.of(context).productBrandLabel)),
+              TextField(
+                  controller: _brandLabel,
+                  decoration: InputDecoration(
+                      labelText:
+                          AppLocalizations.of(context).productBrandLabel)),
               SizedBox(height: spacing.md),
-              TextField(controller: _gpcCode, decoration: InputDecoration(labelText: AppLocalizations.of(context).productGpcCode), keyboardType: TextInputType.number),
+              TextField(
+                  controller: _gpcCode,
+                  decoration: InputDecoration(
+                      labelText: AppLocalizations.of(context).productGpcCode),
+                  keyboardType: TextInputType.number),
               SizedBox(height: spacing.md),
-              TextField(controller: _gpcVersion, decoration: InputDecoration(labelText: AppLocalizations.of(context).productGpcVersion)),
+              TextField(
+                  controller: _gpcVersion,
+                  decoration: InputDecoration(
+                      labelText:
+                          AppLocalizations.of(context).productGpcVersion)),
               SizedBox(height: spacing.md),
               DropdownButtonFormField<String>(
                 key: ValueKey(_gpcMappingStatus),
                 initialValue: _gpcMappingStatus,
-                decoration: InputDecoration(labelText: AppLocalizations.of(context).productGpcMappingStatus),
+                decoration: InputDecoration(
+                    labelText:
+                        AppLocalizations.of(context).productGpcMappingStatus),
                 items: [
-                  DropdownMenuItem(value: 'mapped', child: Text(AppLocalizations.of(context).productMappingMapped)),
-                  DropdownMenuItem(value: 'unmapped', child: Text(AppLocalizations.of(context).productMappingUnmapped)),
-                  DropdownMenuItem(value: 'unknown', child: Text(AppLocalizations.of(context).productMappingUnknown)),
-                  DropdownMenuItem(value: 'not_applicable', child: Text(AppLocalizations.of(context).productMappingNotApplicable)),
-                  DropdownMenuItem(value: 'rejected', child: Text(AppLocalizations.of(context).productMappingRejected)),
+                  DropdownMenuItem(
+                      value: 'mapped',
+                      child: Text(
+                          AppLocalizations.of(context).productMappingMapped)),
+                  DropdownMenuItem(
+                      value: 'unmapped',
+                      child: Text(
+                          AppLocalizations.of(context).productMappingUnmapped)),
+                  DropdownMenuItem(
+                      value: 'unknown',
+                      child: Text(
+                          AppLocalizations.of(context).productMappingUnknown)),
+                  DropdownMenuItem(
+                      value: 'not_applicable',
+                      child: Text(AppLocalizations.of(context)
+                          .productMappingNotApplicable)),
+                  DropdownMenuItem(
+                      value: 'rejected',
+                      child: Text(
+                          AppLocalizations.of(context).productMappingRejected)),
                 ],
-                onChanged: (value) => setState(() => _gpcMappingStatus = value ?? 'unmapped'),
+                onChanged: (value) =>
+                    setState(() => _gpcMappingStatus = value ?? 'unmapped'),
               ),
               SizedBox(height: spacing.md),
               // What the product is measured in, and the one control this form
@@ -3651,38 +3739,64 @@ class ProductEditorState extends State<ProductEditor> {
               SizedBox(height: spacing.md),
               TextField(
                 controller: _externalUnitCode,
-                decoration: InputDecoration(labelText: AppLocalizations.of(context).productExternalUnitCode),
+                decoration: InputDecoration(
+                    labelText:
+                        AppLocalizations.of(context).productExternalUnitCode),
                 textCapitalization: TextCapitalization.characters,
               ),
               SizedBox(height: spacing.xs),
               TextField(
                 controller: _unitVersion,
-                decoration: InputDecoration(labelText: AppLocalizations.of(context).productUnitVersion),
+                decoration: InputDecoration(
+                    labelText: AppLocalizations.of(context).productUnitVersion),
               ),
               SizedBox(height: spacing.xs),
               DropdownButtonFormField<String>(
                 key: ValueKey(_unitMappingStatus),
                 initialValue: _unitMappingStatus,
-                decoration: InputDecoration(labelText: AppLocalizations.of(context).productUnitMappingStatus),
+                decoration: InputDecoration(
+                    labelText:
+                        AppLocalizations.of(context).productUnitMappingStatus),
                 items: [
-                  DropdownMenuItem(value: 'mapped', child: Text(AppLocalizations.of(context).productMappingMapped)),
-                  DropdownMenuItem(value: 'unmapped', child: Text(AppLocalizations.of(context).productMappingUnmapped)),
-                  DropdownMenuItem(value: 'unknown', child: Text(AppLocalizations.of(context).productMappingUnknown)),
-                  DropdownMenuItem(value: 'not_applicable', child: Text(AppLocalizations.of(context).productMappingNotApplicable)),
-                  DropdownMenuItem(value: 'rejected', child: Text(AppLocalizations.of(context).productMappingRejected)),
+                  DropdownMenuItem(
+                      value: 'mapped',
+                      child: Text(
+                          AppLocalizations.of(context).productMappingMapped)),
+                  DropdownMenuItem(
+                      value: 'unmapped',
+                      child: Text(
+                          AppLocalizations.of(context).productMappingUnmapped)),
+                  DropdownMenuItem(
+                      value: 'unknown',
+                      child: Text(
+                          AppLocalizations.of(context).productMappingUnknown)),
+                  DropdownMenuItem(
+                      value: 'not_applicable',
+                      child: Text(AppLocalizations.of(context)
+                          .productMappingNotApplicable)),
+                  DropdownMenuItem(
+                      value: 'rejected',
+                      child: Text(
+                          AppLocalizations.of(context).productMappingRejected)),
                 ],
-                onChanged: (value) => setState(() => _unitMappingStatus = value ?? 'unknown'),
+                onChanged: (value) =>
+                    setState(() => _unitMappingStatus = value ?? 'unknown'),
               ),
               SizedBox(height: spacing.xs),
               TextField(
                 controller: _packQuantity,
-                decoration: InputDecoration(labelText: AppLocalizations.of(context).productPackQuantity),
-                keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                decoration: InputDecoration(
+                    labelText:
+                        AppLocalizations.of(context).productPackQuantity),
+                keyboardType:
+                    const TextInputType.numberWithOptions(decimal: true),
               ),
               SizedBox(height: spacing.xs),
               TextField(
                 controller: _packUnitCode,
-                decoration: InputDecoration(labelText: AppLocalizations.of(context).productPackUnitCode),
+                decoration: InputDecoration(
+                    labelText:
+                        AppLocalizations.of(context).productPackUnitCode),
                 textCapitalization: TextCapitalization.characters,
               ),
               SizedBox(height: spacing.md),

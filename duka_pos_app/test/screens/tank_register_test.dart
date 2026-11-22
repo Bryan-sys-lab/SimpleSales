@@ -3,10 +3,14 @@ import 'package:duka_pos/screens/tank_register_screen.dart';
 import 'package:duka_pos/screens/tank_detail_screen.dart';
 import 'package:duka_pos/services/analytics.dart';
 import '../support/harness.dart';
-import 'package:flutter/material.dart';
+import 'package:material_ui/material_ui.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 void main() {
+  setUpAll(() async {
+    await loadAppFonts();
+  });
+
   group('DrinkTankLevel', () {
     test('fill percent clamps at 100%', () {
       final tank = DrinkTankLevel(
@@ -56,7 +60,6 @@ void main() {
   group('TankRegisterScreen pumps', () {
     testWidgets('compact phone shows all summary figures',
         (WidgetTester tester) async {
-      await loadAppFonts();
       tester.useDevice(Device.compact);
 
       await tester.pumpApp(
@@ -89,7 +92,6 @@ void main() {
     });
 
     testWidgets('tablet shows two-column layout', (WidgetTester tester) async {
-      await loadAppFonts();
       tester.useDevice(Device.tablet);
 
       await tester.pumpApp(
@@ -111,7 +113,6 @@ void main() {
 
     testWidgets('low attention strip shows amber warning',
         (WidgetTester tester) async {
-      await loadAppFonts();
       tester.useDevice(Device.compact);
 
       await tester.pumpApp(

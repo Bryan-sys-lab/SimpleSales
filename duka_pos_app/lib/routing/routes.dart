@@ -1,4 +1,4 @@
-import 'package:flutter/material.dart' show IconData, Icons;
+import 'package:material_ui/material_ui.dart' show IconData, Icons;
 
 import '../l10n/generated/app_localizations.dart';
 import '../l10n/l10n_keys.dart';

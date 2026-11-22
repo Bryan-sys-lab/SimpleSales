@@ -25,7 +25,7 @@
 // another, so it is sized by HEIGHT and the width follows the asset's own
 // aspect ratio. Every place Nerva appears is then the same size.
 
-import 'package:flutter/material.dart';
+import 'package:material_ui/material_ui.dart';
 
 import '../../app_brand.dart';
 import '../../l10n/generated/app_localizations.dart';

@@ -28,13 +28,13 @@
 // A near-black instrument panel with the camera as the hero. The frame the
 // operator aims at is drawn over the feed, the area around it is dimmed so the
 // eye goes to the frame and nowhere else, and the controls are quiet: a torch
-// toggle, a way to type a code that will not scan, and the one saturated
-// action on the screen.
+// toggle and a way to type a code that will not scan; the controls inherit the
+// forest primary and restrained electric accent from the app theme.
 
 import 'dart:async';
 import 'dart:math' as math;
 
-import 'package:flutter/material.dart';
+import 'package:material_ui/material_ui.dart';
 import 'package:flutter/semantics.dart';
 import 'package:mobile_scanner/mobile_scanner.dart';
 

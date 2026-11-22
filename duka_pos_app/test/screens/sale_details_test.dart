@@ -20,7 +20,7 @@ import 'package:duka_pos/models/models.dart';
 import 'package:duka_pos/screens/transactions_screen.dart';
 import 'package:duka_pos/utils/money.dart';
 import 'package:duka_pos/services/app_state.dart';
-import 'package:flutter/material.dart';
+import 'package:material_ui/material_ui.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:provider/provider.dart';
 

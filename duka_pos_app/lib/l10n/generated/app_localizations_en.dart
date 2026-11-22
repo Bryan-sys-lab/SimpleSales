@@ -2203,6 +2203,59 @@ class AppLocalizationsEn extends AppLocalizations {
       'This account has no shop yet. Finish shop setup first.';
 
   @override
+  String get signupPaywallTitle => 'Activate your shop';
+
+  @override
+  String get signupPaywallHeadline => 'Your shop is ready for its first month';
+
+  @override
+  String get signupPaywallBody =>
+      'Your email is verified. Enter the first-month voucher from that email to activate this shop. The 30 days start when you redeem it.';
+
+  @override
+  String get signupPaywallIncludedMonth =>
+      'One month of access, included with your new shop.';
+
+  @override
+  String get signupPaywallVoucherLabel => 'Voucher code';
+
+  @override
+  String get signupPaywallVoucherHint => 'SS-XXXXXXXXXXXX';
+
+  @override
+  String get signupPaywallVoucherRequired =>
+      'Enter the voucher code from your email.';
+
+  @override
+  String get signupPaywallVoucherInvalid =>
+      'That voucher is invalid, expired, already used, or belongs to another email. Check it and try again.';
+
+  @override
+  String get signupPaywallRedeem => 'Redeem voucher';
+
+  @override
+  String get signupPaywallActivating => 'Activating shop';
+
+  @override
+  String get signupPaywallWhatsApp => 'Need help? Chat with us on WhatsApp';
+
+  @override
+  String get signupPaywallSupportMessage =>
+      'Hello, I need help activating my SimpleSales shop.';
+
+  @override
+  String get supportContactOpenFailed =>
+      'Could not open WhatsApp. Please try again.';
+
+  @override
+  String get signupPaywallVoucherNote =>
+      'The code is checked against this email and can only be used once.';
+
+  @override
+  String get paywallWhatsAppMessage =>
+      'Hello, I need help with my SimpleSales subscription.';
+
+  @override
   String get diagnosticsTitle => 'Diagnostics';
 
   @override
@@ -5588,6 +5641,15 @@ class AppLocalizationsEn extends AppLocalizations {
   String get dashboardSellAction => 'Start a sale';
 
   @override
+  String get dashboardQuickActions => 'Quick actions';
+
+  @override
+  String get dashboardInventory => 'Inventory';
+
+  @override
+  String get dashboardShiftAction => 'Shift';
+
+  @override
   String get dashboardStockOverview => 'Stock overview';
 
   @override
@@ -5803,6 +5865,31 @@ class AppLocalizationsEn extends AppLocalizations {
   @override
   String get openCostGroupsLoadingSubtitle =>
       'Please wait while your cost groups load.';
+
+  @override
+  String get openCostGroupsLoadFailed =>
+      'Cost groups could not be loaded. Check your storage and try again.';
+
+  @override
+  String get openCostGroupsRetry => 'Try again';
+
+  @override
+  String get openCostGroupDetailLoadFailed =>
+      'This cost group could not be loaded. Check your storage and try again.';
+
+  @override
+  String get openCostGroupDetailRetry => 'Try again';
+
+  @override
+  String get openCostGroupDetailLinkedItems => 'Linked items';
+
+  @override
+  String get openCostGroupDetailNoLinkedItems =>
+      'No stock items are linked to this group yet. Link an item when adding or editing it.';
+
+  @override
+  String get openCostGroupDetailNoProductsForReload =>
+      'Link a stock item to this group before reloading its stock.';
 
   @override
   String get openCostGroupDetailNotFound => 'Cost group not found';

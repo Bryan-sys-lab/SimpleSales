@@ -13,7 +13,6 @@ import 'package:duka_pos/services/app_stage.dart';
 import 'package:duka_pos/profile/shop_profile.dart';
 import 'package:duka_pos/profile/profile_navigation.dart';
 import 'package:duka_pos/services/roles.dart';
-import '../support/harness.dart';
 
 /// Builds an [AppStageSnapshot] for a profile × role, signed in and ready.
 AppStageSnapshot snapshotFor({
@@ -72,12 +71,9 @@ void main() {
         ];
 
         for (final route in sharedRoutes) {
-          testWidgets(
+          test(
             '$route allowed under ${profile.displayName}',
-            (WidgetTester tester) async {
-              tester.useDevice(Device.compact);
-              await loadAppFonts();
-
+            () {
               final snapshot = snapshotFor(profile: profile);
               final result = appRedirect(
                 snapshot: snapshot,
@@ -105,12 +101,9 @@ void main() {
             Routes.exchangeScreen,
           ];
           for (final route in fashionRoutes) {
-            testWidgets(
+            test(
               'fashion route $route allowed',
-              (WidgetTester tester) async {
-                tester.useDevice(Device.compact);
-                await loadAppFonts();
-
+              () {
                 final snapshot = snapshotFor(profile: profile);
                 final result = appRedirect(
                   snapshot: snapshot,
@@ -136,12 +129,9 @@ void main() {
             ]);
           }
           for (final route in measuredGoodsRoutes) {
-            testWidgets(
+            test(
               'drinks route $route allowed',
-              (WidgetTester tester) async {
-                tester.useDevice(Device.compact);
-                await loadAppFonts();
-
+              () {
                 final snapshot = snapshotFor(profile: profile);
                 final result = appRedirect(
                   snapshot: snapshot,
@@ -173,12 +163,9 @@ void main() {
           }
 
           for (final route in otherRoutes) {
-            testWidgets(
+            test(
               '$route redirected under ${profile.displayName}',
-              (WidgetTester tester) async {
-                tester.useDevice(Device.compact);
-                await loadAppFonts();
-
+              () {
                 final snapshot = snapshotFor(profile: profile);
                 final result = appRedirect(
                   snapshot: snapshot,

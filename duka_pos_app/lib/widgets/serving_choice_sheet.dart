@@ -40,7 +40,7 @@
 // cashier's half-typed product name in it. The sheet hands the focus back
 // explicitly to the till's own input instead.
 
-import 'package:flutter/material.dart';
+import 'package:material_ui/material_ui.dart';
 
 import '../l10n/generated/app_localizations.dart';
 import '../models/models.dart';

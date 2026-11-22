@@ -1,4 +1,4 @@
-import 'package:flutter/material.dart';
+import 'package:material_ui/material_ui.dart';
 
 import 'primitives.dart';
 
@@ -23,10 +23,13 @@ class AppColors extends ThemeExtension<AppColors> {
     required this.onSurfaceMuted,
     required this.outline,
     required this.outlineStrong,
+    required this.primaryButton,
+    required this.onPrimaryButton,
     required this.accent,
     required this.onAccent,
     required this.accentContainer,
     required this.onAccentContainer,
+    required this.electric,
     required this.success,
     required this.successContainer,
     required this.onSuccessContainer,
@@ -81,13 +84,18 @@ class AppColors extends ThemeExtension<AppColors> {
   /// resting state. Clears WCAG 1.4.11 (3:1) in both brightnesses.
   final Color outlineStrong;
 
-  /// The single brand accent: emerald.
-  ///
-  /// One per app, locked — not a seed: every role here is authored. In daylight
-  /// it is a deep botanical green that carries text; at night it is a bright
-  /// emerald that carries text on the near-black canvas. It is also the ONLY
-  /// saturated colour in the app, which is what lets the eye find the one thing
-  /// the screen is asking the user to press.
+  /// Forest-green fill for primary buttons in both brightnesses.
+  final Color primaryButton;
+
+  /// Text and icons on [primaryButton].
+  final Color onPrimaryButton;
+
+  /// A small highlight, never a large-area background or small text on pale
+  /// surfaces.
+  final Color electric;
+
+  /// The selected-state and inline accent. Forest in light mode, electric in
+  /// dark mode so icons and links remain accessible on night surfaces.
   final Color accent;
 
   /// Text and icons on an [accent] fill.
@@ -177,21 +185,24 @@ class AppColors extends ThemeExtension<AppColors> {
         surface = Primitives.neutral100,
         surfaceSunken = Primitives.neutral94,
         surfaceRaised = Primitives.neutral100,
-        onSurface = Primitives.neutral23,
-        onSurfaceVariant = Primitives.neutral34,
+        onSurface = Primitives.textInk,
+        onSurfaceVariant = Primitives.neutral47,
         onSurfaceMuted = Primitives.neutral47,
         outline = Primitives.neutral84,
         outlineStrong = Primitives.neutral54,
-        accent = Primitives.botanical38,
+        primaryButton = Primitives.forest,
+        onPrimaryButton = Primitives.neutral100,
+        accent = Primitives.forest,
         onAccent = Primitives.neutral100,
-        accentContainer = Primitives.botanical96,
-        onAccentContainer = Primitives.botanical29,
-        success = Primitives.green47Light,
+        accentContainer = Primitives.surfaceGreen,
+        onAccentContainer = Primitives.forest,
+        electric = Primitives.electric,
+        success = Primitives.forestLight,
         successContainer = Primitives.green95Light,
-        onSuccessContainer = Primitives.green35Light,
-        warning = Primitives.amber53Light,
-        warningContainer = Primitives.amber93Light,
-        onWarningContainer = Primitives.amber45Light,
+        onSuccessContainer = Primitives.textInk,
+        warning = Primitives.coralInk,
+        warningContainer = Primitives.surfaceCoral,
+        onWarningContainer = Primitives.coralInk,
         danger = Primitives.red50Light,
         dangerContainer = Primitives.red95Light,
         onDangerContainer = Primitives.red42Light,
@@ -202,7 +213,7 @@ class AppColors extends ThemeExtension<AppColors> {
         shadow = Primitives.shadowInk10,
         mediaScrim = Primitives.scrimNight70,
         onMediaScrim = Primitives.neutral100,
-        mediaFrame = Primitives.botanical38,
+        mediaFrame = Primitives.forest,
         mpesaGreen = Primitives.mpesaGreenLight,
         airtelRed = Primitives.airtelRed,
         equitelBlue = Primitives.equitelBlueLight,
@@ -219,19 +230,19 @@ class AppColors extends ThemeExtension<AppColors> {
         onSurfaceMuted = Primitives.neutral63,
         outline = Primitives.neutral32,
         outlineStrong = Primitives.neutral45,
-        accent = Primitives.botanical58,
-        // The brand ink, not the dark canvas: the accent fill inverts to a
-        // bright emerald at night, and the ink that identifies the brand is the
-        // value its label is painted in. Contrast on #4ADE7E is 8.2:1.
-        onAccent = Primitives.neutral23,
-        accentContainer = Primitives.botanical20,
-        onAccentContainer = Primitives.botanical90,
-        success = Primitives.green66,
-        successContainer = Primitives.green18Dark,
-        onSuccessContainer = Primitives.green90Dark,
-        warning = Primitives.amber72,
-        warningContainer = Primitives.amber22Dark,
-        onWarningContainer = Primitives.amber93Dark,
+        accent = Primitives.electric,
+        primaryButton = Primitives.forestButtonDark,
+        onPrimaryButton = Primitives.neutral100,
+        onAccent = Primitives.textInk,
+        accentContainer = Primitives.surfaceGreenDark,
+        onAccentContainer = Primitives.surfaceElectricStrong,
+        electric = Primitives.electric,
+        success = Primitives.electric,
+        successContainer = Primitives.surfaceElectricDark,
+        onSuccessContainer = Primitives.surfaceElectricStrong,
+        warning = Primitives.coral,
+        warningContainer = Primitives.surfaceCoralDark,
+        onWarningContainer = Primitives.coral,
         danger = Primitives.red68,
         dangerContainer = Primitives.red22Dark,
         onDangerContainer = Primitives.red92Dark,
@@ -242,7 +253,7 @@ class AppColors extends ThemeExtension<AppColors> {
         shadow = Primitives.shadowNight40,
         mediaScrim = Primitives.scrimNight70,
         onMediaScrim = Primitives.neutral100,
-        mediaFrame = Primitives.botanical58,
+        mediaFrame = Primitives.electric,
         mpesaGreen = Primitives.mpesaGreenDark,
         airtelRed = Primitives.airtelRed,
         equitelBlue = Primitives.equitelBlueDark,
@@ -255,21 +266,24 @@ class AppColors extends ThemeExtension<AppColors> {
         surface = Primitives.neutral97,
         surfaceSunken = Primitives.neutral94,
         surfaceRaised = Primitives.neutral100,
-        onSurface = Primitives.neutral23,
-        onSurfaceVariant = Primitives.neutral34,
+        onSurface = Primitives.textInk,
+        onSurfaceVariant = Primitives.neutral47,
         onSurfaceMuted = Primitives.neutral47,
         outline = Primitives.neutral54,
-        outlineStrong = Primitives.neutral23,
-        accent = Primitives.botanical38,
+        outlineStrong = Primitives.textInk,
+        primaryButton = Primitives.forest,
+        onPrimaryButton = Primitives.neutral100,
+        accent = Primitives.forest,
         onAccent = Primitives.neutral100,
-        accentContainer = Primitives.botanical96,
-        onAccentContainer = Primitives.botanical29,
-        success = Primitives.green47Light,
+        accentContainer = Primitives.surfaceGreen,
+        onAccentContainer = Primitives.forest,
+        electric = Primitives.electric,
+        success = Primitives.forestLight,
         successContainer = Primitives.green95Light,
-        onSuccessContainer = Primitives.green35Light,
-        warning = Primitives.amber53Light,
-        warningContainer = Primitives.amber93Light,
-        onWarningContainer = Primitives.amber45Light,
+        onSuccessContainer = Primitives.textInk,
+        warning = Primitives.coralInk,
+        warningContainer = Primitives.surfaceCoral,
+        onWarningContainer = Primitives.coralInk,
         danger = Primitives.red50Light,
         dangerContainer = Primitives.red95Light,
         onDangerContainer = Primitives.red42Light,
@@ -280,7 +294,7 @@ class AppColors extends ThemeExtension<AppColors> {
         shadow = Primitives.shadowInk10,
         mediaScrim = Primitives.scrimNight70,
         onMediaScrim = Primitives.neutral100,
-        mediaFrame = Primitives.botanical38,
+        mediaFrame = Primitives.forest,
         mpesaGreen = Primitives.mpesaGreenLight,
         airtelRed = Primitives.airtelRed,
         equitelBlue = Primitives.equitelBlueLight,
@@ -298,16 +312,19 @@ class AppColors extends ThemeExtension<AppColors> {
         onSurfaceMuted = Primitives.neutral79,
         outline = Primitives.neutral79,
         outlineStrong = Primitives.neutral100,
-        accent = Primitives.botanical58,
-        onAccent = Primitives.neutral08,
-        accentContainer = Primitives.botanical20,
-        onAccentContainer = Primitives.botanical90,
-        success = Primitives.green66,
-        successContainer = Primitives.green18Dark,
-        onSuccessContainer = Primitives.green90Dark,
-        warning = Primitives.amber72,
-        warningContainer = Primitives.amber22Dark,
-        onWarningContainer = Primitives.amber93Dark,
+        accent = Primitives.electric,
+        primaryButton = Primitives.forestButtonDark,
+        onPrimaryButton = Primitives.neutral100,
+        onAccent = Primitives.textInk,
+        accentContainer = Primitives.surfaceGreenDark,
+        onAccentContainer = Primitives.surfaceElectricStrong,
+        electric = Primitives.electric,
+        success = Primitives.electric,
+        successContainer = Primitives.surfaceElectricDark,
+        onSuccessContainer = Primitives.surfaceElectricStrong,
+        warning = Primitives.coral,
+        warningContainer = Primitives.surfaceCoralDark,
+        onWarningContainer = Primitives.coral,
         danger = Primitives.red68,
         dangerContainer = Primitives.red22Dark,
         onDangerContainer = Primitives.red92Dark,
@@ -318,7 +335,7 @@ class AppColors extends ThemeExtension<AppColors> {
         shadow = Primitives.shadowNight40,
         mediaScrim = Primitives.scrimNight70,
         onMediaScrim = Primitives.neutral100,
-        mediaFrame = Primitives.botanical58,
+        mediaFrame = Primitives.electric,
         mpesaGreen = Primitives.mpesaGreenDark,
         airtelRed = Primitives.airtelRed,
         equitelBlue = Primitives.equitelBlueDark,
@@ -335,10 +352,13 @@ class AppColors extends ThemeExtension<AppColors> {
     Color? onSurfaceMuted,
     Color? outline,
     Color? outlineStrong,
+    Color? primaryButton,
+    Color? onPrimaryButton,
     Color? accent,
     Color? onAccent,
     Color? accentContainer,
     Color? onAccentContainer,
+    Color? electric,
     Color? success,
     Color? successContainer,
     Color? onSuccessContainer,
@@ -371,10 +391,13 @@ class AppColors extends ThemeExtension<AppColors> {
       onSurfaceMuted: onSurfaceMuted ?? this.onSurfaceMuted,
       outline: outline ?? this.outline,
       outlineStrong: outlineStrong ?? this.outlineStrong,
+      primaryButton: primaryButton ?? this.primaryButton,
+      onPrimaryButton: onPrimaryButton ?? this.onPrimaryButton,
       accent: accent ?? this.accent,
       onAccent: onAccent ?? this.onAccent,
       accentContainer: accentContainer ?? this.accentContainer,
       onAccentContainer: onAccentContainer ?? this.onAccentContainer,
+      electric: electric ?? this.electric,
       success: success ?? this.success,
       successContainer: successContainer ?? this.successContainer,
       onSuccessContainer: onSuccessContainer ?? this.onSuccessContainer,
@@ -419,10 +442,13 @@ class AppColors extends ThemeExtension<AppColors> {
       onSurfaceMuted: mix(onSurfaceMuted, other.onSurfaceMuted),
       outline: mix(outline, other.outline),
       outlineStrong: mix(outlineStrong, other.outlineStrong),
+      primaryButton: mix(primaryButton, other.primaryButton),
+      onPrimaryButton: mix(onPrimaryButton, other.onPrimaryButton),
       accent: mix(accent, other.accent),
       onAccent: mix(onAccent, other.onAccent),
       accentContainer: mix(accentContainer, other.accentContainer),
       onAccentContainer: mix(onAccentContainer, other.onAccentContainer),
+      electric: mix(electric, other.electric),
       success: mix(success, other.success),
       successContainer: mix(successContainer, other.successContainer),
       onSuccessContainer: mix(onSuccessContainer, other.onSuccessContainer),
@@ -460,10 +486,13 @@ class AppColors extends ThemeExtension<AppColors> {
           other.onSurfaceMuted == onSurfaceMuted &&
           other.outline == outline &&
           other.outlineStrong == outlineStrong &&
+          other.primaryButton == primaryButton &&
+          other.onPrimaryButton == onPrimaryButton &&
           other.accent == accent &&
           other.onAccent == onAccent &&
           other.accentContainer == accentContainer &&
           other.onAccentContainer == onAccentContainer &&
+          other.electric == electric &&
           other.success == success &&
           other.successContainer == successContainer &&
           other.onSuccessContainer == onSuccessContainer &&
@@ -497,10 +526,13 @@ class AppColors extends ThemeExtension<AppColors> {
         onSurfaceMuted,
         outline,
         outlineStrong,
+        primaryButton,
+        onPrimaryButton,
         accent,
         onAccent,
         accentContainer,
         onAccentContainer,
+        electric,
         success,
         successContainer,
         onSuccessContainer,

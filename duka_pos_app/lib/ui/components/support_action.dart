@@ -22,7 +22,7 @@
 // The interaction uses the shared Material button feedback and preserves the
 // full semantic/action surface for TalkBack and Switch Access.
 
-import 'package:flutter/material.dart';
+import 'package:material_ui/material_ui.dart';
 
 import '../../theme/app_colors.dart';
 

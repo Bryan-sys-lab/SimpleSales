@@ -5,7 +5,7 @@
 // supporting metrics, the quick-action chip — live here so there is one
 // component language across profiles.
 
-import 'package:flutter/material.dart';
+import 'package:material_ui/material_ui.dart';
 import 'package:flutter/physics.dart';
 import 'package:intl/intl.dart';
 
@@ -18,6 +18,7 @@ import '../theme/app_motion.dart';
 import '../theme/app_spacing.dart';
 import '../theme/typography.dart';
 import '../ui/components/status.dart';
+import '../ui/components/surface.dart';
 import '../ui/layout/page.dart';
 import '../utils/money.dart';
 import 'dashboard_sections.dart';
@@ -98,6 +99,36 @@ List<Widget> spaced(List<Widget?> children, double gap) {
     ..removeLast();
 }
 
+/// Profile-specific primary actions share one horizontally scrollable row.
+class DashboardQuickActionStrip extends StatelessWidget {
+  const DashboardQuickActionStrip({required this.actions, super.key});
+
+  final List<Widget> actions;
+
+  @override
+  Widget build(BuildContext context) {
+    final AppSpacing spacing = AppSpacing.of(context);
+    final AppLocalizations l10n = AppLocalizations.of(context);
+    final double textScale =
+        MediaQuery.textScalerOf(context).scale(1).clamp(1, 2).toDouble();
+
+    return Semantics(
+      container: true,
+      label: l10n.dashboardQuickActions,
+      child: SizedBox(
+        height: 56 * textScale,
+        child: ListView.separated(
+          scrollDirection: Axis.horizontal,
+          padding: EdgeInsets.symmetric(vertical: spacing.xxs),
+          itemCount: actions.length,
+          separatorBuilder: (_, __) => SizedBox(width: spacing.sm),
+          itemBuilder: (_, int index) => actions[index],
+        ),
+      ),
+    );
+  }
+}
+
 /// Compact business header: identity, status, date, and the business switch.
 ///
 /// No large logo, no giant greeting, no oversized top padding.
@@ -122,126 +153,105 @@ class FinancialHero extends StatelessWidget {
     final AppColors colors = AppColors.of(context);
     final AppLocalizations l10n = AppLocalizations.of(context);
 
-    return Stack(
-      children: <Widget>[
-        Positioned.fill(
-          child: Container(
-            color: colors.surfaceSunken,
-          ),
-        ),
-        Positioned.fill(
-          child: DecoratedBox(
-            decoration: BoxDecoration(
-              gradient: LinearGradient(
-                colors: <Color>[
-                  colors.canvas.withValues(alpha: 0.55),
-                  colors.canvas.withValues(alpha: 0.15),
-                ],
-                begin: Alignment.topLeft,
-                end: Alignment.bottomRight,
-              ),
-            ),
-          ),
-        ),
-        Padding(
-          padding: PageGutter.card(context),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            mainAxisSize: MainAxisSize.min,
+    return SurfaceCard(
+      padding: PageGutter.card(context),
+      accentEdge: true,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        mainAxisSize: MainAxisSize.min,
+        children: <Widget>[
+          Row(
             children: <Widget>[
-              Row(
-                children: <Widget>[
-                  Expanded(
-                    child: Text(
-                      l10n.dashboardNetSalesToday,
-                      style: AppTypography.of(context).labelMedium?.copyWith(
-                            color: colors.onSurface,
-                            fontWeight: FontWeight.w700,
-                            letterSpacing: 0.6,
-                          ),
-                    ),
-                  ),
-                  Text(
-                    l10n.dashboardPeriodToday,
-                    style: AppTypography.of(context)
-                        .labelSmall
-                        ?.copyWith(color: colors.onSurfaceMuted),
-                  ),
-                ],
-              ),
-              SizedBox(height: spacing.xs),
-              Semantics(
-                label:
-                    '${l10n.dashboardSalesLabel}: ${formatMoney(totals.total)}',
-                child: ExcludeSemantics(
-                  child: Text(
-                    formatMoney(totals.total),
-                    style: AppTypography.money(
-                      context,
-                      size: 40,
-                      weight: FontWeight.w800,
-                    ).copyWith(color: colors.onSurface),
-                  ),
-                ),
-              ),
-              SizedBox(height: spacing.sm),
-              if (totals.hasSales) ...<Widget>[
-                Row(
-                  children: <Widget>[
-                    Icon(
-                      Icons.trending_up_outlined,
-                      size: 16,
-                      color: colors.success,
-                    ),
-                    SizedBox(width: spacing.xs),
-                    Expanded(
-                      child: Text(
-                        l10n.dashboardVersusPreviousDay,
-                        style: AppTypography.of(context)
-                            .bodySmall
-                            ?.copyWith(color: colors.success),
+              Expanded(
+                child: Text(
+                  l10n.dashboardNetSalesToday,
+                  style: AppTypography.of(context).labelMedium?.copyWith(
+                        color: colors.accent,
+                        fontWeight: FontWeight.w700,
+                        letterSpacing: 0.6,
                       ),
-                    ),
-                  ],
                 ),
-              ],
-              SizedBox(height: spacing.lg),
-              Semantics(
-                button: true,
-                label:
-                    '${l10n.dashboardTransactionsLabel}: ${totals.transactions}',
-                child: InkWell(
-                  onTap: onTransactions,
-                  child: Padding(
-                    padding: PageGutter.card(context),
-                    child: Row(
-                      children: <Widget>[
-                        const Icon(Icons.receipt_long_outlined, size: 18),
-                        SizedBox(width: spacing.md),
-                        Expanded(
-                          child: Text(
-                            l10n.dashboardTransactionsLabel,
-                            style: AppTypography.of(context).bodyMedium,
-                          ),
-                        ),
-                        SizedBox(width: spacing.md),
-                        Text(
-                          '${totals.transactions}',
-                          style: AppTypography.money(
-                            context,
-                            size: 18,
-                            weight: FontWeight.w700,
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                ),
+              ),
+              Text(
+                l10n.dashboardPeriodToday,
+                style: AppTypography.of(context)
+                    .labelSmall
+                    ?.copyWith(color: colors.onSurfaceMuted),
               ),
             ],
           ),
-        ),
-      ],
+          SizedBox(height: spacing.xs),
+          Semantics(
+            label: '${l10n.dashboardSalesLabel}: ${formatMoney(totals.total)}',
+            child: ExcludeSemantics(
+              child: Text(
+                formatMoney(totals.total),
+                style: AppTypography.money(
+                  context,
+                  size: 40,
+                  weight: FontWeight.w800,
+                ).copyWith(color: colors.onSurface),
+              ),
+            ),
+          ),
+          SizedBox(height: spacing.sm),
+          if (totals.hasSales) ...<Widget>[
+            Row(
+              children: <Widget>[
+                Icon(
+                  Icons.trending_up_outlined,
+                  size: 16,
+                  color: colors.success,
+                ),
+                SizedBox(width: spacing.xs),
+                Expanded(
+                  child: Text(
+                    l10n.dashboardVersusPreviousDay,
+                    style: AppTypography.of(context)
+                        .bodySmall
+                        ?.copyWith(color: colors.onSurfaceVariant),
+                  ),
+                ),
+              ],
+            ),
+          ],
+          SizedBox(height: spacing.lg),
+          Semantics(
+            button: true,
+            label: '${l10n.dashboardTransactionsLabel}: ${totals.transactions}',
+            child: InkWell(
+              onTap: onTransactions,
+              child: Padding(
+                padding: PageGutter.card(context),
+                child: Row(
+                  children: <Widget>[
+                    Icon(Icons.receipt_long_outlined,
+                        size: 18, color: colors.onSurfaceMuted),
+                    SizedBox(width: spacing.md),
+                    Expanded(
+                      child: Text(
+                        l10n.dashboardTransactionsLabel,
+                        style: AppTypography.of(context)
+                            .bodyMedium
+                            ?.copyWith(color: colors.onSurface),
+                      ),
+                    ),
+                    SizedBox(width: spacing.md),
+                    Text(
+                      '${totals.transactions}',
+                      style: AppTypography.money(
+                        context,
+                        size: 18,
+                        weight: FontWeight.w700,
+                      ).copyWith(color: colors.onSurface),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ),
+        ],
+      ),
     );
   }
 }
@@ -478,15 +488,8 @@ class DashboardKpiCard extends StatelessWidget {
       DashboardKpiTone.info => (colors.info, colors.infoContainer),
       DashboardKpiTone.neutral => (colors.onSurface, colors.surfaceSunken),
     };
-
-    final Widget card = Container(
+    final Widget card = SurfaceCard(
       padding: EdgeInsets.all(spacing.md),
-      decoration: BoxDecoration(
-        color: colors.surface,
-        borderRadius: BorderRadius.circular(spacing.md + 4),
-        border:
-            Border.all(color: colors.onSurfaceMuted.withValues(alpha: 0.15)),
-      ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         mainAxisSize: MainAxisSize.min,
@@ -825,28 +828,14 @@ class DashboardMoneyHero extends StatelessWidget {
   Widget build(BuildContext context) {
     final AppSpacing spacing = AppSpacing.of(context);
     final AppLocalizations l10n = AppLocalizations.of(context);
-    final DashboardProfilePalette palette = DashboardProfilePalette.forProfile(
-      profile,
-      brightness: Theme.of(context).brightness,
-    );
-    final Color heroStart =
-        Color.lerp(palette.accent, Colors.black, 0.42) ?? palette.accent;
-    final Color heroEnd =
-        Color.lerp(palette.accent, Colors.black, 0.62) ?? palette.accent;
+    final AppColors colors = AppColors.of(context);
     return LayoutBuilder(
       builder: (BuildContext context, BoxConstraints constraints) {
         final double ts = dashboardTextScale(context);
         final bool stackAction = constraints.maxWidth < 420 || ts > 1.25;
-        return Container(
+        return SurfaceCard(
           padding: PageGutter.card(context),
-          decoration: BoxDecoration(
-            borderRadius: BorderRadius.circular(20),
-            gradient: LinearGradient(
-              colors: <Color>[heroStart, heroEnd],
-              begin: Alignment.topLeft,
-              end: Alignment.bottomRight,
-            ),
-          ),
+          accentEdge: true,
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
             mainAxisSize: MainAxisSize.min,
@@ -857,7 +846,7 @@ class DashboardMoneyHero extends StatelessWidget {
                     child: Text(
                       label,
                       style: AppTypography.of(context).labelMedium?.copyWith(
-                            color: const Color(0xFFB7E4D4),
+                            color: colors.accent,
                             fontWeight: FontWeight.w700,
                             letterSpacing: 0.6,
                           ),
@@ -868,7 +857,7 @@ class DashboardMoneyHero extends StatelessWidget {
                       secondaryLine!,
                       style: AppTypography.of(context)
                           .labelSmall
-                          ?.copyWith(color: const Color(0xFFB7E4D4)),
+                          ?.copyWith(color: colors.onSurfaceMuted),
                     ),
                 ],
               ),
@@ -886,16 +875,12 @@ class DashboardMoneyHero extends StatelessWidget {
                           context,
                           size: 40,
                           weight: FontWeight.w800,
-                        ).copyWith(color: Colors.white),
+                        ).copyWith(color: colors.onSurface),
                       ),
                     ),
                     SizedBox(height: spacing.sm),
                     FilledButton(
                       onPressed: onPrimaryAction,
-                      style: FilledButton.styleFrom(
-                        backgroundColor: Colors.white,
-                        foregroundColor: heroEnd,
-                      ),
                       child: Text(primaryActionLabel),
                     ),
                   ],
@@ -913,16 +898,12 @@ class DashboardMoneyHero extends StatelessWidget {
                             context,
                             size: 40,
                             weight: FontWeight.w800,
-                          ).copyWith(color: Colors.white),
+                          ).copyWith(color: colors.onSurface),
                         ),
                       ),
                     ),
                     FilledButton(
                       onPressed: onPrimaryAction,
-                      style: FilledButton.styleFrom(
-                        backgroundColor: Colors.white,
-                        foregroundColor: heroEnd,
-                      ),
                       child: Text(primaryActionLabel),
                     ),
                   ],
@@ -933,7 +914,7 @@ class DashboardMoneyHero extends StatelessWidget {
                   scopeLabel!,
                   style: AppTypography.of(context)
                       .bodySmall
-                      ?.copyWith(color: const Color(0xFFB7E4D4)),
+                      ?.copyWith(color: colors.onSurfaceMuted),
                 ),
               ],
               if (paymentMix.isNotEmpty) ...<Widget>[
@@ -948,14 +929,14 @@ class DashboardMoneyHero extends StatelessWidget {
                               vertical: spacing.xs,
                             ),
                             decoration: BoxDecoration(
-                              color: Colors.white.withValues(alpha: 0.15),
+                              color: colors.surfaceSunken,
                               borderRadius: BorderRadius.circular(999),
                             ),
                             child: Text(
                               '${row.label(l10n: l10n)} ${formatMoney(row.sales)}',
                               style: AppTypography.of(context)
                                   .labelSmall
-                                  ?.copyWith(color: Colors.white),
+                                  ?.copyWith(color: colors.onSurfaceVariant),
                             ),
                           ))
                       .toList(),
@@ -967,14 +948,14 @@ class DashboardMoneyHero extends StatelessWidget {
                   onTap: onTransactions,
                   child: Row(
                     children: <Widget>[
-                      const Icon(Icons.receipt_long_outlined,
-                          size: 18, color: Colors.white),
+                      Icon(Icons.receipt_long_outlined,
+                          size: 18, color: colors.onSurfaceMuted),
                       SizedBox(width: spacing.xs),
                       Text(
                         l10n.dashboardTransactionsLabel,
                         style: AppTypography.of(context)
                             .bodySmall
-                            ?.copyWith(color: Colors.white),
+                            ?.copyWith(color: colors.onSurface),
                       ),
                     ],
                   ),

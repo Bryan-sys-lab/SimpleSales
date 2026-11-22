@@ -1,4 +1,4 @@
-import 'package:flutter/material.dart';
+import 'package:material_ui/material_ui.dart';
 
 import '../../theme/app_colors.dart';
 import '../../theme/app_motion.dart';
@@ -221,7 +221,7 @@ class FormFieldGroup extends StatelessWidget {
 
 /// A filter pill: the shape a filter row is made of.
 ///
-/// SELECTED is a solid accent fill with the accent's own ink on top. A tonal
+/// SELECTED is a solid forest fill with white ink on top. A tonal
 /// wash of the same hue is what Material ships, and it reads as "slightly on"
 /// rather than "this is the filter you have applied" — which on a till
 /// filtering the day's takings is the difference between a filter and a
@@ -250,8 +250,9 @@ class SelectablePill extends StatelessWidget {
     final AppShapes shapes = AppShapes.of(context);
     final TextTheme type = AppTypography.of(context);
 
-    final Color fill = selected ? colors.accent : colors.surfaceSunken;
-    final Color ink = selected ? colors.onAccent : colors.onSurfaceVariant;
+    final Color fill = selected ? colors.primaryButton : colors.surfaceSunken;
+    final Color ink =
+        selected ? colors.onPrimaryButton : colors.onSurfaceVariant;
 
     return Semantics(
       button: true,
@@ -274,7 +275,7 @@ class SelectablePill extends StatelessWidget {
               decoration: BoxDecoration(
                 borderRadius: shapes.chipRadius,
                 border: Border.all(
-                  color: selected ? colors.accent : colors.outline,
+                  color: selected ? colors.primaryButton : colors.outline,
                 ),
               ),
               child: Row(
@@ -351,12 +352,12 @@ class SegmentedChoice<T> extends StatelessWidget {
           style: ButtonStyle(
             foregroundColor: WidgetStateProperty.resolveWith<Color?>(
               (Set<WidgetState> states) => states.contains(WidgetState.selected)
-                  ? colors.onAccent
+                  ? colors.onPrimaryButton
                   : colors.onSurfaceVariant,
             ),
             backgroundColor: WidgetStateProperty.resolveWith<Color?>(
               (Set<WidgetState> states) => states.contains(WidgetState.selected)
-                  ? colors.accent
+                  ? colors.primaryButton
                   : Colors.transparent,
             ),
             side: WidgetStatePropertyAll<BorderSide>(

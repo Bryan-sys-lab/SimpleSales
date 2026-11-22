@@ -11,7 +11,7 @@
 // no measured stock shows its capacity but no remaining figure, because the app
 // should not pretend to know what it has not been told.
 
-import 'package:flutter/material.dart';
+import 'package:material_ui/material_ui.dart';
 import 'package:go_router/go_router.dart';
 import 'package:provider/provider.dart';
 

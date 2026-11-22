@@ -8,7 +8,7 @@ import 'package:intl/intl.dart' as intl;
 import 'app_localizations_en.dart';
 import 'app_localizations_sw.dart';
 
-// ignore_for_file: type=lint
+// ignore_for_file: type=lint, deprecated_member_use
 
 /// Callers can lookup localized strings with an instance of AppLocalizations
 /// returned by `AppLocalizations.of(context)`.
@@ -3747,6 +3747,96 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'This account has no shop yet. Finish shop setup first.'**
   String get settingsVerifyShopMissing;
+
+  /// No description provided for @signupPaywallTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Activate your shop'**
+  String get signupPaywallTitle;
+
+  /// No description provided for @signupPaywallHeadline.
+  ///
+  /// In en, this message translates to:
+  /// **'Your shop is ready for its first month'**
+  String get signupPaywallHeadline;
+
+  /// No description provided for @signupPaywallBody.
+  ///
+  /// In en, this message translates to:
+  /// **'Your email is verified. Enter the first-month voucher from that email to activate this shop. The 30 days start when you redeem it.'**
+  String get signupPaywallBody;
+
+  /// No description provided for @signupPaywallIncludedMonth.
+  ///
+  /// In en, this message translates to:
+  /// **'One month of access, included with your new shop.'**
+  String get signupPaywallIncludedMonth;
+
+  /// No description provided for @signupPaywallVoucherLabel.
+  ///
+  /// In en, this message translates to:
+  /// **'Voucher code'**
+  String get signupPaywallVoucherLabel;
+
+  /// No description provided for @signupPaywallVoucherHint.
+  ///
+  /// In en, this message translates to:
+  /// **'SS-XXXXXXXXXXXX'**
+  String get signupPaywallVoucherHint;
+
+  /// No description provided for @signupPaywallVoucherRequired.
+  ///
+  /// In en, this message translates to:
+  /// **'Enter the voucher code from your email.'**
+  String get signupPaywallVoucherRequired;
+
+  /// No description provided for @signupPaywallVoucherInvalid.
+  ///
+  /// In en, this message translates to:
+  /// **'That voucher is invalid, expired, already used, or belongs to another email. Check it and try again.'**
+  String get signupPaywallVoucherInvalid;
+
+  /// No description provided for @signupPaywallRedeem.
+  ///
+  /// In en, this message translates to:
+  /// **'Redeem voucher'**
+  String get signupPaywallRedeem;
+
+  /// No description provided for @signupPaywallActivating.
+  ///
+  /// In en, this message translates to:
+  /// **'Activating shop'**
+  String get signupPaywallActivating;
+
+  /// No description provided for @signupPaywallWhatsApp.
+  ///
+  /// In en, this message translates to:
+  /// **'Need help? Chat with us on WhatsApp'**
+  String get signupPaywallWhatsApp;
+
+  /// No description provided for @signupPaywallSupportMessage.
+  ///
+  /// In en, this message translates to:
+  /// **'Hello, I need help activating my SimpleSales shop.'**
+  String get signupPaywallSupportMessage;
+
+  /// No description provided for @supportContactOpenFailed.
+  ///
+  /// In en, this message translates to:
+  /// **'Could not open WhatsApp. Please try again.'**
+  String get supportContactOpenFailed;
+
+  /// No description provided for @signupPaywallVoucherNote.
+  ///
+  /// In en, this message translates to:
+  /// **'The code is checked against this email and can only be used once.'**
+  String get signupPaywallVoucherNote;
+
+  /// No description provided for @paywallWhatsAppMessage.
+  ///
+  /// In en, this message translates to:
+  /// **'Hello, I need help with my SimpleSales subscription.'**
+  String get paywallWhatsAppMessage;
 
   /// No description provided for @diagnosticsTitle.
   ///
@@ -9124,6 +9214,24 @@ abstract class AppLocalizations {
   /// **'Start a sale'**
   String get dashboardSellAction;
 
+  /// No description provided for @dashboardQuickActions.
+  ///
+  /// In en, this message translates to:
+  /// **'Quick actions'**
+  String get dashboardQuickActions;
+
+  /// No description provided for @dashboardInventory.
+  ///
+  /// In en, this message translates to:
+  /// **'Inventory'**
+  String get dashboardInventory;
+
+  /// No description provided for @dashboardShiftAction.
+  ///
+  /// In en, this message translates to:
+  /// **'Shift'**
+  String get dashboardShiftAction;
+
   /// No description provided for @dashboardStockOverview.
   ///
   /// In en, this message translates to:
@@ -9549,6 +9657,48 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'Please wait while your cost groups load.'**
   String get openCostGroupsLoadingSubtitle;
+
+  /// No description provided for @openCostGroupsLoadFailed.
+  ///
+  /// In en, this message translates to:
+  /// **'Cost groups could not be loaded. Check your storage and try again.'**
+  String get openCostGroupsLoadFailed;
+
+  /// No description provided for @openCostGroupsRetry.
+  ///
+  /// In en, this message translates to:
+  /// **'Try again'**
+  String get openCostGroupsRetry;
+
+  /// No description provided for @openCostGroupDetailLoadFailed.
+  ///
+  /// In en, this message translates to:
+  /// **'This cost group could not be loaded. Check your storage and try again.'**
+  String get openCostGroupDetailLoadFailed;
+
+  /// No description provided for @openCostGroupDetailRetry.
+  ///
+  /// In en, this message translates to:
+  /// **'Try again'**
+  String get openCostGroupDetailRetry;
+
+  /// No description provided for @openCostGroupDetailLinkedItems.
+  ///
+  /// In en, this message translates to:
+  /// **'Linked items'**
+  String get openCostGroupDetailLinkedItems;
+
+  /// No description provided for @openCostGroupDetailNoLinkedItems.
+  ///
+  /// In en, this message translates to:
+  /// **'No stock items are linked to this group yet. Link an item when adding or editing it.'**
+  String get openCostGroupDetailNoLinkedItems;
+
+  /// No description provided for @openCostGroupDetailNoProductsForReload.
+  ///
+  /// In en, this message translates to:
+  /// **'Link a stock item to this group before reloading its stock.'**
+  String get openCostGroupDetailNoProductsForReload;
 
   /// No description provided for @openCostGroupDetailNotFound.
   ///

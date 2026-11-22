@@ -22,7 +22,7 @@ import 'package:duka_pos/screens/owner_setup_screen.dart';
 import 'package:duka_pos/screens/welcome_chooser_screen.dart';
 import 'package:duka_pos/services/app_state.dart';
 import 'package:flutter/services.dart';
-import 'package:flutter/material.dart';
+import 'package:material_ui/material_ui.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:provider/provider.dart';
 import 'package:provider/single_child_widget.dart';
@@ -332,7 +332,8 @@ void main() {
       // The same sentence the settings screen uses when a shop is missing on
       // this device — one phrasing for one situation, so the two screens do
       // not describe the same fix in two ways.
-      expect(find.text('Set this shop up on this device first'), findsOneWidget);
+      expect(
+          find.text('Set this shop up on this device first'), findsOneWidget);
     });
   });
 
@@ -340,7 +341,7 @@ void main() {
       (WidgetTester tester) async {
     tester.useDevice(Device.small);
     await tester.pumpApp(home: _wrap(const OwnerSetupScreen(), AppState()));
-    await tester.tap(find.text('Create shop admin account'));
+    await tester.tap(find.text('Continue to email verification'));
     await tester.pump();
     // A human sentence naming what is missing, never an exception string.
     expect(
@@ -349,6 +350,4 @@ void main() {
     );
     tester.expectNoOverflow('setup with the submit error showing');
   });
-
-
 }

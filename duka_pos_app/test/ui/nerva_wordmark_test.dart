@@ -15,7 +15,7 @@
 //   * the attribution is ONE semantics node, so it is heard as a sentence.
 
 import 'package:duka_pos/ui/brand/nerva_wordmark.dart';
-import 'package:flutter/material.dart';
+import 'package:material_ui/material_ui.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 import '../support/harness.dart';

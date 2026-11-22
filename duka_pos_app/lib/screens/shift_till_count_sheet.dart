@@ -10,7 +10,7 @@
 // rows in their head to get it is the single most common way a manual till count
 // goes wrong.
 
-import 'package:flutter/material.dart';
+import 'package:material_ui/material_ui.dart';
 import 'package:flutter/services.dart';
 
 import '../db/database_helper.dart';

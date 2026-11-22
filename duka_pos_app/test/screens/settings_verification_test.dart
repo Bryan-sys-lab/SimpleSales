@@ -154,6 +154,17 @@ void main() {
       );
     });
 
+    test('an invalid voucher is actionable at signup', () {
+      final cause = BackendService.verificationFailure(
+        failure(status: 400, code: 'VOUCHER_INVALID'),
+      );
+      expect(cause.failure, VerificationFailure.invalidVoucher);
+      expect(
+        verificationMessage(l10n, cause),
+        l10n.signupPaywallVoucherInvalid,
+      );
+    });
+
     test('no response at all means no signal', () {
       final cause = BackendService.verificationFailure(failure(status: null));
       expect(cause.failure, VerificationFailure.network);

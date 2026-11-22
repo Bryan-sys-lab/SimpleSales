@@ -1,7 +1,8 @@
 import 'dart:math' as math;
 
 import 'package:duka_pos/theme/app_colors.dart';
-import 'package:flutter/material.dart';
+import 'package:duka_pos/theme/app_gradients.dart';
+import 'package:material_ui/material_ui.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 /// WCAG 2.2 relative luminance and contrast ratio, in pure Dart.
@@ -61,6 +62,18 @@ const Map<String, ({Color fg, Color bg, double minimum, String note})>
     minimum: 4.5,
     note: 'a supporting line under a label',
   ),
+  'variant on canvas': (
+    fg: AppColorsLight.onSurfaceVariant,
+    bg: AppColorsLight.canvas,
+    minimum: 4.5,
+    note: 'supporting text on the page background',
+  ),
+  'variant on sunken': (
+    fg: AppColorsLight.onSurfaceVariant,
+    bg: AppColorsLight.surfaceSunken,
+    minimum: 4.5,
+    note: 'supporting text inside an inset surface',
+  ),
   'muted on surface': (
     fg: AppColorsLight.onSurfaceMuted,
     bg: AppColorsLight.surface,
@@ -86,6 +99,12 @@ const Map<String, ({Color fg, Color bg, double minimum, String note})>
     minimum: 4.5,
     note: 'the primary button label',
   ),
+  'onPrimaryButton on primaryButton': (
+    fg: AppColorsLight.onPrimaryButton,
+    bg: AppColorsLight.primaryButton,
+    minimum: 4.5,
+    note: 'the forest-green primary button label',
+  ),
   'onAccentContainer on accentContainer': (
     fg: AppColorsLight.onAccentContainer,
     bg: AppColorsLight.accentContainer,
@@ -97,6 +116,54 @@ const Map<String, ({Color fg, Color bg, double minimum, String note})>
     bg: AppColorsLight.surface,
     minimum: 4.5,
     note: 'an accent LINK or a selected nav label',
+  ),
+  'electric on forest gradient': (
+    fg: AppColorsLight.electric,
+    bg: Color(0xFF174B35),
+    minimum: 4.5,
+    note: 'a small electric highlight on the first hero-gradient stop',
+  ),
+  'electric on light forest gradient': (
+    fg: AppColorsLight.electric,
+    bg: Color(0xFF286447),
+    minimum: 4.5,
+    note: 'a small electric highlight on the second hero-gradient stop',
+  ),
+  'hero text on forest gradient': (
+    fg: AppColorsLight.onPrimaryButton,
+    bg: Color(0xFF174B35),
+    minimum: 4.5,
+    note: 'the dashboard total on the first hero-gradient stop',
+  ),
+  'hero text on light forest gradient': (
+    fg: AppColorsLight.onPrimaryButton,
+    bg: Color(0xFF286447),
+    minimum: 4.5,
+    note: 'the dashboard total on the second hero-gradient stop',
+  ),
+  'growth text on first gradient stop': (
+    fg: AppColorsLight.success,
+    bg: Color(0xFFE9F8D9),
+    minimum: 4.5,
+    note: 'a positive KPI value on the first light growth stop',
+  ),
+  'growth text on second gradient stop': (
+    fg: AppColorsLight.success,
+    bg: Color(0xFFD7F2B6),
+    minimum: 4.5,
+    note: 'a positive KPI value on the second light growth stop',
+  ),
+  'attention text on first gradient stop': (
+    fg: AppColorsLight.warning,
+    bg: Color(0xFFFFF0EC),
+    minimum: 4.5,
+    note: 'an attention KPI value on the first light coral stop',
+  ),
+  'attention text on second gradient stop': (
+    fg: AppColorsLight.warning,
+    bg: Color(0xFFFFDAD2),
+    minimum: 4.5,
+    note: 'an attention KPI value on the second light coral stop',
   ),
   'success on surface': (
     fg: AppColorsLight.success,
@@ -172,6 +239,12 @@ const Map<String, ({Color fg, Color bg, double minimum, String note})>
     note: 'selected vs unselected, distinguished only by colour. A greyscale '
         'user perceives exactly this luminance gap.',
   ),
+  'primary button vs surface': (
+    fg: AppColorsLight.primaryButton,
+    bg: AppColorsLight.surface,
+    minimum: 3.0,
+    note: 'the primary button boundary against a card',
+  ),
 };
 
 /// The light palette, as literals the test can name.
@@ -181,23 +254,26 @@ const Map<String, ({Color fg, Color bg, double minimum, String note})>
 /// nothing. These are the intended VALUES; if a palette change breaks one of them,
 /// this file is supposed to notice.
 abstract final class AppColorsLight {
-  static const canvas = Color(0xFFF2F4F7);
+  static const canvas = Color(0xFFF7F8F5);
   static const surface = Color(0xFFFFFFFF);
-  static const surfaceSunken = Color(0xFFE8ECF1);
-  static const onSurface = Color(0xFF2D2A26);
-  static const onSurfaceVariant = Color(0xFF414954);
-  static const onSurfaceMuted = Color(0xFF5C6673);
-  static const outlineStrong = Color(0xFF6B7480);
-  static const accent = Color(0xFF1B6B3A);
+  static const surfaceSunken = Color(0xFFF1F4F0);
+  static const onSurface = Color(0xFF17231B);
+  static const onSurfaceVariant = Color(0xFF667269);
+  static const onSurfaceMuted = Color(0xFF667269);
+  static const outlineStrong = Color(0xFF69766D);
+  static const primaryButton = Color(0xFF174B35);
+  static const onPrimaryButton = Color(0xFFFFFFFF);
+  static const accent = Color(0xFF174B35);
   static const onAccent = Color(0xFFFFFFFF);
-  static const accentContainer = Color(0xFFE4F3E9);
-  static const onAccentContainer = Color(0xFF0D3D1E);
-  static const success = Color(0xFF1A7A3A);
-  static const successContainer = Color(0xFFDCEFE1);
-  static const onSuccessContainer = Color(0xFF0D4D1E);
-  static const warning = Color(0xFF8A6508);
-  static const warningContainer = Color(0xFFFFF3E0);
-  static const onWarningContainer = Color(0xFF7A5A00);
+  static const accentContainer = Color(0xFFEAF5E9);
+  static const onAccentContainer = Color(0xFF174B35);
+  static const electric = Color(0xFFB7F34A);
+  static const success = Color(0xFF286447);
+  static const successContainer = Color(0xFFE9F8D9);
+  static const onSuccessContainer = Color(0xFF17231B);
+  static const warning = Color(0xFF8A2E24);
+  static const warningContainer = Color(0xFFFFF0EC);
+  static const onWarningContainer = Color(0xFF8A2E24);
   static const danger = Color(0xFFC0392B);
   static const dangerContainer = Color(0xFFFDEDEA);
   static const onDangerContainer = Color(0xFF8B2518);
@@ -214,24 +290,27 @@ abstract final class AppColorsLight {
 
 /// The dark palette, likewise.
 abstract final class AppColorsDark {
-  static const canvas = Color(0xFF0B0F14);
-  static const surface = Color(0xFF151A21);
-  static const surfaceSunken = Color(0xFF070A0E);
-  static const surfaceRaised = Color(0xFF1C222B);
-  static const onSurface = Color(0xFFF2F5F8);
-  static const onSurfaceVariant = Color(0xFFC4CDD8);
-  static const onSurfaceMuted = Color(0xFF97A3B2);
-  static const outlineStrong = Color(0xFF606B7A);
-  static const accent = Color(0xFF4ADE7E);
-  static const onAccent = Color(0xFF2D2A26);
-  static const accentContainer = Color(0xFF163A22);
-  static const onAccentContainer = Color(0xFF9FF0C0);
-  static const success = Color(0xFF5CE68A);
-  static const successContainer = Color(0xFF123520);
-  static const onSuccessContainer = Color(0xFF8DE8AE);
-  static const warning = Color(0xFFFFB84D);
-  static const warningContainer = Color(0xFF3A2A0C);
-  static const onWarningContainer = Color(0xFFFFE0A0);
+  static const canvas = Color(0xFF0C130E);
+  static const surface = Color(0xFF172019);
+  static const surfaceSunken = Color(0xFF111812);
+  static const surfaceRaised = Color(0xFF202A22);
+  static const onSurface = Color(0xFFF4F6F2);
+  static const onSurfaceVariant = Color(0xFFC4CEC5);
+  static const onSurfaceMuted = Color(0xFFA0ADA3);
+  static const outlineStrong = Color(0xFF738576);
+  static const primaryButton = Color(0xFF3B7755);
+  static const onPrimaryButton = Color(0xFFFFFFFF);
+  static const accent = Color(0xFFB7F34A);
+  static const onAccent = Color(0xFF17231B);
+  static const accentContainer = Color(0xFF183323);
+  static const onAccentContainer = Color(0xFFD7F2B6);
+  static const electric = Color(0xFFB7F34A);
+  static const success = Color(0xFFB7F34A);
+  static const successContainer = Color(0xFF1D3826);
+  static const onSuccessContainer = Color(0xFFD7F2B6);
+  static const warning = Color(0xFFFF806F);
+  static const warningContainer = Color(0xFF42231F);
+  static const onWarningContainer = Color(0xFFFF806F);
   static const danger = Color(0xFFFF6B5B);
   static const dangerContainer = Color(0xFF3A1814);
   static const onDangerContainer = Color(0xFFFFB3A8);
@@ -300,6 +379,11 @@ const Map<String, ({Color fg, Color bg, double minimum})> kDarkPairs =
     bg: AppColorsDark.accent,
     minimum: 4.5
   ),
+  'onPrimaryButton on primaryButton': (
+    fg: AppColorsDark.onPrimaryButton,
+    bg: AppColorsDark.primaryButton,
+    minimum: 4.5
+  ),
   'onAccentContainer on accentContainer': (
     fg: AppColorsDark.onAccentContainer,
     bg: AppColorsDark.accentContainer,
@@ -313,6 +397,46 @@ const Map<String, ({Color fg, Color bg, double minimum})> kDarkPairs =
   'accent on raised': (
     fg: AppColorsDark.accent,
     bg: AppColorsDark.surfaceRaised,
+    minimum: 4.5
+  ),
+  'electric on forest gradient': (
+    fg: AppColorsDark.electric,
+    bg: Color(0xFF174B35),
+    minimum: 4.5
+  ),
+  'electric on light forest gradient': (
+    fg: AppColorsDark.electric,
+    bg: Color(0xFF286447),
+    minimum: 4.5
+  ),
+  'hero text on forest gradient': (
+    fg: AppColorsDark.onPrimaryButton,
+    bg: Color(0xFF174B35),
+    minimum: 4.5
+  ),
+  'hero text on light forest gradient': (
+    fg: AppColorsDark.onPrimaryButton,
+    bg: Color(0xFF286447),
+    minimum: 4.5
+  ),
+  'growth text on first gradient stop': (
+    fg: AppColorsDark.success,
+    bg: Color(0xFF1D3826),
+    minimum: 4.5
+  ),
+  'growth text on second gradient stop': (
+    fg: AppColorsDark.success,
+    bg: Color(0xFF234A2C),
+    minimum: 4.5
+  ),
+  'attention text on first gradient stop': (
+    fg: AppColorsDark.warning,
+    bg: Color(0xFF42231F),
+    minimum: 4.5
+  ),
+  'attention text on second gradient stop': (
+    fg: AppColorsDark.warning,
+    bg: Color(0xFF572F29),
     minimum: 4.5
   ),
   'success on surface': (
@@ -375,9 +499,44 @@ const Map<String, ({Color fg, Color bg, double minimum})> kDarkPairs =
     bg: AppColorsDark.surfaceRaised,
     minimum: 3.0
   ),
+  'primary button vs surface': (
+    fg: AppColorsDark.primaryButton,
+    bg: AppColorsDark.surface,
+    minimum: 3.0
+  ),
 };
 
 void main() {
+  group('brand gradient treatments', () {
+    test('primary heroes use the two forest stops', () {
+      expect(
+        AppGradients.primary.colors,
+        <Color>[const Color(0xFF174B35), const Color(0xFF286447)],
+      );
+      expect(AppGradients.primary.begin, Alignment.topLeft);
+      expect(AppGradients.primary.end, Alignment.bottomRight);
+    });
+
+    test('growth and attention treatments stay soft in both themes', () {
+      expect(
+        AppGradients.growth(Brightness.light).colors,
+        <Color>[const Color(0xFFE9F8D9), const Color(0xFFD7F2B6)],
+      );
+      expect(
+        AppGradients.growth(Brightness.dark).colors,
+        <Color>[const Color(0xFF1D3826), const Color(0xFF234A2C)],
+      );
+      expect(
+        AppGradients.attention(Brightness.light).colors,
+        <Color>[const Color(0xFFFFF0EC), const Color(0xFFFFDAD2)],
+      );
+      expect(
+        AppGradients.attention(Brightness.dark).colors,
+        <Color>[const Color(0xFF42231F), const Color(0xFF572F29)],
+      );
+    });
+  });
+
   group('WCAG contrast, measured on colour values in pure Dart', () {
     kContrastPairs.forEach((
       String name,
@@ -421,10 +580,13 @@ void main() {
       expect(colors.onSurfaceVariant, AppColorsLight.onSurfaceVariant);
       expect(colors.onSurfaceMuted, AppColorsLight.onSurfaceMuted);
       expect(colors.outlineStrong, AppColorsLight.outlineStrong);
+      expect(colors.primaryButton, AppColorsLight.primaryButton);
+      expect(colors.onPrimaryButton, AppColorsLight.onPrimaryButton);
       expect(colors.accent, AppColorsLight.accent);
       expect(colors.onAccent, AppColorsLight.onAccent);
       expect(colors.accentContainer, AppColorsLight.accentContainer);
       expect(colors.onAccentContainer, AppColorsLight.onAccentContainer);
+      expect(colors.electric, AppColorsLight.electric);
       expect(colors.success, AppColorsLight.success);
       expect(colors.successContainer, AppColorsLight.successContainer);
       expect(colors.onSuccessContainer, AppColorsLight.onSuccessContainer);
@@ -446,10 +608,13 @@ void main() {
       expect(colors.onSurfaceVariant, AppColorsDark.onSurfaceVariant);
       expect(colors.onSurfaceMuted, AppColorsDark.onSurfaceMuted);
       expect(colors.outlineStrong, AppColorsDark.outlineStrong);
+      expect(colors.primaryButton, AppColorsDark.primaryButton);
+      expect(colors.onPrimaryButton, AppColorsDark.onPrimaryButton);
       expect(colors.accent, AppColorsDark.accent);
       expect(colors.onAccent, AppColorsDark.onAccent);
       expect(colors.accentContainer, AppColorsDark.accentContainer);
       expect(colors.onAccentContainer, AppColorsDark.onAccentContainer);
+      expect(colors.electric, AppColorsDark.electric);
       expect(colors.success, AppColorsDark.success);
       expect(colors.successContainer, AppColorsDark.successContainer);
       expect(colors.onSuccessContainer, AppColorsDark.onSuccessContainer);
@@ -543,27 +708,18 @@ void main() {
   });
 
   group('brand contract', () {
-    // These four values are the LAUNCHER ICON, the Android `brand_ink` colour
-    // resource, `generate_launcher_icon.py`, and the splash screen. Changing one
-    // without the others is how an app ends up with two logos. `app_brand_test`
-    // checks the generated PNGs; this checks the values the app renders with.
-    test('the app ink is the brand ink, byte for byte', () {
-      expect(const Color(0xFF2D2A26), const Color(0xFF2D2A26));
+    test('application text uses the specified primary ink', () {
       expect(
         const AppColors.light().onSurface.toARGB32(),
-        0xFF2D2A26,
-        reason: 'app ink must stay #2D2A26 — it is the launcher icon plate and '
-            'the Android brand_ink resource',
+        0xFF17231B,
       );
-      expect(const AppColors.dark().onAccent.toARGB32(), 0xFF2D2A26);
+      expect(const AppColors.dark().onAccent.toARGB32(), 0xFF17231B);
     });
 
-    test('the accent is the brand green, byte for byte', () {
+    test('primary actions use the specified forest green', () {
       expect(
-        const AppColors.light().accent.toARGB32(),
-        0xFF1B6B3A,
-        reason: 'the accent must stay #1B6B3A — the brand botanical green, '
-            'also painted into the launcher icon and the brand hero artwork',
+        const AppColors.light().primaryButton.toARGB32(),
+        0xFF174B35,
       );
     });
 
@@ -576,27 +732,31 @@ void main() {
   });
 
   group('dark is designed, not flipped', () {
-    test(
-        'the accent moves UP its own ramp, because the light brand green is '
-        'too dim for text on a dark surface', () {
+    test('the selected-state accent moves to electric green for dark surfaces',
+        () {
       const AppColors light = AppColors.light();
       const AppColors dark = AppColors.dark();
-      // `#1B6B3A` on the dark canvas is 2.71:1 — below even the 3:1
-      // non-text floor, so it cannot carry text or a boundary at night.
       expect(wcagContrast(light.accent, dark.canvas), lessThan(3));
       expect(wcagContrast(dark.accent, dark.canvas), greaterThan(4.5));
     });
 
-    test('the accent FILL inverts in dark, so a button label still clears AA',
-        () {
+    test('the electric accent fill has readable ink in dark mode', () {
       const AppColors dark = AppColors.dark();
       expect(
         wcagContrast(dark.onAccent, dark.accent),
         greaterThanOrEqualTo(4.5),
-        reason: 'dark mode inverts the accent fill to a bright green; a dark '
-            'ink label on it must still clear AA, or every primary button in '
-            'the app is unreadable at night',
+        reason:
+            'dark electric fills use dark ink so selected controls clear AA',
       );
+    });
+
+    test('dark primary buttons remain forest and meet both contrast floors',
+        () {
+      const AppColors dark = AppColors.dark();
+      expect(wcagContrast(dark.onPrimaryButton, dark.primaryButton),
+          greaterThanOrEqualTo(4.5));
+      expect(wcagContrast(dark.primaryButton, dark.surface),
+          greaterThanOrEqualTo(3));
     });
   });
 

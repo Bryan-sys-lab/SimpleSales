@@ -6,7 +6,7 @@
 // and writes them in the same dialog session, after the product. That also means
 // a variant the owner typed but then abandoned never reaches the catalogue.
 
-import 'package:flutter/material.dart';
+import 'package:material_ui/material_ui.dart';
 import 'package:flutter/services.dart';
 
 import '../db/database_helper.dart';

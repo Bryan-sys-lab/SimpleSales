@@ -236,6 +236,7 @@ jobs:
           SENTRY_DSN: ${{ secrets.SENTRY_DSN }}
           BACKEND_URL: ${{ secrets.BACKEND_URL }}
           APK_CDN_HOST: ${{ secrets.APK_CDN_HOST }}
+          WHATSAPP_CONTACT_NUMBER: ${{ secrets.WHATSAPP_CONTACT_NUMBER }}
           DEPLOYMENT_MODE: ${{ vars.DEPLOYMENT_MODE || 'local_only' }}
         run: |
           set -euo pipefail
@@ -268,12 +269,19 @@ jobs:
               ;;
           esac
 
+          whatsapp_digits="${WHATSAPP_CONTACT_NUMBER//[^0-9]/}"
+          if (( ${#whatsapp_digits} < 8 || ${#whatsapp_digits} > 15 )); then
+            echo "::error::Set WHATSAPP_CONTACT_NUMBER as a GitHub Actions secret containing a valid international phone number (8-15 digits)."
+            exit 1
+          fi
+
       - name: Build signed release APK
         shell: bash
         env:
           SENTRY_DSN: ${{ secrets.SENTRY_DSN }}
           BACKEND_URL: ${{ secrets.BACKEND_URL }}
           APK_CDN_HOST: ${{ secrets.APK_CDN_HOST }}
+          WHATSAPP_CONTACT_NUMBER: ${{ secrets.WHATSAPP_CONTACT_NUMBER }}
         run: |
           set -euo pipefail
           apk="build/app/outputs/flutter-apk/app-release.apk"
@@ -305,6 +313,7 @@ jobs:
           add_define BACKEND_URL "$BACKEND_URL"
           add_define APK_CDN_HOST "$APK_CDN_HOST"
           add_define DEPLOYMENT_MODE "${DEPLOYMENT_MODE:-local_only}"
+          add_define WHATSAPP_CONTACT_NUMBER "$WHATSAPP_CONTACT_NUMBER"
 
           echo "dart-defines injected: ${#defines[@]}"
           flutter build apk --release ${defines[@]+"${defines[@]}"}

@@ -25,7 +25,7 @@
 // cashier is on the SELL screen, and a till that cannot reach the server is
 // exactly where the owner needs to know.
 
-import 'package:flutter/material.dart';
+import 'package:material_ui/material_ui.dart';
 import 'package:provider/provider.dart';
 
 import '../../l10n/generated/app_localizations.dart';

@@ -22,7 +22,7 @@
 // `viewInsets` applied sits above the keyboard by construction — the same
 // reason the shift float sheet is a sheet.
 
-import 'package:flutter/material.dart';
+import 'package:material_ui/material_ui.dart';
 import 'package:flutter/services.dart';
 
 import '../../l10n/generated/app_localizations.dart';

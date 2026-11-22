@@ -1,4 +1,4 @@
-import 'package:flutter/material.dart';
+import 'package:material_ui/material_ui.dart';
 
 import '../profile/shop_profile.dart';
 import 'primitives.dart';
@@ -21,12 +21,12 @@ class DashboardProfilePalette {
   }) {
     final bool dark = brightness == Brightness.dark;
     // Profiles keep their own iconography and language. Shared dashboard
-    // actions and identity tints use one botanical green so the main views
+    // actions and identity tints use the shared forest palette so the main views
     // stay visually coherent with the app's brand tokens.
     return DashboardProfilePalette(
-      accent: dark ? Primitives.botanical58 : Primitives.botanical38,
-      tint: dark ? Primitives.botanical20 : Primitives.botanical96,
-      ink: dark ? Primitives.botanical90 : Primitives.botanical29,
+      accent: dark ? Primitives.electric : Primitives.forest,
+      tint: dark ? Primitives.surfaceGreenDark : Primitives.surfaceGreen,
+      ink: dark ? Primitives.surfaceElectricStrong : Primitives.forest,
     );
   }
 }

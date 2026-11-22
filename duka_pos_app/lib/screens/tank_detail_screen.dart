@@ -5,7 +5,7 @@
 // The tank's remaining volume comes from the stock ledger, not from a figure
 // the app invents: capacity and original stock do not equal measured remainder.
 
-import 'package:flutter/material.dart';
+import 'package:material_ui/material_ui.dart';
 import 'package:go_router/go_router.dart';
 import 'package:provider/provider.dart';
 

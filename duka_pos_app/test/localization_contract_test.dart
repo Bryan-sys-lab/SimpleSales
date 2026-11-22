@@ -1,4 +1,4 @@
-import 'package:flutter/material.dart';
+import 'package:material_ui/material_ui.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 import 'package:duka_pos/l10n/generated/app_localizations.dart';
@@ -51,6 +51,7 @@ void main() {
             ),
             body: Center(child: Text(l10n.marketplaceDescription)),
             bottomNavigationBar: NavigationBar(
+              onDestinationSelected: (index) {},
               destinations: <NavigationDestination>[
                 NavigationDestination(
                   icon: const Icon(Icons.home_outlined),

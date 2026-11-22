@@ -25,7 +25,7 @@
 // No silent lockout to confuse a shared till; see P0-12 for why sign-in is
 // different (credential caches).
 
-import 'package:flutter/material.dart';
+import 'package:material_ui/material_ui.dart';
 import 'package:flutter/services.dart';
 
 import '../../db/database_helper.dart';

@@ -15,7 +15,7 @@
 // there are legitimate reasons to step away from an open till (a delivery, a
 // break) and the app should not refuse to let them.
 
-import 'package:flutter/material.dart';
+import 'package:material_ui/material_ui.dart';
 import 'package:provider/provider.dart';
 
 import '../l10n/generated/app_localizations.dart';

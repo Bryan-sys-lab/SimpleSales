@@ -39,7 +39,7 @@
 // dismiss before they can sell the next thing — and a return is a thing that
 // happens in the middle of a queue.
 
-import 'package:flutter/material.dart';
+import 'package:material_ui/material_ui.dart';
 
 import '../db/database_helper.dart';
 import '../l10n/generated/app_localizations.dart';

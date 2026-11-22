@@ -4,6 +4,7 @@
 
 import 'package:duka_pos/db/database_helper.dart';
 import 'package:duka_pos/l10n/generated/app_localizations.dart';
+import 'package:duka_pos/l10n/app_localizations_config.dart';
 import 'package:duka_pos/models/models.dart';
 import 'package:duka_pos/profile/shop_profile.dart';
 import 'package:duka_pos/routing/app_redirect.dart';
@@ -15,7 +16,7 @@ import 'package:duka_pos/services/app_state.dart';
 import 'package:duka_pos/services/app_stage.dart';
 import 'package:duka_pos/services/live_channel_service.dart';
 import 'package:duka_pos/theme/app_theme.dart';
-import 'package:flutter/material.dart';
+import 'package:material_ui/material_ui.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:go_router/go_router.dart';
 import 'package:provider/provider.dart';
@@ -74,7 +75,8 @@ GoRouter _testRouter(AppState state) {
             routes: <RouteBase>[
               GoRoute(
                 path: Routes.dashboard,
-                builder: (_, __) => const _PlaceholderScreen(label: 'Dashboard'),
+                builder: (_, __) =>
+                    const _PlaceholderScreen(label: 'Dashboard'),
               ),
             ],
           ),
@@ -145,7 +147,7 @@ Future<void> _pumpShell(
       child: MaterialApp.router(
         routerConfig: router,
         theme: buildDukaLightTheme(),
-        localizationsDelegates: AppLocalizations.localizationsDelegates,
+        localizationsDelegates: appLocalizationsDelegates,
         supportedLocales: AppLocalizations.supportedLocales,
         locale: const Locale('en'),
       ),

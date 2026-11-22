@@ -1,4 +1,4 @@
-import 'package:flutter/material.dart';
+import 'package:material_ui/material_ui.dart';
 
 /// Duration ROLES and curve slots. Not numbers a widget invents.
 ///
