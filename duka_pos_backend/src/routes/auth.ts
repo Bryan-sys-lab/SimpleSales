@@ -606,7 +606,7 @@ router.post('/forgot-password', loginLimiter, asyncHandler(async (req: Request, 
   if (user) {
     // generate code, store EmailVerification? use VerificationChallenge
     const code = createVerificationCode();
-    debugCode = (process.env.NODE_ENV !== 'production' && process.env.VERIFICATION_DEBUG_CODES === 'true') ? code : undefined;
+    debugCode = debugCodesEnabled(req) ? code : undefined;
     const salt = newSalt();
     const secret = verificationSecret();
     await prisma.verificationChallenge.updateMany({ where: { email, used: false }, data: { used: true } });
@@ -770,7 +770,7 @@ router.post('/pin-reset/request', pinResetLimiter, asyncHandler(async (req: Requ
     challenge_id: challenge.id,
     email: maskEmail(email),
     expires_in_seconds: VERIFICATION_TTL_MINUTES * 60,
-    ...(process.env.NODE_ENV !== 'production' && process.env.VERIFICATION_DEBUG_CODES === 'true' && user ? { debug_code: code } : {}),
+    ...(debugCodesEnabled(req) && user ? { debug_code: code } : {}),
   });
 }));
 

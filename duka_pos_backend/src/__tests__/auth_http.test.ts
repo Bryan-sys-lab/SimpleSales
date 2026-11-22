@@ -192,6 +192,57 @@ describe('auth http', () => {
     }
   });
 
+  it('requires the staging test secret before returning password or PIN reset codes', async () => {
+    const previousEnv = {
+      nodeEnv: process.env.NODE_ENV,
+      publicApiUrl: process.env.PUBLIC_API_URL,
+      verificationDebugCodes: process.env.VERIFICATION_DEBUG_CODES,
+      stagingAuthTestSecret: process.env.STAGING_AUTH_TEST_SECRET,
+    };
+    process.env.NODE_ENV = 'production';
+    process.env.PUBLIC_API_URL = 'https://duka-pos-backend-staging.example.workers.dev';
+    process.env.VERIFICATION_DEBUG_CODES = 'true';
+    delete process.env.STAGING_AUTH_TEST_SECRET;
+    mocks.prisma.user.findUnique.mockResolvedValue({ id: 'user-1', email: 'owner@example.com' });
+    mocks.prisma.verificationChallenge.create.mockResolvedValue({ id: 'challenge-1' });
+
+    const postWithTestSecret = (path: string, ip: string, secret?: string) => {
+      const request = supertest(app).post(path).send({ email: 'owner@example.com' }).set('x-forwarded-for', ip);
+      if (secret) request.set('x-staging-auth-test-secret', secret);
+      return request;
+    };
+
+    try {
+      for (const [path, ip] of [
+        ['/auth/forgot-password', '198.51.100.21'],
+        ['/auth/pin-reset/request', '198.51.100.22'],
+      ]) {
+        const response = await postWithTestSecret(path, ip);
+        expect(response.status).toBe(200);
+        expect(response.body).not.toHaveProperty('debug_code');
+      }
+
+      process.env.STAGING_AUTH_TEST_SECRET = 'staging-ci-test-secret';
+      for (const [path, ip] of [
+        ['/auth/forgot-password', '198.51.100.23'],
+        ['/auth/pin-reset/request', '198.51.100.24'],
+      ]) {
+        const response = await postWithTestSecret(path, ip, 'staging-ci-test-secret');
+        expect(response.status).toBe(200);
+        expect(response.body.debug_code).toMatch(/^\d{6}$/);
+      }
+    } finally {
+      if (previousEnv.nodeEnv === undefined) delete process.env.NODE_ENV;
+      else process.env.NODE_ENV = previousEnv.nodeEnv;
+      if (previousEnv.publicApiUrl === undefined) delete process.env.PUBLIC_API_URL;
+      else process.env.PUBLIC_API_URL = previousEnv.publicApiUrl;
+      if (previousEnv.verificationDebugCodes === undefined) delete process.env.VERIFICATION_DEBUG_CODES;
+      else process.env.VERIFICATION_DEBUG_CODES = previousEnv.verificationDebugCodes;
+      if (previousEnv.stagingAuthTestSecret === undefined) delete process.env.STAGING_AUTH_TEST_SECRET;
+      else process.env.STAGING_AUTH_TEST_SECRET = previousEnv.stagingAuthTestSecret;
+    }
+  });
+
   it('does not expose test verification codes outside NODE_ENV=test', async () => {
     const previousNodeEnv = process.env.NODE_ENV;
     process.env.NODE_ENV = 'production';
