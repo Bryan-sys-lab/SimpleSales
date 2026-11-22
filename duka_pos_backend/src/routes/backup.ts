@@ -1,12 +1,22 @@
-import { Router } from 'express';
+import { Router, type Request } from 'express';
 import { asyncHandler, requireUser } from '../lib/http';
 import { parseBody, cloudBackupSchema } from '../lib/validation';
 import { prisma } from '../lib/prisma';
 import { requireRole } from '../middleware/auth';
-import { deleteOpaqueBackup, getOpaqueBackup, isR2Configured, putOpaqueBackup } from '../lib/r2';
+import {
+  deleteOpaqueBackup,
+  getOpaqueBackup,
+  isR2Configured,
+  putOpaqueBackup,
+  type BackupStorage,
+} from '../lib/r2';
 import { randomUUID } from 'node:crypto';
 
 const router = Router();
+
+function getBackupStorage(req: Request): BackupStorage | undefined {
+  return (req as Request & { backupStorage?: BackupStorage }).backupStorage;
+}
 
 // The payload is client-encrypted JSON. Only an owner or manager may create or
 // read a whole-shop backup; cashiers can continue selling and syncing sales.
@@ -15,6 +25,7 @@ const router = Router();
 router.post('/', requireRole('admin', 'manager'), asyncHandler(async (req, res) => {
   const { workspaceKey, payload, kind, snapshotHash } = parseBody(cloudBackupSchema, req.body);
   const tenantId = requireUser(req).tenantId;
+  const backupStorage = getBackupStorage(req);
   if (snapshotHash) {
     const existing = await prisma.cloudBackup.findFirst({
       where: { tenantId, workspaceKey, kind, snapshotHash },
@@ -22,7 +33,7 @@ router.post('/', requireRole('admin', 'manager'), asyncHandler(async (req, res) 
     });
     if (existing) return res.status(200).json(existing);
   }
-  if (!isR2Configured()) {
+  if (!isR2Configured(backupStorage)) {
     return res.status(503).json({
       error: 'Cloud backup storage is not configured',
       code: 'BACKUP_STORAGE_NOT_CONFIGURED',
@@ -30,7 +41,7 @@ router.post('/', requireRole('admin', 'manager'), asyncHandler(async (req, res) 
   }
   const id = randomUUID();
   const storageKey = `backups/${tenantId}/${encodeURIComponent(workspaceKey)}/${id}.duka`;
-  await putOpaqueBackup(storageKey, payload);
+  await putOpaqueBackup(storageKey, payload, backupStorage);
   let backup;
   try {
     backup = await prisma.cloudBackup.create({
@@ -46,7 +57,7 @@ router.post('/', requireRole('admin', 'manager'), asyncHandler(async (req, res) 
       select: { id: true, workspaceKey: true, kind: true, createdAt: true },
     });
   } catch (error) {
-    await deleteOpaqueBackup(storageKey).catch(() => undefined);
+    await deleteOpaqueBackup(storageKey, backupStorage).catch(() => undefined);
     if (snapshotHash) {
       const existing = await prisma.cloudBackup.findFirst({
         where: { tenantId, workspaceKey, kind, snapshotHash },
@@ -70,13 +81,14 @@ router.post('/', requireRole('admin', 'manager'), asyncHandler(async (req, res) 
       older
         .map((row) => row.storageKey)
         .filter((key): key is string => Boolean(key))
-        .map((key) => deleteOpaqueBackup(key).catch(() => undefined)),
+        .map((key) => deleteOpaqueBackup(key, backupStorage).catch(() => undefined)),
     );
   }
   return res.status(201).json(backup);
 }));
 
 router.get('/', requireRole('admin', 'manager'), asyncHandler(async (req, res) => {
+  const backupStorage = getBackupStorage(req);
   const workspaceKey = typeof req.query.workspaceKey === 'string' ? req.query.workspaceKey.trim() : '';
   if (!workspaceKey) return res.status(400).json({ error: 'workspaceKey is required' });
   const requestedKind = typeof req.query.kind === 'string' ? req.query.kind : 'device_bound';
@@ -89,14 +101,14 @@ router.get('/', requireRole('admin', 'manager'), asyncHandler(async (req, res) =
     select: { id: true, workspaceKey: true, kind: true, payload: true, storageKey: true, createdAt: true },
   });
   if (!backup) return res.json({ payload: null });
-  if (backup.storageKey && !isR2Configured()) {
+  if (backup.storageKey && !isR2Configured(backupStorage)) {
     return res.status(503).json({
       error: 'Cloud backup storage is not configured',
       code: 'BACKUP_STORAGE_NOT_CONFIGURED',
     });
   }
   const payload = backup.storageKey
-    ? await getOpaqueBackup(backup.storageKey)
+    ? await getOpaqueBackup(backup.storageKey, backupStorage)
     : backup.payload;
   return res.json({
     id: backup.id,

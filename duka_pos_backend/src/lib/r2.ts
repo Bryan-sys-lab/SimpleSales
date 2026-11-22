@@ -27,8 +27,11 @@ const r2 = new S3Client({
 
 const BUCKET = process.env.R2_BUCKET_NAME || 'duka-pos-profile-photos';
 
-export function isR2Configured(): boolean {
+export type BackupStorage = Pick<R2Bucket, 'put' | 'get' | 'delete'>;
+
+export function isR2Configured(backupStorage?: BackupStorage): boolean {
   return Boolean(
+    backupStorage ||
     process.env.R2_ENDPOINT?.trim() &&
     process.env.R2_ACCESS_KEY_ID?.trim() &&
     process.env.R2_SECRET_ACCESS_KEY?.trim() &&
@@ -118,7 +121,17 @@ export async function profilePhotoExists(key: string): Promise<boolean> {
 }
 
 /** Encrypted workspace backups are opaque blobs, not database fields. */
-export async function putOpaqueBackup(key: string, payload: string): Promise<void> {
+export async function putOpaqueBackup(
+  key: string,
+  payload: string,
+  backupStorage?: BackupStorage,
+): Promise<void> {
+  if (backupStorage) {
+    await backupStorage.put(key, payload, {
+      httpMetadata: { contentType: 'application/octet-stream' },
+    });
+    return;
+  }
   await r2.send(new PutObjectCommand({
     Bucket: BUCKET,
     Key: key,
@@ -127,7 +140,14 @@ export async function putOpaqueBackup(key: string, payload: string): Promise<voi
   }));
 }
 
-export async function getOpaqueBackup(key: string): Promise<string | null> {
+export async function getOpaqueBackup(
+  key: string,
+  backupStorage?: BackupStorage,
+): Promise<string | null> {
+  if (backupStorage) {
+    const object = await backupStorage.get(key);
+    return object && 'body' in object ? object.text() : null;
+  }
   try {
     const response = await r2.send(new GetObjectCommand({
       Bucket: BUCKET,
@@ -147,7 +167,14 @@ export async function getOpaqueBackup(key: string): Promise<string | null> {
   }
 }
 
-export async function deleteOpaqueBackup(key: string): Promise<void> {
+export async function deleteOpaqueBackup(
+  key: string,
+  backupStorage?: BackupStorage,
+): Promise<void> {
+  if (backupStorage) {
+    await backupStorage.delete(key);
+    return;
+  }
   await r2.send(new DeleteObjectCommand({
     Bucket: BUCKET,
     Key: key,

@@ -49,6 +49,10 @@ voucher to the auth test, and the response is gated by the
 Worker and as a GitHub Actions secret; never enable test-only verification
 responses in production.
 
+Staging encrypted-backup journeys use the isolated
+`duka-pos-backups-staging` R2 bucket through the `BACKUP_BUCKET` binding.
+Production continues using its configured `R2_*` S3-compatible secrets.
+
 On `cloudflare` pushes, the promotion job waits for backend tests and local D1
 migration/schema checks, deploys to staging, and runs its live journeys before
 production migration or deployment. It can also be started manually on that

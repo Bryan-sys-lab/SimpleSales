@@ -2,6 +2,7 @@ import express from 'express';
 import supertest from 'supertest';
 import { beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import { errorHandler } from '../lib/http';
+import type { BackupStorage } from '../lib/r2';
 
 const mocks = vi.hoisted(() => ({
   prisma: {
@@ -34,17 +35,23 @@ vi.mock('../middleware/auth', () => ({
 
 describe('cloud backup storage', () => {
   let app: express.Express;
+  let backupStorage: BackupStorage | undefined;
 
   beforeAll(async () => {
     const { default: backupRoutes } = await import('../routes/backup');
     app = express();
     app.use(express.json());
+    app.use((req, _res, next) => {
+      (req as express.Request & { backupStorage?: BackupStorage }).backupStorage = backupStorage;
+      next();
+    });
     app.use('/backups/full', backupRoutes);
     app.use(errorHandler);
   });
 
   beforeEach(() => {
     vi.clearAllMocks();
+    backupStorage = undefined;
     mocks.isR2Configured.mockReturnValue(true);
     mocks.prisma.cloudBackup.findMany.mockResolvedValue([]);
     mocks.prisma.cloudBackup.deleteMany.mockResolvedValue({ count: 0 });
@@ -66,6 +73,7 @@ describe('cloud backup storage', () => {
     expect(mocks.putOpaqueBackup).toHaveBeenCalledWith(
       expect.stringMatching(/^backups\/tenant-1\/shop%20one\/.+\.duka$/),
       'opaque-ciphertext',
+      undefined,
     );
     expect(mocks.prisma.cloudBackup.create).toHaveBeenCalledWith(expect.objectContaining({
       data: expect.objectContaining({
@@ -76,6 +84,28 @@ describe('cloud backup storage', () => {
         storageKey: expect.stringMatching(/^backups\/tenant-1\//),
       }),
     }));
+  });
+
+  it('passes the Worker R2 binding through backup writes', async () => {
+    const storage = {
+      put: vi.fn(async () => null),
+      get: vi.fn(async () => null),
+      delete: vi.fn(async () => undefined),
+    } satisfies BackupStorage;
+    backupStorage = storage;
+
+    const response = await supertest(app).post('/backups/full').send({
+      workspaceKey: 'shop one',
+      payload: 'opaque-ciphertext',
+    });
+
+    expect(response.status).toBe(201);
+    expect(mocks.isR2Configured).toHaveBeenCalledWith(storage);
+    expect(mocks.putOpaqueBackup).toHaveBeenCalledWith(
+      expect.stringMatching(/^backups\/tenant-1\/shop%20one\/.+\.duka$/),
+      'opaque-ciphertext',
+      storage,
+    );
   });
 
   it('returns the existing row when the same snapshot is retried', async () => {
@@ -138,6 +168,11 @@ describe('cloud backup storage', () => {
   });
 
   it('reads new R2-backed snapshots and legacy database snapshots', async () => {
+    backupStorage = {
+      put: vi.fn(async () => null),
+      get: vi.fn(async () => null),
+      delete: vi.fn(async () => undefined),
+    };
     mocks.prisma.cloudBackup.findFirst
       .mockResolvedValueOnce({
         id: 'new',
@@ -162,7 +197,10 @@ describe('cloud backup storage', () => {
 
     expect(r2Response.body.payload).toBe('r2-ciphertext');
     expect(legacyResponse.body.payload).toBe('legacy-ciphertext');
-    expect(mocks.getOpaqueBackup).toHaveBeenCalledWith('backups/tenant-1/shop%20one/new.duka');
+    expect(mocks.getOpaqueBackup).toHaveBeenCalledWith(
+      'backups/tenant-1/shop%20one/new.duka',
+      backupStorage,
+    );
   });
 
   it('removes retained R2 objects when metadata rows rotate out', async () => {
@@ -179,7 +217,7 @@ describe('cloud backup storage', () => {
     expect(mocks.prisma.cloudBackup.deleteMany).toHaveBeenCalledWith({
       where: { id: { in: ['old-1', 'old-2'] } },
     });
-    expect(mocks.deleteOpaqueBackup).toHaveBeenCalledWith('backups/old-1.duka');
+    expect(mocks.deleteOpaqueBackup).toHaveBeenCalledWith('backups/old-1.duka', undefined);
   });
 
   it('selects a portable backup separately from device-bound automatic copies', async () => {
