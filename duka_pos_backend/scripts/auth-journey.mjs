@@ -1,21 +1,17 @@
 import { pbkdf2Sync, randomBytes, randomUUID } from 'node:crypto';
+import { addStagingAuthTestHeader } from './staging-auth-headers.mjs';
 
 const baseUrl = (process.env.BASE_URL || 'http://localhost:3100').replace(/\/$/, '');
-const stagingAuthTestSecret = process.env.STAGING_AUTH_TEST_SECRET;
-const isStaging = new URL(baseUrl).hostname.toLowerCase() === 'duka-pos-backend-staging.brianbmk332.workers.dev';
-if (isStaging && !stagingAuthTestSecret) {
-  throw new Error('STAGING_AUTH_TEST_SECRET is required for the staging auth journey');
-}
 const fallbackCode = process.env.AUTH_TEST_CODE;
 if (fallbackCode && !/^\d{6}$/.test(fallbackCode)) {
   throw new Error('AUTH_TEST_CODE must be a six-digit non-production test value');
 }
 
 async function request(path, options = {}) {
-  const headers = { 'content-type': 'application/json', ...(options.headers || {}) };
-  if (isStaging && path === '/api/auth/link') {
-    headers['x-staging-auth-test-secret'] = stagingAuthTestSecret;
-  }
+  const headers = addStagingAuthTestHeader(baseUrl, path, {
+    'content-type': 'application/json',
+    ...(options.headers || {}),
+  });
   return fetch(`${baseUrl}${path}`, {
     ...options,
     signal: AbortSignal.timeout(10_000),

@@ -1,12 +1,17 @@
 import { randomUUID } from 'node:crypto';
+import { addStagingAuthTestHeader } from './staging-auth-headers.mjs';
 
 const baseUrl = (process.env.BASE_URL || 'http://localhost:3100').replace(/\/$/, '');
 
 async function request(path, options = {}) {
+  const headers = addStagingAuthTestHeader(baseUrl, path, {
+    'content-type': 'application/json',
+    ...(options.headers || {}),
+  });
   return fetch(`${baseUrl}${path}`, {
     ...options,
     signal: AbortSignal.timeout(10_000),
-    headers: { 'content-type': 'application/json', ...(options.headers || {}) },
+    headers,
   });
 }
 
