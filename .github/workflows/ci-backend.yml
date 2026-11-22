@@ -123,7 +123,10 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          ./node_modules/.bin/wrangler dev --local --ip 127.0.0.1 --port 8787 > wrangler.log 2>&1 &
+          ./node_modules/.bin/wrangler dev --local --ip 127.0.0.1 --port 8787 \
+            --var AUTH_JWT_SECRET:ci_auth_jwt_secret_of_at_least_32_bytes_long_xxx \
+            --var EMAIL_VERIFICATION_SECRET:ci_email_verification_secret_of_32_bytes_long \
+            > wrangler.log 2>&1 &
           worker_pid=$!
           trap 'kill "$worker_pid" 2>/dev/null || true' EXIT
 
