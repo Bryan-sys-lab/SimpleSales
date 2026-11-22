@@ -52,13 +52,10 @@ jobs:
       run:
         working-directory: duka_pos_app
     env:
-      # Fork pull requests cannot read repository secrets, so on one they never
-      # see a keystore here. Gate the release build on the secret's presence: a
-      # fork PR still asserts that analyze + test pass, but skips signing and the
-      # APK upload rather than failing the job over a missing secret. On pushes
-      # to main and same-repo PRs the secret is present and the signed release
-      # APK is built and uploaded below.
-      BUILD_RELEASE: ${{ secrets.ANDROID_KEYSTORE_BASE64 != '' }}
+      # Release artifacts need both signing material and the configured support
+      # contact number. Keep analysis and tests runnable when either secret is
+      # unavailable (including fork PRs); release.yml enforces both for publish.
+      BUILD_RELEASE: ${{ secrets.ANDROID_KEYSTORE_BASE64 != '' && secrets.WHATSAPP_CONTACT_NUMBER != '' }}
 
     steps:
       - name: Check out source
