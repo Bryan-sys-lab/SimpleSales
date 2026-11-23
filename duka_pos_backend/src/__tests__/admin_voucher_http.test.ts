@@ -224,6 +224,24 @@ describe('admin access voucher issuance', () => {
     });
   });
 
+  it('writes announcement settings with required D1 fields', async () => {
+    const response = await supertest(app).post('/admin/announcement').send({
+      title: 'Staging notice',
+      body: 'A staging-only announcement.',
+      active: false,
+    });
+
+    expect(response.status).toBe(201);
+    const settingWrites = mocks.database.batch.mock.calls[0][0].slice(0, 4);
+    expect(settingWrites).toHaveLength(4);
+    for (const statement of settingWrites) {
+      expect(statement.sql).toContain(
+        'INSERT INTO system_settings (id, key, value, updated_at)',
+      );
+      expect(statement.values).toHaveLength(4);
+    }
+  });
+
   it('requires an email when no shop owner recipient can be resolved', async () => {
     const response = await supertest(app).post('/admin/billing/vouchers').send({
       durationMonths: 1,

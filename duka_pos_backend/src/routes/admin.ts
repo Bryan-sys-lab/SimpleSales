@@ -587,11 +587,12 @@ router.post('/announcement', asyncHandler(async (req: Request, res: Response) =>
     platform_announcement_body: input.body,
     platform_announcement_active: String(input.active),
   };
+  const updatedAt = new Date().toISOString();
   await db.batch([
     ...Object.entries(announcementValues).map(([key, value]) => db.prepare(`
-      INSERT INTO system_settings (key, value) VALUES (?, ?)
-      ON CONFLICT (key) DO UPDATE SET value = excluded.value
-    `).bind(key, value)),
+      INSERT INTO system_settings (id, key, value, updated_at) VALUES (?, ?, ?, ?)
+      ON CONFLICT (key) DO UPDATE SET value = excluded.value, updated_at = excluded.updated_at
+    `).bind(crypto.randomUUID(), key, value, updatedAt)),
     prepareAdminAudit({
       adminId: req.auth?.sub ?? 'unknown',
       action: 'publish_platform_announcement',
