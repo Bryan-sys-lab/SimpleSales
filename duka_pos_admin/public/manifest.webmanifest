@@ -8,6 +8,8 @@
   "theme_color": "#07140e",
   "orientation": "portrait-primary",
   "icons": [
+    { "src": "/simpler-analytics-app-icon-192.webp", "sizes": "192x192", "type": "image/webp", "purpose": "any" },
+    { "src": "/simpler-analytics-app-icon.webp", "sizes": "512x512", "type": "image/webp", "purpose": "any maskable" },
     { "src": "/icon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any maskable" }
   ]
 }

@@ -17,7 +17,7 @@ export const metadata: Metadata = {
   other: { 'mobile-web-app-capable': 'yes' },
   icons: {
     icon: '/icon.svg',
-    apple: '/SimplerAnalytics%20Green%20Monogram%20Logo.png',
+    apple: '/simpler-analytics-app-icon.webp',
   },
   manifest: '/manifest.webmanifest',
 };

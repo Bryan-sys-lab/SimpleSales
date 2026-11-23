@@ -48,10 +48,10 @@ export default function ChurnPage() {
 
   const riskBadge = (risk: string) => {
     const variants: Record<string, string> = {
-      none: 'bg-emerald-50 text-emerald-800 border-emerald-100',
-      low: 'bg-blue-50 text-blue-800 border-blue-100',
-      medium: 'bg-amber-50 text-amber-800 border-amber-100',
-      high: 'bg-red-50 text-red-800 border-red-100',
+      none: 'bg-sage-50 text-sage-800 border-sage-200',
+      low: 'bg-electric-50 text-electric-800 border-electric-200',
+      medium: 'bg-coral-50 text-coral-800 border-coral-200',
+      high: 'bg-coral-100 text-coral-900 border-coral-300',
     };
     return variants[risk] || variants.none;
   };

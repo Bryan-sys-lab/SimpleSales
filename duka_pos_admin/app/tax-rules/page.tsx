@@ -9,9 +9,9 @@ import { EmptyState } from '@/components/empty-state';
 const inputClass = 'w-full rounded-md border border-base-300 bg-white px-3 py-2 text-sm text-base-900 shadow-sm focus:border-accent-600 focus:outline-none focus:ring-2 focus:ring-accent-100';
 
 function statusClass(status: string): string {
-  if (status === 'active' || status === 'approved') return 'bg-emerald-50 text-emerald-700';
-  if (status === 'conflicted') return 'bg-red-50 text-red-700';
-  return 'bg-amber-50 text-amber-700';
+  if (status === 'active' || status === 'approved') return 'bg-sage-50 text-sage-800';
+  if (status === 'conflicted') return 'bg-coral-50 text-coral-800';
+  return 'bg-electric-50 text-electric-800';
 }
 
 export default function TaxRulesPage() {

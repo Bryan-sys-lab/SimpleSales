@@ -6,12 +6,11 @@ An operational console for a phone-first team. Use compact summaries for scannin
 
 ## Color
 
-- Canvas: slate 50 (`#f8fafc`); surfaces: white; dark canvas: slate 950.
-- Forest action: `#166534` (accent 600), with white text. Contrast is 7.13:1 on white.
-- Forest hover/selected: `#14532d` (accent 700), with white text. Contrast is 9.11:1.
-- Deep forest text: `#052e16` on pale green `#f0fdf4` for confirmation surfaces.
-- Use red, amber, and blue for error, caution, and neutral status only; green does not communicate every positive state.
-- Focus uses a 3 px forest outline with offset. Do not rely on color alone for status.
+- Canvas: base 50 (`#f7f8f6`); surfaces: white; dark canvas: base 950.
+- Primary action: electric 700 (`#0b7544`) with white text; hover: electric 800 (`#075a38`).
+- Coral, electric, and sage each use a 50–950 ramp. Use sage for successful or completed states, electric for active or in-progress states, and coral for warnings, declines, or elevated risk. Keep neutral and unknown states on the base scale.
+- Use the transparent WebP mark with the HTML wordmark on page surfaces; use the dark-backed WebP icon for installed-app icons. Loading states animate the name and respect reduced-motion preferences.
+- Focus uses a 3 px electric outline with offset. Do not rely on color alone for status.
 
 ## Layout and type
 

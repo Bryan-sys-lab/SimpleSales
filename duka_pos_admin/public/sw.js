@@ -1,9 +1,11 @@
-const CACHE = 'simpleranalytics-v2';
+const CACHE = 'simpleranalytics-v3';
 const PRECACHE = [
   '/',
   '/manifest.webmanifest',
   '/icon.svg',
-  '/SimplerAnalytics%20Green%20Monogram%20Logo.png',
+  '/simpler-analytics-mark.webp',
+  '/simpler-analytics-app-icon-192.webp',
+  '/simpler-analytics-app-icon.webp',
 ];
 
 self.addEventListener('install', (event) => {

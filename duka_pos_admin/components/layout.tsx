@@ -1,9 +1,9 @@
 'use client';
 
-import Image from 'next/image';
 import { usePathname, useRouter } from 'next/navigation';
 import { useEffect, useState } from 'react';
 import { removeToken } from '@/lib/auth';
+import { BrandLockup } from './brand';
 import { Nav, ICONS } from './nav';
 import { ThemeToggle } from './theme-toggle';
 
@@ -148,21 +148,11 @@ export function ShellLayout({ children }: { children: React.ReactNode }) {
   }, [access, pathname, router]);
 
   return (
-    <div className="min-h-screen bg-base-50 text-base-900">
+    <div className="min-h-screen bg-base-50 text-base-900 dark:bg-base-950 dark:text-base-100">
       {/* Top bar */}
-      <header className="sticky top-0 z-40 bg-white/80 backdrop-blur-xl border-b border-base-200">
+      <header className="sticky top-0 z-40 bg-white/80 backdrop-blur-xl border-b border-base-200 dark:bg-base-900/80 dark:border-base-700">
         <div className="flex items-center justify-between h-14 px-4 md:px-6 gap-4">
-          <div className="flex items-center gap-2 shrink-0">
-            <div className="relative h-11 w-36 overflow-hidden rounded-lg bg-black">
-              <Image
-                src="/SimplerAnalytics%20Green%20Monogram%20Logo.png"
-                alt="SimplerAnalytics"
-                fill
-                sizes="144px"
-                className="object-cover"
-              />
-            </div>
-          </div>
+          <BrandLockup compact className="shrink-0" />
           {/* Desktop horizontal nav (scrollable) */}
           <nav className="hidden md:flex items-center gap-0.5 flex-1 min-w-0 overflow-x-auto scrollbar-thin">
             <Nav items={visibleItems} pathname={pathname} horizontal />
@@ -170,7 +160,7 @@ export function ShellLayout({ children }: { children: React.ReactNode }) {
           <ThemeToggle />
           <button
             onClick={handleSignOut}
-            className="shrink-0 rounded-md px-3 py-1.5 text-sm text-base-600 hover:bg-base-100 focus:outline-none focus:ring-2 focus:ring-base-900"
+            className="shrink-0 rounded-md px-3 py-1.5 text-sm text-base-600 hover:bg-base-100 focus:outline-none focus:ring-2 focus:ring-base-900 dark:text-base-300 dark:hover:bg-base-800 dark:focus:ring-electric-400"
             aria-label="Sign out"
           >
             Sign out
@@ -179,7 +169,7 @@ export function ShellLayout({ children }: { children: React.ReactNode }) {
       </header>
 
       {/* Mobile bottom bar */}
-      <nav className="md:hidden fixed bottom-0 inset-x-0 z-40 bg-white/90 backdrop-blur-xl border-t border-base-200 safe-bottom">
+      <nav className="md:hidden fixed bottom-0 inset-x-0 z-40 bg-white/90 backdrop-blur-xl border-t border-base-200 safe-bottom dark:bg-base-900/90 dark:border-base-700">
         <ul className="flex items-stretch justify-around">
           {primaryItems.map((item) => {
             const active = pathname === item.href;
@@ -213,10 +203,10 @@ export function ShellLayout({ children }: { children: React.ReactNode }) {
       {moreOpen && (
         <div className="md:hidden fixed inset-0 z-50">
           <button className="absolute inset-0 bg-base-900/40" onClick={() => setMoreOpen(false)} aria-label="Close navigation" />
-          <div role="dialog" aria-modal="true" aria-labelledby="more-navigation-title" className="absolute bottom-0 inset-x-0 bg-white rounded-t-2xl p-4 pb-8 max-h-[80vh] overflow-y-auto">
+          <div role="dialog" aria-modal="true" aria-labelledby="more-navigation-title" className="absolute bottom-0 inset-x-0 bg-white rounded-t-2xl p-4 pb-8 max-h-[80vh] overflow-y-auto dark:bg-base-900">
             <div className="flex items-center justify-between mb-3">
               <h3 id="more-navigation-title" className="font-semibold">More sections</h3>
-              <button onClick={() => setMoreOpen(false)} className="min-h-11 min-w-11 rounded-md text-base-600 hover:bg-base-100" aria-label="Close navigation">✕</button>
+              <button onClick={() => setMoreOpen(false)} className="min-h-11 min-w-11 rounded-md text-base-600 hover:bg-base-100 dark:text-base-300 dark:hover:bg-base-800" aria-label="Close navigation">✕</button>
             </div>
             <Nav items={moreItems} pathname={pathname} />
           </div>

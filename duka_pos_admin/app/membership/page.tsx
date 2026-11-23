@@ -41,6 +41,25 @@ function formatPrice(amountMinor: number, currency = 'KES') {
   return `${currency} ${(amountMinor / 100).toFixed(2)}`;
 }
 
+function statusBadgeClass(status: string) {
+  switch (status.toLowerCase()) {
+    case 'accepted':
+    case 'active':
+    case 'completed':
+      return 'badge-none';
+    case 'offered':
+    case 'offer_ready':
+      return 'badge-medium';
+    case 'closed':
+    case 'declined':
+    case 'expired':
+    case 'rejected':
+      return 'badge-high';
+    default:
+      return 'badge-low';
+  }
+}
+
 export default function MembershipPage() {
   const { can } = useAdminAccess();
   const canManage = can('membership:manage');
@@ -148,7 +167,7 @@ export default function MembershipPage() {
           </p>
         </header>
 
-        {error && <p role="alert" className="rounded-lg border border-red-200 bg-red-50 p-3 text-sm text-red-800">{error}</p>}
+        {error && <p role="alert" className="rounded-lg border border-coral-200 bg-coral-50 p-3 text-sm text-coral-900">{error}</p>}
         <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_minmax(0,1.4fr)]">
           <section className="space-y-3">
             <div className="flex items-center justify-between">
@@ -162,11 +181,11 @@ export default function MembershipPage() {
                 type="button"
                 key={request.id}
                 onClick={() => setSelectedId(request.id)}
-                className={`w-full rounded-xl border p-4 text-left ${selectedId === request.id ? 'border-accent-500 bg-accent-50' : 'border-base-200 bg-white'}`}
+                className={`w-full rounded-xl border p-4 text-left ${selectedId === request.id ? 'border-electric-500 bg-electric-50' : 'border-base-200 bg-white'}`}
               >
                 <span className="flex items-center justify-between gap-3">
                   <strong className="truncate">{request.tenant.shopName}</strong>
-                  <span className="badge badge-none">{request.status.replaceAll('_', ' ')}</span>
+                  <span className={`badge ${statusBadgeClass(request.status)}`}>{request.status.replaceAll('_', ' ')}</span>
                 </span>
                 <span className="mt-2 block text-sm text-base-600 line-clamp-2">
                   {request.features.join(', ') || request.requirements || 'No details provided'}
@@ -189,15 +208,15 @@ export default function MembershipPage() {
                   {selected.features.length > 0 && <p className="text-sm"><strong>Features:</strong> {selected.features.join(', ')}</p>}
                   {selected.requirements && <p className="whitespace-pre-wrap text-sm"><strong>Requirements:</strong> {selected.requirements}</p>}
                   {selected.agreement && (
-                    <div className="rounded-lg border border-emerald-200 bg-emerald-50 p-3 text-sm">
+                    <div className="rounded-lg border border-sage-200 bg-sage-50 p-3 text-sm">
                       Accepted agreement {selected.agreement.reference}. Its recorded terms should not be edited.
                     </div>
                   )}
                   {selected.offers.map((offer) => (
-                    <div key={offer.id} className="rounded-lg border border-base-200 p-3 text-sm">
+                    <div key={offer.id} className={`rounded-lg border p-3 text-sm ${offer.status === 'offered' ? 'border-coral-200 bg-coral-50/40' : 'border-base-200'}`}>
                       <div className="flex justify-between gap-3">
                         <strong>Offer {offer.revision}</strong>
-                        <span className="badge badge-none">{offer.status}</span>
+                        <span className={`badge ${statusBadgeClass(offer.status)}`}>{offer.status}</span>
                       </div>
                       <p className="mt-1">{formatPrice(offer.amountMinor, offer.currency)}{offer.termMonths ? ` · ${offer.termMonths} months` : ' · As agreed'}</p>
                       <p className="mt-1 text-base-600">Payment: {offer.paymentArrangement} · Renewal: {offer.renewalTerms}</p>

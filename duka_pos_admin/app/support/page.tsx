@@ -49,9 +49,9 @@ export default function SupportPage() {
 
   const statusBadge = (status: string) => {
     const variants: Record<string, string> = {
-      open: 'bg-red-50 text-red-700 border-red-100',
-      in_progress: 'bg-blue-50 text-blue-700 border-blue-100',
-      resolved: 'bg-emerald-50 text-emerald-700 border-emerald-100',
+      open: 'bg-coral-50 text-coral-800 border-coral-200',
+      in_progress: 'bg-electric-50 text-electric-800 border-electric-200',
+      resolved: 'bg-sage-50 text-sage-800 border-sage-200',
       closed: 'bg-base-200 text-base-600 border-base-300',
     };
     return variants[status] || variants.open;

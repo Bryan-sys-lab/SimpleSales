@@ -7,9 +7,9 @@ import { ShellLayout } from '@/components/layout';
 import { DataTable } from '@/components/data-table';
 
 const STATUS_STYLES: Record<string, string> = {
-  open: 'bg-amber-50 text-amber-800 border-amber-100',
-  completed: 'bg-emerald-50 text-emerald-800 border-emerald-100',
-  cancelled: 'bg-red-50 text-red-800 border-red-100',
+  open: 'bg-electric-50 text-electric-800 border-electric-200',
+  completed: 'bg-sage-50 text-sage-800 border-sage-200',
+  cancelled: 'bg-coral-50 text-coral-800 border-coral-200',
   expired: 'bg-base-100 text-base-700 border-base-200',
 };
 

@@ -72,9 +72,9 @@ export default function DiagnosticsPage() {
   }
 
   const kindColors: Record<string, string> = {
-    crash: 'bg-red-50 text-red-800 border-red-100',
-    error: 'bg-amber-50 text-amber-800 border-amber-100',
-    warning: 'bg-blue-50 text-blue-800 border-blue-100',
+    crash: 'bg-coral-100 text-coral-900 border-coral-300',
+    error: 'bg-coral-50 text-coral-800 border-coral-200',
+    warning: 'bg-electric-50 text-electric-800 border-electric-200',
   };
   const selectedEntries = selected?.crashes ?? selected?.recentCrashes ?? [];
 

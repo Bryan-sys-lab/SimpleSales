@@ -1,8 +1,8 @@
 'use client';
 
-import Image from 'next/image';
 import { useSearchParams, useRouter } from 'next/navigation';
 import { FormEvent, Suspense, useState } from 'react';
+import { BrandLockup, BrandLoader } from '@/components/brand';
 
 function LoginContent() {
   const search = useSearchParams();
@@ -35,21 +35,12 @@ function LoginContent() {
   }
 
   return (
-    <main className="flex min-h-screen items-center justify-center bg-base-50 px-4 py-10">
+    <main className="flex min-h-screen items-center justify-center bg-base-50 px-4 py-10 dark:bg-base-950">
       <div className="w-full max-w-md">
-        <div className="mb-7">
-          <div className="relative mb-5 h-24 w-full max-w-72 overflow-hidden rounded-xl bg-black">
-            <Image
-              src="/SimplerAnalytics%20Green%20Monogram%20Logo.png"
-              alt="SimplerAnalytics"
-              fill
-              priority
-              sizes="288px"
-              className="object-contain"
-            />
-          </div>
-          <h1 className="text-2xl font-semibold tracking-tight text-base-900">Sign in to SimplerAnalytics</h1>
-          <p className="mt-1 text-sm text-base-600">Sign in with your administrator credentials.</p>
+        <div className="mb-7 text-center">
+          <BrandLockup stacked className="mb-5" priority />
+          <h1 className="text-2xl font-semibold tracking-tight text-base-900 dark:text-base-100">Sign in to SimplerAnalytics</h1>
+          <p className="mt-1 text-sm text-base-600 dark:text-base-300">Sign in with your administrator credentials.</p>
         </div>
         <form onSubmit={submit} className="card space-y-5 p-6" autoComplete="off">
           <div>
@@ -69,13 +60,13 @@ function LoginContent() {
             <label className="label" htmlFor="master-token">System access token</label>
             <input id="master-token" className="input" type="password" autoComplete="current-password" required value={masterToken} onChange={(e) => setMasterToken(e.target.value)} />
           </div>}
-          {error && <p className="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-800" role="alert">{error}</p>}
+          {error && <p className="rounded-lg border border-coral-200 bg-coral-50 px-3 py-2 text-sm text-coral-900" role="alert">{error}</p>}
           <button className="btn btn-accent min-h-11 w-full" type="submit" disabled={busy}>{busy ? 'Signing in…' : 'Sign in securely'}</button>
-          <button type="button" className="w-full py-2 text-sm font-medium text-accent-800 underline-offset-4 hover:underline" onClick={() => { setDepartmentLogin((v) => !v); setError(''); }}>
+          <button type="button" className="w-full py-2 text-sm font-medium text-accent-800 underline-offset-4 hover:underline dark:text-electric-300" onClick={() => { setDepartmentLogin((v) => !v); setError(''); }}>
             {departmentLogin ? 'Use system administrator token' : 'Sign in with a department key'}
           </button>
         </form>
-        <p className="mt-4 text-center text-xs text-base-500">Access is logged. Your session renews while the dashboard is open.</p>
+        <p className="mt-4 text-center text-xs text-base-500 dark:text-base-400">Access is logged. Your session renews while the dashboard is open.</p>
       </div>
     </main>
   );
@@ -83,15 +74,6 @@ function LoginContent() {
 
 export default function LoginPage() {
   return <Suspense fallback={
-    <main className="flex min-h-screen items-center justify-center bg-base-50 px-4">
-      <Image
-        src="/SimplerAnalytics%20Green%20Monogram%20Logo.png"
-        alt="SimplerAnalytics"
-        width={240}
-        height={120}
-        priority
-        className="h-auto w-60"
-      />
-    </main>
+    <BrandLoader className="min-h-screen bg-base-50 px-4" />
   }><LoginContent /></Suspense>;
 }
