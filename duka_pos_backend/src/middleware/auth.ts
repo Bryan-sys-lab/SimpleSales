@@ -106,6 +106,9 @@ export const authMiddleware = async (req: express.Request, res: express.Response
     jti: claims.jti,
   };
 
+  const voucherBillingPath = normalizedOriginalPath === '/auth/voucher/redeem' ||
+    normalizedOriginalPath === '/auth/voucher/claim';
+
   // Provisioning / shop listing allowed for any authenticated account.
   if (req.method === 'POST' && req.path === '/tenant/provision') return next();
   if (req.method === 'GET' && req.path === '/tenant/shops') return next();
@@ -121,7 +124,8 @@ export const authMiddleware = async (req: express.Request, res: express.Response
       '/backups',
       '/payments',
     ];
-    const ok = allowedPrefixes.some((p) => normalizedOriginalPath === p || normalizedOriginalPath.startsWith(p + '/'));
+    const ok = voucherBillingPath ||
+      allowedPrefixes.some((p) => normalizedOriginalPath === p || normalizedOriginalPath.startsWith(p + '/'));
     if (!ok) {
       return res.status(403).json({ error: 'Device token not allowed', code: 'DEVICE_TOKEN_NOT_ALLOWED', requestId: req.requestId });
     }
@@ -161,7 +165,7 @@ export const authMiddleware = async (req: express.Request, res: express.Response
     };
     // Billing endpoints remain reachable while access is blocked so an owner
     // can redeem a voucher or inspect the negotiated shop terms.
-    const billingExemption = normalizedOriginalPath === '/auth/voucher/redeem' ||
+    const billingExemption = voucherBillingPath ||
       normalizedOriginalPath === '/tenant/subscription' ||
       normalizedOriginalPath.startsWith('/tenant/subscription/') ||
       normalizedOriginalPath === '/telemetry/support';

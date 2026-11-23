@@ -315,6 +315,39 @@ jobs:
           CLOUDFLARE_ACCOUNT_ID: ${{ vars.CLOUDFLARE_ACCOUNT_ID }}
         run: .\node_modules\.bin\wrangler.cmd d1 migrations apply duka-pos-staging --remote --env staging --config wrangler.jsonc
 
+      - name: Set ephemeral staging auth credentials
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ vars.CLOUDFLARE_ACCOUNT_ID }}
+        run: |
+          function New-UrlSafeSecret {
+            $bytes = New-Object byte[] 48
+            $generator = [System.Security.Cryptography.RandomNumberGenerator]::Create()
+            try {
+              $generator.GetBytes($bytes)
+            } finally {
+              $generator.Dispose()
+            }
+            return [Convert]::ToBase64String($bytes).TrimEnd('=').Replace('+', '-').Replace('/', '_')
+          }
+
+          $authTestSecret = New-UrlSafeSecret
+          $adminTestToken = New-UrlSafeSecret
+          Write-Output "::add-mask::$authTestSecret"
+          Write-Output "::add-mask::$adminTestToken"
+
+          $authTestSecret | & .\node_modules\.bin\wrangler.cmd secret put STAGING_AUTH_TEST_SECRET --env staging --config wrangler.jsonc
+          if ($LASTEXITCODE -ne 0) {
+            throw 'Could not set the ephemeral staging auth test secret.'
+          }
+          $adminTestToken | & .\node_modules\.bin\wrangler.cmd secret put SYSTEM_ADMIN_TOKEN --env staging --config wrangler.jsonc
+          if ($LASTEXITCODE -ne 0) {
+            throw 'Could not set the ephemeral staging super-admin token.'
+          }
+
+          $environment = "STAGING_AUTH_TEST_SECRET=$authTestSecret`nSTAGING_ADMIN_TEST_TOKEN=$adminTestToken`n"
+          [System.IO.File]::AppendAllText($env:GITHUB_ENV, $environment, [System.Text.UTF8Encoding]::new($false))
+
       - name: Deploy candidate to staging
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
@@ -329,7 +362,6 @@ jobs:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           CLOUDFLARE_ACCOUNT_ID: ${{ vars.CLOUDFLARE_ACCOUNT_ID }}
           STAGING_BASE_URL: ${{ vars.STAGING_BASE_URL }}
-          STAGING_AUTH_TEST_SECRET: ${{ secrets.STAGING_AUTH_TEST_SECRET }}
           BACKEND_VERSION_NAME: ${{ steps.backend-version.outputs.name }}
           BACKEND_VERSION_CODE: ${{ steps.backend-version.outputs.code }}
           BACKEND_COMMIT_SHA: ${{ steps.backend-version.outputs.commit }}

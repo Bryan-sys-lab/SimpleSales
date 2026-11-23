@@ -129,4 +129,30 @@ describe('auth middleware staff bootstrap', () => {
       expect(restricted.status).toBe(403);
       expect(restricted.body.code).toBe('DEVICE_TOKEN_NOT_ALLOWED');
     });
+
+  it('allows a newly verified device session to claim a voucher while the tenant is paywalled',
+    async () => {
+      const { authMiddleware } = await import('../middleware/auth');
+      mocks.verifyAccessToken.mockReset().mockReturnValue({ sub: 'user-1', token_use: 'device' });
+      mocks.profileFindMany.mockReset().mockResolvedValue([{
+        id: 'profile-1',
+        tenantId: 'tenant-1',
+        role: 'admin',
+        name: 'Owner',
+        tenant: { shopName: 'Shop' },
+      }]);
+      mocks.tenantSubscriptionFindUnique.mockReset().mockResolvedValue(null);
+
+      const app = express();
+      app.use('/api', authMiddleware);
+      app.post('/api/auth/voucher/claim', authMiddleware, (_req, res) => res.status(204).end());
+
+      const response = await supertest(app)
+        .post('/api/auth/voucher/claim')
+        .set('authorization', 'Bearer device-token')
+        .set('x-tenant-id', 'tenant-1');
+
+      expect(response.status).toBe(204);
+      expect(mocks.tenantSubscriptionFindUnique).not.toHaveBeenCalled();
+    });
 });

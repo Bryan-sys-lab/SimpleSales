@@ -1,5 +1,6 @@
 import { pbkdf2Sync, randomBytes, randomUUID } from 'node:crypto';
 import { addStagingAuthTestHeader } from './staging-auth-headers.mjs';
+import { issueAndClaimStagingVoucher } from './staging-voucher-journey.mjs';
 
 const baseUrl = (process.env.BASE_URL || 'http://localhost:3100').replace(/\/$/, '');
 const fallbackCode = process.env.AUTH_TEST_CODE;
@@ -63,6 +64,8 @@ const tenantHeaders = {
   authorization: `Bearer ${session.access_token}`,
   'x-tenant-id': session.tenant_id,
 };
+await issueAndClaimStagingVoucher({ baseUrl, email, tenantHeaders, request });
+
 const products = await request('/api/products', {
   headers: tenantHeaders,
 });
@@ -127,4 +130,4 @@ if (staffSession.staff_id !== staffRows.synced[0].remoteId || typeof staffSessio
   throw new Error('staff login did not return the synced staff session');
 }
 
-console.log(`Email verification without an auto-issued voucher, staff sync, and staff login passed for tenant ${session.tenant_id}`);
+console.log(`Email verification, admin-issued voucher claim, staff sync, and staff login passed for tenant ${session.tenant_id}`);

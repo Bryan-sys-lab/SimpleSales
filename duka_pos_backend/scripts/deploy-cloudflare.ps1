@@ -79,6 +79,9 @@ try {
   if (-not $env:STAGING_AUTH_TEST_SECRET) {
     throw 'Set STAGING_AUTH_TEST_SECRET for the restricted staging auth journey.'
   }
+  if (-not $env:STAGING_ADMIN_TEST_TOKEN) {
+    throw 'Set STAGING_ADMIN_TEST_TOKEN for administrator-issued staging voucher journeys.'
+  }
   $env:BASE_URL = $stagingUri.GetLeftPart([UriPartial]::Authority)
 
   Write-Host 'Checking the restricted staging auth secret name...'
@@ -92,8 +95,10 @@ try {
     throw 'Could not read the staging Worker secret-name list. Deployment was stopped.'
   }
   $stagingSecretNames = @($stagingSecrets | ForEach-Object { $_.name })
-  if ('STAGING_AUTH_TEST_SECRET' -notin $stagingSecretNames) {
-    throw 'The restricted staging auth secret is missing from the staging Worker.'
+  $requiredStagingSecrets = @('STAGING_AUTH_TEST_SECRET', 'SYSTEM_ADMIN_TOKEN')
+  $missingStagingSecrets = @($requiredStagingSecrets | Where-Object { $_ -notin $stagingSecretNames })
+  if ($missingStagingSecrets.Count -gt 0) {
+    throw "Required staging Worker secrets are missing: $($missingStagingSecrets -join ', ')."
   }
 
   Write-Host 'Running credential-free live smoke checks against staging...'

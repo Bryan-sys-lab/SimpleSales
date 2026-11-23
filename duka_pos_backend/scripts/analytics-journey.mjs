@@ -1,5 +1,6 @@
 import { randomUUID } from 'node:crypto';
 import { addStagingAuthTestHeader } from './staging-auth-headers.mjs';
+import { issueAndClaimStagingVoucher } from './staging-voucher-journey.mjs';
 
 const baseUrl = (process.env.BASE_URL || 'http://localhost:3100').replace(/\/$/, '');
 
@@ -52,6 +53,8 @@ const headers = {
   authorization: `Bearer ${session.access_token}`,
   'x-tenant-id': session.tenant_id,
 };
+await issueAndClaimStagingVoucher({ baseUrl, email, tenantHeaders: headers, request });
+
 const productResponse = await request('/api/products/sync', {
   method: 'POST',
   headers,

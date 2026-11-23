@@ -1,5 +1,6 @@
 import { createHash, randomUUID } from 'node:crypto';
 import { addStagingAuthTestHeader } from './staging-auth-headers.mjs';
+import { issueAndClaimStagingVoucher } from './staging-voucher-journey.mjs';
 
 const baseUrl = (process.env.BASE_URL || 'http://localhost:3100').replace(/\/$/, '');
 
@@ -51,6 +52,8 @@ const headers = {
   authorization: `Bearer ${session.access_token}`,
   'x-tenant-id': session.tenant_id,
 };
+await issueAndClaimStagingVoucher({ baseUrl, email, tenantHeaders: headers, request });
+
 const workspaceKey = `backup-${suffix}`;
 const snapshotHash = createHash('sha256')
   .update(`backup-journey:${suffix}`)
