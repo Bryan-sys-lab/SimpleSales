@@ -5,6 +5,7 @@ dist/
 .env
 .env.local
 .env.production
+.dev.vars*
 *.log
 newman-e2e-report.json
 node_modules/
