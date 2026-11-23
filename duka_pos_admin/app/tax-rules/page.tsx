@@ -4,6 +4,7 @@ import { FormEvent, useCallback, useEffect, useState } from 'react';
 import { fetchJson } from '@/lib/api';
 import { TaxEntityAdmin, TaxRuleAdmin } from '@/lib/types';
 import { ShellLayout } from '@/components/layout';
+import { EmptyState } from '@/components/empty-state';
 
 const inputClass = 'w-full rounded-md border border-base-300 bg-white px-3 py-2 text-sm text-base-900 shadow-sm focus:border-accent-600 focus:outline-none focus:ring-2 focus:ring-accent-100';
 
@@ -184,7 +185,7 @@ export default function TaxRulesPage() {
                     <td className="px-5 py-4">{rule.status === 'needs_review' || rule.status === 'draft' ? <button className="btn btn-secondary text-xs" onClick={() => void approveRule(rule.id)}>Approve</button> : <span className="text-xs text-base-500">{rule.approved_by ?? '—'}</span>}</td>
                   </tr>
                 ))}
-                {!loading && rules.length === 0 && <tr><td className="px-5 py-8 text-center text-base-500" colSpan={6}>No rules configured.</td></tr>}
+                {!loading && rules.length === 0 && <tr><td colSpan={6}><EmptyState message="No rules configured." compact /></td></tr>}
               </tbody>
             </table>
           </div>

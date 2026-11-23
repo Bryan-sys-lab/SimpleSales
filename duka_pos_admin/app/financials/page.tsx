@@ -4,6 +4,7 @@ import { useEffect, useState } from 'react';
 import { fetchJson } from '@/lib/api';
 import { ShellLayout } from '@/components/layout';
 import { MetricCard } from '@/components/metric-card';
+import { EmptyState } from '@/components/empty-state';
 
 type Financials = {
   revenue: number;
@@ -29,7 +30,7 @@ function BarChart({ title, data, color }: { title: string; data: { name: string;
   return (
     <div className="card p-5">
       <h3 className="text-sm font-semibold text-base-900 mb-4">{title}</h3>
-      <div className="space-y-3">
+      {data.length === 0 ? <EmptyState message="No data available" compact /> : <div className="space-y-3">
         {data.map((d) => (
           <div key={d.name}>
             <div className="flex items-center justify-between text-xs mb-1">
@@ -41,7 +42,7 @@ function BarChart({ title, data, color }: { title: string; data: { name: string;
             </div>
           </div>
         ))}
-      </div>
+      </div>}
     </div>
   );
 }
@@ -140,7 +141,7 @@ export default function FinancialsPage() {
                   </tr>
                 ))}
                 {(!data || data.expenseItems.length === 0) && (
-                  <tr><td colSpan={4} className="text-center py-6 text-base-500">No expenses</td></tr>
+                  <tr><td colSpan={4}><EmptyState message="No expenses" compact /></td></tr>
                 )}
               </tbody>
             </table>

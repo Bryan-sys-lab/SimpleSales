@@ -6,6 +6,7 @@ import { DeviceDiagnostic } from '@/lib/types';
 import { ShellLayout } from '@/components/layout';
 import { DataTable } from '@/components/data-table';
 import { useWebSocket } from '@/components/websocket-provider';
+import { EmptyState } from '@/components/empty-state';
 
 type DiagnosticsListItem = {
   id: string;
@@ -103,10 +104,7 @@ export default function DiagnosticsPage() {
           {loading ? (
             <p className="text-sm text-base-500">Loading…</p>
           ) : items.length === 0 ? (
-            <p className="text-sm text-base-400">
-              No devices have reported diagnostics yet. A till pushes its
-              failure log from the Diagnostics screen.
-            </p>
+            <EmptyState message="No devices have reported diagnostics yet. A till pushes its failure log from the Diagnostics screen." />
           ) : (
             <DataTable
               columns={[
@@ -215,9 +213,7 @@ export default function DiagnosticsPage() {
                 Failure entries
               </h3>
               {selectedEntries.length === 0 ? (
-                <div className="p-4 text-sm text-base-400 text-center">
-                  No failure entries recorded.
-                </div>
+                <EmptyState message="No failure entries recorded." compact />
               ) : (
                 <div className="divide-y divide-base-200">
                   {selectedEntries.map((entry) => (

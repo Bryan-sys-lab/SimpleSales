@@ -1,5 +1,6 @@
 'use client';
 
+import Image from 'next/image';
 import { usePathname, useRouter } from 'next/navigation';
 import { useEffect, useState } from 'react';
 import { removeToken } from '@/lib/auth';
@@ -67,6 +68,52 @@ export function ShellLayout({ children }: { children: React.ReactNode }) {
     return () => { active = false; };
   }, [router]);
 
+  useEffect(() => {
+    if (!access) return;
+    const refreshInterval = 30 * 60 * 1000;
+    let lastRefreshAt = Date.now();
+    let refreshing = false;
+
+    const refreshSession = async () => {
+      if (document.visibilityState !== 'visible' || refreshing) return;
+      refreshing = true;
+      try {
+        const response = await fetch('/api/admin/auth/refresh', {
+          method: 'POST',
+          credentials: 'same-origin',
+          cache: 'no-store',
+        });
+        if (response.status === 401) {
+          router.replace('/login');
+          return;
+        }
+        if (!response.ok) throw new Error(`Session refresh failed (${response.status})`);
+        lastRefreshAt = Date.now();
+      } catch (cause) {
+        console.error('Could not refresh the active admin session:', cause);
+      } finally {
+        refreshing = false;
+      }
+    };
+
+    const interval = window.setInterval(() => {
+      if (Date.now() - lastRefreshAt >= refreshInterval) void refreshSession();
+    }, 60 * 1000);
+    const refreshOnReturn = () => {
+      if (
+        document.visibilityState === 'visible' &&
+        Date.now() - lastRefreshAt >= refreshInterval
+      ) {
+        void refreshSession();
+      }
+    };
+    document.addEventListener('visibilitychange', refreshOnReturn);
+    return () => {
+      window.clearInterval(interval);
+      document.removeEventListener('visibilitychange', refreshOnReturn);
+    };
+  }, [access, router]);
+
   const can = (permission: string) => access?.role === 'super_admin' || Boolean(access?.permissions.includes(permission));
   const visibleItems = access ? NAV_ITEMS.filter(item => access.role === 'super_admin' || can(NAV_SCOPE[item.href])) : [];
 
@@ -104,14 +151,15 @@ export function ShellLayout({ children }: { children: React.ReactNode }) {
       <header className="sticky top-0 z-40 bg-white/80 backdrop-blur-xl border-b border-base-200">
         <div className="flex items-center justify-between h-14 px-4 md:px-6 gap-4">
           <div className="flex items-center gap-2 shrink-0">
-            <span className="rounded-lg bg-accent-600 p-1">
-              <svg className="w-5 h-5 text-white" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                <rect width="18" height="18" x="3" y="3" rx="2" ry="2"/>
-                <line x1="3" y1="9" x2="21" y2="9"/>
-                <line x1="9" y1="21" x2="9" y2="9"/>
-              </svg>
-            </span>
-            <span className="font-semibold tracking-tight text-base-900 hidden sm:inline">SimplerAnalytics</span>
+            <div className="relative h-11 w-36 overflow-hidden rounded-lg bg-black">
+              <Image
+                src="/SimplerAnalytics%20Green%20Monogram%20Logo.png"
+                alt="SimplerAnalytics"
+                fill
+                sizes="144px"
+                className="object-cover"
+              />
+            </div>
           </div>
           {/* Desktop horizontal nav (scrollable) */}
           <nav className="hidden md:flex items-center gap-0.5 flex-1 min-w-0 overflow-x-auto scrollbar-thin">

@@ -2,7 +2,7 @@
   "name": "duka_pos_admin",
   "version": "1.0.0",
   "private": true,
-  "description": "Duka POS Systems Admin web dashboard — Next.js App Router",
+  "description": "SimplerAnalytics administration dashboard — Next.js App Router",
   "scripts": {
     "dev": "next dev",
     "build": "next build",

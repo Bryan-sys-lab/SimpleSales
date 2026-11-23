@@ -6,6 +6,7 @@ import { DashboardStats, Tenant } from '@/lib/types';
 import { ShellLayout } from '@/components/layout';
 import { MetricCard } from '@/components/metric-card';
 import { DataTable } from '@/components/data-table';
+import { EmptyState } from '@/components/empty-state';
 
 export default function DashboardPage() {
   const [stats, setStats] = useState<DashboardStats | null>(null);
@@ -82,7 +83,7 @@ export default function DashboardPage() {
                 </div>
               ))}
               {Object.keys(stats?.churnByRisk ?? {}).length === 0 && (
-                <p className="text-sm text-base-400">No churn data</p>
+                <EmptyState message="No churn data" compact />
               )}
             </div>
           </div>
@@ -128,7 +129,7 @@ export default function DashboardPage() {
                   </div>
                 );
               })}
-              {Object.keys(sys?.byTenant ?? {}).length === 0 && <p className="text-sm text-base-400">No payment data</p>}
+              {Object.keys(sys?.byTenant ?? {}).length === 0 && <EmptyState message="No payment data" compact />}
             </div>
           </div>
 

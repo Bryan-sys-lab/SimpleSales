@@ -3,6 +3,7 @@
 import { useEffect, useState } from 'react';
 import { fetchJson } from '@/lib/api';
 import { ShellLayout } from '@/components/layout';
+import { EmptyState } from '@/components/empty-state';
 
 type ExpenseItem = { id: string; category: string; description: string; amount: number; date: string };
 
@@ -89,7 +90,7 @@ export default function ExpensesPage() {
                     <td className="text-sm text-base-500">{new Date(e.date).toLocaleDateString()}</td>
                   </tr>
                 ))}
-                {items.length === 0 && !loading && <tr><td colSpan={4} className="text-center py-6 text-base-500">No expenses</td></tr>}
+                {items.length === 0 && !loading && <tr><td colSpan={4}><EmptyState message="No expenses" compact /></td></tr>}
               </tbody>
             </table>
           </div>

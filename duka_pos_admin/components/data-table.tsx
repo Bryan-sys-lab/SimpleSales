@@ -1,6 +1,7 @@
 'use client';
 
 import { useCallback, useMemo, useState } from 'react';
+import { EmptyState } from '@/components/empty-state';
 
 type SortDirection = 'asc' | 'desc';
 
@@ -99,8 +100,8 @@ export function DataTable<T>({
           <tbody>
             {pageData.length === 0 ? (
               <tr>
-                <td colSpan={columns.length} className="text-center py-6 text-base-500">
-                  {emptyMessage}
+                <td colSpan={columns.length} className="text-center">
+                  <EmptyState message={emptyMessage} compact />
                 </td>
               </tr>
             ) : (
@@ -131,7 +132,9 @@ export function DataTable<T>({
       </div>
       <div className="space-y-3 md:hidden" aria-label="Records">
         {pageData.length === 0 ? (
-          <div className="rounded-xl border border-base-200 bg-white px-4 py-8 text-center text-sm text-base-500">{emptyMessage}</div>
+          <div className="rounded-xl border border-base-200 bg-white px-4">
+            <EmptyState message={emptyMessage} compact />
+          </div>
         ) : pageData.map((row) => {
           const key = rowKey(row);
           const primary = columns.slice(0, Math.min(columns.length, 2));

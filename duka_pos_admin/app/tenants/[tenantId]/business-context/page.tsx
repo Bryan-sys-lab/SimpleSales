@@ -5,6 +5,7 @@ import { useParams } from 'next/navigation';
 import { useEffect, useState } from 'react';
 import { ShellLayout } from '@/components/layout';
 import { fetchJson } from '@/lib/api';
+import { EmptyState } from '@/components/empty-state';
 
 type Context = {
   appProfile: string;
@@ -50,7 +51,7 @@ export default function BusinessContextPage() {
     <main className="mx-auto max-w-4xl space-y-5">
       <Link href="/tenants" className="inline-flex min-h-11 items-center text-sm font-medium text-accent-800 underline">← Back to tenants</Link>
       {error && <div role="alert" className="rounded-xl border border-red-200 bg-red-50 p-4 text-sm text-red-900">{error}</div>}
-      {!data && !error && <div className="card p-5 text-sm text-base-600" aria-live="polite">Loading business details…</div>}
+      {!data && !error && <div className="card"><EmptyState message="Loading business details…" /></div>}
       {data && <>
         <header className="card space-y-2 p-5">
           <p className="text-xs font-semibold uppercase tracking-wide text-accent-800">Tenant operational record</p>
@@ -58,8 +59,8 @@ export default function BusinessContextPage() {
           <p className="text-sm leading-6 text-base-600">These details describe this shop’s POS setup and business activity. They are operational tenant data and are not a commercial contribution or proof of data sharing consent.</p>
         </header>
         {!context ? <section className="card p-5">
-          <h2 className="font-semibold text-base-900">No business details recorded</h2>
-          <p className="mt-1 text-sm text-base-600">The shop has not synced optional business details.</p>
+          <h2 className="sr-only">No business details recorded</h2>
+          <EmptyState message="The shop has not synced optional business details." />
         </section> : <>
           <section className="card space-y-4 p-5">
             <h2 className="text-lg font-semibold text-base-900">Classification</h2>

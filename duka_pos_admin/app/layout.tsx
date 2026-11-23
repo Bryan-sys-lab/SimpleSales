@@ -6,7 +6,7 @@ import { ServiceWorkerRegistrar } from '@/components/sw-registrar';
 
 export const metadata: Metadata = {
   title: 'SimplerAnalytics',
-  description: 'Mobile-first analytics dashboard for tenant shops',
+  description: 'Analytics and administration platform for shops',
   applicationName: 'SimplerAnalytics',
   appleWebApp: {
     capable: true,
@@ -17,13 +17,13 @@ export const metadata: Metadata = {
   other: { 'mobile-web-app-capable': 'yes' },
   icons: {
     icon: '/icon.svg',
-    apple: '/icon.svg',
+    apple: '/SimplerAnalytics%20Green%20Monogram%20Logo.png',
   },
   manifest: '/manifest.webmanifest',
 };
 
 export const viewport: Viewport = {
-  themeColor: '#a86f0a',
+  themeColor: '#07140e',
   width: 'device-width',
   initialScale: 1,
   maximumScale: 5,

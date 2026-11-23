@@ -4,6 +4,7 @@ import { useCallback, useEffect, useState } from 'react';
 import { fetchJson } from '@/lib/api';
 import { TaxComplianceReturn } from '@/lib/types';
 import { ShellLayout } from '@/components/layout';
+import { EmptyState } from '@/components/empty-state';
 
 const inputClass = 'rounded-md border border-base-300 bg-white px-3 py-2 text-sm text-base-900 shadow-sm focus:border-accent-600 focus:outline-none focus:ring-2 focus:ring-accent-100';
 
@@ -56,7 +57,7 @@ function ComplianceTable({ rows }: { rows: TaxComplianceReturn[] }) {
               <td className="px-5 py-4 text-xs text-base-500">{new Date(row.updated_at).toLocaleString()}</td>
             </tr>
           ))}
-          {rows.length === 0 && <tr><td className="px-5 py-8 text-center text-base-500" colSpan={5}>No period evidence matches this filter.</td></tr>}
+          {rows.length === 0 && <tr><td colSpan={5}><EmptyState message="No period evidence matches this filter." compact /></td></tr>}
         </tbody>
       </table>
     </div>

@@ -1,16 +1,4 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128" width="128" height="128">
-  <rect width="128" height="128" rx="28" fill="#a86f0a"/>
-  <g fill="none" stroke="#f7f8f6" stroke-width="8" stroke-linecap="round" stroke-linejoin="round">
-    <path d="M24 92 L44 68 L64 76 L88 44 L104 52"/>
-    <circle cx="44" cy="68" r="5" fill="#f7f8f6" stroke="none"/>
-    <circle cx="64" cy="76" r="5" fill="#f7f8f6" stroke="none"/>
-    <circle cx="88" cy="44" r="5" fill="#f7f8f6" stroke="none"/>
-    <circle cx="104" cy="52" r="5" fill="#f7f8f6" stroke="none"/>
-  </g>
-  <g fill="#f7f8f6" opacity="0.35">
-    <rect x="24" y="96" width="12" height="12" rx="2"/>
-    <rect x="44" y="88" width="12" height="20" rx="2"/>
-    <rect x="64" y="80" width="12" height="28" rx="2"/>
-    <rect x="84" y="70" width="12" height="38" rx="2"/>
-  </g>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512">
+  <rect width="512" height="512" rx="104" fill="#07140e"/>
+  <image href="/SimplerAnalytics%20Green%20Monogram%20Logo.png" width="512" height="512" preserveAspectRatio="xMidYMid meet"/>
 </svg>

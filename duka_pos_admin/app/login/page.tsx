@@ -1,16 +1,17 @@
 'use client';
 
+import Image from 'next/image';
 import { useSearchParams, useRouter } from 'next/navigation';
 import { FormEvent, Suspense, useState } from 'react';
 
 function LoginContent() {
   const search = useSearchParams();
   const router = useRouter();
-  const [email, setEmail] = useState('brian@nerva.co.ke');
+  const [email, setEmail] = useState('');
   const [masterToken, setMasterToken] = useState('');
   const [phone, setPhone] = useState('');
   const [key, setKey] = useState('');
-  const [departmentLogin, setDepartmentLogin] = useState(false);
+  const [departmentLogin, setDepartmentLogin] = useState(true);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
 
@@ -37,14 +38,23 @@ function LoginContent() {
     <main className="flex min-h-screen items-center justify-center bg-base-50 px-4 py-10">
       <div className="w-full max-w-md">
         <div className="mb-7">
-          <span className="mb-4 inline-flex rounded-xl bg-accent-700 p-2.5 text-white shadow-sm" aria-hidden="true">D</span>
-          <h1 className="text-2xl font-semibold tracking-tight text-base-900">Duka platform admin</h1>
+          <div className="relative mb-5 h-24 w-full max-w-72 overflow-hidden rounded-xl bg-black">
+            <Image
+              src="/SimplerAnalytics%20Green%20Monogram%20Logo.png"
+              alt="SimplerAnalytics"
+              fill
+              priority
+              sizes="288px"
+              className="object-contain"
+            />
+          </div>
+          <h1 className="text-2xl font-semibold tracking-tight text-base-900">Sign in to SimplerAnalytics</h1>
           <p className="mt-1 text-sm text-base-600">Sign in with your administrator credentials.</p>
         </div>
-        <form onSubmit={submit} className="card space-y-5 p-6">
+        <form onSubmit={submit} className="card space-y-5 p-6" autoComplete="off">
           <div>
             <label className="label" htmlFor="email">Work email</label>
-            <input id="email" className="input" type="email" autoComplete="username" required value={email} onChange={(e) => setEmail(e.target.value)} />
+            <input id="email" name="admin-login-email" className="input" type="email" autoComplete="off" autoCapitalize="none" spellCheck={false} inputMode="email" required value={email} onChange={(e) => setEmail(e.target.value)} />
           </div>
           {departmentLogin ? <>
             <div>
@@ -65,12 +75,23 @@ function LoginContent() {
             {departmentLogin ? 'Use system administrator token' : 'Sign in with a department key'}
           </button>
         </form>
-        <p className="mt-4 text-center text-xs text-base-500">Access is logged. Sessions expire after one hour.</p>
+        <p className="mt-4 text-center text-xs text-base-500">Access is logged. Your session renews while the dashboard is open.</p>
       </div>
     </main>
   );
 }
 
 export default function LoginPage() {
-  return <Suspense fallback={<div className="min-h-screen bg-base-50" />}><LoginContent /></Suspense>;
+  return <Suspense fallback={
+    <main className="flex min-h-screen items-center justify-center bg-base-50 px-4">
+      <Image
+        src="/SimplerAnalytics%20Green%20Monogram%20Logo.png"
+        alt="SimplerAnalytics"
+        width={240}
+        height={120}
+        priority
+        className="h-auto w-60"
+      />
+    </main>
+  }><LoginContent /></Suspense>;
 }

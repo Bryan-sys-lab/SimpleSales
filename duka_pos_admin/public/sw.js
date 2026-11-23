@@ -1,5 +1,10 @@
-const CACHE = 'simpleranalytics-v1';
-const PRECACHE = ['/', '/manifest.webmanifest', '/icon.svg'];
+const CACHE = 'simpleranalytics-v2';
+const PRECACHE = [
+  '/',
+  '/manifest.webmanifest',
+  '/icon.svg',
+  '/SimplerAnalytics%20Green%20Monogram%20Logo.png',
+];
 
 self.addEventListener('install', (event) => {
   event.waitUntil(caches.open(CACHE).then((c) => c.addAll(PRECACHE)).catch(() => {}));
