@@ -24,6 +24,7 @@ const NAV_ITEMS: import('./nav').NavItem[] = [
   { href: '/financials', label: 'Revenue & costs', icon: 'dashboard' },
   { href: '/expenses', label: 'Expenses settings', icon: 'commercial-quality' },
   { href: '/commercial-policy', label: 'Commercial policy', icon: 'commercial-policy' },
+  { href: '/data-intelligence', label: 'Data Intelligence', icon: 'commercial-quality' },
   { href: '/commercial-ledger', label: 'Contribution ledger', icon: 'commercial-ledger' },
   { href: '/commercial-quality', label: 'Data quality', icon: 'commercial-quality' },
   { href: '/support', label: 'Support', icon: 'support' },
@@ -39,6 +40,7 @@ const NAV_SCOPE: Record<string, string> = {
   '/billing':'configuration:read','/financials':'analytics:read','/expenses':'analytics:read',
   '/membership':'membership:read',
   '/commercial-policy':'commercial:read','/commercial-ledger':'commercial:read','/commercial-quality':'commercial:read',
+  '/data-intelligence':'commercial:read',
   '/support':'support:read','/audit':'audit:read','/diagnostics':'diagnostics:read','/announcements':'configuration:read',
 };
 type AdminAccess = { email: string; role: string; department: string; permissions: string[]; canRecruit: boolean; canMintKeys: boolean; canAssignTasks: boolean };
