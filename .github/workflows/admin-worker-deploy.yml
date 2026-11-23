@@ -50,6 +50,15 @@ jobs:
       - name: Validate deployment bundle
         run: npx cf deploy --prebuilt --mode production --dry-run
 
+      - name: Retain prebuilt Worker bundle
+        uses: actions/upload-artifact@v4
+        with:
+          name: admin-worker-build
+          path: duka_pos_admin/.cloudflare/output
+          include-hidden-files: true
+          if-no-files-found: error
+          retention-days: 1
+
       - name: Deploy production Worker
         env:
           CLOUDFLARE_ACCOUNT_ID: ${{ vars.CLOUDFLARE_ACCOUNT_ID }}
