@@ -10,10 +10,17 @@ const row = (record: Partial<Parameters<typeof aggregateCommercialRows>[0]> = {}
 
 describe('commercial disclosure controls', () => {
   it('suppresses groups until both contributor and transaction thresholds pass', () => {
-    const suppressed = aggregateCommercialRows([row({ transactionCount: 3 }), row({ transactionCount: 3 }), row({ transactionCount: 3 }), row({ transactionCount: 3 })]);
-    expect(suppressed[0]).toMatchObject({ suppressed: true, suppressionReason: 'minimum_contributor_threshold' });
-    const published = aggregateCommercialRows([row({ transactionCount: 3 }), row({ transactionCount: 3 }), row({ transactionCount: 3 }), row({ transactionCount: 3 }), row({ transactionCount: 3 })]);
-    expect(published[0]).toMatchObject({ suppressed: false, suppressionReason: null, contributorCount: 5, transactionCount: 15 });
+    const suppressed = aggregateCommercialRows([
+      ...Array.from({ length: 9 }, () => row({ transactionCount: 10 })),
+    ]);
+    expect(suppressed[0]).toMatchObject({
+      suppressed: true,
+      suppressionReason: 'minimum_contributor_threshold,minimum_transaction_threshold',
+    });
+    const published = aggregateCommercialRows([
+      ...Array.from({ length: 10 }, () => row({ transactionCount: 10 })),
+    ]);
+    expect(published[0]).toMatchObject({ suppressed: false, suppressionReason: null, contributorCount: 10, transactionCount: 100 });
   });
 
   it('excludes withdrawn and expired rows from future output', () => {

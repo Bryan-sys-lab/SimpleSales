@@ -2,8 +2,8 @@ import type { CommercialContributionProjection } from './commercial_ledger';
 
 /** Disclosure thresholds apply after every filter, not only to dashboards. */
 export const COMMERCIAL_DISCLOSURE_THRESHOLDS = Object.freeze({
-  minimumContributions: 5,
-  minimumTransactions: 10,
+  minimumContributions: 10,
+  minimumTransactions: 100,
 });
 
 export const COMMERCIAL_RETENTION_DAYS = 365;

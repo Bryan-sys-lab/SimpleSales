@@ -1,6 +1,11 @@
 import crypto from 'node:crypto';
 import type { CommercialContributionProjection } from './commercial_ledger';
 import { aggregateCommercialRows, isEligibleForCommercialOutput } from './commercial_controls';
+import {
+  CANONICAL_METRIC_DEFINITIONS,
+  CANONICAL_QUALITY_STATES,
+  DATA_DICTIONARY_VERSION,
+} from './canonical_metrics';
 
 export const COMMERCIAL_FRESHNESS_DAYS = 35;
 
@@ -14,6 +19,9 @@ export type CommercialQualityInput = Pick<CommercialContributionProjection,
 >;
 
 export type CommercialQualityReport = {
+  dictionaryVersion: typeof DATA_DICTIONARY_VERSION;
+  qualityStates: readonly typeof CANONICAL_QUALITY_STATES[number][];
+  metricDefinitions: typeof CANONICAL_METRIC_DEFINITIONS;
   asOfUtc: string;
   sourceRowCount: number;
   eligibleRowCount: number;
@@ -126,6 +134,9 @@ export function buildCommercialQualityReport(
   if (expectedRowCount !== null && expectedRowCount !== deduped.length) qualityNotes.push('Observed eligible rows do not match the expected contribution count');
 
   return {
+    dictionaryVersion: DATA_DICTIONARY_VERSION,
+    qualityStates: CANONICAL_QUALITY_STATES,
+    metricDefinitions: CANONICAL_METRIC_DEFINITIONS,
     asOfUtc: now.toISOString(),
     sourceRowCount: sourceRows.length,
     eligibleRowCount: deduped.length,

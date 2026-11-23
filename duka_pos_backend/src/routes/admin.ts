@@ -519,6 +519,9 @@ router.get('/commercial/quality', asyncHandler(async (req: Request, res: Respons
   return res.json({
     policy: { collectionEnabled: COMMERCIAL_POLICY.collectionEnabled, access: 'restricted_system_admin' },
     definitions: {
+      dictionaryVersion: report.dictionaryVersion,
+      qualityStates: report.qualityStates,
+      metricDefinitions: report.metricDefinitions,
       currency: 'ISO-4217 uppercase code; cohorts never mix currencies',
       money: 'integer minor units',
       coverage: 'complete, partial or unknown source coverage',

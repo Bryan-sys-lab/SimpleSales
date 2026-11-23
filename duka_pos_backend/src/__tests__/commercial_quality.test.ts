@@ -38,7 +38,7 @@ describe('commercial data quality and reproducibility', () => {
     expect(report.sourceRowCount).toBe(6);
     expect(report.eligibleRowCount).toBe(5);
     expect(report.duplicateRowCount).toBe(1);
-    expect(report.suppression.publishableCohortCount).toBe(1);
+    expect(report.suppression.publishableCohortCount).toBe(0);
     expect(report.qualityNotes).toContain('1 replayed contribution row(s) excluded before aggregation');
   });
 
