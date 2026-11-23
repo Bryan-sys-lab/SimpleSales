@@ -1,23 +1,18 @@
 name: Backend CI
 
-# Validation for the KRA/eTIMS backend.
-#
-# Separate from `ci.yml` rather than a second job in it, for a reason that is
-# not stylistic: `main`'s `.gitignore` excludes `/duka_pos_backend/` — on that
-# branch the directory is a stale checkout leftover, not source — while the
-# backend branch tracks all forty files. A backend job in a workflow triggered
-# only by `main` therefore checks out a tree with no `duka_pos_backend/` at all
-# and fails at `npm ci`. Putting it here means each workflow runs against a
-# branch where its code actually exists.
-#
-# There is no release or deploy path for the backend. `release.yml` publishes
-# the signed APK from a tag on `main` and does not touch this directory, so the
-# backend is validated on every push and deployed by hand.
+# Validate and deploy the Cloudflare backend only when its source or this
+# workflow changes on the cloudflare branch.
 on:
   push:
-    branches: [backend, 'backend/**']
+    branches: [cloudflare]
+    paths:
+      - 'duka_pos_backend/**'
+      - '.github/workflows/ci-backend.yml'
   pull_request:
-    branches: [backend, 'backend/**']
+    branches: [cloudflare]
+    paths:
+      - 'duka_pos_backend/**'
+      - '.github/workflows/ci-backend.yml'
   workflow_dispatch:
 
 # Cancel superseded runs, matching ci.yml: a rapid push-to-PR sequence should not
