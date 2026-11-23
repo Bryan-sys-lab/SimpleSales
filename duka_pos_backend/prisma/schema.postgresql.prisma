@@ -71,6 +71,8 @@ model Tenant {
   subscription           TenantSubscription?
   subscriptionPayments   SubscriptionPayment[]
   accessVouchers         AccessVoucher[]
+  membershipRequests     MembershipRequest[]
+  membershipAgreements   MembershipAgreement[]
   businessContext        BusinessContext?
 
   ownerTransactions      OwnerTransaction[]
@@ -490,12 +492,14 @@ model TenantSubscription {
   currentPeriodEnd  DateTime? @map("current_period_end")
   graceUntil        DateTime? @map("grace_until")
   voucherId         String?  @unique @map("voucher_id")
+  agreementId       String?  @unique @map("agreement_id")
   updatedBy         String?  @map("updated_by")
   createdAt         DateTime @default(now()) @map("created_at")
   updatedAt         DateTime @updatedAt @map("updated_at")
 
   tenant            Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
   voucher           AccessVoucher? @relation(fields: [voucherId], references: [id], onDelete: SetNull)
+  agreement         MembershipAgreement? @relation(fields: [agreementId], references: [id], onDelete: SetNull)
 
   @@index([status, currentPeriodEnd])
   @@map("tenant_subscriptions")
@@ -537,6 +541,8 @@ model SubscriptionPayment {
   amountMinor       Int      @map("amount_minor")
   durationMonths    Int      @default(1) @map("duration_months")
   discountPercent   Int      @default(0) @map("discount_percent")
+  agreementId       String?  @map("agreement_id")
+  voucherApplied    Boolean  @default(true) @map("voucher_applied")
   status            String   @default("PENDING")
   checkoutRequestId String?  @map("checkout_request_id")
   providerStatus    String?  @map("provider_status")
@@ -545,8 +551,88 @@ model SubscriptionPayment {
   updatedAt         DateTime @updatedAt @map("updated_at")
 
   tenant            Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  agreement         MembershipAgreement? @relation(fields: [agreementId], references: [id], onDelete: SetNull)
   @@index([tenantId, status])
+  @@index([agreementId])
   @@map("subscription_payments")
+}
+
+model MembershipRequest {
+  id              String   @id @default(cuid())
+  tenantId        String   @map("tenant_id")
+  requestedBy     String   @map("requested_by")
+  features        Json     @default("[]")
+  requirements    String   @default("")
+  status          String   @default("pending")
+  createdAt       DateTime @default(now()) @map("created_at")
+  updatedAt       DateTime @updatedAt @map("updated_at")
+
+  tenant          Tenant             @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  offers          MembershipOffer[]
+  messages        MembershipMessage[]
+  agreement       MembershipAgreement?
+
+  @@index([tenantId, createdAt])
+  @@index([status, updatedAt])
+  @@map("membership_requests")
+}
+
+model MembershipOffer {
+  id                    String   @id @default(cuid())
+  requestId             String   @map("request_id")
+  revision              Int
+  status                String   @default("offered")
+  amountMinor           Int      @map("amount_minor")
+  currency              String   @default("KES")
+  termMonths            Int?     @map("term_months")
+  paymentArrangement    String   @map("payment_arrangement")
+  renewalTerms          String   @map("renewal_terms")
+  includedFeatures      Json     @default("[]") @map("included_features")
+  additionalConditions  String?  @map("additional_conditions")
+  expiresAt             DateTime? @map("expires_at")
+  createdBy             String   @map("created_by")
+  createdAt             DateTime @default(now()) @map("created_at")
+
+  request               MembershipRequest @relation(fields: [requestId], references: [id], onDelete: Cascade)
+  agreement             MembershipAgreement?
+
+  @@unique([requestId, revision])
+  @@index([requestId, createdAt])
+  @@index([requestId, status])
+  @@map("membership_offers")
+}
+
+model MembershipMessage {
+  id          String   @id @default(cuid())
+  requestId   String   @map("request_id")
+  senderType  String   @map("sender_type")
+  senderId    String   @map("sender_id")
+  body        String
+  createdAt   DateTime @default(now()) @map("created_at")
+
+  request     MembershipRequest @relation(fields: [requestId], references: [id], onDelete: Cascade)
+
+  @@index([requestId, createdAt])
+  @@map("membership_messages")
+}
+
+model MembershipAgreement {
+  id          String   @id @default(cuid())
+  tenantId    String   @map("tenant_id")
+  requestId   String   @unique @map("request_id")
+  offerId     String   @unique @map("offer_id")
+  reference   String   @unique
+  snapshot    Json
+  acceptedAt  DateTime @default(now()) @map("accepted_at")
+
+  tenant      Tenant             @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  request     MembershipRequest  @relation(fields: [requestId], references: [id], onDelete: Cascade)
+  offer       MembershipOffer    @relation(fields: [offerId], references: [id], onDelete: Restrict)
+  subscription TenantSubscription?
+  payments    SubscriptionPayment[]
+
+  @@index([tenantId, acceptedAt])
+  @@map("membership_agreements")
 }
 
 model Product {
@@ -1339,6 +1425,7 @@ model AdminKey {
   revokedAt DateTime? @map("revoked_at")
   department String @default("operations")
   role String @default("worker")
+  packages Json @default("[]")
   permissions Json @default("[]")
   canRecruit Boolean @default(false) @map("can_recruit")
   canMintKeys Boolean @default(false) @map("can_mint_keys")

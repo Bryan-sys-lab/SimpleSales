@@ -10,6 +10,7 @@ import express from 'express';
 import { prisma } from '../lib/prisma';
 import { verifyAccessToken, verifyStaffSessionToken } from '../lib/jwt';
 import { tenantEntitlement } from '../lib/entitlements';
+import { normalizeAdminPackages } from '../lib/admin_access_catalog';
 
 declare global {
   namespace Express {
@@ -29,6 +30,16 @@ declare global {
         name: string;
       };
       requestId?: string;
+      adminAccess?: {
+        isSuperAdmin: boolean;
+        permissions: string[];
+        packages: string[];
+        department: string;
+        canRecruit: boolean;
+        canMintKeys: boolean;
+        canAssignTasks: boolean;
+        keyId: string | null;
+      };
     }
   }
 }
@@ -168,6 +179,7 @@ export const authMiddleware = async (req: express.Request, res: express.Response
     const billingExemption = voucherBillingPath ||
       normalizedOriginalPath === '/tenant/subscription' ||
       normalizedOriginalPath.startsWith('/tenant/subscription/') ||
+      normalizedOriginalPath.startsWith('/tenant/membership') ||
       normalizedOriginalPath === '/telemetry/support';
     if (!billingExemption) {
       const entitlement = await tenantEntitlement(profile.tenantId);
@@ -210,6 +222,7 @@ export const systemAdminMiddleware = async (req: express.Request, res: express.R
   const claims = verifyAccessToken(token);
   if (!claims || claims.token_use !== 'admin') return res.status(401).json({ error: 'Invalid or expired administrator token', requestId: req.requestId });
   let permissions: string[] = [];
+  let packages: string[] = [];
   let keyId: string | null = null;
   let department = 'system';
   let canRecruit = true;
@@ -225,13 +238,14 @@ export const systemAdminMiddleware = async (req: express.Request, res: express.R
     if (claims.email !== key.email) return res.status(403).json({ error: 'Administrator identity mismatch', requestId: req.requestId });
     permissions = Array.isArray(key.permissions) ? key.permissions.filter((p): p is string => typeof p === 'string') : [];
     department = key.department;
+    packages = normalizeAdminPackages(key.packages, key.department);
     canRecruit = key.canRecruit;
     canMintKeys = key.canMintKeys;
     canAssignTasks = key.canAssignTasks;
   } else if (!isSuperAdmin && !allowed.includes(claims.sub)) {
     return res.status(403).json({ error: 'System administrator access required', requestId: req.requestId });
   }
-  (req as any).adminAccess = { isSuperAdmin, permissions, department, canRecruit, canMintKeys, canAssignTasks, keyId };
+  req.adminAccess = { isSuperAdmin, permissions, packages, department, canRecruit, canMintKeys, canAssignTasks, keyId };
   req.auth = { sub: claims.sub, email: claims.email, email_verified: claims.email_verified, token_use: claims.token_use };
   if (isSuperAdmin) return next();
 
@@ -253,6 +267,7 @@ export const systemAdminMiddleware = async (req: express.Request, res: express.R
 
 function adminPermissionFor(method: string, path: string): string | null {
   if (/\/auth\/(?:session|logout)$/.test(path)) return 'system:read';
+  if (/\/auth\/access-catalog$/.test(path)) return method === 'GET' ? 'keys:read' : 'keys:manage';
   if (/\/org\/reports(?:\/|$)/.test(path)) return 'tasks:read';
   if (/\/keys(?:\/|$)/.test(path)) return method === 'GET' ? 'keys:read' : 'keys:manage';
   if (/\/org\/tasks(?:\/|$)/.test(path)) return method === 'POST' ? 'tasks:manage' : 'tasks:read';
@@ -266,5 +281,6 @@ function adminPermissionFor(method: string, path: string): string | null {
   if (/\/analytics|\/churn|\/financials|\/sales|\/products|\/expenses|\/laybys|\/exchanges|\/tax-compliance/.test(path)) return 'analytics:read';
   if (/\/billing|\/tax-rules|\/commercial-policy|\/announcement/.test(path)) return method === 'GET' ? 'configuration:read' : 'configuration:manage';
   if (/\/support/.test(path)) return method === 'GET' ? 'support:read' : 'support:manage';
+  if (/\/membership/.test(path)) return method === 'GET' ? 'membership:read' : 'membership:manage';
   return 'system:read';
 }

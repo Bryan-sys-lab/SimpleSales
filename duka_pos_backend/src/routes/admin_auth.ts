@@ -10,17 +10,18 @@ import { issueAccessToken } from '../lib/jwt';
 import { systemAdminMiddleware } from '../middleware/auth';
 import { log } from '../lib/observability';
 import { issueAdminWebSocketTicket } from '../services/admin_ws_tickets';
+import {
+  adminPackagePermissions,
+  adminPackages,
+  adminPermissionOptions,
+  normalizeAdminPackages,
+} from '../lib/admin_access_catalog';
 
 const router = Router();
 const loginLimiter = rateLimit({ windowMs: 15 * 60 * 1000, limit: 8, standardHeaders: 'draft-7', legacyHeaders: false, skipSuccessfulRequests: true });
 const refreshLimiter = rateLimit({ windowMs: 15 * 60 * 1000, limit: 30, standardHeaders: 'draft-7', legacyHeaders: false });
-const permissionOptions = [
-  'system:read', 'keys:read', 'keys:manage', 'users:read', 'users:manage',
-  'tenants:read', 'tenants:manage', 'sessions:read', 'sessions:manage',
-  'diagnostics:read', 'diagnostics:manage', 'commercial:read', 'commercial:manage',
-  'audit:read', 'analytics:read', 'configuration:read', 'configuration:manage', 'tasks:read', 'tasks:manage',
-  'support:read', 'support:manage',
-] as const;
+const permissionOptions = adminPermissionOptions;
+const packageId = z.string().refine((value) => adminPackages.some((item) => item.id === value));
 const loginSchema = z.object({
   email: z.string().trim().toLowerCase().email(),
   masterToken: z.string().min(24).max(512).optional(),
@@ -32,6 +33,7 @@ const mintSchema = z.object({
   phone: z.string().trim().min(6).max(30),
   department: z.string().trim().min(2).max(80),
   role: z.enum(['worker', 'manager', 'department_head', 'executive']).default('worker'),
+  packages: z.array(packageId).max(adminPackages.length).default([]),
   permissions: z.array(z.enum(permissionOptions)).max(permissionOptions.length),
   canRecruit: z.boolean().default(false),
   canMintKeys: z.boolean().default(false),
@@ -40,6 +42,7 @@ const mintSchema = z.object({
 }).strict();
 const keyUpdateSchema = z.object({
   role: z.enum(['worker', 'manager', 'department_head', 'executive']).optional(),
+  packages: z.array(packageId).max(adminPackages.length).optional(),
   permissions: z.array(z.enum(permissionOptions)).max(permissionOptions.length).optional(),
   canRecruit: z.boolean().optional(), canMintKeys: z.boolean().optional(), canAssignTasks: z.boolean().optional(),
   expiresInDays: z.number().int().min(1).max(365).optional(),
@@ -51,14 +54,22 @@ function constantTimeEqual(a: string, b: string): boolean {
   return crypto.timingSafeEqual(left, right);
 }
 
-async function isWithinAdminScope(target: { parentKeyId: string | null; department: string }, access: any): Promise<boolean> {
+function isPackageSubset(target: readonly string[], allowed: readonly string[]): boolean {
+  return target.every((packageId) => allowed.includes(packageId));
+}
+
+async function isWithinAdminScope(
+  target: { parentKeyId: string | null; department: string; packages: unknown },
+  access: NonNullable<Request['adminAccess']> | undefined,
+): Promise<boolean> {
   if (access?.isSuperAdmin) return true;
-  if (!access?.keyId || target.department !== access.department) return false;
+  if (!access?.keyId) return false;
+  if (!isPackageSubset(normalizeAdminPackages(target.packages, target.department), access.packages ?? [])) return false;
   let parentId = target.parentKeyId;
   for (let depth = 0; depth < 5 && parentId; depth += 1) {
     if (parentId === access.keyId) return true;
-    const parent = await prisma.adminKey.findUnique({ where: { id: parentId }, select: { parentKeyId: true, department: true } });
-    if (!parent || parent.department !== access.department) return false;
+    const parent = await prisma.adminKey.findUnique({ where: { id: parentId }, select: { parentKeyId: true, department: true, packages: true } });
+    if (!parent || !isPackageSubset(normalizeAdminPackages(parent.packages, parent.department), access.packages ?? [])) return false;
     parentId = parent.parentKeyId;
   }
   return false;
@@ -101,46 +112,62 @@ router.post('/refresh', refreshLimiter, systemAdminMiddleware, (req: Request, re
 
 router.get('/session', systemAdminMiddleware, (req, res) => res.json({
   email: req.auth?.email,
-  role: (req as any).adminAccess?.isSuperAdmin ? 'super_admin' : 'department_admin',
-  department: (req as any).adminAccess?.department,
-  permissions: (req as any).adminAccess?.isSuperAdmin ? permissionOptions : (req as any).adminAccess?.permissions ?? [],
-  canRecruit: (req as any).adminAccess?.canRecruit ?? false,
-  canMintKeys: (req as any).adminAccess?.canMintKeys ?? false,
-  canAssignTasks: (req as any).adminAccess?.canAssignTasks ?? false,
+  role: req.adminAccess?.isSuperAdmin ? 'super_admin' : 'department_admin',
+  department: req.adminAccess?.department,
+  packages: req.adminAccess?.isSuperAdmin ? adminPackages.map((item) => item.id) : req.adminAccess?.packages ?? [],
+  permissions: req.adminAccess?.isSuperAdmin ? permissionOptions : req.adminAccess?.permissions ?? [],
+  canRecruit: req.adminAccess?.canRecruit ?? false,
+  canMintKeys: req.adminAccess?.canMintKeys ?? false,
+  canAssignTasks: req.adminAccess?.canAssignTasks ?? false,
 }));
 
 router.post('/ws-ticket', systemAdminMiddleware, (_req, res) => res.json({ ticket: issueAdminWebSocketTicket(), expiresIn: 30 }));
 
+router.get('/access-catalog', systemAdminMiddleware, (req, res) => {
+  const access = req.adminAccess;
+  return res.json({
+    packages: adminPackages,
+    permissions: permissionOptions,
+    assignablePackageIds: access?.isSuperAdmin ? adminPackages.map((item) => item.id) : access?.packages ?? [],
+    assignablePermissions: access?.isSuperAdmin ? permissionOptions : access?.permissions ?? [],
+  });
+});
+
 router.get('/keys', systemAdminMiddleware, asyncHandler(async (req, res) => {
-  const access = (req as any).adminAccess;
+  const access = req.adminAccess;
   let ids: string[] | undefined;
   if (!access?.isSuperAdmin && access?.keyId) {
     let frontier = [access.keyId];
     ids = [];
     for (let depth = 0; depth < 4 && frontier.length; depth += 1) {
-      const children = await prisma.adminKey.findMany({ where: { parentKeyId: { in: frontier }, department: access.department }, select: { id: true } });
-      frontier = children.map((child) => child.id);
+      const children = await prisma.adminKey.findMany({ where: { parentKeyId: { in: frontier } }, select: { id: true, department: true, packages: true } });
+      frontier = children
+        .filter((child) => isPackageSubset(normalizeAdminPackages(child.packages, child.department), access.packages ?? []))
+        .map((child) => child.id);
       ids.push(...frontier);
     }
   }
   const keys = ids && !ids.length ? [] : await prisma.adminKey.findMany({
     where: ids ? { id: { in: ids } } : {},
-    select: { id: true, email: true, phone: true, department: true, role: true, permissions: true, canRecruit: true, canMintKeys: true, canAssignTasks: true, parentKeyId: true, parent: { select: { id: true, email: true, department: true, role: true } }, createdBy: true, createdAt: true, usedAt: true, expiresAt: true, revokedAt: true },
+    select: { id: true, email: true, phone: true, department: true, role: true, packages: true, permissions: true, canRecruit: true, canMintKeys: true, canAssignTasks: true, parentKeyId: true, parent: { select: { id: true, email: true, department: true, role: true } }, createdBy: true, createdAt: true, usedAt: true, expiresAt: true, revokedAt: true },
     orderBy: { createdAt: 'desc' }, take: 500,
   });
-  res.json({ keys });
+  res.json({ keys: keys.map((key) => ({ ...key, packages: normalizeAdminPackages(key.packages, key.department) })) });
 }));
 
 router.post('/keys/mint', systemAdminMiddleware, asyncHandler(async (req: Request, res: Response) => {
   const input = parseBody(mintSchema, req.body);
-  const access = (req as any).adminAccess;
+  const access = req.adminAccess;
+  const packages = normalizeAdminPackages(input.packages, input.department);
+  const permissions = [...new Set([...adminPackagePermissions(packages), ...input.permissions])];
   if (!access?.isSuperAdmin) {
     const roleRank: Record<string, number> = { worker: 0, manager: 1, department_head: 2, executive: 3 };
     const caller = await prisma.adminKey.findUnique({ where: { id: access?.keyId ?? '' }, select: { role: true } });
     if (!access?.canMintKeys || !access?.canRecruit || input.department !== access.department ||
         roleRank[input.role] >= roleRank[caller?.role ?? 'worker'] ||
+        !isPackageSubset(packages, access.packages ?? []) ||
         input.canMintKeys && !access.canMintKeys || input.canRecruit && !access.canRecruit ||
-        input.canAssignTasks && !access.canAssignTasks || input.permissions.some((p: string) => !access.permissions.includes(p))) {
+        input.canAssignTasks && !access.canAssignTasks || permissions.some((p: string) => !access.permissions.includes(p))) {
       return res.status(403).json({ error: 'Requested key exceeds your department permissions' });
     }
   }
@@ -153,9 +180,9 @@ router.post('/keys/mint', systemAdminMiddleware, asyncHandler(async (req: Reques
     db.prepare(`
       INSERT INTO admin_keys (
         id, email, phone, key_hash, created_by, created_at, expires_at,
-        department, role, permissions, can_recruit, can_mint_keys,
+        department, role, packages, permissions, can_recruit, can_mint_keys,
         can_assign_tasks, parent_key_id
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `).bind(
       keyId,
       input.email,
@@ -166,7 +193,8 @@ router.post('/keys/mint', systemAdminMiddleware, asyncHandler(async (req: Reques
       expiresAt.toISOString(),
       input.department,
       input.role,
-      JSON.stringify(input.permissions),
+      JSON.stringify(packages),
+      JSON.stringify(permissions),
       input.canRecruit ? 1 : 0,
       input.canMintKeys ? 1 : 0,
       input.canAssignTasks ? 1 : 0,
@@ -187,27 +215,38 @@ router.post('/keys/mint', systemAdminMiddleware, asyncHandler(async (req: Reques
     phone: input.phone,
     department: input.department,
     role: input.role,
-    permissions: input.permissions,
+    packages,
+    permissions,
     canRecruit: input.canRecruit,
     canMintKeys: input.canMintKeys,
     canAssignTasks: input.canAssignTasks,
   };
   log('info', 'admin.key.minted', { keyId: key.id, createdBy: req.auth?.sub, department: key.department });
-  res.status(201).json({ key: rawKey, id: key.id, email: key.email, phone: key.phone, department: key.department, role: key.role, permissions: key.permissions, canRecruit: key.canRecruit, canMintKeys: key.canMintKeys, canAssignTasks: key.canAssignTasks, expiresAt });
+  res.status(201).json({ key: rawKey, id: key.id, email: key.email, phone: key.phone, department: key.department, role: key.role, packages: key.packages, permissions: key.permissions, canRecruit: key.canRecruit, canMintKeys: key.canMintKeys, canAssignTasks: key.canAssignTasks, expiresAt });
 }));
 
 router.patch('/keys/:id', systemAdminMiddleware, asyncHandler(async (req: Request, res: Response) => {
   const input = parseBody(keyUpdateSchema, req.body);
-  const access = (req as any).adminAccess;
+  const access = req.adminAccess;
   const target = await prisma.adminKey.findUnique({ where: { id: req.params.id as string } });
   if (!target) return res.status(404).json({ error: 'Administrator key not found' });
-  if (!access?.isSuperAdmin) {
+  if (!access) return res.status(403).json({ error: 'Administrator access is unavailable' });
+  if (!access.isSuperAdmin) {
     const caller = await prisma.adminKey.findUnique({ where: { id: access?.keyId ?? '' }, select: { role: true } });
     const rank: Record<string, number> = { worker: 0, manager: 1, department_head: 2, executive: 3 };
     const nextRole = input.role ?? target.role;
-    const nextPermissions = input.permissions ?? (Array.isArray(target.permissions) ? target.permissions : []);
+    const existingPackages = normalizeAdminPackages(target.packages, target.department);
+    const nextPackages = input.packages ? normalizeAdminPackages(input.packages, target.department) : existingPackages;
+    const existingPermissions = Array.isArray(target.permissions) ? target.permissions.filter((p): p is string => typeof p === 'string') : [];
+    const existingPackagePermissions = new Set<string>(adminPackagePermissions(existingPackages));
+    const existingAdditionalPermissions = existingPermissions.filter((permission) => !existingPackagePermissions.has(permission));
+    const nextPermissions = [...new Set([
+      ...adminPackagePermissions(nextPackages),
+      ...(input.permissions ?? existingAdditionalPermissions),
+    ])];
     if (!await isWithinAdminScope(target, access) || target.parentKeyId === null ||
         rank[nextRole] >= rank[caller?.role ?? 'worker'] ||
+        !isPackageSubset(nextPackages, access.packages ?? []) ||
         input.canMintKeys === true && !access.canMintKeys ||
         input.canRecruit === true && !access.canRecruit ||
         input.canAssignTasks === true && !access.canAssignTasks ||
@@ -217,8 +256,18 @@ router.patch('/keys/:id', systemAdminMiddleware, asyncHandler(async (req: Reques
   }
   const changes: string[] = [];
   const bindings: unknown[] = [];
+  const existingPackages = normalizeAdminPackages(target.packages, target.department);
+  const nextPackages = input.packages ? normalizeAdminPackages(input.packages, target.department) : existingPackages;
+  const existingPermissions = Array.isArray(target.permissions) ? target.permissions.filter((p): p is string => typeof p === 'string') : [];
+  const existingPackagePermissions = new Set<string>(adminPackagePermissions(existingPackages));
+  const existingAdditionalPermissions = existingPermissions.filter((permission) => !existingPackagePermissions.has(permission));
+  const nextPermissions = [...new Set([
+    ...adminPackagePermissions(nextPackages),
+    ...(input.permissions ?? existingAdditionalPermissions),
+  ])];
+  if (input.packages !== undefined) { changes.push('packages = ?'); bindings.push(JSON.stringify(nextPackages)); }
   if (input.role !== undefined) { changes.push('role = ?'); bindings.push(input.role); }
-  if (input.permissions !== undefined) { changes.push('permissions = ?'); bindings.push(JSON.stringify(input.permissions)); }
+  if (input.permissions !== undefined || input.packages !== undefined) { changes.push('permissions = ?'); bindings.push(JSON.stringify(nextPermissions)); }
   if (input.canRecruit !== undefined) { changes.push('can_recruit = ?'); bindings.push(input.canRecruit ? 1 : 0); }
   if (input.canMintKeys !== undefined) { changes.push('can_mint_keys = ?'); bindings.push(input.canMintKeys ? 1 : 0); }
   if (input.canAssignTasks !== undefined) { changes.push('can_assign_tasks = ?'); bindings.push(input.canAssignTasks ? 1 : 0); }
@@ -238,14 +287,14 @@ router.patch('/keys/:id', systemAdminMiddleware, asyncHandler(async (req: Reques
     }, db),
   ]);
   if ((results[0]?.meta.changes ?? 0) !== 1) throw new Error('Administrator key could not be updated');
-  const updated = await prisma.adminKey.findUnique({ where: { id: target.id }, select: { id: true, email: true, department: true, role: true, permissions: true, canRecruit: true, canMintKeys: true, canAssignTasks: true, expiresAt: true, revokedAt: true } });
+  const updated = await prisma.adminKey.findUnique({ where: { id: target.id }, select: { id: true, email: true, department: true, role: true, packages: true, permissions: true, canRecruit: true, canMintKeys: true, canAssignTasks: true, expiresAt: true, revokedAt: true } });
   if (!updated) throw new Error('Updated administrator key could not be reloaded');
   log('info', 'admin.key.permissions_updated', { keyId: updated.id, updatedBy: req.auth?.sub });
   res.json({ key: updated });
 }));
 
 router.post('/keys/:id/revoke', systemAdminMiddleware, asyncHandler(async (req: Request, res: Response) => {
-  const access = (req as any).adminAccess;
+  const access = req.adminAccess;
   const target = await prisma.adminKey.findUnique({ where: { id: req.params.id as string } });
   if (!target) return res.status(404).json({ error: 'Administrator key not found' });
   if (!await isWithinAdminScope(target, access)) return res.status(403).json({ error: 'Key is outside your management scope' });

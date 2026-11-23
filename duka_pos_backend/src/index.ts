@@ -28,6 +28,7 @@ import {
 import { creditNoteRoutes, receiptLinksRoutes } from './routes/receipt_links';
 import { systemAdminMiddleware, authMiddleware } from './middleware/auth';
 import tenantRoutes from './routes/tenant';
+import membershipRoutes from './routes/membership';
 import paymentRoutes from './routes/payment';
 import productRoutes from './routes/product';
 import { handlePayheroCallback } from './routes/payhero-callback';
@@ -42,6 +43,7 @@ import profileRoutes from './routes/profile';
 import telemetryRoutes from './routes/telemetry';
 import adminRoutes from './routes/admin';
 import adminAuthRoutes from './routes/admin_auth';
+import adminMembershipRoutes from './routes/admin_membership';
 import adminOrgRoutes from './routes/admin_org';
 import { setPlatformAnnouncementNotifier } from './routes/admin';
 import salesRoutes from './routes/sales';
@@ -328,6 +330,7 @@ app.use('/callback/mpesa', mpesaWebhookRoutes);
 // shop-profile auth so the platform token is never treated as a till user.
 app.use('/api/admin/auth', adminAuthRoutes);
 app.use('/api/admin/org', adminOrgRoutes);
+app.use('/api/admin/membership', adminMembershipRoutes);
 app.use('/api/admin', adminRoutes);
 
 app.use('/api', authMiddleware);
@@ -346,6 +349,7 @@ app.use('/api', (req, res, next) => {
 });
 app.use('/api/mpesa', mpesaRoutes);
 app.use('/api/tenant/business-context', businessContextRoutes);
+app.use('/api/tenant/membership', membershipRoutes);
 app.use('/api/tenant', tenantRoutes);
 app.use('/api/payments', paymentRoutes);
 app.use('/api/products', productRoutes);

@@ -34,6 +34,7 @@ export const handlePayheroCallback = async (req: Request, res: Response) => {
           tenantId: payment.tenantId,
           durationMonths: payment.durationMonths,
           receiptCode,
+          voucherApplied: payment.voucherApplied,
         });
       } else if (status.status === 'FAILED') {
         await prisma.subscriptionPayment.updateMany({

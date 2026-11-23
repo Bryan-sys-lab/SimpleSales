@@ -553,6 +553,7 @@ export const billingProviderSchema = z.object({
 
 export const subscriptionPaymentSchema = z.object({
   phoneNumber: z.string().trim().regex(/^\+?\d{9,15}$/),
+  agreementId: z.string().trim().min(1).max(120).optional(),
   durationMonths: z.union([
     z.literal(1),
     z.literal(3),
