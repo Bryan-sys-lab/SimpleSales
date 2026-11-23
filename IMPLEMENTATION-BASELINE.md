@@ -170,3 +170,28 @@ Follow the supplied order: **13 → 14 → 18 → 15 → 16 → 17**. Complete a
   production build passed. D1-compatible tenant/batch SQL executed in isolated
   SQLite and required tenant columns/uniqueness were verified. Live Wrangler
   D1 still has the Patch 15 environment `write EOF` limitation.
+
+## Patch 17 implementation update (2026-11-23)
+
+- Added fixed backend partner products: SME Digitisation & Market Activity
+  Pulse, Category / Brand Demand Pulse, and Replenishment & Category Supply
+  Pulse. Outputs use fixed aggregate schemas and do not expose shop,
+  beneficiary, customer, supplier, staff or basket fields.
+- Added the conservative 10-independent-business / 100-underlying-transaction
+  release guardrail to every product cell. Low-density cells are suppressed
+  rather than returned as zero or an exact estimate.
+- Added partner, partner grant, partner credential and partner delivery
+  persistence models and PostgreSQL/D1 migrations. Credentials are hashed,
+  scoped to a product/snapshot, expiring and revocable. Raw credential values
+  are returned once to the authorized Admin workflow only.
+- Added a separate partner API mounted outside Admin and merchant auth.
+  Partner credentials access only fixed product snapshots and cannot use Admin
+  or ledger endpoints. Every delivery creates an audited hash/reconciliation
+  record.
+- Extended the existing Admin Data Intelligence area with partner agreement,
+  credential, grant, delivery and revoke status. Partner Manager controls are
+  server-authorized and Partner data remains aggregate-only.
+- Verification: partner disclosure suite passed 7 tests in its final run; the
+  combined partner/contribution/control suite passed 12 tests. Prisma
+  validation and backend build passed. Admin production build passed.
+  D1-compatible partner tables were executed and verified in isolated SQLite.
