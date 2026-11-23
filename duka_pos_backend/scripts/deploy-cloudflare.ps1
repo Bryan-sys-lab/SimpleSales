@@ -1,6 +1,7 @@
 [CmdletBinding()]
 param(
-  [switch]$PromoteProduction
+  [switch]$PromoteProduction,
+  [string]$SystemAdminTokenFile
 )
 
 $ErrorActionPreference = 'Stop'
@@ -126,14 +127,38 @@ try {
     throw 'Could not read the Worker secret-name list. Deployment was stopped.'
   }
   $secretNames = @($secrets | ForEach-Object { $_.name })
-  $requiredSecrets = @('AUTH_JWT_SECRET', 'EMAIL_VERIFICATION_SECRET', 'SYSTEM_ADMIN_TOKEN')
+  $bootstrapAdminToken = $null
+  if ($SystemAdminTokenFile) {
+    if (-not (Test-Path -LiteralPath $SystemAdminTokenFile -PathType Leaf)) {
+      throw 'The supplied system admin token file does not exist.'
+    }
+    try {
+      $bootstrapSecrets = Get-Content -Raw -LiteralPath $SystemAdminTokenFile | ConvertFrom-Json
+      $bootstrapAdminToken = [string]$bootstrapSecrets.SYSTEM_ADMIN_TOKEN
+    } catch {
+      throw 'The supplied system admin token file must be valid JSON with a SYSTEM_ADMIN_TOKEN value.'
+    }
+    if ([string]::IsNullOrWhiteSpace($bootstrapAdminToken) -or $bootstrapAdminToken.Length -lt 32) {
+      throw 'The supplied SYSTEM_ADMIN_TOKEN must contain at least 32 characters.'
+    }
+  }
+  $requiredSecrets = @('AUTH_JWT_SECRET', 'EMAIL_VERIFICATION_SECRET')
   $missingSecrets = @($requiredSecrets | Where-Object { $_ -notin $secretNames })
   if ($missingSecrets.Count -gt 0) {
     throw "Required Worker secrets are missing: $($missingSecrets -join ', '). Add them in the Cloudflare dashboard; values are never read by this script."
   }
+  if ('SYSTEM_ADMIN_TOKEN' -notin $secretNames -and -not $bootstrapAdminToken) {
+    throw 'SYSTEM_ADMIN_TOKEN is not configured. Supply -SystemAdminTokenFile for the gated production deployment.'
+  }
+
+  $secretFileArgs = @()
+  if ($SystemAdminTokenFile) {
+    $secretFileArgs = @('--secrets-file', (Resolve-Path -LiteralPath $SystemAdminTokenFile).Path)
+  }
 
   Write-Host 'Validating the production Worker bundle...'
   & $wranglerPath deploy --dry-run --env= --config $configPath `
+    @secretFileArgs `
     --var "BACKEND_VERSION_NAME:$($env:BACKEND_VERSION_NAME)" `
     --var "BACKEND_VERSION_CODE:$($env:BACKEND_VERSION_CODE)" `
     --var "BACKEND_COMMIT_SHA:$($env:BACKEND_COMMIT_SHA)"
@@ -154,6 +179,7 @@ try {
   $deploymentMessage = "Backend $($env:BACKEND_VERSION_NAME)+$($env:BACKEND_VERSION_CODE) ($($env:BACKEND_COMMIT_SHA))"
   Write-Host "Verification passed. Deploying $deploymentMessage..."
   & $wranglerPath deploy --env= --config $configPath --message $deploymentMessage `
+    @secretFileArgs `
     --var "BACKEND_VERSION_NAME:$($env:BACKEND_VERSION_NAME)" `
     --var "BACKEND_VERSION_CODE:$($env:BACKEND_VERSION_CODE)" `
     --var "BACKEND_COMMIT_SHA:$($env:BACKEND_COMMIT_SHA)"
